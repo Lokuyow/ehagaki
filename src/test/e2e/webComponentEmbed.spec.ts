@@ -440,7 +440,7 @@ test("controls the Full editor focus through the public API without changing con
     expect(afterFocus).toEqual(beforeBlur);
 });
 
-test("Full Web Component rejects ready when PostComponent loading fails", async ({ page }) => {
+test("Full Web Component preserves initialization failure while connected and rejects disconnect-gap operations", async ({ page }) => {
     failPostComponentLoad = true;
     await page.goto(hostOrigin);
     const result = await page.evaluate(async ({ componentOrigin }) => {
@@ -448,6 +448,7 @@ test("Full Web Component rejects ready when PostComponent loading fails", async 
         const composer = document.createElement("ehagaki-composer") as HTMLElement & {
             editorIsEmpty: boolean | null;
             whenReady(): Promise<void>;
+            setContext(value: unknown): Promise<void>;
         };
         const initializationErrors: Array<{ code: string; message: string }> = [];
         composer.addEventListener("ehagaki-initialization-error", (event) => {
@@ -465,11 +466,17 @@ test("Full Web Component rejects ready when PostComponent loading fails", async 
                 window.setTimeout(() => resolve({ status: "pending", errorName: null }), 2_000);
             }),
         ]);
-        return { result, initializationErrors, editorIsEmpty: composer.editorIsEmpty };
+        composer.remove();
+        const disconnectGapResult = await composer.setContext({ content: "must not queue after failed mount" }).then(
+            () => "resolved",
+            (error: Error) => error.name,
+        );
+        return { result, disconnectGapResult, initializationErrors, editorIsEmpty: composer.editorIsEmpty };
     }, { componentOrigin });
 
     expect(result).toEqual({
         result: { status: "rejected", errorName: "initialization_failed" },
+        disconnectGapResult: "disconnected",
         initializationErrors: [{
             code: "initialization_failed",
             message: "eHagaki Composer could not be initialized.",

@@ -424,8 +424,7 @@ export abstract class EHagakiComposerElement extends HTMLElement {
         const boundary = this.#readyBoundary;
         const rejectedWhileDisconnected =
             this.#hasStartedConnectionAttempt
-            && !boundary.active
-            && boundary.state === "resolved";
+            && !this.isConnected;
         const queued = this.#operationQueue.then(async () => {
             if (rejectedWhileDisconnected) {
                 throw createError("disconnected", "Component is disconnected.");
