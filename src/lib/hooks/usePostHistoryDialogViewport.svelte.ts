@@ -178,24 +178,39 @@ export function usePostHistoryDialogViewport({
                 "[data-post-history-event-id]",
             ),
         );
+
+        let low = 0;
+        let high = items.length;
+        const firstVisibleTop =
+            containerRect.top + HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX;
+
+        while (low < high) {
+            const middle = Math.floor((low + high) / 2);
+            const itemRect = items[middle].getBoundingClientRect();
+
+            if (itemRect.bottom > firstVisibleTop) {
+                high = middle;
+            } else {
+                low = middle + 1;
+            }
+        }
+
         let firstVisiblePostedAt: number | null = null;
 
-        for (const item of items) {
-            const postedAt = Number(item.dataset.postHistoryPostedAt);
-            if (!Number.isFinite(postedAt)) {
-                continue;
+        for (let index = low; index < items.length; index += 1) {
+            const item = items[index];
+            const itemRect = item.getBoundingClientRect();
+
+            if (
+                itemRect.top >=
+                containerRect.bottom -
+                    HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX
+            ) {
+                break;
             }
 
-            const itemRect = item.getBoundingClientRect();
-            const isVisible =
-                itemRect.bottom >
-                    containerRect.top +
-                        HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX
-                && itemRect.top <
-                    containerRect.bottom -
-                        HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX;
-
-            if (!isVisible) {
+            const postedAt = Number(item.dataset.postHistoryPostedAt);
+            if (!Number.isFinite(postedAt)) {
                 continue;
             }
 

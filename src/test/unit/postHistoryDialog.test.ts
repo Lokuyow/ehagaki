@@ -1496,22 +1496,23 @@ describe('PostHistoryDialog', () => {
             '.post-preview-footer-right',
         );
         expect(quotedHistoryMenuContainer).toBeTruthy();
-        const quotedHistoryMenuButton = within(quotedHistoryMenuContainer as HTMLElement).getByRole('button', {
-            name: 'アクションを表示',
-        });
+        const quotedHistoryMenuButton = () =>
+            within(quotedHistoryMenuContainer as HTMLElement).getByRole('button', {
+                name: 'アクションを表示',
+            });
 
         await fireEvent.click(quotePreviewMenuButton);
 
         await waitFor(() => {
             expect(quotePreviewMenuButton.getAttribute('aria-expanded')).toBe('true');
-            expect(quotedHistoryMenuButton.getAttribute('aria-expanded')).toBe('false');
+            expect(quotedHistoryMenuButton().getAttribute('aria-expanded')).toBe('false');
         });
 
-        await fireEvent.click(quotedHistoryMenuButton);
+        await fireEvent.click(quotedHistoryMenuButton());
 
         await waitFor(() => {
             expect(quotePreviewMenuButton.getAttribute('aria-expanded')).toBe('false');
-            expect(quotedHistoryMenuButton.getAttribute('aria-expanded')).toBe('true');
+            expect(quotedHistoryMenuButton().getAttribute('aria-expanded')).toBe('true');
         });
     });
 

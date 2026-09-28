@@ -2894,6 +2894,7 @@
                                                 {@const actionsLabel =
                                                     $_("common.showActions")}
                                                 <PostHistoryActionMenu
+                                                    lazy={true}
                                                     open={postActionUi.isPostMenuOpen(
                                                         post.eventId,
                                                     )}
