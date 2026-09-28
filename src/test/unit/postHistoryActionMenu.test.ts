@@ -24,4 +24,60 @@ describe("PostHistoryActionMenu", () => {
             expect(trigger.hasAttribute("data-tooltip-trigger")).toBe(true);
         });
     });
+
+    it("initializes a deferred menu from its accessible trigger", async () => {
+        render(PostHistoryActionMenu, {
+            triggerAriaLabel: "アクションを表示",
+            tooltipContent: "アクションを表示",
+            enableTooltip: true,
+            lazy: true,
+            items: undefined,
+        });
+
+        const trigger = screen.getByRole("button", {
+            name: "アクションを表示",
+        });
+        expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+        expect(trigger.getAttribute("aria-expanded")).toBe("false");
+        expect(trigger.hasAttribute("data-dropdown-menu-trigger")).toBe(false);
+
+        await fireEvent.click(trigger);
+
+        await waitFor(() => {
+            expect(
+                screen
+                    .getByRole("button", { name: "アクションを表示" })
+                    .hasAttribute("data-dropdown-menu-trigger"),
+            ).toBe(true);
+        });
+        expect(
+            screen
+                .getByRole("button", { name: "アクションを表示" })
+                .getAttribute("aria-expanded"),
+        ).toBe("true");
+    });
+
+    it("opens a deferred menu with ArrowDown from the trigger", async () => {
+        const onOpenChange = vi.fn();
+        render(PostHistoryActionMenu, {
+            triggerAriaLabel: "アクションを表示",
+            lazy: true,
+            onOpenChange,
+            items: undefined,
+        });
+
+        await fireEvent.keyDown(
+            screen.getByRole("button", { name: "アクションを表示" }),
+            { key: "ArrowDown" },
+        );
+
+        await waitFor(() => {
+            expect(
+                screen
+                    .getByRole("button", { name: "アクションを表示" })
+                    .getAttribute("aria-expanded"),
+            ).toBe("true");
+        });
+        expect(onOpenChange).toHaveBeenCalledWith(true);
+    });
 });

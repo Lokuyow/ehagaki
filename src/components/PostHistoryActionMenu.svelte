@@ -1,6 +1,6 @@
 <script lang="ts">
     import { DropdownMenu, Tooltip } from "bits-ui";
-    import type { Snippet } from "svelte";
+    import { tick, type Snippet } from "svelte";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
     interface Props {
@@ -13,6 +13,7 @@
         items?: Snippet;
         tooltipContent?: string;
         enableTooltip?: boolean;
+        lazy?: boolean;
     }
 
     let {
@@ -25,75 +26,174 @@
         items = undefined,
         tooltipContent = undefined,
         enableTooltip = false,
+        lazy = false,
     }: Props = $props();
     const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
+    let menuInitialized = $state(false);
+    let menuOpen = $state(false);
+    let triggerElement = $state<HTMLElement | null>(null);
+    let shouldRenderMenu = $derived(!lazy || menuInitialized || open);
+    let previousOpenProp = false;
+
+    $effect(() => {
+        if (open === previousOpenProp) {
+            return;
+        }
+
+        previousOpenProp = open;
+        menuOpen = open;
+    });
 
     function handleOpenChange(nextOpen: boolean): void {
+        menuOpen = nextOpen;
         onOpenChange?.(nextOpen);
+    }
+
+    async function initializeAndOpenMenu(
+        event: MouseEvent | KeyboardEvent,
+        tooltipOnclick?: unknown,
+    ): Promise<void> {
+        if (typeof tooltipOnclick === "function") {
+            tooltipOnclick(event);
+        }
+
+        const controlled = typeof onOpenChange === "function";
+        menuInitialized = true;
+        await tick();
+
+        if (controlled) {
+            menuOpen = true;
+            onOpenChange(true);
+        }
+
+        if (!triggerElement) {
+            return;
+        }
+
+        triggerElement.focus({ preventScroll: true });
+        if (!controlled) {
+            triggerElement.click();
+        }
+    }
+
+    function handleDeferredTriggerKeydown(event: KeyboardEvent): void {
+        if (event.key !== "ArrowDown") {
+            return;
+        }
+
+        event.preventDefault();
+        void initializeAndOpenMenu(event);
     }
 </script>
 
-<DropdownMenu.Root {open} onOpenChange={handleOpenChange}>
-    {#if enableTooltip && tooltipContent}
-        <Tooltip.Provider>
-            <Tooltip.Root delayDuration={500}>
-                <Tooltip.Trigger>
-                    {#snippet child({ props })}
-                        {@const { onclick: tooltipOnclick, ...restProps } = props}
-                        <DropdownMenu.Trigger
-                            class={`menu-trigger post-history-menu-trigger ${triggerClassName} ${open ? "is-open" : ""}`.trim()}
-                            aria-label={triggerAriaLabel}
-                            {...restProps}
-                            onclick={(event) => {
-                                if (typeof tooltipOnclick === "function") {
-                                    tooltipOnclick(event);
-                                }
-                            }}
+{#if shouldRenderMenu}
+    <DropdownMenu.Root open={menuOpen} onOpenChange={handleOpenChange}>
+        {#if enableTooltip && tooltipContent}
+            <Tooltip.Provider>
+                <Tooltip.Root delayDuration={500}>
+                    <Tooltip.Trigger>
+                        {#snippet child({ props })}
+                            {@const { onclick: tooltipOnclick, ...restProps } = props}
+                            <DropdownMenu.Trigger
+                                bind:ref={triggerElement}
+                                class={`menu-trigger post-history-menu-trigger ${triggerClassName} ${menuOpen ? "is-open" : ""}`.trim()}
+                                aria-label={triggerAriaLabel}
+                                {...restProps}
+                                onclick={(event) => {
+                                    if (typeof tooltipOnclick === "function") {
+                                        tooltipOnclick(event);
+                                    }
+                                }}
+                            >
+                                <div class="more-icon svg-icon"></div>
+                            </DropdownMenu.Trigger>
+                        {/snippet}
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal to={overlayTarget}>
+                        <Tooltip.Content
+                            sideOffset={8}
+                            class="tooltip-content post-preview-tooltip-content"
                         >
-                            <div class="more-icon svg-icon"></div>
-                        </DropdownMenu.Trigger>
-                    {/snippet}
-                </Tooltip.Trigger>
-                <Tooltip.Portal to={overlayTarget}>
-                    <Tooltip.Content
-                        sideOffset={8}
-                        class="tooltip-content post-preview-tooltip-content"
+                            {tooltipContent}
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
+            </Tooltip.Provider>
+        {:else}
+            <DropdownMenu.Trigger
+                bind:ref={triggerElement}
+                class={`menu-trigger post-history-menu-trigger ${triggerClassName} ${menuOpen ? "is-open" : ""}`.trim()}
+                aria-label={triggerAriaLabel}
+            >
+                <div class="more-icon svg-icon"></div>
+            </DropdownMenu.Trigger>
+        {/if}
+        <DropdownMenu.Portal to={overlayTarget}>
+            <DropdownMenu.Content
+                side="bottom"
+                {align}
+                sideOffset={8}
+                class="post-history-menu-content"
+                trapFocus={false}
+                preventScroll={false}
+                onCloseAutoFocus={(event: Event) => event.preventDefault()}
+            >
+                <div class="post-history-menu-body">
+                    {#if timestamp}
+                        <div class="post-history-menu-timestamp">{timestamp}</div>
+                        <DropdownMenu.Separator
+                            class="post-history-menu-separator"
+                        />
+                    {/if}
+                    {@render items?.()}
+                </div>
+            </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+{:else if enableTooltip && tooltipContent}
+    <Tooltip.Provider>
+        <Tooltip.Root delayDuration={500}>
+            <Tooltip.Trigger>
+                {#snippet child({ props })}
+                    {@const { onclick: tooltipOnclick, ...restProps } = props}
+                    <button
+                        type="button"
+                        class={`menu-trigger post-history-menu-trigger ${triggerClassName}`.trim()}
+                        aria-label={triggerAriaLabel}
+                        aria-haspopup="menu"
+                        aria-expanded={menuOpen}
+                        {...restProps}
+                        onclick={(event) =>
+                            void initializeAndOpenMenu(event, tooltipOnclick)}
+                        onkeydown={handleDeferredTriggerKeydown}
                     >
-                        {tooltipContent}
-                    </Tooltip.Content>
-                </Tooltip.Portal>
-            </Tooltip.Root>
-        </Tooltip.Provider>
-    {:else}
-        <DropdownMenu.Trigger
-            class={`menu-trigger post-history-menu-trigger ${triggerClassName} ${open ? "is-open" : ""}`.trim()}
-            aria-label={triggerAriaLabel}
-        >
-            <div class="more-icon svg-icon"></div>
-        </DropdownMenu.Trigger>
-    {/if}
-    <DropdownMenu.Portal to={overlayTarget}>
-        <DropdownMenu.Content
-            side="bottom"
-            {align}
-            sideOffset={8}
-            class="post-history-menu-content"
-            trapFocus={false}
-            preventScroll={false}
-            onCloseAutoFocus={(event: Event) => event.preventDefault()}
-        >
-            <div class="post-history-menu-body">
-                {#if timestamp}
-                    <div class="post-history-menu-timestamp">{timestamp}</div>
-                    <DropdownMenu.Separator
-                        class="post-history-menu-separator"
-                    />
-                {/if}
-                {@render items?.()}
-            </div>
-        </DropdownMenu.Content>
-    </DropdownMenu.Portal>
-</DropdownMenu.Root>
+                        <div class="more-icon svg-icon"></div>
+                    </button>
+                {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Portal to={overlayTarget}>
+                <Tooltip.Content
+                    sideOffset={8}
+                    class="tooltip-content post-preview-tooltip-content"
+                >
+                    {tooltipContent}
+                </Tooltip.Content>
+            </Tooltip.Portal>
+        </Tooltip.Root>
+    </Tooltip.Provider>
+{:else}
+    <button
+        type="button"
+        class={`menu-trigger post-history-menu-trigger ${triggerClassName}`.trim()}
+        aria-label={triggerAriaLabel}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onclick={(event) => void initializeAndOpenMenu(event)}
+        onkeydown={handleDeferredTriggerKeydown}
+    >
+        <div class="more-icon svg-icon"></div>
+    </button>
+{/if}
 
 <style>
     :global(.post-history-menu-trigger) {

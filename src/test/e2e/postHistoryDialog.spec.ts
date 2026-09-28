@@ -1484,6 +1484,7 @@ test.describe('PostHistoryDialog Playwright', () => {
 
     test('normal post action menu keeps extracted actions and opens raw JSON on both browser sizes', async ({
         page,
+        isMobile,
     }) => {
         const harness = await gotoHarness(page);
         const postItem = page.locator(
@@ -1493,7 +1494,25 @@ test.describe('PostHistoryDialog Playwright', () => {
             .locator('.post-preview-footer-right')
             .getByRole('button', { name: 'アクションを表示' });
 
-        await actionTrigger.click();
+        await actionTrigger.scrollIntoViewIfNeeded();
+        const triggerBeforeOpen = await actionTrigger.boundingBox();
+        expect(triggerBeforeOpen).not.toBeNull();
+        if (isMobile) {
+            const triggerBox = await actionTrigger.boundingBox();
+            expect(triggerBox).not.toBeNull();
+            await page.touchscreen.tap(
+                triggerBox!.x + triggerBox!.width / 2,
+                triggerBox!.y + triggerBox!.height / 2,
+            );
+        } else {
+            await actionTrigger.click();
+        }
+        const triggerAfterOpen = await actionTrigger.boundingBox();
+        expect(triggerAfterOpen).not.toBeNull();
+        expect(Math.abs(triggerAfterOpen!.x - triggerBeforeOpen!.x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(triggerAfterOpen!.y - triggerBeforeOpen!.y)).toBeLessThanOrEqual(1);
+        expect(Math.abs(triggerAfterOpen!.width - triggerBeforeOpen!.width)).toBeLessThanOrEqual(1);
+        expect(Math.abs(triggerAfterOpen!.height - triggerBeforeOpen!.height)).toBeLessThanOrEqual(1);
         const actionMenu = visiblePostHistoryActionMenu(page);
         await expect(actionMenu.getByRole('menuitem')).toHaveText([
             'nostterで開く',
