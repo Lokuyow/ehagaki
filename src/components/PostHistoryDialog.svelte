@@ -1040,6 +1040,22 @@
             && !history.isRefetchingAroundCurrentView;
     }
 
+    function createAutoLoadViewportCommit() {
+        let scrollAnchor: ReturnType<
+            typeof historyViewport.captureHistoryScrollAnchor
+        > = null;
+
+        return {
+            captureAnchorEventId: () => {
+                scrollAnchor = historyViewport.captureHistoryScrollAnchor();
+                return scrollAnchor?.eventId ?? null;
+            },
+            onCommitted: () => {
+                historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
+            },
+        };
+    }
+
     async function handleAutoLoadOlder(): Promise<void> {
         if (
             isAutoLoadingOlder
@@ -1049,17 +1065,11 @@
             return;
         }
 
-        const scrollAnchor = historyViewport.captureHistoryScrollAnchor();
         isAutoLoadingOlder = true;
         autoLoadOlderAwaitingExit = true;
 
         try {
-            const changed = await history.loadOlder();
-            if (changed && show) {
-                await tick();
-                await previewCollapse.flushPendingMeasurements();
-                historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
-            }
+            await history.loadOlder(createAutoLoadViewportCommit());
         } finally {
             isAutoLoadingOlder = false;
             if (!autoLoadOlderSentinelIsIntersecting) {
@@ -1086,24 +1096,13 @@
             return;
         }
 
-        const scrollAnchor = historyViewport.captureHistoryScrollAnchor();
         isAutoLoadingNewer = true;
         autoLoadNewerAwaitingExit = true;
 
-        let changed = false;
-
         try {
-            changed = await history.loadNewer();
-            if (changed && show) {
-                await tick();
-                await previewCollapse.flushPendingMeasurements();
-            }
+            await history.loadNewer(createAutoLoadViewportCommit());
         } finally {
             isAutoLoadingNewer = false;
-            if (changed && show) {
-                await tick();
-                historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
-            }
             if (!autoLoadNewerSentinelIsIntersecting) {
                 autoLoadNewerAwaitingExit = false;
             }
@@ -2352,19 +2351,22 @@
                     </Button>
                 </div>
             {/if}
-            {#if supportsAutoLoadOlder && !history.isSearchMode && history.state.listingMode === "contiguous" && history.state.hasNewerLocal && !isExplicitNavigation}
-                <div
-                    bind:this={autoLoadNewerSentinel}
-                    class="post-history-auto-load-sentinel post-history-auto-load-newer-sentinel"
-                    aria-hidden="true"
-                >
-                    {#if isAutoLoadingNewer}
-                        <LoadingPlaceholder
-                            variant="spinner"
-                            showLoader={true}
-                            loaderSize={24}
-                            ariaHidden={true}
-                        />
+            {#if supportsAutoLoadOlder && !history.isSearchMode && history.state.listingMode === "contiguous" && !isExplicitNavigation}
+                <div class="post-history-auto-load-slot post-history-auto-load-newer-slot" aria-hidden="true">
+                    {#if history.state.hasNewerLocal}
+                        <div
+                            bind:this={autoLoadNewerSentinel}
+                            class="post-history-auto-load-sentinel post-history-auto-load-newer-sentinel"
+                        >
+                            {#if isAutoLoadingNewer}
+                                <LoadingPlaceholder
+                                    variant="spinner"
+                                    showLoader={true}
+                                    loaderSize={24}
+                                    ariaHidden={true}
+                                />
+                            {/if}
+                        </div>
                     {/if}
                 </div>
             {/if}
@@ -3182,19 +3184,22 @@
                 {/each}
             </ul>
 
-            {#if supportsAutoLoadOlder && !history.isSearchMode && history.state.listingMode === "contiguous" && history.state.hasOlderLocal && !history.showSavedPostsBoundary}
-                <div
-                    bind:this={autoLoadOlderSentinel}
-                    class="post-history-auto-load-sentinel"
-                    aria-hidden="true"
-                >
-                    {#if isAutoLoadingOlder}
-                        <LoadingPlaceholder
-                            variant="spinner"
-                            showLoader={true}
-                            loaderSize={24}
-                            ariaHidden={true}
-                        />
+            {#if supportsAutoLoadOlder && !history.isSearchMode && history.state.listingMode === "contiguous" && !history.showSavedPostsBoundary}
+                <div class="post-history-auto-load-slot" aria-hidden="true">
+                    {#if history.state.hasOlderLocal}
+                        <div
+                            bind:this={autoLoadOlderSentinel}
+                            class="post-history-auto-load-sentinel"
+                        >
+                            {#if isAutoLoadingOlder}
+                                <LoadingPlaceholder
+                                    variant="spinner"
+                                    showLoader={true}
+                                    loaderSize={24}
+                                    ariaHidden={true}
+                                />
+                            {/if}
+                        </div>
                     {/if}
                 </div>
             {/if}
@@ -3830,7 +3835,15 @@
 
     .post-history-auto-load-sentinel {
         display: grid;
-        min-height: 1px;
+        width: 100%;
+        min-height: 24px;
+        place-items: center;
+    }
+
+    .post-history-auto-load-slot {
+        display: grid;
+        height: 24px;
+        min-height: 24px;
         place-items: center;
     }
 

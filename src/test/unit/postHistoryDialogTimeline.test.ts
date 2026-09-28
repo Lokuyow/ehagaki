@@ -317,6 +317,29 @@ describe('PostHistoryDialog timeline navigation', () => {
                 ? containerHeight
                 : 0;
         });
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            const top = this.classList.contains('post-history-container')
+                ? 0
+                : this.classList.contains('post-history-item')
+                    ? 20
+                    : 0;
+            const height = this.classList.contains('post-history-container')
+                ? containerHeight
+                : this.classList.contains('post-history-item')
+                    ? 20
+                    : 0;
+            return {
+                x: 0,
+                y: top,
+                top,
+                left: 0,
+                right: 320,
+                bottom: top + height,
+                width: 320,
+                height,
+                toJSON: () => ({}),
+            } as DOMRect;
+        });
 
         repositoryMock.countForPubkey.mockResolvedValue(posts.length);
         repositoryMock.getLatestVisibleChunk.mockResolvedValue(posts.slice(0, 50));

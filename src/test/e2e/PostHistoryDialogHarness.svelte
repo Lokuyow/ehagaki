@@ -13,6 +13,7 @@
     } from "../../lib/storage/ehagakiDb";
     import { postHistoryVisibleRangeRepository } from "../../lib/storage/postHistoryVisibleRangeRepository";
     import { postHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryChildInteractionsRepository";
+    import { postHistoryRepository } from "../../lib/storage/postHistoryRepository";
     import { formatPostHistoryMonthLabel } from "../../lib/postHistoryDialogUtils";
     import { toPostHistoryDeletionRequestReferenceRecord } from "../../lib/postHistoryDeletionUtils";
 
@@ -75,6 +76,11 @@
     type HarnessWindow = Window &
         typeof globalThis & {
             __POST_HISTORY_HARNESS__?: HarnessState;
+            __POST_HISTORY_SCROLL_LOAD_GATE__?: {
+                direction: "older" | "newer" | null;
+                entered: boolean;
+                release: (() => void) | null;
+            };
         };
 
     function buildHexId(index: number, suffix: string): string {
@@ -355,6 +361,41 @@
     };
 
     onMount(async () => {
+        const harnessWindow = window as HarnessWindow;
+        harnessWindow.__POST_HISTORY_SCROLL_LOAD_GATE__ = {
+            direction: null,
+            entered: false,
+            release: null,
+        };
+        const originalGetOlderVisibleChunk =
+            postHistoryRepository.getOlderVisibleChunk.bind(postHistoryRepository);
+        postHistoryRepository.getOlderVisibleChunk = async (options) => {
+            const gate = harnessWindow.__POST_HISTORY_SCROLL_LOAD_GATE__;
+            if (gate?.direction === "older" && !gate.entered) {
+                gate.entered = true;
+                await new Promise<void>((resolve) => {
+                    gate.release = resolve;
+                });
+                gate.direction = null;
+                gate.release = null;
+            }
+            return originalGetOlderVisibleChunk(options);
+        };
+        const originalGetNewerVisibleChunk =
+            postHistoryRepository.getNewerVisibleChunk.bind(postHistoryRepository);
+        postHistoryRepository.getNewerVisibleChunk = async (options) => {
+            const gate = harnessWindow.__POST_HISTORY_SCROLL_LOAD_GATE__;
+            if (gate?.direction === "newer" && !gate.entered) {
+                gate.entered = true;
+                await new Promise<void>((resolve) => {
+                    gate.release = resolve;
+                });
+                gate.direction = null;
+                gate.release = null;
+            }
+            return originalGetNewerVisibleChunk(options);
+        };
+
         clearPersistedPostHistoryListingSnapshots();
         clearPersistedPostHistoryViewStateForPubkey(HARNESS_PUBKEY);
         await postHistoryVisibleRangeRepository.clearForPubkey(HARNESS_PUBKEY);

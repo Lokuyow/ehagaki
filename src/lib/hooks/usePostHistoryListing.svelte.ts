@@ -214,10 +214,16 @@ interface LoadOlderVisiblePostsMetrics {
 
 interface LoadOlderVisiblePostsOptions {
     anchorEventId?: string | null;
+    autoLoadViewportCommit?: AutoLoadViewportCommit;
     metrics?: LoadOlderVisiblePostsMetrics;
     reason?: LoadOlderVisiblePostsReason;
     useContiguousProgress?: boolean;
     preserveContiguousProgressAfterDatabaseChange?: boolean;
+}
+
+interface AutoLoadViewportCommit {
+    captureAnchorEventId: () => string | null;
+    onCommitted: () => void;
 }
 
 interface ContiguousProgressSnapshot {
@@ -2552,10 +2558,17 @@ export function usePostHistoryListing({
             return false;
         }
 
+        const autoLoadAnchorEventId = options.autoLoadViewportCommit
+            ? options.autoLoadViewportCommit.captureAnchorEventId()
+            : null;
+        if (options.autoLoadViewportCommit && !autoLoadAnchorEventId) {
+            return false;
+        }
+
         const mergedResult = mergeOlderVisiblePostsForState(
             currentLoadedPosts,
             olderPosts,
-            options.anchorEventId,
+            autoLoadAnchorEventId ?? options.anchorEventId,
         );
         const newlyVisibleOlderPosts =
             options.reason === "normal-older-reveal"
@@ -2564,6 +2577,16 @@ export function usePostHistoryListing({
                     mergedResult.posts,
                 )
                 : [];
+        if (
+            options.autoLoadViewportCommit
+            && (!autoLoadAnchorEventId
+                || !mergedResult.posts.some(
+                    (post) => post.eventId === autoLoadAnchorEventId,
+                )
+                || newlyVisibleOlderPosts.length === 0)
+        ) {
+            return false;
+        }
         state.loadedPosts = mergedResult.posts;
         if (newlyVisibleOlderPosts.length > 0) {
             relationRepairCoordinator.scheduleOlderRevealRepair(
@@ -2632,6 +2655,7 @@ export function usePostHistoryListing({
             metrics.didTrimForOlderAppend = mergedResult.didTrimForOlderAppend;
             metrics.didDeferOlderPosts = mergedResult.didDeferOlderPosts;
         }
+        options.autoLoadViewportCommit?.onCommitted();
         if (canDeriveOlderAvailability) {
             void refreshTimelineAvailability(
                 pubkeyHex,
@@ -2748,7 +2772,9 @@ export function usePostHistoryListing({
         return true;
     }
 
-    async function loadNewerVisiblePosts(): Promise<boolean> {
+    async function loadNewerVisiblePosts(
+        autoLoadViewportCommit?: AutoLoadViewportCommit,
+    ): Promise<boolean> {
         const pubkeyHex = getPubkeyHex();
         const newestCursor = toTimelineCursor(state.loadedPosts[0]);
         if (!pubkeyHex || !newestCursor) {
@@ -2793,17 +2819,28 @@ export function usePostHistoryListing({
             }
         }
 
+        const anchorEventId = autoLoadViewportCommit?.captureAnchorEventId();
+        if (autoLoadViewportCommit && !anchorEventId) {
+            return false;
+        }
+
         const currentPosts = state.loadedPosts;
         const nextPosts = trimVisiblePosts(
             [...newerPosts, ...currentPosts],
             "newer",
         );
+        if (
+            autoLoadViewportCommit
+            && !nextPosts.some((post) => post.eventId === anchorEventId)
+        ) {
+            return false;
+        }
         state.loadedPosts = nextPosts;
+        const removedOlderCount = Math.max(
+            0,
+            currentPosts.length + newerPosts.length - nextPosts.length,
+        );
         if (progress) {
-            const removedOlderCount = Math.max(
-                0,
-                currentPosts.length + newerPosts.length - nextPosts.length,
-            );
             contiguousProgress = {
                 ...progress,
                 reachedVisibleCount: Math.max(
@@ -2815,6 +2852,10 @@ export function usePostHistoryListing({
                 ) ?? progress.oldestCursor,
             };
         }
+        if (autoLoadViewportCommit && removedOlderCount > 0) {
+            state.hasOlderLocal = true;
+        }
+        autoLoadViewportCommit?.onCommitted();
         await refreshTimelineAvailability(pubkeyHex, nextPosts, requestId);
         if (!getShow() || requestId !== loadRequestId) {
             return false;
@@ -3518,7 +3559,9 @@ export function usePostHistoryListing({
         return true;
     }
 
-    async function loadOlder(): Promise<boolean> {
+    async function loadOlder(
+        autoLoadViewportCommit?: AutoLoadViewportCommit,
+    ): Promise<boolean> {
         if (isSearchMode) {
             return goToNextPage();
         }
@@ -3545,17 +3588,20 @@ export function usePostHistoryListing({
 
         return loadOlderVisiblePosts({
             reason: "normal-older-reveal",
+            autoLoadViewportCommit,
         });
     }
 
-    async function loadNewer(): Promise<boolean> {
+    async function loadNewer(
+        autoLoadViewportCommit?: AutoLoadViewportCommit,
+    ): Promise<boolean> {
         if (isSearchMode) {
             return Promise.resolve(goPreviousPage());
         }
 
         return state.sparseSource === "saved"
             ? loadNewerSparsePosts()
-            : loadNewerVisiblePosts();
+            : loadNewerVisiblePosts(autoLoadViewportCommit);
     }
 
     async function returnToLatest(): Promise<boolean> {
