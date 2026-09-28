@@ -366,12 +366,12 @@ async function getPostSnapshotByEventId(page: Page, eventId: string) {
     }, eventId);
 }
 
-async function samplePostPositionAcrossFrames(
+function startPostPositionFrameSampling(
     page: Page,
     eventId: string,
     frameCount = 24,
 ) {
-    return page.locator('.post-history-container').evaluate(
+    const samples = page.locator('.post-history-container').evaluate(
         async (containerElement, args) => {
             const container = containerElement as HTMLDivElement;
             const item = container.querySelector<HTMLElement>(
@@ -389,9 +389,11 @@ async function samplePostPositionAcrossFrames(
                 monthLabel: string | null;
                 topSlotHeight: number;
                 bottomSlotHeight: number;
+                topSpinnerVisible: boolean;
+                bottomSpinnerVisible: boolean;
             }> = [];
-            for (let frame = 0; frame < args.frameCount; frame += 1) {
-                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+            const measure = () => {
                 const itemRect = item.getBoundingClientRect();
                 const containerRect = container.getBoundingClientRect();
                 const headingRect = document.querySelector(
@@ -400,7 +402,7 @@ async function samplePostPositionAcrossFrames(
                 const slots = container.querySelectorAll<HTMLElement>(
                     '.post-history-auto-load-slot',
                 );
-                samples.push({
+                return {
                     itemTop: itemRect.top,
                     relativeTop: itemRect.top - containerRect.top,
                     containerTop: containerRect.top,
@@ -411,12 +413,58 @@ async function samplePostPositionAcrossFrames(
                     )?.textContent ?? null,
                     topSlotHeight: slots[0]?.getBoundingClientRect().height ?? 0,
                     bottomSlotHeight: slots[1]?.getBoundingClientRect().height ?? 0,
-                });
+                    topSpinnerVisible: !!slots[0]?.querySelector('.inline-spinner'),
+                    bottomSpinnerVisible: !!slots[1]?.querySelector('.inline-spinner'),
+                };
+            };
+
+            container.dataset.postHistoryFrameSampling = 'running';
+            samples.push(measure());
+            let frame = 0;
+            while (
+                frame < args.frameCount ||
+                container.dataset.postHistoryFrameSampling !== 'stop'
+            ) {
+                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                samples.push(measure());
+                frame += 1;
             }
+            delete container.dataset.postHistoryFrameSampling;
             return samples;
         },
         { eventId, frameCount },
     );
+    const started = page.waitForFunction(() =>
+        document.querySelector('.post-history-container')?.getAttribute('data-post-history-frame-sampling') === 'running',
+    );
+
+    return {
+        started,
+        samples,
+        stop: () => page.locator('.post-history-container').evaluate((element) => {
+            (element as HTMLDivElement).dataset.postHistoryFrameSampling = 'stop';
+        }),
+    };
+}
+
+function expectPostPositionStableAcrossFrames(
+    frameSamples: Awaited<ReturnType<typeof startPostPositionFrameSampling>['samples']>,
+    anchor: { offsetTop: number },
+) {
+    expect(frameSamples.length).toBeGreaterThanOrEqual(25);
+    expect(frameSamples[0].topSpinnerVisible || frameSamples[0].bottomSpinnerVisible).toBe(true);
+    expect(frameSamples.at(-1)?.topSpinnerVisible || frameSamples.at(-1)?.bottomSpinnerVisible).toBe(false);
+
+    for (const sample of frameSamples) {
+        expect(Math.abs(sample.itemTop - frameSamples[0].itemTop)).toBeLessThanOrEqual(1);
+        expect(Math.abs(sample.relativeTop - anchor.offsetTop)).toBeLessThanOrEqual(1);
+        expect(sample.topSlotHeight).toBe(24);
+        expect(sample.bottomSlotHeight).toBe(24);
+        expect(Math.abs(sample.containerTop - frameSamples[0].containerTop)).toBeLessThanOrEqual(1);
+        expect(sample.clientHeight).toBe(frameSamples[0].clientHeight);
+        expect(sample.headingHeight).toBe(frameSamples[0].headingHeight);
+        expect(sample.monthLabel).toBe(frameSamples[0].monthLabel);
+    }
 }
 
 async function getFooterActionPositions(page: Page, eventId: string) {
@@ -901,25 +949,16 @@ test.describe('PostHistoryDialog Playwright', () => {
         const userSelectedAnchor = await getFirstVisiblePostSnapshot(page);
         expect(userSelectedAnchor).not.toBeNull();
         expect(userSelectedAnchor!.eventId).toBe(windowBeforeDeferredLoad[0]);
-        const frameSamplesPromise = samplePostPositionAcrossFrames(
+        const frameSampling = startPostPositionFrameSampling(
             page,
             userSelectedAnchor!.eventId,
         );
+        await frameSampling.started;
         await releaseScrollLoadGate(page);
-        const frameSamples = await frameSamplesPromise;
-        for (const sample of frameSamples) {
-            expect(Math.abs(sample.relativeTop - userSelectedAnchor!.offsetTop)).toBeLessThanOrEqual(1);
-            expect(sample.topSlotHeight).toBe(24);
-            expect(sample.bottomSlotHeight).toBe(24);
-            expect(
-                Math.abs(sample.containerTop - frameSamples[0].containerTop),
-                JSON.stringify(frameSamples.map(({ containerTop, itemTop, relativeTop, headingHeight, monthLabel }) => ({ containerTop, itemTop, relativeTop, headingHeight, monthLabel }))),
-            ).toBeLessThanOrEqual(1);
-            expect(sample.clientHeight).toBe(frameSamples[0].clientHeight);
-            expect(sample.headingHeight).toBe(frameSamples[0].headingHeight);
-            expect(sample.monthLabel).toBe(frameSamples[0].monthLabel);
-        }
         await expect(page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel) .inline-spinner')).toBeHidden();
+        await frameSampling.stop();
+        const frameSamples = await frameSampling.samples;
+        expectPostPositionStableAcrossFrames(frameSamples, userSelectedAnchor!);
 
         await expect.poll(() => historyEventIds(page)).toEqual(windowBeforeDeferredLoad);
         const retainedUserAnchor = await getPostSnapshotByEventId(
@@ -969,22 +1008,16 @@ test.describe('PostHistoryDialog Playwright', () => {
         const userSelectedAnchor = await getFirstVisiblePostSnapshot(page);
         expect(userSelectedAnchor).not.toBeNull();
         expect(expectedEventIds.slice(200)).toContain(userSelectedAnchor!.eventId);
-        const frameSamplesPromise = samplePostPositionAcrossFrames(
+        const frameSampling = startPostPositionFrameSampling(
             page,
             userSelectedAnchor!.eventId,
         );
+        await frameSampling.started;
         await releaseScrollLoadGate(page);
-        const frameSamples = await frameSamplesPromise;
-        for (const sample of frameSamples) {
-            expect(Math.abs(sample.relativeTop - userSelectedAnchor!.offsetTop)).toBeLessThanOrEqual(1);
-            expect(sample.topSlotHeight).toBe(24);
-            expect(sample.bottomSlotHeight).toBe(24);
-            expect(Math.abs(sample.containerTop - frameSamples[0].containerTop)).toBeLessThanOrEqual(1);
-            expect(sample.clientHeight).toBe(frameSamples[0].clientHeight);
-            expect(sample.headingHeight).toBe(frameSamples[0].headingHeight);
-            expect(sample.monthLabel).toBe(frameSamples[0].monthLabel);
-        }
         await expect(page.locator('.post-history-auto-load-newer-sentinel .inline-spinner')).toBeHidden();
+        await frameSampling.stop();
+        const frameSamples = await frameSampling.samples;
+        expectPostPositionStableAcrossFrames(frameSamples, userSelectedAnchor!);
 
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(101));
         const retainedUserAnchor = await getPostSnapshotByEventId(
@@ -998,6 +1031,112 @@ test.describe('PostHistoryDialog Playwright', () => {
         await waitForIntersectionObserverSettle(page);
         await scrollHistoryNearTopAndCaptureAnchor(page);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(51, 201));
+    });
+
+    test('successful newer autoload swaps the bounded window without moving the visible anchor', async ({ page }) => {
+        const harness = await gotoInfiniteScrollHarness(page, {
+            fixContainerHeight: false,
+        });
+        await expect(page.locator('.post-history-heading .status-loading-placeholder')).toHaveCount(0);
+        const expectedEventIds = harness.infiniteScrollEventIds;
+
+        await scrollHistoryToBottom(page);
+        await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
+        for (const expectedWindow of [
+            expectedEventIds.slice(0, 150),
+            expectedEventIds.slice(50, 200),
+            expectedEventIds.slice(100, 250),
+            expectedEventIds.slice(101),
+        ]) {
+            await scrollHistoryAwayFromBottom(page);
+            await waitForIntersectionObserverSettle(page);
+            await scrollHistoryToBottom(page);
+            await expect.poll(() => historyEventIds(page)).toEqual(expectedWindow);
+        }
+
+        await scrollHistoryAwayFromTop(page);
+        await waitForIntersectionObserverSettle(page);
+        await armScrollLoadGate(page, 'newer');
+        await scrollHistoryNearTopAndCaptureAnchor(page);
+        await waitForScrollLoadGate(page);
+        await expect(page.locator('.post-history-auto-load-newer-sentinel .inline-spinner')).toBeVisible();
+
+        const userSelectedAnchor = await getFirstVisiblePostSnapshot(page);
+        expect(userSelectedAnchor).not.toBeNull();
+        expect(expectedEventIds.slice(101)).toContain(userSelectedAnchor!.eventId);
+        const expectedWindow = expectedEventIds.slice(51, 201);
+        const frameSampling = startPostPositionFrameSampling(
+            page,
+            userSelectedAnchor!.eventId,
+        );
+        await frameSampling.started;
+        await releaseScrollLoadGate(page);
+        await expect.poll(() => historyEventIds(page)).toEqual(expectedWindow);
+        await expect(page.locator('.post-history-auto-load-newer-sentinel .inline-spinner')).toBeHidden();
+        await frameSampling.stop();
+
+        const frameSamples = await frameSampling.samples;
+        expectPostPositionStableAcrossFrames(frameSamples, userSelectedAnchor!);
+        await expectVisiblePostCount(page, 150);
+        expect(await historyEventIds(page)).toEqual(expectedWindow);
+        expect(expectedWindow).toContain(userSelectedAnchor!.eventId);
+        const retainedUserAnchor = await getPostSnapshotByEventId(
+            page,
+            userSelectedAnchor!.eventId,
+        );
+        expect(retainedUserAnchor).not.toBeNull();
+        expect(Math.abs(retainedUserAnchor!.offsetTop - userSelectedAnchor!.offsetTop)).toBeLessThanOrEqual(1);
+    });
+
+    test('successful older autoload swaps the bounded window without moving the visible anchor', async ({ page }) => {
+        const harness = await gotoInfiniteScrollHarness(page, {
+            fixContainerHeight: false,
+        });
+        await expect(page.locator('.post-history-heading .status-loading-placeholder')).toHaveCount(0);
+        const expectedEventIds = harness.infiniteScrollEventIds;
+
+        await scrollHistoryToBottom(page);
+        await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
+        await scrollHistoryAwayFromBottom(page);
+        await waitForIntersectionObserverSettle(page);
+        await scrollHistoryToBottom(page);
+        const initialWindow = expectedEventIds.slice(0, 150);
+        await expect.poll(() => historyEventIds(page)).toEqual(initialWindow);
+        await scrollHistoryAwayFromBottom(page);
+        await waitForIntersectionObserverSettle(page);
+
+        await armScrollLoadGate(page, 'older');
+        await scrollHistoryToBottom(page);
+        await waitForScrollLoadGate(page);
+        await expect(page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel) .inline-spinner')).toBeVisible();
+        await scrollPostIntoViewByEventId(page, expectedEventIds[100]);
+        await waitForIntersectionObserverSettle(page);
+
+        const userSelectedAnchor = await getFirstVisiblePostSnapshot(page);
+        expect(userSelectedAnchor).not.toBeNull();
+        expect(userSelectedAnchor!.eventId).toBe(expectedEventIds[100]);
+        const expectedWindow = expectedEventIds.slice(50, 200);
+        const frameSampling = startPostPositionFrameSampling(
+            page,
+            userSelectedAnchor!.eventId,
+        );
+        await frameSampling.started;
+        await releaseScrollLoadGate(page);
+        await expect.poll(() => historyEventIds(page)).toEqual(expectedWindow);
+        await expect(page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel) .inline-spinner')).toBeHidden();
+        await frameSampling.stop();
+
+        const frameSamples = await frameSampling.samples;
+        expectPostPositionStableAcrossFrames(frameSamples, userSelectedAnchor!);
+        await expectVisiblePostCount(page, 150);
+        expect(await historyEventIds(page)).toEqual(expectedWindow);
+        expect(expectedWindow).toContain(userSelectedAnchor!.eventId);
+        const retainedUserAnchor = await getPostSnapshotByEventId(
+            page,
+            userSelectedAnchor!.eventId,
+        );
+        expect(retainedUserAnchor).not.toBeNull();
+        expect(Math.abs(retainedUserAnchor!.offsetTop - userSelectedAnchor!.offsetTop)).toBeLessThanOrEqual(1);
     });
 
     test('desktop timeline browsing flow works in a real browser', async ({ page, isMobile }) => {
@@ -1499,6 +1638,7 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         await expect(page.getByRole('button', { name: '最新へ戻る' })).toBeVisible();
         await expect(page.getByRole('button', { name: '新しい投稿を表示' })).toBeVisible();
+        await expect(page.locator('.post-history-auto-load-newer-slot')).toHaveCount(0);
 
         await page.getByRole('button', { name: '最新へ戻る' }).click();
         await expectSummary(page, harness.totalPosts);

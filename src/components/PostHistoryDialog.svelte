@@ -2351,9 +2351,9 @@
                     </Button>
                 </div>
             {/if}
-            {#if supportsAutoLoadOlder && !history.isSearchMode && history.state.listingMode === "contiguous"}
-                <div class="post-history-auto-load-slot" aria-hidden="true">
-                    {#if history.state.hasNewerLocal && !isExplicitNavigation}
+            {#if supportsAutoLoadOlder && !history.isSearchMode && history.state.listingMode === "contiguous" && !isExplicitNavigation}
+                <div class="post-history-auto-load-slot post-history-auto-load-newer-slot" aria-hidden="true">
+                    {#if history.state.hasNewerLocal}
                         <div
                             bind:this={autoLoadNewerSentinel}
                             class="post-history-auto-load-sentinel post-history-auto-load-newer-sentinel"
