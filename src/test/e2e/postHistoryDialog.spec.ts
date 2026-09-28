@@ -31,6 +31,11 @@ type HarnessState = {
 
 type HarnessWindow = Window & typeof globalThis & {
     __POST_HISTORY_HARNESS__?: HarnessState;
+    __POST_HISTORY_SCROLL_LOAD_GATE__?: {
+        direction: 'older' | 'newer' | null;
+        entered: boolean;
+        release: (() => void) | null;
+    };
 };
 
 async function gotoHarness(page: Page) {
@@ -51,15 +56,45 @@ async function gotoSparseOldestHarness(page: Page) {
     return page.evaluate<HarnessState>(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState);
 }
 
-async function gotoInfiniteScrollHarness(page: Page) {
+async function gotoInfiniteScrollHarness(
+    page: Page,
+    options: { fixContainerHeight?: boolean } = {},
+) {
     await page.goto('post-history-dialog-playwright.html?infinite-scroll=1');
     await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
-    await page.locator('.post-history-container').evaluate((element) => {
-        const container = element as HTMLDivElement;
-        container.style.height = `${container.clientHeight}px`;
-    });
+    if (options.fixContainerHeight !== false) {
+        await page.locator('.post-history-container').evaluate((element) => {
+            const container = element as HTMLDivElement;
+            container.style.height = `${container.clientHeight}px`;
+        });
+    }
     await waitForHistoryContainerHeightToSettle(page);
     return page.evaluate<HarnessState>(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState);
+}
+
+async function armScrollLoadGate(page: Page, direction: 'older' | 'newer') {
+    await page.evaluate((loadDirection) => {
+        const gate = (window as HarnessWindow).__POST_HISTORY_SCROLL_LOAD_GATE__;
+        if (!gate) {
+            throw new Error('Post history scroll load gate is unavailable');
+        }
+        gate.direction = loadDirection;
+        gate.entered = false;
+        gate.release = null;
+    }, direction);
+}
+
+async function waitForScrollLoadGate(page: Page) {
+    await expect.poll(() => page.evaluate(() =>
+        (window as HarnessWindow).__POST_HISTORY_SCROLL_LOAD_GATE__?.entered ?? false,
+    )).toBe(true);
+}
+
+async function releaseScrollLoadGate(page: Page) {
+    await page.evaluate(() => {
+        const gate = (window as HarnessWindow).__POST_HISTORY_SCROLL_LOAD_GATE__;
+        gate?.release?.();
+    });
 }
 
 async function gotoExportHarness(page: Page) {
@@ -225,7 +260,7 @@ async function scrollHistoryAwayFromTop(page: Page) {
     await page.locator('.post-history-container').evaluate((element) => {
         const container = element as HTMLDivElement;
         container.scrollTop = Math.min(
-            container.clientHeight * 2 + 2,
+            container.clientHeight * 3 + 64,
             container.scrollHeight - container.clientHeight,
         );
         container.dispatchEvent(new Event('scroll', { bubbles: true }));
@@ -236,7 +271,7 @@ async function scrollHistoryAwayFromBottom(page: Page) {
     await page.locator('.post-history-container').evaluate((element) => {
         const container = element as HTMLDivElement;
         const remaining = Math.min(
-            container.clientHeight * 2 + 2,
+            container.clientHeight * 3 + 64,
             container.scrollHeight - container.clientHeight,
         );
         container.scrollTop = container.scrollHeight - container.clientHeight - remaining;
@@ -329,6 +364,59 @@ async function getPostSnapshotByEventId(page: Page, eventId: string) {
             offsetTop: rect.top - containerRect.top,
         };
     }, eventId);
+}
+
+async function samplePostPositionAcrossFrames(
+    page: Page,
+    eventId: string,
+    frameCount = 24,
+) {
+    return page.locator('.post-history-container').evaluate(
+        async (containerElement, args) => {
+            const container = containerElement as HTMLDivElement;
+            const item = container.querySelector<HTMLElement>(
+                `.post-history-item[data-post-history-event-id="${args.eventId}"]`,
+            );
+            if (!item) {
+                throw new Error('Visible post anchor disappeared during frame sampling');
+            }
+            const samples: Array<{
+                itemTop: number;
+                relativeTop: number;
+                containerTop: number;
+                clientHeight: number;
+                headingHeight: number;
+                monthLabel: string | null;
+                topSlotHeight: number;
+                bottomSlotHeight: number;
+            }> = [];
+            for (let frame = 0; frame < args.frameCount; frame += 1) {
+                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                const itemRect = item.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                const headingRect = document.querySelector(
+                    '.post-history-heading',
+                )?.getBoundingClientRect();
+                const slots = container.querySelectorAll<HTMLElement>(
+                    '.post-history-auto-load-slot',
+                );
+                samples.push({
+                    itemTop: itemRect.top,
+                    relativeTop: itemRect.top - containerRect.top,
+                    containerTop: containerRect.top,
+                    clientHeight: container.clientHeight,
+                    headingHeight: headingRect?.height ?? 0,
+                    monthLabel: document.querySelector(
+                        '.post-history-current-month',
+                    )?.textContent ?? null,
+                    topSlotHeight: slots[0]?.getBoundingClientRect().height ?? 0,
+                    bottomSlotHeight: slots[1]?.getBoundingClientRect().height ?? 0,
+                });
+            }
+            return samples;
+        },
+        { eventId, frameCount },
+    );
 }
 
 async function getFooterActionPositions(page: Page, eventId: string) {
@@ -784,6 +872,132 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(1, 151));
         await waitForIntersectionObserverSettle(page);
         expect(await historyEventIds(page)).toEqual(expectedEventIds.slice(1, 151));
+    });
+
+    test('older autoload defers when the user scrolls to an anchor that the window would trim', async ({ page }) => {
+        const harness = await gotoInfiniteScrollHarness(page, {
+            fixContainerHeight: false,
+        });
+        await expect(page.locator('.post-history-heading .status-loading-placeholder')).toHaveCount(0);
+        const expectedEventIds = harness.infiniteScrollEventIds;
+
+        await scrollHistoryToBottom(page);
+        await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
+        await scrollHistoryAwayFromBottom(page);
+        await waitForIntersectionObserverSettle(page);
+        await scrollHistoryToBottom(page);
+        await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 150));
+        const windowBeforeDeferredLoad = await historyEventIds(page);
+        await scrollHistoryAwayFromBottom(page);
+        await waitForIntersectionObserverSettle(page);
+
+        await armScrollLoadGate(page, 'older');
+        await scrollHistoryToBottom(page);
+        await waitForScrollLoadGate(page);
+        await expect(page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel) .inline-spinner')).toBeVisible();
+
+        await scrollHistoryToTop(page);
+        await waitForIntersectionObserverSettle(page);
+        const userSelectedAnchor = await getFirstVisiblePostSnapshot(page);
+        expect(userSelectedAnchor).not.toBeNull();
+        expect(userSelectedAnchor!.eventId).toBe(windowBeforeDeferredLoad[0]);
+        const frameSamplesPromise = samplePostPositionAcrossFrames(
+            page,
+            userSelectedAnchor!.eventId,
+        );
+        await releaseScrollLoadGate(page);
+        const frameSamples = await frameSamplesPromise;
+        for (const sample of frameSamples) {
+            expect(Math.abs(sample.relativeTop - userSelectedAnchor!.offsetTop)).toBeLessThanOrEqual(1);
+            expect(sample.topSlotHeight).toBe(24);
+            expect(sample.bottomSlotHeight).toBe(24);
+            expect(
+                Math.abs(sample.containerTop - frameSamples[0].containerTop),
+                JSON.stringify(frameSamples.map(({ containerTop, itemTop, relativeTop, headingHeight, monthLabel }) => ({ containerTop, itemTop, relativeTop, headingHeight, monthLabel }))),
+            ).toBeLessThanOrEqual(1);
+            expect(sample.clientHeight).toBe(frameSamples[0].clientHeight);
+            expect(sample.headingHeight).toBe(frameSamples[0].headingHeight);
+            expect(sample.monthLabel).toBe(frameSamples[0].monthLabel);
+        }
+        await expect(page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel) .inline-spinner')).toBeHidden();
+
+        await expect.poll(() => historyEventIds(page)).toEqual(windowBeforeDeferredLoad);
+        const retainedUserAnchor = await getPostSnapshotByEventId(
+            page,
+            userSelectedAnchor!.eventId,
+        );
+        expect(retainedUserAnchor).not.toBeNull();
+        expect(Math.abs(retainedUserAnchor!.offsetTop - userSelectedAnchor!.offsetTop)).toBeLessThanOrEqual(1);
+
+        await scrollHistoryAwayFromBottom(page);
+        await waitForIntersectionObserverSettle(page);
+        await scrollHistoryToBottom(page);
+        await expect.poll(() => historyEventIds(page)).not.toEqual(windowBeforeDeferredLoad);
+        await expectVisiblePostCount(page, 150);
+    });
+
+    test('newer autoload defers when the user scrolls to an anchor that the window would trim', async ({ page }) => {
+        const harness = await gotoInfiniteScrollHarness(page, {
+            fixContainerHeight: false,
+        });
+        await expect(page.locator('.post-history-heading .status-loading-placeholder')).toHaveCount(0);
+        const expectedEventIds = harness.infiniteScrollEventIds;
+
+        await scrollHistoryToBottom(page);
+        await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
+        for (const expectedWindow of [
+            expectedEventIds.slice(0, 150),
+            expectedEventIds.slice(50, 200),
+            expectedEventIds.slice(100, 250),
+            expectedEventIds.slice(101),
+        ]) {
+            await scrollHistoryAwayFromBottom(page);
+            await waitForIntersectionObserverSettle(page);
+            await scrollHistoryToBottom(page);
+            await expect.poll(() => historyEventIds(page)).toEqual(expectedWindow);
+        }
+
+        await scrollHistoryAwayFromTop(page);
+        await waitForIntersectionObserverSettle(page);
+        await armScrollLoadGate(page, 'newer');
+        await scrollHistoryNearTopAndCaptureAnchor(page);
+        await waitForScrollLoadGate(page);
+        await expect(page.locator('.post-history-auto-load-newer-sentinel .inline-spinner')).toBeVisible();
+
+        await scrollHistoryToBottom(page);
+        await waitForIntersectionObserverSettle(page);
+        const userSelectedAnchor = await getFirstVisiblePostSnapshot(page);
+        expect(userSelectedAnchor).not.toBeNull();
+        expect(expectedEventIds.slice(200)).toContain(userSelectedAnchor!.eventId);
+        const frameSamplesPromise = samplePostPositionAcrossFrames(
+            page,
+            userSelectedAnchor!.eventId,
+        );
+        await releaseScrollLoadGate(page);
+        const frameSamples = await frameSamplesPromise;
+        for (const sample of frameSamples) {
+            expect(Math.abs(sample.relativeTop - userSelectedAnchor!.offsetTop)).toBeLessThanOrEqual(1);
+            expect(sample.topSlotHeight).toBe(24);
+            expect(sample.bottomSlotHeight).toBe(24);
+            expect(Math.abs(sample.containerTop - frameSamples[0].containerTop)).toBeLessThanOrEqual(1);
+            expect(sample.clientHeight).toBe(frameSamples[0].clientHeight);
+            expect(sample.headingHeight).toBe(frameSamples[0].headingHeight);
+            expect(sample.monthLabel).toBe(frameSamples[0].monthLabel);
+        }
+        await expect(page.locator('.post-history-auto-load-newer-sentinel .inline-spinner')).toBeHidden();
+
+        await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(101));
+        const retainedUserAnchor = await getPostSnapshotByEventId(
+            page,
+            userSelectedAnchor!.eventId,
+        );
+        expect(retainedUserAnchor).not.toBeNull();
+        expect(Math.abs(retainedUserAnchor!.offsetTop - userSelectedAnchor!.offsetTop)).toBeLessThanOrEqual(1);
+
+        await scrollHistoryAwayFromTop(page);
+        await waitForIntersectionObserverSettle(page);
+        await scrollHistoryNearTopAndCaptureAnchor(page);
+        await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(51, 201));
     });
 
     test('desktop timeline browsing flow works in a real browser', async ({ page, isMobile }) => {
