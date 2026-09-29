@@ -5,7 +5,8 @@ export type PostHistoryRelationLifecycleSource =
     | "dialog-inbound-sync"
     | "inbound-realtime"
     | "listing-current-view"
-    | "listing-older-reveal";
+    | "listing-older-reveal"
+    | "related-card-display";
 
 export type PostHistoryRelationLifecycleStateStatus =
     | "pending"

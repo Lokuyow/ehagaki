@@ -41,6 +41,22 @@ function createReactionRecord(
 }
 
 describe("postHistoryReactionReadModel", () => {
+    it("groups empty kind 7 content as a like so detail and total counts agree", () => {
+        const model = buildPostHistoryReactionReadModel([
+            createReactionRecord({
+                eventId: "empty-like",
+                authorPubkey: "a".repeat(64),
+                content: "",
+                createdAt: 100,
+            }),
+        ]);
+
+        expect(model.totalCount).toBe(1);
+        expect(model.groups).toHaveLength(1);
+        expect(model.groups[0].content).toBe("+");
+        expect(model.groups[0].count).toBe(1);
+    });
+
     it("groups reaction events by display content and attaches reactor profiles", () => {
         const records = [
             createReactionRecord({

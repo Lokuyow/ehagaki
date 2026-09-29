@@ -39,6 +39,7 @@
         topActions?: Snippet;
         footerLeftExtras?: Snippet;
         footerActions?: Snippet;
+        footerDetails?: Snippet;
         footerMenu?: Snippet;
     }
 
@@ -54,6 +55,7 @@
         topActions = undefined,
         footerLeftExtras = undefined,
         footerActions = undefined,
+        footerDetails = undefined,
         footerMenu = undefined,
     }: Props = $props();
 
@@ -111,12 +113,14 @@
             actions={footerActions}
             trailing={footerMenu}
         />
+        {@render footerDetails?.()}
     </div>
 </article>
 
 <style>
     .post-history-related-card {
         display: grid;
+        margin-inline-start: -2px;
         --post-history-related-card-bg: color-mix(
             in srgb,
             var(--dialog-bg),
@@ -127,13 +131,16 @@
         background: var(--post-history-related-card-bg);
         color: var(--text);
         font-size: 0.9rem;
-        padding-inline-start: 2px;
     }
 
     .post-history-related-card-body {
         display: grid;
         gap: 2px;
         padding: 2px 10px 0 8px;
+    }
+
+    :global(.post-history-related-card .post-preview-footer) {
+        margin-inline: -8px -10px;
     }
 
     .post-history-related-author {

@@ -28,6 +28,7 @@
         topActions?: Snippet;
         footerLeftExtras?: Snippet;
         footerActions?: Snippet;
+        footerDetails?: Snippet;
         footerMenu?: Snippet;
     }
 
@@ -41,6 +42,7 @@
         topActions = undefined,
         footerLeftExtras = undefined,
         footerActions = undefined,
+        footerDetails = undefined,
         footerMenu = undefined,
     }: Props = $props();
 
@@ -57,5 +59,6 @@
     {topActions}
     {footerLeftExtras}
     {footerActions}
+    {footerDetails}
     {footerMenu}
 />

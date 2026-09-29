@@ -37,21 +37,21 @@
 
 <style>
     .post-preview-footer {
-        display: flex;
+        display: grid;
+        grid-template-columns: minmax(80px, 120px) minmax(0, 1fr) 36px;
         align-items: stretch;
-        justify-content: space-between;
-        height: var(--post-history-preview-footer-height);
+        height: 36px;
+        --post-history-preview-action-icon-size: 20px;
         color: var(--btn-post-preview-action);
         --post-history-preview-footer-surface: var(--dialog-bg);
     }
 
     .post-preview-footer-regular {
-        --post-history-preview-footer-height: 36px;
         padding-inline-start: 1rem;
     }
 
     .post-preview-footer-compact {
-        --post-history-preview-footer-height: 28px;
+        padding-inline-start: 1rem;
         --post-history-preview-footer-surface: var(
             --post-history-related-card-bg,
             var(--dialog-bg)
@@ -72,20 +72,18 @@
     .post-preview-footer-left {
         align-items: center;
         justify-content: flex-start;
-        flex: 0 1 120px;
-        min-width: 80px;
+        min-width: 0;
     }
 
     .post-preview-footer-actions {
         justify-content: stretch;
-        flex: 1 1 auto;
         min-width: 0;
     }
 
     .post-preview-footer-right {
         align-items: center;
         justify-content: flex-end;
-        flex: 0 0 auto;
+        min-width: 0;
     }
 
     .post-preview-date {
@@ -176,15 +174,14 @@
     }
 
     :global(.post-preview-footer .reply-icon.svg-icon) {
-        width: 20px;
-        height: 20px;
-        margin-top: 2px;
+        width: var(--post-history-preview-action-icon-size);
+        height: var(--post-history-preview-action-icon-size);
         mask-image: url("/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.post-preview-footer .quote-icon.svg-icon) {
-        width: 24px;
-        height: 24px;
+        width: var(--post-history-preview-action-icon-size);
+        height: var(--post-history-preview-action-icon-size);
         mask-image: url("/icons/format_quote_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 </style>

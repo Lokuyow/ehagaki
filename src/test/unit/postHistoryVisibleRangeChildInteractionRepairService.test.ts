@@ -335,6 +335,51 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
         });
     });
 
+    it("関連カードreaction-only経路は明示ターゲットと統合relay hintsを使い、owner投稿へ偽装しない", async () => {
+        const targetId = "9".repeat(64);
+        const harness = createRxNostrHarness();
+        const upsertChildInteractions = vi.fn(async () => ({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+            ignoredCount: 0,
+        }));
+        const service = new PostHistoryVisibleRangeChildInteractionRepairService({
+            childInteractionsRepository: { upsertChildInteractions } as any,
+            setTimeoutFn: (() => 1) as any,
+            clearTimeoutFn: vi.fn(),
+            now: () => 700,
+        });
+        const task = service.repairRelatedCardReactions(harness.rxNostr as any, {
+            targets: [
+                { eventId: targetId, relayHints: ["wss://quote.example.com"] },
+                { eventId: targetId, relayHints: ["wss://thread.example.com"] },
+            ],
+            relayConfig: { "wss://relay.example.com": { read: true, write: false } },
+        });
+        harness.emitEvent({
+            event: createReaction({ tags: [["e", targetId, "", "root"]] }),
+            from: "wss://relay.example.com",
+        });
+        harness.emitEose("wss://relay.example.com");
+        harness.complete();
+
+        await expect(task.promise).resolves.toEqual({ status: "success", targetEventIds: [targetId] });
+        expect(rxNostrMock.emittedFilters).toEqual([{
+            kinds: [7],
+            "#e": [targetId],
+            limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT,
+        }]);
+        expect(upsertChildInteractions).toHaveBeenCalledWith({
+            parentEventId: targetId,
+            events: [{
+                event: expect.objectContaining({ kind: 7 }),
+                relayUrls: ["wss://relay.example.com/"],
+            }],
+            fetchedAt: 700,
+        });
+    });
+
     it("candidate fetch が error の parent は unchecked/incomplete として返す", async () => {
         const kind1Parent = "1".repeat(64);
         const saveRepairDirectReplies = vi.fn(() => ({

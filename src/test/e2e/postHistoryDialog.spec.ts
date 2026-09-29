@@ -19,6 +19,8 @@ type HarnessState = {
     linkPostEventId: string;
     replyParentEventId: string;
     replyContent: string;
+    replyEventId: string;
+    grandchildEventId: string;
     threadParentPostEventId: string;
     importPostContent: string;
     importEventJsonl: string;
@@ -50,6 +52,9 @@ type HarnessWindow = Window & typeof globalThis & {
     __POST_HISTORY_INTERACTION_LOAD_GATE__?: {
         entered: boolean;
         release: (() => void) | null;
+    };
+    __POST_HISTORY_REACTION_TEST_CONTROL__?: {
+        addReactionToQuote: () => Promise<void>;
     };
 };
 
@@ -667,6 +672,88 @@ async function getReplyAndQuoteButtonCenters(container: ReturnType<Page['locator
         reply: replyBox!.x + replyBox!.width / 2,
         quote: quoteBox!.x + quoteBox!.width / 2,
     };
+}
+
+async function getFooterLayout(container: ReturnType<Page['locator']>) {
+    return container.locator('.post-preview-footer').first().evaluate((footer) => {
+        const rect = (element: Element | null) => {
+            if (!element) return null;
+            const bounds = element.getBoundingClientRect();
+            return {
+                x: bounds.x,
+                y: bounds.y,
+                right: bounds.right,
+                bottom: bounds.bottom,
+                width: bounds.width,
+                height: bounds.height,
+            };
+        };
+        const buttons = Array.from(footer.querySelectorAll('button')).map((button) => ({
+            label: button.getAttribute('aria-label') ?? button.textContent?.trim() ?? '',
+            ...rect(button)!,
+        })).filter((button) => button.width > 0 && button.height > 0);
+        const cells = Array.from(footer.querySelectorAll(
+            '.post-preview-action-buttons-group > .post-preview-action-cell',
+        )).map((cell) => rect(cell));
+        return {
+            footer: rect(footer)!,
+            date: rect(footer.querySelector('.post-preview-date')),
+            cells,
+            buttons,
+            clientWidth: (footer as HTMLElement).clientWidth,
+            scrollWidth: (footer as HTMLElement).scrollWidth,
+        };
+    });
+}
+
+async function expectReactionContentsVerticallyCentered(
+    container: ReturnType<Page['locator']>,
+    selected: boolean,
+) {
+    const button = container.locator('.post-preview-reactions-button').first();
+    const geometry = await button.evaluate((element) => {
+        const buttonRect = element.getBoundingClientRect();
+        const heartRect = element
+            .querySelector('.favorite-icon')!
+            .getBoundingClientRect();
+        const count = element.querySelector('span')!;
+        const countRect = count.getBoundingClientRect();
+        const lineHeight = Number.parseFloat(getComputedStyle(count).lineHeight);
+        const footer = element.closest('.post-preview-footer')!;
+        const replyRect = footer
+            .querySelector('.post-preview-reply-action-cell button')!
+            .getBoundingClientRect();
+        const quoteRect = footer
+            .querySelector('.post-preview-quote-action-cell button')!
+            .getBoundingClientRect();
+        return {
+            buttonHeight: buttonRect.height,
+            alignItems: getComputedStyle(element).alignItems,
+            buttonCenterY: buttonRect.top + buttonRect.height / 2,
+            heartCenterY: heartRect.top + heartRect.height / 2,
+            countLineCenterY: countRect.top + lineHeight / 2,
+            replyCenterY: replyRect.top + replyRect.height / 2,
+            quoteCenterY: quoteRect.top + quoteRect.height / 2,
+            selected: element.classList.contains('selected'),
+        };
+    });
+
+    expect(geometry.buttonHeight).toBeGreaterThanOrEqual(35);
+    expect(geometry.buttonHeight).toBeLessThanOrEqual(37);
+    expect(geometry.alignItems).toBe('center');
+    expect(
+        Math.abs(geometry.heartCenterY - geometry.buttonCenterY),
+    ).toBeLessThanOrEqual(1);
+    expect(
+        Math.abs(geometry.countLineCenterY - geometry.buttonCenterY),
+    ).toBeLessThanOrEqual(1);
+    expect(
+        Math.abs(geometry.heartCenterY - geometry.replyCenterY),
+    ).toBeLessThanOrEqual(1);
+    expect(
+        Math.abs(geometry.heartCenterY - geometry.quoteCenterY),
+    ).toBeLessThanOrEqual(1);
+    expect(geometry.selected).toBe(selected);
 }
 
 async function expectReferenceLinkAttributes(
@@ -1692,17 +1779,15 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(Math.abs(scrolledReactionPositions.menuX - scrolledPlainPositions.menuX)).toBeLessThanOrEqual(1);
     });
 
-    test('post history action columns align across posts and related cards without clipping', async ({ page, isMobile }, testInfo) => {
+    test('post history action columns align across posts and related cards without clipping', async ({ page }, testInfo) => {
         test.setTimeout(120_000);
         const harness = await gotoHarness(page);
         const initialViewport = page.viewportSize();
         expect(initialViewport).not.toBeNull();
-        const viewportWidths = isMobile
-            ? [initialViewport!.width]
-            : [...new Set([initialViewport!.width, 360])];
+        const viewportWidths = [...new Set([initialViewport!.width, 360])];
 
         for (const width of viewportWidths) {
-            await page.setViewportSize({ width, height: 844 });
+            await page.setViewportSize({ width, height: 1000 });
 
             const plainPost = page.locator(
                 `.post-history-item[data-post-history-event-id="${harness.plainPostEventId}"]`,
@@ -1748,12 +1833,12 @@ test.describe('PostHistoryDialog Playwright', () => {
             const quoteCenters = await getActionColumnCenters(quoteCard);
             const quoteButtonCenters = await getReplyAndQuoteButtonCenters(quoteCard);
             expect(Math.abs(plainButtonCenters.reply - quoteButtonCenters.reply))
-                .toBeLessThanOrEqual(14);
+                .toBeLessThanOrEqual(5);
             expect(Math.abs(plainButtonCenters.quote - quoteButtonCenters.quote))
-                .toBeLessThanOrEqual(14);
-            for (let index = 0; index < 2; index += 1) {
+                .toBeLessThanOrEqual(5);
+            for (let index = 0; index < 3; index += 1) {
                 expect(Math.abs(plainCenters[index].centerX - quoteCenters[index].centerX))
-                    .toBeLessThanOrEqual(14);
+                    .toBeLessThanOrEqual(5);
             }
 
             const threadHost = page.locator(
@@ -1769,12 +1854,12 @@ test.describe('PostHistoryDialog Playwright', () => {
             const childCenters = await getActionColumnCenters(replyCard);
             const childButtonCenters = await getReplyAndQuoteButtonCenters(replyCard);
             expect(Math.abs(plainButtonCenters.reply - childButtonCenters.reply))
-                .toBeLessThanOrEqual(14);
+                .toBeLessThanOrEqual(5);
             expect(Math.abs(plainButtonCenters.quote - childButtonCenters.quote))
-                .toBeLessThanOrEqual(14);
-            for (let index = 0; index < 2; index += 1) {
+                .toBeLessThanOrEqual(5);
+            for (let index = 0; index < 3; index += 1) {
                 expect(Math.abs(plainCenters[index].centerX - childCenters[index].centerX))
-                    .toBeLessThanOrEqual(14);
+                    .toBeLessThanOrEqual(5);
             }
 
             const nestedToggle = replyCard.getByRole('button', { name: /返信 1件を表示/ });
@@ -1787,13 +1872,69 @@ test.describe('PostHistoryDialog Playwright', () => {
             const grandchildCenters = await getActionColumnCenters(grandchildCard);
             const grandchildButtonCenters = await getReplyAndQuoteButtonCenters(grandchildCard);
             expect(Math.abs(plainButtonCenters.reply - grandchildButtonCenters.reply))
-                .toBeLessThanOrEqual(14);
+                .toBeLessThanOrEqual(5);
             expect(Math.abs(plainButtonCenters.quote - grandchildButtonCenters.quote))
-                .toBeLessThanOrEqual(14);
-            for (let index = 0; index < 2; index += 1) {
+                .toBeLessThanOrEqual(5);
+            for (let index = 0; index < 3; index += 1) {
                 expect(Math.abs(plainCenters[index].centerX - grandchildCenters[index].centerX))
-                    .toBeLessThanOrEqual(14);
+                    .toBeLessThanOrEqual(5);
             }
+
+            const layoutCards = [plainPost, quoteCard, replyCard, grandchildCard];
+            const footerLayouts = await Promise.all(layoutCards.map(getFooterLayout));
+            for (const layout of footerLayouts) {
+                expect(layout.footer.height).toBeGreaterThanOrEqual(35);
+                expect(layout.footer.height).toBeLessThanOrEqual(37);
+                expect(layout.cells).toHaveLength(3);
+                expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth + 1);
+                for (const button of layout.buttons) {
+                    expect(button.x).toBeGreaterThanOrEqual(layout.footer.x - 1);
+                    expect(button.right).toBeLessThanOrEqual(layout.footer.right + 1);
+                    expect(button.y).toBeGreaterThanOrEqual(layout.footer.y - 1);
+                    expect(button.bottom).toBeLessThanOrEqual(layout.footer.bottom + 1);
+                    expect(button.height).toBeGreaterThanOrEqual(35);
+                    expect(button.height).toBeLessThanOrEqual(37);
+                }
+                for (let left = 0; left < layout.buttons.length; left += 1) {
+                    for (let right = left + 1; right < layout.buttons.length; right += 1) {
+                        const first = layout.buttons[left];
+                        const second = layout.buttons[right];
+                        const overlaps = first.x < second.right - 1 &&
+                            second.x < first.right - 1 &&
+                            first.y < second.bottom - 1 &&
+                            second.y < first.bottom - 1;
+                        expect(overlaps, `${first.label} overlaps ${second.label}`).toBe(false);
+                    }
+                }
+                if (layout.date) {
+                    for (const button of layout.buttons) {
+                        const dateOverlaps = layout.date.x < button.right - 1 &&
+                            button.x < layout.date.right - 1 &&
+                            layout.date.y < button.bottom - 1 &&
+                            button.y < layout.date.bottom - 1;
+                        expect(dateOverlaps, `date overlaps ${button.label}`).toBe(false);
+                    }
+                }
+            }
+            for (const index of [1, 2, 3]) {
+                expect(Math.abs(footerLayouts[0].footer.width - footerLayouts[index].footer.width))
+                    .toBeLessThanOrEqual(2);
+                for (let cell = 0; cell < 3; cell += 1) {
+                    expect(Math.abs(footerLayouts[0].cells[cell]!.x - footerLayouts[index].cells[cell]!.x))
+                        .toBeLessThanOrEqual(3);
+                    expect(Math.abs(footerLayouts[0].cells[cell]!.width - footerLayouts[index].cells[cell]!.width))
+                        .toBeLessThanOrEqual(3);
+                }
+            }
+
+            for (const card of [reactionPost, quoteCard, replyCard, grandchildCard]) {
+                await expectReactionContentsVerticallyCentered(card, false);
+            }
+
+            const relatedWidths = await Promise.all([quoteCard, replyCard, grandchildCard].map((card) =>
+                card.evaluate((element) => (element as HTMLElement).getBoundingClientRect().width),
+            ));
+            expect(Math.max(...relatedWidths) - Math.min(...relatedWidths)).toBeLessThanOrEqual(2);
 
             const layoutState = await page.evaluate(() => {
                 const dialog = document.querySelector('.post-history-dialog');
@@ -1828,7 +1969,161 @@ test.describe('PostHistoryDialog Playwright', () => {
         }
     });
 
-    test('quote preview uses the compact three-region footer without horizontal overflow', async ({ page }) => {
+    test('related quote, reply, and nested reply cards show their own reaction details', async ({ page }, testInfo) => {
+        const harness = await gotoHarness(page);
+        const quoteHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
+        );
+        const quoteCard = quoteHost.locator('.post-history-related-card')
+            .filter({ hasText: harness.quoteContent });
+        await expect(quoteCard).toBeVisible();
+        await expect(quoteCard.locator('.post-preview-reactions-button')).toHaveText(/1/);
+        await quoteCard.locator('.post-preview-reactions-button').click();
+        await expect(quoteCard.locator('.post-preview-reaction-chip')).toHaveCount(1);
+
+        const threadHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"]`,
+        );
+        await scrollPostIntoViewByEventId(page, harness.replyParentEventId);
+        const replyCard = threadHost.locator('.post-history-related-card')
+            .filter({ hasText: harness.replyContent });
+        if (!(await replyCard.isVisible())) {
+            await threadHost.getByRole('button', { name: /返信 1件を表示/ }).click();
+        }
+        await expect(replyCard).toBeVisible();
+        await expect(replyCard.locator('.post-preview-reactions-button')).toHaveText(/2/);
+        await replyCard.locator('.post-preview-reactions-button').click();
+        await expect(replyCard.locator('.post-preview-reaction-chip')).toHaveCount(1);
+        await expect(replyCard.locator('.post-preview-reaction-count')).toHaveText('2');
+
+        const nestedToggle = replyCard.getByRole('button', { name: /返信 1件を表示/ });
+        const grandchildCard = threadHost.locator('.post-history-related-card')
+            .filter({ hasText: 'playwright nested reply' });
+        if (!(await grandchildCard.isVisible())) {
+            await nestedToggle.click();
+        }
+        await expect(grandchildCard).toBeVisible();
+        await expect(grandchildCard.locator('.post-preview-reactions-button')).toHaveText(/3/);
+        const grandchildWidthBeforeDetails = await grandchildCard.evaluate((element) =>
+            (element as HTMLElement).getBoundingClientRect().width,
+        );
+        const grandchildFooterBeforeDetails = await getFooterLayout(grandchildCard);
+        await grandchildCard.locator('.post-preview-reactions-button').click();
+        await expect(grandchildCard.locator('.post-preview-reaction-chip')).toHaveCount(1);
+        await expect(grandchildCard.locator('.post-preview-reaction-count')).toHaveText('3');
+        const grandchildWidthAfterDetails = await grandchildCard.evaluate((element) =>
+            (element as HTMLElement).getBoundingClientRect().width,
+        );
+        const grandchildFooterAfterDetails = await getFooterLayout(grandchildCard);
+        expect(Math.abs(grandchildWidthAfterDetails - grandchildWidthBeforeDetails)).toBeLessThanOrEqual(1);
+        expect(Math.abs(grandchildFooterAfterDetails.footer.width - grandchildFooterBeforeDetails.footer.width))
+            .toBeLessThanOrEqual(1);
+        expect(grandchildFooterAfterDetails.footer.height).toBeGreaterThanOrEqual(35);
+        expect(grandchildFooterAfterDetails.scrollWidth)
+            .toBeLessThanOrEqual(grandchildFooterAfterDetails.clientWidth + 1);
+        await page.screenshot({
+            path: testInfo.outputPath(`post-history-related-reactions-${testInfo.project.name}.png`),
+            fullPage: false,
+        });
+    });
+
+    test('reaction heart and count remain vertically centered in normal and related cards', async ({ page }) => {
+        const harness = await gotoHarness(page);
+        const normalCard = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.reactionPostEventId}"]`,
+        );
+        const quoteHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
+        );
+        const quoteCard = quoteHost.locator('.post-history-related-card')
+            .filter({ hasText: harness.quoteContent });
+        const threadHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"]`,
+        );
+        await scrollPostIntoViewByEventId(page, harness.replyParentEventId);
+        const replyCard = threadHost.locator('.post-history-related-card')
+            .filter({ hasText: harness.replyContent });
+        if (!(await replyCard.isVisible())) {
+            await threadHost.getByRole('button', { name: /返信 1件を表示/ }).click();
+        }
+        const nestedToggle = replyCard.getByRole('button', { name: /返信 1件を表示/ });
+        const grandchildCard = threadHost.locator('.post-history-related-card')
+            .filter({ hasText: 'playwright nested reply' });
+        if (!(await grandchildCard.isVisible())) {
+            await nestedToggle.click();
+        }
+
+        for (const card of [normalCard, quoteCard, replyCard, grandchildCard]) {
+            const button = card.locator('.post-preview-reactions-button');
+            await expect(button).toBeVisible();
+            await expectReactionContentsVerticallyCentered(card, false);
+            await button.click();
+            await expect(card.locator('.post-preview-reaction-chip').first()).toBeVisible();
+            await expectReactionContentsVerticallyCentered(card, true);
+            await button.click();
+            await expectReactionContentsVerticallyCentered(card, false);
+        }
+    });
+
+    test('an own post moving from quote-only to the timeline uses the normal reaction state in both cards', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?self-quote-transition=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate<HarnessState>(() =>
+            (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState,
+        );
+        const quoteHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
+        );
+        const quoteCard = quoteHost.locator('.post-history-related-card')
+            .filter({ hasText: harness.quoteContent });
+        const ownerPost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.quoteEventId}"]`,
+        );
+
+        await expect(quoteCard).toBeVisible();
+        await expect(ownerPost).toHaveCount(0);
+        await expect(quoteCard.locator('.post-preview-reactions-button')).toHaveText(/1/);
+
+        await page.evaluate(async () => {
+            await (window as HarnessWindow).__POST_HISTORY_REACTION_TEST_CONTROL__!
+                .addReactionToQuote();
+        });
+        await scrollHistoryToBottom(page);
+        await expect(ownerPost).toBeVisible();
+        await expect.poll(async () =>
+            ownerPost.locator('.post-preview-reactions-button').textContent(),
+        ).toMatch(/2/);
+        await expect(quoteCard.locator('.post-preview-reactions-button')).toHaveText(/2/);
+
+        await ownerPost.locator('.post-preview-reactions-button').click();
+        await expect(ownerPost.locator('.post-preview-reaction-count')).toHaveText('2');
+        await expect(quoteCard.locator('.post-preview-reaction-count')).toHaveText('2');
+    });
+
+    test('kind 42 quote cards show reaction details while reply and quote actions remain unavailable', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?kind42-quote=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate<HarnessState>(() =>
+            (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState,
+        );
+        const quoteHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
+        );
+        const quoteCard = quoteHost.locator('.post-history-related-card')
+            .filter({ hasText: harness.quoteContent });
+
+        await expect(quoteCard).toBeVisible();
+        const reactionButton = quoteCard.locator('.post-preview-reactions-button');
+        await expect(reactionButton).toHaveText(/1/);
+        await expect(quoteCard.locator('.post-preview-reply-action-cell button')).toHaveCount(0);
+        await expect(quoteCard.locator('.post-preview-quote-action-cell button')).toHaveCount(0);
+        await expect(quoteCard.locator('.post-preview-footer-right button', { hasText: '' })).toHaveCount(1);
+        await reactionButton.click();
+        await expect(quoteCard.locator('.post-preview-reaction-chip')).toHaveCount(1);
+        await expect(quoteCard.locator('.post-preview-reaction-count')).toHaveText('1');
+    });
+
+    test('quote preview uses the shared 36px three-region footer without horizontal overflow', async ({ page }) => {
         const harness = await gotoHarness(page);
         const historyItem = page.locator(
             `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
@@ -1857,8 +2152,8 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(cardBox).not.toBeNull();
         expect(footerBox).not.toBeNull();
         expect(menuBox).not.toBeNull();
-        expect(footerBox!.height).toBeGreaterThanOrEqual(27);
-        expect(footerBox!.height).toBeLessThanOrEqual(29);
+        expect(footerBox!.height).toBeGreaterThanOrEqual(35);
+        expect(footerBox!.height).toBeLessThanOrEqual(37);
         expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1);
         expect(width.scrollWidth).toBeLessThanOrEqual(width.clientWidth + 1);
 

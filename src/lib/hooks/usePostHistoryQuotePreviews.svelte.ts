@@ -57,6 +57,7 @@ export interface PostHistoryQuotePreviewResolvedState {
     status: "resolved";
     event: NostrEvent;
     profile: ProfileData | null;
+    relayHints: string[];
 }
 
 export interface PostHistoryQuotePreviewNotFoundState {
@@ -138,6 +139,7 @@ function toQuotePreviewState(
                     status,
                     event: snapshot.event,
                     profile: snapshot.profile ?? null,
+                    relayHints: snapshot.relayHints,
                 };
             }
 

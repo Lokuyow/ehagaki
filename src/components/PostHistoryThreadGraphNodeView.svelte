@@ -10,11 +10,13 @@
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
     import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
+    import PostHistoryReactionActionButton from "./PostHistoryReactionActionButton.svelte";
+    import PostHistoryReactionDetails from "./PostHistoryReactionDetails.svelte";
+    import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionReadModel";
     import {
         formatPostedAt,
         formatPostedAtExact,
     } from "../lib/postHistoryDialogUtils";
-    import { resolvePostHistoryThreadContextIndentRem } from "../lib/postHistoryThreadGraphUtils";
     import type { PostHistoryThreadGraphNodeState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import type {
@@ -47,6 +49,10 @@
             post: PostHistoryRecord,
         ) => boolean | void | Promise<boolean | void>;
         onQuotePost?: (post: PostHistoryRecord) => void;
+        getReactionReadModel?: (eventId: string) => PostHistoryReactionReadModel | null;
+        isReactionExpanded?: (eventId: string) => boolean;
+        getReactionLabel?: (eventId: string) => string;
+        onToggleReaction?: (eventId: string) => void;
         onToggleParent?: (nodeEventId: string) => void;
         onRetryParent?: (nodeEventId: string) => void;
         onToggleChildren?: (nodeEventId: string) => void;
@@ -93,6 +99,10 @@
         buildPostRecordForNode = undefined,
         onReplyPost = undefined,
         onQuotePost = undefined,
+        getReactionReadModel = undefined,
+        isReactionExpanded = undefined,
+        getReactionLabel = undefined,
+        onToggleReaction = undefined,
         onToggleParent = undefined,
         onRetryParent = undefined,
         onToggleChildren = undefined,
@@ -113,9 +123,6 @@
 
     let postedAtExact = $derived(
         formatPostedAtExact(state.node.event.created_at * 1000),
-    );
-    let contextIndent = $derived(
-        `${resolvePostHistoryThreadContextIndentRem(state.depthFromAnchor)}rem`,
     );
     let showRepliesBadge = $derived(
         state.repliesActionState.status === "loaded" &&
@@ -198,7 +205,6 @@
 
 <div
     class="post-history-thread-node-view"
-    style={`--thread-context-indent: ${contextIndent}`}
 >
     {#if state.parentTargetId}
         <div class="post-history-thread-node-parent">
@@ -213,6 +219,10 @@
                     {buildPostRecordForNode}
                     {onReplyPost}
                     {onQuotePost}
+                    {getReactionReadModel}
+                    {isReactionExpanded}
+                    {getReactionLabel}
+                    {onToggleReaction}
                     {onToggleParent}
                     {onRetryParent}
                     {onToggleChildren}
@@ -316,7 +326,25 @@
                                 />
                             {/if}
                         {/snippet}
+                        {#snippet reactionExtras()}
+                            {@const reactionModel = getReactionReadModel?.(state.node.eventId)}
+                            {#if reactionModel && reactionModel.totalCount > 0}
+                                <PostHistoryReactionActionButton
+                                    count={reactionModel.totalCount}
+                                    expanded={isReactionExpanded?.(state.node.eventId) ?? false}
+                                    ariaLabel={getReactionLabel?.(state.node.eventId) ?? ""}
+                                    onToggle={() => onToggleReaction?.(state.node.eventId)}
+                                />
+                            {/if}
+                        {/snippet}
                     </PostHistoryPostActions>
+                {/if}
+            {/snippet}
+
+            {#snippet footerDetails()}
+                {@const reactionModel = getReactionReadModel?.(state.node.eventId)}
+                {#if reactionModel && reactionModel.totalCount > 0 && (isReactionExpanded?.(state.node.eventId) ?? false)}
+                    <PostHistoryReactionDetails readModel={reactionModel} {emojiLoadStateByUrl} {emojiImageMetaByUrl} />
                 {/if}
             {/snippet}
 
@@ -394,6 +422,10 @@
                     {buildPostRecordForNode}
                     {onReplyPost}
                     {onQuotePost}
+                    {getReactionReadModel}
+                    {isReactionExpanded}
+                    {getReactionLabel}
+                    {onToggleReaction}
                     {onToggleParent}
                     {onRetryParent}
                     {onToggleChildren}
@@ -434,14 +466,7 @@
 
     .post-history-thread-node-anchor {
         display: grid;
-        margin-inline-start: var(--thread-context-indent);
-    }
-
-    .post-history-thread-node-view :global(
-            .post-preview-action-buttons-group
-        ) {
-        position: relative;
-        flex: 0 0 calc(100% - var(--thread-context-indent));
+        min-width: 0;
     }
 
     .post-history-thread-node-children {

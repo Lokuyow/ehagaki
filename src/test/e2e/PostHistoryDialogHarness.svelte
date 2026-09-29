@@ -22,6 +22,8 @@
     const isInfiniteScrollScenario = new URLSearchParams(window.location.search).has("infinite-scroll");
     const isLongPreviewScenario = new URLSearchParams(window.location.search).has("long-preview");
     const isLayoutStabilityScenario = new URLSearchParams(window.location.search).has("layout-stability");
+    const isKind42QuoteScenario = new URLSearchParams(window.location.search).has("kind42-quote");
+    const isSelfQuoteTransitionScenario = new URLSearchParams(window.location.search).has("self-quote-transition");
     const isSparseOldestScenario = new URLSearchParams(window.location.search).has("sparse-oldest");
     const TOTAL_POSTS = isInfiniteScrollScenario
         ? 251
@@ -65,6 +67,8 @@
         linkPostEventId: string;
         replyParentEventId: string;
         replyContent: string;
+        replyEventId: string;
+        grandchildEventId: string;
         threadParentPostEventId: string;
         importPostContent: string;
         importEventJsonl: string;
@@ -98,6 +102,9 @@
                 entered: boolean;
                 release: (() => void) | null;
             };
+            __POST_HISTORY_REACTION_TEST_CONTROL__?: {
+                addReactionToQuote: () => Promise<void>;
+            };
         };
 
     function buildHexId(index: number, suffix: string): string {
@@ -117,7 +124,7 @@
             id: eventId,
             eventId,
             pubkeyHex: HARNESS_PUBKEY,
-            kind: 1,
+            kind: isKind42QuoteScenario ? 42 : 1,
             content: `${label} post ${index + 1}`,
             tags: [],
             createdAt: timestampSeconds,
@@ -141,20 +148,20 @@
         };
     }
 
-    function buildReactionRecord(index: number): PostHistoryChildInteractionRecord {
+    function buildReactionRecord(index: number, targetEventId = posts[index].eventId): PostHistoryChildInteractionRecord {
         const parentPost = posts[index];
         const createdAt = parentPost.createdAt + 60;
 
         return {
             id: `playwright-reaction-${index}`,
             eventId: buildHexId(index, "bb"),
-            parentEventId: parentPost.eventId,
+            parentEventId: targetEventId,
             authorPubkey: buildHexId(index, "cc"),
             kind: 7,
             content: "+",
             tags: [
                 ["p", HARNESS_PUBKEY],
-                ["e", parentPost.eventId],
+                ["e", targetEventId],
             ],
             createdAt,
             relayUrls: ["wss://relay.example.com/"],
@@ -166,7 +173,7 @@
                 content: "+",
                 tags: [
                     ["p", HARNESS_PUBKEY],
-                    ["e", parentPost.eventId],
+                    ["e", targetEventId],
                 ],
                 created_at: createdAt,
                 sig: "d".repeat(128),
@@ -267,36 +274,42 @@
         "line 5",
         `line 6 ${"long-path-segment-".repeat(12)}`,
     ].join("\n");
-    const quoteEventId = "9".repeat(64);
+    const quoteEventId = isSelfQuoteTransitionScenario
+        ? posts[60].eventId
+        : "9".repeat(64);
     const loadingQuoteEventId = "8".repeat(64);
-    const quoteContent = `playwright quote source ${linkTargetUrl}`;
+    const quoteContent = isSelfQuoteTransitionScenario
+        ? posts[60].content
+        : `playwright quote source ${linkTargetUrl}`;
     const quoteParentPost = posts[2];
-    const quoteRecord: PostHistoryRecord = {
-        id: quoteEventId,
-        eventId: quoteEventId,
-        pubkeyHex: "e".repeat(64),
-        kind: 1,
-        content: quoteContent,
-        tags: [],
-        createdAt: quoteParentPost.createdAt - 60,
-        postedAt: quoteParentPost.postedAt - 60_000,
-        relayHints: [],
-        acceptedRelays: [],
-        media: [],
-        rawEvent: {
+    const quoteRecord: PostHistoryRecord = isSelfQuoteTransitionScenario
+        ? { ...posts[60] }
+        : {
             id: quoteEventId,
-            pubkey: "e".repeat(64),
-            kind: 1,
+            eventId: quoteEventId,
+            pubkeyHex: "e".repeat(64),
+            kind: isKind42QuoteScenario ? 42 : 1,
             content: quoteContent,
             tags: [],
-            created_at: quoteParentPost.createdAt - 60,
-            sig: "a".repeat(128),
-        },
-        fetchedAt: quoteParentPost.postedAt,
-        lastSeenAt: quoteParentPost.postedAt,
-        updatedAt: quoteParentPost.postedAt,
-        schemaVersion: 2,
-    };
+            createdAt: quoteParentPost.createdAt - 60,
+            postedAt: quoteParentPost.postedAt - 60_000,
+            relayHints: [],
+            acceptedRelays: [],
+            media: [],
+            rawEvent: {
+                id: quoteEventId,
+                pubkey: "e".repeat(64),
+                kind: isKind42QuoteScenario ? 42 : 1,
+                content: quoteContent,
+                tags: [],
+                created_at: quoteParentPost.createdAt - 60,
+                sig: "a".repeat(128),
+            },
+            fetchedAt: quoteParentPost.postedAt,
+            lastSeenAt: quoteParentPost.postedAt,
+            updatedAt: quoteParentPost.postedAt,
+            schemaVersion: 2,
+        };
     // Keep this probe focused on fixed-size content; unresolved quote height is
     // the documented exception and has its own existing UI coverage.
     quoteParentPost.tags = isLayoutStabilityScenario
@@ -386,7 +399,20 @@
     const interactionRecords = [
         buildReactionRecord(0),
         buildReactionRecord(20),
+        buildReactionRecord(30, quoteEventId),
+        buildReactionRecord(31, replyEventId),
+        buildReactionRecord(32, grandchildEventId),
+        buildReactionRecord(33, replyEventId),
+        buildReactionRecord(34, grandchildEventId),
+        buildReactionRecord(35, grandchildEventId),
     ];
+    (window as HarnessWindow).__POST_HISTORY_REACTION_TEST_CONTROL__ = {
+        addReactionToQuote: async () => {
+            await ehagakiDb.postHistoryChildInteractions.put(
+                buildReactionRecord(36, quoteEventId),
+            );
+        },
+    };
     const jumpDate = new Date(posts[56].postedAt).toISOString().slice(0, 10);
     const scrollTargetPost = posts[60];
     const sparseVisiblePost = posts[29];
@@ -421,6 +447,8 @@
         linkPostEventId: linkPost.eventId,
         replyParentEventId: linkPost.eventId,
         replyContent,
+        replyEventId,
+        grandchildEventId,
         threadParentPostEventId: threadParentPost.eventId,
         importPostContent: IMPORT_POST_CONTENT,
         importEventJsonl: IMPORT_EVENT_JSONL,
@@ -570,6 +598,8 @@
             linkPostEventId: linkPost.eventId,
             replyParentEventId: linkPost.eventId,
             replyContent,
+            replyEventId,
+            grandchildEventId,
             threadParentPostEventId: threadParentPost.eventId,
             importPostContent: IMPORT_POST_CONTENT,
             importEventJsonl: IMPORT_EVENT_JSONL,
