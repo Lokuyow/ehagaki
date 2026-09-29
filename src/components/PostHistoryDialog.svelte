@@ -2828,53 +2828,49 @@
                                                         : undefined}
                                                 >
                                                     {#snippet replyExtras()}
-                                                        <div class="post-preview-footer-replies-slot">
-                                                            {#if graphState.repliesActionState.status === "loaded" && graphState.repliesActionState.replyCount > 0}
-                                                                <PostHistoryRepliesBadgeButton
-                                                                    count={graphState.repliesActionState.replyCount}
-                                                                    selected={graphState.repliesActionState.visible}
-                                                                    ariaLabel={getRepliesActionLabel(post)}
-                                                                    tooltipContent={getRepliesActionLabel(post)}
-                                                                    onClick={() => handleRepliesAction(post)}
-                                                                />
-                                                            {/if}
-                                                        </div>
+                                                        {#if graphState.repliesActionState.status === "loaded" && graphState.repliesActionState.replyCount > 0}
+                                                            <PostHistoryRepliesBadgeButton
+                                                                count={graphState.repliesActionState.replyCount}
+                                                                selected={graphState.repliesActionState.visible}
+                                                                ariaLabel={getRepliesActionLabel(post)}
+                                                                tooltipContent={getRepliesActionLabel(post)}
+                                                                onClick={() => handleRepliesAction(post)}
+                                                            />
+                                                        {/if}
                                                     {/snippet}
-                                                </PostHistoryPostActions>
-                                                <div
-                                                    class="post-preview-footer-reaction-slot"
-                                                >
-                                                    {#if graphState.reactionSummary.totalCount > 0}
-                                                        <PostPreviewFooterActionButton
-                                                            type="button"
-                                                            className="post-preview-reactions-button"
-                                                            ariaLabel={getReactionsActionLabel(
-                                                                post,
-                                                            )}
-                                                            shape="pill"
-                                                            selected={isReactionsExpanded(
-                                                                post,
-                                                            )}
-                                                            onClick={() =>
-                                                                toggleReactions(
+                                                    {#snippet reactionExtras()}
+                                                        {#if graphState.reactionSummary.totalCount > 0}
+                                                            <PostPreviewFooterActionButton
+                                                                type="button"
+                                                                className="post-preview-reactions-button"
+                                                                ariaLabel={getReactionsActionLabel(
                                                                     post,
                                                                 )}
-                                                            tooltipContent={getReactionsActionLabel(
-                                                                post,
-                                                            )}
-                                                        >
-                                                            <div
-                                                                class="favorite-icon svg-icon"
-                                                                aria-hidden="true"
-                                                            ></div>
-                                                            <span>
-                                                                {graphState
-                                                                    .reactionSummary
-                                                                    .totalCount}
-                                                            </span>
-                                                        </PostPreviewFooterActionButton>
-                                                    {/if}
-                                                </div>
+                                                                shape="pill"
+                                                                selected={isReactionsExpanded(
+                                                                    post,
+                                                                )}
+                                                                onClick={() =>
+                                                                    toggleReactions(
+                                                                        post,
+                                                                    )}
+                                                                tooltipContent={getReactionsActionLabel(
+                                                                    post,
+                                                                )}
+                                                            >
+                                                                <div
+                                                                    class="favorite-icon svg-icon"
+                                                                    aria-hidden="true"
+                                                                ></div>
+                                                                <span>
+                                                                    {graphState
+                                                                        .reactionSummary
+                                                                        .totalCount}
+                                                                </span>
+                                                            </PostPreviewFooterActionButton>
+                                                        {/if}
+                                                    {/snippet}
+                                                </PostHistoryPostActions>
                                             {/snippet}
                                             {#snippet trailing()}
                                                 {@const actionsLabel =

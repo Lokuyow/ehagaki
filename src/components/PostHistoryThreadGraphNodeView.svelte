@@ -306,17 +306,15 @@
                             : undefined}
                     >
                         {#snippet replyExtras()}
-                            <div class="post-preview-footer-replies-slot">
-                                {#if showRepliesBadge}
-                                    <PostHistoryRepliesBadgeButton
-                                        count={state.repliesActionState.replyCount}
-                                        selected={state.repliesActionState.visible}
-                                        ariaLabel={getRepliesActionLabel()}
-                                        tooltipContent={getRepliesActionLabel()}
-                                        onClick={handleRepliesAction}
-                                    />
-                                {/if}
-                            </div>
+                            {#if showRepliesBadge}
+                                <PostHistoryRepliesBadgeButton
+                                    count={state.repliesActionState.replyCount}
+                                    selected={state.repliesActionState.visible}
+                                    ariaLabel={getRepliesActionLabel()}
+                                    tooltipContent={getRepliesActionLabel()}
+                                    onClick={handleRepliesAction}
+                                />
+                            {/if}
                         {/snippet}
                     </PostHistoryPostActions>
                 {/if}
@@ -437,6 +435,13 @@
     .post-history-thread-node-anchor {
         display: grid;
         margin-inline-start: var(--thread-context-indent);
+    }
+
+    .post-history-thread-node-view :global(
+            .post-preview-action-buttons-group
+        ) {
+        position: relative;
+        flex: 0 0 calc(100% - var(--thread-context-indent));
     }
 
     .post-history-thread-node-children {
