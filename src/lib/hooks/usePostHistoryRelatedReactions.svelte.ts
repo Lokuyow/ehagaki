@@ -29,9 +29,11 @@ export function usePostHistoryRelatedReactions(params: {
     >({});
     let profilesByPubkey = $state.raw<Record<string, ProfileData | null>>({});
     let loadedEventIds = $state.raw<Record<string, true>>({});
+    let retryRevision = $state(0);
     let generation = 0;
-    const fetchedEventIds = new Set<string>();
+    const completedFetchKeys = new Set<string>();
     const inFlightEventIds = new Set<string>();
+    const latestAttemptKeys = new Map<string, string>();
     type RepairTask = ReturnType<
         typeof postHistoryVisibleRangeChildInteractionRepairService.repairRelatedCardReactions
     >;
@@ -40,9 +42,23 @@ export function usePostHistoryRelatedReactions(params: {
     const unsubscribeProfiles = params.profileSync.subscribe((pubkey, profile) => {
         profilesByPubkey = { ...profilesByPubkey, [pubkey]: profile };
     });
+    const retryWhenOnline = () => {
+        retryRevision += 1;
+    };
+    const retryWhenVisible = () => {
+        if (document.visibilityState === "visible") retryRevision += 1;
+    };
+    if (typeof window !== "undefined") {
+        window.addEventListener("online", retryWhenOnline);
+        document.addEventListener("visibilitychange", retryWhenVisible);
+    }
     onDestroy(() => {
         generation += 1;
         repairTask?.cancel();
+        if (typeof window !== "undefined") {
+            window.removeEventListener("online", retryWhenOnline);
+            document.removeEventListener("visibilitychange", retryWhenVisible);
+        }
         unsubscribeProfiles();
     });
 
@@ -65,32 +81,55 @@ export function usePostHistoryRelatedReactions(params: {
         const show = params.getShow();
         const pubkey = params.getPubkeyHex() ?? "";
         const rxNostr = params.getRxNostr();
+        const relayConfig = params.getRelayConfig();
         const targets = params.getTargets();
+        const currentRetryRevision = retryRevision;
         if (!show) {
             generation += 1;
             repairTask?.cancel();
             repairTask = null;
-            fetchedEventIds.clear();
-            inFlightEventIds.clear();
+            completedFetchKeys.clear();
+            latestAttemptKeys.clear();
             recordsByEventId = {};
             loadedEventIds = {};
             return;
         }
         const currentGeneration = ++generation;
         let active = true;
-        let requestedTargets: PostHistoryRelatedReactionCardTarget[] = [];
         let localRepairTask: RepairTask | null = null;
         const isActive = () => active
             && currentGeneration === generation
             && params.getShow()
             && (params.getPubkeyHex() ?? "") === pubkey
             && params.getRxNostr() === rxNostr;
-        const uniqueTargets = Array.from(new Map(
-            targets
-                .filter((target) => target.eventId)
-                .map((target) => [target.eventId, target]),
-        ).values());
+        const targetsByEventId = new Map<string, PostHistoryRelatedReactionCardTarget>();
+        for (const target of targets) {
+            if (!target.eventId) continue;
+            const current = targetsByEventId.get(target.eventId);
+            targetsByEventId.set(target.eventId, {
+                eventId: target.eventId,
+                relayHints: Array.from(new Set([
+                    ...(current?.relayHints ?? []),
+                    ...target.relayHints,
+                ])).sort(),
+            });
+        }
+        const uniqueTargets = Array.from(targetsByEventId.values());
         const eventIds = uniqueTargets.map((target) => target.eventId);
+        const relayConfigKey = JSON.stringify(
+            Object.entries(relayConfig ?? {}).sort(([left], [right]) => left.localeCompare(right)),
+        );
+        const completedFetchKeyFor = (target: PostHistoryRelatedReactionCardTarget) =>
+            JSON.stringify([target.eventId, target.relayHints, relayConfigKey]);
+        const attemptKeyFor = (target: PostHistoryRelatedReactionCardTarget) =>
+            JSON.stringify([completedFetchKeyFor(target), currentRetryRevision]);
+        const currentTargetIds = new Set(uniqueTargets.map((target) => target.eventId));
+        for (const eventId of latestAttemptKeys.keys()) {
+            if (!currentTargetIds.has(eventId)) latestAttemptKeys.delete(eventId);
+        }
+        uniqueTargets.forEach((target) =>
+            latestAttemptKeys.set(target.eventId, attemptKeyFor(target)),
+        );
 
         void (async () => {
             const cachedRecords = await postHistoryReactionRecordsAdapter
@@ -125,7 +164,7 @@ export function usePostHistoryRelatedReactions(params: {
                 source: "related-card-display",
                 parentEventIds: eventIds,
                 rxNostr,
-                relayConfig: params.getRelayConfig(),
+                relayConfig,
                 isActive,
             });
             if (!isActive()) {
@@ -146,32 +185,57 @@ export function usePostHistoryRelatedReactions(params: {
             }
             recordsByEventId = { ...recordsByEventId, ...nextRecords };
             const toFetch = uniqueTargets.filter((target) =>
-                !fetchedEventIds.has(target.eventId)
+                !completedFetchKeys.has(completedFetchKeyFor(target))
                 && !inFlightEventIds.has(target.eventId),
             );
             if (!toFetch.length) {
                 return;
             }
-            requestedTargets = toFetch;
             toFetch.forEach((target) => inFlightEventIds.add(target.eventId));
+            const attemptKeys = new Map(toFetch.map((target) => [
+                target.eventId,
+                attemptKeyFor(target),
+            ]));
             localRepairTask = postHistoryVisibleRangeChildInteractionRepairService
                 .repairRelatedCardReactions(rxNostr, {
                 targets: toFetch,
-                relayConfig: params.getRelayConfig(),
+                relayConfig,
                 isActive,
             });
             repairTask = localRepairTask;
-            const repairResult = await localRepairTask.promise;
+            const repairResult = await localRepairTask.promise.catch(() => ({
+                status: "partial" as const,
+                targetEventIds: toFetch.map((target) => target.eventId),
+            }));
             if (repairTask === localRepairTask) {
                 repairTask = null;
             }
             localRepairTask = null;
             toFetch.forEach((target) => inFlightEventIds.delete(target.eventId));
+            const currentSession = params.getShow()
+                && (params.getPubkeyHex() ?? "") === pubkey
+                && params.getRxNostr() === rxNostr;
+            const needsRestart = toFetch.some((target) => {
+                const latestAttemptKey = latestAttemptKeys.get(target.eventId);
+                return latestAttemptKey !== undefined
+                    && (repairResult.status === "cancelled"
+                        || latestAttemptKey !== attemptKeys.get(target.eventId));
+            });
+            if (currentSession && needsRestart) {
+                retryRevision += 1;
+            }
             if (!isActive() || repairResult.status === "cancelled") {
                 return;
             }
 
-            repairResult.targetEventIds.forEach((eventId) => fetchedEventIds.add(eventId));
+            if (repairResult.status === "success") {
+                const fetchedTargetIds = new Set(repairResult.targetEventIds);
+                toFetch
+                    .filter((target) => fetchedTargetIds.has(target.eventId))
+                    .forEach((target) =>
+                        completedFetchKeys.add(completedFetchKeyFor(target)),
+                    );
+            }
             const refreshed = await postHistoryReactionRecordsAdapter
                 .getReactionRecordsForParents?.(eventIds)
                 ?? (await Promise.all(eventIds.map((eventId) =>
@@ -194,7 +258,7 @@ export function usePostHistoryRelatedReactions(params: {
                 source: "related-card-display",
                 parentEventIds: eventIds,
                 rxNostr,
-                relayConfig: params.getRelayConfig(),
+                relayConfig,
                 isActive,
             });
             if (!isActive()) {
@@ -219,7 +283,6 @@ export function usePostHistoryRelatedReactions(params: {
         })().catch(() => undefined);
         return () => {
             active = false;
-            requestedTargets.forEach((target) => inFlightEventIds.delete(target.eventId));
             localRepairTask?.cancel();
             if (repairTask === localRepairTask) {
                 repairTask = null;

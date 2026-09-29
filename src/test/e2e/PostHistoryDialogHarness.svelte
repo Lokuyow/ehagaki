@@ -22,6 +22,7 @@
     const isInfiniteScrollScenario = new URLSearchParams(window.location.search).has("infinite-scroll");
     const isLongPreviewScenario = new URLSearchParams(window.location.search).has("long-preview");
     const isLayoutStabilityScenario = new URLSearchParams(window.location.search).has("layout-stability");
+    const isKind42QuoteScenario = new URLSearchParams(window.location.search).has("kind42-quote");
     const isSparseOldestScenario = new URLSearchParams(window.location.search).has("sparse-oldest");
     const TOTAL_POSTS = isInfiniteScrollScenario
         ? 251
@@ -119,7 +120,7 @@
             id: eventId,
             eventId,
             pubkeyHex: HARNESS_PUBKEY,
-            kind: 1,
+            kind: isKind42QuoteScenario ? 42 : 1,
             content: `${label} post ${index + 1}`,
             tags: [],
             createdAt: timestampSeconds,
@@ -277,7 +278,7 @@
         id: quoteEventId,
         eventId: quoteEventId,
         pubkeyHex: "e".repeat(64),
-        kind: 1,
+        kind: isKind42QuoteScenario ? 42 : 1,
         content: quoteContent,
         tags: [],
         createdAt: quoteParentPost.createdAt - 60,
@@ -288,7 +289,7 @@
         rawEvent: {
             id: quoteEventId,
             pubkey: "e".repeat(64),
-            kind: 1,
+            kind: isKind42QuoteScenario ? 42 : 1,
             content: quoteContent,
             tags: [],
             created_at: quoteParentPost.createdAt - 60,

@@ -1872,6 +1872,29 @@ test.describe('PostHistoryDialog Playwright', () => {
         });
     });
 
+    test('kind 42 quote cards show reaction details while reply and quote actions remain unavailable', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?kind42-quote=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate<HarnessState>(() =>
+            (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState,
+        );
+        const quoteHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
+        );
+        const quoteCard = quoteHost.locator('.post-history-related-card')
+            .filter({ hasText: harness.quoteContent });
+
+        await expect(quoteCard).toBeVisible();
+        const reactionButton = quoteCard.locator('.post-preview-reactions-button');
+        await expect(reactionButton).toHaveText(/1/);
+        await expect(quoteCard.locator('.post-preview-reply-action-cell button')).toHaveCount(0);
+        await expect(quoteCard.locator('.post-preview-quote-action-cell button')).toHaveCount(0);
+        await expect(quoteCard.locator('.post-preview-footer-right button', { hasText: '' })).toHaveCount(1);
+        await reactionButton.click();
+        await expect(quoteCard.locator('.post-preview-reaction-chip')).toHaveCount(1);
+        await expect(quoteCard.locator('.post-preview-reaction-count')).toHaveText('1');
+    });
+
     test('quote preview uses the compact three-region footer without horizontal overflow', async ({ page }) => {
         const harness = await gotoHarness(page);
         const historyItem = page.locator(

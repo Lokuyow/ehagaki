@@ -2766,18 +2766,24 @@
                                                             )}
                                                     >
                                                         {#snippet footerActions()}
-                                                            {#if quotePreview.status === "resolved" && quotePreview.event.kind !== 42}
+                                                            {#if quotePreview.status === "resolved" &&
+                                                                (quotePreview.event.kind !== 42 ||
+                                                                    (getRelatedReactionReadModel(quotePreview.event.id)?.totalCount ?? 0) > 0)}
                                                                 {@const quoteActionPost = buildPostRecordFromQuoteEvent(
                                                                     quotePreview.event,
                                                                 )}
                                                                 <PostHistoryPostActions
                                                                     post={quoteActionPost}
-                                                                    onReplyPost={onReplyPost
-                                                                        ? handleReplyPost
-                                                                        : undefined}
-                                                                    onQuotePost={onQuotePost
-                                                                        ? handleQuotePost
-                                                                        : undefined}
+                                                                    onReplyPost={
+                                                                        quotePreview.event.kind !== 42 && onReplyPost
+                                                                            ? handleReplyPost
+                                                                            : undefined
+                                                                    }
+                                                                    onQuotePost={
+                                                                        quotePreview.event.kind !== 42 && onQuotePost
+                                                                            ? handleQuotePost
+                                                                            : undefined
+                                                                    }
                                                                 >
                                                                     {#snippet reactionExtras()}
                                                                         {@const reactionModel = getRelatedReactionReadModel(quotePreview.event.id)}
