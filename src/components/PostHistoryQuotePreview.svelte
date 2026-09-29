@@ -28,6 +28,7 @@
             mediaList: FullscreenMediaItem[];
         }) => void;
         onRetry?: (eventId: string) => void;
+        footerActions?: Snippet;
         footerMenu?: Snippet;
     }
 
@@ -39,6 +40,7 @@
         scrollRoot = null,
         onImageOpen = undefined,
         onRetry = undefined,
+        footerActions = undefined,
         footerMenu = undefined,
     }: Props = $props();
 
@@ -65,6 +67,7 @@
         {emojiImageMetaByUrl}
         {scrollRoot}
         {onImageOpen}
+        {footerActions}
         {footerMenu}
     />
 {:else}

@@ -8,6 +8,7 @@
         PostHistoryThreadGraphAnchorState,
         PostHistoryThreadGraphNodeState,
     } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
+    import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import type {
         PostContentEmojiImageMeta,
         PostContentEmojiLoadState,
@@ -32,6 +33,13 @@
             index: number;
             mediaList: FullscreenMediaItem[];
         }) => void;
+        buildPostRecordForNode?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+        ) => PostHistoryRecord;
+        onReplyPost?: (
+            post: PostHistoryRecord,
+        ) => boolean | void | Promise<boolean | void>;
+        onQuotePost?: (post: PostHistoryRecord) => void;
         onToggleParent?: () => void;
         onRetryParent?: () => void;
         onToggleNodeParent?: (nodeEventId: string) => void;
@@ -78,6 +86,9 @@
         emojiImageMetaByUrl = {},
         scrollRoot = null,
         onImageOpen = undefined,
+        buildPostRecordForNode = undefined,
+        onReplyPost = undefined,
+        onQuotePost = undefined,
         onToggleParent = undefined,
         onRetryParent = undefined,
         onToggleNodeParent = undefined,
@@ -156,6 +167,9 @@
                 {emojiImageMetaByUrl}
                 {scrollRoot}
                 {onImageOpen}
+                {buildPostRecordForNode}
+                {onReplyPost}
+                {onQuotePost}
                 onToggleParent={onToggleNodeParent}
                 onRetryParent={onRetryNodeParent}
                 onToggleChildren={onToggleNodeChildren}
@@ -181,6 +195,9 @@
                 {emojiImageMetaByUrl}
                 {scrollRoot}
                 {onImageOpen}
+                {buildPostRecordForNode}
+                {onReplyPost}
+                {onQuotePost}
                 onToggleParent={onToggleNodeParent}
                 onRetryParent={onRetryNodeParent}
                 onToggleChildren={onToggleNodeChildren}
@@ -253,6 +270,9 @@
                     {emojiImageMetaByUrl}
                     {scrollRoot}
                     {onImageOpen}
+                    {buildPostRecordForNode}
+                    {onReplyPost}
+                    {onQuotePost}
                     onToggleParent={onToggleNodeParent}
                     onRetryParent={onRetryNodeParent}
                     onToggleChildren={onToggleNodeChildren}

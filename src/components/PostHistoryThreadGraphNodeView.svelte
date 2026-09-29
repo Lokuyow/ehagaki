@@ -9,12 +9,14 @@
     import PostHistoryThreadToggleButton from "./PostHistoryThreadToggleButton.svelte";
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
+    import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
     import {
         formatPostedAt,
         formatPostedAtExact,
     } from "../lib/postHistoryDialogUtils";
     import { resolvePostHistoryThreadContextIndentRem } from "../lib/postHistoryThreadGraphUtils";
     import type { PostHistoryThreadGraphNodeState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
+    import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import type {
         PostContentEmojiImageMeta,
         PostContentEmojiLoadState,
@@ -38,6 +40,13 @@
             index: number;
             mediaList: FullscreenMediaItem[];
         }) => void;
+        buildPostRecordForNode?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+        ) => PostHistoryRecord;
+        onReplyPost?: (
+            post: PostHistoryRecord,
+        ) => boolean | void | Promise<boolean | void>;
+        onQuotePost?: (post: PostHistoryRecord) => void;
         onToggleParent?: (nodeEventId: string) => void;
         onRetryParent?: (nodeEventId: string) => void;
         onToggleChildren?: (nodeEventId: string) => void;
@@ -81,6 +90,9 @@
         emojiImageMetaByUrl = {},
         scrollRoot = null,
         onImageOpen = undefined,
+        buildPostRecordForNode = undefined,
+        onReplyPost = undefined,
+        onQuotePost = undefined,
         onToggleParent = undefined,
         onRetryParent = undefined,
         onToggleChildren = undefined,
@@ -198,6 +210,9 @@
                     {emojiImageMetaByUrl}
                     {scrollRoot}
                     {onImageOpen}
+                    {buildPostRecordForNode}
+                    {onReplyPost}
+                    {onQuotePost}
                     {onToggleParent}
                     {onRetryParent}
                     {onToggleChildren}
@@ -280,17 +295,29 @@
             {/snippet}
 
             {#snippet footerActions()}
-                <div class="post-preview-footer-replies-slot">
-                    {#if showRepliesBadge}
-                        <PostHistoryRepliesBadgeButton
-                            count={state.repliesActionState.replyCount}
-                            selected={state.repliesActionState.visible}
-                            ariaLabel={getRepliesActionLabel()}
-                            tooltipContent={getRepliesActionLabel()}
-                            onClick={handleRepliesAction}
-                        />
-                    {/if}
-                </div>
+                {#if buildPostRecordForNode}
+                    <PostHistoryPostActions
+                        post={buildPostRecordForNode(state)}
+                        onReplyPost={state.node.event.kind !== 42
+                            ? onReplyPost
+                            : undefined}
+                        onQuotePost={state.node.event.kind !== 42
+                            ? onQuotePost
+                            : undefined}
+                    >
+                        {#snippet replyExtras()}
+                            {#if showRepliesBadge}
+                                <PostHistoryRepliesBadgeButton
+                                    count={state.repliesActionState.replyCount}
+                                    selected={state.repliesActionState.visible}
+                                    ariaLabel={getRepliesActionLabel()}
+                                    tooltipContent={getRepliesActionLabel()}
+                                    onClick={handleRepliesAction}
+                                />
+                            {/if}
+                        {/snippet}
+                    </PostHistoryPostActions>
+                {/if}
             {/snippet}
 
             {#snippet footerMenu()}
@@ -364,6 +391,9 @@
                     {emojiImageMetaByUrl}
                     {scrollRoot}
                     {onImageOpen}
+                    {buildPostRecordForNode}
+                    {onReplyPost}
+                    {onQuotePost}
                     {onToggleParent}
                     {onRetryParent}
                     {onToggleChildren}
@@ -405,6 +435,13 @@
     .post-history-thread-node-anchor {
         display: grid;
         margin-inline-start: var(--thread-context-indent);
+    }
+
+    .post-history-thread-node-view :global(
+            .post-preview-action-buttons-group
+        ) {
+        position: relative;
+        flex: 0 0 calc(100% - var(--thread-context-indent));
     }
 
     .post-history-thread-node-children {
