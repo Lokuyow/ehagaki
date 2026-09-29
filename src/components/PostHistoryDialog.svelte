@@ -19,6 +19,7 @@
     import PostHistoryImportDialog from "./PostHistoryImportDialog.svelte";
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostHistoryRepliesBadgeButton from "./PostHistoryRepliesBadgeButton.svelte";
+    import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
     import PostPreviewFooterActionButton from "./PostPreviewFooterActionButton.svelte";
     import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
     import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
@@ -2581,6 +2582,9 @@
                                     emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                     scrollRoot={historyContainer}
                                     onImageOpen={handleImageOpen}
+                                    buildPostRecordForNode={buildPostRecordFromNodeState}
+                                    {onReplyPost}
+                                    {onQuotePost}
                                     onToggleParent={() =>
                                         historyViewport.preserveThreadParentToggleScroll(
                                             post.eventId,
@@ -2692,6 +2696,22 @@
                                                                 quotePreview.eventId,
                                                             )}
                                                     >
+                                                        {#snippet footerActions()}
+                                                            {#if quotePreview.status === "resolved" && quotePreview.event.kind !== 42}
+                                                                {@const quoteActionPost = buildPostRecordFromQuoteEvent(
+                                                                    quotePreview.event,
+                                                                )}
+                                                                <PostHistoryPostActions
+                                                                    post={quoteActionPost}
+                                                                    onReplyPost={onReplyPost
+                                                                        ? handleReplyPost
+                                                                        : undefined}
+                                                                    onQuotePost={onQuotePost
+                                                                        ? handleQuotePost
+                                                                        : undefined}
+                                                                />
+                                                            {/if}
+                                                        {/snippet}
                                                         {#snippet footerMenu()}
                                                             {#if quotePreview.status === "resolved"}
                                                                 {@const quotePreviewPost =
@@ -2794,76 +2814,26 @@
                                             dimmed={!!post.deletedAt}
                                         >
                                             {#snippet actions()}
-                                                <div
-                                                    class="post-preview-action-buttons-group"
-                                                >
-                                                    {#if onReplyPost}
-                                                        <PostPreviewFooterActionButton
-                                                            type="button"
-                                                            className="post-preview-action-button post-history-action-button"
-                                                            ariaLabel={$_(
-                                                                "replyQuote.reply_label",
-                                                            )}
-                                                            contentLayout="icon"
-                                                            shape="circle"
-                                                            onClick={() =>
-                                                                handleReplyPost(
-                                                                    post,
-                                                                )}
-                                                            tooltipContent={$_(
-                                                                "replyQuote.reply_label",
-                                                            )}
-                                                        >
-                                                            <div
-                                                                class="reply-icon svg-icon"
-                                                                aria-hidden="true"
-                                                            ></div>
-                                                        </PostPreviewFooterActionButton>
+                                                <PostHistoryPostActions
+                                                    {post}
+                                                    onReplyPost={onReplyPost
+                                                        ? handleReplyPost
+                                                        : undefined}
+                                                    onQuotePost={onQuotePost
+                                                        ? handleQuotePost
+                                                        : undefined}
+                                                />
+                                                <div class="post-preview-footer-replies-slot">
+                                                    {#if graphState.repliesActionState.status === "loaded" && graphState.repliesActionState.replyCount > 0}
+                                                        <PostHistoryRepliesBadgeButton
+                                                            count={graphState.repliesActionState.replyCount}
+                                                            selected={graphState.repliesActionState.visible}
+                                                            ariaLabel={getRepliesActionLabel(post)}
+                                                            tooltipContent={getRepliesActionLabel(post)}
+                                                            onClick={() => handleRepliesAction(post)}
+                                                        />
                                                     {/if}
-                                                    <div
-                                                        class="post-preview-footer-replies-slot"
-                                                    >
-                                                        {#if graphState.repliesActionState.status === "loaded" && graphState.repliesActionState.replyCount > 0}
-                                                            <PostHistoryRepliesBadgeButton
-                                                                count={graphState
-                                                                    .repliesActionState
-                                                                    .replyCount}
-                                                                selected={graphState
-                                                                    .repliesActionState
-                                                                    .visible}
-                                                                ariaLabel={getRepliesActionLabel(post)}
-                                                                tooltipContent={getRepliesActionLabel(post)}
-                                                                onClick={() =>
-                                                                    handleRepliesAction(
-                                                                        post,
-                                                                    )}
-                                                            />
-                                                        {/if}
-                                                    </div>
                                                 </div>
-                                                {#if onQuotePost}
-                                                    <PostPreviewFooterActionButton
-                                                        type="button"
-                                                        className="post-preview-action-button post-history-action-button"
-                                                        ariaLabel={$_(
-                                                            "replyQuote.quote_label",
-                                                        )}
-                                                        contentLayout="icon"
-                                                        shape="circle"
-                                                        onClick={() =>
-                                                            handleQuotePost(
-                                                                post,
-                                                            )}
-                                                        tooltipContent={$_(
-                                                            "replyQuote.quote_label",
-                                                        )}
-                                                    >
-                                                        <div
-                                                            class="quote-icon svg-icon"
-                                                            aria-hidden="true"
-                                                        ></div>
-                                                    </PostPreviewFooterActionButton>
-                                                {/if}
                                                 <div
                                                     class="post-preview-footer-reaction-slot"
                                                 >
@@ -3142,6 +3112,9 @@
                                         emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                         scrollRoot={historyContainer}
                                         onImageOpen={handleImageOpen}
+                                        buildPostRecordForNode={buildPostRecordFromNodeState}
+                                        {onReplyPost}
+                                        {onQuotePost}
                                         onToggleNodeParent={(nodeEventId) =>
                                             historyViewport.preserveThreadParentToggleScroll(
                                                 post.eventId,

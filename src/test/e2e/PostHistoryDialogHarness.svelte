@@ -59,6 +59,7 @@
         scrolledReactionPostEventId: string;
         scrolledPlainPostEventId: string;
         quotePostEventId: string;
+        quoteEventId: string;
         quoteContent: string;
         linkTargetUrl: string;
         linkPostEventId: string;
@@ -83,6 +84,10 @@
     type HarnessWindow = Window &
         typeof globalThis & {
             __POST_HISTORY_HARNESS__?: HarnessState;
+            __POST_HISTORY_ACTION_TARGETS__?: {
+                replyEventId: string | null;
+                quoteEventId: string | null;
+            };
             __POST_HISTORY_SCROLL_LOAD_GATE__?: {
                 direction: "older" | "newer" | null;
                 entered: boolean;
@@ -325,6 +330,7 @@
         sig: "e".repeat(128),
     };
     const replyEventId = "7".repeat(64);
+    const grandchildEventId = "8".repeat(64);
     const replyContent = `playwright direct reply ${linkTargetUrl}`;
     const replyCreatedAt = linkPost.createdAt + 60;
     const replyRecord: PostHistoryChildInteractionRecord = {
@@ -356,6 +362,25 @@
         fetchedAt: linkPost.updatedAt,
         updatedAt: linkPost.updatedAt,
         schemaVersion: 1,
+    };
+    const grandchildRecord: PostHistoryChildInteractionRecord = {
+        ...replyRecord,
+        id: grandchildEventId,
+        eventId: grandchildEventId,
+        parentEventId: replyEventId,
+        authorPubkey: "5".repeat(64),
+        content: "playwright nested reply",
+        tags: [["e", replyEventId, "wss://relay.example.com/", "reply"]],
+        createdAt: replyCreatedAt + 60,
+        rawEvent: {
+            id: grandchildEventId,
+            pubkey: "5".repeat(64),
+            kind: 1,
+            content: "playwright nested reply",
+            tags: [["e", replyEventId, "wss://relay.example.com/", "reply"]],
+            created_at: replyCreatedAt + 60,
+            sig: "d".repeat(128),
+        },
     };
     const interactionRecords = [
         buildReactionRecord(0),
@@ -389,6 +414,7 @@
         scrolledReactionPostEventId: posts[20].eventId,
         scrolledPlainPostEventId: posts[21].eventId,
         quotePostEventId: quoteParentPost.eventId,
+        quoteEventId,
         quoteContent,
         linkTargetUrl,
         linkPostEventId: linkPost.eventId,
@@ -408,6 +434,10 @@
         layoutVideoUrl,
         layoutEmojiSuccessUrl,
         layoutEmojiFailureUrl,
+    };
+    (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__ = {
+        replyEventId: null,
+        quoteEventId: null,
     };
 
     onMount(async () => {
@@ -484,6 +514,16 @@
             ],
             fetchedAt: replyRecord.fetchedAt,
         });
+        await postHistoryChildInteractionsRepository.upsertChildInteractions({
+            parentEventId: replyEventId,
+            events: [
+                {
+                    event: grandchildRecord.rawEvent as NostrEvent,
+                    relayUrls: grandchildRecord.relayUrls,
+                },
+            ],
+            fetchedAt: grandchildRecord.fetchedAt,
+        });
 
         const interactionLoadGate = {
             entered: false,
@@ -522,6 +562,7 @@
             scrolledReactionPostEventId: posts[20].eventId,
             scrolledPlainPostEventId: posts[21].eventId,
             quotePostEventId: quoteParentPost.eventId,
+            quoteEventId,
             quoteContent,
             linkTargetUrl,
             linkPostEventId: linkPost.eventId,
@@ -561,7 +602,15 @@
                         subscribe: () => ({ unsubscribe: () => undefined }),
                     }),
                 } as unknown as RxNostr}
-                onQuotePost={() => undefined}
+                onReplyPost={(post) => {
+                    (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__!.replyEventId =
+                        post.eventId;
+                    return false;
+                }}
+                onQuotePost={(post) => {
+                    (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__!.quoteEventId =
+                        post.eventId;
+                }}
             />
         </div>
     {/if}

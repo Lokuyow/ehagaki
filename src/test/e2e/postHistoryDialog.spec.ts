@@ -13,6 +13,7 @@ type HarnessState = {
     scrolledReactionPostEventId: string;
     scrolledPlainPostEventId: string;
     quotePostEventId: string;
+    quoteEventId: string;
     quoteContent: string;
     linkTargetUrl: string;
     linkPostEventId: string;
@@ -36,6 +37,10 @@ type HarnessState = {
 
 type HarnessWindow = Window & typeof globalThis & {
     __POST_HISTORY_HARNESS__?: HarnessState;
+    __POST_HISTORY_ACTION_TARGETS__?: {
+        replyEventId: string | null;
+        quoteEventId: string | null;
+    };
     __POST_HISTORY_SCROLL_LOAD_GATE__?: {
         direction: 'older' | 'newer' | null;
         entered: boolean;
@@ -2084,4 +2089,71 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(page.getByRole('menuitem', { name: '削除' })).toHaveCount(0);
     });
 
+});
+
+test('shared reply and quote actions use the event on each card', async ({ page }) => {
+    const harness = await gotoHarness(page);
+    const readActionTargets = () => page.evaluate(() =>
+        (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__,
+    );
+    const resetHarness = async () => {
+        await page.goto('post-history-dialog-playwright.html');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+    };
+
+    const plainItem = page.locator(
+        `.post-history-item[data-post-history-event-id="${harness.plainPostEventId}"]`,
+    );
+    await plainItem.getByRole('button', { name: 'リプライ' }).click();
+    await expect.poll(async () => (await readActionTargets())?.replyEventId)
+        .toBe(harness.plainPostEventId);
+    await plainItem.getByRole('button', { name: '引用' }).click();
+    await expect.poll(async () => (await readActionTargets())?.quoteEventId)
+        .toBe(harness.plainPostEventId);
+    await resetHarness();
+
+    const quoteHost = page.locator(
+        `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
+    );
+    const quoteCard = quoteHost.locator('.post-history-related-card')
+        .filter({ hasText: harness.quoteContent });
+    await quoteCard.getByRole('button', { name: 'リプライ' }).click();
+    await expect.poll(async () => (await readActionTargets())?.replyEventId)
+        .toBe(harness.quoteEventId);
+    await quoteCard.getByRole('button', { name: '引用' }).click();
+    await expect.poll(async () => (await readActionTargets())?.quoteEventId)
+        .toBe(harness.quoteEventId);
+    await resetHarness();
+
+    const threadHost = page.locator(
+        `.post-history-item[data-post-history-event-id="${harness.threadParentPostEventId}"]`,
+    );
+    await threadHost.getByRole('button', { name: '返信先を見る' }).click();
+    const parentCard = threadHost.locator('.post-history-related-card')
+        .filter({ hasText: harness.quoteContent });
+    await parentCard.getByRole('button', { name: 'リプライ' }).click();
+    await expect.poll(async () => (await readActionTargets())?.replyEventId)
+        .toBe(harness.quoteEventId);
+    await parentCard.getByRole('button', { name: '引用' }).click();
+    await expect.poll(async () => (await readActionTargets())?.quoteEventId)
+        .toBe(harness.quoteEventId);
+    await resetHarness();
+
+    const replyHost = page.locator(
+        `.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"]`,
+    );
+    await replyHost.getByRole('button', { name: /返信 1件を表示/ }).click();
+    const replyCard = replyHost.locator('.post-history-related-card')
+        .filter({ hasText: harness.replyContent });
+    await replyCard.getByRole('button', { name: 'リプライ' }).click();
+    await expect.poll(async () => (await readActionTargets())?.replyEventId)
+        .toBe('7'.repeat(64));
+    await replyCard.getByRole('button', { name: /返信 1件を表示/ }).click();
+    const grandchildCard = replyHost.locator('.post-history-related-card')
+        .filter({ hasText: 'playwright nested reply' });
+    await expect(grandchildCard.getByRole('button', { name: 'リプライ' })).toBeVisible();
+    await expect(grandchildCard.getByRole('button', { name: '引用' })).toBeVisible();
+    await grandchildCard.getByRole('button', { name: '引用' }).click();
+    await expect.poll(async () => (await readActionTargets())?.quoteEventId)
+        .toBe('8'.repeat(64));
 });

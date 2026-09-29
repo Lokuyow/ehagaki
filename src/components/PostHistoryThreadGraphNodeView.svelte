@@ -9,12 +9,14 @@
     import PostHistoryThreadToggleButton from "./PostHistoryThreadToggleButton.svelte";
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
+    import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
     import {
         formatPostedAt,
         formatPostedAtExact,
     } from "../lib/postHistoryDialogUtils";
     import { resolvePostHistoryThreadContextIndentRem } from "../lib/postHistoryThreadGraphUtils";
     import type { PostHistoryThreadGraphNodeState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
+    import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import type {
         PostContentEmojiImageMeta,
         PostContentEmojiLoadState,
@@ -38,6 +40,13 @@
             index: number;
             mediaList: FullscreenMediaItem[];
         }) => void;
+        buildPostRecordForNode?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+        ) => PostHistoryRecord;
+        onReplyPost?: (
+            post: PostHistoryRecord,
+        ) => boolean | void | Promise<boolean | void>;
+        onQuotePost?: (post: PostHistoryRecord) => void;
         onToggleParent?: (nodeEventId: string) => void;
         onRetryParent?: (nodeEventId: string) => void;
         onToggleChildren?: (nodeEventId: string) => void;
@@ -81,6 +90,9 @@
         emojiImageMetaByUrl = {},
         scrollRoot = null,
         onImageOpen = undefined,
+        buildPostRecordForNode = undefined,
+        onReplyPost = undefined,
+        onQuotePost = undefined,
         onToggleParent = undefined,
         onRetryParent = undefined,
         onToggleChildren = undefined,
@@ -198,6 +210,9 @@
                     {emojiImageMetaByUrl}
                     {scrollRoot}
                     {onImageOpen}
+                    {buildPostRecordForNode}
+                    {onReplyPost}
+                    {onQuotePost}
                     {onToggleParent}
                     {onRetryParent}
                     {onToggleChildren}
@@ -280,6 +295,13 @@
             {/snippet}
 
             {#snippet footerActions()}
+                {#if buildPostRecordForNode && (onReplyPost || onQuotePost) && state.node.event.kind !== 42}
+                    <PostHistoryPostActions
+                        post={buildPostRecordForNode(state)}
+                        {onReplyPost}
+                        {onQuotePost}
+                    />
+                {/if}
                 <div class="post-preview-footer-replies-slot">
                     {#if showRepliesBadge}
                         <PostHistoryRepliesBadgeButton
@@ -364,6 +386,9 @@
                     {emojiImageMetaByUrl}
                     {scrollRoot}
                     {onImageOpen}
+                    {buildPostRecordForNode}
+                    {onReplyPost}
+                    {onQuotePost}
                     {onToggleParent}
                     {onRetryParent}
                     {onToggleChildren}
