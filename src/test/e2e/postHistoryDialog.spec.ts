@@ -58,9 +58,11 @@ async function gotoSparseOldestHarness(page: Page) {
 
 async function gotoInfiniteScrollHarness(
     page: Page,
-    options: { fixContainerHeight?: boolean } = {},
+    options: { fixContainerHeight?: boolean; longPreviews?: boolean } = {},
 ) {
-    await page.goto('post-history-dialog-playwright.html?infinite-scroll=1');
+    await page.goto(
+        `post-history-dialog-playwright.html?infinite-scroll=1${options.longPreviews ? '&long-preview=1' : ''}`,
+    );
     await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
     if (options.fixContainerHeight !== false) {
         await page.locator('.post-history-container').evaluate((element) => {
@@ -370,6 +372,7 @@ function startPostPositionFrameSampling(
     page: Page,
     eventId: string,
     frameCount = 24,
+    watchedEventIds: string[] = [eventId],
 ) {
     const samples = page.locator('.post-history-container').evaluate(
         async (containerElement, args) => {
@@ -391,6 +394,13 @@ function startPostPositionFrameSampling(
                 bottomSlotHeight: number;
                 topSpinnerVisible: boolean;
                 bottomSpinnerVisible: boolean;
+                watchedPosts: Array<{
+                    eventId: string;
+                    top: number;
+                    relativeTop: number;
+                    height: number;
+                    isCollapsed: boolean;
+                } | null>;
             }> = [];
 
             const measure = () => {
@@ -415,6 +425,25 @@ function startPostPositionFrameSampling(
                     bottomSlotHeight: slots[1]?.getBoundingClientRect().height ?? 0,
                     topSpinnerVisible: !!slots[0]?.querySelector('.inline-spinner'),
                     bottomSpinnerVisible: !!slots[1]?.querySelector('.inline-spinner'),
+                    watchedPosts: args.watchedEventIds.map((watchedEventId) => {
+                        const watchedItem = container.querySelector<HTMLElement>(
+                            `.post-history-item[data-post-history-event-id="${watchedEventId}"]`,
+                        );
+                        if (!watchedItem) {
+                            return null;
+                        }
+
+                        const watchedRect = watchedItem.getBoundingClientRect();
+                        return {
+                            eventId: watchedEventId,
+                            top: watchedRect.top,
+                            relativeTop: watchedRect.top - containerRect.top,
+                            height: watchedRect.height,
+                            isCollapsed: !!watchedItem.querySelector(
+                                '.post-history-preview-text-collapsed',
+                            ),
+                        };
+                    }),
                 };
             };
 
@@ -432,7 +461,7 @@ function startPostPositionFrameSampling(
             delete container.dataset.postHistoryFrameSampling;
             return samples;
         },
-        { eventId, frameCount },
+        { eventId, frameCount, watchedEventIds },
     );
     const started = page.waitForFunction(() =>
         document.querySelector('.post-history-container')?.getAttribute('data-post-history-frame-sampling') === 'running',
@@ -445,6 +474,59 @@ function startPostPositionFrameSampling(
             (element as HTMLDivElement).dataset.postHistoryFrameSampling = 'stop';
         }),
     };
+}
+
+async function getVisiblePostEventIds(page: Page): Promise<string[]> {
+    return page.locator('.post-history-container').evaluate((element) => {
+        const container = element as HTMLDivElement;
+        const containerRect = container.getBoundingClientRect();
+        const visible = Array.from(
+            container.querySelectorAll<HTMLElement>('.post-history-item'),
+        ).filter((item) => {
+            const rect = item.getBoundingClientRect();
+            return rect.bottom > containerRect.top + 1
+                && rect.top < containerRect.bottom - 1;
+        });
+        const selected = [visible[0], visible[Math.floor((visible.length - 1) / 2)], visible.at(-1)];
+        return Array.from(new Set(selected.map((item) => item?.dataset.postHistoryEventId ?? '').filter(Boolean)));
+    });
+}
+
+function expectWatchedPostGeometryStableAcrossFrames(
+    frameSamples: Awaited<ReturnType<typeof startPostPositionFrameSampling>['samples']>,
+    eventIds: string[],
+    initiallyPresentEventIds: string[],
+) {
+    for (const eventId of eventIds) {
+        const values = frameSamples
+            .map((sample) => sample.watchedPosts.find((post) => post?.eventId === eventId) ?? null)
+            .filter((post): post is NonNullable<typeof post> => post !== null);
+        expect(values.length).toBeGreaterThan(0);
+        const baseline = values[0];
+        if (initiallyPresentEventIds.includes(eventId)) {
+            expect(frameSamples[0].watchedPosts.some((post) => post?.eventId === eventId)).toBe(true);
+        }
+        for (const value of values) {
+            expect(Math.abs(value.top - baseline.top)).toBeLessThanOrEqual(1);
+            expect(Math.abs(value.relativeTop - baseline.relativeTop)).toBeLessThanOrEqual(1);
+            expect(Math.abs(value.height - baseline.height)).toBeLessThanOrEqual(1);
+        }
+    }
+}
+
+function expectPreviewSettledOnFirstRenderedFrame(
+    frameSamples: Awaited<ReturnType<typeof startPostPositionFrameSampling>['samples']>,
+    eventId: string,
+) {
+    const values = frameSamples
+        .flatMap((sample) => sample.watchedPosts)
+        .filter((post): post is NonNullable<typeof post> => post?.eventId === eventId);
+    expect(values.length).toBeGreaterThan(0);
+    expect(values[0].isCollapsed).toBe(true);
+    for (const value of values) {
+        expect(value.isCollapsed).toBe(true);
+        expect(Math.abs(value.height - values[0].height)).toBeLessThanOrEqual(1);
+    }
 }
 
 function expectPostPositionStableAcrossFrames(
@@ -1036,6 +1118,7 @@ test.describe('PostHistoryDialog Playwright', () => {
     test('successful newer autoload swaps the bounded window without moving the visible anchor', async ({ page }) => {
         const harness = await gotoInfiniteScrollHarness(page, {
             fixContainerHeight: false,
+            longPreviews: true,
         });
         await expect(page.locator('.post-history-heading .status-loading-placeholder')).toHaveCount(0);
         const expectedEventIds = harness.infiniteScrollEventIds;
@@ -1064,10 +1147,19 @@ test.describe('PostHistoryDialog Playwright', () => {
         const userSelectedAnchor = await getFirstVisiblePostSnapshot(page);
         expect(userSelectedAnchor).not.toBeNull();
         expect(expectedEventIds.slice(101)).toContain(userSelectedAnchor!.eventId);
+        const initiallyVisibleEventIds = await getVisiblePostEventIds(page);
+        const watchedEventIds = [
+            ...new Set([
+                ...initiallyVisibleEventIds,
+                expectedEventIds[70],
+            ]),
+        ];
         const expectedWindow = expectedEventIds.slice(51, 201);
         const frameSampling = startPostPositionFrameSampling(
             page,
             userSelectedAnchor!.eventId,
+            24,
+            watchedEventIds,
         );
         await frameSampling.started;
         await releaseScrollLoadGate(page);
@@ -1077,6 +1169,12 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         const frameSamples = await frameSampling.samples;
         expectPostPositionStableAcrossFrames(frameSamples, userSelectedAnchor!);
+        expectWatchedPostGeometryStableAcrossFrames(
+            frameSamples,
+            watchedEventIds,
+            initiallyVisibleEventIds,
+        );
+        expectPreviewSettledOnFirstRenderedFrame(frameSamples, expectedEventIds[70]);
         await expectVisiblePostCount(page, 150);
         expect(await historyEventIds(page)).toEqual(expectedWindow);
         expect(expectedWindow).toContain(userSelectedAnchor!.eventId);
@@ -1091,6 +1189,7 @@ test.describe('PostHistoryDialog Playwright', () => {
     test('successful older autoload swaps the bounded window without moving the visible anchor', async ({ page }) => {
         const harness = await gotoInfiniteScrollHarness(page, {
             fixContainerHeight: false,
+            longPreviews: true,
         });
         await expect(page.locator('.post-history-heading .status-loading-placeholder')).toHaveCount(0);
         const expectedEventIds = harness.infiniteScrollEventIds;
@@ -1115,10 +1214,19 @@ test.describe('PostHistoryDialog Playwright', () => {
         const userSelectedAnchor = await getFirstVisiblePostSnapshot(page);
         expect(userSelectedAnchor).not.toBeNull();
         expect(userSelectedAnchor!.eventId).toBe(expectedEventIds[100]);
+        const initiallyVisibleEventIds = await getVisiblePostEventIds(page);
+        const watchedEventIds = [
+            ...new Set([
+                ...initiallyVisibleEventIds,
+                expectedEventIds[150],
+            ]),
+        ];
         const expectedWindow = expectedEventIds.slice(50, 200);
         const frameSampling = startPostPositionFrameSampling(
             page,
             userSelectedAnchor!.eventId,
+            24,
+            watchedEventIds,
         );
         await frameSampling.started;
         await releaseScrollLoadGate(page);
@@ -1128,6 +1236,12 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         const frameSamples = await frameSampling.samples;
         expectPostPositionStableAcrossFrames(frameSamples, userSelectedAnchor!);
+        expectWatchedPostGeometryStableAcrossFrames(
+            frameSamples,
+            watchedEventIds,
+            initiallyVisibleEventIds,
+        );
+        expectPreviewSettledOnFirstRenderedFrame(frameSamples, expectedEventIds[150]);
         await expectVisiblePostCount(page, 150);
         expect(await historyEventIds(page)).toEqual(expectedWindow);
         expect(expectedWindow).toContain(userSelectedAnchor!.eventId);

@@ -1,7 +1,7 @@
 <script lang="ts">
     import { parseDate, type DateValue } from "@internationalized/date";
     import type { RxNostr } from "rx-nostr";
-    import { onDestroy, tick, untrack } from "svelte";
+    import { flushSync, onDestroy, tick, untrack } from "svelte";
     import { _, locale } from "svelte-i18n";
     import { DatePicker, Dialog, DropdownMenu } from "bits-ui";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
@@ -1051,7 +1051,12 @@
                 return scrollAnchor?.eventId ?? null;
             },
             onCommitted: () => {
-                historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
+                flushSync(() => {
+                    previewCollapse.flushPendingMeasurementsSynchronously();
+                });
+                historyViewport.restoreHistoryScrollAnchor(scrollAnchor, {
+                    flushUpdates: false,
+                });
             },
         };
     }

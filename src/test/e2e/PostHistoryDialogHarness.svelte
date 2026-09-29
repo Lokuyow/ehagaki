@@ -20,6 +20,7 @@
     const HARNESS_SECRET_KEY = generateSecretKey();
     const HARNESS_PUBKEY = getPublicKey(HARNESS_SECRET_KEY);
     const isInfiniteScrollScenario = new URLSearchParams(window.location.search).has("infinite-scroll");
+    const isLongPreviewScenario = new URLSearchParams(window.location.search).has("long-preview");
     const isSparseOldestScenario = new URLSearchParams(window.location.search).has("sparse-oldest");
     const TOTAL_POSTS = isInfiniteScrollScenario
         ? 251
@@ -160,9 +161,18 @@
         };
     }
 
-    const posts = Array.from({ length: TOTAL_POSTS }, (_, index) =>
-        buildPost(index),
-    );
+    const longPreviewContent = Array.from(
+        { length: 14 },
+        (_, index) => `long preview line ${index + 1}`,
+    ).join("\n");
+    const posts = Array.from({ length: TOTAL_POSTS }, (_, index) => {
+        const post = buildPost(index);
+        return isInfiniteScrollScenario
+            && isLongPreviewScenario
+            && (index === 70 || index === 150)
+            ? { ...post, content: longPreviewContent }
+            : post;
+    });
     const exportPostEvent = finalizeEvent({
         kind: 1,
         content: "playwright export post",
