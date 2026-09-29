@@ -19,6 +19,8 @@ type HarnessState = {
     linkPostEventId: string;
     replyParentEventId: string;
     replyContent: string;
+    replyEventId: string;
+    grandchildEventId: string;
     threadParentPostEventId: string;
     importPostContent: string;
     importEventJsonl: string;
@@ -1826,6 +1828,48 @@ test.describe('PostHistoryDialog Playwright', () => {
                 fullPage: false,
             });
         }
+    });
+
+    test('related quote, reply, and nested reply cards show their own reaction details', async ({ page }, testInfo) => {
+        const harness = await gotoHarness(page);
+        const quoteHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
+        );
+        const quoteCard = quoteHost.locator('.post-history-related-card')
+            .filter({ hasText: harness.quoteContent });
+        await expect(quoteCard).toBeVisible();
+        await expect(quoteCard.locator('.post-preview-reactions-button')).toHaveText(/1/);
+        await quoteCard.locator('.post-preview-reactions-button').click();
+        await expect(quoteCard.locator('.post-preview-reaction-chip')).toHaveCount(1);
+
+        const threadHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"]`,
+        );
+        await scrollPostIntoViewByEventId(page, harness.replyParentEventId);
+        const replyCard = threadHost.locator('.post-history-related-card')
+            .filter({ hasText: harness.replyContent });
+        if (!(await replyCard.isVisible())) {
+            await threadHost.getByRole('button', { name: /返信 1件を表示/ }).click();
+        }
+        await expect(replyCard).toBeVisible();
+        await expect(replyCard.locator('.post-preview-reactions-button')).toHaveText(/2/);
+        await replyCard.locator('.post-preview-reactions-button').click();
+        await expect(replyCard.locator('.post-preview-reaction-chip')).toHaveCount(1);
+        await expect(replyCard.locator('.post-preview-reaction-count')).toHaveText('2');
+
+        const nestedToggle = replyCard.getByRole('button', { name: /返信 1件を表示/ });
+        const grandchildCard = threadHost.locator('.post-history-related-card')
+            .filter({ hasText: 'playwright nested reply' });
+        if (!(await grandchildCard.isVisible())) await nestedToggle.click();
+        await expect(grandchildCard).toBeVisible();
+        await expect(grandchildCard.locator('.post-preview-reactions-button')).toHaveText(/3/);
+        await grandchildCard.locator('.post-preview-reactions-button').click();
+        await expect(grandchildCard.locator('.post-preview-reaction-chip')).toHaveCount(1);
+        await expect(grandchildCard.locator('.post-preview-reaction-count')).toHaveText('3');
+        await page.screenshot({
+            path: testInfo.outputPath(`post-history-related-reactions-${testInfo.project.name}.png`),
+            fullPage: false,
+        });
     });
 
     test('quote preview uses the compact three-region footer without horizontal overflow', async ({ page }) => {

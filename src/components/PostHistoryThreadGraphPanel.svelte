@@ -9,6 +9,7 @@
         PostHistoryThreadGraphNodeState,
     } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
+import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionReadModel";
     import type {
         PostContentEmojiImageMeta,
         PostContentEmojiLoadState,
@@ -40,6 +41,10 @@
             post: PostHistoryRecord,
         ) => boolean | void | Promise<boolean | void>;
         onQuotePost?: (post: PostHistoryRecord) => void;
+        getReactionReadModel?: (eventId: string) => PostHistoryReactionReadModel | null;
+        isReactionExpanded?: (eventId: string) => boolean;
+        getReactionLabel?: (eventId: string) => string;
+        onToggleReaction?: (eventId: string) => void;
         onToggleParent?: () => void;
         onRetryParent?: () => void;
         onToggleNodeParent?: (nodeEventId: string) => void;
@@ -89,6 +94,10 @@
         buildPostRecordForNode = undefined,
         onReplyPost = undefined,
         onQuotePost = undefined,
+        getReactionReadModel = undefined,
+        isReactionExpanded = undefined,
+        getReactionLabel = undefined,
+        onToggleReaction = undefined,
         onToggleParent = undefined,
         onRetryParent = undefined,
         onToggleNodeParent = undefined,
@@ -170,6 +179,10 @@
                 {buildPostRecordForNode}
                 {onReplyPost}
                 {onQuotePost}
+                {getReactionReadModel}
+                {isReactionExpanded}
+                {getReactionLabel}
+                {onToggleReaction}
                 onToggleParent={onToggleNodeParent}
                 onRetryParent={onRetryNodeParent}
                 onToggleChildren={onToggleNodeChildren}
@@ -198,6 +211,10 @@
                 {buildPostRecordForNode}
                 {onReplyPost}
                 {onQuotePost}
+                {getReactionReadModel}
+                {isReactionExpanded}
+                {getReactionLabel}
+                {onToggleReaction}
                 onToggleParent={onToggleNodeParent}
                 onRetryParent={onRetryNodeParent}
                 onToggleChildren={onToggleNodeChildren}
@@ -273,6 +290,10 @@
                     {buildPostRecordForNode}
                     {onReplyPost}
                     {onQuotePost}
+                    {getReactionReadModel}
+                    {isReactionExpanded}
+                    {getReactionLabel}
+                    {onToggleReaction}
                     onToggleParent={onToggleNodeParent}
                     onRetryParent={onRetryNodeParent}
                     onToggleChildren={onToggleNodeChildren}

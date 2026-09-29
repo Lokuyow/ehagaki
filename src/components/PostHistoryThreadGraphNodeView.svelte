@@ -10,6 +10,9 @@
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
     import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
+    import PostHistoryReactionActionButton from "./PostHistoryReactionActionButton.svelte";
+    import PostHistoryReactionDetails from "./PostHistoryReactionDetails.svelte";
+    import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionReadModel";
     import {
         formatPostedAt,
         formatPostedAtExact,
@@ -47,6 +50,10 @@
             post: PostHistoryRecord,
         ) => boolean | void | Promise<boolean | void>;
         onQuotePost?: (post: PostHistoryRecord) => void;
+        getReactionReadModel?: (eventId: string) => PostHistoryReactionReadModel | null;
+        isReactionExpanded?: (eventId: string) => boolean;
+        getReactionLabel?: (eventId: string) => string;
+        onToggleReaction?: (eventId: string) => void;
         onToggleParent?: (nodeEventId: string) => void;
         onRetryParent?: (nodeEventId: string) => void;
         onToggleChildren?: (nodeEventId: string) => void;
@@ -93,6 +100,10 @@
         buildPostRecordForNode = undefined,
         onReplyPost = undefined,
         onQuotePost = undefined,
+        getReactionReadModel = undefined,
+        isReactionExpanded = undefined,
+        getReactionLabel = undefined,
+        onToggleReaction = undefined,
         onToggleParent = undefined,
         onRetryParent = undefined,
         onToggleChildren = undefined,
@@ -213,6 +224,10 @@
                     {buildPostRecordForNode}
                     {onReplyPost}
                     {onQuotePost}
+                    {getReactionReadModel}
+                    {isReactionExpanded}
+                    {getReactionLabel}
+                    {onToggleReaction}
                     {onToggleParent}
                     {onRetryParent}
                     {onToggleChildren}
@@ -316,7 +331,25 @@
                                 />
                             {/if}
                         {/snippet}
+                        {#snippet reactionExtras()}
+                            {@const reactionModel = getReactionReadModel?.(state.node.eventId)}
+                            {#if reactionModel && reactionModel.totalCount > 0}
+                                <PostHistoryReactionActionButton
+                                    count={reactionModel.totalCount}
+                                    expanded={isReactionExpanded?.(state.node.eventId) ?? false}
+                                    ariaLabel={getReactionLabel?.(state.node.eventId) ?? ""}
+                                    onToggle={() => onToggleReaction?.(state.node.eventId)}
+                                />
+                            {/if}
+                        {/snippet}
                     </PostHistoryPostActions>
+                {/if}
+            {/snippet}
+
+            {#snippet footerDetails()}
+                {@const reactionModel = getReactionReadModel?.(state.node.eventId)}
+                {#if reactionModel && reactionModel.totalCount > 0 && (isReactionExpanded?.(state.node.eventId) ?? false)}
+                    <PostHistoryReactionDetails readModel={reactionModel} {emojiLoadStateByUrl} {emojiImageMetaByUrl} />
                 {/if}
             {/snippet}
 
@@ -394,6 +427,10 @@
                     {buildPostRecordForNode}
                     {onReplyPost}
                     {onQuotePost}
+                    {getReactionReadModel}
+                    {isReactionExpanded}
+                    {getReactionLabel}
+                    {onToggleReaction}
                     {onToggleParent}
                     {onRetryParent}
                     {onToggleChildren}

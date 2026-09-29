@@ -166,7 +166,9 @@ describe("postHistoryDialogPresentation", () => {
         expect(isPostHistoryFavoriteReactionContent("👍")).toBe(false);
     });
 
-    it("reaction表示はカスタム絵文字ショートコードを保持し、通常値は1グラフェムに制限する", () => {
+    it("empty reactionをlikeとして扱い、カスタム値は保持して通常値を1グラフェムに制限する", () => {
+        expect(resolvePostHistoryReactionDisplayContent("")).toBe("+");
+        expect(resolvePostHistoryReactionDisplayContent("   ")).toBe("+");
         expect(resolvePostHistoryReactionDisplayContent(":kubipaca_kao:")).toBe(":kubipaca_kao:");
         expect(resolvePostHistoryReactionDisplayContent("🙂‍↕️🙂‍↕️🙂‍↕️")).toBe("🙂‍↕️");
         expect(resolvePostHistoryReactionDisplayContent("abc")).toBe("a");

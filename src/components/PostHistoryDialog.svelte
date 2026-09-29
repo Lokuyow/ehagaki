@@ -20,6 +20,8 @@
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostHistoryRepliesBadgeButton from "./PostHistoryRepliesBadgeButton.svelte";
     import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
+    import PostHistoryReactionDetails from "./PostHistoryReactionDetails.svelte";
+    import PostHistoryReactionActionButton from "./PostHistoryReactionActionButton.svelte";
     import PostPreviewFooterActionButton from "./PostPreviewFooterActionButton.svelte";
     import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
     import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
@@ -35,6 +37,7 @@
     import { usePostHistoryDialogViewport } from "../lib/hooks/usePostHistoryDialogViewport.svelte";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { usePostHistoryThreadGraph } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
+    import { usePostHistoryRelatedReactions } from "../lib/hooks/usePostHistoryRelatedReactions.svelte";
     import { usePostHistoryInboundInteractionsSync } from "../lib/hooks/usePostHistoryInboundInteractionsSync.svelte";
     import type { PostHistoryThreadGraphNodeState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import type {
@@ -221,6 +224,37 @@
         getRelayConfig: () => relayConfig,
         relatedTargetResolver,
         profileSyncCoordinator,
+    });
+    function getRelatedReactionTargets() {
+        const targets = new Map<string, string[]>();
+        const addTarget = (eventId: string, relayHints: string[]) => {
+            if (!eventId || history.posts.some((post) => post.eventId === eventId)) return;
+            targets.set(eventId, Array.from(new Set([...(targets.get(eventId) ?? []), ...relayHints])));
+        };
+        const visitNode = (nodeState: PostHistoryThreadGraphNodeState | null) => {
+            if (!nodeState) return;
+            addTarget(nodeState.node.eventId, nodeState.node.relayUrls);
+            visitNode(nodeState.parentNodeState);
+            nodeState.replyNodeStates.forEach(visitNode);
+        };
+        for (const post of history.posts) {
+            const anchorState = postHistoryThreadGraph.getAnchorState(post);
+            visitNode(anchorState.parentNodeState);
+            anchorState.replyNodeStates.forEach(visitNode);
+            for (const quote of quotePreviews.getQuotePreviews(post)) {
+                if (quote.status === "resolved") addTarget(quote.event.id, quote.relayHints);
+            }
+        }
+        return Array.from(targets, ([eventId, relayHints]) => ({ eventId, relayHints }));
+    }
+    let relatedReactionTargets = $derived.by(getRelatedReactionTargets);
+    const relatedReactions = usePostHistoryRelatedReactions({
+        getShow: () => show,
+        getPubkeyHex: () => pubkeyHex,
+        getRxNostr: () => rxNostr,
+        getRelayConfig: () => relayConfig,
+        getTargets: () => relatedReactionTargets,
+        profileSync: profileSyncCoordinator,
     });
     usePostHistoryInboundInteractionsSync({
         getShow: () => show,
@@ -543,6 +577,14 @@
                 if (reactionGroup.emojiUrl) {
                     urls.add(reactionGroup.emojiUrl);
                 }
+            }
+        }
+
+        for (const target of relatedReactionTargets) {
+            if (!reactionsExpandedByEventId[target.eventId]) continue;
+            const reactionModel = getRelatedReactionReadModel(target.eventId);
+            for (const reactionGroup of reactionModel?.groups ?? []) {
+                if (reactionGroup.emojiUrl) urls.add(reactionGroup.emojiUrl);
             }
         }
 
@@ -1276,6 +1318,32 @@
         return !!reactionsExpandedByEventId[post.eventId];
     }
 
+    function isReactionExpandedByEventId(eventId: string): boolean {
+        return !!reactionsExpandedByEventId[eventId];
+    }
+
+    function toggleReactionsByEventId(eventId: string): void {
+        reactionsExpandedByEventId = {
+            ...reactionsExpandedByEventId,
+            [eventId]: !reactionsExpandedByEventId[eventId],
+        };
+    }
+
+    function getRelatedReactionReadModel(eventId: string) {
+        const relatedModel = relatedReactions.getReadModel(eventId);
+        if (relatedModel) return relatedModel;
+        const ownerPost = history.posts.find((post) => post.eventId === eventId);
+        return ownerPost ? postHistoryThreadGraph.getAnchorState(ownerPost).reactionReadModel : null;
+    }
+
+    function getRelatedReactionLabel(eventId: string): string {
+        const model = getRelatedReactionReadModel(eventId);
+        return translateDialogMessage(resolvePostHistoryReactionsActionLabelState({
+            visible: isReactionExpandedByEventId(eventId),
+            reactionCount: model?.totalCount ?? 0,
+        })) ?? "";
+    }
+
     function getReactionsActionLabel(post: PostHistoryRecord): string {
         const reactionCount =
             postHistoryThreadGraph.getAnchorState(post).reactionSummary
@@ -1303,10 +1371,7 @@
     }
 
     function toggleReactions(post: PostHistoryRecord): void {
-        reactionsExpandedByEventId = {
-            ...reactionsExpandedByEventId,
-            [post.eventId]: !reactionsExpandedByEventId[post.eventId],
-        };
+        toggleReactionsByEventId(post.eventId);
     }
 
     function handleRepliesAction(post: PostHistoryRecord): void {
@@ -2713,7 +2778,27 @@
                                                                     onQuotePost={onQuotePost
                                                                         ? handleQuotePost
                                                                         : undefined}
-                                                                />
+                                                                >
+                                                                    {#snippet reactionExtras()}
+                                                                        {@const reactionModel = getRelatedReactionReadModel(quotePreview.event.id)}
+                                                                        {#if reactionModel && reactionModel.totalCount > 0}
+                                                                            <PostHistoryReactionActionButton
+                                                                                count={reactionModel.totalCount}
+                                                                                expanded={isReactionExpandedByEventId(quotePreview.event.id)}
+                                                                                ariaLabel={getRelatedReactionLabel(quotePreview.event.id)}
+                                                                                onToggle={() => toggleReactionsByEventId(quotePreview.event.id)}
+                                                                            />
+                                                                        {/if}
+                                                                    {/snippet}
+                                                                </PostHistoryPostActions>
+                                                            {/if}
+                                                        {/snippet}
+                                                        {#snippet footerDetails()}
+                                                            {#if quotePreview.status === "resolved"}
+                                                                {@const reactionModel = getRelatedReactionReadModel(quotePreview.event.id)}
+                                                                {#if reactionModel && reactionModel.totalCount > 0 && isReactionExpandedByEventId(quotePreview.event.id)}
+                                                                    <PostHistoryReactionDetails readModel={reactionModel} emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl} emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} />
+                                                                {/if}
                                                             {/if}
                                                         {/snippet}
                                                         {#snippet footerMenu()}
@@ -2840,34 +2925,12 @@
                                                     {/snippet}
                                                     {#snippet reactionExtras()}
                                                         {#if graphState.reactionSummary.totalCount > 0}
-                                                            <PostPreviewFooterActionButton
-                                                                type="button"
-                                                                className="post-preview-reactions-button"
-                                                                ariaLabel={getReactionsActionLabel(
-                                                                    post,
-                                                                )}
-                                                                shape="pill"
-                                                                selected={isReactionsExpanded(
-                                                                    post,
-                                                                )}
-                                                                onClick={() =>
-                                                                    toggleReactions(
-                                                                        post,
-                                                                    )}
-                                                                tooltipContent={getReactionsActionLabel(
-                                                                    post,
-                                                                )}
-                                                            >
-                                                                <div
-                                                                    class="favorite-icon svg-icon"
-                                                                    aria-hidden="true"
-                                                                ></div>
-                                                                <span>
-                                                                    {graphState
-                                                                        .reactionSummary
-                                                                        .totalCount}
-                                                                </span>
-                                                            </PostPreviewFooterActionButton>
+                                                            <PostHistoryReactionActionButton
+                                                                count={graphState.reactionSummary.totalCount}
+                                                                expanded={isReactionsExpanded(post)}
+                                                                ariaLabel={getReactionsActionLabel(post)}
+                                                                onToggle={() => toggleReactions(post)}
+                                                            />
                                                         {/if}
                                                     {/snippet}
                                                 </PostHistoryPostActions>
@@ -3006,106 +3069,11 @@
                                             {/snippet}
                                         </PostHistoryPreviewFooter>
                                         {#if graphState.reactionSummary.totalCount > 0 && isReactionsExpanded(post)}
-                                            <div
-                                                class="post-preview-reactions-panel"
-                                            >
-                                                {#each getDisplayedReactionGroups(post) as reactionGroup (reactionGroup.content)}
-                                                    <div
-                                                        class="post-preview-reaction-chip"
-                                                    >
-                                                        <div
-                                                            class="post-preview-reaction-summary"
-                                                        >
-                                                            {#if isPostHistoryFavoriteReactionContent(reactionGroup.content)}
-                                                                <div
-                                                                    class="favorite-icon svg-icon post-preview-reaction-symbol"
-                                                                    aria-hidden="true"
-                                                                ></div>
-                                                            {:else if reactionGroup.emojiUrl}
-                                                                {#if hasReactionEmojiFailed(reactionGroup.emojiUrl)}
-                                                                    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-                                                                    <span
-                                                                        class="post-preview-reaction-emoji-slot post-preview-reaction-emoji-failed"
-                                                                        style={getReactionEmojiSlotStyle(
-                                                                            reactionGroup.emojiUrl,
-                                                                        )}
-                                                                        role="img"
-                                                                        tabindex="0"
-                                                                        aria-label={reactionGroup.content}
-                                                                        title={reactionGroup.content}
-                                                                    >
-                                                                        {reactionGroup.content}
-                                                                    </span>
-                                                                {:else}
-                                                                    <span
-                                                                        class="post-preview-reaction-emoji-slot"
-                                                                        style={getReactionEmojiSlotStyle(
-                                                                            reactionGroup.emojiUrl,
-                                                                        )}
-                                                                    >
-                                                                        {#if isReactionEmojiReady(reactionGroup.emojiUrl)}
-                                                                            <img
-                                                                                src={reactionGroup.emojiUrl}
-                                                                                alt={reactionGroup.content}
-                                                                                title={reactionGroup.content}
-                                                                                class="post-preview-reaction-emoji"
-                                                                                draggable="false"
-                                                                                loading="lazy"
-                                                                                decoding="async"
-                                                                            />
-                                                                        {:else}
-                                                                            <span
-                                                                                class="post-preview-reaction-emoji-placeholder"
-                                                                                aria-hidden="true"
-
-                                                                            ></span>
-                                                                        {/if}
-                                                                    </span>
-                                                                {/if}
-                                                            {:else}
-                                                                <span
-                                                                    class="post-preview-reaction-content"
-                                                                >
-                                                                    {reactionGroup.content}
-                                                                </span>
-                                                            {/if}
-                                                            <span
-                                                                class="post-preview-reaction-count"
-                                                            >
-                                                                {reactionGroup.count}
-                                                            </span>
-                                                        </div>
-                                                        <div
-                                                            class="post-preview-reaction-actors"
-                                                        >
-                                                            {#each reactionGroup.reactors as actor (actor.eventId)}
-                                                                {@const actorLabel =
-                                                                    getReactionActorLabel(
-                                                                        actor,
-                                                                    )}
-                                                                <span
-                                                                    class="post-preview-reaction-actor"
-                                                                    title={actorLabel}
-                                                                    aria-label={actorLabel}
-                                                                >
-                                                                    <ProfileAvatar
-                                                                        src={actor
-                                                                            .profile
-                                                                            ?.picture ||
-                                                                            ""}
-                                                                        alt={actorLabel}
-                                                                        rootClassName="post-preview-reaction-avatar"
-                                                                        imageClassName="post-preview-reaction-avatar-image"
-                                                                        fallbackClassName="post-preview-reaction-avatar-fallback"
-                                                                        fallbackAriaLabel={actorLabel}
-                                                                        fallbackDelayMs={0}
-                                                                    />
-                                                                </span>
-                                                            {/each}
-                                                        </div>
-                                                    </div>
-                                                {/each}
-                                            </div>
+                                            <PostHistoryReactionDetails
+                                                readModel={graphState.reactionReadModel}
+                                                emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                                                emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                                            />
                                         {/if}
                                     <PostHistoryThreadGraphPanel
                                         state={graphState}
@@ -3122,6 +3090,10 @@
                                         onQuotePost={onQuotePost
                                             ? handleQuotePost
                                             : undefined}
+                                        getReactionReadModel={getRelatedReactionReadModel}
+                                        isReactionExpanded={isReactionExpandedByEventId}
+                                        getReactionLabel={getRelatedReactionLabel}
+                                        onToggleReaction={toggleReactionsByEventId}
                                         onToggleNodeParent={(nodeEventId) =>
                                             historyViewport.preserveThreadParentToggleScroll(
                                                 post.eventId,
@@ -4152,30 +4124,6 @@
 
     }
 
-    :global(.post-preview-reactions-button) {
-        display: flex;
-        align-items: stretch;
-        gap: 4px;
-        padding: 0;
-        padding-inline: 6px;
-
-        .favorite-icon {
-            height: auto;
-            mask-image: url("/icons/favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        }
-
-        span {
-            flex: 0 0 auto;
-            height: auto;
-            line-height: 36px;
-        }
-    }
-
-    :global(.post-preview-reactions-button .svg-icon) {
-        width: 22px;
-        height: 22px;
-    }
-
     :global(
             .post-history-thread-toggle-button.selected,
             .post-preview-reactions-button.selected
@@ -4359,13 +4307,6 @@
 
     :global(.copy-icon) {
         mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-    }
-
-    .post-preview-reaction-symbol {
-        mask-image: url("/icons/favorite_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
-        background-color: rgb(249, 24, 128);
-        width: 20px;
-        height: 20px;
     }
 
     .search-icon {

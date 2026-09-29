@@ -65,6 +65,8 @@
         linkPostEventId: string;
         replyParentEventId: string;
         replyContent: string;
+        replyEventId: string;
+        grandchildEventId: string;
         threadParentPostEventId: string;
         importPostContent: string;
         importEventJsonl: string;
@@ -141,20 +143,20 @@
         };
     }
 
-    function buildReactionRecord(index: number): PostHistoryChildInteractionRecord {
+    function buildReactionRecord(index: number, targetEventId = posts[index].eventId): PostHistoryChildInteractionRecord {
         const parentPost = posts[index];
         const createdAt = parentPost.createdAt + 60;
 
         return {
             id: `playwright-reaction-${index}`,
             eventId: buildHexId(index, "bb"),
-            parentEventId: parentPost.eventId,
+            parentEventId: targetEventId,
             authorPubkey: buildHexId(index, "cc"),
             kind: 7,
             content: "+",
             tags: [
                 ["p", HARNESS_PUBKEY],
-                ["e", parentPost.eventId],
+                ["e", targetEventId],
             ],
             createdAt,
             relayUrls: ["wss://relay.example.com/"],
@@ -166,7 +168,7 @@
                 content: "+",
                 tags: [
                     ["p", HARNESS_PUBKEY],
-                    ["e", parentPost.eventId],
+                    ["e", targetEventId],
                 ],
                 created_at: createdAt,
                 sig: "d".repeat(128),
@@ -386,6 +388,12 @@
     const interactionRecords = [
         buildReactionRecord(0),
         buildReactionRecord(20),
+        buildReactionRecord(30, quoteEventId),
+        buildReactionRecord(31, replyEventId),
+        buildReactionRecord(32, grandchildEventId),
+        buildReactionRecord(33, replyEventId),
+        buildReactionRecord(34, grandchildEventId),
+        buildReactionRecord(35, grandchildEventId),
     ];
     const jumpDate = new Date(posts[56].postedAt).toISOString().slice(0, 10);
     const scrollTargetPost = posts[60];
@@ -421,6 +429,8 @@
         linkPostEventId: linkPost.eventId,
         replyParentEventId: linkPost.eventId,
         replyContent,
+        replyEventId,
+        grandchildEventId,
         threadParentPostEventId: threadParentPost.eventId,
         importPostContent: IMPORT_POST_CONTENT,
         importEventJsonl: IMPORT_EVENT_JSONL,
@@ -570,6 +580,8 @@
             linkPostEventId: linkPost.eventId,
             replyParentEventId: linkPost.eventId,
             replyContent,
+            replyEventId,
+            grandchildEventId,
             threadParentPostEventId: threadParentPost.eventId,
             importPostContent: IMPORT_POST_CONTENT,
             importEventJsonl: IMPORT_EVENT_JSONL,

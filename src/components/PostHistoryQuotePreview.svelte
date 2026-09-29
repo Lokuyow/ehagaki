@@ -29,6 +29,7 @@
         }) => void;
         onRetry?: (eventId: string) => void;
         footerActions?: Snippet;
+        footerDetails?: Snippet;
         footerMenu?: Snippet;
     }
 
@@ -41,6 +42,7 @@
         onImageOpen = undefined,
         onRetry = undefined,
         footerActions = undefined,
+        footerDetails = undefined,
         footerMenu = undefined,
     }: Props = $props();
 
@@ -68,6 +70,7 @@
         {scrollRoot}
         {onImageOpen}
         {footerActions}
+        {footerDetails}
         {footerMenu}
     />
 {:else}

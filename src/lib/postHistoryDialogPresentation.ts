@@ -142,7 +142,7 @@ export function isPostHistoryFavoriteReactionContent(content: string): boolean {
 export function resolvePostHistoryReactionDisplayContent(content: string): string {
     const normalized = content.trim();
     if (!normalized) {
-        return "";
+        return "+";
     }
 
     if (isCustomEmojiShortcodeText(normalized)) {

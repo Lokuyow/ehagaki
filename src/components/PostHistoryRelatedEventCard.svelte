@@ -39,6 +39,7 @@
         topActions?: Snippet;
         footerLeftExtras?: Snippet;
         footerActions?: Snippet;
+        footerDetails?: Snippet;
         footerMenu?: Snippet;
     }
 
@@ -54,6 +55,7 @@
         topActions = undefined,
         footerLeftExtras = undefined,
         footerActions = undefined,
+        footerDetails = undefined,
         footerMenu = undefined,
     }: Props = $props();
 
@@ -111,6 +113,7 @@
             actions={footerActions}
             trailing={footerMenu}
         />
+        {@render footerDetails?.()}
     </div>
 </article>
 

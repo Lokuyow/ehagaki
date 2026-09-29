@@ -115,6 +115,33 @@ type CandidateRelayPlan = {
     coverageRelayUrls: string[];
 };
 
+type CandidateTarget = {
+    eventId: string;
+    kind: number;
+    relayHints?: string[];
+    acceptedRelays?: string[];
+    fetchedRelays?: string[];
+};
+
+export interface PostHistoryRelatedReactionTarget {
+    eventId: string;
+    relayHints: string[];
+}
+
+export interface PostHistoryRelatedReactionRepairRequest {
+    targets: PostHistoryRelatedReactionTarget[];
+    relayConfig?: RelayConfig | null;
+    isActive?: () => boolean;
+}
+
+export interface PostHistoryRelatedReactionRepairTask {
+    promise: Promise<{
+        status: "success" | "partial" | "cancelled";
+        targetEventIds: string[];
+    }>;
+    cancel: () => void;
+}
+
 type CandidateFetchResult = {
     status: CandidateFetchStatus;
     items: Array<{ event: NostrEvent; relayUrls: string[] }>;
@@ -281,6 +308,95 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                 includeReactions: true,
             },
         );
+    }
+
+    repairRelatedCardReactions(
+        rxNostr: RxNostr,
+        params: PostHistoryRelatedReactionRepairRequest,
+    ): PostHistoryRelatedReactionRepairTask {
+        let active = true;
+        const candidateFetches = new Set<CandidateFetchTask>();
+        const isActive = () => active && params.isActive?.() !== false;
+        const targetsById = new Map<string, PostHistoryRelatedReactionTarget>();
+        for (const target of params.targets) {
+            if (!target.eventId) continue;
+            const current = targetsById.get(target.eventId);
+            targetsById.set(target.eventId, {
+                eventId: target.eventId,
+                relayHints: RelayConfigUtils.sanitizeExternalRelayUrls([
+                    ...(current?.relayHints ?? []),
+                    ...target.relayHints,
+                ]),
+            });
+        }
+        const targets = Array.from(targetsById.values()).slice(
+            0,
+            POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_PARENT_LIMIT,
+        );
+        const targetEventIds = targets.map((target) => target.eventId);
+        const promise = (async () => {
+            if (targets.length === 0) {
+                return { status: "success" as const, targetEventIds };
+            }
+            let partial = false;
+            const chunks: CandidateTarget[][] = [];
+            for (let index = 0; index < targets.length; index += POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CHUNK_SIZE) {
+                chunks.push(targets.slice(index, index + POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CHUNK_SIZE)
+                    .map((target) => ({
+                        eventId: target.eventId,
+                        kind: 1,
+                        relayHints: target.relayHints,
+                    })));
+            }
+            let nextIndex = 0;
+            const repairChunk = async (chunk: CandidateTarget[], depth: 0 | 1): Promise<void> => {
+                if (!isActive()) return;
+                const task = this.fetchCandidates(rxNostr, chunk, params.relayConfig, {
+                    includeDirectReplies: false,
+                    includeReactions: true,
+                });
+                candidateFetches.add(task);
+                const result = await task.promise;
+                candidateFetches.delete(task);
+                if (!isActive() || result.status === "cancelled") return;
+                const fallbackDefersCompleteness = depth === 0 && result.requiresFallback;
+                if (result.status !== "success" && !fallbackDefersCompleteness) partial = true;
+                const reactionItems = this.toReactionItems(chunk, result.items);
+                if (reactionItems.length > 0) {
+                    await this.saveReactionInteractions(reactionItems, result.fetchedAt, isActive);
+                }
+                if (result.requiresFallback) {
+                    if (depth === 0) {
+                        for (let index = 0; index < chunk.length; index += POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FALLBACK_CHUNK_SIZE) {
+                            await repairChunk(chunk.slice(index, index + POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FALLBACK_CHUNK_SIZE), 1);
+                        }
+                    } else if (result.coverageSaturated) {
+                        partial = true;
+                    }
+                }
+            };
+            const runWorker = async () => {
+                while (isActive()) {
+                    const chunk = chunks[nextIndex++];
+                    if (!chunk) return;
+                    await repairChunk(chunk, 0);
+                }
+            };
+            await Promise.all(Array.from({
+                length: Math.min(POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CONCURRENCY, chunks.length),
+            }, () => runWorker()));
+            return {
+                status: !isActive() ? "cancelled" as const : partial ? "partial" as const : "success" as const,
+                targetEventIds,
+            };
+        })();
+        return {
+            promise,
+            cancel: () => {
+                active = false;
+                candidateFetches.forEach((task) => task.cancel());
+            },
+        };
     }
 
     repairVisibleRangeRelations(
@@ -561,7 +677,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
     }
 
     private toReactionItems(
-        posts: PostHistoryRecord[],
+        posts: CandidateTarget[],
         items: Array<{ event: NostrEvent; relayUrls: string[] }>,
     ): PostHistoryVisibleRangeChildInteractionItem[] {
         const parentEventIds = new Set(posts.map((post) => post.eventId));
@@ -622,7 +738,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
 
     private fetchCandidates(
         rxNostr: RxNostr,
-        posts: PostHistoryRecord[],
+        posts: CandidateTarget[],
         relayConfig: RelayConfig | null | undefined,
         options: VisibleRangeRepairInclusionOptions,
     ): CandidateFetchTask {
@@ -846,7 +962,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         }
     }
 
-    private collectParentRelayHints(posts: PostHistoryRecord[]): string[] {
+    private collectParentRelayHints(posts: CandidateTarget[]): string[] {
         return posts.flatMap((post) => [
             ...(post.relayHints ?? []),
             ...(post.acceptedRelays ?? []),
@@ -911,7 +1027,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
     }
 
     private resolveRelayPlan(
-        posts: PostHistoryRecord[],
+        posts: CandidateTarget[],
         relayConfig: RelayConfig | null | undefined,
     ): CandidateRelayPlan {
         const contextualHints = this.collectParentRelayHints(posts);
