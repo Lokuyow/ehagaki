@@ -409,11 +409,9 @@ export class PostManager {
 
       accepted.forEach((relay) => outcomes.set(relay, {
         accepted: true,
-        ...(authRequired.has(relay) ? { authRequired: true } : {}),
       }));
       rejected.forEach((rejection, relay) => outcomes.set(relay, {
         rejected: rejection,
-        ...(authRequired.has(relay) ? { authRequired: true } : {}),
       }));
       timedOut.forEach((relay) => outcomes.set(relay, {
         timedOut: true,
@@ -426,7 +424,7 @@ export class PostManager {
 
       for (const relay of targets) {
         if (accepted.has(relay)) {
-          outcomes.set(relay, { accepted: true, ...(authRequired.has(relay) ? { authRequired: true } : {}) });
+          outcomes.set(relay, { accepted: true });
         } else if (rejected.has(relay)) {
           outcomes.set(relay, {
             rejected: rejected.get(relay)!,
@@ -470,6 +468,16 @@ export class PostManager {
     };
 
     try {
+      const recipientPubkeys = Array.from(new Set<string>(
+        (params.event?.tags ?? []).flatMap((tag: unknown) => {
+          if (!Array.isArray(tag) || tag[0] !== "p") return [];
+          const pubkey = tag[1];
+          return typeof pubkey === "string" && /^[0-9a-f]{64}$/i.test(pubkey)
+            ? [pubkey]
+            : [];
+        }),
+      ));
+
       const initialTargets = RelayConfigUtils.sanitizeExternalRelayUrls([
         ...defaultWriteRelays,
         ...additionalRelays,
@@ -478,7 +486,7 @@ export class PostManager {
       const initialWave = sender.sendEvent(params.event, {
         targetRelays: additionalRelays,
         includeDefaultWriteRelays: true,
-        waitForAllRelays: true,
+        waitForAllRelays: recipientPubkeys.length > 0,
         deadlineAt,
         authDeadlineAt,
       }).then((result) => applyWaveResult(result, initialTargets))
@@ -489,16 +497,6 @@ export class PostManager {
           }
         });
       wavePromises.push(initialWave);
-
-      const recipientPubkeys = Array.from(new Set<string>(
-        (params.event?.tags ?? []).flatMap((tag: unknown) => {
-          if (!Array.isArray(tag) || tag[0] !== "p") return [];
-          const pubkey = tag[1];
-          return typeof pubkey === "string" && /^[0-9a-f]{64}$/i.test(pubkey)
-            ? [pubkey]
-            : [];
-        }),
-      ));
 
       const lookups = recipientPubkeys.map(async (pubkey) => {
         try {

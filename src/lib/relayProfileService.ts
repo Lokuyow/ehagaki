@@ -114,6 +114,11 @@ export class RelayProfileService {
     async fetchProfile(pubkeyHex: string, forceRemote: boolean = false): Promise<ProfileData | null> {
         if (!pubkeyHex) return null;
 
+        if (!forceRemote) {
+            const cachedProfile = await profileMetadataCache.getCachedProfile(pubkeyHex);
+            if (cachedProfile) return cachedProfile;
+        }
+
         // RelayManagerからリレー情報を取得（ストレージアクセスはRelayManagerに委譲）
         const relayLists = await this.getProfileRelayLists(pubkeyHex);
         const contextualRelays = relayLists.contextualRelays ?? relayLists.additionalRelays;
@@ -141,6 +146,30 @@ export class RelayProfileService {
         } = {},
     ): Promise<ProfileData | null> {
         if (!pubkeyHex) return null;
+
+        const cachedProfile = await profileMetadataCache.getCachedProfile(pubkeyHex);
+        if (cachedProfile) {
+            void this.getProfileRelayLists(pubkeyHex).then((relayLists) => {
+                const contextualRelays = relayLists.contextualRelays ?? relayLists.additionalRelays;
+                const sanitizedOptionRelays = RelayConfigUtils.sanitizeExternalRelayUrls(options.additionalRelays, {
+                    limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
+                });
+                const mergedAdditionalRelays = sanitizedOptionRelays.length
+                    ? RelayConfigUtils.mergeRelayConfigs(sanitizedOptionRelays, contextualRelays)
+                    : contextualRelays;
+                return profileMetadataCache.getProfile(pubkeyHex, {
+                    rxNostr: this.rxNostr as never,
+                    forceRefresh: false,
+                    allowBackgroundRefresh: true,
+                    writeRelays: relayLists.writeRelays,
+                    additionalRelays: RelayConfigUtils.sanitizeExternalRelayUrls(mergedAdditionalRelays),
+                    ...(relayLists.fallbackRelays?.length
+                        ? { fallbackRelays: relayLists.fallbackRelays }
+                        : {}),
+                });
+            }).catch(() => undefined);
+            return cachedProfile;
+        }
 
         const relayLists = await this.getProfileRelayLists(pubkeyHex);
         const contextualRelays = relayLists.contextualRelays ?? relayLists.additionalRelays;
@@ -186,6 +215,34 @@ export class RelayProfileService {
         }
 
         const pubkeys = Array.from(relayHintsByPubkey.keys());
+        const cachedProfiles = await profileMetadataCache.getCachedProfiles(pubkeys);
+        if (pubkeys.every((pubkey) => cachedProfiles[pubkey])) {
+            void Promise.all(pubkeys.map(async (pubkey) => [
+                pubkey,
+                await this.getProfileRelayLists(pubkey),
+            ] as const)).then((relayListEntries) => {
+                const relayOptionsByPubkey = Object.fromEntries(relayListEntries.map(([pubkey, relayLists]) => {
+                    const contextualRelays = relayLists.contextualRelays ?? relayLists.additionalRelays;
+                    return [pubkey, {
+                        additionalRelays: RelayConfigUtils.mergeRelayConfigs(
+                            relayHintsByPubkey.get(pubkey) ?? [],
+                            contextualRelays,
+                        ),
+                        writeRelays: relayLists.writeRelays,
+                        ...(relayLists.fallbackRelays?.length
+                            ? { fallbackRelays: relayLists.fallbackRelays }
+                            : {}),
+                    }];
+                }));
+                return profileMetadataCache.getProfiles(pubkeys, {
+                    rxNostr: this.rxNostr as never,
+                    allowBackgroundRefresh: true,
+                    relayOptionsByPubkey,
+                });
+            }).catch(() => undefined);
+            return cachedProfiles;
+        }
+
         const relayListEntries = await Promise.all(pubkeys.map(async (pubkey) => [
             pubkey,
             await this.getProfileRelayLists(pubkey),

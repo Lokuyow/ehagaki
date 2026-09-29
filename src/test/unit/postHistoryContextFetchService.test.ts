@@ -56,4 +56,93 @@ describe("PostHistoryContextFetchService", () => {
             },
         });
     });
+
+    it("returns a related event from an existing hint while NIP-65 lookup is still pending", async () => {
+        const eventId = "a".repeat(64);
+        const author = "b".repeat(64);
+        const targetEvent = {
+            id: eventId,
+            pubkey: author,
+            kind: 1,
+            created_at: 1,
+            tags: [],
+            content: "related event",
+            sig: "c".repeat(128),
+        };
+        let finishLookup!: (relays: string[]) => void;
+        const lookupAuthorWriteRelaysFn = vi.fn(() => new Promise<string[]>((resolve) => {
+            finishLookup = resolve;
+        }));
+        const hintRelay = "wss://explicit-hint.example/";
+        const rxNostr = {
+            use: vi.fn((_request: unknown, options: any) => ({
+                subscribe: (observer: any) => {
+                    expect(options.on.relays).toContain(hintRelay);
+                    observer.next({ event: targetEvent, from: hintRelay });
+                    return { unsubscribe: vi.fn() };
+                },
+            })),
+        };
+        const service = new PostHistoryContextFetchService({
+            lookupAuthorWriteRelaysFn,
+            setTimeoutFn: (() => 1) as any,
+            clearTimeoutFn: vi.fn(),
+        });
+
+        const task = service.fetchEventById(rxNostr as any, {
+            eventId,
+            authorHint: author,
+            relayHints: [hintRelay],
+        });
+        await expect(task.promise).resolves.toMatchObject({
+            event: targetEvent,
+            relayUrl: hintRelay,
+        });
+        expect(rxNostr.use).toHaveBeenCalledOnce();
+        finishLookup(["wss://author-write.example/"]);
+        await Promise.resolve();
+        expect(rxNostr.use).toHaveBeenCalledOnce();
+    });
+
+    it("does not let queued author lookups delay existing hint searches for multiple authors", async () => {
+        const eventIds = Array.from({ length: 5 }, (_, index) => "e".repeat(63) + String(index + 1));
+        const hintRelay = "wss://known-hint.example/";
+        const lookups: Array<(relays: string[]) => void> = [];
+        let searchIndex = 0;
+        const rxNostr = {
+            use: vi.fn((request: unknown, options: any) => ({
+                subscribe: (observer: any) => {
+                    expect(options.on.relays).toContain(hintRelay);
+                    const queryIndex = searchIndex++;
+                    observer.next({
+                        event: {
+                            id: eventIds[queryIndex],
+                            pubkey: "f".repeat(64),
+                            kind: 1,
+                            created_at: 1,
+                            tags: [],
+                            content: "existing path",
+                            sig: "0".repeat(128),
+                        },
+                        from: hintRelay,
+                    });
+                    return { unsubscribe: vi.fn() };
+                },
+            })),
+        };
+        const service = new PostHistoryContextFetchService({
+            lookupAuthorWriteRelaysFn: vi.fn(() => new Promise<string[]>((resolve) => lookups.push(resolve))),
+            setTimeoutFn: (() => 1) as any,
+            clearTimeoutFn: vi.fn(),
+        });
+
+        const tasks = eventIds.map((eventId, index) => service.fetchEventById(rxNostr as any, {
+            eventId,
+            authorHint: String(index).repeat(64),
+            relayHints: [hintRelay],
+        }));
+        await expect(Promise.all(tasks.map((task) => task.promise))).resolves.toHaveLength(5);
+        expect(rxNostr.use).toHaveBeenCalledTimes(5);
+        expect(lookups).toHaveLength(5);
+    });
 });

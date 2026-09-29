@@ -40,6 +40,8 @@ describe('RelayProfileService', () => {
     let mockRelayManager: RelayManager;
     let mockRxNostr: ReturnType<typeof createMockRxNostr>;
     let getProfileSpy: ReturnType<typeof vi.spyOn>;
+    let getCachedProfileSpy: ReturnType<typeof vi.spyOn>;
+    let getCachedProfilesSpy: ReturnType<typeof vi.spyOn>;
     let nip65Lookup: ReturnType<typeof vi.fn> & ((pubkeyHex: string) => Promise<any>);
 
     const createProfileResult = (overrides = {}) => ({
@@ -67,6 +69,8 @@ describe('RelayProfileService', () => {
         getProfileSpy = vi.spyOn(profileMetadataCache, 'getProfile').mockResolvedValue(
             createProfileResult()
         );
+        getCachedProfileSpy = vi.spyOn(profileMetadataCache, 'getCachedProfile').mockResolvedValue(null);
+        getCachedProfilesSpy = vi.spyOn(profileMetadataCache, 'getCachedProfiles').mockResolvedValue({});
         nip65Lookup = vi.fn().mockResolvedValue({
             pubkey: 'pubkey123',
             status: 'not-found',
@@ -228,6 +232,74 @@ describe('RelayProfileService', () => {
     });
 
     describe('fetchProfileRealtime', () => {
+        it('returns a cached profile before a delayed NIP-65 lookup, then refreshes through the Write relay', async () => {
+            const cachedProfile = createProfileResult({ name: 'Cached User' });
+            let finishLookup!: (entry: any) => void;
+            getCachedProfileSpy.mockResolvedValue(cachedProfile);
+            nip65Lookup.mockImplementation(() => new Promise((resolve) => {
+                finishLookup = resolve;
+            }));
+
+            await expect(service.fetchProfileRealtime('pubkey123')).resolves.toEqual(cachedProfile);
+            expect(getProfileSpy).not.toHaveBeenCalled();
+
+            const authorWrite = 'wss://author-write.example/';
+            finishLookup({
+                pubkey: 'pubkey123',
+                status: 'found',
+                readRelays: [],
+                writeRelays: [authorWrite],
+                createdAt: 10,
+                eventId: 'a'.repeat(64),
+            });
+            await vi.waitFor(() => expect(getProfileSpy).toHaveBeenCalledWith(
+                'pubkey123',
+                expect.objectContaining({ writeRelays: [relay1Url, authorWrite] }),
+            ));
+        });
+
+        it('returns cached profiles for a batch while author route lookups are pending', async () => {
+            const pubkeys = ['pubkey-a', 'pubkey-b'];
+            const cachedProfiles = Object.fromEntries(pubkeys.map((pubkey) => [
+                pubkey,
+                createProfileResult({ name: `Cached ${pubkey}` }),
+            ]));
+            const deferredLookups: Array<(entry: any) => void> = [];
+            getCachedProfilesSpy.mockResolvedValue(cachedProfiles);
+            const getProfilesSpy = vi.spyOn(profileMetadataCache, 'getProfiles').mockResolvedValue(cachedProfiles);
+            nip65Lookup.mockImplementation(() => new Promise((resolve) => {
+                deferredLookups.push(resolve);
+            }));
+
+            await expect(service.fetchProfilesRealtime(pubkeys.map((pubkeyHex) => ({ pubkeyHex })))
+            ).resolves.toEqual(cachedProfiles);
+            expect(deferredLookups).toHaveLength(2);
+
+            deferredLookups.forEach((resolve, index) => resolve({
+                pubkey: pubkeys[index],
+                status: 'found',
+                readRelays: [],
+                writeRelays: [`wss://${pubkeys[index]}.write.example/`],
+                createdAt: 10,
+                eventId: 'b'.repeat(64),
+            }));
+            await vi.waitFor(() => expect(getProfilesSpy).toHaveBeenCalledWith(
+                pubkeys,
+                expect.objectContaining({
+                    allowBackgroundRefresh: true,
+                    relayOptionsByPubkey: expect.objectContaining({
+                        'pubkey-a': expect.objectContaining({
+                            writeRelays: [relay1Url, 'wss://pubkey-a.write.example/'],
+                        }),
+                        'pubkey-b': expect.objectContaining({
+                            writeRelays: [relay1Url, 'wss://pubkey-b.write.example/'],
+                        }),
+                    }),
+                }),
+            ));
+            getProfilesSpy.mockRestore();
+        });
+
         it('discovers the author Write relay and includes it in the kind:0 network tiers', async () => {
             const authorWrite = 'wss://author-write.example/';
             nip65Lookup.mockResolvedValue({

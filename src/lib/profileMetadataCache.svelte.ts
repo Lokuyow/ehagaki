@@ -1163,6 +1163,11 @@ async function getProfile(pubkey: string, options: GetProfileOptions = {}): Prom
     return getProfileInternal(pubkey, options, false);
 }
 
+async function getCachedProfile(pubkey: string): Promise<ProfileData | null> {
+    if (!pubkey) return null;
+    return getProfileInternal(pubkey, { allowBackgroundRefresh: false }, false);
+}
+
 async function getProfiles(
     pubkeys: string[],
     options: GetProfilesOptions = {},
@@ -1229,6 +1234,10 @@ async function getProfiles(
     return Object.fromEntries(entries);
 }
 
+async function getCachedProfiles(pubkeys: string[]): Promise<Record<string, ProfileData | null>> {
+    return getProfiles(pubkeys, { allowBackgroundRefresh: false });
+}
+
 function subscribe(pubkey: string, callback: (profile: ProfileData | null) => void): () => void {
     const current = subscribersByPubkey.get(pubkey) ?? new Set<(profile: ProfileData | null) => void>();
     current.add(callback);
@@ -1286,6 +1295,8 @@ function resetForTests(): void {
 export const profileMetadataCache = {
     getProfile,
     getProfiles,
+    getCachedProfile,
+    getCachedProfiles,
     getReactiveEntry,
     subscribe,
     subscribeProfiles,

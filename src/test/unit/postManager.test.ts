@@ -19,6 +19,7 @@ import { nip19 } from 'nostr-tools';
 import { DECOMMISSIONED_RELAYS } from '../../lib/relayLists';
 import { ReplyQuoteService } from '../../lib/replyQuoteService';
 import { activateHostRelayConfig, deactivateHostRelayConfig } from '../../lib/hostRelayRuntime';
+import { createPostStatusHandlers } from '../../lib/postComponentUtils';
 
 vi.mock('../../lib/postHistoryRawEventVerification', () => ({
     RAW_EVENT_VERIFICATION_RULE_VERSION: 1,
@@ -2610,7 +2611,7 @@ describe("NIP-65 staged post delivery", () => {
         vi.useRealTimers();
     });
 
-    function createStagedPostHarness() {
+    function createStagedPostHarness(nip65ReadRelayLookupFn?: (pubkeyHex: string) => Promise<{ readRelays: string[] }>) {
         const authorRelay = "wss://author-write.example/";
         const rxNostr = createMockRxNostr() as any;
         let directoryObserver: any;
@@ -2653,6 +2654,7 @@ describe("NIP-65 staged post delivery", () => {
         const manager = new PostManager(rxNostr, {
             authStateStore,
             console: createMockConsole(),
+            ...(nip65ReadRelayLookupFn ? { nip65ReadRelayLookupFn } : {}),
         });
         return { manager, rxNostr, authStateStore, getDirectoryObserver: () => directoryObserver };
     }
@@ -2731,6 +2733,93 @@ describe("NIP-65 staged post delivery", () => {
             fullyDelivered: true,
             delivery: { authorWrite: { status: "delivered" }, taggedUserRead: {} },
         });
+    });
+
+    it("settles an ordinary post after the legacy success settle when one of two Write relays ACKs", async () => {
+        vi.useFakeTimers();
+        const { manager, rxNostr } = createStagedPostHarness();
+        const writeRelays = [
+            "wss://author-write.example/",
+            "wss://author-write-2.example/",
+        ];
+        rxNostr.getDefaultRelays = vi.fn(() => Object.fromEntries(writeRelays.map((url) => [
+            url,
+            { url, read: true, write: true },
+        ])));
+        rxNostr.send = vi.fn((_event: unknown, _options: any) => ({
+            subscribe: (observer: any) => {
+                observer.next({ from: writeRelays[0], ok: true, done: true, eventId: "signed-event-id" });
+                return { unsubscribe: vi.fn() };
+            },
+        }));
+        let settled = false;
+        const resultPromise = (manager as any).publishNip65Event({
+            event: { ...targetEvent(), tags: [] },
+            sessionPubkey: "author-pubkey",
+        }).then((result: unknown) => {
+            settled = true;
+            return result;
+        });
+
+        await vi.advanceTimersByTimeAsync(1_499);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await expect(resultPromise).resolves.toMatchObject({
+            success: true,
+            fullyDelivered: true,
+            acceptedRelays: [writeRelays[0]],
+            timedOutRelays: [writeRelays[1]],
+        });
+    });
+
+    it("does not show partial success when AUTH challenge is followed by ACKs for every delivery class", async () => {
+        vi.useFakeTimers();
+        const recipientRelay = "wss://recipient-read.example/";
+        const { manager, rxNostr } = createStagedPostHarness(async () => ({ readRelays: [recipientRelay] }));
+        const authorRelay = "wss://author-write.example/";
+        rxNostr.send = vi.fn((_event: unknown, options: any) => ({
+            subscribe: (observer: any) => {
+                const targets = options.on?.relays ?? [authorRelay];
+                targets.forEach((relay: string) => {
+                    if (relay === authorRelay) {
+                        observer.next({
+                            from: relay,
+                            ok: false,
+                            done: false,
+                            notice: "auth-required: sign in",
+                        });
+                    }
+                    observer.next({ from: relay, ok: true, done: true, eventId: "signed-event-id" });
+                });
+                observer.complete();
+                return { unsubscribe: vi.fn() };
+            },
+        }));
+
+        const result = await (manager as any).publishNip65Event({
+            event: targetEvent(),
+            sessionPubkey: "author-pubkey",
+        });
+        const updatePostStatus = vi.fn();
+        createPostStatusHandlers({
+            updatePostStatus,
+            clearContentAfterSuccess: vi.fn(),
+        }).markSuccess(result);
+
+        expect(result).toMatchObject({
+            success: true,
+            fullyDelivered: true,
+            delivery: {
+                authorWrite: { status: "delivered" },
+                taggedUserRead: {
+                    ["a".repeat(64)]: { status: "delivered" },
+                },
+            },
+        });
+        expect(result.authRequiredRelays).toBeUndefined();
+        expect(updatePostStatus).toHaveBeenCalledWith(expect.objectContaining({
+            message: "postComponent.post_success",
+        }));
     });
 
     it("reuses an ACK when the discovered recipient role points to an already-sent URL", async () => {
