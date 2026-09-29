@@ -2583,8 +2583,12 @@
                                     scrollRoot={historyContainer}
                                     onImageOpen={handleImageOpen}
                                     buildPostRecordForNode={buildPostRecordFromNodeState}
-                                    {onReplyPost}
-                                    {onQuotePost}
+                                    onReplyPost={onReplyPost
+                                        ? handleReplyPost
+                                        : undefined}
+                                    onQuotePost={onQuotePost
+                                        ? handleQuotePost
+                                        : undefined}
                                     onToggleParent={() =>
                                         historyViewport.preserveThreadParentToggleScroll(
                                             post.eventId,
@@ -2822,18 +2826,21 @@
                                                     onQuotePost={onQuotePost
                                                         ? handleQuotePost
                                                         : undefined}
-                                                />
-                                                <div class="post-preview-footer-replies-slot">
-                                                    {#if graphState.repliesActionState.status === "loaded" && graphState.repliesActionState.replyCount > 0}
-                                                        <PostHistoryRepliesBadgeButton
-                                                            count={graphState.repliesActionState.replyCount}
-                                                            selected={graphState.repliesActionState.visible}
-                                                            ariaLabel={getRepliesActionLabel(post)}
-                                                            tooltipContent={getRepliesActionLabel(post)}
-                                                            onClick={() => handleRepliesAction(post)}
-                                                        />
-                                                    {/if}
-                                                </div>
+                                                >
+                                                    {#snippet replyExtras()}
+                                                        <div class="post-preview-footer-replies-slot">
+                                                            {#if graphState.repliesActionState.status === "loaded" && graphState.repliesActionState.replyCount > 0}
+                                                                <PostHistoryRepliesBadgeButton
+                                                                    count={graphState.repliesActionState.replyCount}
+                                                                    selected={graphState.repliesActionState.visible}
+                                                                    ariaLabel={getRepliesActionLabel(post)}
+                                                                    tooltipContent={getRepliesActionLabel(post)}
+                                                                    onClick={() => handleRepliesAction(post)}
+                                                                />
+                                                            {/if}
+                                                        </div>
+                                                    {/snippet}
+                                                </PostHistoryPostActions>
                                                 <div
                                                     class="post-preview-footer-reaction-slot"
                                                 >
@@ -3113,8 +3120,12 @@
                                         scrollRoot={historyContainer}
                                         onImageOpen={handleImageOpen}
                                         buildPostRecordForNode={buildPostRecordFromNodeState}
-                                        {onReplyPost}
-                                        {onQuotePost}
+                                        onReplyPost={onReplyPost
+                                            ? handleReplyPost
+                                            : undefined}
+                                        onQuotePost={onQuotePost
+                                            ? handleQuotePost
+                                            : undefined}
                                         onToggleNodeParent={(nodeEventId) =>
                                             historyViewport.preserveThreadParentToggleScroll(
                                                 post.eventId,

@@ -295,24 +295,31 @@
             {/snippet}
 
             {#snippet footerActions()}
-                {#if buildPostRecordForNode && (onReplyPost || onQuotePost) && state.node.event.kind !== 42}
+                {#if buildPostRecordForNode}
                     <PostHistoryPostActions
                         post={buildPostRecordForNode(state)}
-                        {onReplyPost}
-                        {onQuotePost}
-                    />
+                        onReplyPost={state.node.event.kind !== 42
+                            ? onReplyPost
+                            : undefined}
+                        onQuotePost={state.node.event.kind !== 42
+                            ? onQuotePost
+                            : undefined}
+                    >
+                        {#snippet replyExtras()}
+                            <div class="post-preview-footer-replies-slot">
+                                {#if showRepliesBadge}
+                                    <PostHistoryRepliesBadgeButton
+                                        count={state.repliesActionState.replyCount}
+                                        selected={state.repliesActionState.visible}
+                                        ariaLabel={getRepliesActionLabel()}
+                                        tooltipContent={getRepliesActionLabel()}
+                                        onClick={handleRepliesAction}
+                                    />
+                                {/if}
+                            </div>
+                        {/snippet}
+                    </PostHistoryPostActions>
                 {/if}
-                <div class="post-preview-footer-replies-slot">
-                    {#if showRepliesBadge}
-                        <PostHistoryRepliesBadgeButton
-                            count={state.repliesActionState.replyCount}
-                            selected={state.repliesActionState.visible}
-                            ariaLabel={getRepliesActionLabel()}
-                            tooltipContent={getRepliesActionLabel()}
-                            onClick={handleRepliesAction}
-                        />
-                    {/if}
-                </div>
             {/snippet}
 
             {#snippet footerMenu()}

@@ -1,5 +1,6 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
+    import type { Snippet } from "svelte";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import PostPreviewFooterActionButton from "./PostPreviewFooterActionButton.svelte";
 
@@ -9,12 +10,14 @@
             post: PostHistoryRecord,
         ) => boolean | void | Promise<boolean | void>;
         onQuotePost?: (post: PostHistoryRecord) => void;
+        replyExtras?: Snippet;
     }
 
     let {
         post,
         onReplyPost = undefined,
         onQuotePost = undefined,
+        replyExtras = undefined,
     }: Props = $props();
 </script>
 
@@ -32,6 +35,7 @@
             <div class="reply-icon svg-icon" aria-hidden="true"></div>
         </PostPreviewFooterActionButton>
     {/if}
+    {@render replyExtras?.()}
     {#if onQuotePost}
         <PostPreviewFooterActionButton
             type="button"

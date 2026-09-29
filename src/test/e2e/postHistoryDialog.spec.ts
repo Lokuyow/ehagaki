@@ -40,6 +40,7 @@ type HarnessWindow = Window & typeof globalThis & {
     __POST_HISTORY_ACTION_TARGETS__?: {
         replyEventId: string | null;
         quoteEventId: string | null;
+        replyShouldReturnFalse: boolean;
     };
     __POST_HISTORY_SCROLL_LOAD_GATE__?: {
         direction: 'older' | 'newer' | null;
@@ -624,6 +625,7 @@ async function getFooterActionPositions(page: Page, eventId: string) {
 
     return {
         repliesX: repliesActionBox!.x,
+        repliesRight: repliesActionBox!.x + repliesActionBox!.width,
         quoteX: quoteActionBox!.x,
         menuX: menuActionBox!.x,
         hasReactionButton: await reactionActionButton.count() > 0,
@@ -1631,6 +1633,8 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         expect(topReactionPositions.hasReactionButton).toBe(true);
         expect(topPlainPositions.hasReactionButton).toBe(false);
+        expect(topReactionPositions.repliesRight).toBeLessThanOrEqual(topReactionPositions.quoteX + 1);
+        expect(topPlainPositions.repliesRight).toBeLessThanOrEqual(topPlainPositions.quoteX + 1);
         expect(Math.abs(topReactionPositions.repliesX - topPlainPositions.repliesX)).toBeLessThanOrEqual(1);
         expect(Math.abs(topReactionPositions.quoteX - topPlainPositions.quoteX)).toBeLessThanOrEqual(1);
         expect(Math.abs(topReactionPositions.menuX - topPlainPositions.menuX)).toBeLessThanOrEqual(1);
@@ -1642,6 +1646,8 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         expect(scrolledReactionPositions.hasReactionButton).toBe(true);
         expect(scrolledPlainPositions.hasReactionButton).toBe(false);
+        expect(scrolledReactionPositions.repliesRight).toBeLessThanOrEqual(scrolledReactionPositions.quoteX + 1);
+        expect(scrolledPlainPositions.repliesRight).toBeLessThanOrEqual(scrolledPlainPositions.quoteX + 1);
         expect(Math.abs(scrolledReactionPositions.repliesX - scrolledPlainPositions.repliesX)).toBeLessThanOrEqual(1);
         expect(Math.abs(scrolledReactionPositions.quoteX - scrolledPlainPositions.quoteX)).toBeLessThanOrEqual(1);
         expect(Math.abs(scrolledReactionPositions.menuX - scrolledPlainPositions.menuX)).toBeLessThanOrEqual(1);
@@ -1680,6 +1686,23 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(footerBox!.height).toBeLessThanOrEqual(29);
         expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1);
         expect(width.scrollWidth).toBeLessThanOrEqual(width.clientWidth + 1);
+
+        const replyButton = footer.getByRole('button', { name: 'リプライ' });
+        const quoteButton = footer.getByRole('button', { name: '引用' });
+        const [replyBox, quoteBox] = await Promise.all([
+            replyButton.boundingBox(),
+            quoteButton.boundingBox(),
+        ]);
+        expect(replyBox).not.toBeNull();
+        expect(quoteBox).not.toBeNull();
+        expect(replyBox!.x + replyBox!.width).toBeLessThanOrEqual(quoteBox!.x + 1);
+        expect(quoteBox!.x + quoteBox!.width).toBeLessThanOrEqual(menuBox!.x + 1);
+        await page.evaluate(() => {
+            (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__!
+                .replyShouldReturnFalse = true;
+        });
+        await replyButton.click();
+        await quoteButton.click();
     });
 
     test('post preview footer tooltips show the user-facing labels and close on menu open', async ({ page }) => {
@@ -2092,68 +2115,122 @@ test.describe('PostHistoryDialog Playwright', () => {
 });
 
 test('shared reply and quote actions use the event on each card', async ({ page }) => {
+    test.setTimeout(120_000);
     const harness = await gotoHarness(page);
     const readActionTargets = () => page.evaluate(() =>
         (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__,
     );
-    const resetHarness = async () => {
-        await page.goto('post-history-dialog-playwright.html');
-        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+    const setReplyShouldReturnFalse = async (value: boolean) => {
+        await page.evaluate((replyShouldReturnFalse) => {
+            (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__!
+                .replyShouldReturnFalse = replyShouldReturnFalse;
+        }, value);
+    };
+    const runAndReopen = async (
+        button: ReturnType<Page['getByRole']>,
+        action: 'replyEventId' | 'quoteEventId',
+        expectedEventId: string,
+    ) => {
+        await button.click();
+        await expect.poll(async () => (await readActionTargets())?.[action])
+            .toBe(expectedEventId);
+        await expect(page.getByTestId('post-history-reopen')).toBeVisible();
+        await page.getByTestId('post-history-reopen').click();
+        await expect(page.getByRole('dialog', { name: '投稿履歴' })).toBeVisible();
     };
 
     const plainItem = page.locator(
         `.post-history-item[data-post-history-event-id="${harness.plainPostEventId}"]`,
     );
+    await setReplyShouldReturnFalse(true);
     await plainItem.getByRole('button', { name: 'リプライ' }).click();
     await expect.poll(async () => (await readActionTargets())?.replyEventId)
         .toBe(harness.plainPostEventId);
+    await expect(page.getByRole('dialog', { name: '投稿履歴' })).toBeVisible();
+    await setReplyShouldReturnFalse(false);
     await plainItem.getByRole('button', { name: '引用' }).click();
     await expect.poll(async () => (await readActionTargets())?.quoteEventId)
         .toBe(harness.plainPostEventId);
-    await resetHarness();
+    await expect(page.getByTestId('post-history-reopen')).toBeVisible();
+    await page.getByTestId('post-history-reopen').click();
 
     const quoteHost = page.locator(
         `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
     );
-    const quoteCard = quoteHost.locator('.post-history-related-card')
+    const quoteCard = () => quoteHost.locator('.post-history-related-card')
         .filter({ hasText: harness.quoteContent });
-    await quoteCard.getByRole('button', { name: 'リプライ' }).click();
-    await expect.poll(async () => (await readActionTargets())?.replyEventId)
-        .toBe(harness.quoteEventId);
-    await quoteCard.getByRole('button', { name: '引用' }).click();
-    await expect.poll(async () => (await readActionTargets())?.quoteEventId)
-        .toBe(harness.quoteEventId);
-    await resetHarness();
+    await runAndReopen(
+        quoteCard().getByRole('button', { name: 'リプライ' }),
+        'replyEventId',
+        harness.quoteEventId,
+    );
+    await runAndReopen(
+        quoteCard().getByRole('button', { name: '引用' }),
+        'quoteEventId',
+        harness.quoteEventId,
+    );
 
     const threadHost = page.locator(
         `.post-history-item[data-post-history-event-id="${harness.threadParentPostEventId}"]`,
     );
-    await threadHost.getByRole('button', { name: '返信先を見る' }).click();
-    const parentCard = threadHost.locator('.post-history-related-card')
+    const parentCard = () => threadHost.locator('.post-history-related-card')
         .filter({ hasText: harness.quoteContent });
-    await parentCard.getByRole('button', { name: 'リプライ' }).click();
-    await expect.poll(async () => (await readActionTargets())?.replyEventId)
-        .toBe(harness.quoteEventId);
-    await parentCard.getByRole('button', { name: '引用' }).click();
-    await expect.poll(async () => (await readActionTargets())?.quoteEventId)
-        .toBe(harness.quoteEventId);
-    await resetHarness();
+    const showParent = async () => {
+        await threadHost.getByRole('button', { name: '返信先を見る' }).click();
+        await expect(parentCard()).toBeVisible();
+    };
+    await showParent();
+    await runAndReopen(
+        parentCard().getByRole('button', { name: 'リプライ' }),
+        'replyEventId',
+        harness.quoteEventId,
+    );
+    await showParent();
+    await runAndReopen(
+        parentCard().getByRole('button', { name: '引用' }),
+        'quoteEventId',
+        harness.quoteEventId,
+    );
 
     const replyHost = page.locator(
         `.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"]`,
     );
-    await replyHost.getByRole('button', { name: /返信 1件を表示/ }).click();
-    const replyCard = replyHost.locator('.post-history-related-card')
+    const replyCard = () => replyHost.locator('.post-history-related-card')
         .filter({ hasText: harness.replyContent });
-    await replyCard.getByRole('button', { name: 'リプライ' }).click();
-    await expect.poll(async () => (await readActionTargets())?.replyEventId)
-        .toBe('7'.repeat(64));
-    await replyCard.getByRole('button', { name: /返信 1件を表示/ }).click();
-    const grandchildCard = replyHost.locator('.post-history-related-card')
+    const showChildren = async () => {
+        await replyHost.getByRole('button', { name: /返信 1件を表示/ }).click();
+        await expect(replyCard()).toBeVisible();
+    };
+    await showChildren();
+    await runAndReopen(
+        replyCard().getByRole('button', { name: 'リプライ' }),
+        'replyEventId',
+        '7'.repeat(64),
+    );
+    await showChildren();
+    await runAndReopen(
+        replyCard().getByRole('button', { name: '引用' }),
+        'quoteEventId',
+        '7'.repeat(64),
+    );
+
+    const grandchildCard = () => replyHost.locator('.post-history-related-card')
         .filter({ hasText: 'playwright nested reply' });
-    await expect(grandchildCard.getByRole('button', { name: 'リプライ' })).toBeVisible();
-    await expect(grandchildCard.getByRole('button', { name: '引用' })).toBeVisible();
-    await grandchildCard.getByRole('button', { name: '引用' }).click();
-    await expect.poll(async () => (await readActionTargets())?.quoteEventId)
-        .toBe('8'.repeat(64));
+    const showGrandchild = async () => {
+        await showChildren();
+        await replyCard().getByRole('button', { name: /返信 1件を表示/ }).click();
+        await expect(grandchildCard()).toBeVisible();
+    };
+    await showGrandchild();
+    await runAndReopen(
+        grandchildCard().getByRole('button', { name: 'リプライ' }),
+        'replyEventId',
+        '8'.repeat(64),
+    );
+    await showGrandchild();
+    await runAndReopen(
+        grandchildCard().getByRole('button', { name: '引用' }),
+        'quoteEventId',
+        '8'.repeat(64),
+    );
 });

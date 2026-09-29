@@ -87,6 +87,7 @@
             __POST_HISTORY_ACTION_TARGETS__?: {
                 replyEventId: string | null;
                 quoteEventId: string | null;
+                replyShouldReturnFalse: boolean;
             };
             __POST_HISTORY_SCROLL_LOAD_GATE__?: {
                 direction: "older" | "newer" | null;
@@ -438,6 +439,7 @@
     (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__ = {
         replyEventId: null,
         quoteEventId: null,
+        replyShouldReturnFalse: false,
     };
 
     onMount(async () => {
@@ -605,7 +607,10 @@
                 onReplyPost={(post) => {
                     (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__!.replyEventId =
                         post.eventId;
-                    return false;
+                    return (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__!
+                        .replyShouldReturnFalse
+                        ? false
+                        : true;
                 }}
                 onQuotePost={(post) => {
                     (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__!.quoteEventId =
