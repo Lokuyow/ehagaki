@@ -402,10 +402,31 @@ test.describe("composer target dialog fixture", () => {
         await expect(page.locator(".post-history-video-card")).toHaveCount(1);
         await expect(page.locator("video[autoplay]")).toHaveCount(0);
 
+        const toggleRow = page.locator(".post-preview-toggle-row");
+        const assertToggleRemainsBetweenTextAndMedia = async () => {
+            const placement = await toggleRow.evaluate((element) => ({
+                position: getComputedStyle(element).position,
+                previousClass: element.previousElementSibling?.className ?? "",
+                nextClass: element.nextElementSibling?.className ?? "",
+                bottom: element.getBoundingClientRect().bottom,
+                mediaTop: element.nextElementSibling?.getBoundingClientRect().top ?? 0,
+            }));
+            expect(placement.position).toBe("static");
+            expect(placement.previousClass).toContain("post-preview-content");
+            expect(placement.nextClass).toContain("post-preview-media");
+            expect(placement.bottom).toBeLessThanOrEqual(placement.mediaTop + 1);
+        };
+        const expandButton = page.getByRole("button", { name: "もっと見る" });
+        await expect(expandButton).toBeVisible();
+        await assertToggleRemainsBetweenTextAndMedia();
         const overflow = await page.locator(".target-preview").evaluate(
             (element) => element.scrollWidth - element.clientWidth,
         );
         expect(overflow).toBeLessThanOrEqual(1);
+        await expandButton.click();
+        const collapseButton = page.getByRole("button", { name: "折りたたむ" });
+        await expect(collapseButton).toHaveAttribute("aria-expanded", "true");
+        await assertToggleRemainsBetweenTextAndMedia();
     });
 
     test("画像ビューアーをEscapeと戻るで閉じ、起点へフォーカスを戻す", async ({
@@ -460,6 +481,17 @@ test.describe("composer target dialog fixture", () => {
         const previewContent = page.locator(".event-content");
         const expandButton = page.getByRole("button", { name: "もっと見る" });
         await expect(expandButton).toBeVisible();
+        const toggleRow = page.locator(".post-preview-toggle-row");
+        const readTogglePlacement = () => toggleRow.evaluate((element) => ({
+            position: getComputedStyle(element).position,
+            rowTop: element.getBoundingClientRect().top,
+            textBottom: element.parentElement
+                ?.querySelector(".event-content")
+                ?.getBoundingClientRect().bottom ?? 0,
+        }));
+        const collapsedPlacement = await readTogglePlacement();
+        expect(collapsedPlacement.position).toBe("static");
+        expect(collapsedPlacement.rowTop).toBeGreaterThanOrEqual(collapsedPlacement.textBottom - 1);
         await expect(expandButton).toHaveAttribute("aria-expanded", "false");
         const controlledId = await expandButton.getAttribute("aria-controls");
         expect(controlledId).toBeTruthy();
@@ -489,6 +521,9 @@ test.describe("composer target dialog fixture", () => {
         const collapseButton = page.getByRole("button", {
             name: "折りたたむ",
         });
+        const expandedPlacement = await readTogglePlacement();
+        expect(expandedPlacement.position).toBe("static");
+        expect(expandedPlacement.rowTop).toBeGreaterThanOrEqual(expandedPlacement.textBottom - 1);
         await expect(collapseButton).toHaveAttribute("aria-expanded", "true");
         await expect(previewContent).not.toHaveCSS("overflow", "hidden");
         await expect

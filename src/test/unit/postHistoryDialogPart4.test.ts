@@ -396,7 +396,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getAllByText('削除リクエスト済み')).toHaveLength(2);
+            expect(screen.getAllByText('削除リクエスト済み')).toHaveLength(1);
         });
 
         expect(screen.queryByRole('menuitem', { name: '削除' })).toBeNull();

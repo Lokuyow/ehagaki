@@ -21,6 +21,7 @@
     const HARNESS_PUBKEY = getPublicKey(HARNESS_SECRET_KEY);
     const isInfiniteScrollScenario = new URLSearchParams(window.location.search).has("infinite-scroll");
     const isLongPreviewScenario = new URLSearchParams(window.location.search).has("long-preview");
+    const isLayoutStabilityScenario = new URLSearchParams(window.location.search).has("layout-stability");
     const isSparseOldestScenario = new URLSearchParams(window.location.search).has("sparse-oldest");
     const TOTAL_POSTS = isInfiniteScrollScenario
         ? 251
@@ -72,6 +73,11 @@
         absoluteOldestPostContent: string;
         infiniteScrollEventIds: string[];
         infiniteScrollOldestPostContent: string;
+        layoutStabilityPostEventId: string;
+        layoutImageUrl: string;
+        layoutVideoUrl: string;
+        layoutEmojiSuccessUrl: string;
+        layoutEmojiFailureUrl: string;
     };
 
     type HarnessWindow = Window &
@@ -79,6 +85,10 @@
             __POST_HISTORY_HARNESS__?: HarnessState;
             __POST_HISTORY_SCROLL_LOAD_GATE__?: {
                 direction: "older" | "newer" | null;
+                entered: boolean;
+                release: (() => void) | null;
+            };
+            __POST_HISTORY_INTERACTION_LOAD_GATE__?: {
                 entered: boolean;
                 release: (() => void) | null;
             };
@@ -165,8 +175,27 @@
         { length: 14 },
         (_, index) => `long preview line ${index + 1}`,
     ).join("\n");
+    const layoutImageUrl = new URL("layout-stable-image.png", window.location.href).href;
+    const layoutVideoUrl = new URL("layout-stable-video.mp4", window.location.href).href;
+    const layoutEmojiSuccessUrl = new URL("layout-stable-emoji.png", window.location.href).href;
+    const layoutEmojiFailureUrl = new URL("layout-failed-emoji.png", window.location.href).href;
     const posts = Array.from({ length: TOTAL_POSTS }, (_, index) => {
         const post = buildPost(index);
+        if (isLayoutStabilityScenario && index === 0) {
+            return {
+                ...post,
+                content: "Content before :stable_ratio: and :stable_failure: content after.",
+                deletedAt: post.createdAt,
+                tags: [
+                    ["emoji", "stable_ratio", layoutEmojiSuccessUrl],
+                    ["emoji", "stable_failure", layoutEmojiFailureUrl],
+                ],
+                media: [
+                    { url: layoutImageUrl, mimeType: "image/png" },
+                    { url: layoutVideoUrl, mimeType: "video/mp4" },
+                ],
+            };
+        }
         return isInfiniteScrollScenario
             && isLongPreviewScenario
             && (index === 70 || index === 150)
@@ -262,10 +291,14 @@
         updatedAt: quoteParentPost.postedAt,
         schemaVersion: 2,
     };
-    quoteParentPost.tags = [
-        ["q", quoteEventId, "wss://relay.example.com/", quoteRecord.pubkeyHex],
-        ["q", loadingQuoteEventId, "wss://relay.example.com/", "d".repeat(64)],
-    ];
+    // Keep this probe focused on fixed-size content; unresolved quote height is
+    // the documented exception and has its own existing UI coverage.
+    quoteParentPost.tags = isLayoutStabilityScenario
+        ? []
+        : [
+              ["q", quoteEventId, "wss://relay.example.com/", quoteRecord.pubkeyHex],
+              ["q", loadingQuoteEventId, "wss://relay.example.com/", "d".repeat(64)],
+          ];
     quoteParentPost.rawEvent = {
         id: quoteParentPost.eventId,
         pubkey: HARNESS_PUBKEY,
@@ -276,10 +309,12 @@
         sig: "b".repeat(128),
     };
     const threadParentPost = posts[3];
-    threadParentPost.tags = [
-        ["e", quoteEventId, "", "reply"],
-        ["p", quoteRecord.pubkeyHex],
-    ];
+    threadParentPost.tags = isLayoutStabilityScenario
+        ? []
+        : [
+              ["e", quoteEventId, "", "reply"],
+              ["p", quoteRecord.pubkeyHex],
+          ];
     threadParentPost.rawEvent = {
         id: threadParentPost.eventId,
         pubkey: HARNESS_PUBKEY,
@@ -368,6 +403,11 @@
         absoluteOldestPostContent: absoluteOldestPost.content,
         infiniteScrollEventIds: posts.map((post) => post.eventId),
         infiniteScrollOldestPostContent: absoluteOldestPost.content,
+        layoutStabilityPostEventId: posts[0].eventId,
+        layoutImageUrl,
+        layoutVideoUrl,
+        layoutEmojiSuccessUrl,
+        layoutEmojiFailureUrl,
     };
 
     onMount(async () => {
@@ -445,6 +485,28 @@
             fetchedAt: replyRecord.fetchedAt,
         });
 
+        const interactionLoadGate = {
+            entered: false,
+            release: null as (() => void) | null,
+        };
+        harnessWindow.__POST_HISTORY_INTERACTION_LOAD_GATE__ = interactionLoadGate;
+        const originalGetChildInteractionsForParents =
+            postHistoryChildInteractionsRepository.getChildInteractionsForParents.bind(
+                postHistoryChildInteractionsRepository,
+            );
+        postHistoryChildInteractionsRepository.getChildInteractionsForParents = async (
+            parentEventIds,
+        ) => {
+            if (isLayoutStabilityScenario && !interactionLoadGate.entered) {
+                interactionLoadGate.entered = true;
+                await new Promise<void>((resolve) => {
+                    interactionLoadGate.release = resolve;
+                });
+                interactionLoadGate.release = null;
+            }
+            return originalGetChildInteractionsForParents(parentEventIds);
+        };
+
         ready = true;
         (window as HarnessWindow).__POST_HISTORY_HARNESS__ = {
             ready: true,
@@ -474,6 +536,11 @@
             absoluteOldestPostContent: absoluteOldestPost.content,
             infiniteScrollEventIds: posts.map((post) => post.eventId),
             infiniteScrollOldestPostContent: absoluteOldestPost.content,
+            layoutStabilityPostEventId: posts[0].eventId,
+            layoutImageUrl,
+            layoutVideoUrl,
+            layoutEmojiSuccessUrl,
+            layoutEmojiFailureUrl,
         };
     });
 </script>

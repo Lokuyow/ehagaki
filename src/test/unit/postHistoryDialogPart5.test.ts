@@ -111,7 +111,7 @@ describe('PostHistoryDialog', () => {
                 post: expect.objectContaining({ eventId: 'delete-target' }),
                 rxNostr: {},
             });
-            expect(screen.getAllByText('削除リクエスト済み')).toHaveLength(2);
+            expect(screen.getAllByText('削除リクエスト済み')).toHaveLength(1);
         });
     });
 
@@ -141,7 +141,7 @@ describe('PostHistoryDialog', () => {
         await fireEvent.click(await screen.findByRole('button', { name: '送信' }));
 
         await waitFor(() => {
-            expect(screen.getAllByText('削除リクエストの送信に失敗しました')).toHaveLength(2);
+            expect(screen.getAllByText('削除リクエストの送信に失敗しました')).toHaveLength(1);
         });
     });
 

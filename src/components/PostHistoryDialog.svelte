@@ -2655,6 +2655,7 @@
                                         >
                                             {#snippet textOverlay()}
                                                 <PostPreviewToggleButton
+                                                    placement="overlay"
                                                     visible={previewCollapse.shouldCollapsePost(
                                                         post,
                                                     )}
@@ -3133,20 +3134,6 @@
                                                 {/each}
                                             </div>
                                         {/if}
-                                {#if post.deletedAt || hasDeletionFailed(post)}
-                                    <div class="post-meta">
-                                        {#if post.deletedAt}
-                                            <span class="deleted-badge">
-                                                {$_("postHistory.deletedBadge")}
-                                            </span>
-                                        {/if}
-                                        {#if hasDeletionFailed(post)}
-                                            <span class="delete-failed">
-                                                {$_("postHistory.deleteFailed")}
-                                            </span>
-                                        {/if}
-                                    </div>
-                                {/if}
                                     <PostHistoryThreadGraphPanel
                                         state={graphState}
                                         section="children"
@@ -4355,16 +4342,6 @@
         display: flex;
         align-items: center;
         gap: 6px;
-    }
-
-    .post-meta {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-        gap: 6px 10px;
-        color: var(--text-muted);
-        font-size: 0.82rem;
-        line-height: 1.3;
     }
 
     .deleted-badge {
