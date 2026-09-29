@@ -120,6 +120,7 @@
 <style>
     .post-history-related-card {
         display: grid;
+        margin-inline-start: -2px;
         --post-history-related-card-bg: color-mix(
             in srgb,
             var(--dialog-bg),
@@ -130,13 +131,16 @@
         background: var(--post-history-related-card-bg);
         color: var(--text);
         font-size: 0.9rem;
-        padding-inline-start: 2px;
     }
 
     .post-history-related-card-body {
         display: grid;
         gap: 2px;
         padding: 2px 10px 0 8px;
+    }
+
+    :global(.post-history-related-card .post-preview-footer) {
+        margin-inline: -8px -10px;
     }
 
     .post-history-related-author {

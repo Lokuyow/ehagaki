@@ -17,7 +17,6 @@
         formatPostedAt,
         formatPostedAtExact,
     } from "../lib/postHistoryDialogUtils";
-    import { resolvePostHistoryThreadContextIndentRem } from "../lib/postHistoryThreadGraphUtils";
     import type { PostHistoryThreadGraphNodeState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import type {
@@ -125,9 +124,6 @@
     let postedAtExact = $derived(
         formatPostedAtExact(state.node.event.created_at * 1000),
     );
-    let contextIndent = $derived(
-        `${resolvePostHistoryThreadContextIndentRem(state.depthFromAnchor)}rem`,
-    );
     let showRepliesBadge = $derived(
         state.repliesActionState.status === "loaded" &&
             state.repliesActionState.replyCount > 0,
@@ -209,7 +205,6 @@
 
 <div
     class="post-history-thread-node-view"
-    style={`--thread-context-indent: ${contextIndent}`}
 >
     {#if state.parentTargetId}
         <div class="post-history-thread-node-parent">
@@ -471,14 +466,7 @@
 
     .post-history-thread-node-anchor {
         display: grid;
-        margin-inline-start: var(--thread-context-indent);
-    }
-
-    .post-history-thread-node-view :global(
-            .post-preview-action-buttons-group
-        ) {
-        position: relative;
-        flex: 0 0 calc(100% - var(--thread-context-indent));
+        min-width: 0;
     }
 
     .post-history-thread-node-children {

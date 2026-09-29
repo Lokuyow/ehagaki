@@ -27,18 +27,16 @@
     }
 
     :global(.post-preview-reactions-button .favorite-icon) {
-        height: auto;
         mask-image: url("/icons/favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.post-preview-reactions-button span) {
         flex: 0 0 auto;
-        height: auto;
-        line-height: 36px;
+        line-height: 20px;
     }
 
     :global(.post-preview-reactions-button .svg-icon) {
-        width: 22px;
-        height: 22px;
+        width: var(--post-history-preview-action-icon-size, 20px);
+        height: var(--post-history-preview-action-icon-size, 20px);
     }
 </style>

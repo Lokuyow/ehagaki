@@ -4128,6 +4128,7 @@
             display: flex;
             flex-direction: column;
             gap: 4px;
+            margin-inline-start: -1rem;
         }
 
     }
