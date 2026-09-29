@@ -384,10 +384,13 @@ function startPostPositionFrameSampling(
                 throw new Error('Visible post anchor disappeared during frame sampling');
             }
             const samples: Array<{
+                timestamp: number;
                 itemTop: number;
                 relativeTop: number;
                 containerTop: number;
                 clientHeight: number;
+                scrollTop: number;
+                scrollHeight: number;
                 headingHeight: number;
                 monthLabel: string | null;
                 topSlotHeight: number;
@@ -413,10 +416,13 @@ function startPostPositionFrameSampling(
                     '.post-history-auto-load-slot',
                 );
                 return {
+                    timestamp: performance.now(),
                     itemTop: itemRect.top,
                     relativeTop: itemRect.top - containerRect.top,
                     containerTop: containerRect.top,
                     clientHeight: container.clientHeight,
+                    scrollTop: container.scrollTop,
+                    scrollHeight: container.scrollHeight,
                     headingHeight: headingRect?.height ?? 0,
                     monthLabel: document.querySelector(
                         '.post-history-current-month',
@@ -1041,6 +1047,8 @@ test.describe('PostHistoryDialog Playwright', () => {
         await frameSampling.stop();
         const frameSamples = await frameSampling.samples;
         expectPostPositionStableAcrossFrames(frameSamples, userSelectedAnchor!);
+        expect(frameSamples.every((sample) => Number.isFinite(sample.scrollTop))).toBe(true);
+        expect(frameSamples.every((sample) => Number.isFinite(sample.scrollHeight))).toBe(true);
 
         await expect.poll(() => historyEventIds(page)).toEqual(windowBeforeDeferredLoad);
         const retainedUserAnchor = await getPostSnapshotByEventId(
@@ -1100,6 +1108,8 @@ test.describe('PostHistoryDialog Playwright', () => {
         await frameSampling.stop();
         const frameSamples = await frameSampling.samples;
         expectPostPositionStableAcrossFrames(frameSamples, userSelectedAnchor!);
+        expect(frameSamples.every((sample) => Number.isFinite(sample.scrollTop))).toBe(true);
+        expect(frameSamples.every((sample) => Number.isFinite(sample.scrollHeight))).toBe(true);
 
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(101));
         const retainedUserAnchor = await getPostSnapshotByEventId(

@@ -34,6 +34,19 @@ const HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX = 1;
 const HISTORY_SCROLL_BOTTOM_TOLERANCE_PX = 2;
 const HISTORY_MONTH_LABEL_OFFSET_PX = 12;
 
+export function canRestoreAutoLoadWindowScroll(
+    direction: "older" | "newer",
+    scrollTop: number,
+    remainingScrollDistance: number,
+    removedContentExtent: number,
+): boolean {
+    const availableDistance = direction === "older"
+        ? scrollTop
+        : remainingScrollDistance;
+    return availableDistance + HISTORY_SCROLL_BOTTOM_TOLERANCE_PX
+        >= removedContentExtent;
+}
+
 function buildSessionScrollRestoreKey(
     state: PostHistoryDialogScrollState,
 ): string {
@@ -384,6 +397,89 @@ export function usePostHistoryDialogViewport({
         return true;
     }
 
+    function canCommitAutoLoadWindowChange(
+        direction: "older" | "newer",
+        currentPosts: ViewportPost[],
+        nextPosts: ViewportPost[],
+    ): boolean {
+        const container = getContainer();
+        if (!container || currentPosts.length === 0) {
+            return false;
+        }
+
+        const nextEventIds = new Set(nextPosts.map((post) => post.eventId));
+        const elementsByEventId = new Map(
+            Array.from(
+                container.querySelectorAll<HTMLElement>(".post-history-item"),
+                (element) => [element.dataset.postHistoryEventId, element] as const,
+            ),
+        );
+        const currentElements = currentPosts.map((post) => ({
+            post,
+            element: elementsByEventId.get(post.eventId) ?? null,
+        }));
+        if (currentElements.some(({ element }) => !element)) {
+            return false;
+        }
+
+        if (direction === "older") {
+            const firstRetained = currentElements.find(
+                ({ post }) => nextEventIds.has(post.eventId),
+            );
+            if (!firstRetained?.element) {
+                return false;
+            }
+
+            if (firstRetained.post.eventId === currentPosts[0]?.eventId) {
+                return true;
+            }
+
+            const firstRect = currentElements[0]?.element?.getBoundingClientRect();
+            const retainedRect = firstRetained.element.getBoundingClientRect();
+            if (!firstRect || !retainedRect) {
+                return false;
+            }
+
+            const removedTopExtent = retainedRect.top - firstRect.top;
+            return canRestoreAutoLoadWindowScroll(
+                "older",
+                container.scrollTop,
+                0,
+                removedTopExtent,
+            );
+        }
+
+        let lastRetainedIndex = -1;
+        for (let index = 0; index < currentElements.length; index += 1) {
+            const entry = currentElements[index];
+            if (entry && nextEventIds.has(entry.post.eventId)) {
+                lastRetainedIndex = index;
+            }
+        }
+        if (lastRetainedIndex < 0 || lastRetainedIndex === currentElements.length - 1) {
+            return lastRetainedIndex >= 0;
+        }
+
+        const retainedElement = currentElements[lastRetainedIndex]?.element;
+        const lastRemovedElement = currentElements.at(-1)?.element;
+        if (!retainedElement || !lastRemovedElement) {
+            return false;
+        }
+
+        const retainedRect = retainedElement.getBoundingClientRect();
+        const removedRect = lastRemovedElement.getBoundingClientRect();
+        const removedBottomExtent = removedRect.bottom - retainedRect.bottom;
+        const remainingScrollDistance =
+            container.scrollHeight - container.clientHeight - container.scrollTop;
+
+        return canRestoreAutoLoadWindowScroll(
+            "newer",
+            0,
+            remainingScrollDistance,
+            removedBottomExtent,
+        );
+    }
+
     function findThreadScrollAnchorElement(
         scopeEventId: string,
         eventId: string,
@@ -558,6 +654,7 @@ export function usePostHistoryDialogViewport({
         resetHistoryScrollToBottomSoon,
         scrollHistoryEventToTopSoon,
         captureHistoryScrollAnchor,
+        canCommitAutoLoadWindowChange,
         restoreHistoryScrollAnchor,
         preserveThreadParentToggleScroll,
     };

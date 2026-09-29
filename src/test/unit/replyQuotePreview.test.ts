@@ -215,7 +215,9 @@ describe('ReplyQuotePreview', () => {
             onClear: vi.fn(),
         });
         expect(screen.getByText(':blobcat:')).toBeTruthy();
-        expect(document.querySelector('.post-history-custom-emoji-slot')).toBeNull();
+        const failedEmoji = document.querySelector('.post-history-custom-emoji-failed');
+        expect(failedEmoji).toBeTruthy();
+        expect(failedEmoji?.getAttribute('style')).toContain('45px');
     });
 
     it('quote では preview-label と author-name の間に通知ボタンを表示する', () => {

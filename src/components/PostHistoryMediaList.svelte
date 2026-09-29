@@ -67,6 +67,8 @@
         Record<string, "copied" | "failed" | undefined>
     >({});
     const autoRequestedUrls = new Set<string>();
+    const layoutAspectRatioByItemId = new Map<string, string>();
+    const layoutHasKnownDimensionsByItemId = new Map<string, boolean>();
 
     const resolvedMediaLayout = $derived.by(
         () => mediaLayout ?? buildPostHistoryMediaLayout(media),
@@ -240,14 +242,16 @@
         ].join(" ");
     }
 
-    function getSingleImageLayoutImageStyle(aspectRatio: string): string {
+    function getSingleImageLayoutImageStyle(
+        objectFit: "cover" | "contain",
+    ): string {
         return [
             "position: absolute;",
             "inset: 0;",
             "width: 100%;",
             "height: 100%;",
             "max-width: 100%;",
-            "object-fit: cover;",
+            `object-fit: ${objectFit};`,
             "object-position: center;",
         ].join(" ");
     }
@@ -279,7 +283,13 @@
         slotCount: number;
         isSingleImage: boolean;
     }): ImagePresentation {
-        const aspectRatio = getImageAspectRatio(params.item, params.slotCount);
+        const aspectRatio = getStableImageAspectRatio(
+            params.item,
+            params.slotCount,
+        );
+        const objectFit = getStableHasKnownDimensions(params.item)
+            ? "cover"
+            : "contain";
         const dimensionHints = resolvePostHistoryMediaDimensionHints({
             dim: params.item.dim,
             kind: params.item.kind,
@@ -293,6 +303,7 @@
                 dimensionHints,
                 isSingleImage: false,
                 surfaceStyle,
+                imageStyle: `object-fit: ${objectFit};`,
             };
         }
 
@@ -303,8 +314,40 @@
             frameStyle: getSingleImageFrameStyle(aspectRatio),
             surfaceStyle: getSingleImageSurfaceStyle(),
             layoutFrameStyle: getSingleImageLayoutFrameStyle(aspectRatio),
-            imageStyle: getSingleImageLayoutImageStyle(aspectRatio),
+            imageStyle: getSingleImageLayoutImageStyle(objectFit),
         };
+    }
+
+    function getStableImageAspectRatio(
+        item: DisplayMediaItem,
+        slotCount: number,
+    ): string {
+        const existing = layoutAspectRatioByItemId.get(item.id);
+        if (existing) {
+            return existing;
+        }
+
+        const aspectRatio = resolvedMediaLayout.images.length === 4
+            ? "4 / 3"
+            : slotCount !== 1
+              ? "1 / 1"
+              : resolvePostHistoryMediaAspectRatio({
+                    dim: item.dim,
+                    kind: item.kind,
+                });
+        layoutAspectRatioByItemId.set(item.id, aspectRatio);
+        return aspectRatio;
+    }
+
+    function getStableHasKnownDimensions(item: DisplayMediaItem): boolean {
+        const existing = layoutHasKnownDimensionsByItemId.get(item.id);
+        if (existing !== undefined) {
+            return existing;
+        }
+
+        const known = Boolean(item.dim?.trim());
+        layoutHasKnownDimensionsByItemId.set(item.id, known);
+        return known;
     }
 
     function shouldShowInlinePlaceholderLoader(
@@ -445,29 +488,19 @@
         return `${getMediaStatusLabel(item)} ${getLinkLabel(item)}`;
     }
 
-    function getImageAspectRatio(
-        item: DisplayMediaItem,
-        slotCount: number,
-    ): string {
-        if (resolvedMediaLayout.images.length === 4) {
-            return "4 / 3";
-        }
-
-        if (slotCount !== 1) {
-            return "1 / 1";
-        }
-
-        return resolvePostHistoryMediaAspectRatio({
-            dim: item.dim,
-            kind: item.kind,
-        });
-    }
-
     function getVideoAspectRatio(item: DisplayMediaItem): string {
-        return resolvePostHistoryMediaAspectRatio({
+        const existing = layoutAspectRatioByItemId.get(item.id);
+        if (existing) {
+            return existing;
+        }
+
+        const aspectRatio = resolvePostHistoryMediaAspectRatio({
             dim: item.dim,
             kind: item.kind,
         });
+        layoutAspectRatioByItemId.set(item.id, aspectRatio);
+        layoutHasKnownDimensionsByItemId.set(item.id, Boolean(item.dim?.trim()));
+        return aspectRatio;
     }
 
     function getVideoTypeHint(item: DisplayMediaItem): string {
@@ -645,6 +678,7 @@
                                                     alt={item.alt ||
                                                         getLinkLabel(item)}
                                                     class="post-history-media-image"
+                                                    style={imagePresentation.imageStyle}
                                                     width={imagePresentation
                                                         .dimensionHints.width}
                                                     height={imagePresentation
@@ -732,50 +766,54 @@
                             )}
                         </div>
 
-                        {#if item.cached && item.previewObjectUrl}
-                            <video
-                                src={item.previewObjectUrl}
-                                class="post-history-media-video"
-                                controls
-                                playsinline
-                                preload="metadata"
-                            >
-                                <track kind="captions" />
-                            </video>
-                        {:else}
-                            <div
-                                class="post-history-media-placeholder post-history-video-placeholder"
-                                class:post-history-media-placeholder-cached={item.cached}
-                                class:post-history-media-placeholder-uncached={!item.cached &&
-                                    !item.hasFetchFailed}
-                                class:post-history-media-placeholder-failed={item.hasFetchFailed}
-                                class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
-                                style={getMediaSurfaceStyle(videoAspectRatio)}
-                                aria-label={getPlaceholderAriaLabel(item)}
-                                title={getLinkLabel(item)}
-                            >
-                                {#if showBlurhashPlaceholder}
-                                    <BlurhashPlaceholder
-                                        blurhash={item.blurhash}
-                                    />
-                                {/if}
-                                <div
-                                    class="post-history-media-placeholder-content"
+                        <div
+                            class="post-history-video-media-frame"
+                            style={`${getMediaSurfaceStyle(videoAspectRatio)} max-height: ${SINGLE_IMAGE_MAX_HEIGHT}px;`}
+                        >
+                            {#if item.cached && item.previewObjectUrl}
+                                <video
+                                    src={item.previewObjectUrl}
+                                    class="post-history-media-video"
+                                    controls
+                                    playsinline
+                                    preload="metadata"
                                 >
-                                    {#if item.hasFetchFailed}
-                                        <button
-                                            type="button"
-                                            class="post-history-media-retry-button"
-                                            onclick={() => handleRetry(item)}
-                                        >
-                                            {$_(
-                                                "postHistory.mediaFetchAndCache",
-                                            )}
-                                        </button>
+                                    <track kind="captions" />
+                                </video>
+                            {:else}
+                                <div
+                                    class="post-history-media-placeholder post-history-video-placeholder"
+                                    class:post-history-media-placeholder-cached={item.cached}
+                                    class:post-history-media-placeholder-uncached={!item.cached &&
+                                        !item.hasFetchFailed}
+                                    class:post-history-media-placeholder-failed={item.hasFetchFailed}
+                                    class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
+                                    aria-label={getPlaceholderAriaLabel(item)}
+                                    title={getLinkLabel(item)}
+                                >
+                                    {#if showBlurhashPlaceholder}
+                                        <BlurhashPlaceholder
+                                            blurhash={item.blurhash}
+                                        />
                                     {/if}
+                                    <div
+                                        class="post-history-media-placeholder-content"
+                                    >
+                                        {#if item.hasFetchFailed}
+                                            <button
+                                                type="button"
+                                                class="post-history-media-retry-button"
+                                                onclick={() => handleRetry(item)}
+                                            >
+                                                {$_(
+                                                    "postHistory.mediaFetchAndCache",
+                                                )}
+                                            </button>
+                                        {/if}
+                                    </div>
                                 </div>
-                            </div>
-                        {/if}
+                            {/if}
+                        </div>
                     </article>
                 {/each}
             </div>
@@ -986,6 +1024,13 @@
         );
     }
 
+    .post-history-video-media-frame {
+        width: 100%;
+        max-height: 300px;
+        overflow: hidden;
+        border-radius: 10px;
+    }
+
     .post-history-media-placeholder {
         display: flex;
         flex-direction: column;
@@ -1102,7 +1147,10 @@
     }
 
     .post-history-video-placeholder {
-        aspect-ratio: var(--post-history-media-aspect-ratio, 16 / 9);
+        width: 100%;
+        height: 100%;
+        aspect-ratio: auto;
+        padding: 0 12px;
     }
 
     :global(button.post-history-media-copy-button.circle.copy) {

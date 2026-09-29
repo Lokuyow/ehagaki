@@ -1493,7 +1493,7 @@ describe('PostHistoryDialog', () => {
             name: 'アクションを表示',
         });
         const quotedHistoryMenuContainer = quotedHistoryItem.querySelector(
-            '.post-preview-footer-right',
+            '.post-preview-header-right',
         );
         expect(quotedHistoryMenuContainer).toBeTruthy();
         const quotedHistoryMenuButton = () =>
@@ -3618,7 +3618,7 @@ describe('PostHistoryDialog', () => {
             ) as HTMLSpanElement | null;
             expect(screen.getByRole('img', { name: ':blobcat:' })).toBeTruthy();
             expect(document.querySelector('.post-preview-reaction-emoji-placeholder')).toBeNull();
-            expect(slot?.getAttribute('style')).toContain('36px');
+            expect(slot?.getAttribute('style')).toContain('18px');
             expect(slot?.getAttribute('style')).toContain('height: 18px');
         });
     });
@@ -3688,8 +3688,9 @@ describe('PostHistoryDialog', () => {
             expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
                 emojiUrl,
             );
-            expect(screen.getByText(':party:')).toBeTruthy();
-            expect(document.querySelector('.post-preview-reaction-emoji-slot')).toBeNull();
+            expect(screen.getByRole('img', { name: ':party:' })).toBeTruthy();
+            const failedEmoji = document.querySelector('.post-preview-reaction-emoji-failed');
+            expect(failedEmoji?.getAttribute('style')).toContain('18px');
         });
     });
 

@@ -38,13 +38,6 @@
     <button type="button" data-testid="remeasure" onclick={() => collapse.remeasure()}>
         再測定
     </button>
-    <button
-        type="button"
-        data-testid="flush-measurements-synchronously"
-        onclick={() => collapse.flushPendingMeasurementsSynchronously()}
-    >
-        同期計測
-    </button>
     {#each items as item (item.eventId)}
         {@const expanded = collapse.isPostExpanded(item)}
         {@const shouldCollapse = collapse.shouldCollapsePost(item)}

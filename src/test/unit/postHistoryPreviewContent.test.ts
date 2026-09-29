@@ -62,6 +62,44 @@ describe("PostHistoryPreviewContent", () => {
         expect(slot?.getAttribute("style")).toContain("30px");
     });
 
+    it("keeps the initial emoji slot width when dimensions resolve later", async () => {
+        const view = render(PostHistoryPreviewContent, {
+            props: {
+                previewContent,
+                emojiLoadStateByUrl: { [emojiUrl]: "loading" },
+            },
+        });
+        const slot = view.container.querySelector(
+            ".post-history-custom-emoji-slot",
+        );
+        const initialStyle = slot?.getAttribute("style");
+        expect(initialStyle).toContain("width: 30px");
+
+        await view.rerender({
+            previewContent,
+            emojiLoadStateByUrl: { [emojiUrl]: "ready" },
+            emojiImageMetaByUrl: { [emojiUrl]: { aspectRatio: 2 } },
+        });
+
+        expect(
+            view.container.querySelector(".post-history-custom-emoji-slot")
+                ?.getAttribute("style"),
+        ).toBe(initialStyle);
+
+        await view.rerender({
+            previewContent,
+            emojiLoadStateByUrl: { [emojiUrl]: "failed" },
+            emojiImageMetaByUrl: { [emojiUrl]: { aspectRatio: 2 } },
+        });
+
+        const failedEmoji = view.container.querySelector(
+            ".post-history-custom-emoji-failed",
+        );
+        expect(failedEmoji?.getAttribute("style")).toBe(initialStyle);
+        expect(failedEmoji?.getAttribute("aria-label")).toBe(":blobcat:");
+        expect(failedEmoji?.getAttribute("tabindex")).toBe("0");
+    });
+
     it("renders the emoji image inside the same 30px high bottom-aligned slot when ready", () => {
         const { container } = render(PostHistoryPreviewContent, {
             props: {
@@ -103,8 +141,13 @@ describe("PostHistoryPreviewContent", () => {
             },
         });
 
-        expect(container.querySelector(".post-history-custom-emoji-slot")).toBeNull();
-        expect(screen.getByText(":blobcat:")).toBeTruthy();
+        const failedSlot = container.querySelector(
+            ".post-history-custom-emoji-failed",
+        );
+        expect(failedSlot).toBeTruthy();
+        expect(failedSlot?.getAttribute("style")).toContain("width: 30px");
+        expect(failedSlot?.getAttribute("aria-label")).toBe(":blobcat:");
+        expect(failedSlot?.getAttribute("title")).toBe(":blobcat:");
     });
 
     it("renders native links with safe external attributes while preserving surrounding text", () => {
