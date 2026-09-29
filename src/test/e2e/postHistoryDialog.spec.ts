@@ -713,13 +713,19 @@ async function expectReactionContentsVerticallyCentered(
     const button = container.locator('.post-preview-reactions-button').first();
     const geometry = await button.evaluate((element) => {
         const buttonRect = element.getBoundingClientRect();
-        const heartRect = element\n            .querySelector('.favorite-icon')!\n            .getBoundingClientRect();
+        const heartRect = element
+            .querySelector('.favorite-icon')!
+            .getBoundingClientRect();
         const count = element.querySelector('span')!;
         const countRect = count.getBoundingClientRect();
         const lineHeight = Number.parseFloat(getComputedStyle(count).lineHeight);
         const footer = element.closest('.post-preview-footer')!;
-        const replyRect = footer\n            .querySelector('.post-preview-reply-action-cell button')!\n            .getBoundingClientRect();
-        const quoteRect = footer\n            .querySelector('.post-preview-quote-action-cell button')!\n            .getBoundingClientRect();
+        const replyRect = footer
+            .querySelector('.post-preview-reply-action-cell button')!
+            .getBoundingClientRect();
+        const quoteRect = footer
+            .querySelector('.post-preview-quote-action-cell button')!
+            .getBoundingClientRect();
         return {
             buttonHeight: buttonRect.height,
             alignItems: getComputedStyle(element).alignItems,
@@ -735,10 +741,18 @@ async function expectReactionContentsVerticallyCentered(
     expect(geometry.buttonHeight).toBeGreaterThanOrEqual(35);
     expect(geometry.buttonHeight).toBeLessThanOrEqual(37);
     expect(geometry.alignItems).toBe('center');
-    expect(\n        Math.abs(geometry.heartCenterY - geometry.buttonCenterY),\n    ).toBeLessThanOrEqual(1);
-    expect(\n        Math.abs(geometry.countLineCenterY - geometry.buttonCenterY),\n    ).toBeLessThanOrEqual(1);
-    expect(\n        Math.abs(geometry.heartCenterY - geometry.replyCenterY),\n    ).toBeLessThanOrEqual(1);
-    expect(\n        Math.abs(geometry.heartCenterY - geometry.quoteCenterY),\n    ).toBeLessThanOrEqual(1);
+    expect(
+        Math.abs(geometry.heartCenterY - geometry.buttonCenterY),
+    ).toBeLessThanOrEqual(1);
+    expect(
+        Math.abs(geometry.countLineCenterY - geometry.buttonCenterY),
+    ).toBeLessThanOrEqual(1);
+    expect(
+        Math.abs(geometry.heartCenterY - geometry.replyCenterY),
+    ).toBeLessThanOrEqual(1);
+    expect(
+        Math.abs(geometry.heartCenterY - geometry.quoteCenterY),
+    ).toBeLessThanOrEqual(1);
     expect(geometry.selected).toBe(selected);
 }
 
@@ -1985,7 +1999,9 @@ test.describe('PostHistoryDialog Playwright', () => {
         const nestedToggle = replyCard.getByRole('button', { name: /返信 1件を表示/ });
         const grandchildCard = threadHost.locator('.post-history-related-card')
             .filter({ hasText: 'playwright nested reply' });
-        if (!(await grandchildCard.isVisible())) {\n            await nestedToggle.click();\n        }
+        if (!(await grandchildCard.isVisible())) {
+            await nestedToggle.click();
+        }
         await expect(grandchildCard).toBeVisible();
         await expect(grandchildCard.locator('.post-preview-reactions-button')).toHaveText(/3/);
         const grandchildWidthBeforeDetails = await grandchildCard.evaluate((element) =>
@@ -2033,7 +2049,9 @@ test.describe('PostHistoryDialog Playwright', () => {
         const nestedToggle = replyCard.getByRole('button', { name: /返信 1件を表示/ });
         const grandchildCard = threadHost.locator('.post-history-related-card')
             .filter({ hasText: 'playwright nested reply' });
-        if (!(await grandchildCard.isVisible())) {\n            await nestedToggle.click();\n        }
+        if (!(await grandchildCard.isVisible())) {
+            await nestedToggle.click();
+        }
 
         for (const card of [normalCard, quoteCard, replyCard, grandchildCard]) {
             const button = card.locator('.post-preview-reactions-button');
