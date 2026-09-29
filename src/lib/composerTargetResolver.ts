@@ -149,9 +149,11 @@ export function createComposerTargetResolver(
                         if (authorRelays.length === 0) return null;
                         authorTask = replyQuoteService.fetchReferencedEventTask(
                             params.pointer.eventId,
-                            authorRelays,
+                            [],
                             params.rxNostr,
                             params.relayConfig,
+                            5000,
+                            authorRelays,
                         );
                         eventTasks.add(authorTask);
                         return authorTask;

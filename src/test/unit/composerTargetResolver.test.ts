@@ -338,7 +338,14 @@ describe("createComposerTargetResolver", () => {
             "wss://author-write-3.example/",
         ];
         const explicitRelay = "wss://explicit-event-hint.example/";
-        const fetchReferencedEventTask = vi.fn((_id: string, relayHints: string[]) =>
+        const fetchReferencedEventTask = vi.fn((
+            _id: string,
+            relayHints: string[],
+            _rxNostr?: any,
+            _relayConfig?: any,
+            _timeoutMs?: number,
+            _authorWriteRelays?: string[],
+        ) =>
             relayHints.includes(explicitRelay)
                 ? { promise: Promise.resolve({ status: "not-found" as const }), cancel: vi.fn() }
                 : foundTask(event()),
@@ -356,6 +363,7 @@ describe("createComposerTargetResolver", () => {
 
         expect(fetchReferencedEventTask).toHaveBeenCalledTimes(2);
         expect(fetchReferencedEventTask.mock.calls[0][1]).toEqual([explicitRelay]);
-        expect(fetchReferencedEventTask.mock.calls[1][1]).toEqual(authorWriteRelays);
+        expect(fetchReferencedEventTask.mock.calls[1][1]).toEqual([]);
+        expect(fetchReferencedEventTask.mock.calls[1][5]).toEqual(authorWriteRelays);
     });
 });
