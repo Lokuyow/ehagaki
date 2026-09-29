@@ -356,13 +356,16 @@ export function usePostHistoryDialogViewport({
 
     function restoreHistoryScrollAnchor(
         anchor: PostHistoryDialogScrollAnchor | null,
+        options: { flushUpdates?: boolean } = {},
     ): boolean {
         const container = getContainer();
         if (!anchor || !getShow() || !container) {
             return false;
         }
 
-        flushSync();
+        if (options.flushUpdates !== false) {
+            flushSync();
+        }
 
         const anchoredItem = Array.from(
             container.querySelectorAll<HTMLElement>(
