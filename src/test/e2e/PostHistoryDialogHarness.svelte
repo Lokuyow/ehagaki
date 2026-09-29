@@ -175,10 +175,10 @@
         { length: 14 },
         (_, index) => `long preview line ${index + 1}`,
     ).join("\n");
-    const layoutImageUrl = new URL("layout-stable-image.png", window.location.href).href;
+    const layoutImageUrl = new URL("layout-stable-image.svg", window.location.href).href;
     const layoutVideoUrl = new URL("layout-stable-video.mp4", window.location.href).href;
-    const layoutEmojiSuccessUrl = new URL("layout-stable-emoji.png", window.location.href).href;
-    const layoutEmojiFailureUrl = new URL("layout-failed-emoji.png", window.location.href).href;
+    const layoutEmojiSuccessUrl = new URL("layout-stable-emoji.svg", window.location.href).href;
+    const layoutEmojiFailureUrl = new URL("layout-failed-emoji.svg", window.location.href).href;
     const posts = Array.from({ length: TOTAL_POSTS }, (_, index) => {
         const post = buildPost(index);
         if (isLayoutStabilityScenario && index === 0) {

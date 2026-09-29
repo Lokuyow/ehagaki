@@ -63,11 +63,15 @@ async function gateResponseRoute(
     page: Page,
     url: string,
     complete: (route: Route) => Promise<void>,
-): Promise<{ requested: Promise<void>; release: () => void }> {
+): Promise<{ requested: Promise<void>; completed: Promise<void>; release: () => void }> {
     let notifyRequested!: () => void;
+    let notifyCompleted!: () => void;
     let releaseResponse!: () => void;
     const requested = new Promise<void>((resolve) => {
         notifyRequested = resolve;
+    });
+    const completed = new Promise<void>((resolve) => {
+        notifyCompleted = resolve;
     });
     const responseGate = new Promise<void>((resolve) => {
         releaseResponse = resolve;
@@ -76,8 +80,9 @@ async function gateResponseRoute(
         notifyRequested();
         await responseGate;
         await complete(route);
+        notifyCompleted();
     });
-    return { requested, release: () => releaseResponse() };
+    return { requested, completed, release: () => releaseResponse() };
 }
 
 async function gotoSparseHarness(page: Page) {
@@ -435,7 +440,9 @@ function startPostPositionFrameSampling(
                 bottomSpinnerVisible: boolean;
                 watchedPosts: Array<{
                     eventId: string;
+                    left: number;
                     top: number;
+                    relativeLeft: number;
                     relativeTop: number;
                     height: number;
                     isCollapsed: boolean;
@@ -478,7 +485,9 @@ function startPostPositionFrameSampling(
                         const watchedRect = watchedItem.getBoundingClientRect();
                         return {
                             eventId: watchedEventId,
+                            left: watchedRect.left,
                             top: watchedRect.top,
+                            relativeLeft: watchedRect.left - containerRect.left,
                             relativeTop: watchedRect.top - containerRect.top,
                             height: watchedRect.height,
                             isCollapsed: !!watchedItem.querySelector(
@@ -549,7 +558,9 @@ function expectWatchedPostGeometryStableAcrossFrames(
             expect(frameSamples[0].watchedPosts.some((post) => post?.eventId === eventId)).toBe(true);
         }
         for (const value of values) {
+            expect(Math.abs(value.left - baseline.left)).toBeLessThanOrEqual(1);
             expect(Math.abs(value.top - baseline.top)).toBeLessThanOrEqual(1);
+            expect(Math.abs(value.relativeLeft - baseline.relativeLeft)).toBeLessThanOrEqual(1);
             expect(Math.abs(value.relativeTop - baseline.relativeTop)).toBeLessThanOrEqual(1);
             expect(Math.abs(value.height - baseline.height)).toBeLessThanOrEqual(1);
         }
@@ -1300,20 +1311,17 @@ test.describe('PostHistoryDialog Playwright', () => {
     });
 
     test('非同期media・emoji・関連stateの解決前後で投稿寸法と可視位置を維持する', async ({ page }) => {
-        const imageBody = Buffer.from(
-            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-            'base64',
-        );
-        const imageGate = await gateResponseRoute(page, '**/layout-stable-image.png', async (route) =>
-            route.fulfill({ status: 200, contentType: 'image/png', body: imageBody }),
+        const imageBody = '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
+        const imageGate = await gateResponseRoute(page, '**/layout-stable-image.svg', async (route) =>
+            route.fulfill({ status: 200, contentType: 'image/svg+xml', body: imageBody }),
         );
         const videoGate = await gateResponseRoute(page, '**/layout-stable-video.mp4', async (route) =>
             route.fulfill({ status: 200, contentType: 'video/mp4', body: Buffer.from([0, 0, 0, 24, 102, 116, 121, 112]) }),
         );
-        const emojiSuccessGate = await gateResponseRoute(page, '**/layout-stable-emoji.png', async (route) =>
-            route.fulfill({ status: 200, contentType: 'image/png', body: imageBody }),
+        const emojiSuccessGate = await gateResponseRoute(page, '**/layout-stable-emoji.svg', async (route) =>
+            route.fulfill({ status: 200, contentType: 'image/svg+xml', body: imageBody }),
         );
-        const emojiFailureGate = await gateResponseRoute(page, '**/layout-failed-emoji.png', async (route) =>
+        const emojiFailureGate = await gateResponseRoute(page, '**/layout-failed-emoji.svg', async (route) =>
             route.abort('failed'),
         );
         const harness = await gotoLayoutStabilityHarness(page);
@@ -1403,6 +1411,9 @@ test.describe('PostHistoryDialog Playwright', () => {
             harness.layoutStabilityPostEventId,
         );
         const before = await captureLayout();
+        const postIdsBefore = await historyEventIds(page);
+        const watchedEventIds = await getVisiblePostEventIds(page);
+        expect(watchedEventIds.length).toBeGreaterThanOrEqual(2);
         const replyFooterBefore = await page.locator(
             `.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"] .post-preview-footer`,
         ).boundingBox();
@@ -1412,6 +1423,13 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(await item.locator('.deleted-badge').count()).toBe(1);
         await expect(item.locator('.post-meta')).toHaveCount(0);
 
+        const frameSampling = startPostPositionFrameSampling(
+            page,
+            watchedEventIds[0],
+            24,
+            watchedEventIds,
+        );
+        await frameSampling.started;
         imageGate.release();
         videoGate.release();
         emojiSuccessGate.release();
@@ -1419,6 +1437,12 @@ test.describe('PostHistoryDialog Playwright', () => {
         await page.evaluate(() => {
             (window as HarnessWindow).__POST_HISTORY_INTERACTION_LOAD_GATE__?.release?.();
         });
+        await Promise.all([
+            imageGate.completed,
+            videoGate.completed,
+            emojiSuccessGate.completed,
+            emojiFailureGate.completed,
+        ]);
 
         await expect(item.locator('.post-history-media-surface img')).toHaveCount(1);
         await expect(item.locator('.post-history-video-media-frame video')).toHaveCount(1);
@@ -1432,7 +1456,27 @@ test.describe('PostHistoryDialog Playwright', () => {
         );
         await expect(replyItem.locator('.post-preview-replies-badge-button')).toHaveCount(1);
 
+        await frameSampling.stop();
+        const frameSamples = await frameSampling.samples;
+        expect(frameSamples.length).toBeGreaterThanOrEqual(25);
+        expect(frameSamples.every((sample) => watchedEventIds.every((eventId) =>
+            sample.watchedPosts.some((post) => post?.eventId === eventId),
+        ))).toBe(true);
+        expectWatchedPostGeometryStableAcrossFrames(
+            frameSamples,
+            watchedEventIds,
+            watchedEventIds,
+        );
+        for (const sample of frameSamples) {
+            expect(Math.abs(sample.scrollTop - frameSamples[0].scrollTop)).toBeLessThanOrEqual(1);
+            expect(Math.abs(sample.scrollHeight - frameSamples[0].scrollHeight)).toBeLessThanOrEqual(1);
+            expect(Math.abs(sample.containerTop - frameSamples[0].containerTop)).toBeLessThanOrEqual(1);
+            expect(sample.clientHeight).toBe(frameSamples[0].clientHeight);
+            expect(Math.abs(sample.headingHeight - frameSamples[0].headingHeight)).toBeLessThanOrEqual(1);
+        }
+
         const after = await captureLayout();
+        expect(await historyEventIds(page)).toEqual(postIdsBefore);
         for (const key of ['item', 'text', 'image', 'video', 'footer'] as const) {
             for (const dimension of ['x', 'y', 'width', 'height'] as const) {
                 expect(Math.abs(after[key][dimension] - before[key][dimension])).toBeLessThanOrEqual(1);
