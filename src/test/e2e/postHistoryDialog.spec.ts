@@ -706,6 +706,42 @@ async function getFooterLayout(container: ReturnType<Page['locator']>) {
     });
 }
 
+async function expectReactionContentsVerticallyCentered(
+    container: ReturnType<Page['locator']>,
+    selected: boolean,
+) {
+    const button = container.locator('.post-preview-reactions-button').first();
+    const geometry = await button.evaluate((element) => {
+        const buttonRect = element.getBoundingClientRect();
+        const heartRect = element\n            .querySelector('.favorite-icon')!\n            .getBoundingClientRect();
+        const count = element.querySelector('span')!;
+        const countRect = count.getBoundingClientRect();
+        const lineHeight = Number.parseFloat(getComputedStyle(count).lineHeight);
+        const footer = element.closest('.post-preview-footer')!;
+        const replyRect = footer\n            .querySelector('.post-preview-reply-action-cell button')!\n            .getBoundingClientRect();
+        const quoteRect = footer\n            .querySelector('.post-preview-quote-action-cell button')!\n            .getBoundingClientRect();
+        return {
+            buttonHeight: buttonRect.height,
+            alignItems: getComputedStyle(element).alignItems,
+            buttonCenterY: buttonRect.top + buttonRect.height / 2,
+            heartCenterY: heartRect.top + heartRect.height / 2,
+            countLineCenterY: countRect.top + lineHeight / 2,
+            replyCenterY: replyRect.top + replyRect.height / 2,
+            quoteCenterY: quoteRect.top + quoteRect.height / 2,
+            selected: element.classList.contains('selected'),
+        };
+    });
+
+    expect(geometry.buttonHeight).toBeGreaterThanOrEqual(35);
+    expect(geometry.buttonHeight).toBeLessThanOrEqual(37);
+    expect(geometry.alignItems).toBe('center');
+    expect(\n        Math.abs(geometry.heartCenterY - geometry.buttonCenterY),\n    ).toBeLessThanOrEqual(1);
+    expect(\n        Math.abs(geometry.countLineCenterY - geometry.buttonCenterY),\n    ).toBeLessThanOrEqual(1);
+    expect(\n        Math.abs(geometry.heartCenterY - geometry.replyCenterY),\n    ).toBeLessThanOrEqual(1);
+    expect(\n        Math.abs(geometry.heartCenterY - geometry.quoteCenterY),\n    ).toBeLessThanOrEqual(1);
+    expect(geometry.selected).toBe(selected);
+}
+
 async function expectReferenceLinkAttributes(
     link: ReturnType<Page['locator']>,
     href: string,
@@ -1877,6 +1913,10 @@ test.describe('PostHistoryDialog Playwright', () => {
                 }
             }
 
+            for (const card of [reactionPost, quoteCard, replyCard, grandchildCard]) {
+                await expectReactionContentsVerticallyCentered(card, false);
+            }
+
             const relatedWidths = await Promise.all([quoteCard, replyCard, grandchildCard].map((card) =>
                 card.evaluate((element) => (element as HTMLElement).getBoundingClientRect().width),
             ));
@@ -1945,7 +1985,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         const nestedToggle = replyCard.getByRole('button', { name: /返信 1件を表示/ });
         const grandchildCard = threadHost.locator('.post-history-related-card')
             .filter({ hasText: 'playwright nested reply' });
-        if (!(await grandchildCard.isVisible())) await nestedToggle.click();
+        if (!(await grandchildCard.isVisible())) {\n            await nestedToggle.click();\n        }
         await expect(grandchildCard).toBeVisible();
         await expect(grandchildCard.locator('.post-preview-reactions-button')).toHaveText(/3/);
         const grandchildWidthBeforeDetails = await grandchildCard.evaluate((element) =>
@@ -1969,6 +2009,42 @@ test.describe('PostHistoryDialog Playwright', () => {
             path: testInfo.outputPath(`post-history-related-reactions-${testInfo.project.name}.png`),
             fullPage: false,
         });
+    });
+
+    test('reaction heart and count remain vertically centered in normal and related cards', async ({ page }) => {
+        const harness = await gotoHarness(page);
+        const normalCard = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.reactionPostEventId}"]`,
+        );
+        const quoteHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
+        );
+        const quoteCard = quoteHost.locator('.post-history-related-card')
+            .filter({ hasText: harness.quoteContent });
+        const threadHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"]`,
+        );
+        await scrollPostIntoViewByEventId(page, harness.replyParentEventId);
+        const replyCard = threadHost.locator('.post-history-related-card')
+            .filter({ hasText: harness.replyContent });
+        if (!(await replyCard.isVisible())) {
+            await threadHost.getByRole('button', { name: /返信 1件を表示/ }).click();
+        }
+        const nestedToggle = replyCard.getByRole('button', { name: /返信 1件を表示/ });
+        const grandchildCard = threadHost.locator('.post-history-related-card')
+            .filter({ hasText: 'playwright nested reply' });
+        if (!(await grandchildCard.isVisible())) {\n            await nestedToggle.click();\n        }
+
+        for (const card of [normalCard, quoteCard, replyCard, grandchildCard]) {
+            const button = card.locator('.post-preview-reactions-button');
+            await expect(button).toBeVisible();
+            await expectReactionContentsVerticallyCentered(card, false);
+            await button.click();
+            await expect(card.locator('.post-preview-reaction-chip').first()).toBeVisible();
+            await expectReactionContentsVerticallyCentered(card, true);
+            await button.click();
+            await expectReactionContentsVerticallyCentered(card, false);
+        }
     });
 
     test('an own post moving from quote-only to the timeline uses the normal reaction state in both cards', async ({ page }) => {

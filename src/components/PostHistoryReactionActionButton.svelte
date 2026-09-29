@@ -20,7 +20,7 @@
 <style>
     :global(.post-preview-reactions-button) {
         display: flex;
-        align-items: stretch;
+        align-items: center;
         gap: 4px;
         padding: 0;
         padding-inline: 6px;
