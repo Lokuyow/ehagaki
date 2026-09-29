@@ -196,7 +196,7 @@ describe('PostHistoryDialog', () => {
         expect(images).toHaveLength(2);
     });
 
-    it('[emoji-placeholder] loading 中は shortcode ではなく placeholder を表示し、保存済み寸法から幅を確保する', async () => {
+    it('[emoji-placeholder] 表示開始後に寸法が判明しても初期枠幅を維持する', async () => {
         const deferred = createDeferred<{
             ready: boolean;
             width: number;
@@ -246,7 +246,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             const slot = document.querySelector('.post-history-custom-emoji-slot');
             expect(slot).toBeTruthy();
-            expect(slot?.getAttribute('style')).toContain('60px');
+            expect(slot?.getAttribute('style')).toContain('30px');
             expect(screen.queryByRole('img', { name: ':blobcat:' })).toBeNull();
             expect(screen.queryByText(':blobcat:')).toBeNull();
         });
@@ -287,7 +287,7 @@ describe('PostHistoryDialog', () => {
             );
         });
 
-        expect(screen.queryByRole('img', { name: ':blobcat:' })).toBeNull();
+        expect(screen.getByRole('img', { name: ':blobcat:' })).toBeTruthy();
         expect(screen.getByText(':blobcat:')).toBeTruthy();
     });
 

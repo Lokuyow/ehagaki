@@ -13,9 +13,11 @@
         node: HTMLDivElement,
         eventId: string,
     ) => { destroy?: () => void } | void;
+    import type { Snippet } from "svelte";
 
     interface Props {
         previewContent: PostHistoryPreviewContentData;
+        textOverlay?: Snippet;
         emojiLoadStateByUrl?: Record<string, EmojiLoadState | undefined>;
         emojiImageMetaByUrl?: Record<string, EmojiImageMeta | undefined>;
         previewCollapseAction?: PreviewRefAction;
@@ -31,6 +33,7 @@
 
     let {
         previewContent,
+        textOverlay = undefined,
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         previewCollapseAction = (() => ({})) as PreviewRefAction,
@@ -43,6 +46,8 @@
         contentClass = "",
         collapsedContentClass = "",
     }: Props = $props();
+
+    const emojiSlotWidthByUrl = new Map<string, number>();
 
     function isTextOrEmojiSegment(
         segment: PostHistoryPreviewSegment,
@@ -81,14 +86,18 @@
     }
 
     function getEmojiSlotStyle(url: string): string {
-        const aspectRatio = emojiImageMetaByUrl[url]?.aspectRatio;
-        const hasAspectRatio =
-            typeof aspectRatio === "number" &&
-            Number.isFinite(aspectRatio) &&
-            aspectRatio > 0;
-        const slotWidth = hasAspectRatio
-            ? emojiSize * aspectRatio
-            : emojiSize;
+        let slotWidth = emojiSlotWidthByUrl.get(url);
+        if (slotWidth === undefined) {
+            const aspectRatio = emojiImageMetaByUrl[url]?.aspectRatio;
+            const hasAspectRatio =
+                typeof aspectRatio === "number" &&
+                Number.isFinite(aspectRatio) &&
+                aspectRatio > 0;
+            slotWidth = hasAspectRatio
+                ? emojiSize * aspectRatio
+                : emojiSize;
+            emojiSlotWidthByUrl.set(url, slotWidth);
+        }
 
         return [
             `width: ${formatPixelValue(slotWidth)}px;`,
@@ -119,7 +128,17 @@
                 {#if segment.type === "text" || segment.type === "link"}
                     <TextLinkSegments segments={[segment]} />
                 {:else if hasEmojiFailed(segment.url)}
-                    <span>{segment.rawShortcodeText}</span>
+                    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                    <span
+                        class="post-history-custom-emoji-slot post-history-custom-emoji-failed"
+                        style={getEmojiSlotStyle(segment.url)}
+                        role="img"
+                        tabindex="0"
+                        aria-label={segment.rawShortcodeText}
+                        title={segment.rawShortcodeText}
+                    >
+                        {segment.rawShortcodeText}
+                    </span>
                 {:else}
                     <span
                         class="post-history-custom-emoji-slot"
@@ -145,11 +164,13 @@
                 {/if}
             {/each}
         </div>
+        {@render textOverlay?.()}
     {/if}
 </div>
 
 <style>
     .post-history-preview-content {
+        position: relative;
         display: flex;
         flex-direction: column;
         gap: 6px;
@@ -186,6 +207,19 @@
         object-fit: contain;
         user-select: none;
         -webkit-user-drag: none;
+    }
+
+    .post-history-custom-emoji-failed {
+        display: inline-grid;
+        place-items: center;
+        overflow: hidden;
+        border-radius: 4px;
+        background: rgba(127, 127, 127, 0.18);
+        font-size: 0.45em;
+        line-height: 1;
+        vertical-align: bottom;
+        white-space: nowrap;
+        cursor: help;
     }
 
     .post-history-custom-emoji-placeholder {

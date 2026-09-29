@@ -199,6 +199,9 @@ describe('PostHistoryMediaList', () => {
                 media,
             },
         });
+        const initialVideoFrameStyle = container
+            .querySelector('.post-history-video-media-frame')
+            ?.getAttribute('style');
 
         await waitFor(() => {
             expect(screen.getByAltText('cached image')).toBeTruthy();
@@ -212,6 +215,10 @@ describe('PostHistoryMediaList', () => {
         expect(video?.getAttribute('controls')).not.toBeNull();
         expect(video?.getAttribute('playsinline')).not.toBeNull();
         expect(video?.getAttribute('preload')).toBe('metadata');
+        expect(
+            container.querySelector('.post-history-video-media-frame')
+                ?.getAttribute('style'),
+        ).toBe(initialVideoFrameStyle);
         expect(
             container.querySelector('.post-history-media-placeholder-blurhash'),
         ).toBeNull();
@@ -431,6 +438,67 @@ describe('PostHistoryMediaList', () => {
         expect(image.getAttribute('width')).toBe('40');
         expect(image.getAttribute('height')).toBe('511');
         expectSingleImageObjectFitContract(image);
+    });
+
+    it('初回に寸法不明だった画像と動画は後から判明した寸法で表示枠を変えない', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
+            .mockResolvedValue(null);
+        vi.mocked(postMediaCacheServiceMock.fetchAndCacheMedia)
+            .mockImplementation(() => new Promise(() => undefined));
+
+        const view = render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/unknown.jpg',
+                        mimeType: 'image/jpeg',
+                    },
+                    {
+                        url: 'https://example.com/unknown.mp4',
+                        mimeType: 'video/mp4',
+                    },
+                ],
+            },
+        });
+
+        await waitFor(() => {
+            expect(
+                view.container.querySelector('.post-history-video-media-frame'),
+            ).toBeTruthy();
+        });
+
+        const imageFrame = view.container.querySelector(
+            '.post-history-single-image-layout-frame',
+        );
+        const videoFrame = view.container.querySelector(
+            '.post-history-video-media-frame',
+        );
+        expect(imageFrame?.getAttribute('style')).toContain('aspect-ratio: 1 / 1');
+        expect(videoFrame?.getAttribute('style')).toContain('aspect-ratio: 16 / 9');
+
+        await view.rerender({
+            media: [
+                {
+                    url: 'https://example.com/unknown.jpg',
+                    mimeType: 'image/jpeg',
+                    dim: '1600x900',
+                },
+                {
+                    url: 'https://example.com/unknown.mp4',
+                    mimeType: 'video/mp4',
+                    dim: '1920x1080',
+                },
+            ],
+        });
+
+        expect(
+            view.container.querySelector('.post-history-single-image-layout-frame')
+                ?.getAttribute('style'),
+        ).toContain('aspect-ratio: 1 / 1');
+        expect(
+            view.container.querySelector('.post-history-video-media-frame')
+                ?.getAttribute('style'),
+        ).toContain('aspect-ratio: 16 / 9');
     });
 
     it('4枚の画像は少し横長の比率で表示する', async () => {

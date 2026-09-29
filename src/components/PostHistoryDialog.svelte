@@ -346,6 +346,7 @@
         getPosts: () => history.posts,
         getContainer: () => historyContainer,
     });
+    const reactionEmojiSlotWidthByUrl = new Map<string, number>();
     const historyViewport = usePostHistoryDialogViewport({
         getShow: () => show,
         getPubkeyHex: () => pubkeyHex,
@@ -391,14 +392,18 @@
     }
 
     function getReactionEmojiSlotStyle(url: string): string {
-        const aspectRatio = emojiState.emojiImageMetaByUrl[url]?.aspectRatio;
-        const hasAspectRatio =
-            typeof aspectRatio === "number" &&
-            Number.isFinite(aspectRatio) &&
-            aspectRatio > 0;
-        const slotWidth = hasAspectRatio
-            ? POST_HISTORY_REACTION_CUSTOM_EMOJI_SIZE * aspectRatio
-            : POST_HISTORY_REACTION_CUSTOM_EMOJI_SIZE;
+        let slotWidth = reactionEmojiSlotWidthByUrl.get(url);
+        if (slotWidth === undefined) {
+            const aspectRatio = emojiState.emojiImageMetaByUrl[url]?.aspectRatio;
+            const hasAspectRatio =
+                typeof aspectRatio === "number" &&
+                Number.isFinite(aspectRatio) &&
+                aspectRatio > 0;
+            slotWidth = hasAspectRatio
+                ? POST_HISTORY_REACTION_CUSTOM_EMOJI_SIZE * aspectRatio
+                : POST_HISTORY_REACTION_CUSTOM_EMOJI_SIZE;
+            reactionEmojiSlotWidthByUrl.set(url, slotWidth);
+        }
 
         return [
             `width: ${formatReactionEmojiPixelValue(slotWidth)}px;`,
@@ -1050,10 +1055,18 @@
                 scrollAnchor = historyViewport.captureHistoryScrollAnchor();
                 return scrollAnchor?.eventId ?? null;
             },
+            canCommitWindowChange: (
+                direction: "older" | "newer",
+                currentPosts: PostHistoryRecord[],
+                nextPosts: PostHistoryRecord[],
+            ) =>
+                historyViewport.canCommitAutoLoadWindowChange(
+                    direction,
+                    currentPosts,
+                    nextPosts,
+                ),
             onCommitted: () => {
-                flushSync(() => {
-                    previewCollapse.flushPendingMeasurementsSynchronously();
-                });
+                flushSync();
                 historyViewport.restoreHistoryScrollAnchor(scrollAnchor, {
                     flushUpdates: false,
                 });
@@ -2387,7 +2400,7 @@
                     >
                         <div class="post-history-main">
                             <div class="post-preview">
-                                {#if post.kind === 42 || post.deletedAt || hasDeletionFailed(post) || !(onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post))}
+                                {#if post.kind === 42 || post.deletedAt || hasDeletionFailed(post) || !(onReplyPost || onQuotePost)}
                                     <div class="post-preview-header">
                                         {#if post.kind === 42}
                                             <div
@@ -2431,7 +2444,7 @@
                                                     {/if}
                                                 </div>
                                             {/if}
-                                            {#if !(onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post))}
+                                            {#if !(onReplyPost || onQuotePost)}
                                                 <span
                                                     >{formatPostedAt(
                                                         post.postedAt,
@@ -2637,26 +2650,25 @@
                                                 post.eventId}
                                             isTextCollapsed={!previewCollapse.isPostExpanded(
                                                 post,
-                                            ) &&
-                                                previewCollapse.shouldCollapsePost(
-                                                    post,
-                                                )}
+                                            )}
                                             onImageOpen={handleImageOpen}
                                         >
-                                            {#snippet betweenContentAndMedia()}
-                                                {#if hasRenderablePostPreviewContent(post) && previewCollapse.shouldCollapsePost(post)}
-                                                    <PostPreviewToggleButton
-                                                        expanded={previewCollapse.isPostExpanded(
-                                                            post,
+                                            {#snippet textOverlay()}
+                                                <PostPreviewToggleButton
+                                                    placement="overlay"
+                                                    visible={previewCollapse.shouldCollapsePost(
+                                                        post,
+                                                    )}
+                                                    expanded={previewCollapse.isPostExpanded(
+                                                        post,
+                                                    )}
+                                                    controls={"post-preview-content-" +
+                                                        post.eventId}
+                                                    onToggle={() =>
+                                                        previewCollapse.togglePostExpanded(
+                                                            post.eventId,
                                                         )}
-                                                        controls={"post-preview-content-" +
-                                                            post.eventId}
-                                                        onToggle={() =>
-                                                            previewCollapse.togglePostExpanded(
-                                                                post.eventId,
-                                                            )}
-                                                    />
-                                                {/if}
+                                                />
                                             {/snippet}
                                         </PostContentPreview>
                                         {#if getQuotePreviewStates(post).length > 0}
@@ -2775,18 +2787,10 @@
                                             </div>
                                         {/if}
                                     </div>
-                                    {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post) || canBroadcastPost(post) || graphState.reactionSummary.totalCount > 0 || (graphState.repliesActionState.status === "loaded" && graphState.repliesActionState.replyCount > 0)}
-                                        {@const repliesActionLabel =
-                                            getRepliesActionLabel(post)}
-                                        {@const showRepliesBadge =
-                                            graphState.repliesActionState
-                                                .status === "loaded" &&
-                                            graphState.repliesActionState
-                                                .replyCount > 0}
-                                        <PostHistoryPreviewFooter
-                                            formattedDate={formatPostedAt(
+                                    <PostHistoryPreviewFooter
+                                            formattedDate={onReplyPost || onQuotePost ? formatPostedAt(
                                                 post.postedAt,
-                                            )}
+                                            ) : ""}
                                             dimmed={!!post.deletedAt}
                                         >
                                             {#snippet actions()}
@@ -2819,7 +2823,7 @@
                                                     <div
                                                         class="post-preview-footer-replies-slot"
                                                     >
-                                                        {#if showRepliesBadge}
+                                                        {#if graphState.repliesActionState.status === "loaded" && graphState.repliesActionState.replyCount > 0}
                                                             <PostHistoryRepliesBadgeButton
                                                                 count={graphState
                                                                     .repliesActionState
@@ -2827,8 +2831,8 @@
                                                                 selected={graphState
                                                                     .repliesActionState
                                                                     .visible}
-                                                                ariaLabel={repliesActionLabel}
-                                                                tooltipContent={repliesActionLabel}
+                                                                ariaLabel={getRepliesActionLabel(post)}
+                                                                tooltipContent={getRepliesActionLabel(post)}
                                                                 onClick={() =>
                                                                     handleRepliesAction(
                                                                         post,
@@ -2898,7 +2902,8 @@
                                             {#snippet trailing()}
                                                 {@const actionsLabel =
                                                     $_("common.showActions")}
-                                                <PostHistoryActionMenu
+                                                {#if onReplyPost || onQuotePost}
+                                                  <PostHistoryActionMenu
                                                     lazy={true}
                                                     open={postActionUi.isPostMenuOpen(
                                                         post.eventId,
@@ -2957,7 +2962,9 @@
                                                                 aria-hidden="true"
                                                             ></div>
                                                             <span>
-                                                                {repliesActionLabel}
+                                                                {getRepliesActionLabel(
+                                                                    post,
+                                                                )}
                                                             </span>
                                                         </DropdownMenu.Item>
                                                         {#if history.isSearchMode}
@@ -2991,7 +2998,7 @@
                                                                 post,
                                                             )}
                                                             showDelete={canDeletePost(post)}
-                                                            showDeleteSeparator={true}
+                                                            showDeleteSeparator={!!(onReplyPost || onQuotePost)}
                                                             deletionSending={isDeletionSending(
                                                                 post,
                                                             )}
@@ -3021,7 +3028,8 @@
                                                                 openDeleteConfirm(post)}
                                                         />
                                                     {/snippet}
-                                                </PostHistoryActionMenu>
+                                                  </PostHistoryActionMenu>
+                                                {/if}
                                             {/snippet}
                                         </PostHistoryPreviewFooter>
                                         {#if graphState.reactionSummary.totalCount > 0 && isReactionsExpanded(post)}
@@ -3042,8 +3050,16 @@
                                                                 ></div>
                                                             {:else if reactionGroup.emojiUrl}
                                                                 {#if hasReactionEmojiFailed(reactionGroup.emojiUrl)}
+                                                                    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                                                                     <span
-                                                                        class="post-preview-reaction-content"
+                                                                        class="post-preview-reaction-emoji-slot post-preview-reaction-emoji-failed"
+                                                                        style={getReactionEmojiSlotStyle(
+                                                                            reactionGroup.emojiUrl,
+                                                                        )}
+                                                                        role="img"
+                                                                        tabindex="0"
+                                                                        aria-label={reactionGroup.content}
+                                                                        title={reactionGroup.content}
                                                                     >
                                                                         {reactionGroup.content}
                                                                     </span>
@@ -3118,7 +3134,6 @@
                                                 {/each}
                                             </div>
                                         {/if}
-                                    {/if}
                                     <PostHistoryThreadGraphPanel
                                         state={graphState}
                                         section="children"
@@ -3167,24 +3182,6 @@
                                     />
                                 </div>
                             </div>
-                            {#if !(onReplyPost || previewCollapse.shouldCollapsePost(post)) && (post.deletedAt || hasDeletionFailed(post))}
-                                <div class="post-meta">
-                                    {#if post.deletedAt}
-                                        <span class="deleted-badge"
-                                            >{$_(
-                                                "postHistory.deletedBadge",
-                                            )}</span
-                                        >
-                                    {/if}
-                                    {#if hasDeletionFailed(post)}
-                                        <span class="delete-failed"
-                                            >{$_(
-                                                "postHistory.deleteFailed",
-                                            )}</span
-                                        >
-                                    {/if}
-                                </div>
-                            {/if}
                         </div>
                     </li>
                 {/each}
@@ -3489,6 +3486,10 @@
         align-items: stretch;
         justify-content: space-between;
         width: 100%;
+        height: 48px;
+        min-height: 48px;
+        flex: 0 0 48px;
+        overflow: hidden;
         padding: 0;
         border-bottom: 1px solid var(--border-hr);
     }
@@ -3512,7 +3513,11 @@
         line-height: 1.05;
         font-weight: 600;
         letter-spacing: -0.04em;
-        overflow-wrap: anywhere;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         padding: 0 12px;
         --btn-bg: var(--dialog-bg);
         --text: var(--text-light);
@@ -3526,6 +3531,7 @@
         flex: 0 0 auto;
         min-width: 0;
         gap: 4px;
+        white-space: nowrap;
     }
 
     :global(
@@ -3932,6 +3938,11 @@
     :global(.status-loading-placeholder) {
         justify-content: flex-end;
         width: auto;
+        max-width: min(38vw, 240px);
+        min-width: 0;
+        overflow: hidden;
+        flex: 0 1 auto;
+        white-space: nowrap;
         column-gap: 0;
         color: var(--text-muted);
         font-size: 0.8rem;
@@ -3948,6 +3959,9 @@
     :global(.status-loading-placeholder .placeholder-text) {
         color: inherit;
         font-size: inherit;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     :global(.status-error) {
@@ -4268,6 +4282,18 @@
         background: rgba(127, 127, 127, 0.18);
     }
 
+    :global(.post-preview-reaction-emoji-failed) {
+        display: inline-grid;
+        place-items: center;
+        overflow: hidden;
+        border-radius: 4px;
+        background: rgba(127, 127, 127, 0.18);
+        font-size: 0.45em;
+        line-height: 1;
+        white-space: nowrap;
+        cursor: help;
+    }
+
     :global(.post-preview-reaction-count) {
         color: var(--text-muted);
     }
@@ -4316,16 +4342,6 @@
         display: flex;
         align-items: center;
         gap: 6px;
-    }
-
-    .post-meta {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-        gap: 6px 10px;
-        color: var(--text-muted);
-        font-size: 0.82rem;
-        line-height: 1.3;
     }
 
     .deleted-badge {

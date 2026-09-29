@@ -19,7 +19,6 @@ import {
     EMPTY_POST_HISTORY_QUOTE_TARGET_INDEX,
     postHistoryQuoteTargetDiscoveryAdapter,
     type PostHistoryQuoteTargetContext,
-    type PostHistoryQuoteTargetIndex,
 } from "../postHistoryRelatedTargetDiscoveryAdapter";
 import {
     postHistoryDeletionRequestsRepository,
@@ -193,10 +192,19 @@ export function usePostHistoryQuotePreviews({
     const scopeKey = `post-history-quote-preview:${++nextQuotePreviewResolverScopeId}`;
 
     let resolverRevision = $state(0);
-    let quoteIndex = $state<PostHistoryQuoteTargetIndex>(EMPTY_POST_HISTORY_QUOTE_TARGET_INDEX);
+    let indexedPosts: PostHistoryRecord[] | null = null;
+    let quoteIndex = EMPTY_POST_HISTORY_QUOTE_TARGET_INDEX;
+
+    function getCurrentQuoteIndex() {
+        const posts = getPosts();
+        if (posts !== indexedPosts) {
+            indexedPosts = posts;
+            quoteIndex = postHistoryQuoteTargetDiscoveryAdapter.buildIndex(posts);
+        }
+        return getShow() ? quoteIndex : EMPTY_POST_HISTORY_QUOTE_TARGET_INDEX;
+    }
 
     function resetState(): void {
-        quoteIndex = EMPTY_POST_HISTORY_QUOTE_TARGET_INDEX;
         if (ownsResolver) {
             resolver.reset();
         }
@@ -205,7 +213,7 @@ export function usePostHistoryQuotePreviews({
     function getQuotePreviews(post: PostHistoryRecord): PostHistoryQuotePreviewState[] {
         resolverRevision;
 
-        return (quoteIndex.byPostId[post.eventId] ?? []).map((reference) => {
+        return (getCurrentQuoteIndex().byPostId[post.eventId] ?? []).map((reference) => {
             return toQuotePreviewState(
                 reference.eventId,
                 resolver.getTargetSnapshot(reference.eventId),
@@ -214,7 +222,7 @@ export function usePostHistoryQuotePreviews({
     }
 
     function retryQuotePreview(eventId: string): void {
-        const context = quoteIndex.contextsByEventId[eventId];
+        const context = getCurrentQuoteIndex().contextsByEventId[eventId];
         if (!context) {
             return;
         }
@@ -242,14 +250,6 @@ export function usePostHistoryQuotePreviews({
     }
 
     $effect(() => {
-        if (getShow()) {
-            return;
-        }
-
-        quoteIndex = EMPTY_POST_HISTORY_QUOTE_TARGET_INDEX;
-    });
-
-    $effect(() => {
         if (!getShow()) {
             return;
         }
@@ -262,17 +262,9 @@ export function usePostHistoryQuotePreviews({
             return;
         }
 
-        quoteIndex = postHistoryQuoteTargetDiscoveryAdapter.buildIndex(getPosts());
-    });
-
-    $effect(() => {
-        if (!getShow()) {
-            return;
-        }
-
         getRxNostr();
         getRelayConfig();
-        const contexts = Object.values(quoteIndex.contextsByEventId);
+        const contexts = Object.values(getCurrentQuoteIndex().contextsByEventId);
         if (contexts.length === 0) {
             return;
         }

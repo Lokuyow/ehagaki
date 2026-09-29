@@ -100,32 +100,7 @@ describe("usePostHistoryPreviewCollapse", () => {
         });
     });
 
-    it("同期計測後は予約済みの計測を無効化して同じ投稿を再計測しない", async () => {
-        const getComputedStyleSpy = vi.spyOn(window, "getComputedStyle");
-        const initialItems = createItems(50);
-        const view = render(PostHistoryPreviewCollapseHarness, {
-            items: initialItems,
-        });
-
-        await waitFor(() => {
-            expect(getComputedStyleSpy).toHaveBeenCalledTimes(1);
-        });
-
-        getComputedStyleSpy.mockClear();
-        view.rerender({
-            items: [...initialItems, ...createItems(50, 50)],
-        });
-        view.getByTestId("flush-measurements-synchronously").click();
-
-        expect(getComputedStyleSpy).toHaveBeenCalledTimes(1);
-        await tick();
-        expect(getComputedStyleSpy).toHaveBeenCalledTimes(1);
-        expect(
-            view.getByTestId("preview-preview-50").classList,
-        ).toContain("event-content-collapsed");
-    });
-
-    it("短い投稿は同期計測から除外し、予約済みの非同期計測に任せる", async () => {
+    it("短い投稿は予約済みの非同期計測で非折り畳みと判定する", async () => {
         const getComputedStyleSpy = vi.spyOn(window, "getComputedStyle");
         const initialItems = Array.from({ length: 50 }, (_, index) => ({
             eventId: `short-preview-${index}`,
@@ -149,8 +124,6 @@ describe("usePostHistoryPreviewCollapse", () => {
                 })),
             ],
         });
-        view.getByTestId("flush-measurements-synchronously").click();
-
         expect(getComputedStyleSpy).not.toHaveBeenCalled();
         await tick();
         expect(getComputedStyleSpy).toHaveBeenCalledTimes(1);

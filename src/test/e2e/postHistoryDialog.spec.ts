@@ -1,4 +1,4 @@
-import { expect, test, type Download, type Page } from '@playwright/test';
+import { expect, test, type Download, type Page, type Route } from '@playwright/test';
 
 type HarnessState = {
     ready: boolean;
@@ -27,6 +27,11 @@ type HarnessState = {
     absoluteOldestPostContent: string;
     infiniteScrollEventIds: string[];
     infiniteScrollOldestPostContent: string;
+    layoutStabilityPostEventId: string;
+    layoutImageUrl: string;
+    layoutVideoUrl: string;
+    layoutEmojiSuccessUrl: string;
+    layoutEmojiFailureUrl: string;
 };
 
 type HarnessWindow = Window & typeof globalThis & {
@@ -36,12 +41,48 @@ type HarnessWindow = Window & typeof globalThis & {
         entered: boolean;
         release: (() => void) | null;
     };
+    __POST_HISTORY_INTERACTION_LOAD_GATE__?: {
+        entered: boolean;
+        release: (() => void) | null;
+    };
 };
 
 async function gotoHarness(page: Page) {
     await page.goto('post-history-dialog-playwright.html');
     await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
     return page.evaluate<HarnessState>(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState);
+}
+
+async function gotoLayoutStabilityHarness(page: Page) {
+    await page.goto('post-history-dialog-playwright.html?layout-stability=1');
+    await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+    return page.evaluate<HarnessState>(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState);
+}
+
+async function gateResponseRoute(
+    page: Page,
+    url: string,
+    complete: (route: Route) => Promise<void>,
+): Promise<{ requested: Promise<void>; completed: Promise<void>; release: () => void }> {
+    let notifyRequested!: () => void;
+    let notifyCompleted!: () => void;
+    let releaseResponse!: () => void;
+    const requested = new Promise<void>((resolve) => {
+        notifyRequested = resolve;
+    });
+    const completed = new Promise<void>((resolve) => {
+        notifyCompleted = resolve;
+    });
+    const responseGate = new Promise<void>((resolve) => {
+        releaseResponse = resolve;
+    });
+    await page.route(url, async (route) => {
+        notifyRequested();
+        await responseGate;
+        await complete(route);
+        notifyCompleted();
+    });
+    return { requested, completed, release: () => releaseResponse() };
 }
 
 async function gotoSparseHarness(page: Page) {
@@ -384,10 +425,13 @@ function startPostPositionFrameSampling(
                 throw new Error('Visible post anchor disappeared during frame sampling');
             }
             const samples: Array<{
+                timestamp: number;
                 itemTop: number;
                 relativeTop: number;
                 containerTop: number;
                 clientHeight: number;
+                scrollTop: number;
+                scrollHeight: number;
                 headingHeight: number;
                 monthLabel: string | null;
                 topSlotHeight: number;
@@ -396,7 +440,9 @@ function startPostPositionFrameSampling(
                 bottomSpinnerVisible: boolean;
                 watchedPosts: Array<{
                     eventId: string;
+                    left: number;
                     top: number;
+                    relativeLeft: number;
                     relativeTop: number;
                     height: number;
                     isCollapsed: boolean;
@@ -413,10 +459,13 @@ function startPostPositionFrameSampling(
                     '.post-history-auto-load-slot',
                 );
                 return {
+                    timestamp: performance.now(),
                     itemTop: itemRect.top,
                     relativeTop: itemRect.top - containerRect.top,
                     containerTop: containerRect.top,
                     clientHeight: container.clientHeight,
+                    scrollTop: container.scrollTop,
+                    scrollHeight: container.scrollHeight,
                     headingHeight: headingRect?.height ?? 0,
                     monthLabel: document.querySelector(
                         '.post-history-current-month',
@@ -436,7 +485,9 @@ function startPostPositionFrameSampling(
                         const watchedRect = watchedItem.getBoundingClientRect();
                         return {
                             eventId: watchedEventId,
+                            left: watchedRect.left,
                             top: watchedRect.top,
+                            relativeLeft: watchedRect.left - containerRect.left,
                             relativeTop: watchedRect.top - containerRect.top,
                             height: watchedRect.height,
                             isCollapsed: !!watchedItem.querySelector(
@@ -507,7 +558,9 @@ function expectWatchedPostGeometryStableAcrossFrames(
             expect(frameSamples[0].watchedPosts.some((post) => post?.eventId === eventId)).toBe(true);
         }
         for (const value of values) {
+            expect(Math.abs(value.left - baseline.left)).toBeLessThanOrEqual(1);
             expect(Math.abs(value.top - baseline.top)).toBeLessThanOrEqual(1);
+            expect(Math.abs(value.relativeLeft - baseline.relativeLeft)).toBeLessThanOrEqual(1);
             expect(Math.abs(value.relativeTop - baseline.relativeTop)).toBeLessThanOrEqual(1);
             expect(Math.abs(value.height - baseline.height)).toBeLessThanOrEqual(1);
         }
@@ -1041,6 +1094,8 @@ test.describe('PostHistoryDialog Playwright', () => {
         await frameSampling.stop();
         const frameSamples = await frameSampling.samples;
         expectPostPositionStableAcrossFrames(frameSamples, userSelectedAnchor!);
+        expect(frameSamples.every((sample) => Number.isFinite(sample.scrollTop))).toBe(true);
+        expect(frameSamples.every((sample) => Number.isFinite(sample.scrollHeight))).toBe(true);
 
         await expect.poll(() => historyEventIds(page)).toEqual(windowBeforeDeferredLoad);
         const retainedUserAnchor = await getPostSnapshotByEventId(
@@ -1100,6 +1155,8 @@ test.describe('PostHistoryDialog Playwright', () => {
         await frameSampling.stop();
         const frameSamples = await frameSampling.samples;
         expectPostPositionStableAcrossFrames(frameSamples, userSelectedAnchor!);
+        expect(frameSamples.every((sample) => Number.isFinite(sample.scrollTop))).toBe(true);
+        expect(frameSamples.every((sample) => Number.isFinite(sample.scrollHeight))).toBe(true);
 
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(101));
         const retainedUserAnchor = await getPostSnapshotByEventId(
@@ -1251,6 +1308,213 @@ test.describe('PostHistoryDialog Playwright', () => {
         );
         expect(retainedUserAnchor).not.toBeNull();
         expect(Math.abs(retainedUserAnchor!.offsetTop - userSelectedAnchor!.offsetTop)).toBeLessThanOrEqual(1);
+    });
+
+    test('非同期media・emoji・関連stateの解決前後で投稿寸法と可視位置を維持する', async ({ page }) => {
+        const imageBody = '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
+        const imageGate = await gateResponseRoute(page, '**/layout-stable-image.svg', async (route) =>
+            route.fulfill({ status: 200, contentType: 'image/svg+xml', body: imageBody }),
+        );
+        const videoGate = await gateResponseRoute(page, '**/layout-stable-video.mp4', async (route) =>
+            route.fulfill({ status: 200, contentType: 'video/mp4', body: Buffer.from([0, 0, 0, 24, 102, 116, 121, 112]) }),
+        );
+        const emojiSuccessGate = await gateResponseRoute(page, '**/layout-stable-emoji.svg', async (route) =>
+            route.fulfill({ status: 200, contentType: 'image/svg+xml', body: imageBody }),
+        );
+        const emojiFailureGate = await gateResponseRoute(page, '**/layout-failed-emoji.svg', async (route) =>
+            route.abort('failed'),
+        );
+        const harness = await gotoLayoutStabilityHarness(page);
+        const item = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.layoutStabilityPostEventId}"]`,
+        );
+        await expect(item).toBeVisible();
+        await Promise.all([
+            imageGate.requested,
+            videoGate.requested,
+            emojiSuccessGate.requested,
+            emojiFailureGate.requested,
+            expect.poll(() => page.evaluate(() =>
+                (window as HarnessWindow).__POST_HISTORY_INTERACTION_LOAD_GATE__?.entered ?? false,
+            )).toBe(true),
+        ]);
+        await scrollHistoryAwayFromTop(page);
+        await waitForHistoryContainerHeightToSettle(page);
+        await waitForIntersectionObserverSettle(page);
+
+        const captureLayout = () => page.locator('.post-history-container').evaluate(
+            (containerElement, eventId) => {
+                const container = containerElement as HTMLDivElement;
+                const item = container.querySelector<HTMLElement>(
+                    `.post-history-item[data-post-history-event-id="${eventId}"]`,
+                );
+                if (!item) {
+                    throw new Error('Layout stability fixture post is missing');
+                }
+                const rect = (selector: string) => {
+                    const element = item.querySelector<HTMLElement>(selector);
+                    if (!element) {
+                        throw new Error(`Missing measured post-history element: ${selector}`);
+                    }
+                    const box = element.getBoundingClientRect();
+                    return { x: box.x, y: box.y, width: box.width, height: box.height };
+                };
+                const containerRect = container.getBoundingClientRect();
+                const visiblePosts = Array.from(
+                    container.querySelectorAll<HTMLElement>('.post-history-item'),
+                ).filter((post) => {
+                    const box = post.getBoundingClientRect();
+                    return box.bottom > containerRect.top + 1 && box.top < containerRect.bottom - 1;
+                });
+                const watchedPosts = [
+                    visiblePosts[0],
+                    visiblePosts[Math.floor((visiblePosts.length - 1) / 2)],
+                    visiblePosts.at(-1),
+                ].filter((post, index, all): post is HTMLElement => !!post && all.indexOf(post) === index)
+                    .map((post) => {
+                        const box = post.getBoundingClientRect();
+                        return {
+                            eventId: post.dataset.postHistoryEventId,
+                            x: box.x,
+                            y: box.y,
+                            relativeY: box.top - containerRect.top,
+                            height: box.height,
+                        };
+                    });
+                const allPostHeights = Array.from(
+                    container.querySelectorAll<HTMLElement>('.post-history-item'),
+                ).map((post) => ({
+                    eventId: post.dataset.postHistoryEventId,
+                    height: post.getBoundingClientRect().height,
+                }));
+                const heading = document.querySelector('.post-history-heading')?.getBoundingClientRect();
+                return {
+                    scrollTop: container.scrollTop,
+                    scrollHeight: container.scrollHeight,
+                    clientHeight: container.clientHeight,
+                    containerTop: containerRect.top,
+                    headingTop: heading?.top ?? 0,
+                    headingHeight: heading?.height ?? 0,
+                    directChildren: Array.from(container.children).map((child) => {
+                        const box = child.getBoundingClientRect();
+                        return { className: child.className, top: box.top, height: box.height };
+                    }),
+                    item: rect('.post-history-main'),
+                    text: rect('.post-history-preview-text'),
+                    image: rect('.post-history-image-surface-frame'),
+                    video: rect('.post-history-video-media-frame'),
+                    footer: rect('.post-preview-footer'),
+                    watchedPosts,
+                    allPostHeights,
+                };
+            },
+            harness.layoutStabilityPostEventId,
+        );
+        const before = await captureLayout();
+        const postIdsBefore = await historyEventIds(page);
+        const watchedEventIds = await getVisiblePostEventIds(page);
+        expect(watchedEventIds.length).toBeGreaterThanOrEqual(2);
+        const replyFooterBefore = await page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"] .post-preview-footer`,
+        ).boundingBox();
+        expect(replyFooterBefore).not.toBeNull();
+        expect(Math.abs(replyFooterBefore!.height - 36)).toBeLessThanOrEqual(1);
+        expect(Math.abs(before.footer.height - 36)).toBeLessThanOrEqual(1);
+        expect(await item.locator('.deleted-badge').count()).toBe(1);
+        await expect(item.locator('.post-meta')).toHaveCount(0);
+
+        const frameSampling = startPostPositionFrameSampling(
+            page,
+            watchedEventIds[0],
+            24,
+            watchedEventIds,
+        );
+        await frameSampling.started;
+        imageGate.release();
+        videoGate.release();
+        emojiSuccessGate.release();
+        emojiFailureGate.release();
+        await page.evaluate(() => {
+            (window as HarnessWindow).__POST_HISTORY_INTERACTION_LOAD_GATE__?.release?.();
+        });
+        await Promise.all([
+            imageGate.completed,
+            videoGate.completed,
+            emojiSuccessGate.completed,
+            emojiFailureGate.completed,
+        ]);
+
+        await expect(item.locator('.post-history-media-surface img')).toHaveCount(1);
+        await expect(item.locator('.post-history-video-media-frame video')).toHaveCount(1);
+        await expect(item.locator('.post-history-preview-text img.post-history-custom-emoji')).toHaveCount(1);
+        await expect(item.locator('.post-history-custom-emoji-failed[role="img"]')).toHaveCount(1);
+        await expect(item.locator('.post-preview-reactions-button')).toHaveCount(1);
+        expect(await item.locator('.deleted-badge').count()).toBe(1);
+        await expect(item.locator('.post-meta')).toHaveCount(0);
+        const replyItem = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"]`,
+        );
+        await expect(replyItem.locator('.post-preview-replies-badge-button')).toHaveCount(1);
+
+        await frameSampling.stop();
+        const frameSamples = await frameSampling.samples;
+        expect(frameSamples.length).toBeGreaterThanOrEqual(25);
+        expect(frameSamples.every((sample) => watchedEventIds.every((eventId) =>
+            sample.watchedPosts.some((post) => post?.eventId === eventId),
+        ))).toBe(true);
+        expectWatchedPostGeometryStableAcrossFrames(
+            frameSamples,
+            watchedEventIds,
+            watchedEventIds,
+        );
+        for (const sample of frameSamples) {
+            expect(Math.abs(sample.scrollTop - frameSamples[0].scrollTop)).toBeLessThanOrEqual(1);
+            expect(Math.abs(sample.scrollHeight - frameSamples[0].scrollHeight)).toBeLessThanOrEqual(1);
+            expect(Math.abs(sample.containerTop - frameSamples[0].containerTop)).toBeLessThanOrEqual(1);
+            expect(sample.clientHeight).toBe(frameSamples[0].clientHeight);
+            expect(Math.abs(sample.headingHeight - frameSamples[0].headingHeight)).toBeLessThanOrEqual(1);
+        }
+
+        const after = await captureLayout();
+        expect(await historyEventIds(page)).toEqual(postIdsBefore);
+        for (const key of ['item', 'text', 'image', 'video', 'footer'] as const) {
+            for (const dimension of ['x', 'y', 'width', 'height'] as const) {
+                expect(Math.abs(after[key][dimension] - before[key][dimension])).toBeLessThanOrEqual(1);
+            }
+        }
+        expect(Math.abs(after.scrollTop - before.scrollTop)).toBeLessThanOrEqual(1);
+        const postHeightChanges = after.allPostHeights.flatMap((post) => {
+            const previous = before.allPostHeights.find((item) => item.eventId === post.eventId);
+            return previous && Math.abs(previous.height - post.height) > 1
+                ? [{ eventId: post.eventId, before: previous.height, after: post.height }]
+                : [];
+        });
+        expect(
+            Math.abs(after.scrollHeight - before.scrollHeight),
+            JSON.stringify({
+                before: { scrollHeight: before.scrollHeight, clientHeight: before.clientHeight },
+                after: { scrollHeight: after.scrollHeight, clientHeight: after.clientHeight },
+                beforeChildren: before.directChildren,
+                afterChildren: after.directChildren,
+                postHeightChanges,
+            }),
+        ).toBeLessThanOrEqual(1);
+        expect(Math.abs(after.containerTop - before.containerTop)).toBeLessThanOrEqual(1);
+        expect(Math.abs(after.headingTop - before.headingTop)).toBeLessThanOrEqual(1);
+        expect(Math.abs(after.headingHeight - before.headingHeight)).toBeLessThanOrEqual(1);
+        expect(after.watchedPosts).toHaveLength(before.watchedPosts.length);
+        for (const previous of before.watchedPosts) {
+            const next = after.watchedPosts.find((post) => post.eventId === previous.eventId);
+            expect(next).toBeTruthy();
+            expect(Math.abs(next!.x - previous.x)).toBeLessThanOrEqual(1);
+            expect(Math.abs(next!.y - previous.y)).toBeLessThanOrEqual(1);
+            expect(Math.abs(next!.relativeY - previous.relativeY)).toBeLessThanOrEqual(1);
+            expect(Math.abs(next!.height - previous.height)).toBeLessThanOrEqual(1);
+        }
+        const replyFooterAfter = await replyItem.locator('.post-preview-footer').boundingBox();
+        expect(replyFooterAfter).not.toBeNull();
+        expect(Math.abs(replyFooterAfter!.height - replyFooterBefore!.height)).toBeLessThanOrEqual(1);
+        expect(Math.abs(replyFooterAfter!.height - 36)).toBeLessThanOrEqual(1);
     });
 
     test('desktop timeline browsing flow works in a real browser', async ({ page, isMobile }) => {
@@ -1549,6 +1813,31 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(keyboardPopup).toHaveURL(harness.linkTargetUrl);
         await keyboardPopup.close();
         await expect(expandButton).toHaveAttribute('aria-expanded', 'false');
+
+        await expandButton.click();
+        const collapseButton = historyItem.getByRole('button', { name: '折りたたむ' });
+        await expect(collapseButton).toHaveAttribute('aria-expanded', 'true');
+        const expandedToggle = await historyItem.locator('.post-preview-toggle-row').evaluate((element) => {
+            const text = element.parentElement?.querySelector('.post-history-preview-text');
+            const row = element.getBoundingClientRect();
+            const textRect = text?.getBoundingClientRect();
+            return {
+                position: getComputedStyle(element).position,
+                top: row.top,
+                textBottom: textRect?.bottom ?? 0,
+                buttonHeight: element.getBoundingClientRect().height,
+                links: Array.from(text?.querySelectorAll('a') ?? []).map((link) => {
+                    const rect = link.getBoundingClientRect();
+                    return { top: rect.top, bottom: rect.bottom };
+                }),
+            };
+        });
+        expect(expandedToggle.position).toBe('static');
+        expect(expandedToggle.top).toBeGreaterThanOrEqual(expandedToggle.textBottom - 1);
+        expect(expandedToggle.links.every((rect) =>
+            rect.bottom <= expandedToggle.top + 1
+                || rect.top >= expandedToggle.top + expandedToggle.buttonHeight - 1,
+        )).toBe(true);
     });
 
     test('quote and thread graph related cards preserve reference links', async ({

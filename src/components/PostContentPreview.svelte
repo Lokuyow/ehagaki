@@ -40,6 +40,7 @@
             focusOrigin: HTMLElement | null;
         }) => void;
         betweenContentAndMedia?: Snippet;
+        textOverlay?: Snippet;
     }
 
     let {
@@ -57,6 +58,7 @@
         renderWhenEmpty = false,
         onImageOpen = undefined,
         betweenContentAndMedia = undefined,
+        textOverlay = undefined,
     }: Props = $props();
 
     const presentation = $derived.by(() => {
@@ -107,6 +109,7 @@
                     {previewCollapseAction}
                     {previewCollapseEventId}
                     {previewContentId}
+                    {textOverlay}
                     {contentClass}
                     {collapsedContentClass}
                     isCollapsed={isTextCollapsed}

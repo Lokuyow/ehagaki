@@ -223,6 +223,11 @@ interface LoadOlderVisiblePostsOptions {
 
 interface AutoLoadViewportCommit {
     captureAnchorEventId: () => string | null;
+    canCommitWindowChange: (
+        direction: "older" | "newer",
+        currentPosts: PostHistoryRecord[],
+        nextPosts: PostHistoryRecord[],
+    ) => boolean;
     onCommitted: () => void;
 }
 
@@ -2587,6 +2592,16 @@ export function usePostHistoryListing({
         ) {
             return false;
         }
+        if (
+            options.autoLoadViewportCommit
+            && !options.autoLoadViewportCommit.canCommitWindowChange(
+                "older",
+                currentLoadedPosts,
+                mergedResult.posts,
+            )
+        ) {
+            return false;
+        }
         state.loadedPosts = mergedResult.posts;
         if (newlyVisibleOlderPosts.length > 0) {
             relationRepairCoordinator.scheduleOlderRevealRepair(
@@ -2832,6 +2847,16 @@ export function usePostHistoryListing({
         if (
             autoLoadViewportCommit
             && !nextPosts.some((post) => post.eventId === anchorEventId)
+        ) {
+            return false;
+        }
+        if (
+            autoLoadViewportCommit
+            && !autoLoadViewportCommit.canCommitWindowChange(
+                "newer",
+                currentPosts,
+                nextPosts,
+            )
         ) {
             return false;
         }
