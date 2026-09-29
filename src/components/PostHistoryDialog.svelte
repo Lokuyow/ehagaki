@@ -1330,10 +1330,12 @@
     }
 
     function getRelatedReactionReadModel(eventId: string) {
-        const relatedModel = relatedReactions.getReadModel(eventId);
-        if (relatedModel) return relatedModel;
         const ownerPost = history.posts.find((post) => post.eventId === eventId);
-        return ownerPost ? postHistoryThreadGraph.getAnchorState(ownerPost).reactionReadModel : null;
+        if (ownerPost) {
+            return postHistoryThreadGraph.getAnchorState(ownerPost).reactionReadModel;
+        }
+
+        return relatedReactions.getReadModel(eventId);
     }
 
     function getRelatedReactionLabel(eventId: string): string {

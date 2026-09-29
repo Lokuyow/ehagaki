@@ -23,6 +23,7 @@
     const isLongPreviewScenario = new URLSearchParams(window.location.search).has("long-preview");
     const isLayoutStabilityScenario = new URLSearchParams(window.location.search).has("layout-stability");
     const isKind42QuoteScenario = new URLSearchParams(window.location.search).has("kind42-quote");
+    const isSelfQuoteTransitionScenario = new URLSearchParams(window.location.search).has("self-quote-transition");
     const isSparseOldestScenario = new URLSearchParams(window.location.search).has("sparse-oldest");
     const TOTAL_POSTS = isInfiniteScrollScenario
         ? 251
@@ -100,6 +101,9 @@
             __POST_HISTORY_INTERACTION_LOAD_GATE__?: {
                 entered: boolean;
                 release: (() => void) | null;
+            };
+            __POST_HISTORY_REACTION_TEST_CONTROL__?: {
+                addReactionToQuote: () => Promise<void>;
             };
         };
 
@@ -270,36 +274,42 @@
         "line 5",
         `line 6 ${"long-path-segment-".repeat(12)}`,
     ].join("\n");
-    const quoteEventId = "9".repeat(64);
+    const quoteEventId = isSelfQuoteTransitionScenario
+        ? posts[60].eventId
+        : "9".repeat(64);
     const loadingQuoteEventId = "8".repeat(64);
-    const quoteContent = `playwright quote source ${linkTargetUrl}`;
+    const quoteContent = isSelfQuoteTransitionScenario
+        ? posts[60].content
+        : `playwright quote source ${linkTargetUrl}`;
     const quoteParentPost = posts[2];
-    const quoteRecord: PostHistoryRecord = {
-        id: quoteEventId,
-        eventId: quoteEventId,
-        pubkeyHex: "e".repeat(64),
-        kind: isKind42QuoteScenario ? 42 : 1,
-        content: quoteContent,
-        tags: [],
-        createdAt: quoteParentPost.createdAt - 60,
-        postedAt: quoteParentPost.postedAt - 60_000,
-        relayHints: [],
-        acceptedRelays: [],
-        media: [],
-        rawEvent: {
+    const quoteRecord: PostHistoryRecord = isSelfQuoteTransitionScenario
+        ? { ...posts[60] }
+        : {
             id: quoteEventId,
-            pubkey: "e".repeat(64),
+            eventId: quoteEventId,
+            pubkeyHex: "e".repeat(64),
             kind: isKind42QuoteScenario ? 42 : 1,
             content: quoteContent,
             tags: [],
-            created_at: quoteParentPost.createdAt - 60,
-            sig: "a".repeat(128),
-        },
-        fetchedAt: quoteParentPost.postedAt,
-        lastSeenAt: quoteParentPost.postedAt,
-        updatedAt: quoteParentPost.postedAt,
-        schemaVersion: 2,
-    };
+            createdAt: quoteParentPost.createdAt - 60,
+            postedAt: quoteParentPost.postedAt - 60_000,
+            relayHints: [],
+            acceptedRelays: [],
+            media: [],
+            rawEvent: {
+                id: quoteEventId,
+                pubkey: "e".repeat(64),
+                kind: isKind42QuoteScenario ? 42 : 1,
+                content: quoteContent,
+                tags: [],
+                created_at: quoteParentPost.createdAt - 60,
+                sig: "a".repeat(128),
+            },
+            fetchedAt: quoteParentPost.postedAt,
+            lastSeenAt: quoteParentPost.postedAt,
+            updatedAt: quoteParentPost.postedAt,
+            schemaVersion: 2,
+        };
     // Keep this probe focused on fixed-size content; unresolved quote height is
     // the documented exception and has its own existing UI coverage.
     quoteParentPost.tags = isLayoutStabilityScenario
@@ -396,6 +406,13 @@
         buildReactionRecord(34, grandchildEventId),
         buildReactionRecord(35, grandchildEventId),
     ];
+    (window as HarnessWindow).__POST_HISTORY_REACTION_TEST_CONTROL__ = {
+        addReactionToQuote: async () => {
+            await ehagakiDb.postHistoryChildInteractions.put(
+                buildReactionRecord(36, quoteEventId),
+            );
+        },
+    };
     const jumpDate = new Date(posts[56].postedAt).toISOString().slice(0, 10);
     const scrollTargetPost = posts[60];
     const sparseVisiblePost = posts[29];

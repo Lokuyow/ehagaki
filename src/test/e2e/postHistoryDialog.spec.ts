@@ -53,6 +53,9 @@ type HarnessWindow = Window & typeof globalThis & {
         entered: boolean;
         release: (() => void) | null;
     };
+    __POST_HISTORY_REACTION_TEST_CONTROL__?: {
+        addReactionToQuote: () => Promise<void>;
+    };
 };
 
 async function gotoHarness(page: Page) {
@@ -1870,6 +1873,41 @@ test.describe('PostHistoryDialog Playwright', () => {
             path: testInfo.outputPath(`post-history-related-reactions-${testInfo.project.name}.png`),
             fullPage: false,
         });
+    });
+
+    test('an own post moving from quote-only to the timeline uses the normal reaction state in both cards', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?self-quote-transition=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate<HarnessState>(() =>
+            (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState,
+        );
+        const quoteHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
+        );
+        const quoteCard = quoteHost.locator('.post-history-related-card')
+            .filter({ hasText: harness.quoteContent });
+        const ownerPost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.quoteEventId}"]`,
+        );
+
+        await expect(quoteCard).toBeVisible();
+        await expect(ownerPost).toHaveCount(0);
+        await expect(quoteCard.locator('.post-preview-reactions-button')).toHaveText(/1/);
+
+        await page.evaluate(async () => {
+            await (window as HarnessWindow).__POST_HISTORY_REACTION_TEST_CONTROL__!
+                .addReactionToQuote();
+        });
+        await scrollHistoryToBottom(page);
+        await expect(ownerPost).toBeVisible();
+        await expect.poll(async () =>
+            ownerPost.locator('.post-preview-reactions-button').textContent(),
+        ).toMatch(/2/);
+        await expect(quoteCard.locator('.post-preview-reactions-button')).toHaveText(/2/);
+
+        await ownerPost.locator('.post-preview-reactions-button').click();
+        await expect(ownerPost.locator('.post-preview-reaction-count')).toHaveText('2');
+        await expect(quoteCard.locator('.post-preview-reaction-count')).toHaveText('2');
     });
 
     test('kind 42 quote cards show reaction details while reply and quote actions remain unavailable', async ({ page }) => {
