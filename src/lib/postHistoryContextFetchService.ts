@@ -4,15 +4,16 @@ import {
 } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./relayLists";
 import {
-    isHostRelayConfigActive,
     mergeHostReadDefaultsWithHints,
 } from "./hostRelayRuntime";
 import { RelayConfigUtils } from "./relayConfigUtils";
+import { getNip65RelayDirectory } from "./nip65RelayDirectory";
 import type { NostrEvent, RelayConfig } from "./types";
 import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
 
 export interface PostHistoryContextFetchRequest {
     eventId: string;
+    authorHint?: string | null;
     relayHints?: string[];
     relayConfig?: RelayConfig | null;
     timeoutMs?: number;
@@ -56,8 +57,6 @@ export class PostHistoryContextFetchService {
         rxNostr: RxNostr,
         params: PostHistoryContextFetchRequest,
     ): PostHistoryContextFetchTask {
-        const rxReq = createRxBackwardReq();
-        const relayUrls = this.resolveRelayUrls(params.relayHints, params.relayConfig);
         let resolved = false;
         let subscription: { unsubscribe?: () => void } | undefined;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -87,42 +86,55 @@ export class PostHistoryContextFetchService {
             const safeResolve = safeResolveFactory(resolve);
             resolveTask = safeResolve;
 
-            try {
-                subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
-                    on: relayUrls.length > 0
-                        ? { relays: relayUrls }
-                        : { defaultReadRelays: true },
-                }).subscribe({
-                    next: (packet: { event?: NostrEvent; from?: string }) => {
-                        if (packet.event?.id !== params.eventId) {
+            timeoutId = this.setTimeoutFn(() => {
+                this.console.warn("post_history_context_fetch_timeout", params.eventId);
+                safeResolve({ event: null, relayUrl: null });
+            }, params.timeoutMs ?? DEFAULT_CONTEXT_FETCH_TIMEOUT_MS);
+
+            void (params.authorHint
+                ? getNip65RelayDirectory(rxNostr).lookup(params.authorHint)
+                : Promise.resolve(null))
+                .catch(() => null)
+                .then((authorRoutes) => {
+                    if (resolved) return;
+                    const relayUrls = this.resolveRelayUrls(
+                        [
+                            ...(authorRoutes?.writeRelays ?? []),
+                            ...(params.relayHints ?? []),
+                        ],
+                        params.relayConfig,
+                    );
+                    const rxReq = createRxBackwardReq();
+                    try {
+                        subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
+                            on: relayUrls.length > 0
+                                ? { relays: relayUrls }
+                                : { defaultReadRelays: true },
+                        }).subscribe({
+                            next: (packet: { event?: NostrEvent; from?: string }) => {
+                                if (packet.event?.id !== params.eventId) return;
+                                safeResolve({
+                                    event: packet.event,
+                                    relayUrl: typeof packet.from === "string" ? packet.from : null,
+                                });
+                            },
+                            complete: () => safeResolve({ event: null, relayUrl: null }),
+                            error: (error: unknown) => {
+                                this.console.error("post_history_context_fetch_error", error);
+                                safeResolve({ event: null, relayUrl: null });
+                            },
+                        });
+                        if (resolved) {
+                            cleanup();
                             return;
                         }
-
-                        safeResolve({
-                            event: packet.event,
-                            relayUrl: typeof packet.from === "string" ? packet.from : null,
-                        });
-                    },
-                    complete: () => {
+                        rxReq.emit({ ids: [params.eventId] });
+                        rxReq.over();
+                    } catch (error) {
+                        this.console.error("post_history_context_fetch_request_error", error);
                         safeResolve({ event: null, relayUrl: null });
-                    },
-                    error: (error: unknown) => {
-                        this.console.error("post_history_context_fetch_error", error);
-                        safeResolve({ event: null, relayUrl: null });
-                    },
+                    }
                 });
-
-                rxReq.emit({ ids: [params.eventId] });
-                rxReq.over();
-
-                timeoutId = this.setTimeoutFn(() => {
-                    this.console.warn("post_history_context_fetch_timeout", params.eventId);
-                    safeResolve({ event: null, relayUrl: null });
-                }, params.timeoutMs ?? DEFAULT_CONTEXT_FETCH_TIMEOUT_MS);
-            } catch (error) {
-                this.console.error("post_history_context_fetch_request_error", error);
-                safeResolve({ event: null, relayUrl: null });
-            }
         });
 
         return {

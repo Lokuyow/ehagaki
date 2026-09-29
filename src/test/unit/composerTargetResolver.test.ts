@@ -301,7 +301,7 @@ describe("createComposerTargetResolver", () => {
             verifyEventFn: () => true,
         });
         const task = resolver.resolve({
-            pointer: pointer(),
+            pointer: pointer({ authorHint: null }),
             rxNostr: {} as never,
         });
         task.cancel();

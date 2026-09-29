@@ -8,6 +8,7 @@ import {
 } from "./channelContextCoordinator";
 import { parseKind42ThreadReferences } from "./postHistoryNip10Utils";
 import { RelayConfigUtils } from "./relayConfigUtils";
+import { getNip65RelayDirectory } from "./nip65RelayDirectory";
 import {
     ReplyQuoteService,
     type ReferencedEventFetchTask,
@@ -113,12 +114,29 @@ export function createComposerTargetResolver(
         let cancelled = false;
         let eventTask: ReferencedEventFetchTask | null = null;
         let channelHandle: ChannelContextCoordinatorHandle | null = null;
+        let resolveCancellation!: () => void;
+        const cancellation = new Promise<void>((resolve) => {
+            resolveCancellation = resolve;
+        });
 
         const promise = (async (): Promise<ComposerTargetResolveResult> => {
             params.onPhase?.("event-loading");
+            const routeResult = params.pointer.authorHint
+                ? await Promise.race([
+                    getNip65RelayDirectory(params.rxNostr)
+                        .lookup(params.pointer.authorHint)
+                        .then((entry) => ({ state: "ready" as const, entry })),
+                    cancellation.then(() => ({ state: "cancelled" as const })),
+                ])
+                : { state: "ready" as const, entry: null };
+            if (routeResult.state === "cancelled") return { status: "cancelled" };
+            const authorWriteRelays = routeResult.entry?.writeRelays ?? [];
             eventTask = replyQuoteService.fetchReferencedEventTask(
                 params.pointer.eventId,
-                params.pointer.relayHints,
+                RelayConfigUtils.sanitizeExternalRelayUrls([
+                    ...authorWriteRelays,
+                    ...params.pointer.relayHints,
+                ], { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT }),
                 params.rxNostr,
                 params.relayConfig,
             );
@@ -283,6 +301,7 @@ export function createComposerTargetResolver(
             promise,
             cancel() {
                 cancelled = true;
+                resolveCancellation();
                 eventTask?.cancel();
                 channelHandle?.release();
                 channelHandle = null;

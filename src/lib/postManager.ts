@@ -10,7 +10,14 @@ import { buildClientTag } from "./tags/clientTag";
 import { extractContentWithImages, extractPostContentWithEmojiTags, type ExtractedPostContent } from "./utils/editorDocumentUtils";
 import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
 import { resetEditorState, resetPostStatus } from "../stores/editorStore.svelte";
-import type { PostResult, PostManagerDeps, HashtagStore } from "./types";
+import type {
+  PostDeliveryClassResult,
+  PostDeliverySummary,
+  PostResult,
+  PostManagerDeps,
+  HashtagStore,
+  RelayRejection,
+} from "./types";
 import { iframeMessageService } from "./iframeMessageService";
 import { saveHashtagsToHistory } from "./utils/hashtagHistory";
 import { mediaGalleryStore } from "../stores/mediaGalleryStore.svelte";
@@ -30,6 +37,77 @@ import {
   prepareSignedEventTemplate,
   validateSignedEventResult,
 } from "./signedEventResultValidator";
+import { getNip65RelayDirectory, type Nip65RelayDirectoryEntry } from "./nip65RelayDirectory";
+
+const NIP65_DISCOVERY_BUDGET_MS = 3_000;
+const NIP65_POST_OPERATION_DEADLINE_MS = 30_000;
+
+interface Nip65RelayOutcome {
+  accepted?: true;
+  rejected?: RelayRejection;
+  timedOut?: true;
+  unconfirmed?: true;
+  authRequired?: true;
+}
+
+interface Nip65RelayRoles {
+  authorWrite: boolean;
+  additional: boolean;
+  recipients: Set<string>;
+}
+
+interface ActiveNip65Operation {
+  cancel(): void;
+}
+
+function createRelayRoles(): Nip65RelayRoles {
+  return { authorWrite: false, additional: false, recipients: new Set() };
+}
+
+function createDeliveryClassResult(
+  relays: string[],
+  outcomes: Map<string, Nip65RelayOutcome>,
+  unavailable = false,
+  cancelled = false,
+): PostDeliveryClassResult {
+  const acceptedRelays: string[] = [];
+  const rejectedRelays: RelayRejection[] = [];
+  const timedOutRelays: string[] = [];
+  const authRequiredRelays: string[] = [];
+  const unconfirmedRelays: string[] = [];
+
+  for (const relay of relays) {
+    const outcome = outcomes.get(relay);
+    if (outcome?.accepted) acceptedRelays.push(relay);
+    if (outcome?.rejected) rejectedRelays.push(outcome.rejected);
+    if (outcome?.timedOut) timedOutRelays.push(relay);
+    if (outcome?.unconfirmed) unconfirmedRelays.push(relay);
+    if (outcome?.authRequired && !outcome.accepted && !outcome.rejected) {
+      authRequiredRelays.push(relay);
+    }
+  }
+
+  const delivered = acceptedRelays.length > 0;
+  const hasUnconfirmed = timedOutRelays.length > 0 || unconfirmedRelays.length > 0;
+  const hasPartialFailure = rejectedRelays.length > 0 || hasUnconfirmed;
+  const status: PostDeliveryClassResult["status"] = delivered
+    ? (hasPartialFailure ? "partial" : "delivered")
+    : cancelled
+      ? "cancelled"
+      : unavailable || relays.length === 0
+        ? "unavailable"
+        : "not-delivered";
+
+  return {
+    status,
+    requestedRelays: [...relays],
+    acceptedRelays,
+    rejectedRelays,
+    timedOutRelays,
+    authRequiredRelays,
+    unconfirmedRelays,
+  };
+}
 
 // 後方互換性のためre-export
 export { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEventSender } from "./postEventBuilder";
@@ -54,6 +132,8 @@ type ReplyQuoteNotifyOptions = {
 export class PostManager {
   private rxNostr: RxNostr | null = null;
   private eventSender: PostEventSender | null = null;
+  private activeNip65Operations = new Set<ActiveNip65Operation>();
+  private operationGeneration = 0;
 
   constructor(
     rxNostr?: RxNostr,
@@ -100,8 +180,19 @@ export class PostManager {
   }
 
   setRxNostr(rxNostr: RxNostr) {
+    if (this.rxNostr && this.rxNostr !== rxNostr) {
+      this.cancelActiveNip65Operations();
+    }
     this.rxNostr = rxNostr;
     this.eventSender = new PostEventSender(rxNostr, this.deps.console || console);
+  }
+
+  cancelActiveNip65Operations(): void {
+    this.operationGeneration += 1;
+    for (const operation of this.activeNip65Operations) {
+      operation.cancel();
+    }
+    this.activeNip65Operations.clear();
   }
 
   private clearReplyQuoteAfterSuccess(): void {
@@ -193,18 +284,16 @@ export class PostManager {
     event: any;
     attestation: PostHistoryRawEventAttestation;
     result: PostResult;
-    additionalWriteRelays?: string[];
   }): Promise<void> {
     if (!params.result.success || !this.deps.savePostHistoryFn) return;
 
     const acceptedRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
       params.result.acceptedRelays,
     );
-    const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls([
-      ...acceptedRelays,
-      ...(params.additionalWriteRelays ?? []),
-      ...(this.deps.writeRelaysStore?.value ?? []),
-    ], { limit: 3 });
+    const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls(
+      acceptedRelays,
+      { limit: 3 },
+    );
 
     try {
       await this.deps.savePostHistoryFn({
@@ -218,6 +307,302 @@ export class PostManager {
         stage: 'post-history',
         reason: 'unexpected',
       });
+    }
+  }
+
+  private async publishNip65Event(params: {
+    event: any;
+    sessionPubkey: string;
+    additionalWriteRelays?: string[];
+  }): Promise<PostResult> {
+    const sender = this.eventSender;
+    const rxNostr = this.rxNostr;
+    if (!sender || !rxNostr) return { success: false, error: "nostr_not_ready" };
+
+    const authStateStore = this.deps.authStateStore!;
+    const capturedAuthState = authStateStore.value;
+    const capturedGeneration = this.operationGeneration;
+    const operationStartedAt = Date.now();
+    const discoveryDeadline = operationStartedAt + NIP65_DISCOVERY_BUDGET_MS;
+    const deadlineAt = operationStartedAt + 12_000;
+    const authDeadlineAt = operationStartedAt + NIP65_POST_OPERATION_DEADLINE_MS;
+    const defaultWriteRelays = sender.getDefaultWriteRelays();
+    if (isHostRelayConfigActive() && defaultWriteRelays.length === 0) {
+      return {
+        success: false,
+        fullyDelivered: false,
+        error: "no_write_relays",
+        acceptedRelays: [],
+        delivery: {
+          authorWrite: createDeliveryClassResult([], new Map(), true),
+          taggedUserRead: {},
+          additional: [],
+        },
+      };
+    }
+    const additionalRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
+      params.additionalWriteRelays,
+    );
+    const rolesByRelay = new Map<string, Nip65RelayRoles>();
+    const recipientRelays = new Map<string, Set<string>>();
+    const recipientRouteStatus = new Map<string, "found" | "unavailable" | "cancelled">();
+    const outcomes = new Map<string, Nip65RelayOutcome>();
+    const launchedRelays = new Set<string>();
+    const wavePromises: Promise<void>[] = [];
+    let acceptsDiscovery = true;
+    let operationActive = true;
+    let cancelled = false;
+    let lastError: string | undefined;
+    let resolveCancellation!: () => void;
+    const cancellation = new Promise<void>((resolve) => {
+      resolveCancellation = resolve;
+    });
+
+    const operation: ActiveNip65Operation = {
+      cancel: () => {
+        if (!operationActive) return;
+        operationActive = false;
+        cancelled = true;
+        acceptsDiscovery = false;
+        resolveCancellation();
+      },
+    };
+    this.activeNip65Operations.add(operation);
+
+    const isCurrent = (): boolean => {
+      if (!operationActive || capturedGeneration !== this.operationGeneration) return false;
+      const currentAuth = authStateStore.value;
+      if (
+        currentAuth !== capturedAuthState
+        || !currentAuth.isAuthenticated
+        || currentAuth.pubkey !== params.sessionPubkey
+      ) {
+        operation.cancel();
+        return false;
+      }
+      return true;
+    };
+
+    const getRoles = (relay: string): Nip65RelayRoles => {
+      let roles = rolesByRelay.get(relay);
+      if (!roles) {
+        roles = createRelayRoles();
+        rolesByRelay.set(relay, roles);
+      }
+      return roles;
+    };
+
+    defaultWriteRelays.forEach((relay) => { getRoles(relay).authorWrite = true; });
+    additionalRelays.forEach((relay) => { getRoles(relay).additional = true; });
+
+    const applyWaveResult = (result: PostResult, targets: string[]): void => {
+      if (result.error) lastError = result.error;
+      const accepted = new Set(RelayConfigUtils.sanitizeExternalRelayUrls(result.acceptedRelays));
+      const rejected = new Map(
+        (result.rejectedRelays ?? []).map((item) => [
+          RelayConfigUtils.normalizeExternalRelayUrl(item.relay) ?? item.relay,
+          item,
+        ]),
+      );
+      const timedOut = new Set(RelayConfigUtils.sanitizeExternalRelayUrls(result.timedOutRelays));
+      const authRequired = new Set(RelayConfigUtils.sanitizeExternalRelayUrls(result.authRequiredRelays));
+
+      accepted.forEach((relay) => outcomes.set(relay, {
+        accepted: true,
+        ...(authRequired.has(relay) ? { authRequired: true } : {}),
+      }));
+      rejected.forEach((rejection, relay) => outcomes.set(relay, {
+        rejected: rejection,
+        ...(authRequired.has(relay) ? { authRequired: true } : {}),
+      }));
+      timedOut.forEach((relay) => outcomes.set(relay, {
+        timedOut: true,
+        unconfirmed: true,
+        ...(authRequired.has(relay) ? { authRequired: true } : {}),
+      }));
+      authRequired.forEach((relay) => {
+        if (!outcomes.has(relay)) outcomes.set(relay, { authRequired: true });
+      });
+
+      for (const relay of targets) {
+        if (accepted.has(relay)) {
+          outcomes.set(relay, { accepted: true, ...(authRequired.has(relay) ? { authRequired: true } : {}) });
+        } else if (rejected.has(relay)) {
+          outcomes.set(relay, {
+            rejected: rejected.get(relay)!,
+            ...(authRequired.has(relay) ? { authRequired: true } : {}),
+          });
+        } else if (timedOut.has(relay)) {
+          outcomes.set(relay, {
+            timedOut: true,
+            unconfirmed: true,
+            ...(authRequired.has(relay) ? { authRequired: true } : {}),
+          });
+        } else {
+          outcomes.set(relay, {
+            unconfirmed: true,
+            ...(authRequired.has(relay) ? { authRequired: true } : {}),
+          });
+        }
+      }
+    };
+
+    const launchAdditionalRelays = (relayUrls: string[]): void => {
+      if (!isCurrent() || !acceptsDiscovery) return;
+      const targets = RelayConfigUtils.sanitizeExternalRelayUrls(relayUrls)
+        .filter((relay) => !launchedRelays.has(relay));
+      if (targets.length === 0) return;
+      targets.forEach((relay) => launchedRelays.add(relay));
+      const wave = sender.sendEvent(params.event, {
+        targetRelays: targets,
+        includeDefaultWriteRelays: false,
+        waitForAllRelays: true,
+        deadlineAt,
+        authDeadlineAt,
+      }).then((result) => applyWaveResult(result, targets))
+        .catch(() => {
+          lastError = "post_network_error";
+          for (const relay of targets) {
+            if (!outcomes.has(relay)) outcomes.set(relay, { unconfirmed: true });
+          }
+        });
+      wavePromises.push(wave);
+    };
+
+    try {
+      const initialTargets = RelayConfigUtils.sanitizeExternalRelayUrls([
+        ...defaultWriteRelays,
+        ...additionalRelays,
+      ]);
+      initialTargets.forEach((relay) => launchedRelays.add(relay));
+      const initialWave = sender.sendEvent(params.event, {
+        targetRelays: additionalRelays,
+        includeDefaultWriteRelays: true,
+        waitForAllRelays: true,
+        deadlineAt,
+        authDeadlineAt,
+      }).then((result) => applyWaveResult(result, initialTargets))
+        .catch(() => {
+          lastError = "post_network_error";
+          for (const relay of initialTargets) {
+            if (!outcomes.has(relay)) outcomes.set(relay, { unconfirmed: true });
+          }
+        });
+      wavePromises.push(initialWave);
+
+      const recipientPubkeys = Array.from(new Set<string>(
+        (params.event?.tags ?? []).flatMap((tag: unknown) => {
+          if (!Array.isArray(tag) || tag[0] !== "p") return [];
+          const pubkey = tag[1];
+          return typeof pubkey === "string" && /^[0-9a-f]{64}$/i.test(pubkey)
+            ? [pubkey]
+            : [];
+        }),
+      ));
+
+      const lookups = recipientPubkeys.map(async (pubkey) => {
+        try {
+          const entry: Pick<Nip65RelayDirectoryEntry, "readRelays"> = this.deps.nip65ReadRelayLookupFn
+            ? await this.deps.nip65ReadRelayLookupFn(pubkey)
+            : await getNip65RelayDirectory(rxNostr).lookup(pubkey);
+          if (!acceptsDiscovery || Date.now() >= discoveryDeadline || !isCurrent()) return;
+          const relays = RelayConfigUtils.sanitizeExternalRelayUrls(entry.readRelays);
+          recipientRelays.set(pubkey, new Set(relays));
+          recipientRouteStatus.set(pubkey, relays.length > 0 ? "found" : "unavailable");
+          relays.forEach((relay) => getRoles(relay).recipients.add(pubkey));
+          launchAdditionalRelays(relays);
+        } catch {
+          if (acceptsDiscovery && Date.now() < discoveryDeadline && isCurrent()) {
+            recipientRelays.set(pubkey, new Set());
+            recipientRouteStatus.set(pubkey, "unavailable");
+          }
+        }
+      });
+
+      if (lookups.length > 0) {
+        let discoveryTimer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          Promise.all(lookups),
+          cancellation,
+          new Promise<void>((resolve) => {
+            discoveryTimer = setTimeout(
+              resolve,
+              Math.max(0, discoveryDeadline - Date.now()),
+            );
+          }),
+        ]);
+        if (discoveryTimer !== undefined) clearTimeout(discoveryTimer);
+      }
+      acceptsDiscovery = false;
+      for (const pubkey of recipientPubkeys) {
+        if (!recipientRouteStatus.has(pubkey)) {
+          recipientRelays.set(pubkey, new Set());
+          recipientRouteStatus.set(pubkey, cancelled ? "cancelled" : "unavailable");
+        }
+      }
+
+      await Promise.all(wavePromises);
+
+      const toClass = (
+        relays: string[],
+        unavailable = false,
+        wasCancelled = false,
+      ) => createDeliveryClassResult(relays, outcomes, unavailable, wasCancelled);
+      const authorWrite = toClass(
+        defaultWriteRelays,
+        defaultWriteRelays.length === 0,
+      );
+      const taggedUserRead: Record<string, PostDeliveryClassResult> = Object.fromEntries(recipientPubkeys.map((pubkey) => {
+        const relays = [...(recipientRelays.get(pubkey) ?? [])];
+        const routeStatus = recipientRouteStatus.get(pubkey);
+        return [pubkey, toClass(
+          relays,
+          routeStatus === "unavailable",
+          routeStatus === "cancelled",
+        )];
+      }));
+      const additional: PostDeliveryClassResult[] = additionalRelays.length > 0
+        ? [toClass(additionalRelays)]
+        : [];
+      const delivery: PostDeliverySummary = { authorWrite, taggedUserRead, additional };
+      const acceptedRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
+        [...outcomes.entries()]
+          .filter(([, outcome]) => outcome.accepted)
+          .map(([relay]) => relay),
+      );
+      const rejectedRelays = [...outcomes.values()]
+        .flatMap((outcome) => outcome.rejected ? [outcome.rejected] : []);
+      const timedOutRelays = [...outcomes.entries()]
+        .filter(([, outcome]) => outcome.timedOut)
+        .map(([relay]) => relay);
+      const authRequiredRelays = [...outcomes.entries()]
+        .filter(([, outcome]) => outcome.authRequired)
+        .map(([relay]) => relay);
+      const success = acceptedRelays.length > 0;
+      const fullyDelivered = authorWrite.acceptedRelays.length > 0
+        && Object.values(taggedUserRead).every((result) => result.acceptedRelays.length > 0)
+        && additional.every((result) => result.acceptedRelays.length > 0);
+      const hasUnconfirmed = timedOutRelays.length > 0
+        || [...outcomes.values()].some((outcome) => outcome.unconfirmed);
+      const error = success
+        ? undefined
+        : lastError
+          ?? (hasUnconfirmed ? "post_timeout" : "post_rejected");
+
+      return {
+        success,
+        fullyDelivered,
+        ...(error ? { error } : {}),
+        ...(success ? { eventId: params.event?.id } : {}),
+        acceptedRelays,
+        ...(rejectedRelays.length ? { rejectedRelays } : {}),
+        ...(timedOutRelays.length ? { timedOutRelays } : {}),
+        ...(authRequiredRelays.length ? { authRequiredRelays } : {}),
+        delivery,
+      };
+    } finally {
+      operation.cancel();
+      this.activeNip65Operations.delete(operation);
     }
   }
 
@@ -276,9 +661,10 @@ export class PostManager {
     }
 
     assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
-    const result = await this.eventSender!.sendEvent(verifiedEvent.event, {
-      targetRelays: params.additionalWriteRelays,
-      includeDefaultWriteRelays: true,
+    const result = await this.publishNip65Event({
+      event: verifiedEvent.event,
+      sessionPubkey: params.sessionPubkey,
+      additionalWriteRelays: params.additionalWriteRelays,
     });
     this.deps.console?.debug?.('[PostManager] sendPreparedEvent publish completed', {
       success: result.success,
@@ -294,7 +680,6 @@ export class PostManager {
       event: verifiedEvent.event,
       attestation: verifiedEvent.attestation,
       result: resultWithEvent,
-      additionalWriteRelays: params.additionalWriteRelays,
     });
     return this.finalizeSubmittedPost(
       resultWithEvent,

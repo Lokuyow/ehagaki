@@ -38,8 +38,18 @@ function createSendingStatus(): PostStatus {
 }
 
 function createSuccessStatus(result?: PostResult): PostStatus {
-    const isPartial = (result?.rejectedRelays?.length ?? 0) > 0
-        || (result?.timedOutRelays?.length ?? 0) > 0;
+    const isPartial = result?.fullyDelivered === false
+        || (result?.rejectedRelays?.length ?? 0) > 0
+        || (result?.timedOutRelays?.length ?? 0) > 0
+        || (result?.authRequiredRelays?.length ?? 0) > 0
+        || (result?.delivery?.authorWrite?.status !== undefined
+            && result.delivery.authorWrite.status !== "delivered")
+        || Object.values(result?.delivery?.taggedUserRead ?? {}).some(
+            (delivery) => delivery.status !== "delivered",
+        )
+        || (result?.delivery?.additional ?? []).some(
+            (delivery) => delivery.status !== "delivered",
+        );
     return {
         sending: false,
         success: true,

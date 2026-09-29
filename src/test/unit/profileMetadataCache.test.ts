@@ -840,6 +840,33 @@ describe("profileMetadataCache", () => {
         }]);
     });
 
+    it("queries a known author Write relay in the bootstrap request even when bootstrap has a profile", async () => {
+        const authorWriteRelay = "wss://author-write.example/";
+        const rxNostr = createTieredRxNostr((relays) => {
+            const packets: TierTestPacket[] = [];
+            if (relays.includes(BOOTSTRAP_RELAYS[0])) {
+                packets.push({ content: { name: "Bootstrap" }, createdAt: 100 });
+            }
+            if (relays.includes(authorWriteRelay)) {
+                packets.push({ content: { name: "Author Write" }, createdAt: 200 });
+            }
+            return packets;
+        });
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            writeRelays: [authorWriteRelay],
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+
+        await expect(pending).resolves.toMatchObject({ name: "Author Write" });
+        expect(rxNostr.calls).toEqual([{
+            relays: expect.arrayContaining([...BOOTSTRAP_RELAYS, authorWriteRelay]),
+            authors: [pubkey],
+        }]);
+    });
+
     it("moves from bootstrap to contextual relays and stops before fallback", async () => {
         const contextRelay = "wss://context.example.com/";
         const rxNostr = createTieredRxNostr((relays) => (

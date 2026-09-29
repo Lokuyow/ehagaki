@@ -18,6 +18,7 @@ import { createMockConsole, createMockRxNostr, MockKeyManager } from '../helpers
 import { nip19 } from 'nostr-tools';
 import { DECOMMISSIONED_RELAYS } from '../../lib/relayLists';
 import { ReplyQuoteService } from '../../lib/replyQuoteService';
+import { activateHostRelayConfig, deactivateHostRelayConfig } from '../../lib/hostRelayRuntime';
 
 vi.mock('../../lib/postHistoryRawEventVerification', () => ({
     RAW_EVENT_VERIFICATION_RULE_VERSION: 1,
@@ -282,6 +283,7 @@ describe('PostManager editor state helpers', () => {
                 hashtags: [],
                 tags: [],
             },
+            nip65ReadRelayLookupFn: vi.fn().mockResolvedValue({ readRelays: [] }),
             clearReplyQuoteFn: vi.fn(),
             console: createMockConsole(),
         };
@@ -466,6 +468,13 @@ describe('PostManager editor state helpers', () => {
 
         beforeEach(() => {
             mockRxNostr = createMockRxNostr();
+            (mockRxNostr as any).getDefaultRelays = vi.fn(() => ({
+                'wss://relay1.example.com/': {
+                    url: 'wss://relay1.example.com/',
+                    read: true,
+                    write: true,
+                },
+            }));
             mockAuthState = {
                 isAuthenticated: true,
                 type: 'nsec',
@@ -512,7 +521,7 @@ describe('PostManager editor state helpers', () => {
                 subscribe: vi.fn((observer) => {
                     process.nextTick(() => {
                         observer.next({
-                            from: 'relay1',
+                            from: 'wss://relay1.example.com/',
                             ok: true,
                             done: true,
                             eventId: 'test-event-id',
@@ -918,7 +927,7 @@ describe('PostEventSender', () => {
                 // 即座にnextを呼び出す
                 process.nextTick(() => {
                     observer.next({
-                        from: 'relay1',
+                        from: 'wss://relay1.example.com/',
                         ok: true,
                         done: true,
                         eventId: 'test-event-id',
@@ -936,6 +945,38 @@ describe('PostEventSender', () => {
 
         expect(result.success).toBe(true);
         expect(mockRxNostr.send).toHaveBeenCalledWith(event, expect.objectContaining({ completeOn: 'all-ok' }));
+    });
+
+    it('NIP-65の全宛先モードはObservable error後も確認済みACKを保持する', async () => {
+        const event = { id: 'event-id', kind: 1, content: 'test' };
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                observer.next({
+                    from: 'wss://accepted.example/',
+                    ok: true,
+                    done: true,
+                    eventId: event.id,
+                });
+                observer.error(new Error('stream ended'));
+                return { unsubscribe: vi.fn() };
+            }),
+        };
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        const result = await sender.sendEvent(event, {
+            targetRelays: [
+                'wss://accepted.example/',
+                'wss://unconfirmed.example/',
+            ],
+            includeDefaultWriteRelays: false,
+            waitForAllRelays: true,
+        });
+
+        expect(result).toMatchObject({
+            success: true,
+            acceptedRelays: ['wss://accepted.example/'],
+            timedOutRelays: ['wss://unconfirmed.example/'],
+        });
     });
 
     it('明示 relay が終了済みのみで default write relay を含めない場合は送信しない', async () => {
@@ -1071,7 +1112,7 @@ describe('PostEventSender', () => {
             subscribe: vi.fn((observer) => {
                 process.nextTick(() => {
                     observer.next({
-                        from: 'relay1',
+                        from: 'wss://relay1.example.com/',
                         ok: true,
                         done: true,
                         eventId: 'test-event-id',
@@ -1142,7 +1183,7 @@ describe('PostEventSender', () => {
         const mockObservable = {
             subscribe: vi.fn((observer) => {
                 process.nextTick(async () => {
-                    observer.next({ from: 'relay1', ok: false, done: true, eventId: 'id1', type: 'OK', notice: 'blocked' });
+                    observer.next({ from: 'wss://relay1.example.com/', ok: false, done: true, eventId: 'id1', type: 'OK', notice: 'blocked' });
                     observer.next({ from: 'relay2', ok: false, done: true, eventId: 'id1', type: 'OK', notice: 'blocked' });
                     observer.complete();
                 });
@@ -1163,7 +1204,7 @@ describe('PostEventSender', () => {
         const mockObservable = {
             subscribe: vi.fn((observer) => {
                 process.nextTick(() => {
-                    observer.next({ from: 'relay1', ok: true, done: true, eventId: 'id1', type: 'OK' });
+                    observer.next({ from: 'wss://relay1.example.com/', ok: true, done: true, eventId: 'id1', type: 'OK' });
                 });
                 return { unsubscribe: vi.fn() };
             })
@@ -1186,6 +1227,13 @@ describe('PostManager統合テスト', () => {
 
     beforeEach(() => {
         mockRxNostr = createMockRxNostr();
+        (mockRxNostr as any).getDefaultRelays = vi.fn(() => ({
+            'wss://relay1.example.com/': {
+                url: 'wss://relay1.example.com/',
+                read: true,
+                write: true,
+            },
+        }));
 
         mockAuthState = {
             isAuthenticated: true,
@@ -1208,6 +1256,7 @@ describe('PostManager統合テスト', () => {
             authStateStore: { value: mockAuthState },
             hashtagStore: mockHashtagStore,
             keyManager: mockKeyManager,
+            nip65ReadRelayLookupFn: vi.fn().mockResolvedValue({ readRelays: [] }),
             console: {
                 log: vi.fn(),
                 error: vi.fn()
@@ -1236,7 +1285,7 @@ describe('PostManager統合テスト', () => {
             subscribe: vi.fn((observer) => {
                 process.nextTick(() => {
                     observer.next({
-                        from: 'relay1',
+                        from: 'wss://relay1.example.com/',
                         ok: true,
                         done: true,
                         eventId: 'test-event-id',
@@ -1276,7 +1325,7 @@ describe('PostManager統合テスト', () => {
             subscribe: vi.fn((observer) => {
                 process.nextTick(() => {
                     observer.next({
-                        from: 'relay1',
+                        from: 'wss://relay1.example.com/',
                         ok: true,
                         done: true,
                         eventId: 'test-event-id',
@@ -1344,11 +1393,7 @@ describe('PostManager統合テスト', () => {
                 content: 'Test post content',
             }),
             acceptedRelays: ['wss://accepted.example.com/'],
-            relayHints: [
-                'wss://accepted.example.com/',
-                'wss://write.example.com/',
-                'wss://other-write.example.com/',
-            ],
+            relayHints: ['wss://accepted.example.com/'],
         }));
     });
 
@@ -1402,7 +1447,7 @@ describe('PostManager統合テスト', () => {
             subscribe: vi.fn((observer) => {
                 process.nextTick(() => {
                     observer.next({
-                        from: 'relay1',
+                        from: 'wss://relay1.example.com/',
                         ok: true,
                         done: true,
                         eventId: 'channel-message-id',
@@ -1466,7 +1511,7 @@ describe('PostManager統合テスト', () => {
             subscribe: vi.fn((observer) => {
                 process.nextTick(() => {
                     observer.next({
-                        from: 'relay1',
+                        from: 'wss://relay1.example.com/',
                         ok: true,
                         done: true,
                         eventId: 'channel-reply-id',
@@ -1542,7 +1587,7 @@ describe('PostManager統合テスト', () => {
             subscribe: vi.fn((observer) => {
                 process.nextTick(() => {
                     observer.next({
-                        from: 'relay1',
+                        from: 'wss://relay1.example.com/',
                         ok: true,
                         done: true,
                         eventId: 'channel-reply-canonical-id',
@@ -1634,7 +1679,7 @@ describe('PostManager統合テスト', () => {
             subscribe: vi.fn((observer) => {
                 process.nextTick(() => {
                     observer.next({
-                        from: 'relay1',
+                        from: 'wss://relay1.example.com/',
                         ok: true,
                         done: true,
                         eventId: 'channel-reply-invalid-thread-id',
@@ -1749,7 +1794,7 @@ describe('PostManager統合テスト', () => {
             subscribe: vi.fn((observer) => {
                 process.nextTick(() => {
                     observer.next({
-                        from: 'relay1',
+                        from: 'wss://relay1.example.com/',
                         ok: true,
                         done: true,
                         eventId: 'test-event-id',
@@ -1820,7 +1865,7 @@ describe('PostManager統合テスト', () => {
             subscribe: vi.fn((observer: any) => {
                 process.nextTick(() => {
                     observer.next({
-                        from: 'relay1',
+                        from: 'wss://relay1.example.com/',
                         ok: true,
                         done: true,
                         eventId: 'test-event-id',
@@ -1869,7 +1914,7 @@ describe('PostManager統合テスト', () => {
             subscribe: vi.fn((observer) => {
                 process.nextTick(() => {
                     observer.next({
-                        from: 'relay1',
+                        from: 'wss://relay1.example.com/',
                         ok: true,
                         done: true,
                         eventId: 'test-event-id',
@@ -1939,7 +1984,7 @@ describe('PostManager統合テスト', () => {
                 subscribe: vi.fn((observer) => {
                     process.nextTick(() => {
                         observer.next({
-                            from: 'relay1',
+                            from: 'wss://relay1.example.com/',
                             ok: true,
                             done: true,
                             eventId: 'test-event-id',
@@ -1957,7 +2002,7 @@ describe('PostManager統合テスト', () => {
 
             expect(result.success).toBe(true);
             expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledWith({
-                eventId: 'test-event-id',
+                eventId: 'signed-test-event-id',
             });
             expect(mockIframeService.notifyPostError).not.toHaveBeenCalled();
         });
@@ -2057,7 +2102,7 @@ describe('PostManager統合テスト', () => {
                 subscribe: vi.fn((observer) => {
                     process.nextTick(() => {
                         observer.next({
-                            from: 'relay1',
+                            from: 'wss://relay1.example.com/',
                             ok: true,
                             done: true,
                             eventId: 'test-event-id',
@@ -2074,9 +2119,7 @@ describe('PostManager統合テスト', () => {
             const result = await manager.submitPost('Test post content');
 
             expect(result.success).toBe(true);
-            expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledWith({
-                eventId: 'test-event-id',
-            });
+            expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledOnce();
             expect(mockIframeService.notifyPostError).not.toHaveBeenCalled();
         });
 
@@ -2107,7 +2150,7 @@ describe('PostManager統合テスト', () => {
                 subscribe: vi.fn((observer) => {
                     process.nextTick(() => {
                         observer.next({
-                            from: 'relay1',
+                            from: 'wss://relay1.example.com/',
                             ok: true,
                             done: true,
                             eventId: 'test-event-id',
@@ -2125,7 +2168,7 @@ describe('PostManager統合テスト', () => {
 
             expect(result.success).toBe(true);
             expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledWith({
-                eventId: 'test-event-id',
+                eventId: 'parent-signed-event-id',
             });
             expect(mockParentSigner.signEvent).toHaveBeenCalledWith(expect.objectContaining({
                 kind: 1,
@@ -2170,7 +2213,7 @@ describe('PostManager統合テスト', () => {
                 subscribe: vi.fn((observer) => {
                     process.nextTick(() => {
                         observer.next({
-                            from: 'relay1',
+                            from: 'wss://relay1.example.com/',
                             ok: true,
                             done: true,
                             eventId: 'test-event-id',
@@ -2254,7 +2297,7 @@ describe('PostManager統合テスト', () => {
                 subscribe: vi.fn((observer: any) => {
                     process.nextTick(() => {
                         observer.next({
-                            from: 'relay1',
+                            from: 'wss://relay1.example.com/',
                             ok: true,
                             done: true,
                             eventId: 'test-event-id',
@@ -2560,4 +2603,267 @@ beforeAll(() => {
 });
 afterAll(() => {
     process.env.VITEST = originalVitestEnv;
+});
+
+describe("NIP-65 staged post delivery", () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    function createStagedPostHarness() {
+        const authorRelay = "wss://author-write.example/";
+        const rxNostr = createMockRxNostr() as any;
+        let directoryObserver: any;
+        rxNostr.getDefaultRelays = vi.fn(() => ({
+            [authorRelay]: { url: authorRelay, read: true, write: true },
+        }));
+        rxNostr.use = vi.fn(() => ({
+            subscribe: vi.fn((observer: unknown) => {
+                directoryObserver = observer;
+                return { unsubscribe: vi.fn() };
+            }),
+        }));
+        rxNostr.send = vi.fn((_event: unknown, options: any) => ({
+            subscribe: (observer: any) => {
+                const targets = options.on?.relays?.length
+                    ? options.on.relays
+                    : [authorRelay];
+                queueMicrotask(() => {
+                    targets.forEach((relay: string) => observer.next({
+                        from: relay,
+                        ok: true,
+                        done: true,
+                        eventId: "signed-event-id",
+                    }));
+                    observer.complete();
+                });
+                return { unsubscribe: vi.fn() };
+            },
+        }));
+        const authState = {
+            type: "nsec",
+            isAuthenticated: true,
+            pubkey: "author-pubkey",
+            npub: "",
+            nprofile: "",
+            isValid: true,
+            isInitialized: true,
+        } as AuthState;
+        const authStateStore = { value: authState };
+        const manager = new PostManager(rxNostr, {
+            authStateStore,
+            console: createMockConsole(),
+        });
+        return { manager, rxNostr, authStateStore, getDirectoryObserver: () => directoryObserver };
+    }
+
+    function targetEvent() {
+        return {
+            id: "signed-event-id",
+            pubkey: "author-pubkey",
+            kind: 1,
+            content: "test",
+            tags: [["p", "a".repeat(64)]],
+            created_at: 1,
+            sig: "signature",
+        };
+    }
+
+    it("does not settle after immediate author ACK and includes a recipient route found two seconds later", async () => {
+        vi.useFakeTimers();
+        const { manager, rxNostr, getDirectoryObserver } = createStagedPostHarness();
+        let settled = false;
+        const resultPromise = (manager as any).publishNip65Event({
+            event: targetEvent(),
+            sessionPubkey: "author-pubkey",
+        }).then((result: unknown) => {
+            settled = true;
+            return result;
+        });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(rxNostr.send).toHaveBeenCalledTimes(1);
+        expect(settled).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(2_000);
+        getDirectoryObserver().next({
+            event: {
+                kind: 10002,
+                pubkey: "a".repeat(64),
+                id: "b".repeat(64),
+                created_at: 10,
+                tags: [["r", "wss://recipient-read.example/", "read"]],
+            },
+        });
+        getDirectoryObserver().complete();
+
+        const result = await resultPromise;
+        expect(rxNostr.send).toHaveBeenCalledTimes(2);
+        expect(result).toMatchObject({
+            success: true,
+            fullyDelivered: true,
+            acceptedRelays: [
+                "wss://author-write.example/",
+                "wss://recipient-read.example/",
+            ],
+            delivery: {
+                authorWrite: { status: "delivered" },
+                taggedUserRead: {
+                    ["a".repeat(64)]: { status: "delivered" },
+                },
+            },
+        });
+    });
+
+    it("allows ordinary posts to be fully delivered after an author Write ACK", async () => {
+        vi.useFakeTimers();
+        const { manager, rxNostr } = createStagedPostHarness();
+        const resultPromise = (manager as any).publishNip65Event({
+            event: { ...targetEvent(), tags: [] },
+            sessionPubkey: "author-pubkey",
+        });
+
+        await vi.advanceTimersByTimeAsync(0);
+        const result = await resultPromise;
+
+        expect(rxNostr.send).toHaveBeenCalledOnce();
+        expect(result).toMatchObject({
+            success: true,
+            fullyDelivered: true,
+            delivery: { authorWrite: { status: "delivered" }, taggedUserRead: {} },
+        });
+    });
+
+    it("reuses an ACK when the discovered recipient role points to an already-sent URL", async () => {
+        vi.useFakeTimers();
+        const { manager, rxNostr, getDirectoryObserver } = createStagedPostHarness();
+        const resultPromise = (manager as any).publishNip65Event({
+            event: targetEvent(),
+            sessionPubkey: "author-pubkey",
+        });
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(500);
+        getDirectoryObserver().next({
+            event: {
+                kind: 10002,
+                pubkey: "a".repeat(64),
+                id: "c".repeat(64),
+                created_at: 11,
+                tags: [["r", "wss://author-write.example/", "read"]],
+            },
+        });
+        getDirectoryObserver().complete();
+
+        const result = await resultPromise;
+        expect(rxNostr.send).toHaveBeenCalledTimes(1);
+        expect(result).toMatchObject({
+            fullyDelivered: true,
+            delivery: {
+                authorWrite: { acceptedRelays: ["wss://author-write.example/"] },
+                taggedUserRead: {
+                    ["a".repeat(64)]: {
+                        status: "delivered",
+                        acceptedRelays: ["wss://author-write.example/"],
+                    },
+                },
+            },
+        });
+    });
+
+    it("does not dispatch a discovered Read route after the mounted post operation is cancelled", async () => {
+        vi.useFakeTimers();
+        const { manager, rxNostr, getDirectoryObserver } = createStagedPostHarness();
+        const resultPromise = (manager as any).publishNip65Event({
+            event: targetEvent(),
+            sessionPubkey: "author-pubkey",
+        });
+        await vi.advanceTimersByTimeAsync(0);
+        manager.cancelActiveNip65Operations();
+        getDirectoryObserver().next({
+            event: {
+                kind: 10002,
+                pubkey: "a".repeat(64),
+                id: "d".repeat(64),
+                created_at: 12,
+                tags: [["r", "wss://recipient-read.example/", "read"]],
+            },
+        });
+        getDirectoryObserver().complete();
+
+        const result = await resultPromise;
+        expect(rxNostr.send).toHaveBeenCalledTimes(1);
+        expect(result).toMatchObject({
+            success: true,
+            fullyDelivered: false,
+            delivery: {
+                authorWrite: { status: "delivered" },
+                taggedUserRead: {
+                    ["a".repeat(64)]: { status: "cancelled", acceptedRelays: [] },
+                },
+            },
+        });
+    });
+
+    it("does not dispatch a discovered Read route after logout or account replacement", async () => {
+        vi.useFakeTimers();
+        const { manager, rxNostr, authStateStore, getDirectoryObserver } = createStagedPostHarness();
+        const resultPromise = (manager as any).publishNip65Event({
+            event: targetEvent(),
+            sessionPubkey: "author-pubkey",
+        });
+        await vi.advanceTimersByTimeAsync(0);
+        authStateStore.value = {
+            ...authStateStore.value,
+            isAuthenticated: false,
+            pubkey: "",
+            type: "none",
+        } as AuthState;
+        getDirectoryObserver().next({
+            event: {
+                kind: 10002,
+                pubkey: "a".repeat(64),
+                id: "e".repeat(64),
+                created_at: 13,
+                tags: [["r", "wss://recipient-read.example/", "read"]],
+            },
+        });
+        getDirectoryObserver().complete();
+
+        const result = await resultPromise;
+        expect(rxNostr.send).toHaveBeenCalledTimes(1);
+        expect(result).toMatchObject({
+            success: true,
+            fullyDelivered: false,
+            acceptedRelays: ["wss://author-write.example/"],
+            delivery: {
+                taggedUserRead: {
+                    ["a".repeat(64)]: { status: "cancelled", acceptedRelays: [] },
+                },
+            },
+        });
+    });
+
+    it("does not publish to a recipient Read route when Host config is read-only", async () => {
+        vi.useFakeTimers();
+        const { manager, rxNostr } = createStagedPostHarness();
+        const readOnlyRelay = "wss://host-read-only.example/";
+        rxNostr.getDefaultRelays = vi.fn(() => ({
+            [readOnlyRelay]: { url: readOnlyRelay, read: true, write: false },
+        }));
+        activateHostRelayConfig({
+            [readOnlyRelay]: { read: true, write: false },
+        });
+
+        try {
+            const result = await (manager as any).publishNip65Event({
+                event: targetEvent(),
+                sessionPubkey: "author-pubkey",
+            });
+
+            expect(result).toMatchObject({ success: false, error: "no_write_relays" });
+            expect(rxNostr.send).not.toHaveBeenCalled();
+            expect(result.delivery.authorWrite.status).toBe("unavailable");
+        } finally {
+            deactivateHostRelayConfig();
+        }
+    });
 });

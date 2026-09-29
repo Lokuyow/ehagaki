@@ -858,14 +858,20 @@ async function flushPendingBatch(): Promise<void> {
         }
 
         const pubkeys = Array.from(groupedByPubkey.keys());
-        const tiersByPubkey = Object.fromEntries(pubkeys.map((pubkey) => [
-            pubkey,
-            buildProfileRelayTiers({
+        const tiersByPubkey = Object.fromEntries(pubkeys.map((pubkey) => {
+            const tiers = buildProfileRelayTiers({
                 contextualRelays: contextualRelaysByPubkey[pubkey] ?? [],
                 fallbackRelays: fallbackRelaysByPubkey[pubkey] ?? [],
                 contextualRelayLimit: PROFILE_CACHE_MAX_RELAYS,
-            }),
-        ]));
+            });
+            const alreadyQueried = new Set([
+                ...tiers.bootstrap,
+                ...(writeRelaysByPubkey[pubkey] ?? []),
+            ]);
+            tiers.contextual = tiers.contextual.filter((relay) => !alreadyQueried.has(relay));
+            tiers.fallback = tiers.fallback.filter((relay) => !alreadyQueried.has(relay));
+            return [pubkey, tiers];
+        }));
         const commonTiers = buildProfileRelayTiers({
             contextualRelays: [],
             contextualRelayLimit: PROFILE_CACHE_MAX_RELAYS,
@@ -883,9 +889,14 @@ async function flushPendingBatch(): Promise<void> {
             targets: string[],
         ): ProfileRelayRequestGroup[] => {
             if (tierName === "bootstrap") {
-                return commonTiers.bootstrap.length > 0
-                    ? [{ relays: commonTiers.bootstrap, pubkeys: targets }]
-                    : [];
+                const relaysByPubkey = Object.fromEntries(targets.map((pubkey) => [
+                    pubkey,
+                    RelayConfigUtils.sanitizeExternalRelayUrls([
+                        ...commonTiers.bootstrap,
+                        ...(writeRelaysByPubkey[pubkey] ?? []),
+                    ]),
+                ]));
+                return groupPubkeysByRelaySet(targets, relaysByPubkey);
             }
 
             const relaysByPubkey = Object.fromEntries(targets.map((pubkey) => [

@@ -40,6 +40,7 @@ describe('RelayProfileService', () => {
     let mockRelayManager: RelayManager;
     let mockRxNostr: ReturnType<typeof createMockRxNostr>;
     let getProfileSpy: ReturnType<typeof vi.spyOn>;
+    let nip65Lookup: ReturnType<typeof vi.fn> & ((pubkeyHex: string) => Promise<any>);
 
     const createProfileResult = (overrides = {}) => ({
         name: 'Test User',
@@ -66,7 +67,17 @@ describe('RelayProfileService', () => {
         getProfileSpy = vi.spyOn(profileMetadataCache, 'getProfile').mockResolvedValue(
             createProfileResult()
         );
-        service = new RelayProfileService(mockRxNostr as any, mockRelayManager);
+        nip65Lookup = vi.fn().mockResolvedValue({
+            pubkey: 'pubkey123',
+            status: 'not-found',
+            readRelays: [],
+            writeRelays: [],
+            createdAt: null,
+            eventId: null,
+        });
+        service = new RelayProfileService(mockRxNostr as any, mockRelayManager, {
+            lookup: nip65Lookup,
+        });
     });
 
     describe('initializeRelays', () => {
@@ -217,6 +228,26 @@ describe('RelayProfileService', () => {
     });
 
     describe('fetchProfileRealtime', () => {
+        it('discovers the author Write relay and includes it in the kind:0 network tiers', async () => {
+            const authorWrite = 'wss://author-write.example/';
+            nip65Lookup.mockResolvedValue({
+                pubkey: 'pubkey123',
+                status: 'found',
+                readRelays: [],
+                writeRelays: [authorWrite],
+                createdAt: 10,
+                eventId: 'a'.repeat(64),
+            });
+
+            await service.fetchProfileRealtime('pubkey123');
+
+            expect(nip65Lookup).toHaveBeenCalledWith('pubkey123');
+            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', expect.objectContaining({
+                writeRelays: [relay1Url, authorWrite],
+                additionalRelays: [relay1Url, bootstrapRelayUrl, authorWrite],
+            }));
+        });
+
         it('relay hint を既存のプロフィール取得リレーにマージしてSWR取得する', async () => {
             getProfileSpy.mockResolvedValue(createProfileResult({
                 name: 'Realtime User',

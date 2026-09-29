@@ -3,6 +3,10 @@ import { RelayManager } from './relayManager';
 import type { RelayConfig, ProfileData } from './types';
 import { RelayConfigUtils } from './relayConfigUtils';
 import { profileMetadataCache } from './profileMetadataCache.svelte';
+import {
+    getNip65RelayDirectory,
+    type Nip65RelayDirectory,
+} from './nip65RelayDirectory';
 
 export interface ProfileBatchTarget {
     pubkeyHex: string;
@@ -22,13 +26,35 @@ export interface ProfileBatchTarget {
 export class RelayProfileService {
     private rxNostr: ReturnType<typeof createRxNostr>;
     private relayManager: RelayManager;
+    private nip65RelayDirectory: Pick<Nip65RelayDirectory, "lookup">;
 
     constructor(
         rxNostr: ReturnType<typeof createRxNostr>,
         relayManager: RelayManager,
+        nip65RelayDirectory: Pick<Nip65RelayDirectory, "lookup"> = getNip65RelayDirectory(rxNostr as never),
     ) {
         this.rxNostr = rxNostr;
         this.relayManager = relayManager;
+        this.nip65RelayDirectory = nip65RelayDirectory;
+    }
+
+    private async getProfileRelayLists(pubkeyHex: string) {
+        const [relayLists, nip65] = await Promise.all([
+            this.relayManager.getRelayListsForProfile(pubkeyHex),
+            this.nip65RelayDirectory.lookup(pubkeyHex),
+        ]);
+        const writeRelays = RelayConfigUtils.sanitizeExternalRelayUrls([
+            ...relayLists.writeRelays,
+            ...nip65.writeRelays,
+        ]);
+        return {
+            ...relayLists,
+            writeRelays,
+            contextualRelays: RelayConfigUtils.sanitizeExternalRelayUrls([
+                ...(relayLists.contextualRelays ?? relayLists.additionalRelays),
+                ...nip65.writeRelays,
+            ]),
+        };
     }
 
     /**
@@ -89,7 +115,7 @@ export class RelayProfileService {
         if (!pubkeyHex) return null;
 
         // RelayManagerからリレー情報を取得（ストレージアクセスはRelayManagerに委譲）
-        const relayLists = await this.relayManager.getRelayListsForProfile(pubkeyHex);
+        const relayLists = await this.getProfileRelayLists(pubkeyHex);
         const contextualRelays = relayLists.contextualRelays ?? relayLists.additionalRelays;
 
         return profileMetadataCache.getProfile(pubkeyHex, {
@@ -116,7 +142,7 @@ export class RelayProfileService {
     ): Promise<ProfileData | null> {
         if (!pubkeyHex) return null;
 
-        const relayLists = await this.relayManager.getRelayListsForProfile(pubkeyHex);
+        const relayLists = await this.getProfileRelayLists(pubkeyHex);
         const contextualRelays = relayLists.contextualRelays ?? relayLists.additionalRelays;
         const sanitizedOptionRelays = RelayConfigUtils.sanitizeExternalRelayUrls(options.additionalRelays, {
             limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
@@ -162,7 +188,7 @@ export class RelayProfileService {
         const pubkeys = Array.from(relayHintsByPubkey.keys());
         const relayListEntries = await Promise.all(pubkeys.map(async (pubkey) => [
             pubkey,
-            await this.relayManager.getRelayListsForProfile(pubkey),
+            await this.getProfileRelayLists(pubkey),
         ] as const));
         const relayOptionsByPubkey = Object.fromEntries(relayListEntries.map(([
             pubkey,

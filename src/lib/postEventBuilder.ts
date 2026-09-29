@@ -148,6 +148,16 @@ export class PostEventSender {
         private settleTimeouts: PostEventSenderSettleTimeouts = PostEventSender.DEFAULT_SETTLE_TIMEOUTS,
     ) { }
 
+    getDefaultWriteRelays(): string[] {
+        return typeof this.rxNostr.getDefaultRelays === "function"
+            ? RelayConfigUtils.sanitizeExternalRelayUrls(
+                Object.values(this.rxNostr.getDefaultRelays())
+                    .filter((relay) => relay.write)
+                    .map((relay) => relay.url),
+            )
+            : [];
+    }
+
     sendEvent(
         event: any,
         signerOrOptions?: any | SendEventOptions,
@@ -227,7 +237,32 @@ export class PostEventSender {
 
             const scheduleSettle = (delayMs: number) => {
                 clearSettleTimer();
-                settleTimer = setTimeout(() => safeResolve(getResult()), delayMs);
+                settleTimer = setTimeout(() => {
+                    if (
+                        options.waitForAllRelays
+                        && pendingAuthRelays.size > 0
+                        && typeof options.authDeadlineAt === "number"
+                        && Date.now() < options.authDeadlineAt
+                    ) {
+                        scheduleSettle(options.authDeadlineAt - Date.now());
+                        return;
+                    }
+                    safeResolve(getResult());
+                }, delayMs);
+            };
+
+            const maybeResolveAll = () => {
+                if (!options.waitForAllRelays) return;
+                const terminalRelays = new Set([
+                    ...acceptedRelays,
+                    ...rejectedByRelay.keys(),
+                ]);
+                if (
+                    pendingAuthRelays.size === 0
+                    && targetRelays.every((relay) => terminalRelays.has(relay))
+                ) {
+                    safeResolve(getResult());
+                }
             };
 
             const safeResolve = (result: PostResult) => {
@@ -254,7 +289,9 @@ export class PostEventSender {
                             authRequiredRelays.add(relay);
                             pendingAuthRelays.add(relay);
                             successSettleScheduled = false;
-                            scheduleSettle(this.settleTimeouts.authMs);
+                            scheduleSettle(options.waitForAllRelays
+                                ? Math.max(1, (options.authDeadlineAt ?? Date.now()) - Date.now())
+                                : this.settleTimeouts.authMs);
                         }
                         return;
                     }
@@ -263,7 +300,9 @@ export class PostEventSender {
                         acceptedRelays.add(relay);
                         rejectedByRelay.delete(relay);
                         pendingAuthRelays.delete(relay);
-                        if (pendingAuthRelays.size === 0 && !successSettleScheduled) {
+                        if (options.waitForAllRelays) {
+                            maybeResolveAll();
+                        } else if (pendingAuthRelays.size === 0 && !successSettleScheduled) {
                             successSettleScheduled = true;
                             scheduleSettle(this.settleTimeouts.successMs);
                         }
@@ -274,7 +313,9 @@ export class PostEventSender {
                             ...(packet.notice ? { reason: packet.notice } : {}),
                             category: getRejectionCategory(packet.notice),
                         });
-                        if (acceptedRelays.size > 0 && pendingAuthRelays.size === 0 && !successSettleScheduled) {
+                        if (options.waitForAllRelays) {
+                            maybeResolveAll();
+                        } else if (acceptedRelays.size > 0 && pendingAuthRelays.size === 0 && !successSettleScheduled) {
                             successSettleScheduled = true;
                             scheduleSettle(this.settleTimeouts.successMs);
                         }
@@ -285,7 +326,14 @@ export class PostEventSender {
                         stage: 'publish',
                         reason: 'unexpected',
                     });
-                    safeResolve({ success: false, error: "post_network_error" });
+                    if (options.waitForAllRelays) {
+                        const result = getResult();
+                        safeResolve(result.success
+                            ? result
+                            : { ...result, error: "post_network_error" });
+                    } else {
+                        safeResolve({ success: false, error: "post_network_error" });
+                    }
                 },
                 complete: () => {
                     if (!resolved) {
@@ -307,7 +355,9 @@ export class PostEventSender {
                 };
             }
 
-            scheduleSettle(this.settleTimeouts.initialMs);
+            const defaultDeadline = Date.now() + this.settleTimeouts.initialMs;
+            const deadlineAt = options.deadlineAt ?? defaultDeadline;
+            scheduleSettle(Math.max(1, deadlineAt - Date.now()));
             subscription = this.rxNostr.send(event, sendOptions).subscribe(observer);
         });
     }
@@ -323,6 +373,10 @@ export interface SendEventOptions {
     signer?: EventSigner;
     targetRelays?: string[];
     includeDefaultWriteRelays?: boolean;
+    /** NIP-65 batches use a shared operation deadline and await terminal ACKs. */
+    waitForAllRelays?: boolean;
+    deadlineAt?: number;
+    authDeadlineAt?: number;
 }
 
 export interface PostEventSenderSettleTimeouts {

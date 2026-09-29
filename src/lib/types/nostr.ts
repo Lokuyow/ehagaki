@@ -160,6 +160,8 @@ export interface HashtagHistoryEntry {
 }
 
 export interface PostManagerDeps {
+    /** Test seam for deterministic per-pubkey NIP-65 read-route lookup. */
+    nip65ReadRelayLookupFn?: (pubkeyHex: string) => Promise<{ readRelays: string[] }>;
     authStateStore?: {
         value: AuthState;
     };

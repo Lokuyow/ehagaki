@@ -533,6 +533,7 @@ export function createPostHistoryRelatedTargetResolver({
 
                 const fetchTask = contextFetchService.fetchEventById(rxNostr, {
                     eventId: descriptor.targetEventId,
+                    authorHint: descriptor.authorHint,
                     relayHints: mergedSnapshot.relayHints,
                     relayConfig: getRelayConfig(),
                 });
