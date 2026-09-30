@@ -332,7 +332,15 @@ export class PostEventSender {
                             ? result
                             : { ...result, error: "post_network_error" });
                     } else {
-                        safeResolve({ success: false, error: "post_network_error" });
+                        const result = getResult();
+                        if (result.success) {
+                            if (!successSettleScheduled) {
+                                successSettleScheduled = true;
+                                scheduleSettle(this.settleTimeouts.successMs);
+                            }
+                        } else {
+                            safeResolve({ success: false, error: "post_network_error" });
+                        }
                     }
                 },
                 complete: () => {

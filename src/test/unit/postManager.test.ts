@@ -980,6 +980,42 @@ describe('PostEventSender', () => {
         });
     });
 
+    it('通常投稿ではACK後のObservable errorでも1500ms settleまで確認済み結果を保持する', async () => {
+        vi.useFakeTimers();
+        const event = { id: 'event-id', kind: 1, tags: [], content: 'ordinary post' };
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                observer.next({
+                    from: 'wss://write.example/',
+                    ok: true,
+                    done: true,
+                    eventId: event.id,
+                });
+                observer.error(new Error('stream ended after ACK'));
+                return { unsubscribe: vi.fn() };
+            }),
+        };
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        let settled = false;
+        const pending = sender.sendEvent(event).then((result) => {
+            settled = true;
+            return result;
+        });
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1_499);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await expect(pending).resolves.toMatchObject({
+            success: true,
+            eventId: event.id,
+            acceptedRelays: ['wss://write.example/'],
+        });
+        expect(settled).toBe(true);
+        vi.useRealTimers();
+    });
+
     it('明示 relay が終了済みのみで default write relay を含めない場合は送信しない', async () => {
         const result = await sender.sendEvent(
             { kind: 1, content: 'test' },

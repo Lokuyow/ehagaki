@@ -106,6 +106,8 @@ interface BatchNetworkResult {
 let entriesByPubkey = $state.raw<Record<string, ProfileMetadataCacheEntry>>({});
 
 const pendingByPubkey = new Map<string, Promise<ProfileData | null>>();
+const pendingOptionsByPubkey = new Map<string, GetProfileOptions>();
+const pendingRelayFollowupsByPubkey = new Map<string, GetProfileOptions>();
 const subscribersByPubkey = new Map<string, Set<(profile: ProfileData | null) => void>>();
 let pendingBatchRequests: PendingBatchRequest[] = [];
 let pendingBatchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1039,6 +1041,32 @@ async function ensureFreshProfile(
 
     const pending = pendingByPubkey.get(pubkey);
     if (pending) {
+        const activeOptions = pendingOptionsByPubkey.get(pubkey);
+        if (activeOptions && options.rxNostr === activeOptions.rxNostr) {
+            const activeWriteRelays = new Set(sanitizeRelays(activeOptions.writeRelays ?? []));
+            const newWriteRelays = sanitizeRelays(options.writeRelays ?? [])
+                .filter((relay) => !activeWriteRelays.has(relay));
+            if (newWriteRelays.length > 0) {
+                const queued = pendingRelayFollowupsByPubkey.get(pubkey) ?? {};
+                pendingRelayFollowupsByPubkey.set(pubkey, {
+                    rxNostr: options.rxNostr,
+                    forceRefresh: true,
+                    allowBackgroundRefresh: options.allowBackgroundRefresh,
+                    writeRelays: normalizeRelaysPreservingOrder([
+                        ...(queued.writeRelays ?? []),
+                        ...(options.writeRelays ?? []),
+                    ]),
+                    additionalRelays: normalizeRelaysPreservingOrder([
+                        ...(queued.additionalRelays ?? []),
+                        ...(options.additionalRelays ?? []),
+                    ]),
+                    fallbackRelays: normalizeRelaysPreservingOrder([
+                        ...(queued.fallbackRelays ?? []),
+                        ...(options.fallbackRelays ?? []),
+                    ]),
+                });
+            }
+        }
         return pending;
     }
 
@@ -1071,9 +1099,16 @@ async function ensureFreshProfile(
         );
     })().finally(() => {
         pendingByPubkey.delete(pubkey);
+        pendingOptionsByPubkey.delete(pubkey);
+        const followup = pendingRelayFollowupsByPubkey.get(pubkey);
+        pendingRelayFollowupsByPubkey.delete(pubkey);
         gcExpiredEntries();
+        if (followup?.rxNostr && (followup.writeRelays?.length ?? 0) > 0) {
+            void ensureFreshProfile(pubkey, followup);
+        }
     });
 
+    pendingOptionsByPubkey.set(pubkey, options);
     pendingByPubkey.set(pubkey, task);
     return task;
 }
@@ -1288,6 +1323,8 @@ function resetForTests(): void {
 
     entriesByPubkey = {};
     pendingByPubkey.clear();
+    pendingOptionsByPubkey.clear();
+    pendingRelayFollowupsByPubkey.clear();
     subscribersByPubkey.clear();
     pendingBatchRequests = [];
 }
