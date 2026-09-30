@@ -504,18 +504,20 @@ export class PostManager {
           const entry: Pick<Nip65RelayDirectoryEntry, "readRelays"> = this.deps.nip65ReadRelayLookupFn
             ? await this.deps.nip65ReadRelayLookupFn(pubkey, {
               discoveryRelays: params.discoveryRelaysByRecipient?.[pubkey],
+              deadlineAt: discoveryDeadline,
             })
             : await getNip65RelayDirectory(rxNostr).lookup(pubkey, {
               discoveryRelays: params.discoveryRelaysByRecipient?.[pubkey],
+              deadlineAt: discoveryDeadline,
             });
-          if (!acceptsDiscovery || Date.now() >= discoveryDeadline || !isCurrent()) return;
+          if (!acceptsDiscovery || !isCurrent()) return;
           const relays = RelayConfigUtils.sanitizeExternalRelayUrls(entry.readRelays);
           recipientRelays.set(pubkey, new Set(relays));
           recipientRouteStatus.set(pubkey, relays.length > 0 ? "found" : "unavailable");
           relays.forEach((relay) => getRoles(relay).recipients.add(pubkey));
           launchAdditionalRelays(relays);
         } catch {
-          if (acceptsDiscovery && Date.now() < discoveryDeadline && isCurrent()) {
+          if (acceptsDiscovery && isCurrent()) {
             recipientRelays.set(pubkey, new Set());
             recipientRouteStatus.set(pubkey, "unavailable");
           }
@@ -523,18 +525,10 @@ export class PostManager {
       });
 
       if (lookups.length > 0) {
-        let discoveryTimer: ReturnType<typeof setTimeout> | undefined;
         await Promise.race([
           Promise.all(lookups),
           cancellation,
-          new Promise<void>((resolve) => {
-            discoveryTimer = setTimeout(
-              resolve,
-              Math.max(0, discoveryDeadline - Date.now()),
-            );
-          }),
         ]);
-        if (discoveryTimer !== undefined) clearTimeout(discoveryTimer);
       }
       acceptsDiscovery = false;
       for (const pubkey of recipientPubkeys) {

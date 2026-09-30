@@ -2753,6 +2753,45 @@ describe("NIP-65 staged post delivery", () => {
         });
     });
 
+    it("publishes a candidate received before the shared deadline even if discovery never completes", async () => {
+        vi.useFakeTimers();
+        const { manager, rxNostr, getDirectoryObserver } = createStagedPostHarness();
+        const pending = (manager as any).publishNip65Event({
+            event: targetEvent(), sessionPubkey: "author-pubkey",
+            discoveryRelaysByRecipient: { ["a".repeat(64)]: ["wss://context.example/"] },
+        });
+        await vi.advanceTimersByTimeAsync(100);
+        getDirectoryObserver().next({ event: {
+            kind: 10002, pubkey: "a".repeat(64), id: "b".repeat(64), created_at: 10,
+            tags: [["r", "wss://recipient-read.example/", "read"]],
+        } });
+        await vi.advanceTimersByTimeAsync(2_899);
+        expect(rxNostr.send).toHaveBeenCalledOnce();
+        await vi.advanceTimersByTimeAsync(1);
+        await expect(pending).resolves.toMatchObject({
+            success: true, fullyDelivered: true,
+            acceptedRelays: ["wss://author-write.example/", "wss://recipient-read.example/"],
+        });
+        expect(rxNostr.send).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not publish a new candidate after the bounded discovery result is final", async () => {
+        vi.useFakeTimers();
+        const { manager, rxNostr, getDirectoryObserver } = createStagedPostHarness();
+        const pending = (manager as any).publishNip65Event({ event: targetEvent(), sessionPubkey: "author-pubkey" });
+        await vi.advanceTimersByTimeAsync(3_000);
+        const result = await pending;
+        expect(result).toMatchObject({ success: true, fullyDelivered: false });
+        getDirectoryObserver().next({ event: {
+            kind: 10002, pubkey: "a".repeat(64), id: "b".repeat(64), created_at: 10,
+            tags: [["r", "wss://late-read.example/", "read"]],
+        } });
+        getDirectoryObserver().complete();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(rxNostr.send).toHaveBeenCalledOnce();
+        expect(result.acceptedRelays).toEqual(["wss://author-write.example/"]);
+    });
+
     it("allows ordinary posts to be fully delivered after an author Write ACK", async () => {
         vi.useFakeTimers();
         const { manager, rxNostr } = createStagedPostHarness();

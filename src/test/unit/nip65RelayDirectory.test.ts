@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Nip65RelayDirectory } from "../../lib/nip65RelayDirectory";
 import type { RxNostr } from "rx-nostr";
 import { activateHostRelayConfig, deactivateHostRelayConfig } from "../../lib/hostRelayRuntime";
@@ -26,6 +26,7 @@ function createRxHarness() {
 }
 
 describe("Nip65RelayDirectory", () => {
+    afterEach(() => vi.useRealTimers());
     it("collects EOSE responses and selects newest event with lexical id tie-break", async () => {
         const { rxNostr, observers } = createRxHarness();
         const directory = new Nip65RelayDirectory(rxNostr);
@@ -115,19 +116,154 @@ describe("Nip65RelayDirectory", () => {
             discoveryRelays: ["wss://reply-target.example/"],
         });
         expect(first).toBe(withContext);
-
-        observers[0].complete();
-        await Promise.resolve();
-        await Promise.resolve();
         expect(rxNostr.use).toHaveBeenCalledTimes(2);
         observers[1].next({
             event: event(4, "b", [["r", "wss://recipient-read.example/", "read"]]),
         });
         observers[1].complete();
+        let settled = false;
+        void first.then(() => { settled = true; });
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        observers[0].complete();
         await expect(first).resolves.toMatchObject({
             status: "found",
             readRelays: ["wss://recipient-read.example/"],
         });
+    });
+
+    it("returns a pre-deadline candidate despite a missing EOSE without mutating the snapshot later", async () => {
+        vi.useFakeTimers();
+        const { rxNostr, observers } = createRxHarness();
+        const directory = new Nip65RelayDirectory(rxNostr);
+        const unbounded = directory.lookup(pubkey);
+        const bounded = directory.lookup(pubkey, { deadlineAt: Date.now() + 1_000 });
+        await vi.advanceTimersByTimeAsync(100);
+        observers[0].next({ event: event(10, "a", [["r", "wss://early.example/", "read"]]) });
+        await vi.advanceTimersByTimeAsync(900);
+        const snapshot = await bounded;
+        expect(snapshot).toMatchObject({ status: "found", readRelays: ["wss://early.example/"] });
+        observers[0].next({ event: event(11, "b", [["r", "wss://late.example/", "read"]]) });
+        observers[0].complete();
+        await expect(unbounded).resolves.toMatchObject({ readRelays: ["wss://late.example/"] });
+        expect(snapshot.readRelays).toEqual(["wss://early.example/"]);
+        await expect(directory.lookup(pubkey)).resolves.toMatchObject({ readRelays: ["wss://late.example/"] });
+    });
+
+    it.each([2_999, 3_000, 3_001])("filters candidates received at %ims even when the deadline timer is delayed", async (elapsed) => {
+        vi.useFakeTimers();
+        const { rxNostr, observers } = createRxHarness();
+        const directory = new Nip65RelayDirectory(rxNostr);
+        const started = Date.now();
+        const pending = directory.lookup(pubkey, { deadlineAt: started + 3_000 });
+        // Move the clock without firing timers, modelling an occupied browser event loop.
+        vi.setSystemTime(started + elapsed);
+        observers[0].next({ event: event(10, "a", [["r", "wss://candidate.example/", "read"]]) });
+        observers[0].complete();
+        const result = await pending;
+        expect(result.readRelays).toEqual(elapsed < 3_000 ? ["wss://candidate.example/"] : []);
+    });
+
+    it("settles before the deadline after all EOSEs and preserves newest empty and lexical selection", async () => {
+        vi.useFakeTimers();
+        const { rxNostr, observers } = createRxHarness();
+        const directory = new Nip65RelayDirectory(rxNostr);
+        const pending = directory.lookup(pubkey, { deadlineAt: Date.now() + 3_000 });
+        observers[0].next({ event: event(10, "f", [["r", "wss://older.example/"]]) });
+        observers[0].next({ event: event(11, "b", [["r", "wss://same-time.example/"]]) });
+        observers[0].next({ event: event(11, "a", []) });
+        observers[0].complete();
+        await expect(pending).resolves.toMatchObject({ status: "empty", eventId: "a".repeat(64), readRelays: [] });
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("does not use a cache candidate first received after an already-expired consumer deadline", async () => {
+        vi.useFakeTimers();
+        const { rxNostr, observers } = createRxHarness();
+        const directory = new Nip65RelayDirectory(rxNostr);
+        const deadlineAt = Date.now() + 100;
+        const pending = directory.lookup(pubkey);
+        await vi.advanceTimersByTimeAsync(101);
+        observers[0].next({ event: event(1, "a", [["r", "wss://late.example/"]]) });
+        observers[0].complete();
+        await pending;
+        await expect(directory.lookup(pubkey, { deadlineAt })).resolves.toMatchObject({ readRelays: [] });
+        await expect(directory.lookup(pubkey)).resolves.toMatchObject({ readRelays: ["wss://late.example/"] });
+    });
+
+    it("keeps a newer cached candidate when a bounded new-source lookup sees an older event", async () => {
+        vi.useFakeTimers();
+        const { rxNostr, observers } = createRxHarness();
+        const directory = new Nip65RelayDirectory(rxNostr);
+        const initial = directory.lookup(pubkey);
+        observers[0].next({ event: event(20, "c", [["r", "wss://cached.example/"]]) });
+        observers[0].complete();
+        await initial;
+        const pending = directory.lookup(pubkey, {
+            discoveryRelays: ["wss://context.example/"], deadlineAt: Date.now() + 100,
+        });
+        observers[1].next({ event: event(19, "a", [["r", "wss://older.example/"]]) });
+        await vi.advanceTimersByTimeAsync(100);
+        await expect(pending).resolves.toMatchObject({ eventId: "c".repeat(64), readRelays: ["wss://cached.example/"] });
+        observers[1].complete();
+        await directory.lookup(pubkey, { discoveryRelays: ["wss://context.example/"] });
+        expect(rxNostr.use).toHaveBeenCalledTimes(2);
+    });
+
+    it("isolates different consumer deadlines while sharing a single source request", async () => {
+        vi.useFakeTimers();
+        const { rxNostr, observers } = createRxHarness();
+        const directory = new Nip65RelayDirectory(rxNostr);
+        const started = Date.now();
+        const early = directory.lookup(pubkey, { deadlineAt: started + 500 });
+        const later = directory.lookup(pubkey, { deadlineAt: started + 1_500 });
+        expect(rxNostr.use).toHaveBeenCalledOnce();
+        observers[0].next({ event: event(1, "a", [["r", "wss://early.example/"]]) });
+        await vi.advanceTimersByTimeAsync(500);
+        await expect(early).resolves.toMatchObject({ readRelays: ["wss://early.example/"] });
+        observers[0].next({ event: event(2, "b", [["r", "wss://later.example/"]]) });
+        await vi.advanceTimersByTimeAsync(1_000);
+        await expect(later).resolves.toMatchObject({ readRelays: ["wss://later.example/"] });
+        observers[0].complete();
+        await directory.lookup(pubkey);
+    });
+
+    it("includes queue time in the deadline without recording an unsearched source in the cache", async () => {
+        vi.useFakeTimers();
+        const { rxNostr, observers } = createRxHarness();
+        const directory = new Nip65RelayDirectory(rxNostr);
+        const occupants = Array.from({ length: 4 }, (_, index) => directory.lookup(index.toString(16).padStart(64, "0")));
+        const queued = directory.lookup(pubkey, { deadlineAt: Date.now() + 500 });
+        expect(rxNostr.use).toHaveBeenCalledTimes(4);
+        await vi.advanceTimersByTimeAsync(500);
+        const snapshot = await queued;
+        expect(snapshot).toMatchObject({ status: "network-error", readRelays: [] });
+        // Still share the queued lookup, rather than treating its sources as a cached miss.
+        const continuing = directory.lookup(pubkey);
+        observers[0].complete();
+        await occupants[0];
+        expect(rxNostr.use).toHaveBeenCalledTimes(5);
+        observers[4].next({ event: event(1, "a", [["r", "wss://queued.example/"]]) });
+        observers[4].complete();
+        await expect(continuing).resolves.toMatchObject({ readRelays: ["wss://queued.example/"] });
+        expect(snapshot.readRelays).toEqual([]);
+        observers.slice(1, 4).forEach((observer) => observer.complete());
+        await Promise.all(occupants);
+    });
+
+    it("cleans up synchronous completion without emitting a request or leaving a timer", async () => {
+        vi.useFakeTimers();
+        const unsubscribe = vi.fn();
+        const requests: unknown[] = [];
+        const rxNostr = { use: (request: any) => ({ subscribe: (observer: any) => {
+            request.getReqPacketObservable().subscribe((packet: unknown) => requests.push(packet));
+            observer.complete();
+            return { unsubscribe };
+        } }) } as unknown as RxNostr;
+        await expect(new Nip65RelayDirectory(rxNostr).lookup(pubkey)).resolves.toMatchObject({ status: "not-found" });
+        expect(unsubscribe).toHaveBeenCalledOnce();
+        expect(requests).toEqual([]);
+        expect(vi.getTimerCount()).toBe(0);
     });
 
     it("does not roll a cached route back to an older contextual event", async () => {

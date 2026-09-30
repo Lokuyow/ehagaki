@@ -22,6 +22,7 @@ export interface Nip65RelayDirectoryEntry {
 
 interface CachedEntry {
     entry: Nip65RelayDirectoryEntry;
+    receivedAt: number;
     expiresAt: number;
     searchedSources: Set<string>;
 }
@@ -30,7 +31,21 @@ interface InFlightLookup {
     promise: Promise<Nip65RelayDirectoryEntry>;
     pendingSources: Set<string>;
     coveredSources: Set<string>;
+    searchedSources: Set<string>;
+    candidates: Map<string, { entry: Nip65RelayDirectoryEntry; receivedAt: number }>;
+    previous: { entry: Nip65RelayDirectoryEntry; receivedAt: number } | undefined;
+    started: boolean;
+    activeBatches: number;
+    hadNetworkError: boolean;
+    completedAt: number | undefined;
+    finish: () => void;
     done: boolean;
+}
+
+export interface Nip65RelayLookupOptions {
+    discoveryRelays?: string[];
+    /** Absolute consumer deadline, including time spent waiting for a lookup slot. */
+    deadlineAt?: number;
 }
 
 interface Kind10002Event {
@@ -54,13 +69,6 @@ function isKind10002Event(value: unknown, pubkey: string): value is Kind10002Eve
         && Array.isArray(event.tags);
 }
 
-function compareLatest(left: Kind10002Event, right: Kind10002Event): number {
-    if (left.created_at !== right.created_at) {
-        return right.created_at - left.created_at;
-    }
-    return left.id.localeCompare(right.id);
-}
-
 function createEmptyEntry(pubkey: string, status: Nip65RelayLookupStatus): Nip65RelayDirectoryEntry {
     return {
         pubkey,
@@ -69,6 +77,28 @@ function createEmptyEntry(pubkey: string, status: Nip65RelayLookupStatus): Nip65
         writeRelays: [],
         createdAt: null,
         eventId: null,
+    };
+}
+
+function copyEntry(entry: Nip65RelayDirectoryEntry): Nip65RelayDirectoryEntry {
+    return { ...entry, readRelays: [...entry.readRelays], writeRelays: [...entry.writeRelays] };
+}
+
+function parseRelayList(event: Kind10002Event): Nip65RelayDirectoryEntry {
+    const relayConfig: RelayConfig = RelayConfigParser.parseKind10002Tags(event.tags);
+    const readRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
+        RelayConfigUtils.extractReadRelays(relayConfig),
+    );
+    const writeRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
+        RelayConfigUtils.extractWriteRelays(relayConfig),
+    );
+    return {
+        pubkey: event.pubkey,
+        status: readRelays.length || writeRelays.length ? "found" : "empty",
+        readRelays,
+        writeRelays,
+        createdAt: event.created_at,
+        eventId: event.id,
     };
 }
 
@@ -81,13 +111,15 @@ export class Nip65RelayDirectory {
     constructor(
         private readonly rxNostr: RxNostr,
         private readonly now: () => number = Date.now,
-        private readonly setTimeoutFn: typeof setTimeout = setTimeout,
-        private readonly clearTimeoutFn: typeof clearTimeout = clearTimeout,
+        private readonly setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>
+            = (fn, ms) => setTimeout(fn, ms),
+        private readonly clearTimeoutFn: (id: ReturnType<typeof setTimeout>) => void
+            = (id) => clearTimeout(id),
     ) {}
 
     lookup(
         pubkey: string,
-        options: { discoveryRelays?: string[] } = {},
+        options: Nip65RelayLookupOptions = {},
     ): Promise<Nip65RelayDirectoryEntry> {
         const baseSources = RelayConfigUtils.sanitizeExternalRelayUrls(
             isHostRelayConfigActive()
@@ -110,75 +142,136 @@ export class Nip65RelayDirectory {
             requestedSources
                 .filter((relay) => !alreadyCovered.has(relay))
                 .forEach((relay) => active.pendingSources.add(relay));
-            return active.promise;
+            this.launchPendingSources(pubkey, active);
+            return this.forConsumer(pubkey, active, options.deadlineAt);
         }
         if (cacheIsFresh) {
             const unseenSources = requestedSources.filter(
                 (relay) => !cached!.searchedSources.has(relay),
             );
-            if (unseenSources.length === 0) return Promise.resolve(cached!.entry);
-            return this.startLookup(pubkey, unseenSources, cached);
+            if (unseenSources.length === 0) {
+                return Promise.resolve(options.deadlineAt !== undefined && cached!.receivedAt >= options.deadlineAt
+                    ? createEmptyEntry(pubkey, "network-error")
+                    : copyEntry(cached!.entry));
+            }
+            const flight = this.startLookup(pubkey, unseenSources, cached);
+            return this.forConsumer(pubkey, flight, options.deadlineAt);
         }
 
         const sourcesToRefresh = RelayConfigUtils.sanitizeExternalRelayUrls([
             ...requestedSources,
             ...(cached ? [...cached.searchedSources] : []),
         ]);
-        return this.startLookup(pubkey, sourcesToRefresh, cached);
+        const flight = this.startLookup(pubkey, sourcesToRefresh, cached);
+        return this.forConsumer(pubkey, flight, options.deadlineAt);
     }
 
     private startLookup(
         pubkey: string,
         sources: string[],
         previous: CachedEntry | undefined,
-    ): Promise<Nip65RelayDirectoryEntry> {
+    ): InFlightLookup {
+        let resolveCompletion!: (entry: Nip65RelayDirectoryEntry) => void;
+        const completion = new Promise<Nip65RelayDirectoryEntry>((resolve) => {
+            resolveCompletion = resolve;
+        });
         const flight: InFlightLookup = {
-            promise: Promise.resolve(createEmptyEntry(pubkey, "not-found")),
+            promise: completion,
             pendingSources: new Set(sources),
             coveredSources: new Set(),
+            searchedSources: new Set(previous?.searchedSources ?? []),
+            candidates: new Map(),
+            previous: previous?.entry.createdAt != null
+                ? { entry: copyEntry(previous.entry), receivedAt: previous.receivedAt }
+                : undefined,
+            started: false,
+            activeBatches: 0,
+            hadNetworkError: sources.length === 0,
+            completedAt: undefined,
+            finish: () => {
+                if (flight.done) return;
+                flight.done = true;
+                flight.completedAt = this.now();
+                const entry = this.snapshot(pubkey, flight);
+                this.cache.set(pubkey, {
+                    entry: copyEntry(entry),
+                    receivedAt: entry.eventId === flight.previous?.entry.eventId
+                        ? flight.previous.receivedAt
+                        : flight.candidates.get(entry.eventId!)?.receivedAt ?? this.now(),
+                    expiresAt: this.now() + (entry.status === "found" ? SUCCESS_TTL_MS : NEGATIVE_TTL_MS),
+                    searchedSources: new Set(flight.searchedSources),
+                });
+                resolveCompletion(entry);
+            },
             done: false,
         };
-        flight.pendingSources.forEach((relay) => flight.coveredSources.add(relay));
-        const searchedSources = new Set(previous?.searchedSources ?? []);
-        let best = previous?.entry.createdAt !== null && previous?.entry.createdAt !== undefined
-            ? previous.entry
-            : undefined;
-        let hadNetworkError = sources.length === 0;
-
+        this.inFlight.set(pubkey, flight);
         flight.promise = this.withConcurrencySlot(async () => {
-            while (flight.pendingSources.size > 0) {
-                const batch = [...flight.pendingSources];
-                flight.pendingSources.clear();
-                batch.forEach((relay) => {
-                    searchedSources.add(relay);
-                    flight.coveredSources.add(relay);
-                });
-                const candidate = await this.fetchLatest(pubkey, batch);
-                hadNetworkError ||= candidate.status === "network-error";
-                if (candidate.createdAt !== null && this.isNewer(candidate, best)) {
-                    best = candidate;
-                }
-            }
-
-            const entry = best ?? createEmptyEntry(
-                pubkey,
-                hadNetworkError ? "network-error" : "not-found",
-            );
-            const cacheEntry: CachedEntry = {
-                entry,
-                expiresAt: this.now() + (
-                    entry.status === "found" ? SUCCESS_TTL_MS : NEGATIVE_TTL_MS
-                ),
-                searchedSources,
-            };
-            this.cache.set(pubkey, cacheEntry);
-            flight.done = true;
-            return entry;
+            flight.started = true;
+            this.launchPendingSources(pubkey, flight);
+            return completion;
         }).finally(() => {
             if (this.inFlight.get(pubkey) === flight) this.inFlight.delete(pubkey);
         });
-        this.inFlight.set(pubkey, flight);
-        return flight.promise;
+        return flight;
+    }
+
+    private launchPendingSources(pubkey: string, flight: InFlightLookup): void {
+        if (!flight.started || flight.done) return;
+        const sources = [...flight.pendingSources];
+        flight.pendingSources.clear();
+        if (sources.length === 0) {
+            if (flight.activeBatches === 0) flight.finish();
+            return;
+        }
+        sources.forEach((relay) => {
+            flight.coveredSources.add(relay);
+            flight.searchedSources.add(relay);
+        });
+        flight.activeBatches += 1;
+        void this.fetchLatest(pubkey, sources, (entry, receivedAt) => {
+            if (!flight.candidates.has(entry.eventId!)) {
+                flight.candidates.set(entry.eventId!, { entry, receivedAt });
+            }
+        }).then((entry) => {
+            flight.hadNetworkError ||= entry.status === "network-error";
+            flight.activeBatches -= 1;
+            this.launchPendingSources(pubkey, flight);
+        });
+    }
+
+    private snapshot(pubkey: string, flight: InFlightLookup, deadlineAt = Infinity): Nip65RelayDirectoryEntry {
+        let best = flight.previous && flight.previous.receivedAt < deadlineAt
+            ? flight.previous.entry
+            : undefined;
+        for (const { entry, receivedAt } of flight.candidates.values()) {
+            if (receivedAt < deadlineAt && this.isNewer(entry, best)) best = entry;
+        }
+        if (best) return copyEntry(best);
+        const completedInTime = flight.completedAt !== undefined && flight.completedAt < deadlineAt;
+        return createEmptyEntry(pubkey, flight.hadNetworkError || !completedInTime ? "network-error" : "not-found");
+    }
+
+    private forConsumer(
+        pubkey: string,
+        flight: InFlightLookup,
+        deadlineAt: number | undefined,
+    ): Promise<Nip65RelayDirectoryEntry> {
+        if (deadlineAt === undefined) return flight.promise;
+        if (deadlineAt <= this.now()) return Promise.resolve(this.snapshot(pubkey, flight, deadlineAt));
+        return new Promise((resolve) => {
+            let settled = false;
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                if (timer !== undefined) this.clearTimeoutFn(timer);
+                resolve(this.snapshot(pubkey, flight, deadlineAt));
+            };
+            timer = this.setTimeoutFn(finish, deadlineAt - this.now());
+            // A consumer deadline never completes or cancels another consumer's shared discovery.
+            void flight.promise.then(finish);
+        });
     }
 
     private isNewer(
@@ -194,24 +287,30 @@ export class Nip65RelayDirectory {
     private async withConcurrencySlot<T>(run: () => Promise<T>): Promise<T> {
         if (this.activeLookups >= MAX_CONCURRENT_LOOKUPS) {
             await new Promise<void>((resolve) => this.queue.push(resolve));
+        } else {
+            this.activeLookups += 1;
         }
-        this.activeLookups += 1;
         try {
             return await run();
         } finally {
-            this.activeLookups -= 1;
-            this.queue.shift()?.();
+            const next = this.queue.shift();
+            if (next) next();
+            else this.activeLookups -= 1;
         }
     }
 
-    private fetchLatest(pubkey: string, discoveryRelays: string[]): Promise<Nip65RelayDirectoryEntry> {
+    private fetchLatest(
+        pubkey: string,
+        discoveryRelays: string[],
+        onCandidate: (entry: Nip65RelayDirectoryEntry, receivedAt: number) => void,
+    ): Promise<Nip65RelayDirectoryEntry> {
         if (discoveryRelays.length === 0) {
             return Promise.resolve(createEmptyEntry(pubkey, "network-error"));
         }
 
         return new Promise((resolve) => {
             const request = createRxBackwardReq();
-            const events = new Map<string, Kind10002Event>();
+            let latest: Nip65RelayDirectoryEntry | undefined;
             let subscription: { unsubscribe?: () => void } | undefined;
             let timer: ReturnType<typeof setTimeout> | undefined;
             let settled = false;
@@ -229,42 +328,34 @@ export class Nip65RelayDirectory {
                 if (settled) return;
                 settled = true;
                 cleanup();
-                const latest = [...events.values()].sort(compareLatest)[0];
                 if (!latest) {
                     resolve(createEmptyEntry(pubkey, networkError ? "network-error" : "not-found"));
                     return;
                 }
 
-                const relayConfig: RelayConfig = RelayConfigParser.parseKind10002Tags(latest.tags);
-                const readRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
-                    RelayConfigUtils.extractReadRelays(relayConfig),
-                );
-                const writeRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
-                    RelayConfigUtils.extractWriteRelays(relayConfig),
-                );
-                resolve({
-                    pubkey,
-                    status: readRelays.length || writeRelays.length ? "found" : "empty",
-                    readRelays,
-                    writeRelays,
-                    createdAt: latest.created_at,
-                    eventId: latest.id,
-                });
+                resolve(latest);
             };
 
             try {
-                subscription = this.rxNostr.use(request, {
+                timer = this.setTimeoutFn(() => finish(!latest), LOOKUP_TIMEOUT_MS);
+                const activeSubscription = this.rxNostr.use(request, {
                     on: { relays: discoveryRelays },
                 }).subscribe({
                     next: (packet: { event?: unknown }) => {
                         if (settled || !isKind10002Event(packet.event, pubkey)) return;
-                        events.set(packet.event.id, packet.event);
+                        const receivedAt = this.now();
+                        const candidate = parseRelayList(packet.event);
+                        onCandidate(candidate, receivedAt);
+                        if (this.isNewer(candidate, latest)) latest = candidate;
                     },
                     complete: () => finish(),
                     error: () => finish(true),
                 });
-
-                timer = this.setTimeoutFn(() => finish(events.size === 0), LOOKUP_TIMEOUT_MS);
+                if (settled) {
+                    activeSubscription.unsubscribe?.();
+                    return;
+                }
+                subscription = activeSubscription;
                 request.emit({
                     authors: [pubkey],
                     kinds: [10002],
