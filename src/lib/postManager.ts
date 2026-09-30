@@ -412,10 +412,7 @@ export class PostManager {
         && hasAck(defaultWriteRelays)
         && recipientPubkeys.every((pubkey) => hasAck(recipientRelays.get(pubkey) ?? []))
         && (additionalRelays.length === 0 || hasAck(additionalRelays));
-      const pendingAuth = [...outcomes.values()].some((outcome) =>
-        outcome.authRequired && !outcome.accepted && !outcome.rejected,
-      );
-      if (!complete || pendingAuth || !isCurrent()) {
+      if (!complete || !isCurrent()) {
         if (successTimer !== undefined) clearTimeout(successTimer);
         successTimer = undefined;
         return;

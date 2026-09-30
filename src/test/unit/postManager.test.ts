@@ -2812,6 +2812,49 @@ describe("NIP-65 staged post delivery", () => {
         expect(JSON.stringify(result)).toBe(frozen);
     });
 
+    it.each(["author", "recipient"])("does not let redundant %s AUTH block successful class settlement", async (authClass) => {
+        vi.useFakeTimers();
+        const authors = ["wss://author-write.example/", "wss://auth-author.example/"];
+        const recipients = ["wss://recipient-read.example/", "wss://auth-recipient.example/"];
+        const authRelay = authClass === "author" ? authors[1] : recipients[1];
+        const { manager, rxNostr } = createStagedPostHarness(async () => ({ readRelays: recipients }));
+        rxNostr.getDefaultRelays = vi.fn(() => Object.fromEntries(authors.map((url) => [url, { url, read: true, write: true }])));
+        const observers: any[] = [];
+        rxNostr.send = vi.fn((_event, options) => ({ subscribe: (observer: any) => {
+            observers.push(observer);
+            const targets = [...(options.on?.defaultWriteRelays ? authors : []), ...(options.on?.relays ?? [])];
+            targets.forEach((from) => {
+                if (from === authRelay) {
+                    observer.next({ from, ok: false, done: false, notice: "auth-required: sign in" });
+                } else {
+                    observer.next({ from, ok: true, done: true, eventId: "signed-event-id" });
+                }
+            });
+            return { unsubscribe: vi.fn() };
+        } }));
+
+        let settled = false;
+        const pending = (manager as any).publishNip65Event({ event: targetEvent(), sessionPubkey: "author-pubkey" })
+            .then((result: any) => { settled = true; return result; });
+        await vi.advanceTimersByTimeAsync(1_499);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        const result = await pending;
+        expect(result).toMatchObject({ success: true, fullyDelivered: true });
+        expect(result.authRequiredRelays).toEqual([authRelay]);
+        expect(result.timedOutRelays).toContain(authRelay);
+        const updatePostStatus = vi.fn();
+        createPostStatusHandlers({ updatePostStatus, clearContentAfterSuccess: vi.fn() }).markSuccess(result);
+        expect(updatePostStatus).toHaveBeenCalledWith(expect.objectContaining({
+            message: "postComponent.post_partial_success",
+        }));
+
+        const snapshot = JSON.stringify(result);
+        const authObserver = authClass === "author" ? observers[0] : observers[1];
+        authObserver.next({ from: authRelay, ok: true, done: true, eventId: "late-auth-event-id" });
+        expect(JSON.stringify(result)).toBe(snapshot);
+    });
+
     it("does not start a successful class settle while the required recipient route is unresolved", async () => {
         vi.useFakeTimers();
         const { manager, rxNostr, getDirectoryObserver } = createStagedPostHarness();
@@ -2826,30 +2869,29 @@ describe("NIP-65 staged post delivery", () => {
         getDirectoryObserver().complete();
     });
 
-    it("pauses successful class settlement for pending AUTH and resumes after its ACK", async () => {
+    it("waits for AUTH when the only required recipient Read relay has not ACKed", async () => {
         vi.useFakeTimers();
-        const authors = ["wss://author-write.example/", "wss://auth-author.example/"];
-        const recipients = ["wss://recipient-read.example/", "wss://silent-recipient.example/"];
-        const { manager, rxNostr } = createStagedPostHarness(async () => ({ readRelays: recipients }));
-        rxNostr.getDefaultRelays = vi.fn(() => Object.fromEntries(authors.map((url) => [url, { url, read: true, write: true }])));
+        const recipient = "wss://auth-recipient.example/";
+        const { manager, rxNostr } = createStagedPostHarness(async () => ({ readRelays: [recipient] }));
         const observers: any[] = [];
         rxNostr.send = vi.fn((_event, options) => ({ subscribe: (observer: any) => {
             observers.push(observer);
-            observer.next({ from: options.on?.defaultWriteRelays ? authors[0] : recipients[0], ok: true, done: true, eventId: "signed-event-id" });
+            if (options.on?.defaultWriteRelays) {
+                observer.next({ from: "wss://author-write.example/", ok: true, done: true, eventId: "signed-event-id" });
+            } else {
+                observer.next({ from: recipient, ok: false, done: false, notice: "auth-required: sign in" });
+            }
             return { unsubscribe: vi.fn() };
         } }));
         let settled = false;
         const pending = (manager as any).publishNip65Event({ event: targetEvent(), sessionPubkey: "author-pubkey" })
             .then((result: any) => { settled = true; return result; });
-        await vi.advanceTimersByTimeAsync(500);
-        observers[0].next({ from: authors[1], ok: false, done: false, notice: "auth-required: sign in" });
+        await vi.advanceTimersByTimeAsync(3_500);
+        expect(settled).toBe(false);
+        expect(observers).toHaveLength(2);
+        observers[1].next({ from: recipient, ok: true, done: true, eventId: "signed-event-id" });
         await vi.advanceTimersByTimeAsync(1_500);
-        expect(settled).toBe(false);
-        observers[0].next({ from: authors[1], ok: true, done: true, eventId: "signed-event-id" });
-        await vi.advanceTimersByTimeAsync(1_499);
-        expect(settled).toBe(false);
-        await vi.advanceTimersByTimeAsync(1);
-        await expect(pending).resolves.toMatchObject({ success: true, fullyDelivered: true, acceptedRelays: [...authors, recipients[0]] });
+        await expect(pending).resolves.toMatchObject({ success: true, fullyDelivered: true });
     });
 
     it("does not mutate a signed reply result or its saved ACK history after late discovery and ACKs", async () => {
@@ -2874,7 +2916,12 @@ describe("NIP-65 staged post delivery", () => {
         const sendObservers: any[] = [];
         rxNostr.send = vi.fn((_event, options) => ({ subscribe: (observer: any) => {
             sendObservers.push(observer);
-            observer.next({ from: options.on?.defaultWriteRelays ? authorRelay : recipientRelay, ok: true, done: true, eventId: "signed-event-id" });
+            if (options.on?.defaultWriteRelays) {
+                observer.next({ from: authorRelay, ok: true, done: true, eventId: "signed-event-id" });
+                observer.next({ from: silentAuthor, ok: false, done: false, notice: "auth-required: sign in" });
+            } else {
+                observer.next({ from: recipientRelay, ok: true, done: true, eventId: "signed-event-id" });
+            }
             return { unsubscribe: vi.fn() };
         } }));
         const pending = manager.submitPost("Fixture reply");
@@ -2885,7 +2932,12 @@ describe("NIP-65 staged post delivery", () => {
         } });
         await vi.advanceTimersByTimeAsync(1_500);
         const result = await pending;
-        expect(result).toMatchObject({ success: true, fullyDelivered: true, acceptedRelays: [authorRelay, recipientRelay] });
+        expect(result).toMatchObject({
+            success: true, fullyDelivered: true,
+            acceptedRelays: [authorRelay, recipientRelay],
+            authRequiredRelays: [silentAuthor],
+            timedOutRelays: [silentAuthor],
+        });
         expect(saveHistory).toHaveBeenCalledOnce();
         const saved = saveHistory.mock.calls[0][0];
         expect(saved.acceptedRelays).toEqual([authorRelay, recipientRelay]);
