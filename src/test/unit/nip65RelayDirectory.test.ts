@@ -172,6 +172,112 @@ describe("Nip65RelayDirectory", () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
+    it("does not early-resolve from an expired positive cache and uses a newer refresh candidate", async () => {
+        vi.useFakeTimers();
+        const { rxNostr, observers } = createRxHarness();
+        const directory = new Nip65RelayDirectory(rxNostr);
+        const initial = directory.lookup(pubkey);
+        observers[0].next({ event: event(10, "a", [["r", "wss://route-a.example/", "read"]]) });
+        observers[0].complete();
+        await initial;
+
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
+        let settled = false;
+        const refresh = directory.lookup(pubkey, {
+            discoveryRelays: ["wss://context.example/"],
+            deadlineAt: Date.now() + 3_000,
+            resolveOnReadRoute: true,
+        }).then((entry) => { settled = true; return entry; });
+        await Promise.resolve();
+        expect(settled).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(100);
+        observers[1].next({ event: event(11, "b", [["r", "wss://route-b.example/", "read"]]) });
+        await expect(refresh).resolves.toMatchObject({
+            status: "found",
+            eventId: "b".repeat(64),
+            readRelays: ["wss://route-b.example/"],
+        });
+        observers[1].complete();
+        await directory.lookup(pubkey);
+    });
+
+    it("keeps an expired Read route as a fallback when refresh reaches its deadline without candidates", async () => {
+        vi.useFakeTimers();
+        const { rxNostr, observers } = createRxHarness();
+        const directory = new Nip65RelayDirectory(rxNostr);
+        const initial = directory.lookup(pubkey);
+        observers[0].next({ event: event(10, "a", [["r", "wss://stale.example/", "read"]]) });
+        observers[0].complete();
+        await initial;
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
+
+        const fallback = directory.lookup(pubkey, {
+            deadlineAt: Date.now() + 100,
+            resolveOnReadRoute: true,
+        });
+        await vi.advanceTimersByTimeAsync(99);
+        let settled = false;
+        void fallback.then(() => { settled = true; });
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await expect(fallback).resolves.toMatchObject({
+            status: "found",
+            readRelays: ["wss://stale.example/"],
+        });
+        observers[1].complete();
+        await directory.lookup(pubkey);
+    });
+
+    it("still resolves immediately from a fresh positive cache while refreshing a new source", async () => {
+        vi.useFakeTimers();
+        const { rxNostr, observers } = createRxHarness();
+        const directory = new Nip65RelayDirectory(rxNostr);
+        const initial = directory.lookup(pubkey);
+        observers[0].next({ event: event(10, "a", [["r", "wss://fresh.example/", "read"]]) });
+        observers[0].complete();
+        await initial;
+
+        const fresh = await directory.lookup(pubkey, {
+            discoveryRelays: ["wss://context.example/"],
+            deadlineAt: Date.now() + 3_000,
+            resolveOnReadRoute: true,
+        });
+        expect(fresh).toMatchObject({ readRelays: ["wss://fresh.example/"] });
+        expect(rxNostr.use).toHaveBeenCalledTimes(2);
+        observers[1].complete();
+        await directory.lookup(pubkey);
+    });
+
+    it("does not fall back from a stale newer-empty route to a current-flight older Read route", async () => {
+        vi.useFakeTimers();
+        const { rxNostr, observers } = createRxHarness();
+        const directory = new Nip65RelayDirectory(rxNostr);
+        const initial = directory.lookup(pubkey);
+        observers[0].next({ event: event(20, "b", []) });
+        observers[0].complete();
+        await initial;
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
+
+        let settled = false;
+        const refresh = directory.lookup(pubkey, {
+            discoveryRelays: ["wss://context.example/"],
+            deadlineAt: Date.now() + 3_000,
+            resolveOnReadRoute: true,
+        }).then((entry) => { settled = true; return entry; });
+        await vi.advanceTimersByTimeAsync(100);
+        observers[1].next({ event: event(19, "a", [["r", "wss://older.example/", "read"]]) });
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        observers[1].complete();
+        await expect(refresh).resolves.toMatchObject({
+            status: "empty",
+            eventId: "b".repeat(64),
+            readRelays: [],
+        });
+    });
+
     it("does not use an older Read candidate when a newer cached list has no Read route", async () => {
         vi.useFakeTimers();
         const { rxNostr, observers } = createRxHarness();

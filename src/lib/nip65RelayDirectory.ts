@@ -276,7 +276,23 @@ export class Nip65RelayDirectory {
                 resolve(this.snapshot(pubkey, flight, deadlineAt));
             };
             const checkRoute = () => {
-                if (this.snapshot(pubkey, flight, deadlineAt).readRelays.length > 0) finish();
+                const candidate = this.snapshot(pubkey, flight, deadlineAt);
+                if (candidate.readRelays.length === 0) return;
+
+                // A stale previous entry remains available as a deadline/completion fallback,
+                // but cannot by itself trigger the publishing fast path. A route is early
+                // usable only when the selected event is still fresh in cache or was received
+                // by this shared flight (and therefore participated in latest-event selection).
+                const freshCached = this.cache.get(pubkey);
+                const selectedFreshCache = freshCached !== undefined
+                    && freshCached.expiresAt > this.now()
+                    && freshCached.entry.eventId === candidate.eventId;
+                const selectedCandidate = candidate.eventId === null
+                    ? undefined
+                    : flight.candidates.get(candidate.eventId);
+                const selectedCurrentCandidate = selectedCandidate !== undefined
+                    && selectedCandidate.receivedAt < deadlineAt;
+                if (selectedFreshCache || selectedCurrentCandidate) finish();
             };
             if (options.resolveOnReadRoute) {
                 flight.candidateListeners.add(checkRoute);
