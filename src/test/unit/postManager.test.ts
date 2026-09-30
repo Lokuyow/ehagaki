@@ -20,6 +20,7 @@ import { DECOMMISSIONED_RELAYS } from '../../lib/relayLists';
 import { ReplyQuoteService } from '../../lib/replyQuoteService';
 import { activateHostRelayConfig, deactivateHostRelayConfig } from '../../lib/hostRelayRuntime';
 import { createPostStatusHandlers } from '../../lib/postComponentUtils';
+import { getNip65RelayDirectory } from '../../lib/nip65RelayDirectory';
 
 vi.mock('../../lib/postHistoryRawEventVerification', () => ({
     RAW_EVENT_VERIFICATION_RULE_VERSION: 1,
@@ -2990,5 +2991,127 @@ describe("NIP-65 staged post delivery", () => {
         } finally {
             deactivateHostRelayConfig();
         }
+    });
+
+    it("routes a signed direct reply using its target relay context after bootstrap discovery misses", async () => {
+        vi.useFakeTimers();
+        const { manager, rxNostr, getDirectoryObserver } = createStagedPostHarness();
+        const recipientPubkey = "a".repeat(64);
+        const contextualRelay = "wss://reply-target.example/";
+        const directory = getNip65RelayDirectory(rxNostr);
+
+        const bootstrapOnly = directory.lookup(recipientPubkey);
+        getDirectoryObserver().complete();
+        await expect(bootstrapOnly).resolves.toMatchObject({ status: "not-found" });
+
+        (manager as any).deps.replyQuoteState = {
+            value: {
+                reply: {
+                    mode: "reply",
+                    eventId: "e".repeat(64),
+                    relayHints: [contextualRelay],
+                    authorPubkey: recipientPubkey,
+                    quoteNotificationEnabled: false,
+                    replyNotificationRecipients: [],
+                    authorDisplayName: null,
+                    authorPicture: null,
+                    referencedEvent: null,
+                    rootEventId: null,
+                    rootRelayHint: null,
+                    rootPubkey: null,
+                    loading: false,
+                    error: null,
+                },
+                quotes: [],
+            },
+        };
+        (manager as any).deps.keyManager = {
+            getFromStore: () => "test-secret",
+            loadFromStorage: () => "test-secret",
+        };
+        (manager as any).deps.seckeySignerFn = () => ({
+            signEvent: async (event: any) => ({ ...event, id: "signed-event-id", sig: "signature" }),
+        });
+
+        const resultPromise = manager.submitPost("A direct reply");
+        await vi.advanceTimersByTimeAsync(0);
+        const pendingDiscovery = getDirectoryObserver();
+        expect(rxNostr.use).toHaveBeenLastCalledWith(
+            expect.anything(),
+            { on: { relays: [contextualRelay] } },
+        );
+        pendingDiscovery.next({
+            from: contextualRelay,
+            event: {
+                kind: 10002,
+                pubkey: recipientPubkey,
+                id: "b".repeat(64),
+                created_at: 20,
+                tags: [["r", "wss://recipient-read.example/", "read"]],
+            },
+        });
+        pendingDiscovery.complete();
+
+        const result = await resultPromise;
+        const sentEvents = rxNostr.send.mock.calls.map(([sentEvent]: [any]) => sentEvent);
+        expect(sentEvents[0].tags).toContainEqual(["p", recipientPubkey]);
+        expect(sentEvents[0].tags).toContainEqual([
+            "e",
+            "e".repeat(64),
+            contextualRelay,
+            "root",
+            recipientPubkey,
+        ]);
+        expect(sentEvents).toHaveLength(2);
+        expect(rxNostr.send.mock.calls[1][1]).toMatchObject({
+            on: { relays: ["wss://recipient-read.example/"] },
+        });
+        expect(result).toMatchObject({
+            success: true,
+            fullyDelivered: true,
+            acceptedRelays: [
+                "wss://author-write.example/",
+                "wss://recipient-read.example/",
+            ],
+            delivery: {
+                authorWrite: { status: "delivered" },
+                taggedUserRead: {
+                    [recipientPubkey]: { status: "delivered" },
+                },
+            },
+        });
+    });
+
+    it("keeps a reply partially delivered when no kind:10002 route exists at any discovery source", async () => {
+        vi.useFakeTimers();
+        const { manager, getDirectoryObserver } = createStagedPostHarness();
+        const recipientPubkey = "a".repeat(64);
+        const resultPromise = (manager as any).publishNip65Event({
+            event: {
+                ...targetEvent(),
+                tags: [["p", recipientPubkey]],
+            },
+            sessionPubkey: "author-pubkey",
+            discoveryRelaysByRecipient: {
+                [recipientPubkey]: ["wss://reply-target.example/"],
+            },
+        });
+        await vi.advanceTimersByTimeAsync(0);
+        getDirectoryObserver().complete();
+
+        await expect(resultPromise).resolves.toMatchObject({
+            success: true,
+            fullyDelivered: false,
+            acceptedRelays: ["wss://author-write.example/"],
+            delivery: {
+                authorWrite: { status: "delivered" },
+                taggedUserRead: {
+                    [recipientPubkey]: {
+                        status: "unavailable",
+                        acceptedRelays: [],
+                    },
+                },
+            },
+        });
     });
 });

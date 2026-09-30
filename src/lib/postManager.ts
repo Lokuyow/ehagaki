@@ -314,6 +314,7 @@ export class PostManager {
     event: any;
     sessionPubkey: string;
     additionalWriteRelays?: string[];
+    discoveryRelaysByRecipient?: Record<string, string[]>;
   }): Promise<PostResult> {
     const sender = this.eventSender;
     const rxNostr = this.rxNostr;
@@ -501,8 +502,12 @@ export class PostManager {
       const lookups = recipientPubkeys.map(async (pubkey) => {
         try {
           const entry: Pick<Nip65RelayDirectoryEntry, "readRelays"> = this.deps.nip65ReadRelayLookupFn
-            ? await this.deps.nip65ReadRelayLookupFn(pubkey)
-            : await getNip65RelayDirectory(rxNostr).lookup(pubkey);
+            ? await this.deps.nip65ReadRelayLookupFn(pubkey, {
+              discoveryRelays: params.discoveryRelaysByRecipient?.[pubkey],
+            })
+            : await getNip65RelayDirectory(rxNostr).lookup(pubkey, {
+              discoveryRelays: params.discoveryRelaysByRecipient?.[pubkey],
+            });
           if (!acceptsDiscovery || Date.now() >= discoveryDeadline || !isCurrent()) return;
           const relays = RelayConfigUtils.sanitizeExternalRelayUrls(entry.readRelays);
           recipientRelays.set(pubkey, new Set(relays));
@@ -611,6 +616,7 @@ export class PostManager {
     rqNotifyOptions?: ReplyQuoteNotifyOptions;
     signer?: any;
     additionalWriteRelays?: string[];
+    discoveryRelaysByRecipient?: Record<string, string[]>;
     signEvent?: (event: any) => Promise<any>;
     logSignedEvent?: boolean;
   }): Promise<PostResult> {
@@ -663,6 +669,7 @@ export class PostManager {
       event: verifiedEvent.event,
       sessionPubkey: params.sessionPubkey,
       additionalWriteRelays: params.additionalWriteRelays,
+      discoveryRelaysByRecipient: params.discoveryRelaysByRecipient,
     });
     this.deps.console?.debug?.('[PostManager] sendPreparedEvent publish completed', {
       success: result.success,
@@ -825,6 +832,43 @@ export class PostManager {
         });
       }
 
+      // Contextual discovery hints are kept attached to the exact referenced
+      // author that produced each p-tag. Never infer a target from unrelated tags.
+      const discoveryRelaysByRecipient: Record<string, string[]> = {};
+      const addContextForTaggedAuthor = (
+        authorPubkey: string | null,
+        relayHints: string[],
+        associatedTags: string[][],
+      ) => {
+        if (
+          !authorPubkey
+          || !associatedTags.some((tag) => tag[0] === 'p' && tag[1] === authorPubkey)
+        ) {
+          return;
+        }
+        discoveryRelaysByRecipient[authorPubkey] = RelayConfigUtils.sanitizeExternalRelayUrls([
+          ...(discoveryRelaysByRecipient[authorPubkey] ?? []),
+          ...relayHints,
+        ]);
+      };
+      const rqServiceForDiscovery = this.deps.replyQuoteService || new ReplyQuoteService();
+      if (rqState.reply) {
+        addContextForTaggedAuthor(
+          rqState.reply.authorPubkey,
+          rqState.reply.relayHints,
+          rqServiceForDiscovery.buildReplyTags(rqState.reply),
+        );
+      }
+      for (const quote of rqState.quotes) {
+        if (quote.quoteNotificationEnabled) {
+          addContextForTaggedAuthor(
+            quote.authorPubkey,
+            quote.relayHints,
+            rqServiceForDiscovery.buildQuoteTags(quote, true),
+          );
+        }
+      }
+
       // インライン引用タグをマージ（重複排除）
       if (inlineQuoteTags.length > 0) {
         if (!replyQuoteTags) {
@@ -887,6 +931,7 @@ export class PostManager {
             signEvent,
             logSignedEvent: true,
             additionalWriteRelays,
+            discoveryRelaysByRecipient,
           });
         } catch (err) {
           return this.handleSubmissionError('window.nostrでの投稿エラー:');
@@ -932,6 +977,7 @@ export class PostManager {
             rqNotifyOptions,
             signer: nip46Signer,
             additionalWriteRelays,
+            discoveryRelaysByRecipient,
           });
         } catch (err) {
           return this.handleSubmissionError('NIP-46での投稿エラー:');
@@ -971,6 +1017,7 @@ export class PostManager {
             rqNotifyOptions,
             signer: parentClientSigner,
             additionalWriteRelays,
+            discoveryRelaysByRecipient,
           });
         } catch (err) {
           return this.handleSubmissionError('親クライアント連携での投稿エラー:');
@@ -1005,6 +1052,7 @@ export class PostManager {
         rqNotifyOptions,
         signer,
         additionalWriteRelays,
+        discoveryRelaysByRecipient,
       });
 
     } catch (err) {

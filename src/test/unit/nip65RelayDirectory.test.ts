@@ -4,9 +4,9 @@ import type { RxNostr } from "rx-nostr";
 import { activateHostRelayConfig, deactivateHostRelayConfig } from "../../lib/hostRelayRuntime";
 
 const pubkey = "1".repeat(64);
-const event = (created_at: number, id: string, tags: unknown[][]) => ({
+const event = (created_at: number, id: string, tags: unknown[][], eventPubkey = pubkey) => ({
     kind: 10002,
-    pubkey,
+    pubkey: eventPubkey,
     created_at,
     id: id.repeat(64),
     tags,
@@ -79,6 +79,93 @@ describe("Nip65RelayDirectory", () => {
         expect(rxNostr.use).toHaveBeenCalledOnce();
     });
 
+    it("searches a new contextual source after a bootstrap-only negative cache and then reuses it", async () => {
+        const { rxNostr, observers } = createRxHarness();
+        const directory = new Nip65RelayDirectory(rxNostr);
+        const contextualRelay = "wss://reply-target.example/";
+        const bootstrapLookup = directory.lookup(pubkey);
+        observers[0].complete();
+        await expect(bootstrapLookup).resolves.toMatchObject({ status: "not-found" });
+
+        const contextualLookup = directory.lookup(pubkey, { discoveryRelays: [contextualRelay] });
+        expect(rxNostr.use).toHaveBeenCalledTimes(2);
+        expect(rxNostr.use).toHaveBeenLastCalledWith(
+            expect.anything(),
+            { on: { relays: [contextualRelay] } },
+        );
+        observers[1].next({
+            from: contextualRelay,
+            event: event(3, "b", [["r", "wss://recipient-read.example/", "read"]]),
+        });
+        observers[1].complete();
+        await expect(contextualLookup).resolves.toMatchObject({
+            status: "found",
+            readRelays: ["wss://recipient-read.example/"],
+        });
+
+        await directory.lookup(pubkey, { discoveryRelays: [contextualRelay] });
+        expect(rxNostr.use).toHaveBeenCalledTimes(2);
+    });
+
+    it("shares an in-flight pubkey lookup while searching a newly supplied contextual source", async () => {
+        const { rxNostr, observers } = createRxHarness();
+        const directory = new Nip65RelayDirectory(rxNostr);
+        const first = directory.lookup(pubkey);
+        const withContext = directory.lookup(pubkey, {
+            discoveryRelays: ["wss://reply-target.example/"],
+        });
+        expect(first).toBe(withContext);
+
+        observers[0].complete();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(rxNostr.use).toHaveBeenCalledTimes(2);
+        observers[1].next({
+            event: event(4, "b", [["r", "wss://recipient-read.example/", "read"]]),
+        });
+        observers[1].complete();
+        await expect(first).resolves.toMatchObject({
+            status: "found",
+            readRelays: ["wss://recipient-read.example/"],
+        });
+    });
+
+    it("does not roll a cached route back to an older contextual event", async () => {
+        const { rxNostr, observers } = createRxHarness();
+        const directory = new Nip65RelayDirectory(rxNostr);
+        const initial = directory.lookup(pubkey);
+        observers[0].next({ event: event(10, "c", [["r", "wss://new-read.example/", "read"]]) });
+        observers[0].complete();
+        await initial;
+
+        const contextual = directory.lookup(pubkey, { discoveryRelays: ["wss://context.example/"] });
+        observers[1].next({ event: event(9, "d", [["r", "wss://old-read.example/", "read"]]) });
+        observers[1].complete();
+        await expect(contextual).resolves.toMatchObject({
+            eventId: "c".repeat(64),
+            readRelays: ["wss://new-read.example/"],
+        });
+    });
+
+    it("updates from a newer contextual event and honors its empty route without older fallback", async () => {
+        const { rxNostr, observers } = createRxHarness();
+        const directory = new Nip65RelayDirectory(rxNostr);
+        const initial = directory.lookup(pubkey);
+        observers[0].next({ event: event(10, "c", [["r", "wss://old-read.example/", "read"]]) });
+        observers[0].complete();
+        await initial;
+
+        const contextual = directory.lookup(pubkey, { discoveryRelays: ["wss://context.example/"] });
+        observers[1].next({ event: event(12, "a", [["r", "https://invalid.example/", "read"]]) });
+        observers[1].next({ event: event(11, "b", [["r", "wss://middle-read.example/", "read"]]) });
+        observers[1].complete();
+        await expect(contextual).resolves.toMatchObject({
+            status: "empty",
+            eventId: "a".repeat(64),
+            readRelays: [],
+        });
+    });
+
     it("limits active lookups to four and starts the queued lookup when a slot frees", async () => {
         const { rxNostr, observers } = createRxHarness();
         const directory = new Nip65RelayDirectory(rxNostr);
@@ -104,10 +191,11 @@ describe("Nip65RelayDirectory", () => {
         });
         try {
             const directory = new Nip65RelayDirectory(rxNostr);
-            const pending = directory.lookup(pubkey);
+            const contextualRelay = "wss://reply-target.example/";
+            const pending = directory.lookup(pubkey, { discoveryRelays: [contextualRelay] });
             expect(rxNostr.use).toHaveBeenCalledWith(
                 expect.anything(),
-                { on: { relays: [hostReadRelay] } },
+                { on: { relays: [hostReadRelay, contextualRelay] } },
             );
             observers[0].complete();
             await pending;
