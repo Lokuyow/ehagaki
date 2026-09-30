@@ -33,6 +33,7 @@ interface InFlightLookup {
     coveredSources: Set<string>;
     searchedSources: Set<string>;
     candidates: Map<string, { entry: Nip65RelayDirectoryEntry; receivedAt: number }>;
+    candidateListeners: Set<() => void>;
     previous: { entry: Nip65RelayDirectoryEntry; receivedAt: number } | undefined;
     started: boolean;
     activeBatches: number;
@@ -46,6 +47,8 @@ export interface Nip65RelayLookupOptions {
     discoveryRelays?: string[];
     /** Absolute consumer deadline, including time spent waiting for a lookup slot. */
     deadlineAt?: number;
+    /** Publishing can use the latest known Read route while discovery continues. */
+    resolveOnReadRoute?: boolean;
 }
 
 interface Kind10002Event {
@@ -143,7 +146,7 @@ export class Nip65RelayDirectory {
                 .filter((relay) => !alreadyCovered.has(relay))
                 .forEach((relay) => active.pendingSources.add(relay));
             this.launchPendingSources(pubkey, active);
-            return this.forConsumer(pubkey, active, options.deadlineAt);
+            return this.forConsumer(pubkey, active, options);
         }
         if (cacheIsFresh) {
             const unseenSources = requestedSources.filter(
@@ -155,7 +158,7 @@ export class Nip65RelayDirectory {
                     : copyEntry(cached!.entry));
             }
             const flight = this.startLookup(pubkey, unseenSources, cached);
-            return this.forConsumer(pubkey, flight, options.deadlineAt);
+            return this.forConsumer(pubkey, flight, options);
         }
 
         const sourcesToRefresh = RelayConfigUtils.sanitizeExternalRelayUrls([
@@ -163,7 +166,7 @@ export class Nip65RelayDirectory {
             ...(cached ? [...cached.searchedSources] : []),
         ]);
         const flight = this.startLookup(pubkey, sourcesToRefresh, cached);
-        return this.forConsumer(pubkey, flight, options.deadlineAt);
+        return this.forConsumer(pubkey, flight, options);
     }
 
     private startLookup(
@@ -181,6 +184,7 @@ export class Nip65RelayDirectory {
             coveredSources: new Set(),
             searchedSources: new Set(previous?.searchedSources ?? []),
             candidates: new Map(),
+            candidateListeners: new Set(),
             previous: previous?.entry.createdAt != null
                 ? { entry: copyEntry(previous.entry), receivedAt: previous.receivedAt }
                 : undefined,
@@ -232,6 +236,7 @@ export class Nip65RelayDirectory {
         void this.fetchLatest(pubkey, sources, (entry, receivedAt) => {
             if (!flight.candidates.has(entry.eventId!)) {
                 flight.candidates.set(entry.eventId!, { entry, receivedAt });
+                flight.candidateListeners.forEach((listener) => listener());
             }
         }).then((entry) => {
             flight.hadNetworkError ||= entry.status === "network-error";
@@ -255,9 +260,10 @@ export class Nip65RelayDirectory {
     private forConsumer(
         pubkey: string,
         flight: InFlightLookup,
-        deadlineAt: number | undefined,
+        options: Nip65RelayLookupOptions,
     ): Promise<Nip65RelayDirectoryEntry> {
-        if (deadlineAt === undefined) return flight.promise;
+        const deadlineAt = options.deadlineAt ?? Infinity;
+        if (options.deadlineAt === undefined && !options.resolveOnReadRoute) return flight.promise;
         if (deadlineAt <= this.now()) return Promise.resolve(this.snapshot(pubkey, flight, deadlineAt));
         return new Promise((resolve) => {
             let settled = false;
@@ -266,9 +272,19 @@ export class Nip65RelayDirectory {
                 if (settled) return;
                 settled = true;
                 if (timer !== undefined) this.clearTimeoutFn(timer);
+                flight.candidateListeners.delete(checkRoute);
                 resolve(this.snapshot(pubkey, flight, deadlineAt));
             };
-            timer = this.setTimeoutFn(finish, deadlineAt - this.now());
+            const checkRoute = () => {
+                if (this.snapshot(pubkey, flight, deadlineAt).readRelays.length > 0) finish();
+            };
+            if (options.resolveOnReadRoute) {
+                flight.candidateListeners.add(checkRoute);
+                checkRoute();
+            }
+            if (!settled && Number.isFinite(deadlineAt)) {
+                timer = this.setTimeoutFn(finish, deadlineAt - this.now());
+            }
             // A consumer deadline never completes or cancels another consumer's shared discovery.
             void flight.promise.then(finish);
         });

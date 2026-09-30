@@ -204,16 +204,16 @@ export class PostEventSender {
                 }
             };
 
-            const getResult = (): PostResult => {
+            const getResult = (final = true): PostResult => {
                 const accepted = [...acceptedRelays];
                 const rejected = [...rejectedByRelay.values()];
                 const finalRelays = new Set([
                     ...acceptedRelays,
                     ...rejectedByRelay.keys(),
                 ]);
-                const timedOutRelays = targetRelays.filter(
+                const timedOutRelays = final ? targetRelays.filter(
                     (relay) => !finalRelays.has(relay),
-                );
+                ) : [];
                 const success = accepted.length > 0;
 
                 const hasUnresolvedRelays = timedOutRelays.length > 0
@@ -270,12 +270,14 @@ export class PostEventSender {
                     resolved = true;
                     clearSettleTimer();
                     safeUnsubscribe();
+                    options.settleSignal?.removeEventListener("abort", settleFromSignal);
                     resolve(result);
                 }
             };
 
             const observer = {
                 next: (packet: any) => {
+                    if (resolved) return;
                     this.console.log('リレー送信結果', {
                         stage: 'publish',
                         outcome: packet.ok ? 'success' : 'failure',
@@ -292,6 +294,7 @@ export class PostEventSender {
                             scheduleSettle(options.waitForAllRelays
                                 ? Math.max(1, (options.authDeadlineAt ?? Date.now()) - Date.now())
                                 : this.settleTimeouts.authMs);
+                            options.onProgress?.(getResult(false));
                         }
                         return;
                     }
@@ -300,6 +303,7 @@ export class PostEventSender {
                         acceptedRelays.add(relay);
                         rejectedByRelay.delete(relay);
                         pendingAuthRelays.delete(relay);
+                        options.onProgress?.(getResult(false));
                         if (options.waitForAllRelays) {
                             maybeResolveAll();
                         } else if (pendingAuthRelays.size === 0 && !successSettleScheduled) {
@@ -313,6 +317,7 @@ export class PostEventSender {
                             ...(packet.notice ? { reason: packet.notice } : {}),
                             category: getRejectionCategory(packet.notice),
                         });
+                        options.onProgress?.(getResult(false));
                         if (options.waitForAllRelays) {
                             maybeResolveAll();
                         } else if (acceptedRelays.size > 0 && pendingAuthRelays.size === 0 && !successSettleScheduled) {
@@ -322,6 +327,7 @@ export class PostEventSender {
                     }
                 },
                 error: () => {
+                    if (resolved) return;
                     this.console.error("送信エラー", {
                         stage: 'publish',
                         reason: 'unexpected',
@@ -365,8 +371,15 @@ export class PostEventSender {
 
             const defaultDeadline = Date.now() + this.settleTimeouts.initialMs;
             const deadlineAt = options.deadlineAt ?? defaultDeadline;
+            const settleFromSignal = () => safeResolve(getResult());
+            options.settleSignal?.addEventListener("abort", settleFromSignal, { once: true });
+            if (options.settleSignal?.aborted) {
+                settleFromSignal();
+                return;
+            }
             scheduleSettle(Math.max(1, deadlineAt - Date.now()));
             subscription = this.rxNostr.send(event, sendOptions).subscribe(observer);
+            if (resolved) safeUnsubscribe();
         });
     }
 }
@@ -385,6 +398,10 @@ export interface SendEventOptions {
     waitForAllRelays?: boolean;
     deadlineAt?: number;
     authDeadlineAt?: number;
+    /** Internal staged-publish progress; contains confirmed results, not provisional timeouts. */
+    onProgress?: (result: PostResult) => void;
+    /** The operation owner closes remaining waves after successful class settlement. */
+    settleSignal?: AbortSignal;
 }
 
 export interface PostEventSenderSettleTimeouts {

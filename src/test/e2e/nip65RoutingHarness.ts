@@ -13,9 +13,9 @@ import type { AuthState } from "../../lib/types";
 
 const quietConsole = { log() {}, warn() {}, error() {} } as unknown as Console;
 
-async function reply(input: string, authorRelay: string, mode: "cold" | "warm" | "prefetch") {
+async function reply(input: string, authorRelay: string, mode: "cold" | "warm" | "prefetch", extraAuthorRelays: string[] = []) {
     const rxNostr = createRxNostr({ verifier: async (event) => verifyEvent(event) });
-    const relayConfig = { [authorRelay]: { read: true, write: true } };
+    const relayConfig = Object.fromEntries([authorRelay, ...extraAuthorRelays].map((relay) => [relay, { read: true, write: true }]));
     rxNostr.setDefaultRelays(relayConfig);
     clearReplyQuote();
     try {
@@ -64,8 +64,19 @@ async function reply(input: string, authorRelay: string, mode: "cold" | "warm" |
                 history.push({ eventId: event.id, verified: verifyEvent(event), acceptedRelays });
             },
         });
+        const startedAt = performance.now();
+        const waves: Array<{ relays: string[]; startedMs: number }> = [];
+        const send = rxNostr.send.bind(rxNostr);
+        rxNostr.send = (event, options) => {
+            const on = options?.on as { relays?: string[]; defaultWriteRelays?: boolean } | undefined;
+            waves.push({
+                relays: [...(on?.defaultWriteRelays ? Object.keys(relayConfig) : []), ...(on?.relays ?? [])],
+                startedMs: performance.now() - startedAt,
+            });
+            return send(event, options);
+        };
         const result = await manager.submitPost("Local routing fixture");
-        return { state, result, history };
+        return { state, result, history, waves, completedMs: performance.now() - startedAt };
     } finally {
         rxNostr.dispose();
         clearReplyQuote();

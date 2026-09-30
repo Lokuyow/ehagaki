@@ -8,11 +8,14 @@ test.use({ channel: process.env.EHAGAKI_TEST_CHROME_CHANNEL, trace: "off" });
 const contextualRelay = "wss://context.example/";
 const authorRelay = "wss://author.example/";
 const recipientRelay = "wss://recipient.example/";
+const silentAuthorRelay = "wss://silent-author.example/";
+const silentRecipientRelay = "wss://silent-recipient.example/";
 
-async function relayFixture(page: Page, mode: "fast" | "hung" | "timeout") {
+async function relayFixture(page: Page, mode: "fast" | "hung" | "timeout", silentClasses: "none" | "author" | "recipient" | "both" = "none") {
     const secret = generateSecretKey();
     const target = finalizeEvent({ kind: 1, created_at: 100, tags: [], content: "Local target fixture" }, secret);
-    const relayList = finalizeEvent({ kind: 10002, created_at: 200, tags: [["r", recipientRelay, "read"]], content: "" }, secret);
+    const recipientRelays = [recipientRelay, ...(["recipient", "both"].includes(silentClasses) ? [silentRecipientRelay] : [])];
+    const relayList = finalizeEvent({ kind: 10002, created_at: 200, tags: recipientRelays.map((relay) => ["r", relay, "read"]), content: "" }, secret);
     const requests: Array<{ relay: string; kind: number | undefined }> = [];
     const closes: string[] = [];
     const publications: Array<{ relay: string; eventId: string; verified: boolean; hasRecipient: boolean }> = [];
@@ -26,7 +29,9 @@ async function relayFixture(page: Page, mode: "fast" | "hung" | "timeout") {
                     relay: socket.url(), eventId: event.id, verified: verifyEvent(event),
                     hasRecipient: event.tags.some((tag: string[]) => tag[0] === "p" && tag[1] === target.pubkey),
                 });
-                socket.send(JSON.stringify(["OK", event.id, true, ""]));
+                if (![silentAuthorRelay, silentRecipientRelay].includes(socket.url())) {
+                    socket.send(JSON.stringify(["OK", event.id, true, ""]));
+                }
             }
             if (message[0] !== "REQ") return;
             const [_, subscriptionId, filter] = message;
@@ -106,5 +111,25 @@ for (const scenario of [
         });
         expect(result.history).toEqual([{ eventId: result.result.eventId, verified: true, acceptedRelays: [authorRelay, recipientRelay] }]);
         expect(fixture.requests.filter((request) => request.kind === 10002 && request.relay === contextualRelay)).toHaveLength(1);
+        expect(result.waves.find((wave) => wave.relays.includes(recipientRelay))!.startedMs).toBeLessThan(1_000);
+        expect(result.completedMs).toBeLessThan(2_500);
+    });
+}
+
+for (const silentClasses of ["author", "recipient", "both"] as const) {
+    test(`successful class ACKs finish promptly with silent ${silentClasses} relays`, async ({ page }) => {
+        const fixture = await relayFixture(page, "hung", silentClasses);
+        const extraAuthors = ["author", "both"].includes(silentClasses) ? [silentAuthorRelay] : [];
+        const result = await page.evaluate(({ pointer, authorRelay, extraAuthors }) =>
+            window.__NIP65_ROUTING_HARNESS__.reply(pointer, authorRelay, "cold", extraAuthors),
+        { pointer: fixture.pointer, authorRelay, extraAuthors });
+        expect(result.result).toMatchObject({ success: true, fullyDelivered: true, acceptedRelays: [authorRelay, recipientRelay] });
+        expect(result.waves.find((wave) => wave.relays.includes(recipientRelay))!.startedMs).toBeLessThan(1_000);
+        expect(result.completedMs).toBeLessThan(2_500);
+        expect(result.history).toEqual([{ eventId: result.result.eventId, verified: true, acceptedRelays: [authorRelay, recipientRelay] }]);
+        expect(result.result.timedOutRelays).toEqual(expect.arrayContaining([
+            ...extraAuthors,
+            ...(["recipient", "both"].includes(silentClasses) ? [silentRecipientRelay] : []),
+        ]));
     });
 }
