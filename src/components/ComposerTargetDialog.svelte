@@ -13,7 +13,10 @@
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
+    import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
+    import PostHistoryReactionActionButton from "./PostHistoryReactionActionButton.svelte";
+    import PostHistoryReactionDetails from "./PostHistoryReactionDetails.svelte";
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostPreviewFooterActionButton from "./PostPreviewFooterActionButton.svelte";
     import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
@@ -45,7 +48,9 @@
     } from "../lib/types";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { usePostContentEmojiState } from "../lib/hooks/usePostContentEmojiState.svelte";
+    import { usePostHistoryRelatedReactions } from "../lib/hooks/usePostHistoryRelatedReactions.svelte";
     import { usePostHistoryPostActionUiController } from "../lib/hooks/usePostHistoryPostActionUiController.svelte";
+    import { createPostHistoryProfileSyncCoordinator } from "../lib/postHistoryProfileSync";
     import { buildPostContentRenderModel } from "../lib/postContentPreview";
     import {
         canRequestPostDeletion,
@@ -147,6 +152,7 @@
     let lastBroadcastPointerPosition = $state<
         { eventId: string; x: number; y: number } | undefined
     >(undefined);
+    let expandedReactionEventId = $state<string | null>(null);
 
     let targetActions = $derived(
         target
@@ -204,6 +210,56 @@
         getPosts: () => previewCollapsePosts,
         getContainer: () => targetPreviewElement,
     });
+    const reactionProfileSyncCoordinator = createPostHistoryProfileSyncCoordinator({
+        getShow: () => show,
+        getRxNostr: () => rxNostr,
+    });
+    let reactionTargets = $derived.by(() =>
+        target && (target.event.kind === 1 || target.event.kind === 42)
+            ? [{ eventId: target.event.id, relayHints: [...target.relayHints] }]
+            : [],
+    );
+    const relatedReactions = usePostHistoryRelatedReactions({
+        getShow: () => show,
+        getPubkeyHex: () => pubkeyHex,
+        getRxNostr: () => rxNostr,
+        getRelayConfig: () => relayConfig,
+        getTargets: () => reactionTargets,
+        profileSync: reactionProfileSyncCoordinator,
+        source: "composer-target-display",
+    });
+    let targetReactionReadModel = $derived.by(() =>
+        target && (target.event.kind === 1 || target.event.kind === 42)
+            ? relatedReactions.getReadModel(target.event.id)
+            : null,
+    );
+    let isTargetReactionsExpanded = $derived(
+        !!target && expandedReactionEventId === target.event.id,
+    );
+    let previousReactionTargetId: string | null = null;
+    $effect(() => {
+        const eventId = show && target
+            && (target.event.kind === 1 || target.event.kind === 42)
+            ? target.event.id
+            : null;
+        if (eventId === previousReactionTargetId) return;
+        previousReactionTargetId = eventId;
+        expandedReactionEventId = null;
+        reactionProfileSyncCoordinator.reset();
+    });
+
+    function toggleTargetReactions(): void {
+        if (!target || !targetReactionReadModel?.totalCount) return;
+        expandedReactionEventId = isTargetReactionsExpanded
+            ? null
+            : target.event.id;
+    }
+
+    function getTargetReactionsActionLabel(count: number): string {
+        return isTargetReactionsExpanded
+            ? $_("postHistory.hideReactions")
+            : $_("postHistory.showReactionsWithCount", { values: { count } });
+    }
     const previewCollapseAction = previewCollapse.previewRef;
     let previewCollapsePost = $derived(previewCollapsePosts[0]);
     let isPreviewExpanded = $derived(
@@ -244,6 +300,15 @@
             tags: previewEvent?.tags ?? [],
             media: sourcePreviewRenderModel.media,
         });
+    });
+    let dialogEmojiUrls = $derived.by(() => {
+        const urls = new Set(previewRenderModel.previewContent.emojiUrls);
+        if (isTargetReactionsExpanded) {
+            for (const group of targetReactionReadModel?.groups ?? []) {
+                if (group.emojiUrl) urls.add(group.emojiUrl);
+            }
+        }
+        return [...urls];
     });
     let hasCollapsiblePreviewText = $derived(
         sourcePreviewRenderModel.hasRenderableText,
@@ -296,8 +361,8 @@
             phase === "profile-loading",
     );
     const emojiState = usePostContentEmojiState({
-        getShow: () => show && previewRenderModel.previewContent.emojiUrls.length > 0,
-        getEmojiUrls: () => previewRenderModel.previewContent.emojiUrls,
+        getShow: () => show && dialogEmojiUrls.length > 0,
+        getEmojiUrls: () => dialogEmojiUrls,
         onStateChanged: () => previewCollapse.remeasure(),
     });
 
@@ -338,6 +403,8 @@
         partialEvent = null;
         partialAuthorProfile = null;
         retryRevision = 0;
+        expandedReactionEventId = null;
+        reactionProfileSyncCoordinator.reset();
         resetTargetActionUiState();
         emojiState.resetState();
         fullscreenMediaItems = [];
@@ -701,6 +768,7 @@
         generation += 1;
         clearAsyncWork();
         hideBroadcastFloatingMessage();
+        reactionProfileSyncCoordinator.dispose();
     });
 </script>
 
@@ -881,57 +949,46 @@
                 >
                     {#snippet actions()}
                         {#if target}
-                            {#if targetActions.includes("reply")}
-                                <div class="post-preview-action-buttons-group">
+                            {#if targetActions.includes("reply") || targetActions.includes("quote")}
+                                {#if targetPost}
+                                    <PostHistoryPostActions
+                                        post={targetPost}
+                                        onReplyPost={targetActions.includes("reply")
+                                            ? () => handleApply("reply")
+                                            : undefined}
+                                        onQuotePost={targetActions.includes("quote")
+                                            ? () => handleApply("quote")
+                                            : undefined}
+                                    >
+                                        {#snippet reactionExtras()}
+                                            {#if targetReactionReadModel && targetReactionReadModel.totalCount > 0}
+                                                <PostHistoryReactionActionButton
+                                                    count={targetReactionReadModel.totalCount}
+                                                    expanded={isTargetReactionsExpanded}
+                                                    ariaLabel={getTargetReactionsActionLabel(targetReactionReadModel.totalCount)}
+                                                    onToggle={toggleTargetReactions}
+                                                />
+                                            {/if}
+                                        {/snippet}
+                                    </PostHistoryPostActions>
+                                {/if}
+                            {:else if targetActions.includes("channel")}
+                                <div class="composer-target-channel-action">
                                     <PostPreviewFooterActionButton
                                         type="button"
                                         className="post-preview-action-button post-history-action-button"
-                                        ariaLabel={$_("replyQuote.reply_label")}
+                                        ariaLabel={$_("composerTarget.post")}
                                         contentLayout="icon"
                                         shape="circle"
-                                        onClick={() => handleApply("reply")}
-                                        tooltipContent={$_("replyQuote.reply_label")}
+                                        onClick={() => handleApply("channel")}
+                                        tooltipContent={$_("composerTarget.post")}
                                     >
                                         <div
-                                            class="reply-icon svg-icon"
+                                            class="post-icon svg-icon"
                                             aria-hidden="true"
                                         ></div>
                                     </PostPreviewFooterActionButton>
-                                    <div class="post-preview-footer-replies-slot"></div>
                                 </div>
-                            {/if}
-                            {#if targetActions.includes("quote")}
-                                <PostPreviewFooterActionButton
-                                    type="button"
-                                    className="post-preview-action-button post-history-action-button"
-                                    ariaLabel={$_("replyQuote.quote_label")}
-                                    contentLayout="icon"
-                                    shape="circle"
-                                    onClick={() => handleApply("quote")}
-                                    tooltipContent={$_("replyQuote.quote_label")}
-                                >
-                                    <div
-                                        class="quote-icon svg-icon"
-                                        aria-hidden="true"
-                                    ></div>
-                                </PostPreviewFooterActionButton>
-                                <div class="post-preview-footer-reaction-slot"></div>
-                            {/if}
-                            {#if targetActions.includes("channel")}
-                                <PostPreviewFooterActionButton
-                                    type="button"
-                                    className="post-preview-action-button post-history-action-button"
-                                    ariaLabel={$_("composerTarget.post")}
-                                    contentLayout="icon"
-                                    shape="circle"
-                                    onClick={() => handleApply("channel")}
-                                    tooltipContent={$_("composerTarget.post")}
-                                >
-                                    <div
-                                        class="post-icon svg-icon"
-                                        aria-hidden="true"
-                                    ></div>
-                                </PostPreviewFooterActionButton>
                             {/if}
                         {/if}
                     {/snippet}
@@ -1015,6 +1072,13 @@
                         {/if}
                     {/snippet}
                 </PostHistoryPreviewFooter>
+                {#if targetReactionReadModel && targetReactionReadModel.totalCount > 0 && isTargetReactionsExpanded}
+                    <PostHistoryReactionDetails
+                        readModel={targetReactionReadModel}
+                        emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                        emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                    />
+                {/if}
             </section>
         {/if}
 
@@ -1254,18 +1318,14 @@
         background: var(--bg-input);
     }
 
+    .composer-target-channel-action {
+        display: flex;
+        width: 100%;
+        justify-content: center;
+    }
+
     :global(.target-preview .post-preview-footer) {
         --post-history-preview-footer-surface: var(--bg-input);
-    }
-
-    :global(.target-preview .post-preview-footer-replies-slot) {
-        flex: 0 1 36px;
-        min-width: 0;
-    }
-
-    :global(.target-preview .post-preview-footer-reaction-slot) {
-        flex: 0 1 70px;
-        min-width: 0;
     }
 
     .target-preview-body {

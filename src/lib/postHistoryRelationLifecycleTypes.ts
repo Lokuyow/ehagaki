@@ -6,7 +6,8 @@ export type PostHistoryRelationLifecycleSource =
     | "inbound-realtime"
     | "listing-current-view"
     | "listing-older-reveal"
-    | "related-card-display";
+    | "related-card-display"
+    | "composer-target-display";
 
 export type PostHistoryRelationLifecycleStateStatus =
     | "pending"

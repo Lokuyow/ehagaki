@@ -38,5 +38,11 @@
     :global(.post-preview-reactions-button .svg-icon) {
         width: var(--post-history-preview-action-icon-size, 20px);
         height: var(--post-history-preview-action-icon-size, 20px);
+        --svg: currentColor;
+    }
+
+    :global(.post-preview-reactions-button.selected) {
+        --btn-bg: var(--post-history-preview-footer-surface, var(--dialog-bg));
+        color: var(--text-light);
     }
 </style>

@@ -3496,7 +3496,6 @@
 
     :global(
             .post-history-action-button,
-            .post-preview-reactions-button,
             .post-history-thread-toggle-button
         ) {
         color: var(--btn-post-preview-action);
@@ -3504,7 +3503,6 @@
 
     :global(
             .post-history-action-button .svg-icon,
-            .post-preview-reactions-button .svg-icon,
             .post-history-thread-toggle-button .svg-icon
         ) {
         --svg: currentColor;
@@ -4133,10 +4131,7 @@
 
     }
 
-    :global(
-            .post-history-thread-toggle-button.selected,
-            .post-preview-reactions-button.selected
-        ) {
+    :global(.post-history-thread-toggle-button.selected) {
         --btn-bg: var(--post-history-preview-footer-surface, var(--dialog-bg));
         color: var(--text-light);
     }
@@ -4154,124 +4149,6 @@
                 color-mix(in srgb, var(--text), white 30%)
             );
         }
-    }
-
-    :global(.post-preview-reactions-panel) {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-        padding: 0 16px;
-    }
-
-    :global(.post-preview-reaction-chip) {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        min-height: 32px;
-        padding: 4px 8px;
-        border-radius: 18px;
-        background: color-mix(in srgb, var(--btn-bg), transparent 40%);
-        color: var(--text);
-    }
-
-    :global(.post-preview-reaction-summary) {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 2px;
-        row-gap: 4px;
-        flex-wrap: wrap;
-    }
-
-    :global(.post-preview-reaction-content) {
-        font-size: 20px;
-        line-height: 1;
-    }
-    :global(.post-preview-reaction-count) {
-        font-size: 1rem;
-        line-height: 1;
-    }
-
-    :global(.post-preview-reaction-emoji-slot) {
-        display: inline-grid;
-        margin: 0;
-        padding: 0;
-    }
-
-    :global(.post-preview-reaction-emoji),
-    :global(.post-preview-reaction-emoji-placeholder) {
-        width: 100%;
-        height: 100%;
-    }
-
-    :global(.post-preview-reaction-emoji) {
-        display: block;
-        margin: 0;
-        padding: 0;
-        object-fit: contain;
-        user-select: none;
-        -webkit-user-drag: none;
-    }
-
-    :global(.post-preview-reaction-emoji-placeholder) {
-        display: block;
-        border-radius: 4px;
-        background: rgba(127, 127, 127, 0.18);
-    }
-
-    :global(.post-preview-reaction-emoji-failed) {
-        display: inline-grid;
-        place-items: center;
-        overflow: hidden;
-        border-radius: 4px;
-        background: rgba(127, 127, 127, 0.18);
-        font-size: 0.45em;
-        line-height: 1;
-        white-space: nowrap;
-        cursor: help;
-    }
-
-    :global(.post-preview-reaction-count) {
-        color: var(--text-muted);
-    }
-
-    :global(.post-preview-reaction-actors) {
-        display: inline-flex;
-        flex-wrap: wrap;
-        gap: 2px;
-        align-items: center;
-    }
-
-    :global(.post-preview-reaction-actor) {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 26px;
-        height: 26px;
-        border-radius: 999px;
-        overflow: hidden;
-        flex: 0 0 auto;
-    }
-
-    :global(.post-preview-reaction-avatar) {
-        width: 100%;
-        height: 100%;
-    }
-
-    :global(.post-preview-reaction-avatar-image) {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-
-    :global(.post-preview-reaction-avatar-fallback) {
-        width: 100%;
-        height: 100%;
-    }
-
-    :global(.post-preview-reaction-symbol) {
-        width: 18px;
-        height: 18px;
     }
 
     .post-meta-inline {
