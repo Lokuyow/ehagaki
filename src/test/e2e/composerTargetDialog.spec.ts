@@ -221,17 +221,26 @@ test.describe("composer target dialog fixture", () => {
                 const replyGroup = actions.querySelector<HTMLElement>(
                     ":scope > .post-preview-action-buttons-group",
                 )!;
-                const reply = replyGroup.querySelector<HTMLElement>(
+                const replyCell = replyGroup.querySelector<HTMLElement>(
+                    ":scope > .post-preview-reply-action-cell",
+                )!;
+                const quoteCell = replyGroup.querySelector<HTMLElement>(
+                    ":scope > .post-preview-quote-action-cell",
+                )!;
+                const reactionCell = replyGroup.querySelector<HTMLElement>(
+                    ":scope > .post-preview-reaction-action-cell",
+                )!;
+                const reply = replyCell.querySelector<HTMLElement>(
                     "button[aria-label='リプライ']",
                 )!;
-                const repliesSlot = replyGroup.querySelector<HTMLElement>(
+                const repliesSlot = replyCell.querySelector<HTMLElement>(
                     ".post-preview-footer-replies-slot",
                 )!;
-                const quote = actions.querySelector<HTMLElement>(
-                    ":scope > button[aria-label='引用']",
+                const quote = quoteCell.querySelector<HTMLElement>(
+                    "button[aria-label='引用']",
                 )!;
-                const reactionSlot = actions.querySelector<HTMLElement>(
-                    ":scope > .post-preview-footer-reaction-slot",
+                const reactionSlot = reactionCell.querySelector<HTMLElement>(
+                    ".post-preview-footer-reaction-slot",
                 )!;
                 const menu = card.querySelector<HTMLElement>(
                     ".post-history-menu-trigger",
@@ -243,6 +252,7 @@ test.describe("composer target dialog fixture", () => {
                         left: rect.left,
                         right: rect.right,
                         width: rect.width,
+                        height: rect.height,
                         top: rect.top,
                         bottom: rect.bottom,
                     };
@@ -254,14 +264,24 @@ test.describe("composer target dialog fixture", () => {
                     actions: toRect(actions),
                     reply: toRect(reply),
                     quote: toRect(quote),
+                    replyCell: toRect(replyCell),
+                    quoteCell: toRect(quoteCell),
+                    reactionCell: toRect(reactionCell),
                     repliesSlot: toRect(repliesSlot),
                     reactionSlot: toRect(reactionSlot),
                     menu: toRect(menu),
                     dialog: toRect(dialog),
                     structure: {
+                        directCellCount: replyGroup.querySelectorAll(
+                            ":scope > .post-preview-action-cell",
+                        ).length,
+                        cellsInExpectedOrder: replyGroup.children[0] === replyCell
+                            && replyGroup.children[1] === quoteCell
+                            && replyGroup.children[2] === reactionCell,
                         replyGroupContainsQuote: replyGroup.contains(quote),
                         repliesSlotIsEmpty: repliesSlot.childElementCount === 0,
                         reactionSlotIsEmpty: reactionSlot.childElementCount === 0,
+                        reactionCellHasNoButton: !reactionCell.querySelector("button"),
                     },
                     backgrounds: {
                         card: getComputedStyle(card).backgroundColor,
@@ -277,24 +297,33 @@ test.describe("composer target dialog fixture", () => {
                 };
             });
 
-            expect(geometry.structure.replyGroupContainsQuote).toBe(false);
+            expect(geometry.structure.directCellCount).toBe(3);
+            expect(geometry.structure.cellsInExpectedOrder).toBe(true);
+            expect(geometry.structure.replyGroupContainsQuote).toBe(true);
             expect(geometry.structure.repliesSlotIsEmpty).toBe(true);
             expect(geometry.structure.reactionSlotIsEmpty).toBe(true);
+            expect(geometry.structure.reactionCellHasNoButton).toBe(true);
             expect(geometry.footer.left).toBeGreaterThanOrEqual(geometry.card.left);
             expect(geometry.footer.right).toBeLessThanOrEqual(geometry.card.right);
+            expect(geometry.footer.bottom - geometry.footer.top).toBe(36);
             expect(geometry.horizontalOverflow).toBeLessThanOrEqual(0);
             expect(geometry.date.right).toBeLessThanOrEqual(geometry.actions.left);
             expect(geometry.actions.right).toBeLessThanOrEqual(geometry.menu.left);
+            for (const button of [geometry.reply, geometry.quote]) {
+                expect(button.width).toBeGreaterThanOrEqual(35);
+                expect(button.width).toBeLessThanOrEqual(37);
+                expect(button.height).toBeGreaterThanOrEqual(35);
+                expect(button.height).toBeLessThanOrEqual(37);
+                expect(button.left).toBeGreaterThanOrEqual(geometry.footer.left);
+                expect(button.right).toBeLessThanOrEqual(geometry.footer.right);
+                expect(button.top).toBeGreaterThanOrEqual(geometry.footer.top);
+                expect(button.bottom).toBeLessThanOrEqual(geometry.footer.bottom);
+            }
             expect(geometry.reply.left).toBeLessThan(geometry.quote.left);
-            expect(geometry.quote.left).toBeLessThan(geometry.reactionSlot.left);
-            const actionCenterGap =
-                geometry.quote.left + geometry.quote.width / 2
-                - (geometry.reply.left + geometry.reply.width / 2);
-            expect(actionCenterGap).toBeGreaterThan(
-                testInfo.project.name === "desktop-chromium"
-                    ? geometry.footer.width * 0.1
-                    : 0,
-            );
+            expect(geometry.replyCell.left).toBeLessThan(geometry.quoteCell.left);
+            expect(geometry.quoteCell.left).toBeLessThan(geometry.reactionCell.left);
+            expect(geometry.reply.right).toBeLessThanOrEqual(geometry.quote.left);
+            expect(geometry.quote.right).toBeLessThanOrEqual(geometry.reactionCell.right);
             expect(geometry.actions.left).toBeGreaterThanOrEqual(0);
             expect(geometry.menu.right).toBeLessThanOrEqual(geometry.viewportWidth);
             expect(geometry.dialog.top).toBeGreaterThanOrEqual(0);
@@ -304,6 +333,13 @@ test.describe("composer target dialog fixture", () => {
             expect(geometry.backgrounds.reply).toBe(geometry.backgrounds.card);
             expect(geometry.backgrounds.quote).toBe(geometry.backgrounds.card);
             expect(geometry.backgrounds.menu).toBe(geometry.backgrounds.card);
+
+            await page.screenshot({
+                path: testInfo.outputPath(
+                    `composer-target-footer-${testInfo.project.name}-${input === harness.inputs.kind1 ? "kind1" : "kind42"}.png`,
+                ),
+                fullPage: false,
+            });
         }
 
         await page.getByLabel("イベントID").fill(harness.inputs.kind40);

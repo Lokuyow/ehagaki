@@ -834,18 +834,27 @@ describe("ComposerTargetDialog", () => {
         const replyGroup = footerActions?.querySelector(
             ":scope > .post-preview-action-buttons-group",
         );
+        const actionCells = replyGroup?.querySelectorAll(
+            ":scope > .post-preview-action-cell",
+        );
         const repliesSlot = replyGroup?.querySelector(
             ".post-preview-footer-replies-slot",
         );
-        const reactionSlot = footerActions?.querySelector(
-            ":scope > .post-preview-footer-reaction-slot",
+        const reactionSlot = replyGroup?.querySelector(
+            ".post-preview-reaction-action-cell > .post-preview-footer-reaction-slot",
         );
 
         expect(replyGroup?.contains(replyButton)).toBe(true);
-        expect(replyGroup?.contains(quoteButton)).toBe(false);
+        expect(replyGroup?.contains(quoteButton)).toBe(true);
+        expect(actionCells).toHaveLength(3);
+        expect(actionCells?.[0].classList.contains("post-preview-reply-action-cell"))
+            .toBe(true);
+        expect(actionCells?.[1].classList.contains("post-preview-quote-action-cell"))
+            .toBe(true);
+        expect(actionCells?.[2].classList.contains("post-preview-reaction-action-cell"))
+            .toBe(true);
         expect(repliesSlot?.childElementCount).toBe(0);
-        expect(quoteButton.parentElement).toBe(footerActions);
-        expect(reactionSlot?.parentElement).toBe(footerActions);
+        expect(reactionSlot?.parentElement).toBe(actionCells?.[2]);
         expect(reactionSlot?.childElementCount).toBe(0);
 
         await openActionMenu();
@@ -916,12 +925,14 @@ describe("ComposerTargetDialog", () => {
         )).toBe(true);
         expect(replyGroup?.contains(
             screen.getByRole("button", { name: "引用" }),
-        )).toBe(false);
+        )).toBe(true);
+        expect(replyGroup?.querySelectorAll(":scope > .post-preview-action-cell"))
+            .toHaveLength(3);
         expect(replyGroup?.querySelector(
             ".post-preview-footer-replies-slot",
         )).toBeTruthy();
-        expect(footerActions?.querySelector(
-            ":scope > .post-preview-footer-reaction-slot",
+        expect(replyGroup?.querySelector(
+            ".post-preview-reaction-action-cell > .post-preview-footer-reaction-slot",
         )).toBeTruthy();
     });
 

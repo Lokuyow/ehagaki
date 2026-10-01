@@ -13,6 +13,7 @@
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
+    import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostPreviewFooterActionButton from "./PostPreviewFooterActionButton.svelte";
@@ -881,57 +882,35 @@
                 >
                     {#snippet actions()}
                         {#if target}
-                            {#if targetActions.includes("reply")}
-                                <div class="post-preview-action-buttons-group">
+                            {#if targetActions.includes("reply") || targetActions.includes("quote")}
+                                {#if targetPost}
+                                    <PostHistoryPostActions
+                                        post={targetPost}
+                                        onReplyPost={targetActions.includes("reply")
+                                            ? () => handleApply("reply")
+                                            : undefined}
+                                        onQuotePost={targetActions.includes("quote")
+                                            ? () => handleApply("quote")
+                                            : undefined}
+                                    />
+                                {/if}
+                            {:else if targetActions.includes("channel")}
+                                <div class="composer-target-channel-action">
                                     <PostPreviewFooterActionButton
                                         type="button"
                                         className="post-preview-action-button post-history-action-button"
-                                        ariaLabel={$_("replyQuote.reply_label")}
+                                        ariaLabel={$_("composerTarget.post")}
                                         contentLayout="icon"
                                         shape="circle"
-                                        onClick={() => handleApply("reply")}
-                                        tooltipContent={$_("replyQuote.reply_label")}
+                                        onClick={() => handleApply("channel")}
+                                        tooltipContent={$_("composerTarget.post")}
                                     >
                                         <div
-                                            class="reply-icon svg-icon"
+                                            class="post-icon svg-icon"
                                             aria-hidden="true"
                                         ></div>
                                     </PostPreviewFooterActionButton>
-                                    <div class="post-preview-footer-replies-slot"></div>
                                 </div>
-                            {/if}
-                            {#if targetActions.includes("quote")}
-                                <PostPreviewFooterActionButton
-                                    type="button"
-                                    className="post-preview-action-button post-history-action-button"
-                                    ariaLabel={$_("replyQuote.quote_label")}
-                                    contentLayout="icon"
-                                    shape="circle"
-                                    onClick={() => handleApply("quote")}
-                                    tooltipContent={$_("replyQuote.quote_label")}
-                                >
-                                    <div
-                                        class="quote-icon svg-icon"
-                                        aria-hidden="true"
-                                    ></div>
-                                </PostPreviewFooterActionButton>
-                                <div class="post-preview-footer-reaction-slot"></div>
-                            {/if}
-                            {#if targetActions.includes("channel")}
-                                <PostPreviewFooterActionButton
-                                    type="button"
-                                    className="post-preview-action-button post-history-action-button"
-                                    ariaLabel={$_("composerTarget.post")}
-                                    contentLayout="icon"
-                                    shape="circle"
-                                    onClick={() => handleApply("channel")}
-                                    tooltipContent={$_("composerTarget.post")}
-                                >
-                                    <div
-                                        class="post-icon svg-icon"
-                                        aria-hidden="true"
-                                    ></div>
-                                </PostPreviewFooterActionButton>
                             {/if}
                         {/if}
                     {/snippet}
@@ -1254,18 +1233,14 @@
         background: var(--bg-input);
     }
 
+    .composer-target-channel-action {
+        display: flex;
+        width: 100%;
+        justify-content: center;
+    }
+
     :global(.target-preview .post-preview-footer) {
         --post-history-preview-footer-surface: var(--bg-input);
-    }
-
-    :global(.target-preview .post-preview-footer-replies-slot) {
-        flex: 0 1 36px;
-        min-width: 0;
-    }
-
-    :global(.target-preview .post-preview-footer-reaction-slot) {
-        flex: 0 1 70px;
-        min-width: 0;
     }
 
     .target-preview-body {
