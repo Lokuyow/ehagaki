@@ -431,6 +431,9 @@ select {
   height: 24px;
   flex: 0 0 24px;
   margin-block: 1px;
+}
+
+.setting-menu-mask-icon {
   background-color: currentColor;
   mask-repeat: no-repeat;
   mask-position: center;

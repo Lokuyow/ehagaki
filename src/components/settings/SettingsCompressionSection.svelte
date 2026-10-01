@@ -39,7 +39,7 @@
         <div class="setting-label-wrapper">
             <div class="setting-label-with-icon">
                 <span
-                    class="setting-menu-icon image-quality-icon"
+                    class="setting-menu-icon setting-menu-mask-icon image-quality-icon"
                     aria-hidden="true"
                 ></span>
                 <span class="setting-label">
@@ -145,7 +145,7 @@
         <div class="setting-label-wrapper">
             <div class="setting-label-with-icon">
                 <span
-                    class="setting-menu-icon video-quality-icon"
+                    class="setting-menu-icon setting-menu-mask-icon video-quality-icon"
                     aria-hidden="true"
                 ></span>
                 <span class="setting-label">

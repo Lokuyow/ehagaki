@@ -60,7 +60,7 @@
     <div class="setting-row">
         <div class="setting-label-with-icon">
             <span
-                class="setting-menu-icon relay-refresh-setting-icon"
+                class="setting-menu-icon setting-menu-mask-icon relay-refresh-setting-icon"
                 aria-hidden="true"
             ></span>
             <span class="setting-label">

@@ -446,7 +446,7 @@
             <div class="setting-row">
                 <div class="setting-label-with-icon">
                     <span
-                        class="setting-menu-icon language-setting-icon"
+                        class="setting-menu-icon setting-menu-mask-icon language-setting-icon"
                         aria-hidden="true"
                     ></span>
                     <span class="setting-label"> Language/言語 </span>
@@ -490,7 +490,7 @@
             <div class="setting-row">
                 <div class="setting-label-with-icon">
                     <span
-                        class="setting-menu-icon theme-setting-icon"
+                        class="setting-menu-icon setting-menu-mask-icon theme-setting-icon"
                         aria-hidden="true"
                     ></span>
                     <span id="theme-mode-label" class="setting-label"
@@ -624,7 +624,7 @@
             <div class="setting-row">
                 <div class="setting-label-with-icon">
                     <span
-                        class="setting-menu-icon media-placement-setting-icon"
+                        class="setting-menu-icon setting-menu-mask-icon media-placement-setting-icon"
                         aria-hidden="true"
                     ></span>
                     <span id="media-free-placement-label" class="setting-label"
@@ -658,7 +658,7 @@
                                 />
                                 <span id="hide-mascot-label" class="setting-label"
                                     >{$_("settingsDialog.hide_mascot_label") ||
-                                        "左上マスコットを非表示"}</span
+                                        "きってんを非表示"}</span
                                 >
                             </div>
                             <InfoPopoverButton
@@ -691,7 +691,7 @@
                         <div class="setting-label-row">
                             <div class="setting-label-with-icon">
                                 <span
-                                    class="setting-menu-icon flavor-setting-icon"
+                                    class="setting-menu-icon setting-menu-mask-icon flavor-setting-icon"
                                     aria-hidden="true"
                                 ></span>
                                 <span id="hide-flavor-text-label" class="setting-label"
@@ -750,7 +750,7 @@
                         <div class="setting-label-row">
                             <div class="setting-label-with-icon">
                                 <span
-                                    class="setting-menu-icon quote-setting-icon"
+                                    class="setting-menu-icon setting-menu-mask-icon quote-setting-icon"
                                     aria-hidden="true"
                                 ></span>
                                 <span id="quote-notification-label" class="setting-label"
@@ -789,7 +789,7 @@
                         <div class="setting-label-row">
                             <div class="setting-label-with-icon">
                                 <span
-                                    class="setting-menu-icon reply-setting-icon"
+                                    class="setting-menu-icon setting-menu-mask-icon reply-setting-icon"
                                     aria-hidden="true"
                                 ></span>
                                 <span id="reply-notification-label" class="setting-label"
@@ -828,7 +828,7 @@
             <div class="setting-row">
                 <div class="setting-label-with-icon">
                     <span
-                        class="setting-menu-icon client-tag-setting-icon"
+                        class="setting-menu-icon setting-menu-mask-icon client-tag-setting-icon"
                         aria-hidden="true"
                     ></span>
                     <span id="client-tag-label" class="setting-label"

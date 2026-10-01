@@ -109,8 +109,33 @@ describe('SettingsDialog accessibility', () => {
         }
         expect(document.querySelectorAll('.setting-menu-icon')).toHaveLength(11);
         expect(
+            document.querySelectorAll('.setting-menu-mask-icon'),
+        ).toHaveLength(10);
+        expect(
+            document
+                .querySelector('.mascot-setting-icon')
+                ?.classList.contains('setting-menu-mask-icon'),
+        ).toBe(false);
+        expect(
             document.querySelector('.mascot-setting-icon')?.getAttribute('src'),
         ).toContain('ehagaki_icon.svg');
+        locale.set('ja');
+        await waitLocale('ja');
+        expect(document.querySelector('#hide-mascot-label')?.textContent).toBe(
+            'きってんを非表示',
+        );
+        expect(
+            screen.getByRole('button', { name: '左上マスコットの説明' }),
+        ).toBeTruthy();
+
+        locale.set('en');
+        await waitLocale('en');
+        expect(document.querySelector('#hide-mascot-label')?.textContent).toBe(
+            'Hide Kit-ten',
+        );
+        expect(
+            screen.getByRole('button', { name: 'Top-left mascot description' }),
+        ).toBeTruthy();
         expect(
             document.querySelector(
                 '.refresh-relays-profile-btn .setting-menu-icon',
