@@ -227,7 +227,7 @@
 
     .setting-label-with-icon {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         gap: 8px;
         flex: 0 1 auto;
         min-width: 0;
