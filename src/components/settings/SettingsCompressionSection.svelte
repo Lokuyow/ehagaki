@@ -218,7 +218,7 @@
 <style>
     .setting-label-wrapper {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         gap: 4px;
         flex-wrap: wrap;
         flex: 1 1 auto;
