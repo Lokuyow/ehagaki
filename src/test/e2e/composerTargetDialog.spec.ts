@@ -25,7 +25,9 @@ type HarnessState = {
 };
 
 type HarnessWindow = Window & typeof globalThis & {
-    __COMPOSER_TARGET_HARNESS__?: HarnessState;
+    __COMPOSER_TARGET_HARNESS__?: HarnessState & {
+        seedReactionFixtures: () => Promise<void>;
+    };
 };
 
 async function gotoHarness(page: Page): Promise<HarnessState> {
@@ -33,9 +35,16 @@ async function gotoHarness(page: Page): Promise<HarnessState> {
     await page.waitForFunction(() =>
         Boolean((window as HarnessWindow).__COMPOSER_TARGET_HARNESS__?.ready)
     );
-    return page.evaluate(() =>
-        (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__ as HarnessState
-    );
+    return page.evaluate(() => {
+        const harness = (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!;
+        return {
+            ready: harness.ready,
+            inputs: harness.inputs,
+            oversizedPostContentLength: harness.oversizedPostContentLength,
+            linkTargetUrl: harness.linkTargetUrl,
+            applications: harness.applications,
+        };
+    });
 }
 
 async function openDialog(page: Page, language: "ja" | "en" = "ja"): Promise<void> {
@@ -67,6 +76,78 @@ async function expectTooltip(
 }
 
 test.describe("composer target dialog fixture", () => {
+    test("解決済みkind 1/42のリアクション詳細を既存アクション列で表示する", async ({ page }) => {
+        let emojiRequests = 0;
+        await page.route("https://example.com/reaction-party.png", async (route) => {
+            emojiRequests += 1;
+            await route.fulfill({
+                status: 200,
+                contentType: "image/png",
+                body: Buffer.from(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jW9sAAAAASUVORK5CYII=",
+                    "base64",
+                ),
+            });
+        });
+        const harness = await gotoHarness(page);
+        await page.evaluate(async () => {
+            await (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.seedReactionFixtures();
+        });
+        await page.setViewportSize({ width: 320, height: 780 });
+        await openDialog(page);
+
+        const targetPreview = page.locator(".target-preview");
+        const reactionButton = (label: "表示" | "隠す") => page.getByRole("button", {
+            name: label === "表示" ? "リアクション 2件を表示" : "リアクションを隠す",
+        });
+        const expectNoHorizontalOverflow = async () => {
+            const dimensions = await targetPreview.evaluate((element) => ({
+                clientWidth: element.clientWidth,
+                scrollWidth: element.scrollWidth,
+            }));
+            expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth + 1);
+        };
+
+        await page.getByLabel("イベントID").fill(harness.inputs.kind1);
+        await expect(reactionButton("表示")).toBeVisible();
+        await expect(page.getByRole("button", { name: "リプライ" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "引用" })).toBeVisible();
+        await expectNoHorizontalOverflow();
+        const widthBeforeExpand = await targetPreview.evaluate((element) => element.clientWidth);
+        expect(emojiRequests).toBe(0);
+
+        await reactionButton("表示").click();
+        const details = page.locator(".post-preview-reactions-panel");
+        await expect(details).toBeVisible();
+        await expect(details.locator(".post-preview-reaction-chip")).toHaveCount(2);
+        await expect(details.locator(".post-preview-reaction-symbol")).toBeVisible();
+        await expect(details.getByRole("img", { name: ":party:" })).toBeVisible();
+        await expect(details.locator(".post-preview-reaction-actor")).toHaveCount(2);
+        await expect(reactionButton("隠す")).toBeVisible();
+        await expectNoHorizontalOverflow();
+        expect(await targetPreview.evaluate((element) => element.clientWidth)).toBe(widthBeforeExpand);
+        expect(emojiRequests).toBeGreaterThan(0);
+
+        // Switching target clears the previous target's expanded detail state.
+        await page.getByLabel("イベントID").fill(harness.inputs.kind42);
+        await expect(reactionButton("表示")).toBeVisible();
+        await expect(reactionButton("隠す")).toHaveCount(0);
+        await expect(page.locator(".post-preview-reactions-panel")).toHaveCount(0);
+        await expectNoHorizontalOverflow();
+        await reactionButton("表示").click();
+        await expect(details).toBeVisible();
+        await expect(details.locator(".post-preview-reaction-chip")).toHaveCount(2);
+        await expect(details.locator(".post-preview-reaction-symbol")).toBeVisible();
+        await expect(details.getByRole("img", { name: ":party:" })).toBeVisible();
+        await expect(details.locator(".post-preview-reaction-actor")).toHaveCount(2);
+        await expect(page.getByRole("button", { name: "リプライ" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "引用" })).toBeVisible();
+        await expectNoHorizontalOverflow();
+
+        await reactionButton("隠す").click();
+        await expect(page.locator(".post-preview-reactions-panel")).toHaveCount(0);
+    });
+
     test("standalone uses the shared Base button surface and effective Accent border", async ({ page }) => {
         await gotoHarness(page);
         await page.evaluate(() => {

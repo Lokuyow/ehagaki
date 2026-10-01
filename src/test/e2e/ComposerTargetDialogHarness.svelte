@@ -8,6 +8,7 @@
     } from "../../lib/composerTargetResolver";
     import type { ComposerEventTarget } from "../../lib/composerTargetApplyController";
     import type { ComposerTargetAction } from "../../lib/composerTargetUtils";
+    import { postHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryChildInteractionsRepository";
 
     const ids = {
         kind1: "1".repeat(64),
@@ -67,6 +68,58 @@
         ...mediaUrls,
         videoUrl,
     ].join(" ")}`;
+
+    const reactionEmojiUrl = "https://example.com/reaction-party.png";
+
+    function makeReaction(
+        targetEventId: string,
+        eventId: string,
+        pubkey: string,
+        content: string,
+        tags: string[][] = [],
+    ) {
+        return {
+            id: eventId,
+            pubkey,
+            created_at: 2,
+            kind: 7,
+            tags: [["e", targetEventId], ...tags],
+            content,
+            sig: "e".repeat(128),
+        };
+    }
+
+    async function seedReactionFixtures(): Promise<void> {
+        const targets = [ids.kind1, ids.kind42];
+        await postHistoryChildInteractionsRepository.deleteChildInteractionsForParents(targets);
+        for (const targetEventId of targets) {
+            const prefix = targetEventId === ids.kind1 ? "a" : "b";
+            await postHistoryChildInteractionsRepository.upsertChildInteractions({
+                parentEventId: targetEventId,
+                events: [
+                    {
+                        event: makeReaction(
+                            targetEventId,
+                            prefix.repeat(64),
+                            "3".repeat(64),
+                            "+",
+                        ),
+                        relayUrls: [],
+                    },
+                    {
+                        event: makeReaction(
+                            targetEventId,
+                            (prefix === "a" ? "c" : "d").repeat(64),
+                            "4".repeat(64),
+                            ":party:",
+                            [["emoji", "party", reactionEmojiUrl]],
+                        ),
+                        relayUrls: [],
+                    },
+                ],
+            });
+        }
+    }
 
     let show = $state(false);
     let applications = $state<
@@ -250,6 +303,7 @@
 
     const harness = {
         ready: true,
+        seedReactionFixtures,
         inputs,
         linkTargetUrl,
         oversizedPostContentLength: oversizedPostContent.length,

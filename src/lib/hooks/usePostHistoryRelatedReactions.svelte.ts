@@ -13,6 +13,7 @@ import {
 import { triggerPostHistoryReactionLifecycle } from "../postHistoryReactionLifecycleTrigger";
 import type { ProfileData, RelayConfig } from "../types";
 import type { PostHistoryChildInteractionRecord } from "../storage/ehagakiDb";
+import type { PostHistoryReactionLifecycleSource } from "../postHistoryReactionLifecycleTypes";
 
 export interface PostHistoryRelatedReactionCardTarget extends PostHistoryRelatedReactionTarget {}
 
@@ -23,6 +24,7 @@ export function usePostHistoryRelatedReactions(params: {
     getRelayConfig: () => RelayConfig | null | undefined;
     getTargets: () => PostHistoryRelatedReactionCardTarget[];
     profileSync: PostHistoryProfileSyncCoordinator;
+    source?: PostHistoryReactionLifecycleSource;
 }) {
     let recordsByEventId = $state.raw<
         Record<string, PostHistoryChildInteractionRecord[]>
@@ -38,6 +40,7 @@ export function usePostHistoryRelatedReactions(params: {
         typeof postHistoryVisibleRangeChildInteractionRepairService.repairRelatedCardReactions
     >;
     let repairTask: RepairTask | null = null;
+    const lifecycleSource = params.source ?? "related-card-display";
 
     const unsubscribeProfiles = params.profileSync.subscribe((pubkey, profile) => {
         profilesByPubkey = { ...profilesByPubkey, [pubkey]: profile };
@@ -161,7 +164,7 @@ export function usePostHistoryRelatedReactions(params: {
             }
 
             await triggerPostHistoryReactionLifecycle({
-                source: "related-card-display",
+                source: lifecycleSource,
                 parentEventIds: eventIds,
                 rxNostr,
                 relayConfig,
@@ -255,7 +258,7 @@ export function usePostHistoryRelatedReactions(params: {
                 if (profile) profilesByPubkey = { ...profilesByPubkey, [record.authorPubkey]: profile };
             }
             const finalDeletionResult = await triggerPostHistoryReactionLifecycle({
-                source: "related-card-display",
+                source: lifecycleSource,
                 parentEventIds: eventIds,
                 rxNostr,
                 relayConfig,

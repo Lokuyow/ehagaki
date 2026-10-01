@@ -3,6 +3,7 @@ import {
     render,
     screen,
     within,
+    waitFor,
 } from "@testing-library/svelte";
 import { nip19 } from "nostr-tools";
 import { readable } from "svelte/store";
@@ -12,6 +13,46 @@ import type {
     ComposerResolvedTarget,
     ComposerTargetResolveResult,
 } from "../../lib/composerTargetResolver";
+
+const relatedReactionMock = vi.hoisted(() => ({
+    records: [] as any[],
+}));
+
+vi.mock("../../lib/postHistoryChildInteractionsAdapter", () => ({
+    postHistoryReactionRecordsAdapter: {
+        getReactionRecordsForParents: vi.fn(async (eventIds: string[]) =>
+            relatedReactionMock.records.filter((record) => eventIds.includes(record.parentEventId)),
+        ),
+        getReactionRecords: vi.fn(async (eventId: string) =>
+            relatedReactionMock.records.filter((record) => record.parentEventId === eventId),
+        ),
+    },
+}));
+
+vi.mock("../../lib/postHistoryVisibleRangeChildInteractionRepairService", () => ({
+    postHistoryVisibleRangeChildInteractionRepairService: {
+        repairRelatedCardReactions: vi.fn(() => ({
+            promise: Promise.resolve({ status: "partial", targetEventIds: [] }),
+            cancel: vi.fn(),
+        })),
+    },
+}));
+
+vi.mock("../../lib/postHistoryReactionLifecycleTrigger", () => ({
+    triggerPostHistoryReactionLifecycle: vi.fn(async () => ({
+        status: "completed",
+        deletedReactionEventIds: [],
+    })),
+}));
+
+vi.mock("../../lib/postHistoryProfileSync", () => ({
+    createPostHistoryProfileSyncCoordinator: () => ({
+        subscribe: () => () => undefined,
+        ensureProfile: () => null,
+        reset: vi.fn(),
+        dispose: vi.fn(),
+    }),
+}));
 
 const translations: Record<string, string> = {
     "common.showActions": "アクションを表示",
@@ -46,6 +87,8 @@ const translations: Record<string, string> = {
     "postHistory.rawJson": "イベントJSONを表示",
     "postHistory.rawJsonTitle": "イベントJSON",
     "postHistory.rawJsonDescription": "投稿イベントのイベントJSONを表示します。",
+    "postHistory.showReactionsWithCount": "リアクション 2件を表示",
+    "postHistory.hideReactions": "リアクションを隠す",
     "postHistory.broadcast": "ブロードキャスト",
     "postHistory.broadcastSent": "ブロードキャストしました",
     "postHistory.broadcastPartial": "一部のリレーへブロードキャストしました",
@@ -182,6 +225,40 @@ async function enterNote(): Promise<void> {
     await vi.runAllTicks();
 }
 
+async function enterNoteFor(eventId: string): Promise<void> {
+    await fireEvent.input(
+        screen.getByLabelText("Nostrイベント"),
+        { target: { value: nip19.noteEncode(eventId) } },
+    );
+    await vi.advanceTimersByTimeAsync(250);
+    await vi.runAllTicks();
+}
+
+function makeReactionRecord(
+    targetEventId: string,
+    eventId: string,
+    pubkey: string,
+    content: string,
+    tags: string[][] = [],
+) {
+    return {
+        id: eventId,
+        eventId,
+        parentEventId: targetEventId,
+        authorPubkey: pubkey,
+        kind: 7,
+        content,
+        tags: [["e", targetEventId], ...tags],
+        createdAt: 2,
+        relayUrls: [],
+        discoveredAs: ["reaction"],
+        rawEvent: null,
+        fetchedAt: 2,
+        updatedAt: 2,
+        schemaVersion: 1,
+    };
+}
+
 async function openActionMenu(): Promise<void> {
     await fireEvent.click(
         screen.getByRole("button", { name: "アクションを表示" }),
@@ -222,6 +299,7 @@ describe("ComposerTargetDialog", () => {
 
     beforeEach(() => {
         vi.useFakeTimers();
+        relatedReactionMock.records = [];
         postActionMocks.broadcast.mockReset();
         postActionMocks.requestDeletion.mockReset();
         postActionMocks.broadcast.mockResolvedValue({ success: true });
@@ -934,6 +1012,88 @@ describe("ComposerTargetDialog", () => {
         expect(replyGroup?.querySelector(
             ".post-preview-reaction-action-cell > .post-preview-footer-reaction-slot",
         )).toBeTruthy();
+    });
+
+    it("kind 1/42の解決済みtargetごとにreaction詳細を表示し、target変更で展開を解除する", async () => {
+        const targetIds = ["a".repeat(64), "b".repeat(64), "c".repeat(64)];
+        const emojiUrl = "https://example.com/reaction-party.png";
+        for (const [index, targetEventId] of targetIds.slice(0, 2).entries()) {
+            const prefix = index === 0 ? "d" : "e";
+            relatedReactionMock.records.push(
+                makeReactionRecord(targetEventId, prefix.repeat(64), "5".repeat(64), "+"),
+                makeReactionRecord(
+                    targetEventId,
+                    (prefix === "d" ? "f" : "9").repeat(64),
+                    "6".repeat(64),
+                    ":party:",
+                    [["emoji", "party", emojiUrl]],
+                ),
+            );
+        }
+
+        const targetA = resolvedTarget(1);
+        targetA.event.id = targetIds[0];
+        const targetB = resolvedTarget(42);
+        targetB.event.id = targetIds[1];
+        const emptyTarget = resolvedTarget(1);
+        emptyTarget.event.id = targetIds[2];
+        const resolver = {
+            resolve: vi.fn((params: { pointer: { eventId: string } }) => ({
+                promise: Promise.resolve({
+                    status: "resolved" as const,
+                    target: params.pointer.eventId === targetIds[1]
+                        ? targetB
+                        : params.pointer.eventId === targetIds[2]
+                            ? emptyTarget
+                            : targetA,
+                }),
+                cancel: vi.fn(),
+            })),
+        };
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver,
+        });
+
+        await enterNoteFor(targetIds[0]);
+        const showButton = () => screen.getByRole("button", {
+            name: "リアクション 2件を表示",
+        });
+        await waitFor(() => expect(showButton()).toBeTruthy());
+        await fireEvent.click(showButton());
+        await waitFor(() => expect(
+            document.querySelectorAll(".post-preview-reaction-chip"),
+        ).toHaveLength(2));
+        expect(document.querySelectorAll(".post-preview-reaction-actor")).toHaveLength(2);
+        expect(screen.getByRole("img", { name: ":party:" })).toBeTruthy();
+        expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(emojiUrl);
+        expect(screen.getByRole("button", { name: "リプライ" })).toBeTruthy();
+        expect(screen.getByRole("button", { name: "引用" })).toBeTruthy();
+
+        await enterNoteFor(targetIds[1]);
+        await waitFor(() => expect(showButton()).toBeTruthy());
+        expect(screen.queryByRole("button", { name: "リアクションを隠す" })).toBeNull();
+        expect(document.querySelector(".post-preview-reactions-panel")).toBeNull();
+        await fireEvent.click(showButton());
+        await waitFor(() => expect(
+            document.querySelectorAll(".post-preview-reaction-chip"),
+        ).toHaveLength(2));
+        expect(document.querySelectorAll(".post-preview-reaction-actor")).toHaveLength(2);
+        expect(screen.getByRole("img", { name: ":party:" })).toBeTruthy();
+        expect(screen.getByRole("button", { name: "リプライ" })).toBeTruthy();
+        expect(screen.getByRole("button", { name: "引用" })).toBeTruthy();
+
+        await enterNoteFor(targetIds[2]);
+        await waitFor(() => expect(
+            document.querySelector(
+                ".post-preview-reaction-action-cell > .post-preview-footer-reaction-slot",
+            ),
+        ).toBeTruthy());
+        expect(screen.queryByRole("button", { name: /リアクション/ })).toBeNull();
+
     });
 
     it("一時レコードはrelay由来を推測せずブロードキャストへ渡す", async () => {
