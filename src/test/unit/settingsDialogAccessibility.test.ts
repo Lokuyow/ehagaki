@@ -79,6 +79,48 @@ describe('SettingsDialog accessibility', () => {
         settingsStore.locale = 'en';
     });
 
+    it('設定名の左にだけ指定アイコンを表示し、装飾として隠す', async () => {
+        render(SettingsDialog, {
+            props: {
+                show: true,
+                onClose: () => {},
+            },
+        });
+
+        await tick();
+
+        const iconClasses = [
+            'language-setting-icon',
+            'image-quality-icon',
+            'video-quality-icon',
+            'theme-setting-icon',
+            'media-placement-setting-icon',
+            'mascot-setting-icon',
+            'flavor-setting-icon',
+            'quote-setting-icon',
+            'reply-setting-icon',
+            'client-tag-setting-icon',
+            'relay-refresh-setting-icon',
+        ];
+        for (const className of iconClasses) {
+            const icon = document.querySelector(`.${className}`);
+            expect(icon, className).toBeTruthy();
+            expect(icon?.getAttribute('aria-hidden')).toBe('true');
+        }
+        expect(document.querySelectorAll('.setting-menu-icon')).toHaveLength(11);
+        expect(
+            document.querySelector('.mascot-setting-icon')?.getAttribute('src'),
+        ).toContain('ehagaki_icon.svg');
+        expect(
+            document.querySelector(
+                '.refresh-relays-profile-btn .setting-menu-icon',
+            ),
+        ).toBeNull();
+        expect(
+            document.querySelector('.relay-toggle-label .setting-menu-icon'),
+        ).toBeNull();
+    });
+
     it('圧縮ラジオグループが表示ラベルをアクセシブルネームとして持つ', async () => {
         render(SettingsCompressionSection, {
             props: {

@@ -37,9 +37,15 @@
 <div class="setting-section">
     <div class="setting-row">
         <div class="setting-label-wrapper">
-            <span class="setting-label">
-                {$_("settingsDialog.image_quality_setting")}
-            </span>
+            <div class="setting-label-with-icon">
+                <span
+                    class="setting-menu-icon image-quality-icon"
+                    aria-hidden="true"
+                ></span>
+                <span class="setting-label">
+                    {$_("settingsDialog.image_quality_setting")}
+                </span>
+            </div>
             <InfoPopoverButton
                 side="top"
                 ariaLabel={$_("settingsDialog.image_compression_settings_description")}
@@ -137,9 +143,15 @@
 <div class="setting-section">
     <div class="setting-row">
         <div class="setting-label-wrapper">
-            <span class="setting-label">
-                {$_("settingsDialog.video_quality_setting")}
-            </span>
+            <div class="setting-label-with-icon">
+                <span
+                    class="setting-menu-icon video-quality-icon"
+                    aria-hidden="true"
+                ></span>
+                <span class="setting-label">
+                    {$_("settingsDialog.video_quality_setting")}
+                </span>
+            </div>
             <InfoPopoverButton
                 side="top"
                 ariaLabel={$_("settingsDialog.video_compression_settings_description")}
@@ -205,11 +217,41 @@
 
 <style>
     .setting-label-wrapper {
-        display: inline-flex;
-        align-items: center;
+        display: flex;
+        align-items: flex-start;
         gap: 4px;
         flex-wrap: wrap;
-        flex-shrink: 0;
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .setting-label-with-icon {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        flex: 0 1 auto;
+        min-width: 0;
+        max-width: calc(100% - 48px);
+    }
+
+    .setting-menu-icon {
+        display: inline-block;
+        width: 24px;
+        height: 24px;
+        flex: 0 0 24px;
+        margin-block: 1px;
+        background-color: currentColor;
+        mask-repeat: no-repeat;
+        mask-position: center;
+        mask-size: contain;
+    }
+
+    .image-quality-icon {
+        mask-image: url("/icons/image_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    .video-quality-icon {
+        mask-image: url("/icons/movie_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.popover-table) {

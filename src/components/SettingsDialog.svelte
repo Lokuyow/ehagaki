@@ -33,6 +33,7 @@
         chunkArray,
     } from "../lib/utils/appUtils";
     import type { SettingsDialogProps } from "../lib/types";
+    import { resolveAppAssetUrl } from "../lib/appAssetUrl";
     import { nostrZapView } from "nostr-zap-view";
     import "nostr-zap";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
@@ -443,7 +444,13 @@
         <!-- 言語設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
-                <span class="setting-label"> Language/言語 </span>
+                <div class="setting-label-with-icon">
+                    <span
+                        class="setting-menu-icon language-setting-icon"
+                        aria-hidden="true"
+                    ></span>
+                    <span class="setting-label"> Language/言語 </span>
+                </div>
                 <div class="setting-control">
                     <Button
                         variant="default"
@@ -481,9 +488,15 @@
         <!-- テーマ設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
-                <span id="theme-mode-label" class="setting-label"
-                    >{$_("settingsDialog.theme_mode") || "カラーテーマ"}</span
-                >
+                <div class="setting-label-with-icon">
+                    <span
+                        class="setting-menu-icon theme-setting-icon"
+                        aria-hidden="true"
+                    ></span>
+                    <span id="theme-mode-label" class="setting-label"
+                        >{$_("settingsDialog.theme_mode") || "カラーテーマ"}</span
+                    >
+                </div>
                 <RadioGroup.Root
                     class="setting-control theme-mode-group"
                     name="themeMode"
@@ -609,10 +622,16 @@
         <!-- メディア自由配置モード設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
-                <span id="media-free-placement-label" class="setting-label"
-                    >{$_("settingsDialog.media_bottom_mode") ||
-                        "メディア自由配置モード"}</span
-                >
+                <div class="setting-label-with-icon">
+                    <span
+                        class="setting-menu-icon media-placement-setting-icon"
+                        aria-hidden="true"
+                    ></span>
+                    <span id="media-free-placement-label" class="setting-label"
+                        >{$_("settingsDialog.media_bottom_mode") ||
+                            "メディア自由配置モード"}</span
+                    >
+                </div>
                 <div class="setting-control">
                     <Switch.Root
                         class="bui-switch"
@@ -630,10 +649,18 @@
                 <div class="setting-row setting-row-with-note">
                     <div class="setting-label-group">
                         <div class="setting-label-row">
-                            <span id="hide-mascot-label" class="setting-label"
-                                >{$_("settingsDialog.hide_mascot_label") ||
-                                    "左上マスコットを非表示"}</span
-                            >
+                            <div class="setting-label-with-icon">
+                                <img
+                                    class="setting-menu-icon mascot-setting-icon"
+                                    src={resolveAppAssetUrl("ehagaki_icon.svg")}
+                                    alt=""
+                                    aria-hidden="true"
+                                />
+                                <span id="hide-mascot-label" class="setting-label"
+                                    >{$_("settingsDialog.hide_mascot_label") ||
+                                        "左上マスコットを非表示"}</span
+                                >
+                            </div>
                             <InfoPopoverButton
                                 side="top"
                                 sideOffset={8}
@@ -662,10 +689,16 @@
                 <div class="setting-row setting-row-with-note">
                     <div class="setting-label-group">
                         <div class="setting-label-row">
-                            <span id="hide-flavor-text-label" class="setting-label"
-                                >{$_("settingsDialog.hide_flavor_text_label") ||
-                                    "フレーバーテキストを非表示"}</span
-                            >
+                            <div class="setting-label-with-icon">
+                                <span
+                                    class="setting-menu-icon flavor-setting-icon"
+                                    aria-hidden="true"
+                                ></span>
+                                <span id="hide-flavor-text-label" class="setting-label"
+                                    >{$_("settingsDialog.hide_flavor_text_label") ||
+                                        "フレーバーテキストを非表示"}</span
+                                >
+                            </div>
                             <InfoPopoverButton
                                 side="top"
                                 sideOffset={8}
@@ -715,11 +748,17 @@
                 <div class="setting-row setting-row-with-note">
                     <div class="setting-label-group">
                         <div class="setting-label-row">
-                            <span id="quote-notification-label" class="setting-label"
-                                >{$_(
-                                    "settingsDialog.quote_notification_label",
-                                ) || "引用元の投稿者に通知"}</span
-                            >
+                            <div class="setting-label-with-icon">
+                                <span
+                                    class="setting-menu-icon quote-setting-icon"
+                                    aria-hidden="true"
+                                ></span>
+                                <span id="quote-notification-label" class="setting-label"
+                                    >{$_(
+                                        "settingsDialog.quote_notification_label",
+                                    ) || "引用元の投稿者に通知"}</span
+                                >
+                            </div>
                             <InfoPopoverButton
                                 side="top"
                                 sideOffset={8}
@@ -748,11 +787,17 @@
                 <div class="setting-row setting-row-with-note">
                     <div class="setting-label-group">
                         <div class="setting-label-row">
-                            <span id="reply-notification-label" class="setting-label"
-                                >{$_(
-                                    "settingsDialog.reply_notification_label",
-                                ) || "返信先以外にも通知"}</span
-                            >
+                            <div class="setting-label-with-icon">
+                                <span
+                                    class="setting-menu-icon reply-setting-icon"
+                                    aria-hidden="true"
+                                ></span>
+                                <span id="reply-notification-label" class="setting-label"
+                                    >{$_(
+                                        "settingsDialog.reply_notification_label",
+                                    ) || "返信先以外にも通知"}</span
+                                >
+                            </div>
                             <InfoPopoverButton
                                 side="top"
                                 sideOffset={8}
@@ -781,10 +826,16 @@
         <!-- client tag オプトアウト設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
-                <span id="client-tag-label" class="setting-label"
-                    >{$_("settingsDialog.client_tag_label") ||
-                        "投稿詳細にクライアント名をつける（Client tag）"}</span
-                >
+                <div class="setting-label-with-icon">
+                    <span
+                        class="setting-menu-icon client-tag-setting-icon"
+                        aria-hidden="true"
+                    ></span>
+                    <span id="client-tag-label" class="setting-label"
+                        >{$_("settingsDialog.client_tag_label") ||
+                            "投稿詳細にクライアント名をつける（Client tag）"}</span
+                    >
+                </div>
                 <div class="setting-control">
                     <Switch.Root
                         class="bui-switch"
@@ -1036,6 +1087,49 @@
     .lang-icon-btn {
         mask-image: url("/icons/translate_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
+    .setting-label-with-icon {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+    .setting-menu-icon {
+        display: inline-block;
+        width: 24px;
+        height: 24px;
+        flex: 0 0 24px;
+        margin-block: 1px;
+        background-color: currentColor;
+        mask-repeat: no-repeat;
+        mask-position: center;
+        mask-size: contain;
+    }
+    .language-setting-icon {
+        mask-image: url("/icons/translate_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .theme-setting-icon {
+        mask-image: url("/icons/contrast_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .media-placement-setting-icon {
+        mask-image: url("/icons/open_with_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .mascot-setting-icon {
+        filter: grayscale(1);
+        object-fit: contain;
+    }
+    .flavor-setting-icon {
+        mask-image: url("/icons/chat_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .quote-setting-icon {
+        mask-image: url("/icons/format_quote_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .reply-setting-icon {
+        mask-image: url("/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .client-tag-setting-icon {
+        mask-image: url("/icons/label_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+    }
     .setting-row-with-note {
         align-items: flex-start;
     }
@@ -1103,6 +1197,10 @@
         align-items: center;
         gap: 6px;
         flex-wrap: wrap;
+    }
+    .setting-label-row .setting-label-with-icon {
+        flex: 0 1 auto;
+        max-width: calc(100% - 50px);
     }
 
     .rotate-right-icon {
