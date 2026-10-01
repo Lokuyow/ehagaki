@@ -455,14 +455,10 @@
                     <Button
                         variant="default"
                         shape="rounded"
-                        contentLayout="iconText"
+                        contentLayout="text"
                         className="lang-btn"
                         onClick={toggleLanguage}
                     >
-                        <div
-                            class="lang-icon-btn svg-icon"
-                            aria-hidden="true"
-                        ></div>
                         <span class="btn-text"
                             >{$_("settingsDialog.change") || "変更"}</span
                         >
@@ -538,9 +534,15 @@
 
         {#if themeColorStore.isAvailable}
             <div class="setting-section color-settings-section">
-                <span class="setting-label color-settings-heading">
-                    {$_("settingsDialog.color")}
-                </span>
+                <div class="setting-label-with-icon color-settings-heading">
+                    <span
+                        class="setting-menu-icon setting-menu-mask-icon color-settings-icon"
+                        aria-hidden="true"
+                    ></span>
+                    <span class="setting-label">
+                        {$_("settingsDialog.color")}
+                    </span>
+                </div>
                 <div class="color-setting-row">
                     <div class="setting-label-group">
                         <label class="setting-label" for="accent-color-input">
@@ -853,11 +855,17 @@
             <div class="setting-row setting-row-with-note">
                 <div class="setting-label-group">
                     <div class="setting-label-row">
-                        <span
-                            id="external-nostr-client-label"
-                            class="setting-label"
-                            >{$_("settingsDialog.external_nostr_client")}</span
-                        >
+                        <div class="setting-label-with-icon">
+                            <span
+                                class="setting-menu-icon setting-menu-mask-icon external-nostr-client-setting-icon"
+                                aria-hidden="true"
+                            ></span>
+                            <span
+                                id="external-nostr-client-label"
+                                class="setting-label"
+                                >{$_("settingsDialog.external_nostr_client")}</span
+                            >
+                        </div>
                         <InfoPopoverButton
                             ariaLabel={$_(
                                 "settingsDialog.external_nostr_client_description",
@@ -1084,9 +1092,6 @@
         width: 100%;
         overflow-y: auto;
     }
-    .lang-icon-btn {
-        mask-image: url("/icons/translate_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-    }
     .setting-label-with-icon {
         flex: 1 1 auto;
     }
@@ -1098,6 +1103,12 @@
     }
     .media-placement-setting-icon {
         mask-image: url("/icons/open_with_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .color-settings-icon {
+        mask-image: url("/icons/colors_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .external-nostr-client-setting-icon {
+        mask-image: url("/icons/open_in_new_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
     .mascot-setting-icon {
         filter: grayscale(1);
@@ -1290,6 +1301,10 @@
 
     .color-settings-heading {
         margin-bottom: 2px;
+    }
+
+    .color-setting-row .setting-label-group {
+        margin-inline-start: 32px;
     }
 
     .color-setting-row,

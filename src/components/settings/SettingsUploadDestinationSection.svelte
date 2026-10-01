@@ -410,9 +410,15 @@
 <div class="setting-section upload-destination-section">
     <div class="setting-row">
         <div class="setting-label-group">
-            <span class="setting-label">
-                {$_("settingsDialog.upload_destination") || "アップロード先"}
-            </span>
+            <div class="setting-label-with-icon">
+                <span
+                    class="setting-menu-icon setting-menu-mask-icon upload-destination-setting-icon"
+                    aria-hidden="true"
+                ></span>
+                <span class="setting-label">
+                    {$_("settingsDialog.upload_destination") || "アップロード先"}
+                </span>
+            </div>
             <span class="upload-summary">
                 {destinationState.defaultDestination?.name ||
                     $_("settingsDialog.uploadDestinationNone") ||
@@ -423,11 +429,10 @@
             <Button
                 variant="default"
                 shape="rounded"
-                contentLayout="iconText"
+                contentLayout="text"
                 className="upload-destination-manage-btn"
                 onClick={() => (expanded = !expanded)}
             >
-                <div class="server-cog-icon svg-icon" aria-hidden="true"></div>
                 <span class="btn-text">
                     {expanded
                         ? $_("settingsDialog.uploadDestinationClose") ||
@@ -713,16 +718,9 @@
         display: flex;
         flex-direction: column;
         gap: 12px;
-
-        :global(.upload-destination-manage-btn) {
-            :global(.svg-icon) {
-                width: 26px;
-                height: 26px;
-            }
-        }
     }
 
-    .server-cog-icon {
+    .upload-destination-setting-icon {
         mask-image: url("/icons/cloud_upload_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 

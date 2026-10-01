@@ -101,16 +101,19 @@ describe('SettingsDialog accessibility', () => {
             'reply-setting-icon',
             'client-tag-setting-icon',
             'relay-refresh-setting-icon',
+            'upload-destination-setting-icon',
+            'color-settings-icon',
+            'external-nostr-client-setting-icon',
         ];
         for (const className of iconClasses) {
             const icon = document.querySelector(`.${className}`);
             expect(icon, className).toBeTruthy();
             expect(icon?.getAttribute('aria-hidden')).toBe('true');
         }
-        expect(document.querySelectorAll('.setting-menu-icon')).toHaveLength(11);
+        expect(document.querySelectorAll('.setting-menu-icon')).toHaveLength(14);
         expect(
             document.querySelectorAll('.setting-menu-mask-icon'),
-        ).toHaveLength(10);
+        ).toHaveLength(13);
         expect(
             document
                 .querySelector('.mascot-setting-icon')
@@ -144,6 +147,21 @@ describe('SettingsDialog accessibility', () => {
         expect(
             document.querySelector('.relay-toggle-label .setting-menu-icon'),
         ).toBeNull();
+        expect(
+            document.querySelector('.lang-btn .svg-icon'),
+        ).toBeNull();
+        expect(screen.getByRole('button', { name: 'Change' })).toBeTruthy();
+        expect(
+            document.querySelector('.upload-destination-manage-btn .svg-icon'),
+        ).toBeNull();
+        expect(screen.getByRole('button', { name: 'Manage' })).toBeTruthy();
+        expect(
+            document.querySelector('.color-settings-heading .setting-label')
+                ?.textContent,
+        ).toContain('Color');
+        expect(
+            document.querySelector('#external-nostr-client-label')?.textContent,
+        ).toContain('Client for opening posts');
     });
 
     it('圧縮ラジオグループが表示ラベルをアクセシブルネームとして持つ', async () => {
@@ -368,9 +386,7 @@ describe('SettingsDialog accessibility', () => {
         if (rotateRightIcon) {
             expect(rotateRightIcon.getAttribute('aria-hidden')).toBe('true');
         }
-        expect(
-            document.body.querySelector('.lang-icon-btn')?.getAttribute('aria-hidden'),
-        ).toBe('true');
+        expect(document.body.querySelector('.lang-icon-btn')).toBeNull();
         expect(
             document.body.querySelector('.xmark-icon')?.getAttribute('aria-hidden'),
         ).toBe('true');
