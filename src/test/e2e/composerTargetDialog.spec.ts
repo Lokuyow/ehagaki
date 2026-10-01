@@ -294,6 +294,7 @@ test.describe("composer target dialog fixture", () => {
                     horizontalOverflow:
                         document.documentElement.scrollWidth -
                         document.documentElement.clientWidth,
+                    previewOverflow: card.scrollWidth - card.clientWidth,
                 };
             });
 
@@ -307,6 +308,7 @@ test.describe("composer target dialog fixture", () => {
             expect(geometry.footer.right).toBeLessThanOrEqual(geometry.card.right);
             expect(geometry.footer.bottom - geometry.footer.top).toBe(36);
             expect(geometry.horizontalOverflow).toBeLessThanOrEqual(0);
+            expect(geometry.previewOverflow).toBeLessThanOrEqual(1);
             expect(geometry.date.right).toBeLessThanOrEqual(geometry.actions.left);
             expect(geometry.actions.right).toBeLessThanOrEqual(geometry.menu.left);
             for (const button of [geometry.reply, geometry.quote]) {
@@ -340,6 +342,17 @@ test.describe("composer target dialog fixture", () => {
                 ),
                 fullPage: false,
             });
+        }
+
+        if (testInfo.project.name === "desktop-chromium") {
+            await page.setViewportSize({ width: 320, height: 720 });
+            for (const input of [harness.inputs.kind1, harness.inputs.kind42]) {
+                await page.getByLabel("イベントID").fill(input);
+                const previewOverflow = await page.locator(".target-preview").evaluate(
+                    (preview) => preview.scrollWidth - preview.clientWidth,
+                );
+                expect(previewOverflow).toBeLessThanOrEqual(1);
+            }
         }
 
         await page.getByLabel("イベントID").fill(harness.inputs.kind40);

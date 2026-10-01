@@ -38,7 +38,7 @@
 <style>
     .post-preview-footer {
         display: grid;
-        grid-template-columns: minmax(80px, 120px) minmax(0, 1fr) 36px;
+        grid-template-columns: minmax(0, 120px) minmax(144px, 1fr) 36px;
         align-items: stretch;
         height: 36px;
         --post-history-preview-action-icon-size: 20px;
