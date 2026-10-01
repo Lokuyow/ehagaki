@@ -208,23 +208,10 @@
 
 <style>
     .setting-label-with-icon {
-        display: flex;
-        align-items: flex-start;
-        gap: 8px;
         flex: 1 1 auto;
-        min-width: 0;
     }
-    .setting-menu-icon {
-        display: inline-block;
-        width: 24px;
-        height: 24px;
-        flex: 0 0 24px;
-        margin-block: 1px;
-        background-color: currentColor;
+    .relay-refresh-setting-icon {
         mask-image: url("/icons/sync_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
-        mask-repeat: no-repeat;
-        mask-position: center;
-        mask-size: contain;
     }
     .setting-info {
         margin-inline-start: 10px;

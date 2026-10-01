@@ -414,6 +414,29 @@ select {
   white-space: pre-line;
 }
 
+.setting-label-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.setting-label-with-icon .setting-label {
+  line-height: 24px;
+}
+
+.setting-menu-icon {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  margin-block: 1px;
+  background-color: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}
+
 .setting-control {
   display: flex;
   align-items: stretch;

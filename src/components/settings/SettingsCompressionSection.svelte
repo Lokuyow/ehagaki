@@ -226,24 +226,8 @@
     }
 
     .setting-label-with-icon {
-        display: flex;
-        align-items: center;
-        gap: 8px;
         flex: 0 1 auto;
-        min-width: 0;
         max-width: calc(100% - 48px);
-    }
-
-    .setting-menu-icon {
-        display: inline-block;
-        width: 24px;
-        height: 24px;
-        flex: 0 0 24px;
-        margin-block: 1px;
-        background-color: currentColor;
-        mask-repeat: no-repeat;
-        mask-position: center;
-        mask-size: contain;
     }
 
     .image-quality-icon {

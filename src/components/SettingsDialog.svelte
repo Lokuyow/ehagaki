@@ -1088,22 +1088,7 @@
         mask-image: url("/icons/translate_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
     .setting-label-with-icon {
-        display: flex;
-        align-items: flex-start;
-        gap: 8px;
         flex: 1 1 auto;
-        min-width: 0;
-    }
-    .setting-menu-icon {
-        display: inline-block;
-        width: 24px;
-        height: 24px;
-        flex: 0 0 24px;
-        margin-block: 1px;
-        background-color: currentColor;
-        mask-repeat: no-repeat;
-        mask-position: center;
-        mask-size: contain;
     }
     .language-setting-icon {
         mask-image: url("/icons/translate_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
