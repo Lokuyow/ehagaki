@@ -154,7 +154,7 @@
 </script>
 
 <Button
-    className="footer-setting-shortcut-button {shortcutId === 'image-quality' || shortcutId === 'video-quality' ? 'quality-shortcut' : ''}"
+    className="footer-setting-shortcut-button {shortcutId === 'image-quality' || shortcutId === 'video-quality' ? 'quality-shortcut' : shortcutId === 'quote-notification' || shortcutId === 'reply-notification' ? 'pair-shortcut' : ''}"
     variant="default"
     shape="circle"
     contentLayout="icon"
@@ -193,6 +193,16 @@
         padding: 0 7px;
         border-radius: 25px;
         gap: 4px;
+    }
+
+    :global(button.footer-setting-shortcut-button.pair-shortcut) {
+        width: 72px;
+        min-width: 72px;
+        height: 50px;
+        min-height: 44px;
+        flex: 0 0 72px;
+        padding: 0 10px;
+        border-radius: 25px;
     }
 
     .quality-shortcut-content {

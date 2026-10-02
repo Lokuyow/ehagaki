@@ -2651,3 +2651,60 @@ test("Full Web Component restores left and right footer shortcuts in its storage
         expect(rect.height).toBeGreaterThanOrEqual(44);
     }
 });
+
+test("Full Web Component contains 72px quote and reply pair pills at 320px", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin, componentStoragePrefix }) => {
+        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"left":"quote-notification","right":"reply-notification"}');
+        localStorage.setItem(`${componentStoragePrefix}quoteNotificationEnabled`, "false");
+        localStorage.setItem(`${componentStoragePrefix}replyNotificationEnabled`, "false");
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & { whenReady(): Promise<void> };
+        composer.style.cssText = "display:block;width:320px;height:640px";
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin, componentStoragePrefix });
+
+    const composer = page.locator("ehagaki-composer");
+    const buttons = composer.locator(".footer-setting-shortcut-button");
+    await expect(buttons).toHaveCount(2);
+    await expect(buttons.nth(0)).toHaveAttribute("aria-pressed", "false");
+    await expect(buttons.nth(1)).toHaveAttribute("aria-pressed", "false");
+    const geometry = await composer.evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const hostRect = element.getBoundingClientRect();
+        const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
+        const footerRect = footer.getBoundingClientRect();
+        const buttons = Array.from(shadow.querySelectorAll<HTMLElement>(".footer-setting-shortcut-button"));
+        const rects = buttons.map((button) => {
+            const rect = button.getBoundingClientRect();
+            const main = button.querySelector<HTMLElement>(".paired-main-icon")!.getBoundingClientRect();
+            const notification = button.querySelector<HTMLElement>(".paired-notification-icon")!.getBoundingClientRect();
+            return {
+                left: rect.left, right: rect.right, width: rect.width, height: rect.height,
+                main: { width: main.width, height: main.height },
+                notification: { width: notification.width, height: notification.height },
+                iconGap: notification.left - main.right,
+            };
+        });
+        return {
+            host: { width: hostRect.width, left: hostRect.left, right: hostRect.right, scrollWidth: element.scrollWidth },
+            footer: { left: footerRect.left, right: footerRect.right, scrollWidth: footer.scrollWidth },
+            gap: rects[1].left - rects[0].right,
+            rects,
+        };
+    });
+    expect(geometry.host.width).toBe(320);
+    expect(geometry.host.scrollWidth).toBeLessThanOrEqual(320);
+    expect(geometry.footer.scrollWidth).toBeLessThanOrEqual(320);
+    expect(geometry.gap).toBeCloseTo(12, 2);
+    for (const rect of geometry.rects) {
+        expect(rect.left).toBeGreaterThanOrEqual(geometry.footer.left - 0.5);
+        expect(rect.right).toBeLessThanOrEqual(geometry.footer.right + 0.5);
+        expect(rect.width).toBe(72);
+        expect(rect.height).toBe(50);
+        expect(rect.main).toEqual({ width: 24, height: 24 });
+        expect(rect.notification).toEqual({ width: 24, height: 24 });
+        expect(rect.iconGap).toBe(4);
+    }
+});
