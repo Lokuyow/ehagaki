@@ -417,7 +417,7 @@ select {
 .setting-label-with-icon {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 16px;
   min-width: 0;
 }
 

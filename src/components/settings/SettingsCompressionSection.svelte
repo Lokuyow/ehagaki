@@ -35,7 +35,7 @@
 
 <!-- 画像圧縮設定セクション -->
 <div class="setting-section">
-    <div class="setting-row">
+    <div class="setting-row compression-setting-row">
         <div class="setting-label-wrapper">
             <div class="setting-label-with-icon">
                 <span
@@ -141,7 +141,7 @@
 
 <!-- 動画圧縮設定セクション -->
 <div class="setting-section">
-    <div class="setting-row">
+    <div class="setting-row compression-setting-row">
         <div class="setting-label-wrapper">
             <div class="setting-label-with-icon">
                 <span
@@ -236,6 +236,19 @@
 
     .video-quality-icon {
         mask-image: url("/icons/movie_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    @media (max-width: 430px) {
+        .compression-setting-row {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 8px;
+        }
+
+        :global(.compression-setting-row > .setting-control.radio-group) {
+            justify-content: flex-start;
+            margin-block: 0;
+        }
     }
 
     :global(.popover-table) {

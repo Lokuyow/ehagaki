@@ -415,15 +415,17 @@
                     class="setting-menu-icon setting-menu-mask-icon upload-destination-setting-icon"
                     aria-hidden="true"
                 ></span>
-                <span class="setting-label">
-                    {$_("settingsDialog.upload_destination") || "アップロード先"}
+                <span class="upload-destination-label-copy">
+                    <span class="setting-label">
+                        {$_("settingsDialog.upload_destination") || "アップロード先"}
+                    </span>
+                    <span class="upload-summary">
+                        {destinationState.defaultDestination?.name ||
+                            $_("settingsDialog.uploadDestinationNone") ||
+                            "未設定"}
+                    </span>
                 </span>
             </div>
-            <span class="upload-summary">
-                {destinationState.defaultDestination?.name ||
-                    $_("settingsDialog.uploadDestinationNone") ||
-                    "未設定"}
-            </span>
         </div>
         <div class="setting-control">
             <Button
@@ -722,6 +724,12 @@
 
     .upload-destination-setting-icon {
         mask-image: url("/icons/cloud_upload_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    .upload-destination-label-copy {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
     }
 
     .upload-summary,
