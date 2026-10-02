@@ -134,6 +134,7 @@ describe('SettingsDialog accessibility', () => {
             'quote-setting-icon',
             'reply-setting-icon',
             'client-tag-setting-icon',
+            'footer-shortcuts-setting-icon',
             'relay-refresh-setting-icon',
             'upload-destination-setting-icon',
             'color-settings-icon',
@@ -144,10 +145,10 @@ describe('SettingsDialog accessibility', () => {
             expect(icon, className).toBeTruthy();
             expect(icon?.getAttribute('aria-hidden')).toBe('true');
         }
-        expect(document.querySelectorAll('.setting-menu-icon')).toHaveLength(14);
+        expect(document.querySelectorAll('.setting-menu-icon')).toHaveLength(15);
         expect(
             document.querySelectorAll('.setting-menu-mask-icon'),
-        ).toHaveLength(13);
+        ).toHaveLength(14);
         expect(
             document
                 .querySelector('.mascot-setting-icon')
