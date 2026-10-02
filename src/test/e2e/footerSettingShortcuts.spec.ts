@@ -345,7 +345,7 @@ test("keyboard Enter and Space each directly change a shortcut once without open
     await expect(page.locator("[role=dialog], [role=menu], [role=radio], .footer-setting-shortcut-popover")).toHaveCount(0);
 });
 
-test("shows transparent grayscale full and frame mascot art in Footer and SettingsDialog", async ({ page }) => {
+test("keeps full mascot transparent and verifies the frame-only SVG has a transparent hole", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "hide-mascot", right: null })));
     await enterApp(page);
 
@@ -353,22 +353,40 @@ test("shows transparent grayscale full and frame mascot art in Footer and Settin
     await expect(footerMascot).toBeVisible();
     await expect(footerMascot).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(footerMascot).toHaveCSS("filter", "grayscale(1)");
+    await expect(page.locator(".footer-setting-shortcut-button")).toHaveAttribute("aria-pressed", "false");
 
-    await footerMascot.locator("xpath=..").click();
+    await page.locator(".footer-setting-shortcut-button").click();
     const frameMascot = page.locator(".footer-setting-shortcut-button img.mascot-icon");
     await expect(frameMascot).toHaveAttribute("src", /ehagaki_icon_frame\.svg/);
     await expect(frameMascot).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(frameMascot).toHaveCSS("filter", "grayscale(1)");
-    const frameSvg = await page.evaluate(async () => {
-        const response = await fetch(document.querySelector<HTMLImageElement>(".footer-setting-shortcut-button img.mascot-icon")!.src);
-        return response.text();
+    await expect(page.locator(".footer-setting-shortcut-button")).toHaveAttribute("aria-pressed", "true");
+    const framePixels = await frameMascot.evaluate(async (element) => {
+        const image = new Image();
+        image.src = (element as HTMLImageElement).src;
+        await image.decode();
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        return {
+            width: image.naturalWidth,
+            height: image.naturalHeight,
+            centerAlpha: context.getImageData(32, 32, 1, 1).data[3],
+            frameAlpha: context.getImageData(7, 32, 1, 1).data[3],
+        };
     });
-    expect((frameSvg.match(/<path\b/g) ?? []).length).toBe(1);
-    expect(frameSvg).not.toContain("<rect");
+    expect(framePixels).toEqual({ width: 64, height: 64, centerAlpha: 0, frameAlpha: 255 });
+
+    await page.locator(".footer-setting-shortcut-button").click();
+    await expect(page.locator(".footer-setting-shortcut-button img.mascot-icon")).toHaveAttribute("src", /ehagaki_icon\.svg/);
+    await expect(page.locator(".footer-setting-shortcut-button")).toHaveAttribute("aria-pressed", "false");
 
     await page.getByRole("button", { name: "設定" }).click();
     await expect(page.locator(".footer-shortcut-settings img.mascot-icon")).toHaveCount(0);
     await expect(page.locator(".mascot-setting-icon")).toBeVisible();
+    await expect(page.locator(".mascot-setting-icon")).toHaveCSS("filter", "grayscale(1)");
 });
 
 test("SettingsDialog edits both slots, disables only a duplicate in the opposite select, and syncs the Footer", async ({ page }) => {
