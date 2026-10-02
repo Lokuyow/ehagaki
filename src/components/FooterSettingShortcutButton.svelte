@@ -29,6 +29,7 @@
         shortcutId === "hide-flavor-text" && !settingsStore.showMascot,
     );
     let currentValueLabel = $derived(getCurrentValueLabel());
+    let compactQualityLabel = $derived(getCompactQualityLabel());
     let accessibleName = $derived(
         isBooleanShortcut ? label : `${label}: ${currentValueLabel}`,
     );
@@ -135,22 +136,41 @@
         const index = cycle.indexOf(current);
         return cycle[(index + 1 + cycle.length) % cycle.length];
     }
+
+    function getCompactQualityLabel(): string {
+        const quality = shortcutId === "image-quality"
+            ? settingsStore.imageQualityLevel
+            : settingsStore.videoQualityLevel;
+        const labels: Record<string, { ja: string; en: string }> = {
+            none: { ja: "原", en: "O" },
+            high: { ja: "高", en: "H" },
+            medium: { ja: "中", en: "M" },
+            low: { ja: "低", en: "L" },
+        };
+        return labels[quality]?.[settingsStore.locale === "ja" ? "ja" : "en"] ?? "";
+    }
 </script>
 
 <Button
-    className="footer-setting-shortcut-button"
+    className="footer-setting-shortcut-button {shortcutId === 'image-quality' || shortcutId === 'video-quality' ? 'quality-shortcut' : ''}"
     variant="default"
     shape="circle"
     contentLayout="icon"
     ariaLabel={accessibleName}
     aria-pressed={isBooleanShortcut ? active : undefined}
     disabled={disabled}
-    selected={isBooleanShortcut && active}
     floatingMessage={feedbackMessage}
     floatingMessageVariant="container-top-right"
     onClick={handleClick}
 >
-    <FooterSettingShortcutIcon {shortcutId} />
+    {#if shortcutId === "image-quality" || shortcutId === "video-quality"}
+        <span class="quality-shortcut-content" aria-hidden="true">
+            <FooterSettingShortcutIcon {shortcutId} />
+            <span class="quality-shortcut-label">{compactQualityLabel}</span>
+        </span>
+    {:else}
+        <FooterSettingShortcutIcon {shortcutId} active={active} stateValue={shortcutId === "theme-mode" ? themeModeStore.value : undefined} />
+    {/if}
 </Button>
 
 <style>
@@ -161,5 +181,28 @@
         min-height: 44px;
         flex: 0 0 50px;
         padding: 0;
+    }
+
+    :global(button.footer-setting-shortcut-button.quality-shortcut) {
+        width: auto;
+        min-width: 58px;
+        height: 50px;
+        flex: 0 0 auto;
+        padding: 0 7px;
+        border-radius: 25px;
+        gap: 4px;
+    }
+
+    .quality-shortcut-content {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        white-space: nowrap;
+    }
+
+    .quality-shortcut-label {
+        min-width: 0.85em;
+        font-size: 0.875rem;
+        line-height: 1;
     }
 </style>

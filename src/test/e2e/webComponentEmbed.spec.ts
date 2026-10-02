@@ -2579,7 +2579,9 @@ test("Full self-publish does not expose Host-owned methods", async ({ page }) =>
 test("Full Web Component restores left and right footer shortcuts in its storage namespace at 320px", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin, componentStoragePrefix }) => {
-        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"left":"language","right":"image-quality"}');
+        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"left":"image-quality","right":"video-quality"}');
+        localStorage.setItem(`${componentStoragePrefix}imageQualityLevel`, "none");
+        localStorage.setItem(`${componentStoragePrefix}videoQualityLevel`, "none");
         await import(`${componentOrigin}/ehagaki-composer.js`);
         const composer = document.createElement("ehagaki-composer") as HTMLElement & { whenReady(): Promise<void> };
         composer.style.cssText = "display:block;width:320px;height:640px";
@@ -2591,12 +2593,14 @@ test("Full Web Component restores left and right footer shortcuts in its storage
     const shortcutButtons = composer.locator(".footer-setting-shortcut-button");
     await expect(shortcutButtons).toHaveCount(2);
     await expect(shortcutButtons.first()).toBeVisible();
-    await expect(shortcutButtons.first()).toHaveAttribute("aria-label", "言語: 日本語");
-    await expect(shortcutButtons.nth(1)).toHaveAttribute("aria-label", /画像品質:/);
+    await expect(shortcutButtons.first()).toHaveAttribute("aria-label", /画像品質:/);
+    await expect(shortcutButtons.nth(1)).toHaveAttribute("aria-label", /動画品質:/);
     await shortcutButtons.first().click();
-    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}locale`), componentStoragePrefix)).toBe("en");
-    const feedback = composer.locator(".floating-message");
-    await expect(feedback).toContainText("Language: English");
+    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}imageQualityLevel`), componentStoragePrefix)).toBe("high");
+    await shortcutButtons.nth(1).click();
+    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}videoQualityLevel`), componentStoragePrefix)).toBe("high");
+    const feedback = composer.locator(".floating-message").last();
+    await expect(feedback).toContainText("動画品質:");
     await expect(composer.locator(".footer-setting-shortcut-popover")).toHaveCount(0);
 
     const result = await composer.evaluate((element) => {
@@ -2622,6 +2626,10 @@ test("Full Web Component restores left and right footer shortcuts in its storage
                 const rect = shortcut.getBoundingClientRect();
                 return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
             }),
+            shortcutGaps: (() => {
+                const controls = shadow.querySelector<HTMLElement>(".footer-setting-controls")!;
+                return getComputedStyle(controls).gap;
+            })(),
             postHistoryCount: shadow.querySelectorAll(".post-history-btn").length,
             popoverCount: document.querySelectorAll(".footer-setting-shortcut-popover").length,
         };
@@ -2635,6 +2643,7 @@ test("Full Web Component restores left and right footer shortcuts in its storage
     expect(result.feedbackRect.right).toBeLessThanOrEqual(result.componentRight);
     expect(result.feedbackRect.bottom).toBeLessThanOrEqual(result.footerTop);
     expect(result.shortcutRects).toHaveLength(2);
+    expect(result.shortcutGaps).toBe("12px");
     for (const rect of result.shortcutRects) {
         expect(rect.left).toBeGreaterThanOrEqual(result.footerLeft - 0.5);
         expect(rect.right).toBeLessThanOrEqual(result.footerRight + 0.5);

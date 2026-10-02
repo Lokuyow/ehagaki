@@ -160,30 +160,29 @@
 
     <FooterInfoDisplay>
         {#snippet fallback()}
-            {#if footerSettingShortcutsStore.value.left}
-                <FooterSettingShortcutButton shortcutId={footerSettingShortcutsStore.value.left} />
-            {/if}
-            {#if isAuthenticated}
-                <Button
-                    variant="default"
-                    shape="pill"
-                    contentLayout="icon"
-                    className="post-history-btn"
-                    onmouseenter={handlePostHistoryIntent}
-                    onfocus={handlePostHistoryIntent}
-                    onpointerdown={handlePostHistoryIntent}
-                    onClick={onOpenPostHistoryDialog}
-                    ariaLabel={$_("postHistory.open")}
-                >
-                    <div
-                        class="post-history-icon svg-icon"
-                        aria-hidden="true"
-                    ></div>
-                </Button>
-            {/if}
-            {#if footerSettingShortcutsStore.value.right}
-                <FooterSettingShortcutButton shortcutId={footerSettingShortcutsStore.value.right} />
-            {/if}
+            <div class="footer-setting-controls">
+                {#if footerSettingShortcutsStore.value.left}
+                    <FooterSettingShortcutButton shortcutId={footerSettingShortcutsStore.value.left} />
+                {/if}
+                {#if isAuthenticated}
+                    <Button
+                        variant="default"
+                        shape="pill"
+                        contentLayout="icon"
+                        className="post-history-btn"
+                        onmouseenter={handlePostHistoryIntent}
+                        onfocus={handlePostHistoryIntent}
+                        onpointerdown={handlePostHistoryIntent}
+                        onClick={onOpenPostHistoryDialog}
+                        ariaLabel={$_("postHistory.open")}
+                    >
+                        <div class="post-history-icon svg-icon" aria-hidden="true"></div>
+                    </Button>
+                {/if}
+                {#if footerSettingShortcutsStore.value.right}
+                    <FooterSettingShortcutButton shortcutId={footerSettingShortcutsStore.value.right} />
+                {/if}
+            </div>
         {/snippet}
     </FooterInfoDisplay>
 
@@ -254,11 +253,21 @@
     .post-history-icon {
         mask-image: url("/icons/history_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
+    .footer-setting-controls {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        flex: 1 1 auto;
+        min-width: 0;
+        height: 100%;
+    }
     :global(.post-history-btn.default) {
         background-color: var(--btn-bg);
         max-width: 200px;
         height: 50px;
         flex: 1 1 auto;
+        min-width: 0;
 
         :global(.svg-icon) {
             width: 32px;

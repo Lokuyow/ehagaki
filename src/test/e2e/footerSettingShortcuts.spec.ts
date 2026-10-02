@@ -73,7 +73,7 @@ test("keeps zero, one, and two explicit footer slots usable at the 360px standal
 test("keeps authenticated left, history, and right controls in order at 360px", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.addInitScript((pubkey) => {
-        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "language", right: "image-quality" }));
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "image-quality", right: "video-quality" }));
         localStorage.setItem("nostr-accounts", JSON.stringify([{ pubkeyHex: pubkey, type: "nip07", addedAt: 1 }]));
         localStorage.setItem("nostr-active-account", pubkey);
         (window as any).nostr = {
@@ -101,6 +101,13 @@ test("keeps authenticated left, history, and right controls in order at 360px", 
     expect(order.map(({ className }) => className.includes("post-history-btn"))).toEqual([false, true, false]);
     expect(order[0].rect.right).toBeLessThanOrEqual(order[1].rect.left);
     expect(order[1].rect.right).toBeLessThanOrEqual(order[2].rect.left);
+    const leftGap = order[1].rect.left - order[0].rect.right;
+    const rightGap = order[2].rect.left - order[1].rect.right;
+    expect(leftGap).toBeGreaterThanOrEqual(11.5);
+    expect(rightGap).toBeGreaterThanOrEqual(11.5);
+    expect(Math.abs(leftGap - rightGap)).toBeLessThanOrEqual(1);
+    expect(order[1].rect.width).toBeGreaterThan(order[0].rect.width);
+    expect(order[1].rect.width).toBeGreaterThan(order[2].rect.width);
     for (const item of order) {
         expect(item.rect.width).toBeGreaterThanOrEqual(44);
         expect(item.rect.height).toBeGreaterThanOrEqual(44);
@@ -133,6 +140,7 @@ test("cycles language, quality, and theme directly from Footer buttons", async (
 
     const language = page.locator(".footer-setting-shortcut-button").nth(0);
     await expect(language).toHaveAttribute("aria-label", "言語: 日本語");
+    await expect(language.locator(".shortcut-mask-icon")).toHaveClass(/language-icon/);
     await language.click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("locale"))).toBe("en");
     await expect(language).toHaveAttribute("aria-label", "Language: English");
@@ -230,8 +238,10 @@ test("toggles boolean settings, keeps flavor preference latent while mascot is h
     await expect(media).toHaveAttribute("aria-pressed", "true");
 
     const flavor = page.locator(".footer-setting-shortcut-button").nth(1);
+    await expect(flavor.locator(".shortcut-mask-icon")).toHaveClass(/flavor-icon/);
     await flavor.click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("showFlavorText"))).toBe("false");
+    await expect(flavor.locator(".shortcut-mask-icon")).toHaveClass(/flavor-hidden-icon/);
     await chooseShortcut(page, "left", "hide-mascot");
     const mascot = page.locator(".footer-setting-shortcut-button").nth(0);
     const latentFlavor = page.locator(".footer-setting-shortcut-button").nth(1);
@@ -239,6 +249,7 @@ test("toggles boolean settings, keeps flavor preference latent while mascot is h
     await expect.poll(() => page.evaluate(() => localStorage.getItem("showMascot"))).toBe("false");
     await expect(latentFlavor).toBeDisabled();
     await expect(latentFlavor).toHaveAttribute("aria-pressed", "true");
+    await expect(latentFlavor.locator(".shortcut-mask-icon")).toHaveClass(/flavor-hidden-icon/);
     await expect.poll(() => page.evaluate(() => localStorage.getItem("showFlavorText"))).toBe("false");
     await mascot.click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("showMascot"))).toBe("true");
@@ -246,7 +257,7 @@ test("toggles boolean settings, keeps flavor preference latent while mascot is h
     await expect(latentFlavor).toHaveAttribute("aria-pressed", "true");
 });
 
-test("toggles quote, reply, and client-tag preferences with selected and aria-pressed state", async ({ page }) => {
+test("toggles quote, reply, and client-tag preferences with icon and aria-pressed state", async ({ page }) => {
     await page.addInitScript(() => {
         localStorage.setItem("quoteNotificationEnabled", "false");
         localStorage.setItem("replyNotificationEnabled", "false");
@@ -255,19 +266,68 @@ test("toggles quote, reply, and client-tag preferences with selected and aria-pr
     await enterApp(page);
 
     const candidates = [
-        { id: "quote-notification", key: "quoteNotificationEnabled" },
-        { id: "reply-notification", key: "replyNotificationEnabled" },
-        { id: "client-tag", key: "clientTagEnabled" },
+        { id: "quote-notification", key: "quoteNotificationEnabled", offIcon: "quote-icon", onIcon: "quote-icon" },
+        { id: "reply-notification", key: "replyNotificationEnabled", offIcon: "reply-icon", onIcon: "reply-icon" },
+        { id: "client-tag", key: "clientTagEnabled", offIcon: "client-tag-off-icon", onIcon: "client-tag-icon" },
     ];
     for (const candidate of candidates) {
         await chooseShortcut(page, "left", candidate.id);
         const button = page.locator(".footer-setting-shortcut-button");
+        const mainIcon = button.locator(
+            candidate.id === "quote-notification" || candidate.id === "reply-notification"
+                ? ".composite-main"
+                : ".shortcut-icon",
+        );
         await expect(button).toHaveAttribute("aria-pressed", "false");
+        await expect(mainIcon).toHaveClass(new RegExp(candidate.offIcon));
+        if (candidate.id === "quote-notification" || candidate.id === "reply-notification") {
+            await expect(button.locator(".notification-badge")).toHaveClass(/notification-off/);
+        }
         await button.click();
         await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), candidate.key)).toBe("true");
         await expect(button).toHaveAttribute("aria-pressed", "true");
-        await expect(button).toHaveClass(/selected/);
+        await expect(button).not.toHaveClass(/selected/);
+        await expect(mainIcon).toHaveClass(new RegExp(candidate.onIcon));
+        if (candidate.id === "quote-notification" || candidate.id === "reply-notification") {
+            await expect(button.locator(".notification-badge")).toHaveClass(/notification-on/);
+        }
     }
+});
+
+test("updates boolean, theme, and quality presentation icons and compact labels", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 844 });
+    await page.addInitScript(() => {
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "media-free-placement", right: "theme-mode" }));
+        localStorage.setItem("themeMode", "system");
+        localStorage.setItem("mediaFreePlacement", "false");
+        localStorage.setItem("imageQualityLevel", "none");
+        localStorage.setItem("videoQualityLevel", "none");
+    });
+    await enterApp(page);
+    const media = page.locator(".footer-setting-shortcut-button").nth(0);
+    const theme = page.locator(".footer-setting-shortcut-button").nth(1);
+    await expect(media).toHaveAttribute("aria-pressed", "false");
+    await expect(media.locator(".shortcut-mask-icon")).toHaveClass(/media-icon/);
+    await media.click();
+    await expect(media.locator(".shortcut-mask-icon")).toHaveClass(/media-on-icon/);
+    await expect(media).toHaveAttribute("aria-pressed", "true");
+    for (const [value, className] of [["light", "theme-light-icon"], ["dark", "theme-dark-icon"], ["system", "theme-icon"]]) {
+        await theme.click();
+        await expect.poll(() => page.evaluate(() => localStorage.getItem("themeMode"))).toBe(value);
+        await expect(theme.locator(".shortcut-mask-icon")).toHaveClass(new RegExp(className));
+    }
+
+    await chooseShortcut(page, "left", "image-quality");
+    await chooseShortcut(page, "right", "video-quality");
+    const qualityButtons = page.locator(".footer-setting-shortcut-button");
+    await expect(qualityButtons.nth(0).locator(".quality-shortcut-label")).toHaveText("原");
+    await expect(qualityButtons.nth(1).locator(".quality-shortcut-label")).toHaveText("原");
+    await qualityButtons.nth(0).click();
+    await qualityButtons.nth(1).click();
+    await expect(qualityButtons.nth(0).locator(".quality-shortcut-label")).toHaveText("高");
+    await expect(qualityButtons.nth(1).locator(".quality-shortcut-label")).toHaveText("高");
+    await expect(qualityButtons.nth(0)).toHaveAttribute("aria-label", "画像品質: 高");
+    await expect(qualityButtons.nth(1)).toHaveAttribute("aria-label", "動画品質: 高");
 });
 
 test("keyboard Enter and Space each directly change a shortcut once without opening an overlay", async ({ page }) => {
@@ -285,7 +345,7 @@ test("keyboard Enter and Space each directly change a shortcut once without open
     await expect(page.locator("[role=dialog], [role=menu], [role=radio], .footer-setting-shortcut-popover")).toHaveCount(0);
 });
 
-test("shows transparent grayscale mascot art in the Footer trigger and keeps normal SettingsDialog mascot icon", async ({ page }) => {
+test("shows transparent grayscale full and frame mascot art in Footer and SettingsDialog", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "hide-mascot", right: null })));
     await enterApp(page);
 
@@ -293,6 +353,18 @@ test("shows transparent grayscale mascot art in the Footer trigger and keeps nor
     await expect(footerMascot).toBeVisible();
     await expect(footerMascot).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(footerMascot).toHaveCSS("filter", "grayscale(1)");
+
+    await footerMascot.locator("xpath=..").click();
+    const frameMascot = page.locator(".footer-setting-shortcut-button img.mascot-icon");
+    await expect(frameMascot).toHaveAttribute("src", /ehagaki_icon_frame\.svg/);
+    await expect(frameMascot).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(frameMascot).toHaveCSS("filter", "grayscale(1)");
+    const frameSvg = await page.evaluate(async () => {
+        const response = await fetch(document.querySelector<HTMLImageElement>(".footer-setting-shortcut-button img.mascot-icon")!.src);
+        return response.text();
+    });
+    expect((frameSvg.match(/<path\b/g) ?? []).length).toBe(1);
+    expect(frameSvg).not.toContain("<rect");
 
     await page.getByRole("button", { name: "設定" }).click();
     await expect(page.locator(".footer-shortcut-settings img.mascot-icon")).toHaveCount(0);
