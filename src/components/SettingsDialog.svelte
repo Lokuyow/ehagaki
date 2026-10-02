@@ -839,7 +839,13 @@
 
         <!-- Footer shortcut slots -->
         <div class="setting-section footer-shortcut-settings">
-            <div class="setting-label">{$_("settingsDialog.footer_shortcuts")}</div>
+            <div class="setting-label-with-icon footer-shortcuts-setting-heading">
+                <span
+                    class="setting-menu-icon setting-menu-mask-icon footer-shortcuts-setting-icon"
+                    aria-hidden="true"
+                ></span>
+                <span class="setting-label">{$_("settingsDialog.footer_shortcuts")}</span>
+            </div>
             <div class="footer-shortcut-slots">
                 {#each ["left", "right"] as slot}
                     {@const side = slot as "left" | "right"}
@@ -1111,7 +1117,12 @@
         width: 100%;
         overflow-y: auto;
     }
-    .footer-shortcut-slots { display: flex; flex-direction: column; gap: 12px; }
+    .footer-shortcut-slots {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding-inline-start: calc(24px + var(--setting-label-icon-gap));
+    }
     .footer-shortcut-slot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .footer-shortcut-select {
         flex: 0 1 260px;
@@ -1140,6 +1151,9 @@
     }
     .external-nostr-client-setting-icon {
         mask-image: url("/icons/open_in_new_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .footer-shortcuts-setting-icon {
+        mask-image: url("/icons/vertical_align_bottom_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
     .mascot-setting-icon {
         filter: grayscale(1);

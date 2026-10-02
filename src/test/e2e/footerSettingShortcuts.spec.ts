@@ -538,3 +538,89 @@ test("SettingsDialog edits both slots, disables only a duplicate in the opposite
     await expect(page.locator(".footer-setting-shortcut-button")).toHaveCount(2);
     await expect(page.locator(".footer-setting-shortcut-button").first()).toHaveAttribute("aria-label", "言語: 日本語");
 });
+
+test("aligns Footer shortcut slots with its icon heading without narrow dialog overflow", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("footerSettingShortcuts", JSON.stringify(emptySlots)));
+    await enterApp(page);
+
+    for (const width of [360, 320]) {
+        await page.setViewportSize({ width, height: 844 });
+        await page.getByRole("button", { name: "設定", exact: true }).click();
+        const dialog = page.getByRole("dialog");
+        const headingLabel = dialog.locator(".footer-shortcuts-setting-heading .setting-label");
+        const headingIcon = dialog.locator(".footer-shortcuts-setting-icon");
+        const left = dialog.locator("#footer-shortcut-left");
+        const right = dialog.locator("#footer-shortcut-right");
+        await expect(headingLabel).toHaveText("フッターショートカット");
+        await expect(headingIcon).toBeVisible();
+        await expect(dialog.locator("select.footer-shortcut-select")).toHaveCount(2);
+        await expect(left).toHaveAccessibleName("左側");
+        await expect(right).toHaveAccessibleName("右側");
+
+        const geometry = await dialog.evaluate((dialogElement) => {
+            const getRect = (selector: string) => {
+                const rect = dialogElement.querySelector<HTMLElement>(selector)!.getBoundingClientRect();
+                return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+            };
+            const headingIcon = dialogElement.querySelector<HTMLElement>(".footer-shortcuts-setting-icon")!;
+            const referenceIcon = dialogElement.querySelector<HTMLElement>(".client-tag-setting-icon")!;
+            const heading = dialogElement.querySelector<HTMLElement>(".footer-shortcuts-setting-heading .setting-label")!;
+            const leftSlot = dialogElement.querySelector<HTMLElement>("#footer-shortcut-left")!.closest<HTMLElement>(".footer-shortcut-slot")!;
+            const rightSlot = dialogElement.querySelector<HTMLElement>("#footer-shortcut-right")!.closest<HTMLElement>(".footer-shortcut-slot")!;
+            const leftLabel = leftSlot.querySelector<HTMLElement>("span")!;
+            const rightLabel = rightSlot.querySelector<HTMLElement>("span")!;
+            const iconStyle = getComputedStyle(headingIcon);
+            const dialogRect = dialogElement.getBoundingClientRect();
+            return {
+                icon: getRect(".footer-shortcuts-setting-icon"),
+                referenceIcon: (() => {
+                    const rect = referenceIcon.getBoundingClientRect();
+                    return { width: rect.width, height: rect.height };
+                })(),
+                iconMask: iconStyle.maskImage,
+                heading: getRect(".footer-shortcuts-setting-heading .setting-label"),
+                headingRow: getRect(".footer-shortcuts-setting-heading"),
+                leftSlot: (() => { const rect = leftSlot.getBoundingClientRect(); return { left: rect.left, right: rect.right }; })(),
+                rightSlot: (() => { const rect = rightSlot.getBoundingClientRect(); return { left: rect.left, right: rect.right }; })(),
+                leftSelect: getRect("#footer-shortcut-left"),
+                rightSelect: getRect("#footer-shortcut-right"),
+                leftLabel: { left: leftLabel.getBoundingClientRect().left, right: leftLabel.getBoundingClientRect().right },
+                rightLabel: { left: rightLabel.getBoundingClientRect().left, right: rightLabel.getBoundingClientRect().right },
+                dialog: { left: dialogRect.left, right: dialogRect.right, width: dialogRect.width, clientWidth: dialogElement.clientWidth, scrollWidth: dialogElement.scrollWidth },
+                documentWidth: document.documentElement.scrollWidth,
+                viewportWidth: window.innerWidth,
+            };
+        });
+
+        expect(geometry.icon.width).toBe(geometry.referenceIcon.width);
+        expect(geometry.icon.height).toBe(geometry.referenceIcon.height);
+        expect(geometry.icon.width).toBe(24);
+        expect(geometry.iconMask).toContain("vertical_align_bottom_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        expect(Math.abs((geometry.icon.top + geometry.icon.bottom) / 2 - (geometry.heading.top + geometry.heading.bottom) / 2)).toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.heading.left - geometry.leftSlot.left)).toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.heading.left - geometry.rightSlot.left)).toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.leftSlot.left - geometry.rightSlot.left)).toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.heading.left - geometry.leftLabel.left)).toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.heading.left - geometry.rightLabel.left)).toBeLessThanOrEqual(1);
+        for (const [select, slot] of [[geometry.leftSelect, geometry.leftSlot], [geometry.rightSelect, geometry.rightSlot]] as const) {
+            expect(select.width).toBeGreaterThanOrEqual(120);
+            expect(select.left).toBeGreaterThanOrEqual(slot.left);
+            expect(select.right).toBeLessThanOrEqual(slot.right);
+            expect(select.left).toBeGreaterThanOrEqual(geometry.dialog.left);
+            expect(select.right).toBeLessThanOrEqual(geometry.dialog.right);
+        }
+        expect(geometry.dialog.scrollWidth).toBeLessThanOrEqual(geometry.dialog.clientWidth);
+        expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+
+        await left.selectOption("language");
+        await expect(right.locator('option[value="language"]')).toHaveAttribute("disabled", "");
+        await expect(dialog.locator("select.footer-shortcut-select")).toHaveCount(2);
+        await page.getByRole("button", { name: "閉じる" }).click();
+        await expect(page.locator(".footer-setting-shortcut-button")).toHaveCount(1);
+        await expect(page.locator(".footer-setting-shortcut-button")).toHaveAttribute("aria-label", "言語: 日本語");
+        await page.getByRole("button", { name: "設定", exact: true }).click();
+        await page.locator("#footer-shortcut-left").selectOption("");
+        await page.getByRole("button", { name: "閉じる" }).click();
+        await expect(page.locator(".footer-setting-shortcut-button")).toHaveCount(0);
+    }
+});

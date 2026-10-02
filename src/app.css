@@ -1,4 +1,6 @@
-:root {
+:root,
+:host {
+  --setting-label-icon-gap: 16px;
   /* キーボード表示対応用 CSS 変数（setupViewportListener で動的に更新） */
   --app-root-height: 100%;
   --app-root-top: 0px;
@@ -417,7 +419,7 @@ select {
 .setting-label-with-icon {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--setting-label-icon-gap);
   min-width: 0;
 }
 
