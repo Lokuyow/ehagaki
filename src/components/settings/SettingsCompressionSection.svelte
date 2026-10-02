@@ -246,7 +246,8 @@
         }
 
         :global(.compression-setting-row > .setting-control.radio-group) {
-            justify-content: flex-start;
+            width: 100%;
+            justify-content: flex-end;
             margin-block: 0;
         }
     }
@@ -286,7 +287,7 @@
             font-size: 0.875rem;
             padding: 10px;
             min-height: 50px;
-            min-width: 50px;
+            min-width: 44px;
             font-weight: normal;
         }
     }

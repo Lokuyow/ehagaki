@@ -534,90 +534,92 @@
 
         {#if themeColorStore.isAvailable}
             <div class="setting-section color-settings-section">
-                <div class="setting-label-with-icon color-settings-heading">
-                    <span
-                        class="setting-menu-icon setting-menu-mask-icon color-settings-icon"
-                        aria-hidden="true"
-                    ></span>
-                    <span class="setting-label">
-                        {$_("settingsDialog.color")}
-                    </span>
-                </div>
-                <div class="color-setting-row">
-                    <div class="setting-label-group">
-                        <label class="setting-label" for="accent-color-input">
-                            {$_("settingsDialog.accent_color")}
-                        </label>
-                        <span class="setting-description">
-                            {$_("settingsDialog.accent_color_description")}
+                <span
+                    class="setting-menu-icon setting-menu-mask-icon color-settings-icon"
+                    aria-hidden="true"
+                ></span>
+                <div class="color-settings-content">
+                    <div class="setting-label-with-icon color-settings-heading">
+                        <span class="setting-label">
+                            {$_("settingsDialog.color")}
                         </span>
                     </div>
-                    <div class="color-setting-controls">
-                        <input
-                            aria-label={$_("settingsDialog.accent_color_picker")}
-                            type="color"
-                            value={normalizeHexColor(themeColorStore.accentColor) ?? defaultAccentColor}
-                            oninput={(event) => handleColorPickerInput("accent", (event.currentTarget as HTMLInputElement).value)}
-                        />
-                        <input
-                            id="accent-color-input"
-                            aria-label={$_("settingsDialog.accent_color_hex")}
-                            class="color-hex-input"
-                            type="text"
-                            inputmode="text"
-                            autocomplete="off"
-                            value={accentColorInput}
-                            aria-invalid={accentColorError ? "true" : "false"}
-                            oninput={(event) => handleColorInput("accent", (event.currentTarget as HTMLInputElement).value)}
-                            onblur={() => handleColorBlur("accent")}
-                        />
+                    <div class="color-setting-row">
+                        <div class="setting-label-group">
+                            <label class="setting-label" for="accent-color-input">
+                                {$_("settingsDialog.accent_color")}
+                            </label>
+                            <span class="setting-description">
+                                {$_("settingsDialog.accent_color_description")}
+                            </span>
+                        </div>
+                        <div class="color-setting-controls">
+                            <input
+                                aria-label={$_("settingsDialog.accent_color_picker")}
+                                type="color"
+                                value={normalizeHexColor(themeColorStore.accentColor) ?? defaultAccentColor}
+                                oninput={(event) => handleColorPickerInput("accent", (event.currentTarget as HTMLInputElement).value)}
+                            />
+                            <input
+                                id="accent-color-input"
+                                aria-label={$_("settingsDialog.accent_color_hex")}
+                                class="color-hex-input"
+                                type="text"
+                                inputmode="text"
+                                autocomplete="off"
+                                value={accentColorInput}
+                                aria-invalid={accentColorError ? "true" : "false"}
+                                oninput={(event) => handleColorInput("accent", (event.currentTarget as HTMLInputElement).value)}
+                                onblur={() => handleColorBlur("accent")}
+                            />
+                        </div>
                     </div>
+                    {#if accentColorError}
+                        <span class="form-error" role="alert">{accentColorError}</span>
+                    {/if}
+                    <div class="color-setting-row">
+                        <div class="setting-label-group">
+                            <label class="setting-label" for="base-color-input">
+                                {$_("settingsDialog.base_color")}
+                            </label>
+                            <span class="setting-description">
+                                {$_("settingsDialog.base_color_description")}
+                            </span>
+                        </div>
+                        <div class="color-setting-controls">
+                            <input
+                                aria-label={$_("settingsDialog.base_color_picker")}
+                                type="color"
+                                value={normalizeHexColor(themeColorStore.baseColor) ?? defaultBaseColorPickerValue}
+                                oninput={(event) => handleColorPickerInput("base", (event.currentTarget as HTMLInputElement).value)}
+                            />
+                            <input
+                                id="base-color-input"
+                                aria-label={$_("settingsDialog.base_color_hex")}
+                                class="color-hex-input"
+                                type="text"
+                                inputmode="text"
+                                autocomplete="off"
+                                placeholder="#RRGGBB"
+                                value={baseColorInput}
+                                aria-invalid={baseColorError ? "true" : "false"}
+                                oninput={(event) => handleColorInput("base", (event.currentTarget as HTMLInputElement).value)}
+                                onblur={() => handleColorBlur("base")}
+                            />
+                        </div>
+                    </div>
+                    {#if baseColorError}
+                        <span class="form-error" role="alert">{baseColorError}</span>
+                    {/if}
+                    <Button
+                        variant="default"
+                        shape="rounded"
+                        className="reset-theme-colors-btn"
+                        onClick={resetThemeColors}
+                    >
+                        {$_("settingsDialog.reset_colors")}
+                    </Button>
                 </div>
-                {#if accentColorError}
-                    <span class="form-error" role="alert">{accentColorError}</span>
-                {/if}
-                <div class="color-setting-row">
-                    <div class="setting-label-group">
-                        <label class="setting-label" for="base-color-input">
-                            {$_("settingsDialog.base_color")}
-                        </label>
-                        <span class="setting-description">
-                            {$_("settingsDialog.base_color_description")}
-                        </span>
-                    </div>
-                    <div class="color-setting-controls">
-                        <input
-                            aria-label={$_("settingsDialog.base_color_picker")}
-                            type="color"
-                            value={normalizeHexColor(themeColorStore.baseColor) ?? defaultBaseColorPickerValue}
-                            oninput={(event) => handleColorPickerInput("base", (event.currentTarget as HTMLInputElement).value)}
-                        />
-                        <input
-                            id="base-color-input"
-                            aria-label={$_("settingsDialog.base_color_hex")}
-                            class="color-hex-input"
-                            type="text"
-                            inputmode="text"
-                            autocomplete="off"
-                            placeholder="#RRGGBB"
-                            value={baseColorInput}
-                            aria-invalid={baseColorError ? "true" : "false"}
-                            oninput={(event) => handleColorInput("base", (event.currentTarget as HTMLInputElement).value)}
-                            onblur={() => handleColorBlur("base")}
-                        />
-                    </div>
-                </div>
-                {#if baseColorError}
-                    <span class="form-error" role="alert">{baseColorError}</span>
-                {/if}
-                <Button
-                    variant="default"
-                    shape="rounded"
-                    className="reset-theme-colors-btn"
-                    onClick={resetThemeColors}
-                >
-                    {$_("settingsDialog.reset_colors")}
-                </Button>
             </div>
         {/if}
 
@@ -1299,12 +1301,22 @@
         gap: 10px;
     }
 
-    .color-settings-heading {
-        margin-bottom: 2px;
+    .color-settings-section {
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr);
+        column-gap: 16px;
+        align-items: start;
     }
 
-    .color-setting-row .setting-label-group {
-        margin-inline-start: 32px;
+    .color-settings-content {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-width: 0;
+    }
+
+    .color-settings-heading {
+        min-height: 24px;
     }
 
     .color-setting-row,
