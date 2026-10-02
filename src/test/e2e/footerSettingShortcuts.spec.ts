@@ -294,6 +294,65 @@ test("toggles quote, reply, and client-tag preferences with icon and aria-presse
     }
 });
 
+test("shows natural localized FloatingMessages for both states of every boolean shortcut", async ({ page }) => {
+    await page.addInitScript(() => {
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: null, right: "language" }));
+        localStorage.setItem("mediaFreePlacement", "false");
+        localStorage.setItem("showMascot", "true");
+        localStorage.setItem("showFlavorText", "true");
+        localStorage.setItem("quoteNotificationEnabled", "false");
+        localStorage.setItem("replyNotificationEnabled", "false");
+        localStorage.setItem("clientTagEnabled", "false");
+        localStorage.setItem("locale", "ja");
+    });
+    await enterApp(page);
+
+    const messages = {
+        "media-free-placement": {
+            ja: ["メディア自由配置", "メディア固定配置"],
+            en: ["Free media placement", "Fixed media placement"],
+        },
+        "hide-mascot": {
+            ja: ["きってんを非表示", "きってんを表示"],
+            en: ["Hide mascot", "Show mascot"],
+        },
+        "hide-flavor-text": {
+            ja: ["フレーバーテキストを非表示", "フレーバーテキストを表示"],
+            en: ["Hide flavor text", "Show flavor text"],
+        },
+        "quote-notification": {
+            ja: ["引用元の投稿者に通知", "引用元の投稿者に通知しない"],
+            en: ["Notify the quoted author", "Don't notify the quoted author"],
+        },
+        "reply-notification": {
+            ja: ["返信先以外にも通知", "返信先以外には通知しない"],
+            en: ["Also notify people besides the person being replied to", "Notify only the person being replied to"],
+        },
+        "client-tag": {
+            ja: ["投稿にクライアント名をつける", "投稿にクライアント名をつけない"],
+            en: ["Add the client name to posts", "Don't add the client name to posts"],
+        },
+    } as const;
+
+    for (const locale of ["ja", "en"] as const) {
+        if (locale === "en") {
+            await page.locator(".footer-setting-shortcut-button").nth(1).click();
+            await expect.poll(() => page.evaluate(() => localStorage.getItem("locale"))).toBe("en");
+        }
+
+        for (const shortcutId of Object.keys(messages) as (keyof typeof messages)[]) {
+            await chooseShortcut(page, "left", shortcutId);
+            const button = page.locator(".footer-setting-shortcut-button").first();
+            await button.click();
+            await expect(page.getByRole("status").filter({ hasText: messages[shortcutId][locale][0] })).toBeVisible();
+            await expect(button).toHaveAttribute("aria-pressed", "true");
+            await button.click();
+            await expect(page.getByRole("status").filter({ hasText: messages[shortcutId][locale][1] })).toBeVisible();
+            await expect(button).toHaveAttribute("aria-pressed", "false");
+        }
+    }
+});
+
 test("updates boolean, theme, and quality presentation icons and compact labels", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.addInitScript(() => {

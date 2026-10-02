@@ -33,7 +33,9 @@
     let accessibleName = $derived(
         isBooleanShortcut ? label : `${label}: ${currentValueLabel}`,
     );
-    let feedbackMessage = $derived(`${label}: ${currentValueLabel}`);
+    let feedbackMessage = $derived(
+        isBooleanShortcut ? currentValueLabel : `${label}: ${currentValueLabel}`,
+    );
 
     function getCurrentValueLabel(): string {
         switch (shortcutId) {
@@ -52,17 +54,17 @@
             case "theme-mode":
                 return $_(`settingsDialog.theme_${themeModeStore.value}`) ?? "";
             case "media-free-placement":
-                return $_(settingsStore.mediaFreePlacement ? "settingsDialog.footer_shortcut_on" : "settingsDialog.footer_shortcut_off") ?? "";
+                return $_(settingsStore.mediaFreePlacement ? "settingsDialog.footer_shortcut_media_free" : "settingsDialog.footer_shortcut_media_fixed") ?? "";
             case "hide-mascot":
-                return $_(!settingsStore.showMascot ? "settingsDialog.footer_shortcut_on" : "settingsDialog.footer_shortcut_off") ?? "";
+                return $_(settingsStore.showMascot ? "settingsDialog.footer_shortcut_mascot_show" : "settingsDialog.footer_shortcut_mascot_hide") ?? "";
             case "hide-flavor-text":
-                return $_(!settingsStore.showMascot || !settingsStore.showFlavorText ? "settingsDialog.footer_shortcut_on" : "settingsDialog.footer_shortcut_off") ?? "";
+                return $_(!settingsStore.showMascot || !settingsStore.showFlavorText ? "settingsDialog.footer_shortcut_flavor_hide" : "settingsDialog.footer_shortcut_flavor_show") ?? "";
             case "quote-notification":
-                return $_(settingsStore.quoteNotificationEnabled ? "settingsDialog.footer_shortcut_on" : "settingsDialog.footer_shortcut_off") ?? "";
+                return $_(settingsStore.quoteNotificationEnabled ? "settingsDialog.footer_shortcut_quote_notify" : "settingsDialog.footer_shortcut_quote_silent") ?? "";
             case "reply-notification":
-                return $_(settingsStore.replyNotificationEnabled ? "settingsDialog.footer_shortcut_on" : "settingsDialog.footer_shortcut_off") ?? "";
+                return $_(settingsStore.replyNotificationEnabled ? "settingsDialog.footer_shortcut_reply_notify_others" : "settingsDialog.footer_shortcut_reply_notify_only_target") ?? "";
             case "client-tag":
-                return $_(settingsStore.clientTagEnabled ? "settingsDialog.footer_shortcut_on" : "settingsDialog.footer_shortcut_off") ?? "";
+                return $_(settingsStore.clientTagEnabled ? "settingsDialog.footer_shortcut_client_tag_add" : "settingsDialog.footer_shortcut_client_tag_skip") ?? "";
         }
     }
 
