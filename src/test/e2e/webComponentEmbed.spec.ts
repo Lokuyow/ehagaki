@@ -2575,3 +2575,50 @@ test("Full self-publish does not expose Host-owned methods", async ({ page }) =>
         initializationErrors: [],
     });
 });
+
+test("Full Web Component restores footer shortcuts in its storage namespace and keeps the popover in its overlay at 320px", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin, componentStoragePrefix }) => {
+        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '["language","image-quality"]');
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & { whenReady(): Promise<void> };
+        composer.style.cssText = "display:block;width:320px;height:640px";
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin, componentStoragePrefix });
+
+    const composer = page.locator("ehagaki-composer");
+    const shortcutButtons = composer.locator(".footer-setting-shortcut-button");
+    await expect(shortcutButtons).toHaveCount(2);
+    await expect(shortcutButtons.first()).toBeVisible();
+    await shortcutButtons.first().click();
+
+    const popover = composer.locator(".footer-setting-shortcut-popover");
+    await expect(popover).toBeVisible();
+    await expect(composer.locator(".ehagaki-web-component-overlays .footer-setting-shortcut-popover")).toHaveCount(1);
+
+    const result = await composer.evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const component = element.getBoundingClientRect();
+        const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
+        const popoverElement = shadow.querySelector<HTMLElement>(".footer-setting-shortcut-popover")!;
+        return {
+            componentWidth: component.width,
+            componentScrollWidth: element.scrollWidth,
+            footerScrollWidth: footer.scrollWidth,
+            popoverLeft: popoverElement.getBoundingClientRect().left,
+            popoverRight: popoverElement.getBoundingClientRect().right,
+            bodyPortalCount: document.querySelectorAll(".footer-setting-shortcut-popover").length,
+        };
+    });
+    expect(result.componentWidth).toBe(320);
+    expect(result.componentScrollWidth).toBeLessThanOrEqual(result.componentWidth);
+    expect(result.footerScrollWidth).toBeLessThanOrEqual(320);
+    expect(result.popoverLeft).toBeGreaterThanOrEqual(0);
+    expect(result.popoverRight).toBeLessThanOrEqual(320);
+    expect(result.bodyPortalCount).toBe(0);
+
+    const english = composer.locator('.ehagaki-web-component-overlays button[role="radio"][aria-label="English"]');
+    await english.click();
+    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}locale`), componentStoragePrefix)).toBe("en");
+});

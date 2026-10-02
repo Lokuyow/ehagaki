@@ -1,6 +1,7 @@
 <script lang="ts">
     import FooterInfoDisplay from "./FooterMiddleDisplay.svelte";
     import Button from "./Button.svelte";
+    import FooterSettingShortcutButton from "./FooterSettingShortcutButton.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
     import { _ } from "svelte-i18n";
@@ -10,6 +11,8 @@
         profileLoadedStore,
     } from "../stores/profileStore.svelte";
     import { isSameOriginProfilePictureUrl } from "../lib/profilePictureUrlUtils";
+    import { FOOTER_SETTING_SHORTCUTS } from "../lib/footerSettingShortcuts";
+    import { footerSettingShortcutsStore } from "../stores/footerSettingShortcutsStore.svelte";
 
     interface Props {
         isAuthenticated: boolean;
@@ -176,6 +179,15 @@
                     ></div>
                 </Button>
             {/if}
+            {#if footerSettingShortcutsStore.value.length > 0}
+                <div class="footer-shortcut-cluster">
+                    {#each footerSettingShortcutsStore.value as shortcutId (shortcutId)}
+                        {@const shortcut = FOOTER_SETTING_SHORTCUTS.find((item) => item.id === shortcutId)!}
+                        {@const align = footerSettingShortcutsStore.value.at(-1) === shortcutId ? "end" : "center"}
+                        <FooterSettingShortcutButton {shortcutId} {align} label={$_(shortcut.labelKey)} />
+                    {/each}
+                </div>
+            {/if}
         {/snippet}
     </FooterInfoDisplay>
 
@@ -256,6 +268,12 @@
             width: 32px;
             height: 32px;
         }
+    }
+    .footer-shortcut-cluster {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex: 0 0 auto;
     }
     :global(.settings-btn.has-update) {
         position: relative;

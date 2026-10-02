@@ -3,6 +3,8 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import '../../i18n';
 import { locale, waitLocale } from 'svelte-i18n';
+import { footerSettingShortcutsStore } from '../../stores/footerSettingShortcutsStore.svelte';
+import { settingsStore } from '../../stores/settingsStore.svelte';
 
 const footerDisplayState = vi.hoisted(() => ({
     sharedMediaError: null as string | null,
@@ -76,6 +78,8 @@ describe('FooterComponent', () => {
             npub: '',
             nprofile: '',
         };
+        footerSettingShortcutsStore.set([]);
+        settingsStore.locale = 'ja';
         isLoadingProfileStore.set(false);
         profileLoadedStore.set(false);
         locale.set('ja');
@@ -151,6 +155,18 @@ describe('FooterComponent', () => {
         await fireEvent.click(button);
 
         expect(onOpenPostHistoryDialog).toHaveBeenCalledOnce();
+    });
+
+    it('選択した shortcut をFooterに表示し、Popoverからcanonical storeを変更できる', async () => {
+        footerSettingShortcutsStore.set(['language']);
+        renderFooter();
+
+        const shortcut = screen.getByRole('button', { name: '言語' });
+        expect(shortcut).toBeTruthy();
+        await fireEvent.click(shortcut);
+        const english = await screen.findByRole('radio', { name: 'English' });
+        await fireEvent.click(english);
+        expect(settingsStore.locale).toBe('en');
     });
 
     it('投稿履歴ボタンの hover focus pointerdown で module preload callback を呼ぶ', async () => {

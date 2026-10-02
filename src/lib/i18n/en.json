@@ -292,6 +292,9 @@
   },
   "settingsDialog": {
     "info_header_setting": "Setting",
+    "language": "Language",
+    "footer_shortcuts": "Footer shortcuts",
+    "footer_shortcuts_limit": "Choose up to two settings to show in the footer.",
     "info_header_pixels": "Maximum Pixels",
     "info_header_quality": "Quality",
     "image_quality_setting": "Image Quality",

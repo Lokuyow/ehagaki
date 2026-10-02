@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount, tick } from "svelte";
     import { locale, _ } from "svelte-i18n";
-    import { Dialog, RadioGroup, Switch } from "bits-ui";
+    import { Checkbox, Dialog, RadioGroup, Switch } from "bits-ui";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import InfoPopoverButton from "./InfoPopoverButton.svelte";
@@ -25,6 +25,9 @@
         loadRelayConfigFromStorage,
     } from "../stores/relayStore.svelte";
     import { themeModeStore } from "../stores/themeStore.svelte";
+    import { footerSettingShortcutsStore } from "../stores/footerSettingShortcutsStore.svelte";
+    import { FOOTER_SETTING_SHORTCUTS } from "../lib/footerSettingShortcuts";
+    import FooterSettingShortcutIcon from "./FooterSettingShortcutIcon.svelte";
     import { themeColorStore } from "../stores/themeColorStore.svelte";
     import { settingsStore } from "../stores/settingsStore.svelte";
     import { getCompressionLevels } from "../lib/constants";
@@ -42,10 +45,7 @@
     import SettingsCompressionSection from "./settings/SettingsCompressionSection.svelte";
     import SettingsUploadDestinationSection from "./settings/SettingsUploadDestinationSection.svelte";
     import RadioButton from "./RadioButton.svelte";
-    import {
-        normalizeHexColor,
-        type ThemeMode,
-    } from "../lib/utils/settingsStorage";
+    import { normalizeHexColor } from "../lib/utils/settingsStorage";
     import {
         EXTERNAL_NOSTR_CLIENTS,
         normalizeExternalNostrClientUrlTemplate,
@@ -92,16 +92,15 @@
     let replyNotificationEnabled = $state(
         settingsStore.replyNotificationEnabled,
     );
-    let themeMode = $state<ThemeMode>(themeModeStore.value);
     const defaultAccentColor = "#1dbf73";
     const defaultBaseColorPickerValue = "#808080";
     let accentColorInput = $state(themeColorStore.accentColor ?? defaultAccentColor);
     let baseColorInput = $state(themeColorStore.baseColor ?? "");
     let accentColorError = $state<string | null>(null);
     let baseColorError = $state<string | null>(null);
-    let hideMascot = $state(!settingsStore.showMascot);
-    let hideFlavorText = $state(!settingsStore.showFlavorText);
-    let effectiveHideFlavorText = $derived(hideMascot || hideFlavorText);
+    let effectiveHideFlavorText = $derived(
+        !settingsStore.showMascot || !settingsStore.showFlavorText,
+    );
 
     // Store派生値
     let swVersion = $derived(swVersionStore.value);
@@ -117,12 +116,6 @@
         isStaleAssetReloadRequired ||
             ($swUpdateStatus === "ready" && !isDbUpgradeBlocked),
     );
-
-    $effect(() => {
-        if (themeMode !== themeModeStore.value) {
-            themeModeStore.set(themeMode);
-        }
-    });
 
     function handleSwRefresh() {
         if (isStaleAssetReloadRequired) {
@@ -142,12 +135,9 @@
         externalNostrClientCustomUrl = settingsStore.externalNostrClientCustomUrl;
         quoteNotificationEnabled = settingsStore.quoteNotificationEnabled;
         replyNotificationEnabled = settingsStore.replyNotificationEnabled;
-        themeMode = themeModeStore.value;
         themeColorStore.reload();
         accentColorInput = themeColorStore.accentColor ?? defaultAccentColor;
         baseColorInput = themeColorStore.baseColor ?? "";
-        hideMascot = !settingsStore.showMascot;
-        hideFlavorText = !settingsStore.showFlavorText;
         fetchSwVersion();
         if (!hostRelayConfigActive && authState.value?.pubkey && authState.value?.isAuthenticated) {
             loadRelayConfigFromStorage(authState.value.pubkey);
@@ -205,18 +195,6 @@
             quoteNotificationEnabled !== settingsStore.quoteNotificationEnabled
         ) {
             settingsStore.quoteNotificationEnabled = quoteNotificationEnabled;
-        }
-    });
-
-    $effect(() => {
-        if (!hideMascot !== settingsStore.showMascot) {
-            settingsStore.showMascot = !hideMascot;
-        }
-    });
-
-    $effect(() => {
-        if (!hideFlavorText !== settingsStore.showFlavorText) {
-            settingsStore.showFlavorText = !hideFlavorText;
         }
     });
 
@@ -449,7 +427,7 @@
                         class="setting-menu-icon setting-menu-mask-icon language-setting-icon"
                         aria-hidden="true"
                     ></span>
-                    <span class="setting-label"> Language/言語 </span>
+                    <span class="setting-label">{$_("settingsDialog.language")}</span>
                 </div>
                 <div class="setting-control">
                     <Button
@@ -497,11 +475,9 @@
                     class="setting-control theme-mode-group"
                     name="themeMode"
                     orientation="horizontal"
-                    value={themeMode}
+                    value={themeModeStore.value}
                     aria-labelledby="theme-mode-label"
-                    onValueChange={(value) => {
-                        themeMode = value as ThemeMode;
-                    }}
+                    onValueChange={(value) => themeModeStore.set(value as "system" | "light" | "dark")}
                 >
                     <RadioButton
                         value="system"
@@ -680,7 +656,8 @@
                     <div class="setting-control">
                         <Switch.Root
                             class="bui-switch"
-                            bind:checked={hideMascot}
+                            checked={!settingsStore.showMascot}
+                            onCheckedChange={(checked) => (settingsStore.showMascot = !checked)}
                             aria-labelledby="hide-mascot-label"
                         >
                             <Switch.Thumb class="bui-switch-thumb" />
@@ -710,7 +687,7 @@
                                     "settingsDialog.hide_flavor_text_description",
                                 )}
                             >
-                                {hideMascot
+                                {!settingsStore.showMascot
                                     ? $_(
                                           "settingsDialog.hide_flavor_text_note_included",
                                       ) ||
@@ -723,7 +700,7 @@
                         </div>
                     </div>
                     <div class="setting-control">
-                        {#if hideMascot}
+                        {#if !settingsStore.showMascot}
                             <Switch.Root
                                 class="bui-switch"
                                 checked={effectiveHideFlavorText}
@@ -735,7 +712,8 @@
                         {:else}
                             <Switch.Root
                                 class="bui-switch"
-                                bind:checked={hideFlavorText}
+                                checked={effectiveHideFlavorText}
+                                onCheckedChange={(checked) => (settingsStore.showFlavorText = !checked)}
                                 aria-labelledby="hide-flavor-text-label"
                             >
                                 <Switch.Thumb class="bui-switch-thumb" />
@@ -850,6 +828,45 @@
                     </Switch.Root>
                 </div>
             </div>
+        </div>
+
+        <!-- Footer shortcut selection -->
+        <div class="setting-section footer-shortcut-settings">
+            <Checkbox.Group
+                class="footer-shortcut-group"
+                value={footerSettingShortcutsStore.value}
+                aria-labelledby="footer-shortcuts-label"
+                onValueChange={(value) => footerSettingShortcutsStore.set(value)}
+            >
+                <Checkbox.GroupLabel id="footer-shortcuts-label" class="setting-label footer-shortcut-heading">
+                    {$_("settingsDialog.footer_shortcuts")}
+                </Checkbox.GroupLabel>
+                <p class="setting-description">{$_("settingsDialog.footer_shortcuts_limit")}</p>
+                <div class="footer-shortcut-options">
+                    {#each FOOTER_SETTING_SHORTCUTS as shortcut (shortcut.id)}
+                        {@const isSelected = footerSettingShortcutsStore.value.includes(shortcut.id)}
+                        <div class="footer-shortcut-option">
+                            <label class="footer-shortcut-option-label" for={`footer-shortcut-${shortcut.id}`}>
+                                <FooterSettingShortcutIcon shortcutId={shortcut.id} />
+                                <span>{$_(shortcut.labelKey)}</span>
+                            </label>
+                            <Checkbox.Root
+                                id={`footer-shortcut-${shortcut.id}`}
+                                class="footer-shortcut-checkbox"
+                                value={shortcut.id}
+                                disabled={!isSelected && footerSettingShortcutsStore.value.length >= 2}
+                                aria-label={$_(shortcut.labelKey)}
+                            >
+                                {#snippet child({ props, checked })}
+                                    <button {...props} class="footer-shortcut-checkbox" type="button">
+                                        <span class="footer-shortcut-check" aria-hidden="true">{checked ? "✓" : ""}</span>
+                                    </button>
+                                {/snippet}
+                            </Checkbox.Root>
+                        </div>
+                    {/each}
+                </div>
+            </Checkbox.Group>
         </div>
 
         <!-- 投稿履歴の外部クライアント設定 -->
@@ -1099,6 +1116,33 @@
         width: 100%;
         overflow-y: auto;
     }
+    :global(.footer-shortcut-group) { display: flex; flex-direction: column; gap: 8px; }
+    :global(.footer-shortcut-heading) { font-weight: 600; }
+    .footer-shortcut-options { display: flex; flex-direction: column; gap: 4px; }
+    .footer-shortcut-option {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 48px;
+        min-width: 0;
+        cursor: pointer;
+    }
+    .footer-shortcut-option-label { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; cursor: pointer; }
+    .footer-shortcut-option-label > span:not(.shortcut-icon) { flex: 1 1 auto; min-width: 0; }
+    :global(button.footer-shortcut-checkbox) {
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
+        flex: 0 0 44px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--dialog-bg);
+        color: var(--text);
+    }
+    :global(button.footer-shortcut-checkbox[data-state="checked"]) { background: var(--theme); color: white; }
+    :global(button.footer-shortcut-checkbox[data-disabled]) { opacity: .5; cursor: not-allowed; }
+    .footer-shortcut-check { display: grid; place-items: center; }
     .setting-label-with-icon {
         flex: 1 1 auto;
     }

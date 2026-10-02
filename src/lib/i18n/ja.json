@@ -292,6 +292,9 @@
   },
   "settingsDialog": {
     "info_header_setting": "設定",
+    "language": "言語",
+    "footer_shortcuts": "フッターショートカット",
+    "footer_shortcuts_limit": "表示する設定を2個まで選べます。",
     "info_header_pixels": "最大画素数",
     "info_header_quality": "品質",
     "image_quality_setting": "画像品質",

@@ -483,6 +483,7 @@ iframe.contentWindow.postMessage({
 - `settingsPreferenceMetadata`
 - `firstVisit`
 - `sharedMediaProcessed`
+- `footerSettingShortcuts`
 
 親ページ側では、eHagaki のキーと衝突しないように prefix を付けて保存することを推奨します。
 
@@ -507,6 +508,7 @@ const ALLOWED_STORAGE_KEYS = new Set([
   'settingsPreferenceMetadata',
   'firstVisit',
   'sharedMediaProcessed',
+  'footerSettingShortcuts',
 ]);
 
 function postToIframe(message) {

@@ -90,6 +90,7 @@ export const STORAGE_KEYS = {
     MEDIA_FREE_PLACEMENT: "mediaFreePlacement",
     THEME_MODE: "themeMode",
     DARK_MODE: "darkMode",
+    FOOTER_SETTING_SHORTCUTS: "footerSettingShortcuts",
     ACCENT_COLOR: "accentColor",
     BASE_COLOR: "baseColor",
     NOSTR_ACCOUNTS: "nostr-accounts",

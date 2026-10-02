@@ -62,6 +62,8 @@ import {
     swUpdateStatus,
 } from '../../stores/swStore.svelte';
 import { settingsStore } from '../../stores/settingsStore.svelte';
+import { footerSettingShortcutsStore } from '../../stores/footerSettingShortcutsStore.svelte';
+import { themeModeStore } from '../../stores/themeStore.svelte';
 import { themeColorStore } from '../../stores/themeColorStore.svelte';
 
 describe('SettingsDialog accessibility', () => {
@@ -75,8 +77,36 @@ describe('SettingsDialog accessibility', () => {
 
     afterEach(() => {
         themeColorStore.reset();
+        footerSettingShortcutsStore.set([]);
+        settingsStore.showMascot = true;
+        settingsStore.showFlavorText = true;
+        themeModeStore.set('system');
         settingsStore.externalNostrClient = 'nostter';
         settingsStore.locale = 'en';
+    });
+
+    it('フッター shortcut は2個まで選択でき、選択済み候補は解除できる', async () => {
+        settingsStore.locale = 'ja';
+        render(SettingsDialog, {
+            props: { show: true, onClose: () => {} },
+        });
+        await tick();
+
+        const language = screen.getByRole('checkbox', { name: '言語' }) as HTMLButtonElement;
+        const imageQuality = screen.getByRole('checkbox', { name: '画像品質' }) as HTMLButtonElement;
+        const videoQuality = screen.getByRole('checkbox', { name: '動画品質' }) as HTMLButtonElement;
+
+        await fireEvent.click(language);
+        await fireEvent.click(imageQuality);
+        await tick();
+
+        expect(footerSettingShortcutsStore.value).toEqual(['language', 'image-quality']);
+        expect(videoQuality.disabled).toBe(true);
+        expect(language.disabled).toBe(false);
+
+        await fireEvent.click(imageQuality);
+        expect(footerSettingShortcutsStore.value).toEqual(['language']);
+        expect(videoQuality.disabled).toBe(false);
     });
 
     it('設定名の左にだけ指定アイコンを表示し、装飾として隠す', async () => {

@@ -5,6 +5,7 @@ import {
     EMBED_MESSAGE_VERSION,
 } from '../../lib/embedProtocol';
 import { EmbedStorageService } from '../../lib/embedStorageService';
+import { EMBED_SETTING_STORAGE_KEYS, EMBED_STORAGE_KEYS } from '../../lib/embedStorageKeys';
 import { createMockConsole, type MockConsole, MockStorage } from '../helpers';
 import { createMockWindow } from '../embedWindowTestUtils';
 
@@ -189,5 +190,11 @@ describe('EmbedStorageService', () => {
         expect(storage.getItem(STORAGE_KEYS.LOCALE)).toBe('ja');
         expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBeNull();
         expect(storage.getItem('nostr-secret-key')).toBeNull();
+    });
+
+    it('Footer shortcut preference はstorage委譲を許可し、settings.setの設定対象には含めない', () => {
+        expect(EMBED_STORAGE_KEYS).toContain(STORAGE_KEYS.FOOTER_SETTING_SHORTCUTS);
+        expect(EMBED_SETTING_STORAGE_KEYS).not.toContain(STORAGE_KEYS.FOOTER_SETTING_SHORTCUTS);
+        expect(EMBED_STORAGE_KEYS).not.toContain('nostr-secret-key');
     });
 });
