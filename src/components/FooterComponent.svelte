@@ -11,7 +11,6 @@
         profileLoadedStore,
     } from "../stores/profileStore.svelte";
     import { isSameOriginProfilePictureUrl } from "../lib/profilePictureUrlUtils";
-    import { FOOTER_SETTING_SHORTCUTS } from "../lib/footerSettingShortcuts";
     import { footerSettingShortcutsStore } from "../stores/footerSettingShortcutsStore.svelte";
 
     interface Props {
@@ -161,6 +160,9 @@
 
     <FooterInfoDisplay>
         {#snippet fallback()}
+            {#if footerSettingShortcutsStore.value.left}
+                <FooterSettingShortcutButton shortcutId={footerSettingShortcutsStore.value.left} />
+            {/if}
             {#if isAuthenticated}
                 <Button
                     variant="default"
@@ -179,14 +181,8 @@
                     ></div>
                 </Button>
             {/if}
-            {#if footerSettingShortcutsStore.value.length > 0}
-                <div class="footer-shortcut-cluster">
-                    {#each footerSettingShortcutsStore.value as shortcutId (shortcutId)}
-                        {@const shortcut = FOOTER_SETTING_SHORTCUTS.find((item) => item.id === shortcutId)!}
-                        {@const align = footerSettingShortcutsStore.value.at(-1) === shortcutId ? "end" : "center"}
-                        <FooterSettingShortcutButton {shortcutId} {align} label={$_(shortcut.labelKey)} />
-                    {/each}
-                </div>
+            {#if footerSettingShortcutsStore.value.right}
+                <FooterSettingShortcutButton shortcutId={footerSettingShortcutsStore.value.right} />
             {/if}
         {/snippet}
     </FooterInfoDisplay>
@@ -268,12 +264,6 @@
             width: 32px;
             height: 32px;
         }
-    }
-    .footer-shortcut-cluster {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        flex: 0 0 auto;
     }
     :global(.settings-btn.has-update) {
         position: relative;

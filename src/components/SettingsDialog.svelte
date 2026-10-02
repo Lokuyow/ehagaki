@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount, tick } from "svelte";
     import { locale, _ } from "svelte-i18n";
-    import { Checkbox, Dialog, RadioGroup, Switch } from "bits-ui";
+    import { Dialog, RadioGroup, Switch } from "bits-ui";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import InfoPopoverButton from "./InfoPopoverButton.svelte";
@@ -27,7 +27,6 @@
     import { themeModeStore } from "../stores/themeStore.svelte";
     import { footerSettingShortcutsStore } from "../stores/footerSettingShortcutsStore.svelte";
     import { FOOTER_SETTING_SHORTCUTS } from "../lib/footerSettingShortcuts";
-    import FooterSettingShortcutIcon from "./FooterSettingShortcutIcon.svelte";
     import { themeColorStore } from "../stores/themeColorStore.svelte";
     import { settingsStore } from "../stores/settingsStore.svelte";
     import { getCompressionLevels } from "../lib/constants";
@@ -218,6 +217,14 @@
 
     function toggleLanguage() {
         settingsStore.locale = $locale === "ja" ? "en" : "ja";
+    }
+
+    function handleFooterShortcutChange(slot: "left" | "right", event: Event): void {
+        const selectedId = (event.currentTarget as HTMLSelectElement).value;
+        footerSettingShortcutsStore.set({
+            ...footerSettingShortcutsStore.value,
+            [slot]: selectedId || null,
+        });
     }
 
     function handleExternalNostrClientCustomUrlInput(value: string): void {
@@ -830,43 +837,31 @@
             </div>
         </div>
 
-        <!-- Footer shortcut selection -->
+        <!-- Footer shortcut slots -->
         <div class="setting-section footer-shortcut-settings">
-            <Checkbox.Group
-                class="footer-shortcut-group"
-                value={footerSettingShortcutsStore.value}
-                aria-labelledby="footer-shortcuts-label"
-                onValueChange={(value) => footerSettingShortcutsStore.set(value)}
-            >
-                <Checkbox.GroupLabel id="footer-shortcuts-label" class="setting-label footer-shortcut-heading">
-                    {$_("settingsDialog.footer_shortcuts")}
-                </Checkbox.GroupLabel>
-                <p class="setting-description">{$_("settingsDialog.footer_shortcuts_limit")}</p>
-                <div class="footer-shortcut-options">
-                    {#each FOOTER_SETTING_SHORTCUTS as shortcut (shortcut.id)}
-                        {@const isSelected = footerSettingShortcutsStore.value.includes(shortcut.id)}
-                        <div class="footer-shortcut-option">
-                            <label class="footer-shortcut-option-label" for={`footer-shortcut-${shortcut.id}`}>
-                                <FooterSettingShortcutIcon shortcutId={shortcut.id} />
-                                <span>{$_(shortcut.labelKey)}</span>
-                            </label>
-                            <Checkbox.Root
-                                id={`footer-shortcut-${shortcut.id}`}
-                                class="footer-shortcut-checkbox"
-                                value={shortcut.id}
-                                disabled={!isSelected && footerSettingShortcutsStore.value.length >= 2}
-                                aria-label={$_(shortcut.labelKey)}
-                            >
-                                {#snippet child({ props, checked })}
-                                    <button {...props} class="footer-shortcut-checkbox" type="button">
-                                        <span class="footer-shortcut-check" aria-hidden="true">{checked ? "✓" : ""}</span>
-                                    </button>
-                                {/snippet}
-                            </Checkbox.Root>
-                        </div>
-                    {/each}
-                </div>
-            </Checkbox.Group>
+            <div class="setting-label">{$_("settingsDialog.footer_shortcuts")}</div>
+            <div class="footer-shortcut-slots">
+                {#each ["left", "right"] as slot}
+                    {@const side = slot as "left" | "right"}
+                    <label class="footer-shortcut-slot" for={`footer-shortcut-${side}`}>
+                        <span>{$_(`settingsDialog.footer_shortcuts_${side}`)}</span>
+                        <select
+                            id={`footer-shortcut-${side}`}
+                            class="footer-shortcut-select"
+                            value={footerSettingShortcutsStore.value[side] ?? ""}
+                            onchange={(event) => handleFooterShortcutChange(side, event)}
+                        >
+                            <option value="">{$_("settingsDialog.footer_shortcuts_none")}</option>
+                            {#each FOOTER_SETTING_SHORTCUTS as shortcut (shortcut.id)}
+                                <option
+                                    value={shortcut.id}
+                                    disabled={shortcut.id === footerSettingShortcutsStore.value[side === "left" ? "right" : "left"]}
+                                >{$_(shortcut.labelKey)}</option>
+                            {/each}
+                        </select>
+                    </label>
+                {/each}
+            </div>
         </div>
 
         <!-- 投稿履歴の外部クライアント設定 -->
@@ -1116,33 +1111,18 @@
         width: 100%;
         overflow-y: auto;
     }
-    :global(.footer-shortcut-group) { display: flex; flex-direction: column; gap: 8px; }
-    :global(.footer-shortcut-heading) { font-weight: 600; }
-    .footer-shortcut-options { display: flex; flex-direction: column; gap: 4px; }
-    .footer-shortcut-option {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        min-height: 48px;
+    .footer-shortcut-slots { display: flex; flex-direction: column; gap: 12px; }
+    .footer-shortcut-slot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .footer-shortcut-select {
+        flex: 0 1 260px;
         min-width: 0;
-        cursor: pointer;
-    }
-    .footer-shortcut-option-label { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; cursor: pointer; }
-    .footer-shortcut-option-label > span:not(.shortcut-icon) { flex: 1 1 auto; min-width: 0; }
-    :global(button.footer-shortcut-checkbox) {
-        width: 44px;
-        height: 44px;
-        min-width: 44px;
         min-height: 44px;
-        flex: 0 0 44px;
+        padding: 8px 32px 8px 10px;
         border: 1px solid var(--border);
         border-radius: 6px;
         background: var(--dialog-bg);
         color: var(--text);
     }
-    :global(button.footer-shortcut-checkbox[data-state="checked"]) { background: var(--theme); color: white; }
-    :global(button.footer-shortcut-checkbox[data-disabled]) { opacity: .5; cursor: not-allowed; }
-    .footer-shortcut-check { display: grid; place-items: center; }
     .setting-label-with-icon {
         flex: 1 1 auto;
     }

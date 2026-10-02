@@ -2576,10 +2576,10 @@ test("Full self-publish does not expose Host-owned methods", async ({ page }) =>
     });
 });
 
-test("Full Web Component restores footer shortcuts in its storage namespace and keeps the popover in its overlay at 320px", async ({ page }) => {
+test("Full Web Component restores left and right footer shortcuts in its storage namespace at 320px", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin, componentStoragePrefix }) => {
-        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '["language","image-quality"]');
+        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"left":"language","right":"image-quality"}');
         await import(`${componentOrigin}/ehagaki-composer.js`);
         const composer = document.createElement("ehagaki-composer") as HTMLElement & { whenReady(): Promise<void> };
         composer.style.cssText = "display:block;width:320px;height:640px";
@@ -2591,34 +2591,54 @@ test("Full Web Component restores footer shortcuts in its storage namespace and 
     const shortcutButtons = composer.locator(".footer-setting-shortcut-button");
     await expect(shortcutButtons).toHaveCount(2);
     await expect(shortcutButtons.first()).toBeVisible();
+    await expect(shortcutButtons.first()).toHaveAttribute("aria-label", "言語: 日本語");
+    await expect(shortcutButtons.nth(1)).toHaveAttribute("aria-label", /画像品質:/);
     await shortcutButtons.first().click();
-
-    const popover = composer.locator(".footer-setting-shortcut-popover");
-    await expect(popover).toBeVisible();
-    await expect(composer.locator(".ehagaki-web-component-overlays .footer-setting-shortcut-popover")).toHaveCount(1);
+    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}locale`), componentStoragePrefix)).toBe("en");
+    const feedback = composer.locator(".floating-message");
+    await expect(feedback).toContainText("Language: English");
+    await expect(composer.locator(".footer-setting-shortcut-popover")).toHaveCount(0);
 
     const result = await composer.evaluate((element) => {
         const shadow = element.shadowRoot!;
         const component = element.getBoundingClientRect();
         const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
-        const popoverElement = shadow.querySelector<HTMLElement>(".footer-setting-shortcut-popover")!;
+        const shortcuts = Array.from(shadow.querySelectorAll<HTMLElement>(".footer-setting-shortcut-button"));
+        const footerRect = footer.getBoundingClientRect();
         return {
             componentWidth: component.width,
+            componentLeft: component.left,
+            componentRight: component.right,
             componentScrollWidth: element.scrollWidth,
             footerScrollWidth: footer.scrollWidth,
-            popoverLeft: popoverElement.getBoundingClientRect().left,
-            popoverRight: popoverElement.getBoundingClientRect().right,
-            bodyPortalCount: document.querySelectorAll(".footer-setting-shortcut-popover").length,
+            footerLeft: footerRect.left,
+            footerRight: footerRect.right,
+            footerTop: footerRect.top,
+            feedbackRect: (() => {
+                const rect = element.shadowRoot!.querySelector<HTMLElement>(".floating-message")!.getBoundingClientRect();
+                return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+            })(),
+            shortcutRects: shortcuts.map((shortcut) => {
+                const rect = shortcut.getBoundingClientRect();
+                return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
+            }),
+            postHistoryCount: shadow.querySelectorAll(".post-history-btn").length,
+            popoverCount: document.querySelectorAll(".footer-setting-shortcut-popover").length,
         };
     });
     expect(result.componentWidth).toBe(320);
     expect(result.componentScrollWidth).toBeLessThanOrEqual(result.componentWidth);
     expect(result.footerScrollWidth).toBeLessThanOrEqual(320);
-    expect(result.popoverLeft).toBeGreaterThanOrEqual(0);
-    expect(result.popoverRight).toBeLessThanOrEqual(320);
-    expect(result.bodyPortalCount).toBe(0);
-
-    const english = composer.locator('.ehagaki-web-component-overlays button[role="radio"][aria-label="English"]');
-    await english.click();
-    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}locale`), componentStoragePrefix)).toBe("en");
+    expect(result.postHistoryCount).toBe(0);
+    expect(result.popoverCount).toBe(0);
+    expect(result.feedbackRect.left).toBeGreaterThanOrEqual(result.componentLeft);
+    expect(result.feedbackRect.right).toBeLessThanOrEqual(result.componentRight);
+    expect(result.feedbackRect.bottom).toBeLessThanOrEqual(result.footerTop);
+    expect(result.shortcutRects).toHaveLength(2);
+    for (const rect of result.shortcutRects) {
+        expect(rect.left).toBeGreaterThanOrEqual(result.footerLeft - 0.5);
+        expect(rect.right).toBeLessThanOrEqual(result.footerRight + 0.5);
+        expect(rect.width).toBeGreaterThanOrEqual(44);
+        expect(rect.height).toBeGreaterThanOrEqual(44);
+    }
 });

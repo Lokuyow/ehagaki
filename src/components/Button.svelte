@@ -26,6 +26,7 @@
         selected?: boolean;
         floatingMessage?: string;
         floatingMessageDuration?: number;
+        floatingMessageVariant?: "pointer" | "top-right" | "container-top-right";
     }
 
     let {
@@ -43,6 +44,7 @@
         selected = false,
         floatingMessage = "",
         floatingMessageDuration = 1800,
+        floatingMessageVariant = "pointer",
         ...restProps
     }: Props = $props();
 
@@ -129,6 +131,7 @@
     show={showFloatingMessage}
     x={floatingMessageX}
     y={floatingMessageY}
+    variant={floatingMessageVariant}
 >
     <div>{floatingMessage}</div>
 </FloatingMessage>

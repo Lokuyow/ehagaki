@@ -4,7 +4,7 @@ import { STORAGE_KEYS } from "../lib/constants";
 import {
     normalizeFooterSettingShortcuts,
     parseFooterSettingShortcuts,
-    type FooterSettingShortcutId,
+    type FooterSettingShortcutSlots,
 } from "../lib/footerSettingShortcuts";
 
 const appStorage = getAppStorage();
@@ -21,10 +21,10 @@ function repairStoredValue(): void {
 repairStoredValue();
 
 export const footerSettingShortcutsStore = {
-    get value(): FooterSettingShortcutId[] {
+    get value(): FooterSettingShortcutSlots {
         return selected;
     },
-    set(value: readonly string[]): void {
+    set(value: unknown): void {
         selected = normalizeFooterSettingShortcuts(value);
         const canonical = JSON.stringify(selected);
         appStorage.setItem(storageKey, canonical);

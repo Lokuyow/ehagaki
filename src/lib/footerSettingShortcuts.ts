@@ -13,28 +13,43 @@ export const FOOTER_SETTING_SHORTCUTS = [
 
 export type FooterSettingShortcutId = (typeof FOOTER_SETTING_SHORTCUTS)[number]["id"];
 
-const shortcutOrder = new Map<string, number>(
-    FOOTER_SETTING_SHORTCUTS.map(({ id }, index) => [id, index]),
-);
-
-export function normalizeFooterSettingShortcuts(value: unknown): FooterSettingShortcutId[] {
-    if (!Array.isArray(value)) return [];
-
-    const selected = new Set<string>();
-    for (const id of value) {
-        if (typeof id === "string" && shortcutOrder.has(id)) selected.add(id);
-    }
-
-    return [...selected]
-        .sort((left, right) => shortcutOrder.get(left)! - shortcutOrder.get(right)!)
-        .slice(0, 2) as FooterSettingShortcutId[];
+export interface FooterSettingShortcutSlots {
+    left: FooterSettingShortcutId | null;
+    right: FooterSettingShortcutId | null;
 }
 
-export function parseFooterSettingShortcuts(raw: string | null): FooterSettingShortcutId[] {
-    if (raw === null) return [];
+export const EMPTY_FOOTER_SETTING_SHORTCUTS: FooterSettingShortcutSlots = {
+    left: null,
+    right: null,
+};
+
+const knownShortcutIds = new Set<string>(
+    FOOTER_SETTING_SHORTCUTS.map(({ id }) => id),
+);
+
+function normalizeId(value: unknown): FooterSettingShortcutId | null {
+    return typeof value === "string" && knownShortcutIds.has(value)
+        ? value as FooterSettingShortcutId
+        : null;
+}
+
+export function normalizeFooterSettingShortcuts(value: unknown): FooterSettingShortcutSlots {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        return { ...EMPTY_FOOTER_SETTING_SHORTCUTS };
+    }
+
+    const slots = value as Record<string, unknown>;
+    const left = normalizeId(slots.left);
+    let right = normalizeId(slots.right);
+    if (left !== null && left === right) right = null;
+    return { left, right };
+}
+
+export function parseFooterSettingShortcuts(raw: string | null): FooterSettingShortcutSlots {
+    if (raw === null) return { ...EMPTY_FOOTER_SETTING_SHORTCUTS };
     try {
         return normalizeFooterSettingShortcuts(JSON.parse(raw));
     } catch {
-        return [];
+        return { ...EMPTY_FOOTER_SETTING_SHORTCUTS };
     }
 }

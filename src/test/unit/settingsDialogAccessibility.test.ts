@@ -77,7 +77,7 @@ describe('SettingsDialog accessibility', () => {
 
     afterEach(() => {
         themeColorStore.reset();
-        footerSettingShortcutsStore.set([]);
+        footerSettingShortcutsStore.set({ left: null, right: null });
         settingsStore.showMascot = true;
         settingsStore.showFlavorText = true;
         themeModeStore.set('system');
@@ -85,28 +85,32 @@ describe('SettingsDialog accessibility', () => {
         settingsStore.locale = 'en';
     });
 
-    it('フッター shortcut は2個まで選択でき、選択済み候補は解除できる', async () => {
+    it('フッターshortcutの左右slotを別々に選択でき、反対slotの重複候補を無効化する', async () => {
         settingsStore.locale = 'ja';
         render(SettingsDialog, {
             props: { show: true, onClose: () => {} },
         });
         await tick();
 
-        const language = screen.getByRole('checkbox', { name: '言語' }) as HTMLButtonElement;
-        const imageQuality = screen.getByRole('checkbox', { name: '画像品質' }) as HTMLButtonElement;
-        const videoQuality = screen.getByRole('checkbox', { name: '動画品質' }) as HTMLButtonElement;
-
-        await fireEvent.click(language);
-        await fireEvent.click(imageQuality);
+        const left = screen.getByRole('combobox', { name: '左側' }) as HTMLSelectElement;
+        const right = screen.getByRole('combobox', { name: '右側' }) as HTMLSelectElement;
+        expect(Array.from(left.options).map((option) => option.value)).toEqual([
+            '', 'language', 'image-quality', 'video-quality', 'theme-mode',
+            'media-free-placement', 'hide-mascot', 'hide-flavor-text',
+            'quote-notification', 'reply-notification', 'client-tag',
+        ]);
+        await fireEvent.change(left, { target: { value: 'language' } });
         await tick();
-
-        expect(footerSettingShortcutsStore.value).toEqual(['language', 'image-quality']);
-        expect(videoQuality.disabled).toBe(true);
-        expect(language.disabled).toBe(false);
-
-        await fireEvent.click(imageQuality);
-        expect(footerSettingShortcutsStore.value).toEqual(['language']);
-        expect(videoQuality.disabled).toBe(false);
+        expect(footerSettingShortcutsStore.value).toEqual({ left: 'language', right: null });
+        expect(Array.from(right.options).find((option) => option.value === 'language')?.disabled).toBe(true);
+        await fireEvent.change(right, { target: { value: 'image-quality' } });
+        await tick();
+        expect(footerSettingShortcutsStore.value).toEqual({ left: 'language', right: 'image-quality' });
+        expect(Array.from(left.options).find((option) => option.value === 'image-quality')?.disabled).toBe(true);
+        await fireEvent.change(left, { target: { value: '' } });
+        await tick();
+        expect(footerSettingShortcutsStore.value).toEqual({ left: null, right: 'image-quality' });
+        expect(Array.from(right.options).find((option) => option.value === 'image-quality')?.disabled).toBe(false);
     });
 
     it('設定名の左にだけ指定アイコンを表示し、装飾として隠す', async () => {

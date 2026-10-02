@@ -78,7 +78,7 @@ describe('FooterComponent', () => {
             npub: '',
             nprofile: '',
         };
-        footerSettingShortcutsStore.set([]);
+        footerSettingShortcutsStore.set({ left: null, right: null });
         settingsStore.locale = 'ja';
         isLoadingProfileStore.set(false);
         profileLoadedStore.set(false);
@@ -157,16 +157,40 @@ describe('FooterComponent', () => {
         expect(onOpenPostHistoryDialog).toHaveBeenCalledOnce();
     });
 
-    it('選択した shortcut をFooterに表示し、Popoverからcanonical storeを変更できる', async () => {
-        footerSettingShortcutsStore.set(['language']);
+    it('選択したshortcutを直接操作し、設定同期と左右順を保つ', async () => {
+        footerSettingShortcutsStore.set({ left: 'language', right: 'image-quality' });
         renderFooter();
 
-        const shortcut = screen.getByRole('button', { name: '言語' });
-        expect(shortcut).toBeTruthy();
+        const shortcuts = screen.getAllByRole('button').filter((button) =>
+            button.classList.contains('footer-setting-shortcut-button'),
+        );
+        expect(shortcuts).toHaveLength(2);
+        const history = screen.getByRole('button', { name: '投稿履歴を開く' });
+        expect(shortcuts[0].getAttribute('aria-label')).toBe('言語: 日本語');
+        expect(shortcuts[1].getAttribute('aria-label')).toBe('画像品質: 中');
+        expect(shortcuts[0].compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(history.compareDocumentPosition(shortcuts[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+        const shortcut = shortcuts[0];
         await fireEvent.click(shortcut);
-        const english = await screen.findByRole('radio', { name: 'English' });
-        await fireEvent.click(english);
+        await tick();
         expect(settingsStore.locale).toBe('en');
+        expect(shortcut.getAttribute('aria-label')).toBe('Language: English');
+        expect(document.querySelector('[role="dialog"]')).toBeNull();
+        expect(document.querySelector('[data-radix-popper-content-wrapper]')).toBeNull();
+    });
+
+    it('認証状態にかかわらず空slotは間隔を作らず、status表示中はshortcutも隠す', () => {
+        footerSettingShortcutsStore.set({ left: null, right: 'language' });
+        const { container } = renderFooter({ isAuthenticated: false });
+        expect(container.querySelectorAll('.footer-setting-shortcut-button')).toHaveLength(1);
+        expect(container.querySelector('.post-history-btn')).toBeNull();
+
+        footerDisplayState.showingInfo = true;
+        cleanup();
+        const next = renderFooter({ isAuthenticated: false });
+        expect(next.container.querySelectorAll('.footer-setting-shortcut-button')).toHaveLength(0);
+        expect(next.container.querySelector('.post-history-btn')).toBeNull();
     });
 
     it('投稿履歴ボタンの hover focus pointerdown で module preload callback を呼ぶ', async () => {
