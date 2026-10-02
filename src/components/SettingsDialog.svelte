@@ -969,6 +969,11 @@
 </DialogWrapper>
 
 <style>
+    :global(.settings-dialog :where(button:not(.bui-switch))) {
+        min-inline-size: 44px;
+        min-block-size: 44px;
+    }
+
     /* SettingsDialog固有: paddingなしのdialog-content */
     :global(.settings-dialog .dialog-content) {
         padding: 0;
