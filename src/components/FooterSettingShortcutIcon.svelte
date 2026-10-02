@@ -12,7 +12,7 @@
 {#if shortcutId === "hide-mascot"}
     <img class="shortcut-icon mascot-icon" src={resolveAppAssetUrl("ehagaki_icon.svg")} alt="" aria-hidden="true" />
 {:else}
-    <span class="shortcut-icon" class:language-icon={shortcutId === "language"} class:image-icon={shortcutId === "image-quality"} class:video-icon={shortcutId === "video-quality"} class:theme-icon={shortcutId === "theme-mode"} class:media-icon={shortcutId === "media-free-placement"} class:flavor-icon={shortcutId === "hide-flavor-text"} class:quote-icon={shortcutId === "quote-notification"} class:reply-icon={shortcutId === "reply-notification"} class:client-tag-icon={shortcutId === "client-tag"} aria-hidden="true"></span>
+    <span class="shortcut-icon shortcut-mask-icon" class:language-icon={shortcutId === "language"} class:image-icon={shortcutId === "image-quality"} class:video-icon={shortcutId === "video-quality"} class:theme-icon={shortcutId === "theme-mode"} class:media-icon={shortcutId === "media-free-placement"} class:flavor-icon={shortcutId === "hide-flavor-text"} class:quote-icon={shortcutId === "quote-notification"} class:reply-icon={shortcutId === "reply-notification"} class:client-tag-icon={shortcutId === "client-tag"} aria-hidden="true"></span>
 {/if}
 
 <style>
@@ -21,6 +21,9 @@
         width: 24px;
         height: 24px;
         flex: 0 0 24px;
+    }
+
+    .shortcut-mask-icon {
         background-color: var(--text, currentColor);
         mask-size: contain;
         mask-position: center;

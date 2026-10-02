@@ -110,3 +110,53 @@ test("preserves the flavor preference while mascot hiding forces the effective s
     await hideFlavor.click();
     await expect(page.getByRole("switch", { name: "フレーバーテキストを非表示" })).toHaveAttribute("aria-checked", "true");
 });
+
+test("keeps mascot SVG backgrounds transparent in both shortcut surfaces", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("footerSettingShortcuts", '["hide-mascot"]'));
+    await page.goto("/");
+    await page.getByRole("button", { name: "はじめる" }).click();
+
+    const footerMascot = page.getByRole("button", { name: "きってんを非表示" }).locator("img.mascot-icon");
+    await expect(footerMascot).toBeVisible();
+    await expect(footerMascot).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(footerMascot).toHaveCSS("filter", "grayscale(1)");
+
+    await page.getByRole("button", { name: "設定" }).click();
+    const settingsMascot = page.locator(".footer-shortcut-settings img.mascot-icon");
+    await settingsMascot.scrollIntoViewIfNeeded();
+    await expect(settingsMascot).toBeVisible();
+    await expect(settingsMascot).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(settingsMascot).toHaveCSS("filter", "grayscale(1)");
+});
+
+test("gives every Footer shortcut radio button a 44px minimum target", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 844 });
+    await page.goto("/");
+    await page.getByRole("button", { name: "はじめる" }).click();
+
+    const candidates = [
+        { id: "language", label: "言語" },
+        { id: "image-quality", label: "画像品質" },
+        { id: "video-quality", label: "動画品質" },
+        { id: "theme-mode", label: "モード" },
+    ];
+
+    for (const candidate of candidates) {
+        await page.evaluate((id) => localStorage.setItem("footerSettingShortcuts", JSON.stringify([id])), candidate.id);
+        await page.reload();
+        const trigger = page.getByRole("button", { name: candidate.label });
+        await trigger.click();
+        const group = page.getByRole("radiogroup", { name: candidate.label });
+        await expect(group).toBeVisible();
+        const sizes = await group.getByRole("radio").evaluateAll((radios) => radios.map((radio) => {
+            const bounds = radio.getBoundingClientRect();
+            return { width: bounds.width, height: bounds.height };
+        }));
+        expect(sizes.length).toBeGreaterThan(0);
+        for (const size of sizes) {
+            expect(size.width).toBeGreaterThanOrEqual(44);
+            expect(size.height).toBeGreaterThanOrEqual(44);
+        }
+        await page.keyboard.press("Escape");
+    }
+});

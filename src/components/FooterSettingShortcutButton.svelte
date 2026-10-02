@@ -96,7 +96,7 @@
     }
     :global(.footer-setting-shortcut-popover) {
         box-sizing: border-box;
-        width: min(240px, var(--bits-floating-available-width, 240px));
+        width: min(240px, var(--bits-popover-content-available-width, 240px));
         max-width: calc(100vw - 16px);
         padding: 12px;
         border: 1px solid var(--border);
@@ -107,6 +107,10 @@
         z-index: 100001;
     }
     :global(.shortcut-radio-group) { display: flex; flex-wrap: wrap; gap: 6px; }
+    :global(.footer-setting-shortcut-popover button[role="radio"]) {
+        min-inline-size: 44px;
+        min-block-size: 44px;
+    }
     .shortcut-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     :global(button.shortcut-switch) {
         position: relative;
