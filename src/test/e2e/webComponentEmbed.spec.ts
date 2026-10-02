@@ -2575,3 +2575,79 @@ test("Full self-publish does not expose Host-owned methods", async ({ page }) =>
         initializationErrors: [],
     });
 });
+
+test("Full Web Component restores left and right footer shortcuts in its storage namespace at 320px", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin, componentStoragePrefix }) => {
+        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"left":"image-quality","right":"video-quality"}');
+        localStorage.setItem(`${componentStoragePrefix}imageQualityLevel`, "none");
+        localStorage.setItem(`${componentStoragePrefix}videoQualityLevel`, "none");
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & { whenReady(): Promise<void> };
+        composer.style.cssText = "display:block;width:320px;height:640px";
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin, componentStoragePrefix });
+
+    const composer = page.locator("ehagaki-composer");
+    const shortcutButtons = composer.locator(".footer-setting-shortcut-button");
+    await expect(shortcutButtons).toHaveCount(2);
+    await expect(shortcutButtons.first()).toBeVisible();
+    await expect(shortcutButtons.first()).toHaveAttribute("aria-label", /画像品質:/);
+    await expect(shortcutButtons.nth(1)).toHaveAttribute("aria-label", /動画品質:/);
+    await shortcutButtons.first().click();
+    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}imageQualityLevel`), componentStoragePrefix)).toBe("high");
+    await shortcutButtons.nth(1).click();
+    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}videoQualityLevel`), componentStoragePrefix)).toBe("high");
+    const feedback = composer.locator(".floating-message").last();
+    await expect(feedback).toContainText("動画品質:");
+    await expect(composer.locator(".footer-setting-shortcut-popover")).toHaveCount(0);
+
+    const result = await composer.evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const component = element.getBoundingClientRect();
+        const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
+        const shortcuts = Array.from(shadow.querySelectorAll<HTMLElement>(".footer-setting-shortcut-button"));
+        const footerRect = footer.getBoundingClientRect();
+        return {
+            componentWidth: component.width,
+            componentLeft: component.left,
+            componentRight: component.right,
+            componentScrollWidth: element.scrollWidth,
+            footerScrollWidth: footer.scrollWidth,
+            footerLeft: footerRect.left,
+            footerRight: footerRect.right,
+            footerTop: footerRect.top,
+            feedbackRect: (() => {
+                const rect = element.shadowRoot!.querySelector<HTMLElement>(".floating-message")!.getBoundingClientRect();
+                return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+            })(),
+            shortcutRects: shortcuts.map((shortcut) => {
+                const rect = shortcut.getBoundingClientRect();
+                return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
+            }),
+            shortcutGaps: (() => {
+                const controls = shadow.querySelector<HTMLElement>(".footer-setting-controls")!;
+                return getComputedStyle(controls).gap;
+            })(),
+            postHistoryCount: shadow.querySelectorAll(".post-history-btn").length,
+            popoverCount: document.querySelectorAll(".footer-setting-shortcut-popover").length,
+        };
+    });
+    expect(result.componentWidth).toBe(320);
+    expect(result.componentScrollWidth).toBeLessThanOrEqual(result.componentWidth);
+    expect(result.footerScrollWidth).toBeLessThanOrEqual(320);
+    expect(result.postHistoryCount).toBe(0);
+    expect(result.popoverCount).toBe(0);
+    expect(result.feedbackRect.left).toBeGreaterThanOrEqual(result.componentLeft);
+    expect(result.feedbackRect.right).toBeLessThanOrEqual(result.componentRight);
+    expect(result.feedbackRect.bottom).toBeLessThanOrEqual(result.footerTop);
+    expect(result.shortcutRects).toHaveLength(2);
+    expect(result.shortcutGaps).toBe("12px");
+    for (const rect of result.shortcutRects) {
+        expect(rect.left).toBeGreaterThanOrEqual(result.footerLeft - 0.5);
+        expect(rect.right).toBeLessThanOrEqual(result.footerRight + 0.5);
+        expect(rect.width).toBeGreaterThanOrEqual(44);
+        expect(rect.height).toBeGreaterThanOrEqual(44);
+    }
+});

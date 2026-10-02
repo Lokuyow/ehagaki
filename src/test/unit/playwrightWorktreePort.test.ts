@@ -145,6 +145,7 @@ describe('Playwright config connection values', () => {
                 '**/webComponentEmbed.spec.ts',
                 '**/webComponentLite.spec.ts',
                 '**/webComponentParentClientExample.spec.ts',
+                '**/footerSettingShortcuts.spec.ts',
                 '**/postEditorSending.spec.ts',
                 '**/postHistoryDialog.spec.ts',
             ]);

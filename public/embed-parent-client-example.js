@@ -124,6 +124,7 @@ const EMBED_STORAGE_KEYS = new Set([
     "settingsPreferenceMetadata",
     "firstVisit",
     "sharedMediaProcessed",
+    "footerSettingShortcuts",
 ]);
 
 const EMBED_INDEXEDDB_STORES = new Set([

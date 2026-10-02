@@ -25,6 +25,8 @@
         loadRelayConfigFromStorage,
     } from "../stores/relayStore.svelte";
     import { themeModeStore } from "../stores/themeStore.svelte";
+    import { footerSettingShortcutsStore } from "../stores/footerSettingShortcutsStore.svelte";
+    import { FOOTER_SETTING_SHORTCUTS } from "../lib/footerSettingShortcuts";
     import { themeColorStore } from "../stores/themeColorStore.svelte";
     import { settingsStore } from "../stores/settingsStore.svelte";
     import { getCompressionLevels } from "../lib/constants";
@@ -42,10 +44,7 @@
     import SettingsCompressionSection from "./settings/SettingsCompressionSection.svelte";
     import SettingsUploadDestinationSection from "./settings/SettingsUploadDestinationSection.svelte";
     import RadioButton from "./RadioButton.svelte";
-    import {
-        normalizeHexColor,
-        type ThemeMode,
-    } from "../lib/utils/settingsStorage";
+    import { normalizeHexColor } from "../lib/utils/settingsStorage";
     import {
         EXTERNAL_NOSTR_CLIENTS,
         normalizeExternalNostrClientUrlTemplate,
@@ -92,16 +91,15 @@
     let replyNotificationEnabled = $state(
         settingsStore.replyNotificationEnabled,
     );
-    let themeMode = $state<ThemeMode>(themeModeStore.value);
     const defaultAccentColor = "#1dbf73";
     const defaultBaseColorPickerValue = "#808080";
     let accentColorInput = $state(themeColorStore.accentColor ?? defaultAccentColor);
     let baseColorInput = $state(themeColorStore.baseColor ?? "");
     let accentColorError = $state<string | null>(null);
     let baseColorError = $state<string | null>(null);
-    let hideMascot = $state(!settingsStore.showMascot);
-    let hideFlavorText = $state(!settingsStore.showFlavorText);
-    let effectiveHideFlavorText = $derived(hideMascot || hideFlavorText);
+    let effectiveHideFlavorText = $derived(
+        !settingsStore.showMascot || !settingsStore.showFlavorText,
+    );
 
     // Store派生値
     let swVersion = $derived(swVersionStore.value);
@@ -117,12 +115,6 @@
         isStaleAssetReloadRequired ||
             ($swUpdateStatus === "ready" && !isDbUpgradeBlocked),
     );
-
-    $effect(() => {
-        if (themeMode !== themeModeStore.value) {
-            themeModeStore.set(themeMode);
-        }
-    });
 
     function handleSwRefresh() {
         if (isStaleAssetReloadRequired) {
@@ -142,12 +134,9 @@
         externalNostrClientCustomUrl = settingsStore.externalNostrClientCustomUrl;
         quoteNotificationEnabled = settingsStore.quoteNotificationEnabled;
         replyNotificationEnabled = settingsStore.replyNotificationEnabled;
-        themeMode = themeModeStore.value;
         themeColorStore.reload();
         accentColorInput = themeColorStore.accentColor ?? defaultAccentColor;
         baseColorInput = themeColorStore.baseColor ?? "";
-        hideMascot = !settingsStore.showMascot;
-        hideFlavorText = !settingsStore.showFlavorText;
         fetchSwVersion();
         if (!hostRelayConfigActive && authState.value?.pubkey && authState.value?.isAuthenticated) {
             loadRelayConfigFromStorage(authState.value.pubkey);
@@ -208,18 +197,6 @@
         }
     });
 
-    $effect(() => {
-        if (!hideMascot !== settingsStore.showMascot) {
-            settingsStore.showMascot = !hideMascot;
-        }
-    });
-
-    $effect(() => {
-        if (!hideFlavorText !== settingsStore.showFlavorText) {
-            settingsStore.showFlavorText = !hideFlavorText;
-        }
-    });
-
     // showがtrueのたびにリレーリストを再取得、nostr-zap-view初期化
     $effect(() => {
         if (!show) {
@@ -240,6 +217,14 @@
 
     function toggleLanguage() {
         settingsStore.locale = $locale === "ja" ? "en" : "ja";
+    }
+
+    function handleFooterShortcutChange(slot: "left" | "right", event: Event): void {
+        const selectedId = (event.currentTarget as HTMLSelectElement).value;
+        footerSettingShortcutsStore.set({
+            ...footerSettingShortcutsStore.value,
+            [slot]: selectedId || null,
+        });
     }
 
     function handleExternalNostrClientCustomUrlInput(value: string): void {
@@ -449,7 +434,7 @@
                         class="setting-menu-icon setting-menu-mask-icon language-setting-icon"
                         aria-hidden="true"
                     ></span>
-                    <span class="setting-label"> Language/言語 </span>
+                    <span class="setting-label">{$_("settingsDialog.language")}</span>
                 </div>
                 <div class="setting-control">
                     <Button
@@ -497,11 +482,9 @@
                     class="setting-control theme-mode-group"
                     name="themeMode"
                     orientation="horizontal"
-                    value={themeMode}
+                    value={themeModeStore.value}
                     aria-labelledby="theme-mode-label"
-                    onValueChange={(value) => {
-                        themeMode = value as ThemeMode;
-                    }}
+                    onValueChange={(value) => themeModeStore.set(value as "system" | "light" | "dark")}
                 >
                     <RadioButton
                         value="system"
@@ -680,7 +663,8 @@
                     <div class="setting-control">
                         <Switch.Root
                             class="bui-switch"
-                            bind:checked={hideMascot}
+                            checked={!settingsStore.showMascot}
+                            onCheckedChange={(checked) => (settingsStore.showMascot = !checked)}
                             aria-labelledby="hide-mascot-label"
                         >
                             <Switch.Thumb class="bui-switch-thumb" />
@@ -710,7 +694,7 @@
                                     "settingsDialog.hide_flavor_text_description",
                                 )}
                             >
-                                {hideMascot
+                                {!settingsStore.showMascot
                                     ? $_(
                                           "settingsDialog.hide_flavor_text_note_included",
                                       ) ||
@@ -723,7 +707,7 @@
                         </div>
                     </div>
                     <div class="setting-control">
-                        {#if hideMascot}
+                        {#if !settingsStore.showMascot}
                             <Switch.Root
                                 class="bui-switch"
                                 checked={effectiveHideFlavorText}
@@ -735,7 +719,8 @@
                         {:else}
                             <Switch.Root
                                 class="bui-switch"
-                                bind:checked={hideFlavorText}
+                                checked={effectiveHideFlavorText}
+                                onCheckedChange={(checked) => (settingsStore.showFlavorText = !checked)}
                                 aria-labelledby="hide-flavor-text-label"
                             >
                                 <Switch.Thumb class="bui-switch-thumb" />
@@ -849,6 +834,33 @@
                         <Switch.Thumb class="bui-switch-thumb" />
                     </Switch.Root>
                 </div>
+            </div>
+        </div>
+
+        <!-- Footer shortcut slots -->
+        <div class="setting-section footer-shortcut-settings">
+            <div class="setting-label">{$_("settingsDialog.footer_shortcuts")}</div>
+            <div class="footer-shortcut-slots">
+                {#each ["left", "right"] as slot}
+                    {@const side = slot as "left" | "right"}
+                    <label class="footer-shortcut-slot" for={`footer-shortcut-${side}`}>
+                        <span>{$_(`settingsDialog.footer_shortcuts_${side}`)}</span>
+                        <select
+                            id={`footer-shortcut-${side}`}
+                            class="footer-shortcut-select"
+                            value={footerSettingShortcutsStore.value[side] ?? ""}
+                            onchange={(event) => handleFooterShortcutChange(side, event)}
+                        >
+                            <option value="">{$_("settingsDialog.footer_shortcuts_none")}</option>
+                            {#each FOOTER_SETTING_SHORTCUTS as shortcut (shortcut.id)}
+                                <option
+                                    value={shortcut.id}
+                                    disabled={shortcut.id === footerSettingShortcutsStore.value[side === "left" ? "right" : "left"]}
+                                >{$_(shortcut.labelKey)}</option>
+                            {/each}
+                        </select>
+                    </label>
+                {/each}
             </div>
         </div>
 
@@ -1098,6 +1110,18 @@
         gap: 20px;
         width: 100%;
         overflow-y: auto;
+    }
+    .footer-shortcut-slots { display: flex; flex-direction: column; gap: 12px; }
+    .footer-shortcut-slot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .footer-shortcut-select {
+        flex: 0 1 260px;
+        min-width: 0;
+        min-height: 44px;
+        padding: 8px 32px 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--dialog-bg);
+        color: var(--text);
     }
     .setting-label-with-icon {
         flex: 1 1 auto;

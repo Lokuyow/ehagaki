@@ -13,16 +13,17 @@
         show?: boolean;
         x?: number;
         y?: number;
-        variant?: "pointer" | "top-right";
+        variant?: "pointer" | "top-right" | "container-top-right";
         children?: () => any;
     }>();
 
     let container: HTMLDivElement | undefined = $state();
     let messageX = $state(0);
     let messageY = $state(0);
+    let messageMaxWidth = $state(320);
 
     const SCREEN_PADDING = 10;
-    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
+    const { overlayTarget, layoutTarget } = getAppRuntimeEnvironment();
 
     $effect(() => {
         if (variant !== "pointer") {
@@ -65,6 +66,23 @@
             messageY = finalY;
         })();
     });
+
+    $effect(() => {
+        if (!show || !container || variant !== "container-top-right") return;
+
+        (async () => {
+            await tick();
+            if (!container) return;
+
+            const bounds = layoutTarget.getBoundingClientRect();
+            messageMaxWidth = Math.min(320, Math.max(0, bounds.width - SCREEN_PADDING * 2));
+            await tick();
+            if (!container) return;
+            const message = container.getBoundingClientRect();
+            messageX = Math.max(bounds.left + SCREEN_PADDING, bounds.right - message.width - SCREEN_PADDING);
+            messageY = bounds.top + SCREEN_PADDING;
+        })();
+    });
 </script>
 
 {#if show}
@@ -73,10 +91,14 @@
             bind:this={container}
             class="floating-message {variant === 'top-right'
                 ? 'top-right'
-                : 'pointer'}"
-            style={variant === "pointer"
-                ? `left: ${messageX}px; top: ${messageY}px;`
-                : undefined}
+                : variant === 'container-top-right'
+                  ? 'container-top-right'
+                  : 'pointer'}"
+            style={variant === "container-top-right"
+                ? `left: ${messageX}px; top: ${messageY}px; width: ${messageMaxWidth}px;`
+                : variant === "pointer"
+                  ? `left: ${messageX}px; top: ${messageY}px;`
+                  : undefined}
             role="status"
             aria-live="polite"
             aria-atomic="true"
@@ -112,6 +134,13 @@
         top: 16px;
         right: 16px;
         max-width: min(360px, calc(100vw - 32px));
+        white-space: normal;
+    }
+
+    .floating-message.container-top-right {
+        top: auto;
+        right: auto;
+        box-sizing: border-box;
         white-space: normal;
     }
 

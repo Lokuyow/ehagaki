@@ -62,6 +62,8 @@ import {
     swUpdateStatus,
 } from '../../stores/swStore.svelte';
 import { settingsStore } from '../../stores/settingsStore.svelte';
+import { footerSettingShortcutsStore } from '../../stores/footerSettingShortcutsStore.svelte';
+import { themeModeStore } from '../../stores/themeStore.svelte';
 import { themeColorStore } from '../../stores/themeColorStore.svelte';
 
 describe('SettingsDialog accessibility', () => {
@@ -75,8 +77,40 @@ describe('SettingsDialog accessibility', () => {
 
     afterEach(() => {
         themeColorStore.reset();
+        footerSettingShortcutsStore.set({ left: null, right: null });
+        settingsStore.showMascot = true;
+        settingsStore.showFlavorText = true;
+        themeModeStore.set('system');
         settingsStore.externalNostrClient = 'nostter';
         settingsStore.locale = 'en';
+    });
+
+    it('フッターshortcutの左右slotを別々に選択でき、反対slotの重複候補を無効化する', async () => {
+        settingsStore.locale = 'ja';
+        render(SettingsDialog, {
+            props: { show: true, onClose: () => {} },
+        });
+        await tick();
+
+        const left = screen.getByRole('combobox', { name: '左側' }) as HTMLSelectElement;
+        const right = screen.getByRole('combobox', { name: '右側' }) as HTMLSelectElement;
+        expect(Array.from(left.options).map((option) => option.value)).toEqual([
+            '', 'language', 'image-quality', 'video-quality', 'theme-mode',
+            'media-free-placement', 'hide-mascot', 'hide-flavor-text',
+            'quote-notification', 'reply-notification', 'client-tag',
+        ]);
+        await fireEvent.change(left, { target: { value: 'language' } });
+        await tick();
+        expect(footerSettingShortcutsStore.value).toEqual({ left: 'language', right: null });
+        expect(Array.from(right.options).find((option) => option.value === 'language')?.disabled).toBe(true);
+        await fireEvent.change(right, { target: { value: 'image-quality' } });
+        await tick();
+        expect(footerSettingShortcutsStore.value).toEqual({ left: 'language', right: 'image-quality' });
+        expect(Array.from(left.options).find((option) => option.value === 'image-quality')?.disabled).toBe(true);
+        await fireEvent.change(left, { target: { value: '' } });
+        await tick();
+        expect(footerSettingShortcutsStore.value).toEqual({ left: null, right: 'image-quality' });
+        expect(Array.from(right.options).find((option) => option.value === 'image-quality')?.disabled).toBe(false);
     });
 
     it('設定名の左にだけ指定アイコンを表示し、装飾として隠す', async () => {

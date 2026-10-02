@@ -89,6 +89,7 @@
     settingsStore,
     consumeFirstVisitFlag,
   } from "./stores/settingsStore.svelte";
+  import { footerSettingShortcutsStore } from "./stores/footerSettingShortcutsStore.svelte";
   import { themeColorStore } from "./stores/themeColorStore.svelte";
   import { sharedMediaRepository } from "./lib/storage/sharedMediaRepository";
   import { composeSharedText } from "./lib/sharedContentUtils";
@@ -1363,6 +1364,7 @@
       applyStoredSettingsSnapshot: () => {
         settingsStore.applyStoredSnapshot();
         themeColorStore.reload();
+        footerSettingShortcutsStore.reload();
       },
       persistEmbedStorageKeys: () => {
         embedStorageService.persistLocalStorageKeys([...EMBED_STORAGE_KEYS]);
