@@ -48,9 +48,9 @@
 {#if shortcutId === "hide-mascot"}
     <img class="shortcut-icon mascot-icon" src={mascotSource} alt="" aria-hidden="true" />
 {:else if shortcutId === "quote-notification" || shortcutId === "reply-notification"}
-    <span class="shortcut-icon composite-icon" aria-hidden="true">
-        <span class="shortcut-mask-icon composite-main {iconClass}"></span>
-        <span class="shortcut-mask-icon notification-badge" class:notification-on={active} class:notification-off={!active}></span>
+    <span class="paired-icons" aria-hidden="true">
+        <span class="shortcut-icon shortcut-mask-icon {iconClass} paired-main-icon"></span>
+        <span class="shortcut-icon shortcut-mask-icon paired-notification-icon" class:notification-on={active} class:notification-off={!active}></span>
     </span>
 {:else}
     <span class="shortcut-icon shortcut-mask-icon {iconClass}" aria-hidden="true"></span>
@@ -87,9 +87,14 @@
     .client-tag-off-icon { mask-image: url("/icons/label_off_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg"); }
     .mascot-icon { object-fit: contain; filter: grayscale(1); }
 
-    .composite-icon { position: relative; }
-    .composite-main { position: absolute; inset: auto auto 0 0; width: 18px; height: 18px; }
-    .notification-badge { position: absolute; inset: 0 0 auto auto; width: 13px; height: 13px; }
+    .paired-icons {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        width: 52px;
+        height: 24px;
+        flex: 0 0 52px;
+    }
     .notification-on { mask-image: url("/icons/notifications_active_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg"); }
     .notification-off { mask-image: url("/icons/notifications_off_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg"); }
 </style>

@@ -32,6 +32,7 @@ test("keeps zero, one, and two explicit footer slots usable at the 360px standal
         { left: "language", right: null },
         { left: null, right: "language" },
         { left: "language", right: "image-quality" },
+        { left: "quote-notification", right: "reply-notification" },
     ]) {
         await page.addInitScript((value) => localStorage.setItem("footerSettingShortcuts", JSON.stringify(value)), slots);
         await enterApp(page);
@@ -66,6 +67,25 @@ test("keeps zero, one, and two explicit footer slots usable at the 360px standal
             expect(control.width).toBeGreaterThanOrEqual(44);
             expect(control.height).toBeGreaterThanOrEqual(44);
         }
+        if (slots.left === "quote-notification" && slots.right === "reply-notification") {
+            const pairGeometry = await page.locator(".footer-setting-shortcut-button").evaluateAll((buttons) => buttons.map((button) => {
+                const rect = button.getBoundingClientRect();
+                return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
+            }));
+            expect(pairGeometry).toHaveLength(2);
+            expect(pairGeometry[0].right).toBeLessThanOrEqual(pairGeometry[1].left);
+            expect(pairGeometry[1].left - pairGeometry[0].right).toBe(12);
+            const centeredInMiddleLane = await page.locator(".footer-setting-controls").evaluate((controls) => {
+                const rect = controls.getBoundingClientRect();
+                const buttons = Array.from(controls.querySelectorAll<HTMLElement>(".footer-setting-shortcut-button"));
+                return Math.abs((buttons[0].getBoundingClientRect().left + buttons[1].getBoundingClientRect().right) / 2 - (rect.left + rect.right) / 2);
+            });
+            expect(centeredInMiddleLane).toBeLessThanOrEqual(1);
+            for (const pair of pairGeometry) {
+                expect(pair.width).toBe(72);
+                expect(pair.height).toBe(50);
+            }
+        }
         await page.evaluate(() => localStorage.clear());
     }
 });
@@ -73,7 +93,9 @@ test("keeps zero, one, and two explicit footer slots usable at the 360px standal
 test("keeps authenticated left, history, and right controls in order at 360px", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.addInitScript((pubkey) => {
-        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "image-quality", right: "video-quality" }));
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "quote-notification", right: "reply-notification" }));
+        localStorage.setItem("quoteNotificationEnabled", "false");
+        localStorage.setItem("replyNotificationEnabled", "false");
         localStorage.setItem("nostr-accounts", JSON.stringify([{ pubkeyHex: pubkey, type: "nip07", addedAt: 1 }]));
         localStorage.setItem("nostr-active-account", pubkey);
         (window as any).nostr = {
@@ -106,8 +128,12 @@ test("keeps authenticated left, history, and right controls in order at 360px", 
     expect(leftGap).toBeGreaterThanOrEqual(11.5);
     expect(rightGap).toBeGreaterThanOrEqual(11.5);
     expect(Math.abs(leftGap - rightGap)).toBeLessThanOrEqual(1);
-    expect(order[1].rect.width).toBeGreaterThan(order[0].rect.width);
-    expect(order[1].rect.width).toBeGreaterThan(order[2].rect.width);
+    expect(order[0].rect.width).toBe(72);
+    expect(order[2].rect.width).toBe(72);
+    expect(order[0].rect.height).toBe(50);
+    expect(order[1].rect.height).toBe(50);
+    expect(order[2].rect.height).toBe(50);
+    expect(order[1].rect.width).toBeGreaterThanOrEqual(44);
     for (const item of order) {
         expect(item.rect.width).toBeGreaterThanOrEqual(44);
         expect(item.rect.height).toBeGreaterThanOrEqual(44);
@@ -273,23 +299,131 @@ test("toggles quote, reply, and client-tag preferences with icon and aria-presse
     for (const candidate of candidates) {
         await chooseShortcut(page, "left", candidate.id);
         const button = page.locator(".footer-setting-shortcut-button");
-        const mainIcon = button.locator(
-            candidate.id === "quote-notification" || candidate.id === "reply-notification"
-                ? ".composite-main"
-                : ".shortcut-icon",
-        );
+        const isPair = candidate.id === "quote-notification" || candidate.id === "reply-notification";
+        const mainIcon = button.locator(isPair ? ".paired-main-icon" : ".shortcut-icon");
         await expect(button).toHaveAttribute("aria-pressed", "false");
         await expect(mainIcon).toHaveClass(new RegExp(candidate.offIcon));
-        if (candidate.id === "quote-notification" || candidate.id === "reply-notification") {
-            await expect(button.locator(".notification-badge")).toHaveClass(/notification-off/);
+        let buttonGeometry: { width: number; height: number } | undefined;
+        let mainClasses: string | undefined;
+        if (isPair) {
+            const notificationIcon = button.locator(".paired-notification-icon");
+            await expect(notificationIcon).toHaveClass(/notification-off/);
+            const geometry = await button.evaluate((element) => {
+                const buttonRect = element.getBoundingClientRect();
+                const mainRect = element.querySelector<HTMLElement>(".paired-main-icon")!.getBoundingClientRect();
+                const notificationRect = element.querySelector<HTMLElement>(".paired-notification-icon")!.getBoundingClientRect();
+                const wrapper = element.querySelector<HTMLElement>(".paired-icons")!;
+                return {
+                    button: { width: buttonRect.width, height: buttonRect.height },
+                    main: { left: mainRect.left, right: mainRect.right, width: mainRect.width, height: mainRect.height },
+                    notification: { left: notificationRect.left, right: notificationRect.right, width: notificationRect.width, height: notificationRect.height },
+                    wrapperDisplay: getComputedStyle(wrapper).display,
+                    wrapperDirection: getComputedStyle(wrapper).flexDirection,
+                    wrapperGap: getComputedStyle(wrapper).columnGap,
+                    mainMask: getComputedStyle(element.querySelector<HTMLElement>(".paired-main-icon")!).maskImage,
+                    notificationMask: getComputedStyle(element.querySelector<HTMLElement>(".paired-notification-icon")!).maskImage,
+                };
+            });
+            buttonGeometry = geometry.button;
+            mainClasses = await mainIcon.getAttribute("class") ?? undefined;
+            expect(geometry.button).toEqual({ width: 72, height: 50 });
+            expect(geometry.main.width).toBe(24);
+            expect(geometry.main.height).toBe(24);
+            expect(geometry.notification.width).toBe(24);
+            expect(geometry.notification.height).toBe(24);
+            expect(geometry.main.right).toBeLessThan(geometry.notification.left);
+            expect(geometry.notification.left - geometry.main.right).toBe(4);
+            expect(geometry.wrapperDisplay).toBe("flex");
+            expect(geometry.wrapperDirection).toBe("row");
+            expect(geometry.wrapperGap).toBe("4px");
+            expect(geometry.mainMask).toContain(candidate.id === "quote-notification" ? "format_quote" : "chat_bubble");
+            expect(geometry.notificationMask).toContain("notifications_off");
         }
+        await expect(button).not.toHaveClass(/selected/);
+        const previousMainClasses = mainClasses;
+        const previousButtonGeometry = buttonGeometry;
         await button.click();
         await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), candidate.key)).toBe("true");
         await expect(button).toHaveAttribute("aria-pressed", "true");
         await expect(button).not.toHaveClass(/selected/);
         await expect(mainIcon).toHaveClass(new RegExp(candidate.onIcon));
-        if (candidate.id === "quote-notification" || candidate.id === "reply-notification") {
-            await expect(button.locator(".notification-badge")).toHaveClass(/notification-on/);
+        if (isPair) {
+            await expect(button.locator(".paired-notification-icon")).toHaveClass(/notification-on/);
+            const onState = await button.evaluate((element) => {
+                const rect = element.getBoundingClientRect();
+                const main = element.querySelector<HTMLElement>(".paired-main-icon")!;
+                const notification = element.querySelector<HTMLElement>(".paired-notification-icon")!;
+                return {
+                    button: { width: rect.width, height: rect.height },
+                    mainClasses: main.className,
+                    mainMask: getComputedStyle(main).maskImage,
+                    notificationMask: getComputedStyle(notification).maskImage,
+                };
+            });
+            expect(onState.button).toEqual(previousButtonGeometry);
+            expect(onState.mainClasses).toBe(previousMainClasses);
+            expect(onState.mainMask).toContain(candidate.id === "quote-notification" ? "format_quote" : "chat_bubble");
+            expect(onState.notificationMask).toContain("notifications_active");
+            await expect(button).not.toHaveClass(/selected/);
+        }
+    }
+});
+
+test("shows natural localized FloatingMessages for both states of every boolean shortcut", async ({ page }) => {
+    await page.addInitScript(() => {
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: null, right: "language" }));
+        localStorage.setItem("mediaFreePlacement", "false");
+        localStorage.setItem("showMascot", "true");
+        localStorage.setItem("showFlavorText", "true");
+        localStorage.setItem("quoteNotificationEnabled", "false");
+        localStorage.setItem("replyNotificationEnabled", "false");
+        localStorage.setItem("clientTagEnabled", "false");
+        localStorage.setItem("locale", "ja");
+    });
+    await enterApp(page);
+
+    const messages = {
+        "media-free-placement": {
+            ja: ["メディア自由配置", "メディア固定配置"],
+            en: ["Free media placement", "Fixed media placement"],
+        },
+        "hide-mascot": {
+            ja: ["きってんを非表示", "きってんを表示"],
+            en: ["Hide mascot", "Show mascot"],
+        },
+        "hide-flavor-text": {
+            ja: ["フレーバーテキストを非表示", "フレーバーテキストを表示"],
+            en: ["Hide flavor text", "Show flavor text"],
+        },
+        "quote-notification": {
+            ja: ["引用元の投稿者に通知", "引用元の投稿者に通知しない"],
+            en: ["Notify the quoted author", "Don't notify the quoted author"],
+        },
+        "reply-notification": {
+            ja: ["返信先以外にも通知", "返信先以外には通知しない"],
+            en: ["Also notify people besides the person being replied to", "Notify only the person being replied to"],
+        },
+        "client-tag": {
+            ja: ["投稿にクライアント名をつける", "投稿にクライアント名をつけない"],
+            en: ["Add the client name to posts", "Don't add the client name to posts"],
+        },
+    } as const;
+
+    for (const locale of ["ja", "en"] as const) {
+        if (locale === "en") {
+            await page.locator(".footer-setting-shortcut-button").nth(1).click();
+            await expect.poll(() => page.evaluate(() => localStorage.getItem("locale"))).toBe("en");
+        }
+
+        for (const shortcutId of Object.keys(messages) as (keyof typeof messages)[]) {
+            await chooseShortcut(page, "left", shortcutId);
+            const button = page.locator(".footer-setting-shortcut-button").first();
+            await button.click();
+            await expect(page.getByRole("status").filter({ hasText: messages[shortcutId][locale][0] })).toBeVisible();
+            await expect(button).toHaveAttribute("aria-pressed", "true");
+            await button.click();
+            await expect(page.getByRole("status").filter({ hasText: messages[shortcutId][locale][1] })).toBeVisible();
+            await expect(button).toHaveAttribute("aria-pressed", "false");
         }
     }
 });
@@ -403,4 +537,90 @@ test("SettingsDialog edits both slots, disables only a duplicate in the opposite
     await page.getByRole("button", { name: "閉じる" }).click();
     await expect(page.locator(".footer-setting-shortcut-button")).toHaveCount(2);
     await expect(page.locator(".footer-setting-shortcut-button").first()).toHaveAttribute("aria-label", "言語: 日本語");
+});
+
+test("aligns Footer shortcut slots with its icon heading without narrow dialog overflow", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("footerSettingShortcuts", JSON.stringify(emptySlots)));
+    await enterApp(page);
+
+    for (const width of [360, 320]) {
+        await page.setViewportSize({ width, height: 844 });
+        await page.getByRole("button", { name: "設定", exact: true }).click();
+        const dialog = page.getByRole("dialog");
+        const headingLabel = dialog.locator(".footer-shortcuts-setting-heading .setting-label");
+        const headingIcon = dialog.locator(".footer-shortcuts-setting-icon");
+        const left = dialog.locator("#footer-shortcut-left");
+        const right = dialog.locator("#footer-shortcut-right");
+        await expect(headingLabel).toHaveText("フッターショートカット");
+        await expect(headingIcon).toBeVisible();
+        await expect(dialog.locator("select.footer-shortcut-select")).toHaveCount(2);
+        await expect(left).toHaveAccessibleName("左側");
+        await expect(right).toHaveAccessibleName("右側");
+
+        const geometry = await dialog.evaluate((dialogElement) => {
+            const getRect = (selector: string) => {
+                const rect = dialogElement.querySelector<HTMLElement>(selector)!.getBoundingClientRect();
+                return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+            };
+            const headingIcon = dialogElement.querySelector<HTMLElement>(".footer-shortcuts-setting-icon")!;
+            const referenceIcon = dialogElement.querySelector<HTMLElement>(".client-tag-setting-icon")!;
+            const heading = dialogElement.querySelector<HTMLElement>(".footer-shortcuts-setting-heading .setting-label")!;
+            const leftSlot = dialogElement.querySelector<HTMLElement>("#footer-shortcut-left")!.closest<HTMLElement>(".footer-shortcut-slot")!;
+            const rightSlot = dialogElement.querySelector<HTMLElement>("#footer-shortcut-right")!.closest<HTMLElement>(".footer-shortcut-slot")!;
+            const leftLabel = leftSlot.querySelector<HTMLElement>("span")!;
+            const rightLabel = rightSlot.querySelector<HTMLElement>("span")!;
+            const iconStyle = getComputedStyle(headingIcon);
+            const dialogRect = dialogElement.getBoundingClientRect();
+            return {
+                icon: getRect(".footer-shortcuts-setting-icon"),
+                referenceIcon: (() => {
+                    const rect = referenceIcon.getBoundingClientRect();
+                    return { width: rect.width, height: rect.height };
+                })(),
+                iconMask: iconStyle.maskImage,
+                heading: getRect(".footer-shortcuts-setting-heading .setting-label"),
+                headingRow: getRect(".footer-shortcuts-setting-heading"),
+                leftSlot: (() => { const rect = leftSlot.getBoundingClientRect(); return { left: rect.left, right: rect.right }; })(),
+                rightSlot: (() => { const rect = rightSlot.getBoundingClientRect(); return { left: rect.left, right: rect.right }; })(),
+                leftSelect: getRect("#footer-shortcut-left"),
+                rightSelect: getRect("#footer-shortcut-right"),
+                leftLabel: { left: leftLabel.getBoundingClientRect().left, right: leftLabel.getBoundingClientRect().right },
+                rightLabel: { left: rightLabel.getBoundingClientRect().left, right: rightLabel.getBoundingClientRect().right },
+                dialog: { left: dialogRect.left, right: dialogRect.right, width: dialogRect.width, clientWidth: dialogElement.clientWidth, scrollWidth: dialogElement.scrollWidth },
+                documentWidth: document.documentElement.scrollWidth,
+                viewportWidth: window.innerWidth,
+            };
+        });
+
+        expect(geometry.icon.width).toBe(geometry.referenceIcon.width);
+        expect(geometry.icon.height).toBe(geometry.referenceIcon.height);
+        expect(geometry.icon.width).toBe(24);
+        expect(geometry.iconMask).toContain("vertical_align_bottom_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        expect(Math.abs((geometry.icon.top + geometry.icon.bottom) / 2 - (geometry.heading.top + geometry.heading.bottom) / 2)).toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.heading.left - geometry.leftSlot.left)).toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.heading.left - geometry.rightSlot.left)).toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.leftSlot.left - geometry.rightSlot.left)).toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.heading.left - geometry.leftLabel.left)).toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.heading.left - geometry.rightLabel.left)).toBeLessThanOrEqual(1);
+        for (const [select, slot] of [[geometry.leftSelect, geometry.leftSlot], [geometry.rightSelect, geometry.rightSlot]] as const) {
+            expect(select.width).toBeGreaterThanOrEqual(120);
+            expect(select.left).toBeGreaterThanOrEqual(slot.left);
+            expect(select.right).toBeLessThanOrEqual(slot.right);
+            expect(select.left).toBeGreaterThanOrEqual(geometry.dialog.left);
+            expect(select.right).toBeLessThanOrEqual(geometry.dialog.right);
+        }
+        expect(geometry.dialog.scrollWidth).toBeLessThanOrEqual(geometry.dialog.clientWidth);
+        expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+
+        await left.selectOption("language");
+        await expect(right.locator('option[value="language"]')).toHaveAttribute("disabled", "");
+        await expect(dialog.locator("select.footer-shortcut-select")).toHaveCount(2);
+        await page.getByRole("button", { name: "閉じる" }).click();
+        await expect(page.locator(".footer-setting-shortcut-button")).toHaveCount(1);
+        await expect(page.locator(".footer-setting-shortcut-button")).toHaveAttribute("aria-label", "言語: 日本語");
+        await page.getByRole("button", { name: "設定", exact: true }).click();
+        await page.locator("#footer-shortcut-left").selectOption("");
+        await page.getByRole("button", { name: "閉じる" }).click();
+        await expect(page.locator(".footer-setting-shortcut-button")).toHaveCount(0);
+    }
 });
