@@ -33,6 +33,7 @@
         chunkArray,
     } from "../lib/utils/appUtils";
     import type { SettingsDialogProps } from "../lib/types";
+    import { resolveAppAssetUrl } from "../lib/appAssetUrl";
     import { nostrZapView } from "nostr-zap-view";
     import "nostr-zap";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
@@ -443,19 +444,21 @@
         <!-- 言語設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
-                <span class="setting-label"> Language/言語 </span>
+                <div class="setting-label-with-icon">
+                    <span
+                        class="setting-menu-icon setting-menu-mask-icon language-setting-icon"
+                        aria-hidden="true"
+                    ></span>
+                    <span class="setting-label"> Language/言語 </span>
+                </div>
                 <div class="setting-control">
                     <Button
                         variant="default"
                         shape="rounded"
-                        contentLayout="iconText"
+                        contentLayout="text"
                         className="lang-btn"
                         onClick={toggleLanguage}
                     >
-                        <div
-                            class="lang-icon-btn svg-icon"
-                            aria-hidden="true"
-                        ></div>
                         <span class="btn-text"
                             >{$_("settingsDialog.change") || "変更"}</span
                         >
@@ -481,9 +484,15 @@
         <!-- テーマ設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
-                <span id="theme-mode-label" class="setting-label"
-                    >{$_("settingsDialog.theme_mode") || "カラーテーマ"}</span
-                >
+                <div class="setting-label-with-icon">
+                    <span
+                        class="setting-menu-icon setting-menu-mask-icon theme-setting-icon"
+                        aria-hidden="true"
+                    ></span>
+                    <span id="theme-mode-label" class="setting-label"
+                        >{$_("settingsDialog.theme_mode") || "カラーテーマ"}</span
+                    >
+                </div>
                 <RadioGroup.Root
                     class="setting-control theme-mode-group"
                     name="themeMode"
@@ -525,94 +534,108 @@
 
         {#if themeColorStore.isAvailable}
             <div class="setting-section color-settings-section">
-                <span class="setting-label color-settings-heading">
-                    {$_("settingsDialog.color")}
-                </span>
-                <div class="color-setting-row">
-                    <div class="setting-label-group">
-                        <label class="setting-label" for="accent-color-input">
-                            {$_("settingsDialog.accent_color")}
-                        </label>
-                        <span class="setting-description">
-                            {$_("settingsDialog.accent_color_description")}
+                <span
+                    class="setting-menu-icon setting-menu-mask-icon color-settings-icon"
+                    aria-hidden="true"
+                ></span>
+                <div class="color-settings-content">
+                    <div class="setting-label-with-icon color-settings-heading">
+                        <span class="setting-label">
+                            {$_("settingsDialog.color")}
                         </span>
                     </div>
-                    <div class="color-setting-controls">
-                        <input
-                            aria-label={$_("settingsDialog.accent_color_picker")}
-                            type="color"
-                            value={normalizeHexColor(themeColorStore.accentColor) ?? defaultAccentColor}
-                            oninput={(event) => handleColorPickerInput("accent", (event.currentTarget as HTMLInputElement).value)}
-                        />
-                        <input
-                            id="accent-color-input"
-                            aria-label={$_("settingsDialog.accent_color_hex")}
-                            class="color-hex-input"
-                            type="text"
-                            inputmode="text"
-                            autocomplete="off"
-                            value={accentColorInput}
-                            aria-invalid={accentColorError ? "true" : "false"}
-                            oninput={(event) => handleColorInput("accent", (event.currentTarget as HTMLInputElement).value)}
-                            onblur={() => handleColorBlur("accent")}
-                        />
+                    <div class="color-setting-row">
+                        <div class="setting-label-group">
+                            <label class="setting-label" for="accent-color-input">
+                                {$_("settingsDialog.accent_color")}
+                            </label>
+                            <span class="setting-description">
+                                {$_("settingsDialog.accent_color_description")}
+                            </span>
+                        </div>
+                        <div class="color-setting-controls">
+                            <input
+                                aria-label={$_("settingsDialog.accent_color_picker")}
+                                type="color"
+                                value={normalizeHexColor(themeColorStore.accentColor) ?? defaultAccentColor}
+                                oninput={(event) => handleColorPickerInput("accent", (event.currentTarget as HTMLInputElement).value)}
+                            />
+                            <input
+                                id="accent-color-input"
+                                aria-label={$_("settingsDialog.accent_color_hex")}
+                                class="color-hex-input"
+                                type="text"
+                                inputmode="text"
+                                autocomplete="off"
+                                value={accentColorInput}
+                                aria-invalid={accentColorError ? "true" : "false"}
+                                oninput={(event) => handleColorInput("accent", (event.currentTarget as HTMLInputElement).value)}
+                                onblur={() => handleColorBlur("accent")}
+                            />
+                        </div>
                     </div>
+                    {#if accentColorError}
+                        <span class="form-error" role="alert">{accentColorError}</span>
+                    {/if}
+                    <div class="color-setting-row">
+                        <div class="setting-label-group">
+                            <label class="setting-label" for="base-color-input">
+                                {$_("settingsDialog.base_color")}
+                            </label>
+                            <span class="setting-description">
+                                {$_("settingsDialog.base_color_description")}
+                            </span>
+                        </div>
+                        <div class="color-setting-controls">
+                            <input
+                                aria-label={$_("settingsDialog.base_color_picker")}
+                                type="color"
+                                value={normalizeHexColor(themeColorStore.baseColor) ?? defaultBaseColorPickerValue}
+                                oninput={(event) => handleColorPickerInput("base", (event.currentTarget as HTMLInputElement).value)}
+                            />
+                            <input
+                                id="base-color-input"
+                                aria-label={$_("settingsDialog.base_color_hex")}
+                                class="color-hex-input"
+                                type="text"
+                                inputmode="text"
+                                autocomplete="off"
+                                placeholder="#RRGGBB"
+                                value={baseColorInput}
+                                aria-invalid={baseColorError ? "true" : "false"}
+                                oninput={(event) => handleColorInput("base", (event.currentTarget as HTMLInputElement).value)}
+                                onblur={() => handleColorBlur("base")}
+                            />
+                        </div>
+                    </div>
+                    {#if baseColorError}
+                        <span class="form-error" role="alert">{baseColorError}</span>
+                    {/if}
+                    <Button
+                        variant="default"
+                        shape="rounded"
+                        className="reset-theme-colors-btn"
+                        onClick={resetThemeColors}
+                    >
+                        {$_("settingsDialog.reset_colors")}
+                    </Button>
                 </div>
-                {#if accentColorError}
-                    <span class="form-error" role="alert">{accentColorError}</span>
-                {/if}
-                <div class="color-setting-row">
-                    <div class="setting-label-group">
-                        <label class="setting-label" for="base-color-input">
-                            {$_("settingsDialog.base_color")}
-                        </label>
-                        <span class="setting-description">
-                            {$_("settingsDialog.base_color_description")}
-                        </span>
-                    </div>
-                    <div class="color-setting-controls">
-                        <input
-                            aria-label={$_("settingsDialog.base_color_picker")}
-                            type="color"
-                            value={normalizeHexColor(themeColorStore.baseColor) ?? defaultBaseColorPickerValue}
-                            oninput={(event) => handleColorPickerInput("base", (event.currentTarget as HTMLInputElement).value)}
-                        />
-                        <input
-                            id="base-color-input"
-                            aria-label={$_("settingsDialog.base_color_hex")}
-                            class="color-hex-input"
-                            type="text"
-                            inputmode="text"
-                            autocomplete="off"
-                            placeholder="#RRGGBB"
-                            value={baseColorInput}
-                            aria-invalid={baseColorError ? "true" : "false"}
-                            oninput={(event) => handleColorInput("base", (event.currentTarget as HTMLInputElement).value)}
-                            onblur={() => handleColorBlur("base")}
-                        />
-                    </div>
-                </div>
-                {#if baseColorError}
-                    <span class="form-error" role="alert">{baseColorError}</span>
-                {/if}
-                <Button
-                    variant="default"
-                    shape="rounded"
-                    className="reset-theme-colors-btn"
-                    onClick={resetThemeColors}
-                >
-                    {$_("settingsDialog.reset_colors")}
-                </Button>
             </div>
         {/if}
 
         <!-- メディア自由配置モード設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
-                <span id="media-free-placement-label" class="setting-label"
-                    >{$_("settingsDialog.media_bottom_mode") ||
-                        "メディア自由配置モード"}</span
-                >
+                <div class="setting-label-with-icon">
+                    <span
+                        class="setting-menu-icon setting-menu-mask-icon media-placement-setting-icon"
+                        aria-hidden="true"
+                    ></span>
+                    <span id="media-free-placement-label" class="setting-label"
+                        >{$_("settingsDialog.media_bottom_mode") ||
+                            "メディア自由配置モード"}</span
+                    >
+                </div>
                 <div class="setting-control">
                     <Switch.Root
                         class="bui-switch"
@@ -630,10 +653,18 @@
                 <div class="setting-row setting-row-with-note">
                     <div class="setting-label-group">
                         <div class="setting-label-row">
-                            <span id="hide-mascot-label" class="setting-label"
-                                >{$_("settingsDialog.hide_mascot_label") ||
-                                    "左上マスコットを非表示"}</span
-                            >
+                            <div class="setting-label-with-icon">
+                                <img
+                                    class="setting-menu-icon mascot-setting-icon"
+                                    src={resolveAppAssetUrl("ehagaki_icon.svg")}
+                                    alt=""
+                                    aria-hidden="true"
+                                />
+                                <span id="hide-mascot-label" class="setting-label"
+                                    >{$_("settingsDialog.hide_mascot_label") ||
+                                        "きってんを非表示"}</span
+                                >
+                            </div>
                             <InfoPopoverButton
                                 side="top"
                                 sideOffset={8}
@@ -662,10 +693,16 @@
                 <div class="setting-row setting-row-with-note">
                     <div class="setting-label-group">
                         <div class="setting-label-row">
-                            <span id="hide-flavor-text-label" class="setting-label"
-                                >{$_("settingsDialog.hide_flavor_text_label") ||
-                                    "フレーバーテキストを非表示"}</span
-                            >
+                            <div class="setting-label-with-icon">
+                                <span
+                                    class="setting-menu-icon setting-menu-mask-icon flavor-setting-icon"
+                                    aria-hidden="true"
+                                ></span>
+                                <span id="hide-flavor-text-label" class="setting-label"
+                                    >{$_("settingsDialog.hide_flavor_text_label") ||
+                                        "フレーバーテキストを非表示"}</span
+                                >
+                            </div>
                             <InfoPopoverButton
                                 side="top"
                                 sideOffset={8}
@@ -715,11 +752,17 @@
                 <div class="setting-row setting-row-with-note">
                     <div class="setting-label-group">
                         <div class="setting-label-row">
-                            <span id="quote-notification-label" class="setting-label"
-                                >{$_(
-                                    "settingsDialog.quote_notification_label",
-                                ) || "引用元の投稿者に通知"}</span
-                            >
+                            <div class="setting-label-with-icon">
+                                <span
+                                    class="setting-menu-icon setting-menu-mask-icon quote-setting-icon"
+                                    aria-hidden="true"
+                                ></span>
+                                <span id="quote-notification-label" class="setting-label"
+                                    >{$_(
+                                        "settingsDialog.quote_notification_label",
+                                    ) || "引用元の投稿者に通知"}</span
+                                >
+                            </div>
                             <InfoPopoverButton
                                 side="top"
                                 sideOffset={8}
@@ -748,11 +791,17 @@
                 <div class="setting-row setting-row-with-note">
                     <div class="setting-label-group">
                         <div class="setting-label-row">
-                            <span id="reply-notification-label" class="setting-label"
-                                >{$_(
-                                    "settingsDialog.reply_notification_label",
-                                ) || "返信先以外にも通知"}</span
-                            >
+                            <div class="setting-label-with-icon">
+                                <span
+                                    class="setting-menu-icon setting-menu-mask-icon reply-setting-icon"
+                                    aria-hidden="true"
+                                ></span>
+                                <span id="reply-notification-label" class="setting-label"
+                                    >{$_(
+                                        "settingsDialog.reply_notification_label",
+                                    ) || "返信先以外にも通知"}</span
+                                >
+                            </div>
                             <InfoPopoverButton
                                 side="top"
                                 sideOffset={8}
@@ -781,10 +830,16 @@
         <!-- client tag オプトアウト設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
-                <span id="client-tag-label" class="setting-label"
-                    >{$_("settingsDialog.client_tag_label") ||
-                        "投稿詳細にクライアント名をつける（Client tag）"}</span
-                >
+                <div class="setting-label-with-icon">
+                    <span
+                        class="setting-menu-icon setting-menu-mask-icon client-tag-setting-icon"
+                        aria-hidden="true"
+                    ></span>
+                    <span id="client-tag-label" class="setting-label"
+                        >{$_("settingsDialog.client_tag_label") ||
+                            "投稿詳細にクライアント名をつける（Client tag）"}</span
+                    >
+                </div>
                 <div class="setting-control">
                     <Switch.Root
                         class="bui-switch"
@@ -802,11 +857,17 @@
             <div class="setting-row setting-row-with-note">
                 <div class="setting-label-group">
                     <div class="setting-label-row">
-                        <span
-                            id="external-nostr-client-label"
-                            class="setting-label"
-                            >{$_("settingsDialog.external_nostr_client")}</span
-                        >
+                        <div class="setting-label-with-icon">
+                            <span
+                                class="setting-menu-icon setting-menu-mask-icon external-nostr-client-setting-icon"
+                                aria-hidden="true"
+                            ></span>
+                            <span
+                                id="external-nostr-client-label"
+                                class="setting-label"
+                                >{$_("settingsDialog.external_nostr_client")}</span
+                            >
+                        </div>
                         <InfoPopoverButton
                             ariaLabel={$_(
                                 "settingsDialog.external_nostr_client_description",
@@ -908,6 +969,11 @@
 </DialogWrapper>
 
 <style>
+    :global(.settings-dialog :where(button:not(.bui-switch))) {
+        min-inline-size: 44px;
+        min-block-size: 44px;
+    }
+
     /* SettingsDialog固有: paddingなしのdialog-content */
     :global(.settings-dialog .dialog-content) {
         padding: 0;
@@ -1033,8 +1099,39 @@
         width: 100%;
         overflow-y: auto;
     }
-    .lang-icon-btn {
+    .setting-label-with-icon {
+        flex: 1 1 auto;
+    }
+    .language-setting-icon {
         mask-image: url("/icons/translate_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .theme-setting-icon {
+        mask-image: url("/icons/contrast_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .media-placement-setting-icon {
+        mask-image: url("/icons/open_with_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .color-settings-icon {
+        mask-image: url("/icons/colors_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .external-nostr-client-setting-icon {
+        mask-image: url("/icons/open_in_new_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .mascot-setting-icon {
+        filter: grayscale(1);
+        object-fit: contain;
+    }
+    .flavor-setting-icon {
+        mask-image: url("/icons/chat_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .quote-setting-icon {
+        mask-image: url("/icons/format_quote_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .reply-setting-icon {
+        mask-image: url("/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .client-tag-setting-icon {
+        mask-image: url("/icons/label_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
     }
     .setting-row-with-note {
         align-items: flex-start;
@@ -1103,6 +1200,10 @@
         align-items: center;
         gap: 6px;
         flex-wrap: wrap;
+    }
+    .setting-label-row .setting-label-with-icon {
+        flex: 0 1 auto;
+        max-width: calc(100% - 50px);
     }
 
     .rotate-right-icon {
@@ -1205,8 +1306,22 @@
         gap: 10px;
     }
 
+    .color-settings-section {
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr);
+        column-gap: 16px;
+        align-items: start;
+    }
+
+    .color-settings-content {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-width: 0;
+    }
+
     .color-settings-heading {
-        margin-bottom: 2px;
+        min-height: 24px;
     }
 
     .color-setting-row,

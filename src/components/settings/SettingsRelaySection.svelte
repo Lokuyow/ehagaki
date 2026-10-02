@@ -58,12 +58,18 @@
 <!-- リレー・プロフィール再取得セクション -->
 <div class="setting-section">
     <div class="setting-row">
-        <span class="setting-label">
-            {hostRelayConfigActive
-                ? ($_('settingsDialog.refresh_profile') || 'プロフィール再取得')
-                : ($_('settingsDialog.refresh_relays_and_profile') ||
-                    'リレーリスト・プロフィール再取得')}
-        </span>
+        <div class="setting-label-with-icon">
+            <span
+                class="setting-menu-icon setting-menu-mask-icon relay-refresh-setting-icon"
+                aria-hidden="true"
+            ></span>
+            <span class="setting-label">
+                {hostRelayConfigActive
+                    ? ($_('settingsDialog.refresh_profile') || 'プロフィール再取得')
+                    : ($_('settingsDialog.refresh_relays_and_profile') ||
+                        'リレーリスト・プロフィール再取得')}
+            </span>
+        </div>
         <div class="setting-control">
             <Button
                 variant="default"
@@ -201,6 +207,12 @@
 </div>
 
 <style>
+    .setting-label-with-icon {
+        flex: 1 1 auto;
+    }
+    .relay-refresh-setting-icon {
+        mask-image: url("/icons/sync_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+    }
     .setting-info {
         margin-inline-start: 10px;
 

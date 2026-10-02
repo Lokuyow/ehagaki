@@ -227,6 +227,20 @@ describe("SettingsUploadDestinationSection", () => {
         mockUploadDestinationStore.publishBud03.mockClear();
     });
 
+    it("shows the upload icon beside its label and keeps the manage button text-only", () => {
+        render(SettingsUploadDestinationSection);
+
+        const icon = document.querySelector(
+            '.upload-destination-setting-icon',
+        );
+        expect(icon).toBeTruthy();
+        expect(icon?.getAttribute('aria-hidden')).toBe('true');
+
+        const manageButton = screen.getByRole('button', { name: '管理' });
+        expect(manageButton.querySelector('.svg-icon')).toBeNull();
+        expect(manageButton.textContent).toContain('管理');
+    });
+
     it("shows and clears a custom URL while keeping the protocol and button state", async () => {
         render(SettingsUploadDestinationSection);
         await openAddForm();

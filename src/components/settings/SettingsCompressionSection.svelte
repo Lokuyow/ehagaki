@@ -35,11 +35,17 @@
 
 <!-- 画像圧縮設定セクション -->
 <div class="setting-section">
-    <div class="setting-row">
+    <div class="setting-row compression-setting-row">
         <div class="setting-label-wrapper">
-            <span class="setting-label">
-                {$_("settingsDialog.image_quality_setting")}
-            </span>
+            <div class="setting-label-with-icon">
+                <span
+                    class="setting-menu-icon setting-menu-mask-icon image-quality-icon"
+                    aria-hidden="true"
+                ></span>
+                <span class="setting-label">
+                    {$_("settingsDialog.image_quality_setting")}
+                </span>
+            </div>
             <InfoPopoverButton
                 side="top"
                 ariaLabel={$_("settingsDialog.image_compression_settings_description")}
@@ -135,11 +141,17 @@
 
 <!-- 動画圧縮設定セクション -->
 <div class="setting-section">
-    <div class="setting-row">
+    <div class="setting-row compression-setting-row">
         <div class="setting-label-wrapper">
-            <span class="setting-label">
-                {$_("settingsDialog.video_quality_setting")}
-            </span>
+            <div class="setting-label-with-icon">
+                <span
+                    class="setting-menu-icon setting-menu-mask-icon video-quality-icon"
+                    aria-hidden="true"
+                ></span>
+                <span class="setting-label">
+                    {$_("settingsDialog.video_quality_setting")}
+                </span>
+            </div>
             <InfoPopoverButton
                 side="top"
                 ariaLabel={$_("settingsDialog.video_compression_settings_description")}
@@ -205,11 +217,39 @@
 
 <style>
     .setting-label-wrapper {
-        display: inline-flex;
+        display: flex;
         align-items: center;
         gap: 4px;
         flex-wrap: wrap;
-        flex-shrink: 0;
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .setting-label-with-icon {
+        flex: 0 1 auto;
+        max-width: calc(100% - 48px);
+    }
+
+    .image-quality-icon {
+        mask-image: url("/icons/image_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    .video-quality-icon {
+        mask-image: url("/icons/movie_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    @media (max-width: 430px) {
+        .compression-setting-row {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 8px;
+        }
+
+        :global(.compression-setting-row > .setting-control.radio-group) {
+            width: 100%;
+            justify-content: flex-end;
+            margin-block: 0;
+        }
     }
 
     :global(.popover-table) {
@@ -247,7 +287,7 @@
             font-size: 0.875rem;
             padding: 10px;
             min-height: 50px;
-            min-width: 50px;
+            min-width: 44px;
             font-weight: normal;
         }
     }

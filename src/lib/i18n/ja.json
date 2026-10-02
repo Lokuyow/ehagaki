@@ -377,7 +377,7 @@
     "base_color_hex": "ベースカラーのHEXカラー",
     "invalid_hex_color": "6桁のHEXカラーを入力してください",
     "reset_colors": "標準に戻す",
-    "hide_mascot_label": "きってん（左上）を非表示",
+    "hide_mascot_label": "きってんを非表示",
     "hide_mascot_description": "左上マスコットの説明",
     "hide_mascot_note": "オンにすると左上のマスコットを隠し、フレーバーテキストもあわせて非表示にします。",
     "hide_flavor_text_label": "フレーバーテキストを非表示",

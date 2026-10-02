@@ -79,6 +79,91 @@ describe('SettingsDialog accessibility', () => {
         settingsStore.locale = 'en';
     });
 
+    it('設定名の左にだけ指定アイコンを表示し、装飾として隠す', async () => {
+        render(SettingsDialog, {
+            props: {
+                show: true,
+                onClose: () => {},
+            },
+        });
+
+        await tick();
+
+        const iconClasses = [
+            'language-setting-icon',
+            'image-quality-icon',
+            'video-quality-icon',
+            'theme-setting-icon',
+            'media-placement-setting-icon',
+            'mascot-setting-icon',
+            'flavor-setting-icon',
+            'quote-setting-icon',
+            'reply-setting-icon',
+            'client-tag-setting-icon',
+            'relay-refresh-setting-icon',
+            'upload-destination-setting-icon',
+            'color-settings-icon',
+            'external-nostr-client-setting-icon',
+        ];
+        for (const className of iconClasses) {
+            const icon = document.querySelector(`.${className}`);
+            expect(icon, className).toBeTruthy();
+            expect(icon?.getAttribute('aria-hidden')).toBe('true');
+        }
+        expect(document.querySelectorAll('.setting-menu-icon')).toHaveLength(14);
+        expect(
+            document.querySelectorAll('.setting-menu-mask-icon'),
+        ).toHaveLength(13);
+        expect(
+            document
+                .querySelector('.mascot-setting-icon')
+                ?.classList.contains('setting-menu-mask-icon'),
+        ).toBe(false);
+        expect(
+            document.querySelector('.mascot-setting-icon')?.getAttribute('src'),
+        ).toContain('ehagaki_icon.svg');
+        locale.set('ja');
+        await waitLocale('ja');
+        expect(document.querySelector('#hide-mascot-label')?.textContent).toBe(
+            'きってんを非表示',
+        );
+        expect(
+            screen.getByRole('button', { name: '左上マスコットの説明' }),
+        ).toBeTruthy();
+
+        locale.set('en');
+        await waitLocale('en');
+        expect(document.querySelector('#hide-mascot-label')?.textContent).toBe(
+            'Hide Kit-ten',
+        );
+        expect(
+            screen.getByRole('button', { name: 'Top-left mascot description' }),
+        ).toBeTruthy();
+        expect(
+            document.querySelector(
+                '.refresh-relays-profile-btn .setting-menu-icon',
+            ),
+        ).toBeNull();
+        expect(
+            document.querySelector('.relay-toggle-label .setting-menu-icon'),
+        ).toBeNull();
+        expect(
+            document.querySelector('.lang-btn .svg-icon'),
+        ).toBeNull();
+        expect(screen.getByRole('button', { name: 'Change' })).toBeTruthy();
+        expect(
+            document.querySelector('.upload-destination-manage-btn .svg-icon'),
+        ).toBeNull();
+        expect(screen.getByRole('button', { name: 'Manage' })).toBeTruthy();
+        expect(
+            document.querySelector('.color-settings-heading .setting-label')
+                ?.textContent,
+        ).toContain('Color');
+        expect(
+            document.querySelector('#external-nostr-client-label')?.textContent,
+        ).toContain('Client for opening posts');
+    });
+
     it('圧縮ラジオグループが表示ラベルをアクセシブルネームとして持つ', async () => {
         render(SettingsCompressionSection, {
             props: {
@@ -301,9 +386,7 @@ describe('SettingsDialog accessibility', () => {
         if (rotateRightIcon) {
             expect(rotateRightIcon.getAttribute('aria-hidden')).toBe('true');
         }
-        expect(
-            document.body.querySelector('.lang-icon-btn')?.getAttribute('aria-hidden'),
-        ).toBe('true');
+        expect(document.body.querySelector('.lang-icon-btn')).toBeNull();
         expect(
             document.body.querySelector('.xmark-icon')?.getAttribute('aria-hidden'),
         ).toBe('true');
