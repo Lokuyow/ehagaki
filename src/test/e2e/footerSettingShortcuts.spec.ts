@@ -16,6 +16,52 @@ async function enterApp(page: import("@playwright/test").Page) {
     }
 }
 
+async function expectQualityRadiosOnOneLine(
+    group: import("@playwright/test").Locator,
+    expectedLabels: string[],
+) {
+    const radios = group.getByRole("radio");
+    await expect(radios).toHaveCount(4);
+    const geometry = await radios.evaluateAll((elements) => elements.map((element) => {
+        const radio = element as HTMLElement;
+        const rect = radio.getBoundingClientRect();
+        return {
+            label: radio.getAttribute("aria-label"),
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+            whiteSpace: getComputedStyle(radio).whiteSpace,
+        };
+    }));
+    expect(geometry.map((radio) => radio.label)).toEqual(expectedLabels);
+    expect(Math.max(...geometry.map((radio) => radio.top)) - Math.min(...geometry.map((radio) => radio.top))).toBeLessThanOrEqual(1);
+    for (const radio of geometry) {
+        expect(radio.width).toBeGreaterThanOrEqual(44);
+        expect(radio.height).toBeGreaterThanOrEqual(44);
+        expect(radio.whiteSpace).toBe("nowrap");
+    }
+}
+
+async function expectPopoverPaddingBalanced(popover: import("@playwright/test").Locator) {
+    const geometry = await popover.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const radios = Array.from(element.querySelectorAll<HTMLElement>('button[role="radio"]'));
+        const rect = element.getBoundingClientRect();
+        const borderLeft = Number.parseFloat(style.borderLeftWidth);
+        const borderRight = Number.parseFloat(style.borderRightWidth);
+        const leftInnerEdge = rect.left + borderLeft + Number.parseFloat(style.paddingLeft);
+        const rightInnerEdge = rect.right - borderRight - Number.parseFloat(style.paddingRight);
+        return {
+            leftGap: radios[0]!.getBoundingClientRect().left - leftInnerEdge,
+            rightGap: rightInnerEdge - radios[radios.length - 1]!.getBoundingClientRect().right,
+        };
+    });
+    expect(geometry.leftGap).toBeGreaterThanOrEqual(-1);
+    expect(geometry.rightGap).toBeGreaterThanOrEqual(-1);
+    expect(Math.abs(geometry.leftGap - geometry.rightGap)).toBeLessThanOrEqual(3);
+    expect(geometry.rightGap).toBeLessThanOrEqual(8);
+}
+
 async function chooseShortcut(page: import("@playwright/test").Page, slot: "left" | "right", id: string) {
     await page.locator(".settings-btn").click();
     const dialog = page.getByRole("dialog");
@@ -155,7 +201,76 @@ test("keeps authenticated left, history, and right controls in order at 360px", 
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
 });
 
-test("cycles language, quality, and theme directly from Footer buttons", async ({ page }) => {
+test("keeps both quality pills and their popovers contained around history at 360px", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 844 });
+    await page.addInitScript((pubkey) => {
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "image-quality", right: "video-quality" }));
+        localStorage.setItem("imageQualityLevel", "none");
+        localStorage.setItem("videoQualityLevel", "none");
+        localStorage.setItem("nostr-accounts", JSON.stringify([{ pubkeyHex: pubkey, type: "nip07", addedAt: 1 }]));
+        localStorage.setItem("nostr-active-account", pubkey);
+        (window as any).nostr = {
+            getPublicKey: async () => pubkey,
+            signEvent: async (event: any) => ({ ...event, id: "22".repeat(32), sig: "33".repeat(64) }),
+        };
+    }, "22".repeat(32));
+    await enterApp(page);
+    await page.getByRole("button", { name: "はじめる" }).click();
+
+    const footer = page.locator(".footer-bar");
+    const buttons = footer.locator(".footer-setting-shortcut-button");
+    const history = footer.locator(".post-history-btn");
+    await expect(buttons).toHaveCount(2);
+    await expect(history).toBeVisible();
+    const initial = await footer.evaluate((element) => {
+        const footerRect = element.getBoundingClientRect();
+        const controls = Array.from(element.querySelectorAll<HTMLElement>(".footer-setting-shortcut-button, .post-history-btn"));
+        const rects = controls.map((control) => {
+            const rect = control.getBoundingClientRect();
+            return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
+        });
+        return { footerHeight: footerRect.height, documentWidth: document.documentElement.scrollWidth, rects };
+    });
+    expect(initial.footerHeight).toBe(66);
+    expect(initial.documentWidth).toBeLessThanOrEqual(360);
+    expect(initial.rects).toHaveLength(3);
+    expect(initial.rects[0].width).toBeGreaterThanOrEqual(58);
+    expect(initial.rects[0].width).toBe(initial.rects[2].width);
+    expect(initial.rects[0].height).toBe(50);
+    expect(initial.rects[1].height).toBe(50);
+    expect(initial.rects[2].height).toBe(50);
+    expect(initial.rects[1].left - initial.rects[0].right).toBeCloseTo(12, 2);
+    expect(initial.rects[2].left - initial.rects[1].right).toBeCloseTo(12, 2);
+
+    for (let index = 0; index < 2; index += 1) {
+        const button = buttons.nth(index);
+        const before = await button.boundingBox();
+        await button.click();
+        const popover = page.locator(".footer-setting-shortcut-popover").filter({ visible: true });
+        await expect(popover).toBeVisible();
+        await expect(popover.getByRole("radio")).toHaveCount(4);
+        await expectPopoverPaddingBalanced(popover);
+        const geometry = await popover.evaluate((element, index) => {
+            const rect = element.getBoundingClientRect();
+            const trigger = document.querySelectorAll<HTMLElement>(".footer-setting-shortcut-button")[index]!.getBoundingClientRect();
+            return {
+                popover: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+                trigger: { left: trigger.left, right: trigger.right, top: trigger.top },
+                viewportWidth: window.innerWidth,
+                documentWidth: document.documentElement.scrollWidth,
+            };
+        }, index);
+        expect(geometry.popover.left).toBeGreaterThanOrEqual(0);
+        expect(geometry.popover.right).toBeLessThanOrEqual(360.5);
+        expect(geometry.popover.bottom).toBeLessThanOrEqual(geometry.trigger.top);
+        expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+        expect(await button.boundingBox()).toEqual(before);
+        await popover.getByRole("radio", { name: "高" }).click();
+        await expect(popover).toBeHidden();
+    }
+});
+
+test("keeps language direct and lets image quality be selected from its popover", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.addInitScript(() => {
         localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "language", right: "image-quality" }));
@@ -170,6 +285,7 @@ test("cycles language, quality, and theme directly from Footer buttons", async (
     await language.click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("locale"))).toBe("en");
     await expect(language).toHaveAttribute("aria-label", "Language: English");
+    await expect(page.locator(".footer-setting-shortcut-popover")).toHaveCount(0);
     const feedback = page.locator(".floating-message");
     await expect(feedback).toContainText("Language: English");
     const feedbackGeometry = await feedback.evaluate((message) => {
@@ -192,27 +308,116 @@ test("cycles language, quality, and theme directly from Footer buttons", async (
     expect(feedbackGeometry.pointerEvents).toBe("none");
 
     const quality = page.locator(".footer-setting-shortcut-button").nth(1);
-    for (const expected of ["high", "medium", "low", "none"]) {
-        await quality.click();
-        await expect.poll(() => page.evaluate(() => localStorage.getItem("imageQualityLevel"))).toBe(expected);
+    await quality.click();
+    const englishPopover = page.locator(".footer-setting-shortcut-popover");
+    await expect(englishPopover).toBeVisible();
+    const englishGroup = page.getByRole("radiogroup", { name: "Image Quality" });
+    await expectQualityRadiosOnOneLine(englishGroup, ["Original", "High", "Medium", "Low"]);
+    await expectPopoverPaddingBalanced(englishPopover);
+    const englishPopoverRect = await englishPopover.boundingBox();
+    expect(englishPopoverRect!.x).toBeGreaterThanOrEqual(0);
+    expect(englishPopoverRect!.x + englishPopoverRect!.width).toBeLessThanOrEqual(360.5);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+    await page.keyboard.press("Escape");
+    await expect(englishPopover).toHaveCount(0);
+
+    await language.click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("locale"))).toBe("ja");
+    await expect(language).toHaveAttribute("aria-label", "言語: 日本語");
+
+    const initialButtonRect = await quality.boundingBox();
+    await quality.click();
+    const popover = page.locator(".footer-setting-shortcut-popover");
+    await expect(popover).toBeVisible();
+    const group = page.getByRole("radiogroup", { name: "画像品質" });
+    await expect(group.getByRole("radio")).toHaveCount(4);
+    await expectQualityRadiosOnOneLine(group, ["オリジナル", "高", "中", "低"]);
+    await expectPopoverPaddingBalanced(popover);
+    await expect(group.getByRole("radio", { name: "オリジナル" })).toHaveAttribute("aria-checked", "true");
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("imageQualityLevel"))).toBe("none");
+    await expect(quality).toHaveAttribute("aria-label", "画像品質: オリジナル");
+    const radioRects = await group.getByRole("radio").evaluateAll((radios) => radios.map((radio) => {
+        const rect = radio.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+    }));
+    for (const rect of radioRects) {
+        expect(rect.width).toBeGreaterThanOrEqual(44);
+        expect(rect.height).toBeGreaterThanOrEqual(44);
     }
+    expect(await quality.boundingBox()).toEqual(initialButtonRect);
+    await group.getByRole("radio", { name: "低" }).click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("imageQualityLevel"))).toBe("low");
+    await expect(popover).toHaveCount(0);
+    await expect(quality.locator(".quality-shortcut-label")).toHaveText("低");
+    await expect(quality).toHaveAttribute("aria-label", "画像品質: 低");
+    expect(await quality.boundingBox()).toEqual(initialButtonRect);
+    await expect(page.getByRole("status").filter({ hasText: "画像品質:" })).toHaveCount(0);
+
+    await quality.focus();
+    await page.keyboard.press("Enter");
+    await expect(popover).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(popover).toHaveCount(0);
 
     await expect(language).not.toHaveAttribute("aria-pressed", /.+/);
     await expect(page.locator("[role=dialog], [role=menu], [role=radio]")).toHaveCount(0);
 });
 
-test("cycles video quality none to high to medium to low and back", async ({ page }) => {
+test("selects video quality directly and follows the canonical setting", async ({ page }) => {
     await page.addInitScript(() => {
         localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "video-quality", right: null }));
         localStorage.setItem("videoQualityLevel", "none");
     });
     await enterApp(page);
     const video = page.locator(".footer-setting-shortcut-button");
-    for (const expected of ["high", "medium", "low", "none"]) {
-        await video.click();
-        await expect.poll(() => page.evaluate(() => localStorage.getItem("videoQualityLevel"))).toBe(expected);
-    }
+    await video.click();
+    const popover = page.locator(".footer-setting-shortcut-popover");
+    await expect(popover).toBeVisible();
+    const group = page.getByRole("radiogroup", { name: "動画品質" });
+    await expect(group.getByRole("radio")).toHaveCount(4);
+    await expect(group.getByRole("radio", { name: "オリジナル" })).toHaveAttribute("aria-checked", "true");
+    await group.getByRole("radio", { name: "低" }).click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("videoQualityLevel"))).toBe("low");
+    await expect(popover).toHaveCount(0);
+    await expect(video.locator(".quality-shortcut-label")).toHaveText("低");
+    await expect(video).toHaveAttribute("aria-label", "動画品質: 低");
     await expect(video).not.toHaveAttribute("aria-pressed", /.+/);
+});
+
+test("opens the quality popover from the keyboard and supports radio arrow navigation", async ({ page }) => {
+    await page.addInitScript(() => {
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "image-quality", right: null }));
+        localStorage.setItem("imageQualityLevel", "none");
+    });
+    await enterApp(page);
+    const button = page.locator(".footer-setting-shortcut-button");
+    const popover = page.locator(".footer-setting-shortcut-popover");
+    await button.focus();
+    await page.keyboard.press("Enter");
+    await expect(popover).toBeVisible();
+    const group = page.getByRole("radiogroup", { name: "画像品質" });
+    const original = group.getByRole("radio", { name: "オリジナル" });
+    await expect(original).toHaveAttribute("aria-checked", "true");
+    await original.focus();
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("imageQualityLevel"))).toBe("high");
+    await expect(popover).toBeVisible();
+    const high = group.getByRole("radio", { name: "高" });
+    await expect(high).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("imageQualityLevel"))).toBe("medium");
+    await expect(popover).toBeVisible();
+    const medium = group.getByRole("radio", { name: "中" });
+    await expect(medium).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("imageQualityLevel"))).toBe("low");
+    await expect(popover).toBeVisible();
+    const low = group.getByRole("radio", { name: "低" });
+    await expect(low).toHaveAttribute("aria-checked", "true");
+    await low.focus();
+    await page.keyboard.press("Space");
+    await expect(popover).toHaveCount(0);
+    await expect(button).toHaveAttribute("aria-label", "画像品質: 低");
 });
 
 test("cycles theme mode system to light to dark and back", async ({ page }) => {
@@ -457,7 +662,9 @@ test("updates boolean, theme, and quality presentation icons and compact labels"
     await expect(qualityButtons.nth(0).locator(".quality-shortcut-label")).toHaveText("原");
     await expect(qualityButtons.nth(1).locator(".quality-shortcut-label")).toHaveText("原");
     await qualityButtons.nth(0).click();
+    await page.getByRole("radio", { name: "高" }).click();
     await qualityButtons.nth(1).click();
+    await page.getByRole("radio", { name: "高" }).click();
     await expect(qualityButtons.nth(0).locator(".quality-shortcut-label")).toHaveText("高");
     await expect(qualityButtons.nth(1).locator(".quality-shortcut-label")).toHaveText("高");
     await expect(qualityButtons.nth(0)).toHaveAttribute("aria-label", "画像品質: 高");

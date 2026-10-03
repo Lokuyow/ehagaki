@@ -37,6 +37,52 @@ const hostRequests = new Set<string>();
 const componentStoragePrefix = "ehagaki.web-component.v1:";
 const testPubkeyHex = "11".repeat(32);
 
+async function expectQualityOptionsOnOneLine(
+    group: import("@playwright/test").Locator,
+    expectedLabels: string[],
+) {
+    const radios = group.getByRole("radio");
+    await expect(radios).toHaveCount(4);
+    const geometry = await radios.evaluateAll((elements) => elements.map((element) => {
+        const radio = element as HTMLElement;
+        const rect = radio.getBoundingClientRect();
+        return {
+            label: radio.getAttribute("aria-label"),
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+            whiteSpace: getComputedStyle(radio).whiteSpace,
+        };
+    }));
+    expect(geometry.map((radio) => radio.label)).toEqual(expectedLabels);
+    expect(Math.max(...geometry.map((radio) => radio.top)) - Math.min(...geometry.map((radio) => radio.top))).toBeLessThanOrEqual(1);
+    for (const radio of geometry) {
+        expect(radio.width).toBeGreaterThanOrEqual(44);
+        expect(radio.height).toBeGreaterThanOrEqual(44);
+        expect(radio.whiteSpace).toBe("nowrap");
+    }
+}
+
+async function expectPopoverPaddingBalanced(popover: import("@playwright/test").Locator) {
+    const geometry = await popover.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const radios = Array.from(element.querySelectorAll<HTMLElement>('button[role="radio"]'));
+        const rect = element.getBoundingClientRect();
+        const borderLeft = Number.parseFloat(style.borderLeftWidth);
+        const borderRight = Number.parseFloat(style.borderRightWidth);
+        const leftInnerEdge = rect.left + borderLeft + Number.parseFloat(style.paddingLeft);
+        const rightInnerEdge = rect.right - borderRight - Number.parseFloat(style.paddingRight);
+        return {
+            leftGap: radios[0]!.getBoundingClientRect().left - leftInnerEdge,
+            rightGap: rightInnerEdge - radios[radios.length - 1]!.getBoundingClientRect().right,
+        };
+    });
+    expect(geometry.leftGap).toBeGreaterThanOrEqual(-1);
+    expect(geometry.rightGap).toBeGreaterThanOrEqual(-1);
+    expect(Math.abs(geometry.leftGap - geometry.rightGap)).toBeLessThanOrEqual(3);
+    expect(geometry.rightGap).toBeLessThanOrEqual(8);
+}
+
 const sentinels = {
     locale: "host-locale",
     themeMode: "host-theme",
@@ -2582,6 +2628,7 @@ test("Full Web Component restores left and right footer shortcuts in its storage
         localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"left":"image-quality","right":"video-quality"}');
         localStorage.setItem(`${componentStoragePrefix}imageQualityLevel`, "none");
         localStorage.setItem(`${componentStoragePrefix}videoQualityLevel`, "none");
+        localStorage.setItem(`${componentStoragePrefix}locale`, "en");
         await import(`${componentOrigin}/ehagaki-composer.js`);
         const composer = document.createElement("ehagaki-composer") as HTMLElement & { whenReady(): Promise<void> };
         composer.style.cssText = "display:block;width:320px;height:640px";
@@ -2593,15 +2640,78 @@ test("Full Web Component restores left and right footer shortcuts in its storage
     const shortcutButtons = composer.locator(".footer-setting-shortcut-button");
     await expect(shortcutButtons).toHaveCount(2);
     await expect(shortcutButtons.first()).toBeVisible();
-    await expect(shortcutButtons.first()).toHaveAttribute("aria-label", /画像品質:/);
-    await expect(shortcutButtons.nth(1)).toHaveAttribute("aria-label", /動画品質:/);
+    await expect(shortcutButtons.first()).toHaveAttribute("aria-label", /Image Quality:/);
+    await expect(shortcutButtons.nth(1)).toHaveAttribute("aria-label", /Video Quality:/);
     await shortcutButtons.first().click();
-    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}imageQualityLevel`), componentStoragePrefix)).toBe("high");
+    const imagePopover = composer.locator(".footer-setting-shortcut-popover");
+    await expect(imagePopover).toBeVisible();
+    const imageGroup = composer.getByRole("radiogroup", { name: "Image Quality" });
+    await expect(imageGroup.getByRole("radio")).toHaveCount(4);
+    await expect(imageGroup.getByRole("radio", { name: "Original" })).toHaveAttribute("aria-checked", "true");
+    await expectPopoverPaddingBalanced(imagePopover);
+    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}imageQualityLevel`), componentStoragePrefix)).toBe("none");
+    const popoverGeometry = await composer.evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const overlay = shadow.querySelector<HTMLElement>(".ehagaki-web-component-overlays")!;
+        const boundary = overlay.parentElement!;
+        const popover = shadow.querySelector<HTMLElement>(".footer-setting-shortcut-popover")!;
+        const componentRect = element.getBoundingClientRect();
+        const boundaryRect = boundary.getBoundingClientRect();
+        const popoverRect = popover.getBoundingClientRect();
+        const radioRects = Array.from(popover.querySelectorAll<HTMLElement>('button[role="radio"]')).map((radio) => {
+            const rect = radio.getBoundingClientRect();
+            return {
+                label: radio.getAttribute("aria-label"),
+                top: rect.top,
+                width: rect.width,
+                height: rect.height,
+                whiteSpace: getComputedStyle(radio).whiteSpace,
+            };
+        });
+        return {
+            overlayContainsPopover: overlay.contains(popover),
+            component: { left: componentRect.left, right: componentRect.right, width: componentRect.width, scrollWidth: element.scrollWidth },
+            boundary: { left: boundaryRect.left, right: boundaryRect.right, top: boundaryRect.top, bottom: boundaryRect.bottom, scrollWidth: boundary.scrollWidth },
+            popover: { left: popoverRect.left, right: popoverRect.right, top: popoverRect.top, bottom: popoverRect.bottom },
+            radioRects,
+        };
+    });
+    expect(popoverGeometry.overlayContainsPopover).toBe(true);
+    expect(popoverGeometry.component.width).toBe(320);
+    expect(popoverGeometry.component.scrollWidth).toBeLessThanOrEqual(320);
+    expect(popoverGeometry.boundary.scrollWidth).toBeLessThanOrEqual(320);
+    expect(popoverGeometry.popover.left).toBeGreaterThanOrEqual(popoverGeometry.boundary.left);
+    expect(popoverGeometry.popover.right).toBeLessThanOrEqual(popoverGeometry.boundary.right);
+    expect(popoverGeometry.popover.top).toBeGreaterThanOrEqual(popoverGeometry.boundary.top);
+    expect(popoverGeometry.popover.bottom).toBeLessThanOrEqual(popoverGeometry.boundary.bottom);
+    expect(popoverGeometry.radioRects).toHaveLength(4);
+    expect(popoverGeometry.radioRects.map((radio) => radio.label)).toEqual(["Original", "High", "Medium", "Low"]);
+    expect(Math.max(...popoverGeometry.radioRects.map((radio) => radio.top)) - Math.min(...popoverGeometry.radioRects.map((radio) => radio.top))).toBeLessThanOrEqual(1);
+    for (const rect of popoverGeometry.radioRects) {
+        expect(rect.width).toBeGreaterThanOrEqual(44);
+        expect(rect.height).toBeGreaterThanOrEqual(44);
+        expect(rect.whiteSpace).toBe("nowrap");
+    }
+    await imageGroup.getByRole("radio", { name: "Low" }).click();
+    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}imageQualityLevel`), componentStoragePrefix)).toBe("low");
+    await expect(imagePopover).toHaveCount(0);
+    await expect(shortcutButtons.first()).toHaveAttribute("aria-label", "Image Quality: Lo");
+    await expect(shortcutButtons.first().locator(".quality-shortcut-label")).toHaveText("L");
+    await expect(composer.locator(".floating-message")).toHaveCount(0);
+
     await shortcutButtons.nth(1).click();
-    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}videoQualityLevel`), componentStoragePrefix)).toBe("high");
-    const feedback = composer.locator(".floating-message").last();
-    await expect(feedback).toContainText("動画品質:");
-    await expect(composer.locator(".footer-setting-shortcut-popover")).toHaveCount(0);
+    const videoPopover = composer.locator(".footer-setting-shortcut-popover");
+    await expect(videoPopover).toBeVisible();
+    const videoGroup = composer.getByRole("radiogroup", { name: "Video Quality" });
+    await expect(videoGroup.getByRole("radio")).toHaveCount(4);
+    await expectQualityOptionsOnOneLine(videoGroup, ["Original", "High", "Medium", "Low"]);
+    await expectPopoverPaddingBalanced(videoPopover);
+    await videoGroup.getByRole("radio", { name: "Low" }).click();
+    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}videoQualityLevel`), componentStoragePrefix)).toBe("low");
+    await expect(videoPopover).toHaveCount(0);
+    await expect(shortcutButtons.nth(1)).toHaveAttribute("aria-label", "Video Quality: Lo");
+    await expect(shortcutButtons.nth(1).locator(".quality-shortcut-label")).toHaveText("L");
+    await expect(composer.locator(".floating-message")).toHaveCount(0);
 
     const result = await composer.evaluate((element) => {
         const shadow = element.shadowRoot!;
@@ -2618,10 +2728,7 @@ test("Full Web Component restores left and right footer shortcuts in its storage
             footerLeft: footerRect.left,
             footerRight: footerRect.right,
             footerTop: footerRect.top,
-            feedbackRect: (() => {
-                const rect = element.shadowRoot!.querySelector<HTMLElement>(".floating-message")!.getBoundingClientRect();
-                return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
-            })(),
+            footerHeight: footerRect.height,
             shortcutRects: shortcuts.map((shortcut) => {
                 const rect = shortcut.getBoundingClientRect();
                 return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
@@ -2637,11 +2744,9 @@ test("Full Web Component restores left and right footer shortcuts in its storage
     expect(result.componentWidth).toBe(320);
     expect(result.componentScrollWidth).toBeLessThanOrEqual(result.componentWidth);
     expect(result.footerScrollWidth).toBeLessThanOrEqual(320);
+    expect(result.footerHeight).toBe(66);
     expect(result.postHistoryCount).toBe(0);
     expect(result.popoverCount).toBe(0);
-    expect(result.feedbackRect.left).toBeGreaterThanOrEqual(result.componentLeft);
-    expect(result.feedbackRect.right).toBeLessThanOrEqual(result.componentRight);
-    expect(result.feedbackRect.bottom).toBeLessThanOrEqual(result.footerTop);
     expect(result.shortcutRects).toHaveLength(2);
     expect(result.shortcutGaps).toBe("12px");
     for (const rect of result.shortcutRects) {
