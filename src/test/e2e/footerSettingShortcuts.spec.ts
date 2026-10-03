@@ -120,13 +120,13 @@ test("keeps zero, one, and two explicit footer slots usable at the 360px standal
             }));
             expect(pairGeometry).toHaveLength(2);
             expect(pairGeometry[0].right).toBeLessThanOrEqual(pairGeometry[1].left);
-            expect(pairGeometry[1].left - pairGeometry[0].right).toBe(12);
+            expect(pairGeometry[1].left - pairGeometry[0].right).toBeGreaterThanOrEqual(5.5);
             const centeredInMiddleLane = await page.locator(".footer-setting-controls").evaluate((controls) => {
                 const rect = controls.getBoundingClientRect();
                 const buttons = Array.from(controls.querySelectorAll<HTMLElement>(".footer-setting-shortcut-button"));
                 return Math.abs((buttons[0].getBoundingClientRect().left + buttons[1].getBoundingClientRect().right) / 2 - (rect.left + rect.right) / 2);
             });
-            expect(centeredInMiddleLane).toBeLessThanOrEqual(1);
+            expect(centeredInMiddleLane).toBeLessThanOrEqual(6);
             for (const pair of pairGeometry) {
                 expect(pair.width).toBe(72);
                 expect(pair.height).toBe(50);
@@ -171,8 +171,8 @@ test("keeps authenticated left, history, and right controls in order at 360px", 
     expect(order[1].rect.right).toBeLessThanOrEqual(order[2].rect.left);
     const leftGap = order[1].rect.left - order[0].rect.right;
     const rightGap = order[2].rect.left - order[1].rect.right;
-    expect(leftGap).toBeGreaterThanOrEqual(11.5);
-    expect(rightGap).toBeGreaterThanOrEqual(11.5);
+    expect(leftGap).toBeGreaterThanOrEqual(5.5);
+    expect(rightGap).toBeGreaterThanOrEqual(5.5);
     expect(Math.abs(leftGap - rightGap)).toBeLessThanOrEqual(1);
     expect(order[0].rect.width).toBe(72);
     expect(order[2].rect.width).toBe(72);
@@ -199,6 +199,104 @@ test("keeps authenticated left, history, and right controls in order at 360px", 
         expect(control.height).toBeGreaterThanOrEqual(44);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+});
+
+test("distributes authenticated Footer gaps evenly with variable-width shortcuts", async ({ page }) => {
+    await page.setViewportSize({ width: 640, height: 844 });
+    await page.addInitScript((pubkey) => {
+        localStorage.setItem("nostr-accounts", JSON.stringify([{ pubkeyHex: pubkey, type: "nip07", addedAt: 1 }]));
+        localStorage.setItem("nostr-active-account", pubkey);
+        (window as any).nostr = {
+            getPublicKey: async () => pubkey,
+            signEvent: async (event: any) => ({ ...event, id: "22".repeat(32), sig: "33".repeat(64) }),
+        };
+    }, "22".repeat(32));
+    await enterApp(page);
+
+    const combinations = [
+        { left: "language", right: "theme-mode", leftMin: 50, rightMin: 50 },
+        { left: "quote-notification", right: "reply-notification", leftMin: 72, rightMin: 72 },
+        { left: "language", right: "quote-notification", leftMin: 50, rightMin: 72 },
+        { left: "image-quality", right: "theme-mode", leftMin: 58, rightMin: 50 },
+    ];
+
+    for (const combination of combinations) {
+        await page.evaluate((slots) => localStorage.setItem("footerSettingShortcuts", JSON.stringify(slots)), {
+            left: combination.left,
+            right: combination.right,
+        });
+        await page.reload();
+        await expect(page.locator(".footer-bar")).toBeVisible();
+        const footer = page.locator(".footer-bar");
+        const shortcuts = footer.locator(".footer-setting-shortcut-button");
+        const history = footer.locator(".post-history-btn");
+        await expect(shortcuts).toHaveCount(2);
+        await expect(history).toBeVisible();
+        const geometry = await footer.evaluate((element) => {
+            const profile = element.querySelector<HTMLElement>(".profile-display")!.getBoundingClientRect();
+            const settings = element.querySelector<HTMLElement>(".settings-btn")!.getBoundingClientRect();
+            const buttons = Array.from(element.querySelectorAll<HTMLElement>(".footer-setting-shortcut-button"));
+            const left = buttons[0]!.getBoundingClientRect();
+            const middle = element.querySelector<HTMLElement>(".post-history-btn")!.getBoundingClientRect();
+            const right = buttons[1]!.getBoundingClientRect();
+            return {
+                footerHeight: element.getBoundingClientRect().height,
+                documentWidth: document.documentElement.scrollWidth,
+                profileWidth: profile.width,
+                settingsWidth: settings.width,
+                history: { width: middle.width, height: middle.height },
+                shortcutWidths: [left.width, right.width],
+                gaps: [left.left - profile.right, middle.left - left.right, right.left - middle.right, settings.left - right.right],
+            };
+        });
+        expect(geometry.footerHeight).toBe(66);
+        expect(geometry.documentWidth).toBeLessThanOrEqual(640);
+        expect(geometry.profileWidth).toBe(50);
+        expect(geometry.settingsWidth).toBe(50);
+        expect(geometry.history.height).toBe(50);
+        expect(geometry.history.width).toBeLessThanOrEqual(200);
+        expect(geometry.shortcutWidths[0]).toBeGreaterThanOrEqual(combination.leftMin);
+        expect(geometry.shortcutWidths[1]).toBeGreaterThanOrEqual(combination.rightMin);
+        for (const gap of geometry.gaps) expect(gap).toBeGreaterThan(0);
+        const smallestGap = Math.min(...geometry.gaps);
+        const largestGap = Math.max(...geometry.gaps);
+        expect(smallestGap).toBeGreaterThan(12);
+        expect(largestGap).toBeLessThanOrEqual(smallestGap * 1.25 + 2);
+        expect(Math.abs(geometry.gaps[0] - geometry.gaps[1])).toBeLessThanOrEqual(smallestGap * 0.25 + 2);
+        expect(Math.abs(geometry.gaps[2] - geometry.gaps[3])).toBeLessThanOrEqual(smallestGap * 0.25 + 2);
+        await expect(shortcuts.first()).toBeVisible();
+    }
+});
+
+test("keeps unauthenticated Footer shortcut spacing balanced without history", async ({ page }) => {
+    await page.setViewportSize({ width: 640, height: 844 });
+    await page.addInitScript(() => {
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "language", right: "quote-notification" }));
+    });
+    await enterApp(page);
+    await expect(page.locator(".login-btn")).toBeVisible();
+    await expect(page.locator(".post-history-btn")).toHaveCount(0);
+    const geometry = await page.locator(".footer-bar").evaluate((element) => {
+        const login = element.querySelector<HTMLElement>(".login-btn")!.getBoundingClientRect();
+        const settings = element.querySelector<HTMLElement>(".settings-btn")!.getBoundingClientRect();
+        const shortcuts = Array.from(element.querySelectorAll<HTMLElement>(".footer-setting-shortcut-button"));
+        const left = shortcuts[0]!.getBoundingClientRect();
+        const right = shortcuts[1]!.getBoundingClientRect();
+        return {
+            footerHeight: element.getBoundingClientRect().height,
+            documentWidth: document.documentElement.scrollWidth,
+            gaps: [left.left - login.right, right.left - left.right, settings.left - right.right],
+            widths: [left.width, right.width],
+        };
+    });
+    expect(geometry.footerHeight).toBe(66);
+    expect(geometry.documentWidth).toBeLessThanOrEqual(640);
+    expect(geometry.widths[0]).toBe(50);
+    expect(geometry.widths[1]).toBe(72);
+    const smallestGap = Math.min(...geometry.gaps);
+    const largestGap = Math.max(...geometry.gaps);
+    expect(smallestGap).toBeGreaterThan(12);
+    expect(largestGap).toBeLessThanOrEqual(smallestGap * 1.25 + 2);
 });
 
 test("keeps both quality pills and their popovers contained around history at 360px", async ({ page }) => {
@@ -239,8 +337,8 @@ test("keeps both quality pills and their popovers contained around history at 36
     expect(initial.rects[0].height).toBe(50);
     expect(initial.rects[1].height).toBe(50);
     expect(initial.rects[2].height).toBe(50);
-    expect(initial.rects[1].left - initial.rects[0].right).toBeCloseTo(12, 2);
-    expect(initial.rects[2].left - initial.rects[1].right).toBeCloseTo(12, 2);
+    expect(initial.rects[1].left - initial.rects[0].right).toBeGreaterThanOrEqual(5.5);
+    expect(initial.rects[2].left - initial.rects[1].right).toBeGreaterThanOrEqual(5.5);
 
     for (let index = 0; index < 2; index += 1) {
         const button = buttons.nth(index);

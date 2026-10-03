@@ -2734,8 +2734,8 @@ test("Full Web Component restores left and right footer shortcuts in its storage
                 return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
             }),
             shortcutGaps: (() => {
-                const controls = shadow.querySelector<HTMLElement>(".footer-setting-controls")!;
-                return getComputedStyle(controls).gap;
+                const rects = shortcuts.map((shortcut) => shortcut.getBoundingClientRect());
+                return rects[1]!.left - rects[0]!.right;
             })(),
             postHistoryCount: shadow.querySelectorAll(".post-history-btn").length,
             popoverCount: document.querySelectorAll(".footer-setting-shortcut-popover").length,
@@ -2748,7 +2748,7 @@ test("Full Web Component restores left and right footer shortcuts in its storage
     expect(result.postHistoryCount).toBe(0);
     expect(result.popoverCount).toBe(0);
     expect(result.shortcutRects).toHaveLength(2);
-    expect(result.shortcutGaps).toBe("12px");
+    expect(result.shortcutGaps).toBeGreaterThanOrEqual(5.5);
     for (const rect of result.shortcutRects) {
         expect(rect.left).toBeGreaterThanOrEqual(result.footerLeft - 0.5);
         expect(rect.right).toBeLessThanOrEqual(result.footerRight + 0.5);
@@ -2802,7 +2802,7 @@ test("Full Web Component contains 72px quote and reply pair pills at 320px", asy
     expect(geometry.host.width).toBe(320);
     expect(geometry.host.scrollWidth).toBeLessThanOrEqual(320);
     expect(geometry.footer.scrollWidth).toBeLessThanOrEqual(320);
-    expect(geometry.gap).toBeCloseTo(12, 2);
+    expect(geometry.gap).toBeGreaterThanOrEqual(5.5);
     for (const rect of geometry.rects) {
         expect(rect.left).toBeGreaterThanOrEqual(geometry.footer.left - 0.5);
         expect(rect.right).toBeLessThanOrEqual(geometry.footer.right + 0.5);
