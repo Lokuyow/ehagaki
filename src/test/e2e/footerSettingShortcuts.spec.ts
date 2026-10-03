@@ -16,6 +16,32 @@ async function enterApp(page: import("@playwright/test").Page) {
     }
 }
 
+async function expectQualityRadiosOnOneLine(
+    group: import("@playwright/test").Locator,
+    expectedLabels: string[],
+) {
+    const radios = group.getByRole("radio");
+    await expect(radios).toHaveCount(4);
+    const geometry = await radios.evaluateAll((elements) => elements.map((element) => {
+        const radio = element as HTMLElement;
+        const rect = radio.getBoundingClientRect();
+        return {
+            label: radio.getAttribute("aria-label"),
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+            whiteSpace: getComputedStyle(radio).whiteSpace,
+        };
+    }));
+    expect(geometry.map((radio) => radio.label)).toEqual(expectedLabels);
+    expect(Math.max(...geometry.map((radio) => radio.top)) - Math.min(...geometry.map((radio) => radio.top))).toBeLessThanOrEqual(1);
+    for (const radio of geometry) {
+        expect(radio.width).toBeGreaterThanOrEqual(44);
+        expect(radio.height).toBeGreaterThanOrEqual(44);
+        expect(radio.whiteSpace).toBe("nowrap");
+    }
+}
+
 async function chooseShortcut(page: import("@playwright/test").Page, slot: "left" | "right", id: string) {
     await page.locator(".settings-btn").click();
     const dialog = page.getByRole("dialog");
@@ -260,17 +286,30 @@ test("keeps language direct and lets image quality be selected from its popover"
     expect(feedbackGeometry.bottom).toBeLessThanOrEqual(feedbackGeometry.footerTop);
     expect(feedbackGeometry.pointerEvents).toBe("none");
 
+    const quality = page.locator(".footer-setting-shortcut-button").nth(1);
+    await quality.click();
+    const englishPopover = page.locator(".footer-setting-shortcut-popover");
+    await expect(englishPopover).toBeVisible();
+    const englishGroup = page.getByRole("radiogroup", { name: "Image Quality" });
+    await expectQualityRadiosOnOneLine(englishGroup, ["Original", "High", "Medium", "Low"]);
+    const englishPopoverRect = await englishPopover.boundingBox();
+    expect(englishPopoverRect!.x).toBeGreaterThanOrEqual(0);
+    expect(englishPopoverRect!.x + englishPopoverRect!.width).toBeLessThanOrEqual(360);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+    await page.keyboard.press("Escape");
+    await expect(englishPopover).toHaveCount(0);
+
     await language.click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("locale"))).toBe("ja");
     await expect(language).toHaveAttribute("aria-label", "言語: 日本語");
 
-    const quality = page.locator(".footer-setting-shortcut-button").nth(1);
     const initialButtonRect = await quality.boundingBox();
     await quality.click();
     const popover = page.locator(".footer-setting-shortcut-popover");
     await expect(popover).toBeVisible();
     const group = page.getByRole("radiogroup", { name: "画像品質" });
     await expect(group.getByRole("radio")).toHaveCount(4);
+    await expectQualityRadiosOnOneLine(group, ["オリジナル", "高", "中", "低"]);
     await expect(group.getByRole("radio", { name: "オリジナル" })).toHaveAttribute("aria-checked", "true");
     await expect.poll(() => page.evaluate(() => localStorage.getItem("imageQualityLevel"))).toBe("none");
     await expect(quality).toHaveAttribute("aria-label", "画像品質: オリジナル");

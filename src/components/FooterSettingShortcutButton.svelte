@@ -165,6 +165,11 @@
         }
     }
 
+    function getQualityOptionLabel(value: string): string {
+        const label = value === "none" ? "original" : value;
+        return $_(`settingsDialog.footer_shortcut_quality_${label}`) ?? value;
+    }
+
     function getCompactQualityLabel(): string {
         const quality = shortcutId === "image-quality"
             ? settingsStore.imageQualityLevel
@@ -223,8 +228,8 @@
                     {#each compressionLevels as level (level.value)}
                         <RadioButton
                             value={level.value}
-                            ariaLabel={level.label ?? level.value}
-                        >{level.label}</RadioButton>
+                            ariaLabel={getQualityOptionLabel(level.value)}
+                        >{getQualityOptionLabel(level.value)}</RadioButton>
                     {/each}
                 </RadioGroup.Root>
             </Popover.Content>
@@ -292,7 +297,7 @@
 
     :global(.footer-setting-shortcut-popover) {
         box-sizing: border-box;
-        width: min(240px, var(--bits-popover-content-available-width, 240px));
+        width: min(288px, var(--bits-popover-content-available-width, 288px));
         max-width: calc(100vw - 16px);
         padding: 12px;
         border: 1px solid var(--border);
@@ -305,12 +310,15 @@
 
     :global(.quality-shortcut-radio-group) {
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         gap: 6px;
     }
 
     :global(.footer-setting-shortcut-popover button[role="radio"]) {
         min-inline-size: 44px;
         min-block-size: 44px;
+        flex: 0 0 auto;
+        padding-inline: 6px;
+        white-space: nowrap;
     }
 </style>
