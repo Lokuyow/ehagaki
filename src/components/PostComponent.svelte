@@ -1,6 +1,6 @@
 <script lang="ts">
   import { _ } from "svelte-i18n";
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { untrack } from "svelte";
   import { EditorContent } from "svelte-tiptap";
   import type { Editor as TipTapEditor } from "@tiptap/core";
@@ -168,6 +168,7 @@
   let dragOver = $state(false);
   let fileInput: HTMLInputElement | undefined = $state();
   let postManager: PostManager | undefined = $state();
+  let componentDestroyed = false;
   let imageOxMap: Record<string, string> = $state({});
   let imageXMap: Record<string, string> = $state({});
   let mediaFreePlacement = $derived(mediaFreePlacementStore.value);
@@ -474,6 +475,11 @@
     updatePostStatus,
     clearContentAfterSuccess: clearContentAfterSubmissionSuccess,
     onPostSuccess: (result) => onPostSuccess?.(result),
+  });
+
+  onDestroy(() => {
+    componentDestroyed = true;
+    postManager?.cancelActiveNip65Operations();
   });
 
   function markPostFailure(message?: string): void {
@@ -1108,14 +1114,21 @@
         imageOxMap,
         imageXMap,
         () => {
+          if (componentDestroyed) return;
           postStatusHandlers.markSending();
           editorState.isSubmitPending = false;
         },
-        postStatusHandlers.markSuccess,
-        markPostFailure,
+        (result) => {
+          if (!componentDestroyed) postStatusHandlers.markSuccess(result);
+        },
+        (error) => {
+          if (!componentDestroyed) markPostFailure(error);
+        },
       );
     } finally {
-      if (currentEditorStore.value === editorInstance) editorState.isSubmitPending = false;
+      if (!componentDestroyed && currentEditorStore.value === editorInstance) {
+        editorState.isSubmitPending = false;
+      }
     }
   }
 

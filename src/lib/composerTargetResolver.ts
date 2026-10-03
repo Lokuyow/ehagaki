@@ -8,6 +8,7 @@ import {
 } from "./channelContextCoordinator";
 import { parseKind42ThreadReferences } from "./postHistoryNip10Utils";
 import { RelayConfigUtils } from "./relayConfigUtils";
+import { getNip65RelayDirectory } from "./nip65RelayDirectory";
 import {
     ReplyQuoteService,
     type ReferencedEventFetchTask,
@@ -64,6 +65,7 @@ interface ComposerTargetResolverDeps {
     replyQuoteService?: Pick<ReplyQuoteService, "fetchReferencedEventTask">;
     channelCoordinator?: Pick<ChannelContextCoordinator, "resolveInternal">;
     verifyEventFn?: (event: NostrEvent) => boolean;
+    lookupAuthorWriteRelaysFn?: (pubkeyHex: string) => Promise<string[]>;
 }
 
 export interface ResolveComposerTargetParams {
@@ -108,21 +110,129 @@ export function createComposerTargetResolver(
     const verifyEventFn = deps.verifyEventFn
         ?? ((event: NostrEvent) =>
             validateEvent(event as never) && verifyEvent(event as never));
+    const lookupAuthorWriteRelaysFn = deps.lookupAuthorWriteRelaysFn
+        ? (pubkeyHex: string, _rxNostr: RxNostr) => deps.lookupAuthorWriteRelaysFn!(pubkeyHex)
+        : (pubkeyHex: string, rxNostr: RxNostr) =>
+            getNip65RelayDirectory(rxNostr).lookup(pubkeyHex).then((entry) => entry.writeRelays);
 
     function resolve(params: ResolveComposerTargetParams): ComposerTargetResolveTask {
         let cancelled = false;
-        let eventTask: ReferencedEventFetchTask | null = null;
+        const eventTasks = new Set<ReferencedEventFetchTask>();
         let channelHandle: ChannelContextCoordinatorHandle | null = null;
+        let resolveCancellation!: () => void;
+        const cancellation = new Promise<void>((resolve) => {
+            resolveCancellation = resolve;
+        });
 
         const promise = (async (): Promise<ComposerTargetResolveResult> => {
             params.onPhase?.("event-loading");
-            eventTask = replyQuoteService.fetchReferencedEventTask(
+            const baseTask = replyQuoteService.fetchReferencedEventTask(
                 params.pointer.eventId,
                 params.pointer.relayHints,
                 params.rxNostr,
                 params.relayConfig,
             );
-            const fetched = await eventTask.promise;
+            eventTasks.add(baseTask);
+            let authorTask: ReferencedEventFetchTask | null = null;
+            let retrievalFinished = false;
+            const discoveryTask = params.pointer.authorHint
+                ? lookupAuthorWriteRelaysFn(params.pointer.authorHint, params.rxNostr)
+                    .then((writeRelays) => {
+                        if (cancelled || retrievalFinished || writeRelays.length === 0) {
+                            return null;
+                        }
+                        const explicitHints = new Set(
+                            RelayConfigUtils.sanitizeExternalRelayUrls(params.pointer.relayHints),
+                        );
+                        const authorRelays = RelayConfigUtils.sanitizeExternalRelayUrls(writeRelays)
+                            .filter((relay) => !explicitHints.has(relay));
+                        if (authorRelays.length === 0) return null;
+                        authorTask = replyQuoteService.fetchReferencedEventTask(
+                            params.pointer.eventId,
+                            [],
+                            params.rxNostr,
+                            params.relayConfig,
+                            5000,
+                            authorRelays,
+                        );
+                        eventTasks.add(authorTask);
+                        return authorTask;
+                    })
+                    .catch(() => null)
+                : Promise.resolve(null);
+
+            const fetchedOrCancelled = await Promise.race([
+                new Promise<{ state: "result"; result: Awaited<typeof baseTask.promise> }>((resolve) => {
+                    let baseResult: Awaited<typeof baseTask.promise> | null = null;
+                    let authorResult: Awaited<typeof baseTask.promise> | null = null;
+                    let authorSearchDone = !params.pointer.authorHint;
+                    let settled = false;
+                    const finish = (
+                        result: Awaited<typeof baseTask.promise>,
+                        winner: ReferencedEventFetchTask,
+                    ) => {
+                        if (settled) return;
+                        settled = true;
+                        retrievalFinished = true;
+                        for (const task of eventTasks) {
+                            if (task !== winner) task.cancel();
+                        }
+                        resolve({ state: "result", result });
+                    };
+                    const maybeFinish = () => {
+                        if (!baseResult || !authorSearchDone) return;
+                        if (authorResult?.status === "found") {
+                            if (authorTask) finish(authorResult, authorTask);
+                            return;
+                        }
+                        if (baseResult.status === "found") {
+                            finish(baseResult, baseTask);
+                            return;
+                        }
+                        const result = baseResult.status !== "not-found"
+                            ? baseResult
+                            : authorResult ?? baseResult;
+                        finish(
+                            result,
+                            authorTask && result === authorResult ? authorTask : baseTask,
+                        );
+                    };
+
+                    void baseTask.promise.then((result) => {
+                        if (cancelled) return;
+                        baseResult = result;
+                        if (result.status === "found") finish(result, baseTask);
+                        else maybeFinish();
+                    }).catch(() => {
+                        if (cancelled) return;
+                        baseResult = { status: "error" };
+                        maybeFinish();
+                    });
+                    void discoveryTask.then((discoveredTask) => {
+                        if (cancelled || settled) return;
+                        if (!discoveredTask) {
+                            authorSearchDone = true;
+                            maybeFinish();
+                            return;
+                        }
+                        void discoveredTask.promise.then((result) => {
+                            if (cancelled) return;
+                            authorResult = result;
+                            authorSearchDone = true;
+                            if (result.status === "found" && authorTask) finish(result, authorTask);
+                            else maybeFinish();
+                        }).catch(() => {
+                            if (cancelled) return;
+                            authorResult = { status: "error" };
+                            authorSearchDone = true;
+                            maybeFinish();
+                        });
+                    });
+                }),
+                cancellation.then(() => ({ state: "cancelled" as const })),
+            ]);
+            if (fetchedOrCancelled.state === "cancelled") return { status: "cancelled" };
+            const fetched = fetchedOrCancelled.result;
             if (cancelled || fetched.status === "cancelled") {
                 return { status: "cancelled" };
             }
@@ -283,7 +393,8 @@ export function createComposerTargetResolver(
             promise,
             cancel() {
                 cancelled = true;
-                eventTask?.cancel();
+                resolveCancellation();
+                for (const eventTask of eventTasks) eventTask.cancel();
                 channelHandle?.release();
                 channelHandle = null;
             },

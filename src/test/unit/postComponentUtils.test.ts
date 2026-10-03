@@ -59,6 +59,58 @@ describe('createPostStatusHandlers', () => {
         expect(onPostSuccess).toHaveBeenCalledOnce();
         expect(events.slice(0, 4)).toEqual(['status', 'status', 'clear', 'callback']);
     });
+
+    it('配送クラスは満たしていても個別relay拒否があれば部分成功を表示する', () => {
+        const updatePostStatus = vi.fn();
+        const handlers = createPostStatusHandlers({
+            updatePostStatus,
+            clearContentAfterSuccess: vi.fn(),
+        });
+
+        handlers.markSuccess({
+            success: true,
+            fullyDelivered: true,
+            acceptedRelays: ['wss://read-a.example/'],
+            rejectedRelays: [{
+                relay: 'wss://read-b.example/',
+                category: 'restricted',
+            }],
+            delivery: {
+                authorWrite: {
+                    status: 'delivered',
+                    requestedRelays: ['wss://author.example/'],
+                    acceptedRelays: ['wss://author.example/'],
+                    rejectedRelays: [],
+                    timedOutRelays: [],
+                    authRequiredRelays: [],
+                    unconfirmedRelays: [],
+                },
+                taggedUserRead: {
+                    recipient: {
+                        status: 'partial',
+                        requestedRelays: [
+                            'wss://read-a.example/',
+                            'wss://read-b.example/',
+                        ],
+                        acceptedRelays: ['wss://read-a.example/'],
+                        rejectedRelays: [{
+                            relay: 'wss://read-b.example/',
+                            category: 'restricted',
+                        }],
+                        timedOutRelays: [],
+                        authRequiredRelays: [],
+                        unconfirmedRelays: [],
+                    },
+                },
+                additional: [],
+            },
+        });
+
+        expect(updatePostStatus).toHaveBeenCalledWith(expect.objectContaining({
+            success: true,
+            message: 'postComponent.post_partial_success',
+        }));
+    });
 });
 
 describe('submitPendingPostWithSecretKey', () => {

@@ -3,11 +3,17 @@ import { RelayManager } from './relayManager';
 import type { RelayConfig, ProfileData } from './types';
 import { RelayConfigUtils } from './relayConfigUtils';
 import { profileMetadataCache } from './profileMetadataCache.svelte';
+import {
+    getNip65RelayDirectory,
+    type Nip65RelayDirectory,
+} from './nip65RelayDirectory';
 
 export interface ProfileBatchTarget {
     pubkeyHex: string;
     additionalRelays?: string[];
 }
+
+type ProfileRelayLists = Awaited<ReturnType<RelayManager["getRelayListsForProfile"]>>;
 
 /**
  * リレー取得とプロフィール取得を統合管理するサービスクラス
@@ -22,13 +28,88 @@ export interface ProfileBatchTarget {
 export class RelayProfileService {
     private rxNostr: ReturnType<typeof createRxNostr>;
     private relayManager: RelayManager;
+    private nip65RelayDirectory: Pick<Nip65RelayDirectory, "lookup">;
 
     constructor(
         rxNostr: ReturnType<typeof createRxNostr>,
         relayManager: RelayManager,
+        nip65RelayDirectory: Pick<Nip65RelayDirectory, "lookup"> = getNip65RelayDirectory(rxNostr as never),
     ) {
         this.rxNostr = rxNostr;
         this.relayManager = relayManager;
+        this.nip65RelayDirectory = nip65RelayDirectory;
+    }
+
+    private getBaseProfileRelayLists(pubkeyHex: string) {
+        return this.relayManager.getRelayListsForProfile(pubkeyHex);
+    }
+
+    private mergeAuthorWriteRelays(relayLists: ProfileRelayLists, authorWriteRelays: string[]) {
+        return {
+            ...relayLists,
+            writeRelays: RelayConfigUtils.sanitizeExternalRelayUrls([
+                ...relayLists.writeRelays,
+                ...authorWriteRelays,
+            ]),
+            contextualRelays: RelayConfigUtils.sanitizeExternalRelayUrls([
+                ...(relayLists.contextualRelays ?? relayLists.additionalRelays),
+                ...authorWriteRelays,
+            ]),
+        };
+    }
+
+    private profileOptions(
+        relayLists: ProfileRelayLists,
+        additionalRelays: string[],
+        forceRefresh: boolean,
+        allowBackgroundRefresh: boolean,
+    ) {
+        const contextualRelays = relayLists.contextualRelays ?? relayLists.additionalRelays;
+        const sanitizedHints = RelayConfigUtils.sanitizeExternalRelayUrls(additionalRelays, {
+            limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
+        });
+        return {
+            rxNostr: this.rxNostr as never,
+            forceRefresh,
+            allowBackgroundRefresh,
+            writeRelays: relayLists.writeRelays,
+            additionalRelays: RelayConfigUtils.sanitizeExternalRelayUrls(
+                sanitizedHints.length
+                    ? RelayConfigUtils.mergeRelayConfigs(sanitizedHints, contextualRelays)
+                    : contextualRelays,
+            ),
+            ...(relayLists.fallbackRelays?.length ? { fallbackRelays: relayLists.fallbackRelays } : {}),
+        };
+    }
+
+    private async refreshWithDiscoveredAuthorRelays(
+        pubkeyHex: string,
+        baseRelayLists: ProfileRelayLists,
+        additionalRelays: string[],
+        forceRefresh: boolean,
+        allowBackgroundRefresh: boolean,
+        initialRequest: Promise<unknown>,
+    ): Promise<void> {
+        try {
+            const [nip65] = await Promise.all([
+                this.nip65RelayDirectory.lookup(pubkeyHex),
+                initialRequest.catch(() => undefined),
+            ]);
+            // Only base Write relays are guaranteed to bypass the contextual-tier cap.
+            const existingRoutes = new Set(RelayConfigUtils.sanitizeExternalRelayUrls(baseRelayLists.writeRelays));
+            const newWriteRelays = RelayConfigUtils.sanitizeExternalRelayUrls(nip65.writeRelays)
+                .filter((relay) => !existingRoutes.has(relay));
+            if (newWriteRelays.length === 0) return;
+            const merged = this.mergeAuthorWriteRelays(baseRelayLists, newWriteRelays);
+            await profileMetadataCache.getProfile(pubkeyHex, this.profileOptions(
+                merged,
+                additionalRelays,
+                true,
+                allowBackgroundRefresh,
+            ));
+        } catch {
+            // Existing-relay retrieval remains useful when NIP-65 discovery fails.
+        }
     }
 
     /**
@@ -88,20 +169,20 @@ export class RelayProfileService {
     async fetchProfile(pubkeyHex: string, forceRemote: boolean = false): Promise<ProfileData | null> {
         if (!pubkeyHex) return null;
 
-        // RelayManagerからリレー情報を取得（ストレージアクセスはRelayManagerに委譲）
-        const relayLists = await this.relayManager.getRelayListsForProfile(pubkeyHex);
-        const contextualRelays = relayLists.contextualRelays ?? relayLists.additionalRelays;
+        if (!forceRemote) {
+            const cachedProfile = await profileMetadataCache.getCachedProfile(pubkeyHex);
+            if (cachedProfile) return cachedProfile;
+        }
 
-        return profileMetadataCache.getProfile(pubkeyHex, {
-            rxNostr: this.rxNostr as never,
-            forceRefresh: forceRemote,
-            allowBackgroundRefresh: false,
-            writeRelays: relayLists.writeRelays,
-            additionalRelays: contextualRelays,
-            ...(relayLists.fallbackRelays?.length
-                ? { fallbackRelays: relayLists.fallbackRelays }
-                : {}),
-        });
+        const relayLists = await this.getBaseProfileRelayLists(pubkeyHex);
+        const initialRequest = profileMetadataCache.getProfile(
+            pubkeyHex,
+            this.profileOptions(relayLists, [], forceRemote, false),
+        );
+        void this.refreshWithDiscoveredAuthorRelays(
+            pubkeyHex, relayLists, [], forceRemote, false, initialRequest,
+        );
+        return initialRequest;
     }
 
     /**
@@ -116,25 +197,34 @@ export class RelayProfileService {
     ): Promise<ProfileData | null> {
         if (!pubkeyHex) return null;
 
-        const relayLists = await this.relayManager.getRelayListsForProfile(pubkeyHex);
-        const contextualRelays = relayLists.contextualRelays ?? relayLists.additionalRelays;
-        const sanitizedOptionRelays = RelayConfigUtils.sanitizeExternalRelayUrls(options.additionalRelays, {
-            limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
-        });
-        const mergedAdditionalRelays = sanitizedOptionRelays.length
-            ? RelayConfigUtils.mergeRelayConfigs(sanitizedOptionRelays, contextualRelays)
-            : contextualRelays;
+        const cachedProfile = await profileMetadataCache.getCachedProfile(pubkeyHex);
+        if (cachedProfile) {
+            void this.getBaseProfileRelayLists(pubkeyHex).then((relayLists) => {
+                const initialRequest = profileMetadataCache.getProfile(
+                    pubkeyHex,
+                    this.profileOptions(relayLists, options.additionalRelays ?? [], false, true),
+                );
+                return this.refreshWithDiscoveredAuthorRelays(
+                    pubkeyHex,
+                    relayLists,
+                    options.additionalRelays ?? [],
+                    false,
+                    true,
+                    initialRequest,
+                );
+            }).catch(() => undefined);
+            return cachedProfile;
+        }
 
-        return profileMetadataCache.getProfile(pubkeyHex, {
-            rxNostr: this.rxNostr as never,
-            forceRefresh: false,
-            allowBackgroundRefresh: true,
-            writeRelays: relayLists.writeRelays,
-            additionalRelays: RelayConfigUtils.sanitizeExternalRelayUrls(mergedAdditionalRelays),
-            ...(relayLists.fallbackRelays?.length
-                ? { fallbackRelays: relayLists.fallbackRelays }
-                : {}),
-        });
+        const relayLists = await this.getBaseProfileRelayLists(pubkeyHex);
+        const initialRequest = profileMetadataCache.getProfile(
+            pubkeyHex,
+            this.profileOptions(relayLists, options.additionalRelays ?? [], false, true),
+        );
+        void this.refreshWithDiscoveredAuthorRelays(
+            pubkeyHex, relayLists, options.additionalRelays ?? [], false, true, initialRequest,
+        );
+        return initialRequest;
     }
 
     /**
@@ -160,9 +250,45 @@ export class RelayProfileService {
         }
 
         const pubkeys = Array.from(relayHintsByPubkey.keys());
+        const cachedProfiles = await profileMetadataCache.getCachedProfiles(pubkeys);
+        if (pubkeys.every((pubkey) => cachedProfiles[pubkey])) {
+            void Promise.all(pubkeys.map(async (pubkey) => [
+                pubkey,
+                await this.getBaseProfileRelayLists(pubkey),
+            ] as const)).then((relayListEntries) => {
+                const relayOptionsByPubkey = Object.fromEntries(relayListEntries.map(([pubkey, relayLists]) => {
+                    const contextualRelays = relayLists.contextualRelays ?? relayLists.additionalRelays;
+                    return [pubkey, {
+                        additionalRelays: RelayConfigUtils.mergeRelayConfigs(
+                            relayHintsByPubkey.get(pubkey) ?? [],
+                            contextualRelays,
+                        ),
+                        writeRelays: relayLists.writeRelays,
+                        ...(relayLists.fallbackRelays?.length ? { fallbackRelays: relayLists.fallbackRelays } : {}),
+                    }];
+                }));
+                const initialRequest = profileMetadataCache.getProfiles(pubkeys, {
+                    rxNostr: this.rxNostr as never,
+                    allowBackgroundRefresh: true,
+                    relayOptionsByPubkey,
+                });
+                for (const [pubkey, relayLists] of relayListEntries) {
+                    void this.refreshWithDiscoveredAuthorRelays(
+                        pubkey,
+                        relayLists,
+                        relayHintsByPubkey.get(pubkey) ?? [],
+                        false,
+                        true,
+                        initialRequest,
+                    );
+                }
+            }).catch(() => undefined);
+            return cachedProfiles;
+        }
+
         const relayListEntries = await Promise.all(pubkeys.map(async (pubkey) => [
             pubkey,
-            await this.relayManager.getRelayListsForProfile(pubkey),
+            await this.getBaseProfileRelayLists(pubkey),
         ] as const));
         const relayOptionsByPubkey = Object.fromEntries(relayListEntries.map(([
             pubkey,
@@ -181,11 +307,22 @@ export class RelayProfileService {
             }];
         }));
 
-        return profileMetadataCache.getProfiles(pubkeys, {
+        const initialRequest = profileMetadataCache.getProfiles(pubkeys, {
             rxNostr: this.rxNostr as never,
             allowBackgroundRefresh: true,
             relayOptionsByPubkey,
         });
+        for (const [pubkey, relayLists] of relayListEntries) {
+            void this.refreshWithDiscoveredAuthorRelays(
+                pubkey,
+                relayLists,
+                relayHintsByPubkey.get(pubkey) ?? [],
+                false,
+                true,
+                initialRequest,
+            );
+        }
+        return initialRequest;
     }
 
     subscribeProfile(
