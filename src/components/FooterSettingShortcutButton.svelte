@@ -297,8 +297,8 @@
 
     :global(.footer-setting-shortcut-popover) {
         box-sizing: border-box;
-        width: min(288px, var(--bits-popover-content-available-width, 288px));
-        max-width: calc(100vw - 16px);
+        inline-size: fit-content;
+        max-inline-size: min(var(--bits-popover-content-available-width, 100vw), calc(100vw - 16px));
         padding: 12px;
         border: 1px solid var(--border);
         border-radius: 8px;
@@ -310,6 +310,8 @@
 
     :global(.quality-shortcut-radio-group) {
         display: flex;
+        inline-size: max-content;
+        max-inline-size: 100%;
         flex-wrap: nowrap;
         gap: 6px;
     }

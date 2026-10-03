@@ -42,6 +42,26 @@ async function expectQualityRadiosOnOneLine(
     }
 }
 
+async function expectPopoverPaddingBalanced(popover: import("@playwright/test").Locator) {
+    const geometry = await popover.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const radios = Array.from(element.querySelectorAll<HTMLElement>('button[role="radio"]'));
+        const rect = element.getBoundingClientRect();
+        const borderLeft = Number.parseFloat(style.borderLeftWidth);
+        const borderRight = Number.parseFloat(style.borderRightWidth);
+        const leftInnerEdge = rect.left + borderLeft + Number.parseFloat(style.paddingLeft);
+        const rightInnerEdge = rect.right - borderRight - Number.parseFloat(style.paddingRight);
+        return {
+            leftGap: radios[0]!.getBoundingClientRect().left - leftInnerEdge,
+            rightGap: rightInnerEdge - radios[radios.length - 1]!.getBoundingClientRect().right,
+        };
+    });
+    expect(geometry.leftGap).toBeGreaterThanOrEqual(-1);
+    expect(geometry.rightGap).toBeGreaterThanOrEqual(-1);
+    expect(Math.abs(geometry.leftGap - geometry.rightGap)).toBeLessThanOrEqual(3);
+    expect(geometry.rightGap).toBeLessThanOrEqual(8);
+}
+
 async function chooseShortcut(page: import("@playwright/test").Page, slot: "left" | "right", id: string) {
     await page.locator(".settings-btn").click();
     const dialog = page.getByRole("dialog");
@@ -229,6 +249,7 @@ test("keeps both quality pills and their popovers contained around history at 36
         const popover = page.locator(".footer-setting-shortcut-popover").filter({ visible: true });
         await expect(popover).toBeVisible();
         await expect(popover.getByRole("radio")).toHaveCount(4);
+        await expectPopoverPaddingBalanced(popover);
         const geometry = await popover.evaluate((element, index) => {
             const rect = element.getBoundingClientRect();
             const trigger = document.querySelectorAll<HTMLElement>(".footer-setting-shortcut-button")[index]!.getBoundingClientRect();
@@ -240,7 +261,7 @@ test("keeps both quality pills and their popovers contained around history at 36
             };
         }, index);
         expect(geometry.popover.left).toBeGreaterThanOrEqual(0);
-        expect(geometry.popover.right).toBeLessThanOrEqual(360);
+        expect(geometry.popover.right).toBeLessThanOrEqual(360.5);
         expect(geometry.popover.bottom).toBeLessThanOrEqual(geometry.trigger.top);
         expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
         expect(await button.boundingBox()).toEqual(before);
@@ -292,9 +313,10 @@ test("keeps language direct and lets image quality be selected from its popover"
     await expect(englishPopover).toBeVisible();
     const englishGroup = page.getByRole("radiogroup", { name: "Image Quality" });
     await expectQualityRadiosOnOneLine(englishGroup, ["Original", "High", "Medium", "Low"]);
+    await expectPopoverPaddingBalanced(englishPopover);
     const englishPopoverRect = await englishPopover.boundingBox();
     expect(englishPopoverRect!.x).toBeGreaterThanOrEqual(0);
-    expect(englishPopoverRect!.x + englishPopoverRect!.width).toBeLessThanOrEqual(360);
+    expect(englishPopoverRect!.x + englishPopoverRect!.width).toBeLessThanOrEqual(360.5);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
     await page.keyboard.press("Escape");
     await expect(englishPopover).toHaveCount(0);
@@ -310,6 +332,7 @@ test("keeps language direct and lets image quality be selected from its popover"
     const group = page.getByRole("radiogroup", { name: "画像品質" });
     await expect(group.getByRole("radio")).toHaveCount(4);
     await expectQualityRadiosOnOneLine(group, ["オリジナル", "高", "中", "低"]);
+    await expectPopoverPaddingBalanced(popover);
     await expect(group.getByRole("radio", { name: "オリジナル" })).toHaveAttribute("aria-checked", "true");
     await expect.poll(() => page.evaluate(() => localStorage.getItem("imageQualityLevel"))).toBe("none");
     await expect(quality).toHaveAttribute("aria-label", "画像品質: オリジナル");

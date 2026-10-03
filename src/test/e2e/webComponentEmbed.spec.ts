@@ -63,6 +63,26 @@ async function expectQualityOptionsOnOneLine(
     }
 }
 
+async function expectPopoverPaddingBalanced(popover: import("@playwright/test").Locator) {
+    const geometry = await popover.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const radios = Array.from(element.querySelectorAll<HTMLElement>('button[role="radio"]'));
+        const rect = element.getBoundingClientRect();
+        const borderLeft = Number.parseFloat(style.borderLeftWidth);
+        const borderRight = Number.parseFloat(style.borderRightWidth);
+        const leftInnerEdge = rect.left + borderLeft + Number.parseFloat(style.paddingLeft);
+        const rightInnerEdge = rect.right - borderRight - Number.parseFloat(style.paddingRight);
+        return {
+            leftGap: radios[0]!.getBoundingClientRect().left - leftInnerEdge,
+            rightGap: rightInnerEdge - radios[radios.length - 1]!.getBoundingClientRect().right,
+        };
+    });
+    expect(geometry.leftGap).toBeGreaterThanOrEqual(-1);
+    expect(geometry.rightGap).toBeGreaterThanOrEqual(-1);
+    expect(Math.abs(geometry.leftGap - geometry.rightGap)).toBeLessThanOrEqual(3);
+    expect(geometry.rightGap).toBeLessThanOrEqual(8);
+}
+
 const sentinels = {
     locale: "host-locale",
     themeMode: "host-theme",
@@ -2628,6 +2648,7 @@ test("Full Web Component restores left and right footer shortcuts in its storage
     const imageGroup = composer.getByRole("radiogroup", { name: "Image Quality" });
     await expect(imageGroup.getByRole("radio")).toHaveCount(4);
     await expect(imageGroup.getByRole("radio", { name: "Original" })).toHaveAttribute("aria-checked", "true");
+    await expectPopoverPaddingBalanced(imagePopover);
     await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}imageQualityLevel`), componentStoragePrefix)).toBe("none");
     const popoverGeometry = await composer.evaluate((element) => {
         const shadow = element.shadowRoot!;
@@ -2684,6 +2705,7 @@ test("Full Web Component restores left and right footer shortcuts in its storage
     const videoGroup = composer.getByRole("radiogroup", { name: "Video Quality" });
     await expect(videoGroup.getByRole("radio")).toHaveCount(4);
     await expectQualityOptionsOnOneLine(videoGroup, ["Original", "High", "Medium", "Low"]);
+    await expectPopoverPaddingBalanced(videoPopover);
     await videoGroup.getByRole("radio", { name: "Low" }).click();
     await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}videoQualityLevel`), componentStoragePrefix)).toBe("low");
     await expect(videoPopover).toHaveCount(0);
