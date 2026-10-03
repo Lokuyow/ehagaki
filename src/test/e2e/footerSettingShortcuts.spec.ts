@@ -339,8 +339,23 @@ test("opens the quality popover from the keyboard and supports radio arrow navig
     await original.focus();
     await page.keyboard.press("ArrowDown");
     await expect.poll(() => page.evaluate(() => localStorage.getItem("imageQualityLevel"))).toBe("high");
+    await expect(popover).toBeVisible();
+    const high = group.getByRole("radio", { name: "高" });
+    await expect(high).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("imageQualityLevel"))).toBe("medium");
+    await expect(popover).toBeVisible();
+    const medium = group.getByRole("radio", { name: "中" });
+    await expect(medium).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("imageQualityLevel"))).toBe("low");
+    await expect(popover).toBeVisible();
+    const low = group.getByRole("radio", { name: "低" });
+    await expect(low).toHaveAttribute("aria-checked", "true");
+    await low.focus();
+    await page.keyboard.press("Space");
     await expect(popover).toHaveCount(0);
-    await expect(button).toHaveAttribute("aria-label", "画像品質: 高");
+    await expect(button).toHaveAttribute("aria-label", "画像品質: 低");
 });
 
 test("cycles theme mode system to light to dark and back", async ({ page }) => {

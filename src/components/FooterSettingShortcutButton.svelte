@@ -141,13 +141,28 @@
         }
     }
 
-    function selectQuality(value: string): void {
+    function updateQuality(value: string): void {
         if (shortcutId === "image-quality") {
             settingsStore.imageQualityLevel = value;
         } else if (shortcutId === "video-quality") {
             settingsStore.videoQualityLevel = value;
         }
-        qualityPopoverOpen = false;
+    }
+
+    function closeQualityPopoverOnPointerActivation(event: MouseEvent): void {
+        if (event.target instanceof Element && event.target.closest('[role="radio"]')) {
+            qualityPopoverOpen = false;
+        }
+    }
+
+    function closeQualityPopoverOnKeyboardActivation(event: KeyboardEvent): void {
+        if (
+            (event.key === " " || event.key === "Enter") &&
+            event.target instanceof Element &&
+            event.target.closest('[role="radio"]')
+        ) {
+            qualityPopoverOpen = false;
+        }
     }
 
     function getCompactQualityLabel(): string {
@@ -201,7 +216,9 @@
                     name={`footer-shortcut-${shortcutId}`}
                     value={qualityValue}
                     aria-label={label}
-                    onValueChange={selectQuality}
+                    onValueChange={updateQuality}
+                    onclick={closeQualityPopoverOnPointerActivation}
+                    onkeydown={closeQualityPopoverOnKeyboardActivation}
                 >
                     {#each compressionLevels as level (level.value)}
                         <RadioButton
