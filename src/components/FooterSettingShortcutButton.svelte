@@ -214,6 +214,7 @@
                 side="top"
                 sideOffset={8}
                 collisionBoundary={overlayTarget.parentElement}
+                collisionPadding={1}
                 aria-label={label}
             >
                 <RadioGroup.Root
