@@ -2596,12 +2596,63 @@ test("Full Web Component restores left and right footer shortcuts in its storage
     await expect(shortcutButtons.first()).toHaveAttribute("aria-label", /画像品質:/);
     await expect(shortcutButtons.nth(1)).toHaveAttribute("aria-label", /動画品質:/);
     await shortcutButtons.first().click();
-    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}imageQualityLevel`), componentStoragePrefix)).toBe("high");
+    const imagePopover = composer.locator(".footer-setting-shortcut-popover");
+    await expect(imagePopover).toBeVisible();
+    const imageGroup = composer.getByRole("radiogroup", { name: "画像品質" });
+    await expect(imageGroup.getByRole("radio")).toHaveCount(4);
+    await expect(imageGroup.getByRole("radio", { name: "オリジナル" })).toHaveAttribute("aria-checked", "true");
+    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}imageQualityLevel`), componentStoragePrefix)).toBe("none");
+    const popoverGeometry = await composer.evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const overlay = shadow.querySelector<HTMLElement>(".ehagaki-web-component-overlays")!;
+        const boundary = overlay.parentElement!;
+        const popover = shadow.querySelector<HTMLElement>(".footer-setting-shortcut-popover")!;
+        const componentRect = element.getBoundingClientRect();
+        const boundaryRect = boundary.getBoundingClientRect();
+        const popoverRect = popover.getBoundingClientRect();
+        const radioRects = Array.from(popover.querySelectorAll<HTMLElement>('button[role="radio"]')).map((radio) => {
+            const rect = radio.getBoundingClientRect();
+            return { width: rect.width, height: rect.height };
+        });
+        return {
+            overlayContainsPopover: overlay.contains(popover),
+            component: { left: componentRect.left, right: componentRect.right, width: componentRect.width, scrollWidth: element.scrollWidth },
+            boundary: { left: boundaryRect.left, right: boundaryRect.right, top: boundaryRect.top, bottom: boundaryRect.bottom, scrollWidth: boundary.scrollWidth },
+            popover: { left: popoverRect.left, right: popoverRect.right, top: popoverRect.top, bottom: popoverRect.bottom },
+            radioRects,
+        };
+    });
+    expect(popoverGeometry.overlayContainsPopover).toBe(true);
+    expect(popoverGeometry.component.width).toBe(320);
+    expect(popoverGeometry.component.scrollWidth).toBeLessThanOrEqual(320);
+    expect(popoverGeometry.boundary.scrollWidth).toBeLessThanOrEqual(320);
+    expect(popoverGeometry.popover.left).toBeGreaterThanOrEqual(popoverGeometry.boundary.left);
+    expect(popoverGeometry.popover.right).toBeLessThanOrEqual(popoverGeometry.boundary.right);
+    expect(popoverGeometry.popover.top).toBeGreaterThanOrEqual(popoverGeometry.boundary.top);
+    expect(popoverGeometry.popover.bottom).toBeLessThanOrEqual(popoverGeometry.boundary.bottom);
+    expect(popoverGeometry.radioRects).toHaveLength(4);
+    for (const rect of popoverGeometry.radioRects) {
+        expect(rect.width).toBeGreaterThanOrEqual(44);
+        expect(rect.height).toBeGreaterThanOrEqual(44);
+    }
+    await imageGroup.getByRole("radio", { name: "低" }).click();
+    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}imageQualityLevel`), componentStoragePrefix)).toBe("low");
+    await expect(imagePopover).toHaveCount(0);
+    await expect(shortcutButtons.first()).toHaveAttribute("aria-label", "画像品質: 低");
+    await expect(shortcutButtons.first().locator(".quality-shortcut-label")).toHaveText("低");
+    await expect(composer.locator(".floating-message")).toHaveCount(0);
+
     await shortcutButtons.nth(1).click();
-    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}videoQualityLevel`), componentStoragePrefix)).toBe("high");
-    const feedback = composer.locator(".floating-message").last();
-    await expect(feedback).toContainText("動画品質:");
-    await expect(composer.locator(".footer-setting-shortcut-popover")).toHaveCount(0);
+    const videoPopover = composer.locator(".footer-setting-shortcut-popover");
+    await expect(videoPopover).toBeVisible();
+    const videoGroup = composer.getByRole("radiogroup", { name: "動画品質" });
+    await expect(videoGroup.getByRole("radio")).toHaveCount(4);
+    await videoGroup.getByRole("radio", { name: "低" }).click();
+    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}videoQualityLevel`), componentStoragePrefix)).toBe("low");
+    await expect(videoPopover).toHaveCount(0);
+    await expect(shortcutButtons.nth(1)).toHaveAttribute("aria-label", "動画品質: 低");
+    await expect(shortcutButtons.nth(1).locator(".quality-shortcut-label")).toHaveText("低");
+    await expect(composer.locator(".floating-message")).toHaveCount(0);
 
     const result = await composer.evaluate((element) => {
         const shadow = element.shadowRoot!;
@@ -2618,10 +2669,7 @@ test("Full Web Component restores left and right footer shortcuts in its storage
             footerLeft: footerRect.left,
             footerRight: footerRect.right,
             footerTop: footerRect.top,
-            feedbackRect: (() => {
-                const rect = element.shadowRoot!.querySelector<HTMLElement>(".floating-message")!.getBoundingClientRect();
-                return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
-            })(),
+            footerHeight: footerRect.height,
             shortcutRects: shortcuts.map((shortcut) => {
                 const rect = shortcut.getBoundingClientRect();
                 return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
@@ -2637,11 +2685,9 @@ test("Full Web Component restores left and right footer shortcuts in its storage
     expect(result.componentWidth).toBe(320);
     expect(result.componentScrollWidth).toBeLessThanOrEqual(result.componentWidth);
     expect(result.footerScrollWidth).toBeLessThanOrEqual(320);
+    expect(result.footerHeight).toBe(66);
     expect(result.postHistoryCount).toBe(0);
     expect(result.popoverCount).toBe(0);
-    expect(result.feedbackRect.left).toBeGreaterThanOrEqual(result.componentLeft);
-    expect(result.feedbackRect.right).toBeLessThanOrEqual(result.componentRight);
-    expect(result.feedbackRect.bottom).toBeLessThanOrEqual(result.footerTop);
     expect(result.shortcutRects).toHaveLength(2);
     expect(result.shortcutGaps).toBe("12px");
     for (const rect of result.shortcutRects) {

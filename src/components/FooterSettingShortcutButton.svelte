@@ -1,7 +1,10 @@
 <script lang="ts">
+    import { Popover, RadioGroup } from "bits-ui";
     import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
     import FooterSettingShortcutIcon from "./FooterSettingShortcutIcon.svelte";
+    import RadioButton from "./RadioButton.svelte";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
     import { getCompressionLevels } from "../lib/constants";
     import {
         FOOTER_SETTING_SHORTCUTS,
@@ -15,6 +18,17 @@
     }
 
     let { shortcutId }: Props = $props();
+    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
+    let qualityPopoverOpen = $state(false);
+    let compressionLevels = $derived(getCompressionLevels($_));
+    let isQualityShortcut = $derived(
+        shortcutId === "image-quality" || shortcutId === "video-quality",
+    );
+    let qualityValue = $derived(
+        shortcutId === "image-quality"
+            ? settingsStore.imageQualityLevel
+            : settingsStore.videoQualityLevel,
+    );
     let label = $derived(
         $_(FOOTER_SETTING_SHORTCUTS.find((item) => item.id === shortcutId)!.labelKey) ?? shortcutId,
     );
@@ -95,12 +109,6 @@
             case "language":
                 settingsStore.locale = settingsStore.locale === "ja" ? "en" : "ja";
                 break;
-            case "image-quality":
-                settingsStore.imageQualityLevel = getNextQuality(settingsStore.imageQualityLevel);
-                break;
-            case "video-quality":
-                settingsStore.videoQualityLevel = getNextQuality(settingsStore.videoQualityLevel);
-                break;
             case "theme-mode":
                 themeModeStore.set(
                     themeModeStore.value === "system"
@@ -133,10 +141,13 @@
         }
     }
 
-    function getNextQuality(current: string): string {
-        const cycle = ["none", "high", "medium", "low"];
-        const index = cycle.indexOf(current);
-        return cycle[(index + 1 + cycle.length) % cycle.length];
+    function selectQuality(value: string): void {
+        if (shortcutId === "image-quality") {
+            settingsStore.imageQualityLevel = value;
+        } else if (shortcutId === "video-quality") {
+            settingsStore.videoQualityLevel = value;
+        }
+        qualityPopoverOpen = false;
     }
 
     function getCompactQualityLabel(): string {
@@ -153,8 +164,58 @@
     }
 </script>
 
+{#snippet qualityShortcutContent()}
+    <span class="quality-shortcut-content" aria-hidden="true">
+        <FooterSettingShortcutIcon {shortcutId} />
+        <span class="quality-shortcut-label">{compactQualityLabel}</span>
+    </span>
+{/snippet}
+
+{#if isQualityShortcut}
+    <Popover.Root bind:open={qualityPopoverOpen}>
+        <Popover.Trigger>
+            {#snippet child({ props })}
+                <Button
+                    {...props}
+                    className="footer-setting-shortcut-button quality-shortcut"
+                    variant="default"
+                    shape="circle"
+                    contentLayout="icon"
+                    ariaLabel={accessibleName}
+                    floatingMessage=""
+                >
+                    {@render qualityShortcutContent()}
+                </Button>
+            {/snippet}
+        </Popover.Trigger>
+        <Popover.Portal to={overlayTarget}>
+            <Popover.Content
+                class="footer-setting-shortcut-popover"
+                side="top"
+                sideOffset={8}
+                collisionBoundary={overlayTarget.parentElement}
+                aria-label={label}
+            >
+                <RadioGroup.Root
+                    class="quality-shortcut-radio-group"
+                    name={`footer-shortcut-${shortcutId}`}
+                    value={qualityValue}
+                    aria-label={label}
+                    onValueChange={selectQuality}
+                >
+                    {#each compressionLevels as level (level.value)}
+                        <RadioButton
+                            value={level.value}
+                            ariaLabel={level.label ?? level.value}
+                        >{level.label}</RadioButton>
+                    {/each}
+                </RadioGroup.Root>
+            </Popover.Content>
+        </Popover.Portal>
+    </Popover.Root>
+{:else}
 <Button
-    className="footer-setting-shortcut-button {shortcutId === 'image-quality' || shortcutId === 'video-quality' ? 'quality-shortcut' : shortcutId === 'quote-notification' || shortcutId === 'reply-notification' ? 'pair-shortcut' : ''}"
+    className="footer-setting-shortcut-button {shortcutId === 'quote-notification' || shortcutId === 'reply-notification' ? 'pair-shortcut' : ''}"
     variant="default"
     shape="circle"
     contentLayout="icon"
@@ -165,15 +226,9 @@
     floatingMessageVariant="container-top-right"
     onClick={handleClick}
 >
-    {#if shortcutId === "image-quality" || shortcutId === "video-quality"}
-        <span class="quality-shortcut-content" aria-hidden="true">
-            <FooterSettingShortcutIcon {shortcutId} />
-            <span class="quality-shortcut-label">{compactQualityLabel}</span>
-        </span>
-    {:else}
-        <FooterSettingShortcutIcon {shortcutId} active={active} stateValue={shortcutId === "theme-mode" ? themeModeStore.value : undefined} />
-    {/if}
+    <FooterSettingShortcutIcon {shortcutId} active={active} stateValue={shortcutId === "theme-mode" ? themeModeStore.value : undefined} />
 </Button>
+{/if}
 
 <style>
     :global(button.footer-setting-shortcut-button) {
@@ -216,5 +271,29 @@
         min-width: 0.85em;
         font-size: 0.875rem;
         line-height: 1;
+    }
+
+    :global(.footer-setting-shortcut-popover) {
+        box-sizing: border-box;
+        width: min(240px, var(--bits-popover-content-available-width, 240px));
+        max-width: calc(100vw - 16px);
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--dialog-bg);
+        color: var(--text);
+        box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+        z-index: 100001;
+    }
+
+    :global(.quality-shortcut-radio-group) {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    :global(.footer-setting-shortcut-popover button[role="radio"]) {
+        min-inline-size: 44px;
+        min-block-size: 44px;
     }
 </style>
