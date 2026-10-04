@@ -128,7 +128,7 @@ describe('SettingsDialog accessibility', () => {
         });
         await tick();
 
-        const label = 'CW未対応クライアントで非表示';
+        const label = 'CWで送信';
         expect(screen.getByText(label)).toBeTruthy();
         expect(screen.queryByText(/実験的な送信形式です/)).toBeNull();
         expect(screen.queryByText(/全文検索に引っかからない場合があります/)).toBeNull();

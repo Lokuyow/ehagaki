@@ -385,7 +385,7 @@
     "relay_write_disabled": "Write disabled",
     "no_relay_info": "No relay info",
     "client_tag_label": "Add client name to post \n(Client tag)",
-    "fail_closed_content_warning_label": "Hide from clients without CW support",
+    "fail_closed_content_warning_label": "Send with CW",
     "fail_closed_content_warning_info_label": "Content warning format details",
     "fail_closed_content_warning_info": "This is an experimental sending format. It moves the CW body from the normal content field into the content-warning tag, so clients without CW support will not display the body normally. As a result, the CW body may not appear in Nostr full-text search. This does not encrypt or conceal it; the body can be read from the raw event tag.",
     "fail_closed_content_warning_shortcut_label": "CW body format",
