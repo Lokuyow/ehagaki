@@ -131,7 +131,7 @@ describe('SettingsDialog accessibility', () => {
         const label = '新CW形式で送信';
         expect(screen.getByText(label)).toBeTruthy();
         expect(screen.queryByText(/実験的な送信形式です/)).toBeNull();
-        expect(screen.queryByText(/全文検索に引っかからない場合があります/)).toBeNull();
+        expect(screen.queryByText(/全文検索に出ないことがあります/)).toBeNull();
         const infoButton = screen.getByRole('button', { name: 'CW設定の詳細' });
         expect(infoButton).toBeTruthy();
         const toggle = screen.getByRole('switch', { name: label });
@@ -140,7 +140,8 @@ describe('SettingsDialog accessibility', () => {
         await fireEvent.click(infoButton);
         await tick();
         expect(screen.getByText(/実験的な送信形式です/)).toBeTruthy();
-        expect(screen.getByText(/CW本文はNostrの全文検索に引っかからない場合があります/)).toBeTruthy();
+        expect(screen.getByText(/新CW形式に未対応のクライアントでは本文が通常表示されません/)).toBeTruthy();
+        expect(screen.getByText(/CW本文はNostrの全文検索に出ないことがあります/)).toBeTruthy();
         expect(screen.getByText(/暗号化ではなく、raw eventのtagから本文を取得できます/)).toBeTruthy();
 
         await fireEvent.click(toggle);

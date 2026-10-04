@@ -385,7 +385,7 @@
     "client_tag_label": "投稿にクライアント名をつける\n(Client tag)",
     "fail_closed_content_warning_label": "新CW形式で送信",
     "fail_closed_content_warning_info_label": "CW設定の詳細",
-    "fail_closed_content_warning_info": "実験的な送信形式です。CW本文を通常のcontent欄からcontent-warning tagへ移すため、CW未対応クライアントでは本文が通常表示されません。その代わり、CW本文はNostrの全文検索に引っかからない場合があります。暗号化ではなく、raw eventのtagから本文を取得できます。",
+    "fail_closed_content_warning_info": "実験的な送信形式です。CW本文を通常のcontent欄からcontent-warning tagへ移すため、新CW形式に未対応のクライアントでは本文が通常表示されません。なお、CW本文はNostrの全文検索に出ないことがあります。暗号化ではなく、raw eventのtagから本文を取得できます。",
     "fail_closed_content_warning_shortcut_label": "CW本文形式",
     "footer_shortcut_content_warning_on": "CW本文:非表示形式",
     "footer_shortcut_content_warning_off": "CW本文:標準形式",
