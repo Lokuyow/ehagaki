@@ -294,8 +294,13 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         expect(sampleIconState).toHaveLength(3);
         expect(sampleIconState.every((mask) => mask !== "none" && mask.includes(`${origin}/ehagaki/web-component/host-owned/icons/`))).toBe(true);
         expect(sampleIconState.every((mask) => !mask.includes(`${origin}/ehagaki/web-component/host-owned/assets/icons/`))).toBe(true);
+        expect(sampleIconState[1]).toContain("warning_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
 
         await page.locator("ehagaki-composer .content-warning-icon").click();
+        await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) => {
+            const icon = element.shadowRoot!.querySelector<HTMLElement>(".content-warning-icon")!;
+            return getComputedStyle(icon).maskImage;
+        })).toBe(sampleIconState[1]);
         await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) => {
             const reason = element.shadowRoot!.querySelector<HTMLElement>(".reason-input-container");
             return reason?.getBoundingClientRect().height ?? 0;
@@ -389,7 +394,7 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
 
         const iconStatuses = await page.evaluate(async () => Promise.all([
             "paper-plane-solid-full.svg",
-            "visibility_off_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg",
+            "warning_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg",
             "tag_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg",
         ].map(async (icon) => (await fetch(`./web-component/host-owned/icons/${icon}`)).status)));
         expect(iconStatuses).toEqual([200, 200, 200]);

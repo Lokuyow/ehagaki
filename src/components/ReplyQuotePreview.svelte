@@ -8,6 +8,7 @@
     import ProfileAvatar from "./ProfileAvatar.svelte";
     import {
         buildPostContentRenderModel,
+        resolveEventContentBody,
         type PostContentEmojiImageMeta,
         type PostContentEmojiLoadState,
         type PostContentRenderModel,
@@ -90,9 +91,13 @@
             });
         }
 
+        const content = resolveEventContentBody(
+            referencedEvent.content,
+            referencedEvent.tags,
+        );
         return buildPostContentRenderModel({
-            sourceContent: referencedEvent.content,
-            displayContent: sanitizePlainText(referencedEvent.content),
+            sourceContent: content,
+            displayContent: sanitizePlainText(content),
             tags: referencedEvent.tags,
         });
     });
@@ -354,6 +359,7 @@
     {#snippet content()}
         <PostContentPreview
             model={resolvedModel}
+            contentWarningEventId={reference.eventId}
             density="reply"
             {emojiLoadStateByUrl}
             {emojiImageMetaByUrl}

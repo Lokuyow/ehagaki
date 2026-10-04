@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildPostContentRenderModel } from "../../lib/postContentPreview";
+import {
+    buildPostContentRenderModel,
+    resolveEventContentBody,
+} from "../../lib/postContentPreview";
 
 describe("postContentPreview", () => {
     it("uses sourceContent for media and displayContent for rendered text", () => {
@@ -37,6 +40,46 @@ describe("postContentPreview", () => {
             "https://example.com/party.webp",
         ]);
         expect(model.hasRenderableText).toBe(true);
+    });
+
+    it("resolves the third content-warning element and retains the warning reason", () => {
+        const model = buildPostContentRenderModel({
+            sourceContent: "",
+            tags: [["content-warning", "Spoiler", "protected body"]],
+        });
+
+        expect(resolveEventContentBody("", [["content-warning", "Spoiler", "protected body"]]))
+            .toBe("protected body");
+        expect(model.previewContent.segments).toEqual([
+            { type: "text", text: "protected body" },
+        ]);
+        expect(model.contentWarning).toEqual({ reason: "Spoiler" });
+    });
+
+    it("uses the third content-warning element even when it is empty", () => {
+        const tags = [["content-warning", "", ""]];
+        const model = buildPostContentRenderModel({
+            sourceContent: "must not be used",
+            tags,
+        });
+
+        expect(resolveEventContentBody("must not be used", tags)).toBe("");
+        expect(model.hasRenderableText).toBe(false);
+        expect(model.contentWarning).toEqual({ reason: "" });
+    });
+
+    it("keeps legacy content-warning events on event.content", () => {
+        const tags = [["content-warning", "Spoiler"]];
+        const model = buildPostContentRenderModel({
+            sourceContent: "legacy body",
+            tags,
+        });
+
+        expect(resolveEventContentBody("legacy body", tags)).toBe("legacy body");
+        expect(model.previewContent.segments).toEqual([
+            { type: "text", text: "legacy body" },
+        ]);
+        expect(model.contentWarning).toEqual({ reason: "Spoiler" });
     });
 
     it("extracts media only when media is omitted", () => {
@@ -128,5 +171,28 @@ describe("postContentPreview", () => {
         expect(model.mediaLayout.images.map((item) => item.url)).toEqual([
             "https://example.com/unmatched.jpg",
         ]);
+    });
+
+    it("adds media found in tagged body while preserving saved media metadata", () => {
+        const savedMedia = {
+            url: "https://example.com/saved.png",
+            mimeType: "image/png",
+            blurhash: "saved-blurhash",
+        };
+        const model = buildPostContentRenderModel({
+            sourceContent: "",
+            tags: [[
+                "content-warning",
+                "",
+                "https://example.com/in-body.jpg",
+            ]],
+            media: [savedMedia],
+        });
+
+        expect(model.media.map((item) => item.url)).toEqual([
+            savedMedia.url,
+            "https://example.com/in-body.jpg",
+        ]);
+        expect(model.media[0]).toBe(savedMedia);
     });
 });

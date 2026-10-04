@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { readable } from 'svelte/store';
 import { clearAuthState, updateAuthState } from '../../stores/authStore.svelte';
 import { editorState, resetPostStatus } from '../../stores/editorStore.svelte';
+import { contentWarningStore } from '../../stores/tagsStore.svelte';
+import { settingsStore } from '../../stores/settingsStore.svelte';
 
 const mockTranslate = vi.hoisted(() => (key: string) => {
     const translations: Record<string, string> = {
@@ -32,6 +35,42 @@ describe('KeyboardButtonBar', () => {
         document.documentElement.style.removeProperty('--keyboard-height');
         clearAuthState();
         resetPostStatus();
+        contentWarningStore.reset();
+        settingsStore.failClosedContentWarning = false;
+    });
+
+    it('CWアイコンは新CW設定にリアクティブに追従し、投稿ごとのCW状態とは独立する', async () => {
+        settingsStore.failClosedContentWarning = false;
+        contentWarningStore.set(false);
+
+        const { container } = render(KeyboardButtonBarWithProvider);
+        const button = screen.getByRole('button', {
+            name: '閲覧注意を切り替え',
+        });
+        const icon = button.querySelector('.content-warning-icon');
+
+        expect(icon).toBeTruthy();
+        expect(icon?.classList.contains('fail-closed-format')).toBe(false);
+        expect(button.classList.contains('selected')).toBe(false);
+
+        settingsStore.failClosedContentWarning = true;
+        await tick();
+
+        expect(container.querySelector('.content-warning-icon')).toBe(icon);
+        expect(icon?.classList.contains('fail-closed-format')).toBe(true);
+        expect(button.classList.contains('selected')).toBe(false);
+
+        contentWarningStore.set(true);
+        await tick();
+
+        expect(button.classList.contains('selected')).toBe(true);
+        expect(icon?.classList.contains('fail-closed-format')).toBe(true);
+
+        settingsStore.failClosedContentWarning = false;
+        await tick();
+
+        expect(button.classList.contains('selected')).toBe(true);
+        expect(icon?.classList.contains('fail-closed-format')).toBe(false);
     });
 
     it('button 押下前の pointerdown で focus 移動を抑止する', () => {

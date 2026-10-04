@@ -54,6 +54,7 @@
     } from "../lib/postHistoryDialogUtils";
     import {
         buildPostContentRenderModel,
+        resolveEventContentBody,
         type PostContentRenderModel,
     } from "../lib/postContentPreview";
     import {
@@ -378,7 +379,10 @@
     let showDelayedListLoading = $state(false);
     const previewCollapse = usePostHistoryPreviewCollapse({
         getShow: () => show,
-        getPosts: () => history.posts,
+        getPosts: () => history.posts.map((post) => ({
+            ...post,
+            content: resolveEventContentBody(post.content, post.tags),
+        })),
         getContainer: () => historyContainer,
     });
     const reactionEmojiSlotWidthByUrl = new Map<string, number>();
@@ -400,9 +404,13 @@
     function buildDisplayPreviewModel(
         post: PostHistoryRecord,
     ): PostContentRenderModel {
-        const displayContent = stripPostHistoryInlineQuoteUrisForDisplay(post);
+        const content = resolveEventContentBody(post.content, post.tags);
+        const displayContent = stripPostHistoryInlineQuoteUrisForDisplay({
+            ...post,
+            content,
+        });
         return buildPostContentRenderModel({
-            sourceContent: displayContent,
+            sourceContent: content,
             displayContent,
             tags: post.tags,
             media: post.media,
@@ -2715,6 +2723,7 @@
                                     <div class="post-preview-body">
                                         <PostContentPreview
                                             model={getPreviewModel(post)}
+                                            contentWarningEventId={post.eventId}
                                             density="standard"
                                             emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                                             emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}

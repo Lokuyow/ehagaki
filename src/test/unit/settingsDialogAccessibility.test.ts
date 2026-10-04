@@ -83,6 +83,7 @@ describe('SettingsDialog accessibility', () => {
         themeModeStore.set('system');
         settingsStore.externalNostrClient = 'nostter';
         settingsStore.locale = 'en';
+        settingsStore.failClosedContentWarning = false;
     });
 
     it('フッターshortcutの左右slotを別々に選択でき、反対slotの重複候補を無効化する', async () => {
@@ -98,7 +99,13 @@ describe('SettingsDialog accessibility', () => {
             '', 'language', 'image-quality', 'video-quality', 'theme-mode',
             'media-free-placement', 'hide-mascot', 'hide-flavor-text',
             'quote-notification', 'reply-notification', 'client-tag',
+            'fail-closed-content-warning',
         ]);
+        expect(
+            Array.from(left.options).find(
+                (option) => option.value === 'fail-closed-content-warning',
+            )?.textContent,
+        ).toBe('CW本文形式');
         await fireEvent.change(left, { target: { value: 'language' } });
         await tick();
         expect(footerSettingShortcutsStore.value).toEqual({ left: 'language', right: null });
@@ -111,6 +118,35 @@ describe('SettingsDialog accessibility', () => {
         await tick();
         expect(footerSettingShortcutsStore.value).toEqual({ left: null, right: 'image-quality' });
         expect(Array.from(right.options).find((option) => option.value === 'image-quality')?.disabled).toBe(false);
+    });
+
+    it('fail-closed CW設定は詳細をinfo popoverに示し、canonical storeを切り替える', async () => {
+        settingsStore.locale = 'ja';
+        settingsStore.failClosedContentWarning = false;
+        render(SettingsDialog, {
+            props: { show: true, onClose: () => {} },
+        });
+        await tick();
+
+        const label = '新CW形式で送信';
+        expect(screen.getByText(label)).toBeTruthy();
+        expect(screen.queryByText(/実験的な送信形式です/)).toBeNull();
+        expect(screen.queryByText(/標準的な全文検索ではCW本文を検索できなくなります/)).toBeNull();
+        const infoButton = screen.getByRole('button', { name: 'CW設定の詳細' });
+        expect(infoButton).toBeTruthy();
+        const toggle = screen.getByRole('switch', { name: label });
+        expect(toggle.getAttribute('aria-checked')).toBe('false');
+
+        await fireEvent.click(infoButton);
+        await tick();
+        expect(screen.getByText(/実験的な送信形式です/)).toBeTruthy();
+        expect(screen.getByText(/この形式に未対応のクライアントでは本文が表示されません/)).toBeTruthy();
+        expect(screen.getByText(/Nostrの標準的な全文検索ではCW本文を検索できなくなります/)).toBeTruthy();
+
+        await fireEvent.click(toggle);
+        await tick();
+        expect(settingsStore.failClosedContentWarning).toBe(true);
+        expect(toggle.getAttribute('aria-checked')).toBe('true');
     });
 
     it('設定名の左にだけ指定アイコンを表示し、装飾として隠す', async () => {
@@ -134,6 +170,7 @@ describe('SettingsDialog accessibility', () => {
             'quote-setting-icon',
             'reply-setting-icon',
             'client-tag-setting-icon',
+            'fail-closed-content-warning-setting-icon',
             'footer-shortcuts-setting-icon',
             'relay-refresh-setting-icon',
             'upload-destination-setting-icon',
@@ -145,10 +182,10 @@ describe('SettingsDialog accessibility', () => {
             expect(icon, className).toBeTruthy();
             expect(icon?.getAttribute('aria-hidden')).toBe('true');
         }
-        expect(document.querySelectorAll('.setting-menu-icon')).toHaveLength(15);
+        expect(document.querySelectorAll('.setting-menu-icon')).toHaveLength(16);
         expect(
             document.querySelectorAll('.setting-menu-mask-icon'),
-        ).toHaveLength(14);
+        ).toHaveLength(15);
         expect(
             document
                 .querySelector('.mascot-setting-icon')

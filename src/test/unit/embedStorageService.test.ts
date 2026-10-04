@@ -197,4 +197,9 @@ describe('EmbedStorageService', () => {
         expect(EMBED_SETTING_STORAGE_KEYS).not.toContain(STORAGE_KEYS.FOOTER_SETTING_SHORTCUTS);
         expect(EMBED_STORAGE_KEYS).not.toContain('nostr-secret-key');
     });
+
+    it('fail-closed CW preference は既存のembed設定storage委譲を使う', () => {
+        expect(EMBED_SETTING_STORAGE_KEYS).toContain(STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING);
+        expect(EMBED_STORAGE_KEYS).toContain(STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING);
+    });
 });

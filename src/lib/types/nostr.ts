@@ -223,6 +223,7 @@ export interface PostManagerDeps {
     replyQuoteState?: { value: ReplyQuoteComposerState };
     settingsStore?: {
         clientTagEnabled?: boolean;
+        failClosedContentWarning?: boolean;
         quoteNotificationEnabled: boolean;
         replyNotificationEnabled?: boolean;
     };

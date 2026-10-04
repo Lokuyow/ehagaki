@@ -16,6 +16,7 @@
     } from "../lib/utils/appDomUtils";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
+    import { settingsStore } from "../stores/settingsStore.svelte";
 
     interface Props {
         onUploadImage?: () => void;
@@ -69,6 +70,9 @@
 
     // Content Warning状態を取得
     let contentWarningActive = $derived(contentWarningStore.value);
+    let failClosedContentWarning = $derived(
+        settingsStore.failClosedContentWarning,
+    );
 
     // Content Warningトグル
     function toggleContentWarning() {
@@ -434,7 +438,10 @@
                             )}
                             {...restProps}
                         >
-                            <div class="content-warning-icon svg-icon"></div>
+                            <div
+                                class="content-warning-icon svg-icon"
+                                class:fail-closed-format={failClosedContentWarning}
+                            ></div>
                         </Button>
                     {/snippet}
                     </Tooltip.Trigger>
@@ -553,6 +560,10 @@
         }
 
         .content-warning-icon {
+            mask-image: url("/icons/warning_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+        }
+
+        .content-warning-icon.fail-closed-format {
             mask-image: url("/icons/visibility_off_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         }
 

@@ -80,6 +80,7 @@ describe('FooterComponent', () => {
         };
         footerSettingShortcutsStore.set({ left: null, right: null });
         settingsStore.locale = 'ja';
+        settingsStore.failClosedContentWarning = false;
         isLoadingProfileStore.set(false);
         profileLoadedStore.set(false);
         locale.set('ja');
@@ -178,6 +179,30 @@ describe('FooterComponent', () => {
         expect(shortcut.getAttribute('aria-label')).toBe('Language: English');
         expect(document.querySelector('[role="dialog"]')).toBeNull();
         expect(document.querySelector('[data-radix-popper-content-wrapper]')).toBeNull();
+    });
+
+    it('fail-closed CW shortcutはcanonical settingを直接切り替える', async () => {
+        settingsStore.failClosedContentWarning = false;
+        footerSettingShortcutsStore.set({
+            left: 'fail-closed-content-warning',
+            right: null,
+        });
+        renderFooter();
+
+        const button = screen.getByRole('button', {
+            name: 'CW本文形式',
+        });
+        expect(button.getAttribute('aria-pressed')).toBe('false');
+        expect(button.querySelector('.content-warning-standard-icon')).toBeTruthy();
+        expect(button.querySelector('.content-warning-hidden-icon')).toBeNull();
+        await fireEvent.click(button);
+        await tick();
+
+        expect(settingsStore.failClosedContentWarning).toBe(true);
+        expect(button.getAttribute('aria-pressed')).toBe('true');
+        expect(button.querySelector('.content-warning-hidden-icon')).toBeTruthy();
+        expect(button.querySelector('.content-warning-standard-icon')).toBeNull();
+        expect(screen.getByText('CW本文:非表示形式')).toBeTruthy();
     });
 
     it('認証状態にかかわらず空slotは間隔を作らず、status表示中はshortcutも隠す', () => {

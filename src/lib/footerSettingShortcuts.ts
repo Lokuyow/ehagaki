@@ -9,6 +9,7 @@ export const FOOTER_SETTING_SHORTCUTS = [
     { id: "quote-notification", labelKey: "settingsDialog.quote_notification_label", icon: "quote" },
     { id: "reply-notification", labelKey: "settingsDialog.reply_notification_label", icon: "reply" },
     { id: "client-tag", labelKey: "settingsDialog.client_tag_label", icon: "client-tag" },
+    { id: "fail-closed-content-warning", labelKey: "settingsDialog.fail_closed_content_warning_shortcut_label", icon: "content-warning" },
 ] as const;
 
 export type FooterSettingShortcutId = (typeof FOOTER_SETTING_SHORTCUTS)[number]["id"];

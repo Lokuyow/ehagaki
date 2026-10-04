@@ -695,6 +695,7 @@ describe('PostEventBuilder', () => {
                 ['content-warning', 'Spoiler'],
                 ['t', 'nsfw'],
             ]);
+            expect(event.content).toBe('Sensitive content');
         });
 
         it('content warning の理由が空白のみの場合は理由なしタグを追加する', async () => {
@@ -731,6 +732,55 @@ describe('PostEventBuilder', () => {
             expect(event.tags).toEqual([
                 ['t', 'nsfw'],
                 ['content-warning'],
+            ]);
+        });
+
+        it('fail-closed opt-in は本文とreasonをcontent-warning tagへ移しcontentを空にする', async () => {
+            const event = await PostEventBuilder.buildEvent(
+                'Sensitive body', [], [], undefined, undefined, undefined,
+                undefined, true, ' Spoiler ', undefined, undefined, undefined, true,
+            );
+
+            expect(event.content).toBe('');
+            expect(event.tags).toEqual([
+                ['content-warning', 'Spoiler', 'Sensitive body'],
+            ]);
+        });
+
+        it('fail-closed opt-in はreasonなしでも空の第2要素を出力する', async () => {
+            const event = await PostEventBuilder.buildEvent(
+                'Sensitive body', [], [], undefined, undefined, undefined,
+                undefined, true, '   ', undefined, undefined, undefined, true,
+            );
+
+            expect(event.content).toBe('');
+            expect(event.tags).toEqual([
+                ['content-warning', '', 'Sensitive body'],
+            ]);
+        });
+
+        it('fail-closed opt-in はCWとnsfw hashtagを独立させる', async () => {
+            const cwOnly = await PostEventBuilder.buildEvent(
+                'Sensitive body', [], [], undefined, undefined, undefined,
+                undefined, true, '', undefined, undefined, undefined, true,
+            );
+            const nsfwOnly = await PostEventBuilder.buildEvent(
+                'Classified body', [], [['t', 'nsfw']], undefined, undefined,
+                undefined, undefined, false, '', undefined, undefined, undefined, true,
+            );
+            const both = await PostEventBuilder.buildEvent(
+                'Sensitive body', [], [['t', 'nsfw']], undefined, undefined,
+                undefined, undefined, true, 'Spoiler', undefined, undefined, undefined, true,
+            );
+
+            expect(cwOnly.tags).toEqual([
+                ['content-warning', '', 'Sensitive body'],
+            ]);
+            expect(nsfwOnly.content).toBe('Classified body');
+            expect(nsfwOnly.tags).toEqual([['t', 'nsfw']]);
+            expect(both.tags).toEqual([
+                ['t', 'nsfw'],
+                ['content-warning', 'Spoiler', 'Sensitive body'],
             ]);
         });
 
@@ -1303,6 +1353,45 @@ describe('PostManager統合テスト', () => {
 
         expect(result.success).toBe(true);
         expect(sentEvent.tags.some((tag: string[]) => tag[0] === 'client')).toBe(false);
+    });
+
+    it('通常投稿はcanonical settingがONかつCW明示時だけfail-closed形式を使う', async () => {
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                process.nextTick(() => observer.next({
+                    from: 'relay1',
+                    ok: true,
+                    done: true,
+                    eventId: 'test-event-id',
+                    type: 'ok',
+                    message: '',
+                }));
+                return { unsubscribe: vi.fn() };
+            }),
+        };
+        const deps = {
+            ...mockDeps,
+            contentWarningStore: { value: true, reset: vi.fn() },
+            contentWarningReasonStore: { value: 'Spoiler', reset: vi.fn() },
+            settingsStore: {
+                clientTagEnabled: true,
+                quoteNotificationEnabled: false,
+                replyNotificationEnabled: false,
+                failClosedContentWarning: true,
+            },
+        };
+        manager = new PostManager(mockRxNostr, deps);
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        const result = await manager.submitPost('Sensitive body');
+        const sentEvent = vi.mocked(mockRxNostr.send).mock.calls[0][0] as any;
+
+        expect(result.success).toBe(true);
+        expect(sentEvent.content).toBe('');
+        expect(sentEvent.tags).toContainEqual([
+            'content-warning', 'Spoiler', 'Sensitive body',
+        ]);
+        expect(sentEvent.tags).not.toContainEqual(['t', 'nsfw']);
     });
 
     it('投稿成功時に署名済みeventを投稿履歴保存関数へ渡す', async () => {

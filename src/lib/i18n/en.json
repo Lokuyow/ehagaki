@@ -124,6 +124,10 @@
     "nip46_connection_success": "The remote signer is reachable. Automatic connection checks will now be attempted after long background resumes.",
     "nip46_connection_failed": "Could not confirm a response from the remote signer. Check any approval action on the remote signer, its connection state, or whether the app is running, then try again."
   },
+  "postContent": {
+    "contentWarningTitle": "Content warning",
+    "showContentWarningBody": "Show content"
+  },
   "postHistory": {
     "open": "Open post history",
     "title": "Post History",
@@ -381,6 +385,12 @@
     "relay_write_disabled": "Write disabled",
     "no_relay_info": "No relay info",
     "client_tag_label": "Add client name to post \n(Client tag)",
+    "fail_closed_content_warning_label": "Send with new CW format",
+    "fail_closed_content_warning_info_label": "Content warning format details",
+    "fail_closed_content_warning_info": "This is an experimental sending format. It stores the CW body in the content-warning tag, so clients that do not support this format will not display the body. The CW body will no longer be searchable using Nostr's standard full-text search.",
+    "fail_closed_content_warning_shortcut_label": "CW body format",
+    "footer_shortcut_content_warning_on": "CW body: hidden format",
+    "footer_shortcut_content_warning_off": "CW body: standard format",
     "quote_notification_label": "Notify quoted author",
     "quote_notification_note": "When quoting a post, notifying its author is enabled by default.",
     "reply_notification_label": "Notify others in the thread",

@@ -20,6 +20,17 @@ export interface PostContentRenderModel {
     mediaLayout: PostHistoryMediaLayout;
     hasRenderableText: boolean;
     hasRenderableMedia: boolean;
+    contentWarning: { reason: string } | null;
+}
+
+export function resolveEventContentBody(
+    content: string,
+    tags: string[][],
+): string {
+    const contentWarningTag = tags.find((tag) => tag[0] === "content-warning");
+    return contentWarningTag && contentWarningTag.length > 2
+        ? contentWarningTag[2]!
+        : content;
 }
 
 export type PostContentEmojiLoadState = "loading" | "ready" | "failed";
@@ -31,14 +42,31 @@ export interface PostContentEmojiImageMeta {
 export function buildPostContentRenderModel(
     input: PostContentRenderInput,
 ): PostContentRenderModel {
+    const contentWarningTag = input.tags.find(
+        (tag) => tag[0] === "content-warning",
+    );
+    const hasTaggedBody = contentWarningTag !== undefined && contentWarningTag.length > 2;
+    const resolvedSourceContent = resolveEventContentBody(
+        input.sourceContent,
+        input.tags,
+    );
+    const resolvedDisplayContent = input.displayContent ?? resolvedSourceContent;
+    const extractedMedia = extractPostHistoryMedia({
+        content: resolvedSourceContent,
+        tags: input.tags,
+    });
     const media = input.media === undefined
-        ? extractPostHistoryMedia({
-              content: input.sourceContent,
-              tags: input.tags,
-          })
-        : input.media;
+        ? extractedMedia
+        : hasTaggedBody
+          ? [
+                ...input.media,
+                ...extractedMedia.filter(
+                    (item) => !input.media!.some((existing) => existing.url === item.url),
+                ),
+            ]
+          : input.media;
     const previewContent = buildPreviewContent({
-        content: input.displayContent ?? input.sourceContent,
+        content: resolvedDisplayContent,
         tags: input.tags,
         media,
     });
@@ -55,5 +83,8 @@ export function buildPostContentRenderModel(
                 (segment.type === "text" && segment.text.trim().length > 0),
         ),
         hasRenderableMedia: mediaLayout.items.length > 0,
+        contentWarning: contentWarningTag
+            ? { reason: contentWarningTag[1] ?? "" }
+            : null,
     };
 }

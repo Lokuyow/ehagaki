@@ -837,6 +837,41 @@
             </div>
         </div>
 
+        <div class="setting-section">
+            <div class="setting-row">
+                <div class="setting-label-group">
+                    <div class="setting-label-row">
+                        <div class="setting-label-with-icon">
+                            <span
+                                class="setting-menu-icon setting-menu-mask-icon fail-closed-content-warning-setting-icon"
+                                aria-hidden="true"
+                            ></span>
+                            <span id="fail-closed-content-warning-label" class="setting-label">
+                                {$_("settingsDialog.fail_closed_content_warning_label")}
+                            </span>
+                        </div>
+                        <InfoPopoverButton
+                            side="top"
+                            sideOffset={8}
+                            ariaLabel={$_("settingsDialog.fail_closed_content_warning_info_label")}
+                        >
+                            {$_("settingsDialog.fail_closed_content_warning_info")}
+                        </InfoPopoverButton>
+                    </div>
+                </div>
+                <div class="setting-control">
+                    <Switch.Root
+                        class="bui-switch"
+                        checked={settingsStore.failClosedContentWarning}
+                        onCheckedChange={(checked) => (settingsStore.failClosedContentWarning = checked)}
+                        aria-labelledby="fail-closed-content-warning-label"
+                    >
+                        <Switch.Thumb class="bui-switch-thumb" />
+                    </Switch.Root>
+                </div>
+            </div>
+        </div>
+
         <!-- Footer shortcut slots -->
         <div class="setting-section footer-shortcut-settings">
             <div class="setting-label-with-icon footer-shortcuts-setting-heading">
@@ -1170,6 +1205,9 @@
     }
     .client-tag-setting-icon {
         mask-image: url("/icons/label_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .fail-closed-content-warning-setting-icon {
+        mask-image: url("/icons/visibility_off_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
     .setting-row-with-note {
         align-items: flex-start;

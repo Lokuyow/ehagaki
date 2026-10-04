@@ -115,9 +115,9 @@
 - event kind: `1`または`42`
 - 主なtag: `content-warning`、`t`=`nsfw`
 - 主な実装ファイル: `src/lib/postEventBuilder.ts`、`src/lib/postManager.ts`、`src/components/KeyboardButtonBar.svelte`、`src/components/ReasonInput.svelte`
-- 主な関数または責務: `PostEventBuilder.buildEvent`が理由の有無と既存NSFW hashtagを考慮してtagを構築し、`PostManager.submitPost`がstore状態を渡す。
+- 主な関数または責務: `PostEventBuilder.buildEvent`が通常形式と既定OFFの実験的fail-closed形式を構築し、`PostManager.submitPost`がcanonical設定とCW状態を渡す。実験形式では本文を`content-warning` tag第3要素へ移して`.content`を空にし、CWとNSFW hashtagを独立させる。
 - 関連テスト: `src/test/unit/postManager.test.ts`、`src/test/unit/keyboardButtonBar.test.ts`
-- 注意点: Content Warning有効時は`nsfw` hashtagも追加し、既存tagを重複させない。
+- 注意点: fail-closed設定OFFではContent Warning有効時に`nsfw` hashtagを追加し、既存tagを重複させない。設定ON時だけこの自動連動を止める。Host-owned Liteは別builderであり、この通常投稿設定を参照しない。
 
 ## カスタム絵文字
 
@@ -223,9 +223,9 @@
 - event kind: 主に`1`と`42`。composer targetは取得済みevent kindに従うが、kind 40のJSON contentは投稿本文previewとして表示しない。
 - 主なtag: `emoji`、`imeta`。
 - 主な実装ファイル: `src/lib/postContentPreview.ts`、`src/lib/postHistoryMediaUtils.ts`、`src/lib/postHistoryDialogUtils.ts`、`src/components/PostContentPreview.svelte`、`src/components/PostHistoryPreviewContent.svelte`、`src/components/PostHistoryMediaList.svelte`。
-- 主な関数または責務: `buildPostContentRenderModel`はmedia抽出用`sourceContent`と本文segment用`displayContent`を分離し、`media`省略時だけ`content`/`tags`からdescriptorを構築する。明示された`media`は空配列も含めて正とし、保存済みMIME、Blurhash、dim、alt、size、upload protocolを維持する。表示面はprofile、日時、操作、折りたたみ、fullscreen viewer状態を所有する。
+- 主な関数または責務: `buildPostContentRenderModel`はmedia抽出用`sourceContent`と本文segment用`displayContent`を分離し、CW tag第3要素が存在するときはそれを本文として使う（空文字も有効）。`PostContentPreview`が全表示面共通でCW理由と明示解除UIを表示し、解除までは本文と関連mediaを隠す。`media`省略時だけ`content`/`tags`からdescriptorを構築し、明示mediaにCW本文由来URLがある場合は保存済みmetadataを保って補完する。
 - 関連テスト: `src/test/unit/postContentPreview.test.ts`、`src/test/unit/postHistoryMediaUtils.test.ts`、`src/test/unit/postHistoryDialogUtils.test.ts`、`src/test/unit/postHistoryMediaList.test.ts`、`src/test/unit/postHistoryPreviewContent.test.ts`、`src/test/unit/replyQuotePreview.test.ts`、`src/test/unit/composerTargetDialog.test.ts`、`src/test/e2e/composerTargetDialog.spec.ts`。
-- 注意点: 現在は投稿内の全画像を1galleryへ集約し、既存の抽出順、URL重複排除、1〜10枚以上のrow構成、全画像を対象にするfullscreen順を維持する。本文に存在しない`imeta`も表示対象に残すのはNIP-92の必須動作ではなく、既存eHagaki dataとの互換性維持である。
+- 注意点: 投稿履歴本体、関連投稿、reply/quote preview、composer target previewはいずれも共有`PostContentPreview`を使う。旧形式は`event.content`、第3要素付き形式はtag内本文を表示し、NIP-50検索対象になることや本文の秘匿は保証しない。既存の画像gallery集約、抽出順、URL重複排除、fullscreen順、`imeta`互換表示を維持する。
 
 ## upload認証
 

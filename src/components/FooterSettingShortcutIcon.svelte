@@ -41,6 +41,8 @@
                 return "reply-icon";
             case "client-tag":
                 return active ? "client-tag-icon" : "client-tag-off-icon";
+            case "fail-closed-content-warning":
+                return active ? "content-warning-hidden-icon" : "content-warning-standard-icon";
         }
     }
 </script>
@@ -85,6 +87,8 @@
     .reply-icon { mask-image: url("/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg"); }
     .client-tag-icon { mask-image: url("/icons/label_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg"); }
     .client-tag-off-icon { mask-image: url("/icons/label_off_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg"); }
+    .content-warning-hidden-icon { mask-image: url("/icons/visibility_off_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg"); }
+    .content-warning-standard-icon { mask-image: url("/icons/warning_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg"); }
     .mascot-icon { object-fit: contain; filter: grayscale(1); }
 
     .paired-icons {
