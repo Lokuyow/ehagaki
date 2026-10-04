@@ -37,7 +37,7 @@
 
 ## localStorage と IndexedDB delegation
 
-- **storage:** `src/lib/embedStorageService.ts` は iframe 内でのみ `storage.get` / `storage.set` / `storage.remove` を parent に request する。`src/lib/embedStorageKeys.ts` の allowlist 以外は delegation しない。`AppEmbedController.initializeEmbedStorageSync()` は snapshot を local storage に反映し、stored settings を再適用してから allowed keys を mirror する。
+- **storage:** `src/lib/embedStorageService.ts` は iframe 内でのみ `storage.get` / `storage.set` / `storage.remove` を parent に request する。`src/lib/embedStorageKeys.ts` の allowlist 以外は delegation しない。追加された storage key は従来キーの v1 batch から分離して個別 request にするため、未対応の strict Host でも既存キーの処理を続けられる。`AppEmbedController.initializeEmbedStorageSync()` は snapshot を local storage に反映し、stored settings を再適用してから allowed keys を mirror する。
 - **IndexedDB:** `src/lib/embedIndexedDbService.ts` は `idb.getSnapshot` / `idb.setSnapshot` と `idb.result` / `idb.error` を扱う。現在の `EmbedIndexedDbStoreName` は `uploadDestinations` のみ。`src/lib/bootstrap/uploadDestinationBootstrap.ts` と upload destination repository の caller も確認する。
 - **ownership/trust:** child local persistence は app-owned。parent persistence は optional delegated mirror で、host の storage 全体、account、credential、draft、profile/relay cache を渡す contract ではない。双方とも trusted parent、validated payload、request ID、timeout、pending request cleanup を守る。
 - **関連資料/検証:** `docs/IFRAME_EMBEDDING.md`、`public/embed-parent-client-example.js`、`src/test/unit/embedStorageService.test.ts`、`src/test/unit/embedIndexedDbService.test.ts`。
