@@ -193,11 +193,15 @@ describe('FooterComponent', () => {
             name: 'CW本文形式',
         });
         expect(button.getAttribute('aria-pressed')).toBe('false');
+        expect(button.querySelector('.content-warning-standard-icon')).toBeTruthy();
+        expect(button.querySelector('.content-warning-hidden-icon')).toBeNull();
         await fireEvent.click(button);
         await tick();
 
         expect(settingsStore.failClosedContentWarning).toBe(true);
         expect(button.getAttribute('aria-pressed')).toBe('true');
+        expect(button.querySelector('.content-warning-hidden-icon')).toBeTruthy();
+        expect(button.querySelector('.content-warning-standard-icon')).toBeNull();
         expect(screen.getByText('CW本文:非表示形式')).toBeTruthy();
     });
 

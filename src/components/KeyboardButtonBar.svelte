@@ -553,7 +553,7 @@
         }
 
         .content-warning-icon {
-            mask-image: url("/icons/visibility_off_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+            mask-image: url("/icons/warning_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
         }
 
         :global(.selected .content-warning-icon) {

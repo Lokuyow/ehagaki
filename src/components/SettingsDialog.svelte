@@ -1207,7 +1207,7 @@
         mask-image: url("/icons/label_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
     }
     .fail-closed-content-warning-setting-icon {
-        mask-image: url("/icons/shield_locked_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
+        mask-image: url("/icons/visibility_off_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
     .setting-row-with-note {
         align-items: flex-start;
