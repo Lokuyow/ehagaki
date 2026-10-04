@@ -1,5 +1,4 @@
 import { test, expect } from "@playwright/test";
-import { readFile } from "node:fs/promises";
 import { finalizeEvent, generateSecretKey, nip19 } from "nostr-tools";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -807,39 +806,91 @@ test("applies iframe color defaults, persists user colors, and releases runtime 
 });
 
 test("legacy strict v1 host keeps color snapshot working when it ignores the new storage key", async ({ page }) => {
-    const sampleScript = await readFile(new URL("../../../public/embed-parent-client-example.js", import.meta.url), "utf8");
-    const oldAllowlistLine = '    "failClosedContentWarning",\n';
-    expect(sampleScript).toContain(oldAllowlistLine);
-    await page.route("**/embed-parent-client-example.js", (route) => route.fulfill({
-        contentType: "text/javascript",
-        body: sampleScript.replace(oldAllowlistLine, ""),
-    }));
+    const legacyV1StorageAllowlist = [
+        "locale",
+        "themeMode",
+        "darkMode",
+        "clientTagEnabled",
+        "quoteNotificationEnabled",
+        "replyNotificationEnabled",
+        "imageQualityLevel",
+        "videoQualityLevel",
+        "imageCompressionLevel",
+        "videoCompressionLevel",
+        "mediaFreePlacement",
+        "showMascot",
+        "showFlavorText",
+        "accentColor",
+        "baseColor",
+        "settingsPreferenceMetadata",
+        "firstVisit",
+        "sharedMediaProcessed",
+        "footerSettingShortcuts",
+    ];
+    await page.route("**/e2e-v1-storage-host.html", async (route) => {
+        const appUrl = new URL("/ehagaki/", route.request().url());
+        appUrl.searchParams.set("defaultAccentColor", "#ABCDEF");
+        appUrl.searchParams.set("defaultBaseColor", "#CDEFAB");
+        appUrl.searchParams.set("parentOrigin", appUrl.origin);
+        await route.fulfill({
+            contentType: "text/html",
+            body: `<!doctype html><html><body>
+<button id="reload" type="button">reload</button>
+<iframe id="child" src="${appUrl.href}" style="width:100%;height:100vh;border:0"></iframe>
+<script>
+const storagePrefix = "ehagaki.embed.storage.v1:";
+const allowedStorageKeys = new Set(${JSON.stringify(legacyV1StorageAllowlist)});
+const iframe = document.querySelector("#child");
+const reply = (message, payload, type = "storage.result") => iframe.contentWindow.postMessage({
+  namespace: "ehagaki.embed", version: 1, type, requestId: message.requestId,
+  payload: { timestamp: Date.now(), ...payload },
+}, location.origin);
+window.addEventListener("message", (event) => {
+  if (event.source !== iframe.contentWindow || event.origin !== new URL(iframe.src).origin) return;
+  const message = event.data;
+  if (message?.namespace !== "ehagaki.embed" || message?.version !== 1 || !message.requestId) return;
+  if (message.type === "storage.get") {
+    if (!message.payload.keys.every((key) => allowedStorageKeys.has(key))) return;
+    const values = Object.fromEntries(message.payload.keys.map((key) => [key, localStorage.getItem(storagePrefix + key)]));
+    reply(message, { values });
+  } else if (message.type === "storage.set") {
+    const entries = Object.entries(message.payload.values);
+    if (!entries.every(([key, value]) => allowedStorageKeys.has(key) && typeof value === "string")) return;
+    for (const [key, value] of entries) localStorage.setItem(storagePrefix + key, value);
+    reply(message, { applied: entries.map(([key]) => key) });
+  } else if (message.type === "storage.remove") {
+    if (!message.payload.keys.every((key) => allowedStorageKeys.has(key))) return;
+    for (const key of message.payload.keys) localStorage.removeItem(storagePrefix + key);
+    reply(message, { removed: message.payload.keys });
+  }
+});
+document.querySelector("#reload").addEventListener("click", () => { iframe.src = iframe.src; });
+</script></body></html>`,
+        });
+    });
 
-    await page.goto("/ehagaki/embed-parent-client-example.html");
-    const appUrl = new URL("/ehagaki/", page.url());
-    appUrl.searchParams.set("defaultAccentColor", "#ABCDEF");
-    appUrl.searchParams.set("defaultBaseColor", "#CDEFAB");
-    await page.getByLabel("eHagaki URL").fill(appUrl.toString());
-    const frame = page.frameLocator("#ehagaki-iframe");
+    await page.goto("/ehagaki/e2e-v1-storage-host.html");
+    const frame = page.frameLocator("#child");
     await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    const readFrameColors = () => frame.locator("html").evaluate((html) => ({
+        accent: getComputedStyle(html).getPropertyValue("--accent-color").trim().toLowerCase(),
+        base: getComputedStyle(html).getPropertyValue("--base-color").trim().toLowerCase(),
+    }));
+    await expect.poll(readFrameColors).toEqual({ accent: "#abcdef", base: "#cdefab" });
     await page.evaluate(() => {
         localStorage.setItem("ehagaki.embed.storage.v1:accentColor", "#112233");
         localStorage.setItem("ehagaki.embed.storage.v1:baseColor", "#223344");
     });
     const childFrame = page.frames().find((candidate) => candidate.parentFrame() === page.mainFrame());
     if (!childFrame) throw new Error("expected the sample iframe to be loaded");
-    const expectedUrl = await page.locator("#iframe-src").textContent();
-    if (!expectedUrl) throw new Error("expected an iframe URL");
+    const expectedUrl = childFrame.url();
     const navigation = page.waitForEvent("framenavigated", (candidate) =>
-        candidate === childFrame && candidate.url() === expectedUrl,
+        candidate === childFrame && candidate.url().startsWith(new URL(expectedUrl).origin),
     );
-    await page.getByRole("button", { name: "iframe を再読み込み" }).click();
+    await page.locator("#reload").click();
     await navigation;
 
-    await expect.poll(() => frame.locator("html").evaluate((html) => ({
-        accent: getComputedStyle(html).getPropertyValue("--accent-color").trim().toLowerCase(),
-        base: getComputedStyle(html).getPropertyValue("--base-color").trim().toLowerCase(),
-    }))).toEqual({ accent: "#112233", base: "#223344" });
+    await expect.poll(readFrameColors).toEqual({ accent: "#112233", base: "#223344" });
 });
 
 test("new host saves and restores fail-closed content warning through delegated storage", async ({ page }) => {

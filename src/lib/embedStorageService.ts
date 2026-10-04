@@ -319,6 +319,7 @@ export class EmbedStorageService {
         requests: Array<{ required: boolean; promise: Promise<EmbedStorageResultPayload> }>,
     ): Promise<EmbedStorageResultPayload> {
         const settled = await Promise.allSettled(requests.map(({ promise }) => promise));
+        const hasRequiredRequest = requests.some(({ required }) => required);
         const requiredFailure = settled.find((result, index) =>
             requests[index].required && result.status === "rejected",
         );
@@ -329,6 +330,12 @@ export class EmbedStorageService {
         const successes = settled.flatMap((result) =>
             result.status === "fulfilled" ? [result.value] : [],
         );
+        if (!hasRequiredRequest && settled.some((result) => result.status === "rejected")) {
+            const failure = settled.find((result) => result.status === "rejected");
+            if (failure?.status === "rejected") {
+                throw failure.reason;
+            }
+        }
         if (successes.length === 0) {
             const failure = settled.find((result) => result.status === "rejected");
             if (failure?.status === "rejected") {
