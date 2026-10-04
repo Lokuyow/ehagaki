@@ -837,6 +837,30 @@
             </div>
         </div>
 
+        <div class="setting-section">
+            <div class="setting-row setting-row-with-note">
+                <div class="setting-label-group">
+                    <span id="fail-closed-content-warning-label" class="setting-label">
+                        {$_("settingsDialog.fail_closed_content_warning_label")}
+                    </span>
+                    <span id="fail-closed-content-warning-description" class="setting-description">
+                        {$_("settingsDialog.fail_closed_content_warning_description")}
+                    </span>
+                </div>
+                <div class="setting-control">
+                    <Switch.Root
+                        class="bui-switch"
+                        checked={settingsStore.failClosedContentWarning}
+                        onCheckedChange={(checked) => (settingsStore.failClosedContentWarning = checked)}
+                        aria-labelledby="fail-closed-content-warning-label"
+                        aria-describedby="fail-closed-content-warning-description"
+                    >
+                        <Switch.Thumb class="bui-switch-thumb" />
+                    </Switch.Root>
+                </div>
+            </div>
+        </div>
+
         <!-- Footer shortcut slots -->
         <div class="setting-section footer-shortcut-settings">
             <div class="setting-label-with-icon footer-shortcuts-setting-heading">

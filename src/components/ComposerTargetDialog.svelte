@@ -51,7 +51,10 @@
     import { usePostHistoryRelatedReactions } from "../lib/hooks/usePostHistoryRelatedReactions.svelte";
     import { usePostHistoryPostActionUiController } from "../lib/hooks/usePostHistoryPostActionUiController.svelte";
     import { createPostHistoryProfileSyncCoordinator } from "../lib/postHistoryProfileSync";
-    import { buildPostContentRenderModel } from "../lib/postContentPreview";
+    import {
+        buildPostContentRenderModel,
+        resolveEventContentBody,
+    } from "../lib/postContentPreview";
     import {
         canRequestPostDeletion,
         postDeletionService,
@@ -186,9 +189,8 @@
         );
     });
     let rawPreviewContent = $derived.by(() => {
-        const content = previewEvent?.content;
-        if (!content || previewEvent?.kind === 40) return "";
-        return content;
+        if (!previewEvent || previewEvent.kind === 40) return "";
+        return resolveEventContentBody(previewEvent.content, previewEvent.tags);
     });
     let collapsedContent = $derived(
         limitComposerTargetCollapsedContent(rawPreviewContent),
@@ -898,6 +900,7 @@
                     </div>
                     <PostContentPreview
                     model={previewRenderModel}
+                    contentWarningEventId={previewEvent.id}
                     density="dialog"
                     emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                     emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}

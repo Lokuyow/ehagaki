@@ -61,6 +61,7 @@ export class PostEventBuilder {
         replyQuoteTags?: string[][],
         channelContext?: ChannelContextState | null,
         emojiTags?: string[][],
+        failClosedContentWarning?: boolean,
     ): Promise<any> {
         // リプライ/引用タグを先頭に配置
         const eventTags: string[][] = [];
@@ -85,18 +86,28 @@ export class PostEventBuilder {
             eventTags.push(...hashtags.map((hashtag: string) => ['t', hashtag.toLowerCase()]));
         }
 
-        // Content Warning タグ追加 (NIP-36)
-        // nsfw ハッシュタグがある場合も自動的に content-warning タグを追加
-        const hasNsfwTag = eventTags.some(tag => tag[0] === 't' && tag[1] === 'nsfw');
-        if (contentWarningEnabled || hasNsfwTag) {
-            if (contentWarningReason && contentWarningReason.trim()) {
-                eventTags.push(['content-warning', contentWarningReason.trim()]);
-            } else {
-                eventTags.push(['content-warning']);
+        // Content Warning形式が実験的fail-closed opt-inなら、CWとNSFWを独立させる。
+        if (failClosedContentWarning) {
+            if (contentWarningEnabled) {
+                const reason = contentWarningReason?.trim() ?? "";
+                eventTags.push([
+                    "content-warning",
+                    reason,
+                    content,
+                ]);
             }
-            // Content Warning有効時は 'nsfw' ハッシュタグも自動追加（重複チェック）
-            if (contentWarningEnabled && !hasNsfwTag) {
-                eventTags.push(['t', 'nsfw']);
+        } else {
+            // 現行NIP-36形式と既存のCW/NSFW自動連動を維持する。
+            const hasNsfwTag = eventTags.some(tag => tag[0] === 't' && tag[1] === 'nsfw');
+            if (contentWarningEnabled || hasNsfwTag) {
+                if (contentWarningReason && contentWarningReason.trim()) {
+                    eventTags.push(['content-warning', contentWarningReason.trim()]);
+                } else {
+                    eventTags.push(['content-warning']);
+                }
+                if (contentWarningEnabled && !hasNsfwTag) {
+                    eventTags.push(['t', 'nsfw']);
+                }
             }
         }
 
@@ -124,7 +135,7 @@ export class PostEventBuilder {
 
         const event: any = {
             kind: channelContext ? 42 : 1,
-            content,
+            content: failClosedContentWarning && contentWarningEnabled ? "" : content,
             tags: eventTags,
             created_at: Math.floor(Date.now() / 1000)
         };

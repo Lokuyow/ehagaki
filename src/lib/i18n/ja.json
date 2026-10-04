@@ -124,6 +124,10 @@
     "nip46_connection_success": "リモートサイナーに接続できます。以後は長時間バックグラウンド復帰時に自動確認を試みます。",
     "nip46_connection_failed": "リモートサイナーの応答を確認できませんでした。リモートサイナー側の確認操作、接続状態、またはアプリの起動状態を確認してから再試行してください。"
   },
+  "postContent": {
+    "contentWarningTitle": "コンテンツ警告",
+    "showContentWarningBody": "本文を表示"
+  },
   "postHistory": {
     "open": "投稿履歴を開く",
     "title": "投稿履歴",
@@ -379,6 +383,11 @@
     "relay_write_disabled": "Write無効",
     "no_relay_info": "リレー情報なし",
     "client_tag_label": "投稿にクライアント名をつける\n(Client tag)",
+    "fail_closed_content_warning_label": "未対応クライアントでCW本文が直接表示されにくくする（実験的）",
+    "fail_closed_content_warning_description": "本文を通常のcontent欄から移すため、Nostrの全文検索で見つからない場合があります。暗号化ではなく、raw eventのtagから本文を取得できます。",
+    "fail_closed_content_warning_shortcut_label": "CW本文をtagへ格納（実験形式）",
+    "footer_shortcut_content_warning_on": "実験形式を使用",
+    "footer_shortcut_content_warning_off": "標準形式を使用",
     "quote_notification_label": "引用元の投稿者に通知",
     "quote_notification_description": "引用通知設定の説明",
     "quote_notification_note": "引用投稿時、引用元の投稿者を通知対象に含める設定をデフォルトで有効にします。",

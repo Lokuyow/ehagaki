@@ -180,6 +180,25 @@ describe('FooterComponent', () => {
         expect(document.querySelector('[data-radix-popper-content-wrapper]')).toBeNull();
     });
 
+    it('fail-closed CW shortcutはcanonical settingを直接切り替える', async () => {
+        settingsStore.failClosedContentWarning = false;
+        footerSettingShortcutsStore.set({
+            left: 'fail-closed-content-warning',
+            right: null,
+        });
+        renderFooter();
+
+        const button = screen.getByRole('button', {
+            name: 'CW本文をtagへ格納（実験形式）',
+        });
+        expect(button.getAttribute('aria-pressed')).toBe('false');
+        await fireEvent.click(button);
+        await tick();
+
+        expect(settingsStore.failClosedContentWarning).toBe(true);
+        expect(button.getAttribute('aria-pressed')).toBe('true');
+    });
+
     it('認証状態にかかわらず空slotは間隔を作らず、status表示中はshortcutも隠す', () => {
         footerSettingShortcutsStore.set({ left: null, right: 'language' });
         const { container } = renderFooter({ isAuthenticated: false });

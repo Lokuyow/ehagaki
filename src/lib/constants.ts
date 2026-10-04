@@ -65,6 +65,7 @@ export const DEFAULT_SHOW_MASCOT = true;
 export const DEFAULT_SHOW_FLAVOR_TEXT = true;
 export const DEFAULT_QUOTE_NOTIFICATION_ENABLED = false;
 export const DEFAULT_REPLY_NOTIFICATION_ENABLED = false;
+export const DEFAULT_FAIL_CLOSED_CONTENT_WARNING = false;
 
 export const STORAGE_KEYS = {
     LOCALE: "locale",
@@ -72,6 +73,7 @@ export const STORAGE_KEYS = {
     CLIENT_TAG_ENABLED: "clientTagEnabled",
     QUOTE_NOTIFICATION_ENABLED: "quoteNotificationEnabled",
     REPLY_NOTIFICATION_ENABLED: "replyNotificationEnabled",
+    FAIL_CLOSED_CONTENT_WARNING: "failClosedContentWarning",
     IMAGE_QUALITY_LEVEL: "imageQualityLevel",
     VIDEO_QUALITY_LEVEL: "videoQualityLevel",
     LEGACY_IMAGE_COMPRESSION_LEVEL: "imageCompressionLevel",

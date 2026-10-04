@@ -4,6 +4,7 @@ import {
     getClientTagEnabledPreference,
     getEffectiveLocale,
     getExternalNostrClientPreference,
+    getFailClosedContentWarningPreference,
     getImageCompressionLevelPreference,
     getMediaFreePlacementPreference,
     getQuoteNotificationEnabledPreference,
@@ -15,6 +16,7 @@ import {
     setClientTagEnabledPreference,
     setExternalNostrClientCustomUrlPreference,
     setExternalNostrClientPreference,
+    setFailClosedContentWarningPreference,
     setImageCompressionLevelPreference,
     setLocalePreference,
     setMediaFreePlacementPreference,
@@ -49,6 +51,7 @@ interface SettingsState {
     clientTagEnabled: boolean;
     quoteNotificationEnabled: boolean;
     replyNotificationEnabled: boolean;
+    failClosedContentWarning: boolean;
     imageQualityLevel: string;
     videoQualityLevel: string;
     mediaFreePlacement: boolean;
@@ -81,6 +84,7 @@ function readSettingsState(): SettingsState {
         clientTagEnabled: getClientTagEnabledPreference(appStorage),
         quoteNotificationEnabled: getQuoteNotificationEnabledPreference(appStorage),
         replyNotificationEnabled: getReplyNotificationEnabledPreference(appStorage),
+        failClosedContentWarning: getFailClosedContentWarningPreference(appStorage),
         imageQualityLevel: getImageCompressionLevelPreference(appStorage),
         videoQualityLevel: getVideoCompressionLevelPreference(appStorage),
         mediaFreePlacement: getMediaFreePlacementPreference(appStorage),
@@ -117,6 +121,11 @@ const directSettingDescriptors: {
         apply: (value: boolean, source: PreferenceSource) =>
             setReplyNotificationEnabledPreference(appStorage, value, source),
     },
+    failClosedContentWarning: {
+        storageKeys: [STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING],
+        apply: (value: boolean, source: PreferenceSource) =>
+            setFailClosedContentWarningPreference(appStorage, value, source),
+    },
     imageQualityLevel: {
         storageKeys: [
             STORAGE_KEYS.IMAGE_QUALITY_LEVEL,
@@ -151,7 +160,7 @@ const directSettingDescriptors: {
     },
 };
 
-const parentDirectSettingKeys: DirectSettingKey[] = [
+const parentDirectSettingKeys: Extract<DirectSettingKey, keyof EmbedSettingsSetPayload>[] = [
     "imageQualityLevel",
     "videoQualityLevel",
     "clientTagEnabled",
@@ -205,7 +214,7 @@ function applyDirectSetting<K extends DirectSettingKey>(
     return nextValue;
 }
 
-function applyParentDirectSetting<K extends DirectSettingKey>(
+function applyParentDirectSetting<K extends Extract<DirectSettingKey, keyof EmbedSettingsSetPayload>>(
     payload: EmbedSettingsSetPayload,
     key: K,
     source: PreferenceSource,
@@ -260,6 +269,15 @@ export const settingsStore = {
     set replyNotificationEnabled(value: boolean) {
         applyDirectSetting("replyNotificationEnabled", value);
         persistDirectSettingKey("replyNotificationEnabled");
+    },
+
+    get failClosedContentWarning(): boolean {
+        return settingsState.failClosedContentWarning;
+    },
+
+    set failClosedContentWarning(value: boolean) {
+        applyDirectSetting("failClosedContentWarning", value);
+        persistDirectSettingKey("failClosedContentWarning");
     },
 
     set quoteNotificationEnabled(value: boolean) {

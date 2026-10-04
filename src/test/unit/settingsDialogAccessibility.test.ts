@@ -98,6 +98,7 @@ describe('SettingsDialog accessibility', () => {
             '', 'language', 'image-quality', 'video-quality', 'theme-mode',
             'media-free-placement', 'hide-mascot', 'hide-flavor-text',
             'quote-notification', 'reply-notification', 'client-tag',
+            'fail-closed-content-warning',
         ]);
         await fireEvent.change(left, { target: { value: 'language' } });
         await tick();
@@ -111,6 +112,27 @@ describe('SettingsDialog accessibility', () => {
         await tick();
         expect(footerSettingShortcutsStore.value).toEqual({ left: null, right: 'image-quality' });
         expect(Array.from(right.options).find((option) => option.value === 'image-quality')?.disabled).toBe(false);
+    });
+
+    it('fail-closed CW設定は実験形式と全文検索の制約を説明し、canonical storeを切り替える', async () => {
+        settingsStore.locale = 'ja';
+        settingsStore.failClosedContentWarning = false;
+        render(SettingsDialog, {
+            props: { show: true, onClose: () => {} },
+        });
+        await tick();
+
+        const label = '未対応クライアントでCW本文が直接表示されにくくする（実験的）';
+        expect(screen.getByText(label)).toBeTruthy();
+        expect(screen.getByText(/全文検索で見つからない場合があります/)).toBeTruthy();
+        expect(screen.getByText(/暗号化ではなく/)).toBeTruthy();
+        const toggle = screen.getByRole('switch', { name: label });
+        expect(toggle.getAttribute('aria-checked')).toBe('false');
+
+        await fireEvent.click(toggle);
+        await tick();
+        expect(settingsStore.failClosedContentWarning).toBe(true);
+        expect(toggle.getAttribute('aria-checked')).toBe('true');
     });
 
     it('設定名の左にだけ指定アイコンを表示し、装飾として隠す', async () => {

@@ -145,6 +145,7 @@ export class PostManager {
     imageImetaMap?: ImageImetaMap;
     contentWarningEnabled: boolean;
     contentWarningReason: string;
+    failClosedContentWarning: boolean;
     replyQuoteTags?: string[][];
     channelContext?: import("./types").ChannelContextState | null;
     emojiTags?: string[][];
@@ -162,6 +163,7 @@ export class PostManager {
       params.replyQuoteTags,
       params.channelContext,
       params.emojiTags,
+      params.failClosedContentWarning,
     );
   }
 
@@ -384,6 +386,7 @@ export class PostManager {
       // Content Warning状態を取得
       const contentWarningEnabled = this.deps.contentWarningStore!.value;
       const contentWarningReason = this.deps.contentWarningReasonStore!.value;
+      const failClosedContentWarning = this.deps.settingsStore!.failClosedContentWarning === true;
       const channelContext = this.deps.channelContextState?.value ?? null;
       const additionalWriteRelays = channelContext?.channelRelays;
 
@@ -491,6 +494,7 @@ export class PostManager {
             imageImetaMap,
             contentWarningEnabled,
             contentWarningReason,
+            failClosedContentWarning,
             replyQuoteTags,
             channelContext,
             emojiTags,
@@ -537,6 +541,7 @@ export class PostManager {
             imageImetaMap,
             contentWarningEnabled,
             contentWarningReason,
+            failClosedContentWarning,
             replyQuoteTags,
             channelContext,
             emojiTags,
@@ -576,6 +581,7 @@ export class PostManager {
             imageImetaMap,
             contentWarningEnabled,
             contentWarningReason,
+            failClosedContentWarning,
             replyQuoteTags,
             channelContext,
             emojiTags,
@@ -607,6 +613,7 @@ export class PostManager {
         imageImetaMap,
         contentWarningEnabled,
         contentWarningReason,
+        failClosedContentWarning,
         replyQuoteTags,
         channelContext,
         emojiTags,

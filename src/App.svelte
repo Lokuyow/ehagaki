@@ -220,6 +220,7 @@
   import { usePostContentEmojiState } from "./lib/hooks/usePostContentEmojiState.svelte";
   import {
     buildPostContentRenderModel,
+    resolveEventContentBody,
     type PostContentRenderModel,
   } from "./lib/postContentPreview";
   import { sanitizePlainText } from "./lib/utils/domSanitizer";
@@ -495,9 +496,11 @@
         continue;
       }
 
+      const content = resolveEventContentBody(event.content, event.tags);
+
       models[reference.eventId] = buildPostContentRenderModel({
-        sourceContent: event.content,
-        displayContent: sanitizePlainText(event.content),
+        sourceContent: content,
+        displayContent: sanitizePlainText(content),
         tags: event.tags,
       });
     }

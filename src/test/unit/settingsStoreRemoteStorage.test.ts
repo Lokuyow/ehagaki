@@ -81,6 +81,25 @@ describe('settings/theme stores remote storage persistence', () => {
         ]);
     });
 
+    it('fail-closed CWは既定OFFで、設定とreload後の値を既存storage経路へ保存する', async () => {
+        const { embedStorageService } = await import('../../lib/embedStorageService');
+        const persistSpy = vi
+            .spyOn(embedStorageService, 'persistLocalStorageKeys')
+            .mockImplementation(() => { });
+        const { settingsStore } = await import('../../stores/settingsStore.svelte');
+
+        expect(settingsStore.failClosedContentWarning).toBe(false);
+        settingsStore.failClosedContentWarning = true;
+
+        expect(storage.getItem(STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING)).toBe('true');
+        expect(persistSpy).toHaveBeenCalledWith([
+            STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING,
+            STORAGE_KEYS.SETTINGS_PREFERENCE_METADATA,
+        ]);
+        settingsStore.reload();
+        expect(settingsStore.failClosedContentWarning).toBe(true);
+    });
+
     it('applyParentSettings は source を保持して embed 設定一式を親 storage へ通知する', async () => {
         const { embedStorageService } = await import('../../lib/embedStorageService');
         const persistSpy = vi

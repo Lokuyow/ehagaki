@@ -124,6 +124,10 @@
     "nip46_connection_success": "The remote signer is reachable. Automatic connection checks will now be attempted after long background resumes.",
     "nip46_connection_failed": "Could not confirm a response from the remote signer. Check any approval action on the remote signer, its connection state, or whether the app is running, then try again."
   },
+  "postContent": {
+    "contentWarningTitle": "Content warning",
+    "showContentWarningBody": "Show content"
+  },
   "postHistory": {
     "open": "Open post history",
     "title": "Post History",
@@ -381,6 +385,11 @@
     "relay_write_disabled": "Write disabled",
     "no_relay_info": "No relay info",
     "client_tag_label": "Add client name to post \n(Client tag)",
+    "fail_closed_content_warning_label": "Keep CW text from displaying directly in unsupported clients (experimental)",
+    "fail_closed_content_warning_description": "Moving text out of the normal content field may make it unavailable in Nostr full-text search. This does not encrypt it; the raw event tag still contains the text.",
+    "fail_closed_content_warning_shortcut_label": "Store CW text in tag (experimental)",
+    "footer_shortcut_content_warning_on": "Use experimental format",
+    "footer_shortcut_content_warning_off": "Use standard format",
     "quote_notification_label": "Notify quoted author",
     "quote_notification_note": "When quoting a post, notifying its author is enabled by default.",
     "reply_notification_label": "Notify others in the thread",

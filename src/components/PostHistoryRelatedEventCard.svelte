@@ -99,6 +99,7 @@
         </div>
         <PostContentPreview
             model={previewModel}
+            contentWarningEventId={event.id}
             density="compact"
             contentClass="post-history-related-content"
             {emojiLoadStateByUrl}

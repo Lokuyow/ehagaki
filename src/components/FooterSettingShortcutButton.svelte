@@ -79,6 +79,8 @@
                 return $_(settingsStore.replyNotificationEnabled ? "settingsDialog.footer_shortcut_reply_notify_others" : "settingsDialog.footer_shortcut_reply_notify_only_target") ?? "";
             case "client-tag":
                 return $_(settingsStore.clientTagEnabled ? "settingsDialog.footer_shortcut_client_tag_add" : "settingsDialog.footer_shortcut_client_tag_skip") ?? "";
+            case "fail-closed-content-warning":
+                return $_(settingsStore.failClosedContentWarning ? "settingsDialog.footer_shortcut_content_warning_on" : "settingsDialog.footer_shortcut_content_warning_off") ?? "";
         }
     }
 
@@ -101,6 +103,8 @@
                 return settingsStore.replyNotificationEnabled;
             case "client-tag":
                 return settingsStore.clientTagEnabled;
+            case "fail-closed-content-warning":
+                return settingsStore.failClosedContentWarning;
         }
     }
 
@@ -137,6 +141,9 @@
                 break;
             case "client-tag":
                 settingsStore.clientTagEnabled = !settingsStore.clientTagEnabled;
+                break;
+            case "fail-closed-content-warning":
+                settingsStore.failClosedContentWarning = !settingsStore.failClosedContentWarning;
                 break;
         }
     }
