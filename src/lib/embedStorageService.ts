@@ -13,6 +13,7 @@ import {
 import { getTrustedParentEmbedMessage } from "./embedMessageTrustGate";
 import {
     EMBED_STORAGE_KEYS,
+    EMBED_STORAGE_OPTIONAL_KEYS,
     filterAllowedEmbedStorageKeys,
     isAllowedEmbedStorageKey,
 } from "./embedStorageKeys";
@@ -30,6 +31,11 @@ type StorageRequestPayload =
     | EmbedStorageRemovePayload;
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 1000;
+const OPTIONAL_EMBED_STORAGE_KEY_SET = new Set<string>(EMBED_STORAGE_OPTIONAL_KEYS);
+
+function isOptionalEmbedStorageKey(key: string): boolean {
+    return OPTIONAL_EMBED_STORAGE_KEY_SET.has(key);
+}
 
 function createRequestId(): string {
     if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -124,7 +130,22 @@ export class EmbedStorageService {
             return { timestamp: Date.now(), values: {} };
         }
 
-        return this.sendRequest("storage.get", { keys: allowedKeys });
+        const { compatibleKeys, optionalKeys } = this.partitionKeys(allowedKeys);
+        const requests: Array<{ required: boolean; promise: Promise<EmbedStorageResultPayload> }> = [];
+        if (compatibleKeys.length > 0) {
+            requests.push({
+                required: true,
+                promise: this.sendRequest("storage.get", { keys: compatibleKeys }),
+            });
+        }
+        for (const key of optionalKeys) {
+            requests.push({
+                required: false,
+                promise: this.sendRequest("storage.get", { keys: [key] }),
+            });
+        }
+
+        return this.combineStorageRequests(requests);
     }
 
     persistLocalStorageKeys(keys: string[], storage: Pick<Storage, "getItem"> = getAppStorage()): void {
@@ -161,7 +182,31 @@ export class EmbedStorageService {
             return null;
         }
 
-        return this.sendRequest("storage.set", { values: allowedValues });
+        const compatibleValues: Record<string, string> = {};
+        const optionalEntries: Array<[string, string]> = [];
+        for (const [key, value] of Object.entries(allowedValues)) {
+            if (isOptionalEmbedStorageKey(key)) {
+                optionalEntries.push([key, value]);
+            } else {
+                compatibleValues[key] = value;
+            }
+        }
+
+        const requests: Array<{ required: boolean; promise: Promise<EmbedStorageResultPayload> }> = [];
+        if (Object.keys(compatibleValues).length > 0) {
+            requests.push({
+                required: true,
+                promise: this.sendRequest("storage.set", { values: compatibleValues }),
+            });
+        }
+        for (const [key, value] of optionalEntries) {
+            requests.push({
+                required: false,
+                promise: this.sendRequest("storage.set", { values: { [key]: value } }),
+            });
+        }
+
+        return this.combineStorageRequests(requests);
     }
 
     async remove(keys: string[]): Promise<EmbedStorageResultPayload | null> {
@@ -170,7 +215,22 @@ export class EmbedStorageService {
             return null;
         }
 
-        return this.sendRequest("storage.remove", { keys: allowedKeys });
+        const { compatibleKeys, optionalKeys } = this.partitionKeys(allowedKeys);
+        const requests: Array<{ required: boolean; promise: Promise<EmbedStorageResultPayload> }> = [];
+        if (compatibleKeys.length > 0) {
+            requests.push({
+                required: true,
+                promise: this.sendRequest("storage.remove", { keys: compatibleKeys }),
+            });
+        }
+        for (const key of optionalKeys) {
+            requests.push({
+                required: false,
+                promise: this.sendRequest("storage.remove", { keys: [key] }),
+            });
+        }
+
+        return this.combineStorageRequests(requests);
     }
 
     applySnapshotToLocalStorage(
@@ -246,6 +306,50 @@ export class EmbedStorageService {
             this.console.warn("親 storage request に失敗:", error);
             throw error;
         });
+    }
+
+    private partitionKeys(keys: string[]): { compatibleKeys: string[]; optionalKeys: string[] } {
+        return {
+            compatibleKeys: keys.filter((key) => !isOptionalEmbedStorageKey(key)),
+            optionalKeys: keys.filter(isOptionalEmbedStorageKey),
+        };
+    }
+
+    private async combineStorageRequests(
+        requests: Array<{ required: boolean; promise: Promise<EmbedStorageResultPayload> }>,
+    ): Promise<EmbedStorageResultPayload> {
+        const settled = await Promise.allSettled(requests.map(({ promise }) => promise));
+        const requiredFailure = settled.find((result, index) =>
+            requests[index].required && result.status === "rejected",
+        );
+        if (requiredFailure?.status === "rejected") {
+            throw requiredFailure.reason;
+        }
+
+        const successes = settled.flatMap((result) =>
+            result.status === "fulfilled" ? [result.value] : [],
+        );
+        if (successes.length === 0) {
+            const failure = settled.find((result) => result.status === "rejected");
+            if (failure?.status === "rejected") {
+                throw failure.reason;
+            }
+            return { timestamp: Date.now() };
+        }
+
+        const combined: EmbedStorageResultPayload = { timestamp: Date.now() };
+        for (const success of successes) {
+            if (success.values) {
+                combined.values = { ...combined.values, ...success.values };
+            }
+            if (success.applied) {
+                combined.applied = [...(combined.applied ?? []), ...success.applied];
+            }
+            if (success.removed) {
+                combined.removed = [...(combined.removed ?? []), ...success.removed];
+            }
+        }
+        return combined;
     }
 
     private handleMessage = (event: MessageEvent): void => {

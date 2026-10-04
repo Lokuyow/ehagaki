@@ -112,6 +112,7 @@ const EMBED_STORAGE_KEYS = new Set([
     "clientTagEnabled",
     "quoteNotificationEnabled",
     "replyNotificationEnabled",
+    "failClosedContentWarning",
     "imageQualityLevel",
     "videoQualityLevel",
     "imageCompressionLevel",

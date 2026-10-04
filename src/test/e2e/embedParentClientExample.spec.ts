@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { finalizeEvent, generateSecretKey, nip19 } from "nostr-tools";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -803,4 +804,66 @@ test("applies iframe color defaults, persists user colors, and releases runtime 
     });
     await expect.poll(readFrameColors).toMatchObject({ accent: "#112233", base: "#223344" });
     await expect.poll(readFrameThemeUi).toEqual(userUi);
+});
+
+test("legacy strict v1 host keeps color snapshot working when it ignores the new storage key", async ({ page }) => {
+    const sampleScript = await readFile(new URL("../../../public/embed-parent-client-example.js", import.meta.url), "utf8");
+    const oldAllowlistLine = '    "failClosedContentWarning",\n';
+    expect(sampleScript).toContain(oldAllowlistLine);
+    await page.route("**/embed-parent-client-example.js", (route) => route.fulfill({
+        contentType: "text/javascript",
+        body: sampleScript.replace(oldAllowlistLine, ""),
+    }));
+
+    await page.goto("/ehagaki/embed-parent-client-example.html");
+    const appUrl = new URL("/ehagaki/", page.url());
+    appUrl.searchParams.set("defaultAccentColor", "#ABCDEF");
+    appUrl.searchParams.set("defaultBaseColor", "#CDEFAB");
+    await page.getByLabel("eHagaki URL").fill(appUrl.toString());
+    const frame = page.frameLocator("#ehagaki-iframe");
+    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    await page.evaluate(() => {
+        localStorage.setItem("ehagaki.embed.storage.v1:accentColor", "#112233");
+        localStorage.setItem("ehagaki.embed.storage.v1:baseColor", "#223344");
+    });
+    const childFrame = page.frames().find((candidate) => candidate.parentFrame() === page.mainFrame());
+    if (!childFrame) throw new Error("expected the sample iframe to be loaded");
+    const expectedUrl = await page.locator("#iframe-src").textContent();
+    if (!expectedUrl) throw new Error("expected an iframe URL");
+    const navigation = page.waitForEvent("framenavigated", (candidate) =>
+        candidate === childFrame && candidate.url() === expectedUrl,
+    );
+    await page.getByRole("button", { name: "iframe を再読み込み" }).click();
+    await navigation;
+
+    await expect.poll(() => frame.locator("html").evaluate((html) => ({
+        accent: getComputedStyle(html).getPropertyValue("--accent-color").trim().toLowerCase(),
+        base: getComputedStyle(html).getPropertyValue("--base-color").trim().toLowerCase(),
+    }))).toEqual({ accent: "#112233", base: "#223344" });
+});
+
+test("new host saves and restores fail-closed content warning through delegated storage", async ({ page }) => {
+    await page.goto("/ehagaki/embed-parent-client-example.html");
+    const appUrl = new URL("/ehagaki/", page.url());
+    await page.getByLabel("eHagaki URL").fill(appUrl.toString());
+    const frame = page.frameLocator("#ehagaki-iframe");
+    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    await frame.locator("button.settings-btn").evaluate((button) => (button as HTMLButtonElement).click());
+    const warningSwitch = frame.locator('[aria-labelledby="fail-closed-content-warning-label"]');
+    await expect(warningSwitch).toHaveAttribute("aria-checked", "false");
+    await warningSwitch.evaluate((button) => (button as HTMLButtonElement).click());
+    await expect(warningSwitch).toHaveAttribute("aria-checked", "true");
+    await expect.poll(() => page.evaluate(() =>
+        localStorage.getItem("ehagaki.embed.storage.v1:failClosedContentWarning"),
+    )).toBe("true");
+
+    await page.evaluate(() => {
+        const frame = document.querySelector<HTMLIFrameElement>("#ehagaki-iframe")!;
+        frame.contentWindow!.localStorage.removeItem("failClosedContentWarning");
+    });
+    await page.getByRole("button", { name: "iframe を再読み込み" }).click();
+    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    await frame.locator("button.settings-btn").evaluate((button) => (button as HTMLButtonElement).click());
+    const restoredSwitch = frame.locator('[aria-labelledby="fail-closed-content-warning-label"]');
+    await expect(restoredSwitch).toHaveAttribute("aria-checked", "true");
 });

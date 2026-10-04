@@ -18,6 +18,15 @@ export const EMBED_SETTING_STORAGE_KEYS = [
     STORAGE_KEYS.SETTINGS_PREFERENCE_METADATA,
 ] as const;
 
+/**
+ * Settings added after the v1 parent-storage allowlist was published.
+ * Keep these out of the compatibility batch so strict older hosts can still
+ * serve the keys they already understand.
+ */
+export const EMBED_STORAGE_OPTIONAL_KEYS = [
+    STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING,
+] as const;
+
 export const LEGACY_EMBED_SETTING_STORAGE_KEYS = [
     STORAGE_KEYS.LEGACY_IMAGE_COMPRESSION_LEVEL,
     STORAGE_KEYS.LEGACY_VIDEO_COMPRESSION_LEVEL,
