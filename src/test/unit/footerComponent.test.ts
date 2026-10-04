@@ -80,6 +80,7 @@ describe('FooterComponent', () => {
         };
         footerSettingShortcutsStore.set({ left: null, right: null });
         settingsStore.locale = 'ja';
+        settingsStore.failClosedContentWarning = false;
         isLoadingProfileStore.set(false);
         profileLoadedStore.set(false);
         locale.set('ja');
@@ -189,7 +190,7 @@ describe('FooterComponent', () => {
         renderFooter();
 
         const button = screen.getByRole('button', {
-            name: 'CW本文をtagへ格納（実験形式）',
+            name: 'CW本文形式',
         });
         expect(button.getAttribute('aria-pressed')).toBe('false');
         await fireEvent.click(button);
@@ -197,6 +198,7 @@ describe('FooterComponent', () => {
 
         expect(settingsStore.failClosedContentWarning).toBe(true);
         expect(button.getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByText('CW本文:非表示形式')).toBeTruthy();
     });
 
     it('認証状態にかかわらず空slotは間隔を作らず、status表示中はshortcutも隠す', () => {

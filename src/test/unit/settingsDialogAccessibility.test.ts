@@ -83,6 +83,7 @@ describe('SettingsDialog accessibility', () => {
         themeModeStore.set('system');
         settingsStore.externalNostrClient = 'nostter';
         settingsStore.locale = 'en';
+        settingsStore.failClosedContentWarning = false;
     });
 
     it('フッターshortcutの左右slotを別々に選択でき、反対slotの重複候補を無効化する', async () => {
@@ -100,6 +101,11 @@ describe('SettingsDialog accessibility', () => {
             'quote-notification', 'reply-notification', 'client-tag',
             'fail-closed-content-warning',
         ]);
+        expect(
+            Array.from(left.options).find(
+                (option) => option.value === 'fail-closed-content-warning',
+            )?.textContent,
+        ).toBe('CW本文形式');
         await fireEvent.change(left, { target: { value: 'language' } });
         await tick();
         expect(footerSettingShortcutsStore.value).toEqual({ left: 'language', right: null });
@@ -114,7 +120,7 @@ describe('SettingsDialog accessibility', () => {
         expect(Array.from(right.options).find((option) => option.value === 'image-quality')?.disabled).toBe(false);
     });
 
-    it('fail-closed CW設定は実験形式と全文検索の制約を説明し、canonical storeを切り替える', async () => {
+    it('fail-closed CW設定は詳細をinfo popoverに示し、canonical storeを切り替える', async () => {
         settingsStore.locale = 'ja';
         settingsStore.failClosedContentWarning = false;
         render(SettingsDialog, {
@@ -122,12 +128,20 @@ describe('SettingsDialog accessibility', () => {
         });
         await tick();
 
-        const label = '未対応クライアントでCW本文が直接表示されにくくする（実験的）';
+        const label = 'CW未対応クライアントで非表示';
         expect(screen.getByText(label)).toBeTruthy();
-        expect(screen.getByText(/全文検索で見つからない場合があります/)).toBeTruthy();
-        expect(screen.getByText(/暗号化ではなく/)).toBeTruthy();
+        expect(screen.queryByText(/実験的な送信形式です/)).toBeNull();
+        expect(screen.queryByText(/全文検索に引っかからない場合があります/)).toBeNull();
+        const infoButton = screen.getByRole('button', { name: 'CW設定の詳細' });
+        expect(infoButton).toBeTruthy();
         const toggle = screen.getByRole('switch', { name: label });
         expect(toggle.getAttribute('aria-checked')).toBe('false');
+
+        await fireEvent.click(infoButton);
+        await tick();
+        expect(screen.getByText(/実験的な送信形式です/)).toBeTruthy();
+        expect(screen.getByText(/CW本文はNostrの全文検索に引っかからない場合があります/)).toBeTruthy();
+        expect(screen.getByText(/暗号化ではなく、raw eventのtagから本文を取得できます/)).toBeTruthy();
 
         await fireEvent.click(toggle);
         await tick();
