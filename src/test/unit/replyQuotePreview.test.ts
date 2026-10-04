@@ -117,11 +117,13 @@ describe('ReplyQuotePreview', () => {
             },
         });
 
-        expect(screen.queryByText('hello nostr world')).toBeNull();
+        expect(screen.queryByText('hello <b>nostr</b> world')).toBeNull();
 
         await fireEvent.click(screen.getByRole('button', { name: '展開する' }));
 
-        expect(screen.getByText('hello nostr world')).toBeTruthy();
+        expect(screen.getByText('hello <b>nostr</b> world')).toBeTruthy();
+        expect(document.querySelector('b')).toBeNull();
+        expect(document.querySelector('script')).toBeNull();
     });
 
     it('展開後の本文URLをnative linkとして描画し、クリックしても展開・取消状態を変えない', async () => {

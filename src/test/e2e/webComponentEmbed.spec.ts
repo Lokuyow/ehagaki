@@ -2593,6 +2593,47 @@ test("uses a verified preloaded event in Direct Web Component setContext", async
     expect(invalidResult).toBe("resolved");
 });
 
+test("renders preloaded fail-closed CW body as literal text in the Full composer preview", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const literalTail = "<b>nostr</b> <script>alert(1)</script>";
+    const event = finalizeEvent({
+        kind: 1,
+        content: "",
+        tags: [
+            ["content-warning", "Spoiler", `:kitten: ${literalTail}`],
+            ["emoji", "kitten", "https://example.com/kitten.png"],
+        ],
+        created_at: 1,
+    }, generateSecretKey());
+    const reply = nip19.neventEncode({ id: event.id, author: event.pubkey });
+
+    await page.evaluate(async ({ reply, event }) => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+            setContext(value: unknown): Promise<void>;
+        };
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setContext({ reply, preloadedEvents: { [event.id]: event } });
+    }, { reply, event });
+
+    const composer = page.locator("ehagaki-composer");
+    const preview = composer.locator(".reply-quote-preview");
+    await expect(preview).toHaveCount(1);
+    await preview.locator(".preview-label").click();
+    await expect(preview.getByRole("button", { name: "本文を表示" })).toBeVisible();
+    await expect(preview).not.toContainText(literalTail);
+    await expect(preview.locator("b, script")).toHaveCount(0);
+
+    await preview.getByRole("button", { name: "本文を表示" }).click();
+    const protectedContent = preview.locator(".post-preview-content");
+    await expect.poll(() => protectedContent.evaluate((element) => element.textContent ?? ""))
+        .toContain(literalTail);
+    await expect(protectedContent.locator("b, script")).toHaveCount(0);
+    await expect(protectedContent.locator(".post-history-custom-emoji-slot")).toHaveCount(1);
+});
+
 
 
 test("Full self-publish does not expose Host-owned methods", async ({ page }) => {

@@ -18,7 +18,6 @@
         ReplyQuoteMode,
         ReplyQuoteState,
     } from "../lib/types";
-    import { sanitizePlainText } from "../lib/utils/domSanitizer";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
@@ -97,7 +96,7 @@
         );
         return buildPostContentRenderModel({
             sourceContent: content,
-            displayContent: sanitizePlainText(content),
+            displayContent: content,
             tags: referencedEvent.tags,
         });
     });
