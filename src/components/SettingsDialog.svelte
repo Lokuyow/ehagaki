@@ -841,9 +841,15 @@
             <div class="setting-row">
                 <div class="setting-label-group">
                     <div class="setting-label-row">
-                        <span id="fail-closed-content-warning-label" class="setting-label">
-                            {$_("settingsDialog.fail_closed_content_warning_label")}
-                        </span>
+                        <div class="setting-label-with-icon">
+                            <span
+                                class="setting-menu-icon setting-menu-mask-icon fail-closed-content-warning-setting-icon"
+                                aria-hidden="true"
+                            ></span>
+                            <span id="fail-closed-content-warning-label" class="setting-label">
+                                {$_("settingsDialog.fail_closed_content_warning_label")}
+                            </span>
+                        </div>
                         <InfoPopoverButton
                             side="top"
                             sideOffset={8}
@@ -1199,6 +1205,9 @@
     }
     .client-tag-setting-icon {
         mask-image: url("/icons/label_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+    .fail-closed-content-warning-setting-icon {
+        mask-image: url("/icons/shield_locked_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
     }
     .setting-row-with-note {
         align-items: flex-start;
