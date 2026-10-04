@@ -269,12 +269,10 @@
             ? previewCollapse.isPostExpanded(previewCollapsePost)
             : false,
     );
-    let displayedContent = $derived.by(() =>
-        sanitizePlainText(
-            isPreviewExpanded
-                ? rawPreviewContent
-                : collapsedContent.content,
-        ),
+    let displayedContent = $derived(
+        isPreviewExpanded
+            ? rawPreviewContent
+            : collapsedContent.content,
     );
     let sourcePreviewRenderModel = $derived.by(() =>
         previewEvent?.kind === 40

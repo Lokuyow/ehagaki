@@ -607,6 +607,34 @@ describe("ComposerTargetDialog", () => {
         ).toBe("true");
     });
 
+    it("CW本文のmarkup風文字列をtarget previewでテキストとして表示する", async () => {
+        const literalBody = "<b>nostr</b> <script>alert(1)</script>";
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(1, "General", "", [
+                    ["content-warning", "Spoiler", literalBody],
+                ]),
+            }),
+        });
+
+        await enterNote();
+        expect(screen.getByText("postContent.showContentWarningBody")).toBeTruthy();
+        expect(screen.queryByText(literalBody)).toBeNull();
+        expect(document.querySelector("b, script")).toBeNull();
+
+        await fireEvent.click(screen.getByRole("button", {
+            name: "postContent.showContentWarningBody",
+        }));
+
+        expect(screen.getByText(literalBody)).toBeTruthy();
+        expect(document.querySelector("b, script")).toBeNull();
+    });
+
     it("折りたたみ前後で本文URLをnative linkとして保ち、リンク操作でダイアログを閉じない", async () => {
         const onClose = vi.fn();
         const content = [

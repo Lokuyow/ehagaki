@@ -223,7 +223,6 @@
     resolveEventContentBody,
     type PostContentRenderModel,
   } from "./lib/postContentPreview";
-  import { sanitizePlainText } from "./lib/utils/domSanitizer";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
   import { uploadDestinationStore } from "./stores/uploadDestinationStore.svelte";
@@ -500,7 +499,7 @@
 
       models[reference.eventId] = buildPostContentRenderModel({
         sourceContent: content,
-        displayContent: sanitizePlainText(content),
+        displayContent: content,
         tags: event.tags,
       });
     }

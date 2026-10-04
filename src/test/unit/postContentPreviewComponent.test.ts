@@ -52,4 +52,24 @@ describe("PostContentPreview Content Warning", () => {
         expect(screen.queryByText("protected second body")).toBeNull();
         expect(screen.getByRole("button", { name: "本文を表示" })).toBeTruthy();
     });
+
+    it("renders fail-closed CW body as literal text only after explicit reveal", async () => {
+        const literalBody = "<script>window.pwned = true</script> <b>エ゛ッ</b>";
+        const model = buildPostContentRenderModel({
+            sourceContent: "",
+            tags: [["content-warning", "実験", literalBody]],
+        });
+        const view = render(PostContentPreview, {
+            props: { model, contentWarningEventId: "literal-cw-event" },
+        });
+
+        expect(screen.queryByText(literalBody)).toBeNull();
+        expect(view.container.querySelector("script, b")).toBeNull();
+
+        await fireEvent.click(screen.getByRole("button", { name: "本文を表示" }));
+
+        expect(screen.getByText(literalBody)).toBeTruthy();
+        expect(view.container.querySelector("script, b")).toBeNull();
+        expect((window as Window & { pwned?: boolean }).pwned).toBeUndefined();
+    });
 });
