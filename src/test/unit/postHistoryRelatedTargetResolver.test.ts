@@ -615,6 +615,102 @@ describe("createPostHistoryRelatedTargetResolver", () => {
         expect(contextFetchService.fetchEventById).toHaveBeenCalledTimes(2);
     });
 
+    it("uses canonical c and fetch provenance without inheriting companion relays or dropping the source", async () => {
+        const secretKey = generateSecretKey();
+        const canonical = finalizeEvent({
+            kind: 36,
+            created_at: 200,
+            content: "sensitive body without CW metadata",
+            tags: [],
+        }, secretKey) as NostrEvent;
+        const companion = finalizeEvent({
+            kind: 1,
+            created_at: 250,
+            content: "",
+            tags: [
+                ["content-warning", "Different reason"],
+                ["c", canonical.id, "wss://canonical-hint.example/"],
+            ],
+        }, secretKey) as NostrEvent;
+        const { resolver, contextFetchService } = createResolver();
+        contextFetchService.fetchEventById.mockImplementation((_rxNostr, { eventId }) => ({
+            promise: Promise.resolve({
+                event: eventId === companion.id ? companion : canonical,
+                relayUrl: eventId === companion.id
+                    ? "wss://companion-source.example/"
+                    : "wss://canonical-source.example/",
+            }),
+            cancel: vi.fn(),
+        }));
+
+        const descriptorHints = Array.from(
+            { length: 12 },
+            (_, index) => `wss://pointer-${index}.example/`,
+        );
+        const snapshot = await resolver.ensureTarget(createDescriptor({
+            targetEventId: companion.id,
+            authorHint: companion.pubkey,
+            relayHints: descriptorHints,
+        }));
+
+        expect(snapshot?.event).toEqual(canonical);
+        expect(snapshot?.relayHints).toEqual([
+            "wss://canonical-source.example/",
+            "wss://canonical-hint.example/",
+        ]);
+        expect(snapshot?.relayHints).not.toContain("wss://companion-source.example/");
+        expect(snapshot?.relayHints.some((hint) => descriptorHints.includes(hint))).toBe(false);
+        expect(contextFetchService.fetchEventById.mock.calls[1]?.[1].relayHints).toEqual([
+            "wss://canonical-hint.example/",
+        ]);
+    });
+
+    it("uses only canonical local record relay evidence when the companion and canonical are cached", async () => {
+        const secretKey = generateSecretKey();
+        const canonical = finalizeEvent({
+            kind: 36,
+            created_at: 200,
+            content: "sensitive body",
+            tags: [],
+        }, secretKey) as NostrEvent;
+        const companion = finalizeEvent({
+            kind: 1,
+            created_at: 250,
+            content: "",
+            tags: [
+                ["content-warning"],
+                ["c", canonical.id, "wss://canonical-hint.example/"],
+            ],
+        }, secretKey) as NostrEvent;
+        const { resolver, postHistoryRepositoryImpl, contextFetchService } = createResolver();
+        postHistoryRepositoryImpl.getByEventId.mockImplementation(async (eventId) => {
+            const event = eventId === companion.id ? companion
+                : eventId === canonical.id ? canonical
+                    : null;
+            if (!event) return null;
+            const record = createRecord(event);
+            record.relayHints = [eventId === companion.id
+                ? "wss://companion-record.example/"
+                : "wss://canonical-record.example/"];
+            return record;
+        });
+
+        const snapshot = await resolver.ensureTarget(createDescriptor({
+            targetEventId: companion.id,
+            authorHint: companion.pubkey,
+            relayHints: ["wss://pointer-only.example/"],
+        }));
+
+        expect(snapshot?.event).toEqual(canonical);
+        expect(snapshot?.relayHints).toEqual([
+            "wss://canonical-hint.example/",
+            "wss://canonical-record.example/",
+        ]);
+        expect(snapshot?.relayHints).not.toContain("wss://companion-record.example/");
+        expect(snapshot?.relayHints).not.toContain("wss://pointer-only.example/");
+        expect(contextFetchService.fetchEventById).not.toHaveBeenCalled();
+    });
+
     it("never promotes a remaining companion to a regular post when its canonical target is deleted", async () => {
         const secretKey = generateSecretKey();
         const canonical = finalizeEvent({

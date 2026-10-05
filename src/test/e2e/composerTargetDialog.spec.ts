@@ -4,6 +4,7 @@ type HarnessState = {
     ready: boolean;
     inputs: Record<
         | "kind1"
+        | "sensitive"
         | "kind40"
         | "kind42"
         | "stale"
@@ -197,6 +198,18 @@ test.describe("composer target dialog fixture", () => {
         await expect(page.getByLabel("適用結果")).toHaveText(
             "1:reply,1:quote,40:channel,42:reply,42:quote",
         );
+    });
+
+    test("canonical Sensitive Text Note targetからreply操作を選択できる", async ({ page }) => {
+        const harness = await gotoHarness(page);
+        await openDialog(page);
+        await page.getByLabel("イベントID").fill(harness.inputs.sensitive);
+        await expect(page.getByRole("button", { name: "リプライ" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "引用" })).toBeVisible();
+        await expect(page.locator(".content-warning-prompt")).toBeVisible();
+        await page.getByRole("button", { name: "リプライ" }).click();
+        await expect(page.getByRole("dialog")).toBeHidden();
+        await expect(page.getByLabel("適用結果")).toHaveText("36:reply");
     });
 
     test("unsupportedとnsecを拒否し、入力競合では新しい結果だけを表示する", async ({ page }) => {

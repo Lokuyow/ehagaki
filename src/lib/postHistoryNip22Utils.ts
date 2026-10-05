@@ -24,7 +24,11 @@ function oneValueTag(tags: string[][], name: string): string | null | undefined 
     return values[0]!;
 }
 
-function parseScopeTags(tags: string[][], names: readonly string[]): {
+function parseScopeTags(
+    tags: string[][],
+    names: readonly string[],
+    options: { allowAddressableVersionPair?: boolean } = {},
+): {
     tags: string[][];
     invalid: boolean;
 } {
@@ -44,7 +48,11 @@ function parseScopeTags(tags: string[][], names: readonly string[]): {
             else result.push([...tag]);
         }
     }
-    if (result.length !== 1) invalid = true;
+    const isAddressableVersionPair = options.allowAddressableVersionPair === true
+        && result.length === 2
+        && result.filter((tag) => tag[0] === "a").length === 1
+        && result.filter((tag) => tag[0] === "e").length === 1;
+    if (result.length !== 1 && !isAddressableVersionPair) invalid = true;
     return { tags: result, invalid };
 }
 
@@ -90,7 +98,9 @@ export function parseNip22CommentReferences(
 
     const tags = event.tags;
     const rootScope = parseScopeTags(tags, ["E", "A", "I"]);
-    const parentScope = parseScopeTags(tags, ["e", "a", "i"]);
+    const parentScope = parseScopeTags(tags, ["e", "a", "i"], {
+        allowAddressableVersionPair: true,
+    });
     const rootKind = oneValueTag(tags, "K");
     const parentKind = oneValueTag(tags, "k");
     const rootPubkeyValues = tags.filter((tag) => tag[0] === "P").map((tag) => tag[1] ?? "");

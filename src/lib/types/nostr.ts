@@ -392,6 +392,8 @@ export interface ReplyQuoteUpdateTarget {
     eventId: string;
     mode: ReplyQuoteMode;
     ownerToken: symbol;
+    /** Optional canonical relay evidence to store while hydrating a resolved event. */
+    relayHints?: string[];
 }
 
 export interface ChannelContextQueryTarget {

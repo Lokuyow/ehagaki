@@ -6,6 +6,7 @@ import type {
 } from '../types';
 import type { EmbedPreloadedProfilePresentation } from '../embedProtocol';
 import {
+    getSensitiveCanonicalRelayHints,
     getSensitiveCompanionReference,
     resolveSensitiveCompanionCanonicalEvent,
 } from '../sensitiveEventUtils';
@@ -13,7 +14,8 @@ import { postHistoryDeletionRequestsRepository } from '../storage/postHistoryDel
 
 export interface ProcessReplyQuoteReferenceParams {
     reference: ReplyQuoteHydrationTarget;
-    replyQuoteService: Pick<ReplyQuoteService, 'fetchReferencedEvent' | 'extractThreadInfo'>;
+    replyQuoteService: Pick<ReplyQuoteService, 'fetchReferencedEvent' | 'extractThreadInfo'>
+        & Partial<Pick<ReplyQuoteService, 'fetchReferencedEventTask'>>;
     initialEvent?: NostrEvent;
     rxNostr?: any;
     relayConfig: any;
@@ -53,16 +55,31 @@ export async function processReplyQuoteReference({
     }
 
     let event = fetchedEvent;
-    let notificationTarget = reference;
+    let resolvedTarget = reference;
+    let updateTarget = reference;
     if (getSensitiveCompanionReference(fetchedEvent)) {
+        let canonicalRelayUrl: string | null = null;
         const canonicalEvent = await resolveSensitiveCompanionCanonicalEvent(
             fetchedEvent,
-            (eventId, relayHints) => replyQuoteService.fetchReferencedEvent(
-                eventId,
-                relayHints,
-                rxNostr,
-                relayConfig,
-            ),
+            async (eventId, relayHints) => {
+                if (replyQuoteService.fetchReferencedEventTask) {
+                    const result = await replyQuoteService.fetchReferencedEventTask(
+                        eventId,
+                        relayHints,
+                        rxNostr,
+                        relayConfig,
+                    ).promise;
+                    if (result.status !== 'found') return null;
+                    canonicalRelayUrl = result.relayUrl;
+                    return result.event;
+                }
+                return await replyQuoteService.fetchReferencedEvent(
+                    eventId,
+                    relayHints,
+                    rxNostr,
+                    relayConfig,
+                );
+            },
             async (target) => {
                 const deleted = await postHistoryDeletionRequestsRepository.getDeletedTargets([{
                     targetAuthorPubkey: target.pubkey,
@@ -76,13 +93,22 @@ export async function processReplyQuoteReference({
             return;
         }
         event = canonicalEvent;
-        notificationTarget = { ...reference, eventId: canonicalEvent.id };
+        const canonicalRelayHints = getSensitiveCanonicalRelayHints(fetchedEvent, {
+            fetchedRelayUrl: canonicalRelayUrl,
+        });
+        updateTarget = { ...reference, relayHints: canonicalRelayHints };
+        resolvedTarget = {
+            ...reference,
+            eventId: canonicalEvent.id,
+            relayHints: canonicalRelayHints,
+            authorPubkey: canonicalEvent.pubkey,
+        };
     }
 
     const threadInfo = replyQuoteService.extractThreadInfo(event);
-    updateReferencedEvent(reference, event, threadInfo);
+    updateReferencedEvent(updateTarget, event, threadInfo);
     if (preloadedProfiles && applyPreloadedAuthorPreviewPresentation) {
-        applyPreloadedAuthorPreviewPresentation([reference], preloadedProfiles);
+        applyPreloadedAuthorPreviewPresentation([resolvedTarget], preloadedProfiles);
     }
-    initializeReplyNotificationRecipients?.(notificationTarget, event);
+    initializeReplyNotificationRecipients?.(resolvedTarget, event);
 }

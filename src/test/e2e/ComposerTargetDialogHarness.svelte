@@ -12,6 +12,7 @@
 
     const ids = {
         kind1: "1".repeat(64),
+        sensitive: "d".repeat(64),
         kind40: "4".repeat(64),
         kind42: "2".repeat(64),
         stale: "a".repeat(64),
@@ -26,6 +27,7 @@
     };
     const inputs = {
         kind1: nip19.noteEncode(ids.kind1),
+        sensitive: nip19.noteEncode(ids.sensitive),
         kind40: nip19.noteEncode(ids.kind40),
         kind42: nip19.noteEncode(ids.kind42),
         stale: nip19.noteEncode(ids.stale),
@@ -127,19 +129,19 @@
     >([]);
 
     function makeTarget(
-        kind: 1 | 40 | 42,
+        kind: 1 | 36 | 40 | 42,
         eventId: string,
         channelName: string | null = "Fixture channel",
         content = `Fixture kind ${kind}`,
     ): ComposerResolvedTarget {
-        const hasChannel = kind !== 1;
+        const hasChannel = kind === 40 || kind === 42;
         return {
             event: {
                 id: eventId,
                 pubkey: "c".repeat(64),
                 created_at: 1,
                 kind,
-                tags: [],
+                tags: kind === 36 ? [["content-warning", "Sensitive fixture"]] : [],
                 content:
                     kind === 40
                         ? JSON.stringify({ name: "Fixture channel" })
@@ -180,6 +182,9 @@
     }
 
     function resolveForId(eventId: string): ComposerTargetResolveResult {
+        if (eventId === ids.sensitive) {
+            return { status: "resolved", target: makeTarget(36, eventId, null, "Sensitive fixture body") };
+        }
         if (eventId === ids.kind40) {
             return { status: "resolved", target: makeTarget(40, eventId) };
         }

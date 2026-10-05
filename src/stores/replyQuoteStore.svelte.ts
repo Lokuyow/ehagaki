@@ -198,6 +198,9 @@ export function updateReferencedEvent(
         reference.eventId = event.id;
         reference.referencedEvent = event;
         reference.authorPubkey = event.pubkey;
+        if (target.relayHints) {
+            reference.relayHints = [...target.relayHints];
+        }
         reference.loading = false;
         reference.error = null;
         if (threadInfo) {

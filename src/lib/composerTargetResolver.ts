@@ -8,6 +8,7 @@ import {
 } from "./channelContextCoordinator";
 import { parseKind42ThreadReferences } from "./postHistoryNip10Utils";
 import {
+    getSensitiveCanonicalRelayHints,
     getSensitiveCompanionReference,
     resolveSensitiveCompanionCanonicalEvent,
 } from "./sensitiveEventUtils";
@@ -167,7 +168,9 @@ export function createComposerTargetResolver(
             }
 
             const canonicalId = getSensitiveCompanionReference(event);
+            let relayHints: string[];
             if (canonicalId) {
+                const companion = event;
                 let canonicalRelayUrl: string | null = null;
                 const canonicalEvent = await resolveSensitiveCompanionCanonicalEvent(
                     event,
@@ -197,16 +200,18 @@ export function createComposerTargetResolver(
                     return { status: "error", reason: "not-found" };
                 }
                 event = canonicalEvent;
-                fetchedRelayUrl = canonicalRelayUrl;
+                relayHints = getSensitiveCanonicalRelayHints(companion, {
+                    fetchedRelayUrl: canonicalRelayUrl,
+                });
+            } else {
+                relayHints = RelayConfigUtils.sanitizeExternalRelayUrls(
+                    [
+                        ...params.pointer.relayHints,
+                        ...(fetchedRelayUrl ? [fetchedRelayUrl] : []),
+                    ],
+                    { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
+                );
             }
-
-            const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls(
-                [
-                    ...params.pointer.relayHints,
-                    ...(fetchedRelayUrl ? [fetchedRelayUrl] : []),
-                ],
-                { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
-            );
             const authorProfilePromise = params.profileService
                 ? params.profileService.fetchProfileRealtime(event.pubkey, {
                     additionalRelays: relayHints,

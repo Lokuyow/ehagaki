@@ -110,6 +110,75 @@ describe("buildNip22ReplyTags", () => {
         });
     });
 
+    it("accepts the NIP-22 addressable parent a+e pair and keeps its root when replying", () => {
+        const address = `30023:${ROOT_AUTHOR}:article`;
+        const parent = event(1111, PARENT_ID, PARENT_AUTHOR, [
+            ["A", address, "wss://root.example.com/"],
+            ["K", "30023"],
+            ["P", ROOT_AUTHOR, "wss://root.example.com/"],
+            ["a", address, "wss://parent.example.com/"],
+            ["e", PARENT_ID, "wss://parent.example.com/"],
+            ["k", "30023"],
+            ["p", ROOT_AUTHOR, "wss://parent.example.com/"],
+        ]);
+
+        expect(parseNip22CommentReferences(parent)).toMatchObject({
+            valid: true,
+            rootTags: [["A", address, "wss://root.example.com/"]],
+            rootKind: "30023",
+            rootPubkey: ROOT_AUTHOR,
+            rootEventId: null,
+            parentKind: "30023",
+            parentPubkey: ROOT_AUTHOR,
+            parentEventId: PARENT_ID,
+        });
+
+        const expectedReplyTags = [
+            ["A", address, "wss://root.example.com/"],
+            ["K", "30023"],
+            ["P", ROOT_AUTHOR],
+            ["e", PARENT_ID, "wss://reply.example.com/", PARENT_AUTHOR],
+            ["k", "1111"],
+            ["p", PARENT_AUTHOR],
+        ];
+        expect(buildNip22ReplyTags(parent, "wss://reply.example.com/")).toEqual(expectedReplyTags);
+        for (const kind of [1111, 3636]) {
+            expect(parseNip22CommentReferences(
+                event(kind, "3".repeat(64), "c".repeat(64), expectedReplyTags),
+            )).toMatchObject({
+                valid: true,
+                rootTags: [["A", address, "wss://root.example.com/"]],
+                parentEventId: PARENT_ID,
+                parentKind: "1111",
+                parentPubkey: PARENT_AUTHOR,
+            });
+        }
+    });
+
+    it("still rejects ambiguous multiple primary scopes", () => {
+        expect(parseNip22CommentReferences(event(1111, "3".repeat(64), "c".repeat(64), [
+            ["A", `30023:${ROOT_AUTHOR}:article`],
+            ["E", ROOT_ID],
+            ["K", "30023"],
+            ["P", ROOT_AUTHOR],
+            ["a", `30023:${ROOT_AUTHOR}:article`],
+            ["e", PARENT_ID],
+            ["k", "30023"],
+            ["p", ROOT_AUTHOR],
+        ]))).toMatchObject({ valid: false, reason: "invalid-root-reference" });
+
+        expect(parseNip22CommentReferences(event(1111, "3".repeat(64), "c".repeat(64), [
+            ["A", `30023:${ROOT_AUTHOR}:article`],
+            ["K", "30023"],
+            ["P", ROOT_AUTHOR],
+            ["a", `30023:${ROOT_AUTHOR}:article`],
+            ["e", PARENT_ID],
+            ["i", "https://example.test/extra"],
+            ["k", "30023"],
+            ["p", ROOT_AUTHOR],
+        ]))).toMatchObject({ valid: false, reason: "invalid-parent-reference" });
+    });
+
     it("preserves non-numeric NIP-22 kinds and I-scoped roots without author tags", () => {
         const parent = event(1111, PARENT_ID, PARENT_AUTHOR, [
             ["I", "web:example.test/article/1", "wss://root.example.com/"],
@@ -208,17 +277,78 @@ describe("Sensitive Text Note compatibility companion", () => {
         const signedCompanion = finalizeEvent(companion!, secretKey) as NostrEvent;
         expect(verifySensitiveCompanionLink(signedCompanion, canonical)).toBe(true);
         expect(verifySensitiveCompanionLink(signedCompanion, { ...canonical, pubkey: ROOT_AUTHOR })).toBe(false);
+
+        const noWarningCanonical = finalizeEvent({
+            kind: 36,
+            created_at: 900,
+            content: "body without CW metadata",
+            tags: [],
+        }, secretKey) as NostrEvent;
+        const differentMetadataCompanion = finalizeEvent({
+            kind: 1,
+            created_at: canonical.created_at + 17,
+            content: "",
+            tags: [["content-warning", "Different reason"], ["c", noWarningCanonical.id]],
+        }, secretKey) as NostrEvent;
+        expect(verifySensitiveCompanionLink(differentMetadataCompanion, noWarningCanonical)).toBe(true);
+
+        const differentReasonCanonical = finalizeEvent({
+            kind: 36,
+            created_at: 123,
+            content: "sensitive body",
+            tags: [["content-warning", "Canonical reason"]],
+        }, secretKey) as NostrEvent;
+        const differentReasonCompanion = finalizeEvent({
+            kind: 1,
+            created_at: 124,
+            content: "",
+            tags: [["content-warning", "Other reason"], ["c", differentReasonCanonical.id]],
+        }, secretKey) as NostrEvent;
+        expect(verifySensitiveCompanionLink(differentReasonCompanion, differentReasonCanonical)).toBe(true);
+
+        const wrongIdCanonical = finalizeEvent({
+            kind: 36,
+            created_at: 123,
+            content: "different ID",
+            tags: [],
+        }, secretKey) as NostrEvent;
         expect(verifySensitiveCompanionLink(finalizeEvent({
             kind: 1,
-            created_at: canonical.created_at,
+            created_at: 123,
             content: "",
-            tags: [["content-warning", "Different reason"], ["c", canonical.id]],
-        }, secretKey) as NostrEvent, canonical)).toBe(false);
+            tags: [["content-warning"], ["c", differentReasonCanonical.id]],
+        }, secretKey) as NostrEvent, wrongIdCanonical)).toBe(false);
+
+        const wrongKind = finalizeEvent({
+            kind: 1,
+            created_at: 123,
+            content: "wrong kind",
+            tags: [],
+        }, secretKey) as NostrEvent;
         expect(verifySensitiveCompanionLink(finalizeEvent({
             kind: 1,
-            created_at: canonical.created_at + 1,
+            created_at: 123,
             content: "",
-            tags: [["content-warning", "Spoiler"], ["c", canonical.id]],
-        }, secretKey) as NostrEvent, canonical)).toBe(false);
+            tags: [["content-warning"], ["c", wrongKind.id]],
+        }, secretKey) as NostrEvent, wrongKind)).toBe(false);
+
+        const otherSecretKey = generateSecretKey();
+        const wrongPubkeyCanonical = finalizeEvent({
+            kind: 36,
+            created_at: 123,
+            content: "other author",
+            tags: [],
+        }, otherSecretKey) as NostrEvent;
+        expect(verifySensitiveCompanionLink(finalizeEvent({
+            kind: 1,
+            created_at: 999,
+            content: "",
+            tags: [["content-warning"], ["c", wrongPubkeyCanonical.id]],
+        }, secretKey) as NostrEvent, wrongPubkeyCanonical)).toBe(false);
+
+        expect(verifySensitiveCompanionLink(
+            { ...differentReasonCompanion, sig: "g".repeat(128) },
+            differentReasonCanonical,
+        )).toBe(false);
     });
 });

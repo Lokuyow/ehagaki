@@ -20,6 +20,7 @@ import {
 } from "./storage/postHistoryRepository";
 import { toEventFromPostHistoryRecord } from "./postHistoryThreadGraphUtils";
 import {
+    getSensitiveCanonicalRelayHints,
     getSensitiveCompanionReference,
     resolveSensitiveCompanionCanonicalEvent,
 } from "./sensitiveEventUtils";
@@ -399,17 +400,21 @@ export function createPostHistoryRelatedTargetResolver({
 
     async function resolveCompanionTarget(
         companion: NostrEvent,
-        relayHints: string[],
         requestTargetId: string,
         requestId: number,
-    ): Promise<{ event: NostrEvent | null; relayUrl: string | null; deleted: boolean }> {
+    ): Promise<{
+        event: NostrEvent | null;
+        canonicalRelayHints: string[] | null;
+        deleted: boolean;
+    }> {
         const canonicalId = getSensitiveCompanionReference(companion);
         if (!canonicalId) {
-            return { event: companion, relayUrl: null, deleted: false };
+            return { event: companion, canonicalRelayHints: null, deleted: false };
         }
 
         let canonicalRecordDeleted = false;
         let canonicalRelayUrl: string | null = null;
+        let canonicalLocalRelayHints: string[] = [];
         const canonicalEvent = await resolveSensitiveCompanionCanonicalEvent(
             companion,
             async (eventId, canonicalRelayHints) => {
@@ -421,7 +426,14 @@ export function createPostHistoryRelatedTargetResolver({
                         return null;
                     }
                     const storedEvent = toEventFromPostHistoryRecord(record);
-                    if (storedEvent.id === eventId) return storedEvent;
+                    if (storedEvent.id === eventId) {
+                        canonicalLocalRelayHints = [
+                            ...record.relayHints,
+                            ...record.acceptedRelays,
+                            ...(record.fetchedRelays ?? []),
+                        ];
+                        return storedEvent;
+                    }
                 }
 
                 const rxNostr = getRxNostr();
@@ -442,18 +454,22 @@ export function createPostHistoryRelatedTargetResolver({
         );
 
         if (!isCurrentLoadRequest(requestTargetId, requestId)) {
-            return { event: null, relayUrl: null, deleted: false };
+            return { event: null, canonicalRelayHints: null, deleted: false };
         }
         if (canonicalEvent) {
             return {
                 event: canonicalEvent,
-                relayUrl: canonicalRelayUrl,
+                canonicalRelayHints: getSensitiveCanonicalRelayHints(companion, {
+                    fetchedRelayUrl: canonicalRelayUrl,
+                    localRelayHints: canonicalLocalRelayHints,
+                    limit: POST_HISTORY_RELATED_TARGET_RELAY_LIMIT,
+                }),
                 deleted: false,
             };
         }
         return {
             event: null,
-            relayUrl: null,
+            canonicalRelayHints: null,
             deleted: canonicalRecordDeleted
                 || await isDeletedTarget(companion.pubkey, canonicalId),
         };
@@ -553,7 +569,6 @@ export function createPostHistoryRelatedTargetResolver({
                     const storedEvent = toEventFromPostHistoryRecord(existingRecord);
                     const resolved = await resolveCompanionTarget(
                         storedEvent,
-                        recordRelayHints,
                         descriptor.targetEventId,
                         requestId,
                     );
@@ -571,16 +586,17 @@ export function createPostHistoryRelatedTargetResolver({
                         });
                     }
                     const event = resolved.event;
+                    const targetRelayHints = resolved.canonicalRelayHints ?? recordRelayHints;
                     const snapshot = applySnapshotUpdate(descriptor.targetEventId, {
                         status: "resolved",
                         event,
                         authorPubkey: event.pubkey,
-                        relayHints: recordRelayHints,
+                        relayHints: targetRelayHints,
                         errorCode: null,
                         updatedAt: Date.now(),
                     });
-                    ensureProfileForTarget(event.pubkey, recordRelayHints);
-                    void runDeletionCheck(event, recordRelayHints, { background: true });
+                    ensureProfileForTarget(event.pubkey, targetRelayHints);
+                    void runDeletionCheck(event, targetRelayHints, { background: true });
                     return snapshotsByTargetId[descriptor.targetEventId] ?? snapshot;
                 }
 
@@ -668,7 +684,6 @@ export function createPostHistoryRelatedTargetResolver({
                 ]);
                 const resolved = await resolveCompanionTarget(
                     result.event,
-                    pointerRelayHints,
                     descriptor.targetEventId,
                     requestId,
                 );
@@ -686,10 +701,8 @@ export function createPostHistoryRelatedTargetResolver({
                     });
                 }
                 const resolvedEvent = resolved.event;
-                const resolvedRelayHints = sanitizeRelayHints([
-                    ...pointerRelayHints,
-                    ...(resolved.relayUrl ? [resolved.relayUrl] : []),
-                ]);
+                const resolvedRelayHints = resolved.canonicalRelayHints
+                    ?? pointerRelayHints;
                 const deletedAfterResolve = await runDeletionCheck(
                     resolvedEvent,
                     resolvedRelayHints,
@@ -721,7 +734,7 @@ export function createPostHistoryRelatedTargetResolver({
                     updatedAt: Date.now(),
                 });
                 ensureProfileForTarget(
-                    result.event.pubkey,
+                    resolvedEvent.pubkey,
                     resolvedRelayHints,
                 );
                 return snapshotsByTargetId[descriptor.targetEventId] ?? snapshot;

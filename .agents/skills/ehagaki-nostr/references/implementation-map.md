@@ -25,14 +25,14 @@
 
 ## リプライ
 
-- 機能: kind 1またはkind 42へのreply targetを取得し、thread tagと通知先を構築する。
-- 関連NIP: NIP-10。public chatではNIP-28も関係する。
-- event kind: 投稿先により`1`または`42`
-- 主なtag: marked `e` (`root`、`reply`)、`p`。kind 42ではchannel rootの`e`も必要になる。
-- 主な実装ファイル: `src/lib/replyQuoteService.ts`、`src/lib/postManager.ts`、`src/lib/postHistoryNip10Utils.ts`、`src/stores/replyQuoteStore.svelte.ts`
-- 主な関数または責務: `parsePostHistoryThreadReferences`（`parseKind1ThreadReferences`/`parseKind42ThreadReferences`）がNIP-10 thread semanticsのcanonical ownerであり、`ReplyQuoteService.extractThreadInfo`は既存composer shapeへのprojection、`buildReplyTags`はwire tag構築、`fetchReferencedEventTask`は取得を担う。
-- 関連テスト: `src/test/unit/replyQuoteService.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/unit/postHistoryNip10Utils.test.ts`、`src/test/unit/replyQuoteStore.test.ts`
-- 注意点: root、直接parent、marker、author、relay hintを別々に検証する。kind 42のchannel rootとreply parentを混同しない。
+- 機能: kind 1/42へのNIP-10 replyとkind 36/1111/3636へのNIP-22 comment reply targetを取得し、thread topologyと通知先を構築する。
+- 関連NIP: NIP-10、NIP-22。public chatではNIP-28も関係する。
+- event kind: 投稿先・CW設定に応じて`1`、`42`、`1111`、`3636`。kind 36もNIP-22 replyのparentになる。
+- 主なtag: NIP-10のmarked `e` (`root`、`reply`) と`p`、NIP-22のroot `E/A/I`・`K/P`およびparent `e/a/i`・`k/p`。
+- 主な実装ファイル: `src/lib/replyQuoteService.ts`、`src/lib/postManager.ts`、`src/lib/postHistoryNip10Utils.ts`、`src/lib/postHistoryNip22Utils.ts`、`src/lib/sensitiveEventUtils.ts`、`src/stores/replyQuoteStore.svelte.ts`
+- 主な関数または責務: `parsePostHistoryThreadReferences`がkind 1/42のNIP-10とkind 1111/3636のNIP-22参照を既存thread projectionへ解決する。`parseNip22CommentReferences`はroot scopeとdirect parentを検証し、addressable parentの`a`+current-version `e`併記を受理する。`buildNip22ReplyTags`はroot scopeを維持して直接parentを設定する。`ReplyQuoteService.fetchReferencedEventTask`はeventと実取得Relayを返す。
+- 関連テスト: `src/test/unit/replyQuoteService.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/unit/postHistoryNip10Utils.test.ts`、`src/test/unit/sensitiveEventUtils.test.ts`、`src/test/unit/replyQuoteStore.test.ts`
+- 注意点: root、直接parent、marker、author、relay hintを別々に検証する。kind 42のchannel rootとreply parentを混同しない。NIP-22の`a`+`e`は1組のaddressable parentとして扱い、別scopeの曖昧な重複は拒否する。
 
 ## 引用
 
@@ -108,16 +108,16 @@
 - 関連テスト: `src/test/unit/channelContextService.test.ts`、`src/test/unit/channelContextCoordinator.test.ts`、`src/test/unit/channelContextApplyController.test.ts`、`src/test/unit/composerTargetResolver.test.ts`、`src/test/unit/channelPictureUrlUtils.test.ts`、`src/test/unit/channelPicture.test.ts`、`src/test/unit/swChannelImageCacheUtils.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/e2e/composerTargetDialog.spec.ts`
 - 注意点: channel metadata由来relay hint、外部入力relay、write relayはprovenanceが異なる。kind 42のchannel rootをUI表示から推測せずparser結果を使う。URL query、iframe、draftのpicture overrideは検証済みmetadataと同一視せず、チャンネル画像キャッシュへ保存しない。
 
-## Content Warning
+## Content WarningとSensitive event kinds
 
-- 機能: 投稿へContent WarningとNSFW tagを付与する。
-- 関連NIP: NIP-36
-- event kind: `1`または`42`
-- 主なtag: `content-warning`、`t`=`nsfw`
-- 主な実装ファイル: `src/lib/postEventBuilder.ts`、`src/lib/postManager.ts`、`src/components/KeyboardButtonBar.svelte`、`src/components/ReasonInput.svelte`
-- 主な関数または責務: `PostEventBuilder.buildEvent`が通常形式と既定OFFの実験的fail-closed形式を構築し、`PostManager.submitPost`がcanonical設定とCW状態を渡す。実験形式では本文を`content-warning` tag第3要素へ移して`.content`を空にし、CWとNSFW hashtagを独立させる。
-- 関連テスト: `src/test/unit/postManager.test.ts`、`src/test/unit/keyboardButtonBar.test.ts`
-- 注意点: fail-closed設定OFFではContent Warning有効時に`nsfw` hashtagを追加し、既存tagを重複させない。設定ON時だけこの自動連動を止める。Host-owned Liteは別builderであり、この通常投稿設定を参照しない。
+- 機能: 標準NIP-36 Content Warning、実験的Sensitive event kindsによるCW付き投稿/reply、およびSensitive Text Note互換通知を構築・解決する。
+- 関連NIP: 標準CWはNIP-36。Sensitive kind 36/3636、kind 1 companionの`c` tag、NIP-22 topologyはeHagaki独自の実験的protocol。
+- event kind: 通常投稿`1`、public chat`42`、Sensitive Text Note`36`、NIP-22 Comment`1111`、Sensitive Comment`3636`。kind 36の投稿に対応する互換通知は空contentのkind 1。
+- 主なtag: `content-warning`、`t`=`nsfw`、companionからcanonicalを指す`c`、NIP-22のroot/parent scope tags。
+- 主な実装ファイル: `src/lib/postEventBuilder.ts`、`src/lib/postManager.ts`、`src/lib/sensitiveEventUtils.ts`、`src/lib/postHistoryNip22Utils.ts`、`src/lib/composerTargetResolver.ts`、`src/lib/postHistoryRelatedTargetResolver.svelte.ts`、`src/components/KeyboardButtonBar.svelte`、`src/components/ReasonInput.svelte`。
+- 主な関数または責務: `PostEventBuilder.buildEvent`がOFF時の通常NIP-36形式とON時のkind matrixを構築し、Sensitive canonical本文は`.content`へ保持する。kind 36は送信成功後に本文を複製しない空本文kind 1 companionをbest-effortでbackground publishする。`verifySensitiveCompanionLink`は`c` ID一致、kind 36、同一pubkey、有効なevent ID/signatureを検証し、CW理由やtimestamp一致を要求しない。`buildNip22ReplyTags`と`parseNip22CommentReferences`がreply topologyを扱う。
+- 関連テスト: `src/test/unit/postManager.test.ts`、`src/test/unit/sensitiveEventUtils.test.ts`、`src/test/unit/postHistoryRelatedTargetResolver.test.ts`、`src/test/unit/composerTargetResolver.test.ts`、`src/test/unit/keyboardButtonBar.test.ts`。
+- 注意点: fail-closed設定OFFでは既存のCW/`nsfw`自動連動を維持し、ONでは独立させる。kind 42は常に標準CW形式。旧`content-warning[2]`本文tagは受信互換として解釈する。Host-owned Liteは独立builder/公開contractを維持し、この通常投稿設定を参照しない。
 
 ## カスタム絵文字
 
@@ -174,12 +174,12 @@
 
 ## 関連イベント取得
 
-- 機能: reply parent、quote target、deletion requestなどpost historyの関連eventを発見・取得・cache・表示状態へ解決する。
-- 関連NIP: NIP-09、NIP-10、NIP-18、NIP-21
-- event kind: target `1`/`42`など、deletion request `5`
-- 主なtag: replyの`e`/`p`、quoteの`q`、deletionの`e`/`a`
-- 主な実装ファイル: `src/lib/postHistoryRelatedTargetDiscoveryAdapter.ts`、`src/lib/postHistoryRelatedTargetResolver.svelte.ts`、`src/lib/postHistoryContextFetchService.ts`、`src/lib/postHistoryDeletionFetchService.ts`、`src/lib/storage/postHistoryRepository.ts`
-- 主な関数または責務: discovery adapterが`RelatedTargetDescriptor`を生成し、`createPostHistoryRelatedTargetResolver`がlocal-first lookup、network fetch、deletion check、profile sync、scope cancelを調整する。
+- 機能: reply parent、quote target、Sensitive companion、deletion requestなどpost historyの関連eventを発見・取得・cache・表示状態へ解決する。
+- 関連NIP: NIP-09、NIP-10、NIP-18、NIP-21、NIP-22
+- event kind: target `1`/`36`/`42`/`1111`/`3636`など、deletion request `5`。kind 1 companionは投稿行として扱わず、対応するkind 36へ解決する。
+- 主なtag: replyの`e`/`p`、NIP-22の`E/A/I`と`e/a/i`、quoteの`q`、Sensitive companionの`content-warning`と`c`、deletionの`e`/`a`。
+- 主な実装ファイル: `src/lib/postHistoryRelatedTargetDiscoveryAdapter.ts`、`src/lib/postHistoryRelatedTargetResolver.svelte.ts`、`src/lib/postHistoryContextFetchService.ts`、`src/lib/postHistoryDeletionFetchService.ts`、`src/lib/sensitiveEventUtils.ts`、`src/lib/storage/postHistoryRepository.ts`
+- 主な関数または責務: discovery adapterが`RelatedTargetDescriptor`を生成し、`createPostHistoryRelatedTargetResolver`がlocal-first lookup、network fetch、deletion check、profile sync、scope cancelを調整する。`resolveSensitiveCompanionCanonicalEvent`は空本文kind 1の`c`参照と、同じID/kind 36/pubkey/有効署名のcanonical eventを結び付ける。canonical Relay hintsにはcanonicalの`c` hint、canonicalを実際に返したRelay、またはcanonical local recordのevidenceだけを保持する。
 - 関連テスト: `src/test/unit/postHistoryRelatedTargetDiscoveryAdapter.test.ts`、`src/test/unit/postHistoryRelatedTargetResolver.test.ts`、`src/test/unit/postHistoryRelatedEventCard.test.ts`、`src/test/e2e/postHistoryDialog.spec.ts`
 - 注意点: discovery、descriptor、fetch、cache、renderingの境界を維持する。target ID単位のpending共有とscope generationでstale completionを防ぐ。
 

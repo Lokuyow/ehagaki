@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { finalizeEvent, generateSecretKey } from "nostr-tools";
 import { createComposerTargetResolver } from "../../lib/composerTargetResolver";
 import type { NostrEvent } from "../../lib/types";
 
@@ -167,6 +168,78 @@ describe("createComposerTargetResolver", () => {
         }).promise).resolves.toEqual({
             status: "error",
             reason: "invalid-event",
+        });
+    });
+
+    it("companion経由のcomposer targetにはcanonical hintと実取得Relayだけを引き継ぐ", async () => {
+        const secretKey = generateSecretKey();
+        const canonical = finalizeEvent({
+            kind: 36,
+            created_at: 10,
+            content: "sensitive post",
+            tags: [["content-warning", "Spoiler"]],
+        }, secretKey);
+        const companion = finalizeEvent({
+            kind: 1,
+            created_at: 20,
+            content: "",
+            tags: [
+                ["content-warning", "A different reason is allowed"],
+                ["c", canonical.id, "wss://canonical-hint.example/"],
+            ],
+        }, secretKey);
+        const fetchReferencedEventTask = vi.fn((
+            requestedId: string,
+            _relayHints: string[],
+            _rxNostr: unknown,
+            _relayConfig?: unknown,
+        ) => ({
+            promise: Promise.resolve({
+                status: "found" as const,
+                event: requestedId === companion.id ? companion : canonical,
+                relayUrl: requestedId === companion.id
+                    ? "wss://companion-source.example/"
+                    : "wss://canonical-source.example/",
+            }),
+            cancel: vi.fn(),
+        }));
+        const fetchProfileRealtime = vi.fn().mockResolvedValue(null);
+        const resolver = createComposerTargetResolver({
+            replyQuoteService: { fetchReferencedEventTask },
+        });
+        const result = await resolver.resolve({
+            pointer: pointer({
+                eventId: companion.id,
+                authorHint: companion.pubkey,
+                kindHint: companion.kind,
+                relayHints: [
+                    "wss://pointer-one.example/",
+                    "wss://pointer-two.example/",
+                    "wss://pointer-three.example/",
+                ],
+            }),
+            rxNostr: {} as never,
+            profileService: { fetchProfileRealtime },
+        }).promise;
+
+        expect(result).toMatchObject({
+            status: "resolved",
+            target: {
+                event: { id: canonical.id, kind: 36 },
+                relayHints: [
+                    "wss://canonical-source.example/",
+                    "wss://canonical-hint.example/",
+                ],
+            },
+        });
+        expect(fetchReferencedEventTask.mock.calls[1]?.[1]).toEqual([
+            "wss://canonical-hint.example/",
+        ]);
+        expect(fetchProfileRealtime).toHaveBeenCalledWith(canonical.pubkey, {
+            additionalRelays: [
+                "wss://canonical-source.example/",
+                "wss://canonical-hint.example/",
+            ],
         });
     });
 

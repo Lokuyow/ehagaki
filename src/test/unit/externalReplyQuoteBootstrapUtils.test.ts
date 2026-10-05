@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { finalizeEvent, generateSecretKey } from 'nostr-tools';
 
 import { processReplyQuoteReference } from '../../lib/bootstrap/externalReplyQuoteBootstrapUtils';
+import type { NostrEvent } from '../../lib/types';
 
 describe('externalReplyQuoteBootstrapUtils', () => {
     it('参照イベントが見つからない時は reply quote error を設定する', async () => {
@@ -88,6 +90,93 @@ describe('externalReplyQuoteBootstrapUtils', () => {
         expect(initializeReplyNotificationRecipients).toHaveBeenCalledWith(
             expect.objectContaining({ eventId: 'event-1', mode: 'reply' }),
             event,
+        );
+    });
+
+    it('companionをcanonical化した後のauthor preloadとrelay evidenceをcanonical targetへ結び付ける', async () => {
+        const secretKey = generateSecretKey();
+        const canonical = finalizeEvent({
+            kind: 36,
+            created_at: 100,
+            content: 'sensitive body',
+            tags: [],
+        }, secretKey) as NostrEvent;
+        const companion = finalizeEvent({
+            kind: 1,
+            created_at: 101,
+            content: '',
+            tags: [
+                ['content-warning', 'Legacy metadata'],
+                ['c', canonical.id, 'wss://canonical-hint.example/'],
+            ],
+        }, secretKey) as NostrEvent;
+        const reference = {
+            eventId: companion.id,
+            mode: 'reply' as const,
+            ownerToken: Symbol('owner'),
+            relayHints: ['wss://companion-pointer.example/'],
+            authorPubkey: companion.pubkey,
+        };
+        const updateReferencedEvent = vi.fn();
+        const initializeReplyNotificationRecipients = vi.fn();
+        const applyPreloadedAuthorPreviewPresentation = vi.fn();
+        const setReplyQuoteError = vi.fn();
+        const threadInfo = { rootEventId: null, rootRelayHint: null, rootPubkey: null };
+
+        await processReplyQuoteReference({
+            reference,
+            initialEvent: companion,
+            replyQuoteService: {
+                fetchReferencedEvent: vi.fn(),
+                fetchReferencedEventTask: vi.fn(() => ({
+                    promise: Promise.resolve({
+                        status: 'found' as const,
+                        event: canonical,
+                        relayUrl: 'wss://canonical-source.example/',
+                    }),
+                    cancel: vi.fn(),
+                })),
+                extractThreadInfo: vi.fn(() => threadInfo),
+            },
+            relayConfig: null,
+            updateReferencedEvent,
+            initializeReplyNotificationRecipients,
+            setReplyQuoteError,
+            preloadedProfiles: {
+                [canonical.pubkey]: {
+                    displayName: 'Canonical author',
+                    picture: 'https://example.test/canonical.png',
+                },
+            },
+            applyPreloadedAuthorPreviewPresentation,
+        });
+
+        expect(setReplyQuoteError).not.toHaveBeenCalled();
+        expect(updateReferencedEvent).toHaveBeenCalledWith(
+            expect.objectContaining({
+                eventId: companion.id,
+                relayHints: [
+                    'wss://canonical-source.example/',
+                    'wss://canonical-hint.example/',
+                ],
+            }),
+            canonical,
+            threadInfo,
+        );
+        expect(applyPreloadedAuthorPreviewPresentation).toHaveBeenCalledWith(
+            [expect.objectContaining({
+                eventId: canonical.id,
+                authorPubkey: canonical.pubkey,
+                relayHints: [
+                    'wss://canonical-source.example/',
+                    'wss://canonical-hint.example/',
+                ],
+            })],
+            expect.any(Object),
+        );
+        expect(initializeReplyNotificationRecipients).toHaveBeenCalledWith(
+            expect.objectContaining({ eventId: canonical.id }),
+            canonical,
         );
     });
 });

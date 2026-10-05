@@ -2,6 +2,7 @@ import { validateEvent, verifyEvent } from "nostr-tools";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import { parsePostHistoryThreadReferences } from "./postHistoryNip10Utils";
 import { parseNip22CommentReferences } from "./postHistoryNip22Utils";
+import { createPlainNostrEventSnapshot, isSignedNostrEvent } from "./postHistoryEventUtils";
 import type { NostrEvent } from "./types";
 import { isHex64 } from "./utils/nostrHexUtils";
 
@@ -144,23 +145,34 @@ export function verifySensitiveCompanionLink(
     target: NostrEvent | null | undefined,
 ): target is NostrEvent {
     const referenceId = getSensitiveCompanionReference(companion);
-    const companionContentWarning = companion.tags.find((tag) => tag[0] === "content-warning");
-    const targetContentWarnings = target?.tags.filter((tag) => tag[0] === "content-warning") ?? [];
-    const targetContentWarning = targetContentWarnings.length === 1
-        ? targetContentWarnings[0]
-        : null;
     return !!referenceId
         && isFullyVerifiedEvent(companion)
         && !!target
         && target.id === referenceId
         && target.kind === SENSITIVE_TEXT_NOTE_KIND
         && target.pubkey === companion.pubkey
-        && target.created_at === companion.created_at
-        && !!companionContentWarning
-        && !!targetContentWarning
-        && companionContentWarning.length === targetContentWarning.length
-        && companionContentWarning.every((value, index) => value === targetContentWarning[index])
         && isFullyVerifiedEvent(target);
+}
+
+/** Relay evidence for a canonical event never includes the companion's fetch provenance. */
+export function getSensitiveCanonicalRelayHints(
+    companion: NostrEvent,
+    options: {
+        fetchedRelayUrl?: string | null;
+        localRelayHints?: string[];
+        limit?: number;
+    } = {},
+): string[] {
+    const canonicalHint = companion.tags
+        .filter((tag) => tag[0] === "c")
+        .map((tag) => tag[2] ?? "");
+    return RelayConfigUtils.sanitizeExternalRelayUrls([
+        ...(options.fetchedRelayUrl ? [options.fetchedRelayUrl] : []),
+        ...canonicalHint,
+        ...(options.localRelayHints ?? []),
+    ], {
+        limit: options.limit ?? RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
+    });
 }
 
 export async function resolveSensitiveCompanionCanonicalEvent(
@@ -206,7 +218,9 @@ export function createSensitiveTextNoteCompanion(
 
 export function isFullyVerifiedEvent(event: unknown): event is NostrEvent {
     try {
-        return validateEvent(event as never) && verifyEvent(event as never);
+        if (!isSignedNostrEvent(event)) return false;
+        const snapshot = createPlainNostrEventSnapshot(event);
+        return validateEvent(snapshot as never) && verifyEvent(snapshot as never);
     } catch {
         return false;
     }
