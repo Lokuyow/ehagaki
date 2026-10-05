@@ -346,7 +346,6 @@
     let showImageFullscreen = $state(false);
     let historyContainer = $state<HTMLDivElement | null>(null);
     let autoLoadOlderSentinel = $state<HTMLDivElement | null>(null);
-    let autoLoadNewerSentinel = $state<HTMLDivElement | null>(null);
     let isAutoLoadingOlder = $state(false);
     let isAutoLoadingNewer = $state(false);
     let autoLoadRootHeight = $state<number | null>(null);
@@ -375,6 +374,10 @@
           }
         | null = null;
     const supportsAutoLoadOlder = typeof IntersectionObserver !== "undefined";
+    let hasNewerAutoLoadTopReservation = $state(false);
+    let pendingNewerAutoLoadTopReservationRestore: {
+        anchor: ReturnType<typeof historyViewport.captureHistoryScrollAnchor>;
+    } | null = null;
     let searchInputElement = $state<HTMLInputElement | null>(null);
     let showDelayedListLoading = $state(false);
     const previewCollapse = usePostHistoryPreviewCollapse({
@@ -683,6 +686,37 @@
 
     useDialogHistory(() => show, handleClose, true);
 
+    $effect.pre(() => {
+        const shouldReserveTopSlot =
+            supportsAutoLoadOlder
+            && !history.isSearchMode
+            && history.state.listingMode === "contiguous"
+            && !isExplicitNavigation
+            && history.state.hasNewerLocal;
+
+        if (untrack(() => hasNewerAutoLoadTopReservation) === shouldReserveTopSlot) {
+            return;
+        }
+
+        pendingNewerAutoLoadTopReservationRestore = {
+            anchor: historyViewport.captureHistoryScrollAnchor(),
+        };
+        hasNewerAutoLoadTopReservation = shouldReserveTopSlot;
+    });
+
+    $effect(() => {
+        hasNewerAutoLoadTopReservation;
+        const pendingRestore = untrack(
+            () => pendingNewerAutoLoadTopReservationRestore,
+        );
+        if (!pendingRestore) {
+            return;
+        }
+
+        historyViewport.restoreHistoryScrollAnchor(pendingRestore.anchor);
+        pendingNewerAutoLoadTopReservationRestore = null;
+    });
+
     $effect(() => {
         if (show) {
             return;
@@ -777,7 +811,6 @@
             && history.state.listingMode === "contiguous"
             && history.state.hasOlderLocal
             && !history.isRefetchingAroundCurrentView;
-
         if (!enabled || !supportsAutoLoadOlder) {
             autoLoadOlderAwaitingExit = false;
             autoLoadOlderSentinelIsIntersecting = false;
@@ -896,22 +929,20 @@
     });
 
     $effect(() => {
-        const sentinel = autoLoadNewerSentinel;
         const root = historyContainer;
         const rootHeight = autoLoadRootHeight;
         const resizeGeneration = autoLoadRootResizeGeneration;
         const enabled =
             show
-            && !!sentinel
             && !!root
             && rootHeight !== null
             && rootHeight > 0
             && !history.isSearchMode
             && history.state.listingMode === "contiguous"
             && history.state.hasNewerLocal
+            && hasNewerAutoLoadTopReservation
             && !isExplicitNavigation
             && !history.isRefetchingAroundCurrentView;
-
         if (!enabled || !supportsAutoLoadOlder) {
             autoLoadNewerAwaitingExit = false;
             autoLoadNewerSentinelIsIntersecting = false;
@@ -921,111 +952,139 @@
 
         const previousObserverContext = autoLoadNewerObserverContext;
         const previousScrollTop = previousObserverContext?.scrollTop;
-        const suppressInitialIntersectionForResize =
-            previousObserverContext?.root === root
-            && previousObserverContext.sentinel === sentinel
-            && previousObserverContext.resizeGeneration !== resizeGeneration;
-        autoLoadNewerObserverContext = {
-            root,
-            sentinel,
-            resizeGeneration,
-            scrollTop: root.scrollTop,
-        };
-        let receivedInitialEntry = false;
         let isObserverActive = true;
-        let awaitingResizeApproach = false;
-        let lastScrollTop = root.scrollTop;
-
-        const isNewerSentinelInPrefetchRegion = () => {
-            const rootRect = root.getBoundingClientRect();
-            const sentinelRect = sentinel.getBoundingClientRect();
-            return sentinelRect.left < rootRect.right
-                && sentinelRect.right > rootRect.left
-                && sentinelRect.bottom >= rootRect.top - rootHeight * 2
-                && sentinelRect.top <= rootRect.bottom;
-        };
-
-        const handlePendingResizeApproach = () => {
-            if (!isObserverActive || !awaitingResizeApproach) {
+        let cleanupObserver = () => {};
+        let setupFrame: number | null = null;
+        void tick().then(() => {
+            if (!isObserverActive) {
                 return;
             }
 
-            const scrollTop = root.scrollTop;
-            const movedTowardNewer = scrollTop < lastScrollTop;
-            lastScrollTop = scrollTop;
-
-            if (
-                !awaitingResizeApproach
-                || !movedTowardNewer
-                || !autoLoadNewerSentinelIsIntersecting
-                || !isNewerSentinelInPrefetchRegion()
-            ) {
-                return;
-            }
-
-            awaitingResizeApproach = false;
-            root.removeEventListener("scroll", handlePendingResizeApproach);
-            void handleAutoLoadNewer();
-        };
-
-        const observer = new IntersectionObserver(
-            (entries) => {
+            setupFrame = requestAnimationFrame(() => {
+                setupFrame = null;
                 if (!isObserverActive) {
                     return;
                 }
 
-                const isIntersecting = entries.some(
-                    (entry) => entry.isIntersecting,
+                const sentinel = root.querySelector<HTMLDivElement>(
+                    ".post-history-auto-load-newer-sentinel",
                 );
-                const isInitialEntry = !receivedInitialEntry;
-                receivedInitialEntry = true;
-                autoLoadNewerSentinelIsIntersecting = isIntersecting;
+                if (!sentinel || historyContainer !== root) {
+                    return;
+                }
 
-                if (!isIntersecting) {
+                const suppressInitialIntersectionForResize =
+                    previousObserverContext?.root === root
+                    && previousObserverContext.sentinel === sentinel
+                    && previousObserverContext.resizeGeneration !== resizeGeneration;
+
+                autoLoadNewerObserverContext = {
+                    root,
+                    sentinel,
+                    resizeGeneration,
+                    scrollTop: root.scrollTop,
+                };
+                let receivedInitialEntry = false;
+                let awaitingResizeApproach = false;
+                let lastScrollTop = root.scrollTop;
+
+                const isNewerSentinelInPrefetchRegion = () => {
+                    const rootRect = root.getBoundingClientRect();
+                    const sentinelRect = sentinel.getBoundingClientRect();
+                    return sentinelRect.left < rootRect.right
+                        && sentinelRect.right > rootRect.left
+                        && sentinelRect.bottom >= rootRect.top - rootHeight * 2
+                        && sentinelRect.top <= rootRect.bottom;
+                };
+
+                const handlePendingResizeApproach = () => {
+                    if (!isObserverActive || !awaitingResizeApproach) {
+                        return;
+                    }
+
+                    const scrollTop = root.scrollTop;
+                    const movedTowardNewer = scrollTop < lastScrollTop;
+                    lastScrollTop = scrollTop;
+
+                    if (
+                        !awaitingResizeApproach
+                        || !movedTowardNewer
+                        || !autoLoadNewerSentinelIsIntersecting
+                        || !isNewerSentinelInPrefetchRegion()
+                    ) {
+                        return;
+                    }
+
                     awaitingResizeApproach = false;
                     root.removeEventListener("scroll", handlePendingResizeApproach);
-                    if (
-                        autoLoadNewerAwaitingExit
-                        && !isAutoLoadingNewer
-                    ) {
-                        autoLoadNewerAwaitingExit = false;
-                    }
-                    return;
-                }
+                    void handleAutoLoadNewer();
+                };
 
-                if (
-                    isInitialEntry
-                    && suppressInitialIntersectionForResize
-                    && typeof previousScrollTop === "number"
-                    && root.scrollTop >= previousScrollTop
-                ) {
-                    awaitingResizeApproach = isIntersecting;
-                    if (awaitingResizeApproach) {
-                        root.addEventListener("scroll", handlePendingResizeApproach, {
-                            passive: true,
-                        });
-                    }
-                    return;
-                }
+                const observer = new IntersectionObserver(
+                    (entries) => {
+                        if (!isObserverActive) {
+                            return;
+                        }
 
-                awaitingResizeApproach = false;
-                root.removeEventListener("scroll", handlePendingResizeApproach);
+                        const isIntersecting = entries.some(
+                            (entry) => entry.isIntersecting,
+                        );
+                        const isInitialEntry = !receivedInitialEntry;
+                        receivedInitialEntry = true;
+                        autoLoadNewerSentinelIsIntersecting = isIntersecting;
 
-                void handleAutoLoadNewer();
-            },
-            {
-                root,
-                rootMargin: `${rootHeight * 2}px 0px 0px 0px`,
-                threshold: 0,
-            },
-        );
-        observer.observe(sentinel);
+                        if (!isIntersecting) {
+                            awaitingResizeApproach = false;
+                            root.removeEventListener("scroll", handlePendingResizeApproach);
+                            if (
+                                autoLoadNewerAwaitingExit
+                                && !isAutoLoadingNewer
+                            ) {
+                                autoLoadNewerAwaitingExit = false;
+                            }
+                            return;
+                        }
+
+                        if (
+                            isInitialEntry
+                            && suppressInitialIntersectionForResize
+                            && typeof previousScrollTop === "number"
+                            && root.scrollTop >= previousScrollTop
+                        ) {
+                            awaitingResizeApproach = isIntersecting;
+                            if (awaitingResizeApproach) {
+                                root.addEventListener("scroll", handlePendingResizeApproach, {
+                                    passive: true,
+                                });
+                            }
+                            return;
+                        }
+
+                        awaitingResizeApproach = false;
+                        root.removeEventListener("scroll", handlePendingResizeApproach);
+
+                        void handleAutoLoadNewer();
+                    },
+                    {
+                        root,
+                        rootMargin: `${rootHeight * 2}px 0px 0px 0px`,
+                        threshold: 0,
+                    },
+                );
+                observer.observe(sentinel);
+                cleanupObserver = () => {
+                    root.removeEventListener("scroll", handlePendingResizeApproach);
+                    observer.disconnect();
+                };
+            });
+        });
 
         return () => {
             isObserverActive = false;
-            awaitingResizeApproach = false;
-            root.removeEventListener("scroll", handlePendingResizeApproach);
-            observer.disconnect();
+            if (setupFrame !== null) {
+                cancelAnimationFrame(setupFrame);
+            }
+            cleanupObserver();
         };
     });
 
@@ -2564,10 +2623,9 @@
                 </div>
             {/if}
             {#if supportsAutoLoadOlder && !history.isSearchMode && history.state.listingMode === "contiguous" && !isExplicitNavigation}
-                <div class="post-history-auto-load-slot post-history-auto-load-newer-slot" aria-hidden="true">
-                    {#if history.state.hasNewerLocal}
+                <div class="post-history-auto-load-slot post-history-auto-load-newer-slot" class:post-history-auto-load-newer-slot-reserved={hasNewerAutoLoadTopReservation} aria-hidden="true">
+                    {#if hasNewerAutoLoadTopReservation && history.state.hasNewerLocal}
                         <div
-                            bind:this={autoLoadNewerSentinel}
                             class="post-history-auto-load-sentinel post-history-auto-load-newer-sentinel"
                         >
                             {#if isAutoLoadingNewer}
@@ -3942,6 +4000,11 @@
         height: 24px;
         min-height: 24px;
         place-items: center;
+    }
+
+    .post-history-auto-load-newer-slot:not(.post-history-auto-load-newer-slot-reserved) {
+        height: 0;
+        min-height: 0;
     }
 
     :global(.post-history-nav-button.primary) {
