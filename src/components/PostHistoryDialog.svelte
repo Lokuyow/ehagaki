@@ -785,11 +785,12 @@
             return;
         }
 
+        const previousObserverContext = autoLoadOlderObserverContext;
+        const previousScrollTop = previousObserverContext?.scrollTop;
         const suppressInitialIntersectionForResize =
-            autoLoadOlderObserverContext?.root === root
-            && autoLoadOlderObserverContext.sentinel === sentinel
-            && autoLoadOlderObserverContext.resizeGeneration !== resizeGeneration
-            && root.scrollTop <= autoLoadOlderObserverContext.scrollTop;
+            previousObserverContext?.root === root
+            && previousObserverContext.sentinel === sentinel
+            && previousObserverContext.resizeGeneration !== resizeGeneration;
         autoLoadOlderObserverContext = {
             root,
             sentinel,
@@ -797,9 +798,48 @@
             scrollTop: root.scrollTop,
         };
         let receivedInitialEntry = false;
+        let isObserverActive = true;
+        let awaitingResizeApproach = false;
+        let lastScrollTop = root.scrollTop;
+
+        const isOlderSentinelInPrefetchRegion = () => {
+            const rootRect = root.getBoundingClientRect();
+            const sentinelRect = sentinel.getBoundingClientRect();
+            return sentinelRect.left < rootRect.right
+                && sentinelRect.right > rootRect.left
+                && sentinelRect.top <= rootRect.bottom + rootHeight * 2
+                && sentinelRect.bottom >= rootRect.top;
+        };
+
+        const handlePendingResizeApproach = () => {
+            if (!isObserverActive || !awaitingResizeApproach) {
+                return;
+            }
+
+            const scrollTop = root.scrollTop;
+            const movedTowardOlder = scrollTop > lastScrollTop;
+            lastScrollTop = scrollTop;
+
+            if (
+                !awaitingResizeApproach
+                || !movedTowardOlder
+                || !autoLoadOlderSentinelIsIntersecting
+                || !isOlderSentinelInPrefetchRegion()
+            ) {
+                return;
+            }
+
+            awaitingResizeApproach = false;
+            root.removeEventListener("scroll", handlePendingResizeApproach);
+            void handleAutoLoadOlder();
+        };
 
         const observer = new IntersectionObserver(
             (entries) => {
+                if (!isObserverActive) {
+                    return;
+                }
+
                 const isIntersecting = entries.some(
                     (entry) => entry.isIntersecting,
                 );
@@ -808,6 +848,8 @@
                 autoLoadOlderSentinelIsIntersecting = isIntersecting;
 
                 if (!isIntersecting) {
+                    awaitingResizeApproach = false;
+                    root.removeEventListener("scroll", handlePendingResizeApproach);
                     if (
                         autoLoadOlderAwaitingExit
                         && !isAutoLoadingOlder
@@ -817,9 +859,23 @@
                     return;
                 }
 
-                if (isInitialEntry && suppressInitialIntersectionForResize) {
+                if (
+                    isInitialEntry
+                    && suppressInitialIntersectionForResize
+                    && typeof previousScrollTop === "number"
+                    && root.scrollTop <= previousScrollTop
+                ) {
+                    awaitingResizeApproach = isIntersecting;
+                    if (awaitingResizeApproach) {
+                        root.addEventListener("scroll", handlePendingResizeApproach, {
+                            passive: true,
+                        });
+                    }
                     return;
                 }
+
+                awaitingResizeApproach = false;
+                root.removeEventListener("scroll", handlePendingResizeApproach);
 
                 void handleAutoLoadOlder();
             },
@@ -832,6 +888,9 @@
         observer.observe(sentinel);
 
         return () => {
+            isObserverActive = false;
+            awaitingResizeApproach = false;
+            root.removeEventListener("scroll", handlePendingResizeApproach);
             observer.disconnect();
         };
     });
@@ -860,11 +919,12 @@
             return;
         }
 
+        const previousObserverContext = autoLoadNewerObserverContext;
+        const previousScrollTop = previousObserverContext?.scrollTop;
         const suppressInitialIntersectionForResize =
-            autoLoadNewerObserverContext?.root === root
-            && autoLoadNewerObserverContext.sentinel === sentinel
-            && autoLoadNewerObserverContext.resizeGeneration !== resizeGeneration
-            && root.scrollTop >= autoLoadNewerObserverContext.scrollTop;
+            previousObserverContext?.root === root
+            && previousObserverContext.sentinel === sentinel
+            && previousObserverContext.resizeGeneration !== resizeGeneration;
         autoLoadNewerObserverContext = {
             root,
             sentinel,
@@ -872,9 +932,48 @@
             scrollTop: root.scrollTop,
         };
         let receivedInitialEntry = false;
+        let isObserverActive = true;
+        let awaitingResizeApproach = false;
+        let lastScrollTop = root.scrollTop;
+
+        const isNewerSentinelInPrefetchRegion = () => {
+            const rootRect = root.getBoundingClientRect();
+            const sentinelRect = sentinel.getBoundingClientRect();
+            return sentinelRect.left < rootRect.right
+                && sentinelRect.right > rootRect.left
+                && sentinelRect.bottom >= rootRect.top - rootHeight * 2
+                && sentinelRect.top <= rootRect.bottom;
+        };
+
+        const handlePendingResizeApproach = () => {
+            if (!isObserverActive || !awaitingResizeApproach) {
+                return;
+            }
+
+            const scrollTop = root.scrollTop;
+            const movedTowardNewer = scrollTop < lastScrollTop;
+            lastScrollTop = scrollTop;
+
+            if (
+                !awaitingResizeApproach
+                || !movedTowardNewer
+                || !autoLoadNewerSentinelIsIntersecting
+                || !isNewerSentinelInPrefetchRegion()
+            ) {
+                return;
+            }
+
+            awaitingResizeApproach = false;
+            root.removeEventListener("scroll", handlePendingResizeApproach);
+            void handleAutoLoadNewer();
+        };
 
         const observer = new IntersectionObserver(
             (entries) => {
+                if (!isObserverActive) {
+                    return;
+                }
+
                 const isIntersecting = entries.some(
                     (entry) => entry.isIntersecting,
                 );
@@ -883,6 +982,8 @@
                 autoLoadNewerSentinelIsIntersecting = isIntersecting;
 
                 if (!isIntersecting) {
+                    awaitingResizeApproach = false;
+                    root.removeEventListener("scroll", handlePendingResizeApproach);
                     if (
                         autoLoadNewerAwaitingExit
                         && !isAutoLoadingNewer
@@ -892,9 +993,23 @@
                     return;
                 }
 
-                if (isInitialEntry && suppressInitialIntersectionForResize) {
+                if (
+                    isInitialEntry
+                    && suppressInitialIntersectionForResize
+                    && typeof previousScrollTop === "number"
+                    && root.scrollTop >= previousScrollTop
+                ) {
+                    awaitingResizeApproach = isIntersecting;
+                    if (awaitingResizeApproach) {
+                        root.addEventListener("scroll", handlePendingResizeApproach, {
+                            passive: true,
+                        });
+                    }
                     return;
                 }
+
+                awaitingResizeApproach = false;
+                root.removeEventListener("scroll", handlePendingResizeApproach);
 
                 void handleAutoLoadNewer();
             },
@@ -907,6 +1022,9 @@
         observer.observe(sentinel);
 
         return () => {
+            isObserverActive = false;
+            awaitingResizeApproach = false;
+            root.removeEventListener("scroll", handlePendingResizeApproach);
             observer.disconnect();
         };
     });
