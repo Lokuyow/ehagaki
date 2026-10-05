@@ -90,12 +90,12 @@ async function loadDirectReplyLifecycleCandidates(
                 requestKey: buildPostHistoryDirectReplyLifecycleRequestKey(
                     parentEventId,
                     record.eventId,
-                    record.kind === 42 ? 42 : 1,
+                    record.kind as 1 | 42 | 1111 | 3636,
                 ),
                 parentEventId,
                 replyEventId: record.eventId,
                 replyAuthorPubkey: record.authorPubkey,
-                kind: record.kind === 42 ? 42 : 1,
+                kind: record.kind as 1 | 42 | 1111 | 3636,
             });
         }
     }

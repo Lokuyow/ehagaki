@@ -935,7 +935,7 @@ describe('PostHistoryDialog timeline search', () => {
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,36,42,1111,3636',
             visibleUntil: 1_690_000_000,
             updatedAt: 1,
         });
@@ -1239,7 +1239,7 @@ describe('PostHistoryDialog timeline search', () => {
         });
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,36,42,1111,3636',
             visibleUntil: target.createdAt + 1,
             updatedAt: 1,
         });
@@ -1314,7 +1314,7 @@ describe('PostHistoryDialog timeline search', () => {
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,36,42,1111,3636',
             visibleUntil: target.createdAt + 1,
             updatedAt: 1,
         });

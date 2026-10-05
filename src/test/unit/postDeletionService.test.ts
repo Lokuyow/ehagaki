@@ -100,6 +100,16 @@ describe("postDeletionService helpers", () => {
         });
     });
 
+    it.each([36, 1111, 3636])("kind:%s eventの削除要求はcanonical IDと実kindを参照する", (kind) => {
+        const eventId = "9".repeat(64);
+        const post = createRecord({ eventId, kind });
+        expect(canRequestPostDeletion(post, "a".repeat(64))).toBe(true);
+        expect(buildDeletionRequestEvent(post, 500).tags).toEqual([
+            ["e", eventId],
+            ["k", String(kind)],
+        ]);
+    });
+
     it("relay 候補を accepted, fetched, hints, channel, write の順で sanitize する", () => {
         const relays = buildDeletionRelayUrls(
             createRecord({

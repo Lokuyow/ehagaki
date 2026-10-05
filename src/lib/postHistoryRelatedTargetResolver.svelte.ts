@@ -19,6 +19,10 @@ import {
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
 import { toEventFromPostHistoryRecord } from "./postHistoryThreadGraphUtils";
+import {
+    getSensitiveCompanionReference,
+    resolveSensitiveCompanionCanonicalEvent,
+} from "./sensitiveEventUtils";
 import type { NostrEvent, ProfileData, RelayConfig } from "./types";
 import {
     createPostHistoryProfileSyncCoordinator,
@@ -393,6 +397,68 @@ export function createPostHistoryRelatedTargetResolver({
         return loadRequestIdsByTargetId.get(targetEventId) === requestId;
     }
 
+    async function resolveCompanionTarget(
+        companion: NostrEvent,
+        relayHints: string[],
+        requestTargetId: string,
+        requestId: number,
+    ): Promise<{ event: NostrEvent | null; relayUrl: string | null; deleted: boolean }> {
+        const canonicalId = getSensitiveCompanionReference(companion);
+        if (!canonicalId) {
+            return { event: companion, relayUrl: null, deleted: false };
+        }
+
+        let canonicalRecordDeleted = false;
+        let canonicalRelayUrl: string | null = null;
+        const canonicalEvent = await resolveSensitiveCompanionCanonicalEvent(
+            companion,
+            async (eventId, canonicalRelayHints) => {
+                const record = await postHistoryRepositoryImpl.getByEventId(eventId);
+                if (!isCurrentLoadRequest(requestTargetId, requestId)) return null;
+                if (record) {
+                    if (typeof record.deletedAt === "number") {
+                        canonicalRecordDeleted = true;
+                        return null;
+                    }
+                    const storedEvent = toEventFromPostHistoryRecord(record);
+                    if (storedEvent.id === eventId) return storedEvent;
+                }
+
+                const rxNostr = getRxNostr();
+                if (!rxNostr || !getShow()) return null;
+                const task = contextFetchService.fetchEventById(rxNostr, {
+                    eventId,
+                    relayHints: sanitizeRelayHints(canonicalRelayHints),
+                    relayConfig: getRelayConfig(),
+                });
+                loadTasksByTargetId.set(requestTargetId, task);
+                const result = await task.promise;
+                loadTasksByTargetId.delete(requestTargetId);
+                if (!isCurrentLoadRequest(requestTargetId, requestId)) return null;
+                canonicalRelayUrl = result.relayUrl;
+                return result.event;
+            },
+            async (target) => await isDeletedTarget(target.pubkey, target.id),
+        );
+
+        if (!isCurrentLoadRequest(requestTargetId, requestId)) {
+            return { event: null, relayUrl: null, deleted: false };
+        }
+        if (canonicalEvent) {
+            return {
+                event: canonicalEvent,
+                relayUrl: canonicalRelayUrl,
+                deleted: false,
+            };
+        }
+        return {
+            event: null,
+            relayUrl: null,
+            deleted: canonicalRecordDeleted
+                || await isDeletedTarget(companion.pubkey, canonicalId),
+        };
+    }
+
     async function ensureTarget(
         descriptor: RelatedTargetDescriptor,
         options: EnsureRelatedTargetOptions = {},
@@ -484,7 +550,27 @@ export function createPostHistoryRelatedTargetResolver({
                         });
                     }
 
-                    const event = toEventFromPostHistoryRecord(existingRecord);
+                    const storedEvent = toEventFromPostHistoryRecord(existingRecord);
+                    const resolved = await resolveCompanionTarget(
+                        storedEvent,
+                        recordRelayHints,
+                        descriptor.targetEventId,
+                        requestId,
+                    );
+                    if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
+                        return snapshotsByTargetId[descriptor.targetEventId] ?? null;
+                    }
+                    if (!resolved.event) {
+                        return applySnapshotUpdate(descriptor.targetEventId, {
+                            status: resolved.deleted ? "deleted" : "not-found",
+                            event: null,
+                            authorPubkey: storedEvent.pubkey,
+                            relayHints: recordRelayHints,
+                            errorCode: null,
+                            updatedAt: Date.now(),
+                        });
+                    }
+                    const event = resolved.event;
                     const snapshot = applySnapshotUpdate(descriptor.targetEventId, {
                         status: "resolved",
                         event,
@@ -576,12 +662,36 @@ export function createPostHistoryRelatedTargetResolver({
                     });
                 }
 
-                const resolvedRelayHints = sanitizeRelayHints([
+                const pointerRelayHints = sanitizeRelayHints([
                     ...mergedSnapshot.relayHints,
                     ...(result.relayUrl ? [result.relayUrl] : []),
                 ]);
-                const deletedAfterResolve = await runDeletionCheck(
+                const resolved = await resolveCompanionTarget(
                     result.event,
+                    pointerRelayHints,
+                    descriptor.targetEventId,
+                    requestId,
+                );
+                if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
+                    return snapshotsByTargetId[descriptor.targetEventId] ?? null;
+                }
+                if (!resolved.event) {
+                    return applySnapshotUpdate(descriptor.targetEventId, {
+                        status: resolved.deleted ? "deleted" : "not-found",
+                        event: null,
+                        authorPubkey: result.event.pubkey,
+                        relayHints: pointerRelayHints,
+                        errorCode: null,
+                        updatedAt: Date.now(),
+                    });
+                }
+                const resolvedEvent = resolved.event;
+                const resolvedRelayHints = sanitizeRelayHints([
+                    ...pointerRelayHints,
+                    ...(resolved.relayUrl ? [resolved.relayUrl] : []),
+                ]);
+                const deletedAfterResolve = await runDeletionCheck(
+                    resolvedEvent,
                     resolvedRelayHints,
                 );
                 if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
@@ -589,13 +699,23 @@ export function createPostHistoryRelatedTargetResolver({
                 }
 
                 if (deletedAfterResolve) {
+                    if (resolvedEvent.id !== descriptor.targetEventId) {
+                        applySnapshotUpdate(descriptor.targetEventId, {
+                            status: "deleted",
+                            event: null,
+                            authorPubkey: resolvedEvent.pubkey,
+                            relayHints: resolvedRelayHints,
+                            errorCode: null,
+                            updatedAt: Date.now(),
+                        });
+                    }
                     return snapshotsByTargetId[descriptor.targetEventId] ?? null;
                 }
 
                 const snapshot = applySnapshotUpdate(descriptor.targetEventId, {
                     status: "resolved",
-                    event: result.event,
-                    authorPubkey: result.event.pubkey,
+                    event: resolvedEvent,
+                    authorPubkey: resolvedEvent.pubkey,
                     relayHints: resolvedRelayHints,
                     errorCode: null,
                     updatedAt: Date.now(),

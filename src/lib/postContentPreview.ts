@@ -12,6 +12,7 @@ export interface PostContentRenderInput {
     displayContent?: string;
     tags: string[][];
     media?: PostHistoryMediaRecord[];
+    kind?: number;
 }
 
 export interface PostContentRenderModel {
@@ -84,7 +85,9 @@ export function buildPostContentRenderModel(
         ),
         hasRenderableMedia: mediaLayout.items.length > 0,
         contentWarning: contentWarningTag
-            ? { reason: contentWarningTag[1] ?? "" }
+            || input.kind === 36
+            || input.kind === 3636
+            ? { reason: contentWarningTag?.[1] ?? "" }
             : null,
     };
 }

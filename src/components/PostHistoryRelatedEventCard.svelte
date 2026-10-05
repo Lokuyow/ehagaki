@@ -71,6 +71,7 @@
     let previewModel = $derived.by(() =>
         model ??
             buildPostContentRenderModel({
+                kind: event.kind,
                 sourceContent: event.content,
                 tags: event.tags,
                 media,

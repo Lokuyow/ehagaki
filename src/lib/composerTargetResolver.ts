@@ -7,6 +7,10 @@ import {
     type ChannelContextCoordinatorSnapshot,
 } from "./channelContextCoordinator";
 import { parseKind42ThreadReferences } from "./postHistoryNip10Utils";
+import {
+    getSensitiveCompanionReference,
+    resolveSensitiveCompanionCanonicalEvent,
+} from "./sensitiveEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import {
     ReplyQuoteService,
@@ -21,6 +25,10 @@ import type {
     RelayConfig,
 } from "./types";
 import type { ComposerTargetPointer } from "./composerTargetUtils";
+import {
+    postHistoryDeletionRequestsRepository,
+    type PostHistoryDeletionRequestsRepository,
+} from "./storage/postHistoryDeletionRequestsRepository";
 
 export type ComposerTargetResolvePhase =
     | "event-loading"
@@ -64,6 +72,7 @@ interface ComposerTargetResolverDeps {
     replyQuoteService?: Pick<ReplyQuoteService, "fetchReferencedEventTask">;
     channelCoordinator?: Pick<ChannelContextCoordinator, "resolveInternal">;
     verifyEventFn?: (event: NostrEvent) => boolean;
+    deletionRequestsRepository?: Pick<PostHistoryDeletionRequestsRepository, "getDeletedTargets">;
 }
 
 export interface ResolveComposerTargetParams {
@@ -108,6 +117,8 @@ export function createComposerTargetResolver(
     const verifyEventFn = deps.verifyEventFn
         ?? ((event: NostrEvent) =>
             validateEvent(event as never) && verifyEvent(event as never));
+    const deletionRequestsRepository = deps.deletionRequestsRepository
+        ?? postHistoryDeletionRequestsRepository;
 
     function resolve(params: ResolveComposerTargetParams): ComposerTargetResolveTask {
         let cancelled = false;
@@ -136,7 +147,8 @@ export function createComposerTargetResolver(
                 return { status: "error", reason: "network" };
             }
 
-            const event = fetched.event;
+            let event = fetched.event;
+            let fetchedRelayUrl = fetched.relayUrl;
             if (!verifyEventFn(event)) {
                 return { status: "error", reason: "invalid-event" };
             }
@@ -154,10 +166,44 @@ export function createComposerTargetResolver(
                 return { status: "error", reason: "mismatch" };
             }
 
+            const canonicalId = getSensitiveCompanionReference(event);
+            if (canonicalId) {
+                let canonicalRelayUrl: string | null = null;
+                const canonicalEvent = await resolveSensitiveCompanionCanonicalEvent(
+                    event,
+                    async (eventId, relayHints) => {
+                        eventTask = replyQuoteService.fetchReferencedEventTask(
+                            eventId,
+                            relayHints,
+                            params.rxNostr,
+                            params.relayConfig,
+                        );
+                        const result = await eventTask.promise;
+                        if (result.status === "cancelled") return null;
+                        if (result.status !== "found" || !verifyEventFn(result.event)) return null;
+                        canonicalRelayUrl = result.relayUrl;
+                        return result.event;
+                    },
+                    async (target) => {
+                        const deleted = await deletionRequestsRepository.getDeletedTargets([{
+                            targetAuthorPubkey: target.pubkey,
+                            targetEventId: target.id,
+                        }]);
+                        return deleted.get(target.pubkey)?.has(target.id) ?? false;
+                    },
+                );
+                if (cancelled) return { status: "cancelled" };
+                if (!canonicalEvent) {
+                    return { status: "error", reason: "not-found" };
+                }
+                event = canonicalEvent;
+                fetchedRelayUrl = canonicalRelayUrl;
+            }
+
             const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls(
                 [
                     ...params.pointer.relayHints,
-                    ...(fetched.relayUrl ? [fetched.relayUrl] : []),
+                    ...(fetchedRelayUrl ? [fetchedRelayUrl] : []),
                 ],
                 { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
             );

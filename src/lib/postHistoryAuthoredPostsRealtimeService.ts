@@ -6,6 +6,7 @@ import {
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
 import type { NostrEvent, RelayConfig } from "./types";
+import { getSensitiveCompanionReference } from "./sensitiveEventUtils";
 import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
 
 export const POST_HISTORY_AUTHORED_POSTS_REALTIME_RELAY_LIMIT = 6;
@@ -97,7 +98,7 @@ export class PostHistoryAuthoredPostsRealtimeService {
 
             rxReq.emit({
                 authors: [params.ownerPubkeyHex],
-                kinds: [1, 42],
+                kinds: [1, 36, 42, 1111, 3636],
                 since: subscribedSince,
             } as never);
         } catch (error) {
@@ -127,7 +128,8 @@ export class PostHistoryAuthoredPostsRealtimeService {
             !isActive()
             || !event?.id
             || event.pubkey !== params.ownerPubkeyHex
-            || (event.kind !== 1 && event.kind !== 42)
+            || ![1, 36, 42, 1111, 3636].includes(event.kind)
+            || getSensitiveCompanionReference(event) !== null
         ) {
             return;
         }

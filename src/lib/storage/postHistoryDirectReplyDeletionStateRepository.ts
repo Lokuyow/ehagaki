@@ -76,7 +76,7 @@ function isValidStateValue(value: unknown): value is PostHistoryDirectReplyLifec
         && typeof state.parentEventId === "string"
         && typeof state.replyEventId === "string"
         && typeof state.replyAuthorPubkey === "string"
-        && (state.kind === 1 || state.kind === 42)
+        && (state.kind === 1 || state.kind === 42 || state.kind === 1111 || state.kind === 3636)
         && isDirectReplyLifecycleSource(state.source)
         && isDirectReplyLifecycleStatus(state.status)
         && typeof state.attemptCount === "number"

@@ -19,7 +19,7 @@ eHagaki（えはがき）は、画像・動画圧縮機能付きの投稿専用N
 - **PWA・共有インテント対応**: モバイル・デスクトップ両対応。Androidは外部アプリの共有ボタンから直接メディアアップロード可能
 - **ドラフト機能**: 投稿内容を下書きとして保存し、後から編集・投稿が可能
 - **リプライ・引用・チャンネル投稿**: 各種URLクエリや`nostr:` URIを通じたリプライ・引用投稿（NIP-10, NIP-18）に対応。パブリックチャット（NIP-28）のチャンネルへの投稿もサポート
-- **Content Warning (CW)**: センシティブなコンテンツ（NIP-36）に対する警告の設定が可能
+- **Content Warning (CW)**: 標準のNIP-36形式に加え、設定で選べる実験的なSensitive形式に対応
 - **埋め込み**: iframe、Full Web Component、Host-owned Composer Lite Web Componentの3方式を提供
 - **多言語対応**: 日本語・英語に対応（ブラウザ設定から自動判定）
 
@@ -50,6 +50,9 @@ https://lokuyow.github.io/ehagaki/?quote=note1...
 ```
 
 - リプライ: NIP-10準拠のe/pタグを自動構築（スレッドroot引き継ぎ対応）
+- Sensitive形式を有効にすると、CW付きの投稿はkind 36、CW付きの返信はkind 3636として送信し、kind 1111の返信はNIP-22形式で構築します。kind 36には本文を含まないkind 1互換通知も送ります。これらはeHagaki独自の実験的形式であり、未対応クライアントで表示・解釈されない場合があります。本文は暗号化されません。
+- Sensitive形式を無効にした場合とパブリックチャットでは、従来のNIP-36 Content Warning形式を使用します。受信側はどちらのCW形式も表示できます。
+- 受信では旧eHagaki独自のCW tag内本文形式も互換性のために解釈しますが、新規送信には使いません。
 - 引用: NIP-18準拠のqタグを自動構築し、投稿時に引用イベントとして処理されます
 - URLクエリ由来の参照イベントはプレビュー表示されます
 - エディタ本文に `nostr:nevent1...` または `nostr:note1...` を含めた場合も引用として処理されます
@@ -100,6 +103,7 @@ Web Componentではiframeのparent-client auth/RPCや `postMessage` を使いま
 - NIP-07 window.nostr capability for web browsers https://github.com/nostr-protocol/nips/blob/master/07.md
 - NIP-09 Event Deletion Request https://github.com/nostr-protocol/nips/blob/master/09.md
 - NIP-10 Text Notes and Threads https://github.com/nostr-protocol/nips/blob/master/10.md
+- NIP-22 Comments https://github.com/nostr-protocol/nips/blob/master/22.md
 - NIP-18 Reposts https://github.com/nostr-protocol/nips/blob/master/18.md
 - NIP-19 bech32-encoded entities https://github.com/nostr-protocol/nips/blob/master/19.md
 - NIP-21 nostr: URI scheme https://github.com/nostr-protocol/nips/blob/master/21.md

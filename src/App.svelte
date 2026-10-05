@@ -498,6 +498,7 @@
       const content = resolveEventContentBody(event.content, event.tags);
 
       models[reference.eventId] = buildPostContentRenderModel({
+        kind: event.kind,
         sourceContent: content,
         displayContent: content,
         tags: event.tags,

@@ -24,7 +24,7 @@ import {
     validateSignedEventResult,
 } from "./signedEventResultValidator";
 
-export const POST_DELETION_SUPPORTED_KINDS = [1, 42] as const;
+export const POST_DELETION_SUPPORTED_KINDS = [1, 36, 42, 1111, 3636] as const;
 
 export interface DeletionRequestResult extends PostResult {
     deletedAt?: number;

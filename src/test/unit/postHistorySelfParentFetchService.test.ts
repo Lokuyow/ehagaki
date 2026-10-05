@@ -56,7 +56,7 @@ describe("PostHistorySelfParentFetchService", () => {
         expect(rxNostrMock.emittedFilters).toEqual([{
             ids: [PARENT_ID],
             authors: [OWNER_PUBKEY],
-            kinds: [1, 42],
+            kinds: [1, 36, 42, 1111, 3636],
         }]);
     });
 });

@@ -195,6 +195,7 @@ export function updateReferencedEvent(
     }
 ): void {
     const matched = updateMatchingReferences(target, (reference) => {
+        reference.eventId = event.id;
         reference.referencedEvent = event;
         reference.authorPubkey = event.pubkey;
         reference.loading = false;

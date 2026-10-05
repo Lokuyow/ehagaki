@@ -95,6 +95,7 @@
             referencedEvent.tags,
         );
         return buildPostContentRenderModel({
+            kind: referencedEvent.kind,
             sourceContent: content,
             displayContent: content,
             tags: referencedEvent.tags,

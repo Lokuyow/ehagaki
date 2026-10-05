@@ -359,7 +359,7 @@ export async function exportPostHistoryRecords(
     );
 
     for (const record of scopedPostRecords) {
-        if (record.kind !== 1 && record.kind !== 42) {
+        if (![1, 36, 42, 1111, 3636].includes(record.kind)) {
             continue;
         }
         if (
@@ -408,7 +408,7 @@ export async function exportPostHistoryRecords(
     const unrecoverableDeletedPostEventIds = new Set<string>();
     for (const record of scopedPostRecords) {
         if (
-            (record.kind !== 1 && record.kind !== 42)
+            ![1, 36, 42, 1111, 3636].includes(record.kind)
             || record.deletedAt === undefined
             || !exportablePostEventIds.has(record.eventId)
             || validDeletionTargetEventIds.has(record.eventId)

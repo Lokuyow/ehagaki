@@ -211,7 +211,7 @@ function toUniqueDirectReplyOwnerPosts(
     const postsByEventId = new Map<string, PostHistoryRecord>();
     for (const post of posts) {
         if (
-            (post.kind !== 1 && post.kind !== 42)
+            ![1, 36, 42, 1111, 3636].includes(post.kind)
             || post.pubkeyHex !== ownerPubkeyHex
             || !post.eventId
             || postsByEventId.has(post.eventId)
@@ -247,7 +247,7 @@ function buildInitialParentChunks(
         ).map((chunk) => ({ posts: chunk, depth: 0 }));
     }
 
-    return ([1, 42] as const).flatMap((kind) =>
+    return ([1, 36, 42, 1111, 3636] as const).flatMap((kind) =>
         chunkPosts(
             posts.filter((post) => post.kind === kind),
             POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CHUNK_SIZE,
@@ -890,10 +890,20 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                     },
                 });
 
+                const replyKinds = options.includeDirectReplies
+                    ? posts.flatMap((post) => {
+                        if (post.kind === 1) return [1, 1111, 3636];
+                        if (post.kind === 42) return [42];
+                        if (post.kind === 36 || post.kind === 1111 || post.kind === 3636) {
+                            return [1111, 3636];
+                        }
+                        return [];
+                    })
+                    : [];
                 const kinds = Array.from(new Set([
-                    ...(options.includeDirectReplies ? posts.map((post) => post.kind) : []),
+                    ...replyKinds,
                     ...(options.includeReactions ? [7] : []),
-                ])).filter((kind) => kind === 1 || kind === 7 || kind === 42);
+                ])).sort((left, right) => left - right);
                 rxReq.emit({
                     kinds,
                     "#e": parentEventIds,
@@ -939,7 +949,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         relayUrl: string | null,
     ): void {
         const event = packet.event;
-        if (!event?.id || (event.kind !== 1 && event.kind !== 7 && event.kind !== 42)) {
+        if (!event?.id || ![1, 7, 42, 1111, 3636].includes(event.kind)) {
             return;
         }
 

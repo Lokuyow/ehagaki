@@ -30,6 +30,15 @@ import {
   prepareSignedEventTemplate,
   validateSignedEventResult,
 } from "./signedEventResultValidator";
+import {
+  buildNip22ReplyTags,
+  createSensitiveTextNoteCompanion,
+  isFullyVerifiedEvent,
+  resolveSubmissionKind,
+  SENSITIVE_TEXT_NOTE_KIND,
+} from "./sensitiveEventUtils";
+import { parsePostHistoryThreadReferences } from "./postHistoryNip10Utils";
+import { postHistoryRepository } from "./storage/postHistoryRepository";
 
 // 後方互換性のためre-export
 export { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEventSender } from "./postEventBuilder";
@@ -146,6 +155,7 @@ export class PostManager {
     contentWarningEnabled: boolean;
     contentWarningReason: string;
     failClosedContentWarning: boolean;
+    publicationKind: number;
     replyQuoteTags?: string[][];
     channelContext?: import("./types").ChannelContextState | null;
     emojiTags?: string[][];
@@ -164,7 +174,54 @@ export class PostManager {
       params.channelContext,
       params.emojiTags,
       params.failClosedContentWarning,
+      params.publicationKind,
     );
+  }
+
+  private async buildNip22ReplyTags(
+    parent: import("./types").NostrEvent,
+    parentRelayHint: string,
+    sessionPubkey: string,
+  ): Promise<string[][] | null> {
+    const references = parsePostHistoryThreadReferences(parent);
+    let verifiedRoot: import("./types").NostrEvent | undefined;
+    if (
+      parent.kind === 1
+      && references.rootId
+      && references.rootId !== parent.id
+      && !references.rootAuthorHint
+    ) {
+      const localRecord = await postHistoryRepository.getByEventId(references.rootId);
+      assertActiveSession(this.deps.authStateStore!, sessionPubkey);
+      if (typeof localRecord?.deletedAt === "number") return null;
+      const localEvent = localRecord?.rawEvent as import("./types").NostrEvent | null | undefined;
+      if (
+        localEvent
+        && localEvent.id === references.rootId
+        && localEvent.kind === 1
+        && isFullyVerifiedEvent(localEvent)
+      ) {
+        verifiedRoot = localEvent;
+      } else {
+        if (!this.rxNostr) return null;
+        const replyQuoteService = this.deps.replyQuoteService as ReplyQuoteService | undefined
+          ?? new ReplyQuoteService();
+        const fetchedRoot = await replyQuoteService.fetchReferencedEvent(
+          references.rootId,
+          references.rootRelayHint ? [references.rootRelayHint] : [parentRelayHint],
+          this.rxNostr,
+        );
+        assertActiveSession(this.deps.authStateStore!, sessionPubkey);
+        if (
+          !fetchedRoot
+          || fetchedRoot.id !== references.rootId
+          || fetchedRoot.kind !== 1
+          || !isFullyVerifiedEvent(fetchedRoot)
+        ) return null;
+        verifiedRoot = fetchedRoot;
+      }
+    }
+    return buildNip22ReplyTags(parent, parentRelayHint, verifiedRoot);
   }
 
   private finalizeSubmittedPost(
@@ -278,7 +335,18 @@ export class PostManager {
     }
 
     assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
-    const result = await this.eventSender!.sendEvent(verifiedEvent.event, {
+    const sender = this.eventSender!;
+    const rxNostr = this.rxNostr;
+    const defaultWriteRelaySnapshot = typeof rxNostr?.getDefaultRelays === "function"
+      ? Object.values(rxNostr.getDefaultRelays())
+        .filter((relay: any) => relay?.write && typeof relay.url === "string")
+        .map((relay: any) => relay.url)
+      : [];
+    const writeRelaySnapshot = RelayConfigUtils.sanitizeExternalRelayUrls([
+      ...defaultWriteRelaySnapshot,
+      ...(params.additionalWriteRelays ?? []),
+    ]);
+    const result = await sender.sendEvent(verifiedEvent.event, {
       targetRelays: params.additionalWriteRelays,
       includeDefaultWriteRelays: true,
     });
@@ -298,11 +366,88 @@ export class PostManager {
       result: resultWithEvent,
       additionalWriteRelays: params.additionalWriteRelays,
     });
-    return this.finalizeSubmittedPost(
+    const finalized = this.finalizeSubmittedPost(
       resultWithEvent,
       params.hashtags,
       params.rqNotifyOptions,
     );
+    if (finalized.success && verifiedEvent.event.kind === SENSITIVE_TEXT_NOTE_KIND) {
+      const signEvent = params.signEvent
+        ?? (typeof params.signer?.signEvent === "function"
+          ? params.signer.signEvent.bind(params.signer)
+          : undefined);
+      void this.publishSensitiveCompanion({
+        canonicalEvent: verifiedEvent.event,
+        acceptedRelays: result.acceptedRelays ?? [],
+        writeRelaySnapshot,
+        sessionPubkey: params.sessionPubkey,
+        signEvent,
+        sender,
+        rxNostr,
+      }).catch(() => {
+        this.deps.console?.warn?.("sensitive_companion_publish_failed", {
+          stage: "post-success",
+          reason: "unexpected",
+        });
+      });
+    }
+    return finalized;
+  }
+
+  private async publishSensitiveCompanion(params: {
+    canonicalEvent: any;
+    acceptedRelays: string[];
+    writeRelaySnapshot: string[];
+    sessionPubkey: string;
+    signEvent?: (event: any) => Promise<any>;
+    sender: PostEventSender;
+    rxNostr: RxNostr | null;
+  }): Promise<void> {
+    try {
+      assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
+      if (!params.rxNostr || this.rxNostr !== params.rxNostr || this.eventSender !== params.sender) {
+        return;
+      }
+      if (!params.signEvent) {
+        throw new Error("sensitive_companion_signer_unavailable");
+      }
+      const relayUrls = RelayConfigUtils.sanitizeExternalRelayUrls(params.writeRelaySnapshot);
+      if (relayUrls.length === 0) {
+        throw new Error("sensitive_companion_no_write_relays");
+      }
+      const companion = createSensitiveTextNoteCompanion(
+        params.canonicalEvent,
+        params.acceptedRelays,
+      );
+      if (!companion) {
+        throw new Error("sensitive_companion_invalid_canonical_event");
+      }
+      const prepared = prepareSignedEventTemplate(companion);
+      const signedEvent = await params.signEvent(prepared.signerTemplate);
+      assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
+      if (this.rxNostr !== params.rxNostr || this.eventSender !== params.sender) return;
+      const verified = validateSignedEventResult(
+        prepared.expectedTemplate,
+        signedEvent,
+        params.sessionPubkey,
+      );
+      if (!isFullyVerifiedEvent(verified)) {
+        throw new Error("sensitive_companion_signature_invalid");
+      }
+      assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
+      const result = await params.sender.sendEvent(verified, {
+        targetRelays: relayUrls,
+        includeDefaultWriteRelays: false,
+      });
+      if (!result.success) {
+        throw new Error("sensitive_companion_relay_rejected");
+      }
+    } catch {
+      this.deps.console?.warn?.("sensitive_companion_publish_failed", {
+        stage: "post-success",
+        reason: "failed",
+      });
+    }
   }
 
   // 外部APIは変更なし（後方互換性のため）
@@ -394,6 +539,27 @@ export class PostManager {
       const rqState = this.deps.replyQuoteState!.value;
       let replyQuoteTags: string[][] | undefined;
       const rqNotifyOptions = this.getReplyQuoteNotifyOptions();
+      const replyEvent = rqState.reply?.referencedEvent ?? null;
+      if (
+        rqState.reply
+        && !channelContext
+        && (!replyEvent
+          || replyEvent.id !== rqState.reply.eventId
+          || ![1, 36, 1111, 3636].includes(replyEvent.kind)
+          || (rqState.reply.authorPubkey && replyEvent.pubkey !== rqState.reply.authorPubkey))
+      ) {
+        return this.notifyPostFailure("postComponent.error.reply_target_event_unavailable");
+      }
+      const publicationKind = resolveSubmissionKind({
+        channel: !!channelContext,
+        hasReply: !!rqState.reply,
+        ...(replyEvent ? { replyKind: replyEvent.kind } : {}),
+        failClosedContentWarning,
+        contentWarningEnabled,
+      });
+      if (publicationKind === null) {
+        return this.notifyPostFailure("postComponent.error.reply_target_event_unavailable");
+      }
       if (rqState.reply || rqState.quotes.length > 0) {
         const rqService = this.deps.replyQuoteService || new ReplyQuoteService();
         replyQuoteTags = [];
@@ -414,6 +580,33 @@ export class PostManager {
               .forEach((tag) => {
                 replyQuoteTags!.push(tag);
               });
+          } else if (
+            publicationKind === 1111
+            || publicationKind === 3636
+          ) {
+            const nip22ReplyTags = replyEvent
+              ? await this.buildNip22ReplyTags(
+                replyEvent,
+                rqState.reply.relayHints[0] ?? "",
+                sessionPubkey,
+              )
+              : null;
+            if (!nip22ReplyTags) {
+              return this.notifyPostFailure("postComponent.error.reply_target_event_unavailable");
+            }
+            replyQuoteTags.push(...nip22ReplyTags);
+            if (publicationKind === 3636 || publicationKind === 1111) {
+              const existingAuthors = new Set(
+                replyQuoteTags.filter((tag) => tag[0] === "p").map((tag) => tag[1]),
+              );
+              rqService.buildReplyTags(rqState.reply)
+                .filter((tag) => tag[0] === "p")
+                .forEach((tag) => {
+                  if (existingAuthors.has(tag[1])) return;
+                  existingAuthors.add(tag[1]);
+                  replyQuoteTags!.push(tag);
+                });
+            }
           } else {
             replyQuoteTags.push(...rqService.buildReplyTags(rqState.reply));
           }
@@ -495,6 +688,7 @@ export class PostManager {
             contentWarningEnabled,
             contentWarningReason,
             failClosedContentWarning,
+            publicationKind,
             replyQuoteTags,
             channelContext,
             emojiTags,
@@ -542,6 +736,7 @@ export class PostManager {
             contentWarningEnabled,
             contentWarningReason,
             failClosedContentWarning,
+            publicationKind,
             replyQuoteTags,
             channelContext,
             emojiTags,
@@ -582,6 +777,7 @@ export class PostManager {
             contentWarningEnabled,
             contentWarningReason,
             failClosedContentWarning,
+            publicationKind,
             replyQuoteTags,
             channelContext,
             emojiTags,
@@ -614,6 +810,7 @@ export class PostManager {
         contentWarningEnabled,
         contentWarningReason,
         failClosedContentWarning,
+        publicationKind,
         replyQuoteTags,
         channelContext,
         emojiTags,

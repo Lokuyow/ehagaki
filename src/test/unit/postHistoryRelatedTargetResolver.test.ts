@@ -1,5 +1,6 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
+import { finalizeEvent, generateSecretKey } from "nostr-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EHAGAKI_DB_NAME, EHagakiDB, type PostHistoryRecord } from "../../lib/storage/ehagakiDb";
 import {
@@ -578,6 +579,86 @@ describe("createPostHistoryRelatedTargetResolver", () => {
         expect(firstSnapshot?.status).toBe("resolved");
         expect(secondSnapshot?.status).toBe("resolved");
         expect(resolver.getTargetSnapshot(event.id)?.status).toBe("resolved");
+    });
+
+    it("resolves a verified kind 1 compatibility companion to its Sensitive canonical event", async () => {
+        const secretKey = generateSecretKey();
+        const canonical = finalizeEvent({
+            kind: 36,
+            created_at: 200,
+            content: "sensitive body",
+            tags: [["content-warning", "Spoiler"]],
+        }, secretKey) as NostrEvent;
+        const companion = finalizeEvent({
+            kind: 1,
+            created_at: canonical.created_at,
+            content: "",
+            tags: [["content-warning", "Spoiler"], ["c", canonical.id]],
+        }, secretKey) as NostrEvent;
+        const { resolver, contextFetchService } = createResolver();
+        contextFetchService.fetchEventById.mockImplementation((_rxNostr, { eventId }) => ({
+            promise: Promise.resolve({
+                event: eventId === companion.id ? companion : canonical,
+                relayUrl: "wss://relay.example.com/",
+            }),
+            cancel: vi.fn(),
+        }));
+
+        const snapshot = await resolver.ensureTarget(createDescriptor({
+            targetEventId: companion.id,
+            authorHint: companion.pubkey,
+        }));
+
+        expect(snapshot?.status).toBe("resolved");
+        expect(snapshot?.event).toEqual(canonical);
+        expect(snapshot?.event?.kind).toBe(36);
+        expect(contextFetchService.fetchEventById).toHaveBeenCalledTimes(2);
+    });
+
+    it("never promotes a remaining companion to a regular post when its canonical target is deleted", async () => {
+        const secretKey = generateSecretKey();
+        const canonical = finalizeEvent({
+            kind: 36,
+            created_at: 200,
+            content: "sensitive body",
+            tags: [["content-warning"]],
+        }, secretKey) as NostrEvent;
+        const companion = finalizeEvent({
+            kind: 1,
+            created_at: canonical.created_at,
+            content: "",
+            tags: [["content-warning"], ["c", canonical.id]],
+        }, secretKey) as NostrEvent;
+        const deletionRepository = {
+            getDeletedTargets: vi.fn().mockResolvedValue(new Map([
+                [canonical.pubkey, new Set([canonical.id])],
+            ])),
+            upsertValidDeletionRequests: vi.fn().mockResolvedValue({
+                insertedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount: 0,
+            }),
+        };
+        const { resolver, contextFetchService } = createResolver({
+            deletionRequestsRepositoryImpl: deletionRepository,
+        });
+        contextFetchService.fetchEventById.mockImplementation((_rxNostr, { eventId }) => ({
+            promise: Promise.resolve({
+                event: eventId === companion.id ? companion : canonical,
+                relayUrl: "wss://relay.example.com/",
+            }),
+            cancel: vi.fn(),
+        }));
+
+        const snapshot = await resolver.ensureTarget(createDescriptor({
+            targetEventId: companion.id,
+            authorHint: companion.pubkey,
+        }));
+
+        expect(snapshot?.status).toBe("deleted");
+        expect(snapshot?.event).toBeNull();
+        expect(resolver.getTargetSnapshot(companion.id)?.event).toBeNull();
     });
 
     it("未検証pendingがauthorHintに一致しても取得前に削除済みと判定しない", async () => {

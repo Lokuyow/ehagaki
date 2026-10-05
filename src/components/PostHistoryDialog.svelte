@@ -413,6 +413,7 @@
             content,
         });
         return buildPostContentRenderModel({
+            kind: post.kind,
             sourceContent: content,
             displayContent,
             tags: post.tags,
@@ -508,6 +509,7 @@
         }
 
         models[event.id] = buildPostContentRenderModel({
+            kind: event.kind,
             sourceContent: event.content,
             tags: event.tags,
         });

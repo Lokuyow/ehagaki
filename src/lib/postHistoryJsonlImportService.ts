@@ -3,6 +3,7 @@ import {
     attestFullyVerifiedPostHistoryRawEvent,
     type PostHistoryRawEventAttestation,
 } from "./postHistoryRawEventVerification";
+import { getSensitiveCompanionReference } from "./sensitiveEventUtils";
 import type { NostrEvent } from "./types";
 import {
     postHistoryDeletionRequestsRepository,
@@ -268,7 +269,7 @@ export class PostHistoryJsonlImportService {
                 result.otherAccountCount += 1;
                 return null;
             }
-            if (event.kind !== 1 && event.kind !== 42 && event.kind !== 5) {
+            if (![1, 36, 42, 1111, 3636, 5].includes(event.kind)) {
                 result.unsupportedKindCount += 1;
                 return null;
             }
@@ -283,7 +284,10 @@ export class PostHistoryJsonlImportService {
             }
             processedEventIds.add(event.id);
 
-            if (event.kind === 1 || event.kind === 42) {
+            if ([1, 36, 42, 1111, 3636].includes(event.kind)) {
+                if (getSensitiveCompanionReference(event)) {
+                    return null;
+                }
                 result.uniquePostEventCount += 1;
                 buffer.push({ type: "post", ...verified });
             } else if (event.kind === 5) {

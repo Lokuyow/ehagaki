@@ -14,6 +14,7 @@ import {
 import { markPostHistoryShouldReturnToLatestAfterLocalPost } from "../postHistoryLatestRequest";
 import { bumpPostHistorySearchRevision } from "../postHistoryLocalSearchRevision";
 import { extractPostHistoryMedia } from "../postHistoryMediaUtils";
+import { getSensitiveCompanionReference } from "../sensitiveEventUtils";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import {
     attestFullyVerifiedPostHistoryRawEvent,
@@ -808,6 +809,12 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                 const verified = ensureAttestedEvent(item.event, item.attestation);
                 if (!verified) {
                     this.console.warn("post_history_invalid_fetched_event", item.event.id);
+                    return [];
+                }
+
+                // Compatibility notices are deliberately non-canonical empty artifacts.
+                // Without a durable alias index they must never become history rows.
+                if (getSensitiveCompanionReference(verified.event) !== null) {
                     return [];
                 }
 

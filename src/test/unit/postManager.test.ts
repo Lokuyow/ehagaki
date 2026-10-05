@@ -15,7 +15,7 @@ import { updateHashtagData } from '../../lib/tags/hashtagManager';
 import { hashtagDataStore } from '../../stores/tagsStore.svelte';
 import type { RxNostr } from 'rx-nostr';
 import { createMockConsole, createMockRxNostr, MockKeyManager } from '../helpers';
-import { nip19 } from 'nostr-tools';
+import { finalizeEvent, generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
 import { DECOMMISSIONED_RELAYS } from '../../lib/relayLists';
 import { ReplyQuoteService } from '../../lib/replyQuoteService';
 
@@ -735,27 +735,27 @@ describe('PostEventBuilder', () => {
             ]);
         });
 
-        it('fail-closed opt-in は本文とreasonをcontent-warning tagへ移しcontentを空にする', async () => {
+        it('Sensitive kind opt-in は本文をevent.contentに保ち、NIP-36 CW metadataを付ける', async () => {
             const event = await PostEventBuilder.buildEvent(
                 'Sensitive body', [], [], undefined, undefined, undefined,
                 undefined, true, ' Spoiler ', undefined, undefined, undefined, true,
             );
 
-            expect(event.content).toBe('');
+            expect(event.content).toBe('Sensitive body');
             expect(event.tags).toEqual([
-                ['content-warning', 'Spoiler', 'Sensitive body'],
+                ['content-warning', 'Spoiler'],
             ]);
         });
 
-        it('fail-closed opt-in はreasonなしでも空の第2要素を出力する', async () => {
+        it('Sensitive kind opt-in はreasonなしなら従来どおり1要素CW tagを出す', async () => {
             const event = await PostEventBuilder.buildEvent(
                 'Sensitive body', [], [], undefined, undefined, undefined,
                 undefined, true, '   ', undefined, undefined, undefined, true,
             );
 
-            expect(event.content).toBe('');
+            expect(event.content).toBe('Sensitive body');
             expect(event.tags).toEqual([
-                ['content-warning', '', 'Sensitive body'],
+                ['content-warning'],
             ]);
         });
 
@@ -774,13 +774,13 @@ describe('PostEventBuilder', () => {
             );
 
             expect(cwOnly.tags).toEqual([
-                ['content-warning', '', 'Sensitive body'],
+                ['content-warning'],
             ]);
             expect(nsfwOnly.content).toBe('Classified body');
             expect(nsfwOnly.tags).toEqual([['t', 'nsfw']]);
             expect(both.tags).toEqual([
                 ['t', 'nsfw'],
-                ['content-warning', 'Spoiler', 'Sensitive body'],
+                ['content-warning', 'Spoiler'],
             ]);
         });
 
@@ -1387,11 +1387,153 @@ describe('PostManager統合テスト', () => {
         const sentEvent = vi.mocked(mockRxNostr.send).mock.calls[0][0] as any;
 
         expect(result.success).toBe(true);
-        expect(sentEvent.content).toBe('');
+        expect(sentEvent.kind).toBe(36);
+        expect(sentEvent.content).toBe('Sensitive body');
         expect(sentEvent.tags).toContainEqual([
-            'content-warning', 'Spoiler', 'Sensitive body',
+            'content-warning', 'Spoiler',
         ]);
         expect(sentEvent.tags).not.toContainEqual(['t', 'nsfw']);
+    });
+
+    it('Sensitive設定ONのCW replyはkind 3636とNIP-22 root/parent tagで送る', async () => {
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                process.nextTick(() => observer.next({
+                    from: 'wss://accepted.example.com/',
+                    ok: true,
+                    done: true,
+                    eventId: 'comment-event-id',
+                    type: 'ok',
+                    message: '',
+                }));
+                return { unsubscribe: vi.fn() };
+            }),
+        };
+        const parentId = '1'.repeat(64);
+        const parentPubkey = '2'.repeat(64);
+        const parent = {
+            id: parentId,
+            pubkey: parentPubkey,
+            kind: 36,
+            created_at: 100,
+            content: 'parent body',
+            tags: [['content-warning', 'Parent warning']],
+            sig: 'verified-by-upstream',
+        };
+        mockDeps.contentWarningStore = { value: true, reset: vi.fn() };
+        mockDeps.contentWarningReasonStore = { value: 'Spoiler', reset: vi.fn() };
+        mockDeps.settingsStore = {
+            clientTagEnabled: true,
+            quoteNotificationEnabled: false,
+            replyNotificationEnabled: false,
+            failClosedContentWarning: true,
+        } as any;
+        mockDeps.replyQuoteState = {
+            value: {
+                reply: {
+                    mode: 'reply',
+                    eventId: parentId,
+                    relayHints: ['wss://parent.example.com/'],
+                    authorPubkey: parentPubkey,
+                    quoteNotificationEnabled: false,
+                    authorDisplayName: null,
+                    authorPicture: null,
+                    referencedEvent: parent,
+                    rootEventId: null,
+                    rootRelayHint: null,
+                    rootPubkey: null,
+                    loading: false,
+                    error: null,
+                },
+                quotes: [],
+            },
+        } as any;
+        manager = new PostManager(mockRxNostr, mockDeps);
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        const result = await manager.submitPost('Sensitive reply');
+        const [sentEvent] = vi.mocked(mockRxNostr.send).mock.calls[0] as [any, any];
+
+        expect(result.success).toBe(true);
+        expect(sentEvent.kind).toBe(3636);
+        expect(sentEvent.content).toBe('Sensitive reply');
+        expect(sentEvent.tags).toEqual(expect.arrayContaining([
+            ['E', parentId, 'wss://parent.example.com/', parentPubkey],
+            ['K', '36'],
+            ['P', parentPubkey],
+            ['e', parentId, 'wss://parent.example.com/', parentPubkey],
+            ['k', '36'],
+            ['p', parentPubkey],
+            ['content-warning', 'Spoiler'],
+        ]));
+    });
+
+    it('kind 36のcanonical成功後に空本文のkind 1 compatibility companionを別送信する', async () => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        mockAuthState.pubkey = pubkey;
+        mockDeps.authStateStore = { value: mockAuthState };
+        mockDeps.keyManager = new MockKeyManager('test-secret-key', 'test-storage-key', false);
+        mockDeps.contentWarningStore = { value: true, reset: vi.fn() };
+        mockDeps.contentWarningReasonStore = { value: 'Spoiler', reset: vi.fn() };
+        mockDeps.settingsStore = {
+            clientTagEnabled: true,
+            quoteNotificationEnabled: false,
+            replyNotificationEnabled: false,
+            failClosedContentWarning: true,
+        } as any;
+        mockDeps.seckeySignerFn = vi.fn(() => ({
+            signEvent: vi.fn(async (template: any) => finalizeEvent(template, secretKey)),
+        }));
+
+        let notifyCompanion!: (value: { event: any; options: any }) => void;
+        const companionPublished = new Promise<{ event: any; options: any }>((resolve) => {
+            notifyCompanion = resolve;
+        });
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                process.nextTick(() => observer.next({
+                    from: 'wss://accepted.example.com/',
+                    ok: true,
+                    done: true,
+                    eventId: 'ignored-relay-event-id',
+                    type: 'ok',
+                    message: '',
+                }));
+                return { unsubscribe: vi.fn() };
+            }),
+        };
+        vi.mocked(mockRxNostr.send).mockImplementation(((event: any, options: any) => {
+            if (event.kind === 1 && event.tags.some((tag: string[]) => tag[0] === 'c')) {
+                notifyCompanion({ event, options });
+            }
+            return mockObservable;
+        }) as any);
+        manager = new PostManager(mockRxNostr, mockDeps);
+
+        const result = await manager.submitPost('Sensitive body');
+        const companion = await companionPublished;
+        const canonical = vi.mocked(mockRxNostr.send).mock.calls[0]![0] as any;
+
+        expect(result.success).toBe(true);
+        expect(canonical.kind).toBe(36);
+        expect(canonical.content).toBe('Sensitive body');
+        expect(companion.event).toMatchObject({
+            kind: 1,
+            pubkey,
+            created_at: canonical.created_at,
+            content: '',
+            tags: [
+                ['content-warning', 'Spoiler'],
+                ['c', canonical.id, 'wss://accepted.example.com/'],
+            ],
+        });
+        expect(companion.options.on).toEqual({
+            relays: [
+                'wss://relay1.example.com/',
+                'wss://relay2.example.com/',
+            ],
+        });
     });
 
     it('投稿成功時に署名済みeventを投稿履歴保存関数へ渡す', async () => {

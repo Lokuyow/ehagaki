@@ -1,6 +1,7 @@
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent } from "./types";
 import { isHex64 } from "./utils/nostrHexUtils";
+import { parseNip22CommentReferences } from "./postHistoryNip22Utils";
 
 export interface PostHistoryThreadReferenceTag {
     eventId: string;
@@ -25,6 +26,13 @@ export interface PostHistoryThreadReferences {
     channelEventId: string | null;
     channelRelayHints: string[];
     issues: PostHistoryThreadReferenceIssue[];
+    /** Present for NIP-22 comments; legacy NIP-10 fields remain unchanged. */
+    rootKind?: string | null;
+    parentKind?: string | null;
+    rootPubkey?: string | null;
+    parentPubkey?: string | null;
+    rootReferenceTags?: string[][];
+    parentReferenceTags?: string[][];
 }
 
 export type PostHistoryThreadReferenceIssue =
@@ -33,7 +41,8 @@ export type PostHistoryThreadReferenceIssue =
     | "conflicting-channel-roots"
     | "invalid-reply-target"
     | "conflicting-reply-targets"
-    | "reply-target-is-channel";
+    | "reply-target-is-channel"
+    | "invalid-nip22-reference";
 
 const EMPTY_REFERENCES: PostHistoryThreadReferences = {
     rootId: null,
@@ -356,6 +365,29 @@ export function parsePostHistoryThreadReferences(
         return parseKind42ThreadReferences(event);
     }
 
+    if (event?.kind === 1111 || event?.kind === 3636) {
+        const parsed = parseNip22CommentReferences(event);
+        return {
+            ...EMPTY_REFERENCES,
+            rootId: parsed.rootEventId,
+            parentId: parsed.parentEventId,
+            rootRelayHint: parsed.rootTags.find((tag) => tag[0] === "E" || tag[0] === "A")?.[2] ?? null,
+            replyRelayHint: parsed.parentTags.find((tag) => tag[0] === "e" || tag[0] === "a")?.[2] ?? null,
+            rootAuthorHint: parsed.rootPubkey,
+            replyAuthorHint: parsed.parentPubkey,
+            relayHints: parsed.relayHints,
+            authorHints: [parsed.rootPubkey, parsed.parentPubkey]
+                .filter((value): value is string => !!value),
+            rootKind: parsed.rootKind,
+            parentKind: parsed.parentKind,
+            rootPubkey: parsed.rootPubkey,
+            parentPubkey: parsed.parentPubkey,
+            rootReferenceTags: parsed.rootTags.map((tag) => [...tag]),
+            parentReferenceTags: parsed.parentTags.map((tag) => [...tag]),
+            issues: parsed.valid ? [] : ["invalid-nip22-reference"],
+        };
+    }
+
     return { ...EMPTY_REFERENCES };
 }
 
@@ -364,5 +396,6 @@ export function hasUnambiguousPostHistoryParentReference(
 ): boolean {
     return !!references.parentId
         && !references.issues.includes("conflicting-reply-targets")
-        && !references.issues.includes("reply-target-is-channel");
+        && !references.issues.includes("reply-target-is-channel")
+        && !references.issues.includes("invalid-nip22-reference");
 }

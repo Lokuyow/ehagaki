@@ -7,6 +7,7 @@ const OWNER_PUBKEY = "a".repeat(64);
 const PARENT_ID = "1".repeat(64);
 const ROOT_ID = "2".repeat(64);
 const OTHER_PARENT_ID = "3".repeat(64);
+const OTHER_AUTHOR = "4".repeat(64);
 
 function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
     return createBaseEvent({
@@ -94,6 +95,48 @@ describe("classifyPostHistoryInboundInteraction", () => {
             type: "mention-like",
             parentEventId: null,
             reason: "mention-without-thread-parent",
+        });
+    });
+
+    it("kind:36 CW投稿に付いたowner #pをmention-likeに分類する", () => {
+        const event = createEvent({
+            kind: 36,
+            tags: [["p", OWNER_PUBKEY], ["content-warning", "Spoiler"]],
+        });
+
+        expect(classifyPostHistoryInboundInteraction({
+            event,
+            ownerPubkeyHex: OWNER_PUBKEY,
+            ownerPostEventIds: new Set(),
+        })).toMatchObject({
+            type: "mention-like",
+            parentEventId: null,
+            reason: "mention-without-thread-parent",
+        });
+    });
+
+    it("NIP-22のuppercase root Pと通知先pだけではdirect replyに分類しない", () => {
+        const event = createEvent({
+            kind: 1111,
+            tags: [
+                ["E", ROOT_ID, "", OWNER_PUBKEY],
+                ["K", "36"],
+                ["P", OWNER_PUBKEY],
+                ["e", OTHER_PARENT_ID, "", OTHER_AUTHOR],
+                ["k", "1111"],
+                ["p", OTHER_AUTHOR],
+                ["p", OWNER_PUBKEY],
+            ],
+        });
+
+        expect(classifyPostHistoryInboundInteraction({
+            event,
+            ownerPubkeyHex: OWNER_PUBKEY,
+            ownerPostEventIds: new Set([ROOT_ID]),
+        })).toMatchObject({
+            type: "mention-like",
+            parentEventId: OTHER_PARENT_ID,
+            rootEventId: ROOT_ID,
         });
     });
 

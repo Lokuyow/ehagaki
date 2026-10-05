@@ -289,6 +289,8 @@ function getRelayConnectionFailureHint(relays: string[]): string | null {
  * - get_public_key — ログイン完了時のユーザー公開鍵取得
  * - ping — 接続状態確認。手動の接続確認と、確認済み session の長時間バックグラウンド復帰で使用
  * - sign_event:1 — ショートテキストノート（投稿）
+ * - sign_event:36 — Sensitive Text Note（実験的な投稿形式）
+ * - sign_event:1111 / 3636 — NIP-22 comment / Sensitive Comment
  * - sign_event:5 — NIP-09 Event Deletion Request（投稿削除リクエスト）
  * - sign_event:42 — NIP-28 チャンネルメッセージ（パブリックチャット投稿）
  * - sign_event:10063 — BUD-03 Blossom server list（アップロード先 publish）
@@ -300,6 +302,9 @@ export const NIP46_REQUESTED_PERMISSIONS = [
     'get_public_key',
     'ping',
     'sign_event:1',
+    'sign_event:36',
+    'sign_event:1111',
+    'sign_event:3636',
     'sign_event:5',
     'sign_event:42',
     'sign_event:10063',

@@ -190,7 +190,7 @@ describe('FooterComponent', () => {
         renderFooter();
 
         const button = screen.getByRole('button', {
-            name: 'CW本文形式',
+            name: 'CW送信形式',
         });
         expect(button.getAttribute('aria-pressed')).toBe('false');
         expect(button.querySelector('.content-warning-standard-icon')).toBeTruthy();
@@ -202,7 +202,7 @@ describe('FooterComponent', () => {
         expect(button.getAttribute('aria-pressed')).toBe('true');
         expect(button.querySelector('.content-warning-hidden-icon')).toBeTruthy();
         expect(button.querySelector('.content-warning-standard-icon')).toBeNull();
-        expect(screen.getByText('CW本文:非表示形式')).toBeTruthy();
+        expect(screen.getByText('CW: Sensitive形式')).toBeTruthy();
     });
 
     it('認証状態にかかわらず空slotは間隔を作らず、status表示中はshortcutも隠す', () => {

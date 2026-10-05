@@ -128,11 +128,18 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         expect(rxNostrMock.use).toHaveBeenCalledWith(expect.anything(), {
             on: { relays: ["wss://read.example.com/"] },
         });
-        expect(rxNostrMock.emittedFilters).toEqual([{
-            kinds: [1, 7, 42],
-            "#p": [OWNER_PUBKEY],
-            since: 1_699_999_940,
-        }]);
+        expect(rxNostrMock.emittedFilters).toEqual([
+            {
+                kinds: [1, 7, 36, 42, 1111, 3636],
+                "#p": [OWNER_PUBKEY],
+                since: 1_699_999_940,
+            },
+            {
+                kinds: [1111, 3636],
+                "#P": [OWNER_PUBKEY],
+                since: 1_699_999_940,
+            },
+        ]);
         expect(postHistoryRepository.getExistingEventIdsForPubkey).toHaveBeenCalledWith({
             pubkeyHex: OWNER_PUBKEY,
             eventIds: [PARENT_ID],

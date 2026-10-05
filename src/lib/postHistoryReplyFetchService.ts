@@ -237,8 +237,14 @@ export class PostHistoryReplyFetchService {
                     },
                 });
 
+                const replyKinds = Array.from(new Set(parentContexts.flatMap((context) => {
+                    if (context.eventKind === 42) return [42];
+                    if (context.eventKind === 1) return [1, 1111, 3636];
+                    if ([36, 1111, 3636].includes(context.eventKind)) return [1111, 3636];
+                    return [];
+                }))).sort();
                 rxReq.emit({
-                    kinds: Array.from(new Set(parentContexts.map((context) => context.eventKind))).sort(),
+                    kinds: replyKinds,
                     "#e": eventIds,
                     since,
                     limit,
@@ -269,7 +275,7 @@ export class PostHistoryReplyFetchService {
         packet: { event?: NostrEvent; from?: string },
     ): void {
         const event = packet.event;
-        if (!event?.id || (event.kind !== 1 && event.kind !== 42)) {
+        if (!event?.id || ![1, 42, 1111, 3636].includes(event.kind)) {
             return;
         }
 

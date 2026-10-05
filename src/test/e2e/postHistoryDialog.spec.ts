@@ -2306,6 +2306,21 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(quoteCard.locator('.post-preview-reaction-count')).toHaveText('1');
     });
 
+    test('Sensitive Text Note history previews hide body and media until explicit reveal', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?sensitive-preview=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const post = page.locator('.post-history-item').first();
+
+        await expect(post.locator('.content-warning-prompt')).toBeVisible();
+        await expect(post.locator('.content-warning-copy')).toContainText('Sensitive demo');
+        await expect(post.getByText('playwright sensitive preview body')).toHaveCount(0);
+        await expect(post.locator('.post-preview-media')).toHaveCount(0);
+
+        await post.getByRole('button', { name: '本文を表示' }).click();
+        await expect(post.getByText('playwright sensitive preview body')).toBeVisible();
+        await expect(post.locator('.post-preview-media')).toBeVisible();
+    });
+
     test('quote preview uses the shared 36px three-region footer without horizontal overflow', async ({ page }) => {
         const harness = await gotoHarness(page);
         const historyItem = page.locator(

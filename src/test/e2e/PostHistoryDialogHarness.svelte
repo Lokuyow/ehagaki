@@ -23,6 +23,7 @@
     const isLongPreviewScenario = new URLSearchParams(window.location.search).has("long-preview");
     const isLayoutStabilityScenario = new URLSearchParams(window.location.search).has("layout-stability");
     const isKind42QuoteScenario = new URLSearchParams(window.location.search).has("kind42-quote");
+    const isSensitivePreviewScenario = new URLSearchParams(window.location.search).has("sensitive-preview");
     const isSelfQuoteTransitionScenario = new URLSearchParams(window.location.search).has("self-quote-transition");
     const isSparseOldestScenario = new URLSearchParams(window.location.search).has("sparse-oldest");
     const TOTAL_POSTS = isInfiniteScrollScenario
@@ -119,14 +120,15 @@
         const timestampSeconds = Math.floor(timestampMs / 1000);
         const label = index < SEARCH_MATCHING_POSTS ? "alpha" : "beta";
         const eventId = buildHexId(index, "aa");
+        const isSensitivePreviewPost = isSensitivePreviewScenario && index === 0;
 
         return {
             id: eventId,
             eventId,
             pubkeyHex: HARNESS_PUBKEY,
-            kind: isKind42QuoteScenario ? 42 : 1,
-            content: `${label} post ${index + 1}`,
-            tags: [],
+            kind: isSensitivePreviewPost ? 36 : isKind42QuoteScenario ? 42 : 1,
+            content: isSensitivePreviewPost ? "playwright sensitive preview body" : `${label} post ${index + 1}`,
+            tags: isSensitivePreviewPost ? [["content-warning", "Sensitive demo"]] : [],
             createdAt: timestampSeconds,
             postedAt: timestampMs,
             relayHints: [],
