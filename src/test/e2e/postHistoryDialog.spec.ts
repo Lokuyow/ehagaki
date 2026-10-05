@@ -126,6 +126,64 @@ async function gotoInfiniteScrollHarness(
     return page.evaluate<HarnessState>(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState);
 }
 
+async function installInitialHistoryResizeScroll(page: Page): Promise<void> {
+    await page.addInitScript(() => {
+        const state = {
+            recreated: false,
+        };
+        (window as Window & {
+            __POST_HISTORY_RESIZE_SCROLL_STATE__?: typeof state;
+        }).__POST_HISTORY_RESIZE_SCROLL_STATE__ = state;
+
+        const NativeIntersectionObserver = window.IntersectionObserver;
+        const observerCounts = new WeakMap<Element, number>();
+        const observerRoots = new WeakMap<IntersectionObserver, Element | null>();
+        window.IntersectionObserver = class extends NativeIntersectionObserver {
+            constructor(
+                callback: IntersectionObserverCallback,
+                options?: IntersectionObserverInit,
+            ) {
+                const root = options?.root;
+                const isOlderHistoryObserver =
+                    root instanceof HTMLElement
+                    && root.classList.contains("post-history-container")
+                    && options?.rootMargin?.startsWith("0px 0px ");
+                super(callback, options);
+                if (!isOlderHistoryObserver || !(root instanceof HTMLElement)) {
+                    return;
+                }
+
+                observerRoots.set(this, root);
+                const count = (observerCounts.get(root) ?? 0) + 1;
+                observerCounts.set(root, count);
+                if (count === 2) {
+                    state.recreated = true;
+                    queueMicrotask(() => {
+                        root.scrollTop = root.scrollHeight;
+                        root.dispatchEvent(new Event("scroll", { bubbles: true }));
+                    });
+                }
+            }
+
+            observe(target: Element): void {
+                const root = observerRoots.get(this) ?? null;
+                const isOlderHistoryObserver =
+                    root instanceof HTMLElement
+                    && root.classList.contains("post-history-container");
+                if (isOlderHistoryObserver) {
+                    const count = observerCounts.get(root) ?? 0;
+                    if (count === 1) {
+                        const nextHeight = root.clientHeight + 20;
+                        root.style.flex = "0 0 auto";
+                        root.style.height = `${nextHeight}px`;
+                    }
+                }
+                super.observe(target);
+            }
+        };
+    });
+}
+
 async function armScrollLoadGate(page: Page, direction: 'older' | 'newer') {
     await page.evaluate((loadDirection) => {
         const gate = (window as HarnessWindow).__POST_HISTORY_SCROLL_LOAD_GATE__;
@@ -792,6 +850,44 @@ async function expectTooltip(
 }
 
 test.describe('PostHistoryDialog Playwright', () => {
+    test('opening normal history and immediately scrolling to the bottom loads older posts', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?infinite-scroll=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate<HarnessState>(() =>
+            (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState,
+        );
+        const container = page.locator('.post-history-container');
+        await expect(container.locator('.post-history-list li')).toHaveCount(50);
+
+        await container.evaluate((element) => {
+            const root = element as HTMLDivElement;
+            root.scrollTop = root.scrollHeight;
+            root.dispatchEvent(new Event('scroll', { bubbles: true }));
+        });
+
+        await expect.poll(() => historyEventIds(page)).toEqual(
+            harness.infiniteScrollEventIds.slice(0, 100),
+        );
+    });
+
+    test('scrolling during resize observer recreation is not suppressed', async ({ page }) => {
+        await installInitialHistoryResizeScroll(page);
+        await page.goto('post-history-dialog-playwright.html?infinite-scroll=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate<HarnessState>(() =>
+            (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState,
+        );
+
+        await expect.poll(() => page.evaluate(() => {
+            return (window as Window & {
+                __POST_HISTORY_RESIZE_SCROLL_STATE__?: { recreated: boolean };
+            }).__POST_HISTORY_RESIZE_SCROLL_STATE__?.recreated ?? false;
+        })).toBe(true);
+        await expect.poll(() => historyEventIds(page)).toEqual(
+            harness.infiniteScrollEventIds.slice(0, 100),
+        );
+    });
+
     test('JSONL export downloads signed post and deletion events from the current account', async ({ page }) => {
         await gotoExportHarness(page);
 

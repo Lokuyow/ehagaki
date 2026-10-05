@@ -437,6 +437,101 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
+    it.each([
+        { direction: 'older', label: '古い投稿', delta: 1 },
+        { direction: 'newer', label: '新しい投稿', delta: -1 },
+    ] as const)('resize抑制後の$label向きscrollだけを一度回収し、旧observer callbackを無視する', async ({ direction, delta }) => {
+        let containerHeight = 320;
+        const posts = Array.from({ length: 200 }, (_, index) =>
+            createRecord({
+                eventId: index.toString(16).padStart(64, '0'),
+                id: index.toString(16).padStart(64, '0'),
+                content: `pending ${direction} ${index}`,
+                createdAt: 1_700_000_000 - index,
+                postedAt: Date.UTC(2024, 0, 2) - index * 1_000,
+            }),
+        );
+        MockIntersectionObserver.reset();
+        MockResizeObserver.reset();
+        vi.stubGlobal('IntersectionObserver', MockIntersectionObserver as unknown as typeof IntersectionObserver);
+        vi.stubGlobal('ResizeObserver', MockResizeObserver as unknown as typeof ResizeObserver);
+        vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
+            return this.classList.contains('post-history-container') ? containerHeight : 0;
+        });
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            const height = this.classList.contains('post-history-container') ? containerHeight : 20;
+            return createMockRect(0, height);
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(posts.length);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue(
+            direction === 'older' ? posts.slice(0, 50) : posts.slice(50, 100),
+        );
+        repositoryMock.getNewerVisibleChunk.mockImplementation(async ({ limit }: { limit: number }) =>
+            direction === 'newer'
+                ? limit === 1 ? [posts[49]] : posts.slice(0, 50)
+                : [],
+        );
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ limit }: { limit: number }) =>
+            direction === 'older'
+                ? limit === 1 ? [posts[50]] : posts.slice(50, 100)
+                : limit === 1 ? [posts[100]] : [],
+        );
+
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
+        });
+        await screen.findByText(`pending ${direction} ${direction === 'older' ? 0 : 50}`);
+        const container = getHistoryContainer();
+        const sentinelSelector = direction === 'older'
+            ? '.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)'
+            : '.post-history-auto-load-newer-sentinel';
+        await waitFor(() => expect(document.querySelector(sentinelSelector)).toBeInstanceOf(HTMLElement));
+        const sentinel = document.querySelector(sentinelSelector) as HTMLElement;
+        mockHistoryItemLayout(container);
+        Object.defineProperty(sentinel, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => createMockRect(200, 1),
+        });
+
+        const oldObserver = MockIntersectionObserver.instances.find((observer) => observer.observedTargets.has(sentinel));
+        expect(oldObserver).toBeTruthy();
+        oldObserver?.trigger(sentinel, false);
+        if (direction === 'newer') {
+            container.scrollTop = 100;
+            await fireEvent.scroll(container);
+        }
+        containerHeight = 400;
+        for (const observer of MockResizeObserver.instances) {
+            if (observer.observedTargets.has(container)) observer.trigger(container);
+        }
+        await waitFor(() => expect(MockIntersectionObserver.instances.filter((observer) => observer.observedTargets.has(sentinel))).toHaveLength(2));
+        const resizedObserver = MockIntersectionObserver.instances.at(-1);
+        expect(resizedObserver?.observedTargets.has(sentinel)).toBe(true);
+
+        resizedObserver?.trigger(sentinel, true);
+        await Promise.resolve();
+        const chunkLimit = 50;
+        const chunkRequests = () => direction === 'older'
+            ? repositoryMock.getOlderVisibleChunk.mock.calls.filter(([options]) => options.limit === chunkLimit).length
+            : repositoryMock.getNewerVisibleChunk.mock.calls.filter(([options]) => options.limit === chunkLimit).length;
+        expect(chunkRequests()).toBe(0);
+
+        // A delayed notification from the disconnected observer must not clear the new observer's shared state.
+        oldObserver?.trigger(sentinel, false);
+        expect(chunkRequests()).toBe(0);
+
+        container.scrollTop += delta;
+        await fireEvent.scroll(container);
+        await waitFor(() => expect(chunkRequests()).toBe(1));
+        await screen.findByText(`pending ${direction} ${direction === 'older' ? 99 : 0}`);
+        container.scrollTop += delta;
+        await fireEvent.scroll(container);
+        await Promise.resolve();
+        expect(chunkRequests()).toBe(1);
+        view.unmount();
+    });
+
     it('連続範囲の末尾で保存済みの古い投稿を明示的に表示し、relay を呼ばない', async () => {
         const newest = createRecord({
             eventId: 'boundary-newest',
