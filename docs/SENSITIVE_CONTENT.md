@@ -6,7 +6,7 @@
 
 ## Motivation
 
-NIP-36はSensitiveであることを`content-warning` tagで示します。この形式ではevent kindでも示すため、clientやRelay queryは`kinds`で識別できます。本文は通常どおり`.content`に保持して既存の本文処理との互換性を保ち、任意のkind `1` companionで本文を複製せずkind `1`購読clientへ投稿の存在を知らせます。
+NIP-36は通常のevent kindの`.content`に本文を平文で保持し、`content-warning` tagでSensitiveであることを示します。そのため、CWを解釈しないclientでは本文が通常の投稿として表示される場合があります。この形式はkind `36` / `3636`でもSensitiveを示すため、対応clientは本文を描画する前にkindで識別・filterできます。本文は通常どおり`.content`に保持でき、任意のkind `1` companionで本文を複製せずkind `1`購読clientへSensitive eventの存在を知らせられます。
 
 ## Event kinds
 
@@ -67,13 +67,11 @@ top-level kind `36`のpublisherはkind `1` companionを送信してもよい（M
 
 `c` tag keyはNIP-34等でも別の意味で使われます。このcompanionの`c` tagは`["c", "<canonical-kind36-event-id>"]`または`["c", "<canonical-kind36-event-id>", "<relay-hint>"]`の形式でなければならず（MUST）、canonical kind `36` event IDを示します。receiverは`c` tagだけでcompanionと判定してはなりません（MUST NOT）。
 
-publisherはcanonical kind `36`を先に送信し、成功後にcompanionを送るべきです（SHOULD）。companionの送信失敗でcanonicalを失敗扱いにしてはなりません（MUST NOT）。canonicalにCW metadataがある場合、両eventで同じtimestamp / CW metadataを使うべきです（SHOULD）。canonicalにCW metadataがない場合、companionを省略してもよい（MAY）。
+receiverは上記formatに一致するeventのみをcompanion candidateとして扱います。canonicalへ解決する際はcompanionとcanonical双方のevent ID / signature、`c` referenceとcanonical IDの一致、canonical kind `36`、両eventの同一pubkeyを検証しなければなりません（MUST）。timestamp、canonical側CW metadataの有無、reasonの一致をvalidation条件にしてはなりません（MUST NOT）。
 
-receiverは上記formatに一致するeventのみをcompanion candidateとして扱います。canonicalへ解決する際はcompanionとcanonical双方のevent ID / signature、`c` referenceとcanonical IDの一致、canonical kind `36`、両eventの同一pubkeyを検証しなければなりません（MUST）。timestamp、canonical側CW metadataの有無、reasonの一致を要求してはなりません（MUST NOT）。
+解決後に新しく生成するevent-targeted interactionはcanonicalを対象にすべきです（SHOULD）。canonicalが見つからない、無効、削除済み、または取得できない場合、companionを通常のkind `1`として表示してはなりません（MUST NOT）。
 
-解決後の新しいreply、quote、reaction、deletion、event referenceはcanonicalを対象にすべきです（SHOULD）。既存のthird-party interactionをcanonical向けに書き換えてはならず（MUST NOT）、canonicalが見つからない、無効、削除済み、または取得できない場合、companionを通常のkind `1`として表示してはなりません（MUST NOT）。
-
-canonicalの取得hintには`c` relay hintを利用してもよい（MAY）。Relay evidenceには、canonicalを実際に返したRelayまたはcanonical local record自身のevidenceを利用してもよい（MAY）。companionを返しただけのRelayをcanonical provenanceとして扱ってはなりません（MUST NOT）。
+`c` tagのrelay hintはcanonical取得に利用してもよい（MAY）が、canonicalの存在や真正性を証明するものではありません。
 
 ## Other interactions
 
