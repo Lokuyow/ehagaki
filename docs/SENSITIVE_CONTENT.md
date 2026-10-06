@@ -68,7 +68,7 @@ NIP-22ではrootに`E` / `A` / `I`と`K`を使い、authorが分かる場合は`
 
 ## Compatibility companion
 
-top-level kind `36`publisherはoptionalなkind `1` compatibility companionを送って`MAY`。kind `3636`にはcompanionを作成する `MUST NOT`。
+top-level kind `36` publisherはoptionalなkind `1` compatibility companionを送って`MAY`。kind `3636`にはcompanionを作成する `MUST NOT`。
 
 ```json
 {
@@ -93,7 +93,7 @@ companionはkind `1`、空の`.content`、canonicalと同一pubkey、ちょう�
 ["c", "<canonical-kind36-event-id>", "wss://relay.example"]
 ```
 
-companionを使うpublisherはcanonical kind `36`を先にpublishし、成功後にcompanionを送る `SHOULD`。companionの失敗でcanonicalの成功をrollbackまたは失敗扱いにする `MUST NOT`。canonicalとcompanionは同じtimestamp / CW metadataを使う `SHOULD`。receiverはtimestamp一致、canonical側CW tagの存在、reason一致をlink validation条件にする `MUST NOT`。
+companionを使うpublisherはcanonical kind `36`を先にpublishし、成功後にcompanionを送る `SHOULD`。companionの失敗でcanonicalの成功をrollbackまたは失敗扱いにする `MUST NOT`。canonicalにCW metadataがある場合、canonicalとcompanionは同じtimestamp / CW metadataを使う `SHOULD`。CW metadataがない場合、publisherはcompanionを省略して`MAY`。receiverはtimestamp一致、canonical側CW tagの存在、reason一致をlink validation条件にする `MUST NOT`。
 
 ## Companion validation / canonical identity
 
