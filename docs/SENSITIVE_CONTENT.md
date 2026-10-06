@@ -1,24 +1,26 @@
-# Sensitive Event Format (Experimental)
+# Sensitive Event形式（実験的仕様）
 
-This document describes eHagaki's experimental Sensitive event format. It is an eHagaki extension, not a replacement for NIP-36 or a claim of formal NIP support. The standard NIP-36 Content Warning format remains the default. The setting changes sending only; eHagaki reads both the standard format and the legacy eHagaki body-in-tag format.
+この文書では、eHagaki独自の実験的なSensitive event形式を説明します。これはeHagaki独自の拡張であり、NIP-36を置き換えるものでも、正式なNIPとして扱うものでもありません。標準のNIP-36 Content Warning形式を既定の送信形式として維持します。設定が変えるのは送信形式だけです。eHagakiは標準形式と、以前のeHagaki独自の本文をtag内に格納する形式の両方を受信できます。
 
-Sensitive event bodies remain plaintext in the event's `content` field. The format is not encryption or a confidentiality mechanism. A client that does not understand these event kinds may not display or interpret them correctly.
+以下ではContent WarningをCWと表記します。
 
-## Event kinds
+Sensitive eventの本文はeventの`content`フィールドに平文で格納されます。この形式は暗号化ではなく、本文の機密性を保証するものでもありません。対応していないクライアントでは、これらのevent kindが表示されない、または正しく解釈されない場合があります。
 
-| Kind | Use | Content Warning behavior |
+## Event kindの一覧
+
+| Kind | 用途 | Content Warningの扱い |
 | ---: | --- | --- |
-| `1` | Ordinary text note and compatibility notice | Standard NIP-36 when a warning is present |
-| `36` | Experimental Sensitive Text Note | A top-level post sent with Sensitive format and an explicit CW; body is in `.content` |
-| `1111` | NIP-22 Comment | A comment/reply sent without Sensitive format, including a CW reply where applicable |
-| `3636` | Experimental Sensitive Comment | A reply sent with Sensitive format and an explicit CW; body is in `.content` |
-| `42` | NIP-28 public chat message | Always uses the standard NIP-36 CW format |
+| `1` | 通常のテキストノート、互換通知 | CWがある場合は標準NIP-36形式 |
+| `36` | 実験的なSensitive Text Note | CWを明示してSensitive形式で送るトップレベル投稿。本文は`.content`に格納 |
+| `1111` | NIP-22 Comment | Sensitive形式を使わないcomment/reply。CW付きreplyを含む場合がある |
+| `3636` | 実験的なSensitive Comment | CWを明示してSensitive形式で送るreply。本文は`.content`に格納 |
+| `42` | NIP-28 public chat message | 常に標準NIP-36のCW形式 |
 
-Kinds `36` and `3636` are treated as Sensitive by eHagaki even when a `content-warning` tag is absent. When present, the tag uses standard NIP-36 metadata: `["content-warning"]` or `["content-warning", "reason"]`. New sends do not put the body in a third `content-warning` element. That older eHagaki-specific shape is supported for receiving only.
+eHagakiでは、kind `36`と`3636`は`content-warning` tagがなくてもSensitiveとして扱います。tagがある場合は、標準NIP-36のmetadata形式である`["content-warning"]`または`["content-warning", "reason"]`を使います。新規送信で本文を`content-warning`の第3要素へ入れることはありません。以前のeHagaki独自形式は受信時のみ対応します。
 
-Kind `36` keeps the post body in `.content`. It may also include ordinary post metadata tags such as hashtags, media metadata, and client metadata.
+kind `36`の本文は`.content`に保持します。hashtag、media metadata、client metadataなど、通常の投稿metadata tagも含められます。
 
-Kind `3636` keeps the comment body in `.content` and uses NIP-22 root and parent tags. Root scope tags use uppercase `E`, `A`, or `I`, with `K` for the root kind and `P` when the root author is available. Direct-parent tags use lowercase `e`, `a`, or `i`, with `k` for the parent kind and `p` for the parent author. For example, a comment replying to a kind `1111` comment in a kind `36` thread has root kind `36` and parent kind `1111`:
+kind `3636`の本文は`.content`に保持し、NIP-22のroot tagとparent tagを使用します。root scopeには大文字の`E`、`A`、`I`を使い、root kindを`K`で示します。root authorが分かる場合は`P`も付けます。直接のparentには小文字の`e`、`a`、`i`を使い、parent kindを`k`、parent authorを`p`で示します。たとえば、kind `36`のthread内にあるkind `1111` commentへ返信する場合、root kindは`36`、parent kindは`1111`です。
 
 ```json
 [
@@ -31,78 +33,80 @@ Kind `3636` keeps the comment body in `.content` and uses NIP-22 root and parent
 ]
 ```
 
-NIP-22 addressable and external-identifier scopes (`A`/`a` and `I`/`i`) are also supported. For an addressable parent, a lowercase `a` reference may be accompanied by the current-version lowercase `e` reference. Ambiguous multiple primary scopes are rejected.
+NIP-22のaddressable scope（`A`/`a`）とexternal identifier scope（`I`/`i`）にも対応します。addressable parentでは、小文字の`a`参照に、現行versionの小文字`e`参照を併記できます。複数のprimary scopeが曖昧に併記されている場合は受け付けません。
 
-## Sending behavior
+## 送信時の形式
 
-| Target and composition | Event kind and topology |
+| 対象・投稿内容 | Event kindとtopology |
 | --- | --- |
-| Top-level post without an explicit CW | Kind `1` |
-| Top-level post with an explicit CW, setting off | Kind `1` with standard NIP-36 tags |
-| Top-level post with an explicit CW, Sensitive format on | Kind `36` with standard CW metadata |
-| Reply to a kind `1` post without Sensitive format | Kind `1` with the existing NIP-10 reply topology |
-| CW reply to a kind `1` post with Sensitive format on | Kind `3636` with NIP-22 topology |
-| Reply to kind `36`, `1111`, or `3636` without Sensitive format | Kind `1111` with NIP-22 topology |
-| CW reply to kind `36`, `1111`, or `3636` with Sensitive format on | Kind `3636` with NIP-22 topology |
-| Public chat | Kind `42` with standard NIP-36 behavior |
+| CWを付けないトップレベル投稿 | kind `1` |
+| CW付きトップレベル投稿、設定OFF | 標準NIP-36 tagを付けたkind `1` |
+| CW付きトップレベル投稿、Sensitive形式ON | 標準CW metadataを付けたkind `36` |
+| kind `1`へのCWなしの通常reply | 設定状態にかかわらず、既存のNIP-10 topologyによるkind `1` |
+| 設定OFFでkind `1`へCW付きreply | 標準CW tagを付けたkind `1`、既存のNIP-10 topology |
+| 設定ONでkind `1`へCW付きreply | NIP-22 topologyによるkind `3636` |
+| kind `36`、`1111`、`3636`へのCWなしの通常reply | NIP-22 topologyによるkind `1111` |
+| 設定OFFでkind `36`、`1111`、`3636`へCW付きreply | 標準CW tagを付けたkind `1111`、NIP-22 topology |
+| 設定ONでkind `36`、`1111`、`3636`へCW付きreply | NIP-22 topologyによるkind `3636` |
+| Public chatへの投稿 | 標準NIP-36形式のkind `42` |
 
-Sensitive event kinds are selected only when the user explicitly enables a CW. A `#nsfw` hashtag by itself does not select kind `36` or `3636`. The setting's existing CW/`nsfw` coupling behavior is preserved when the setting is off; with Sensitive format on, CW and the `nsfw` hashtag are independent.
+Sensitive event kindは、ユーザーがCWを明示した場合に限り選択されます。`#nsfw` hashtagだけではkind `36`や`3636`になりません。設定がOFFの場合は従来のCWと`nsfw`の連動動作を維持し、Sensitive形式がONの場合はCWと`nsfw` hashtagを独立して扱います。
 
-An ordinary reply to a kind `1` post keeps the existing NIP-10 behavior. A CW reply to a kind `1` post uses NIP-22 and preserves the known NIP-10 thread root while identifying the selected kind `1` event as the direct parent. Replies to NIP-22 comments preserve their validated root scope and update the direct parent to the selected comment. If the selected target's kind or required topology cannot be established, eHagaki does not silently fall back to a different reply format.
+kind `1`への通常replyは既存のNIP-10形式を維持します。kind `1`へのCW付きreplyでSensitive形式がONの場合はNIP-22を使い、判明しているNIP-10 thread rootを維持しつつ、選択されたkind `1` eventを直接のparentとして示します。NIP-22 commentへのreplyでは、検証済みのroot scopeを引き継ぎ、選択されたcommentを直接のparentにします。選択対象のkindや必要なtopologyを確認できない場合、別形式へ暗黙にfallbackして送信することはありません。
 
-## Kind 1 compatibility companion
+## kind 1の互換companion
 
-After publishing a kind `36` canonical event successfully, eHagaki best-effort publishes a kind `1` compatibility notice. No companion is created for kind `3636`.
+kind `36`のcanonical eventをRelayへ送信して成功した後、eHagakiはbest-effortでkind `1`の互換通知を送ります。kind `3636`にはcompanionを作りません。
 
-A companion has an empty `.content`, the same author, a standard `content-warning` metadata tag, and one `c` tag pointing to the canonical kind `36` event. The `c` tag is an eHagaki extension, not a standard NIP-36 tag. Its optional relay hint is only a discovery hint; it does not prove that the canonical event was fetched from that relay. The companion contains no body, hashtag, quote, or media tags. eHagaki currently creates it with the canonical event's timestamp and CW metadata.
+companionは`.content`が空で、canonicalと同じauthorを持ち、標準の`content-warning` metadata tagと、canonical kind `36` eventを参照する`c` tagを1つだけ含みます。`c` tagはeHagaki独自の拡張であり、標準NIP-36 tagではありません。任意のrelay hintは取得先のヒントに過ぎず、そのrelayからcanonical eventを取得した証拠にはなりません。companionには本文、hashtag、quote、media tagを複製しません。eHagakiは現在、canonical eventと同じtimestampおよびCW metadataを付けてcompanionを生成します。
 
-The compatibility notice is sent only after canonical publication succeeds. Companion signing or publication is best-effort: its failure does not undo the canonical post or repeat the canonical success transition. There is no durable retry queue.
+互換通知はcanonical eventのpublish成功後にだけ送ります。companionの署名またはpublishが失敗してもcanonical投稿を取り消さず、canonical投稿の成功処理を再実行しません。永続的な再試行queueはありません。
 
-### Receiving and resolving companions
+### companionの受信と解決
 
-eHagaki treats an event as a companion candidate only when it is a signed kind `1` event with empty content, exactly one `content-warning` tag, exactly one `c` tag, and no other tags. The CW tag has at most the standard reason element; the `c` tag contains a valid canonical event ID and may contain a relay hint.
+companion候補として扱うのは、署名済みkind `1` eventで`.content`が空、`content-warning` tagが1つ、`c` tagが1つだけあり、その他のtagを含まないものです。CW tagは標準reason要素までを持てます。`c` tagには有効なcanonical event IDがあり、relay hintを含む場合があります。
 
-A candidate links to a canonical event only when all of these checks pass:
+候補とcanonical eventのlinkは、次の条件を満たす場合に成立します。
 
-- the `c` reference ID matches the canonical event ID;
-- the target is kind `36`;
-- both events have valid event IDs and signatures; and
-- both events have the same author.
+- `c`の参照IDとcanonical event IDが一致する
+- 対象eventがkind `36`である
+- 両eventのevent IDとsignatureが有効である
+- 両eventのpubkeyが同じである
 
-The receiver does not require the canonical event to contain a CW tag, nor does it require the companion's reason or timestamp to match the canonical event. Those properties are not part of link validation.
+canonical eventにCW tagがあること、companionのreasonがcanonical側と一致すること、timestampが一致することは、link成立の条件ではありません。
 
-Once resolved, UI targets and author presentation use the canonical event. Relay evidence for that canonical target comes only from its `c` hint, a relay that actually returned the canonical event, or relay evidence attached to a local canonical record. The companion's source relay and pointer provenance are not treated as evidence that the canonical event was fetched there. A companion by itself is not displayed as a normal post when its canonical event is missing, deleted, or cannot be resolved.
+解決後のUI targetとauthor表示にはcanonical eventを使います。canonical eventのRelay取得先を探す際に使えるのは、companionの`c` tagにあるhint、canonical eventを実際に返したRelay、またはローカルcanonical record自身に付いたRelay情報だけです。companionの取得元Relayやpointerのprovenanceを、canonical eventを取得した証拠として扱いません。canonical eventが見つからない、無効、削除済み、または解決できない場合、companionだけを通常投稿として表示することはありません。
 
-## Receiving and previewing Content Warnings
+## Content Warningの受信とプレビュー
 
-The receiving rules do not depend on the Sensitive sending setting. For a `content-warning` tag, eHagaki uses its third element as the protected body when that element exists, including when it is the empty string. If there is no third element, eHagaki uses the event's `.content` as the protected body. Thus standard NIP-36 events continue to work, and old eHagaki body-in-tag events remain readable. Kinds `36` and `3636` are previewed as Sensitive based on kind even if their CW metadata is absent. The preview requires an explicit reveal action before rendering protected text and related media.
+受信時の解釈はSensitive送信設定に左右されません。`content-warning` tagに第3要素が存在する場合は、空文字列であってもその要素を保護された本文として扱います。第3要素が存在しない場合は、eventの`.content`を保護された本文として扱います。このため標準NIP-36 eventは従来どおり表示でき、以前のeHagaki独自tag内本文形式も読み取れます。kind `36`と`3636`はCW metadataがなくてもkindに基づいてSensitive previewとして扱います。previewでは、ユーザーが明示的に表示操作をするまで本文と関連mediaを描画しません。
 
-## Replies, quotes, and interactions
+## 返信・引用・その他のinteraction
 
-Replies and quotes that resolve to a companion use its validated canonical kind `36` event as the target. eHagaki does not require every `nostr:` URI in a body to be fetched; unresolved body references remain as authored and do not block posting. Existing third-party interactions that point to a companion are not rewritten or counted as canonical-event interactions.
+companionへの参照が解決されたreplyやquoteでは、検証済みのcanonical kind `36` eventをtargetとして使います。本文中のすべての`nostr:` URIを取得する必要はありません。解決できない本文中URIは入力どおり保持し、投稿を妨げません。第三者のinteractionがcompanionを直接参照している場合、その参照を書き換えたりcanonical eventへのinteractionとして数えたりしません。
 
-eHagaki does not provide a repost action. Under NIP-18, reposting an event other than kind `1` requires kind `16`; eHagaki does not convert kind `36` into a kind `6` repost.
+eHagakiにrepost機能はありません。NIP-18ではkind `1`以外のeventをrepostするときはkind `16`を使います。kind `36`をkind `6`へ変換することはありません。
 
-## Deletion lifecycle
+## 削除ライフサイクル
 
-Deletion targets the canonical kind `36` event. The NIP-09 kind `5` request references the canonical event ID with an `e` tag and identifies its kind with `k`=`36`. eHagaki does not maintain a persistent companion-ID alias, queue, or reverse `#c` lookup, so a matching kind `1` companion may remain on relays after canonical deletion.
+削除対象はcanonical kind `36` eventです。NIP-09のkind `5` requestでは、canonical event IDを`e` tagで参照し、kindを`k`=`36`で示します。eHagakiはcompanion IDの永続alias、queue、逆引き用`#c` lookupを持たないため、canonical削除後も対応するkind `1` companionがRelay上に残る場合があります。
 
-A remaining companion is a noncanonical, empty-body compatibility artifact. If its canonical event is deleted or unavailable, eHagaki does not promote the companion into a normal post or use it to restore the deleted canonical event.
+残存companionは、canonicalではない空本文の互換artifactです。canonical eventが削除済みまたは取得不能の場合、companionを通常投稿へ昇格したり、削除済みcanonical eventを復元するために使ったりしません。
 
-## Search and privacy
+## 検索とプライバシー
 
-Because the body is in `.content`, it can participate in ordinary full-text search on relays that index the event kind. NIP-50 does not guarantee that every relay indexes every event kind. The body is not encrypted: anyone who can read the raw event can read its `.content`.
+本文は`.content`にあるため、そのevent kindをindexするRelayでは通常の全文検索対象になり得ます。ただし、すべてのRelayがkind `36`や`3636`をindexすることをNIP-50は保証しません。本文は暗号化されません。raw eventを読める人は`.content`から本文を読めます。
 
-## Compatibility summary
+## 互換性の要点
 
-- The standard NIP-36 kind `1`/`42` format remains the default and remains readable.
-- The experimental Sensitive setting affects sending only; receiving does not depend on the setting.
-- New Sensitive sends use kind `36` or `3636` and keep the body in `.content`.
-- The legacy eHagaki format that stored the body in `content-warning[2]` remains readable but is not newly sent.
-- A kind `36` post may have an empty-body kind `1` compatibility notice; it is never a substitute for the canonical event.
-- Sensitive event bodies are plaintext, not encrypted or secret.
+- 標準NIP-36のkind `1`/`42`形式を既定として維持し、引き続き受信できます。
+- 実験的なSensitive設定が変えるのは送信形式だけです。受信は設定に依存しません。
+- 新規Sensitive送信はkind `36`または`3636`を使い、本文を`.content`に保持します。
+- `content-warning[2]`に本文を格納する旧eHagaki形式は受信互換として維持し、新規送信には使いません。
+- kind `36`投稿には空本文のkind `1`互換通知が付く場合がありますが、canonical eventの代わりにはなりません。
+- Sensitive eventの本文は平文であり、暗号化も秘匿もされません。
 
-## References
+## 参考仕様
 
 - [NIP-01: Basic protocol flow](https://github.com/nostr-protocol/nips/blob/master/01.md)
 - [NIP-09: Event deletion](https://github.com/nostr-protocol/nips/blob/master/09.md)
@@ -111,4 +115,4 @@ Because the body is in `.content`, it can participate in ordinary full-text sear
 - [NIP-22: Comments](https://github.com/nostr-protocol/nips/blob/master/22.md)
 - [NIP-28: Public chat](https://github.com/nostr-protocol/nips/blob/master/28.md)
 - [NIP-36: Sensitive content / Content Warning](https://github.com/nostr-protocol/nips/blob/master/36.md)
-- [NIP-50: 검색 / Search](https://github.com/nostr-protocol/nips/blob/master/50.md)
+- [NIP-50: Search Capability](https://github.com/nostr-protocol/nips/blob/master/50.md)

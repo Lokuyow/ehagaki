@@ -23,6 +23,13 @@ eHagaki（えはがき）は、画像・動画圧縮機能付きの投稿専用N
 - **埋め込み**: iframe、Full Web Component、Host-owned Composer Lite Web Componentの3方式を提供
 - **多言語対応**: 日本語・英語に対応（ブラウザ設定から自動判定）
 
+## ドキュメント
+
+- Sensitive Event形式の仕様: [docs/SENSITIVE_CONTENT.md](docs/SENSITIVE_CONTENT.md)
+- 埋め込み・統合ガイド: [docs/EMBEDDING.md](docs/EMBEDDING.md)
+- iframe詳細仕様: [docs/IFRAME_EMBEDDING.md](docs/IFRAME_EMBEDDING.md)
+- Web Component API詳細: [docs/WEB_COMPONENT.md](docs/WEB_COMPONENT.md)
+
 ## URLクエリ
 
 アクセス時にエディターへテキストを事前入力できます：
