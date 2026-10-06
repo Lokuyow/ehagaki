@@ -209,7 +209,7 @@ describe('エディター・URLペースト統合テスト', () => {
                 '<h2>続き</h2><p>本文</p><ul><li>項目</li></ul>';
             expect(invokePasteHandler(editor, createClipboardData('flattened clipboard text', html))).toBe(true);
             expect(getParagraphText(editor)).toBe(
-                '① A\n② B\n③ C\n\n〈性能〉\n① 高\n② 中\n③ 低\n\n〈価格〉\n① 高\n② 安\n③ 中\n\n【続き】\n\n本文\n\n• 項目',
+                '|  | A | B | C |\n| --- | --- | --- | --- |\n| 性能 | 高 | 中 | 低 |\n| 価格 | 高 | 安 | 中 |\n\n【続き】\n\n本文\n\n• 項目',
             );
             expect(editor.getHTML()).not.toMatch(/<(?:table|h[1-6]|ul|li)\b/i);
         });

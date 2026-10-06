@@ -2,6 +2,8 @@ import DOMPurify from 'dompurify';
 import { validateAndNormalizeUrl } from '../utils/editorUrlUtils';
 
 const HARD_LINE_BREAK = '\uE000';
+const ESCAPE_MARKER = '\uE001';
+const ESCAPED_ESCAPE_MARKER = '\uE002';
 
 type TextBlock = { type: 'text'; text: string };
 type CodeBlock = { type: 'code'; text: string };
@@ -123,12 +125,55 @@ function normalizeInlineWhitespace(value: string): string {
     return value.replace(/[\t\n\f\r \u00a0]+/g, ' ');
 }
 
+function escapeTextMarkers(text: string): string {
+    return text
+        .replaceAll(ESCAPE_MARKER, `${ESCAPE_MARKER}${ESCAPED_ESCAPE_MARKER}`)
+        .replaceAll(HARD_LINE_BREAK, ESCAPE_MARKER);
+}
+
 function readInlineNodes(nodes: Node[]): string {
     return nodes.map((node) => readInlineText(node)).join('');
 }
 
+function readTableCellNodes(nodes: Node[]): string {
+    const parts: string[] = [];
+    let inlineText = '';
+
+    const flushInline = () => {
+        if (inlineText.trim()) parts.push(inlineText.trim());
+        inlineText = '';
+    };
+
+    for (const node of nodes) {
+        if (node.nodeType === Node.TEXT_NODE) {
+            inlineText += escapeTextMarkers(node.textContent ?? '');
+            continue;
+        }
+        if (!(node instanceof Element)) continue;
+
+        const tag = node.tagName.toLowerCase();
+        if (IGNORED_TAGS.has(tag) || UNSUPPORTED_TAGS.has(tag)) continue;
+        if (tag === 'br') {
+            inlineText += ' ';
+            continue;
+        }
+
+        if (BLOCK_TAGS.has(tag) || tag === 'blockquote' || tag === 'li' || tag === 'tr') {
+            flushInline();
+            const blockText = readTableCellNodes(Array.from(node.childNodes));
+            if (blockText.trim()) parts.push(blockText.trim());
+            continue;
+        }
+
+        inlineText += readInlineText(node);
+    }
+
+    flushInline();
+    return parts.join(' ');
+}
+
 function tableCellText(cell: Element): string {
-    return decodeHardLineBreaks(readInlineNodes(Array.from(cell.childNodes)))
+    return decodeHardLineBreaks(readTableCellNodes(Array.from(cell.childNodes)))
         .replace(/[\t\n\f\r \u00a0]+/g, ' ')
         .trim();
 }
@@ -136,12 +181,6 @@ function tableCellText(cell: Element): string {
 function isHeaderRow(row: HTMLTableRowElement): boolean {
     return row.parentElement?.tagName.toLowerCase() === 'thead' ||
         (row.cells.length > 0 && Array.from(row.cells).every((cell) => cell.tagName.toLowerCase() === 'th'));
-}
-
-function numberedColumn(index: number, value: string): string {
-    const circledNumbers = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩',
-        '⑪', '⑫', '⑬', '⑭', '⑮', '⑯', '⑰', '⑱', '⑲', '⑳'];
-    return `${circledNumbers[index] ?? `${index + 1}.`} ${value}`;
 }
 
 function tableText(table: HTMLTableElement): string {
@@ -153,38 +192,14 @@ function tableText(table: HTMLTableElement): string {
 
     const caption = table.caption ? tableCellText(table.caption) : '';
     const header = isHeaderRow(rows[0].element) ? rows[0].cells : null;
-    const bodyRows = header ? rows.slice(1) : rows;
-    const comparisonTable = Boolean(
-        header &&
-        header.length >= 2 &&
-        tableCellText(header[0]) === '' &&
-        header.slice(1).every((cell) => tableCellText(cell) !== '') &&
-        bodyRows.length > 0 &&
-        bodyRows.every(({ cells }) => cells.length === header.length && tableCellText(cells[0]) !== ''),
+    const renderedRows = rows.map(({ cells }) =>
+        `| ${cells.map(tableCellText).map((cell) => cell.replaceAll('|', '\\|')).join(' | ')} |`,
     );
-
-    let content: string;
-    if (comparisonTable && header) {
-        const columns = header.slice(1).map((cell, index) => numberedColumn(index, tableCellText(cell)));
-        const dataRows = bodyRows.map(({ cells }) => {
-            const heading = `〈${tableCellText(cells[0])}〉`;
-            const values = cells.slice(1).map((cell, index) => numberedColumn(index, tableCellText(cell)));
-            return [heading, ...values].join('\n');
-        });
-        content = [columns.join('\n'), ...dataRows].join('\n\n');
-    } else if (header && bodyRows.every(({ cells }) => cells.length === header.length)) {
-        const headers = header.map((cell, index) => tableCellText(cell) || `列${index + 1}`);
-        content = bodyRows.length > 0
-            ? bodyRows.map(({ cells }) => cells
-                .map((cell, index) => `${headers[index]}: ${tableCellText(cell)}`)
-                .join(' / '))
-                .join('\n')
-            : headers.join(' / ');
-    } else {
-        content = rows.map(({ cells }, index) =>
-            `行${index + 1}: ${cells.map(tableCellText).join(' / ')}`,
-        ).join('\n');
+    if (header) {
+        const separator = `| ${header.map(() => '---').join(' | ')} |`;
+        renderedRows.splice(1, 0, separator);
     }
+    const content = renderedRows.join('\n');
 
     return caption ? `${caption}\n\n${content}` : content;
 }
@@ -401,27 +416,28 @@ function prefixQuoteLines(value: string): string {
 function decodeHardLineBreaks(value: string): string {
     let decoded = '';
     for (let index = 0; index < value.length; index += 1) {
+        if (value[index] === ESCAPE_MARKER) {
+            if (value[index + 1] === ESCAPED_ESCAPE_MARKER) {
+                decoded += ESCAPE_MARKER;
+                index += 1;
+            } else {
+                decoded += HARD_LINE_BREAK;
+            }
+            continue;
+        }
+
         if (value[index] !== HARD_LINE_BREAK) {
             decoded += value[index];
             continue;
         }
 
-        if (value[index + 1] === HARD_LINE_BREAK) {
-            decoded += HARD_LINE_BREAK;
-            index += 1;
-        } else {
-            decoded += '\n';
-        }
+        decoded += '\n';
     }
     return decoded;
 }
 
 function codeBlockBody(text: string): string {
-    let trailingHardLineBreaks = 0;
-    for (let index = text.length - 1; text[index] === HARD_LINE_BREAK; index -= 1) {
-        trailingHardLineBreaks += 1;
-    }
-    const hasLineBreak = text.endsWith('\n') || trailingHardLineBreaks % 2 === 1;
+    const hasLineBreak = text.endsWith('\n') || text.endsWith(HARD_LINE_BREAK);
     return hasLineBreak ? text : `${text}\n`;
 }
 

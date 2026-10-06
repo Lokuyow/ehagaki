@@ -243,8 +243,9 @@ test("pastes readable HTML as plain text and sends that content through Host-own
     const composer = page.locator("ehagaki-composer");
     const editor = composer.locator(".tiptap-editor");
     await editor.click();
-    await pasteHtml(editor, '<h3>見出し</h3><p>本文 <em>強調</em></p><ol start="2"><li>first</li><li>second</li></ol>', "■ 見出し 本文 強調");
+    await pasteHtml(editor, '<h3>見出し</h3><p>本文 <em>強調</em></p><ol start="2"><li>first</li><li>second</li></ol><table><thead><tr><th></th><th>① A</th><th>② B</th></tr></thead><tbody><tr><th>性能</th><td>高</td><td>低</td></tr></tbody></table>', "■ 見出し 本文 強調");
     await expect(editor).toContainText("■ 見出し");
+    await expect(editor).toContainText("|  | ① A | ② B |");
     await expect(editor).toContainText("2. first");
     await expect(editor).toContainText("3. second");
     await expect(editor.locator("h1, h2, h3, em, ol, li")).toHaveCount(0);
@@ -258,7 +259,7 @@ test("pastes readable HTML as plain text and sends that content through Host-own
     await composer.locator("button.post-button").click();
     await expect.poll(() => page.evaluate(() => (window as any).__litePasteState.outputs.length)).toBe(1);
     expect(await page.evaluate(() => (window as any).__litePasteState.outputs[0].content))
-        .toBe("■ 見出し\n\n本文 強調\n\n2. first\n3. second");
+        .toBe("■ 見出し\n\n本文 強調\n\n2. first\n3. second\n\n|  | ① A | ② B |\n| --- | --- | --- |\n| 性能 | 高 | 低 |");
 });
 
 test("controls the Host-owned Lite editor focus through the public API without changing content or caret", async ({ page }) => {
