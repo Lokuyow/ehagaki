@@ -1,10 +1,8 @@
 # Sensitive Event形式（実験的仕様）
 
-本書は、kind `36` / `3636`を用いた実験的なSensitive Event相互運用形式を定義します。正式なNIPではなく、NIP-36を置き換えるものでもありません。本文は平文で`.content`に格納されます。
+本書は、kind `36` / `3636`を用いた実験的なSensitive Event形式を定義します。正式なNIPではなく、NIP-36を置き換えるものではありません。本文は平文で`.content`に格納されます。
 
-## 規範語
-
-`MUST`、`MUST NOT`、`SHOULD`、`SHOULD NOT`、`MAY`はRFC 2119 / RFC 8174に沿う規範語です。本書では大文字表記の場合に限り、ここで定める相互運用要件を示します。
+`MUST`、`MUST NOT`、`SHOULD`、`SHOULD NOT`、`MAY`はRFC 2119 / RFC 8174の意味で使用します。
 
 ## Event kinds
 
@@ -16,33 +14,27 @@
 | `3636` | Sensitive Comment |
 | `42` | NIP-28 Public Chat Message |
 
-kind `36`はNIP-01のregular kindの範囲`4 <= kind < 45`、kind `3636`は`1000 <= kind < 10000`に含まれます。この範囲はNIP-01が定めるRelayの保存上のconventionです。Relayが未知kindを必ず受理・保存するとは限りません。
+kind `36` / `3636`はいずれもNIP-01のregular eventです（kind `36`: `4 <= kind < 45`、kind `3636`: `1000 <= kind < 10000`）。ただし、各Relayによる未知kindの受理、保存、indexは保証されません。
 
-## Sensitive eventの共通ルール
+## Events
 
-receiverは、kind `36` / `3636`を`content-warning` tagの有無にかかわらずSensitiveとして扱わなければなりません（MUST）。
+receiverはkind `36` / `3636`をCW tagの有無にかかわらずSensitiveとして扱わなければなりません（MUST）。本文は`.content`に格納しなければならず（MUST）、独自tagへ移してはなりません（MUST NOT）。
 
-本文は`.content`に格納しなければなりません（MUST）。本文を独自tagへ移してはなりません（MUST NOT）。
-
-CW metadataを付ける場合は、標準NIP-36形式を使わなければなりません（MUST）。
-
-Sensitiveなtop-level Text Noteはkind `36`、Sensitive Commentはkind `3636`で送信しなければなりません（MUST）。kind `3636`にはNIP-22のtopologyを使います。
+CW metadataを付ける場合は標準NIP-36形式を使わなければなりません（MUST）。reasonがない場合:
 
 ```json
 ["content-warning"]
 ```
 
+reasonがある場合:
+
 ```json
 ["content-warning", "reason"]
 ```
 
-新規senderは、旧形式`["content-warning", "reason", "body"]`を送信してはなりません（MUST NOT）。受信互換については「eHagaki reference implementation」を参照してください。
+Sensitive Text Noteにはkind `36`、Sensitive Commentにはkind `3636`を使わなければなりません（MUST）。kind `3636`はNIP-22 topologyを使用します。この仕様はPublic Chat専用kindを定義しません。CW付きkind `42`はNIP-36を使わなければなりません（MUST）。
 
-### Public Chat
-
-CW付きPublic Chatにはkind `42`と標準NIP-36形式を使わなければなりません（MUST）。このextensionではPublic Chat専用のSensitive kindを定義しません。
-
-## Reply mapping / NIP-22
+## Replies
 
 | Parent | Normal reply | Sensitive reply |
 | --- | --- | --- |
@@ -51,28 +43,13 @@ CW付きPublic Chatにはkind `42`と標準NIP-36形式を使わなければな�
 | kind `1111` | kind `1111` / NIP-22 | kind `3636` / NIP-22 |
 | kind `3636` | kind `1111` / NIP-22 | kind `3636` / NIP-22 |
 
-Sensitive replyを送信するclientは、このmappingに従わなければなりません（MUST）。kind `1`へのnormal replyは、CWの有無にかかわらずNIP-10を維持します。
+Sensitive reply senderはこのmappingに従わなければなりません（MUST）。kind `1`へのnormal replyはNIP-10を維持します。NIP-10 thread内のkind `1`へSensitive replyする場合、既存rootをNIP-22 rootとして維持し、選択eventをdirect parentにしなければなりません（MUST）。必要なtopologyを確定できない場合、kind `1`へ暗黙にfallbackしてはならず（MUST NOT）、参照情報を再取得するか送信を中止すべきです（SHOULD）。
 
-既存のNIP-10 thread内にあるkind `1`へSensitive replyする場合、senderは既存rootをNIP-22 rootとして維持しなければなりません（MUST）。選択したkind `1` eventをdirect parentにしなければなりません（MUST）。必要なtopologyを確定できない場合、kind `1`へ暗黙にfallbackしてはなりません（MUST NOT）。senderは参照情報を再取得するか、送信を中止すべきです（SHOULD）。
-
-NIP-22では、rootを`E` / `A` / `I`で示し、`K`でkindを指定します。authorが分かる場合は`P`を含めます。direct parentは`e` / `a` / `i`で示し、`k`でkindを指定します。authorが分かる場合は`p`を含めます。有効なaddressable parentを示すlowercase `a`とcurrent-version `e`の併記を、receiverは複数のprimary parentとして拒否してはなりません（MUST NOT）。
-
-例（kind `36` root、kind `1111` direct parent）:
-
-```json
-[
-  ["E", "<root-event-id>", "<relay-hint>", "<root-author>"],
-  ["K", "36"],
-  ["P", "<root-author>"],
-  ["e", "<parent-event-id>", "<relay-hint>", "<parent-author>"],
-  ["k", "1111"],
-  ["p", "<parent-author>"]
-]
-```
+addressable parentの有効なlowercase `a` + current-version `e`併記を、複数primary parentとして拒否してはなりません（MUST NOT）。
 
 ## Compatibility companion
 
-top-level kind `36`のpublisherは、任意のkind `1` compatibility companionを送信してもよい（MAY）。kind `3636`にはcompanionを作成してはなりません（MUST NOT）。
+top-level kind `36`のpublisherはkind `1` companionを送信してもよく（MAY）、kind `3636`には作成してはなりません（MUST NOT）。companionはkind `1`、空の`.content`、canonicalと同一pubkey、標準形の`content-warning`を1つ、`c`を1つだけ持ち、他のtagを含めてはなりません（MUST）。canonical本文、hashtag、quote、media metadata等を複製してはなりません（MUST NOT）。
 
 ```json
 {
@@ -85,82 +62,27 @@ top-level kind `36`のpublisherは、任意のkind `1` compatibility companion�
 }
 ```
 
-companionはkind `1`、空の`.content`、canonicalと同一のpubkey、標準形の`content-warning` tagを1つ、`c` tagを1つだけ持ち、その他のtagを含めてはなりません（MUST）。canonical本文、hashtag、quote、media metadata等を複製してはなりません（MUST NOT）。CW reasonは省略できます。
+`c` tag keyはNIP-34等でも別の意味で使われます。このcompanion shapeではcanonical kind `36` event IDを示し、receiverは`c` tagだけでcompanionと判定してはなりません（MUST NOT）。
 
-`c` tag keyはこのextension専用ではなく、NIP-34等でも別の意味で使われます。このextensionでは、上記のshapeを持つkind `1` companionの`c`値をcanonical kind `36` event IDへの参照として定義します。receiverは`c` tagだけを根拠にcompanionと判定してはなりません（MUST NOT）。
+publisherはcanonical kind `36`を先に送信し、成功後にcompanionを送るべきです（SHOULD）。companionの送信失敗でcanonicalを失敗扱いにしてはなりません（MUST NOT）。canonicalにCW metadataがある場合、両eventで同じtimestamp / CW metadataを使うべきです（SHOULD）。canonicalにCW metadataがない場合、companionを省略してもよい（MAY）。
 
-```json
-["c", "<canonical-kind36-event-id>"]
-```
+candidateはkind `1`、空の`.content`、標準形の`content-warning`を1つ、`c`を1つだけ持ち、他のtagを含まないeventです。receiverはcompanionとcanonicalのevent ID / signature、`c` referenceとcanonical IDの一致、canonical kind `36`、両eventの同一pubkeyを検証しなければなりません（MUST）。timestamp、canonical側CW metadata、reasonの一致を検証条件にしてはなりません（MUST NOT）。
 
-```json
-["c", "<canonical-kind36-event-id>", "wss://relay.example"]
-```
+解決後の新しいreply、quote、reaction、deletion、event referenceはcanonicalを対象にすべきです（SHOULD）。既存のthird-party interactionをcanonical向けに書き換えてはならず（MUST NOT）、canonicalが見つからない、無効、削除済み、または取得できない場合、companionを通常のkind `1`として表示してはなりません（MUST NOT）。
 
-companionを使うpublisherは、canonical kind `36`を先にpublishし、その成功後にcompanionを送信すべきです（SHOULD）。companionの送信失敗を理由にcanonicalの成功を取り消したり、失敗扱いにしたりしてはなりません（MUST NOT）。canonicalにCW metadataがある場合、publisherはcanonicalとcompanionで同じtimestamp / CW metadataを使うべきです（SHOULD）。CW metadataがない場合、publisherはcompanionを省略してもかまいません（MAY）。receiverは、timestampの一致、canonical側のCW tagの有無、reasonの一致をlink validationの条件にしてはなりません（MUST NOT）。
+canonicalの取得には`c` relay hintを利用してもよく（MAY）、Relay evidenceにはcanonicalを実際に返したRelayまたはcanonical local record自身の証跡を利用してもよい（MAY）。companionを返しただけのRelayをcanonical provenanceとして扱ってはなりません（MUST NOT）。
 
-## Companion validation / canonical identity
+## Other interactions
 
-candidateはkind `1`で、空の`.content`、標準形の`content-warning` tagを1つ、`c` tagを1つだけ持ち、その他のtagを含まないものです。candidateをcanonicalへ解決するreceiverは、次の項目を検証しなければなりません（MUST）。
+本文は`.content`に格納されます。Relayがkind `36` / `3636`を保存・indexすればNIP-50検索の対象になりますが、clientはNIP-50対応Relayが両kindを必ずindexすると仮定してはなりません（MUST NOT）。
 
-- companionのevent IDとsignatureが有効であること。
-- `c` reference IDとcanonical event IDが一致すること。
-- canonicalのkindが`36`であり、event IDとsignatureが有効であること。
-- canonicalとcompanionのpubkeyが同一であること。
+削除にはNIP-09 kind `5`を使い、canonical IDを`e`、実際のkindを`k`で参照すべきです（SHOULD）。論理上の投稿はcanonicalを対象に削除すべきです（SHOULD）。残存companionを通常noteとして表示してはなりません（MUST NOT）。
 
-canonical側のCW tagの有無、reasonの一致、timestampの一致は、link validationの必須条件ではありません。
-
-検証済みcompanionをcanonicalへ解決したclientは、新たなreply、quote、reaction、deletion等のevent-targeted interactionでcanonicalを対象にすべきです（SHOULD）。既存のthird-party interactionがcompanion IDを参照している場合、それをcanonical向けに自動変換してはなりません（MUST NOT）。canonicalが見つからない、無効、削除済み、または取得できない場合、companionを通常のkind `1` noteへ昇格・表示してはなりません（MUST NOT）。
-
-## Relay provenance / search
-
-receiverは、次の情報をcanonicalのrelay hintまたはRelay evidenceとして利用してもよい（MAY）。
-
-- `c` tagに含まれるrelay hint。
-- canonicalを実際に返したRelay。
-- canonicalのlocal record自身が保持するRelay evidence。
-
-companionを返しただけのRelayや、companion pointer / sourceだけに由来する情報をcanonicalのprovenanceとして扱ってはなりません（MUST NOT）。relay hintは取得成功や真正性を証明するものではありません。
-
-本文は`.content`に格納されます。NIP-50では、Relayは`.content`を検索対象とすべきとされ、他のfieldを検索対象にしてもよいとされています。Relayがkind `36` / `3636`を保存・indexしていれば、本文は通常の検索対象になります。ただし、NIP-50対応Relayが両kindをindexする保証はありません。clientは必ず検索できると仮定してはなりません（MUST NOT）。kind whitelist等はRelayの実装方針に依存します。
-
-## Deletion / repost
-
-削除にはNIP-09 kind `5`を使います。senderはcanonical event IDを`e`、実際のkindを`k`で示すべきです（SHOULD）。論理上の投稿を削除する場合はcanonicalを対象にすべきです（SHOULD）。Relayに残ったcompanionから削除済みcanonicalを復元したり、companionを通常noteとして表示したりしてはなりません（MUST NOT）。
-
-kind `36` / `3636`をrepostする場合、NIP-18 generic repost kind `16`を使わなければなりません（MUST）。kind `6`として扱ってはなりません（MUST NOT）。
+kind `36` / `3636`のrepostにはNIP-18 kind `16`を使わなければならず（MUST）、kind `6`として扱ってはなりません（MUST NOT）。
 
 ## Security
 
-`.content`は平文です。SensitiveはUI上の表示制御であり、暗号化や秘匿を行うものではありません。raw eventを取得できれば本文を読めます。`c` tagだけではcanonicalの真正性を証明できません。event ID、signature、同一pubkeyを検証してください。relay hintは信頼の根拠ではありません。
-
-Sensitiveに対応するclientは、ユーザーが表示を許可するまでkind `36` / `3636`の本文と関連mediaを通常表示すべきではありません（SHOULD NOT）。
-
-## 実装レベル
-
-### Receive-only
-
-- kind `36` / `3636`を受信し、本文を`.content`から読む。
-- kindに基づいてSensitive表示し、任意のNIP-36 reasonを扱う。
-
-### Interaction
-
-Receive-onlyに加えて、NIP-22、kind `1111` / `3636`のreply選択、companion解決、canonicalを対象にしたactionに対応します。
-
-### Publishing
-
-kind `36` / `3636`、標準NIP-36 metadata、任意のkind `1` companionを送信します。
-
-## eHagaki reference implementation
-
-以下はeHagaki固有の挙動であり、上記のprotocol要件ではありません。
-
-- Sensitive形式はopt-inで、標準NIP-36形式が既定です。
-- legacy `content-warning[2]`本文形式は受信互換のみで、新規送信には使いません。
-- top-level kind `36`の成功後にcompanionをbest-effortで送信します。永続的なretry queueはありません。
-- kind `3636`にはcompanionを付けません。
-- `#nsfw`だけではSensitive kindへ切り替えません。
-- 受信挙動は設定に依存せず、repost UIはありません。
+`.content`は平文です。SensitiveはUI上の表示制御であり、暗号化ではありません。`c` tagだけではcanonicalの真正性を証明できないため、event ID、signature、同一pubkeyを検証します。relay hintは信頼の根拠ではありません。Sensitive対応clientは、ユーザーが表示を許可するまで本文と関連mediaを通常表示すべきではありません（SHOULD NOT）。
 
 ## References
 
