@@ -4,6 +4,7 @@ import { validateAndNormalizeUrl } from '../utils/editorUrlUtils';
 const HARD_LINE_BREAK = '\uE000';
 
 type TextBlock = { type: 'text'; text: string };
+type CodeBlock = { type: 'code'; text: string };
 type RuleBlock = { type: 'rule' };
 type QuoteBlock = { type: 'quote'; blocks: ClipboardBlock[] };
 type ListBlock = {
@@ -13,7 +14,7 @@ type ListBlock = {
     step: 1 | -1;
     items: Array<{ blocks: ClipboardBlock[]; value: number | null }>;
 };
-type ClipboardBlock = TextBlock | RuleBlock | QuoteBlock | ListBlock;
+type ClipboardBlock = TextBlock | CodeBlock | RuleBlock | QuoteBlock | ListBlock;
 
 const IGNORED_TAGS = new Set([
     'base',
@@ -40,7 +41,6 @@ const UNSUPPORTED_TAGS = new Set([
     'picture',
     'select',
     'svg',
-    'table',
     'textarea',
     'video',
 ]);
@@ -73,6 +73,7 @@ const BLOCK_TAGS = new Set([
     'pre',
     'section',
     'ul',
+    'table',
 ]);
 
 function hasUnsupportedContent(root: ParentNode): boolean {
@@ -120,6 +121,72 @@ function sameDestination(displayText: string, href: string): boolean {
 
 function normalizeInlineWhitespace(value: string): string {
     return value.replace(/[\t\n\f\r \u00a0]+/g, ' ');
+}
+
+function readInlineNodes(nodes: Node[]): string {
+    return nodes.map((node) => readInlineText(node)).join('');
+}
+
+function tableCellText(cell: Element): string {
+    return decodeHardLineBreaks(readInlineNodes(Array.from(cell.childNodes)))
+        .replace(/[\t\n\f\r \u00a0]+/g, ' ')
+        .trim();
+}
+
+function isHeaderRow(row: HTMLTableRowElement): boolean {
+    return row.parentElement?.tagName.toLowerCase() === 'thead' ||
+        (row.cells.length > 0 && Array.from(row.cells).every((cell) => cell.tagName.toLowerCase() === 'th'));
+}
+
+function numberedColumn(index: number, value: string): string {
+    const circledNumbers = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩',
+        '⑪', '⑫', '⑬', '⑭', '⑮', '⑯', '⑰', '⑱', '⑲', '⑳'];
+    return `${circledNumbers[index] ?? `${index + 1}.`} ${value}`;
+}
+
+function tableText(table: HTMLTableElement): string {
+    const rows = Array.from(table.querySelectorAll('tr'))
+        .filter((row) => row.closest('table') === table)
+        .map((row) => ({ element: row, cells: Array.from(row.cells) }))
+        .filter(({ cells }) => cells.length > 0);
+    if (rows.length === 0) return '';
+
+    const caption = table.caption ? tableCellText(table.caption) : '';
+    const header = isHeaderRow(rows[0].element) ? rows[0].cells : null;
+    const bodyRows = header ? rows.slice(1) : rows;
+    const comparisonTable = Boolean(
+        header &&
+        header.length >= 2 &&
+        tableCellText(header[0]) === '' &&
+        header.slice(1).every((cell) => tableCellText(cell) !== '') &&
+        bodyRows.length > 0 &&
+        bodyRows.every(({ cells }) => cells.length === header.length && tableCellText(cells[0]) !== ''),
+    );
+
+    let content: string;
+    if (comparisonTable && header) {
+        const columns = header.slice(1).map((cell, index) => numberedColumn(index, tableCellText(cell)));
+        const dataRows = bodyRows.map(({ cells }) => {
+            const heading = `〈${tableCellText(cells[0])}〉`;
+            const values = cells.slice(1).map((cell, index) => numberedColumn(index, tableCellText(cell)));
+            return [heading, ...values].join('\n');
+        });
+        content = [columns.join('\n'), ...dataRows].join('\n\n');
+    } else if (header && bodyRows.every(({ cells }) => cells.length === header.length)) {
+        const headers = header.map((cell, index) => tableCellText(cell) || `列${index + 1}`);
+        content = bodyRows.length > 0
+            ? bodyRows.map(({ cells }) => cells
+                .map((cell, index) => `${headers[index]}: ${tableCellText(cell)}`)
+                .join(' / '))
+                .join('\n')
+            : headers.join(' / ');
+    } else {
+        content = rows.map(({ cells }, index) =>
+            `行${index + 1}: ${cells.map(tableCellText).join(' / ')}`,
+        ).join('\n');
+    }
+
+    return caption ? `${caption}\n\n${content}` : content;
 }
 
 function readInlineText(node: Node, inPre = false): string {
@@ -222,15 +289,36 @@ function parseFlow(nodes: Node[]): ClipboardBlock[] {
             continue;
         }
 
+        if (/^h[1-6]$/.test(tag)) {
+            flushInline();
+            const heading = normalizeInlineWhitespace(
+                decodeHardLineBreaks(readInlineNodes(Array.from(node.childNodes))).replace(/\n/g, ' '),
+            ).trim();
+            if (heading) {
+                blocks.push({
+                    type: 'text',
+                    text: tag === 'h1' || tag === 'h2' ? `【${heading}】` : `■ ${heading}`,
+                });
+            }
+            continue;
+        }
+
         if (tag === 'hr') {
             flushInline();
             blocks.push({ type: 'rule' });
             continue;
         }
 
+        if (tag === 'table') {
+            flushInline();
+            const text = tableText(node as HTMLTableElement);
+            if (text) blocks.push({ type: 'text', text });
+            continue;
+        }
+
         if (tag === 'pre') {
             flushInline();
-            blocks.push({ type: 'text', text: readInlineText(node, true) });
+            blocks.push({ type: 'code', text: readInlineText(node, true) });
             continue;
         }
 
@@ -265,6 +353,11 @@ function renderListItem(
                     `${indentation}${index === 0 && !output ? marker : ' '.repeat(marker.length)}${line}`,
                 )
                 .join('\n');
+        } else if (block.type === 'code') {
+            const continuationIndent = `${indentation}${' '.repeat(marker.length)}`;
+            rendered = `${indentation}${output ? ' '.repeat(marker.length) : marker}［コード］\n` +
+                `${block.text}\n` +
+                `${continuationIndent}［/コード］`;
         } else if (block.type === 'list') {
             rendered = renderList(block, depth + 1);
         } else if (block.type === 'quote') {
@@ -333,6 +426,8 @@ function renderBlocks(blocks: ClipboardBlock[], listDepth = 0): string {
     for (const block of blocks) {
         if (block.type === 'text') {
             rendered.push(block.text);
+        } else if (block.type === 'code') {
+            rendered.push(`［コード］\n${block.text}\n［/コード］`);
         } else if (block.type === 'rule') {
             rendered.push('');
         } else if (block.type === 'quote') {

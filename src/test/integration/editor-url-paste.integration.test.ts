@@ -198,8 +198,31 @@ describe('エディター・URLペースト統合テスト', () => {
         it('plain textよりHTMLのheadingとparagraph structureを優先し、空行で分けること', () => {
             const html = '<h2>見出し</h2><p>本文</p>';
             expect(invokePasteHandler(editor, createClipboardData('見出し本文', html))).toBe(true);
-            expect(getParagraphText(editor)).toBe('見出し\n\n本文');
+            expect(getParagraphText(editor)).toBe('【見出し】\n\n本文');
             expect(editor.getHTML()).not.toContain('<h2');
+        });
+
+        it('比較tableの後ろに続くheading・paragraph・listも変換すること', () => {
+            const html = '<table><thead><tr><th></th><th>A</th><th>B</th><th>C</th></tr></thead>' +
+                '<tbody><tr><th>性能</th><td>高</td><td>中</td><td>低</td></tr>' +
+                '<tr><th>価格</th><td>高</td><td>安</td><td>中</td></tr></tbody></table>' +
+                '<h2>続き</h2><p>本文</p><ul><li>項目</li></ul>';
+            expect(invokePasteHandler(editor, createClipboardData('flattened clipboard text', html))).toBe(true);
+            expect(getParagraphText(editor)).toBe(
+                '① A\n② B\n③ C\n\n〈性能〉\n① 高\n② 中\n③ 低\n\n〈価格〉\n① 高\n② 安\n③ 中\n\n【続き】\n\n本文\n\n• 項目',
+            );
+            expect(editor.getHTML()).not.toMatch(/<(?:table|h[1-6]|ul|li)\b/i);
+        });
+
+        it('h3 headingを黒四角のplain textへ変換すること', () => {
+            expect(invokePasteHandler(editor, createClipboardData('flattened heading', '<h3>詳細</h3>'))).toBe(true);
+            expect(getParagraphText(editor)).toBe('■ 詳細');
+        });
+
+        it('preの空白と改行をコード境界付きで保持すること', () => {
+            const code = '  const value = 1;\n\n\treturn value;  ';
+            expect(invokePasteHandler(editor, createClipboardData('flattened code', `<pre><code>${code}</code></pre>`))).toBe(true);
+            expect(getParagraphText(editor)).toBe(`［コード］\n${code}\n［/コード］`);
         });
 
         it.each([
@@ -233,13 +256,13 @@ describe('エディター・URLペースト統合テスト', () => {
         });
 
         it('明示plain pasteはMarkdown/code風文字列をそのまま保つこと', () => {
-            const plain = '**foo**\n#include\n- example\nconst x = 1;';
+            const plain = '**foo**\n#include\n- example\nconst x = 1;\n【literal】\n■ literal\n［コード］';
             expect(invokePasteHandler(editor, createClipboardData(plain, '<h1>Rich heading</h1>'), true)).toBe(true);
             expect(getParagraphText(editor)).toBe(plain);
         });
 
         it('text/plainだけのMarkdown/code風文字列も記号を変更しないこと', () => {
-            const plain = '**foo**\n#include\n- example\nconst x = 1;';
+            const plain = '**foo**\n#include\n- example\nconst x = 1;\n【literal】\n■ literal\n［コード］';
             expect(invokePasteHandler(editor, createClipboardData(plain))).toBe(true);
             expect(getParagraphText(editor)).toBe(plain);
         });

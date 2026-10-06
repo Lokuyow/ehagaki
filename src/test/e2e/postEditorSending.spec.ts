@@ -70,7 +70,7 @@ test('pastes readable HTML as plain text and submits the plain content', async (
     await editor.click();
 
     await pasteHtml(editor, '<h2>Summary</h2><p>Read <strong>this</strong> and <a href="https://example.com/">docs</a></p><ul><li>first</li><li>second</li></ul>', 'Summary Read this and docs');
-    await expect(editor).toContainText('Summary');
+    await expect(editor).toContainText('【Summary】');
     await expect(editor).toContainText('• first');
     await expect(editor).toContainText('• second');
     await expect(editor.locator('h1, h2, h3, strong, ul, ol, li')).toHaveCount(0);
@@ -97,7 +97,7 @@ test('pastes readable HTML as plain text and submits the plain content', async (
     await expect(page.getByTestId('sending-state')).toHaveText('sending');
     await expect.poll(() => page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(1);
     expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions[0].content))
-        .toBe('Summary\n\nRead this and docs (https://example.com/)\n\n• first\n• second');
+        .toBe('【Summary】\n\nRead this and docs (https://example.com/)\n\n• first\n• second');
 });
 
 test('long-press submits once without losing focus and freezes the document until success', async ({ page, browserName, isMobile }) => {
