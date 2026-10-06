@@ -126,7 +126,10 @@
   },
   "postContent": {
     "contentWarningTitle": "コンテンツ警告",
-    "showContentWarningBody": "本文を表示"
+    "showContentWarningBody": "本文を表示",
+    "sensitivePayloadLoading": "本文を取得しています…",
+    "sensitivePayloadUnavailable": "本文を取得できませんでした。再試行してください。",
+    "retrySensitivePayload": "再試行"
   },
   "postHistory": {
     "open": "投稿履歴を開く",
@@ -385,7 +388,7 @@
     "client_tag_label": "投稿にクライアント名をつける\n(Client tag)",
     "fail_closed_content_warning_label": "Sensitive形式で送信",
     "fail_closed_content_warning_info_label": "CW設定の詳細",
-    "fail_closed_content_warning_info": "CW付きの投稿をSensitive Text Note（kind 36）、CW付きの返信をSensitive Comment（kind 3636）として送信する実験的な形式です。未対応のクライアントでは投稿が表示されない、または正しく解釈されない場合があります。Sensitive Text Noteと一緒に送る互換用のkind 1通知には本文を含めません。本文は暗号化されず、eventのcontentから取得できます。パブリックチャットでは従来のCW形式を使います。",
+    "fail_closed_content_warning_info": "実験的な送信形式です。CW付きの投稿は元のkindを保ち、本文を別のkind 36 eventへ分けて送ります。対応していないクライアントでは投稿が表示されない、または正しく解釈されない場合があります。Relayがkind 36を検索対象に含めない場合、CW本文はNostrの全文検索で見つからないことがあります。本文は暗号化されず、kind 36 eventのcontentから取得できます。",
     "fail_closed_content_warning_shortcut_label": "CW送信形式",
     "footer_shortcut_content_warning_on": "CW: Sensitive形式",
     "footer_shortcut_content_warning_off": "CW: 標準形式",

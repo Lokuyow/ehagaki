@@ -69,7 +69,7 @@ function compactItems(items: PostHistoryDirectReplyRepairItem[]): PostHistoryDir
             !item.parentEventId
             || !item.event?.id
             || !item.event.pubkey
-            || ![1, 42, 1111, 3636].includes(item.event.kind)
+            || ![1, 42, 1111].includes(item.event.kind)
         ) {
             continue;
         }

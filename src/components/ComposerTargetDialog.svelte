@@ -70,6 +70,7 @@
     import { calculateContextMenuPosition } from "../lib/utils/appUtils";
     import { sanitizePlainText } from "../lib/utils/domSanitizer";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
+    import { createSensitivePayloadBodyLoader } from "../lib/sensitiveContentPayloadReader";
 
     type DialogPhase =
         | "empty"
@@ -161,7 +162,7 @@
         target
             ? getComposerTargetActions(
                   target.event.kind,
-                  [1, 36, 1111, 3636].includes(target.event.kind) || !!target.channelQuery,
+                  [1, 1111].includes(target.event.kind) || !!target.channelQuery,
               )
             : [],
     );
@@ -217,7 +218,7 @@
         getRxNostr: () => rxNostr,
     });
     let reactionTargets = $derived.by(() =>
-        target && [1, 36, 42, 1111, 3636].includes(target.event.kind)
+        target && [1, 42, 1111].includes(target.event.kind)
             ? [{ eventId: target.event.id, relayHints: [...target.relayHints] }]
             : [],
     );
@@ -231,7 +232,7 @@
         source: "composer-target-display",
     });
     let targetReactionReadModel = $derived.by(() =>
-        target && [1, 36, 42, 1111, 3636].includes(target.event.kind)
+        target && [1, 42, 1111].includes(target.event.kind)
             ? relatedReactions.getReadModel(target.event.id)
             : null,
     );
@@ -241,7 +242,7 @@
     let previousReactionTargetId: string | null = null;
     $effect(() => {
         const eventId = show && target
-            && [1, 36, 42, 1111, 3636].includes(target.event.kind)
+            && [1, 42, 1111].includes(target.event.kind)
             ? target.event.id
             : null;
         if (eventId === previousReactionTargetId) return;
@@ -901,6 +902,12 @@
                     </div>
                     <PostContentPreview
                     model={previewRenderModel}
+                    loadSensitiveBody={createSensitivePayloadBodyLoader({
+                        structure: previewEvent,
+                        relayHints: target?.relayHints,
+                        rxNostr,
+                        relayConfig,
+                    })}
                     contentWarningEventId={previewEvent.id}
                     density="dialog"
                     emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
@@ -1086,7 +1093,7 @@
             </section>
         {/if}
 
-        {#if target && ![1, 36, 40, 42, 1111, 3636].includes(target.event.kind)}
+        {#if target && ![1, 40, 42, 1111].includes(target.event.kind)}
             <p class="unsupported-kind">
                 {$_("composerTarget.unsupportedKind")}
             </p>

@@ -2471,7 +2471,7 @@ export function usePostHistoryThreadGraph({
                                 reactionAuthorPubkeys.add(record.authorPubkey);
                                 rememberProfileRelayUrls(record.authorPubkey, anchorNode.relayUrls);
                             }
-                        } else if ([1, 42, 1111, 3636].includes(record.kind)) {
+                        } else if ([1, 42, 1111].includes(record.kind)) {
                             if (!isValidPostHistoryCachedDirectReply({
                                 parentNode: anchorNode,
                                 record,
@@ -2844,7 +2844,7 @@ export function usePostHistoryThreadGraph({
         event: NostrEvent | null | undefined,
         posts: PostHistoryRecord[] = [],
     ): Promise<boolean> {
-        if (!event?.id || ![1, 42, 1111, 3636].includes(event.kind)) {
+        if (!event?.id || ![1, 42, 1111].includes(event.kind)) {
             return true;
         }
 

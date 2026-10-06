@@ -22,6 +22,8 @@ export interface PostContentRenderModel {
     hasRenderableText: boolean;
     hasRenderableMedia: boolean;
     contentWarning: { reason: string } | null;
+    sourceTags: string[][];
+    kind?: number;
 }
 
 export function resolveEventContentBody(
@@ -85,9 +87,22 @@ export function buildPostContentRenderModel(
         ),
         hasRenderableMedia: mediaLayout.items.length > 0,
         contentWarning: contentWarningTag
-            || input.kind === 36
-            || input.kind === 3636
             ? { reason: contentWarningTag?.[1] ?? "" }
             : null,
+        sourceTags: input.tags.map((tag) => [...tag]),
+        kind: input.kind,
     };
+}
+
+export function buildPostContentRenderModelWithBody(
+    model: PostContentRenderModel,
+    body: string,
+): PostContentRenderModel {
+    return buildPostContentRenderModel({
+        kind: model.kind,
+        sourceContent: body,
+        displayContent: body,
+        tags: model.sourceTags,
+        media: model.media,
+    });
 }

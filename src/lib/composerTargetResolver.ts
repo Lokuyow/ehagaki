@@ -7,11 +7,6 @@ import {
     type ChannelContextCoordinatorSnapshot,
 } from "./channelContextCoordinator";
 import { parseKind42ThreadReferences } from "./postHistoryNip10Utils";
-import {
-    getSensitiveCanonicalRelayHints,
-    getSensitiveCompanionReference,
-    resolveSensitiveCompanionCanonicalEvent,
-} from "./sensitiveEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import {
     ReplyQuoteService,
@@ -167,51 +162,13 @@ export function createComposerTargetResolver(
                 return { status: "error", reason: "mismatch" };
             }
 
-            const canonicalId = getSensitiveCompanionReference(event);
-            let relayHints: string[];
-            if (canonicalId) {
-                const companion = event;
-                let canonicalRelayUrl: string | null = null;
-                const canonicalEvent = await resolveSensitiveCompanionCanonicalEvent(
-                    event,
-                    async (eventId, relayHints) => {
-                        eventTask = replyQuoteService.fetchReferencedEventTask(
-                            eventId,
-                            relayHints,
-                            params.rxNostr,
-                            params.relayConfig,
-                        );
-                        const result = await eventTask.promise;
-                        if (result.status === "cancelled") return null;
-                        if (result.status !== "found" || !verifyEventFn(result.event)) return null;
-                        canonicalRelayUrl = result.relayUrl;
-                        return result.event;
-                    },
-                    async (target) => {
-                        const deleted = await deletionRequestsRepository.getDeletedTargets([{
-                            targetAuthorPubkey: target.pubkey,
-                            targetEventId: target.id,
-                        }]);
-                        return deleted.get(target.pubkey)?.has(target.id) ?? false;
-                    },
-                );
-                if (cancelled) return { status: "cancelled" };
-                if (!canonicalEvent) {
-                    return { status: "error", reason: "not-found" };
-                }
-                event = canonicalEvent;
-                relayHints = getSensitiveCanonicalRelayHints(companion, {
-                    fetchedRelayUrl: canonicalRelayUrl,
-                });
-            } else {
-                relayHints = RelayConfigUtils.sanitizeExternalRelayUrls(
-                    [
-                        ...params.pointer.relayHints,
-                        ...(fetchedRelayUrl ? [fetchedRelayUrl] : []),
-                    ],
-                    { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
-                );
-            }
+            const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls(
+                [
+                    ...(fetchedRelayUrl ? [fetchedRelayUrl] : []),
+                    ...params.pointer.relayHints,
+                ],
+                { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
+            );
             const authorProfilePromise = params.profileService
                 ? params.profileService.fetchProfileRealtime(event.pubkey, {
                     additionalRelays: relayHints,

@@ -24,11 +24,12 @@
         PostContentEmojiLoadState,
         PostContentRenderModel,
     } from "../lib/postContentPreview";
-    import type { FullscreenMediaItem } from "../lib/types";
+    import type { FullscreenMediaItem, NostrEvent } from "../lib/types";
 
     interface Props {
         state: PostHistoryThreadGraphNodeState;
         previewModelByEventId?: Record<string, PostContentRenderModel>;
+        getSensitiveBodyLoader?: (event: NostrEvent) => (() => Promise<string | null>) | undefined;
         emojiLoadStateByUrl?: Record<
             string,
             PostContentEmojiLoadState | undefined
@@ -92,6 +93,7 @@
     let {
         state,
         previewModelByEventId = {},
+        getSensitiveBodyLoader = undefined,
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         scrollRoot = null,
@@ -212,6 +214,7 @@
                 <PostHistoryThreadGraphNodeView
                     state={state.parentNodeState}
                     {previewModelByEventId}
+                    {getSensitiveBodyLoader}
                     {emojiLoadStateByUrl}
                     {emojiImageMetaByUrl}
                     {scrollRoot}
@@ -273,6 +276,7 @@
         <PostHistoryThreadNode
             node={state.node}
             model={previewModelByEventId[state.node.eventId]}
+            loadSensitiveBody={getSensitiveBodyLoader?.(state.node.event)}
             {emojiLoadStateByUrl}
             {emojiImageMetaByUrl}
             {scrollRoot}
@@ -415,6 +419,7 @@
                 <PostHistoryThreadGraphNodeView
                     state={replyState}
                     {previewModelByEventId}
+                    {getSensitiveBodyLoader}
                     {emojiLoadStateByUrl}
                     {emojiImageMetaByUrl}
                     {scrollRoot}

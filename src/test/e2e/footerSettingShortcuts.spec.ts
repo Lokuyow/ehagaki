@@ -572,7 +572,8 @@ test("Sensitive CW Footer shortcut and SettingsDialog share the canonical settin
     await expect(setting).toHaveAttribute("aria-checked", "true");
     const infoButton = page.getByRole("button", { name: "CW設定の詳細" });
     await infoButton.click();
-    await expect(page.getByText(/実験的な形式です/)).toBeVisible();
+    await expect(page.getByText(/実験的な送信形式です/)).toBeVisible();
+    await expect(page.getByText(/全文検索で見つからないことがあります/)).toBeVisible();
     await expect(page.getByText(/eventのcontentから取得できます/)).toBeVisible();
     await page.keyboard.press("Escape");
 

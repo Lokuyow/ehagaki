@@ -239,8 +239,8 @@ export class PostHistoryReplyFetchService {
 
                 const replyKinds = Array.from(new Set(parentContexts.flatMap((context) => {
                     if (context.eventKind === 42) return [42];
-                    if (context.eventKind === 1) return [1, 1111, 3636];
-                    if ([36, 1111, 3636].includes(context.eventKind)) return [1111, 3636];
+                    if (context.eventKind === 1) return [1, 1111];
+                    if (context.eventKind === 1111) return [1111];
                     return [];
                 }))).sort();
                 rxReq.emit({
@@ -275,7 +275,7 @@ export class PostHistoryReplyFetchService {
         packet: { event?: NostrEvent; from?: string },
     ): void {
         const event = packet.event;
-        if (!event?.id || ![1, 42, 1111, 3636].includes(event.kind)) {
+        if (!event?.id || ![1, 42, 1111].includes(event.kind)) {
             return;
         }
 

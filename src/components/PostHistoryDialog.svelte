@@ -70,6 +70,7 @@
     import { createPostHistoryProfileSyncCoordinator } from "../lib/postHistoryProfileSync";
     import { postHistoryQuoteTargetDiscoveryAdapter } from "../lib/postHistoryRelatedTargetDiscoveryAdapter";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
+    import { createSensitivePayloadBodyLoader } from "../lib/sensitiveContentPayloadReader";
     import { reconcilePendingDeletionRequestsForParentEventIds } from "../lib/postHistoryPendingDeletionRequestsReconcile";
     import { triggerPostHistoryChildInteractionDeletionLifecycle } from "../lib/postHistoryChildInteractionDeletionLifecycleTrigger";
     import { formatPostHistoryReactionActorLabel } from "../lib/postHistoryReactionReadModel";
@@ -418,6 +419,14 @@
             displayContent,
             tags: post.tags,
             media: post.media,
+        });
+    }
+
+    function getSensitiveBodyLoader(event: NostrEvent | null | undefined) {
+        return createSensitivePayloadBodyLoader({
+            structure: event,
+            rxNostr,
+            relayConfig,
         });
     }
 
@@ -2831,6 +2840,7 @@
                                     state={graphState}
                                     section="parent"
                                     previewModelByEventId={relatedPreviewModelByEventId}
+                                    getSensitiveBodyLoader={getSensitiveBodyLoader}
                                     emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                                     emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                     scrollRoot={historyContainer}
@@ -2901,6 +2911,7 @@
                                     <div class="post-preview-body">
                                         <PostContentPreview
                                             model={getPreviewModel(post)}
+                                            loadSensitiveBody={getSensitiveBodyLoader(post.rawEvent as NostrEvent)}
                                             contentWarningEventId={post.eventId}
                                             density="standard"
                                             emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
@@ -2938,6 +2949,9 @@
                                                 {#each getQuotePreviewStates(post) as quotePreview (quotePreview.eventId)}
                                                     <PostHistoryQuotePreview
                                                         preview={quotePreview}
+                                                        loadSensitiveBody={quotePreview.status === "resolved"
+                                                            ? getSensitiveBodyLoader(quotePreview.event)
+                                                            : undefined}
                                                         model={quotePreview.status ===
                                                         "resolved"
                                                             ? relatedPreviewModelByEventId[
@@ -3274,6 +3288,7 @@
                                         state={graphState}
                                         section="children"
                                         previewModelByEventId={relatedPreviewModelByEventId}
+                                        getSensitiveBodyLoader={getSensitiveBodyLoader}
                                         emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                                         emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                         scrollRoot={historyContainer}

@@ -25,12 +25,12 @@
 
 ## リプライ
 
-- 機能: kind 1/42へのNIP-10 replyとkind 36/1111/3636へのNIP-22 comment reply targetを取得し、thread topologyと通知先を構築する。
+- 機能: kind 1/42へのNIP-10 replyとkind 1111へのNIP-22 comment reply targetを取得し、thread topologyと通知先を構築する。
 - 関連NIP: NIP-10、NIP-22。public chatではNIP-28も関係する。
-- event kind: 投稿先・CW設定に応じて`1`、`42`、`1111`、`3636`。kind 36もNIP-22 replyのparentになる。
+- event kind: `1`、`42`、`1111`。kind `36`はSensitive本文payloadで、reply parentや投稿履歴kindではない。
 - 主なtag: NIP-10のmarked `e` (`root`、`reply`) と`p`、NIP-22のroot `E/A/I`・`K/P`およびparent `e/a/i`・`k/p`。
 - 主な実装ファイル: `src/lib/replyQuoteService.ts`、`src/lib/postManager.ts`、`src/lib/postHistoryNip10Utils.ts`、`src/lib/postHistoryNip22Utils.ts`、`src/lib/sensitiveEventUtils.ts`、`src/stores/replyQuoteStore.svelte.ts`
-- 主な関数または責務: `parsePostHistoryThreadReferences`がkind 1/42のNIP-10とkind 1111/3636のNIP-22参照を既存thread projectionへ解決する。`parseNip22CommentReferences`はroot scopeとdirect parentを検証し、addressable parentの`a`+current-version `e`併記を受理する。`buildNip22ReplyTags`はroot scopeを維持して直接parentを設定する。`ReplyQuoteService.fetchReferencedEventTask`はeventと実取得Relayを返す。
+- 主な関数または責務: `parsePostHistoryThreadReferences`がkind 1/42のNIP-10とkind 1111のNIP-22参照を既存thread projectionへ解決する。`parseNip22CommentReferences`はroot scopeとdirect parentを検証し、addressable parentの`a`+current-version `e`併記を受理する。`buildNip22ReplyTags`はroot scopeを維持して直接parentを設定する。`ReplyQuoteService.fetchReferencedEventTask`はeventと実取得Relayを返す。
 - 関連テスト: `src/test/unit/replyQuoteService.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/unit/postHistoryNip10Utils.test.ts`、`src/test/unit/sensitiveEventUtils.test.ts`、`src/test/unit/replyQuoteStore.test.ts`
 - 注意点: root、直接parent、marker、author、relay hintを別々に検証する。kind 42のchannel rootとreply parentを混同しない。NIP-22の`a`+`e`は1組のaddressable parentとして扱い、別scopeの曖昧な重複は拒否する。
 
@@ -108,16 +108,16 @@
 - 関連テスト: `src/test/unit/channelContextService.test.ts`、`src/test/unit/channelContextCoordinator.test.ts`、`src/test/unit/channelContextApplyController.test.ts`、`src/test/unit/composerTargetResolver.test.ts`、`src/test/unit/channelPictureUrlUtils.test.ts`、`src/test/unit/channelPicture.test.ts`、`src/test/unit/swChannelImageCacheUtils.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/e2e/composerTargetDialog.spec.ts`
 - 注意点: channel metadata由来relay hint、外部入力relay、write relayはprovenanceが異なる。kind 42のchannel rootをUI表示から推測せずparser結果を使う。URL query、iframe、draftのpicture overrideは検証済みmetadataと同一視せず、チャンネル画像キャッシュへ保存しない。
 
-## Content WarningとSensitive event kinds
+## Content WarningとSensitive Content Payload
 
-- 機能: 標準NIP-36 Content Warning、実験的Sensitive event kindsによるCW付き投稿/reply、およびSensitive Text Note互換通知を構築・解決する。
-- 関連NIP: 標準CWはNIP-36。Sensitive kind 36/3636、kind 1 companionの`c` tag、NIP-22 topologyはeHagaki独自の実験的protocol。
-- event kind: 通常投稿`1`、public chat`42`、Sensitive Text Note`36`、NIP-22 Comment`1111`、Sensitive Comment`3636`。kind 36の投稿に対応する互換通知は空contentのkind 1。
-- 主なtag: `content-warning`、`t`=`nsfw`、companionからcanonicalを指す`c`、NIP-22のroot/parent scope tags。
-- 主な実装ファイル: `src/lib/postEventBuilder.ts`、`src/lib/postManager.ts`、`src/lib/sensitiveEventUtils.ts`、`src/lib/postHistoryNip22Utils.ts`、`src/lib/composerTargetResolver.ts`、`src/lib/postHistoryRelatedTargetResolver.svelte.ts`、`src/components/KeyboardButtonBar.svelte`、`src/components/ReasonInput.svelte`。
-- 主な関数または責務: `PostEventBuilder.buildEvent`がOFF時の通常NIP-36形式とON時のkind matrixを構築し、Sensitive canonical本文は`.content`へ保持する。kind 36は送信成功後に本文を複製しない空本文kind 1 companionをbest-effortでbackground publishする。`verifySensitiveCompanionLink`は`c` ID一致、kind 36、同一pubkey、有効なevent ID/signatureを検証し、CW理由やtimestamp一致を要求しない。`buildNip22ReplyTags`と`parseNip22CommentReferences`がreply topologyを扱う。
-- 関連テスト: `src/test/unit/postManager.test.ts`、`src/test/unit/sensitiveEventUtils.test.ts`、`src/test/unit/postHistoryRelatedTargetResolver.test.ts`、`src/test/unit/composerTargetResolver.test.ts`、`src/test/unit/keyboardButtonBar.test.ts`。
-- 注意点: fail-closed設定OFFでは既存のCW/`nsfw`自動連動を維持し、ONでは独立させる。kind 42は常に標準CW形式。旧`content-warning[2]`本文tagは受信互換として解釈する。Host-owned Liteは独立builder/公開contractを維持し、この通常投稿設定を参照しない。
+- 機能: 標準NIP-36送信と、CW本文をkind `36` payloadへ分けるeHagaki独自の実験形式を構築・検証・表示する。
+- 関連NIP: 標準CWはNIP-36。payload形式はNIPではない。kind `1111`のcomment topologyはNIP-22。
+- event kind: Structureは通常投稿`1`、Public Chat`42`、NIP-22 Comment`1111`を維持し、Sensitive本文payloadにkind `36`を使う。kind `3636`やkind `1` companionは使わない。
+- 主なtag: Structureの`content-warning`と`c`、payloadの単一`k`、通常の`t=nsfw`、NIP-22 root/parent scope tags。
+- 主な実装ファイル: `src/lib/postManager.ts`、`src/lib/postEventBuilder.ts`、`src/lib/sensitiveContentPayload.ts`、`src/lib/sensitiveContentPayloadReader.ts`、`src/lib/storage/sensitivePayloadRepository.ts`、`src/lib/postHistoryNip22Utils.ts`、`src/components/PostContentPreview.svelte`。
+- 主な関数または責務: `PostEventBuilder.buildEvent`が元kindと通常tagsを構築し、`PostManager.sendPreparedEvent`が完成した元eventからkind `36` payloadと空content Structureを作り、payload先行・Structure後続で送る。`verifySensitivePayloadLink`はStructureとpayloadのID/signature、c参照、kind、同一pubkey、単一`k`の組を検証する。`loadSensitivePayloadContent`は明示reveal時にのみlocal-first lookupとRelay取得を行う。previewは共通CW gateを維持する。
+- 関連テスト: `src/test/unit/postManager.test.ts`、`src/test/unit/sensitiveEventUtils.test.ts`、`src/test/unit/sensitivePayloadRepository.test.ts`、`src/test/unit/postHistoryLocalSearchService.test.ts`、`src/test/unit/postHistoryJsonlExportEngine.test.ts`。
+- 注意点: fail-closed設定OFFでは既存のCW/`nsfw`自動連動を維持し、ONでは独立させる。旧`content-warning[2]`本文tagは受信互換として解釈する。payload本文は未検証時に表示、検索、export、削除対象へ使わない。Host-owned Liteは独立builder/公開contractを維持し、この通常投稿設定を参照しない。
 
 ## カスタム絵文字
 
@@ -154,7 +154,7 @@
 
 - 機能: bunker/Nostr Connect接続、session復元、remote signer署名、relay選択、接続状態管理を行う。
 - 関連NIP: NIP-46
-- event kind: NIP-46 transport eventは`24133`。eHagakiが要求する署名範囲は`1`、`5`、`42`、`10063`、`22242`、`27235`、`24242`。
+- event kind: NIP-46 transport eventは`24133`。eHagakiが要求する署名範囲は`1`、`5`、`36`、`42`、`1111`、`10063`、`22242`、`27235`、`24242`。
 - 主なtag: NIP-46接続で利用する`p`、Nostr Connect URIのrelay/secret/metadata、各署名対象eventのtag
 - 主な実装ファイル: `src/lib/nip46Service.ts`、`src/lib/nip46AuthFlowCoordinator.ts`、`src/lib/nip46PendingOperationUtils.ts`、`src/lib/nip46ConnectUiUtils.ts`、`src/lib/authService.ts`
 - 主な関数または責務: `Nip46Service.connect`、`startNostrConnect`、`reconnect`、`ensureConnection`、`getSignerForSession`、`disconnect`と`Nip46SignerAdapter.signEvent`が接続、同一sessionのruntime signer復旧、Signer adapterを分担する。`NIP46_CLIENT_METADATA`はname `eHagaki`、GitHub Pages URL、webp icon URLをconnect requestとNostr Connect URIへ渡し、`NIP46_REQUESTED_PERMISSIONS`/`NIP46_REQUESTED_PERMS`が要求権限のsource of truthである。NIP-46 relayはvalidation・normalization済みのsigner-provided candidate setをsessionとruntime `BunkerSigner`へ保持し、接続確認は最初のreachable relayで進める。fresh `BunkerSigner`はglobal commit前にdirect `get_public_key`でlive user identityを確認し、negotiated final relayのtimeout-only retryはremote signerのrelay subscription移行を待つ。`reconnect`と`rebuildConnection`はcandidate-firstで進める。rebuildはsession/runtime/persistence bindingのsnapshot所有権を確認し、snapshot bindingへのsession保存成功後にcandidateをcommitする。remote signer pubkeyをuser identityへfallbackしない。
@@ -174,25 +174,27 @@
 
 ## 関連イベント取得
 
-- 機能: reply parent、quote target、Sensitive companion、deletion requestなどpost historyの関連eventを発見・取得・cache・表示状態へ解決する。
+- 機能: reply parent、quote target、payloadを参照するStructure、deletion requestなどpost historyの関連eventを発見・取得・cache・表示状態へ解決する。
 - 関連NIP: NIP-09、NIP-10、NIP-18、NIP-21、NIP-22
-- event kind: target `1`/`36`/`42`/`1111`/`3636`など、deletion request `5`。kind 1 companionは投稿行として扱わず、対応するkind 36へ解決する。
-- 主なtag: replyの`e`/`p`、NIP-22の`E/A/I`と`e/a/i`、quoteの`q`、Sensitive companionの`content-warning`と`c`、deletionの`e`/`a`。
-- 主な実装ファイル: `src/lib/postHistoryRelatedTargetDiscoveryAdapter.ts`、`src/lib/postHistoryRelatedTargetResolver.svelte.ts`、`src/lib/postHistoryContextFetchService.ts`、`src/lib/postHistoryDeletionFetchService.ts`、`src/lib/sensitiveEventUtils.ts`、`src/lib/storage/postHistoryRepository.ts`
-- 主な関数または責務: discovery adapterが`RelatedTargetDescriptor`を生成し、`createPostHistoryRelatedTargetResolver`がlocal-first lookup、network fetch、deletion check、profile sync、scope cancelを調整する。`resolveSensitiveCompanionCanonicalEvent`は空本文kind 1の`c`参照と、同じID/kind 36/pubkey/有効署名のcanonical eventを結び付ける。canonical Relay hintsにはcanonicalの`c` hint、canonicalを実際に返したRelay、またはcanonical local recordのevidenceだけを保持する。
+- 関連テスト: `src/test/unit/postHistoryRelatedTargetDiscoveryAdapter.test.ts`、`src/test/unit/postHistoryRelatedTargetResolver.test.ts`、`src/test/unit/postHistoryRelatedEventCard.test.ts`、`src/test/e2e/postHistoryDialog.spec.ts`
+- 注意点: discovery、descriptor、fetch、cache、renderingの境界を維持する。target ID単位のpending共有とscope generationでstale completionを防ぐ。
+- event kind: target `1`/`42`/`1111`、Sensitive payload `36`、deletion request `5`。payloadは投稿行ではなく補助cacheへ保存する。
+- 主なtag: replyの`e`/`p`、NIP-22の`E/A/I`と`e/a/i`、quoteの`q`、Structureの`content-warning`と`c`、payloadの`k`、deletionの`e`/`a`。
+- 主な実装ファイル: `src/lib/postHistoryRelatedTargetDiscoveryAdapter.ts`、`src/lib/postHistoryRelatedTargetResolver.svelte.ts`、`src/lib/postHistoryContextFetchService.ts`、`src/lib/postHistoryDeletionFetchService.ts`、`src/lib/sensitiveContentPayloadReader.ts`、`src/lib/storage/postHistoryRepository.ts`。
+- 主な関数または責務: discovery adapterがcanonical Structureの`RelatedTargetDescriptor`を生成し、`createPostHistoryRelatedTargetResolver`がStructureのlocal-first lookup、network fetch、deletion check、profile sync、scope cancelを調整する。payload本文は別readerがpair検証後にだけStructureへprojectionし、target event自体をpayloadへredirectしない。
 - 関連テスト: `src/test/unit/postHistoryRelatedTargetDiscoveryAdapter.test.ts`、`src/test/unit/postHistoryRelatedTargetResolver.test.ts`、`src/test/unit/postHistoryRelatedEventCard.test.ts`、`src/test/e2e/postHistoryDialog.spec.ts`
 - 注意点: discovery、descriptor、fetch、cache、renderingの境界を維持する。target ID単位のpending共有とscope generationでstale completionを防ぐ。
 
 ## 投稿履歴JSONLインポートと削除要求
 
-- 機能: Nostr JSONLをstreamingで検証し、現在のアカウントによるkind 1/42を投稿履歴へ統合し、kind 5の有効な`e`タグを削除要求として保存する。対象未取得の削除要求はpendingとして保持し、実際の対象eventとauthorが一致した時点で検証済みへ昇格する。
+- 機能: Nostr JSONLをstreamingで検証し、現在のアカウントによるkind 1/42/1111を投稿履歴へ統合し、kind 36を補助payload candidate、kind 5を削除要求として保存する。payloadはStructureとのpair検証前に本文用途へ昇格せず、対象未取得の削除要求はpendingとして保持する。
 - 関連NIP: NIP-01、NIP-09、NIP-28。
-- event kind: 投稿履歴対象`1`/`42`、将来の削除要求保持対象`6`/`7`/`16`/`20`/`21`/`22`、deletion request `5`。
+- event kind: 投稿履歴対象`1`/`42`/`1111`、Sensitive payload candidate `36`、削除要求`5`。
 - 主なtag: kind 5の`e`と任意の`k`。Phase 1のJSONLインポートでは`e`に64文字の小文字16進event IDだけを受理し、対象未取得時は正常な`k`がすべて保存対象外kindの場合だけ削除要求を除外する。
 - 主な実装ファイル: `src/lib/postHistoryJsonlImportService.ts`、`src/lib/postHistoryJsonlExportService.ts`、`src/lib/postHistoryDeletionUtils.ts`、`src/lib/storage/postHistoryRepository.ts`、`src/lib/storage/postHistoryDeletionRequestsRepository.ts`、`src/lib/postDeletionService.ts`、`src/lib/signedEventResultValidator.ts`、`src/lib/sessionLiveness.ts`、`src/components/PostHistoryImportDialog.svelte`、`src/components/PostHistoryDialog.svelte`。
 - 主な関数または責務: `postHistoryRawEventVerification.ts`が投稿履歴専用のRxNostr `use()`境界（RxNostrの署名検証後にstructureとevent ID一致を補完）と非永続attestationを担う。local signerとJSONL importはsymbolやライブラリ検証cacheを引き継がないplain NIP-01 snapshotで完全検証し、構造不正な外部signer結果は例外を漏らさず検証失敗として返す。repositoryはattestationがなければ完全検証fallbackを行い、recordのoptionalな`rawEventVerification`で保存済みrawの検証規則versionを保持する。`PostHistoryJsonlImportService.importFile`がfatal UTF-8 decode、行分類、ファイル全体のevent ID重複排除、500 event単位のflushを担う。`postHistoryJsonlExportEngine.ts`がlegacy migration、raw整合性確認、partial集計、stable sort、chunked JSONL/Blob生成の共有実装であり、production `postHistoryJsonlExportWorker.ts`と互換用`PostHistoryJsonlExportService.exportForPubkey`が同じengineを呼ぶ。`upsertImportedDeletionEvents`がJSONL由来kind 5をpendingまたは検証済みとして保存し、`saveLocalDeletion`がpublish成功後のkind 5 raw eventと投稿削除状態を同一transactionで保存する。`getDeletedTargets`は`targetVerified !== false`の削除要求だけを既存resolverへ返す。
 - 関連テスト: `src/test/unit/postHistoryRawEventVerification.test.ts`、`src/test/unit/postHistorySignerVerification.integration.test.ts`、`src/test/unit/postHistoryRawEventAttestationRepository.integration.test.ts`、`src/test/unit/postHistoryJsonlExportEngine.test.ts`、`src/test/unit/postHistoryJsonlImportService.test.ts`、`src/test/unit/postHistoryJsonlExportService.test.ts`、`src/test/unit/postHistoryDeletionRequestsRepository.test.ts`、`src/test/unit/postHistoryRepository.test.ts`、`src/test/unit/postHistoryRelatedTargetResolver.test.ts`、`src/test/unit/postHistoryImportDialog.test.ts`、`src/test/unit/postHistoryDialog.test.ts`、`src/test/e2e/postHistoryDialog.spec.ts`。
-- 注意点: 削除要求の`deletedAt`はNostr秒、投稿履歴の`deletedAt`はミリ秒であり、適用境界だけで1000倍する。`k`なし、不正`k`あり、保存対象kindと対象外kindの混在は対象kind不明としてpending保存し、対象event実体があれば申告`k`より実kindを優先する。`targetVerified`なしの既存recordは後方互換上検証済みとして扱い、pendingを`authorHint`だけの事前削除判定へ流さない。local deletionはsigner呼び出し前の独立snapshotに対して署名結果を検証し、publish開始前のsessionも確認するが、publish成功後のsession変更だけを理由に`saveLocalDeletion`を中止しない。JSONL由来relay URLは追加せず、object store・索引・DB versionを増やさない。
+- 注意点: 削除要求の`deletedAt`はNostr秒、投稿履歴の`deletedAt`はミリ秒であり、適用境界だけで1000倍する。`k`なし、不正`k`あり、保存対象kindと対象外kindの混在は対象kind不明としてpending保存し、対象event実体があれば申告`k`より実kindを優先する。`targetVerified`なしの既存recordは後方互換上検証済みとして扱い、pendingを`authorHint`だけの事前削除判定へ流さない。local deletionはsigner呼び出し前の独立snapshotに対して署名結果を検証し、publish開始前のsessionも確認するが、publish成功後のsession変更だけを理由に`saveLocalDeletion`を中止しない。JSONL由来relay URLは追加せず、DB version 16の`sensitivePayloads`補助storeはService Worker schemaと一致させる。payload candidateは対応Structureとのpair検証後だけ本文検索・export・削除へ使う。
 
 ## relay管理
 

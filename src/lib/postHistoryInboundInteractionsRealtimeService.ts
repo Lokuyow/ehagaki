@@ -116,12 +116,12 @@ export class PostHistoryInboundInteractionsRealtimeService {
             });
 
             rxReq.emit({
-                kinds: [1, 7, 36, 42, 1111, 3636],
+                kinds: [1, 7, 42, 1111],
                 "#p": [params.ownerPubkeyHex],
                 since: subscribedSince,
             } as never);
             rxReq.emit({
-                kinds: [1111, 3636],
+                kinds: [1111],
                 "#P": [params.ownerPubkeyHex],
                 since: subscribedSince,
             } as never);

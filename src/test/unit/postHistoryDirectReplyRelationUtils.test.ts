@@ -79,29 +79,32 @@ describe("validatePostHistoryDirectReplyRelation", () => {
         })).toMatchObject({ valid: false, reason: "channel-mismatch" });
     });
 
-    it("accepts NIP-22 replies to a Sensitive Text Note only when root and direct parent metadata agree", () => {
-        const sensitiveParent = {
-            ...event(36, PARENT_ID, PARENT_AUTHOR, []),
+    it("accepts NIP-22 replies to a kind 1111 parent only when root and direct parent metadata agree", () => {
+        const commentParent = {
+            ...event(1111, PARENT_ID, PARENT_AUTHOR, [
+                ["E", PARENT_ID, "", PARENT_AUTHOR], ["K", "1111"], ["P", PARENT_AUTHOR],
+                ["e", PARENT_ID, "", PARENT_AUTHOR], ["k", "1111"], ["p", PARENT_AUTHOR],
+            ]),
         };
-        const context = buildPostHistoryDirectReplyParentContext({ event: sensitiveParent });
+        const context = buildPostHistoryDirectReplyParentContext({ event: commentParent });
         expect(context).toMatchObject({
-            eventKind: 36,
+            eventKind: 1111,
             rootEventId: PARENT_ID,
-            rootKind: 36,
+            rootKind: "1111",
             rootPubkey: PARENT_AUTHOR,
         });
-        const comment = event(3636, CHILD_ID, ROOT_AUTHOR, [
-            ["E", PARENT_ID, "", PARENT_AUTHOR], ["K", "36"], ["P", PARENT_AUTHOR],
-            ["e", PARENT_ID, "", PARENT_AUTHOR], ["k", "36"], ["p", PARENT_AUTHOR],
+        const comment = event(1111, CHILD_ID, ROOT_AUTHOR, [
+            ["E", PARENT_ID, "", PARENT_AUTHOR], ["K", "1111"], ["P", PARENT_AUTHOR],
+            ["e", PARENT_ID, "", PARENT_AUTHOR], ["k", "1111"], ["p", PARENT_AUTHOR],
         ]);
         expect(validatePostHistoryDirectReplyRelation({ child: comment, parent: context! })).toEqual({
             valid: true,
             parentEventId: PARENT_ID,
         });
         expect(validatePostHistoryDirectReplyRelation({
-            child: event(3636, CHILD_ID, ROOT_AUTHOR, [
-                ["E", OTHER_CHANNEL_ID, "", PARENT_AUTHOR], ["K", "36"], ["P", PARENT_AUTHOR],
-                ["e", PARENT_ID, "", PARENT_AUTHOR], ["k", "36"], ["p", PARENT_AUTHOR],
+            child: event(1111, CHILD_ID, ROOT_AUTHOR, [
+                ["E", OTHER_CHANNEL_ID, "", PARENT_AUTHOR], ["K", "1111"], ["P", PARENT_AUTHOR],
+                ["e", PARENT_ID, "", PARENT_AUTHOR], ["k", "1111"], ["p", PARENT_AUTHOR],
             ]),
             parent: context!,
         })).toMatchObject({ valid: false, reason: "kind-mismatch" });

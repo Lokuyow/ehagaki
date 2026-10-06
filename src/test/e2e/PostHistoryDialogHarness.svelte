@@ -14,6 +14,7 @@
     import { postHistoryVisibleRangeRepository } from "../../lib/storage/postHistoryVisibleRangeRepository";
     import { postHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryChildInteractionsRepository";
     import { postHistoryRepository } from "../../lib/storage/postHistoryRepository";
+    import { sensitivePayloadRepository } from "../../lib/storage/sensitivePayloadRepository";
     import { formatPostHistoryMonthLabel } from "../../lib/postHistoryDialogUtils";
     import { toPostHistoryDeletionRequestReferenceRecord } from "../../lib/postHistoryDeletionUtils";
 
@@ -37,6 +38,27 @@
     const isExportScenario = new URLSearchParams(window.location.search).has("export");
     const HARNESS_YEAR = new Date().getFullYear();
     const STARTED_AT_MS = Date.UTC(HARNESS_YEAR, 0, 20, 12, 0, 0);
+    const SENSITIVE_PREVIEW_BODY = "playwright sensitive preview body https://example.com/post-history-0.jpg";
+    const SENSITIVE_PREVIEW_CREATED_AT = Math.floor(STARTED_AT_MS / 1000);
+    const SENSITIVE_PREVIEW_PAYLOAD = isSensitivePreviewScenario
+        ? finalizeEvent({
+              kind: 36,
+              content: SENSITIVE_PREVIEW_BODY,
+              tags: [["k", "1"]],
+              created_at: SENSITIVE_PREVIEW_CREATED_AT,
+          }, HARNESS_SECRET_KEY)
+        : null;
+    const SENSITIVE_PREVIEW_STRUCTURE = SENSITIVE_PREVIEW_PAYLOAD
+        ? finalizeEvent({
+              kind: 1,
+              content: "",
+              tags: [
+                  ["content-warning", "Sensitive demo"],
+                  ["c", SENSITIVE_PREVIEW_PAYLOAD.id],
+              ],
+              created_at: SENSITIVE_PREVIEW_CREATED_AT,
+          }, HARNESS_SECRET_KEY)
+        : null;
     const IMPORT_POST_CONTENT = "playwright imported JSONL post";
     const IMPORT_EVENT_JSONL = JSON.stringify(finalizeEvent({
         kind: 1,
@@ -119,16 +141,20 @@
         const timestampMs = STARTED_AT_MS - index * 24 * 60 * 60 * 1000;
         const timestampSeconds = Math.floor(timestampMs / 1000);
         const label = index < SEARCH_MATCHING_POSTS ? "alpha" : "beta";
-        const eventId = buildHexId(index, "aa");
         const isSensitivePreviewPost = isSensitivePreviewScenario && index === 0;
+        const eventId = isSensitivePreviewPost && SENSITIVE_PREVIEW_STRUCTURE
+            ? SENSITIVE_PREVIEW_STRUCTURE.id
+            : buildHexId(index, "aa");
 
         return {
             id: eventId,
             eventId,
             pubkeyHex: HARNESS_PUBKEY,
-            kind: isSensitivePreviewPost ? 36 : isKind42QuoteScenario ? 42 : 1,
-            content: isSensitivePreviewPost ? "playwright sensitive preview body" : `${label} post ${index + 1}`,
-            tags: isSensitivePreviewPost ? [["content-warning", "Sensitive demo"]] : [],
+            kind: isSensitivePreviewPost ? 1 : isKind42QuoteScenario ? 42 : 1,
+            content: isSensitivePreviewPost ? "" : `${label} post ${index + 1}`,
+            tags: isSensitivePreviewPost
+                ? SENSITIVE_PREVIEW_STRUCTURE?.tags ?? [["content-warning", "Sensitive demo"]]
+                : [],
             createdAt: timestampSeconds,
             postedAt: timestampMs,
             relayHints: [],
@@ -142,7 +168,7 @@
                           },
                       ]
                     : [],
-            rawEvent: null,
+            rawEvent: isSensitivePreviewPost ? SENSITIVE_PREVIEW_STRUCTURE : null,
             fetchedAt: timestampMs,
             lastSeenAt: timestampMs,
             updatedAt: timestampMs,
@@ -515,6 +541,10 @@
             .where("pubkeyHex")
             .equals(HARNESS_PUBKEY)
             .delete();
+        await ehagakiDb.sensitivePayloads
+            .where("pubkeyHex")
+            .equals(HARNESS_PUBKEY)
+            .delete();
         await ehagakiDb.postHistoryDeletionRequests
             .where("targetAuthorPubkey")
             .equals(HARNESS_PUBKEY)
@@ -523,6 +553,12 @@
         await ehagakiDb.postHistory.bulkPut(
             isExportScenario ? exportPostRecords : [...posts, quoteRecord],
         );
+        if (SENSITIVE_PREVIEW_PAYLOAD) {
+            await sensitivePayloadRepository.putCandidate({
+                event: SENSITIVE_PREVIEW_PAYLOAD,
+                acceptedRelays: ["wss://relay.example.com/"],
+            });
+        }
         if (isExportScenario) {
             await ehagakiDb.postHistoryDeletionRequests.put(exportDeletionRecord);
         }

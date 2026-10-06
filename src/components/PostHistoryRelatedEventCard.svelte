@@ -23,6 +23,7 @@
         profile?: ProfileData | null;
         media?: PostHistoryMediaRecord[];
         model?: PostContentRenderModel;
+        loadSensitiveBody?: () => Promise<string | null>;
         emojiLoadStateByUrl?: Record<
             string,
             PostContentEmojiLoadState | undefined
@@ -48,6 +49,7 @@
         profile = null,
         media = undefined,
         model = undefined,
+        loadSensitiveBody = undefined,
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         scrollRoot = null,
@@ -100,6 +102,7 @@
         </div>
         <PostContentPreview
             model={previewModel}
+            {loadSensitiveBody}
             contentWarningEventId={event.id}
             density="compact"
             contentClass="post-history-related-content"

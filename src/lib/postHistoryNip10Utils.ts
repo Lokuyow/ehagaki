@@ -365,7 +365,7 @@ export function parsePostHistoryThreadReferences(
         return parseKind42ThreadReferences(event);
     }
 
-    if (event?.kind === 1111 || event?.kind === 3636) {
+    if (event?.kind === 1111) {
         const parsed = parseNip22CommentReferences(event);
         return {
             ...EMPTY_REFERENCES,

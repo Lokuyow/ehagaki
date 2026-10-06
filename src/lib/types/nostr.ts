@@ -199,6 +199,7 @@ export interface PostManagerDeps {
         acceptedRelays?: string[];
         relayHints?: string[];
     }) => void | Promise<void>;
+    saveSensitivePayloadFn?: (input: import("../storage/sensitivePayloadRepository").SaveSensitivePayloadInput) => void | Promise<void>;
     writeRelaysStore?: { value: string[] };
     extractContentWithImagesFn?: (editor: TipTapEditor) => string;
     extractContentWithEmojiTagsFn?: (editor: TipTapEditor) => {

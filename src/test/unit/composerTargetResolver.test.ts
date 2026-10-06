@@ -93,8 +93,8 @@ describe("createComposerTargetResolver", () => {
             target: {
                 event: { id: eventId, kind: 1 },
                 relayHints: [
-                    "wss://hint.example/",
                     "wss://observed.example/",
+                    "wss://hint.example/",
                 ],
                 authorProfile: profile,
                 channelQuery: null,
@@ -171,7 +171,7 @@ describe("createComposerTargetResolver", () => {
         });
     });
 
-    it("companion経由のcomposer targetにはcanonical hintと実取得Relayだけを引き継ぐ", async () => {
+    it("empty kind 1 Structureをcomposer targetとして維持し、c参照先へredirectしない", async () => {
         const secretKey = generateSecretKey();
         const canonical = finalizeEvent({
             kind: 36,
@@ -225,21 +225,19 @@ describe("createComposerTargetResolver", () => {
         expect(result).toMatchObject({
             status: "resolved",
             target: {
-                event: { id: canonical.id, kind: 36 },
+                event: { id: companion.id, kind: 1, content: "" },
                 relayHints: [
-                    "wss://canonical-source.example/",
-                    "wss://canonical-hint.example/",
+                    "wss://companion-source.example/",
+                    "wss://pointer-one.example/",
+                    "wss://pointer-two.example/",
                 ],
             },
         });
-        expect(fetchReferencedEventTask.mock.calls[1]?.[1]).toEqual([
-            "wss://canonical-hint.example/",
-        ]);
-        expect(fetchProfileRealtime).toHaveBeenCalledWith(canonical.pubkey, {
-            additionalRelays: [
-                "wss://canonical-source.example/",
-                "wss://canonical-hint.example/",
-            ],
+        expect(fetchReferencedEventTask).toHaveBeenCalledTimes(1);
+        expect(fetchProfileRealtime).toHaveBeenCalledWith(companion.pubkey, {
+            additionalRelays: expect.arrayContaining([
+                "wss://companion-source.example/",
+            ]),
         });
     });
 

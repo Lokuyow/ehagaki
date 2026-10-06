@@ -4,7 +4,7 @@ import {
 } from "./postHistoryNip10Utils";
 import type { NostrEvent } from "./types";
 
-export type PostHistoryDirectReplyEventKind = 1 | 36 | 42 | 1111 | 3636;
+export type PostHistoryDirectReplyEventKind = 1 | 42 | 1111;
 
 export interface PostHistoryDirectReplyParentContext {
     eventId: string;
@@ -35,7 +35,7 @@ export type PostHistoryDirectReplyRelationValidation =
 export function isPostHistoryDirectReplyEventKind(
     kind: unknown,
 ): kind is PostHistoryDirectReplyEventKind {
-    return kind === 1 || kind === 36 || kind === 42 || kind === 1111 || kind === 3636;
+    return kind === 1 || kind === 42 || kind === 1111;
 }
 
 export function buildPostHistoryDirectReplyParentContext(input: {
@@ -51,7 +51,7 @@ export function buildPostHistoryDirectReplyParentContext(input: {
         return null;
     }
 
-    if ((input.event.kind === 1111 || input.event.kind === 3636)
+    if (input.event.kind === 1111
         && (!(references.rootReferenceTags?.length) || references.rootKind == null
             || (!references.rootPubkey && references.rootReferenceTags[0]?.[0] !== "I")
             || (!references.parentId && references.parentReferenceTags?.[0]?.[0] !== "i")
@@ -59,7 +59,7 @@ export function buildPostHistoryDirectReplyParentContext(input: {
             || (!references.parentPubkey && references.parentReferenceTags?.[0]?.[0] !== "i")
             || references.issues.length > 0)) return null;
 
-    const isComment = input.event.kind === 1111 || input.event.kind === 3636;
+    const isComment = input.event.kind === 1111;
     const rootEventId = isComment
         ? references.rootId ?? input.event.id
         : input.event.kind === 1
@@ -111,7 +111,7 @@ export function validatePostHistoryDirectReplyRelation(input: {
     if (references.parentId !== input.parent.eventId) {
         return { valid: false, reason: "parent-id-mismatch" };
     }
-    const childIsComment = input.child.kind === 1111 || input.child.kind === 3636;
+    const childIsComment = input.child.kind === 1111;
     if (!childIsComment && input.child.kind !== input.parent.eventKind) {
         return { valid: false, reason: "kind-mismatch" };
     }

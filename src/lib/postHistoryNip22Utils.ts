@@ -94,7 +94,7 @@ export function parseNip22CommentReferences(
         parentEventId: null,
         relayHints: [],
     };
-    if (event.kind !== 1111 && event.kind !== 3636) return empty;
+    if (event.kind !== 1111) return empty;
 
     const tags = event.tags;
     const rootScope = parseScopeTags(tags, ["E", "A", "I"]);

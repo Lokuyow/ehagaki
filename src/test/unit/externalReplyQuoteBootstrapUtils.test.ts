@@ -93,7 +93,7 @@ describe('externalReplyQuoteBootstrapUtils', () => {
         );
     });
 
-    it('companionをcanonical化した後のauthor preloadとrelay evidenceをcanonical targetへ結び付ける', async () => {
+    it('Sensitive Structureのauthor preloadをStructure targetへ結び付ける', async () => {
         const secretKey = generateSecretKey();
         const canonical = finalizeEvent({
             kind: 36,
@@ -122,20 +122,14 @@ describe('externalReplyQuoteBootstrapUtils', () => {
         const applyPreloadedAuthorPreviewPresentation = vi.fn();
         const setReplyQuoteError = vi.fn();
         const threadInfo = { rootEventId: null, rootRelayHint: null, rootPubkey: null };
+        const fetchReferencedEventTask = vi.fn();
 
         await processReplyQuoteReference({
             reference,
             initialEvent: companion,
             replyQuoteService: {
                 fetchReferencedEvent: vi.fn(),
-                fetchReferencedEventTask: vi.fn(() => ({
-                    promise: Promise.resolve({
-                        status: 'found' as const,
-                        event: canonical,
-                        relayUrl: 'wss://canonical-source.example/',
-                    }),
-                    cancel: vi.fn(),
-                })),
+                fetchReferencedEventTask,
                 extractThreadInfo: vi.fn(() => threadInfo),
             },
             relayConfig: null,
@@ -153,30 +147,18 @@ describe('externalReplyQuoteBootstrapUtils', () => {
 
         expect(setReplyQuoteError).not.toHaveBeenCalled();
         expect(updateReferencedEvent).toHaveBeenCalledWith(
-            expect.objectContaining({
-                eventId: companion.id,
-                relayHints: [
-                    'wss://canonical-source.example/',
-                    'wss://canonical-hint.example/',
-                ],
-            }),
-            canonical,
+            reference,
+            companion,
             threadInfo,
         );
         expect(applyPreloadedAuthorPreviewPresentation).toHaveBeenCalledWith(
-            [expect.objectContaining({
-                eventId: canonical.id,
-                authorPubkey: canonical.pubkey,
-                relayHints: [
-                    'wss://canonical-source.example/',
-                    'wss://canonical-hint.example/',
-                ],
-            })],
+            [reference],
             expect.any(Object),
         );
         expect(initializeReplyNotificationRecipients).toHaveBeenCalledWith(
-            expect.objectContaining({ eventId: canonical.id }),
-            canonical,
+            reference,
+            companion,
         );
+        expect(fetchReferencedEventTask).not.toHaveBeenCalled();
     });
 });

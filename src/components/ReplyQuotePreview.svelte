@@ -25,6 +25,7 @@
         reference: ReplyQuoteState;
         mode: ReplyQuoteMode;
         model?: PostContentRenderModel;
+        loadSensitiveBody?: () => Promise<string | null>;
         emojiLoadStateByUrl?: Record<
             string,
             PostContentEmojiLoadState | undefined
@@ -50,6 +51,7 @@
         reference,
         mode,
         model = undefined,
+        loadSensitiveBody = undefined,
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         onImageOpen = undefined,
@@ -359,6 +361,7 @@
     {#snippet content()}
         <PostContentPreview
             model={resolvedModel}
+            {loadSensitiveBody}
             contentWarningEventId={reference.eventId}
             density="reply"
             {emojiLoadStateByUrl}

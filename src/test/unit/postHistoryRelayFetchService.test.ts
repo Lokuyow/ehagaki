@@ -99,7 +99,7 @@ describe("PostHistoryRelayFetchService", () => {
         });
         expect(rxReq.emit).toHaveBeenCalledWith({
             authors: ["b".repeat(64)],
-            kinds: [1, 36, 42, 1111, 3636],
+            kinds: [1, 42, 1111],
             limit: 150,
         });
         expect(rxReq.over).toHaveBeenCalledOnce();
@@ -345,7 +345,7 @@ describe("PostHistoryRelayFetchService", () => {
 
         expect(rxReq.emit).toHaveBeenCalledWith({
             authors: ["b".repeat(64)],
-            kinds: [1, 36, 42, 1111, 3636],
+            kinds: [1, 42, 1111],
             limit: POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT,
         });
         expect(mockRxNostr.use).toHaveBeenCalledWith(expect.anything(), {
@@ -383,7 +383,7 @@ describe("PostHistoryRelayFetchService", () => {
         const rxReq = createRxBackwardReqMock.mock.results[0]?.value;
         expect(rxReq.emit).toHaveBeenCalledWith({
             authors: ["b".repeat(64)],
-            kinds: [1, 36, 42, 1111, 3636],
+            kinds: [1, 42, 1111],
             limit: POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT,
             since: 123,
         });

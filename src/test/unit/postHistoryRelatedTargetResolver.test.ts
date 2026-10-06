@@ -246,7 +246,7 @@ describe("createPostHistoryRelatedTargetResolver", () => {
             event,
             profile: null,
             authorPubkey: event.pubkey,
-            relayHints: ["wss://relay.example.com/", "wss://fetched.example.com/"],
+            relayHints: ["wss://fetched.example.com/", "wss://relay.example.com/"],
             errorCode: null,
         });
         expect(typeof snapshot?.updatedAt).toBe("number");
@@ -581,7 +581,7 @@ describe("createPostHistoryRelatedTargetResolver", () => {
         expect(resolver.getTargetSnapshot(event.id)?.status).toBe("resolved");
     });
 
-    it("resolves a verified kind 1 compatibility companion to its Sensitive canonical event", async () => {
+    it("keeps an empty kind 1 Structure as the related target without following its c reference", async () => {
         const secretKey = generateSecretKey();
         const canonical = finalizeEvent({
             kind: 36,
@@ -610,12 +610,12 @@ describe("createPostHistoryRelatedTargetResolver", () => {
         }));
 
         expect(snapshot?.status).toBe("resolved");
-        expect(snapshot?.event).toEqual(canonical);
-        expect(snapshot?.event?.kind).toBe(36);
-        expect(contextFetchService.fetchEventById).toHaveBeenCalledTimes(2);
+        expect(snapshot?.event).toEqual(companion);
+        expect(snapshot?.event?.kind).toBe(1);
+        expect(contextFetchService.fetchEventById).toHaveBeenCalledTimes(1);
     });
 
-    it("uses canonical c and fetch provenance without inheriting companion relays or dropping the source", async () => {
+    it("does not apply legacy companion relay provenance to a Structure target", async () => {
         const secretKey = generateSecretKey();
         const canonical = finalizeEvent({
             kind: 36,
@@ -653,19 +653,13 @@ describe("createPostHistoryRelatedTargetResolver", () => {
             relayHints: descriptorHints,
         }));
 
-        expect(snapshot?.event).toEqual(canonical);
-        expect(snapshot?.relayHints).toEqual([
-            "wss://canonical-source.example/",
-            "wss://canonical-hint.example/",
-        ]);
-        expect(snapshot?.relayHints).not.toContain("wss://companion-source.example/");
-        expect(snapshot?.relayHints.some((hint) => descriptorHints.includes(hint))).toBe(false);
-        expect(contextFetchService.fetchEventById.mock.calls[1]?.[1].relayHints).toEqual([
-            "wss://canonical-hint.example/",
-        ]);
+        expect(snapshot?.event).toEqual(companion);
+        expect(snapshot?.relayHints?.[0]).toBe("wss://companion-source.example/");
+        expect(snapshot?.relayHints).not.toContain("wss://canonical-hint.example/");
+        expect(contextFetchService.fetchEventById).toHaveBeenCalledTimes(1);
     });
 
-    it("uses only canonical local record relay evidence when the companion and canonical are cached", async () => {
+    it("uses the kind 1 Structure's own local relay evidence", async () => {
         const secretKey = generateSecretKey();
         const canonical = finalizeEvent({
             kind: 36,
@@ -701,17 +695,14 @@ describe("createPostHistoryRelatedTargetResolver", () => {
             relayHints: ["wss://pointer-only.example/"],
         }));
 
-        expect(snapshot?.event).toEqual(canonical);
-        expect(snapshot?.relayHints).toEqual([
-            "wss://canonical-hint.example/",
-            "wss://canonical-record.example/",
-        ]);
-        expect(snapshot?.relayHints).not.toContain("wss://companion-record.example/");
-        expect(snapshot?.relayHints).not.toContain("wss://pointer-only.example/");
+        expect(snapshot?.event).toEqual(companion);
+        expect(snapshot?.relayHints).toContain("wss://companion-record.example/");
+        expect(snapshot?.relayHints).not.toContain("wss://canonical-hint.example/");
+        expect(snapshot?.relayHints).toContain("wss://pointer-only.example/");
         expect(contextFetchService.fetchEventById).not.toHaveBeenCalled();
     });
 
-    it("never promotes a remaining companion to a regular post when its canonical target is deleted", async () => {
+    it("does not apply deletion of an old kind 36 target to the kind 1 Structure", async () => {
         const secretKey = generateSecretKey();
         const canonical = finalizeEvent({
             kind: 36,
@@ -752,9 +743,9 @@ describe("createPostHistoryRelatedTargetResolver", () => {
             authorHint: companion.pubkey,
         }));
 
-        expect(snapshot?.status).toBe("deleted");
-        expect(snapshot?.event).toBeNull();
-        expect(resolver.getTargetSnapshot(companion.id)?.event).toBeNull();
+        expect(snapshot?.status).toBe("resolved");
+        expect(snapshot?.event).toEqual(companion);
+        expect(resolver.getTargetSnapshot(companion.id)?.event).toEqual(companion);
     });
 
     it("未検証pendingがauthorHintに一致しても取得前に削除済みと判定しない", async () => {

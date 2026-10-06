@@ -29,6 +29,8 @@ export interface EditorState {
 
 export interface PostResult {
     success: boolean;
+    /** Internal success state: the published event belongs to a prior session, so preserve the active composer. */
+    preserveComposerContent?: boolean;
     error?: string;
     eventId?: string;
     acceptedRelays?: string[];

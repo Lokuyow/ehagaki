@@ -299,7 +299,7 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
 
         expect(rxNostrMock.emittedFilters).toEqual([
             {
-                kinds: [1, 7, 1111, 3636],
+                kinds: [1, 7, 1111],
                 "#e": [kind1Parent],
                 limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT,
             },
@@ -335,7 +335,7 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
         });
     });
 
-    it("visible kind:36 parentではkind:1111/3636の返信も取得対象にする", async () => {
+    it("visible kind:1111 parentではkind:1111の返信も取得対象にする", async () => {
         const harness = createRxNostrHarness();
         const service = new PostHistoryVisibleRangeChildInteractionRepairService({
             childInteractionsRepository: { upsertChildInteractions: vi.fn() } as any,
@@ -345,7 +345,7 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
         });
         const task = service.repairVisibleRangeRelations(harness.rxNostr as any, {
             ownerPubkeyHex: OWNER,
-            visiblePosts: [createPost("8".repeat(64), 36)],
+            visiblePosts: [createPost("8".repeat(64), 1111)],
             relationKinds: ["reply"],
             relayConfig: { "wss://relay.example.com": { read: true, write: false } },
         });
@@ -354,7 +354,7 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
         await task.promise;
 
         expect(rxNostrMock.emittedFilters).toEqual([{
-            kinds: [1111, 3636],
+            kinds: [1111],
             "#e": ["8".repeat(64)],
             limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT,
         }]);

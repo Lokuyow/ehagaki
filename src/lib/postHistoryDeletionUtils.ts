@@ -15,7 +15,6 @@ export const POST_HISTORY_SUPPORTED_DELETION_TARGET_KINDS: ReadonlySet<number> =
     36,
     42,
     1111,
-    3636,
 ]);
 
 export interface PostHistoryDeletionRequestRecordInput {

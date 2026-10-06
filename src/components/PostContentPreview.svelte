@@ -9,6 +9,7 @@
         PostContentRenderModel,
     } from "../lib/postContentPreview";
     import type { FullscreenMediaItem } from "../lib/types";
+    import { buildPostContentRenderModelWithBody } from "../lib/postContentPreview";
 
     type PreviewRefAction = (
         node: HTMLDivElement,
@@ -18,6 +19,7 @@
 
     interface Props {
         model: PostContentRenderModel;
+        loadSensitiveBody?: () => Promise<string | null>;
         contentWarningEventId?: string;
         density?: Density;
         emojiLoadStateByUrl?: Record<
@@ -47,6 +49,7 @@
 
     let {
         model,
+        loadSensitiveBody = undefined,
         contentWarningEventId = undefined,
         density = "standard",
         emojiLoadStateByUrl = {},
@@ -66,6 +69,10 @@
 
     let contentWarningRevealedForEventId = $state<string | null>(null);
     let contentWarningRevealedWithoutEventId = $state(false);
+    let sensitiveBody = $state<string | undefined>(undefined);
+    let sensitiveBodyLoading = $state(false);
+    let sensitiveBodyFailed = $state(false);
+    let sensitiveBodyLoadGeneration = 0;
     let isContentWarningRevealed = $derived(
         contentWarningEventId === undefined
             ? contentWarningRevealedWithoutEventId
@@ -75,9 +82,49 @@
     $effect(() => {
         if (contentWarningEventId === previousContentWarningEventId) return;
         previousContentWarningEventId = contentWarningEventId;
+        sensitiveBodyLoadGeneration += 1;
         contentWarningRevealedForEventId = null;
         contentWarningRevealedWithoutEventId = false;
+        sensitiveBody = undefined;
+        sensitiveBodyLoading = false;
+        sensitiveBodyFailed = false;
     });
+
+    let displayModel = $derived(
+        sensitiveBody === undefined
+            ? model
+            : buildPostContentRenderModelWithBody(model, sensitiveBody),
+    );
+
+    async function revealContentWarning(): Promise<void> {
+        if (loadSensitiveBody) {
+            const loadGeneration = sensitiveBodyLoadGeneration;
+            sensitiveBodyLoading = true;
+            sensitiveBodyFailed = false;
+            try {
+                const body = await loadSensitiveBody();
+                if (loadGeneration !== sensitiveBodyLoadGeneration) return;
+                if (body === null) {
+                    sensitiveBodyFailed = true;
+                    return;
+                }
+                sensitiveBody = body;
+            } catch {
+                if (loadGeneration !== sensitiveBodyLoadGeneration) return;
+                sensitiveBodyFailed = true;
+                return;
+            } finally {
+                if (loadGeneration === sensitiveBodyLoadGeneration) {
+                    sensitiveBodyLoading = false;
+                }
+            }
+        }
+        if (contentWarningEventId === undefined) {
+            contentWarningRevealedWithoutEventId = true;
+        } else {
+            contentWarningRevealedForEventId = contentWarningEventId;
+        }
+    }
 
     const presentation = $derived.by(() => {
         switch (density) {
@@ -113,38 +160,38 @@
     });
 </script>
 
-{#if model.hasRenderableText || model.hasRenderableMedia || model.contentWarning || renderWhenEmpty}
+{#if displayModel.hasRenderableText || displayModel.hasRenderableMedia || displayModel.contentWarning || renderWhenEmpty}
     <div
         class={`post-content-preview post-content-preview-${density}`}
         style={`--post-content-block-gap: ${presentation.gap}px;`}
     >
-        {#if model.contentWarning && !isContentWarningRevealed}
+        {#if displayModel.contentWarning && !isContentWarningRevealed}
             <div class="content-warning-prompt" role="group" aria-label={$_("postContent.contentWarningTitle")}>
                 <div class="content-warning-copy">
                     <strong>{$_("postContent.contentWarningTitle")}</strong>
-                    {#if model.contentWarning.reason}
-                        <span>{model.contentWarning.reason}</span>
+                    {#if displayModel.contentWarning.reason}
+                        <span>{displayModel.contentWarning.reason}</span>
                     {/if}
                 </div>
+                {#if sensitiveBodyLoading}
+                    <span role="status">{$_("postContent.sensitivePayloadLoading")}</span>
+                {:else if sensitiveBodyFailed}
+                    <span role="status">{$_("postContent.sensitivePayloadUnavailable")}</span>
+                {/if}
                 <button
                     type="button"
                     class="content-warning-reveal-button"
-                    onclick={() => {
-                        if (contentWarningEventId === undefined) {
-                            contentWarningRevealedWithoutEventId = true;
-                        } else {
-                            contentWarningRevealedForEventId = contentWarningEventId;
-                        }
-                    }}
+                    disabled={sensitiveBodyLoading}
+                    onclick={() => void revealContentWarning()}
                 >
-                    {$_("postContent.showContentWarningBody")}
+                    {$_(sensitiveBodyFailed ? "postContent.retrySensitivePayload" : "postContent.showContentWarningBody")}
                 </button>
             </div>
         {:else}
-            {#if model.hasRenderableText}
+            {#if displayModel.hasRenderableText}
                 <div class="post-preview-content">
                     <PostHistoryPreviewContent
-                        previewContent={model.previewContent}
+                        previewContent={displayModel.previewContent}
                         {emojiLoadStateByUrl}
                         {emojiImageMetaByUrl}
                         {previewCollapseAction}
@@ -163,11 +210,11 @@
 
             {@render betweenContentAndMedia?.()}
 
-            {#if model.hasRenderableMedia}
+            {#if displayModel.hasRenderableMedia}
                 <div class="post-preview-media">
                     <PostHistoryMediaList
-                        media={model.media}
-                        mediaLayout={model.mediaLayout}
+                        media={displayModel.media}
+                        mediaLayout={displayModel.mediaLayout}
                         {scrollRoot}
                         {onImageOpen}
                     />

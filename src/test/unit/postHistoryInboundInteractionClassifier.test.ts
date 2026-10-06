@@ -98,10 +98,10 @@ describe("classifyPostHistoryInboundInteraction", () => {
         });
     });
 
-    it("kind:36 CW投稿に付いたowner #pをmention-likeに分類する", () => {
+    it("thread parentのないowner #p eventをmention-likeに分類する", () => {
         const event = createEvent({
-            kind: 36,
-            tags: [["p", OWNER_PUBKEY], ["content-warning", "Spoiler"]],
+            kind: 1,
+            tags: [["p", OWNER_PUBKEY]],
         });
 
         expect(classifyPostHistoryInboundInteraction({

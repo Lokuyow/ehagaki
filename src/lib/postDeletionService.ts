@@ -13,6 +13,9 @@ import {
     type PostHistoryRawEventAttestation,
 } from "./postHistoryRawEventVerification";
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
+import type { SensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
+import { sensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
+import { getSensitivePayloadReference, verifySensitivePayloadLink } from "./sensitiveContentPayload";
 import {
     postHistoryDeletionRequestsRepository,
     type PostHistoryDeletionRequestsRepository,
@@ -24,7 +27,7 @@ import {
     validateSignedEventResult,
 } from "./signedEventResultValidator";
 
-export const POST_DELETION_SUPPORTED_KINDS = [1, 36, 42, 1111, 3636] as const;
+export const POST_DELETION_SUPPORTED_KINDS = [1, 42, 1111] as const;
 
 export interface DeletionRequestResult extends PostResult {
     deletedAt?: number;
@@ -60,6 +63,7 @@ export interface PostDeletionServiceDeps {
         PostHistoryDeletionRequestsRepository,
         "saveLocalDeletion"
     >;
+    sensitivePayloadRepository?: Pick<SensitivePayloadRepository, "getByIds">;
     eventSenderFactory?: (
         rxNostr: RxNostr,
         console: Console,
@@ -73,7 +77,7 @@ type DeletionRequestTemplate = {
     kind: 5;
     pubkey: string;
     content: "";
-    tags: [["e", string], ["k", string]];
+    tags: string[][];
     created_at: number;
 };
 
@@ -105,12 +109,17 @@ export function canRequestPostDeletion(
 export function buildDeletionRequestEvent(
     post: Pick<PostHistoryRecord, "eventId" | "kind" | "pubkeyHex">,
     createdAt: number = Math.floor(Date.now() / 1000),
+    payloadEventId?: string,
 ): DeletionRequestTemplate {
+    const targets: string[][] = [["e", post.eventId], ["k", String(post.kind)]];
+    if (payloadEventId) {
+        targets.push(["e", payloadEventId], ["k", "36"]);
+    }
     return {
         kind: 5,
         pubkey: post.pubkeyHex,
         content: "",
-        tags: [["e", post.eventId], ["k", String(post.kind)]],
+        tags: targets,
         created_at: createdAt,
     };
 }
@@ -125,12 +134,15 @@ export function buildDeletionRelayUrls(
         | "channelRelayHints"
     >,
     writeRelays: string[],
+    payloadEvidence?: { acceptedRelays?: string[]; fetchedRelays?: string[] },
 ): string[] {
     return RelayConfigUtils.sanitizeExternalRelayUrls([
         ...(post.acceptedRelays ?? []),
         ...(post.fetchedRelays ?? []),
         ...(post.relayHints ?? []),
         ...(post.kind === 42 ? post.channelRelayHints ?? [] : []),
+        ...(payloadEvidence?.acceptedRelays ?? []),
+        ...(payloadEvidence?.fetchedRelays ?? []),
         ...writeRelays,
     ]);
 }
@@ -147,6 +159,7 @@ export class PostDeletionService {
             PostHistoryDeletionRequestsRepository,
             "saveLocalDeletion"
         >;
+        sensitivePayloadRepository: Pick<SensitivePayloadRepository, "getByIds">;
     };
 
     constructor(deps: PostDeletionServiceDeps = {}) {
@@ -171,6 +184,7 @@ export class PostDeletionService {
                 deps.postHistoryDeletionRequestsRepository
                 ?? postHistoryDeletionRequestsRepository,
             eventSenderFactory: deps.eventSenderFactory,
+            sensitivePayloadRepository: deps.sensitivePayloadRepository ?? sensitivePayloadRepository,
             now: deps.now ?? Date.now,
         };
     }
@@ -244,9 +258,11 @@ export class PostDeletionService {
             return { success: false, error: "post_error" };
         }
 
+        const associatedPayload = await this.resolveAssociatedPayload(params.post);
         const deletionEvent = buildDeletionRequestEvent(
             params.post,
             Math.floor(this.deps.now() / 1000),
+            associatedPayload?.id,
         );
 
         let signedEvent: any;
@@ -279,6 +295,7 @@ export class PostDeletionService {
         const additionalWriteRelays = buildDeletionRelayUrls(
             params.post,
             this.deps.writeRelaysStore.value,
+            associatedPayload,
         );
 
         let result: PostResult;
@@ -312,7 +329,9 @@ export class PostDeletionService {
 
         try {
             await this.deps.postHistoryDeletionRequestsRepository.saveLocalDeletion({
-                targetEventId: params.post.eventId,
+                targetEventIds: deletionEvent.tags
+                    .filter((tag) => tag[0] === "e")
+                    .map((tag) => tag[1]!),
                 deletionEvent: verifiedDeletionEvent.event,
                 attestation: verifiedDeletionEvent.attestation,
                 deletedAt,
@@ -339,6 +358,27 @@ export class PostDeletionService {
         return this.deps.eventSenderFactory
             ? this.deps.eventSenderFactory(rxNostr, this.deps.console)
             : new PostEventSender(rxNostr, this.deps.console);
+    }
+
+    private async resolveAssociatedPayload(post: PostHistoryRecord): Promise<{
+        id: string;
+        acceptedRelays?: string[];
+        fetchedRelays?: string[];
+    } | undefined> {
+        const structure = post.rawEvent as NostrEvent;
+        const reference = getSensitivePayloadReference(structure);
+        if (!reference || structure.id !== post.eventId || structure.pubkey !== post.pubkeyHex) {
+            return undefined;
+        }
+        const [record] = await this.deps.sensitivePayloadRepository.getByIds([reference.eventId]);
+        if (!record || record.deletedAt !== undefined) return undefined;
+        const payload = record.rawEvent as NostrEvent;
+        if (!verifySensitivePayloadLink(structure, payload, reference.eventId)) return undefined;
+        return {
+            id: reference.eventId,
+            acceptedRelays: record.acceptedRelays,
+            fetchedRelays: record.fetchedRelays,
+        };
     }
 
     private resolveSigner(

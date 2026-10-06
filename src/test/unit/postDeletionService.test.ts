@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
 
 vi.mock("../../lib/postHistoryRawEventVerification", () => ({
     RAW_EVENT_VERIFICATION_RULE_VERSION: 1,
@@ -100,7 +101,7 @@ describe("postDeletionService helpers", () => {
         });
     });
 
-    it.each([36, 1111, 3636])("kind:%s eventの削除要求はcanonical IDと実kindを参照する", (kind) => {
+    it.each([1, 42, 1111])("kind:%s eventの削除要求はevent IDと実kindを参照する", (kind) => {
         const eventId = "9".repeat(64);
         const post = createRecord({ eventId, kind });
         expect(canRequestPostDeletion(post, "a".repeat(64))).toBe(true);
@@ -108,6 +109,10 @@ describe("postDeletionService helpers", () => {
             ["e", eventId],
             ["k", String(kind)],
         ]);
+    });
+
+    it.each([36, 3636])("kind:%s payload / 未release kindは直接の投稿削除対象にしない", (kind) => {
+        expect(canRequestPostDeletion(createRecord({ kind }), "a".repeat(64))).toBe(false);
     });
 
     it("relay 候補を accepted, fetched, hints, channel, write の順で sanitize する", () => {
@@ -197,10 +202,87 @@ describe("PostDeletionService", () => {
             },
         );
         expect(saveLocalDeletion).toHaveBeenCalledWith(expect.objectContaining({
-            targetEventId: "e".repeat(64),
+            targetEventIds: ["e".repeat(64)],
             deletionEvent: expect.objectContaining({ id: "delete-event-id", kind: 5 }),
             deletedAt: 5000,
         }));
+    });
+
+    it("verified payload=A,B and Structure=A のevidenceから両Relayを削除先へ含める", async () => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const payload = finalizeEvent({
+            kind: 36,
+            content: "sensitive body",
+            tags: [["k", "1"]],
+            created_at: 100,
+        }, secretKey);
+        const structure = finalizeEvent({
+            kind: 1,
+            content: "",
+            tags: [["content-warning", "reason"], ["c", payload.id]],
+            created_at: 101,
+        }, secretKey);
+        const post = createRecord({
+            eventId: structure.id,
+            pubkeyHex: pubkey,
+            kind: 1,
+            content: "",
+            tags: structure.tags,
+            rawEvent: structure,
+            acceptedRelays: ["wss://a.example.com/"],
+            fetchedRelays: [],
+            relayHints: [],
+        });
+        const sendEvent = vi.fn().mockResolvedValue({ success: true, eventId: "delete-event-id" });
+        const service = new PostDeletionService({
+            authStateStore: { value: createAuthState({ pubkey }) },
+            keyManager: {
+                getFromStore: () => "nsec1test",
+                loadFromStorage: () => null,
+                isWindowNostrAvailable: () => false,
+            },
+            seckeySignerFn: vi.fn().mockReturnValue({
+                signEvent: vi.fn().mockResolvedValue({
+                    id: "delete-event-id",
+                    sig: "s".repeat(128),
+                    kind: 5,
+                    content: "",
+                    tags: [["e", structure.id], ["k", "1"], ["e", payload.id], ["k", "36"]],
+                    pubkey,
+                    created_at: 101,
+                }),
+            }),
+            writeRelaysStore: { value: ["wss://write.example.com/"] },
+            postHistoryDeletionRequestsRepository: { saveLocalDeletion: vi.fn().mockResolvedValue(undefined) },
+            sensitivePayloadRepository: {
+                getByIds: vi.fn().mockResolvedValue([{
+                    id: payload.id,
+                    pubkeyHex: pubkey,
+                    rawEvent: payload,
+                    acceptedRelays: ["wss://a.example.com/", "wss://b.example.com/"],
+                    fetchedRelays: [],
+                }]),
+            },
+            eventSenderFactory: () => ({ sendEvent }),
+            now: () => 101_000,
+            console: createMockConsole(),
+        });
+
+        const result = await service.requestDeletion({ post, rxNostr: {} as any });
+
+        expect(result.success).toBe(true);
+        expect(sendEvent).toHaveBeenCalledWith(expect.objectContaining({ kind: 5 }), {
+            includeDefaultWriteRelays: true,
+            targetRelays: [
+                "wss://a.example.com/",
+                "wss://b.example.com/",
+                "wss://write.example.com/",
+            ],
+        });
+        expect(sendEvent.mock.calls[0]?.[0].tags).toEqual([
+            ["e", structure.id], ["k", "1"], ["e", payload.id], ["k", "36"],
+        ]);
     });
 
     it("atomicなローカル保存失敗でもpublish成功結果を失敗扱いにしない", async () => {

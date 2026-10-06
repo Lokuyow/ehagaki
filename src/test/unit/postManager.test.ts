@@ -1355,20 +1355,14 @@ describe('PostManager統合テスト', () => {
         expect(sentEvent.tags.some((tag: string[]) => tag[0] === 'client')).toBe(false);
     });
 
-    it('通常投稿はcanonical settingがONかつCW明示時だけfail-closed形式を使う', async () => {
-        const mockObservable = {
-            subscribe: vi.fn((observer) => {
-                process.nextTick(() => observer.next({
-                    from: 'relay1',
-                    ok: true,
-                    done: true,
-                    eventId: 'test-event-id',
-                    type: 'ok',
-                    message: '',
-                }));
-                return { unsubscribe: vi.fn() };
-            }),
-        };
+    it('Sensitive setting ON + explicit CW sends payload kind 36 before the empty kind 1 Structure', async () => {
+        const mockObservable = { subscribe: vi.fn((observer) => {
+            process.nextTick(() => observer.next({
+                from: 'wss://relay1.example.com/', ok: true, done: true,
+                eventId: 'test-event-id', type: 'ok', message: '',
+            }));
+            return { unsubscribe: vi.fn() };
+        }) };
         const deps = {
             ...mockDeps,
             contentWarningStore: { value: true, reset: vi.fn() },
@@ -1384,18 +1378,19 @@ describe('PostManager統合テスト', () => {
         vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
 
         const result = await manager.submitPost('Sensitive body');
-        const sentEvent = vi.mocked(mockRxNostr.send).mock.calls[0][0] as any;
+        const sentEvents = vi.mocked(mockRxNostr.send).mock.calls.map(([event]) => event as any);
 
         expect(result.success).toBe(true);
-        expect(sentEvent.kind).toBe(36);
-        expect(sentEvent.content).toBe('Sensitive body');
-        expect(sentEvent.tags).toContainEqual([
-            'content-warning', 'Spoiler',
-        ]);
-        expect(sentEvent.tags).not.toContainEqual(['t', 'nsfw']);
+        expect(sentEvents).toHaveLength(2);
+        expect(sentEvents[0]).toMatchObject({ kind: 36, content: 'Sensitive body', tags: [['k', '1']] });
+        expect(sentEvents[1].kind).toBe(1);
+        expect(sentEvents[1].content).toBe('');
+        expect(sentEvents[1].tags).toContainEqual(['content-warning', 'Spoiler']);
+        expect(sentEvents[1].tags).toContainEqual(['c', sentEvents[0].id, 'wss://relay1.example.com/']);
+        expect(sentEvents[1].tags).not.toContainEqual(['t', 'nsfw']);
     });
 
-    it('Sensitive設定ONのCW replyはkind 3636とNIP-22 root/parent tagで送る', async () => {
+    it('Sensitive設定ONのkind 1111 replyはkindを維持してpayload分離する', async () => {
         const mockObservable = {
             subscribe: vi.fn((observer) => {
                 process.nextTick(() => observer.next({
@@ -1414,10 +1409,13 @@ describe('PostManager統合テスト', () => {
         const parent = {
             id: parentId,
             pubkey: parentPubkey,
-            kind: 36,
+            kind: 1111,
             created_at: 100,
             content: 'parent body',
-            tags: [['content-warning', 'Parent warning']],
+            tags: [
+                ['E', parentId, '', parentPubkey], ['K', '1'], ['P', parentPubkey],
+                ['e', parentId, '', parentPubkey], ['k', '1'], ['p', parentPubkey],
+            ],
             sig: 'verified-by-upstream',
         };
         mockDeps.contentWarningStore = { value: true, reset: vi.fn() };
@@ -1452,25 +1450,78 @@ describe('PostManager統合テスト', () => {
         vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
 
         const result = await manager.submitPost('Sensitive reply');
-        const [sentEvent] = vi.mocked(mockRxNostr.send).mock.calls[0] as [any, any];
+        const sentEvents = vi.mocked(mockRxNostr.send).mock.calls.map(([event]) => event as any);
+        const [payload, structure] = sentEvents;
 
         expect(result.success).toBe(true);
-        expect(sentEvent.kind).toBe(3636);
-        expect(sentEvent.content).toBe('Sensitive reply');
-        expect(sentEvent.tags).toEqual(expect.arrayContaining([
-            ['E', parentId, 'wss://parent.example.com/', parentPubkey],
-            ['K', '36'],
+        expect(payload).toMatchObject({ kind: 36, content: 'Sensitive reply', tags: [['k', '1111']] });
+        expect(structure.kind).toBe(1111);
+        expect(structure.content).toBe('');
+        expect(structure.tags).toEqual(expect.arrayContaining([
+            ['E', parentId, '', parentPubkey],
+            ['K', '1'],
             ['P', parentPubkey],
             ['e', parentId, 'wss://parent.example.com/', parentPubkey],
-            ['k', '36'],
+            ['k', '1111'],
             ['p', parentPubkey],
             ['content-warning', 'Spoiler'],
         ]));
     });
 
-    it('kind 36のcanonical成功後に空本文のkind 1 compatibility companionを別送信する', async () => {
+    it('Structure publish failure after payload acceptance is partial and does not report success or clear inputs', async () => {
         const secretKey = generateSecretKey();
         const pubkey = getPublicKey(secretKey);
+        mockAuthState.pubkey = pubkey;
+        mockDeps.authStateStore = { value: mockAuthState };
+        mockDeps.keyManager = new MockKeyManager('test-secret-key', 'test-storage-key', false);
+        mockDeps.contentWarningStore = { value: true, reset: vi.fn() };
+        mockDeps.contentWarningReasonStore = { value: 'Spoiler', reset: vi.fn() };
+        mockDeps.settingsStore = {
+            clientTagEnabled: true,
+            quoteNotificationEnabled: false,
+            replyNotificationEnabled: false,
+            failClosedContentWarning: true,
+        } as any;
+        const signSensitiveEvent = vi.fn(async (template: any) => finalizeEvent(template, secretKey));
+        mockDeps.seckeySignerFn = vi.fn(() => ({ signEvent: signSensitiveEvent }));
+        mockDeps.console = createMockConsole();
+
+        const notifications = {
+            notifyPostSuccess: vi.fn(),
+            notifyPostError: vi.fn(),
+        };
+        mockDeps.iframeMessageService = undefined;
+        mockDeps.notificationPort = notifications as any;
+        const clearReplyQuoteFn = vi.fn();
+        mockDeps.clearReplyQuoteFn = clearReplyQuoteFn;
+        vi.mocked(mockRxNostr.send).mockImplementation(((event: any) => {
+            const observable = {
+                subscribe: vi.fn((observer) => {
+                    process.nextTick(() => {
+                        observer.next({ from: 'wss://accepted.example.com/', ok: event.kind === 36, done: true, type: 'ok', message: 'rejected' });
+                        observer.complete();
+                    });
+                    return { unsubscribe: vi.fn() };
+                }),
+            };
+            return observable;
+        }) as any);
+        manager = new PostManager(mockRxNostr, mockDeps);
+
+        const result = await manager.submitPost('Sensitive body');
+        expect(result).toMatchObject({ success: false, error: 'postComponent.error.sensitive_partial_publish' });
+        expect(mockRxNostr.send).toHaveBeenCalledTimes(2);
+        expect((mockRxNostr.send as any).mock.calls[0][0]).toMatchObject({ kind: 36, content: 'Sensitive body' });
+        expect((mockRxNostr.send as any).mock.calls[1][0]).toMatchObject({ kind: 1, content: '' });
+        expect(notifications.notifyPostSuccess).not.toHaveBeenCalled();
+        expect(notifications.notifyPostError).toHaveBeenCalledWith({ code: 'sensitive_partial_publish' });
+        expect(clearReplyQuoteFn).not.toHaveBeenCalled();
+    });
+
+    it('payload accept後にsessionが変わったらStructureを送らずpartial publishとして入力を保持する', async () => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const nextPubkey = getPublicKey(generateSecretKey());
         mockAuthState.pubkey = pubkey;
         mockDeps.authStateStore = { value: mockAuthState };
         mockDeps.keyManager = new MockKeyManager('test-secret-key', 'test-storage-key', false);
@@ -1485,55 +1536,55 @@ describe('PostManager統合テスト', () => {
         mockDeps.seckeySignerFn = vi.fn(() => ({
             signEvent: vi.fn(async (template: any) => finalizeEvent(template, secretKey)),
         }));
+        mockDeps.saveSensitivePayloadFn = vi.fn();
+        const notifications = {
+            notifyPostSuccess: vi.fn(),
+            notifyPostError: vi.fn(),
+        };
+        mockDeps.iframeMessageService = undefined;
+        mockDeps.notificationPort = notifications as any;
+        const clearReplyQuoteFn = vi.fn();
+        mockDeps.clearReplyQuoteFn = clearReplyQuoteFn;
 
-        let notifyCompanion!: (value: { event: any; options: any }) => void;
-        const companionPublished = new Promise<{ event: any; options: any }>((resolve) => {
-            notifyCompanion = resolve;
-        });
-        const mockObservable = {
+        let acceptPayload: (() => void) | undefined;
+        const sentEvents: any[] = [];
+        vi.mocked(mockRxNostr.send).mockImplementation(((event: any) => ({
             subscribe: vi.fn((observer) => {
-                process.nextTick(() => observer.next({
-                    from: 'wss://accepted.example.com/',
-                    ok: true,
-                    done: true,
-                    eventId: 'ignored-relay-event-id',
-                    type: 'ok',
-                    message: '',
-                }));
+                sentEvents.push(event);
+                if (event.kind === 36) {
+                    acceptPayload = () => {
+                        observer.next({
+                            from: 'wss://accepted.example.com/',
+                            ok: true,
+                            done: true,
+                            eventId: event.id,
+                            type: 'ok',
+                            message: '',
+                        });
+                        observer.complete();
+                    };
+                } else {
+                    process.nextTick(() => observer.complete());
+                }
                 return { unsubscribe: vi.fn() };
             }),
-        };
-        vi.mocked(mockRxNostr.send).mockImplementation(((event: any, options: any) => {
-            if (event.kind === 1 && event.tags.some((tag: string[]) => tag[0] === 'c')) {
-                notifyCompanion({ event, options });
-            }
-            return mockObservable;
-        }) as any);
+        })) as any);
         manager = new PostManager(mockRxNostr, mockDeps);
 
-        const result = await manager.submitPost('Sensitive body');
-        const companion = await companionPublished;
-        const canonical = vi.mocked(mockRxNostr.send).mock.calls[0]![0] as any;
+        const resultPromise = manager.submitPost('Sensitive body');
+        await vi.waitFor(() => expect(acceptPayload).toBeDefined());
+        mockAuthState.pubkey = nextPubkey;
+        acceptPayload!();
 
-        expect(result.success).toBe(true);
-        expect(canonical.kind).toBe(36);
-        expect(canonical.content).toBe('Sensitive body');
-        expect(companion.event).toMatchObject({
-            kind: 1,
-            pubkey,
-            created_at: canonical.created_at,
-            content: '',
-            tags: [
-                ['content-warning', 'Spoiler'],
-                ['c', canonical.id, 'wss://accepted.example.com/'],
-            ],
+        await expect(resultPromise).resolves.toMatchObject({
+            success: false,
+            error: 'postComponent.error.sensitive_partial_publish',
         });
-        expect(companion.options.on).toEqual({
-            relays: [
-                'wss://relay1.example.com/',
-                'wss://relay2.example.com/',
-            ],
-        });
+        expect(sentEvents.map((event) => event.kind)).toEqual([36]);
+        expect(notifications.notifyPostSuccess).not.toHaveBeenCalled();
+        expect(notifications.notifyPostError).toHaveBeenCalledOnce();
+        expect(notifications.notifyPostError).toHaveBeenCalledWith({ code: 'sensitive_partial_publish' });
+        expect(clearReplyQuoteFn).not.toHaveBeenCalled();
     });
 
     it('投稿成功時に署名済みeventを投稿履歴保存関数へ渡す', async () => {
@@ -1675,8 +1726,11 @@ describe('PostManager統合テスト', () => {
         expect(sendOptions).toEqual(expect.objectContaining({
             completeOn: 'all-ok',
             on: {
-                relays: ['wss://channel-relay.example.com/'],
-                defaultWriteRelays: true,
+                relays: [
+                    'wss://relay1.example.com/',
+                    'wss://relay2.example.com/',
+                    'wss://channel-relay.example.com/',
+                ],
             },
         }));
         expect(sendOptions.signer).toEqual(expect.objectContaining({

@@ -19,13 +19,13 @@ eHagaki（えはがき）は、画像・動画圧縮機能付きの投稿専用N
 - **PWA・共有インテント対応**: モバイル・デスクトップ両対応。Androidは外部アプリの共有ボタンから直接メディアアップロード可能
 - **ドラフト機能**: 投稿内容を下書きとして保存し、後から編集・投稿が可能
 - **リプライ・引用・チャンネル投稿**: 各種URLクエリや`nostr:` URIを通じたリプライ・引用投稿（NIP-10, NIP-18）に対応。パブリックチャット（NIP-28）のチャンネルへの投稿もサポート
-- **Content Warning (CW)**: 標準NIP-36に加え、kind `36` / `3636`を使う実験的な相互運用形式にも対応しています。正式NIPではありませんが、他clientも同じwire formatを実装できます。詳細は[公開仕様書](docs/SENSITIVE_CONTENT.md)を参照してください
+- **Content Warning (CW)**: 標準NIP-36に加え、本文をkind `36` payloadへ分けるeHagaki独自の実験的形式を選択できます。元の投稿kind `1` / `42` / `1111`を維持します。詳細なwire仕様は[公開仕様書](docs/SENSITIVE_CONTENT.md)を参照してください。
 - **埋め込み**: iframe、Full Web Component、Host-owned Composer Lite Web Componentの3方式を提供
 - **多言語対応**: 日本語・英語に対応（ブラウザ設定から自動判定）
 
 ## ドキュメント
 
-- Sensitive Event相互運用仕様: [docs/SENSITIVE_CONTENT.md](docs/SENSITIVE_CONTENT.md)
+- Sensitive Content Payload形式（実験的仕様）: [docs/SENSITIVE_CONTENT.md](docs/SENSITIVE_CONTENT.md)
 - 埋め込み・統合ガイド: [docs/EMBEDDING.md](docs/EMBEDDING.md)
 - iframe詳細仕様: [docs/IFRAME_EMBEDDING.md](docs/IFRAME_EMBEDDING.md)
 - Web Component API詳細: [docs/WEB_COMPONENT.md](docs/WEB_COMPONENT.md)
@@ -57,7 +57,7 @@ https://lokuyow.github.io/ehagaki/?quote=note1...
 ```
 
 - リプライ: NIP-10準拠のe/pタグを自動構築（スレッドroot引き継ぎ対応）
-- Sensitive形式のkind、NIP-22 topology、compatibility companionなどのwire仕様は[公開仕様書](docs/SENSITIVE_CONTENT.md)を参照してください。
+- Sensitive Content Payload形式のkind、NIP-22 topology、wire仕様は[公開仕様書](docs/SENSITIVE_CONTENT.md)を参照してください。
 - 引用: NIP-18準拠のqタグを自動構築し、投稿時に引用イベントとして処理されます
 - URLクエリ由来の参照イベントはプレビュー表示されます
 - エディタ本文に `nostr:nevent1...` または `nostr:note1...` を含めた場合も引用として処理されます

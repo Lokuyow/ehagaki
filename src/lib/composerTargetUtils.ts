@@ -101,7 +101,7 @@ export function getComposerTargetActions(
     kind: number,
     hasResolvedChannel: boolean,
 ): ComposerTargetAction[] {
-    if (kind === 1 || kind === 36 || kind === 1111 || kind === 3636) return ["reply", "quote"];
+    if (kind === 1 || kind === 1111) return ["reply", "quote"];
     if (kind === 40) return hasResolvedChannel ? ["channel"] : [];
     if (kind === 42) {
         return hasResolvedChannel ? ["reply", "quote"] : [];

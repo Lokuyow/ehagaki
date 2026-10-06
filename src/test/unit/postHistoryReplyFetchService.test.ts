@@ -87,7 +87,7 @@ describe("PostHistoryReplyFetchService", () => {
         });
         expect(rxNostrMock.emittedFilters).toEqual([
             {
-                kinds: [1, 1111, 3636],
+                kinds: [1, 1111],
                 "#e": [parentEventId],
                 since: 1_699_913_600,
                 limit: 100,
@@ -149,7 +149,7 @@ describe("PostHistoryReplyFetchService", () => {
         });
         expect(rxNostrMock.emittedFilters).toEqual([
             {
-                kinds: [1, 1111, 3636],
+                kinds: [1, 1111],
                 "#e": parentEventIds,
                 since: 1_699_913_600,
                 limit: 100,

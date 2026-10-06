@@ -139,13 +139,13 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         });
         expect(rxNostrMock.emittedFilters).toEqual([
             {
-                kinds: [1, 7, 36, 42, 1111, 3636],
+                kinds: [1, 7, 42, 1111],
                 "#p": [OWNER_PUBKEY],
                 since: 1_699_395_200,
                 limit: 150,
             },
             {
-                kinds: [1111, 3636],
+                kinds: [1111],
                 "#P": [OWNER_PUBKEY],
                 since: 1_699_395_200,
                 limit: 150,

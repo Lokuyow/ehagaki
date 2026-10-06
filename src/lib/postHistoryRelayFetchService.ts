@@ -15,7 +15,7 @@ import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
 import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
 
-export const POST_HISTORY_FETCH_KINDS = [1, 36, 42, 1111, 3636] as const;
+export const POST_HISTORY_FETCH_KINDS = [1, 42, 1111] as const;
 export const POST_HISTORY_PAGE_SIZE = 50;
 export const POST_HISTORY_BOOTSTRAP_FETCH_LIMIT = 150;
 export const POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT = 30;

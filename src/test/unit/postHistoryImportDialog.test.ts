@@ -92,6 +92,9 @@ function createResult(
         unsupportedDeletionEventCount: 0,
         failedDeletionEventCount: 0,
         appliedDeletionPostCount: 0,
+        uniquePayloadEventCount: 0,
+        savedPayloadCandidateCount: 0,
+        failedPayloadEventCount: 0,
         ...overrides,
     };
 }

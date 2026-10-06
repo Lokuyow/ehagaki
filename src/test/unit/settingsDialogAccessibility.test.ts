@@ -139,8 +139,9 @@ describe('SettingsDialog accessibility', () => {
 
         await fireEvent.click(infoButton);
         await tick();
-        expect(screen.getByText(/実験的な形式です/)).toBeTruthy();
-        expect(screen.getByText(/未対応のクライアントでは投稿が表示されない/)).toBeTruthy();
+        expect(screen.getByText(/実験的な送信形式です/)).toBeTruthy();
+        expect(screen.getByText(/対応していないクライアントでは投稿が表示されない/)).toBeTruthy();
+        expect(screen.getByText(/Nostrの全文検索で見つからないことがあります/)).toBeTruthy();
         expect(screen.getByText(/本文は暗号化されず/)).toBeTruthy();
 
         await fireEvent.click(toggle);

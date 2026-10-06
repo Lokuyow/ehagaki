@@ -272,7 +272,7 @@ describe('PostHistoryDialog', () => {
         repositoryMock.getPage.mockResolvedValue([pagePost]);
         visibleRangeRepositoryMock.get.mockImplementation(async () => ({
             pubkeyHex,
-            kindsKey: '1,36,42,1111,3636',
+            kindsKey: '1,42,1111',
             visibleUntil: currentVisibleUntil,
             updatedAt: 1000,
         }));
@@ -358,7 +358,7 @@ describe('PostHistoryDialog', () => {
             pubkeyHex,
             relayConfig: null,
             preferredRanges: [{
-                kinds: [1, 36, 42, 1111, 3636],
+                kinds: [1, 42, 1111],
                 rangeUnit: 'custom',
                 since: expectedSince,
                 until: expectedUntil,

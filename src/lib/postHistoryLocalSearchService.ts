@@ -12,6 +12,10 @@ import {
     getChannelMetadataSearchRevision,
     getPostHistorySearchRevision,
 } from "./postHistoryLocalSearchRevision";
+import { getSensitivePayloadReference, verifySensitivePayloadLink } from "./sensitiveContentPayload";
+import { sensitivePayloadRepository, type SensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
+import { isPostHistoryRawEventConsistent } from "./postHistoryEventUtils";
+import type { NostrEvent } from "./types";
 
 export interface SearchLocalPostsOptions {
     pubkeyHex?: string | null;
@@ -85,9 +89,11 @@ function areRevisionSnapshotsEqual(
 function buildSearchText(
     post: PostHistoryRecord,
     channelMetadata: ChannelMetadataCache | null,
+    sensitiveBody = "",
 ): string {
     return [
         post.content,
+        sensitiveBody,
         post.eventId,
         String(post.kind),
         post.tags.flat().join(" "),
@@ -129,6 +135,8 @@ export class PostHistoryLocalSearchService {
             ChannelMetadataRepository,
             "getMany"
         > = channelMetadataRepository,
+        private sensitivePayloadRepositoryImpl: Pick<SensitivePayloadRepository, "getByIds"> =
+            sensitivePayloadRepository,
     ) { }
 
     clearCache(): void {
@@ -153,6 +161,27 @@ export class PostHistoryLocalSearchService {
         queryTokens: string[],
     ): Promise<PostHistoryRecord[]> {
         const posts = await this.postHistoryRepositoryImpl.getAll({ pubkeyHex });
+        const structures = posts.flatMap((post) => {
+            if (!isPostHistoryRawEventConsistent(post.rawEvent, post)) return [];
+            const structure = post.rawEvent as NostrEvent;
+            const reference = getSensitivePayloadReference(structure);
+            return reference ? [{ structure, payloadId: reference.eventId }] : [];
+        });
+        const payloadRecords = structures.length > 0
+            ? await this.sensitivePayloadRepositoryImpl.getByIds(
+                structures.map(({ payloadId }) => payloadId),
+            )
+            : [];
+        const payloadById = new Map(payloadRecords.map((record) => [record.id, record]));
+        const bodyByStructureId = new Map<string, string>();
+        for (const { structure, payloadId } of structures) {
+            const record = payloadById.get(payloadId);
+            if (!record || record.deletedAt !== undefined) continue;
+            const payload = record.rawEvent as NostrEvent;
+            if (verifySensitivePayloadLink(structure, payload, payloadId)) {
+                bodyByStructureId.set(structure.id, payload.content);
+            }
+        }
         const channelEventIds = extractChannelEventIds(posts);
         const channelMetadataById = new Map<string, ChannelMetadataCache>();
 
@@ -172,6 +201,7 @@ export class PostHistoryLocalSearchService {
                 post.channelEventId
                     ? channelMetadataById.get(post.channelEventId) ?? null
                     : null,
+                bodyByStructureId.get(post.eventId) ?? "",
             );
 
             return queryTokens.every((token) => searchText.includes(token));

@@ -59,6 +59,23 @@ describe('createPostStatusHandlers', () => {
         expect(onPostSuccess).toHaveBeenCalledOnce();
         expect(events.slice(0, 4)).toEqual(['status', 'status', 'clear', 'callback']);
     });
+
+    it('前のsessionで投稿済みならsuccess statusだけを更新して現在のcomposerを保持する', () => {
+        const updatePostStatus = vi.fn();
+        const clearContentAfterSuccess = vi.fn();
+        const onPostSuccess = vi.fn();
+        const handlers = createPostStatusHandlers({
+            updatePostStatus,
+            clearContentAfterSuccess,
+            onPostSuccess,
+        });
+
+        handlers.markSuccess({ success: true, preserveComposerContent: true });
+
+        expect(updatePostStatus).toHaveBeenCalledOnce();
+        expect(clearContentAfterSuccess).not.toHaveBeenCalled();
+        expect(onPostSuccess).not.toHaveBeenCalled();
+    });
 });
 
 describe('submitPendingPostWithSecretKey', () => {

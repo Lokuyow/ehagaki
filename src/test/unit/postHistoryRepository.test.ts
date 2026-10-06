@@ -982,39 +982,31 @@ describe("DexiePostHistoryRepository", () => {
         db.close();
     });
 
-    it("verified compatibility companion は履歴行にせず、同じbatchのcanonical Sensitive eventは保存する", async () => {
+    it("通常のsupported-kind semanticsでkind 1 Structureを保存し、kind 36は履歴投稿にしない", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 9000);
         const pubkey = "b".repeat(64);
-        const canonicalId = "6".repeat(64);
-        const companionId = "7".repeat(64);
-        const canonical = createSignedEvent({
-            id: canonicalId,
-            pubkey,
-            kind: 36,
-            content: "sensitive body",
-            tags: [["content-warning", "Spoiler"]],
-        });
-        const companion = createSignedEvent({
-            id: companionId,
+        const structureId = "7".repeat(64);
+        const payloadId = "6".repeat(64);
+        const structure = createSignedEvent({
+            id: structureId,
             pubkey,
             kind: 1,
             content: "",
-            tags: [["content-warning", "Spoiler"], ["c", canonicalId]],
+            tags: [["content-warning", "Spoiler"], ["c", payloadId]],
         });
 
         const result = await repository.upsertFetchedEvents({
             events: [
-                { event: companion, relayUrls: ["wss://relay.example.com"] },
-                { event: canonical, relayUrls: ["wss://relay.example.com"] },
+                { event: structure, relayUrls: ["wss://relay.example.com"] },
             ],
             fetchedAt: 9000,
         });
         const records = await repository.getAll({ pubkeyHex: pubkey });
 
         expect(result).toMatchObject({ insertedCount: 1, updatedCount: 0, unchangedCount: 0 });
-        expect(records.map((record) => [record.eventId, record.kind])).toEqual([[canonicalId, 36]]);
-        expect(await repository.getByEventId(companionId)).toBeNull();
+        expect(records.map((record) => [record.eventId, record.kind])).toEqual([[structureId, 1]]);
+        expect(await repository.getByEventId(payloadId)).toBeNull();
         db.close();
     });
 

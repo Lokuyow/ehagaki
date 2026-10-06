@@ -2321,6 +2321,23 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(post.locator('.post-preview-media')).toBeVisible();
     });
 
+    test('Sensitive payloads found by local search remain behind the normal CW gate', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?sensitive-preview=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+        await page.getByRole('menuitem', { name: '検索' }).click();
+        await page.getByRole('searchbox', { name: '検索' }).fill('sensitive preview body');
+
+        const result = page.locator('.post-history-item').first();
+        await expect(result.locator('.content-warning-prompt')).toBeVisible();
+        await expect(result.getByText('playwright sensitive preview body')).toHaveCount(0);
+        await expect(result.locator('.post-preview-media')).toHaveCount(0);
+
+        await result.getByRole('button', { name: '本文を表示' }).click();
+        await expect(result.getByText('playwright sensitive preview body')).toBeVisible();
+        await expect(result.locator('.post-preview-media')).toBeVisible();
+    });
+
     test('quote preview uses the shared 36px three-region footer without horizontal overflow', async ({ page }) => {
         const harness = await gotoHarness(page);
         const historyItem = page.locator(

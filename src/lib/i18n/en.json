@@ -126,7 +126,10 @@
   },
   "postContent": {
     "contentWarningTitle": "Content warning",
-    "showContentWarningBody": "Show content"
+    "showContentWarningBody": "Show content",
+    "sensitivePayloadLoading": "Loading content…",
+    "sensitivePayloadUnavailable": "Content could not be loaded. Try again.",
+    "retrySensitivePayload": "Retry"
   },
   "postHistory": {
     "open": "Open post history",
@@ -387,7 +390,7 @@
     "client_tag_label": "Add client name to post \n(Client tag)",
     "fail_closed_content_warning_label": "Use Sensitive format",
     "fail_closed_content_warning_info_label": "Content warning format details",
-    "fail_closed_content_warning_info": "This experimental format sends posts with CW as Sensitive Text Notes (kind 36) and replies with CW as Sensitive Comments (kind 3636). Unsupported clients may not display or correctly interpret these events. A separate kind 1 compatibility notice is sent with each Sensitive Text Note and contains no body. The body is not encrypted and remains available in the event's content. Public chats use the standard CW format.",
+    "fail_closed_content_warning_info": "This is an experimental sending format. Posts with CW keep their original kind and send the body separately in a kind 36 event. Clients that do not support this format may not display or interpret the post correctly. If a Relay does not include kind 36 in its search, the CW body may not appear in Nostr full-text results. The body is not encrypted and remains available in the kind 36 event's content.",
     "fail_closed_content_warning_shortcut_label": "CW format",
     "footer_shortcut_content_warning_on": "CW: Sensitive",
     "footer_shortcut_content_warning_off": "CW: Standard",

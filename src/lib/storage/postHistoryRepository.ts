@@ -14,7 +14,6 @@ import {
 import { markPostHistoryShouldReturnToLatestAfterLocalPost } from "../postHistoryLatestRequest";
 import { bumpPostHistorySearchRevision } from "../postHistoryLocalSearchRevision";
 import { extractPostHistoryMedia } from "../postHistoryMediaUtils";
-import { getSensitiveCompanionReference } from "../sensitiveEventUtils";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import {
     attestFullyVerifiedPostHistoryRawEvent,
@@ -33,6 +32,7 @@ import type {
 } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
 import { POST_HISTORY_TIMELINE_INDEX } from "./ehagakiDbConstants";
+import { reconcileSensitivePayloadDeletionForStructure } from "./sensitivePayloadDeletionReconciler";
 
 export const POST_HISTORY_SCHEMA_VERSION = 2;
 
@@ -812,12 +812,6 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                     return [];
                 }
 
-                // Compatibility notices are deliberately non-canonical empty artifacts.
-                // Without a durable alias index they must never become history rows.
-                if (getSensitiveCompanionReference(verified.event) !== null) {
-                    return [];
-                }
-
                 return [{ ...item, event: verified.event, attestation: verified.attestation }];
             });
         if (normalizedItems.length === 0) {
@@ -841,6 +835,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             "rw",
             this.db.postHistory,
             this.db.postHistoryDeletionRequests,
+            this.db.sensitivePayloads,
             async () => {
                 const existingRecords = await this.db.postHistory.bulkGet(eventIds);
                 const existingMap = new Map<string, PostHistoryRecord>();
@@ -988,6 +983,21 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             },
         );
 
+        for (const item of normalizedItems) {
+            try {
+                await reconcileSensitivePayloadDeletionForStructure(
+                    item.event.id,
+                    this.db,
+                    this.now,
+                );
+            } catch {
+                this.console.warn(
+                    "post_history_sensitive_payload_deletion_reconcile_failed",
+                    item.event.id,
+                );
+            }
+        }
+
         changedPubkeys.forEach(bumpPostHistorySearchRevision);
 
         return {
@@ -1055,11 +1065,17 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         if (!pubkeyHex) return;
 
         let deletedPostHistoryCount = 0;
+        let deletedPayloadCount = 0;
         await this.db.transaction(
             "rw",
             this.db.postHistory,
             this.db.postHistoryChildInteractions,
+            this.db.sensitivePayloads,
             async () => {
+                deletedPayloadCount = await this.db.sensitivePayloads
+                    .where("pubkeyHex")
+                    .equals(pubkeyHex)
+                    .delete();
                 const firstPostHistoryRecord = await this.db.postHistory
                     .orderBy("pubkeyHex")
                     .first();
@@ -1103,7 +1119,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
         // Keep the search revision outside the transaction so it only advances
         // after IndexedDB has committed successfully.
-        if (deletedPostHistoryCount > 0) {
+        if (deletedPostHistoryCount > 0 || deletedPayloadCount > 0) {
             bumpPostHistorySearchRevision(pubkeyHex);
         }
     }

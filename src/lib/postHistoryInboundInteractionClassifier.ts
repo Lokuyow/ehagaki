@@ -66,7 +66,7 @@ export function classifyPostHistoryInboundInteraction(input: {
         };
     }
 
-    if (event.kind !== 1 && event.kind !== 36 && event.kind !== 42 && event.kind !== 1111 && event.kind !== 3636) {
+    if (event.kind !== 1 && event.kind !== 42 && event.kind !== 1111) {
         return {
             type: "unsupported",
             event,
@@ -100,7 +100,7 @@ export function classifyPostHistoryInboundInteraction(input: {
         && references.parentId !== event.id
     ) {
         const ownerPostParentConfirmed = ownerPostEventIds.has(references.parentId);
-        const isNip22Comment = event.kind === 1111 || event.kind === 3636;
+        const isNip22Comment = event.kind === 1111;
         const ownerIsDirectParent = ownerPostParentConfirmed
             || (isNip22Comment
                 ? references.parentPubkey === ownerPubkeyHex

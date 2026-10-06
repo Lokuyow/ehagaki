@@ -12,6 +12,7 @@
     interface Props {
         node: PostHistoryThreadGraphNode;
         model?: PostContentRenderModel;
+        loadSensitiveBody?: () => Promise<string | null>;
         emojiLoadStateByUrl?: Record<
             string,
             PostContentEmojiLoadState | undefined
@@ -35,6 +36,7 @@
     let {
         node,
         model = undefined,
+        loadSensitiveBody = undefined,
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         scrollRoot = null,
@@ -52,6 +54,7 @@
     event={node.event}
     profile={node.profile}
     {model}
+    {loadSensitiveBody}
     {emojiLoadStateByUrl}
     {emojiImageMetaByUrl}
     {scrollRoot}

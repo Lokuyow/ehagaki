@@ -19,11 +19,6 @@ import {
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
 import { toEventFromPostHistoryRecord } from "./postHistoryThreadGraphUtils";
-import {
-    getSensitiveCanonicalRelayHints,
-    getSensitiveCompanionReference,
-    resolveSensitiveCompanionCanonicalEvent,
-} from "./sensitiveEventUtils";
 import type { NostrEvent, ProfileData, RelayConfig } from "./types";
 import {
     createPostHistoryProfileSyncCoordinator,
@@ -398,83 +393,6 @@ export function createPostHistoryRelatedTargetResolver({
         return loadRequestIdsByTargetId.get(targetEventId) === requestId;
     }
 
-    async function resolveCompanionTarget(
-        companion: NostrEvent,
-        requestTargetId: string,
-        requestId: number,
-    ): Promise<{
-        event: NostrEvent | null;
-        canonicalRelayHints: string[] | null;
-        deleted: boolean;
-    }> {
-        const canonicalId = getSensitiveCompanionReference(companion);
-        if (!canonicalId) {
-            return { event: companion, canonicalRelayHints: null, deleted: false };
-        }
-
-        let canonicalRecordDeleted = false;
-        let canonicalRelayUrl: string | null = null;
-        let canonicalLocalRelayHints: string[] = [];
-        const canonicalEvent = await resolveSensitiveCompanionCanonicalEvent(
-            companion,
-            async (eventId, canonicalRelayHints) => {
-                const record = await postHistoryRepositoryImpl.getByEventId(eventId);
-                if (!isCurrentLoadRequest(requestTargetId, requestId)) return null;
-                if (record) {
-                    if (typeof record.deletedAt === "number") {
-                        canonicalRecordDeleted = true;
-                        return null;
-                    }
-                    const storedEvent = toEventFromPostHistoryRecord(record);
-                    if (storedEvent.id === eventId) {
-                        canonicalLocalRelayHints = [
-                            ...record.relayHints,
-                            ...record.acceptedRelays,
-                            ...(record.fetchedRelays ?? []),
-                        ];
-                        return storedEvent;
-                    }
-                }
-
-                const rxNostr = getRxNostr();
-                if (!rxNostr || !getShow()) return null;
-                const task = contextFetchService.fetchEventById(rxNostr, {
-                    eventId,
-                    relayHints: sanitizeRelayHints(canonicalRelayHints),
-                    relayConfig: getRelayConfig(),
-                });
-                loadTasksByTargetId.set(requestTargetId, task);
-                const result = await task.promise;
-                loadTasksByTargetId.delete(requestTargetId);
-                if (!isCurrentLoadRequest(requestTargetId, requestId)) return null;
-                canonicalRelayUrl = result.relayUrl;
-                return result.event;
-            },
-            async (target) => await isDeletedTarget(target.pubkey, target.id),
-        );
-
-        if (!isCurrentLoadRequest(requestTargetId, requestId)) {
-            return { event: null, canonicalRelayHints: null, deleted: false };
-        }
-        if (canonicalEvent) {
-            return {
-                event: canonicalEvent,
-                canonicalRelayHints: getSensitiveCanonicalRelayHints(companion, {
-                    fetchedRelayUrl: canonicalRelayUrl,
-                    localRelayHints: canonicalLocalRelayHints,
-                    limit: POST_HISTORY_RELATED_TARGET_RELAY_LIMIT,
-                }),
-                deleted: false,
-            };
-        }
-        return {
-            event: null,
-            canonicalRelayHints: null,
-            deleted: canonicalRecordDeleted
-                || await isDeletedTarget(companion.pubkey, canonicalId),
-        };
-    }
-
     async function ensureTarget(
         descriptor: RelatedTargetDescriptor,
         options: EnsureRelatedTargetOptions = {},
@@ -567,26 +485,8 @@ export function createPostHistoryRelatedTargetResolver({
                     }
 
                     const storedEvent = toEventFromPostHistoryRecord(existingRecord);
-                    const resolved = await resolveCompanionTarget(
-                        storedEvent,
-                        descriptor.targetEventId,
-                        requestId,
-                    );
-                    if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
-                        return snapshotsByTargetId[descriptor.targetEventId] ?? null;
-                    }
-                    if (!resolved.event) {
-                        return applySnapshotUpdate(descriptor.targetEventId, {
-                            status: resolved.deleted ? "deleted" : "not-found",
-                            event: null,
-                            authorPubkey: storedEvent.pubkey,
-                            relayHints: recordRelayHints,
-                            errorCode: null,
-                            updatedAt: Date.now(),
-                        });
-                    }
-                    const event = resolved.event;
-                    const targetRelayHints = resolved.canonicalRelayHints ?? recordRelayHints;
+                    const event = storedEvent;
+                    const targetRelayHints = recordRelayHints;
                     const snapshot = applySnapshotUpdate(descriptor.targetEventId, {
                         status: "resolved",
                         event,
@@ -679,30 +579,11 @@ export function createPostHistoryRelatedTargetResolver({
                 }
 
                 const pointerRelayHints = sanitizeRelayHints([
-                    ...mergedSnapshot.relayHints,
                     ...(result.relayUrl ? [result.relayUrl] : []),
+                    ...mergedSnapshot.relayHints,
                 ]);
-                const resolved = await resolveCompanionTarget(
-                    result.event,
-                    descriptor.targetEventId,
-                    requestId,
-                );
-                if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
-                    return snapshotsByTargetId[descriptor.targetEventId] ?? null;
-                }
-                if (!resolved.event) {
-                    return applySnapshotUpdate(descriptor.targetEventId, {
-                        status: resolved.deleted ? "deleted" : "not-found",
-                        event: null,
-                        authorPubkey: result.event.pubkey,
-                        relayHints: pointerRelayHints,
-                        errorCode: null,
-                        updatedAt: Date.now(),
-                    });
-                }
-                const resolvedEvent = resolved.event;
-                const resolvedRelayHints = resolved.canonicalRelayHints
-                    ?? pointerRelayHints;
+                const resolvedEvent = result.event;
+                const resolvedRelayHints = pointerRelayHints;
                 const deletedAfterResolve = await runDeletionCheck(
                     resolvedEvent,
                     resolvedRelayHints,

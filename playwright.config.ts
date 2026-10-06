@@ -62,6 +62,7 @@ export default defineConfig({
                 '**/footerSettingShortcuts.spec.ts',
                 '**/postEditorSending.spec.ts',
                 '**/postHistoryDialog.spec.ts',
+                '**/sensitiveContentPayload.spec.ts',
             ],
             use: {
                 ...devices['iPhone 13'],

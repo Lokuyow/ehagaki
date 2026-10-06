@@ -6,6 +6,7 @@ import {
 import type {
     PostHistoryDeletionRequestRecord,
     PostHistoryRecord,
+    SensitivePayloadRecord,
 } from "./storage/ehagakiDb";
 import {
     postHistoryDeletionRequestsRepository,
@@ -16,6 +17,7 @@ import {
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
 import type { PostHistoryJsonlExportWorkerResponse } from "./postHistoryJsonlExportWorkerProtocol";
+import { sensitivePayloadRepository, type SensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
 
 export type { PostHistoryJsonlExportProgress, PostHistoryJsonlExportResult } from "./postHistoryJsonlExportEngine";
 
@@ -25,6 +27,7 @@ export interface PostHistoryJsonlExportServiceDeps {
         PostHistoryDeletionRequestsRepository,
         "getAllForTargetAuthorPubkey"
     >;
+    sensitivePayloadRepository?: Pick<SensitivePayloadRepository, "getAllForPubkey">;
     workerFactory?: () => PostHistoryJsonlExportWorker;
 }
 
@@ -54,6 +57,8 @@ function createEmptyResult(): PostHistoryJsonlExportResult {
         skippedPostCount: 0,
         missingDeletionRawEventCount: 0,
         invalidDeletionRawEventCount: 0,
+        exportedPayloadEventCount: 0,
+        missingPayloadEventCount: 0,
         isPartial: false,
     };
 }
@@ -65,6 +70,7 @@ export class PostHistoryJsonlExportService {
         "getAllForTargetAuthorPubkey"
     >;
     private readonly workerFactory: () => PostHistoryJsonlExportWorker;
+    private readonly sensitivePayloadRepository: Pick<SensitivePayloadRepository, "getAllForPubkey">;
 
     constructor(deps: PostHistoryJsonlExportServiceDeps = {}) {
         this.postHistoryRepository = deps.postHistoryRepository ?? postHistoryRepository;
@@ -75,6 +81,7 @@ export class PostHistoryJsonlExportService {
                 new URL("./postHistoryJsonlExportWorker.ts", import.meta.url),
                 { type: "module" },
             ));
+        this.sensitivePayloadRepository = deps.sensitivePayloadRepository ?? sensitivePayloadRepository;
     }
 
     exportForPubkeyInWorker(
@@ -146,14 +153,16 @@ export class PostHistoryJsonlExportService {
             return createEmptyResult();
         }
 
-        const [postRecords, deletionRecords] = await Promise.all([
+        const [postRecords, deletionRecords, sensitivePayloadRecords] = await Promise.all([
             this.postHistoryRepository.getAll({ pubkeyHex }),
             this.deletionRequestsRepository.getAllForTargetAuthorPubkey(pubkeyHex),
+            this.sensitivePayloadRepository.getAllForPubkey(pubkeyHex),
         ]);
         const exported = await runPostHistoryJsonlExportEngine({
             pubkeyHex,
             postRecords: postRecords as PostHistoryRecord[],
             deletionRecords: deletionRecords as PostHistoryDeletionRequestRecord[],
+            sensitivePayloadRecords: sensitivePayloadRecords as SensitivePayloadRecord[],
             includeJsonl: true,
         });
         return {

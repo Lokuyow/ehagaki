@@ -32,10 +32,12 @@ describe('NIP46_REQUESTED_PERMISSIONS', () => {
     });
 
     it('Sensitive Text NoteとNIP-22 comment系の署名許可を要求する', () => {
-        for (const kind of [36, 1111, 3636]) {
+        for (const kind of [36, 1111]) {
             expect(NIP46_REQUESTED_PERMISSIONS).toContain(`sign_event:${kind}`);
             expect(NIP46_REQUESTED_PERMS).toContain(`sign_event:${kind}`);
         }
+        expect(NIP46_REQUESTED_PERMISSIONS).not.toContain('sign_event:3636');
+        expect(NIP46_REQUESTED_PERMS).not.toContain('sign_event:3636');
     });
 });
 

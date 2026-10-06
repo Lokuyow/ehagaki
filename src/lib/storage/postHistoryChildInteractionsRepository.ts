@@ -67,12 +67,12 @@ function areTagsEqual(left: string[][], right: string[][]): boolean {
         && left.every((tag, index) => areStringArraysEqual(tag, right[index]));
 }
 
-function isSupportedRelatedEventKind(kind: number): kind is 1 | 7 | 42 | 1111 | 3636 {
-    return kind === 1 || kind === 7 || kind === 42 || kind === 1111 || kind === 3636;
+function isSupportedRelatedEventKind(kind: number): kind is 1 | 7 | 42 | 1111 {
+    return kind === 1 || kind === 7 || kind === 42 || kind === 1111;
 }
 
 function resolveRelatedEventParentId(event: NostrEvent): string | null {
-    if (event.kind === 1 || event.kind === 42 || event.kind === 1111 || event.kind === 3636) {
+    if (event.kind === 1 || event.kind === 42 || event.kind === 1111) {
         return parsePostHistoryThreadReferences(event).parentId;
     }
 
@@ -84,7 +84,7 @@ function resolveRelatedEventParentId(event: NostrEvent): string | null {
 }
 
 function resolveRelatedEventRootId(event: NostrEvent): string | undefined {
-    if (event.kind !== 1 && event.kind !== 42 && event.kind !== 1111 && event.kind !== 3636) {
+    if (event.kind !== 1 && event.kind !== 42 && event.kind !== 1111) {
         return undefined;
     }
 
@@ -98,7 +98,7 @@ function resolveRelatedEventDiscoveryKinds(event: NostrEvent): string[] {
 function filterDirectReplyRecords(
     records: PostHistoryChildInteractionRecord[],
 ): PostHistoryChildInteractionRecord[] {
-    return records.filter((record) => record.kind === 1 || record.kind === 42 || record.kind === 1111 || record.kind === 3636);
+    return records.filter((record) => record.kind === 1 || record.kind === 42 || record.kind === 1111);
 }
 
 function filterReactionRecords(

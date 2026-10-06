@@ -72,8 +72,10 @@ export function createPostStatusHandlers({
         },
         markSuccess: (result?: PostResult) => {
             updatePostStatus(createSuccessStatus(result));
-            clearContentAfterSuccess();
-            onPostSuccess?.(result);
+            if (!result?.preserveComposerContent) {
+                clearContentAfterSuccess();
+                onPostSuccess?.(result);
+            }
         },
         markFailure: (message?: string) => {
             updatePostStatus(createErrorStatus(message));
