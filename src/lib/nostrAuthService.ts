@@ -18,7 +18,7 @@ import {
     validateSignedEventResult,
 } from "./signedEventResultValidator";
 import { encodeBlossomAuthorizationHeader } from "./upload/blossomAuthorization";
-import { throwIfUploadAborted } from "./upload/uploadOperation";
+import { awaitUploadOperation, throwIfUploadAborted } from "./upload/uploadOperation";
 
 // --- NIP-98認証サービス ---
 export class NostrAuthService implements AuthService {
@@ -32,7 +32,10 @@ export class NostrAuthService implements AuthService {
         this.assertOperationActive();
         const sessionPubkey = expectedPubkey ?? captureActiveSessionPubkey(authState);
         assertCurrentSession(sessionPubkey);
-        const signer = await this.getSessionEventSigner(sessionPubkey);
+        const signer = await awaitUploadOperation(
+            this.getSessionEventSigner(sessionPubkey),
+            this.operation?.signal,
+        );
         this.assertOperationActive();
         assertCurrentSession(sessionPubkey);
         return this.createSessionBoundSigner(signer, sessionPubkey);
@@ -99,7 +102,10 @@ export class NostrAuthService implements AuthService {
             getPublicKey: async () => {
                 this.assertOperationActive();
                 assertCurrentSession(sessionPubkey);
-                const pubkey = await signer.getPublicKey();
+                const pubkey = await awaitUploadOperation(
+                    signer.getPublicKey(),
+                    this.operation?.signal,
+                );
                 this.assertOperationActive();
                 assertCurrentSession(sessionPubkey);
                 if (pubkey !== sessionPubkey) {
@@ -111,7 +117,10 @@ export class NostrAuthService implements AuthService {
                 this.assertOperationActive();
                 assertCurrentSession(sessionPubkey);
                 const prepared = prepareSignedEventTemplate(template);
-                const signedEvent = await signer.signEvent(prepared.signerTemplate);
+                const signedEvent = await awaitUploadOperation(
+                    signer.signEvent(prepared.signerTemplate),
+                    this.operation?.signal,
+                );
                 this.assertOperationActive();
                 assertCurrentSession(sessionPubkey);
                 const validated = validateSignedEventResult(

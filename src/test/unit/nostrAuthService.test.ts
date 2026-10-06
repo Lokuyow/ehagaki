@@ -330,6 +330,46 @@ describe('NostrAuthService', () => {
             };
         });
 
+        it('NIP-46 signer取得待機中のoperation abortは共有signerを壊さず即時rejectする', async () => {
+            const { authState } = await import('../../stores/authStore.svelte');
+            const { nip46Service } = await import('../../lib/nip46Service');
+            const { getToken } = await import('nostr-tools/nip98');
+            const controller = new AbortController();
+            const deferredSigner = createDeferred<any>();
+            const signerRequested = createDeferred<void>();
+            service = new NostrAuthService({ signal: controller.signal });
+            (authState as any).value = {
+                isAuthenticated: true,
+                type: 'nip46',
+                pubkey: 'testpubkey123',
+            };
+            vi.mocked(nip46Service.getSignerForSession).mockImplementation(() => {
+                signerRequested.resolve();
+                return deferredSigner.promise;
+            });
+            const removeListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+
+            const headerPromise = service.buildAuthHeader('https://example.com/upload', 'POST');
+            await signerRequested.promise;
+            controller.abort();
+
+            await expect(headerPromise).rejects.toMatchObject({ name: 'AbortError' });
+            expect(removeListenerSpy).toHaveBeenCalledWith('abort', expect.any(Function));
+            expect(getToken).not.toHaveBeenCalled();
+
+            deferredSigner.resolve({ signEvent: vi.fn() });
+            await deferredSigner.promise;
+            await Promise.resolve();
+            expect(getToken).not.toHaveBeenCalled();
+            expect(authState.value.type).toBe('nip46');
+
+            (authState as any).value = {
+                isAuthenticated: true,
+                type: 'nsec',
+                pubkey: 'testpubkey123',
+            };
+        });
+
         it('親クライアント連携接続時にparent signer使用→トークン生成', async () => {
             const { authState } = await import('../../stores/authStore.svelte');
             const { parentClientAuthService } = await import('../../lib/parentClientAuthService');

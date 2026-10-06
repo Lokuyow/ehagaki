@@ -83,12 +83,44 @@ function mapUploadFailure(message: string | undefined, cause?: unknown): Error {
     );
 }
 
+function isNativeFile(value: unknown): value is File {
+    if (typeof value !== "object" || value === null || typeof File === "undefined") return false;
+    const nameGetter = Object.getOwnPropertyDescriptor(File.prototype, "name")?.get;
+    if (!nameGetter) return false;
+    try {
+        return typeof nameGetter.call(value) === "string";
+    } catch {
+        return false;
+    }
+}
+
+function validateCustomHttpResultUrl(value: string): string {
+    try {
+        const parsed = new URL(value);
+        const authority = value.match(/^[A-Za-z][A-Za-z0-9+.-]*:\/\/([^/?#]*)/)?.[1];
+        if (
+            (parsed.protocol === "http:" || parsed.protocol === "https:")
+            && !parsed.username
+            && !parsed.password
+            && !authority?.includes("@")
+        ) {
+            return parsed.href;
+        }
+    } catch {
+        // Public results only accept parseable absolute HTTP(S) URLs.
+    }
+    throw createUploadError("upload_failed", "The custom HTTP upload returned an invalid URL.");
+}
+
 function createHeadlessMetadata(
     result: Awaited<ReturnType<FileUploadManager["uploadFileForHost"]>>,
     destination: UploadDestination,
 ): Promise<EHagakiUploadResult> {
     return (async () => {
         if (!result.success || !result.url) throw mapUploadFailure(result.error);
+        const url = destination.protocol === "custom-http"
+            ? validateCustomHttpResultUrl(result.url)
+            : result.url;
         const nip94 = destination.protocol === "custom-http" ? {} : result.nip94 ?? {};
         const sha256 = typeof nip94.x === "string" && /^[0-9a-f]{64}$/i.test(nip94.x)
             ? nip94.x.toLowerCase()
@@ -104,7 +136,7 @@ function createHeadlessMetadata(
             ? candidateBlurhash
             : undefined;
         return {
-            url: result.url,
+            url,
             ...(mimeType ? { mimeType } : {}),
             ...(dim ? { dim } : {}),
             ...(sha256 ? { sha256 } : {}),
@@ -118,10 +150,12 @@ export async function uploadFileForHost(
     signal: AbortSignal,
 ): Promise<EHagakiUploadResult> {
     throwIfUploadAborted(signal);
+    if (!isNativeFile(file)) {
+        throw createUploadError("unsupported_media", "A File is required.");
+    }
     const manager = createHeadlessManager(signal);
     if (
-        !file
-        || typeof file.type !== "string"
+        typeof file.type !== "string"
         || typeof file.size !== "number"
         || !Number.isFinite(file.size)
         || file.size < 0

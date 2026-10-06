@@ -11,6 +11,47 @@ export function throwIfUploadAborted(signal?: AbortSignal): void {
     if (signal?.aborted) throw createUploadAbortError();
 }
 
+/** Stops waiting for an operation-local external Promise without cancelling its owner. */
+export function awaitUploadOperation<T>(
+    operation: PromiseLike<T>,
+    signal?: AbortSignal,
+): Promise<T> {
+    throwIfUploadAborted(signal);
+    if (!signal) return Promise.resolve(operation);
+
+    return new Promise<T>((resolve, reject) => {
+        let settled = false;
+        const cleanup = () => signal.removeEventListener("abort", onAbort);
+        const onAbort = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(createUploadAbortError());
+        };
+        const finish = (complete: () => void) => {
+            if (settled) return;
+            if (signal.aborted) {
+                onAbort();
+                return;
+            }
+            settled = true;
+            cleanup();
+            complete();
+        };
+
+        signal.addEventListener("abort", onAbort, { once: true });
+        if (signal.aborted) {
+            onAbort();
+            return;
+        }
+
+        Promise.resolve(operation).then(
+            (value) => finish(() => resolve(value)),
+            (error: unknown) => finish(() => reject(error)),
+        );
+    });
+}
+
 export function waitForUploadDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
     throwIfUploadAborted(signal);
     if (!signal) return new Promise((resolve) => setTimeout(resolve, milliseconds));

@@ -88,6 +88,55 @@ describe("Full headless upload composition", () => {
         expect(managerMocks.uploadFileForHost).not.toHaveBeenCalled();
     });
 
+    it("rejects non-File inputs as unsupported media", async () => {
+        await expect(uploadFileForHost(
+            { type: "image/png", size: 3, name: "not-a-file.png" } as File,
+            new AbortController().signal,
+        )).rejects.toMatchObject({ name: "unsupported_media" });
+
+        expect(managerMocks.instances).toHaveLength(0);
+        expect(managerMocks.validateMediaFile).not.toHaveBeenCalled();
+    });
+
+    it("accepts a File created in another Window realm", async () => {
+        const iframe = document.createElement("iframe");
+        document.body.append(iframe);
+        try {
+            const ForeignFile = (iframe.contentWindow as unknown as { File: typeof File }).File;
+            const foreignFile = new ForeignFile([new Uint8Array([1, 2, 3])], "foreign.png", {
+                type: "image/png",
+            });
+
+            await expect(uploadFileForHost(foreignFile, new AbortController().signal))
+                .resolves.toMatchObject({ url: "https://cdn.example.com/profile.png" });
+            expect(managerMocks.validateMediaFile).toHaveBeenCalledWith(foreignFile);
+        } finally {
+            iframe.remove();
+        }
+    });
+
+    it("returns only a valid absolute HTTP(S) URL from custom HTTP", async () => {
+        managerMocks.uploadFileForHost.mockResolvedValue({
+            success: true,
+            url: "https://cdn.example.com/profile.png?size=1",
+        });
+
+        await expect(uploadFileForHost(createFile(), new AbortController().signal)).resolves.toEqual({
+            url: "https://cdn.example.com/profile.png?size=1",
+        });
+    });
+
+    it.each([
+        ["relative", "/profile.png"],
+        ["non-HTTP(S) scheme", "javascript:alert(1)"],
+        ["userinfo", "https://user:secret@cdn.example.com/profile.png"],
+    ])("rejects a custom HTTP result URL with %s", async (_description, url) => {
+        managerMocks.uploadFileForHost.mockResolvedValue({ success: true, url });
+
+        await expect(uploadFileForHost(createFile(), new AbortController().signal))
+            .rejects.toMatchObject({ name: "upload_failed" });
+    });
+
     it("maps required authentication and transport failures to stable public names", async () => {
         managerMocks.uploadFileForHost.mockRejectedValueOnce(new AuthenticationRequiredError());
         await expect(uploadFileForHost(createFile(), new AbortController().signal)).rejects.toMatchObject({
