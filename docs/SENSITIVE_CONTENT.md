@@ -12,7 +12,6 @@
 | `36` | Sensitive Text Note |
 | `1111` | NIP-22 Comment |
 | `3636` | Sensitive Comment |
-| `42` | NIP-28 Public Chat Message |
 
 kind `36` / `3636`はいずれもNIP-01のregular eventです（kind `36`: `4 <= kind < 45`、kind `3636`: `1000 <= kind < 10000`）。ただし、各Relayによる未知kindの受理、保存、indexは保証されません。
 
@@ -32,7 +31,7 @@ reasonがある場合:
 ["content-warning", "reason"]
 ```
 
-Sensitive Text Noteにはkind `36`、Sensitive Commentにはkind `3636`を使わなければなりません（MUST）。kind `3636`はNIP-22 topologyを使用します。この仕様はPublic Chat専用kindを定義しません。CW付きkind `42`はNIP-36を使わなければなりません（MUST）。
+Sensitive Text Noteにはkind `36`を、Sensitive Commentにはkind `3636`を使わなければなりません（MUST）。kind `3636`はNIP-22 topologyを使わなければなりません（MUST）。
 
 ## Replies
 
@@ -49,7 +48,9 @@ addressable parentの有効なlowercase `a` + current-version `e`併記を、複
 
 ## Compatibility companion
 
-top-level kind `36`のpublisherはkind `1` companionを送信してもよく（MAY）、kind `3636`には作成してはなりません（MUST NOT）。companionはkind `1`、空の`.content`、canonicalと同一pubkey、標準形の`content-warning`を1つ、`c`を1つだけ持ち、他のtagを含めてはなりません（MUST）。canonical本文、hashtag、quote、media metadata等を複製してはなりません（MUST NOT）。
+top-level kind `36`のpublisherはkind `1` companionを送信してもよく（MAY）。kind `3636`にはcompanionを作成してはなりません（MUST NOT）。companionはkind `1`、空の`.content`、canonicalと同一pubkey、標準形の`content-warning`を1つ、`c`を1つだけ持たなければなりません（MUST）。
+
+その他のtagを含めてはなりません（MUST NOT）。canonical本文、hashtag、quote、media metadata等を複製してはなりません（MUST NOT）。
 
 ```json
 {
@@ -62,15 +63,15 @@ top-level kind `36`のpublisherはkind `1` companionを送信してもよく（M
 }
 ```
 
-`c` tag keyはNIP-34等でも別の意味で使われます。このcompanion shapeではcanonical kind `36` event IDを示し、receiverは`c` tagだけでcompanionと判定してはなりません（MUST NOT）。
+`c` tag keyはNIP-34等でも別の意味で使われます。このcompanion shapeではcanonical kind `36` event IDを示します。`c` tagは`["c", "<canonical-kind36-event-id>"]`または`["c", "<canonical-kind36-event-id>", "<relay-hint>"]`のいずれかでなければなりません（MUST）。第2要素はcanonical event ID、第3要素は任意のrelay hintであり、これ以上の要素は定義しません。receiverは`c` tagだけでcompanionと判定してはなりません（MUST NOT）。
 
 publisherはcanonical kind `36`を先に送信し、成功後にcompanionを送るべきです（SHOULD）。companionの送信失敗でcanonicalを失敗扱いにしてはなりません（MUST NOT）。canonicalにCW metadataがある場合、両eventで同じtimestamp / CW metadataを使うべきです（SHOULD）。canonicalにCW metadataがない場合、companionを省略してもよい（MAY）。
 
-candidateはkind `1`、空の`.content`、標準形の`content-warning`を1つ、`c`を1つだけ持ち、他のtagを含まないeventです。receiverはcompanionとcanonicalのevent ID / signature、`c` referenceとcanonical IDの一致、canonical kind `36`、両eventの同一pubkeyを検証しなければなりません（MUST）。timestamp、canonical側CW metadata、reasonの一致を検証条件にしてはなりません（MUST NOT）。
+candidateはkind `1`、空の`.content`、標準形の`content-warning`を1つ、上記のvalid shapeに合う`c`を1つだけ持ち、その他のtagを含まないeventです。receiverはcompanionとcanonicalのevent ID / signature、`c` referenceとcanonical IDの一致、canonical kind `36`、両eventの同一pubkeyを検証しなければなりません（MUST）。timestamp、canonical側CW metadata、reasonの一致を検証条件にしてはなりません（MUST NOT）。
 
 解決後の新しいreply、quote、reaction、deletion、event referenceはcanonicalを対象にすべきです（SHOULD）。既存のthird-party interactionをcanonical向けに書き換えてはならず（MUST NOT）、canonicalが見つからない、無効、削除済み、または取得できない場合、companionを通常のkind `1`として表示してはなりません（MUST NOT）。
 
-canonicalの取得には`c` relay hintを利用してもよく（MAY）、Relay evidenceにはcanonicalを実際に返したRelayまたはcanonical local record自身の証跡を利用してもよい（MAY）。companionを返しただけのRelayをcanonical provenanceとして扱ってはなりません（MUST NOT）。
+canonicalの取得hintには`c` relay hintを利用してもよい（MAY）。Relay evidenceには、canonicalを実際に返したRelayまたはcanonical local record自身のevidenceを利用してもよい（MAY）。companionを返しただけのRelayをcanonical provenanceとして扱ってはなりません（MUST NOT）。
 
 ## Other interactions
 
@@ -91,7 +92,6 @@ kind `36` / `3636`のrepostにはNIP-18 kind `16`を使わなければならず�
 - [NIP-10: Text notes and threads](https://github.com/nostr-protocol/nips/blob/master/10.md)
 - [NIP-18: Reposts](https://github.com/nostr-protocol/nips/blob/master/18.md)
 - [NIP-22: Comments](https://github.com/nostr-protocol/nips/blob/master/22.md)
-- [NIP-28: Public chat](https://github.com/nostr-protocol/nips/blob/master/28.md)
 - [NIP-34: Git stuff](https://github.com/nostr-protocol/nips/blob/master/34.md)
 - [NIP-36: Sensitive content / Content Warning](https://github.com/nostr-protocol/nips/blob/master/36.md)
 - [NIP-50: Search Capability](https://github.com/nostr-protocol/nips/blob/master/50.md)
