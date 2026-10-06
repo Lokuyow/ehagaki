@@ -64,18 +64,19 @@ async function pasteHtml(editor: Locator, html: string, text: string) {
     }, { html, text });
 }
 
-test('pastes readable HTML as plain text and submits the plain content', async ({ page, browserName, isMobile }) => {
+test('pastes HTML with clipboard plain text and submits the plain content', async ({ page, browserName, isMobile }) => {
     await page.goto('post-editor-sending-playwright.html?withSubmit=1');
     const editor = page.locator('.tiptap-editor');
     await editor.click();
 
-    await pasteHtml(editor, '<h2>Summary</h2><p>Read <strong>this</strong> and <a href="https://example.com/">docs</a></p><ul><li>first</li><li>second</li></ul><table><thead><tr><th></th><th>① A</th><th>② B</th></tr></thead><tbody><tr><th>性能</th><td>高</td><td>低</td></tr></tbody></table>', 'Summary Read this and docs');
-    await expect(editor).toContainText('【Summary】');
-    await expect(editor).toContainText('• first');
-    await expect(editor).toContainText('• second');
-    await expect(editor).toContainText('|  | ① A | ② B |');
-    await expect(editor.locator('h1, h2, h3, strong, ul, ol, li')).toHaveCount(0);
-    await expect(editor.locator('a[href="https://example.com/"]')).toHaveCount(1);
+    const plain = '# copied heading\r\n- copied item\r\n| A | B |\r\n```ts\r\nconst x = 1;\r\n```\r\n**literal**';
+    const expectedPlain = plain.replace(/\r\n?/g, '\n');
+    const html = '<h2>HTML heading</h2><ul><li>HTML item</li></ul>' +
+        '<table><tr><th>HTML column</th></tr><tr><td>HTML cell</td></tr></table>' +
+        '<pre><code>HTML code</code></pre><p><strong>HTML bold</strong></p>';
+    await pasteHtml(editor, html, plain);
+    await expect(editor.locator('p')).toHaveText(expectedPlain.split('\n'));
+    await expect(editor.locator('h1, h2, h3, strong, ul, ol, li, table, pre, code, a')).toHaveCount(0);
     const caret = await editor.evaluate((element) => {
         const selection = element.ownerDocument.getSelection();
         const anchor = selection?.anchorNode;
@@ -90,7 +91,7 @@ test('pastes readable HTML as plain text and submits the plain content', async (
     await editor.press(`${undoModifier}+z`);
     await expect(editor).toHaveText('');
     await editor.press(`${undoModifier}+Shift+z`);
-    await expect(editor).toContainText('• second');
+    await expect(editor.locator('p')).toHaveText(expectedPlain.split('\n'));
 
     const button = page.locator('button.post-button');
     await expect(button).toBeEnabled();
@@ -98,7 +99,7 @@ test('pastes readable HTML as plain text and submits the plain content', async (
     await expect(page.getByTestId('sending-state')).toHaveText('sending');
     await expect.poll(() => page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(1);
     expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions[0].content))
-        .toBe('【Summary】\n\nRead this and docs (https://example.com/)\n\n• first\n• second\n\n|  | ① A | ② B |\n| --- | --- | --- |\n| 性能 | 高 | 低 |');
+        .toBe(expectedPlain);
 });
 
 test('long-press submits once without losing focus and freezes the document until success', async ({ page, browserName, isMobile }) => {

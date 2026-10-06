@@ -78,7 +78,7 @@ export default defineConfig({
         {
             name: 'desktop-firefox-editor-paste',
             testMatch: ['**/postEditorSending.spec.ts', '**/webComponentLite.spec.ts'],
-            grep: /pastes readable HTML as plain text/,
+            grep: /pastes HTML with clipboard plain text/,
             use: {
                 ...devices['Desktop Firefox'],
             },

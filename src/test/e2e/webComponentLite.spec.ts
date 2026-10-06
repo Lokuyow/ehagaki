@@ -220,7 +220,7 @@ test("Lite minimal configuration exposes only text composition and preserves suc
     await expect(replacement.locator(".tiptap-editor")).toContainText("keep after failure");
 });
 
-test("pastes readable HTML as plain text and sends that content through Host-owned Lite", async ({ page, browserName, isMobile }) => {
+test("pastes HTML with clipboard plain text and sends that content through Host-owned Lite", async ({ page, browserName, isMobile }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
@@ -243,23 +243,26 @@ test("pastes readable HTML as plain text and sends that content through Host-own
     const composer = page.locator("ehagaki-composer");
     const editor = composer.locator(".tiptap-editor");
     await editor.click();
-    await pasteHtml(editor, '<h3>見出し</h3><p>本文 <em>強調</em></p><ol start="2"><li>first</li><li>second</li></ol><table><thead><tr><th></th><th>① A</th><th>② B</th></tr></thead><tbody><tr><th>性能</th><td>高</td><td>低</td></tr></tbody></table>', "■ 見出し 本文 強調");
-    await expect(editor).toContainText("■ 見出し");
-    await expect(editor).toContainText("|  | ① A | ② B |");
-    await expect(editor).toContainText("2. first");
-    await expect(editor).toContainText("3. second");
-    await expect(editor.locator("h1, h2, h3, em, ol, li")).toHaveCount(0);
+    const plain = "# copied heading\r\n- copied item\r\n| A | B |\r\n```ts\r\nconst x = 1;\r\n```\r\n**literal**";
+    const expectedPlain = plain.replace(/\r\n?/g, "\n");
+    const html = '<h3>HTML heading</h3><p>HTML <em>emphasis</em></p>' +
+        '<ol start="2"><li>HTML first</li><li>HTML second</li></ol>' +
+        '<table><tr><th>HTML column</th></tr><tr><td>HTML cell</td></tr></table>' +
+        '<pre><code>HTML code</code></pre>';
+    await pasteHtml(editor, html, plain);
+    await expect(editor.locator("p")).toHaveText(expectedPlain.split("\n"));
+    await expect(editor.locator("h1, h2, h3, strong, em, ul, ol, li, table, pre, code")).toHaveCount(0);
 
     const undoModifier = browserName === "webkit" && isMobile ? "Meta" : "Control";
     await editor.press(`${undoModifier}+z`);
     await expect(editor).toHaveText("");
     await editor.press(`${undoModifier}+Shift+z`);
-    await expect(editor).toContainText("3. second");
+    await expect(editor.locator("p")).toHaveText(expectedPlain.split("\n"));
 
     await composer.locator("button.post-button").click();
     await expect.poll(() => page.evaluate(() => (window as any).__litePasteState.outputs.length)).toBe(1);
     expect(await page.evaluate(() => (window as any).__litePasteState.outputs[0].content))
-        .toBe("■ 見出し\n\n本文 強調\n\n2. first\n3. second\n\n|  | ① A | ② B |\n| --- | --- | --- |\n| 性能 | 高 | 低 |");
+        .toBe(expectedPlain);
 });
 
 test("controls the Host-owned Lite editor focus through the public API without changing content or caret", async ({ page }) => {
