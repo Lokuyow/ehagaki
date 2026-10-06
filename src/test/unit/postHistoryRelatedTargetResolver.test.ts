@@ -581,64 +581,64 @@ describe("createPostHistoryRelatedTargetResolver", () => {
         expect(resolver.getTargetSnapshot(event.id)?.status).toBe("resolved");
     });
 
-    it("keeps an empty kind 1 Structure as the related target without following its c reference", async () => {
+    it("keeps a Sensitive kind 1 Structure as the related target without following its payload reference", async () => {
         const secretKey = generateSecretKey();
-        const canonical = finalizeEvent({
+        const payload = finalizeEvent({
             kind: 36,
             created_at: 200,
             content: "sensitive body",
-            tags: [["content-warning", "Spoiler"]],
+            tags: [["k", "1"]],
         }, secretKey) as NostrEvent;
-        const companion = finalizeEvent({
+        const structure = finalizeEvent({
             kind: 1,
-            created_at: canonical.created_at,
+            created_at: payload.created_at,
             content: "",
-            tags: [["content-warning", "Spoiler"], ["c", canonical.id]],
+            tags: [["content-warning", "Spoiler"], ["c", payload.id]],
         }, secretKey) as NostrEvent;
         const { resolver, contextFetchService } = createResolver();
         contextFetchService.fetchEventById.mockImplementation((_rxNostr, { eventId }) => ({
             promise: Promise.resolve({
-                event: eventId === companion.id ? companion : canonical,
+                event: eventId === structure.id ? structure : payload,
                 relayUrl: "wss://relay.example.com/",
             }),
             cancel: vi.fn(),
         }));
 
         const snapshot = await resolver.ensureTarget(createDescriptor({
-            targetEventId: companion.id,
-            authorHint: companion.pubkey,
+            targetEventId: structure.id,
+            authorHint: structure.pubkey,
         }));
 
         expect(snapshot?.status).toBe("resolved");
-        expect(snapshot?.event).toEqual(companion);
+        expect(snapshot?.event).toEqual(structure);
         expect(snapshot?.event?.kind).toBe(1);
         expect(contextFetchService.fetchEventById).toHaveBeenCalledTimes(1);
     });
 
-    it("does not apply legacy companion relay provenance to a Structure target", async () => {
+    it("does not use payload source relay as Structure relay evidence", async () => {
         const secretKey = generateSecretKey();
-        const canonical = finalizeEvent({
+        const payload = finalizeEvent({
             kind: 36,
             created_at: 200,
             content: "sensitive body without CW metadata",
-            tags: [],
+            tags: [["k", "1"]],
         }, secretKey) as NostrEvent;
-        const companion = finalizeEvent({
+        const structure = finalizeEvent({
             kind: 1,
             created_at: 250,
             content: "",
             tags: [
-                ["content-warning", "Different reason"],
-                ["c", canonical.id, "wss://canonical-hint.example/"],
+                ["content-warning", "Sensitive fixture"],
+                ["c", payload.id, "wss://payload-hint.example/"],
             ],
         }, secretKey) as NostrEvent;
         const { resolver, contextFetchService } = createResolver();
         contextFetchService.fetchEventById.mockImplementation((_rxNostr, { eventId }) => ({
             promise: Promise.resolve({
-                event: eventId === companion.id ? companion : canonical,
-                relayUrl: eventId === companion.id
-                    ? "wss://companion-source.example/"
-                    : "wss://canonical-source.example/",
+                event: eventId === structure.id ? structure : payload,
+                relayUrl: eventId === structure.id
+                    ? "wss://structure-source.example/"
+                    : "wss://payload-source.example/",
             }),
             cancel: vi.fn(),
         }));
@@ -648,77 +648,77 @@ describe("createPostHistoryRelatedTargetResolver", () => {
             (_, index) => `wss://pointer-${index}.example/`,
         );
         const snapshot = await resolver.ensureTarget(createDescriptor({
-            targetEventId: companion.id,
-            authorHint: companion.pubkey,
+            targetEventId: structure.id,
+            authorHint: structure.pubkey,
             relayHints: descriptorHints,
         }));
 
-        expect(snapshot?.event).toEqual(companion);
-        expect(snapshot?.relayHints?.[0]).toBe("wss://companion-source.example/");
-        expect(snapshot?.relayHints).not.toContain("wss://canonical-hint.example/");
+        expect(snapshot?.event).toEqual(structure);
+        expect(snapshot?.relayHints?.[0]).toBe("wss://structure-source.example/");
+        expect(snapshot?.relayHints).not.toContain("wss://payload-hint.example/");
         expect(contextFetchService.fetchEventById).toHaveBeenCalledTimes(1);
     });
 
-    it("uses the kind 1 Structure's own local relay evidence", async () => {
+    it("uses the Sensitive Structure's own local relay evidence", async () => {
         const secretKey = generateSecretKey();
-        const canonical = finalizeEvent({
+        const payload = finalizeEvent({
             kind: 36,
             created_at: 200,
             content: "sensitive body",
-            tags: [],
+            tags: [["k", "1"]],
         }, secretKey) as NostrEvent;
-        const companion = finalizeEvent({
+        const structure = finalizeEvent({
             kind: 1,
             created_at: 250,
             content: "",
             tags: [
-                ["content-warning"],
-                ["c", canonical.id, "wss://canonical-hint.example/"],
+                ["content-warning", "Sensitive fixture"],
+                ["c", payload.id, "wss://payload-hint.example/"],
             ],
         }, secretKey) as NostrEvent;
         const { resolver, postHistoryRepositoryImpl, contextFetchService } = createResolver();
         postHistoryRepositoryImpl.getByEventId.mockImplementation(async (eventId) => {
-            const event = eventId === companion.id ? companion
-                : eventId === canonical.id ? canonical
+            const event = eventId === structure.id ? structure
+                : eventId === payload.id ? payload
                     : null;
             if (!event) return null;
             const record = createRecord(event);
-            record.relayHints = [eventId === companion.id
-                ? "wss://companion-record.example/"
-                : "wss://canonical-record.example/"];
+            record.relayHints = [eventId === structure.id
+                ? "wss://structure-record.example/"
+                : "wss://payload-record.example/"];
             return record;
         });
 
         const snapshot = await resolver.ensureTarget(createDescriptor({
-            targetEventId: companion.id,
-            authorHint: companion.pubkey,
+            targetEventId: structure.id,
+            authorHint: structure.pubkey,
             relayHints: ["wss://pointer-only.example/"],
         }));
 
-        expect(snapshot?.event).toEqual(companion);
-        expect(snapshot?.relayHints).toContain("wss://companion-record.example/");
-        expect(snapshot?.relayHints).not.toContain("wss://canonical-hint.example/");
+        expect(snapshot?.event).toEqual(structure);
+        expect(snapshot?.relayHints).toContain("wss://structure-record.example/");
+        expect(snapshot?.relayHints).not.toContain("wss://payload-hint.example/");
         expect(snapshot?.relayHints).toContain("wss://pointer-only.example/");
         expect(contextFetchService.fetchEventById).not.toHaveBeenCalled();
     });
 
-    it("does not apply deletion of an old kind 36 target to the kind 1 Structure", async () => {
+    it("does not treat a payload-only deletion as a deleted Structure target", async () => {
         const secretKey = generateSecretKey();
-        const canonical = finalizeEvent({
+        const payload = finalizeEvent({
             kind: 36,
             created_at: 200,
             content: "sensitive body",
-            tags: [["content-warning"]],
+            tags: [["k", "1"]],
         }, secretKey) as NostrEvent;
-        const companion = finalizeEvent({
+        const structure = finalizeEvent({
             kind: 1,
-            created_at: canonical.created_at,
+            created_at: payload.created_at,
             content: "",
-            tags: [["content-warning"], ["c", canonical.id]],
+            tags: [["content-warning"], ["c", payload.id]],
         }, secretKey) as NostrEvent;
         const deletionRepository = {
             getDeletedTargets: vi.fn().mockResolvedValue(new Map([
-                [canonical.pubkey, new Set([canonical.id])],
+                [payload.pubkey, new Set([payload.id])],
             ])),
             upsertValidDeletionRequests: vi.fn().mockResolvedValue({
                 insertedCount: 0,
@@ -732,20 +732,20 @@ describe("createPostHistoryRelatedTargetResolver", () => {
         });
         contextFetchService.fetchEventById.mockImplementation((_rxNostr, { eventId }) => ({
             promise: Promise.resolve({
-                event: eventId === companion.id ? companion : canonical,
+                event: eventId === structure.id ? structure : payload,
                 relayUrl: "wss://relay.example.com/",
             }),
             cancel: vi.fn(),
         }));
 
         const snapshot = await resolver.ensureTarget(createDescriptor({
-            targetEventId: companion.id,
-            authorHint: companion.pubkey,
+            targetEventId: structure.id,
+            authorHint: structure.pubkey,
         }));
 
         expect(snapshot?.status).toBe("resolved");
-        expect(snapshot?.event).toEqual(companion);
-        expect(resolver.getTargetSnapshot(companion.id)?.event).toEqual(companion);
+        expect(snapshot?.event).toEqual(structure);
+        expect(resolver.getTargetSnapshot(structure.id)?.event).toEqual(structure);
     });
 
     it("未検証pendingがauthorHintに一致しても取得前に削除済みと判定しない", async () => {

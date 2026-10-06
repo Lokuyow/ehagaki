@@ -93,29 +93,29 @@ describe('externalReplyQuoteBootstrapUtils', () => {
         );
     });
 
-    it('Sensitive Structureのauthor preloadをStructure targetへ結び付ける', async () => {
+    it('Sensitive Structureをreply targetとauthor presentationのidentityとして維持する', async () => {
         const secretKey = generateSecretKey();
-        const canonical = finalizeEvent({
+        const payload = finalizeEvent({
             kind: 36,
             created_at: 100,
             content: 'sensitive body',
-            tags: [],
+            tags: [['k', '1']],
         }, secretKey) as NostrEvent;
-        const companion = finalizeEvent({
+        const structure = finalizeEvent({
             kind: 1,
             created_at: 101,
             content: '',
             tags: [
-                ['content-warning', 'Legacy metadata'],
-                ['c', canonical.id, 'wss://canonical-hint.example/'],
+                ['content-warning', 'Sensitive fixture'],
+                ['c', payload.id, 'wss://payload-hint.example/'],
             ],
         }, secretKey) as NostrEvent;
         const reference = {
-            eventId: companion.id,
+            eventId: structure.id,
             mode: 'reply' as const,
             ownerToken: Symbol('owner'),
-            relayHints: ['wss://companion-pointer.example/'],
-            authorPubkey: companion.pubkey,
+            relayHints: ['wss://structure-pointer.example/'],
+            authorPubkey: structure.pubkey,
         };
         const updateReferencedEvent = vi.fn();
         const initializeReplyNotificationRecipients = vi.fn();
@@ -126,7 +126,7 @@ describe('externalReplyQuoteBootstrapUtils', () => {
 
         await processReplyQuoteReference({
             reference,
-            initialEvent: companion,
+            initialEvent: structure,
             replyQuoteService: {
                 fetchReferencedEvent: vi.fn(),
                 fetchReferencedEventTask,
@@ -137,9 +137,9 @@ describe('externalReplyQuoteBootstrapUtils', () => {
             initializeReplyNotificationRecipients,
             setReplyQuoteError,
             preloadedProfiles: {
-                [canonical.pubkey]: {
-                    displayName: 'Canonical author',
-                    picture: 'https://example.test/canonical.png',
+                [structure.pubkey]: {
+                    displayName: 'Structure author',
+                    picture: 'https://example.test/structure.png',
                 },
             },
             applyPreloadedAuthorPreviewPresentation,
@@ -148,7 +148,7 @@ describe('externalReplyQuoteBootstrapUtils', () => {
         expect(setReplyQuoteError).not.toHaveBeenCalled();
         expect(updateReferencedEvent).toHaveBeenCalledWith(
             reference,
-            companion,
+            structure,
             threadInfo,
         );
         expect(applyPreloadedAuthorPreviewPresentation).toHaveBeenCalledWith(
@@ -157,7 +157,7 @@ describe('externalReplyQuoteBootstrapUtils', () => {
         );
         expect(initializeReplyNotificationRecipients).toHaveBeenCalledWith(
             reference,
-            companion,
+            structure,
         );
         expect(fetchReferencedEventTask).not.toHaveBeenCalled();
     });

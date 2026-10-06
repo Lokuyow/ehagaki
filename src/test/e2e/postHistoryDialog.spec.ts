@@ -2306,7 +2306,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(quoteCard.locator('.post-preview-reaction-count')).toHaveText('1');
     });
 
-    test('Sensitive Text Note history previews hide body and media until explicit reveal', async ({ page }) => {
+    test('Sensitive payload history previews hide body and media until explicit reveal', async ({ page }) => {
         const emojiRequests: string[] = [];
         await page.route('https://example.com/sensitive-emoji.svg', async (route) => {
             emojiRequests.push(route.request().url());

@@ -171,21 +171,21 @@ describe("createComposerTargetResolver", () => {
         });
     });
 
-    it("empty kind 1 Structureをcomposer targetとして維持し、c参照先へredirectしない", async () => {
+    it("Sensitive kind 1 Structureをcomposer targetとして維持し、payloadへredirectしない", async () => {
         const secretKey = generateSecretKey();
-        const canonical = finalizeEvent({
+        const payload = finalizeEvent({
             kind: 36,
             created_at: 10,
             content: "sensitive post",
-            tags: [["content-warning", "Spoiler"]],
+            tags: [["k", "1"]],
         }, secretKey);
-        const companion = finalizeEvent({
+        const structure = finalizeEvent({
             kind: 1,
             created_at: 20,
             content: "",
             tags: [
-                ["content-warning", "A different reason is allowed"],
-                ["c", canonical.id, "wss://canonical-hint.example/"],
+                ["content-warning", "Sensitive fixture"],
+                ["c", payload.id, "wss://payload-hint.example/"],
             ],
         }, secretKey);
         const fetchReferencedEventTask = vi.fn((
@@ -196,10 +196,10 @@ describe("createComposerTargetResolver", () => {
         ) => ({
             promise: Promise.resolve({
                 status: "found" as const,
-                event: requestedId === companion.id ? companion : canonical,
-                relayUrl: requestedId === companion.id
-                    ? "wss://companion-source.example/"
-                    : "wss://canonical-source.example/",
+                event: requestedId === structure.id ? structure : payload,
+                relayUrl: requestedId === structure.id
+                    ? "wss://structure-source.example/"
+                    : "wss://payload-source.example/",
             }),
             cancel: vi.fn(),
         }));
@@ -209,9 +209,9 @@ describe("createComposerTargetResolver", () => {
         });
         const result = await resolver.resolve({
             pointer: pointer({
-                eventId: companion.id,
-                authorHint: companion.pubkey,
-                kindHint: companion.kind,
+                eventId: structure.id,
+                authorHint: structure.pubkey,
+                kindHint: structure.kind,
                 relayHints: [
                     "wss://pointer-one.example/",
                     "wss://pointer-two.example/",
@@ -225,18 +225,18 @@ describe("createComposerTargetResolver", () => {
         expect(result).toMatchObject({
             status: "resolved",
             target: {
-                event: { id: companion.id, kind: 1, content: "" },
+                event: { id: structure.id, kind: 1, content: "" },
                 relayHints: [
-                    "wss://companion-source.example/",
+                    "wss://structure-source.example/",
                     "wss://pointer-one.example/",
                     "wss://pointer-two.example/",
                 ],
             },
         });
         expect(fetchReferencedEventTask).toHaveBeenCalledTimes(1);
-        expect(fetchProfileRealtime).toHaveBeenCalledWith(companion.pubkey, {
+        expect(fetchProfileRealtime).toHaveBeenCalledWith(structure.pubkey, {
             additionalRelays: expect.arrayContaining([
-                "wss://companion-source.example/",
+                "wss://structure-source.example/",
             ]),
         });
     });

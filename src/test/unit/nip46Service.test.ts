@@ -31,7 +31,7 @@ describe('NIP46_REQUESTED_PERMISSIONS', () => {
         expect(NIP46_REQUESTED_PERMS).toContain('sign_event:22242');
     });
 
-    it('Sensitive Text NoteとNIP-22 comment系の署名許可を要求する', () => {
+    it('Sensitive Content PayloadとNIP-22 comment系の署名許可を要求する', () => {
         for (const kind of [36, 1111]) {
             expect(NIP46_REQUESTED_PERMISSIONS).toContain(`sign_event:${kind}`);
             expect(NIP46_REQUESTED_PERMS).toContain(`sign_event:${kind}`);

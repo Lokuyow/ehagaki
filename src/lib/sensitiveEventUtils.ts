@@ -4,7 +4,6 @@ import { parseNip22CommentReferences } from "./postHistoryNip22Utils";
 import { createPlainNostrEventSnapshot, isSignedNostrEvent } from "./postHistoryEventUtils";
 import type { NostrEvent } from "./types";
 
-export const SENSITIVE_TEXT_NOTE_KIND = 36;
 export const NIP22_COMMENT_KIND = 1111;
 
 export type SensitivePostKind = 1 | 42 | typeof NIP22_COMMENT_KIND;
