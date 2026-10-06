@@ -4,6 +4,10 @@
 
 `MUST`、`MUST NOT`、`SHOULD`、`SHOULD NOT`、`MAY`はRFC 2119 / RFC 8174の意味で使用します。
 
+## Motivation
+
+NIP-36はSensitiveであることを`content-warning` tagで示します。この形式ではevent kindでも示すため、clientやRelay queryは`kinds`で識別できます。本文は通常どおり`.content`に保持して既存の本文処理との互換性を保ち、任意のkind `1` companionで本文を複製せずkind `1`購読clientへ投稿の存在を知らせます。
+
 ## Event kinds
 
 | Kind | 意味 |
@@ -48,9 +52,7 @@ addressable parentの有効なlowercase `a` + current-version `e`併記を、複
 
 ## Compatibility companion
 
-top-level kind `36`のpublisherはkind `1` companionを送信してもよく（MAY）。kind `3636`にはcompanionを作成してはなりません（MUST NOT）。companionはkind `1`、空の`.content`、canonicalと同一pubkey、標準形の`content-warning`を1つ、`c`を1つだけ持たなければなりません（MUST）。
-
-その他のtagを含めてはなりません（MUST NOT）。canonical本文、hashtag、quote、media metadata等を複製してはなりません（MUST NOT）。
+top-level kind `36`のpublisherはkind `1` companionを送信してもよい（MAY）。kind `3636`には作成してはならない（MUST NOT）。companionはkind `1`、空の`.content`、canonicalと同一pubkey、標準形の`content-warning`を1つ、規定形式の`c`を1つだけ持たなければなりません（MUST）。その他のtagを含めてはなりません（MUST NOT）。canonical本文、hashtag、quote、media metadata等を複製してはなりません（MUST NOT）。
 
 ```json
 {
@@ -63,11 +65,11 @@ top-level kind `36`のpublisherはkind `1` companionを送信してもよく（M
 }
 ```
 
-`c` tag keyはNIP-34等でも別の意味で使われます。このcompanion shapeではcanonical kind `36` event IDを示します。`c` tagは`["c", "<canonical-kind36-event-id>"]`または`["c", "<canonical-kind36-event-id>", "<relay-hint>"]`のいずれかでなければなりません（MUST）。第2要素はcanonical event ID、第3要素は任意のrelay hintであり、これ以上の要素は定義しません。receiverは`c` tagだけでcompanionと判定してはなりません（MUST NOT）。
+`c` tag keyはNIP-34等でも別の意味で使われます。このcompanionの`c` tagは`["c", "<canonical-kind36-event-id>"]`または`["c", "<canonical-kind36-event-id>", "<relay-hint>"]`の形式でなければならず（MUST）、canonical kind `36` event IDを示します。receiverは`c` tagだけでcompanionと判定してはなりません（MUST NOT）。
 
 publisherはcanonical kind `36`を先に送信し、成功後にcompanionを送るべきです（SHOULD）。companionの送信失敗でcanonicalを失敗扱いにしてはなりません（MUST NOT）。canonicalにCW metadataがある場合、両eventで同じtimestamp / CW metadataを使うべきです（SHOULD）。canonicalにCW metadataがない場合、companionを省略してもよい（MAY）。
 
-candidateはkind `1`、空の`.content`、標準形の`content-warning`を1つ、上記のvalid shapeに合う`c`を1つだけ持ち、その他のtagを含まないeventです。receiverはcompanionとcanonicalのevent ID / signature、`c` referenceとcanonical IDの一致、canonical kind `36`、両eventの同一pubkeyを検証しなければなりません（MUST）。timestamp、canonical側CW metadata、reasonの一致を検証条件にしてはなりません（MUST NOT）。
+receiverは上記formatに一致するeventのみをcompanion candidateとして扱います。canonicalへ解決する際はcompanionとcanonical双方のevent ID / signature、`c` referenceとcanonical IDの一致、canonical kind `36`、両eventの同一pubkeyを検証しなければなりません（MUST）。timestamp、canonical側CW metadataの有無、reasonの一致を要求してはなりません（MUST NOT）。
 
 解決後の新しいreply、quote、reaction、deletion、event referenceはcanonicalを対象にすべきです（SHOULD）。既存のthird-party interactionをcanonical向けに書き換えてはならず（MUST NOT）、canonicalが見つからない、無効、削除済み、または取得できない場合、companionを通常のkind `1`として表示してはなりません（MUST NOT）。
 
@@ -87,12 +89,6 @@ kind `36` / `3636`のrepostにはNIP-18 kind `16`を使わなければならず�
 
 ## References
 
-- [NIP-01: Basic protocol flow](https://github.com/nostr-protocol/nips/blob/master/01.md)
-- [NIP-09: Event deletion](https://github.com/nostr-protocol/nips/blob/master/09.md)
-- [NIP-10: Text notes and threads](https://github.com/nostr-protocol/nips/blob/master/10.md)
-- [NIP-18: Reposts](https://github.com/nostr-protocol/nips/blob/master/18.md)
-- [NIP-22: Comments](https://github.com/nostr-protocol/nips/blob/master/22.md)
-- [NIP-34: Git stuff](https://github.com/nostr-protocol/nips/blob/master/34.md)
-- [NIP-36: Sensitive content / Content Warning](https://github.com/nostr-protocol/nips/blob/master/36.md)
-- [NIP-50: Search Capability](https://github.com/nostr-protocol/nips/blob/master/50.md)
+- [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md), [NIP-09](https://github.com/nostr-protocol/nips/blob/master/09.md), [NIP-10](https://github.com/nostr-protocol/nips/blob/master/10.md), [NIP-18](https://github.com/nostr-protocol/nips/blob/master/18.md), [NIP-22](https://github.com/nostr-protocol/nips/blob/master/22.md)
+- [NIP-34](https://github.com/nostr-protocol/nips/blob/master/34.md), [NIP-36](https://github.com/nostr-protocol/nips/blob/master/36.md), [NIP-50](https://github.com/nostr-protocol/nips/blob/master/50.md)
 - [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119.html) / [RFC 8174](https://www.rfc-editor.org/rfc/rfc8174.html)
