@@ -24,7 +24,7 @@
 
 `editorConfig.ts` の registration 順は実際の ordering dependency である。submit-on-Enter時のみ `SubmitOnPlainEnter` を先頭に追加し、StarterKit、Link、Image、UniqueID、Focus、`GapCursorFocusReset`、`ShiftEnterToParagraph`、`ContentTrackingExtension`、`HashtagSuggestion`、Video、CustomEmoji、`CustomEmojiSuggestion`、`ToolbarCaretExtension`、`ClipboardExtension`、`MediaPasteExtension`、`ImageDragDropExtension`、`CustomEmojiDragDropExtension`、`SmartBackspaceExtension`、`AndroidCompositionFix`、Placeholder の順へ続く。
 
-- `ClipboardExtension` は MediaPaste より先に登録され、`enablePasteRules` は `clipboardExtension` と `customEmoji` のみである。順序を変更する前に text / file / URL / emoji paste の consumer を確認する。
+- `ClipboardExtension` は MediaPaste より先に extension 登録されるが、現在の ProseMirror paste handler の実行順では MediaPaste が先に処理する。`enablePasteRules` は `clipboardExtension` と `customEmoji` のみである。順序を変更する前に text / file / URL / emoji paste の consumer を確認する。
 - `GapCursorFocusReset` は media NodeSelection の visual focus と editor 外クリック / touch の selection reset を管理する。document listener を `onDestroy` で外す。
 - `ToolbarCaretExtension` は plugin metadata keyed by its `PluginKey` と widget decoration を用いる。`showToolbarCaret()` と focus handler の transaction は `addToHistory: false` である。
 - `SmartBackspaceExtension` は先頭の空 paragraph と後続 image の限定された Backspace case を処理する。
@@ -34,7 +34,7 @@
 - `src/lib/editor/contentTracking.ts:ContentTrackingExtension` は三つの plugin を作る。hashtag decoration、URL / image conversion の `appendTransaction`、debounced content update tracker である。
 - hashtag decoration は `getChangedRange()` と `getChangedTextBlocks()` で affected textblock だけを再計算し、`DecorationSet.map()` で既存 decoration を mapping する。
 - URL normalization は changed document transaction だけを扱い、`content-tracking-normalized` metadata を持つ自身の transaction を再処理しない。変更範囲を先に収集し、`collectBlockChanges()` の remove mark / add mark / image replacement を position 降順で適用する。`processUrlsAndImages()` が document を変えない場合は `null` を返す。
-- paste transaction (`paste` metadata) は link conversion を行うが image URL conversion を skip する。返却する normalization transaction は `addToHistory: false` と content-tracking metadata を設定する。undo / redo の grouping を変えるときは `src/test/integration/editor-history.integration.test.ts` と URL paste coverage を確認する。
+- paste transaction (`paste` metadata) は link conversion を行うが image URL conversion を skip する。返却する normalization transaction は `addToHistory: false` と content-tracking metadata を設定する。paste metadata 自体は独立した undo group を保証しないため、grouping は `UndoRedo` の隣接 transaction / `newGroupDelay` 規則に従う。undo / redo を変えるときは `src/test/integration/editor-history.integration.test.ts` と URL paste coverage を確認する。
 - content update tracker は doc change ごとに以前の timeout を clear し、`CONTENT_TRACKING_CONFIG.DEBOUNCE_DELAY`（現在 300ms）後に hashtag data を更新して `window` の `editor-content-changed` event に extracted plain text を載せる。extension destroy は timeout を clear する。
 
 ## Editor-to-application flow and reverse inputs
