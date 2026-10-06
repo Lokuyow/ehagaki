@@ -53,6 +53,54 @@ async function endComposition(editor: Locator, text: string) {
     }, text);
 }
 
+async function pasteHtml(editor: Locator, html: string, text: string) {
+    await editor.evaluate((element, clipboard) => {
+        const data = new DataTransfer();
+        data.setData('text/plain', clipboard.text);
+        data.setData('text/html', clipboard.html);
+        const event = new Event('paste', { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'clipboardData', { value: data });
+        element.dispatchEvent(event);
+    }, { html, text });
+}
+
+test('pastes readable HTML as plain text and submits the plain content', async ({ page, browserName, isMobile }) => {
+    await page.goto('post-editor-sending-playwright.html?withSubmit=1');
+    const editor = page.locator('.tiptap-editor');
+    await editor.click();
+
+    await pasteHtml(editor, '<h2>Summary</h2><p>Read <strong>this</strong> and <a href="https://example.com/">docs</a></p><ul><li>first</li><li>second</li></ul><table><thead><tr><th></th><th>① A</th><th>② B</th></tr></thead><tbody><tr><th>性能</th><td>高</td><td>低</td></tr></tbody></table>', 'Summary Read this and docs');
+    await expect(editor).toContainText('【Summary】');
+    await expect(editor).toContainText('• first');
+    await expect(editor).toContainText('• second');
+    await expect(editor).toContainText('|  | ① A | ② B |');
+    await expect(editor.locator('h1, h2, h3, strong, ul, ol, li')).toHaveCount(0);
+    await expect(editor.locator('a[href="https://example.com/"]')).toHaveCount(1);
+    const caret = await editor.evaluate((element) => {
+        const selection = element.ownerDocument.getSelection();
+        const anchor = selection?.anchorNode;
+        return {
+            insideEditor: anchor !== null && anchor !== undefined && element.contains(anchor),
+            atTextEnd: selection?.anchorOffset === (anchor?.textContent?.length ?? -1),
+        };
+    });
+    expect(caret).toEqual({ insideEditor: true, atTextEnd: true });
+
+    const undoModifier = browserName === 'webkit' && isMobile ? 'Meta' : 'Control';
+    await editor.press(`${undoModifier}+z`);
+    await expect(editor).toHaveText('');
+    await editor.press(`${undoModifier}+Shift+z`);
+    await expect(editor).toContainText('• second');
+
+    const button = page.locator('button.post-button');
+    await expect(button).toBeEnabled();
+    await button.click();
+    await expect(page.getByTestId('sending-state')).toHaveText('sending');
+    await expect.poll(() => page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(1);
+    expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions[0].content))
+        .toBe('【Summary】\n\nRead this and docs (https://example.com/)\n\n• first\n• second\n\n|  | ① A | ② B |\n| --- | --- | --- |\n| 性能 | 高 | 低 |');
+});
+
 test('long-press submits once without losing focus and freezes the document until success', async ({ page, browserName, isMobile }) => {
     await page.goto('post-editor-sending-playwright.html?withSubmit=1');
     const editor = page.locator('.tiptap-editor');

@@ -40,7 +40,7 @@ async function pasteAndVerify(editor: Editor, content: string, expectedLinks: nu
     return html;
 }
 
-function createClipboardData(text: string, html?: string): DataTransfer {
+function createClipboardData(text: string, html?: string, files: File[] = []): DataTransfer {
     const data = new Map<string, string>([['text/plain', text]]);
     if (html !== undefined) {
         data.set('text/html', html);
@@ -48,30 +48,58 @@ function createClipboardData(text: string, html?: string): DataTransfer {
 
     return {
         types: Array.from(data.keys()),
-        files: [] as unknown as FileList,
+        files: files as unknown as FileList,
         getData: (type: string) => data.get(type) ?? '',
     } as unknown as DataTransfer;
 }
 
-function invokePasteHandler(editor: Editor, clipboardData: DataTransfer): boolean {
+function invokePasteHandler(editor: Editor, clipboardData: DataTransfer, plainPasteRequested = false): boolean {
     const event = new Event('paste', { bubbles: true, cancelable: true });
     Object.defineProperty(event, 'clipboardData', { value: clipboardData });
 
+    const html = clipboardData.getData('text/html');
+    const text = clipboardData.getData('text/plain');
+    const clipboardPlugin = editor.state.plugins.find((plugin: any) =>
+        String(plugin.key).startsWith('clipboardExtension$'),
+    ) as any;
+    if (plainPasteRequested) Object.defineProperty(event, 'shiftKey', { value: true });
+    if (html && !plainPasteRequested) {
+        clipboardPlugin?.props.transformPastedHTML?.call(clipboardPlugin, html, editor.view);
+    } else {
+        clipboardPlugin?.props.transformPastedText?.call(clipboardPlugin, text, plainPasteRequested, editor.view);
+    }
+
     let handled = false;
-    editor.view.someProp('handlePaste', (handler) => {
-        handled = handler(editor.view, event as ClipboardEvent, Slice.empty) === true;
-        return true;
-    });
+    const handlePaste = clipboardPlugin?.props.handlePaste;
+    handled = handlePaste?.call(clipboardPlugin, editor.view, event as ClipboardEvent, Slice.empty) === true;
     return handled;
+}
+
+function getParagraphText(editor: Editor): string {
+    const paragraphs: string[] = [];
+    editor.state.doc.forEach((node) => paragraphs.push(node.textContent));
+    return paragraphs.join('\n');
 }
 
 describe('エディター・URLペースト統合テスト', () => {
     let editor: Editor;
 
-    beforeEach(() => {
-        editor = new Editor({
+    function createEditor(content = ''): Editor {
+        return new Editor({
             extensions: [
                 StarterKit.configure({
+                    heading: false,
+                    blockquote: false,
+                    bold: false,
+                    italic: false,
+                    strike: false,
+                    code: false,
+                    codeBlock: false,
+                    bulletList: false,
+                    orderedList: false,
+                    listItem: false,
+                    horizontalRule: false,
+                    hardBreak: false,
                     link: {
                         HTMLAttributes: {
                             class: 'preview-link',
@@ -100,8 +128,12 @@ describe('エディター・URLペースト統合テスト', () => {
                     enableHashtags: false
                 })
             ],
-            content: ''
+            content
         });
+    }
+
+    beforeEach(() => {
+        editor = createEditor();
     });
 
     afterEach(() => {
@@ -119,22 +151,27 @@ describe('エディター・URLペースト統合テスト', () => {
             expect(editor.getHTML()).toContain(`href="${url}"`);
         });
 
-        it('通常の名前付きrich linkはFriendly URLへ変換せずdefault pasteへ委譲すること', () => {
-            const handled = invokePasteHandler(
+        it('通常の名前付きrich linkは表示文字列とURLをplain textとして保持すること', () => {
+            expect(invokePasteHandler(
                 editor,
                 createClipboardData('eHagaki', '<a href="https://lokuyow.github.io/ehagaki/">eHagaki</a>'),
-            );
-
-            expect(handled).toBe(false);
-            expect(editor.getText()).toBe('');
+            )).toBe(true);
+            expect(editor.getText()).toBe('eHagaki (https://lokuyow.github.io/ehagaki/)');
+            expect(editor.getHTML()).toContain('href="https://lokuyow.github.io/ehagaki/"');
         });
 
         it.each([
-            ['plain URLとhrefが異なる', 'https://lokuyow.github.io/ehagaki/', '<a href="https://example.com/">eHagaki</a>'],
-            ['複数anchor', 'https://lokuyow.github.io/ehagaki/', '<span><a href="https://lokuyow.github.io/ehagaki/">eHagaki</a><a href="https://example.com/">other</a></span>'],
-            ['anchor外に実質的な内容がある', 'https://lokuyow.github.io/ehagaki/', '<div><a href="https://lokuyow.github.io/ehagaki/">eHagaki</a><span>extra</span></div>'],
-            ['anchor外に非テキスト実質要素がある', 'https://lokuyow.github.io/ehagaki/', '<div><a href="https://lokuyow.github.io/ehagaki/">eHagaki</a><img src="https://example.com/image.png"></div>'],
-        ])('%s場合は単一URLへ潰さずdefault pasteへ委譲すること', (_case, text, html) => {
+            ['plain URLとhrefが異なる', 'https://lokuyow.github.io/ehagaki/', '<a href="https://example.com/">eHagaki</a>', 'eHagaki (https://example.com/)'],
+            ['複数anchor', 'https://lokuyow.github.io/ehagaki/', '<span><a href="https://lokuyow.github.io/ehagaki/">eHagaki</a><a href="https://example.com/">other</a></span>', 'eHagaki (https://lokuyow.github.io/ehagaki/)other (https://example.com/)'],
+            ['anchor外に実質的な内容がある', 'https://lokuyow.github.io/ehagaki/', '<div><a href="https://lokuyow.github.io/ehagaki/">eHagaki</a><span>extra</span></div>', 'eHagaki (https://lokuyow.github.io/ehagaki/)extra'],
+        ])('%s場合はHTML内の表示文字列とリンク先を保持すること', (_case, text, html, expected) => {
+            expect(invokePasteHandler(editor, createClipboardData(text, html))).toBe(true);
+            expect(editor.getText()).toBe(expected);
+        });
+
+        it('HTMLに画像も含まれる場合は既存のpaste pathへ委譲すること', () => {
+            const text = 'https://lokuyow.github.io/ehagaki/';
+            const html = '<div><a href="https://lokuyow.github.io/ehagaki/">eHagaki</a><img src="https://example.com/image.png"></div>';
             expect(invokePasteHandler(editor, createClipboardData(text, html))).toBe(false);
             expect(editor.getText()).toBe('');
         });
@@ -154,6 +191,128 @@ describe('エディター・URLペースト統合テスト', () => {
             expect(invokePasteHandler(editor, createClipboardData(url, html))).toBe(true);
             expect(editor.getText()).toBe(url);
             expect(editor.getHTML()).toContain('href="https://example.com/path?x=1&amp;y=2#section"');
+        });
+    });
+
+    describe('外部HTMLの構造をplain textとして貼り付ける', () => {
+        it('plain textよりHTMLのheadingとparagraph structureを優先し、空行で分けること', () => {
+            const html = '<h2>見出し</h2><p>本文</p>';
+            expect(invokePasteHandler(editor, createClipboardData('見出し本文', html))).toBe(true);
+            expect(getParagraphText(editor)).toBe('【見出し】\n\n本文');
+            expect(editor.getHTML()).not.toContain('<h2');
+        });
+
+        it('比較tableの後ろに続くheading・paragraph・listも変換すること', () => {
+            const html = '<table><thead><tr><th></th><th>A</th><th>B</th><th>C</th></tr></thead>' +
+                '<tbody><tr><th>性能</th><td>高</td><td>中</td><td>低</td></tr>' +
+                '<tr><th>価格</th><td>高</td><td>安</td><td>中</td></tr></tbody></table>' +
+                '<h2>続き</h2><p>本文</p><ul><li>項目</li></ul>';
+            expect(invokePasteHandler(editor, createClipboardData('flattened clipboard text', html))).toBe(true);
+            expect(getParagraphText(editor)).toBe(
+                '|  | A | B | C |\n| --- | --- | --- | --- |\n| 性能 | 高 | 中 | 低 |\n| 価格 | 高 | 安 | 中 |\n\n【続き】\n\n本文\n\n• 項目',
+            );
+            expect(editor.getHTML()).not.toMatch(/<(?:table|h[1-6]|ul|li)\b/i);
+        });
+
+        it('h3 headingを黒四角のplain textへ変換すること', () => {
+            expect(invokePasteHandler(editor, createClipboardData('flattened heading', '<h3>詳細</h3>'))).toBe(true);
+            expect(getParagraphText(editor)).toBe('■ 詳細');
+        });
+
+        it('preの空白と改行をコード境界付きで保持すること', () => {
+            const code = '  const value = 1;\n\n\treturn value;  ';
+            expect(invokePasteHandler(editor, createClipboardData('flattened code', `<pre><code>${code}</code></pre>`))).toBe(true);
+            expect(getParagraphText(editor)).toBe(`［コード］\n${code}\n［/コード］`);
+        });
+
+        it.each([
+            ['ul', '<ul><li>first</li><li><strong>second</strong></li></ul>', '• first\n• second'],
+            ['ol', '<ol start="4"><li>first</li><li>second</li></ol>', '4. first\n5. second'],
+            ['nested list', '<ul><li>parent<ul><li>child</li></ul></li></ul>', '• parent\n  • child'],
+            ['paragraph and list', '<p>Before</p><ol><li>one</li><li>two</li></ol><p>After</p>', 'Before\n\n1. one\n2. two\n\nAfter'],
+        ])('%s structureを読みやすいplain textにすること', (_case, html, expected) => {
+            expect(invokePasteHandler(editor, createClipboardData('ignored by HTML', html))).toBe(true);
+            expect(getParagraphText(editor)).toBe(expected);
+            expect(editor.getHTML()).not.toMatch(/<(?:ul|ol|li|strong|h[1-6])\b/i);
+        });
+
+        it('HTMLだけのclipboardも文章HTMLなら変換すること', () => {
+            expect(invokePasteHandler(editor, createClipboardData('', '<p>HTML only</p><p>second</p>'))).toBe(true);
+            expect(getParagraphText(editor)).toBe('HTML only\n\nsecond');
+        });
+
+        it('HTML linkの表示文字列と安全なhrefを残し、危険なhrefは採用しないこと', () => {
+            expect(invokePasteHandler(
+                editor,
+                createClipboardData('', '<p><a href="https://example.com/path">label</a> <a href="javascript:alert(1)">unsafe</a></p>'),
+            )).toBe(true);
+            expect(getParagraphText(editor)).toBe('label (https://example.com/path) unsafe');
+            expect(editor.getHTML()).not.toContain('javascript:');
+        });
+
+        it('相対hrefをHost URLで解決せず文字列として保持すること', () => {
+            expect(invokePasteHandler(editor, createClipboardData('', '<p><a href="../guide">guide</a></p>'))).toBe(true);
+            expect(getParagraphText(editor)).toBe('guide (../guide)');
+        });
+
+        it('明示plain pasteはMarkdown/code風文字列をそのまま保つこと', () => {
+            const plain = '**foo**\n#include\n- example\nconst x = 1;\n【literal】\n■ literal\n［コード］';
+            expect(invokePasteHandler(editor, createClipboardData(plain, '<h1>Rich heading</h1>'), true)).toBe(true);
+            expect(getParagraphText(editor)).toBe(plain);
+        });
+
+        it('text/plainだけのMarkdown/code風文字列も記号を変更しないこと', () => {
+            const plain = '**foo**\n#include\n- example\nconst x = 1;\n【literal】\n■ literal\n［コード］';
+            expect(invokePasteHandler(editor, createClipboardData(plain))).toBe(true);
+            expect(getParagraphText(editor)).toBe(plain);
+        });
+
+        it('text/plainのみの通常pasteを従来どおり改行で段落化すること', () => {
+            expect(invokePasteHandler(editor, createClipboardData('first\nsecond'))).toBe(true);
+            expect(getParagraphText(editor)).toBe('first\nsecond');
+        });
+
+        it('自Editorのcopy HTMLは新しい変換を通さず既存の空行正規化を使うこと', () => {
+            const html = '<p class="editor-paragraph" data-pm-slice="1 1 []">first</p><p class="editor-paragraph">second</p>';
+            expect(invokePasteHandler(editor, createClipboardData('first\nsecond', html))).toBe(true);
+            expect(getParagraphText(editor)).toBe('first\nsecond');
+        });
+
+        it('file clipboardを消費せず既存media処理へ委譲すること', () => {
+            const image = new File(['image'], 'image.png', { type: 'image/png' });
+            expect(invokePasteHandler(editor, createClipboardData('image', '<p>image</p>', [image]))).toBe(false);
+            expect(editor.getText()).toBe('');
+        });
+    });
+
+    describe('plain-text paste transaction and history', () => {
+        it('selectionを置換し、caret・undo・redoで同じ内容を復元すること', () => {
+            editor.destroy();
+            editor = createEditor('<p>Alpha omega</p>');
+            editor.commands.setTextSelection({ from: 7, to: 12 });
+
+            expect(invokePasteHandler(editor, createClipboardData('', '<p>new</p><p>value</p>'))).toBe(true);
+            expect(getParagraphText(editor)).toBe('Alpha new\n\nvalue');
+            expect(editor.state.selection.empty).toBe(true);
+            const pasteSelection = editor.state.selection.from;
+
+            expect(editor.commands.undo()).toBe(true);
+            expect(getParagraphText(editor)).toBe('Alpha omega');
+            expect(editor.commands.redo()).toBe(true);
+            expect(getParagraphText(editor)).toBe('Alpha new\n\nvalue');
+            expect(editor.state.selection.from).toBe(pasteSelection);
+        });
+
+        it('短時間の入力・paste・入力は既存のUndoRedo groupingを維持すること', () => {
+            editor.commands.insertContent('typed before');
+            expect(invokePasteHandler(editor, createClipboardData('ignored', '<ul><li>pasted</li></ul>'))).toBe(true);
+            editor.commands.insertContent(' typed after');
+            expect(getParagraphText(editor)).toBe('typed before• pasted typed after');
+
+            expect(editor.commands.undo()).toBe(true);
+            expect(getParagraphText(editor)).toBe('');
+            expect(editor.commands.redo()).toBe(true);
+            expect(getParagraphText(editor)).toBe('typed before• pasted typed after');
         });
     });
 

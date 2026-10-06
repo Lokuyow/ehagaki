@@ -129,6 +129,7 @@ describe('Playwright config connection values', () => {
                 'android-chromium',
                 'mobile-webkit',
                 'desktop-firefox',
+                'desktop-firefox-editor-paste',
             ]);
             expect(config.projects?.[2]?.testMatch).toBe(
                 '**/webComponentLite.spec.ts',

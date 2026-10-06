@@ -129,6 +129,17 @@ async function mountHostOwned(page: import("@playwright/test").Page) {
     }, { componentOrigin });
 }
 
+async function pasteHtml(editor: import("@playwright/test").Locator, html: string, text: string) {
+    await editor.evaluate((element, clipboard) => {
+        const data = new DataTransfer();
+        data.setData("text/plain", clipboard.text);
+        data.setData("text/html", clipboard.html);
+        const event = new Event("paste", { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "clipboardData", { value: data });
+        element.dispatchEvent(event);
+    }, { html, text });
+}
+
 test("Lite minimal configuration exposes only text composition and preserves success/failure content", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {
@@ -207,6 +218,48 @@ test("Lite minimal configuration exposes only text composition and preserves suc
     await replacement.locator("button.post-button").click();
     await expect.poll(() => page.evaluate(() => (window as any).__liteMinimalState.errors)).toBe(1);
     await expect(replacement.locator(".tiptap-editor")).toContainText("keep after failure");
+});
+
+test("pastes readable HTML as plain text and sends that content through Host-owned Lite", async ({ page, browserName, isMobile }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = { outputs: [] as any[] };
+        (window as any).__litePasteState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.configureHostOwned({
+            submit(output: unknown) {
+                state.outputs.push(JSON.parse(JSON.stringify(output)));
+                return { eventId: "c".repeat(64) };
+            },
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    await editor.click();
+    await pasteHtml(editor, '<h3>見出し</h3><p>本文 <em>強調</em></p><ol start="2"><li>first</li><li>second</li></ol><table><thead><tr><th></th><th>① A</th><th>② B</th></tr></thead><tbody><tr><th>性能</th><td>高</td><td>低</td></tr></tbody></table>', "■ 見出し 本文 強調");
+    await expect(editor).toContainText("■ 見出し");
+    await expect(editor).toContainText("|  | ① A | ② B |");
+    await expect(editor).toContainText("2. first");
+    await expect(editor).toContainText("3. second");
+    await expect(editor.locator("h1, h2, h3, em, ol, li")).toHaveCount(0);
+
+    const undoModifier = browserName === "webkit" && isMobile ? "Meta" : "Control";
+    await editor.press(`${undoModifier}+z`);
+    await expect(editor).toHaveText("");
+    await editor.press(`${undoModifier}+Shift+z`);
+    await expect(editor).toContainText("3. second");
+
+    await composer.locator("button.post-button").click();
+    await expect.poll(() => page.evaluate(() => (window as any).__litePasteState.outputs.length)).toBe(1);
+    expect(await page.evaluate(() => (window as any).__litePasteState.outputs[0].content))
+        .toBe("■ 見出し\n\n本文 強調\n\n2. first\n3. second\n\n|  | ① A | ② B |\n| --- | --- | --- |\n| 性能 | 高 | 低 |");
 });
 
 test("controls the Host-owned Lite editor focus through the public API without changing content or caret", async ({ page }) => {
