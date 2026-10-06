@@ -37,6 +37,30 @@ afterEach(() => {
 });
 
 describe("Nip96UploadAdapter", () => {
+    it("propagates operation cancellation during delayed processing polling", async () => {
+        const adapter = new Nip96UploadAdapter();
+        const controller = new AbortController();
+        const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+            if (fetchMock.mock.calls.length === 1) {
+                return createJsonResponse({
+                    processing_url: "https://share.yabu.me/api/v1/processing/1",
+                }, { status: 202 });
+            }
+            expect(init?.signal).toBe(controller.signal);
+            controller.abort();
+            return new Response(null, { status: 404 });
+        });
+
+        await expect(adapter.upload({
+            file: new File(["image"], "test.png", { type: "image/png" }),
+            destination: createDestination(),
+            authService: { buildAuthHeader: vi.fn(async () => "Nostr token") },
+            fetch: fetchMock as unknown as typeof fetch,
+            signal: controller.signal,
+        })).rejects.toMatchObject({ name: "AbortError" });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
     it("uses one canonical URL for the NIP-98 upload token and initial fetch", async () => {
         const adapter = new Nip96UploadAdapter();
         const destination = createDestination();

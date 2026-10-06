@@ -6,11 +6,82 @@ import {
     type HostRelayConfig,
 } from "../lib/hostRelayConfig";
 import type { RelayConfig } from "../lib/types";
+import type { EHagakiUploadOptions, EHagakiUploadResult } from "./types";
+import { createUploadAbortError, throwIfUploadAborted } from "../lib/upload/uploadOperation";
+
+type FullUploadApp = {
+    uploadFileForHost(file: File, options: { signal: AbortSignal }): Promise<EHagakiUploadResult>;
+};
+
+type ActiveUpload = {
+    controller: AbortController;
+    generation: number;
+    disconnected: boolean;
+};
+
+function createUploadApiError(name: string, message: string): Error {
+    const error = new Error(message);
+    error.name = name;
+    return error;
+}
 
 /** The existing full distribution keeps the regular application root. */
 export class EHagakiComposerElement extends ComposerElementBase {
     #hostRelayConfig: RelayConfig | undefined;
     #hostRelayConfigError: string | null = null;
+    #activeUpload: ActiveUpload | null = null;
+
+    /** Full-only upload that returns a URL without touching Composer content or UI. */
+    uploadFile(file: File, options?: EHagakiUploadOptions): Promise<EHagakiUploadResult> {
+        let snapshot: ReturnType<typeof this.requireCurrentReadyApp>;
+        try {
+            snapshot = this.requireCurrentReadyApp();
+        } catch (error) {
+            return Promise.reject(error);
+        }
+        if (options?.signal?.aborted) return Promise.reject(createUploadAbortError());
+        if (this.#activeUpload) {
+            return Promise.reject(createUploadApiError("upload_in_progress", "A file upload is already in progress."));
+        }
+
+        const controller = new AbortController();
+        const operation: ActiveUpload = {
+            controller,
+            generation: snapshot.generation,
+            disconnected: false,
+        };
+        const abortFromCaller = () => controller.abort();
+        options?.signal?.addEventListener("abort", abortFromCaller, { once: true });
+        if (options?.signal?.aborted) abortFromCaller();
+        this.#activeUpload = operation;
+
+        return (async () => {
+            try {
+                throwIfUploadAborted(controller.signal);
+                const app = snapshot.app as typeof snapshot.app & FullUploadApp;
+                const result = await app.uploadFileForHost(file, { signal: controller.signal });
+                if (!this.isCurrentConnection(operation.generation)) {
+                    throw createUploadApiError("disconnected", "Component was disconnected during upload.");
+                }
+                return result;
+            } catch (error) {
+                if (operation.disconnected || !this.isCurrentConnection(operation.generation)) {
+                    throw createUploadApiError("disconnected", "Component was disconnected during upload.");
+                }
+                throw error;
+            } finally {
+                options?.signal?.removeEventListener("abort", abortFromCaller);
+                if (this.#activeUpload === operation) this.#activeUpload = null;
+            }
+        })();
+    }
+
+    protected override onDisconnected(): void {
+        if (!this.#activeUpload) return;
+        this.#activeUpload.disconnected = true;
+        this.#activeUpload.controller.abort();
+        this.#activeUpload = null;
+    }
 
     /**
      * A mount-scoped, nonpersistent default Relay Config for the Full embed.

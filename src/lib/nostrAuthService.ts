@@ -8,19 +8,32 @@ import { parentClientAuthService } from "./parentClientAuthService";
 import { authState } from "../stores/authStore.svelte";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { AuthService } from "./types";
-import { assertActiveSession, captureActiveSessionPubkey } from "./sessionLiveness";
+import {
+    assertActiveSession,
+    AuthenticationRequiredError,
+    captureActiveSessionPubkey,
+} from "./sessionLiveness";
 import {
     prepareSignedEventTemplate,
     validateSignedEventResult,
 } from "./signedEventResultValidator";
 import { encodeBlossomAuthorizationHeader } from "./upload/blossomAuthorization";
+import { throwIfUploadAborted } from "./upload/uploadOperation";
 
 // --- NIP-98認証サービス ---
 export class NostrAuthService implements AuthService {
+    constructor(private readonly operation?: { signal?: AbortSignal }) {}
+
+    private assertOperationActive(): void {
+        throwIfUploadAborted(this.operation?.signal);
+    }
+
     async getEventSigner(expectedPubkey?: string): Promise<Signer> {
+        this.assertOperationActive();
         const sessionPubkey = expectedPubkey ?? captureActiveSessionPubkey(authState);
         assertCurrentSession(sessionPubkey);
         const signer = await this.getSessionEventSigner(sessionPubkey);
+        this.assertOperationActive();
         assertCurrentSession(sessionPubkey);
         return this.createSessionBoundSigner(signer, sessionPubkey);
     }
@@ -28,7 +41,7 @@ export class NostrAuthService implements AuthService {
     private async getSessionEventSigner(sessionPubkey: string): Promise<Signer> {
         const auth = authState.value;
         if (!auth.isAuthenticated || auth.pubkey !== sessionPubkey) {
-            throw new Error('Authentication required');
+            throw new AuthenticationRequiredError();
         }
 
         if (auth.type === 'nsec') {
@@ -38,7 +51,7 @@ export class NostrAuthService implements AuthService {
                 ? currentStoredKey
                 : keyManager.loadFromStorage(sessionPubkey);
             if (!storedKey || keyManager.derivePublicKey(storedKey).hex !== sessionPubkey) {
-                throw new Error('Authentication required');
+                throw new AuthenticationRequiredError();
             }
             return {
                 getPublicKey: async () => sessionPubkey,
@@ -53,48 +66,60 @@ export class NostrAuthService implements AuthService {
         if (auth.type === 'parentClient') {
             const signer = parentClientAuthService.getSigner();
             if (signer) return signer;
-            throw new Error('Authentication required');
+            throw new AuthenticationRequiredError();
         }
 
         if (auth.type === 'nip07') {
             const nostr = (window as any)?.nostr;
-            if (!nostr?.signEvent) throw new Error('Authentication required');
+            if (!nostr?.signEvent) throw new AuthenticationRequiredError();
             return {
                 getPublicKey: async () => {
+                    this.assertOperationActive();
                     const pubkey = typeof nostr.getPublicKey === 'function'
                         ? await nostr.getPublicKey()
                         : sessionPubkey;
-                    if (pubkey !== sessionPubkey) throw new Error('Authentication required');
+                    this.assertOperationActive();
+                    if (pubkey !== sessionPubkey) throw new AuthenticationRequiredError();
                     return pubkey;
                 },
-                signEvent: async (event) => await nostr.signEvent(event),
+                signEvent: async (event) => {
+                    this.assertOperationActive();
+                    const signed = await nostr.signEvent(event);
+                    this.assertOperationActive();
+                    return signed;
+                },
             };
         }
 
-        throw new Error('Authentication required');
+        throw new AuthenticationRequiredError();
     }
 
     private createSessionBoundSigner(signer: Signer, sessionPubkey: string): Signer {
         return {
             getPublicKey: async () => {
+                this.assertOperationActive();
                 assertCurrentSession(sessionPubkey);
                 const pubkey = await signer.getPublicKey();
+                this.assertOperationActive();
                 assertCurrentSession(sessionPubkey);
                 if (pubkey !== sessionPubkey) {
-                    throw new Error('Authentication required');
+                    throw new AuthenticationRequiredError();
                 }
                 return pubkey;
             },
             signEvent: async (template) => {
+                this.assertOperationActive();
                 assertCurrentSession(sessionPubkey);
                 const prepared = prepareSignedEventTemplate(template);
                 const signedEvent = await signer.signEvent(prepared.signerTemplate);
+                this.assertOperationActive();
                 assertCurrentSession(sessionPubkey);
                 const validated = validateSignedEventResult(
                     prepared.expectedTemplate,
                     signedEvent,
                     sessionPubkey,
                 );
+                this.assertOperationActive();
                 assertCurrentSession(sessionPubkey);
                 return validated as any;
             },
@@ -102,16 +127,18 @@ export class NostrAuthService implements AuthService {
     }
 
     private async getCurrentNip46Signer(expectedPubkey: string): Promise<Signer> {
+        this.assertOperationActive();
         const authBefore = authState.value;
         if (
             !authBefore.isAuthenticated
             || authBefore.type !== 'nip46'
             || authBefore.pubkey !== expectedPubkey
         ) {
-            throw new Error('Authentication required');
+            throw new AuthenticationRequiredError();
         }
 
         const signer = await nip46Service.getSignerForSession(expectedPubkey);
+        this.assertOperationActive();
         const authAfter = authState.value;
         if (
             !signer
@@ -119,17 +146,19 @@ export class NostrAuthService implements AuthService {
             || authAfter.type !== 'nip46'
             || authAfter.pubkey !== expectedPubkey
         ) {
-            throw new Error('Authentication required');
+            throw new AuthenticationRequiredError();
         }
 
         return signer;
     }
 
     async buildAuthHeader(url: string, method: string = "POST"): Promise<string> {
+        this.assertOperationActive();
         const sessionPubkey = captureActiveSessionPubkey(authState);
         const signer = await this.getEventSigner(sessionPubkey);
         assertCurrentSession(sessionPubkey);
         const { getToken } = await import("nostr-tools/nip98");
+        this.assertOperationActive();
         assertCurrentSession(sessionPubkey);
         const token = await getToken(
             url,
@@ -137,11 +166,13 @@ export class NostrAuthService implements AuthService {
             async (template) => await signer.signEvent(template),
             true,
         );
+        this.assertOperationActive();
         assertCurrentSession(sessionPubkey);
         return token;
     }
 
     async getBlossomSigner(): Promise<Signer> {
+        this.assertOperationActive();
         const sessionPubkey = captureActiveSessionPubkey(authState);
         return await this.getEventSigner(sessionPubkey);
     }
@@ -153,6 +184,7 @@ export class NostrAuthService implements AuthService {
         contentType?: string;
         contentLength?: number;
     }): Promise<string> {
+        this.assertOperationActive();
         void params.serverUrl;
         void params.contentType;
         void params.contentLength;
@@ -174,6 +206,7 @@ export class NostrAuthService implements AuthService {
             tags,
         });
 
+        this.assertOperationActive();
         assertCurrentSession(sessionPubkey);
         return encodeBlossomAuthorizationHeader(JSON.stringify(event));
     }
@@ -188,8 +221,10 @@ export class NostrAuthService implements AuthService {
         authorization: string;
         assertSession: () => void;
     }> {
+        this.assertOperationActive();
         const sessionPubkey = captureActiveSessionPubkey(authState);
         const authorization = await this.buildBlossomAuthorizationHeader(params);
+        this.assertOperationActive();
         assertCurrentSession(sessionPubkey);
 
         return {

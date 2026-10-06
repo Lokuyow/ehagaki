@@ -19,6 +19,8 @@ import type {
     UploadDestinationCapabilities,
     UploadProtocolAdapter,
 } from "../types";
+import { AuthenticationRequiredError } from "../sessionLiveness";
+import { throwIfUploadAborted } from "./uploadOperation";
 
 function normalizeBlossomServerUrl(destination: UploadDestination): string {
     return destination.serverUrl.replace(/\/$/, "");
@@ -83,6 +85,7 @@ export function createBlossomClient(
         ? T
         : never,
     fetchImpl: typeof fetch,
+    signal?: AbortSignal,
 ): BlossomClient {
     type BlossomClientHttpCall = {
         httpCall: (
@@ -106,12 +109,14 @@ export function createBlossomClient(
         body?: File | Blob,
         result?: unknown,
     ) => {
+        throwIfUploadAborted(signal);
         const headers: Record<string, string> = {};
         if (contentType) {
             headers["Content-Type"] = contentType;
         }
         if (addAuthorization) {
             const auth = await addAuthorization();
+            throwIfUploadAborted(signal);
             if (!auth) throw new Error("Blossom authorization failed");
             headers.Authorization = canonicalizeBlossomAuthorizationHeader(auth);
         }
@@ -127,7 +132,9 @@ export function createBlossomClient(
                     referrerPolicy: "no-referrer" as const,
                 }
                 : {}),
+            ...(signal ? { signal } : {}),
         });
+        throwIfUploadAborted(signal);
 
         if (response.status >= 300) {
             const reason = response.headers.get("X-Reason") || response.statusText;
@@ -239,9 +246,11 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
     readonly protocol = "blossom" as const;
 
     async upload(params: UploadAdapterUploadParams): Promise<FileUploadResponse> {
+        throwIfUploadAborted(params.signal);
         const signer = await params.authService.getBlossomSigner?.();
+        throwIfUploadAborted(params.signal);
         if (!signer) {
-            return { success: false, error: "Blossom signer is not available" };
+            throw new AuthenticationRequiredError();
         }
 
         let verifiedDescriptor: VerifiedBlossomDescriptor;
@@ -251,7 +260,7 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
                 getPublicKey: async () => {
                     const pubkey = await signer.getPublicKey();
                     if (pubkey !== expectedPubkey) {
-                        throw new Error("Authentication required");
+                        throw new AuthenticationRequiredError();
                     }
                     return pubkey;
                 },
@@ -268,9 +277,15 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
                 params.destination,
                 validatedSigner,
                 params.fetch,
+                params.signal,
             );
             const uploadBody = normalizeUploadBlob(params.file);
-            const expectedSha256 = await calculateSHA256Hex(uploadBody);
+            const expectedSha256 = await calculateSHA256Hex(
+                uploadBody,
+                globalThis.crypto.subtle,
+                () => params.signal?.aborted ?? false,
+            );
+            throwIfUploadAborted(params.signal);
             const expectedSize = uploadBody.size;
             const descriptor = await client.uploadBlob(
                 uploadBody,
@@ -284,6 +299,8 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
                 trustedServerUrl: params.destination.serverUrl,
             });
         } catch (error) {
+            if (error instanceof AuthenticationRequiredError) throw error;
+            throwIfUploadAborted(params.signal);
             return {
                 success: false,
                 error: parseBlossomUploadError(error),
@@ -297,8 +314,10 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
                 url: verifiedDescriptor.url,
                 mimeType: verifiedDescriptor.type,
                 fetch: params.fetch,
+                signal: params.signal,
             });
         } catch (error) {
+            throwIfUploadAborted(params.signal);
             return {
                 success: false,
                 error: error instanceof Error ? error.message : String(error),

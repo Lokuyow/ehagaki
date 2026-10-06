@@ -15,6 +15,9 @@ export type {
     EHagakiComposerPostSuccessDetail,
     EHagakiComposerReadyDetail,
     EHagakiComposerSettings,
+    EHagakiUploadErrorName,
+    EHagakiUploadOptions,
+    EHagakiUploadResult,
     HostRelayConfig,
     HostRelayConfigEntry,
 } from "./types";

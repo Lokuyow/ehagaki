@@ -544,6 +544,20 @@ describe('ImageCompressionService', () => {
                 expect(callArgs[1].fileType).toBe('image/webp');
             });
 
+            it('operation signalをbrowser-image-compressionへ渡し、headless previewを表示しない', async () => {
+                const file = createTestFile({ name: 'host-photo.jpg', type: 'image/jpeg', content: new Uint8Array(500000) });
+                const compressedFile = new File([new Uint8Array(100000)], 'host-photo.webp', { type: 'image/webp' });
+                const controller = new AbortController();
+                const debug = await import('../../lib/debug');
+                imageCompressionMock.mockResolvedValue(compressedFile);
+
+                const result = await service.compress(file, { signal: controller.signal });
+
+                expect(result.wasCompressed).toBe(true);
+                expect(imageCompressionMock).toHaveBeenCalledWith(file, expect.objectContaining({ signal: controller.signal }));
+                expect(debug.showCompressedImagePreview).not.toHaveBeenCalled();
+            });
+
             it('WebPエンコード自体がサポートされない場合はPNG画像にはPNGを使用する', async () => {
                 mockMimeSupport = createMockMimeSupport(false, { 'image/webp': false, 'image/png': true });
                 service = new ImageCompressionService(mockMimeSupport, mockStorage);

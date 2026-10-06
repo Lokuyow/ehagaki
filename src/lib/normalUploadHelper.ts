@@ -16,15 +16,13 @@ import type {
     FileUploadManagerInterface,
     FileUploadResponse,
     MimeTypeSupportInterface,
-    UploadDestination,
     UploadHelperDependencies,
     UploadHelperResult,
     UploadInfoCallbacks,
 } from "./types";
 import { buildUploadFailureMessage } from "./uploadResultUtils";
-import { uploadDestinationsRepository } from "./storage/uploadDestinationsRepository";
-import { authState } from "../stores/authStore.svelte";
-import { resolveUploadDestinationForUse } from "./upload/uploadDestinationResolver";
+import { resolveCurrentUploadDestination } from "./upload/resolveCurrentUploadDestination";
+export { resolveCurrentUploadDestination } from "./upload/resolveCurrentUploadDestination";
 import { getAppStorage } from "./appStorage";
 import { showUploadErrorMessage, uploadHelper } from "./uploadHelper";
 import { isDefaultUploadAborted } from "./uploadAbortUtils";
@@ -99,16 +97,6 @@ function createNormalFileUploadManager(
         imageCompressionService,
         videoCompressionService,
         mimeSupport,
-    );
-}
-
-export async function resolveCurrentUploadDestination(): Promise<UploadDestination> {
-    const identity = authState.value.isAuthenticated
-        ? { pubkeyHex: authState.value.pubkey || null, npub: authState.value.npub || null }
-        : { pubkeyHex: null, npub: null };
-    return resolveUploadDestinationForUse(
-        await uploadDestinationsRepository.getDefault(identity.pubkeyHex),
-        identity,
     );
 }
 

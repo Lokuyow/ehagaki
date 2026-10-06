@@ -207,6 +207,10 @@ export class MediaBunnyCompression {
                 audio: (track) => this.buildAudioOptions(track, options, quality),
                 showWarnings: false,
             });
+            if (this.abortRequested || this.isUploadAborted()) {
+                await conversion.cancel();
+                return { file, wasCompressed: false, wasSkipped: true, aborted: true };
+            }
             if (!conversion.isValid || conversion.discardedTracks.some(({ track }) => track.isVideoTrack() || track.isAudioTrack())) {
                 devWarn('MediaBunny cannot preserve all required tracks; skipping compression.', conversion.discardedTracks);
                 return { file, wasCompressed: false, wasSkipped: true };

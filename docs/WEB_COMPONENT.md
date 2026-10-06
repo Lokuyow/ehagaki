@@ -294,6 +294,40 @@ caret や selection を本文の末尾・先頭へ移動しません。`blurEdit
 をクリアせず、Editor を再生成しません。Shadow DOM 内部の selector を host が調べる必要はありません。
 この2つのメソッドは iframe の `postMessage` API には追加されていません。
 
+## Full からファイルをアップロードする `uploadFile()`
+
+Full self-publish distribution は `uploadFile(file, options?)` で `File` 1 件をアップロードし、
+最終 URL と確認できた metadata を返します。Host がファイルを取得して渡してください。この API は
+`whenReady()` の解決後に呼び出します。Editor へファイルを挿入せず、本文、draft、gallery、context、
+upload progress/error などの Composer UI state も変更しません。現在選択中の eHagaki upload destination、
+圧縮設定、destination が必要とする認証、通常の media validation と transport を使います。
+
+```ts
+const composer = document.querySelector('ehagaki-composer');
+await composer.whenReady();
+
+const controller = new AbortController();
+const result = await composer.uploadFile(file, { signal: controller.signal });
+console.log(result.url, result.mimeType, result.dim, result.sha256, result.blurhash);
+```
+
+`options.signal` はこの upload だけを中止します。既に中止済みの signal を渡した場合や実行中に
+中止した場合、Promise は標準 `AbortError` で拒否されます。既存の Editor upload、submit preparation、
+post send、または別の `uploadFile()` が進行中なら `upload_in_progress` で拒否されます。
+
+戻り値は `EHagakiUploadResult` です。`url` は必須で、`mimeType`、`dim`、`sha256`、`blurhash` は
+選択された transport が最終 resource と一致すると確認できる場合だけ含まれます。たとえば NIP-96 の
+`sha256` は最終 resource の `x` を使い、変換前の `ox` は代用しません。確認できない値は省略されます。
+
+Host は `Error.name` で公開 error を判定できます: `not_ready`、`login_required`、
+`upload_in_progress`、`unsupported_media`、`upload_failed`。認証不要の destination では未ログインでも
+実行できます。初期化 failure / disconnect は既存の lifecycle error を維持します。`uploadFile` は
+Full distribution 専用で、Lite では method 自体が存在しません。古い Full bundle を含む場合は
+`typeof composer.uploadFile === 'function'` で capability を確認してください。
+
+この method は ready 前の operation queue には入りません。ready 前に呼ぶと upload を開始せず
+`not_ready` で拒否されます。iframe の `postMessage` APIには追加していません。
+
 ## エディターが空かどうかを取得する `editorIsEmpty`
 
 Full self-publish と Host-owned Composer Lite のどちらの `<ehagaki-composer>` でも、現在の Composer
