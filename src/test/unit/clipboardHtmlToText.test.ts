@@ -43,6 +43,38 @@ describe('htmlToPlainTextLines', () => {
         expect(htmlToPlainTextLines(html)).toEqual(expected.split('\n'));
     });
 
+    it('preserves literal marker characters in normal paragraph text, including adjacent collision sequences', () => {
+        const markers = '\uE000\uE001\uE002';
+        const collisionSequence = '\uE000\uE002\uE001\uE000\uE001\uE002\uE001b\uE0010\uE001e';
+
+        expect(htmlToPlainTextLines(`<p>${markers}</p>`)).toEqual([markers]);
+        expect(htmlToPlainTextLines(`<p>${collisionSequence}</p>`)).toEqual([collisionSequence]);
+    });
+
+    it('preserves literal marker characters inside inline formatting', () => {
+        const markers = '\uE000\uE001\uE002';
+        const collisionSequence = '\uE000\uE002\uE001\uE000\uE001\uE002\uE001b\uE0010\uE001e';
+
+        expect(htmlToPlainTextLines(`<p><strong>${markers}</strong><em>${collisionSequence}</em></p>`))
+            .toEqual([`${markers}${collisionSequence}`]);
+    });
+
+    it('preserves literal marker characters in preformatted code', () => {
+        const markers = '\uE000\uE001\uE002';
+        const collisionSequence = '\uE000\uE002\uE001\uE000\uE001\uE002\uE001b\uE0010\uE001e';
+
+        expect(htmlToPlainTextLines(`<pre><code>${markers}\n${collisionSequence}</code></pre>`))
+            .toEqual(['［コード］', markers, collisionSequence, '［/コード］']);
+    });
+
+    it('preserves literal marker characters in table cells', () => {
+        const markers = '\uE000\uE001\uE002';
+        const collisionSequence = '\uE000\uE002\uE001\uE000\uE001\uE002\uE001b\uE0010\uE001e';
+
+        expect(htmlToPlainTextLines(`<table><tr><td>${markers}</td><td>${collisionSequence}</td></tr></table>`))
+            .toEqual([`| ${markers} | ${collisionSequence} |`]);
+    });
+
     it.each([
         '<img alt=":wave:" src="https://example.com/wave.png" data-custom-emoji="true">',
         '<p>Text</p><video src="https://example.com/clip.mp4"></video>',

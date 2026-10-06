@@ -1,9 +1,9 @@
 import DOMPurify from 'dompurify';
 import { validateAndNormalizeUrl } from '../utils/editorUrlUtils';
 
-const HARD_LINE_BREAK = '\uE000';
+const LITERAL_HARD_LINE_BREAK = '\uE000';
 const ESCAPE_MARKER = '\uE001';
-const ESCAPED_ESCAPE_MARKER = '\uE002';
+const HARD_LINE_BREAK = `${ESCAPE_MARKER}b`;
 
 type TextBlock = { type: 'text'; text: string };
 type CodeBlock = { type: 'code'; text: string };
@@ -126,9 +126,17 @@ function normalizeInlineWhitespace(value: string): string {
 }
 
 function escapeTextMarkers(text: string): string {
-    return text
-        .replaceAll(ESCAPE_MARKER, `${ESCAPE_MARKER}${ESCAPED_ESCAPE_MARKER}`)
-        .replaceAll(HARD_LINE_BREAK, ESCAPE_MARKER);
+    let escaped = '';
+    for (const character of text) {
+        if (character === ESCAPE_MARKER) {
+            escaped += `${ESCAPE_MARKER}e`;
+        } else if (character === LITERAL_HARD_LINE_BREAK) {
+            escaped += `${ESCAPE_MARKER}0`;
+        } else {
+            escaped += character;
+        }
+    }
+    return escaped;
 }
 
 function readInlineNodes(nodes: Node[]): string {
@@ -173,7 +181,8 @@ function readTableCellNodes(nodes: Node[]): string {
 }
 
 function tableCellText(cell: Element): string {
-    return decodeHardLineBreaks(readTableCellNodes(Array.from(cell.childNodes)))
+    return readTableCellNodes(Array.from(cell.childNodes))
+        .replaceAll(HARD_LINE_BREAK, ' ')
         .replace(/[\t\n\f\r \u00a0]+/g, ' ')
         .trim();
 }
@@ -207,7 +216,7 @@ function tableText(table: HTMLTableElement): string {
 function readInlineText(node: Node, inPre = false): string {
     if (node.nodeType === Node.TEXT_NODE) {
         const text = node.textContent ?? '';
-        const escaped = text.replaceAll(HARD_LINE_BREAK, `${HARD_LINE_BREAK}${HARD_LINE_BREAK}`);
+        const escaped = escapeTextMarkers(text);
         return inPre ? escaped : escaped.replace(/[\t\n\f\r \u00a0]+/g, ' ');
     }
 
@@ -224,7 +233,8 @@ function readInlineText(node: Node, inPre = false): string {
         if (inPre) return rawDisplayText;
 
         const displayText = normalizeInlineWhitespace(rawDisplayText).trim();
-        const href = safeHrefFromAnchor(node);
+        const safeHref = safeHrefFromAnchor(node);
+        const href = safeHref ? escapeTextMarkers(safeHref) : null;
 
         if (!href || !displayText || sameDestination(displayText, href)) {
             return displayText || href || '';
@@ -283,7 +293,7 @@ function parseFlow(nodes: Node[]): ClipboardBlock[] {
     for (const node of nodes) {
         if (node.nodeType === Node.TEXT_NODE) {
             const text = node.textContent ?? '';
-            if (text.trim() || inlineText) inlineText += text;
+            if (text.trim() || inlineText) inlineText += escapeTextMarkers(text);
             continue;
         }
 
@@ -307,7 +317,7 @@ function parseFlow(nodes: Node[]): ClipboardBlock[] {
         if (/^h[1-6]$/.test(tag)) {
             flushInline();
             const heading = normalizeInlineWhitespace(
-                decodeHardLineBreaks(readInlineNodes(Array.from(node.childNodes))).replace(/\n/g, ' '),
+                readInlineNodes(Array.from(node.childNodes)).replaceAll(HARD_LINE_BREAK, ' '),
             ).trim();
             if (heading) {
                 blocks.push({
@@ -408,30 +418,33 @@ function renderList(block: ListBlock, depth: number): string {
 
 function prefixQuoteLines(value: string): string {
     return value
-        .split(/(\n|\uE000)/)
-        .map((part, index) => index % 2 === 0 ? `> ${part}` : part)
-        .join('');
+        .replaceAll(HARD_LINE_BREAK, '\n')
+        .split('\n')
+        .map((line) => `> ${line}`)
+        .join('\n');
 }
 
 function decodeHardLineBreaks(value: string): string {
     let decoded = '';
     for (let index = 0; index < value.length; index += 1) {
         if (value[index] === ESCAPE_MARKER) {
-            if (value[index + 1] === ESCAPED_ESCAPE_MARKER) {
+            const escapeCode = value[index + 1];
+            if (escapeCode === 'b') {
+                decoded += '\n';
+                index += 1;
+            } else if (escapeCode === '0') {
+                decoded += LITERAL_HARD_LINE_BREAK;
+                index += 1;
+            } else if (escapeCode === 'e') {
                 decoded += ESCAPE_MARKER;
                 index += 1;
             } else {
-                decoded += HARD_LINE_BREAK;
+                decoded += ESCAPE_MARKER;
             }
             continue;
         }
 
-        if (value[index] !== HARD_LINE_BREAK) {
-            decoded += value[index];
-            continue;
-        }
-
-        decoded += '\n';
+        decoded += value[index];
     }
     return decoded;
 }
