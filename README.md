@@ -53,6 +53,7 @@ https://lokuyow.github.io/ehagaki/?quote=note1...
 - Sensitive形式を有効にすると、CW付きの投稿はkind 36、CW付きの返信はkind 3636として送信し、kind 1111の返信はNIP-22形式で構築します。kind 36には本文を含まないkind 1互換通知も送ります。これらはeHagaki独自の実験的形式であり、未対応クライアントで表示・解釈されない場合があります。本文は暗号化されません。
 - Sensitive形式を無効にした場合とパブリックチャットでは、従来のNIP-36 Content Warning形式を使用します。受信側はどちらのCW形式も表示できます。
 - 受信では旧eHagaki独自のCW tag内本文形式も互換性のために解釈しますが、新規送信には使いません。
+- Sensitive event kinds、NIP-22 topology、kind 1互換通知、受信・削除・検索上の制約については[実験的Sensitive event形式の仕様](docs/SENSITIVE_CONTENT.md)を参照してください。
 - 引用: NIP-18準拠のqタグを自動構築し、投稿時に引用イベントとして処理されます
 - URLクエリ由来の参照イベントはプレビュー表示されます
 - エディタ本文に `nostr:nevent1...` または `nostr:note1...` を含めた場合も引用として処理されます
