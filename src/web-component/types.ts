@@ -102,6 +102,26 @@ export interface EHagakiHostOwnedComposerOptions {
     editorMaxLines?: number;
 }
 
+/** Final upload URL and only metadata that the selected transport can verify. */
+export interface EHagakiUploadResult {
+    readonly url: string;
+    readonly mimeType?: string;
+    readonly dim?: string;
+    readonly sha256?: string;
+    readonly blurhash?: string;
+}
+
+export interface EHagakiUploadOptions {
+    readonly signal?: AbortSignal;
+}
+
+export type EHagakiUploadErrorName =
+    | "not_ready"
+    | "login_required"
+    | "upload_in_progress"
+    | "unsupported_media"
+    | "upload_failed";
+
 export interface EHagakiCustomEmojiCatalogItem {
     shortcode: string;
     url: string;

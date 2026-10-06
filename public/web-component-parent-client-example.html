@@ -121,6 +121,20 @@
             white-space: normal;
             overflow-wrap: anywhere;
         }
+        .upload-result {
+            min-height: 72px;
+            max-height: 280px;
+            overflow: auto;
+            margin: 0;
+            padding: 12px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: #f8fbf9;
+            color: var(--text);
+            font: .78rem/1.5 Consolas, "Courier New", monospace;
+            overflow-wrap: anywhere;
+            white-space: pre-wrap;
+        }
         @container (max-width: 560px) {
             .component-lifecycle-buttons { grid-template-columns: 1fr; }
         }
@@ -263,6 +277,23 @@
                             <button id="recreate-component" type="button">作り直す</button>
                         </div>
                         <p class="small">Componentの作成、削除、再作成という基本的なライフサイクル操作を確認できます。削除後は、新しいComponentを作成できます。</p>
+                    </div>
+
+                    <div class="card stack" id="headless-upload-card">
+                        <h2>Headless <code>uploadFile()</code> を試す</h2>
+                        <p class="small">Hostで選んだFileをFull Web Componentの公開APIへ直接渡します。Editor本文、gallery、投稿UIには追加しません。現在のupload destinationと画像・動画の圧縮設定が使われます。</p>
+                        <div id="headless-upload-status" class="status warn" role="status" aria-live="polite">Component未作成</div>
+                        <div class="field">
+                            <label for="headless-upload-file">Hostから渡す画像・動画</label>
+                            <input id="headless-upload-file" type="file" accept="image/*,video/*">
+                            <p id="headless-upload-selection" class="small">File未選択</p>
+                        </div>
+                        <div class="buttons">
+                            <button id="headless-upload-start" type="button" disabled>アップロード</button>
+                            <button id="headless-upload-cancel" type="button" class="secondary" disabled>中止</button>
+                        </div>
+                        <pre id="headless-upload-result" class="upload-result" aria-live="polite">結果はここに表示されます。</pre>
+                        <a id="headless-upload-link" href="#" target="_blank" rel="noopener noreferrer" hidden>成功URLを新しいタブで開く</a>
                     </div>
 
                     <div class="card stack">

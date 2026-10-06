@@ -227,6 +227,8 @@
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
   import { uploadDestinationStore } from "./stores/uploadDestinationStore.svelte";
   import { uploadFiles as normalUploadFiles } from "./lib/normalUploadHelper";
+  import { uploadFileForHost as uploadHeadlessFile } from "./lib/upload/headlessUpload";
+  import type { EHagakiUploadResult } from "./web-component/types";
 
   const appRuntimeEnvironment = getAppRuntimeEnvironment();
   interface Props {
@@ -1444,6 +1446,19 @@
     payload: EmbedSettingsSetPayload,
   ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>> {
     return appEmbedController.applySettings(payload);
+  }
+
+  /** Full Web Component upload path. It deliberately avoids Composer upload UI state. */
+  export async function uploadFileForHost(
+    file: File,
+    options: { signal: AbortSignal },
+  ): Promise<EHagakiUploadResult> {
+    if (editorState.isUploading || editorState.isSubmitPending || editorState.postStatus.sending) {
+      const error = new Error("An editor upload or post operation is already in progress.");
+      error.name = "upload_in_progress";
+      throw error;
+    }
+    return await uploadHeadlessFile(file, options.signal);
   }
 
   /** Public in-process editor control used by the Direct Web Component root. */

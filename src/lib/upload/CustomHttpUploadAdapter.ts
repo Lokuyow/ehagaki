@@ -5,18 +5,22 @@ import type {
     UploadDestination,
     UploadProtocolAdapter,
 } from "../types";
+import { throwIfUploadAborted } from "./uploadOperation";
 
 export class CustomHttpUploadAdapter implements UploadProtocolAdapter {
     readonly protocol = "custom-http" as const;
 
     async upload(params: UploadAdapterUploadParams): Promise<FileUploadResponse> {
+        throwIfUploadAborted(params.signal);
         const formData = new FormData();
         formData.append("file", params.file);
 
         const response = await params.fetch(params.destination.resolvedUploadUrl || params.destination.serverUrl, {
             method: "POST",
             body: formData,
+            ...(params.signal ? { signal: params.signal } : {}),
         });
+        throwIfUploadAborted(params.signal);
         if (!response.ok) {
             return {
                 success: false,
@@ -25,6 +29,7 @@ export class CustomHttpUploadAdapter implements UploadProtocolAdapter {
         }
 
         const data = await response.json().catch(() => null);
+        throwIfUploadAborted(params.signal);
         const url = typeof data?.url === "string" ? data.url : "";
         return url
             ? { success: true, url }

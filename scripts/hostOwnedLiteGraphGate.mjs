@@ -8,6 +8,7 @@ const forbiddenPatterns = [
     /[\\/]src[\\/]lib[\\/]storage[\\/](postHistoryRepository|draftsRepository)[\\/\.]/,
     /[\\/]src[\\/]lib[\\/](draftManager|draftComposerController|iframeMessageService|parentClient)[\\/\.]/,
     /[\\/]src[\\/]lib[\\/](normalUploadHelper|fileUploadManager|nostrAuthService)[\\/\.]/,
+    /[\\/]src[\\/]lib[\\/]upload[\\/](headlessUpload|resolveCurrentUploadDestination)\.ts$/,
     /[\\/]src[\\/]lib[\\/]upload[\\/](uploadDestinationResolver|nostr)[\\/]/,
 ];
 

@@ -341,6 +341,25 @@ test("Full Web Component does not expose the Lite preferred-height API", async (
     });
 });
 
+test("Full exposes headless upload only after ready and does not queue pre-ready calls", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+            uploadFile(file: File, options?: { signal?: AbortSignal }): Promise<unknown>;
+        };
+        document.body.append(composer);
+        const preReadyError = await composer.uploadFile(
+            new File([new Uint8Array([1])], "profile.png", { type: "image/png" }),
+        ).then(() => null, (error: Error) => error.name);
+        await composer.whenReady();
+        return { uploadFileType: typeof composer.uploadFile, preReadyError };
+    }, { componentOrigin });
+
+    expect(result).toEqual({ uploadFileType: "function", preReadyError: "not_ready" });
+});
+
 test("exposes the common editor empty state API through the Full element", async ({ page }) => {
     await page.goto(hostOrigin);
     const initial = await page.evaluate(async ({ componentOrigin }) => {

@@ -52,26 +52,43 @@ export class VideoCompressionService {
         return this.getCompressionOptions() !== null;
     }
 
-    public async compress(file: File): Promise<VideoCompressionResult> {
+    public async compress(
+        file: File,
+        operation?: { signal?: AbortSignal },
+    ): Promise<VideoCompressionResult> {
+        const signal = operation?.signal;
+        if (signal?.aborted) return { file, wasCompressed: false, wasSkipped: true, aborted: true };
         if (!file.type.startsWith('video/')) return { file, wasCompressed: false };
         if (file.size <= MIN_VIDEO_COMPRESSION_FILE_SIZE_BYTES) {
             return { file, wasCompressed: false, wasSkipped: true };
         }
         const options = this.getCompressionOptions();
-        if (!options) return { file, wasCompressed: false, wasSkipped: true };
+        if (!options) {
+            return { file, wasCompressed: false, wasSkipped: true };
+        }
         if (this.isUploadAborted()) {
             this.onProgress?.(0);
             return { file, wasCompressed: false, wasSkipped: true, aborted: true };
         }
 
+        const onAbort = () => this.abort();
+        signal?.addEventListener('abort', onAbort, { once: true });
         try {
             await this.ensureInitialized();
+            if (signal?.aborted || this.isUploadAborted()) {
+                return { file, wasCompressed: false, wasSkipped: true, aborted: true };
+            }
             const compression = this.mediabunnyCompression;
             if (!compression) throw new Error('MediaBunny compression did not initialize.');
             return await compression.compress(file, options);
         } catch (error) {
+            if (signal?.aborted || this.isUploadAborted()) {
+                return { file, wasCompressed: false, wasSkipped: true, aborted: true };
+            }
             console.error('[VideoCompressionService] Compression failed:', error);
             return { file, wasCompressed: false, wasSkipped: true };
+        } finally {
+            signal?.removeEventListener('abort', onAbort);
         }
     }
 

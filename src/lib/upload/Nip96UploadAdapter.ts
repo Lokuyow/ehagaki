@@ -18,6 +18,8 @@ import type {
     UploadDestinationCapabilities,
     UploadProtocolAdapter,
 } from "../types";
+import { AuthenticationRequiredError } from "../sessionLiveness";
+import { throwIfUploadAborted, waitForUploadDelay } from "./uploadOperation";
 
 function toNip96UploadError(
     error: unknown,
@@ -69,11 +71,13 @@ async function pollUploadStatus(params: {
     authHeader?: string;
     fetch: typeof fetch;
     maxWaitTime?: number;
+    signal?: AbortSignal;
 }): Promise<any> {
     const startTime = Date.now();
     const maxWaitTime = params.maxWaitTime ?? UPLOAD_POLLING_CONFIG.MAX_WAIT_TIME;
 
     while (true) {
+        throwIfUploadAborted(params.signal);
         if (Date.now() - startTime > maxWaitTime) {
             throw new Error(UPLOAD_POLLING_CONFIG.TIMEOUT_MESSAGE);
         }
@@ -81,12 +85,14 @@ async function pollUploadStatus(params: {
         const response = await params.fetch(params.processingUrl, {
             method: "GET",
             ...(params.authHeader ? { headers: { Authorization: params.authHeader } } : {}),
+            ...(params.signal ? { signal: params.signal } : {}),
             credentials: "omit",
             referrerPolicy: "no-referrer",
             redirect: "error",
         });
+        throwIfUploadAborted(params.signal);
         if (response.status === 404) {
-            await new Promise((resolve) => setTimeout(resolve, UPLOAD_POLLING_CONFIG.RETRY_INTERVAL));
+            await waitForUploadDelay(UPLOAD_POLLING_CONFIG.RETRY_INTERVAL, params.signal);
             continue;
         }
         if (!response.ok) {
@@ -94,9 +100,10 @@ async function pollUploadStatus(params: {
         }
 
         const processingStatus = await response.json().catch(() => null);
+        throwIfUploadAborted(params.signal);
         if (response.status === 201 && processingStatus) return processingStatus;
         if (processingStatus?.status === "processing") {
-            await new Promise((resolve) => setTimeout(resolve, UPLOAD_POLLING_CONFIG.RETRY_INTERVAL));
+            await waitForUploadDelay(UPLOAD_POLLING_CONFIG.RETRY_INTERVAL, params.signal);
             continue;
         }
         if (processingStatus?.status === "success") return processingStatus;
@@ -152,6 +159,7 @@ export class Nip96UploadAdapter implements UploadProtocolAdapter {
     readonly protocol = "nip96" as const;
 
     async upload(params: UploadAdapterUploadParams): Promise<FileUploadResponse> {
+        throwIfUploadAborted(params.signal);
         let uploadUrl;
         try {
             uploadUrl = canonicalizeNip96UploadUrl(getNip96UploadUrl(params.destination));
@@ -164,6 +172,7 @@ export class Nip96UploadAdapter implements UploadProtocolAdapter {
 
         const finalUrl = uploadUrl.url;
         const authHeader = await params.authService.buildAuthHeader(finalUrl, "POST");
+        throwIfUploadAborted(params.signal);
         let response: Response;
         try {
             response = await params.fetch(finalUrl, {
@@ -171,17 +180,21 @@ export class Nip96UploadAdapter implements UploadProtocolAdapter {
                 headers: { Authorization: authHeader },
                 body: buildNip96FormData(params.file, params.metadata),
                 redirect: "error",
+                ...(params.signal ? { signal: params.signal } : {}),
             });
         } catch {
+            throwIfUploadAborted(params.signal);
             return {
                 success: false,
                 errorCode: "nip96UploadRequestBlocked",
                 error: "The upload request could not be completed safely",
             };
         }
+        throwIfUploadAborted(params.signal);
 
         if (!response.ok) {
             const errorText = await response.text().catch(() => "Unknown error");
+            throwIfUploadAborted(params.signal);
             return {
                 success: false,
                 error: `Upload failed: ${response.status} ${response.statusText} - ${errorText}`,
@@ -191,6 +204,7 @@ export class Nip96UploadAdapter implements UploadProtocolAdapter {
         let data: any;
         try {
             data = await response.json();
+            throwIfUploadAborted(params.signal);
         } catch (error) {
             if (params.devMode) console.error("[dev] JSON parse error:", error);
             return { success: false, error: "Could not parse upload response" };
@@ -209,8 +223,12 @@ export class Nip96UploadAdapter implements UploadProtocolAdapter {
                     processingUrl: processingUrl.url,
                     authHeader: processingAuthToken,
                     fetch: params.fetch,
+                    signal: params.signal,
                 });
+                throwIfUploadAborted(params.signal);
             } catch (error) {
+                if (error instanceof AuthenticationRequiredError) throw error;
+                throwIfUploadAborted(params.signal);
                 return { success: false, ...toNip96UploadError(error, "processing") };
             }
         }
@@ -229,8 +247,10 @@ export class Nip96UploadAdapter implements UploadProtocolAdapter {
                         url: mediaUrl.url,
                         mimeType: params.file.type,
                         fetch: params.fetch,
+                        signal: params.signal,
                     });
                 } catch (error) {
+                    throwIfUploadAborted(params.signal);
                     return {
                         success: false,
                         ...toNip96UploadError(error, "media"),

@@ -125,7 +125,7 @@ async function mountHostOwned(page: import("@playwright/test").Page) {
         await composer.setSettings({ mediaFreePlacement: true, imageQualityLevel: "low", videoQualityLevel: "low" });
         await composer.setCustomEmojis([{ shortcode: "wave", url: "https://example.invalid/wave.webp" }]);
         await composer.setContext({ content: "#lite", reply: "note1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygsglnzgl", quotes: [] });
-        return { events, assetBase: composer.assetBase };
+        return { events, assetBase: composer.assetBase, uploadFileType: typeof (composer as any).uploadFile };
     }, { componentOrigin });
 }
 
@@ -2142,6 +2142,7 @@ test("Lite keeps the explicit distribution asset base and lifecycle", async ({ p
     const lite = await mountHostOwned(page);
     expect(lite.events).toContain("ehagaki-ready");
     expect(lite.assetBase).toBe(`${componentOrigin}/host-owned/`);
+    expect(lite.uploadFileType).toBe("undefined");
 });
 
 test("Lite does not carry a queued context operation into a reconnect", async ({ page }) => {

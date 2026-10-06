@@ -127,6 +127,8 @@ export interface UploadAdapterUploadParams {
     fetch: typeof fetch;
     metadata?: Record<string, string | number | undefined>;
     devMode?: boolean;
+    /** Operation-local cancellation; normal editor uploads leave it unset. */
+    signal?: AbortSignal;
 }
 
 export interface UploadProtocolAdapter {
@@ -176,7 +178,7 @@ export interface FileUploadDependencies {
 }
 
 export interface CompressionService {
-    compress(file: File): Promise<VideoCompressionResult>;
+    compress(file: File, options?: { signal?: AbortSignal }): Promise<VideoCompressionResult>;
     hasCompressionSettings?(): boolean;
     abort?(): void;
 }
