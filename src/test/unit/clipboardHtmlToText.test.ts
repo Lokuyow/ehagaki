@@ -16,6 +16,7 @@ describe('htmlToPlainTextLines', () => {
         ['blockquote lines', '<blockquote><p>First<br>Second</p><p>Third</p></blockquote>', '> First\n> Second\n> \n> Third'],
         ['nested blockquote', '<blockquote><p>Outer</p><blockquote><p>Inner</p></blockquote></blockquote>', '> Outer\n> \n> > Inner'],
         ['preformatted whitespace is preserved inside code markers', '<pre><code>  const x = 1;\n\n\treturn x;  </code></pre>', '［コード］\n  const x = 1;\n\n\treturn x;  \n［/コード］'],
+        ['preformatted trailing newline is not expanded', '<pre>line\n</pre>', '［コード］\nline\n［/コード］'],
         ['line breaks and horizontal rule', '<p>First<br>line</p><hr><p>Last</p>', 'First\nline\n\nLast'],
         ['paragraph list mixture', '<p>Intro</p><ul><li>First</li><li>Second</li></ul><p>Finish</p>', 'Intro\n\n• First\n• Second\n\nFinish'],
         ['uppercase tags, attributes, and wrapper elements', '<DIV class="copied"><H3 id="title">Title</H3><p class="body">Body</p></DIV>', '■ Title\n\nBody'],

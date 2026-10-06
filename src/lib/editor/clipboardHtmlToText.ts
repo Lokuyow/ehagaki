@@ -356,7 +356,7 @@ function renderListItem(
         } else if (block.type === 'code') {
             const continuationIndent = `${indentation}${' '.repeat(marker.length)}`;
             rendered = `${indentation}${output ? ' '.repeat(marker.length) : marker}［コード］\n` +
-                `${block.text}\n` +
+                `${codeBlockBody(block.text)}` +
                 `${continuationIndent}［/コード］`;
         } else if (block.type === 'list') {
             rendered = renderList(block, depth + 1);
@@ -416,6 +416,19 @@ function decodeHardLineBreaks(value: string): string {
     return decoded;
 }
 
+function codeBlockBody(text: string): string {
+    let trailingHardLineBreaks = 0;
+    for (let index = text.length - 1; text[index] === HARD_LINE_BREAK; index -= 1) {
+        trailingHardLineBreaks += 1;
+    }
+    const hasLineBreak = text.endsWith('\n') || trailingHardLineBreaks % 2 === 1;
+    return hasLineBreak ? text : `${text}\n`;
+}
+
+function renderCodeBlock(text: string): string {
+    return `［コード］\n${codeBlockBody(text)}［/コード］`;
+}
+
 function renderQuote(block: QuoteBlock, listDepth = 0): string {
     return prefixQuoteLines(renderBlocks(block.blocks, listDepth));
 }
@@ -427,7 +440,7 @@ function renderBlocks(blocks: ClipboardBlock[], listDepth = 0): string {
         if (block.type === 'text') {
             rendered.push(block.text);
         } else if (block.type === 'code') {
-            rendered.push(`［コード］\n${block.text}\n［/コード］`);
+            rendered.push(renderCodeBlock(block.text));
         } else if (block.type === 'rule') {
             rendered.push('');
         } else if (block.type === 'quote') {
