@@ -19,13 +19,13 @@ eHagaki（えはがき）は、画像・動画圧縮機能付きの投稿専用N
 - **PWA・共有インテント対応**: モバイル・デスクトップ両対応。Androidは外部アプリの共有ボタンから直接メディアアップロード可能
 - **ドラフト機能**: 投稿内容を下書きとして保存し、後から編集・投稿が可能
 - **リプライ・引用・チャンネル投稿**: 各種URLクエリや`nostr:` URIを通じたリプライ・引用投稿（NIP-10, NIP-18）に対応。パブリックチャット（NIP-28）のチャンネルへの投稿もサポート
-- **Content Warning (CW)**: 標準のNIP-36形式に加え、設定で選べる実験的なSensitive形式に対応
+- **Content Warning (CW)**: 標準NIP-36に加え、eHagakiから始まったkind `36` / `3636`の実験的な相互運用形式にも対応。正式NIPではありませんが、他clientも同じwire formatを実装できます。詳細は[公開仕様書](docs/SENSITIVE_CONTENT.md)を参照してください
 - **埋め込み**: iframe、Full Web Component、Host-owned Composer Lite Web Componentの3方式を提供
 - **多言語対応**: 日本語・英語に対応（ブラウザ設定から自動判定）
 
 ## ドキュメント
 
-- Sensitive Event形式の仕様: [docs/SENSITIVE_CONTENT.md](docs/SENSITIVE_CONTENT.md)
+- Sensitive Event相互運用仕様: [docs/SENSITIVE_CONTENT.md](docs/SENSITIVE_CONTENT.md)
 - 埋め込み・統合ガイド: [docs/EMBEDDING.md](docs/EMBEDDING.md)
 - iframe詳細仕様: [docs/IFRAME_EMBEDDING.md](docs/IFRAME_EMBEDDING.md)
 - Web Component API詳細: [docs/WEB_COMPONENT.md](docs/WEB_COMPONENT.md)
@@ -57,7 +57,7 @@ https://lokuyow.github.io/ehagaki/?quote=note1...
 ```
 
 - リプライ: NIP-10準拠のe/pタグを自動構築（スレッドroot引き継ぎ対応）
-- Sensitive形式を有効にすると、CW付きの投稿はkind 36、CW付きの返信はkind 3636として送信し、kind 1111の返信はNIP-22形式で構築します。kind 36には本文を含まないkind 1互換通知も送ります。これらはeHagaki独自の実験的形式であり、未対応クライアントで表示・解釈されない場合があります。本文は暗号化されません。
+- Sensitive形式を有効にすると、CW付き投稿はkind 36、CW付きreplyはkind 3636として送信し、kind 1111 replyはNIP-22形式で構築します。kind 36には本文を含まないkind 1互換通知も送ります。これはeHagakiから始まった実験的な相互運用形式で、正式NIPではありません。未対応clientで表示・解釈されない場合があり、本文は暗号化されません。
 - Sensitive形式を無効にした場合とパブリックチャットでは、従来のNIP-36 Content Warning形式を使用します。受信側はどちらのCW形式も表示できます。
 - 受信では旧eHagaki独自のCW tag内本文形式も互換性のために解釈しますが、新規送信には使いません。
 - Sensitive event kinds、NIP-22 topology、kind 1互換通知、受信・削除・検索上の制約については[実験的Sensitive event形式の仕様](docs/SENSITIVE_CONTENT.md)を参照してください。
