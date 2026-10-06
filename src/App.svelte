@@ -2066,6 +2066,7 @@
                     replyQuoteState.value.reply,
                   )}
                   loadSensitiveBody={createSensitivePayloadBodyLoader({
+                    ownerPubkey: authState.value.pubkey,
                     structure: replyQuoteState.value.reply.referencedEvent,
                     relayHints: replyQuoteState.value.reply.relayHints,
                     rxNostr,
@@ -2137,6 +2138,7 @@
                   mode="quote"
                   model={getComposerReferencePreviewModel(quote)}
                   loadSensitiveBody={createSensitivePayloadBodyLoader({
+                    ownerPubkey: authState.value.pubkey,
                     structure: quote.referencedEvent,
                     relayHints: quote.relayHints,
                     rxNostr,

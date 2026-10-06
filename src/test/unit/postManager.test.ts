@@ -1587,6 +1587,74 @@ describe('PostManager統合テスト', () => {
         expect(clearReplyQuoteFn).not.toHaveBeenCalled();
     });
 
+    it('同一accountのruntime切替後は古いsenderでStructureを送信せず入力を保持する', async () => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        mockAuthState.pubkey = pubkey;
+        mockDeps.authStateStore = { value: mockAuthState };
+        mockDeps.keyManager = new MockKeyManager('test-secret-key', 'test-storage-key', false);
+        mockDeps.contentWarningStore = { value: true, reset: vi.fn() };
+        mockDeps.contentWarningReasonStore = { value: 'Spoiler', reset: vi.fn() };
+        mockDeps.settingsStore = {
+            clientTagEnabled: true,
+            quoteNotificationEnabled: false,
+            replyNotificationEnabled: false,
+            failClosedContentWarning: true,
+        } as any;
+        mockDeps.seckeySignerFn = vi.fn(() => ({
+            signEvent: vi.fn(async (template: any) => finalizeEvent(template, secretKey)),
+        }));
+        mockDeps.saveSensitivePayloadFn = vi.fn();
+        const notifications = {
+            notifyPostSuccess: vi.fn(),
+            notifyPostError: vi.fn(),
+        };
+        mockDeps.iframeMessageService = undefined;
+        mockDeps.notificationPort = notifications as any;
+        const clearReplyQuoteFn = vi.fn();
+        mockDeps.clearReplyQuoteFn = clearReplyQuoteFn;
+
+        let acceptPayload: (() => void) | undefined;
+        const sentEvents: any[] = [];
+        vi.mocked(mockRxNostr.send).mockImplementation(((event: any) => ({
+            subscribe: vi.fn((observer) => {
+                sentEvents.push(event);
+                if (event.kind === 36) {
+                    acceptPayload = () => {
+                        observer.next({
+                            from: 'wss://accepted.example.com/',
+                            ok: true,
+                            done: true,
+                            eventId: event.id,
+                            type: 'ok',
+                            message: '',
+                        });
+                        observer.complete();
+                    };
+                } else {
+                    process.nextTick(() => observer.complete());
+                }
+                return { unsubscribe: vi.fn() };
+            }),
+        })) as any);
+        manager = new PostManager(mockRxNostr, mockDeps);
+
+        const resultPromise = manager.submitPost('Sensitive body');
+        await vi.waitFor(() => expect(acceptPayload).toBeDefined());
+        manager.setRxNostr({ ...mockRxNostr } as any);
+        acceptPayload!();
+
+        await expect(resultPromise).resolves.toMatchObject({
+            success: false,
+            error: 'postComponent.error.sensitive_partial_publish',
+        });
+        expect(sentEvents.map((event) => event.kind)).toEqual([36]);
+        expect(notifications.notifyPostSuccess).not.toHaveBeenCalled();
+        expect(notifications.notifyPostError).toHaveBeenCalledOnce();
+        expect(notifications.notifyPostError).toHaveBeenCalledWith({ code: 'sensitive_partial_publish' });
+        expect(clearReplyQuoteFn).not.toHaveBeenCalled();
+    });
+
     it('投稿成功時に署名済みeventを投稿履歴保存関数へ渡す', async () => {
         const savePostHistoryFn = vi.fn();
         mockDeps.savePostHistoryFn = savePostHistoryFn;

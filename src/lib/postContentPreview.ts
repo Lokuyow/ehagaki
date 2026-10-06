@@ -13,6 +13,15 @@ export interface PostContentRenderInput {
     tags: string[][];
     media?: PostHistoryMediaRecord[];
     kind?: number;
+    resolvedBody?: boolean;
+}
+
+export type SensitiveBodyCacheStatus = "available" | "missing" | "invalid" | "deleted";
+export interface SensitiveBodyLoader {
+    (signal?: AbortSignal): Promise<string | null>;
+    scope?: { runtime: unknown; ownerPubkey?: string | null };
+    observe?: (onChange: (status: SensitiveBodyCacheStatus) => void) => () => void;
+    loadEmoji?: (url: string) => Promise<{ ready: boolean; aspectRatio?: number }>;
 }
 
 export interface PostContentRenderModel {
@@ -49,7 +58,7 @@ export function buildPostContentRenderModel(
         (tag) => tag[0] === "content-warning",
     );
     const hasTaggedBody = contentWarningTag !== undefined && contentWarningTag.length > 2;
-    const resolvedSourceContent = resolveEventContentBody(
+    const resolvedSourceContent = input.resolvedBody ? input.sourceContent : resolveEventContentBody(
         input.sourceContent,
         input.tags,
     );
@@ -103,6 +112,6 @@ export function buildPostContentRenderModelWithBody(
         sourceContent: body,
         displayContent: body,
         tags: model.sourceTags,
-        media: model.media,
+        resolvedBody: true,
     });
 }

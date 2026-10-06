@@ -4,6 +4,9 @@
     import { onMount } from "svelte";
     import { PostManager } from "../../lib/postManager";
     import type { NostrEvent } from "../../lib/types";
+    import ReplyQuotePreview from "../../components/ReplyQuotePreview.svelte";
+    import { createSensitivePayloadBodyLoader } from "../../lib/sensitiveContentPayloadReader";
+    import { sensitivePayloadRepository } from "../../lib/storage/sensitivePayloadRepository";
 
     const secretKey = generateSecretKey();
     const pubkey = getPublicKey(secretKey);
@@ -69,7 +72,10 @@
         },
         seckeySignerFn: () => ({ signEvent: (template: any) => finalizeEvent(template, secretKey) }),
         savePostHistoryFn: async ({ event }: { event: NostrEvent }) => { historyEvents.push(event); },
-        saveSensitivePayloadFn: async ({ event }: { event: NostrEvent }) => { payloadCandidates.push(event); },
+        saveSensitivePayloadFn: async ({ event }: { event: NostrEvent }) => {
+            payloadCandidates.push(event);
+            await sensitivePayloadRepository.putCandidate({ event, acceptedRelays: [relayUrl] });
+        },
         writeRelaysStore: { value: [relayUrl] },
         getClientTagFn: () => null,
         createImetaTagFn: async () => [],
@@ -132,6 +138,15 @@
             get canonicalStructure() { return canonicalStructure; },
         };
     });
+
+    function previewReference(mode: "reply" | "quote") {
+        return {
+            mode, eventId: canonicalStructure!.id, relayHints: [relayUrl], authorPubkey: pubkey,
+            quoteNotificationEnabled: false, authorDisplayName: "Test author", authorPicture: null,
+            referencedEvent: canonicalStructure, rootEventId: null, rootRelayHint: null, rootPubkey: null,
+            loading: false, error: null,
+        };
+    }
 </script>
 
 <main>
@@ -142,4 +157,12 @@
         Reply to canonical Structure
     </button>
     <output data-testid="submit-result">{resultText}</output>
+    {#if canonicalStructure}
+        {#each (["reply", "quote"] as const) as mode}
+            <section data-testid={`sensitive-${mode}-preview`}>
+                <ReplyQuotePreview reference={previewReference(mode)} {mode} onClear={() => undefined}
+                    loadSensitiveBody={createSensitivePayloadBodyLoader({ structure: canonicalStructure, ownerPubkey: pubkey })} />
+            </section>
+        {/each}
+    {/if}
 </main>

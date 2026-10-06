@@ -260,11 +260,15 @@ function getTimelineBounds(pubkeyHex: string): {
     };
 }
 
+function isSupportedPost(record: PostHistoryRecord): boolean {
+    return [1, 42, 1111].includes(record.kind);
+}
+
 function matchesVisibleUntil(
     record: PostHistoryRecord,
     visibleUntil: number | null,
 ): boolean {
-    return visibleUntil === null || record.createdAt >= visibleUntil;
+    return isSupportedPost(record) && (visibleUntil === null || record.createdAt >= visibleUntil);
 }
 
 function toPostedAtFromCreatedAt(createdAt: number): number {
@@ -427,7 +431,8 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     async getByEventId(eventId: string): Promise<PostHistoryRecord | null> {
         if (!eventId) return null;
 
-        return await this.db.postHistory.get(eventId) ?? null;
+        const record = await this.db.postHistory.get(eventId);
+        return record && isSupportedPost(record) ? record : null;
     }
 
     async getExistingEventIdsForPubkey(input: {
@@ -443,7 +448,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
         return records
             .filter((record): record is PostHistoryRecord =>
-                !!record && record.pubkeyHex === input.pubkeyHex
+                !!record && isSupportedPost(record) && record.pubkeyHex === input.pubkeyHex
             )
             .map((record) => record.eventId);
     }
@@ -457,7 +462,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .reverse()
             .toArray();
 
-        return sortPostHistoryRecords(records);
+        return sortPostHistoryRecords(records.filter(isSupportedPost));
     }
 
     async getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]> {
@@ -471,6 +476,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .where(POST_HISTORY_TIMELINE_INDEX)
             .between(bounds.lower, bounds.upper)
             .reverse()
+            .filter(isSupportedPost)
             .offset((page - 1) * pageSize)
             .limit(pageSize)
             .toArray();
@@ -553,7 +559,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                 )
                 .toArray();
 
-            return visibleRecords
+            return visibleRecords.filter(isSupportedPost)
                 .sort(comparePostHistoryTimelineOrder)
                 .slice(-limit);
         }
@@ -561,6 +567,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         const oldestRecords = await this.db.postHistory
             .where(POST_HISTORY_TIMELINE_INDEX)
             .between(bounds.lower, bounds.upper)
+            .filter(isSupportedPost)
             .limit(limit)
             .toArray();
 
@@ -699,6 +706,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                 true,
                 false,
             )
+            .filter(isSupportedPost)
             .limit(1)
             .count() > 0;
     }
@@ -718,7 +726,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
         const cursor = options.cursor;
         const matchesSparseRange = (record: PostHistoryRecord): boolean =>
-            record.createdAt < visibleUntil
+            isSupportedPost(record) && record.createdAt < visibleUntil
             && (
                 options.direction === "latest"
                 || (
@@ -772,6 +780,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         return this.db.postHistory
             .where("pubkeyHex")
             .equals(pubkeyHex)
+            .filter(isSupportedPost)
             .count();
     }
 
@@ -786,6 +795,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         return this.db.postHistory
             .where("[pubkeyHex+createdAt]")
             .between([pubkeyHex, normalizedVisibleUntil], [pubkeyHex, Dexie.maxKey])
+            .filter(isSupportedPost)
             .count();
     }
 
@@ -1014,6 +1024,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         const oldestRecord = await this.db.postHistory
             .where("[pubkeyHex+createdAt]")
             .between([pubkeyHex, Dexie.minKey], [pubkeyHex, Dexie.maxKey])
+            .filter(isSupportedPost)
             .first();
 
         return oldestRecord?.createdAt ?? null;

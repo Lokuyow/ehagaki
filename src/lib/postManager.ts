@@ -294,7 +294,12 @@ export class PostManager {
     const relayTargets = RelayConfigUtils.sanitizeExternalRelayUrls(params.writeRelaySnapshot);
     const isSessionActive = (): boolean => {
       const current = this.deps.authStateStore!.value;
-      return current.isAuthenticated && current.pubkey === params.sessionPubkey;
+      return current.isAuthenticated && current.pubkey === params.sessionPubkey
+        && this.rxNostr === rxNostr && this.eventSender === sender;
+    };
+    const assertOperationActive = (): void => {
+      assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
+      if (!isSessionActive()) throw new Error("post_event_runtime_changed");
     };
 
     const notifySensitivePartialPublish = (result?: PostResult): PostResult => {
@@ -315,7 +320,7 @@ export class PostManager {
       if (params.signer && !signEvent) {
         return { success: false, result: { success: false, error: "nostr_sign_event_not_supported" } };
       }
-      assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
+      assertOperationActive();
       const prepared = prepareSignedEventTemplate(template);
       let signedEvent: any;
       try {
@@ -325,7 +330,7 @@ export class PostManager {
       } catch {
         return { success: false, result: { success: false, error: "post_error" } };
       }
-      assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
+      assertOperationActive();
       let eventToSend: any;
       try {
         eventToSend = validateSignedEventResult(
@@ -336,7 +341,7 @@ export class PostManager {
       } catch {
         return { success: false, result: { success: false, error: "post_error" } };
       }
-      assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
+      assertOperationActive();
       const attested = attestFullyVerifiedPostHistoryRawEvent(eventToSend);
       if (!attested) {
         return { success: false, result: { success: false, error: "post_error" } };
@@ -347,6 +352,7 @@ export class PostManager {
       this.deps.console?.debug?.('[PostManager] sendPreparedEvent signed', {
         eventKind: attested.event.kind,
       });
+      assertOperationActive();
       const result = await sender.sendEvent(attested.event, {
         targetRelays,
         includeDefaultWriteRelays: false,

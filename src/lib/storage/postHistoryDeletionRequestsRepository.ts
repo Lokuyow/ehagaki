@@ -23,7 +23,7 @@ import { getSensitivePayloadReference, verifySensitivePayloadLink } from "../sen
 import { isFullyVerifiedEvent } from "../sensitiveEventUtils";
 import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
 import { bumpPostHistorySearchRevision } from "../postHistoryLocalSearchRevision";
-import { reconcileSensitivePayloadDeletionForStructure } from "./sensitivePayloadDeletionReconciler";
+import { reconcileSensitivePayloadDeletionForStructure, reconcileSensitivePayloadDeletionForCandidate } from "./sensitivePayloadDeletionReconciler";
 import {
     ehagakiDb,
     type EHagakiDB,
@@ -671,7 +671,7 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
             candidates.map((candidate) => candidate.record.targetEventId),
         ));
         for (const targetEventId of importedTargetIds) {
-            if (!await this.db.postHistory.get(targetEventId)) continue;
+            await reconcileSensitivePayloadDeletionForCandidate(targetEventId, this.db, this.now);
             await reconcileSensitivePayloadDeletionForStructure(
                 targetEventId,
                 this.db,

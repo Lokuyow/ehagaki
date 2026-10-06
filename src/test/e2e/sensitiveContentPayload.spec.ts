@@ -44,6 +44,15 @@ test("publishes payload before its Structure and replies to the canonical Struct
     expect(firstPost.payloadCandidates[0]).toEqual(payload?.event);
     expect(firstPost.notifications).toEqual(["success"]);
 
+    for (const mode of ["reply", "quote"]) {
+        const preview = page.getByTestId(`sensitive-${mode}-preview`);
+        await expect(preview.getByRole("button", { name: "展開する" })).toBeEnabled();
+        await expect(preview.getByText("Sensitive browser body")).toHaveCount(0);
+        await preview.getByRole("button", { name: "展開する" }).click();
+        await preview.getByRole("button", { name: "本文を表示" }).click();
+        await expect(preview.getByText("Sensitive browser body")).toBeVisible();
+    }
+
     await page.getByTestId("reply-canonical").click();
     await expect(page.getByTestId("submit-result")).toHaveText("reply-success", { timeout: 10_000 });
     const reply = await page.evaluate(() => {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { finalizeEvent, generateSecretKey } from "nostr-tools";
 import type { NostrEvent } from "../../lib/types";
+import { createDeferred } from "../deferredTestUtils";
 
 const mocks = vi.hoisted(() => ({
     getByIds: vi.fn(),
@@ -43,6 +44,40 @@ function createPair(secretKey: Uint8Array) {
 describe("sensitiveContentPayloadReader", () => {
     beforeEach(() => {
         vi.resetAllMocks();
+    });
+
+    it("does not fetch or reveal a tombstoned payload even if the Relay still has it", async () => {
+        const { payload, structure } = createPair(generateSecretKey());
+        mocks.getByIds.mockResolvedValue([{ id: payload.id, rawEvent: payload, deletedAt: 123 }]);
+        await expect(loadSensitivePayloadContent({ structure, rxNostr: {} as never })).resolves.toBeNull();
+        expect(mocks.fetchEventById).not.toHaveBeenCalled();
+    });
+
+    it("rechecks deletion after an in-flight fetch and cache reconciliation", async () => {
+        const { payload, structure } = createPair(generateSecretKey());
+        const fetched = createDeferred<{ event: NostrEvent; relayUrl: string }>();
+        mocks.getByIds.mockResolvedValueOnce([]).mockResolvedValue([{ id: payload.id, rawEvent: payload, deletedAt: 123 }]);
+        mocks.fetchEventById.mockReturnValue({ promise: fetched.promise, cancel: vi.fn() });
+        const pending = loadSensitivePayloadContent({ structure, rxNostr: {} as never });
+        await vi.waitFor(() => expect(mocks.fetchEventById).toHaveBeenCalledOnce());
+        fetched.resolve({ event: payload, relayUrl: "wss://source.example.com/" });
+        await expect(pending).resolves.toBeNull();
+    });
+
+    it("cancels the scoped transport and ignores a result delivered after cancellation", async () => {
+        const { payload, structure } = createPair(generateSecretKey());
+        const fetched = createDeferred<{ event: NostrEvent; relayUrl: string }>();
+        mocks.getByIds.mockResolvedValue([]);
+        const cancel = vi.fn();
+        mocks.fetchEventById.mockReturnValue({ promise: fetched.promise, cancel });
+        const controller = new AbortController();
+        const pending = loadSensitivePayloadContent({ structure, rxNostr: {} as never, signal: controller.signal });
+        await vi.waitFor(() => expect(mocks.fetchEventById).toHaveBeenCalledOnce());
+        controller.abort();
+        fetched.resolve({ event: payload, relayUrl: "wss://source.example.com/" });
+        await expect(pending).resolves.toBeNull();
+        expect(cancel).toHaveBeenCalledOnce();
+        expect(mocks.putCandidate).not.toHaveBeenCalled();
     });
 
     it("does not read cache or fetch until the preview invokes the explicit reveal loader", async () => {

@@ -76,7 +76,13 @@ export class DexieSensitivePayloadRepository implements SensitivePayloadReposito
             updatedAt: this.now(),
             schemaVersion: SENSITIVE_PAYLOAD_SCHEMA_VERSION,
         };
-        await this.db.sensitivePayloads.put(record);
+        const saved = await this.db.transaction("rw", this.db.sensitivePayloads, async () => {
+            const current = await this.db.sensitivePayloads.get(event.id);
+            if (current?.deletedAt !== undefined) return false;
+            await this.db.sensitivePayloads.put(record);
+            return true;
+        });
+        if (!saved) return;
         bumpPostHistorySearchRevision(event.pubkey);
         await reconcileSensitivePayloadDeletionForCandidate(event.id, this.db, this.now);
     }

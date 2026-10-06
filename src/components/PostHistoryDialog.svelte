@@ -424,6 +424,7 @@
 
     function getSensitiveBodyLoader(event: NostrEvent | null | undefined) {
         return createSensitivePayloadBodyLoader({
+            ownerPubkey: pubkeyHex,
             structure: event,
             rxNostr,
             relayConfig,
@@ -2127,6 +2128,10 @@
         fullscreenIndex = -1;
     }
 
+    let sensitivePayloadDeletionOmitted = $state(false);
+    $effect(() => {
+        if (!show) sensitivePayloadDeletionOmitted = false;
+    });
     async function handleDeleteConfirm(): Promise<void> {
         const targetPost = postActionUi.deleteTargetPost;
         if (!targetPost) {
@@ -2142,6 +2147,7 @@
             post: targetPost,
             rxNostr,
         });
+        sensitivePayloadDeletionOmitted = result.success && result.sensitivePayloadOmitted === true;
 
         if (
             result.success &&
@@ -2199,6 +2205,9 @@
     showPagination={false}
     initialFocus="content"
 >
+    {#if sensitivePayloadDeletionOmitted}
+        <p role="status">{$_("postHistory.sensitivePayloadDeletionOmitted")}</p>
+    {/if}
     <div class="post-history-heading">
         <div class="post-history-heading-main">
             {#if historyViewport.currentMonthLabel}

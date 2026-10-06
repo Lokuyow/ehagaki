@@ -132,6 +132,7 @@
     "retrySensitivePayload": "Retry"
   },
   "postHistory": {
+    "sensitivePayloadDeletionOmitted": "Deletion was requested for the post, but its body payload could not be verified and was not included in the deletion request.",
     "open": "Open post history",
     "title": "Post History",
     "description": "Local history of events successfully posted from eHagaki.",

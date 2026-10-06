@@ -59,6 +59,40 @@ function createRecord(overrides: Partial<PostHistoryRecord> = {}): PostHistoryRe
 }
 
 describe("postDeletionService helpers", () => {
+    it.each(['valid', 'missing', 'invalid'] as const)('fetches an uncached payload local-first for deletion (%s)', async (outcome) => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const payload = finalizeEvent({ kind: 36, content: 'body', created_at: 100, tags: [['k', '1']] }, secretKey);
+        const structure = finalizeEvent({ kind: 1, content: '', created_at: 101, tags: [['content-warning'], ['c', payload.id, 'wss://payload.example.com/']] }, secretKey);
+        const post = createRecord({ id: structure.id, eventId: structure.id, pubkeyHex: pubkey, rawEvent: structure, tags: structure.tags, content: '' });
+        const record = { id: payload.id, pubkeyHex: pubkey, rawEvent: payload, acceptedRelays: [], fetchedRelays: ['wss://payload.example.com/'] };
+        const getByIds = vi.fn().mockResolvedValueOnce([]).mockResolvedValue([record]);
+        const fetchPayloadFn = vi.fn(() => ({
+            promise: Promise.resolve({ event: outcome === 'missing' ? null : outcome === 'invalid' ? { ...payload, sig: '0'.repeat(128) } : payload, relayUrl: 'wss://payload.example.com/' }),
+            cancel: vi.fn(),
+        }));
+        const saveSensitivePayloadFn = vi.fn();
+        const sendEvent = vi.fn().mockResolvedValue({ success: true, eventId: 'delete-id' });
+        const service = new PostDeletionService({
+            authStateStore: { value: createAuthState({ pubkey }) },
+            keyManager: { getFromStore: () => 'test-key', loadFromStorage: () => null, isWindowNostrAvailable: () => false },
+            seckeySignerFn: () => ({ signEvent: async (template) => finalizeEvent(template, secretKey) }),
+            sensitivePayloadRepository: { getByIds }, fetchPayloadFn, saveSensitivePayloadFn,
+            postHistoryDeletionRequestsRepository: { saveLocalDeletion: vi.fn() },
+            writeRelaysStore: { value: ['wss://write.example.com/'] },
+            eventSenderFactory: () => ({ sendEvent }), console: createMockConsole(),
+        });
+        const result = await service.requestDeletion({ post, rxNostr: {} as any });
+        expect(result.success).toBe(true);
+        expect(fetchPayloadFn).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ eventId: payload.id }));
+        const targets = sendEvent.mock.calls[0]![0].tags.filter((tag: string[]) => tag[0] === 'e').map((tag: string[]) => tag[1]);
+        expect(targets).toEqual(outcome === 'valid' ? [structure.id, payload.id] : [structure.id]);
+        expect(result.sensitivePayloadOmitted).toBe(outcome === 'valid' ? undefined : true);
+        if (outcome === 'valid') {
+            expect(saveSensitivePayloadFn).toHaveBeenCalledOnce();
+            expect(sendEvent.mock.calls[0]![1].targetRelays).toContain('wss://payload.example.com/');
+        } else expect(saveSensitivePayloadFn).not.toHaveBeenCalled();
+    });
     it.each([
         {
             name: "自分の未削除投稿",

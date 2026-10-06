@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { Snippet } from "svelte";
+    import { onDestroy, untrack, type Snippet } from "svelte";
     import { _ } from "svelte-i18n";
     import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
@@ -7,6 +7,7 @@
         PostContentEmojiImageMeta,
         PostContentEmojiLoadState,
         PostContentRenderModel,
+        SensitiveBodyLoader,
     } from "../lib/postContentPreview";
     import type { FullscreenMediaItem } from "../lib/types";
     import { buildPostContentRenderModelWithBody } from "../lib/postContentPreview";
@@ -19,7 +20,7 @@
 
     interface Props {
         model: PostContentRenderModel;
-        loadSensitiveBody?: () => Promise<string | null>;
+        loadSensitiveBody?: SensitiveBodyLoader;
         contentWarningEventId?: string;
         density?: Density;
         emojiLoadStateByUrl?: Record<
@@ -73,36 +74,90 @@
     let sensitiveBodyLoading = $state(false);
     let sensitiveBodyFailed = $state(false);
     let sensitiveBodyLoadGeneration = 0;
+    let bodyLoadController: AbortController | undefined;
+    let payloadEmojiStates = $state<Record<string, PostContentEmojiLoadState>>({});
+    let payloadEmojiMeta = $state<Record<string, PostContentEmojiImageMeta>>({});
     let isContentWarningRevealed = $derived(
         contentWarningEventId === undefined
             ? contentWarningRevealedWithoutEventId
             : contentWarningRevealedForEventId === contentWarningEventId,
     );
-    let previousContentWarningEventId: string | undefined;
-    $effect(() => {
-        if (contentWarningEventId === previousContentWarningEventId) return;
-        previousContentWarningEventId = contentWarningEventId;
+    function resetSensitiveBody(): void {
+        bodyLoadController?.abort();
+        bodyLoadController = undefined;
         sensitiveBodyLoadGeneration += 1;
         contentWarningRevealedForEventId = null;
         contentWarningRevealedWithoutEventId = false;
         sensitiveBody = undefined;
         sensitiveBodyLoading = false;
         sensitiveBodyFailed = false;
+        payloadEmojiStates = {};
+        payloadEmojiMeta = {};
+    }
+    let previousEventId: string | undefined;
+    let previousLoader: SensitiveBodyLoader | undefined;
+    $effect(() => {
+        const eventId = contentWarningEventId;
+        const loader = loadSensitiveBody;
+        const sameLoaderScope = loader === previousLoader || (!!loader?.scope && !!previousLoader?.scope
+            && loader.scope.runtime === previousLoader.scope.runtime
+            && loader.scope.ownerPubkey === previousLoader.scope.ownerPubkey);
+        if (eventId !== previousEventId || !sameLoaderScope) untrack(resetSensitiveBody);
+        previousEventId = eventId;
+        previousLoader = loader;
+        let active = true;
+        const stopObserving = loader?.observe?.((status) => {
+            if (!active) return;
+            if (status === "deleted" || status === "invalid" || (status === "missing" && sensitiveBody !== undefined)) {
+                resetSensitiveBody();
+                sensitiveBodyFailed = true;
+            }
+        });
+        return () => {
+            active = false;
+            stopObserving?.();
+        };
     });
+    onDestroy(resetSensitiveBody);
 
     let displayModel = $derived(
         sensitiveBody === undefined
             ? model
             : buildPostContentRenderModelWithBody(model, sensitiveBody),
     );
+    // The parent model has no payload text. Preload its emoji only after reveal,
+    // using the app-owned loader so this renderer has no storage/relay dependency.
+    $effect(() => {
+        if (!isContentWarningRevealed || sensitiveBody === undefined || !loadSensitiveBody?.loadEmoji) return;
+        const urls = displayModel.previewContent.emojiUrls;
+        const loadEmoji = loadSensitiveBody.loadEmoji;
+        const generation = sensitiveBodyLoadGeneration;
+        for (const url of urls) {
+            if (untrack(() => payloadEmojiStates[url]) || emojiLoadStateByUrl[url] === "ready") continue;
+            payloadEmojiStates = { ...untrack(() => payloadEmojiStates), [url]: "loading" };
+            void loadEmoji(url).then((result) => {
+                if (generation !== sensitiveBodyLoadGeneration) return;
+                payloadEmojiStates = { ...payloadEmojiStates, [url]: result.ready ? "ready" : "failed" };
+                if (result.ready && result.aspectRatio) {
+                    payloadEmojiMeta = { ...payloadEmojiMeta, [url]: { aspectRatio: result.aspectRatio } };
+                }
+            }).catch(() => {
+                if (generation === sensitiveBodyLoadGeneration) {
+                    payloadEmojiStates = { ...payloadEmojiStates, [url]: "failed" };
+                }
+            });
+        }
+    });
 
     async function revealContentWarning(): Promise<void> {
         if (loadSensitiveBody) {
             const loadGeneration = sensitiveBodyLoadGeneration;
+            bodyLoadController?.abort();
+            bodyLoadController = new AbortController();
             sensitiveBodyLoading = true;
             sensitiveBodyFailed = false;
             try {
-                const body = await loadSensitiveBody();
+                const body = await loadSensitiveBody(bodyLoadController.signal);
                 if (loadGeneration !== sensitiveBodyLoadGeneration) return;
                 if (body === null) {
                     sensitiveBodyFailed = true;
@@ -192,8 +247,8 @@
                 <div class="post-preview-content">
                     <PostHistoryPreviewContent
                         previewContent={displayModel.previewContent}
-                        {emojiLoadStateByUrl}
-                        {emojiImageMetaByUrl}
+                        emojiLoadStateByUrl={{ ...emojiLoadStateByUrl, ...payloadEmojiStates }}
+                        emojiImageMetaByUrl={{ ...emojiImageMetaByUrl, ...payloadEmojiMeta }}
                         {previewCollapseAction}
                         {previewCollapseEventId}
                         {previewContentId}

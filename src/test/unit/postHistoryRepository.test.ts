@@ -265,6 +265,31 @@ beforeEach(() => {
 });
 
 describe("DexiePostHistoryRepository", () => {
+    it('uses supported post kinds for every listing, count, and anchor without a legacy adapter', async () => {
+        const db = createTestDb();
+        await db.open();
+        const repo = new DexiePostHistoryRepository(db);
+        const pubkeyHex = 'b'.repeat(64);
+        const supported = [1, 42, 1111].map((kind, index) => ({ ...createPostHistoryRecord({ pubkeyHex, eventId: String(index).repeat(64), createdAt: 100 + index, postedAt: 100 + index }), kind }));
+        const unsupported = [36, 3636].map((kind, index) => ({ ...createPostHistoryRecord({ pubkeyHex, eventId: String(index + 4).repeat(64), createdAt: 50, postedAt: 200 + index }), kind }));
+        await db.postHistory.bulkPut([...supported, ...unsupported]);
+        const options = { pubkeyHex, limit: 10 };
+        for (const records of [
+            await repo.getAll(options), await repo.getPage({ pubkeyHex, page: 1, pageSize: 3 }),
+            await repo.getLatestVisibleChunk(options), await repo.getOldestVisibleChunk(options),
+            await repo.getOldestVisibleChunk({ ...options, visibleUntil: 0 }),
+            await repo.getVisibleChunkFromCreatedAt({ ...options, createdAt: 300 }),
+            await repo.getSparseChunk({ ...options, visibleUntil: 300, direction: 'latest' }),
+        ]) expect(records.map((record) => record.kind).sort((a,b) => a-b)).toEqual([1, 42, 1111]);
+        expect(await repo.countForPubkey(pubkeyHex)).toBe(3);
+        expect(await repo.countVisibleForPubkey(pubkeyHex, 0)).toBe(3);
+        expect(await repo.getByEventId(unsupported[0]!.eventId)).toBeNull();
+        expect(await repo.getVisibleChunkAroundEventId({ ...options, eventId: unsupported[0]!.eventId })).toEqual([]);
+        expect(await repo.hasPostsBeforeCreatedAt(pubkeyHex, 90)).toBe(false);
+        expect(await repo.getOldestCreatedAt(pubkeyHex)).toBe(100);
+        expect(await db.postHistory.count()).toBe(5);
+        db.close();
+    });
     it("default console 依存で初期化できる", () => {
         const db = createTestDb();
 

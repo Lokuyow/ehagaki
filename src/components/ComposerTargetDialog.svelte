@@ -903,6 +903,7 @@
                     <PostContentPreview
                     model={previewRenderModel}
                     loadSensitiveBody={createSensitivePayloadBodyLoader({
+                        ownerPubkey: pubkeyHex,
                         structure: previewEvent,
                         relayHints: target?.relayHints,
                         rxNostr,

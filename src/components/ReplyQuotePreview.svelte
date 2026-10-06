@@ -105,7 +105,7 @@
     });
 
     let canToggleExpand = $derived(
-        resolvedModel.hasRenderableText || resolvedModel.hasRenderableMedia,
+        resolvedModel.hasRenderableText || resolvedModel.hasRenderableMedia || !!resolvedModel.contentWarning,
     );
 
     let showLoadingStatus = $derived(reference.loading && showDelayedLoading);

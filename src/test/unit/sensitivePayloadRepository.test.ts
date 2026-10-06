@@ -22,6 +22,28 @@ afterEach(async () => {
 });
 
 describe("DexieSensitivePayloadRepository", () => {
+    it.each(['pair-first', 'payload-first', 'deletion-first'])("reconciles payload-only deletion across %s import order without deleting its Structure", async (order) => {
+        const db = createDb();
+        await db.open();
+        const secretKey = generateSecretKey();
+        const payload = finalizeEvent({ kind: 36, content: 'body', created_at: 10, tags: [['k', '1']] }, secretKey) as NostrEvent;
+        const structure = finalizeEvent({ kind: 1, content: '', created_at: 11, tags: [['content-warning'], ['c', payload.id]] }, secretKey) as NostrEvent;
+        const deletion = finalizeEvent({ kind: 5, content: '', created_at: 20, tags: [['e', payload.id], ['k', '36']] }, secretKey) as NostrEvent;
+        const posts = new DexiePostHistoryRepository(db);
+        const payloads = new DexieSensitivePayloadRepository(db);
+        const deletions = new DexiePostHistoryDeletionRequestsRepository(db);
+        const putPayload = () => payloads.putCandidate({ event: payload });
+        const putStructure = () => posts.upsertFetchedEvents({ events: [{ event: structure, relayUrls: [] }] });
+        const putDeletion = () => deletions.upsertImportedDeletionEvents({ ownerPubkeyHex: structure.pubkey, deletionEvents: [deletion] });
+        if (order === 'pair-first') { await putPayload(); await putStructure(); await putDeletion(); }
+        else if (order === 'payload-first') { await putPayload(); await putDeletion(); await putStructure(); }
+        else { await putDeletion(); await putStructure(); await putPayload(); }
+        expect((await payloads.getByIds([payload.id]))[0]?.deletedAt).toBe(20_000);
+        expect((await posts.getByEventId(structure.id))?.deletedAt).toBeUndefined();
+        await putPayload();
+        expect((await payloads.getByIds([payload.id]))[0]?.deletedAt).toBe(20_000);
+        db.close();
+    });
     it("keeps kind 36 as an auxiliary candidate, not a timeline post", async () => {
         const db = createDb();
         await db.open();

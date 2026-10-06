@@ -16,6 +16,9 @@ import type { PostHistoryRecord } from "./storage/ehagakiDb";
 import type { SensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
 import { sensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
 import { getSensitivePayloadReference, verifySensitivePayloadLink } from "./sensitiveContentPayload";
+import { postHistoryContextFetchService } from "./postHistoryContextFetchService";
+import { relayConfigStore } from "../stores/relayStore.svelte";
+import { isFullyVerifiedEvent } from "./sensitiveEventUtils";
 import {
     postHistoryDeletionRequestsRepository,
     type PostHistoryDeletionRequestsRepository,
@@ -34,6 +37,7 @@ export interface DeletionRequestResult extends PostResult {
     deletionEventId?: string;
     deletionEvent?: NostrEvent;
     deletionEventAttestation?: PostHistoryRawEventAttestation;
+    sensitivePayloadOmitted?: boolean;
 }
 
 export interface DeletionSigner {
@@ -64,6 +68,8 @@ export interface PostDeletionServiceDeps {
         "saveLocalDeletion"
     >;
     sensitivePayloadRepository?: Pick<SensitivePayloadRepository, "getByIds">;
+    fetchPayloadFn?: typeof postHistoryContextFetchService.fetchEventById;
+    saveSensitivePayloadFn?: SensitivePayloadRepository["putCandidate"];
     eventSenderFactory?: (
         rxNostr: RxNostr,
         console: Console,
@@ -185,6 +191,8 @@ export class PostDeletionService {
                 ?? postHistoryDeletionRequestsRepository,
             eventSenderFactory: deps.eventSenderFactory,
             sensitivePayloadRepository: deps.sensitivePayloadRepository ?? sensitivePayloadRepository,
+            fetchPayloadFn: deps.fetchPayloadFn ?? postHistoryContextFetchService.fetchEventById.bind(postHistoryContextFetchService),
+            saveSensitivePayloadFn: deps.saveSensitivePayloadFn ?? sensitivePayloadRepository.putCandidate.bind(sensitivePayloadRepository),
             now: deps.now ?? Date.now,
         };
     }
@@ -258,7 +266,9 @@ export class PostDeletionService {
             return { success: false, error: "post_error" };
         }
 
-        const associatedPayload = await this.resolveAssociatedPayload(params.post);
+        const associatedPayload = await this.resolveAssociatedPayload(params.post, params.rxNostr);
+        const sensitivePayloadOmitted = isFullyVerifiedEvent(params.post.rawEvent)
+            && !!getSensitivePayloadReference(params.post.rawEvent) && !associatedPayload;
         const deletionEvent = buildDeletionRequestEvent(
             params.post,
             Math.floor(this.deps.now() / 1000),
@@ -351,6 +361,7 @@ export class PostDeletionService {
             deletionEvent: verifiedDeletionEvent.event,
             deletionEventAttestation: verifiedDeletionEvent.attestation,
             deletedAt,
+            ...(sensitivePayloadOmitted ? { sensitivePayloadOmitted: true } : {}),
         };
     }
 
@@ -360,18 +371,52 @@ export class PostDeletionService {
             : new PostEventSender(rxNostr, this.deps.console);
     }
 
-    private async resolveAssociatedPayload(post: PostHistoryRecord): Promise<{
+    private async resolveAssociatedPayload(post: PostHistoryRecord, rxNostr: RxNostr): Promise<{
         id: string;
         acceptedRelays?: string[];
         fetchedRelays?: string[];
     } | undefined> {
         const structure = post.rawEvent as NostrEvent;
+        if (!isFullyVerifiedEvent(structure)) return undefined;
         const reference = getSensitivePayloadReference(structure);
         if (!reference || structure.id !== post.eventId || structure.pubkey !== post.pubkeyHex) {
             return undefined;
         }
-        const [record] = await this.deps.sensitivePayloadRepository.getByIds([reference.eventId]);
-        if (!record || record.deletedAt !== undefined) return undefined;
+        let record;
+        try {
+            [record] = await this.deps.sensitivePayloadRepository.getByIds([reference.eventId]);
+        } catch {
+            return undefined;
+        }
+        if (record?.deletedAt !== undefined) return undefined;
+        if (!record) {
+            const task = this.deps.fetchPayloadFn(rxNostr, {
+                eventId: reference.eventId,
+                relayHints: RelayConfigUtils.sanitizeExternalRelayUrls([
+                    ...(reference.relayHint ? [reference.relayHint] : []),
+                    ...(post.acceptedRelays ?? []), ...(post.fetchedRelays ?? []), ...(post.relayHints ?? []),
+                ]),
+                relayConfig: relayConfigStore.value,
+            });
+            try {
+                const fetched = await task.promise;
+                if (!fetched.event || !verifySensitivePayloadLink(structure, fetched.event, reference.eventId)) return undefined;
+                const fetchedRelays = RelayConfigUtils.sanitizeExternalRelayUrls(fetched.relayUrl ? [fetched.relayUrl] : []);
+                try {
+                    await this.deps.saveSensitivePayloadFn({ event: fetched.event, fetchedRelays });
+                } catch {
+                    this.deps.console.warn("sensitive_payload_cache_save_failed", { stage: "deletion", reason: "storage" });
+                }
+                [record] = await this.deps.sensitivePayloadRepository.getByIds([reference.eventId]);
+                if (record?.deletedAt !== undefined) return undefined;
+                // A cache failure must not turn an unverified c pointer into a deletion target.
+                if (!record) return { id: fetched.event.id, fetchedRelays };
+            } catch {
+                return undefined;
+            } finally {
+                task.cancel();
+            }
+        }
         const payload = record.rawEvent as NostrEvent;
         if (!verifySensitivePayloadLink(structure, payload, reference.eventId)) return undefined;
         return {

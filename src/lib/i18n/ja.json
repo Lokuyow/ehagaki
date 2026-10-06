@@ -132,6 +132,7 @@
     "retrySensitivePayload": "再試行"
   },
   "postHistory": {
+    "sensitivePayloadDeletionOmitted": "投稿の削除をリクエストしましたが、本文payloadを確認できなかったため、本文の削除はリクエストできませんでした。",
     "open": "投稿履歴を開く",
     "title": "投稿履歴",
     "description": "eHagaki で投稿に成功したイベントのローカル履歴です。",

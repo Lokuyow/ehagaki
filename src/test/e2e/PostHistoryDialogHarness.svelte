@@ -38,7 +38,7 @@
     const isExportScenario = new URLSearchParams(window.location.search).has("export");
     const HARNESS_YEAR = new Date().getFullYear();
     const STARTED_AT_MS = Date.UTC(HARNESS_YEAR, 0, 20, 12, 0, 0);
-    const SENSITIVE_PREVIEW_BODY = "playwright sensitive preview body https://example.com/post-history-0.jpg";
+    const SENSITIVE_PREVIEW_BODY = "playwright sensitive preview body :party: https://example.com/post-history-0.jpg";
     const SENSITIVE_PREVIEW_CREATED_AT = Math.floor(STARTED_AT_MS / 1000);
     const SENSITIVE_PREVIEW_PAYLOAD = isSensitivePreviewScenario
         ? finalizeEvent({
@@ -55,6 +55,7 @@
               tags: [
                   ["content-warning", "Sensitive demo"],
                   ["c", SENSITIVE_PREVIEW_PAYLOAD.id],
+                  ["emoji", "party", "https://example.com/sensitive-emoji.svg"],
               ],
               created_at: SENSITIVE_PREVIEW_CREATED_AT,
           }, HARNESS_SECRET_KEY)
@@ -106,6 +107,7 @@
         layoutVideoUrl: string;
         layoutEmojiSuccessUrl: string;
         layoutEmojiFailureUrl: string;
+        deleteSensitivePayload?: () => Promise<void>;
     };
 
     type HarnessWindow = Window &
@@ -160,7 +162,7 @@
             relayHints: [],
             acceptedRelays: [],
             media:
-                index % 17 === 0
+                !isSensitivePreviewPost && index % 17 === 0
                     ? [
                           {
                               url: `https://example.com/post-history-${index}.jpg`,
@@ -491,6 +493,10 @@
         layoutVideoUrl,
         layoutEmojiSuccessUrl,
         layoutEmojiFailureUrl,
+        deleteSensitivePayload: async () => {
+            if (!SENSITIVE_PREVIEW_PAYLOAD) return;
+            await sensitivePayloadRepository.markDeleted({ id: SENSITIVE_PREVIEW_PAYLOAD.id, pubkeyHex: HARNESS_PUBKEY, deletionEventId: "d".repeat(64), deletedAt: Date.now() });
+        },
     };
     (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__ = {
         replyEventId: null,
@@ -652,6 +658,10 @@
             layoutVideoUrl,
             layoutEmojiSuccessUrl,
             layoutEmojiFailureUrl,
+            deleteSensitivePayload: async () => {
+                if (!SENSITIVE_PREVIEW_PAYLOAD) return;
+                await sensitivePayloadRepository.markDeleted({ id: SENSITIVE_PREVIEW_PAYLOAD.id, pubkeyHex: HARNESS_PUBKEY, deletionEventId: "d".repeat(64), deletedAt: Date.now() });
+            },
         };
     });
 </script>

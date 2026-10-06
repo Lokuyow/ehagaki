@@ -2307,6 +2307,11 @@ test.describe('PostHistoryDialog Playwright', () => {
     });
 
     test('Sensitive Text Note history previews hide body and media until explicit reveal', async ({ page }) => {
+        const emojiRequests: string[] = [];
+        await page.route('https://example.com/sensitive-emoji.svg', async (route) => {
+            emojiRequests.push(route.request().url());
+            await route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="blue"/></svg>' });
+        });
         await page.goto('post-history-dialog-playwright.html?sensitive-preview=1');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
         const post = page.locator('.post-history-item').first();
@@ -2315,13 +2320,27 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(post.locator('.content-warning-copy')).toContainText('Sensitive demo');
         await expect(post.getByText('playwright sensitive preview body')).toHaveCount(0);
         await expect(post.locator('.post-preview-media')).toHaveCount(0);
+        await expect(post.locator('img.post-history-custom-emoji')).toHaveCount(0);
+        expect(emojiRequests).toHaveLength(0);
 
         await post.getByRole('button', { name: '本文を表示' }).click();
         await expect(post.getByText('playwright sensitive preview body')).toBeVisible();
         await expect(post.locator('.post-preview-media')).toBeVisible();
+        await expect(post.locator('img.post-history-custom-emoji')).toBeVisible();
+        expect(emojiRequests.length).toBeGreaterThan(0);
+
+        await page.evaluate(async () => {
+            const harness = (window as any).__POST_HISTORY_HARNESS__;
+            await harness.deleteSensitivePayload();
+        });
+        await expect(post.getByText('playwright sensitive preview body')).toHaveCount(0);
+        await expect(post.locator('.post-preview-media')).toHaveCount(0);
+        await expect(post.locator('img.post-history-custom-emoji')).toHaveCount(0);
+        await expect(post.locator('.content-warning-prompt')).toBeVisible();
     });
 
     test('Sensitive payloads found by local search remain behind the normal CW gate', async ({ page }) => {
+        await page.route('https://example.com/sensitive-emoji.svg', (route) => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"/>' }));
         await page.goto('post-history-dialog-playwright.html?sensitive-preview=1');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
         await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();

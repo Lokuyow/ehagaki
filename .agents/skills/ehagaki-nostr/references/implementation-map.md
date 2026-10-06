@@ -118,6 +118,8 @@
 - 主な関数または責務: `PostEventBuilder.buildEvent`が元kindと通常tagsを構築し、`PostManager.sendPreparedEvent`が完成した元eventからkind `36` payloadと空content Structureを作り、payload先行・Structure後続で送る。`verifySensitivePayloadLink`はStructureとpayloadのID/signature、c参照、kind、同一pubkey、単一`k`の組を検証する。`loadSensitivePayloadContent`は明示reveal時にのみlocal-first lookupとRelay取得を行う。previewは共通CW gateを維持する。
 - 関連テスト: `src/test/unit/postManager.test.ts`、`src/test/unit/sensitiveEventUtils.test.ts`、`src/test/unit/sensitivePayloadRepository.test.ts`、`src/test/unit/postHistoryLocalSearchService.test.ts`、`src/test/unit/postHistoryJsonlExportEngine.test.ts`。
 - 注意点: fail-closed設定OFFでは既存のCW/`nsfw`自動連動を維持し、ONでは独立させる。旧`content-warning[2]`本文tagは受信互換として解釈する。payload本文は未検証時に表示、検索、export、削除対象へ使わない。Host-owned Liteは独立builder/公開contractを維持し、この通常投稿設定を参照しない。
+- lifecycle: sender/runtimeとaccountを投稿操作へcaptureし、payload accept後のscope変更ではStructureを送らない。body loaderはscope内でcacheを`liveQuery`観測し、取得cancelと取得前後の削除確認を行う。共有previewはaccount/runtime変更・破棄・tombstoneで本文を無効化し、reveal後の本文からmediaとemojiを解決する。text-onlyのCWもreply/quote展開対象になる。
+- 削除: payloadだけを指すimported kind 5も、author範囲の既存Structure候補とのpair検証後に適用する。削除serviceはlocal-firstで未cache payloadをID取得し、検証できない場合はStructure-onlyと本文削除の省略を結果/UIへ明示する。履歴listing・count・anchorは通常のsupported kind集合`1/42/1111`で絞る。
 
 ## カスタム絵文字
 

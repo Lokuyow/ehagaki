@@ -111,7 +111,7 @@ export async function reconcileSensitivePayloadDeletionForStructure(
     return changed;
 }
 
-/** Finds existing Structure references from pending deletion requests, without adding an alias index. */
+/** Looks up possible associations; the Structure reconciler validates each pair. */
 export async function reconcileSensitivePayloadDeletionForCandidate(
     payloadId: string,
     db: EHagakiDB = ehagakiDb,
@@ -122,6 +122,7 @@ export async function reconcileSensitivePayloadDeletionForCandidate(
         .equals(payloadId)
         .toArray();
     const structureIds = new Set<string>();
+    const authors = new Set<string>();
     for (const request of requests) {
         if (
             request.rawEventVerification?.status !== "valid"
@@ -131,9 +132,20 @@ export async function reconcileSensitivePayloadDeletionForCandidate(
         }
         const deletion = request.rawEvent as NostrEvent;
         if (!isFullyVerifiedEvent(deletion) || deletion.kind !== 5) continue;
+        authors.add(deletion.pubkey);
         for (const tag of deletion.tags) {
             if (tag[0] === "e" && tag[1] && tag[1] !== payloadId) {
                 structureIds.add(tag[1]);
+            }
+        }
+    }
+
+    for (const author of authors) {
+        const structures = await db.postHistory.where("pubkeyHex").equals(author).toArray();
+        for (const record of structures) {
+            if (isPostHistoryRawEventConsistent(record.rawEvent, record)
+                && getSensitivePayloadReference(record.rawEvent as NostrEvent)?.eventId === payloadId) {
+                structureIds.add(record.eventId);
             }
         }
     }
