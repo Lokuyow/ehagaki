@@ -568,13 +568,12 @@ test("Sensitive CW Footer shortcut and SettingsDialog share the canonical settin
     await expect(shortcut.locator(".content-warning-hidden-icon")).toBeVisible();
 
     await page.locator(".settings-btn").click();
-    const setting = page.getByRole("switch", { name: "Sensitive形式で送信" });
+    const setting = page.getByRole("switch", { name: "CW非対応クライアントで本文表示を防ぐ" });
     await expect(setting).toHaveAttribute("aria-checked", "true");
     const infoButton = page.getByRole("button", { name: "CW設定の詳細" });
     await infoButton.click();
-    await expect(page.getByText(/実験的な送信形式です/)).toBeVisible();
+    await expect(page.getByText(/NIP-36 Sensitive Content \/ Content Warning非対応クライアント/)).toBeVisible();
     await expect(page.getByText(/全文検索で見つからないことがあります/)).toBeVisible();
-    await expect(page.getByText(/eventのcontentから取得できます/)).toBeVisible();
     await page.keyboard.press("Escape");
 
     await setting.click();

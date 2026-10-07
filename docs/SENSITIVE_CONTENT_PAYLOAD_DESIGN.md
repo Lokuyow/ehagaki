@@ -5,6 +5,8 @@
 > **Reference implementation:** SnowCait/nostter PR #2680 が本方式の read-only 対応を実装している。  
 > **Relation to previous branch design:** 本書は、PR #284 内で先に実装された `kind 36 / 3636` canonical event + kind 1 companion 方式を置き換える設計とする。未releaseの旧実験方式を互換対象として残さない。
 
+規範的な形式仕様は [Sensitive Content Payload形式](SENSITIVE_CONTENT.md) を参照してください。
+
 ## 1. 目的
 
 NIP-36 の `content-warning` は通常 event の `.content` に本文を保持したまま表示制御を行うため、NIP-36 を解釈しない client では Sensitive 本文が通常本文として表示され得る。
