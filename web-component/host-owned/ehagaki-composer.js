@@ -1,4 +1,4 @@
-import { bq as _, br as a, bs as s } from "./assets/host-owned-entry-BG41Xflm.js";
+import { bq as _, br as a, bs as s } from "./assets/host-owned-entry-BLIimzJ3.js";
 export {
   _ as EHAGAKI_COMPOSER_API_VERSION,
   a as EHAGAKI_COMPOSER_TAG_NAME,
