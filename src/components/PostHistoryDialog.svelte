@@ -2961,6 +2961,11 @@
                                         <PostContentPreview
                                             model={getPreviewModel(post)}
                                             loadSensitiveBody={getSensitiveBodyLoader(post.rawEvent as NostrEvent)}
+                                            resolveSensitiveDisplayContent={(rawBody) =>
+                                                stripPostHistoryInlineQuoteUrisForDisplay({
+                                                    content: rawBody,
+                                                    tags: post.tags,
+                                                })}
                                             contentWarningEventId={post.eventId}
                                             density="standard"
                                             emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}

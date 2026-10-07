@@ -21,6 +21,7 @@
     interface Props {
         model: PostContentRenderModel;
         loadSensitiveBody?: SensitiveBodyLoader;
+        resolveSensitiveDisplayContent?: (rawBody: string) => string;
         contentWarningEventId?: string;
         density?: Density;
         emojiLoadStateByUrl?: Record<
@@ -52,6 +53,7 @@
     let {
         model,
         loadSensitiveBody = undefined,
+        resolveSensitiveDisplayContent = undefined,
         contentWarningEventId = undefined,
         density = "standard",
         emojiLoadStateByUrl = {},
@@ -125,7 +127,11 @@
     let displayModel = $derived(
         sensitiveBody === undefined
             ? model
-            : buildPostContentRenderModelWithBody(model, sensitiveBody),
+            : buildPostContentRenderModelWithBody(
+                  model,
+                  sensitiveBody,
+                  resolveSensitiveDisplayContent?.(sensitiveBody) ?? sensitiveBody,
+              ),
     );
     // The parent model has no payload text. Preload its emoji only after reveal,
     // using the app-owned loader so this renderer has no storage/relay dependency.

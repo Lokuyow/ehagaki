@@ -15,6 +15,8 @@ type HarnessState = {
     quotePostEventId: string;
     quoteEventId: string;
     quoteContent: string;
+    matchingSensitiveQuoteUri: string;
+    unmatchedSensitiveQuoteUri: string;
     linkTargetUrl: string;
     linkPostEventId: string;
     replyParentEventId: string;
@@ -2486,8 +2488,23 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(parent.locator('.post-history-related-card').filter({ hasText: harness.quoteContent })).toBeVisible();
     });
 
+    test('ordinary post history continues to strip only q-matching inline quote URIs', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?inline-quote-uri=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate<HarnessState>(() =>
+            (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState,
+        );
+        const parent = page.locator(`.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`);
+        await scrollPostIntoViewByEventId(page, harness.quotePostEventId);
+        const content = parent.locator('.post-content-preview-standard > .post-preview-content');
+
+        await expect(content).not.toContainText(harness.matchingSensitiveQuoteUri);
+        await expect(content).toContainText(harness.unmatchedSensitiveQuoteUri);
+        await expect(parent.locator('.post-history-related-card')).toBeVisible();
+    });
+
     test('Sensitive payload quote remains gated until verified reveal succeeds', async ({ page }) => {
-        await page.goto('post-history-dialog-playwright.html?sensitive-preview=1&sensitive-quote=1');
+        await page.goto('post-history-dialog-playwright.html?sensitive-preview=1&sensitive-quote=1&cw-layout=1');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
         const harness = await page.evaluate<HarnessState>(() =>
             (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState,
@@ -2495,8 +2512,17 @@ test.describe('PostHistoryDialog Playwright', () => {
         const parent = page.locator('.post-history-item').first();
         await expect(parent.locator('.content-warning-prompt')).toBeVisible();
         await expect(parent.locator('.post-history-related-card')).toHaveCount(0);
+        await expect(parent.locator('.post-preview-content')).toHaveCount(0);
         await parent.locator('.content-warning-reveal-button').click();
-        await expect(parent.locator('.post-history-related-card').filter({ hasText: harness.quoteContent })).toBeVisible();
+        const parentContent = parent.locator('.post-preview-content');
+        await expect(parentContent).toContainText(harness.unmatchedSensitiveQuoteUri);
+        await expect(parentContent).not.toContainText(harness.matchingSensitiveQuoteUri);
+        const quote = parent.locator('.post-history-related-card').first();
+        await expect(quote).toBeVisible();
+        await expect(quote.locator('.content-warning-prompt')).toBeVisible();
+        await expect(quote.getByText(harness.quoteContent)).toHaveCount(0);
+        await quote.getByRole('button', { name: '本文を表示' }).click();
+        await expect(quote.getByText(harness.quoteContent)).toBeVisible();
     });
 
     test('Sensitive payload quote stays hidden when payload reveal fails', async ({ page }) => {

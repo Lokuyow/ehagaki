@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
+    import { finalizeEvent, generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
     import type { RxNostr } from "rx-nostr";
     import PostHistoryDialog from "../../components/PostHistoryDialog.svelte";
     import type { NostrEvent } from "../../lib/types";
@@ -27,6 +27,7 @@
     const isSensitivePreviewScenario = new URLSearchParams(window.location.search).has("sensitive-preview");
     const isSensitiveQuoteScenario = new URLSearchParams(window.location.search).has("sensitive-quote");
     const isCwParentQuoteScenario = new URLSearchParams(window.location.search).has("cw-parent-quote");
+    const isInlineQuoteUriScenario = new URLSearchParams(window.location.search).has("inline-quote-uri");
     const isLongRawJsonScenario = new URLSearchParams(window.location.search).has("long-raw-json");
     const isCwLayoutScenario = new URLSearchParams(window.location.search).has("cw-layout");
     const isSelfQuoteTransitionScenario = new URLSearchParams(window.location.search).has("self-quote-transition");
@@ -42,12 +43,14 @@
     const isExportScenario = new URLSearchParams(window.location.search).has("export");
     const HARNESS_YEAR = new Date().getFullYear();
     const STARTED_AT_MS = Date.UTC(HARNESS_YEAR, 0, 20, 12, 0, 0);
-    const SENSITIVE_PREVIEW_BODY = `playwright sensitive preview body :party: https://example.com/post-history-0.jpg${isLongRawJsonScenario ? ` ${"x".repeat(12000)}` : ""}`;
-    const SENSITIVE_PREVIEW_CREATED_AT = Math.floor(STARTED_AT_MS / 1000);
-    const CW_LAYOUT_REASON = `sensitive nested warning reason ${"long-reason-segment-".repeat(8)}`;
     const quoteEventId = new URLSearchParams(window.location.search).has("self-quote-transition")
         ? undefined
         : "9".repeat(64);
+    const SENSITIVE_MATCHING_QUOTE_URI = `nostr:${nip19.neventEncode({ id: quoteEventId ?? "9".repeat(64) })}`;
+    const SENSITIVE_UNMATCHED_QUOTE_URI = `nostr:${nip19.noteEncode("f".repeat(64))}`;
+    const SENSITIVE_PREVIEW_BODY = `playwright sensitive preview body :party: https://example.com/post-history-0.jpg${isSensitiveQuoteScenario ? ` ${SENSITIVE_MATCHING_QUOTE_URI} ${SENSITIVE_UNMATCHED_QUOTE_URI}` : ""}${isLongRawJsonScenario ? ` ${"x".repeat(12000)}` : ""}`;
+    const SENSITIVE_PREVIEW_CREATED_AT = Math.floor(STARTED_AT_MS / 1000);
+    const CW_LAYOUT_REASON = `sensitive nested warning reason ${"long-reason-segment-".repeat(8)}`;
     const LONG_RAW_JSON_EVENT = isLongRawJsonScenario && !isSensitivePreviewScenario
         ? finalizeEvent({
               kind: 1,
@@ -115,6 +118,8 @@
         quotePostEventId: string;
         quoteEventId: string;
         quoteContent: string;
+        matchingSensitiveQuoteUri: string;
+        unmatchedSensitiveQuoteUri: string;
         linkTargetUrl: string;
         linkPostEventId: string;
         replyParentEventId: string;
@@ -380,6 +385,9 @@
               ["q", resolvedQuoteEventId, "wss://relay.example.com/", quoteRecord.pubkeyHex],
               ["q", loadingQuoteEventId, "wss://relay.example.com/", "d".repeat(64)],
           ];
+    if (isInlineQuoteUriScenario) {
+        quoteParentPost.content = `parent text ${SENSITIVE_MATCHING_QUOTE_URI} ${SENSITIVE_UNMATCHED_QUOTE_URI}`;
+    }
     quoteParentPost.rawEvent = {
         id: quoteParentPost.eventId,
         pubkey: HARNESS_PUBKEY,
@@ -513,6 +521,8 @@
         quotePostEventId: quoteParentPost.eventId,
         quoteEventId: resolvedQuoteEventId,
         quoteContent,
+        matchingSensitiveQuoteUri: SENSITIVE_MATCHING_QUOTE_URI,
+        unmatchedSensitiveQuoteUri: SENSITIVE_UNMATCHED_QUOTE_URI,
         linkTargetUrl,
         linkPostEventId: linkPost.eventId,
         replyParentEventId: linkPost.eventId,
@@ -684,6 +694,8 @@
             quotePostEventId: quoteParentPost.eventId,
             quoteEventId: resolvedQuoteEventId,
             quoteContent,
+            matchingSensitiveQuoteUri: SENSITIVE_MATCHING_QUOTE_URI,
+            unmatchedSensitiveQuoteUri: SENSITIVE_UNMATCHED_QUOTE_URI,
             linkTargetUrl,
             linkPostEventId: linkPost.eventId,
             replyParentEventId: linkPost.eventId,

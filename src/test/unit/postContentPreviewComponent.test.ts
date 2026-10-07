@@ -1,11 +1,13 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
+import { nip19 } from "nostr-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../../i18n";
 import { locale, waitLocale } from "svelte-i18n";
 import PostContentPreview from "../../components/PostContentPreview.svelte";
 import PostContentPreviewGatedSlotHarness from "./fixtures/PostContentPreviewGatedSlotHarness.svelte";
 import { buildPostContentRenderModel, type SensitiveBodyLoader, type SensitiveBodyCacheStatus } from "../../lib/postContentPreview";
+import { stripPostHistoryInlineQuoteUrisForDisplay } from "../../lib/postHistoryQuoteUtils";
 import { createDeferred } from "../deferredTestUtils";
 
 describe("PostContentPreview Content Warning", () => {
@@ -22,6 +24,36 @@ describe("PostContentPreview Content Warning", () => {
         expect(view.queryByTestId("quoted-card")).toBeNull();
         await fireEvent.click(screen.getByRole("button", { name: "本文を表示" }));
         expect(view.getByTestId("quoted-card")).toBeTruthy();
+    });
+
+    it("applies an optional display-only resolver to revealed payload text", async () => {
+        const quoteId = "1".repeat(64);
+        const unrelatedId = "2".repeat(64);
+        const matchingUri = `nostr:${nip19.neventEncode({ id: quoteId })}`;
+        const unrelatedUri = `nostr:${nip19.noteEncode(unrelatedId)}`;
+        const rawBody = `before ${matchingUri} after ${unrelatedUri}`;
+        const model = buildPostContentRenderModel({
+            sourceContent: "",
+            tags: [["content-warning", "spoiler"], ["q", quoteId]],
+        });
+        const view = render(PostContentPreview, {
+            props: {
+                model,
+                contentWarningEventId: "quote-payload-event",
+                loadSensitiveBody: async () => rawBody,
+                resolveSensitiveDisplayContent: (body) =>
+                    stripPostHistoryInlineQuoteUrisForDisplay({
+                        content: body,
+                        tags: model.sourceTags,
+                    }),
+            },
+        });
+
+        expect(view.container.textContent).not.toContain(matchingUri);
+        await fireEvent.click(screen.getByRole("button", { name: "本文を表示" }));
+        expect(view.container.textContent).not.toContain(matchingUri);
+        expect(view.container.textContent).toContain("before after");
+        expect(view.container.textContent).toContain(unrelatedUri);
     });
 
     it.each(["account", "runtime"])("cancels obsolete same-ID loaders when %s changes", async (changedScope) => {

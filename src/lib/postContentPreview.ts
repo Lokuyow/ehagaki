@@ -106,11 +106,12 @@ export function buildPostContentRenderModel(
 export function buildPostContentRenderModelWithBody(
     model: PostContentRenderModel,
     body: string,
+    displayContent: string = body,
 ): PostContentRenderModel {
     return buildPostContentRenderModel({
         kind: model.kind,
         sourceContent: body,
-        displayContent: body,
+        displayContent,
         tags: model.sourceTags,
         resolvedBody: true,
     });
