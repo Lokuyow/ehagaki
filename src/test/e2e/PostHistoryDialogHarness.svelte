@@ -6,12 +6,16 @@
     import type { NostrEvent } from "../../lib/types";
     import { clearPersistedPostHistoryListingSnapshots } from "../../lib/hooks/usePostHistoryListing.svelte";
     import { clearPersistedPostHistoryViewStateForPubkey } from "../../lib/postHistoryDialogViewState";
+    import { POST_HISTORY_FETCH_KINDS } from "../../lib/postHistoryRelayFetchService";
     import {
         ehagakiDb,
         type PostHistoryRecord,
         type PostHistoryChildInteractionRecord,
     } from "../../lib/storage/ehagakiDb";
-    import { postHistoryVisibleRangeRepository } from "../../lib/storage/postHistoryVisibleRangeRepository";
+    import {
+        buildPostHistoryVisibleKindsKey,
+        postHistoryVisibleRangeRepository,
+    } from "../../lib/storage/postHistoryVisibleRangeRepository";
     import { postHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryChildInteractionsRepository";
     import { postHistoryRepository } from "../../lib/storage/postHistoryRepository";
     import { sensitivePayloadRepository } from "../../lib/storage/sensitivePayloadRepository";
@@ -630,7 +634,7 @@
         if (isSparseScenario) {
             await postHistoryVisibleRangeRepository.save({
                 pubkeyHex: HARNESS_PUBKEY,
-                kindsKey: "1,42",
+                kindsKey: buildPostHistoryVisibleKindsKey([...POST_HISTORY_FETCH_KINDS]),
                 visibleUntil: sparseVisiblePost.createdAt,
             });
         }

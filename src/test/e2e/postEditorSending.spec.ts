@@ -64,7 +64,7 @@ async function pasteHtml(editor: Locator, html: string, text: string) {
     }, { html, text });
 }
 
-test('pastes HTML with clipboard plain text and submits the plain content', async ({ page, browserName, isMobile }) => {
+test('pastes HTML with clipboard plain text and submits the plain content', async ({ page, isMobile }) => {
     await page.goto('post-editor-sending-playwright.html?withSubmit=1');
     const editor = page.locator('.tiptap-editor');
     await editor.click();
@@ -87,7 +87,7 @@ test('pastes HTML with clipboard plain text and submits the plain content', asyn
     });
     expect(caret).toEqual({ insideEditor: true, atTextEnd: true });
 
-    const undoModifier = browserName === 'webkit' && isMobile ? 'Meta' : 'Control';
+    const undoModifier = isMobile ? 'Meta' : 'Control';
     await editor.press(`${undoModifier}+z`);
     await expect(editor).toHaveText('');
     await editor.press(`${undoModifier}+Shift+z`);
