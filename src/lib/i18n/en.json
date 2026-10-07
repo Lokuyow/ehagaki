@@ -126,9 +126,13 @@
   },
   "postContent": {
     "contentWarningTitle": "Content warning",
-    "showContentWarningBody": "Show content"
+    "showContentWarningBody": "Show content",
+    "sensitivePayloadLoading": "Loading content…",
+    "sensitivePayloadUnavailable": "Content could not be loaded. Try again.",
+    "retrySensitivePayload": "Retry"
   },
   "postHistory": {
+    "sensitivePayloadDeletionOmitted": "Deletion was requested for the post, but its body payload could not be verified and was not included in the deletion request.",
     "open": "Open post history",
     "title": "Post History",
     "description": "Local history of events successfully posted from eHagaki.",
@@ -385,12 +389,12 @@
     "relay_write_disabled": "Write disabled",
     "no_relay_info": "No relay info",
     "client_tag_label": "Add client name to post \n(Client tag)",
-    "fail_closed_content_warning_label": "Send with new CW format",
+    "fail_closed_content_warning_label": "Use Sensitive format",
     "fail_closed_content_warning_info_label": "Content warning format details",
-    "fail_closed_content_warning_info": "This is an experimental sending format. It stores the CW body in the content-warning tag, so clients that do not support this format will not display the body. The CW body will no longer be searchable using Nostr's standard full-text search.",
-    "fail_closed_content_warning_shortcut_label": "CW body format",
-    "footer_shortcut_content_warning_on": "CW body: hidden format",
-    "footer_shortcut_content_warning_off": "CW body: standard format",
+    "fail_closed_content_warning_info": "This is an experimental sending format. Posts with CW keep their original kind and send the body separately in a kind 36 event. Clients that do not support this format may not display or interpret the post correctly. If a Relay does not include kind 36 in its search, the CW body may not appear in Nostr full-text results. The body is not encrypted and remains available in the kind 36 event's content.",
+    "fail_closed_content_warning_shortcut_label": "CW format",
+    "footer_shortcut_content_warning_on": "CW: Sensitive",
+    "footer_shortcut_content_warning_off": "CW: Standard",
     "quote_notification_label": "Notify quoted author",
     "quote_notification_note": "When quoting a post, notifying its author is enabled by default.",
     "reply_notification_label": "Notify others in the thread",
@@ -566,6 +570,7 @@
     },
     "error": {
       "post_error": "Post error",
+      "reply_target_event_unavailable": "The reply target could not be verified. Fetch it again before posting.",
       "post_rejected": "Rejected by relays",
       "post_timeout": "Timed out before submit",
       "post_network_error": "Network error"

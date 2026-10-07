@@ -105,7 +105,7 @@ describe('SettingsDialog accessibility', () => {
             Array.from(left.options).find(
                 (option) => option.value === 'fail-closed-content-warning',
             )?.textContent,
-        ).toBe('CW本文形式');
+        ).toBe('CW送信形式');
         await fireEvent.change(left, { target: { value: 'language' } });
         await tick();
         expect(footerSettingShortcutsStore.value).toEqual({ left: 'language', right: null });
@@ -128,7 +128,7 @@ describe('SettingsDialog accessibility', () => {
         });
         await tick();
 
-        const label = '新CW形式で送信';
+        const label = 'Sensitive形式で送信';
         expect(screen.getByText(label)).toBeTruthy();
         expect(screen.queryByText(/実験的な送信形式です/)).toBeNull();
         expect(screen.queryByText(/標準的な全文検索ではCW本文を検索できなくなります/)).toBeNull();
@@ -140,8 +140,9 @@ describe('SettingsDialog accessibility', () => {
         await fireEvent.click(infoButton);
         await tick();
         expect(screen.getByText(/実験的な送信形式です/)).toBeTruthy();
-        expect(screen.getByText(/この形式に未対応のクライアントでは本文が表示されません/)).toBeTruthy();
-        expect(screen.getByText(/Nostrの標準的な全文検索ではCW本文を検索できなくなります/)).toBeTruthy();
+        expect(screen.getByText(/対応していないクライアントでは投稿が表示されない/)).toBeTruthy();
+        expect(screen.getByText(/Nostrの全文検索で見つからないことがあります/)).toBeTruthy();
+        expect(screen.getByText(/本文は暗号化されず/)).toBeTruthy();
 
         await fireEvent.click(toggle);
         await tick();

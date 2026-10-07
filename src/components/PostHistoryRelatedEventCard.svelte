@@ -23,6 +23,7 @@
         profile?: ProfileData | null;
         media?: PostHistoryMediaRecord[];
         model?: PostContentRenderModel;
+        loadSensitiveBody?: () => Promise<string | null>;
         emojiLoadStateByUrl?: Record<
             string,
             PostContentEmojiLoadState | undefined
@@ -48,6 +49,7 @@
         profile = null,
         media = undefined,
         model = undefined,
+        loadSensitiveBody = undefined,
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         scrollRoot = null,
@@ -71,6 +73,7 @@
     let previewModel = $derived.by(() =>
         model ??
             buildPostContentRenderModel({
+                kind: event.kind,
                 sourceContent: event.content,
                 tags: event.tags,
                 media,
@@ -99,6 +102,7 @@
         </div>
         <PostContentPreview
             model={previewModel}
+            {loadSensitiveBody}
             contentWarningEventId={event.id}
             density="compact"
             contentClass="post-history-related-content"
@@ -136,6 +140,8 @@
 
     .post-history-related-card-body {
         display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        min-width: 0;
         gap: 2px;
         padding: 2px 10px 0 8px;
     }

@@ -63,6 +63,17 @@ function createReference(overrides: Partial<ReplyQuoteState> = {}): ReplyQuoteSt
 }
 
 describe('ReplyQuotePreview', () => {
+    it.each(['reply', 'quote'] as const)('text-only Sensitive %s can expand and reach explicit reveal', async (mode) => {
+        const event = { ...createReferencedEvent(''), tags: [['content-warning', 'Sensitive text']] };
+        const loadSensitiveBody = vi.fn(async () => 'protected text-only payload');
+        render(ReplyQuotePreview, { reference: createReference({ mode, referencedEvent: event }), mode, onClear: vi.fn(), loadSensitiveBody });
+        const expand = screen.getByRole('button', { name: '展開する' });
+        expect(expand.hasAttribute('disabled')).toBe(false);
+        expect(loadSensitiveBody).not.toHaveBeenCalled();
+        await fireEvent.click(expand);
+        await fireEvent.click(screen.getByRole('button', { name: 'postContent.showContentWarningBody' }));
+        expect(screen.getByText('protected text-only payload')).toBeTruthy();
+    });
     afterEach(() => {
         vi.useRealTimers();
     });

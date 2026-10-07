@@ -484,17 +484,19 @@ export function createPostHistoryRelatedTargetResolver({
                         });
                     }
 
-                    const event = toEventFromPostHistoryRecord(existingRecord);
+                    const storedEvent = toEventFromPostHistoryRecord(existingRecord);
+                    const event = storedEvent;
+                    const targetRelayHints = recordRelayHints;
                     const snapshot = applySnapshotUpdate(descriptor.targetEventId, {
                         status: "resolved",
                         event,
                         authorPubkey: event.pubkey,
-                        relayHints: recordRelayHints,
+                        relayHints: targetRelayHints,
                         errorCode: null,
                         updatedAt: Date.now(),
                     });
-                    ensureProfileForTarget(event.pubkey, recordRelayHints);
-                    void runDeletionCheck(event, recordRelayHints, { background: true });
+                    ensureProfileForTarget(event.pubkey, targetRelayHints);
+                    void runDeletionCheck(event, targetRelayHints, { background: true });
                     return snapshotsByTargetId[descriptor.targetEventId] ?? snapshot;
                 }
 
@@ -576,12 +578,14 @@ export function createPostHistoryRelatedTargetResolver({
                     });
                 }
 
-                const resolvedRelayHints = sanitizeRelayHints([
-                    ...mergedSnapshot.relayHints,
+                const pointerRelayHints = sanitizeRelayHints([
                     ...(result.relayUrl ? [result.relayUrl] : []),
+                    ...mergedSnapshot.relayHints,
                 ]);
+                const resolvedEvent = result.event;
+                const resolvedRelayHints = pointerRelayHints;
                 const deletedAfterResolve = await runDeletionCheck(
-                    result.event,
+                    resolvedEvent,
                     resolvedRelayHints,
                 );
                 if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
@@ -589,19 +593,29 @@ export function createPostHistoryRelatedTargetResolver({
                 }
 
                 if (deletedAfterResolve) {
+                    if (resolvedEvent.id !== descriptor.targetEventId) {
+                        applySnapshotUpdate(descriptor.targetEventId, {
+                            status: "deleted",
+                            event: null,
+                            authorPubkey: resolvedEvent.pubkey,
+                            relayHints: resolvedRelayHints,
+                            errorCode: null,
+                            updatedAt: Date.now(),
+                        });
+                    }
                     return snapshotsByTargetId[descriptor.targetEventId] ?? null;
                 }
 
                 const snapshot = applySnapshotUpdate(descriptor.targetEventId, {
                     status: "resolved",
-                    event: result.event,
-                    authorPubkey: result.event.pubkey,
+                    event: resolvedEvent,
+                    authorPubkey: resolvedEvent.pubkey,
                     relayHints: resolvedRelayHints,
                     errorCode: null,
                     updatedAt: Date.now(),
                 });
                 ensureProfileForTarget(
-                    result.event.pubkey,
+                    resolvedEvent.pubkey,
                     resolvedRelayHints,
                 );
                 return snapshotsByTargetId[descriptor.targetEventId] ?? snapshot;

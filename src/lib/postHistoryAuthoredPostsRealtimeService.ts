@@ -97,7 +97,7 @@ export class PostHistoryAuthoredPostsRealtimeService {
 
             rxReq.emit({
                 authors: [params.ownerPubkeyHex],
-                kinds: [1, 42],
+                kinds: [1, 42, 1111],
                 since: subscribedSince,
             } as never);
         } catch (error) {
@@ -127,7 +127,7 @@ export class PostHistoryAuthoredPostsRealtimeService {
             !isActive()
             || !event?.id
             || event.pubkey !== params.ownerPubkeyHex
-            || (event.kind !== 1 && event.kind !== 42)
+            || ![1, 42, 1111].includes(event.kind)
         ) {
             return;
         }

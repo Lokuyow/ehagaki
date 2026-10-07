@@ -258,8 +258,14 @@ export class PostHistoryInboundInteractionsSyncService {
                     });
 
                     rxReq.emit({
-                        kinds: [1, 7, 42],
+                        kinds: [1, 7, 42, 1111],
                         "#p": [params.ownerPubkeyHex],
+                        since,
+                        limit,
+                    } as never);
+                    rxReq.emit({
+                        kinds: [1111],
+                        "#P": [params.ownerPubkeyHex],
                         since,
                         limit,
                     } as never);

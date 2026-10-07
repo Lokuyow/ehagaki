@@ -25,6 +25,7 @@
         reference: ReplyQuoteState;
         mode: ReplyQuoteMode;
         model?: PostContentRenderModel;
+        loadSensitiveBody?: () => Promise<string | null>;
         emojiLoadStateByUrl?: Record<
             string,
             PostContentEmojiLoadState | undefined
@@ -50,6 +51,7 @@
         reference,
         mode,
         model = undefined,
+        loadSensitiveBody = undefined,
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         onImageOpen = undefined,
@@ -95,6 +97,7 @@
             referencedEvent.tags,
         );
         return buildPostContentRenderModel({
+            kind: referencedEvent.kind,
             sourceContent: content,
             displayContent: content,
             tags: referencedEvent.tags,
@@ -102,7 +105,7 @@
     });
 
     let canToggleExpand = $derived(
-        resolvedModel.hasRenderableText || resolvedModel.hasRenderableMedia,
+        resolvedModel.hasRenderableText || resolvedModel.hasRenderableMedia || !!resolvedModel.contentWarning,
     );
 
     let showLoadingStatus = $derived(reference.loading && showDelayedLoading);
@@ -358,6 +361,7 @@
     {#snippet content()}
         <PostContentPreview
             model={resolvedModel}
+            {loadSensitiveBody}
             contentWarningEventId={reference.eventId}
             density="reply"
             {emojiLoadStateByUrl}

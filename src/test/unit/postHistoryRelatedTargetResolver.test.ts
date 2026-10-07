@@ -1,5 +1,6 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
+import { finalizeEvent, generateSecretKey } from "nostr-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EHAGAKI_DB_NAME, EHagakiDB, type PostHistoryRecord } from "../../lib/storage/ehagakiDb";
 import {
@@ -245,7 +246,7 @@ describe("createPostHistoryRelatedTargetResolver", () => {
             event,
             profile: null,
             authorPubkey: event.pubkey,
-            relayHints: ["wss://relay.example.com/", "wss://fetched.example.com/"],
+            relayHints: ["wss://fetched.example.com/", "wss://relay.example.com/"],
             errorCode: null,
         });
         expect(typeof snapshot?.updatedAt).toBe("number");
@@ -578,6 +579,173 @@ describe("createPostHistoryRelatedTargetResolver", () => {
         expect(firstSnapshot?.status).toBe("resolved");
         expect(secondSnapshot?.status).toBe("resolved");
         expect(resolver.getTargetSnapshot(event.id)?.status).toBe("resolved");
+    });
+
+    it("keeps a Sensitive kind 1 Structure as the related target without following its payload reference", async () => {
+        const secretKey = generateSecretKey();
+        const payload = finalizeEvent({
+            kind: 36,
+            created_at: 200,
+            content: "sensitive body",
+            tags: [["k", "1"]],
+        }, secretKey) as NostrEvent;
+        const structure = finalizeEvent({
+            kind: 1,
+            created_at: payload.created_at,
+            content: "",
+            tags: [["content-warning", "Spoiler"], ["c", payload.id]],
+        }, secretKey) as NostrEvent;
+        const { resolver, contextFetchService } = createResolver();
+        contextFetchService.fetchEventById.mockImplementation((_rxNostr, { eventId }) => ({
+            promise: Promise.resolve({
+                event: eventId === structure.id ? structure : payload,
+                relayUrl: "wss://relay.example.com/",
+            }),
+            cancel: vi.fn(),
+        }));
+
+        const snapshot = await resolver.ensureTarget(createDescriptor({
+            targetEventId: structure.id,
+            authorHint: structure.pubkey,
+        }));
+
+        expect(snapshot?.status).toBe("resolved");
+        expect(snapshot?.event).toEqual(structure);
+        expect(snapshot?.event?.kind).toBe(1);
+        expect(contextFetchService.fetchEventById).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not use payload source relay as Structure relay evidence", async () => {
+        const secretKey = generateSecretKey();
+        const payload = finalizeEvent({
+            kind: 36,
+            created_at: 200,
+            content: "sensitive body without CW metadata",
+            tags: [["k", "1"]],
+        }, secretKey) as NostrEvent;
+        const structure = finalizeEvent({
+            kind: 1,
+            created_at: 250,
+            content: "",
+            tags: [
+                ["content-warning", "Sensitive fixture"],
+                ["c", payload.id, "wss://payload-hint.example/"],
+            ],
+        }, secretKey) as NostrEvent;
+        const { resolver, contextFetchService } = createResolver();
+        contextFetchService.fetchEventById.mockImplementation((_rxNostr, { eventId }) => ({
+            promise: Promise.resolve({
+                event: eventId === structure.id ? structure : payload,
+                relayUrl: eventId === structure.id
+                    ? "wss://structure-source.example/"
+                    : "wss://payload-source.example/",
+            }),
+            cancel: vi.fn(),
+        }));
+
+        const descriptorHints = Array.from(
+            { length: 12 },
+            (_, index) => `wss://pointer-${index}.example/`,
+        );
+        const snapshot = await resolver.ensureTarget(createDescriptor({
+            targetEventId: structure.id,
+            authorHint: structure.pubkey,
+            relayHints: descriptorHints,
+        }));
+
+        expect(snapshot?.event).toEqual(structure);
+        expect(snapshot?.relayHints?.[0]).toBe("wss://structure-source.example/");
+        expect(snapshot?.relayHints).not.toContain("wss://payload-hint.example/");
+        expect(contextFetchService.fetchEventById).toHaveBeenCalledTimes(1);
+    });
+
+    it("uses the Sensitive Structure's own local relay evidence", async () => {
+        const secretKey = generateSecretKey();
+        const payload = finalizeEvent({
+            kind: 36,
+            created_at: 200,
+            content: "sensitive body",
+            tags: [["k", "1"]],
+        }, secretKey) as NostrEvent;
+        const structure = finalizeEvent({
+            kind: 1,
+            created_at: 250,
+            content: "",
+            tags: [
+                ["content-warning", "Sensitive fixture"],
+                ["c", payload.id, "wss://payload-hint.example/"],
+            ],
+        }, secretKey) as NostrEvent;
+        const { resolver, postHistoryRepositoryImpl, contextFetchService } = createResolver();
+        postHistoryRepositoryImpl.getByEventId.mockImplementation(async (eventId) => {
+            const event = eventId === structure.id ? structure
+                : eventId === payload.id ? payload
+                    : null;
+            if (!event) return null;
+            const record = createRecord(event);
+            record.relayHints = [eventId === structure.id
+                ? "wss://structure-record.example/"
+                : "wss://payload-record.example/"];
+            return record;
+        });
+
+        const snapshot = await resolver.ensureTarget(createDescriptor({
+            targetEventId: structure.id,
+            authorHint: structure.pubkey,
+            relayHints: ["wss://pointer-only.example/"],
+        }));
+
+        expect(snapshot?.event).toEqual(structure);
+        expect(snapshot?.relayHints).toContain("wss://structure-record.example/");
+        expect(snapshot?.relayHints).not.toContain("wss://payload-hint.example/");
+        expect(snapshot?.relayHints).toContain("wss://pointer-only.example/");
+        expect(contextFetchService.fetchEventById).not.toHaveBeenCalled();
+    });
+
+    it("does not treat a payload-only deletion as a deleted Structure target", async () => {
+        const secretKey = generateSecretKey();
+        const payload = finalizeEvent({
+            kind: 36,
+            created_at: 200,
+            content: "sensitive body",
+            tags: [["k", "1"]],
+        }, secretKey) as NostrEvent;
+        const structure = finalizeEvent({
+            kind: 1,
+            created_at: payload.created_at,
+            content: "",
+            tags: [["content-warning"], ["c", payload.id]],
+        }, secretKey) as NostrEvent;
+        const deletionRepository = {
+            getDeletedTargets: vi.fn().mockResolvedValue(new Map([
+                [payload.pubkey, new Set([payload.id])],
+            ])),
+            upsertValidDeletionRequests: vi.fn().mockResolvedValue({
+                insertedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount: 0,
+            }),
+        };
+        const { resolver, contextFetchService } = createResolver({
+            deletionRequestsRepositoryImpl: deletionRepository,
+        });
+        contextFetchService.fetchEventById.mockImplementation((_rxNostr, { eventId }) => ({
+            promise: Promise.resolve({
+                event: eventId === structure.id ? structure : payload,
+                relayUrl: "wss://relay.example.com/",
+            }),
+            cancel: vi.fn(),
+        }));
+
+        const snapshot = await resolver.ensureTarget(createDescriptor({
+            targetEventId: structure.id,
+            authorHint: structure.pubkey,
+        }));
+
+        expect(snapshot?.status).toBe("resolved");
+        expect(snapshot?.event).toEqual(structure);
+        expect(resolver.getTargetSnapshot(structure.id)?.event).toEqual(structure);
     });
 
     it("未検証pendingがauthorHintに一致しても取得前に削除済みと判定しない", async () => {

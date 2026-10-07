@@ -32,6 +32,7 @@ import type {
 } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
 import { POST_HISTORY_TIMELINE_INDEX } from "./ehagakiDbConstants";
+import { reconcileSensitivePayloadDeletionForStructure } from "./sensitivePayloadDeletionReconciler";
 
 export const POST_HISTORY_SCHEMA_VERSION = 2;
 
@@ -259,11 +260,15 @@ function getTimelineBounds(pubkeyHex: string): {
     };
 }
 
+function isSupportedPost(record: PostHistoryRecord): boolean {
+    return [1, 42, 1111].includes(record.kind);
+}
+
 function matchesVisibleUntil(
     record: PostHistoryRecord,
     visibleUntil: number | null,
 ): boolean {
-    return visibleUntil === null || record.createdAt >= visibleUntil;
+    return isSupportedPost(record) && (visibleUntil === null || record.createdAt >= visibleUntil);
 }
 
 function toPostedAtFromCreatedAt(createdAt: number): number {
@@ -426,7 +431,8 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     async getByEventId(eventId: string): Promise<PostHistoryRecord | null> {
         if (!eventId) return null;
 
-        return await this.db.postHistory.get(eventId) ?? null;
+        const record = await this.db.postHistory.get(eventId);
+        return record && isSupportedPost(record) ? record : null;
     }
 
     async getExistingEventIdsForPubkey(input: {
@@ -442,7 +448,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
         return records
             .filter((record): record is PostHistoryRecord =>
-                !!record && record.pubkeyHex === input.pubkeyHex
+                !!record && isSupportedPost(record) && record.pubkeyHex === input.pubkeyHex
             )
             .map((record) => record.eventId);
     }
@@ -456,7 +462,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .reverse()
             .toArray();
 
-        return sortPostHistoryRecords(records);
+        return sortPostHistoryRecords(records.filter(isSupportedPost));
     }
 
     async getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]> {
@@ -470,6 +476,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .where(POST_HISTORY_TIMELINE_INDEX)
             .between(bounds.lower, bounds.upper)
             .reverse()
+            .filter(isSupportedPost)
             .offset((page - 1) * pageSize)
             .limit(pageSize)
             .toArray();
@@ -552,7 +559,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                 )
                 .toArray();
 
-            return visibleRecords
+            return visibleRecords.filter(isSupportedPost)
                 .sort(comparePostHistoryTimelineOrder)
                 .slice(-limit);
         }
@@ -560,6 +567,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         const oldestRecords = await this.db.postHistory
             .where(POST_HISTORY_TIMELINE_INDEX)
             .between(bounds.lower, bounds.upper)
+            .filter(isSupportedPost)
             .limit(limit)
             .toArray();
 
@@ -698,6 +706,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                 true,
                 false,
             )
+            .filter(isSupportedPost)
             .limit(1)
             .count() > 0;
     }
@@ -717,7 +726,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
         const cursor = options.cursor;
         const matchesSparseRange = (record: PostHistoryRecord): boolean =>
-            record.createdAt < visibleUntil
+            isSupportedPost(record) && record.createdAt < visibleUntil
             && (
                 options.direction === "latest"
                 || (
@@ -771,6 +780,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         return this.db.postHistory
             .where("pubkeyHex")
             .equals(pubkeyHex)
+            .filter(isSupportedPost)
             .count();
     }
 
@@ -785,6 +795,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         return this.db.postHistory
             .where("[pubkeyHex+createdAt]")
             .between([pubkeyHex, normalizedVisibleUntil], [pubkeyHex, Dexie.maxKey])
+            .filter(isSupportedPost)
             .count();
     }
 
@@ -834,6 +845,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             "rw",
             this.db.postHistory,
             this.db.postHistoryDeletionRequests,
+            this.db.sensitivePayloads,
             async () => {
                 const existingRecords = await this.db.postHistory.bulkGet(eventIds);
                 const existingMap = new Map<string, PostHistoryRecord>();
@@ -981,6 +993,21 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             },
         );
 
+        for (const item of normalizedItems) {
+            try {
+                await reconcileSensitivePayloadDeletionForStructure(
+                    item.event.id,
+                    this.db,
+                    this.now,
+                );
+            } catch {
+                this.console.warn(
+                    "post_history_sensitive_payload_deletion_reconcile_failed",
+                    item.event.id,
+                );
+            }
+        }
+
         changedPubkeys.forEach(bumpPostHistorySearchRevision);
 
         return {
@@ -997,6 +1024,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         const oldestRecord = await this.db.postHistory
             .where("[pubkeyHex+createdAt]")
             .between([pubkeyHex, Dexie.minKey], [pubkeyHex, Dexie.maxKey])
+            .filter(isSupportedPost)
             .first();
 
         return oldestRecord?.createdAt ?? null;
@@ -1048,11 +1076,17 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         if (!pubkeyHex) return;
 
         let deletedPostHistoryCount = 0;
+        let deletedPayloadCount = 0;
         await this.db.transaction(
             "rw",
             this.db.postHistory,
             this.db.postHistoryChildInteractions,
+            this.db.sensitivePayloads,
             async () => {
+                deletedPayloadCount = await this.db.sensitivePayloads
+                    .where("pubkeyHex")
+                    .equals(pubkeyHex)
+                    .delete();
                 const firstPostHistoryRecord = await this.db.postHistory
                     .orderBy("pubkeyHex")
                     .first();
@@ -1096,7 +1130,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
         // Keep the search revision outside the transaction so it only advances
         // after IndexedDB has committed successfully.
-        if (deletedPostHistoryCount > 0) {
+        if (deletedPostHistoryCount > 0 || deletedPayloadCount > 0) {
             bumpPostHistorySearchRevision(pubkeyHex);
         }
     }

@@ -15,12 +15,13 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
         PostContentEmojiLoadState,
         PostContentRenderModel,
     } from "../lib/postContentPreview";
-    import type { FullscreenMediaItem } from "../lib/types";
+    import type { FullscreenMediaItem, NostrEvent } from "../lib/types";
 
     interface Props {
         state: PostHistoryThreadGraphAnchorState;
         section: "parent" | "children";
         previewModelByEventId?: Record<string, PostContentRenderModel>;
+        getSensitiveBodyLoader?: (event: NostrEvent) => (() => Promise<string | null>) | undefined;
         emojiLoadStateByUrl?: Record<
             string,
             PostContentEmojiLoadState | undefined
@@ -87,6 +88,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
         state,
         section,
         previewModelByEventId = {},
+        getSensitiveBodyLoader = undefined,
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         scrollRoot = null,
@@ -172,6 +174,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
             <PostHistoryThreadGraphNodeView
                 state={state.parentNodeState}
                 {previewModelByEventId}
+                {getSensitiveBodyLoader}
                 {emojiLoadStateByUrl}
                 {emojiImageMetaByUrl}
                 {scrollRoot}
@@ -204,6 +207,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
             <PostHistoryThreadGraphNodeView
                 state={fallbackParentNodeState}
                 {previewModelByEventId}
+                {getSensitiveBodyLoader}
                 {emojiLoadStateByUrl}
                 {emojiImageMetaByUrl}
                 {scrollRoot}
@@ -283,6 +287,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
                 <PostHistoryThreadGraphNodeView
                     state={replyState}
                     {previewModelByEventId}
+                    {getSensitiveBodyLoader}
                     {emojiLoadStateByUrl}
                     {emojiImageMetaByUrl}
                     {scrollRoot}

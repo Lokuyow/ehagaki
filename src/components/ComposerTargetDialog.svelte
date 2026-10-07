@@ -70,6 +70,7 @@
     import { calculateContextMenuPosition } from "../lib/utils/appUtils";
     import { sanitizePlainText } from "../lib/utils/domSanitizer";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
+    import { createSensitivePayloadBodyLoader } from "../lib/sensitiveContentPayloadReader";
 
     type DialogPhase =
         | "empty"
@@ -161,7 +162,7 @@
         target
             ? getComposerTargetActions(
                   target.event.kind,
-                  target.event.kind === 1 || !!target.channelQuery,
+                  [1, 1111].includes(target.event.kind) || !!target.channelQuery,
               )
             : [],
     );
@@ -217,7 +218,7 @@
         getRxNostr: () => rxNostr,
     });
     let reactionTargets = $derived.by(() =>
-        target && (target.event.kind === 1 || target.event.kind === 42)
+        target && [1, 42, 1111].includes(target.event.kind)
             ? [{ eventId: target.event.id, relayHints: [...target.relayHints] }]
             : [],
     );
@@ -231,7 +232,7 @@
         source: "composer-target-display",
     });
     let targetReactionReadModel = $derived.by(() =>
-        target && (target.event.kind === 1 || target.event.kind === 42)
+        target && [1, 42, 1111].includes(target.event.kind)
             ? relatedReactions.getReadModel(target.event.id)
             : null,
     );
@@ -241,7 +242,7 @@
     let previousReactionTargetId: string | null = null;
     $effect(() => {
         const eventId = show && target
-            && (target.event.kind === 1 || target.event.kind === 42)
+            && [1, 42, 1111].includes(target.event.kind)
             ? target.event.id
             : null;
         if (eventId === previousReactionTargetId) return;
@@ -280,10 +281,12 @@
                   sourceContent: "",
                   displayContent: "",
                   tags: [],
+                  kind: previewEvent?.kind,
                   media: [],
               })
             : buildPostContentRenderModel({
                   sourceContent: rawPreviewContent,
+                  kind: previewEvent?.kind,
                   tags: previewEvent?.tags ?? [],
               }),
     );
@@ -294,6 +297,7 @@
 
         return buildPostContentRenderModel({
             sourceContent: rawPreviewContent,
+            kind: previewEvent?.kind,
             displayContent: sourcePreviewRenderModel.hasRenderableText
                 ? displayedContent
                 : "",
@@ -898,6 +902,13 @@
                     </div>
                     <PostContentPreview
                     model={previewRenderModel}
+                    loadSensitiveBody={createSensitivePayloadBodyLoader({
+                        ownerPubkey: pubkeyHex,
+                        structure: previewEvent,
+                        relayHints: target?.relayHints,
+                        rxNostr,
+                        relayConfig,
+                    })}
                     contentWarningEventId={previewEvent.id}
                     density="dialog"
                     emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
@@ -1083,7 +1094,7 @@
             </section>
         {/if}
 
-        {#if target && target.event.kind !== 1 && target.event.kind !== 40 && target.event.kind !== 42}
+        {#if target && ![1, 40, 42, 1111].includes(target.event.kind)}
             <p class="unsupported-kind">
                 {$_("composerTarget.unsupportedKind")}
             </p>

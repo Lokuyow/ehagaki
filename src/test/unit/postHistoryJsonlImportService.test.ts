@@ -213,6 +213,47 @@ describe("PostHistoryJsonlImportService", () => {
         expect(deps.postHistoryRepository.upsertFetchedEvents).toHaveBeenCalledTimes(1);
     });
 
+    it("kind 36を投稿履歴へ入れずpayload candidateとして保存する", async () => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const payload = createSignedEvent(secretKey, {
+            kind: 36,
+            content: "Sensitive body",
+            tags: [["k", "1"]],
+        });
+        const structure = createSignedEvent(secretKey, {
+            kind: 1,
+            content: "",
+            tags: [["content-warning", "reason"], ["c", payload.id]],
+        });
+        const deps = createRepositoryMocks();
+        const putCandidate = vi.fn().mockResolvedValue(undefined);
+        const service = new PostHistoryJsonlImportService({
+            ...deps,
+            sensitivePayloadRepository: { putCandidate },
+        });
+
+        const result = await service.importFile({
+            file: createFile([payload, structure].map((event) => JSON.stringify(event)).join("\n")),
+            ownerPubkeyHex: pubkey,
+            getCurrentPubkeyHex: () => pubkey,
+        });
+
+        expect(result).toMatchObject({
+            uniquePostEventCount: 1,
+            insertedPostCount: 1,
+            uniquePayloadEventCount: 1,
+            savedPayloadCandidateCount: 1,
+        });
+        expect(deps.postHistoryRepository.upsertFetchedEvents).toHaveBeenCalledTimes(1);
+        expect(deps.postHistoryRepository.upsertFetchedEvents.mock.calls[0][0].events)
+            .toMatchObject([{ event: { kind: 1, content: "" } }]);
+        expect(putCandidate).toHaveBeenCalledOnce();
+        expect(putCandidate).toHaveBeenCalledWith(expect.objectContaining({
+            event: expect.objectContaining({ kind: 36, content: "Sensitive body" }),
+        }));
+    });
+
     it("有効なkind 1と不正JSONが混在すると保存後もpartialになる", async () => {
         const secretKey = generateSecretKey();
         const pubkey = getPublicKey(secretKey);

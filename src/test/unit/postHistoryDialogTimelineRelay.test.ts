@@ -341,7 +341,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         expect(repositoryMock.getLatestVisibleChunk).not.toHaveBeenCalled();
         visibleUntilDeferred.resolve({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: 1_700_000_000,
             updatedAt: 1,
         });
@@ -466,7 +466,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: 1_500,
             updatedAt: 1,
         });
@@ -546,7 +546,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: 1_500,
             updatedAt: 1,
         });
@@ -760,7 +760,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 ? null
                 : {
                     pubkeyHex: PUBKEY_HEX,
-                    kindsKey: '1,42',
+                    kindsKey: '1,42,1111',
                     visibleUntil,
                     updatedAt: 1000,
                 },
@@ -843,7 +843,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(visibleRangeRepositoryMock.save).toHaveBeenCalledWith({
                 pubkeyHex: PUBKEY_HEX,
-                kindsKey: '1,42',
+                kindsKey: '1,42,1111',
                 visibleUntil: 180,
             });
             expect(screen.getByText('初回表示できる投稿')).toBeTruthy();
@@ -875,7 +875,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
         visibleRangeRepositoryMock.get.mockImplementation(async () => ({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil,
             updatedAt: 1,
         }));
@@ -957,7 +957,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(visibleRangeRepositoryMock.save).toHaveBeenCalledWith({
                 pubkeyHex: PUBKEY_HEX,
-                kindsKey: '1,42',
+                kindsKey: '1,42,1111',
                 visibleUntil: finalVisibleUntil,
             });
             if (remainingOutside) {
@@ -2277,7 +2277,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 ? null
                 : {
                     pubkeyHex: PUBKEY_HEX,
-                    kindsKey: '1,42',
+                    kindsKey: '1,42,1111',
                     visibleUntil,
                     updatedAt: 1000,
                 },
@@ -2367,7 +2367,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 ? null
                 : {
                     pubkeyHex: PUBKEY_HEX,
-                    kindsKey: '1,42',
+                    kindsKey: '1,42,1111',
                     visibleUntil,
                     updatedAt: 1000,
                 },
@@ -2537,7 +2537,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 ? null
                 : {
                     pubkeyHex: PUBKEY_HEX,
-                    kindsKey: '1,42',
+                    kindsKey: '1,42,1111',
                     visibleUntil,
                     updatedAt: 1000,
                 },
@@ -3198,7 +3198,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 ? null
                 : {
                     pubkeyHex: PUBKEY_HEX,
-                    kindsKey: '1,42',
+                    kindsKey: '1,42,1111',
                     visibleUntil,
                     updatedAt: 1000,
                 },
@@ -3330,7 +3330,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(visibleRangeRepositoryMock.save).toHaveBeenLastCalledWith({
                 pubkeyHex: PUBKEY_HEX,
-                kindsKey: '1,42',
+                kindsKey: '1,42,1111',
                 visibleUntil: fetchedCreatedAt,
             });
             expect(repositoryMock.countVisibleForPubkey).toHaveBeenCalledWith(

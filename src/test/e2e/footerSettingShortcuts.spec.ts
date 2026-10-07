@@ -551,6 +551,38 @@ test("keeps direct Footer theme changes and SettingsDialog changes on the same c
     await expect(theme).toHaveAttribute("aria-label", "モード: ダーク");
 });
 
+test("Sensitive CW Footer shortcut and SettingsDialog share the canonical setting", async ({ page }) => {
+    await page.addInitScript(() => {
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "fail-closed-content-warning", right: null }));
+        localStorage.setItem("failClosedContentWarning", "false");
+    });
+    await enterApp(page);
+
+    const shortcut = page.locator(".footer-setting-shortcut-button");
+    await expect(shortcut).toHaveAttribute("aria-pressed", "false");
+    await expect(shortcut).toHaveAttribute("aria-label", "CW送信形式");
+    await expect(shortcut.locator(".content-warning-standard-icon")).toBeVisible();
+    await shortcut.click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("failClosedContentWarning"))).toBe("true");
+    await expect(shortcut).toHaveAttribute("aria-pressed", "true");
+    await expect(shortcut.locator(".content-warning-hidden-icon")).toBeVisible();
+
+    await page.locator(".settings-btn").click();
+    const setting = page.getByRole("switch", { name: "Sensitive形式で送信" });
+    await expect(setting).toHaveAttribute("aria-checked", "true");
+    const infoButton = page.getByRole("button", { name: "CW設定の詳細" });
+    await infoButton.click();
+    await expect(page.getByText(/実験的な送信形式です/)).toBeVisible();
+    await expect(page.getByText(/全文検索で見つからないことがあります/)).toBeVisible();
+    await expect(page.getByText(/eventのcontentから取得できます/)).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    await setting.click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("failClosedContentWarning"))).toBe("false");
+    await expect(shortcut).toHaveAttribute("aria-pressed", "false");
+    await expect(shortcut.locator(".content-warning-standard-icon")).toBeVisible();
+});
+
 test("toggles boolean settings, keeps flavor preference latent while mascot is hidden, and reflects selection", async ({ page }) => {
     await page.addInitScript(() => {
         localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "media-free-placement", right: "hide-flavor-text" }));

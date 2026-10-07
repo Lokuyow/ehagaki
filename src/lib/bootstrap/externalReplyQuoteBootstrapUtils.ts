@@ -8,7 +8,8 @@ import type { EmbedPreloadedProfilePresentation } from '../embedProtocol';
 
 export interface ProcessReplyQuoteReferenceParams {
     reference: ReplyQuoteHydrationTarget;
-    replyQuoteService: Pick<ReplyQuoteService, 'fetchReferencedEvent' | 'extractThreadInfo'>;
+    replyQuoteService: Pick<ReplyQuoteService, 'fetchReferencedEvent' | 'extractThreadInfo'>
+        & Partial<Pick<ReplyQuoteService, 'fetchReferencedEventTask'>>;
     initialEvent?: NostrEvent;
     rxNostr?: any;
     relayConfig: any;
@@ -34,7 +35,7 @@ export async function processReplyQuoteReference({
     preloadedProfiles,
     applyPreloadedAuthorPreviewPresentation,
 }: ProcessReplyQuoteReferenceParams): Promise<void> {
-    const event = initialEvent
+    const fetchedEvent = initialEvent
         ?? await replyQuoteService.fetchReferencedEvent(
             reference.eventId,
             reference.relayHints,
@@ -42,11 +43,12 @@ export async function processReplyQuoteReference({
             relayConfig,
         );
 
-    if (!event) {
+    if (!fetchedEvent) {
         setReplyQuoteError(reference, 'Event not found');
         return;
     }
 
+    const event = fetchedEvent;
     const threadInfo = replyQuoteService.extractThreadInfo(event);
     updateReferencedEvent(reference, event, threadInfo);
     if (preloadedProfiles && applyPreloadedAuthorPreviewPresentation) {

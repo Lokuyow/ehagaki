@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { finalizeEvent, generateSecretKey } from "nostr-tools";
 import {
     bumpChannelMetadataSearchRevision,
     bumpPostHistorySearchRevision,
     resetPostHistoryLocalSearchRevisionsForTesting,
 } from "../../lib/postHistoryLocalSearchRevision";
 import type { ChannelMetadataCache } from "../../lib/storage/channelMetadataRepository";
-import type { PostHistoryRecord } from "../../lib/storage/ehagakiDb";
+import type { PostHistoryRecord, SensitivePayloadRecord } from "../../lib/storage/ehagakiDb";
 import { PostHistoryLocalSearchService } from "../../lib/postHistoryLocalSearchService";
+import type { NostrEvent } from "../../lib/types";
 
 function createRecord(overrides: Partial<PostHistoryRecord> = {}): PostHistoryRecord {
     return {
@@ -422,5 +424,113 @@ describe("PostHistoryLocalSearchService", () => {
         expect(getAll).toHaveBeenCalledWith({
             pubkeyHex: "a".repeat(64),
         });
+    });
+
+    it("pair検証済みpayload本文で検索し、結果には本文を投影しない", async () => {
+        const secretKey = generateSecretKey();
+        const payload = finalizeEvent({
+            kind: 36,
+            content: "hidden search phrase",
+            created_at: 100,
+            tags: [["k", "1"]],
+        }, secretKey) as NostrEvent;
+        const structure = finalizeEvent({
+            kind: 1,
+            content: "",
+            created_at: 100,
+            tags: [["content-warning", "Sensitive"], ["c", payload.id]],
+        }, secretKey) as NostrEvent;
+        const post = createRecord({
+            eventId: structure.id,
+            kind: 1,
+            content: "",
+            tags: structure.tags,
+            pubkeyHex: structure.pubkey,
+            createdAt: structure.created_at,
+            rawEvent: structure,
+        });
+        const payloadRecord: SensitivePayloadRecord = {
+            id: payload.id,
+            pubkeyHex: payload.pubkey,
+            structureKind: 1,
+            rawEvent: payload,
+            acceptedRelays: [],
+            fetchedRelays: [],
+            relayHints: [],
+            createdAt: 100,
+            updatedAt: 100,
+            schemaVersion: 1,
+        };
+        const getByIds = vi.fn().mockResolvedValue([payloadRecord]);
+        const service = new PostHistoryLocalSearchService(
+            { getAll: vi.fn().mockResolvedValue([post]) },
+            { getMany: vi.fn().mockResolvedValue([]) },
+            { getByIds },
+        );
+
+        const result = await service.searchLocalPosts({
+            pubkeyHex: structure.pubkey,
+            query: "hidden search phrase",
+            page: 1,
+            pageSize: 50,
+        });
+
+        expect(getByIds).toHaveBeenCalledWith([payload.id]);
+        expect(result.items).toHaveLength(1);
+        expect(result.items[0]).toMatchObject({
+            eventId: structure.id,
+            content: "",
+            rawEvent: structure,
+        });
+        expect(JSON.stringify(result.items[0])).not.toContain("hidden search phrase");
+    });
+
+    it("未associationのpayload candidateは本文検索へ昇格しない", async () => {
+        const secretKey = generateSecretKey();
+        const payload = finalizeEvent({
+            kind: 36,
+            content: "orphan-only phrase",
+            created_at: 100,
+            tags: [["k", "42"]],
+        }, secretKey) as NostrEvent;
+        const structure = finalizeEvent({
+            kind: 1,
+            content: "",
+            created_at: 100,
+            tags: [["content-warning"], ["c", payload.id]],
+        }, secretKey) as NostrEvent;
+        const post = createRecord({
+            eventId: structure.id,
+            kind: 1,
+            content: "",
+            tags: structure.tags,
+            pubkeyHex: structure.pubkey,
+            createdAt: structure.created_at,
+            rawEvent: structure,
+        });
+        const unassociatedPayload: SensitivePayloadRecord = {
+            id: payload.id,
+            pubkeyHex: payload.pubkey,
+            structureKind: 42,
+            rawEvent: payload,
+            acceptedRelays: [],
+            fetchedRelays: [],
+            relayHints: [],
+            createdAt: 100,
+            updatedAt: 100,
+            schemaVersion: 1,
+        };
+        const service = new PostHistoryLocalSearchService(
+            { getAll: vi.fn().mockResolvedValue([post]) },
+            { getMany: vi.fn().mockResolvedValue([]) },
+            { getByIds: vi.fn().mockResolvedValue([unassociatedPayload]) },
+        );
+
+        await expect(service.searchLocalPosts({
+            pubkeyHex: structure.pubkey,
+            query: "orphan-only phrase",
+            page: 1,
+            pageSize: 50,
+        })).resolves.toMatchObject({ total: 0, items: [] });
     });
 });

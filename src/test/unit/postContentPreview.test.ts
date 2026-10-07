@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
     buildPostContentRenderModel,
+    buildPostContentRenderModelWithBody,
     resolveEventContentBody,
 } from "../../lib/postContentPreview";
 
 describe("postContentPreview", () => {
+    it("extracts bare image/video URLs from the verified payload body using Structure tags", () => {
+        const model = buildPostContentRenderModel({ sourceContent: "", tags: [["content-warning", "reason", "legacy.jpg"]], media: [] });
+        const projected = buildPostContentRenderModelWithBody(model, "body https://example.com/image.jpg https://example.com/video.mp4");
+        expect(projected.media.map((item) => item.url)).toEqual(["https://example.com/image.jpg", "https://example.com/video.mp4"]);
+        expect(projected.contentWarning).toEqual({ reason: "reason" });
+    });
     it("uses sourceContent for media and displayContent for rendered text", () => {
         const model = buildPostContentRenderModel({
             sourceContent:

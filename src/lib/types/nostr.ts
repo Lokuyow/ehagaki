@@ -199,6 +199,7 @@ export interface PostManagerDeps {
         acceptedRelays?: string[];
         relayHints?: string[];
     }) => void | Promise<void>;
+    saveSensitivePayloadFn?: (input: import("../storage/sensitivePayloadRepository").SaveSensitivePayloadInput) => void | Promise<void>;
     writeRelaysStore?: { value: string[] };
     extractContentWithImagesFn?: (editor: TipTapEditor) => string;
     extractContentWithEmojiTagsFn?: (editor: TipTapEditor) => {
@@ -392,6 +393,8 @@ export interface ReplyQuoteUpdateTarget {
     eventId: string;
     mode: ReplyQuoteMode;
     ownerToken: symbol;
+    /** Optional canonical relay evidence to store while hydrating a resolved event. */
+    relayHints?: string[];
 }
 
 export interface ChannelContextQueryTarget {

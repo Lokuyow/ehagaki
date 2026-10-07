@@ -14,6 +14,7 @@
     interface Props {
         preview: PostHistoryQuotePreviewState;
         model?: PostContentRenderModel;
+        loadSensitiveBody?: () => Promise<string | null>;
         emojiLoadStateByUrl?: Record<
             string,
             PostContentEmojiLoadState | undefined
@@ -36,6 +37,7 @@
     let {
         preview,
         model = undefined,
+        loadSensitiveBody = undefined,
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         scrollRoot = null,
@@ -65,6 +67,7 @@
         event={preview.event}
         profile={preview.profile}
         {model}
+        {loadSensitiveBody}
         {emojiLoadStateByUrl}
         {emojiImageMetaByUrl}
         {scrollRoot}

@@ -149,6 +149,7 @@ describe('Playwright config connection values', () => {
                 '**/footerSettingShortcuts.spec.ts',
                 '**/postEditorSending.spec.ts',
                 '**/postHistoryDialog.spec.ts',
+                '**/sensitiveContentPayload.spec.ts',
             ]);
         } finally {
             if (originalPortOverride === undefined) {

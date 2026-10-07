@@ -62,6 +62,7 @@ export class PostEventBuilder {
         channelContext?: ChannelContextState | null,
         emojiTags?: string[][],
         failClosedContentWarning?: boolean,
+        publicationKind?: number,
     ): Promise<any> {
         // リプライ/引用タグを先頭に配置
         const eventTags: string[][] = [];
@@ -90,11 +91,9 @@ export class PostEventBuilder {
         if (failClosedContentWarning) {
             if (contentWarningEnabled) {
                 const reason = contentWarningReason?.trim() ?? "";
-                eventTags.push([
-                    "content-warning",
-                    reason,
-                    content,
-                ]);
+                eventTags.push(reason
+                    ? ["content-warning", reason]
+                    : ["content-warning"]);
             }
         } else {
             // 現行NIP-36形式と既存のCW/NSFW自動連動を維持する。
@@ -134,8 +133,8 @@ export class PostEventBuilder {
         }
 
         const event: any = {
-            kind: channelContext ? 42 : 1,
-            content: failClosedContentWarning && contentWarningEnabled ? "" : content,
+            kind: publicationKind ?? (channelContext ? 42 : 1),
+            content,
             tags: eventTags,
             created_at: Math.floor(Date.now() / 1000)
         };

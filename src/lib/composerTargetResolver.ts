@@ -21,6 +21,10 @@ import type {
     RelayConfig,
 } from "./types";
 import type { ComposerTargetPointer } from "./composerTargetUtils";
+import {
+    postHistoryDeletionRequestsRepository,
+    type PostHistoryDeletionRequestsRepository,
+} from "./storage/postHistoryDeletionRequestsRepository";
 
 export type ComposerTargetResolvePhase =
     | "event-loading"
@@ -64,6 +68,7 @@ interface ComposerTargetResolverDeps {
     replyQuoteService?: Pick<ReplyQuoteService, "fetchReferencedEventTask">;
     channelCoordinator?: Pick<ChannelContextCoordinator, "resolveInternal">;
     verifyEventFn?: (event: NostrEvent) => boolean;
+    deletionRequestsRepository?: Pick<PostHistoryDeletionRequestsRepository, "getDeletedTargets">;
 }
 
 export interface ResolveComposerTargetParams {
@@ -108,6 +113,8 @@ export function createComposerTargetResolver(
     const verifyEventFn = deps.verifyEventFn
         ?? ((event: NostrEvent) =>
             validateEvent(event as never) && verifyEvent(event as never));
+    const deletionRequestsRepository = deps.deletionRequestsRepository
+        ?? postHistoryDeletionRequestsRepository;
 
     function resolve(params: ResolveComposerTargetParams): ComposerTargetResolveTask {
         let cancelled = false;
@@ -136,7 +143,8 @@ export function createComposerTargetResolver(
                 return { status: "error", reason: "network" };
             }
 
-            const event = fetched.event;
+            let event = fetched.event;
+            let fetchedRelayUrl = fetched.relayUrl;
             if (!verifyEventFn(event)) {
                 return { status: "error", reason: "invalid-event" };
             }
@@ -156,8 +164,8 @@ export function createComposerTargetResolver(
 
             const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls(
                 [
+                    ...(fetchedRelayUrl ? [fetchedRelayUrl] : []),
                     ...params.pointer.relayHints,
-                    ...(fetched.relayUrl ? [fetched.relayUrl] : []),
                 ],
                 { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
             );

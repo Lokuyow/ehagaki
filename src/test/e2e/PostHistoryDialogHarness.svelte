@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
+    import { finalizeEvent, generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
     import type { RxNostr } from "rx-nostr";
     import PostHistoryDialog from "../../components/PostHistoryDialog.svelte";
     import type { NostrEvent } from "../../lib/types";
@@ -14,6 +14,7 @@
     import { postHistoryVisibleRangeRepository } from "../../lib/storage/postHistoryVisibleRangeRepository";
     import { postHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryChildInteractionsRepository";
     import { postHistoryRepository } from "../../lib/storage/postHistoryRepository";
+    import { sensitivePayloadRepository } from "../../lib/storage/sensitivePayloadRepository";
     import { formatPostHistoryMonthLabel } from "../../lib/postHistoryDialogUtils";
     import { toPostHistoryDeletionRequestReferenceRecord } from "../../lib/postHistoryDeletionUtils";
 
@@ -23,6 +24,12 @@
     const isLongPreviewScenario = new URLSearchParams(window.location.search).has("long-preview");
     const isLayoutStabilityScenario = new URLSearchParams(window.location.search).has("layout-stability");
     const isKind42QuoteScenario = new URLSearchParams(window.location.search).has("kind42-quote");
+    const isSensitivePreviewScenario = new URLSearchParams(window.location.search).has("sensitive-preview");
+    const isSensitiveQuoteScenario = new URLSearchParams(window.location.search).has("sensitive-quote");
+    const isCwParentQuoteScenario = new URLSearchParams(window.location.search).has("cw-parent-quote");
+    const isInlineQuoteUriScenario = new URLSearchParams(window.location.search).has("inline-quote-uri");
+    const isLongRawJsonScenario = new URLSearchParams(window.location.search).has("long-raw-json");
+    const isCwLayoutScenario = new URLSearchParams(window.location.search).has("cw-layout");
     const isSelfQuoteTransitionScenario = new URLSearchParams(window.location.search).has("self-quote-transition");
     const isSparseOldestScenario = new URLSearchParams(window.location.search).has("sparse-oldest");
     const TOTAL_POSTS = isInfiniteScrollScenario
@@ -36,6 +43,54 @@
     const isExportScenario = new URLSearchParams(window.location.search).has("export");
     const HARNESS_YEAR = new Date().getFullYear();
     const STARTED_AT_MS = Date.UTC(HARNESS_YEAR, 0, 20, 12, 0, 0);
+    const quoteEventId = new URLSearchParams(window.location.search).has("self-quote-transition")
+        ? undefined
+        : "9".repeat(64);
+    const SENSITIVE_MATCHING_QUOTE_URI = `nostr:${nip19.neventEncode({ id: quoteEventId ?? "9".repeat(64) })}`;
+    const SENSITIVE_UNMATCHED_QUOTE_URI = `nostr:${nip19.noteEncode("f".repeat(64))}`;
+    const SENSITIVE_PREVIEW_BODY = `playwright sensitive preview body :party: https://example.com/post-history-0.jpg${isSensitiveQuoteScenario ? ` ${SENSITIVE_MATCHING_QUOTE_URI} ${SENSITIVE_UNMATCHED_QUOTE_URI}` : ""}${isLongRawJsonScenario ? ` ${"x".repeat(12000)}` : ""}`;
+    const SENSITIVE_PREVIEW_CREATED_AT = Math.floor(STARTED_AT_MS / 1000);
+    const CW_LAYOUT_REASON = `sensitive nested warning reason ${"long-reason-segment-".repeat(8)}`;
+    const LONG_RAW_JSON_EVENT = isLongRawJsonScenario && !isSensitivePreviewScenario
+        ? finalizeEvent({
+              kind: 1,
+              content: `ordinary long content ${"x".repeat(12000)}`,
+              created_at: Math.floor(STARTED_AT_MS / 1000),
+              tags: [],
+          }, HARNESS_SECRET_KEY)
+        : null;
+    const SENSITIVE_PREVIEW_PAYLOAD = isSensitivePreviewScenario
+        ? finalizeEvent({
+              kind: 36,
+              content: SENSITIVE_PREVIEW_BODY,
+              tags: [["k", "1"]],
+              created_at: SENSITIVE_PREVIEW_CREATED_AT,
+          }, HARNESS_SECRET_KEY)
+        : null;
+    const SENSITIVE_PREVIEW_UNRELATED_PAYLOAD = isSensitivePreviewScenario
+        ? finalizeEvent({
+              kind: 36,
+              content: "unrelated payload must not appear",
+              created_at: SENSITIVE_PREVIEW_CREATED_AT,
+              tags: [["k", "1"]],
+          }, HARNESS_SECRET_KEY)
+        : null;
+    const SENSITIVE_PREVIEW_STRUCTURE = SENSITIVE_PREVIEW_PAYLOAD
+        ? finalizeEvent({
+              kind: 1,
+              content: "",
+              tags: [
+                  ["content-warning", "Sensitive demo"],
+                  ["c", SENSITIVE_PREVIEW_PAYLOAD.id],
+                  ...(isSensitiveQuoteScenario && quoteEventId
+                      ? [["q", quoteEventId, "wss://relay.example.com/", "e".repeat(64)]]
+                      : []),
+                  ["emoji", "party", "https://example.com/sensitive-emoji.svg"],
+                  ...(isLongRawJsonScenario ? [["test", "y".repeat(12000)]] : []),
+              ],
+              created_at: SENSITIVE_PREVIEW_CREATED_AT,
+          }, HARNESS_SECRET_KEY)
+        : null;
     const IMPORT_POST_CONTENT = "playwright imported JSONL post";
     const IMPORT_EVENT_JSONL = JSON.stringify(finalizeEvent({
         kind: 1,
@@ -63,6 +118,8 @@
         quotePostEventId: string;
         quoteEventId: string;
         quoteContent: string;
+        matchingSensitiveQuoteUri: string;
+        unmatchedSensitiveQuoteUri: string;
         linkTargetUrl: string;
         linkPostEventId: string;
         replyParentEventId: string;
@@ -83,6 +140,7 @@
         layoutVideoUrl: string;
         layoutEmojiSuccessUrl: string;
         layoutEmojiFailureUrl: string;
+        deleteSensitivePayload?: () => Promise<void>;
     };
 
     type HarnessWindow = Window &
@@ -118,21 +176,29 @@
         const timestampMs = STARTED_AT_MS - index * 24 * 60 * 60 * 1000;
         const timestampSeconds = Math.floor(timestampMs / 1000);
         const label = index < SEARCH_MATCHING_POSTS ? "alpha" : "beta";
-        const eventId = buildHexId(index, "aa");
+        const isSensitivePreviewPost = isSensitivePreviewScenario && index === 0;
+        const isLongRawJsonPost = LONG_RAW_JSON_EVENT !== null && index === 0;
+        const eventId = isSensitivePreviewPost && SENSITIVE_PREVIEW_STRUCTURE
+            ? SENSITIVE_PREVIEW_STRUCTURE.id
+            : isLongRawJsonPost && LONG_RAW_JSON_EVENT
+              ? LONG_RAW_JSON_EVENT.id
+            : buildHexId(index, "aa");
 
         return {
             id: eventId,
             eventId,
             pubkeyHex: HARNESS_PUBKEY,
-            kind: isKind42QuoteScenario ? 42 : 1,
-            content: `${label} post ${index + 1}`,
-            tags: [],
+            kind: isSensitivePreviewPost ? 1 : isKind42QuoteScenario ? 42 : 1,
+            content: isSensitivePreviewPost ? "" : isLongRawJsonPost ? LONG_RAW_JSON_EVENT?.content ?? "" : `${label} post ${index + 1}`,
+            tags: isSensitivePreviewPost
+                ? SENSITIVE_PREVIEW_STRUCTURE?.tags ?? [["content-warning", "Sensitive demo"]]
+                : [],
             createdAt: timestampSeconds,
             postedAt: timestampMs,
             relayHints: [],
             acceptedRelays: [],
             media:
-                index % 17 === 0
+                !isSensitivePreviewPost && index % 17 === 0
                     ? [
                           {
                               url: `https://example.com/post-history-${index}.jpg`,
@@ -140,7 +206,7 @@
                           },
                       ]
                     : [],
-            rawEvent: null,
+            rawEvent: isSensitivePreviewPost ? SENSITIVE_PREVIEW_STRUCTURE : isLongRawJsonPost ? LONG_RAW_JSON_EVENT : null,
             fetchedAt: timestampMs,
             lastSeenAt: timestampMs,
             updatedAt: timestampMs,
@@ -274,9 +340,9 @@
         "line 5",
         `line 6 ${"long-path-segment-".repeat(12)}`,
     ].join("\n");
-    const quoteEventId = isSelfQuoteTransitionScenario
+    const resolvedQuoteEventId = isSelfQuoteTransitionScenario
         ? posts[60].eventId
-        : "9".repeat(64);
+        : quoteEventId ?? "9".repeat(64);
     const loadingQuoteEventId = "8".repeat(64);
     const quoteContent = isSelfQuoteTransitionScenario
         ? posts[60].content
@@ -285,23 +351,23 @@
     const quoteRecord: PostHistoryRecord = isSelfQuoteTransitionScenario
         ? { ...posts[60] }
         : {
-            id: quoteEventId,
-            eventId: quoteEventId,
+            id: resolvedQuoteEventId,
+            eventId: resolvedQuoteEventId,
             pubkeyHex: "e".repeat(64),
             kind: isKind42QuoteScenario ? 42 : 1,
             content: quoteContent,
-            tags: [],
+            tags: isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : [],
             createdAt: quoteParentPost.createdAt - 60,
             postedAt: quoteParentPost.postedAt - 60_000,
             relayHints: [],
             acceptedRelays: [],
             media: [],
             rawEvent: {
-                id: quoteEventId,
+                id: resolvedQuoteEventId,
                 pubkey: "e".repeat(64),
                 kind: isKind42QuoteScenario ? 42 : 1,
                 content: quoteContent,
-                tags: [],
+                tags: isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : [],
                 created_at: quoteParentPost.createdAt - 60,
                 sig: "a".repeat(128),
             },
@@ -315,9 +381,13 @@
     quoteParentPost.tags = isLayoutStabilityScenario
         ? []
         : [
-              ["q", quoteEventId, "wss://relay.example.com/", quoteRecord.pubkeyHex],
+              ...(isCwParentQuoteScenario ? [["content-warning", "Parent warning"]] : []),
+              ["q", resolvedQuoteEventId, "wss://relay.example.com/", quoteRecord.pubkeyHex],
               ["q", loadingQuoteEventId, "wss://relay.example.com/", "d".repeat(64)],
           ];
+    if (isInlineQuoteUriScenario) {
+        quoteParentPost.content = `parent text ${SENSITIVE_MATCHING_QUOTE_URI} ${SENSITIVE_UNMATCHED_QUOTE_URI}`;
+    }
     quoteParentPost.rawEvent = {
         id: quoteParentPost.eventId,
         pubkey: HARNESS_PUBKEY,
@@ -331,7 +401,7 @@
     threadParentPost.tags = isLayoutStabilityScenario
         ? []
         : [
-              ["e", quoteEventId, "", "reply"],
+              ["e", resolvedQuoteEventId, "", "reply"],
               ["p", quoteRecord.pubkeyHex],
           ];
     threadParentPost.rawEvent = {
@@ -357,6 +427,7 @@
         tags: [
             ["p", HARNESS_PUBKEY],
             ["e", linkPost.eventId, "", "reply"],
+            ...(isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : []),
         ],
         createdAt: replyCreatedAt,
         relayUrls: ["wss://relay.example.com/"],
@@ -369,6 +440,7 @@
             tags: [
                 ["p", HARNESS_PUBKEY],
                 ["e", linkPost.eventId, "", "reply"],
+                ...(isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : []),
             ],
             created_at: replyCreatedAt,
             sig: "c".repeat(128),
@@ -384,14 +456,20 @@
         parentEventId: replyEventId,
         authorPubkey: "5".repeat(64),
         content: "playwright nested reply",
-        tags: [["e", replyEventId, "wss://relay.example.com/", "reply"]],
+        tags: [
+            ["e", replyEventId, "wss://relay.example.com/", "reply"],
+            ...(isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : []),
+        ],
         createdAt: replyCreatedAt + 60,
         rawEvent: {
             id: grandchildEventId,
             pubkey: "5".repeat(64),
             kind: 1,
             content: "playwright nested reply",
-            tags: [["e", replyEventId, "wss://relay.example.com/", "reply"]],
+            tags: [
+                ["e", replyEventId, "wss://relay.example.com/", "reply"],
+                ...(isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : []),
+            ],
             created_at: replyCreatedAt + 60,
             sig: "d".repeat(128),
         },
@@ -399,7 +477,7 @@
     const interactionRecords = [
         buildReactionRecord(0),
         buildReactionRecord(20),
-        buildReactionRecord(30, quoteEventId),
+        buildReactionRecord(30, resolvedQuoteEventId),
         buildReactionRecord(31, replyEventId),
         buildReactionRecord(32, grandchildEventId),
         buildReactionRecord(33, replyEventId),
@@ -409,7 +487,7 @@
     (window as HarnessWindow).__POST_HISTORY_REACTION_TEST_CONTROL__ = {
         addReactionToQuote: async () => {
             await ehagakiDb.postHistoryChildInteractions.put(
-                buildReactionRecord(36, quoteEventId),
+                buildReactionRecord(36, resolvedQuoteEventId),
             );
         },
     };
@@ -441,8 +519,10 @@
         scrolledReactionPostEventId: posts[20].eventId,
         scrolledPlainPostEventId: posts[21].eventId,
         quotePostEventId: quoteParentPost.eventId,
-        quoteEventId,
+        quoteEventId: resolvedQuoteEventId,
         quoteContent,
+        matchingSensitiveQuoteUri: SENSITIVE_MATCHING_QUOTE_URI,
+        unmatchedSensitiveQuoteUri: SENSITIVE_UNMATCHED_QUOTE_URI,
         linkTargetUrl,
         linkPostEventId: linkPost.eventId,
         replyParentEventId: linkPost.eventId,
@@ -463,6 +543,10 @@
         layoutVideoUrl,
         layoutEmojiSuccessUrl,
         layoutEmojiFailureUrl,
+        deleteSensitivePayload: async () => {
+            if (!SENSITIVE_PREVIEW_PAYLOAD) return;
+            await sensitivePayloadRepository.markDeleted({ id: SENSITIVE_PREVIEW_PAYLOAD.id, pubkeyHex: HARNESS_PUBKEY, deletionEventId: "d".repeat(64), deletedAt: Date.now() });
+        },
     };
     (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__ = {
         replyEventId: null,
@@ -513,6 +597,10 @@
             .where("pubkeyHex")
             .equals(HARNESS_PUBKEY)
             .delete();
+        await ehagakiDb.sensitivePayloads
+            .where("pubkeyHex")
+            .equals(HARNESS_PUBKEY)
+            .delete();
         await ehagakiDb.postHistoryDeletionRequests
             .where("targetAuthorPubkey")
             .equals(HARNESS_PUBKEY)
@@ -521,6 +609,18 @@
         await ehagakiDb.postHistory.bulkPut(
             isExportScenario ? exportPostRecords : [...posts, quoteRecord],
         );
+        if (SENSITIVE_PREVIEW_PAYLOAD) {
+            await sensitivePayloadRepository.putCandidate({
+                event: SENSITIVE_PREVIEW_PAYLOAD,
+                acceptedRelays: ["wss://relay.example.com/"],
+            });
+        }
+        if (SENSITIVE_PREVIEW_UNRELATED_PAYLOAD) {
+            await sensitivePayloadRepository.putCandidate({
+                event: SENSITIVE_PREVIEW_UNRELATED_PAYLOAD,
+                acceptedRelays: ["wss://unrelated.example.com/"],
+            });
+        }
         if (isExportScenario) {
             await ehagakiDb.postHistoryDeletionRequests.put(exportDeletionRecord);
         }
@@ -592,8 +692,10 @@
             scrolledReactionPostEventId: posts[20].eventId,
             scrolledPlainPostEventId: posts[21].eventId,
             quotePostEventId: quoteParentPost.eventId,
-            quoteEventId,
+            quoteEventId: resolvedQuoteEventId,
             quoteContent,
+            matchingSensitiveQuoteUri: SENSITIVE_MATCHING_QUOTE_URI,
+            unmatchedSensitiveQuoteUri: SENSITIVE_UNMATCHED_QUOTE_URI,
             linkTargetUrl,
             linkPostEventId: linkPost.eventId,
             replyParentEventId: linkPost.eventId,
@@ -614,6 +716,10 @@
             layoutVideoUrl,
             layoutEmojiSuccessUrl,
             layoutEmojiFailureUrl,
+            deleteSensitivePayload: async () => {
+                if (!SENSITIVE_PREVIEW_PAYLOAD) return;
+                await sensitivePayloadRepository.markDeleted({ id: SENSITIVE_PREVIEW_PAYLOAD.id, pubkeyHex: HARNESS_PUBKEY, deletionEventId: "d".repeat(64), deletedAt: Date.now() });
+            },
         };
     });
 </script>

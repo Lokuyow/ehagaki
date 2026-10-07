@@ -4,12 +4,17 @@ import {
 } from "./postHistoryNip10Utils";
 import type { NostrEvent } from "./types";
 
-export type PostHistoryDirectReplyEventKind = 1 | 42;
+export type PostHistoryDirectReplyEventKind = 1 | 42 | 1111;
 
 export interface PostHistoryDirectReplyParentContext {
     eventId: string;
     eventKind: PostHistoryDirectReplyEventKind;
     channelEventId: string | null;
+    rootEventId?: string;
+    rootKind?: number | string;
+    rootPubkey?: string | null;
+    eventPubkey?: string | null;
+    rootReferenceTags?: string[][];
     createdAt: number;
     relayHints: string[];
 }
@@ -30,11 +35,11 @@ export type PostHistoryDirectReplyRelationValidation =
 export function isPostHistoryDirectReplyEventKind(
     kind: unknown,
 ): kind is PostHistoryDirectReplyEventKind {
-    return kind === 1 || kind === 42;
+    return kind === 1 || kind === 42 || kind === 1111;
 }
 
 export function buildPostHistoryDirectReplyParentContext(input: {
-    event: Pick<NostrEvent, "id" | "kind" | "tags" | "created_at">;
+    event: Pick<NostrEvent, "id" | "kind" | "tags" | "created_at"> & Partial<Pick<NostrEvent, "pubkey">>;
     relayHints?: string[];
 }): PostHistoryDirectReplyParentContext | null {
     if (!isPostHistoryDirectReplyEventKind(input.event.kind) || !input.event.id) {
@@ -46,10 +51,43 @@ export function buildPostHistoryDirectReplyParentContext(input: {
         return null;
     }
 
+    if (input.event.kind === 1111
+        && (!(references.rootReferenceTags?.length) || references.rootKind == null
+            || (!references.rootPubkey && references.rootReferenceTags[0]?.[0] !== "I")
+            || (!references.parentId && references.parentReferenceTags?.[0]?.[0] !== "i")
+            || references.parentKind == null
+            || (!references.parentPubkey && references.parentReferenceTags?.[0]?.[0] !== "i")
+            || references.issues.length > 0)) return null;
+
+    const isComment = input.event.kind === 1111;
+    const rootEventId = isComment
+        ? references.rootId ?? input.event.id
+        : input.event.kind === 1
+            ? references.rootId ?? input.event.id
+            : input.event.id;
+    const rootKind = isComment
+        ? references.rootKind!
+        : input.event.kind === 1 ? 1 : input.event.kind;
+    const rootPubkey = isComment
+        ? references.rootPubkey!
+        : input.event.kind === 1 && rootEventId !== input.event.id
+            ? references.rootAuthorHint
+            : input.event.pubkey ?? null;
+    const rootReferenceTags = isComment
+        ? references.rootReferenceTags ?? []
+        : input.event.kind === 1 && rootEventId !== input.event.id
+            ? [["E", rootEventId, references.rootRelayHint ?? "", rootPubkey ?? ""]]
+            : [["E", rootEventId, "", rootPubkey ?? ""]];
+
     return {
         eventId: input.event.id,
         eventKind: input.event.kind,
         channelEventId: input.event.kind === 42 ? references.channelEventId : null,
+        rootEventId,
+        rootKind,
+        rootPubkey,
+        eventPubkey: input.event.pubkey ?? null,
+        rootReferenceTags,
         createdAt: input.event.created_at,
         relayHints: [...(input.relayHints ?? [])],
     };
@@ -73,8 +111,29 @@ export function validatePostHistoryDirectReplyRelation(input: {
     if (references.parentId !== input.parent.eventId) {
         return { valid: false, reason: "parent-id-mismatch" };
     }
-    if (input.child.kind !== input.parent.eventKind) {
+    const childIsComment = input.child.kind === 1111;
+    if (!childIsComment && input.child.kind !== input.parent.eventKind) {
         return { valid: false, reason: "kind-mismatch" };
+    }
+    if (childIsComment) {
+        if (input.parent.eventKind === 42) return { valid: false, reason: "kind-mismatch" };
+        const sameRootReference = (left: string[][], right: string[][]): boolean => {
+            const l = left[0];
+            const r = right[0];
+            return !!l && !!r && l[0] === r[0] && l[1] === r[1];
+        };
+        if (
+            references.parentKind !== String(input.parent.eventKind)
+            || references.rootKind !== String(input.parent.rootKind ?? input.parent.eventKind)
+            || !sameRootReference(
+                references.rootReferenceTags ?? [],
+                input.parent.rootReferenceTags ?? [["E", input.parent.rootEventId ?? input.parent.eventId]],
+            )
+            || (input.parent.eventPubkey && references.parentPubkey !== input.parent.eventPubkey)
+            || (input.parent.rootPubkey && references.rootPubkey !== input.parent.rootPubkey)
+        ) {
+            return { valid: false, reason: "kind-mismatch" };
+        }
     }
     if (input.child.kind === 42) {
         if (!references.channelEventId || !input.parent.channelEventId) {

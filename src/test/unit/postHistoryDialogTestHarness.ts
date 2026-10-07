@@ -451,7 +451,7 @@ vi.mock('../../lib/storage/postHistoryJumpCacheAnchorRepository', async () => {
 });
 
 vi.mock('../../lib/postHistoryRelayFetchService', () => ({
-    POST_HISTORY_FETCH_KINDS: [1, 42],
+    POST_HISTORY_FETCH_KINDS: [1, 42, 1111],
     POST_HISTORY_BOOTSTRAP_FETCH_LIMIT: 150,
     POST_HISTORY_BOOTSTRAP_FETCH_TIMEOUT_MS: 20_000,
     POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT: 30,
@@ -489,7 +489,7 @@ vi.mock('../../lib/postDeletionService', () => ({
         !!currentPubkey
         && post.pubkeyHex === currentPubkey
         && typeof post.deletedAt !== 'number'
-        && [1, 42].includes(post.kind),
+        && [1, 42, 1111].includes(post.kind),
     postDeletionService: hoisted.postDeletionServiceMock,
 }));
 

@@ -5,6 +5,10 @@ import {
 } from "./postHistoryRawEventVerification";
 import type { NostrEvent } from "./types";
 import {
+    sensitivePayloadRepository,
+    type SensitivePayloadRepository,
+} from "./storage/sensitivePayloadRepository";
+import {
     postHistoryDeletionRequestsRepository,
     type PostHistoryDeletionRequestsRepository,
 } from "./storage/postHistoryDeletionRequestsRepository";
@@ -48,6 +52,9 @@ export interface PostHistoryJsonlImportResult {
     unsupportedDeletionEventCount: number;
     failedDeletionEventCount: number;
     appliedDeletionPostCount: number;
+    uniquePayloadEventCount: number;
+    savedPayloadCandidateCount: number;
+    failedPayloadEventCount: number;
 }
 
 export interface PostHistoryJsonlImportProgress {
@@ -70,10 +77,12 @@ export interface PostHistoryJsonlImportServiceDeps {
         PostHistoryDeletionRequestsRepository,
         "upsertImportedDeletionEvents"
     >;
+    sensitivePayloadRepository?: Pick<SensitivePayloadRepository, "putCandidate">;
 }
 
 type BufferedImportEvent =
     | { type: "post"; event: NostrEvent; attestation: PostHistoryRawEventAttestation }
+    | { type: "payload"; event: NostrEvent; attestation: PostHistoryRawEventAttestation }
     | { type: "deletion"; event: NostrEvent; attestation: PostHistoryRawEventAttestation };
 
 function createEmptyResult(): PostHistoryJsonlImportResult {
@@ -99,6 +108,9 @@ function createEmptyResult(): PostHistoryJsonlImportResult {
         unsupportedDeletionEventCount: 0,
         failedDeletionEventCount: 0,
         appliedDeletionPostCount: 0,
+        uniquePayloadEventCount: 0,
+        savedPayloadCandidateCount: 0,
+        failedPayloadEventCount: 0,
     };
 }
 
@@ -120,11 +132,14 @@ export class PostHistoryJsonlImportService {
         PostHistoryDeletionRequestsRepository,
         "upsertImportedDeletionEvents"
     >;
+    private sensitivePayloadRepository: Pick<SensitivePayloadRepository, "putCandidate">;
 
     constructor(deps: PostHistoryJsonlImportServiceDeps = {}) {
         this.postHistoryRepository = deps.postHistoryRepository ?? postHistoryRepository;
         this.deletionRequestsRepository = deps.deletionRequestsRepository
             ?? postHistoryDeletionRequestsRepository;
+        this.sensitivePayloadRepository = deps.sensitivePayloadRepository
+            ?? sensitivePayloadRepository;
     }
 
     async importFile(input: PostHistoryJsonlImportInput): Promise<PostHistoryJsonlImportResult> {
@@ -198,6 +213,10 @@ export class PostHistoryJsonlImportService {
                 .filter((item): item is Extract<BufferedImportEvent, { type: "deletion" }> =>
                     item.type === "deletion")
                 .map((item) => item.event);
+            const payloads = buffer
+                .filter((item): item is Extract<BufferedImportEvent, { type: "payload" }> =>
+                    item.type === "payload")
+                .map((item) => ({ event: item.event, attestation: item.attestation }));
             buffer.length = 0;
 
             if (posts.length > 0) {
@@ -238,6 +257,16 @@ export class PostHistoryJsonlImportService {
                 }
             }
 
+            for (const payload of payloads) {
+                try {
+                    await this.sensitivePayloadRepository.putCandidate(payload);
+                    result.savedPayloadCandidateCount += 1;
+                } catch {
+                    result.failedPayloadEventCount += 1;
+                    hadSaveFailure = true;
+                }
+            }
+
             emitProgress();
             return getStopStatus();
         };
@@ -268,7 +297,7 @@ export class PostHistoryJsonlImportService {
                 result.otherAccountCount += 1;
                 return null;
             }
-            if (event.kind !== 1 && event.kind !== 42 && event.kind !== 5) {
+            if (![1, 36, 42, 1111, 5].includes(event.kind)) {
                 result.unsupportedKindCount += 1;
                 return null;
             }
@@ -283,7 +312,10 @@ export class PostHistoryJsonlImportService {
             }
             processedEventIds.add(event.id);
 
-            if (event.kind === 1 || event.kind === 42) {
+            if (event.kind === 36) {
+                result.uniquePayloadEventCount += 1;
+                buffer.push({ type: "payload", ...verified });
+            } else if ([1, 42, 1111].includes(event.kind)) {
                 result.uniquePostEventCount += 1;
                 buffer.push({ type: "post", ...verified });
             } else if (event.kind === 5) {

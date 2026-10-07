@@ -4,6 +4,8 @@ type HarnessState = {
     ready: boolean;
     inputs: Record<
         | "kind1"
+        | "sensitive"
+        | "sensitivePayload"
         | "kind40"
         | "kind42"
         | "stale"
@@ -21,7 +23,7 @@ type HarnessState = {
     >;
     oversizedPostContentLength: number;
     linkTargetUrl: string;
-    applications: Array<{ action: string; kind: number }>;
+    applications: Array<{ action: string; kind: number; eventId: string }>;
 };
 
 type HarnessWindow = Window & typeof globalThis & {
@@ -197,6 +199,33 @@ test.describe("composer target dialog fixture", () => {
         await expect(page.getByLabel("適用結果")).toHaveText(
             "1:reply,1:quote,40:channel,42:reply,42:quote",
         );
+    });
+
+    test("Sensitive Structureのreply/quoteはStructure IDを使い、kind 36 payloadはtargetにしない", async ({ page }) => {
+        const harness = await gotoHarness(page);
+        for (const action of ["リプライ", "引用"] as const) {
+            await openDialog(page);
+            await page.getByLabel("イベントID").fill(harness.inputs.sensitive);
+            await expect(page.getByRole("button", { name: action })).toBeVisible();
+            await expect(page.locator(".content-warning-prompt")).toBeVisible();
+            await page.getByRole("button", { name: action }).click();
+            await expect(page.getByRole("dialog")).toBeHidden();
+            const lastApplication = await page.evaluate(() =>
+                (window as any).__COMPOSER_TARGET_HARNESS__.applications.at(-1),
+            );
+            expect(lastApplication).toEqual({
+                action: action === "リプライ" ? "reply" : "quote",
+                kind: 1,
+                eventId: "d".repeat(64),
+            });
+        }
+
+        await openDialog(page);
+        await page.getByLabel("イベントID").fill(harness.inputs.sensitivePayload);
+        await expect(page.getByText("この種類のイベントはまだ宛先に指定できません")).toBeVisible();
+        await expect(page.getByRole("button", { name: "リプライ" })).toBeHidden();
+        await expect(page.getByRole("button", { name: "引用" })).toBeHidden();
+        await expect(page.getByLabel("適用結果")).toHaveText("1:reply,1:quote");
     });
 
     test("unsupportedとnsecを拒否し、入力競合では新しい結果だけを表示する", async ({ page }) => {

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { finalizeEvent, generateSecretKey } from 'nostr-tools';
 
 import { processReplyQuoteReference } from '../../lib/bootstrap/externalReplyQuoteBootstrapUtils';
+import type { NostrEvent } from '../../lib/types';
 
 describe('externalReplyQuoteBootstrapUtils', () => {
     it('参照イベントが見つからない時は reply quote error を設定する', async () => {
@@ -89,5 +91,74 @@ describe('externalReplyQuoteBootstrapUtils', () => {
             expect.objectContaining({ eventId: 'event-1', mode: 'reply' }),
             event,
         );
+    });
+
+    it('Sensitive Structureをreply targetとauthor presentationのidentityとして維持する', async () => {
+        const secretKey = generateSecretKey();
+        const payload = finalizeEvent({
+            kind: 36,
+            created_at: 100,
+            content: 'sensitive body',
+            tags: [['k', '1']],
+        }, secretKey) as NostrEvent;
+        const structure = finalizeEvent({
+            kind: 1,
+            created_at: 101,
+            content: '',
+            tags: [
+                ['content-warning', 'Sensitive fixture'],
+                ['c', payload.id, 'wss://payload-hint.example/'],
+            ],
+        }, secretKey) as NostrEvent;
+        const reference = {
+            eventId: structure.id,
+            mode: 'reply' as const,
+            ownerToken: Symbol('owner'),
+            relayHints: ['wss://structure-pointer.example/'],
+            authorPubkey: structure.pubkey,
+        };
+        const updateReferencedEvent = vi.fn();
+        const initializeReplyNotificationRecipients = vi.fn();
+        const applyPreloadedAuthorPreviewPresentation = vi.fn();
+        const setReplyQuoteError = vi.fn();
+        const threadInfo = { rootEventId: null, rootRelayHint: null, rootPubkey: null };
+        const fetchReferencedEventTask = vi.fn();
+
+        await processReplyQuoteReference({
+            reference,
+            initialEvent: structure,
+            replyQuoteService: {
+                fetchReferencedEvent: vi.fn(),
+                fetchReferencedEventTask,
+                extractThreadInfo: vi.fn(() => threadInfo),
+            },
+            relayConfig: null,
+            updateReferencedEvent,
+            initializeReplyNotificationRecipients,
+            setReplyQuoteError,
+            preloadedProfiles: {
+                [structure.pubkey]: {
+                    displayName: 'Structure author',
+                    picture: 'https://example.test/structure.png',
+                },
+            },
+            applyPreloadedAuthorPreviewPresentation,
+        });
+
+        expect(setReplyQuoteError).not.toHaveBeenCalled();
+        expect(updateReferencedEvent).toHaveBeenCalledWith(
+            reference,
+            structure,
+            threadInfo,
+        );
+        expect(applyPreloadedAuthorPreviewPresentation).toHaveBeenCalledWith(
+            [reference],
+            expect.any(Object),
+        );
+        expect(initializeReplyNotificationRecipients).toHaveBeenCalledWith(
+            reference,
+            structure,
+        );
+        expect(fetchReferencedEventTask).not.toHaveBeenCalled();
     });
 });

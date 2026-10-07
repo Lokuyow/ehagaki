@@ -89,9 +89,9 @@ afterEach(async () => {
 });
 
 describe("EHagakiDB", () => {
-    it("uses logical v15 and native v150", () => {
-        expect(EHAGAKI_DB_VERSION).toBe(15);
-        expect(EHAGAKI_DB_NATIVE_VERSION).toBe(150);
+    it("uses logical v16 and native v160", () => {
+        expect(EHAGAKI_DB_VERSION).toBe(16);
+        expect(EHAGAKI_DB_NATIVE_VERSION).toBe(160);
     });
 
     it("opens one app database with currently used stores", async () => {
@@ -115,6 +115,7 @@ describe("EHagakiDB", () => {
             "postMediaCache",
             "profiles",
             "relayConfigs",
+            "sensitivePayloads",
             "sharedMedia",
             "uploadDestinations",
         ]);
@@ -138,18 +139,19 @@ describe("EHagakiDB", () => {
         ));
         v14.close();
 
-        const v15 = new EHagakiDB(name);
-        await v15.open();
-        expect(v15.backendDB().version).toBe(150);
-        expect(v15.postHistory.schema.idxByName[POST_HISTORY_TIMELINE_INDEX]).toBeDefined();
+        const v16 = new EHagakiDB(name);
+        await v16.open();
+        expect(v16.backendDB().version).toBe(160);
+        expect(v16.sensitivePayloads).toBeDefined();
+        expect(v16.postHistory.schema.idxByName[POST_HISTORY_TIMELINE_INDEX]).toBeDefined();
         for (const storeName of Object.keys(V14_FIXTURES)) {
-            await expect(v15.table(storeName).toArray()).resolves.toEqual(before[storeName]);
+            await expect(v16.table(storeName).toArray()).resolves.toEqual(before[storeName]);
         }
-        await expect(v15.postHistory
+        await expect(v16.postHistory
             .where(POST_HISTORY_TIMELINE_INDEX)
             .between(["owner"], ["owner", Dexie.maxKey])
             .toArray()).resolves.toMatchObject([{ eventId: "event-v14" }]);
-        v15.close();
+        v16.close();
 
         const staleV14 = createV14Db(name);
         await staleV14.open();
@@ -165,9 +167,9 @@ describe("EHagakiDB", () => {
         });
         staleV14.close();
 
-        const reopenedV15 = new EHagakiDB(name);
-        await reopenedV15.open();
-        await expect(reopenedV15.postHistory
+        const reopenedV16 = new EHagakiDB(name);
+        await reopenedV16.open();
+        await expect(reopenedV16.postHistory
             .where(POST_HISTORY_TIMELINE_INDEX)
             .between(["owner"], ["owner", Dexie.maxKey])
             .reverse()
@@ -175,10 +177,10 @@ describe("EHagakiDB", () => {
             { eventId: "event-added-by-v14", postedAt: 300 },
             { eventId: "event-v14", postedAt: 200 },
         ]);
-        reopenedV15.close();
+        reopenedV16.close();
     });
 
-    it("Service Worker先行でもDexie先行でもnative v150の同じtimeline indexを開く", async () => {
+    it("Service Worker先行でもDexie先行でもnative v160の同じschemaを開く", async () => {
         const swFirstName = `${EHAGAKI_DB_NAME}-sw-first-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const dexieFirstName = `${EHAGAKI_DB_NAME}-dexie-first-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         testDbNames.add(swFirstName);
@@ -199,6 +201,7 @@ describe("EHagakiDB", () => {
         await swFirstDexie.open();
         expect(swFirstDexie.postHistory.schema.idxByName[POST_HISTORY_TIMELINE_INDEX])
             .toBeDefined();
+        expect(swFirstDexie.sensitivePayloads).toBeDefined();
         swFirstDexie.close();
 
         const dexieFirst = new EHagakiDB(dexieFirstName);
@@ -214,10 +217,11 @@ describe("EHagakiDB", () => {
             .objectStore("postHistory")
             .indexNames;
         expect(indexNames.contains(POST_HISTORY_TIMELINE_INDEX)).toBe(true);
+        expect(dexieFirstRaw.objectStoreNames.contains("sensitivePayloads")).toBe(true);
         dexieFirstRaw.close();
     });
 
-    it("blocked を通知し blocker close 後に同じv15 upgradeを完了する", async () => {
+    it("blocked を通知し blocker close 後にv16 upgradeを完了する", async () => {
         const name = `${EHAGAKI_DB_NAME}-blocked-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         testDbNames.add(name);
         const v14 = createV14Db(name);
@@ -232,7 +236,7 @@ describe("EHagakiDB", () => {
         });
         blocker.onversionchange = () => undefined;
 
-        const v15 = new EHagakiDB(name);
+        const v16 = new EHagakiDB(name);
         const blockedSubscriber = vi.fn();
         const upgradeStates: boolean[] = [];
         const unsubscribeBlocked = subscribeEHagakiDbUpgradeBlocked(blockedSubscriber);
@@ -240,22 +244,22 @@ describe("EHagakiDB", () => {
             upgradeStates.push(blocked);
         });
         const blocked = new Promise<void>((resolve) => {
-            v15.on("blocked", () => resolve());
+            v16.on("blocked", () => resolve());
         });
-        const opening = v15.open();
+        const opening = v16.open();
         await blocked;
-        expect(v15.isOpen()).toBe(false);
+        expect(v16.isOpen()).toBe(false);
         expect(blockedSubscriber).toHaveBeenCalledOnce();
         expect(upgradeStates).toEqual([false, true]);
 
         blocker.close();
         await opening;
-        expect(v15.backendDB().version).toBe(150);
-        await expect(v15.meta.get("fixture")).resolves.toEqual(V14_FIXTURES.meta);
+        expect(v16.backendDB().version).toBe(160);
+        await expect(v16.meta.get("fixture")).resolves.toEqual(V14_FIXTURES.meta);
         expect(upgradeStates).toEqual([false, true, false]);
         unsubscribeBlocked();
         unsubscribeUpgradeState();
-        v15.close();
+        v16.close();
     });
 
     it("v14 Dexie connection は versionchange を受けて閉じ upgrade を妨げない", async () => {
@@ -267,16 +271,16 @@ describe("EHagakiDB", () => {
             v14.on("versionchange", () => resolve());
         });
 
-        const v15 = new EHagakiDB(name);
-        await v15.open();
+        const v16 = new EHagakiDB(name);
+        await v16.open();
         await versionChanged;
 
         expect(v14.isOpen()).toBe(false);
-        expect(v15.backendDB().version).toBe(150);
-        v15.close();
+        expect(v16.backendDB().version).toBe(160);
+        v16.close();
     });
 
-    it("native v140 の VersionError 後もDBを削除せずv150で再openできる", async () => {
+    it("native v140 の VersionError 後もDBを削除せずv160で再openできる", async () => {
         const db = createTestDb();
         await db.meta.put(V14_FIXTURES.meta as any);
         await db.open();
@@ -294,11 +298,11 @@ describe("EHagakiDB", () => {
         expect(versionError?.name).toBe("VersionError");
 
         const reopened = await new Promise<IDBDatabase>((resolve, reject) => {
-            const request = indexedDB.open(name, 150);
+            const request = indexedDB.open(name, 160);
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error);
         });
-        expect(reopened.version).toBe(150);
+        expect(reopened.version).toBe(160);
         const record = await new Promise((resolve, reject) => {
             const request = reopened.transaction("meta").objectStore("meta").get("fixture");
             request.onsuccess = () => resolve(request.result);
@@ -308,7 +312,7 @@ describe("EHagakiDB", () => {
         reopened.close();
     });
 
-    it("v15 upgrade transaction が失敗してもv14 DBとrecordを維持する", async () => {
+    it("v16 upgrade transaction が失敗してもv14 DBとrecordを維持する", async () => {
         const name = `${EHAGAKI_DB_NAME}-abort-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         testDbNames.add(name);
         const v14 = createV14Db(name);
@@ -317,7 +321,7 @@ describe("EHagakiDB", () => {
         v14.close();
 
         const upgradeError = await new Promise<DOMException | null>((resolve) => {
-            const request = indexedDB.open(name, 150);
+            const request = indexedDB.open(name, 160);
             request.onupgradeneeded = () => request.transaction?.abort();
             request.onsuccess = () => {
                 request.result.close();

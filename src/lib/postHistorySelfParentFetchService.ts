@@ -99,7 +99,7 @@ export class PostHistorySelfParentFetchService {
                         if (
                             event?.id !== params.parentEventId
                             || event.pubkey !== params.ownerPubkeyHex
-                            || (event.kind !== 1 && event.kind !== 42)
+                            || ![1, 42, 1111].includes(event.kind)
                         ) {
                             return;
                         }
@@ -119,7 +119,7 @@ export class PostHistorySelfParentFetchService {
                 rxReq.emit({
                     ids: [params.parentEventId],
                     authors: [params.ownerPubkeyHex],
-                    kinds: [1, 42],
+                    kinds: [1, 42, 1111],
                 } as never);
                 rxReq.over();
 

@@ -12,6 +12,16 @@ export interface PostContentRenderInput {
     displayContent?: string;
     tags: string[][];
     media?: PostHistoryMediaRecord[];
+    kind?: number;
+    resolvedBody?: boolean;
+}
+
+export type SensitiveBodyCacheStatus = "available" | "missing" | "invalid" | "deleted";
+export interface SensitiveBodyLoader {
+    (signal?: AbortSignal): Promise<string | null>;
+    scope?: { runtime: unknown; ownerPubkey?: string | null };
+    observe?: (onChange: (status: SensitiveBodyCacheStatus) => void) => () => void;
+    loadEmoji?: (url: string) => Promise<{ ready: boolean; aspectRatio?: number }>;
 }
 
 export interface PostContentRenderModel {
@@ -21,6 +31,8 @@ export interface PostContentRenderModel {
     hasRenderableText: boolean;
     hasRenderableMedia: boolean;
     contentWarning: { reason: string } | null;
+    sourceTags: string[][];
+    kind?: number;
 }
 
 export function resolveEventContentBody(
@@ -46,7 +58,7 @@ export function buildPostContentRenderModel(
         (tag) => tag[0] === "content-warning",
     );
     const hasTaggedBody = contentWarningTag !== undefined && contentWarningTag.length > 2;
-    const resolvedSourceContent = resolveEventContentBody(
+    const resolvedSourceContent = input.resolvedBody ? input.sourceContent : resolveEventContentBody(
         input.sourceContent,
         input.tags,
     );
@@ -84,7 +96,23 @@ export function buildPostContentRenderModel(
         ),
         hasRenderableMedia: mediaLayout.items.length > 0,
         contentWarning: contentWarningTag
-            ? { reason: contentWarningTag[1] ?? "" }
+            ? { reason: contentWarningTag?.[1] ?? "" }
             : null,
+        sourceTags: input.tags.map((tag) => [...tag]),
+        kind: input.kind,
     };
+}
+
+export function buildPostContentRenderModelWithBody(
+    model: PostContentRenderModel,
+    body: string,
+    displayContent: string = body,
+): PostContentRenderModel {
+    return buildPostContentRenderModel({
+        kind: model.kind,
+        sourceContent: body,
+        displayContent,
+        tags: model.sourceTags,
+        resolvedBody: true,
+    });
 }

@@ -221,6 +221,26 @@ export interface PostHistoryRecord {
     schemaVersion: number;
 }
 
+/** Kind 36 candidates are auxiliary bodies, never standalone history posts. */
+export interface SensitivePayloadRecord {
+    id: string;
+    pubkeyHex: string;
+    structureKind: number;
+    rawEvent: unknown;
+    rawEventVerification?: {
+        status: 'valid' | 'invalid';
+        ruleVersion: number;
+    };
+    acceptedRelays: string[];
+    fetchedRelays: string[];
+    relayHints: string[];
+    deletedAt?: number;
+    deletionEventId?: string;
+    createdAt: number;
+    updatedAt: number;
+    schemaVersion: number;
+}
+
 export interface PostHistoryChildInteractionRecord {
     id: string;
     eventId: string;
@@ -318,6 +338,7 @@ export class EHagakiDB extends Dexie {
     customEmojiImageMeta!: Table<CustomEmojiImageMetaRecord, string>;
     uploadDestinations!: Table<UploadDestinationRecord, string>;
     postHistory!: Table<PostHistoryRecord, string>;
+    sensitivePayloads!: Table<SensitivePayloadRecord, string>;
     postHistoryChildInteractions!: Table<PostHistoryChildInteractionRecord, string>;
     postHistoryDeletionRequests!: Table<PostHistoryDeletionRequestRecord, string>;
     postMediaCache!: Table<PostMediaCacheEntryRecord, string>;
@@ -345,6 +366,7 @@ export class EHagakiDB extends Dexie {
             customEmojiImageMeta: "url, width, height, aspectRatio, fetchedAt, lastAccessedAt, updatedAt, schemaVersion",
             uploadDestinations: "id, scopeKey, pubkeyHex, protocol, presetId, isDefault, enabled, updatedAt, [scopeKey+isDefault], [scopeKey+enabled]",
             postHistory: `id, eventId, pubkeyHex, kind, createdAt, postedAt, updatedAt, deletedAt, fetchedAt, lastSeenAt, schemaVersion, [pubkeyHex+postedAt], [pubkeyHex+createdAt], ${POST_HISTORY_TIMELINE_INDEX}`,
+            sensitivePayloads: "id, pubkeyHex, structureKind, createdAt, updatedAt, deletedAt",
             postHistoryChildInteractions: "id, eventId, parentEventId, rootEventId, authorPubkey, kind, createdAt, fetchedAt, updatedAt, schemaVersion, [parentEventId+createdAt]",
             postHistoryDeletionRequests: "id, targetEventId, targetAuthorPubkey, deletionEventId, fetchedAt, [targetAuthorPubkey+targetEventId]",
             postMediaCache: "cacheKey, url, normalizedUrl, size, createdAt, lastAccessedAt, updatedAt, source, schemaVersion",

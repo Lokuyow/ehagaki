@@ -265,6 +265,31 @@ beforeEach(() => {
 });
 
 describe("DexiePostHistoryRepository", () => {
+    it('uses supported post kinds for every listing, count, and anchor without a legacy adapter', async () => {
+        const db = createTestDb();
+        await db.open();
+        const repo = new DexiePostHistoryRepository(db);
+        const pubkeyHex = 'b'.repeat(64);
+        const supported = [1, 42, 1111].map((kind, index) => ({ ...createPostHistoryRecord({ pubkeyHex, eventId: String(index).repeat(64), createdAt: 100 + index, postedAt: 100 + index }), kind }));
+        const unsupported = [36, 3636].map((kind, index) => ({ ...createPostHistoryRecord({ pubkeyHex, eventId: String(index + 4).repeat(64), createdAt: 50, postedAt: 200 + index }), kind }));
+        await db.postHistory.bulkPut([...supported, ...unsupported]);
+        const options = { pubkeyHex, limit: 10 };
+        for (const records of [
+            await repo.getAll(options), await repo.getPage({ pubkeyHex, page: 1, pageSize: 3 }),
+            await repo.getLatestVisibleChunk(options), await repo.getOldestVisibleChunk(options),
+            await repo.getOldestVisibleChunk({ ...options, visibleUntil: 0 }),
+            await repo.getVisibleChunkFromCreatedAt({ ...options, createdAt: 300 }),
+            await repo.getSparseChunk({ ...options, visibleUntil: 300, direction: 'latest' }),
+        ]) expect(records.map((record) => record.kind).sort((a,b) => a-b)).toEqual([1, 42, 1111]);
+        expect(await repo.countForPubkey(pubkeyHex)).toBe(3);
+        expect(await repo.countVisibleForPubkey(pubkeyHex, 0)).toBe(3);
+        expect(await repo.getByEventId(unsupported[0]!.eventId)).toBeNull();
+        expect(await repo.getVisibleChunkAroundEventId({ ...options, eventId: unsupported[0]!.eventId })).toEqual([]);
+        expect(await repo.hasPostsBeforeCreatedAt(pubkeyHex, 90)).toBe(false);
+        expect(await repo.getOldestCreatedAt(pubkeyHex)).toBe(100);
+        expect(await db.postHistory.count()).toBe(5);
+        db.close();
+    });
     it("default console 依存で初期化できる", () => {
         const db = createTestDb();
 
@@ -979,6 +1004,34 @@ describe("DexiePostHistoryRepository", () => {
         expect(record).not.toHaveProperty("channelName");
         expect(record.postedAt).toBe(321000);
 
+        db.close();
+    });
+
+    it("通常のsupported-kind semanticsでkind 1 Structureを保存し、kind 36は履歴投稿にしない", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 9000);
+        const pubkey = "b".repeat(64);
+        const structureId = "7".repeat(64);
+        const payloadId = "6".repeat(64);
+        const structure = createSignedEvent({
+            id: structureId,
+            pubkey,
+            kind: 1,
+            content: "",
+            tags: [["content-warning", "Spoiler"], ["c", payloadId]],
+        });
+
+        const result = await repository.upsertFetchedEvents({
+            events: [
+                { event: structure, relayUrls: ["wss://relay.example.com"] },
+            ],
+            fetchedAt: 9000,
+        });
+        const records = await repository.getAll({ pubkeyHex: pubkey });
+
+        expect(result).toMatchObject({ insertedCount: 1, updatedCount: 0, unchangedCount: 0 });
+        expect(records.map((record) => [record.eventId, record.kind])).toEqual([[structureId, 1]]);
+        expect(await repository.getByEventId(payloadId)).toBeNull();
         db.close();
     });
 

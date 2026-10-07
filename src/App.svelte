@@ -223,6 +223,7 @@
     resolveEventContentBody,
     type PostContentRenderModel,
   } from "./lib/postContentPreview";
+  import { createSensitivePayloadBodyLoader } from "./lib/sensitiveContentPayloadReader";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
   import { uploadDestinationStore } from "./stores/uploadDestinationStore.svelte";
@@ -500,6 +501,7 @@
       const content = resolveEventContentBody(event.content, event.tags);
 
       models[reference.eventId] = buildPostContentRenderModel({
+        kind: event.kind,
         sourceContent: content,
         displayContent: content,
         tags: event.tags,
@@ -2078,6 +2080,13 @@
                   model={getComposerReferencePreviewModel(
                     replyQuoteState.value.reply,
                   )}
+                  loadSensitiveBody={createSensitivePayloadBodyLoader({
+                    ownerPubkey: authState.value.pubkey,
+                    structure: replyQuoteState.value.reply.referencedEvent,
+                    relayHints: replyQuoteState.value.reply.relayHints,
+                    rxNostr,
+                    relayConfig: relayConfigStore.value,
+                  })}
                   emojiLoadStateByUrl={composerReferenceEmojiState.emojiLoadStateByUrl}
                   emojiImageMetaByUrl={composerReferenceEmojiState.emojiImageMetaByUrl}
                   onImageOpen={handleReferenceImageOpen}
@@ -2143,6 +2152,13 @@
                   reference={quote}
                   mode="quote"
                   model={getComposerReferencePreviewModel(quote)}
+                  loadSensitiveBody={createSensitivePayloadBodyLoader({
+                    ownerPubkey: authState.value.pubkey,
+                    structure: quote.referencedEvent,
+                    relayHints: quote.relayHints,
+                    rxNostr,
+                    relayConfig: relayConfigStore.value,
+                  })}
                   emojiLoadStateByUrl={composerReferenceEmojiState.emojiLoadStateByUrl}
                   emojiImageMetaByUrl={composerReferenceEmojiState.emojiImageMetaByUrl}
                   onImageOpen={handleReferenceImageOpen}

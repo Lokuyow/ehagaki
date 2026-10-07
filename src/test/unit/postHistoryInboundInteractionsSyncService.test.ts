@@ -137,12 +137,20 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         expect(rxNostrMock.use).toHaveBeenCalledWith(expect.anything(), {
             on: { relays: ["wss://read.example.com/"] },
         });
-        expect(rxNostrMock.emittedFilters).toEqual([{
-            kinds: [1, 7, 42],
-            "#p": [OWNER_PUBKEY],
-            since: 1_699_395_200,
-            limit: 150,
-        }]);
+        expect(rxNostrMock.emittedFilters).toEqual([
+            {
+                kinds: [1, 7, 42, 1111],
+                "#p": [OWNER_PUBKEY],
+                since: 1_699_395_200,
+                limit: 150,
+            },
+            {
+                kinds: [1111],
+                "#P": [OWNER_PUBKEY],
+                since: 1_699_395_200,
+                limit: 150,
+            },
+        ]);
         expect(postHistoryChildInteractionsRepository.upsertDirectReplies).toHaveBeenCalledWith({
             parentEventId: PARENT_ID,
             events: [{ event: directReply, relayUrls: ["wss://relay.example.com/"] }],
