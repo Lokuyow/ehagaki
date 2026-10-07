@@ -226,6 +226,7 @@ const hoisted = vi.hoisted(() => {
         },
         localSearchServiceMock: {
             searchLocalPosts: vi.fn(),
+            clearCache: vi.fn(),
         },
         postHistoryJsonlImportServiceMock: {
             importFile: vi.fn(),

@@ -119,6 +119,17 @@ export type PostHistoryRepositoryOptions = {
     pubkeyHex?: string | null;
 };
 
+export type PostHistorySearchScanChunkOptions = PostHistoryRepositoryOptions & {
+    cursor?: PostHistoryTimelineCursor;
+    limit: number;
+};
+
+export interface PostHistorySearchScanChunk {
+    items: PostHistoryRecord[];
+    nextCursor: PostHistoryTimelineCursor | null;
+    hasMore: boolean;
+}
+
 export interface PostHistoryRepository {
     getByEventId(eventId: string): Promise<PostHistoryRecord | null>;
     getExistingEventIdsForPubkey(input: {
@@ -126,6 +137,7 @@ export interface PostHistoryRepository {
         eventIds: string[];
     }): Promise<string[]>;
     getAll(options: PostHistoryRepositoryOptions): Promise<PostHistoryRecord[]>;
+    getSearchScanChunk(options: PostHistorySearchScanChunkOptions): Promise<PostHistorySearchScanChunk>;
     getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]>;
     getLatestVisibleChunk(options: PostHistoryVisibleChunkOptions): Promise<PostHistoryRecord[]>;
     getOlderVisibleChunk(options: PostHistoryVisibleChunkCursorOptions): Promise<PostHistoryRecord[]>;
@@ -463,6 +475,35 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .toArray();
 
         return sortPostHistoryRecords(records.filter(isSupportedPost));
+    }
+
+    async getSearchScanChunk(
+        options: PostHistorySearchScanChunkOptions,
+    ): Promise<PostHistorySearchScanChunk> {
+        if (!options.pubkeyHex) return { items: [], nextCursor: null, hasMore: false };
+
+        const limit = normalizeChunkLimit(options.limit);
+        const bounds = getTimelineBounds(options.pubkeyHex);
+        const upper = options.cursor
+            ? toTimelineKey(options.pubkeyHex, options.cursor)
+            : bounds.upper;
+        // Apply kind filtering after the bounded read so Dexie can use getAll.
+        // The continuation belongs to the raw batch, including unsupported kinds.
+        const records = await this.db.postHistory
+            .where(POST_HISTORY_TIMELINE_INDEX)
+            .between(bounds.lower, upper, true, !options.cursor)
+            .reverse()
+            .limit(limit)
+            .toArray();
+        const last = records.at(-1);
+
+        return {
+            items: records.filter(isSupportedPost),
+            nextCursor: last
+                ? { postedAt: last.postedAt, createdAt: last.createdAt, eventId: last.eventId }
+                : null,
+            hasMore: records.length === limit,
+        };
     }
 
     async getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]> {

@@ -172,6 +172,7 @@ interface PersistedPostHistoryListingSnapshot {
     totalCountKnown?: boolean;
     totalCountFailed?: boolean;
     searchTotalCount: number;
+    searchTotalCountKnown?: boolean;
     searchHasNext: boolean;
     hasMoreRemote: boolean;
     nextUntil: number | null;
@@ -366,6 +367,7 @@ const DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT: PersistedPostHistoryListi
     totalCountKnown: false,
     totalCountFailed: false,
     searchTotalCount: 0,
+    searchTotalCountKnown: false,
     searchHasNext: false,
     hasMoreRemote: false,
     nextUntil: null,
@@ -567,6 +569,7 @@ function cloneListingSnapshot(
         totalCountKnown: snapshot.totalCountKnown ?? snapshot.totalCount > 0,
         totalCountFailed: snapshot.totalCountFailed ?? false,
         searchTotalCount: snapshot.searchTotalCount,
+        searchTotalCountKnown: snapshot.searchTotalCountKnown ?? snapshot.searchTotalCount > 0,
         searchHasNext: snapshot.searchHasNext,
         hasMoreRemote: snapshot.hasMoreRemote,
         nextUntil: snapshot.nextUntil,
@@ -672,6 +675,8 @@ export function usePostHistoryListing({
         totalCountKnown: persistedTotalCountKnown,
         totalCountStatus: persistedTotalCountStatus as PostHistoryTotalCountStatus,
         searchTotalCount: persistedListingSnapshot.searchTotalCount,
+        searchTotalCountKnown: restoredSearchState
+            && (persistedListingSnapshot.searchTotalCountKnown ?? persistedListingSnapshot.searchTotalCount > 0),
         searchHasNext: persistedListingSnapshot.searchHasNext,
         syncStatus: "idle" as PostHistorySyncStatus,
         currentViewRefetchStatus: "idle" as "idle" | "refetching",
@@ -1043,6 +1048,7 @@ export function usePostHistoryListing({
         state.searchPage = 1;
         state.searchPosts = [];
         state.searchTotalCount = 0;
+        state.searchTotalCountKnown = false;
         state.searchHasNext = false;
         appliedSearchQuery = "";
         persistCurrentViewState();
@@ -1101,6 +1107,7 @@ export function usePostHistoryListing({
             totalCountKnown: state.totalCountKnown,
             totalCountFailed: state.totalCountStatus === "failed",
             searchTotalCount: state.searchTotalCount,
+            searchTotalCountKnown: state.searchTotalCountKnown,
             searchHasNext: state.searchHasNext,
             hasMoreRemote: state.hasMoreRemote,
             nextUntil: state.nextUntil,
@@ -1124,6 +1131,7 @@ export function usePostHistoryListing({
         state.searchPosts = [];
         setTotalCountState({ count: 0, known: true, status: "ready" });
         state.searchTotalCount = 0;
+        state.searchTotalCountKnown = false;
         state.searchHasNext = false;
         state.currentPage = 1;
         state.searchPage = 1;
@@ -3147,8 +3155,8 @@ export function usePostHistoryListing({
         query: string,
         pubkeyHex: string,
     ): boolean {
-        return getShow()
-            && requestId === searchLoadRequestId
+        return requestId === searchLoadRequestId
+            && getShow()
             && getPubkeyHex() === pubkeyHex
             && query === state.searchQuery;
     }
@@ -3157,20 +3165,46 @@ export function usePostHistoryListing({
         page: number,
         query: string,
         requestId: number,
+        showProgress = false,
     ): Promise<SearchLocalPostsResult | null> {
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex || !query) {
             return null;
         }
 
+        const firstPageProgress: { items: PostHistoryRecord[] | null } = { items: null };
         const result = await postHistoryLocalSearchService.searchLocalPosts({
             pubkeyHex,
             query,
             page,
             pageSize,
+            onProgress: showProgress
+                ? async (progress) => {
+                    if (!isCurrentSearchLoad(requestId, query, pubkeyHex)) return;
+                    firstPageProgress.items = progress.items;
+                    state.searchPosts = progress.items;
+                    state.searchTotalCountKnown = false;
+                    state.searchHasNext = false;
+                    if (progress.phase === "partial" && !hasCompletedFirstPostPaint) {
+                        await waitForFirstPostPaint(
+                            pubkeyHex,
+                            () => isCurrentSearchLoad(requestId, query, pubkeyHex),
+                            () => state.searchPosts.length > 0,
+                        );
+                    }
+                }
+                : undefined,
         });
 
-        return isCurrentSearchLoad(requestId, query, pubkeyHex) ? result : null;
+        if (!isCurrentSearchLoad(requestId, query, pubkeyHex)) return null;
+        // Count completion must not replace identical, already operable previews.
+        const publishedPosts = firstPageProgress.items;
+        if (publishedPosts !== null
+            && publishedPosts.length === result.items.length
+            && result.items.every((post, index) => post === publishedPosts[index])) {
+            return { ...result, items: state.searchPosts };
+        }
+        return result;
     }
 
     async function loadSearchPage(page: number, query: string): Promise<boolean> {
@@ -3178,6 +3212,7 @@ export function usePostHistoryListing({
         if (!pubkeyHex || !query) {
             state.searchPosts = [];
             state.searchTotalCount = 0;
+            state.searchTotalCountKnown = false;
             state.searchHasNext = false;
             return false;
         }
@@ -3186,11 +3221,13 @@ export function usePostHistoryListing({
         const normalizedPage = Math.max(1, Math.trunc(page));
         isSearchPageLoading = true;
         searchResultStatus = "loading";
+        state.searchTotalCountKnown = false;
         try {
             const result = await fetchSearchPage(
                 normalizedPage,
                 query,
                 requestId,
+                normalizedPage === 1,
             );
             if (!result) {
                 return false;
@@ -3212,6 +3249,7 @@ export function usePostHistoryListing({
             }
 
             state.searchTotalCount = result.total;
+            state.searchTotalCountKnown = true;
             state.searchPosts = normalizedPage === 1
                 ? result.items
                 : mergeSearchPageResults(state.searchPosts, result.items);
@@ -3252,9 +3290,10 @@ export function usePostHistoryListing({
         const normalizedPage = Math.max(1, Math.trunc(page));
         isSearchPageLoading = true;
         searchResultStatus = "loading";
+        state.searchTotalCountKnown = false;
 
         try {
-            const firstPage = await fetchSearchPage(1, query, requestId);
+            const firstPage = await fetchSearchPage(1, query, requestId, normalizedPage === 1);
             if (!firstPage) {
                 return false;
             }
@@ -3283,6 +3322,7 @@ export function usePostHistoryListing({
 
             state.searchPosts = rebuiltPosts;
             state.searchTotalCount = firstPage.total;
+            state.searchTotalCountKnown = true;
             state.searchPage = lastPage;
             state.searchHasNext = lastResult.hasNext;
             searchResultStatus = "ready";
@@ -4844,6 +4884,7 @@ export function usePostHistoryListing({
         loadRequestId += 1;
         searchLoadRequestId += 1;
         initialLocalLoadGeneration += 1;
+        postHistoryLocalSearchService.clearCache?.();
         initialLocalLoadStatus = "idle";
         firstPaintPubkeyKey = null;
         mediaPrefetchReady = false;
@@ -4880,6 +4921,7 @@ export function usePostHistoryListing({
 
             state.searchPosts = [];
             state.searchTotalCount = 0;
+            state.searchTotalCountKnown = false;
             state.searchHasNext = false;
             if (wasSearchMode) {
                 const pubkeyHex = getPubkeyHex();
@@ -4938,6 +4980,16 @@ export function usePostHistoryListing({
         },
         get displayTotalCount() {
             return displayTotalCount;
+        },
+        get displayTotalCountKnown() {
+            return isSearchMode ? state.searchTotalCountKnown : state.totalCountKnown;
+        },
+        get displayTotalCountStatus(): PostHistoryTotalCountStatus {
+            return isSearchMode
+                ? state.searchTotalCountKnown
+                    ? "ready"
+                    : searchResultStatus === "failed" ? "failed" : "loading"
+                : state.totalCountStatus;
         },
         get displayPage() {
             return displayPage;

@@ -124,6 +124,7 @@ describe('PostHistoryDialog', () => {
                 query: 'needle',
                 page: 1,
                 pageSize: 50,
+                onProgress: expect.any(Function),
             });
             expect(screen.getByText('needle result')).toBeTruthy();
             expect(screen.queryByText('通常一覧')).toBeNull();

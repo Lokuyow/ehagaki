@@ -58,6 +58,12 @@ type HarnessWindow = Window & typeof globalThis & {
     __POST_HISTORY_REACTION_TEST_CONTROL__?: {
         addReactionToQuote: () => Promise<void>;
     };
+    __POST_HISTORY_SEARCH_SCAN_GATE__?: {
+        entered: boolean;
+        reads: number;
+        finished: boolean;
+        release: (() => void) | null;
+    };
 };
 
 async function gotoHarness(page: Page) {
@@ -1921,6 +1927,71 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expectSummary(page, harness.matchingPosts);
         await expectVisiblePostCount(page, harness.matchingPosts);
         await expect(page.getByRole('button', { name: '新しい検索結果を表示' })).toHaveCount(0);
+    });
+
+    test('partial search results remain operable and anchored before the final count is available', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?search-progress=1');
+        await page.waitForFunction(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready);
+        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+        await page.getByRole('menuitem', { name: '検索' }).click();
+        const input = page.getByRole('searchbox', { name: '検索' });
+        await input.fill('alpha');
+        await page.waitForFunction(() => (window as HarnessWindow).__POST_HISTORY_SEARCH_SCAN_GATE__?.entered);
+        await expectVisiblePostCount(page, 25);
+        await expect(page.locator('.post-history-summary-count')).toHaveText('件数を確認中...');
+        await expect(input).toHaveAttribute('aria-busy', 'true');
+        await expect(page.getByRole('button', { name: 'さらに古い検索結果を表示' })).toHaveCount(0);
+        const first = page.locator('.post-history-item').first();
+        const action = first.getByRole('button', { name: 'アクションを表示' });
+        await expect(action).toBeEnabled();
+        await action.click();
+        await expect(page.getByRole('menuitem', { name: '前後の投稿を表示' })).toBeVisible();
+        await page.keyboard.press('Escape');
+        await page.locator('.post-history-container').evaluate((element) => { element.scrollTop = 80; });
+        const offset = () => first.evaluate((element) => element.getBoundingClientRect().top - element.closest('.post-history-container')!.getBoundingClientRect().top);
+        const before = await offset();
+        await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_SEARCH_SCAN_GATE__?.release?.());
+        await expectSummary(page, 55);
+        await expectVisiblePostCount(page, 50);
+        await expect(input).toHaveAttribute('aria-busy', 'false');
+        expect(Math.abs(await offset() - before)).toBeLessThanOrEqual(1);
+        await page.getByRole('button', { name: 'さらに古い検索結果を表示' }).click();
+        await expectVisiblePostCount(page, 55);
+    });
+
+    test('Sensitive partial search keeps a revealed body when the final count completes', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?search-progress=1&sensitive-preview=1');
+        await page.waitForFunction(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready);
+        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+        await page.getByRole('menuitem', { name: '検索' }).click();
+        await page.getByRole('searchbox', { name: '検索' }).fill('sensitive preview body');
+        await page.waitForFunction(() => (window as HarnessWindow).__POST_HISTORY_SEARCH_SCAN_GATE__?.entered);
+        const result = page.locator('.post-history-item').first();
+        await result.getByRole('button', { name: '本文を表示' }).click();
+        await expect(result.getByText('playwright sensitive preview body')).toBeVisible();
+        await expect(page.locator('.post-history-summary-count')).toHaveText('件数を確認中...');
+        await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_SEARCH_SCAN_GATE__?.release?.());
+        await expectSummary(page, 1);
+        await expect(result.getByText('playwright sensitive preview body')).toBeVisible();
+        await expect(result.getByRole('button', { name: '本文を表示' })).toHaveCount(0);
+    });
+
+    test('closing during partial search stops further batch reads and resets the reopened dialog', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?search-progress=1');
+        await page.waitForFunction(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready);
+        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+        await page.getByRole('menuitem', { name: '検索' }).click();
+        await page.getByRole('searchbox', { name: '検索' }).fill('alpha');
+        await page.waitForFunction(() => (window as HarnessWindow).__POST_HISTORY_SEARCH_SCAN_GATE__?.entered);
+        await expectVisiblePostCount(page, 25);
+        await page.getByRole('button', { name: '閉じる', exact: true }).click();
+        await expect(page.getByTestId('post-history-mounted')).toHaveCount(0);
+        await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_SEARCH_SCAN_GATE__?.release?.());
+        await page.waitForFunction(() => (window as HarnessWindow).__POST_HISTORY_SEARCH_SCAN_GATE__?.finished);
+        await page.getByTestId('post-history-reopen').click();
+        await expect(page.getByRole('searchbox', { name: '検索' })).toHaveCount(0);
+        await expectVisiblePostCount(page, 50);
+        expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_SEARCH_SCAN_GATE__?.reads)).toBe(2);
     });
 
     test('closing and reopening the dialog resets post history search state', async ({ page }) => {
