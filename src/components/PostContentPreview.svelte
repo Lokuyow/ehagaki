@@ -45,6 +45,7 @@
             focusOrigin: HTMLElement | null;
         }) => void;
         betweenContentAndMedia?: Snippet;
+        afterContentAndMedia?: Snippet;
         textOverlay?: Snippet;
     }
 
@@ -65,6 +66,7 @@
         renderWhenEmpty = false,
         onImageOpen = undefined,
         betweenContentAndMedia = undefined,
+        afterContentAndMedia = undefined,
         textOverlay = undefined,
     }: Props = $props();
 
@@ -215,7 +217,7 @@
     });
 </script>
 
-{#if displayModel.hasRenderableText || displayModel.hasRenderableMedia || displayModel.contentWarning || renderWhenEmpty}
+{#if displayModel.hasRenderableText || displayModel.hasRenderableMedia || displayModel.contentWarning || renderWhenEmpty || afterContentAndMedia}
     <div
         class={`post-content-preview post-content-preview-${density}`}
         style={`--post-content-block-gap: ${presentation.gap}px;`}
@@ -275,6 +277,8 @@
                     />
                 </div>
             {/if}
+
+            {@render afterContentAndMedia?.()}
         {/if}
     </div>
 {/if}

@@ -2442,6 +2442,77 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(post.locator('.content-warning-prompt')).toBeVisible();
     });
 
+    test('a parent Content Warning gates its quote card until the parent is revealed', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?cw-parent-quote=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate<HarnessState>(() =>
+            (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState,
+        );
+        const parent = page.locator(`.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`);
+        await scrollPostIntoViewByEventId(page, harness.quotePostEventId);
+
+        await expect(parent.locator('.content-warning-prompt')).toBeVisible();
+        await expect(parent.locator('.post-history-related-card')).toHaveCount(0);
+        await expect(parent.locator('.post-preview-quotes')).toHaveCount(0);
+        await parent.locator('.content-warning-reveal-button').click();
+        await expect(parent.locator('.post-history-related-card').filter({ hasText: harness.quoteContent })).toBeVisible();
+    });
+
+    test('parent and quoted Content Warnings reveal independently', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?cw-parent-quote=1&cw-layout=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate<HarnessState>(() =>
+            (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState,
+        );
+        const parent = page.locator(`.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`);
+        await scrollPostIntoViewByEventId(page, harness.quotePostEventId);
+
+        await expect(parent.locator('.post-history-related-card')).toHaveCount(0);
+        await parent.getByRole('button', { name: '本文を表示' }).click();
+        const quote = parent.locator('.post-history-related-card').first();
+        await expect(quote).toBeVisible();
+        await expect(quote.locator('.content-warning-prompt')).toBeVisible();
+        await expect(quote.getByText(harness.quoteContent)).toHaveCount(0);
+        await quote.getByRole('button', { name: '本文を表示' }).click();
+        await expect(quote.getByText(harness.quoteContent)).toBeVisible();
+    });
+
+    test('a non-CW parent continues to render its quote immediately', async ({ page }) => {
+        const harness = await gotoHarness(page);
+        const parent = page.locator(`.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`);
+        await scrollPostIntoViewByEventId(page, harness.quotePostEventId);
+
+        await expect(parent.locator('.content-warning-prompt')).toHaveCount(0);
+        await expect(parent.locator('.post-history-related-card').filter({ hasText: harness.quoteContent })).toBeVisible();
+    });
+
+    test('Sensitive payload quote remains gated until verified reveal succeeds', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?sensitive-preview=1&sensitive-quote=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate<HarnessState>(() =>
+            (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState,
+        );
+        const parent = page.locator('.post-history-item').first();
+        await expect(parent.locator('.content-warning-prompt')).toBeVisible();
+        await expect(parent.locator('.post-history-related-card')).toHaveCount(0);
+        await parent.locator('.content-warning-reveal-button').click();
+        await expect(parent.locator('.post-history-related-card').filter({ hasText: harness.quoteContent })).toBeVisible();
+    });
+
+    test('Sensitive payload quote stays hidden when payload reveal fails', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?sensitive-preview=1&sensitive-quote=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const parent = page.locator('.post-history-item').first();
+        await page.evaluate(async () => {
+            await (window as any).__POST_HISTORY_HARNESS__.deleteSensitivePayload();
+        });
+
+        await parent.locator('.content-warning-reveal-button').click();
+        await expect(parent.getByRole('status')).toContainText('取得できません');
+        await expect(parent.locator('.post-history-related-card')).toHaveCount(0);
+        await expect(parent.locator('.post-preview-quotes')).toHaveCount(0);
+    });
+
     test('Sensitive payload event JSON shows the Structure and only its verified Payload', async ({ page }) => {
         await page.goto('post-history-dialog-playwright.html?sensitive-preview=1&long-raw-json=1');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));

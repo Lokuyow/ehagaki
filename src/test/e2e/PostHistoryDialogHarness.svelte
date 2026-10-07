@@ -25,6 +25,8 @@
     const isLayoutStabilityScenario = new URLSearchParams(window.location.search).has("layout-stability");
     const isKind42QuoteScenario = new URLSearchParams(window.location.search).has("kind42-quote");
     const isSensitivePreviewScenario = new URLSearchParams(window.location.search).has("sensitive-preview");
+    const isSensitiveQuoteScenario = new URLSearchParams(window.location.search).has("sensitive-quote");
+    const isCwParentQuoteScenario = new URLSearchParams(window.location.search).has("cw-parent-quote");
     const isLongRawJsonScenario = new URLSearchParams(window.location.search).has("long-raw-json");
     const isCwLayoutScenario = new URLSearchParams(window.location.search).has("cw-layout");
     const isSelfQuoteTransitionScenario = new URLSearchParams(window.location.search).has("self-quote-transition");
@@ -43,6 +45,9 @@
     const SENSITIVE_PREVIEW_BODY = `playwright sensitive preview body :party: https://example.com/post-history-0.jpg${isLongRawJsonScenario ? ` ${"x".repeat(12000)}` : ""}`;
     const SENSITIVE_PREVIEW_CREATED_AT = Math.floor(STARTED_AT_MS / 1000);
     const CW_LAYOUT_REASON = `sensitive nested warning reason ${"long-reason-segment-".repeat(8)}`;
+    const quoteEventId = new URLSearchParams(window.location.search).has("self-quote-transition")
+        ? undefined
+        : "9".repeat(64);
     const LONG_RAW_JSON_EVENT = isLongRawJsonScenario && !isSensitivePreviewScenario
         ? finalizeEvent({
               kind: 1,
@@ -74,6 +79,9 @@
               tags: [
                   ["content-warning", "Sensitive demo"],
                   ["c", SENSITIVE_PREVIEW_PAYLOAD.id],
+                  ...(isSensitiveQuoteScenario && quoteEventId
+                      ? [["q", quoteEventId, "wss://relay.example.com/", "e".repeat(64)]]
+                      : []),
                   ["emoji", "party", "https://example.com/sensitive-emoji.svg"],
                   ...(isLongRawJsonScenario ? [["test", "y".repeat(12000)]] : []),
               ],
@@ -327,9 +335,9 @@
         "line 5",
         `line 6 ${"long-path-segment-".repeat(12)}`,
     ].join("\n");
-    const quoteEventId = isSelfQuoteTransitionScenario
+    const resolvedQuoteEventId = isSelfQuoteTransitionScenario
         ? posts[60].eventId
-        : "9".repeat(64);
+        : quoteEventId ?? "9".repeat(64);
     const loadingQuoteEventId = "8".repeat(64);
     const quoteContent = isSelfQuoteTransitionScenario
         ? posts[60].content
@@ -338,8 +346,8 @@
     const quoteRecord: PostHistoryRecord = isSelfQuoteTransitionScenario
         ? { ...posts[60] }
         : {
-            id: quoteEventId,
-            eventId: quoteEventId,
+            id: resolvedQuoteEventId,
+            eventId: resolvedQuoteEventId,
             pubkeyHex: "e".repeat(64),
             kind: isKind42QuoteScenario ? 42 : 1,
             content: quoteContent,
@@ -350,7 +358,7 @@
             acceptedRelays: [],
             media: [],
             rawEvent: {
-                id: quoteEventId,
+                id: resolvedQuoteEventId,
                 pubkey: "e".repeat(64),
                 kind: isKind42QuoteScenario ? 42 : 1,
                 content: quoteContent,
@@ -368,7 +376,8 @@
     quoteParentPost.tags = isLayoutStabilityScenario
         ? []
         : [
-              ["q", quoteEventId, "wss://relay.example.com/", quoteRecord.pubkeyHex],
+              ...(isCwParentQuoteScenario ? [["content-warning", "Parent warning"]] : []),
+              ["q", resolvedQuoteEventId, "wss://relay.example.com/", quoteRecord.pubkeyHex],
               ["q", loadingQuoteEventId, "wss://relay.example.com/", "d".repeat(64)],
           ];
     quoteParentPost.rawEvent = {
@@ -384,7 +393,7 @@
     threadParentPost.tags = isLayoutStabilityScenario
         ? []
         : [
-              ["e", quoteEventId, "", "reply"],
+              ["e", resolvedQuoteEventId, "", "reply"],
               ["p", quoteRecord.pubkeyHex],
           ];
     threadParentPost.rawEvent = {
@@ -460,7 +469,7 @@
     const interactionRecords = [
         buildReactionRecord(0),
         buildReactionRecord(20),
-        buildReactionRecord(30, quoteEventId),
+        buildReactionRecord(30, resolvedQuoteEventId),
         buildReactionRecord(31, replyEventId),
         buildReactionRecord(32, grandchildEventId),
         buildReactionRecord(33, replyEventId),
@@ -470,7 +479,7 @@
     (window as HarnessWindow).__POST_HISTORY_REACTION_TEST_CONTROL__ = {
         addReactionToQuote: async () => {
             await ehagakiDb.postHistoryChildInteractions.put(
-                buildReactionRecord(36, quoteEventId),
+                buildReactionRecord(36, resolvedQuoteEventId),
             );
         },
     };
@@ -502,7 +511,7 @@
         scrolledReactionPostEventId: posts[20].eventId,
         scrolledPlainPostEventId: posts[21].eventId,
         quotePostEventId: quoteParentPost.eventId,
-        quoteEventId,
+        quoteEventId: resolvedQuoteEventId,
         quoteContent,
         linkTargetUrl,
         linkPostEventId: linkPost.eventId,
@@ -673,7 +682,7 @@
             scrolledReactionPostEventId: posts[20].eventId,
             scrolledPlainPostEventId: posts[21].eventId,
             quotePostEventId: quoteParentPost.eventId,
-            quoteEventId,
+            quoteEventId: resolvedQuoteEventId,
             quoteContent,
             linkTargetUrl,
             linkPostEventId: linkPost.eventId,

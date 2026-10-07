@@ -2992,172 +2992,175 @@
                                                         )}
                                                 />
                                             {/snippet}
-                                        </PostContentPreview>
-                                        {#if getQuotePreviewStates(post).length > 0}
-                                            <div class="post-preview-quotes">
-                                                {#each getQuotePreviewStates(post) as quotePreview (quotePreview.eventId)}
-                                                    <PostHistoryQuotePreview
-                                                        preview={quotePreview}
-                                                        loadSensitiveBody={quotePreview.status === "resolved"
-                                                            ? getSensitiveBodyLoader(quotePreview.event)
-                                                            : undefined}
-                                                        model={quotePreview.status ===
-                                                        "resolved"
-                                                            ? relatedPreviewModelByEventId[
-                                                                  quotePreview
-                                                                      .event.id
-                                                              ]
-                                                            : undefined}
-                                                        emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
-                                                        emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
-                                                        scrollRoot={historyContainer}
-                                                        onImageOpen={handleImageOpen}
-                                                        onRetry={() =>
-                                                            quotePreviews.retryQuotePreview(
-                                                                quotePreview.eventId,
-                                                            )}
-                                                    >
-                                                        {#snippet footerActions()}
-                                                            {#if quotePreview.status === "resolved" &&
-                                                                (quotePreview.event.kind !== 42 ||
-                                                                    (getRelatedReactionReadModel(quotePreview.event.id)?.totalCount ?? 0) > 0)}
-                                                                {@const quoteActionPost = buildPostRecordFromQuoteEvent(
-                                                                    quotePreview.event,
+                                        {#snippet afterContentAndMedia()}
+                                            {#if getQuotePreviewStates(post).length > 0}
+                                                <div class="post-preview-quotes">
+                                                    {#each getQuotePreviewStates(post) as quotePreview (quotePreview.eventId)}
+                                                        <PostHistoryQuotePreview
+                                                            preview={quotePreview}
+                                                            loadSensitiveBody={quotePreview.status === "resolved"
+                                                                ? getSensitiveBodyLoader(quotePreview.event)
+                                                                : undefined}
+                                                            model={quotePreview.status ===
+                                                            "resolved"
+                                                                ? relatedPreviewModelByEventId[
+                                                                      quotePreview
+                                                                          .event.id
+                                                                  ]
+                                                                : undefined}
+                                                            emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                                                            emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                                                            scrollRoot={historyContainer}
+                                                            onImageOpen={handleImageOpen}
+                                                            onRetry={() =>
+                                                                quotePreviews.retryQuotePreview(
+                                                                    quotePreview.eventId,
                                                                 )}
-                                                                <PostHistoryPostActions
-                                                                    post={quoteActionPost}
-                                                                    onReplyPost={
-                                                                        quotePreview.event.kind !== 42 && onReplyPost
-                                                                            ? handleReplyPost
-                                                                            : undefined
-                                                                    }
-                                                                    onQuotePost={
-                                                                        quotePreview.event.kind !== 42 && onQuotePost
-                                                                            ? handleQuotePost
-                                                                            : undefined
-                                                                    }
-                                                                >
-                                                                    {#snippet reactionExtras()}
-                                                                        {@const reactionModel = getRelatedReactionReadModel(quotePreview.event.id)}
-                                                                        {#if reactionModel && reactionModel.totalCount > 0}
-                                                                            <PostHistoryReactionActionButton
-                                                                                count={reactionModel.totalCount}
-                                                                                expanded={isReactionExpandedByEventId(quotePreview.event.id)}
-                                                                                ariaLabel={getRelatedReactionLabel(quotePreview.event.id)}
-                                                                                onToggle={() => toggleReactionsByEventId(quotePreview.event.id)}
-                                                                            />
-                                                                        {/if}
-                                                                    {/snippet}
-                                                                </PostHistoryPostActions>
-                                                            {/if}
-                                                        {/snippet}
-                                                        {#snippet footerDetails()}
-                                                            {#if quotePreview.status === "resolved"}
-                                                                {@const reactionModel = getRelatedReactionReadModel(quotePreview.event.id)}
-                                                                {#if reactionModel && reactionModel.totalCount > 0 && isReactionExpandedByEventId(quotePreview.event.id)}
-                                                                    <PostHistoryReactionDetails readModel={reactionModel} emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl} emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} />
-                                                                {/if}
-                                                            {/if}
-                                                        {/snippet}
-                                                        {#snippet footerMenu()}
-                                                            {#if quotePreview.status === "resolved"}
-                                                                {@const quotePreviewPost =
-                                                                    buildPostRecordFromQuoteEvent(
+                                                        >
+                                                            {#snippet footerActions()}
+                                                                {#if quotePreview.status === "resolved" &&
+                                                                    (quotePreview.event.kind !== 42 ||
+                                                                        (getRelatedReactionReadModel(quotePreview.event.id)?.totalCount ?? 0) > 0)}
+                                                                    {@const quoteActionPost = buildPostRecordFromQuoteEvent(
                                                                         quotePreview.event,
                                                                     )}
-                                                                {@const quotePreviewMenuKey =
-                                                                    buildQuotePreviewMenuKey(
-                                                                        post.eventId,
-                                                                        quotePreviewPost.eventId,
-                                                                    )}
-                                                                {@const actionsLabel =
-                                                                    $_("common.showActions")}
-                                                                <PostHistoryActionMenu
-                                                                    open={postActionUi.isPostMenuOpen(
-                                                                        quotePreviewMenuKey,
-                                                                    )}
-                                                                    onOpenChange={(
-                                                                        open: boolean,
-                                                                    ) =>
-                                                                        setExclusivePostMenuOpen(
-                                                                            quotePreviewMenuKey,
-                                                                            open,
+                                                                    <PostHistoryPostActions
+                                                                        post={quoteActionPost}
+                                                                        onReplyPost={
+                                                                            quotePreview.event.kind !== 42 && onReplyPost
+                                                                                ? handleReplyPost
+                                                                                : undefined
+                                                                        }
+                                                                        onQuotePost={
+                                                                            quotePreview.event.kind !== 42 && onQuotePost
+                                                                                ? handleQuotePost
+                                                                                : undefined
+                                                                        }
+                                                                    >
+                                                                        {#snippet reactionExtras()}
+                                                                            {@const reactionModel = getRelatedReactionReadModel(quotePreview.event.id)}
+                                                                            {#if reactionModel && reactionModel.totalCount > 0}
+                                                                                <PostHistoryReactionActionButton
+                                                                                    count={reactionModel.totalCount}
+                                                                                    expanded={isReactionExpandedByEventId(quotePreview.event.id)}
+                                                                                    ariaLabel={getRelatedReactionLabel(quotePreview.event.id)}
+                                                                                    onToggle={() => toggleReactionsByEventId(quotePreview.event.id)}
+                                                                                />
+                                                                            {/if}
+                                                                        {/snippet}
+                                                                    </PostHistoryPostActions>
+                                                                {/if}
+                                                            {/snippet}
+                                                            {#snippet footerDetails()}
+                                                                {#if quotePreview.status === "resolved"}
+                                                                    {@const reactionModel = getRelatedReactionReadModel(quotePreview.event.id)}
+                                                                    {#if reactionModel && reactionModel.totalCount > 0 && isReactionExpandedByEventId(quotePreview.event.id)}
+                                                                        <PostHistoryReactionDetails readModel={reactionModel} emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl} emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} />
+                                                                    {/if}
+                                                                {/if}
+                                                            {/snippet}
+                                                            {#snippet footerMenu()}
+                                                                {#if quotePreview.status === "resolved"}
+                                                                    {@const quotePreviewPost =
+                                                                        buildPostRecordFromQuoteEvent(
+                                                                            quotePreview.event,
                                                                         )}
-                                                                    triggerAriaLabel={actionsLabel}
-                                                                    tooltipContent={actionsLabel}
-                                                                    enableTooltip={true}
-                                                                    timestamp={formatPostedAtExact(
-                                                                        quotePreviewPost.postedAt,
-                                                                        $locale,
-                                                                    )}
-                                                                >
-                                                                    {#snippet items()}
-                                                                        <PostHistoryRecordActionItems
-                                                                            order="standard"
-                                                                            copyFailed={copyNeventUi.copyState[
-                                                                                quotePreviewPost
-                                                                                    .eventId
-                                                                            ] === "failed"}
-                                                                            showBroadcast={canBroadcastPost(
-                                                                                quotePreviewPost,
+                                                                    {@const quotePreviewMenuKey =
+                                                                        buildQuotePreviewMenuKey(
+                                                                            post.eventId,
+                                                                            quotePreviewPost.eventId,
+                                                                        )}
+                                                                    {@const actionsLabel =
+                                                                        $_("common.showActions")}
+                                                                    <PostHistoryActionMenu
+                                                                        open={postActionUi.isPostMenuOpen(
+                                                                            quotePreviewMenuKey,
+                                                                        )}
+                                                                        onOpenChange={(
+                                                                            open: boolean,
+                                                                        ) =>
+                                                                            setExclusivePostMenuOpen(
+                                                                                quotePreviewMenuKey,
+                                                                                open,
                                                                             )}
-                                                                            broadcastSending={isBroadcastSending(
-                                                                                quotePreviewPost,
-                                                                            )}
-                                                                            showDelete={canDeletePost(
-                                                                                quotePreviewPost,
-                                                                            )}
-                                                                            showDeleteSeparator={true}
-                                                                            deletionSending={isDeletionSending(
-                                                                                quotePreviewPost,
-                                                                            )}
-                                                                            onCopyPointerDown={(event) =>
-                                                                                copyNeventUi.captureCopyPointerPosition(
-                                                                                    quotePreviewPost,
-                                                                                    event,
-                                                                                )}
-                                                                            onCopyNevent={(event) =>
-                                                                                void copyNeventUi.handleCopyNevent(
-                                                                                    quotePreviewPost,
-                                                                                    event,
-                                                                                )}
-                                                                            externalClientLabel={getExternalClientOpenLabel()}
-                                                                            onOpenExternalClient={() =>
-                                                                                handleOpenExternalClient(
+                                                                        triggerAriaLabel={actionsLabel}
+                                                                        tooltipContent={actionsLabel}
+                                                                        enableTooltip={true}
+                                                                        timestamp={formatPostedAtExact(
+                                                                            quotePreviewPost.postedAt,
+                                                                            $locale,
+                                                                        )}
+                                                                    >
+                                                                        {#snippet items()}
+                                                                            <PostHistoryRecordActionItems
+                                                                                order="standard"
+                                                                                copyFailed={copyNeventUi.copyState[
+                                                                                    quotePreviewPost
+                                                                                        .eventId
+                                                                                ] === "failed"}
+                                                                                showBroadcast={canBroadcastPost(
                                                                                     quotePreviewPost,
                                                                                 )}
-                                                                            onShowRawJson={() =>
-                                                                                openRawJson(
-                                                                                    quotePreviewPost.rawEvent,
-                                                                                    [
-                                                                                        ...quotePreviewPost.relayHints,
-                                                                                        ...quotePreviewPost.acceptedRelays,
-                                                                                        ...(quotePreviewPost.fetchedRelays ?? []),
-                                                                                    ],
-                                                                                )}
-                                                                            onBroadcastPointerDown={(event) =>
-                                                                                captureBroadcastPointerPosition(
-                                                                                    quotePreviewPost,
-                                                                                    event,
-                                                                                )}
-                                                                            onBroadcastPost={(event) =>
-                                                                                void handleBroadcastPost(
-                                                                                    quotePreviewPost,
-                                                                                    event,
-                                                                                )}
-                                                                            onOpenDeleteConfirm={() =>
-                                                                                openDeleteConfirm(
+                                                                                broadcastSending={isBroadcastSending(
                                                                                     quotePreviewPost,
                                                                                 )}
-                                                                        />
-                                                                    {/snippet}
-                                                                </PostHistoryActionMenu>
-                                                            {/if}
-                                                        {/snippet}
-                                                    </PostHistoryQuotePreview>
-                                                {/each}
-                                            </div>
-                                        {/if}
+                                                                                showDelete={canDeletePost(
+                                                                                    quotePreviewPost,
+                                                                                )}
+                                                                                showDeleteSeparator={true}
+                                                                                deletionSending={isDeletionSending(
+                                                                                    quotePreviewPost,
+                                                                                )}
+                                                                                onCopyPointerDown={(event) =>
+                                                                                    copyNeventUi.captureCopyPointerPosition(
+                                                                                        quotePreviewPost,
+                                                                                        event,
+                                                                                    )}
+                                                                                onCopyNevent={(event) =>
+                                                                                    void copyNeventUi.handleCopyNevent(
+                                                                                        quotePreviewPost,
+                                                                                        event,
+                                                                                    )}
+                                                                                externalClientLabel={getExternalClientOpenLabel()}
+                                                                                onOpenExternalClient={() =>
+                                                                                    handleOpenExternalClient(
+                                                                                        quotePreviewPost,
+                                                                                    )}
+                                                                                onShowRawJson={() =>
+                                                                                    openRawJson(
+                                                                                        quotePreviewPost.rawEvent,
+                                                                                        [
+                                                                                            ...quotePreviewPost.relayHints,
+                                                                                            ...quotePreviewPost.acceptedRelays,
+                                                                                            ...(quotePreviewPost.fetchedRelays ?? []),
+                                                                                        ],
+                                                                                    )}
+                                                                                onBroadcastPointerDown={(event) =>
+                                                                                    captureBroadcastPointerPosition(
+                                                                                        quotePreviewPost,
+                                                                                        event,
+                                                                                    )}
+                                                                                onBroadcastPost={(event) =>
+                                                                                    void handleBroadcastPost(
+                                                                                        quotePreviewPost,
+                                                                                        event,
+                                                                                    )}
+                                                                                onOpenDeleteConfirm={() =>
+                                                                                    openDeleteConfirm(
+                                                                                        quotePreviewPost,
+                                                                                    )}
+                                                                            />
+                                                                        {/snippet}
+                                                                    </PostHistoryActionMenu>
+                                                                {/if}
+                                                            {/snippet}
+                                                        </PostHistoryQuotePreview>
+                                                    {/each}
+                                                </div>
+                                            {/if}
+                                        {/snippet}
+                                        </PostContentPreview>
+
                                     </div>
                                     <PostHistoryPreviewFooter
                                             formattedDate={onReplyPost || onQuotePost ? formatPostedAt(

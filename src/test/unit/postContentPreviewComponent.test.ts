@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../../i18n";
 import { locale, waitLocale } from "svelte-i18n";
 import PostContentPreview from "../../components/PostContentPreview.svelte";
+import PostContentPreviewGatedSlotHarness from "./fixtures/PostContentPreviewGatedSlotHarness.svelte";
 import { buildPostContentRenderModel, type SensitiveBodyLoader, type SensitiveBodyCacheStatus } from "../../lib/postContentPreview";
 import { createDeferred } from "../deferredTestUtils";
 
@@ -14,6 +15,14 @@ describe("PostContentPreview Content Warning", () => {
     });
 
     afterEach(() => cleanup());
+
+    it("renders the after-content slot only after the parent warning is revealed", async () => {
+        const view = render(PostContentPreviewGatedSlotHarness);
+
+        expect(view.queryByTestId("quoted-card")).toBeNull();
+        await fireEvent.click(screen.getByRole("button", { name: "本文を表示" }));
+        expect(view.getByTestId("quoted-card")).toBeTruthy();
+    });
 
     it.each(["account", "runtime"])("cancels obsolete same-ID loaders when %s changes", async (changedScope) => {
         const pending = createDeferred<string | null>();
