@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
 import basicSsl from '@vitejs/plugin-basic-ssl';
+import { HASHED_PRECACHE_ASSET_PATTERN } from './src/lib/swPrecacheInstall';
 import {
   fixedLegacyBridgeEmitPlugin,
   loadFixedLegacyBridgeManifest,
@@ -169,11 +170,11 @@ export default defineConfig({
       },
       injectManifest: {
         swSrc: 'public/sw.js',
-        swDest: 'dist/sw.js',
+        // Let the plugin derive swDest from build.outDir, including test builds.
         rollupFormat: 'iife',
         injectionPoint: 'self.__WB_MANIFEST',
-        // Vercel環境でのキャッシュバスティングを改善
-        dontCacheBustURLsMatching: /^\/assets\//,
+        // Content-hashed URLs already identify the version (also under /ehagaki/).
+        dontCacheBustURLsMatching: HASHED_PRECACHE_ASSET_PATTERN,
         globPatterns: [
           '**/*.{js,css,html}',
           'assets/**/*.{js,css,png,jpg,jpeg,svg,gif,webp,ico}',

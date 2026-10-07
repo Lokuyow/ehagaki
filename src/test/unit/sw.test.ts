@@ -595,6 +595,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             await processServiceWorkerInstall({
                 logger: ServiceWorkerDependencies.console,
                 version: SW_VERSION,
+                installPrecache: async () => {},
             });
         }
 
