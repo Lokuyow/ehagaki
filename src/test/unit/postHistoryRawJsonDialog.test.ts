@@ -45,6 +45,7 @@ describe("PostHistoryRawJsonDialog", () => {
 
         const dialog = await screen.findByRole("dialog", { name: "イベントJSON" });
         expect(within(dialog).queryByRole("tab")).toBeNull();
+        expect(dialog.classList.contains("post-history-raw-json-dialog--tabs")).toBe(false);
         expect(within(dialog).getByText(/"content": "ordinary post"/)).toBeTruthy();
     });
 
@@ -57,6 +58,7 @@ describe("PostHistoryRawJsonDialog", () => {
         });
 
         const dialog = await screen.findByRole("dialog", { name: "イベントJSON" });
+        expect(dialog.classList.contains("post-history-raw-json-dialog--tabs")).toBe(true);
         const tabs = within(dialog).getAllByRole("tab");
         expect(tabs.map((tab) => tab.textContent)).toEqual(["Structure", "Payload"]);
         expect(tabs[0]?.getAttribute("aria-selected")).toBe("true");

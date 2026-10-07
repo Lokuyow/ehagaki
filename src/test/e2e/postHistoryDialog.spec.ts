@@ -2340,7 +2340,7 @@ test.describe('PostHistoryDialog Playwright', () => {
     });
 
     test('Sensitive payload event JSON shows the Structure and only its verified Payload', async ({ page }) => {
-        await page.goto('post-history-dialog-playwright.html?sensitive-preview=1');
+        await page.goto('post-history-dialog-playwright.html?sensitive-preview=1&long-raw-json=1');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
         const post = page.locator('.post-history-item').first();
         await post.getByRole('button', { name: 'アクションを表示' }).click();
@@ -2354,6 +2354,26 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(tabs).toHaveText(['Structure', 'Payload']);
         await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
         await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'false');
+        const geometry = async () => page.evaluate(() => {
+            const dialogElement = document.querySelector<HTMLElement>(
+                '[role="dialog"].post-history-raw-json-dialog',
+            );
+            const heading = dialogElement?.querySelector<HTMLElement>(".raw-json-heading");
+            const tabList = dialogElement?.querySelector<HTMLElement>(".raw-json-tabs");
+            const footer = dialogElement?.querySelector<HTMLElement>(".dialog-footer");
+            const rect = (element: HTMLElement | null | undefined) => {
+                if (!element) return null;
+                const { top, height } = element.getBoundingClientRect();
+                return { top, height };
+            };
+            return {
+                dialog: rect(dialogElement),
+                heading: rect(heading),
+                tabs: rect(tabList),
+                footer: rect(footer),
+            };
+        });
+        const structureGeometry = await geometry();
 
         const rawJson = dialog.locator('.raw-json-panel[data-state="active"] .raw-json-content');
         const structure = JSON.parse((await rawJson.textContent()) ?? 'null');
@@ -2363,15 +2383,24 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(payloadId).toBeTruthy();
 
         await tabs.nth(1).click();
+        await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+        expect(await geometry()).toEqual(structureGeometry);
         await expect.poll(async () => {
             const text = await rawJson.textContent();
             return text ? JSON.parse(text).id : null;
         }).toBe(payloadId);
+        expect(await geometry()).toEqual(structureGeometry);
         const payload = JSON.parse((await rawJson.textContent()) ?? 'null');
         expect(payload.kind).toBe(36);
         expect(payload.tags).toEqual([['k', '1']]);
-        expect(payload.content).toBe('playwright sensitive preview body :party: https://example.com/post-history-0.jpg');
+        expect(payload.content).toContain('playwright sensitive preview body :party: https://example.com/post-history-0.jpg');
+        expect(payload.content.length).toBeGreaterThan(10_000);
         expect(payload.content).not.toContain('unrelated payload must not appear');
+        expect(await rawJson.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+
+        await tabs.nth(0).click();
+        await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+        expect(await geometry()).toEqual(structureGeometry);
         await expect(dialog.getByRole('alert')).toHaveCount(0);
         await expect(dialog.getByRole('button', { name: /再取得|retry/i })).toHaveCount(0);
     });

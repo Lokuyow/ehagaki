@@ -133,7 +133,9 @@
     onOpenChange={handleOpenChange}
     title={$_("postHistory.rawJsonTitle")}
     description={$_("postHistory.rawJsonDescription")}
-    contentClass="post-history-raw-json-dialog"
+    contentClass={showPayloadTabs
+        ? "post-history-raw-json-dialog post-history-raw-json-dialog--tabs"
+        : "post-history-raw-json-dialog"}
     footerVariant="close-button"
     initialFocus="content"
 >
@@ -188,8 +190,24 @@
     :global(.post-history-raw-json-dialog .dialog-content) {
         padding: 8px;
     }
+
+    :global(.post-history-raw-json-dialog--tabs) {
+        height: min(80svh, 720px);
+        max-height: calc(100svh - 24px);
+    }
+
+    :global(.post-history-raw-json-dialog--tabs .dialog-content) {
+        flex: 1 1 0;
+        min-height: 0;
+        max-height: none;
+        overflow: hidden;
+        box-sizing: border-box;
+        align-items: stretch;
+    }
+
     .raw-json-heading {
         width: 100%;
+        flex: 0 0 auto;
     }
 
     .raw-json-heading h2 {
@@ -210,6 +228,27 @@
     :global(.raw-json-panel) {
         width: 100%;
         min-width: 0;
+    }
+
+    :global(.raw-json-tabs-root) {
+        display: flex;
+        flex: 1 1 0;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    :global(.raw-json-panel[data-state="active"]) {
+        display: flex;
+        flex: 1 1 0;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    :global(.post-history-raw-json-dialog--tabs .raw-json-content) {
+        flex: 1 1 0;
+        min-height: 0;
+        height: auto;
     }
 
     :global(.raw-json-tabs button) {

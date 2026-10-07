@@ -25,6 +25,7 @@
     const isLayoutStabilityScenario = new URLSearchParams(window.location.search).has("layout-stability");
     const isKind42QuoteScenario = new URLSearchParams(window.location.search).has("kind42-quote");
     const isSensitivePreviewScenario = new URLSearchParams(window.location.search).has("sensitive-preview");
+    const isLongRawJsonScenario = new URLSearchParams(window.location.search).has("long-raw-json");
     const isSelfQuoteTransitionScenario = new URLSearchParams(window.location.search).has("self-quote-transition");
     const isSparseOldestScenario = new URLSearchParams(window.location.search).has("sparse-oldest");
     const TOTAL_POSTS = isInfiniteScrollScenario
@@ -38,7 +39,7 @@
     const isExportScenario = new URLSearchParams(window.location.search).has("export");
     const HARNESS_YEAR = new Date().getFullYear();
     const STARTED_AT_MS = Date.UTC(HARNESS_YEAR, 0, 20, 12, 0, 0);
-    const SENSITIVE_PREVIEW_BODY = "playwright sensitive preview body :party: https://example.com/post-history-0.jpg";
+    const SENSITIVE_PREVIEW_BODY = `playwright sensitive preview body :party: https://example.com/post-history-0.jpg${isLongRawJsonScenario ? ` ${"x".repeat(12000)}` : ""}`;
     const SENSITIVE_PREVIEW_CREATED_AT = Math.floor(STARTED_AT_MS / 1000);
     const SENSITIVE_PREVIEW_PAYLOAD = isSensitivePreviewScenario
         ? finalizeEvent({
