@@ -220,7 +220,7 @@ test("Lite minimal configuration exposes only text composition and preserves suc
     await expect(replacement.locator(".tiptap-editor")).toContainText("keep after failure");
 });
 
-test("pastes HTML with clipboard plain text and sends that content through Host-owned Lite", async ({ page, browserName, isMobile }) => {
+test("pastes HTML with clipboard plain text and sends that content through Host-owned Lite", async ({ page, isMobile }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
@@ -253,7 +253,7 @@ test("pastes HTML with clipboard plain text and sends that content through Host-
     await expect(editor.locator("p")).toHaveText(expectedPlain.split("\n"));
     await expect(editor.locator("h1, h2, h3, strong, em, ul, ol, li, table, pre, code")).toHaveCount(0);
 
-    const undoModifier = browserName === "webkit" && isMobile ? "Meta" : "Control";
+    const undoModifier = isMobile ? "Meta" : "Control";
     await editor.press(`${undoModifier}+z`);
     await expect(editor).toHaveText("");
     await editor.press(`${undoModifier}+Shift+z`);
