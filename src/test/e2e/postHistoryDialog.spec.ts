@@ -2339,6 +2339,43 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(post.locator('.content-warning-prompt')).toBeVisible();
     });
 
+    test('Sensitive payload event JSON shows the Structure and only its verified Payload', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?sensitive-preview=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const post = page.locator('.post-history-item').first();
+        await post.getByRole('button', { name: 'アクションを表示' }).click();
+        await visiblePostHistoryActionMenu(page)
+            .getByRole('menuitem', { name: 'イベントJSONを表示' })
+            .click();
+
+        const dialog = page.getByRole('dialog', { name: 'イベントJSON' });
+        await expect(dialog).toBeVisible();
+        const tabs = dialog.getByRole('tab');
+        await expect(tabs).toHaveText(['Structure', 'Payload']);
+        await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+        await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'false');
+
+        const rawJson = dialog.locator('.raw-json-panel[data-state="active"] .raw-json-content');
+        const structure = JSON.parse((await rawJson.textContent()) ?? 'null');
+        expect(structure.kind).toBe(1);
+        expect(structure.content).toBe('');
+        const payloadId = structure.tags.find(([name]: string[]) => name === 'c')?.[1];
+        expect(payloadId).toBeTruthy();
+
+        await tabs.nth(1).click();
+        await expect.poll(async () => {
+            const text = await rawJson.textContent();
+            return text ? JSON.parse(text).id : null;
+        }).toBe(payloadId);
+        const payload = JSON.parse((await rawJson.textContent()) ?? 'null');
+        expect(payload.kind).toBe(36);
+        expect(payload.tags).toEqual([['k', '1']]);
+        expect(payload.content).toBe('playwright sensitive preview body :party: https://example.com/post-history-0.jpg');
+        expect(payload.content).not.toContain('unrelated payload must not appear');
+        await expect(dialog.getByRole('alert')).toHaveCount(0);
+        await expect(dialog.getByRole('button', { name: /再取得|retry/i })).toHaveCount(0);
+    });
+
     test('Sensitive payloads found by local search remain behind the normal CW gate', async ({ page }) => {
         await page.route('https://example.com/sensitive-emoji.svg', (route) => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"/>' }));
         await page.goto('post-history-dialog-playwright.html?sensitive-preview=1');
@@ -2662,6 +2699,7 @@ test.describe('PostHistoryDialog Playwright', () => {
             .click();
         const rawJsonDialog = page.getByRole('dialog', { name: 'イベントJSON' });
         await expect(rawJsonDialog).toBeVisible();
+        await expect(rawJsonDialog.getByRole('tab')).toHaveCount(0);
         await expect(rawJsonDialog.locator('.raw-json-content')).toHaveText('null');
         await expect(page.locator('.post-history-dialog')).toBeVisible();
 

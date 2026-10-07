@@ -55,6 +55,7 @@
     import {
         buildPostContentRenderModel,
         resolveEventContentBody,
+        type SensitiveBodyCacheStatus,
         type PostContentRenderModel,
     } from "../lib/postContentPreview";
     import {
@@ -70,7 +71,10 @@
     import { createPostHistoryProfileSyncCoordinator } from "../lib/postHistoryProfileSync";
     import { postHistoryQuoteTargetDiscoveryAdapter } from "../lib/postHistoryRelatedTargetDiscoveryAdapter";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
-    import { createSensitivePayloadBodyLoader } from "../lib/sensitiveContentPayloadReader";
+    import {
+        createSensitivePayloadBodyLoader,
+        loadVerifiedSensitivePayloadEvent,
+    } from "../lib/sensitiveContentPayloadReader";
     import { reconcilePendingDeletionRequestsForParentEventIds } from "../lib/postHistoryPendingDeletionRequestsReconcile";
     import { triggerPostHistoryChildInteractionDeletionLifecycle } from "../lib/postHistoryChildInteractionDeletionLifecycleTrigger";
     import { formatPostHistoryReactionActorLabel } from "../lib/postHistoryReactionReadModel";
@@ -321,6 +325,8 @@
         | undefined;
     let rawJsonDialogOpen = $state(false);
     let selectedRawEvent = $state<unknown>(null);
+    let selectedRawRelayHints = $state<string[]>([]);
+    let rawJsonSelectionVersion = $state(0);
     let deleteRequestState = $state<
         Record<string, "sending" | "failed" | undefined>
     >({});
@@ -1759,15 +1765,45 @@
         postActionUi.setPostMenuOpen(menuKey, open);
     }
 
-    function openRawJson(rawEvent: unknown): void {
+    function openRawJson(rawEvent: unknown, relayHints: string[] = []): void {
         selectedRawEvent = rawEvent;
+        selectedRawRelayHints = [...relayHints];
+        rawJsonSelectionVersion += 1;
         rawJsonDialogOpen = true;
+    }
+
+    function loadRawJsonPayload(
+        structure: NostrEvent,
+        signal: AbortSignal,
+    ): Promise<NostrEvent | null> {
+        const runtimeAtStart = rxNostr;
+        const pubkeyAtStart = pubkeyHex;
+        return loadVerifiedSensitivePayloadEvent({
+            structure,
+            relayHints: selectedRawRelayHints,
+            rxNostr: runtimeAtStart,
+            relayConfig,
+            signal,
+        }).then((payload) =>
+            signal.aborted
+                || runtimeAtStart !== rxNostr
+                || pubkeyAtStart !== pubkeyHex
+                ? null
+                : payload,
+        );
+    }
+
+    function observeRawJsonPayload(
+        structure: NostrEvent,
+        onChange: (status: SensitiveBodyCacheStatus) => void,
+    ): () => void {
+        return getSensitiveBodyLoader(structure)?.observe?.(onChange) ?? (() => {});
     }
 
     function handleNodeShowRawJson(
         nodeState: PostHistoryThreadGraphNodeState,
     ): void {
-        openRawJson(nodeState.node.event);
+        openRawJson(nodeState.node.event, nodeState.node.relayUrls);
     }
 
     function isNodeCopyFailed(nodeEventId: string): boolean {
@@ -2823,7 +2859,11 @@
                                                                             post,
                                                                         )}
                                                                     onShowRawJson={() =>
-                                                                        openRawJson(post.rawEvent)}
+                                                                        openRawJson(post.rawEvent, [
+                                                                            ...post.relayHints,
+                                                                            ...post.acceptedRelays,
+                                                                            ...(post.fetchedRelays ?? []),
+                                                                        ])}
                                                                     onBroadcastPointerDown={(event) =>
                                                                         captureBroadcastPointerPosition(
                                                                             post,
@@ -3089,6 +3129,11 @@
                                                                             onShowRawJson={() =>
                                                                                 openRawJson(
                                                                                     quotePreviewPost.rawEvent,
+                                                                                    [
+                                                                                        ...quotePreviewPost.relayHints,
+                                                                                        ...quotePreviewPost.acceptedRelays,
+                                                                                        ...(quotePreviewPost.fetchedRelays ?? []),
+                                                                                    ],
                                                                                 )}
                                                                             onBroadcastPointerDown={(event) =>
                                                                                 captureBroadcastPointerPosition(
@@ -3267,7 +3312,11 @@
                                                                     event,
                                                                 )}
                                                             onShowRawJson={() =>
-                                                                openRawJson(post.rawEvent)}
+                                                                openRawJson(post.rawEvent, [
+                                                                    ...post.relayHints,
+                                                                    ...post.acceptedRelays,
+                                                                    ...(post.fetchedRelays ?? []),
+                                                                ])}
                                                             onBroadcastPointerDown={(event) =>
                                                                 captureBroadcastPointerPosition(
                                                                     post,
@@ -3519,6 +3568,9 @@
     <PostHistoryRawJsonDialog
         open={rawJsonDialogOpen}
         rawEvent={selectedRawEvent}
+        resetKey={rawJsonSelectionVersion}
+        loadPayloadEvent={loadRawJsonPayload}
+        observePayloadStatus={observeRawJsonPayload}
         onOpenChange={(open) => (rawJsonDialogOpen = open)}
     />
 

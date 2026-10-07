@@ -27,14 +27,14 @@ async function isPairDeleted(structure: NostrEvent, payloadId: string): Promise<
     });
 }
 
-/** Called only after the viewer explicitly asks to reveal a Sensitive body. */
-export async function loadSensitivePayloadContent(params: {
+/** Loads a payload only after validating its association with this Structure. */
+export async function loadVerifiedSensitivePayloadEvent(params: {
     structure: NostrEvent;
     relayHints?: string[];
     rxNostr?: RxNostr;
     relayConfig?: RelayConfig | null;
     signal?: AbortSignal;
-}): Promise<string | null> {
+}): Promise<NostrEvent | null> {
     const { structure } = params;
     if (params.signal?.aborted || !isFullyVerifiedEvent(structure)) return null;
     const reference = getSensitivePayloadReference(structure);
@@ -46,7 +46,7 @@ export async function loadSensitivePayloadContent(params: {
     if (cached) {
         const payload = cached.rawEvent as NostrEvent;
         if (verifySensitivePayloadLink(structure, payload, reference.eventId)) {
-            return params.signal?.aborted ? null : payload.content;
+            return params.signal?.aborted ? null : payload;
         }
     }
 
@@ -85,7 +85,19 @@ export async function loadSensitivePayloadContent(params: {
     const [current] = await sensitivePayloadRepository.getByIds([reference.eventId]);
     if (params.signal?.aborted || current?.deletedAt !== undefined
         || await isPairDeleted(structure, reference.eventId)) return null;
-    return result.event.content;
+    return result.event;
+}
+
+/** Called only after the viewer explicitly asks to reveal a Sensitive body. */
+export async function loadSensitivePayloadContent(params: {
+    structure: NostrEvent;
+    relayHints?: string[];
+    rxNostr?: RxNostr;
+    relayConfig?: RelayConfig | null;
+    signal?: AbortSignal;
+}): Promise<string | null> {
+    const payload = await loadVerifiedSensitivePayloadEvent(params);
+    return payload?.content ?? null;
 }
 
 export function createSensitivePayloadBodyLoader(params: {

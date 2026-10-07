@@ -23,6 +23,7 @@ vi.mock("../../lib/postHistoryContextFetchService", () => ({
 import {
     createSensitivePayloadBodyLoader,
     loadSensitivePayloadContent,
+    loadVerifiedSensitivePayloadEvent,
 } from "../../lib/sensitiveContentPayloadReader";
 
 function createPair(secretKey: Uint8Array) {
@@ -107,6 +108,28 @@ describe("sensitiveContentPayloadReader", () => {
         expect(mocks.fetchEventById).not.toHaveBeenCalled();
     });
 
+    it("returns the raw event only after validating its Structure association", async () => {
+        const secretKey = generateSecretKey();
+        const { payload, structure } = createPair(secretKey);
+        mocks.getByIds.mockResolvedValue([{
+            id: payload.id,
+            pubkeyHex: payload.pubkey,
+            structureKind: 1,
+            rawEvent: payload,
+            acceptedRelays: [],
+            fetchedRelays: [],
+            relayHints: [],
+            createdAt: 100,
+            updatedAt: 100,
+            schemaVersion: 1,
+        }]);
+
+        await expect(loadVerifiedSensitivePayloadEvent({ structure }))
+            .resolves.toEqual(payload);
+        expect(mocks.getByIds).toHaveBeenCalledWith([payload.id]);
+        expect(mocks.fetchEventById).not.toHaveBeenCalled();
+    });
+
     it("rejects invalid cached and fetched pairs instead of revealing candidate text", async () => {
         const secretKey = generateSecretKey();
         const { structure } = createPair(secretKey);
@@ -139,7 +162,7 @@ describe("sensitiveContentPayloadReader", () => {
             cancel: vi.fn(),
         });
 
-        await expect(loadSensitivePayloadContent({
+        await expect(loadVerifiedSensitivePayloadEvent({
             structure: wrongStructure,
             rxNostr: {} as never,
         })).resolves.toBeNull();

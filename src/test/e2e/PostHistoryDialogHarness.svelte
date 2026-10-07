@@ -48,6 +48,14 @@
               created_at: SENSITIVE_PREVIEW_CREATED_AT,
           }, HARNESS_SECRET_KEY)
         : null;
+    const SENSITIVE_PREVIEW_UNRELATED_PAYLOAD = isSensitivePreviewScenario
+        ? finalizeEvent({
+              kind: 36,
+              content: "unrelated payload must not appear",
+              created_at: SENSITIVE_PREVIEW_CREATED_AT,
+              tags: [["k", "1"]],
+          }, HARNESS_SECRET_KEY)
+        : null;
     const SENSITIVE_PREVIEW_STRUCTURE = SENSITIVE_PREVIEW_PAYLOAD
         ? finalizeEvent({
               kind: 1,
@@ -563,6 +571,12 @@
             await sensitivePayloadRepository.putCandidate({
                 event: SENSITIVE_PREVIEW_PAYLOAD,
                 acceptedRelays: ["wss://relay.example.com/"],
+            });
+        }
+        if (SENSITIVE_PREVIEW_UNRELATED_PAYLOAD) {
+            await sensitivePayloadRepository.putCandidate({
+                event: SENSITIVE_PREVIEW_UNRELATED_PAYLOAD,
+                acceptedRelays: ["wss://unrelated.example.com/"],
             });
         }
         if (isExportScenario) {
