@@ -520,12 +520,14 @@ describe('PostHistoryDialog timeline search', () => {
         });
 
         const searchInput = await openSearchBar();
+        expect(getHistoryContainer().querySelector('.post-history-search-bottom-spacer')).toBeNull();
         await fireEvent.input(searchInput, { target: { value: 'alpha' } });
         await waitForSearchDebounce();
 
         await waitFor(() => {
             expect(screen.getByText('search-page-1')).toBeTruthy();
             expect(screen.getByRole('button', { name: 'さらに古い検索結果を表示' })).toBeTruthy();
+            expect(getHistoryContainer().querySelector('.post-history-search-bottom-spacer')).toBeNull();
         });
 
         await fireEvent.click(screen.getByRole('button', { name: 'さらに古い検索結果を表示' }));
@@ -555,8 +557,35 @@ describe('PostHistoryDialog timeline search', () => {
             expect(screen.getByText('search-page-2')).toBeTruthy();
             expect(screen.getByText('search-page-3')).toBeTruthy();
             expect(screen.queryByRole('button', { name: 'さらに古い検索結果を表示' })).toBeNull();
+            expect(getHistoryContainer().querySelector('.post-history-search-bottom-spacer')).not.toBeNull();
         });
 
+        await fireEvent.input(searchInput, { target: { value: '' } });
+        await waitFor(() => {
+            expect(getHistoryContainer().querySelector('.post-history-search-bottom-spacer')).toBeNull();
+        });
+
+        view.unmount();
+    });
+
+    it.each([0, 1])('初回検索の末尾にボタンがなく、結果が%d件の場合は投稿がある時だけ余白を表示する', async (resultCount) => {
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: resultCount ? [createRecord({ eventId: 'search-terminal', content: '検索結果の末尾' })] : [],
+            total: resultCount,
+            hasNext: false,
+        });
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
+        });
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'alpha' } });
+        await waitForSearchDebounce();
+
+        await waitFor(() => {
+            expect(getHistoryContainer().querySelectorAll('.post-history-item')).toHaveLength(resultCount);
+            expect(screen.queryByRole('button', { name: 'さらに古い検索結果を表示' })).toBeNull();
+            expect(getHistoryContainer().querySelectorAll('.post-history-search-bottom-spacer')).toHaveLength(resultCount);
+        });
         view.unmount();
     });
 
