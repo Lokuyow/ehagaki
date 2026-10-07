@@ -128,7 +128,7 @@ describe('SettingsDialog accessibility', () => {
         });
         await tick();
 
-        const label = 'CW非対応クライアントで本文表示を防ぐ';
+        const label = '対応クライアントでのみCW本文を表示';
         expect(screen.getByText(label)).toBeTruthy();
         expect(screen.queryByText(/NIP-36 Sensitive Content/)).toBeNull();
         const infoButton = screen.getByRole('button', { name: 'CW設定の詳細' });
@@ -138,8 +138,9 @@ describe('SettingsDialog accessibility', () => {
 
         await fireEvent.click(infoButton);
         await tick();
-        expect(screen.getByText(/NIP-36 Sensitive Content \/ Content Warning非対応クライアント/)).toBeTruthy();
-        expect(screen.getByText(/この形式に対応していないクライアントでは、CW本文を表示できません/)).toBeTruthy();
+        expect(screen.getByText(/通常のNIP-36 Content Warningでは、CWに対応していないクライアントで本文がそのまま表示されます/)).toBeTruthy();
+        expect(screen.getByText(/CW本文を別のkind 36 eventに分けて送信し/)).toBeTruthy();
+        expect(screen.getByText(/この形式に対応したクライアントだけが本文を取得して表示できる/)).toBeTruthy();
         expect(screen.getByText(/Nostrの全文検索で見つからないことがあります/)).toBeTruthy();
 
         await fireEvent.click(toggle);
