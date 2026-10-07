@@ -140,6 +140,8 @@
 
     .post-history-related-card-body {
         display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        min-width: 0;
         gap: 2px;
         padding: 2px 10px 0 8px;
     }

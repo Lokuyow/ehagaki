@@ -291,11 +291,14 @@
 
     .content-warning-prompt {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
+        width: 100%;
         max-width: 100%;
         min-width: 0;
+        box-sizing: border-box;
         padding: 10px 12px;
         border: 1px solid var(--border);
         border-radius: 8px;
@@ -305,6 +308,7 @@
 
     .content-warning-copy {
         display: flex;
+        flex: 1 1 0;
         flex-direction: column;
         gap: 3px;
         min-width: 0;
@@ -317,8 +321,12 @@
     }
 
     .content-warning-reveal-button {
-        flex: 0 0 auto;
+        flex: 0 1 auto;
+        height: auto;
+        max-width: 100%;
+        min-width: 0;
         min-height: 40px;
+        box-sizing: border-box;
         padding: 6px 10px;
         border: 1px solid var(--border);
         border-radius: 6px;
@@ -326,16 +334,12 @@
         color: var(--text);
         font: inherit;
         cursor: pointer;
+        white-space: normal;
+        overflow-wrap: anywhere;
     }
 
     .content-warning-reveal-button:hover {
         border-color: var(--theme);
     }
 
-    @media (max-width: 380px) {
-        .content-warning-prompt {
-            align-items: flex-start;
-            flex-direction: column;
-        }
-    }
 </style>

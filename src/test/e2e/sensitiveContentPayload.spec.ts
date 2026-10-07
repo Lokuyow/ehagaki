@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 type HarnessEvent = {
     event: {
@@ -10,6 +10,50 @@ type HarnessEvent = {
     };
     targetRelays: string[];
 };
+
+async function expectReplyPreviewWarningFits(preview: Locator): Promise<void> {
+    const prompt = preview.locator('.content-warning-prompt');
+    await expect(prompt).toBeVisible();
+    const layout = await prompt.evaluate((element) => {
+        const button = element.querySelector<HTMLElement>('.content-warning-reveal-button');
+        const reason = element.querySelector<HTMLElement>('.content-warning-copy span');
+        const card = element.closest<HTMLElement>('.reply-quote-preview');
+        if (!button || !card) throw new Error('Missing reply preview Content Warning elements');
+        const rect = (node: Element) => {
+            const { left, right, top, bottom, height } = node.getBoundingClientRect();
+            return { left, right, top, bottom, height };
+        };
+        return {
+            card: rect(card),
+            prompt: rect(element),
+            button: rect(button),
+            reason: reason ? {
+                scrollWidth: reason.scrollWidth,
+                clientWidth: reason.clientWidth,
+            } : null,
+            overflow: [element.closest('.post-content-preview'), element, button]
+                .filter((node): node is HTMLElement => node instanceof HTMLElement)
+                .map((node) => ({
+                    scrollWidth: node.scrollWidth,
+                    clientWidth: node.clientWidth,
+                })),
+        };
+    });
+    expect(layout.prompt.left).toBeGreaterThanOrEqual(layout.card.left - 1);
+    expect(layout.prompt.right).toBeLessThanOrEqual(layout.card.right + 1);
+    expect(layout.button.left).toBeGreaterThanOrEqual(layout.prompt.left - 1);
+    expect(layout.button.right).toBeLessThanOrEqual(layout.prompt.right + 1);
+    expect(layout.button.top).toBeGreaterThanOrEqual(layout.prompt.top - 1);
+    expect(layout.button.bottom).toBeLessThanOrEqual(layout.prompt.bottom + 1);
+    expect(layout.button.height).toBeLessThan(layout.prompt.height);
+    expect(layout.button.height).toBeGreaterThanOrEqual(40);
+    for (const width of layout.overflow) {
+        expect(width.scrollWidth).toBeLessThanOrEqual(width.clientWidth + 1);
+    }
+    if (layout.reason) {
+        expect(layout.reason.scrollWidth).toBeLessThanOrEqual(layout.reason.clientWidth + 1);
+    }
+}
 
 test("publishes payload before its Structure and replies to the canonical Structure", async ({ page }) => {
     await page.goto("sensitive-content-payload-playwright.html");
@@ -70,4 +114,31 @@ test("publishes payload before its Structure and replies to the canonical Struct
         ["p", structure?.event.pubkey],
     ]));
     expect(reply.event.tags.find((tag) => tag[0] === "e")?.at(-1)).toBe(structure?.event.pubkey);
+});
+
+test("ReplyQuotePreview Content Warning wraps to its container width", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 820 });
+    await page.goto("sensitive-content-payload-playwright.html");
+    await page.getByTestId("submit-sensitive").click();
+    await expect(page.getByTestId("submit-result")).toHaveText("success", { timeout: 15_000 });
+
+    const previews = [
+        page.getByTestId("sensitive-reply-preview").locator(".reply-quote-preview"),
+        page.getByTestId("sensitive-quote-preview").locator(".reply-quote-preview"),
+    ];
+    for (const preview of previews) {
+        await preview.getByRole("button", { name: "展開する" }).click();
+        await expectReplyPreviewWarningFits(preview);
+    }
+
+    await page.setViewportSize({ width: 1024, height: 900 });
+    for (const preview of previews) {
+        await preview.evaluate((element) => {
+            const card = element as HTMLElement;
+            card.style.width = "140px";
+            card.style.maxWidth = "140px";
+            card.style.boxSizing = "border-box";
+        });
+        await expectReplyPreviewWarningFits(preview);
+    }
 });

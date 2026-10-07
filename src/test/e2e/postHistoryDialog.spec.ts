@@ -1,4 +1,4 @@
-import { expect, test, type Download, type Page, type Route } from '@playwright/test';
+import { expect, test, type Download, type Locator, type Page, type Route } from '@playwright/test';
 
 type HarnessState = {
     ready: boolean;
@@ -62,6 +62,61 @@ async function gotoHarness(page: Page) {
     await page.goto('post-history-dialog-playwright.html');
     await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
     return page.evaluate<HarnessState>(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState);
+}
+
+async function expectContentWarningLayout(container: Locator): Promise<void> {
+    const prompt = container.locator('.content-warning-prompt');
+    await expect(prompt).toBeVisible();
+    const layout = await prompt.evaluate((element) => {
+        const button = element.querySelector<HTMLElement>('.content-warning-reveal-button');
+        const reason = element.querySelector<HTMLElement>('.content-warning-copy span');
+        const card = element.closest<HTMLElement>(
+            '.post-history-related-card, .post-history-item, .target-preview, .reply-quote-preview',
+        ) ?? element.parentElement;
+        if (!button || !card) throw new Error('Missing Content Warning layout elements');
+        const rect = (node: Element) => {
+            const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
+            return { left, right, top, bottom, width, height };
+        };
+        return {
+            card: rect(card),
+            prompt: rect(element),
+            button: rect(button),
+            reason: reason ? {
+                textLength: reason.textContent?.length ?? 0,
+                scrollWidth: reason.scrollWidth,
+                clientWidth: reason.clientWidth,
+                lineCount: (() => {
+                    const range = document.createRange();
+                    range.selectNodeContents(reason);
+                    return range.getClientRects().length;
+                })(),
+            } : null,
+            overflow: [element.closest('.post-content-preview'), element, button]
+                .filter((node): node is HTMLElement => node instanceof HTMLElement)
+                .map((node) => ({
+                    scrollWidth: node.scrollWidth,
+                    clientWidth: node.clientWidth,
+                })),
+        };
+    });
+    expect(layout.prompt.left).toBeGreaterThanOrEqual(layout.card.left - 1);
+    expect(layout.prompt.right).toBeLessThanOrEqual(layout.card.right + 1);
+    expect(layout.button.left).toBeGreaterThanOrEqual(layout.prompt.left - 1);
+    expect(layout.button.right).toBeLessThanOrEqual(layout.prompt.right + 1);
+    expect(layout.button.top).toBeGreaterThanOrEqual(layout.prompt.top - 1);
+    expect(layout.button.bottom).toBeLessThanOrEqual(layout.prompt.bottom + 1);
+    expect(layout.button.height).toBeLessThan(layout.prompt.height);
+    expect(layout.button.height).toBeGreaterThanOrEqual(40);
+    for (const width of layout.overflow) {
+        expect(width.scrollWidth).toBeLessThanOrEqual(width.clientWidth + 1);
+    }
+    if (layout.reason) {
+        expect(layout.reason.scrollWidth).toBeLessThanOrEqual(layout.reason.clientWidth + 1);
+        if (layout.reason.textLength > 40) {
+            expect(layout.reason.lineCount).toBeGreaterThan(1);
+        }
+    }
 }
 
 async function gotoLayoutStabilityHarness(page: Page) {
@@ -2304,6 +2359,54 @@ test.describe('PostHistoryDialog Playwright', () => {
         await reactionButton.click();
         await expect(quoteCard.locator('.post-preview-reaction-chip')).toHaveCount(1);
         await expect(quoteCard.locator('.post-preview-reaction-count')).toHaveText('1');
+    });
+
+    test('Content Warning fits post, quote, reply, and narrow nested previews independently of viewport width', async ({ page }) => {
+        await page.setViewportSize({ width: 360, height: 820 });
+        await page.goto('post-history-dialog-playwright.html?sensitive-preview=1&cw-layout=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate<HarnessState>(() =>
+            (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState,
+        );
+
+        const sensitivePost = page.locator('.post-history-item').first();
+        await expectContentWarningLayout(sensitivePost);
+
+        const quoteHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
+        );
+        const quoteCard = quoteHost.locator('.post-history-related-card').first();
+        await expectContentWarningLayout(quoteCard);
+
+        const threadHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"]`,
+        );
+        await scrollPostIntoViewByEventId(page, harness.replyParentEventId);
+        const warningCards = threadHost.locator(
+            '.post-history-related-card:has(.content-warning-prompt)',
+        );
+        if (!(await warningCards.first().isVisible())) {
+            await threadHost.getByRole('button', { name: /返信 1件を表示/ }).click();
+        }
+        await expect(warningCards).toHaveCount(1);
+        const replyCard = warningCards.nth(0);
+        await expectContentWarningLayout(replyCard);
+
+        const nestedReplyCard = warningCards.nth(1);
+        if (!(await nestedReplyCard.isVisible())) {
+            await replyCard.getByRole('button', { name: /返信 1件を表示/ }).click();
+        }
+        await expect(warningCards).toHaveCount(2);
+        await expectContentWarningLayout(nestedReplyCard);
+
+        await page.setViewportSize({ width: 1024, height: 900 });
+        await nestedReplyCard.evaluate((element) => {
+            const card = element as HTMLElement;
+            card.style.width = '140px';
+            card.style.maxWidth = '140px';
+            card.style.boxSizing = 'border-box';
+        });
+        await expectContentWarningLayout(nestedReplyCard);
     });
 
     test('Sensitive payload history previews hide body and media until explicit reveal', async ({ page }) => {

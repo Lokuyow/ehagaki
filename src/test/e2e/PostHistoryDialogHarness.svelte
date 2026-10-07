@@ -26,6 +26,7 @@
     const isKind42QuoteScenario = new URLSearchParams(window.location.search).has("kind42-quote");
     const isSensitivePreviewScenario = new URLSearchParams(window.location.search).has("sensitive-preview");
     const isLongRawJsonScenario = new URLSearchParams(window.location.search).has("long-raw-json");
+    const isCwLayoutScenario = new URLSearchParams(window.location.search).has("cw-layout");
     const isSelfQuoteTransitionScenario = new URLSearchParams(window.location.search).has("self-quote-transition");
     const isSparseOldestScenario = new URLSearchParams(window.location.search).has("sparse-oldest");
     const TOTAL_POSTS = isInfiniteScrollScenario
@@ -41,6 +42,7 @@
     const STARTED_AT_MS = Date.UTC(HARNESS_YEAR, 0, 20, 12, 0, 0);
     const SENSITIVE_PREVIEW_BODY = `playwright sensitive preview body :party: https://example.com/post-history-0.jpg${isLongRawJsonScenario ? ` ${"x".repeat(12000)}` : ""}`;
     const SENSITIVE_PREVIEW_CREATED_AT = Math.floor(STARTED_AT_MS / 1000);
+    const CW_LAYOUT_REASON = `sensitive nested warning reason ${"long-reason-segment-".repeat(8)}`;
     const LONG_RAW_JSON_EVENT = isLongRawJsonScenario && !isSensitivePreviewScenario
         ? finalizeEvent({
               kind: 1,
@@ -341,7 +343,7 @@
             pubkeyHex: "e".repeat(64),
             kind: isKind42QuoteScenario ? 42 : 1,
             content: quoteContent,
-            tags: [],
+            tags: isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : [],
             createdAt: quoteParentPost.createdAt - 60,
             postedAt: quoteParentPost.postedAt - 60_000,
             relayHints: [],
@@ -352,7 +354,7 @@
                 pubkey: "e".repeat(64),
                 kind: isKind42QuoteScenario ? 42 : 1,
                 content: quoteContent,
-                tags: [],
+                tags: isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : [],
                 created_at: quoteParentPost.createdAt - 60,
                 sig: "a".repeat(128),
             },
@@ -408,6 +410,7 @@
         tags: [
             ["p", HARNESS_PUBKEY],
             ["e", linkPost.eventId, "", "reply"],
+            ...(isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : []),
         ],
         createdAt: replyCreatedAt,
         relayUrls: ["wss://relay.example.com/"],
@@ -420,6 +423,7 @@
             tags: [
                 ["p", HARNESS_PUBKEY],
                 ["e", linkPost.eventId, "", "reply"],
+                ...(isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : []),
             ],
             created_at: replyCreatedAt,
             sig: "c".repeat(128),
@@ -435,14 +439,20 @@
         parentEventId: replyEventId,
         authorPubkey: "5".repeat(64),
         content: "playwright nested reply",
-        tags: [["e", replyEventId, "wss://relay.example.com/", "reply"]],
+        tags: [
+            ["e", replyEventId, "wss://relay.example.com/", "reply"],
+            ...(isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : []),
+        ],
         createdAt: replyCreatedAt + 60,
         rawEvent: {
             id: grandchildEventId,
             pubkey: "5".repeat(64),
             kind: 1,
             content: "playwright nested reply",
-            tags: [["e", replyEventId, "wss://relay.example.com/", "reply"]],
+            tags: [
+                ["e", replyEventId, "wss://relay.example.com/", "reply"],
+                ...(isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : []),
+            ],
             created_at: replyCreatedAt + 60,
             sig: "d".repeat(128),
         },
