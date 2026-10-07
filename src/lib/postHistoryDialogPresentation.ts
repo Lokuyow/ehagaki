@@ -37,6 +37,13 @@ export function resolvePostHistoryCountSummaryState(input: {
     isSearchMode: boolean;
 }): PostHistoryDialogMessageState | null {
     if (input.isSearchMode) {
+        if (input.totalCountKnown === false) {
+            return {
+                key: input.totalCountStatus === "failed"
+                    ? "postHistory.countUnavailable"
+                    : "postHistory.countLoading",
+            };
+        }
         if (input.totalCount <= 0) {
             return null;
         }

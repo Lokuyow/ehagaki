@@ -19,6 +19,7 @@ import {
     waitForSearchDebounce,
 } from './postHistoryDialogTestHarness';
 import { readPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
+import type { SearchLocalPostsOptions, SearchLocalPostsResult } from '../../lib/postHistoryLocalSearchService';
 import { readPersistedPostHistoryListingSnapshotForPubkey } from '../../lib/hooks/usePostHistoryListing.svelte';
 import {
     readPostHistoryDialogScrollState,
@@ -78,6 +79,106 @@ async function persistSearchSnapshot(
 describe('PostHistoryDialog timeline search', () => {
     beforeEach(() => {
         resetPostHistoryDialogHarness();
+    });
+
+    it('renders and permits actions on partial results while keeping the count and paging pending', async () => {
+        const completion = createDeferred<SearchLocalPostsResult>();
+        const post = createRecord({ eventId: 'partial-search', content: 'partial search result' });
+        let searchOptions!: SearchLocalPostsOptions;
+        localSearchServiceMock.searchLocalPosts.mockImplementation((options: SearchLocalPostsOptions) => {
+            searchOptions = options;
+            return completion.promise;
+        });
+        render(PostHistoryDialog, { props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX } });
+        const input = await openSearchBar();
+        await fireEvent.input(input, { target: { value: 'alpha' } });
+        await waitForSearchDebounce();
+        await waitFor(() => expect(searchOptions?.onProgress).toBeTypeOf('function'));
+        await searchOptions.onProgress?.({ phase: 'partial', items: [post] });
+        expect(screen.getByText(post.content)).toBeTruthy();
+        expect(screen.getByText('件数を確認中...')).toBeTruthy();
+        expect(input.getAttribute('aria-busy')).toBe('true');
+        expect(screen.queryByText('一致する投稿はありません')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'さらに古い検索結果を表示' })).toBeNull();
+        const action = screen.getByRole('button', { name: 'アクションを表示' }) as HTMLButtonElement;
+        expect(action.disabled).toBe(false);
+        await fireEvent.click(action);
+        expect(await screen.findByRole('menuitem', { name: '前後の投稿を表示' })).toBeTruthy();
+        completion.resolve({ items: [post], total: 51, hasNext: true });
+        await waitFor(() => expect(input.getAttribute('aria-busy')).toBe('false'));
+        expect(screen.getByText('51件')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'さらに古い検索結果を表示' })).toBeTruthy();
+    });
+
+    it('retains partial results and reports an unavailable count after failure', async () => {
+        const completion = createDeferred<SearchLocalPostsResult>();
+        const post = createRecord({ content: 'retained partial result' });
+        let searchOptions!: SearchLocalPostsOptions;
+        localSearchServiceMock.searchLocalPosts.mockImplementation((options: SearchLocalPostsOptions) => {
+            searchOptions = options;
+            return completion.promise;
+        });
+        render(PostHistoryDialog, { props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX } });
+        const input = await openSearchBar();
+        await fireEvent.input(input, { target: { value: 'alpha' } });
+        await waitForSearchDebounce();
+        await waitFor(() => expect(searchOptions?.onProgress).toBeTypeOf('function'));
+        await searchOptions.onProgress?.({ phase: 'partial', items: [post] });
+        completion.reject(new Error('scan failed'));
+        await waitFor(() => expect(screen.getByText('件数を確認できません')).toBeTruthy());
+        expect(screen.getByText(post.content)).toBeTruthy();
+        expect(input.getAttribute('aria-busy')).toBe('false');
+    });
+
+    it('ignores old progress after a new query, reset, close, or unmount', async () => {
+        const completion = createDeferred<SearchLocalPostsResult>();
+        const captured: SearchLocalPostsOptions[] = [];
+        localSearchServiceMock.searchLocalPosts.mockImplementation((options: SearchLocalPostsOptions) => {
+            captured.push(options);
+            return completion.promise;
+        });
+        const view = render(PostHistoryDialog, { props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX } });
+        const input = await openSearchBar();
+        await fireEvent.input(input, { target: { value: 'alpha' } });
+        await waitForSearchDebounce();
+        await waitFor(() => expect(captured).toHaveLength(1));
+        await fireEvent.input(input, { target: { value: 'beta' } });
+        await waitForSearchDebounce();
+        await waitFor(() => expect(captured).toHaveLength(2));
+        await captured[0].onProgress?.({ phase: 'partial', items: [createRecord({ content: 'obsolete progress' })] });
+        expect(screen.queryByText('obsolete progress')).toBeNull();
+        await fireEvent.input(input, { target: { value: '' } });
+        await waitForSearchDebounce();
+        await captured[1].onProgress?.({ phase: 'partial', items: [createRecord({ content: 'obsolete progress' })] });
+        expect(screen.queryByText('obsolete progress')).toBeNull();
+        await view.rerender({ show: false, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX });
+        await captured[1].onProgress?.({ phase: 'reset', items: [] });
+        view.unmount();
+        await captured[1].onProgress?.({ phase: 'partial', items: [createRecord({ content: 'obsolete progress' })] });
+        completion.resolve({ items: [], total: 0, hasNext: false });
+        expect(screen.queryByText('obsolete progress')).toBeNull();
+    });
+
+    it.each(['close', 'account', 'unmount'])('rejects progress from an active search after %s', async (reason) => {
+        const completion = createDeferred<SearchLocalPostsResult>();
+        let options!: SearchLocalPostsOptions;
+        localSearchServiceMock.searchLocalPosts.mockImplementation((input: SearchLocalPostsOptions) => {
+            options = input;
+            return completion.promise;
+        });
+        const onClose = vi.fn();
+        const view = render(PostHistoryDialog, { props: { show: true, onClose, pubkeyHex: PUBKEY_HEX } });
+        const input = await openSearchBar();
+        await fireEvent.input(input, { target: { value: 'alpha' } });
+        await waitForSearchDebounce();
+        await waitFor(() => expect(options?.onProgress).toBeTypeOf('function'));
+        localSearchServiceMock.clearCache.mockClear();
+        if (reason === 'unmount') view.unmount();
+        else await view.rerender({ show: reason !== 'close', onClose, pubkeyHex: reason === 'account' ? 'b'.repeat(64) : PUBKEY_HEX });
+        await options.onProgress?.({ phase: 'partial', items: [createRecord({ content: 'obsolete owner result' })] });
+        completion.resolve({ items: [], total: 0, hasNext: false });
+        expect(screen.queryByText('obsolete owner result')).toBeNull();
+        expect(localSearchServiceMock.clearCache).toHaveBeenCalled();
     });
 
     it('検索結果の古いページ追加後も既存投稿のコンテナ内位置を維持する', async () => {
@@ -663,6 +764,7 @@ describe('PostHistoryDialog timeline search', () => {
                 query: 'beta',
                 page: 1,
                 pageSize: 50,
+                onProgress: expect.any(Function),
             });
             expect(screen.getByText('beta-1')).toBeTruthy();
         });

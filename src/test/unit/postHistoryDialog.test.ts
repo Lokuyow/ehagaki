@@ -5923,6 +5923,7 @@ describe('PostHistoryDialog', () => {
                 query: '一致',
                 page: 1,
                 pageSize: 50,
+                onProgress: expect.any(Function),
             });
         });
 
@@ -5944,6 +5945,7 @@ describe('PostHistoryDialog', () => {
                 query: '一致',
                 page: 1,
                 pageSize: 50,
+                onProgress: expect.any(Function),
             });
         });
 

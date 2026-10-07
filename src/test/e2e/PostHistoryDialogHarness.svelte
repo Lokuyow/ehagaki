@@ -25,6 +25,7 @@
     const HARNESS_SECRET_KEY = generateSecretKey();
     const HARNESS_PUBKEY = getPublicKey(HARNESS_SECRET_KEY);
     const isInfiniteScrollScenario = new URLSearchParams(window.location.search).has("infinite-scroll");
+    const isSearchProgressScenario = new URLSearchParams(window.location.search).has("search-progress");
     const isLongPreviewScenario = new URLSearchParams(window.location.search).has("long-preview");
     const isLayoutStabilityScenario = new URLSearchParams(window.location.search).has("layout-stability");
     const isKind42QuoteScenario = new URLSearchParams(window.location.search).has("kind42-quote");
@@ -166,6 +167,12 @@
             };
             __POST_HISTORY_REACTION_TEST_CONTROL__?: {
                 addReactionToQuote: () => Promise<void>;
+            };
+            __POST_HISTORY_SEARCH_SCAN_GATE__?: {
+                entered: boolean;
+                reads: number;
+                finished: boolean;
+                release: (() => void) | null;
             };
         };
 
@@ -559,6 +566,24 @@
     };
 
     onMount(async () => {
+        if (isSearchProgressScenario) {
+            const gate = { entered: false, reads: 0, finished: false, release: null as (() => void) | null };
+            (window as HarnessWindow).__POST_HISTORY_SEARCH_SCAN_GATE__ = gate;
+            const getChunk = postHistoryRepository.getSearchScanChunk.bind(postHistoryRepository);
+            postHistoryRepository.getSearchScanChunk = async (options) => {
+                gate.reads += 1;
+                if (options.cursor && !gate.entered) {
+                    gate.entered = true;
+                    await new Promise<void>((resolve) => { gate.release = resolve; });
+                    gate.release = null;
+                }
+                // Exercise real IndexedDB batch boundaries with a compact fixture;
+                // the production batch size is a tuning value, not a test contract.
+                const chunk = await getChunk({ ...options, limit: 25 });
+                if (options.cursor) gate.finished = true;
+                return chunk;
+            };
+        }
         const harnessWindow = window as HarnessWindow;
         harnessWindow.__POST_HISTORY_SCROLL_LOAD_GATE__ = {
             direction: null,

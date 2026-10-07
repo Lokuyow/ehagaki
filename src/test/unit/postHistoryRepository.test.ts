@@ -265,6 +265,36 @@ beforeEach(() => {
 });
 
 describe("DexiePostHistoryRepository", () => {
+    it("search scan continues through unsupported kinds and timestamp ties without crossing accounts", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db);
+        const pubkeyHex = "b".repeat(64);
+        const records = [
+            { ...createPostHistoryRecord({ pubkeyHex, eventId: "f".repeat(64), postedAt: 200, createdAt: 100 }), kind: 36 },
+            createPostHistoryRecord({ pubkeyHex, eventId: "c".repeat(64), postedAt: 200, createdAt: 100 }),
+            createPostHistoryRecord({ pubkeyHex, eventId: "b".repeat(64), postedAt: 200, createdAt: 100 }),
+            createPostHistoryRecord({ pubkeyHex, eventId: "a".repeat(64), postedAt: 200, createdAt: 90 }),
+            createPostHistoryRecord({ pubkeyHex, eventId: "d".repeat(64), postedAt: 100, createdAt: 200 }),
+            createPostHistoryRecord({ pubkeyHex: "e".repeat(64), eventId: "e".repeat(64), postedAt: 300, createdAt: 300 }),
+        ];
+        await db.postHistory.bulkPut(records.reverse());
+        const first = await repository.getSearchScanChunk({ pubkeyHex, limit: 1 });
+        expect(first.items).toEqual([]);
+        expect(first.hasMore).toBe(true);
+        expect(first.nextCursor?.eventId).toBe("f".repeat(64));
+        const found: PostHistoryRecord[] = [];
+        let chunk = first;
+        while (chunk.hasMore) {
+            chunk = await repository.getSearchScanChunk({ pubkeyHex, limit: 2, cursor: chunk.nextCursor! });
+            found.push(...chunk.items);
+        }
+        expect(found.map((post) => post.eventId)).toEqual(["c", "b", "a", "d"].map((id) => id.repeat(64)));
+        expect(found).toEqual(await repository.getAll({ pubkeyHex }));
+        expect(await repository.getSearchScanChunk({ pubkeyHex: null, limit: 2 }))
+            .toEqual({ items: [], nextCursor: null, hasMore: false });
+        db.close();
+    });
+
     it('uses supported post kinds for every listing, count, and anchor without a legacy adapter', async () => {
         const db = createTestDb();
         await db.open();
