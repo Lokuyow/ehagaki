@@ -41,6 +41,14 @@
     const STARTED_AT_MS = Date.UTC(HARNESS_YEAR, 0, 20, 12, 0, 0);
     const SENSITIVE_PREVIEW_BODY = `playwright sensitive preview body :party: https://example.com/post-history-0.jpg${isLongRawJsonScenario ? ` ${"x".repeat(12000)}` : ""}`;
     const SENSITIVE_PREVIEW_CREATED_AT = Math.floor(STARTED_AT_MS / 1000);
+    const LONG_RAW_JSON_EVENT = isLongRawJsonScenario && !isSensitivePreviewScenario
+        ? finalizeEvent({
+              kind: 1,
+              content: `ordinary long content ${"x".repeat(12000)}`,
+              created_at: Math.floor(STARTED_AT_MS / 1000),
+              tags: [],
+          }, HARNESS_SECRET_KEY)
+        : null;
     const SENSITIVE_PREVIEW_PAYLOAD = isSensitivePreviewScenario
         ? finalizeEvent({
               kind: 36,
@@ -65,6 +73,7 @@
                   ["content-warning", "Sensitive demo"],
                   ["c", SENSITIVE_PREVIEW_PAYLOAD.id],
                   ["emoji", "party", "https://example.com/sensitive-emoji.svg"],
+                  ...(isLongRawJsonScenario ? [["test", "y".repeat(12000)]] : []),
               ],
               created_at: SENSITIVE_PREVIEW_CREATED_AT,
           }, HARNESS_SECRET_KEY)
@@ -153,8 +162,11 @@
         const timestampSeconds = Math.floor(timestampMs / 1000);
         const label = index < SEARCH_MATCHING_POSTS ? "alpha" : "beta";
         const isSensitivePreviewPost = isSensitivePreviewScenario && index === 0;
+        const isLongRawJsonPost = LONG_RAW_JSON_EVENT !== null && index === 0;
         const eventId = isSensitivePreviewPost && SENSITIVE_PREVIEW_STRUCTURE
             ? SENSITIVE_PREVIEW_STRUCTURE.id
+            : isLongRawJsonPost && LONG_RAW_JSON_EVENT
+              ? LONG_RAW_JSON_EVENT.id
             : buildHexId(index, "aa");
 
         return {
@@ -162,7 +174,7 @@
             eventId,
             pubkeyHex: HARNESS_PUBKEY,
             kind: isSensitivePreviewPost ? 1 : isKind42QuoteScenario ? 42 : 1,
-            content: isSensitivePreviewPost ? "" : `${label} post ${index + 1}`,
+            content: isSensitivePreviewPost ? "" : isLongRawJsonPost ? LONG_RAW_JSON_EVENT?.content ?? "" : `${label} post ${index + 1}`,
             tags: isSensitivePreviewPost
                 ? SENSITIVE_PREVIEW_STRUCTURE?.tags ?? [["content-warning", "Sensitive demo"]]
                 : [],
@@ -179,7 +191,7 @@
                           },
                       ]
                     : [],
-            rawEvent: isSensitivePreviewPost ? SENSITIVE_PREVIEW_STRUCTURE : null,
+            rawEvent: isSensitivePreviewPost ? SENSITIVE_PREVIEW_STRUCTURE : isLongRawJsonPost ? LONG_RAW_JSON_EVENT : null,
             fetchedAt: timestampMs,
             lastSeenAt: timestampMs,
             updatedAt: timestampMs,

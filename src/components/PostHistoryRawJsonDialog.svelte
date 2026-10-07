@@ -282,7 +282,8 @@
         font-size: 0.82rem;
         line-height: 1.45;
         text-align: left;
-        white-space: pre;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
     }
 
     :global(.post-history-raw-json-dialog) {

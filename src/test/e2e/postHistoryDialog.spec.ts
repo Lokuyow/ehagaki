@@ -2379,6 +2379,25 @@ test.describe('PostHistoryDialog Playwright', () => {
         const structure = JSON.parse((await rawJson.textContent()) ?? 'null');
         expect(structure.kind).toBe(1);
         expect(structure.content).toBe('');
+        expect((await rawJson.textContent())?.trimStart().startsWith('{\n')).toBe(true);
+        const expectWrappedAndScrollable = async () => {
+            const metrics = await rawJson.evaluate((element) => {
+                const style = getComputedStyle(element);
+                return {
+                    whiteSpace: style.whiteSpace,
+                    overflowWrap: style.overflowWrap,
+                    scrollWidth: element.scrollWidth,
+                    clientWidth: element.clientWidth,
+                    scrollHeight: element.scrollHeight,
+                    clientHeight: element.clientHeight,
+                };
+            });
+            expect(metrics.whiteSpace).toBe('pre-wrap');
+            expect(metrics.overflowWrap).toBe('anywhere');
+            expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+            expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+        };
+        await expectWrappedAndScrollable();
         const payloadId = structure.tags.find(([name]: string[]) => name === 'c')?.[1];
         expect(payloadId).toBeTruthy();
 
@@ -2391,18 +2410,57 @@ test.describe('PostHistoryDialog Playwright', () => {
         }).toBe(payloadId);
         expect(await geometry()).toEqual(structureGeometry);
         const payload = JSON.parse((await rawJson.textContent()) ?? 'null');
+        expect((await rawJson.textContent())?.startsWith('{\n  "id":')).toBe(true);
+        await expectWrappedAndScrollable();
         expect(payload.kind).toBe(36);
         expect(payload.tags).toEqual([['k', '1']]);
         expect(payload.content).toContain('playwright sensitive preview body :party: https://example.com/post-history-0.jpg');
         expect(payload.content.length).toBeGreaterThan(10_000);
         expect(payload.content).not.toContain('unrelated payload must not appear');
-        expect(await rawJson.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
 
         await tabs.nth(0).click();
         await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
         expect(await geometry()).toEqual(structureGeometry);
         await expect(dialog.getByRole('alert')).toHaveCount(0);
         await expect(dialog.getByRole('button', { name: /再取得|retry/i })).toHaveCount(0);
+    });
+
+    test('ordinary event JSON wraps long strings and preserves formatted JSON', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?long-raw-json=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const post = page.locator('.post-history-item').first();
+        await post.getByRole('button', { name: 'アクションを表示' }).click();
+        await visiblePostHistoryActionMenu(page)
+            .getByRole('menuitem', { name: 'イベントJSONを表示' })
+            .click();
+
+        const dialog = page.getByRole('dialog', { name: 'イベントJSON' });
+        const rawJson = dialog.locator('.raw-json-content');
+        await expect(rawJson).toBeVisible();
+        const renderedJson = await rawJson.textContent() ?? '';
+        const event = JSON.parse(renderedJson);
+        expect(renderedJson.trimStart().startsWith('{\n')).toBe(true);
+        expect(renderedJson).toContain('\n  "content":');
+        expect(event.kind).toBe(1);
+        expect(event.content).toContain(`ordinary long content ${'x'.repeat(100)}`);
+        expect(event.content.length).toBeGreaterThan(10_000);
+        expect(await rawJson.evaluate((element) => {
+            const style = getComputedStyle(element);
+            return {
+                whiteSpace: style.whiteSpace,
+                overflowWrap: style.overflowWrap,
+                scrollWidth: element.scrollWidth,
+                clientWidth: element.clientWidth,
+            };
+        })).toEqual(expect.objectContaining({
+            whiteSpace: 'pre-wrap',
+            overflowWrap: 'anywhere',
+        }));
+        const width = await rawJson.evaluate((element) => ({
+            scrollWidth: element.scrollWidth,
+            clientWidth: element.clientWidth,
+        }));
+        expect(width.scrollWidth).toBeLessThanOrEqual(width.clientWidth + 1);
     });
 
     test('Sensitive payloads found by local search remain behind the normal CW gate', async ({ page }) => {
