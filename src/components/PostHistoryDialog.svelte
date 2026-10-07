@@ -3542,6 +3542,8 @@
                         </Button>
                     {/if}
                 </div>
+            {:else if history.isSearchMode && history.posts.length > 0}
+                <div class="post-history-search-bottom-spacer" aria-hidden="true"></div>
             {/if}
         {/if}
     </div>
@@ -4072,6 +4074,11 @@
 
     .post-history-nav-row-bottom {
         padding-top: 0;
+    }
+
+    .post-history-search-bottom-spacer {
+        /* Clear the 50px return-to-latest button and its 12px bottom inset. */
+        height: 62px;
     }
 
     .post-history-auto-load-sentinel {
