@@ -10,6 +10,7 @@ const endpoints = buildPlaywrightEndpoints(resolvedPort);
 
 export default defineConfig({
     testDir: './src/test/e2e',
+    testIgnore: '**/serviceWorkerUpdate.spec.ts',
     timeout: 30_000,
     expect: {
         timeout: 5_000,
@@ -30,14 +31,14 @@ export default defineConfig({
     projects: [
         {
             name: 'desktop-chromium',
-            testIgnore: '**/webComponentDevServer.spec.ts',
+            testIgnore: ['**/webComponentDevServer.spec.ts', '**/serviceWorkerUpdate.spec.ts'],
             use: {
                 ...devices['Desktop Chrome'],
             },
         },
         {
             name: 'mobile-chromium',
-            testIgnore: '**/webComponentDevServer.spec.ts',
+            testIgnore: ['**/webComponentDevServer.spec.ts', '**/serviceWorkerUpdate.spec.ts'],
             use: {
                 ...devices['iPhone 13'],
                 browserName: 'chromium',

@@ -5,11 +5,14 @@ interface ServiceWorkerLifecycleLogger {
 export async function processServiceWorkerInstall({
     logger,
     version,
+    installPrecache,
 }: {
     logger: ServiceWorkerLifecycleLogger;
     version: string;
+    installPrecache: () => Promise<void>;
 }): Promise<void> {
     logger.log('SW installing...', version);
+    await installPrecache();
     logger.log('SW installed, waiting for user action');
 }
 

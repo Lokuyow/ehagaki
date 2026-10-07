@@ -23,6 +23,16 @@ export function startServiceWorkerRegistration(): void {
     subscribeEHagakiDbUpgradeState(setDbUpgradeBlocked);
 
     if (typeof navigator !== "undefined" && navigator.serviceWorker) {
+        let previousController = navigator.serviceWorker.controller;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+            const controller = navigator.serviceWorker.controller;
+            // The ready status can precede Workbox's delayed waiting notification.
+            // Observe accepted updates directly; the store deduplicates onNeedReload.
+            if (previousController && controller && controller !== previousController) {
+                handleServiceWorkerControlChange();
+            }
+            previousController = controller;
+        });
         navigator.serviceWorker.addEventListener("message", (event) => {
             if (event.data?.type === "EHAGAKI_DB_UPGRADE_BLOCKED") {
                 setDbUpgradeBlocked(true);

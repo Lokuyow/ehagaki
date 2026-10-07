@@ -71,7 +71,8 @@ import {
     createTransparentImageResponse,
     extractSharedMediaFromFormData,
 } from "../src/lib/swUtilities";
-import { cleanupOutdatedCaches, precacheAndRoute } from "workbox-precaching";
+import { installServiceWorkerPrecache } from "../src/lib/swPrecacheInstall";
+import { cleanupOutdatedCaches, PrecacheController, PrecacheRoute } from "workbox-precaching";
 import { registerRoute } from "workbox-routing";
 import { CacheFirst } from "workbox-strategies";
 
@@ -105,7 +106,9 @@ const BASE_PATH = (() => {
     return pathParts.length > 0 ? '/' + pathParts.join('/') + '/' : '/';
 })();
 
-precacheAndRoute(self.__WB_MANIFEST);
+const precacheController = new PrecacheController();
+precacheController.addToCacheList(self.__WB_MANIFEST);
+registerRoute(new PrecacheRoute(precacheController));
 cleanupOutdatedCaches();
 
 registerRoute(
@@ -688,6 +691,11 @@ class ServiceWorkerCore {
         await processServiceWorkerInstall({
             logger: ServiceWorkerDependencies.console,
             version: SW_VERSION,
+            installPrecache: () => installServiceWorkerPrecache({
+                controller: precacheController,
+                cacheStorage: ServiceWorkerDependencies.caches,
+                event,
+            }),
         });
     }
 
@@ -697,6 +705,7 @@ class ServiceWorkerCore {
             logger: ServiceWorkerDependencies.console,
             version: SW_VERSION,
             cleanupOldCaches: async () => {
+                await precacheController.activate(event);
                 await this.cacheManager.cleanupOldCaches();
                 try {
                     await this.channelImageCacheController.reconcile();
