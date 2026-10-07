@@ -128,10 +128,9 @@ describe('SettingsDialog accessibility', () => {
         });
         await tick();
 
-        const label = 'Sensitive形式で送信';
+        const label = 'CW非対応クライアントで本文表示を防ぐ';
         expect(screen.getByText(label)).toBeTruthy();
-        expect(screen.queryByText(/実験的な送信形式です/)).toBeNull();
-        expect(screen.queryByText(/標準的な全文検索ではCW本文を検索できなくなります/)).toBeNull();
+        expect(screen.queryByText(/NIP-36 Sensitive Content/)).toBeNull();
         const infoButton = screen.getByRole('button', { name: 'CW設定の詳細' });
         expect(infoButton).toBeTruthy();
         const toggle = screen.getByRole('switch', { name: label });
@@ -139,10 +138,9 @@ describe('SettingsDialog accessibility', () => {
 
         await fireEvent.click(infoButton);
         await tick();
-        expect(screen.getByText(/実験的な送信形式です/)).toBeTruthy();
-        expect(screen.getByText(/対応していないクライアントでは投稿が表示されない/)).toBeTruthy();
+        expect(screen.getByText(/NIP-36 Sensitive Content \/ Content Warning非対応クライアント/)).toBeTruthy();
+        expect(screen.getByText(/この形式に対応していないクライアントでは、CW本文を表示できません/)).toBeTruthy();
         expect(screen.getByText(/Nostrの全文検索で見つからないことがあります/)).toBeTruthy();
-        expect(screen.getByText(/本文は暗号化されず/)).toBeTruthy();
 
         await fireEvent.click(toggle);
         await tick();

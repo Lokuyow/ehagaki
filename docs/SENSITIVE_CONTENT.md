@@ -4,6 +4,8 @@
 
 本文中の **MUST**、**MUST NOT**、**SHOULD**、**SHOULD NOT**、**MAY** は相互運用上の要件を示します。
 
+設計の背景と検討内容は [Sensitive Content Payload方式 設計メモ](SENSITIVE_CONTENT_PAYLOAD_DESIGN.md) を参照してください。
+
 ## Motivation
 
 NIP-36ではSensitive本文を通常eventの`.content`に保持したまま`content-warning` tagで表示制御します。そのため、NIP-36を解釈しないclientではSensitive本文が通常本文として表示される場合があります。
