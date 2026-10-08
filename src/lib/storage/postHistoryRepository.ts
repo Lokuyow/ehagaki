@@ -32,6 +32,7 @@ import type {
 } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
 import { POST_HISTORY_TIMELINE_INDEX } from "./ehagakiDbConstants";
+import { DexiePostHistoryRelayCoverageRepository, PostHistoryCoverageStaleError, type PostHistoryCoverageWrite } from "./postHistoryRelayCoverageRepository";
 import { reconcileSensitivePayloadDeletionForStructure } from "./sensitivePayloadDeletionReconciler";
 
 export const POST_HISTORY_SCHEMA_VERSION = 2;
@@ -106,6 +107,7 @@ export type PostHistoryFetchedEventItem = {
 export type PostHistoryUpsertFetchedEventsInput = {
     events: PostHistoryFetchedEventItem[];
     fetchedAt?: number;
+    relayFetchCoverage?: PostHistoryCoverageWrite;
 };
 
 export type PostHistoryUpsertFetchedEventsResult = {
@@ -113,6 +115,8 @@ export type PostHistoryUpsertFetchedEventsResult = {
     updatedCount: number;
     unchangedCount: number;
     appliedDeletionCount: number;
+    /** False when a scoped authored fetch was invalidated before commit. */
+    applied?: boolean;
 };
 
 export type PostHistoryRepositoryOptions = {
@@ -865,7 +869,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
                 return [{ ...item, event: verified.event, attestation: verified.attestation }];
             });
-        if (normalizedItems.length === 0) {
+        if (normalizedItems.length === 0 && !input.relayFetchCoverage) {
             return {
                 insertedCount: 0,
                 updatedCount: 0,
@@ -882,157 +886,172 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         let appliedDeletionCount = 0;
         const changedPubkeys = new Set<string>();
 
-        await this.db.transaction(
-            "rw",
-            this.db.postHistory,
-            this.db.postHistoryDeletionRequests,
-            this.db.sensitivePayloads,
-            async () => {
-                const existingRecords = await this.db.postHistory.bulkGet(eventIds);
-                const existingMap = new Map<string, PostHistoryRecord>();
-                const deletionRequestsByTargetEventId = await getDeletionRequestsByTargetEventIds(
-                    this.db,
-                    eventIds,
-                );
-
-                existingRecords.forEach((record) => {
-                    if (record) {
-                        existingMap.set(record.eventId, record);
+        const coverageRepository = new DexiePostHistoryRelayCoverageRepository(this.db, this.now);
+        try {
+            await this.db.transaction(
+                "rw",
+                [this.db.postHistory, this.db.postHistoryDeletionRequests, this.db.sensitivePayloads,
+                    ...(input.relayFetchCoverage ? [this.db.meta] : [])],
+                async () => {
+                    if (input.relayFetchCoverage && !await coverageRepository.isCurrent(input.relayFetchCoverage)) {
+                        throw new PostHistoryCoverageStaleError();
                     }
-                });
+                    const existingRecords = await this.db.postHistory.bulkGet(eventIds);
+                    const existingMap = new Map<string, PostHistoryRecord>();
+                    const deletionRequestsByTargetEventId = await getDeletionRequestsByTargetEventIds(
+                        this.db,
+                        eventIds,
+                    );
 
-                const verifiedRequestUpdates: PostHistoryDeletionRequestRecord[] = [];
-                const nextRecords = normalizedItems.map((item) => {
-                    const existingRecord = existingMap.get(item.event.id);
-                    const fetchedRelays = RelayConfigUtils.sanitizeExternalRelayUrls([
-                        ...(existingRecord?.fetchedRelays ?? []),
-                        ...item.relayUrls,
-                    ]);
-                    const rawEventChanged = !!existingRecord
-                        && !isSameSignedNostrEvent(existingRecord.rawEvent, item.event);
-                    const replaceRawEvent = !existingRecord
-                        || !rawEventChanged
-                        || !isCurrentValidRawEventVerification(
-                            existingRecord.rawEventVerification,
-                        );
-
-                    if (rawEventChanged) {
-                        this.console.warn("post_history_raw_event_conflict", item.event.id);
-                    }
-
-                    const channelReference = !replaceRawEvent && existingRecord
-                        ? {
-                            channelEventId: existingRecord.channelEventId,
-                            channelRelayHints: existingRecord.channelRelayHints,
+                    existingRecords.forEach((record) => {
+                        if (record) {
+                            existingMap.set(record.eventId, record);
                         }
-                        : extractPostHistoryChannelReference(item.event);
-                    const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls([
-                        ...(existingRecord?.relayHints ?? []),
-                        ...item.relayUrls,
-                        ...(existingRecord?.acceptedRelays ?? []),
-                    ], { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT });
+                    });
 
-                    const baseRecord = {
-                        id: item.event.id,
-                        eventId: item.event.id,
-                        pubkeyHex: existingRecord?.pubkeyHex ?? item.event.pubkey,
-                        kind: !replaceRawEvent && existingRecord ? existingRecord.kind : item.event.kind,
-                        content: !replaceRawEvent && existingRecord ? existingRecord.content : item.event.content,
-                        tags: !replaceRawEvent && existingRecord
-                            ? existingRecord.tags.map((tag) => [...tag])
-                            : item.event.tags.map((tag) => [...tag]),
-                        createdAt: !replaceRawEvent && existingRecord ? existingRecord.createdAt : item.event.created_at,
-                        postedAt: existingRecord?.postedAt ?? toPostedAtFromCreatedAt(item.event.created_at),
-                        relayHints,
-                        acceptedRelays: existingRecord?.acceptedRelays ?? [],
-                        ...(fetchedRelays.length > 0 ? { fetchedRelays } : {}),
-                        media: !replaceRawEvent && existingRecord
-                            ? cloneMedia(existingRecord.media)
-                            : extractPostHistoryMedia(item.event),
-                        rawEvent: !replaceRawEvent && existingRecord
-                            ? existingRecord.rawEvent
-                            : cloneNostrEvent(item.event),
-                        rawEventVerification: !replaceRawEvent && existingRecord
-                            ? existingRecord.rawEventVerification
-                            : { ...VALID_RAW_EVENT_VERIFICATION },
-                        fetchedAt,
-                        lastSeenAt: fetchedAt,
-                        ...(channelReference.channelEventId
-                            ? { channelEventId: channelReference.channelEventId }
-                            : existingRecord?.channelEventId
-                                ? { channelEventId: existingRecord.channelEventId }
-                                : {}),
-                        ...(channelReference.channelRelayHints
-                            ? { channelRelayHints: channelReference.channelRelayHints }
-                            : existingRecord?.channelRelayHints
-                                ? { channelRelayHints: [...existingRecord.channelRelayHints] }
-                                : {}),
-                        ...(existingRecord?.deletedAt !== undefined ? { deletedAt: existingRecord.deletedAt } : {}),
-                        ...(existingRecord?.deletionEventId
-                            ? { deletionEventId: existingRecord.deletionEventId }
-                            : {}),
-                        updatedAt: this.now(),
-                        schemaVersion: POST_HISTORY_SCHEMA_VERSION,
-                    } satisfies PostHistoryRecord;
+                    const verifiedRequestUpdates: PostHistoryDeletionRequestRecord[] = [];
+                    const nextRecords = normalizedItems.map((item) => {
+                        const existingRecord = existingMap.get(item.event.id);
+                        const fetchedRelays = RelayConfigUtils.sanitizeExternalRelayUrls([
+                            ...(existingRecord?.fetchedRelays ?? []),
+                            ...item.relayUrls,
+                        ]);
+                        const rawEventChanged = !!existingRecord
+                            && !isSameSignedNostrEvent(existingRecord.rawEvent, item.event);
+                        const replaceRawEvent = !existingRecord
+                            || !rawEventChanged
+                            || !isCurrentValidRawEventVerification(
+                                existingRecord.rawEventVerification,
+                            );
 
-                    let didMateriallyChange = false;
-                    if (!existingRecord) {
-                        insertedCount += 1;
-                        didMateriallyChange = true;
-                    } else if (hasMaterialPostHistoryChanges(existingRecord, baseRecord)) {
-                        updatedCount += 1;
-                        didMateriallyChange = true;
-                    } else {
-                        unchangedCount += 1;
-                    }
-
-                    const applicableRequests = (deletionRequestsByTargetEventId.get(item.event.id) ?? [])
-                        .flatMap((request) => {
-                            const targetMatches = isSupportedPostHistoryDeletionTargetKind(
-                                baseRecord.kind,
-                            )
-                                && baseRecord.pubkeyHex === request.targetAuthorPubkey
-                                && baseRecord.pubkeyHex === request.deletionEventPubkey;
-                            if (!targetMatches) {
-                                return [];
-                            }
-
-                            if (!isPostHistoryDeletionTargetVerified(request)) {
-                                const verifiedRequest = {
-                                    ...request,
-                                    targetVerified: true,
-                                    updatedAt: this.now(),
-                                    schemaVersion: POST_HISTORY_DELETION_REQUEST_SCHEMA_VERSION,
-                                } satisfies PostHistoryDeletionRequestRecord;
-                                verifiedRequestUpdates.push(verifiedRequest);
-                                return [verifiedRequest];
-                            }
-
-                            return [request];
-                        })
-                        .sort(comparePostHistoryDeletionRequests);
-                    if (baseRecord.deletedAt !== undefined || applicableRequests.length === 0) {
-                        if (didMateriallyChange) {
-                            changedPubkeys.add(baseRecord.pubkeyHex);
+                        if (rawEventChanged) {
+                            this.console.warn("post_history_raw_event_conflict", item.event.id);
                         }
-                        return baseRecord;
+
+                        const channelReference = !replaceRawEvent && existingRecord
+                            ? {
+                                channelEventId: existingRecord.channelEventId,
+                                channelRelayHints: existingRecord.channelRelayHints,
+                            }
+                            : extractPostHistoryChannelReference(item.event);
+                        const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls([
+                            ...(existingRecord?.relayHints ?? []),
+                            ...item.relayUrls,
+                            ...(existingRecord?.acceptedRelays ?? []),
+                        ], { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT });
+
+                        const baseRecord = {
+                            id: item.event.id,
+                            eventId: item.event.id,
+                            pubkeyHex: existingRecord?.pubkeyHex ?? item.event.pubkey,
+                            kind: !replaceRawEvent && existingRecord ? existingRecord.kind : item.event.kind,
+                            content: !replaceRawEvent && existingRecord ? existingRecord.content : item.event.content,
+                            tags: !replaceRawEvent && existingRecord
+                                ? existingRecord.tags.map((tag) => [...tag])
+                                : item.event.tags.map((tag) => [...tag]),
+                            createdAt: !replaceRawEvent && existingRecord ? existingRecord.createdAt : item.event.created_at,
+                            postedAt: existingRecord?.postedAt ?? toPostedAtFromCreatedAt(item.event.created_at),
+                            relayHints,
+                            acceptedRelays: existingRecord?.acceptedRelays ?? [],
+                            ...(fetchedRelays.length > 0 ? { fetchedRelays } : {}),
+                            media: !replaceRawEvent && existingRecord
+                                ? cloneMedia(existingRecord.media)
+                                : extractPostHistoryMedia(item.event),
+                            rawEvent: !replaceRawEvent && existingRecord
+                                ? existingRecord.rawEvent
+                                : cloneNostrEvent(item.event),
+                            rawEventVerification: !replaceRawEvent && existingRecord
+                                ? existingRecord.rawEventVerification
+                                : { ...VALID_RAW_EVENT_VERIFICATION },
+                            fetchedAt,
+                            lastSeenAt: fetchedAt,
+                            ...(channelReference.channelEventId
+                                ? { channelEventId: channelReference.channelEventId }
+                                : existingRecord?.channelEventId
+                                    ? { channelEventId: existingRecord.channelEventId }
+                                    : {}),
+                            ...(channelReference.channelRelayHints
+                                ? { channelRelayHints: channelReference.channelRelayHints }
+                                : existingRecord?.channelRelayHints
+                                    ? { channelRelayHints: [...existingRecord.channelRelayHints] }
+                                    : {}),
+                            ...(existingRecord?.deletedAt !== undefined ? { deletedAt: existingRecord.deletedAt } : {}),
+                            ...(existingRecord?.deletionEventId
+                                ? { deletionEventId: existingRecord.deletionEventId }
+                                : {}),
+                            updatedAt: this.now(),
+                            schemaVersion: POST_HISTORY_SCHEMA_VERSION,
+                        } satisfies PostHistoryRecord;
+
+                        let didMateriallyChange = false;
+                        if (!existingRecord) {
+                            insertedCount += 1;
+                            didMateriallyChange = true;
+                        } else if (hasMaterialPostHistoryChanges(existingRecord, baseRecord)) {
+                            updatedCount += 1;
+                            didMateriallyChange = true;
+                        } else {
+                            unchangedCount += 1;
+                        }
+
+                        const applicableRequests = (deletionRequestsByTargetEventId.get(item.event.id) ?? [])
+                            .flatMap((request) => {
+                                const targetMatches = isSupportedPostHistoryDeletionTargetKind(
+                                    baseRecord.kind,
+                                )
+                                    && baseRecord.pubkeyHex === request.targetAuthorPubkey
+                                    && baseRecord.pubkeyHex === request.deletionEventPubkey;
+                                if (!targetMatches) {
+                                    return [];
+                                }
+
+                                if (!isPostHistoryDeletionTargetVerified(request)) {
+                                    const verifiedRequest = {
+                                        ...request,
+                                        targetVerified: true,
+                                        updatedAt: this.now(),
+                                        schemaVersion: POST_HISTORY_DELETION_REQUEST_SCHEMA_VERSION,
+                                    } satisfies PostHistoryDeletionRequestRecord;
+                                    verifiedRequestUpdates.push(verifiedRequest);
+                                    return [verifiedRequest];
+                                }
+
+                                return [request];
+                            })
+                            .sort(comparePostHistoryDeletionRequests);
+                        if (baseRecord.deletedAt !== undefined || applicableRequests.length === 0) {
+                            if (didMateriallyChange) {
+                                changedPubkeys.add(baseRecord.pubkeyHex);
+                            }
+                            return baseRecord;
+                        }
+
+                        appliedDeletionCount += 1;
+                        changedPubkeys.add(baseRecord.pubkeyHex);
+                        return {
+                            ...baseRecord,
+                            ...toPostHistoryDeletionState(applicableRequests[0]),
+                            updatedAt: this.now(),
+                        } satisfies PostHistoryRecord;
+                    });
+
+                    if (verifiedRequestUpdates.length > 0) {
+                        await this.db.postHistoryDeletionRequests.bulkPut(verifiedRequestUpdates);
                     }
+                    await this.db.postHistory.bulkPut(nextRecords);
+                    if (input.relayFetchCoverage) {
+                        await coverageRepository.record(input.relayFetchCoverage);
+                        if (!await coverageRepository.isCurrent(input.relayFetchCoverage)) throw new PostHistoryCoverageStaleError();
+                    }
+                },
+            );
 
-                    appliedDeletionCount += 1;
-                    changedPubkeys.add(baseRecord.pubkeyHex);
-                    return {
-                        ...baseRecord,
-                        ...toPostHistoryDeletionState(applicableRequests[0]),
-                        updatedAt: this.now(),
-                    } satisfies PostHistoryRecord;
-                });
-
-                if (verifiedRequestUpdates.length > 0) {
-                    await this.db.postHistoryDeletionRequests.bulkPut(verifiedRequestUpdates);
-                }
-                await this.db.postHistory.bulkPut(nextRecords);
-            },
-        );
+        } catch (error) {
+            if (error instanceof PostHistoryCoverageStaleError) return {
+                insertedCount: 0, updatedCount: 0, unchangedCount: 0, appliedDeletionCount: 0, applied: false,
+            };
+            throw error;
+        }
 
         for (const item of normalizedItems) {
             try {
@@ -1123,7 +1142,9 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             this.db.postHistory,
             this.db.postHistoryChildInteractions,
             this.db.sensitivePayloads,
+            this.db.meta,
             async () => {
+                await new DexiePostHistoryRelayCoverageRepository(this.db, this.now).clearForPubkey(pubkeyHex);
                 deletedPayloadCount = await this.db.sensitivePayloads
                     .where("pubkeyHex")
                     .equals(pubkeyHex)

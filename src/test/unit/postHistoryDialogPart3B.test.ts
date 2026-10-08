@@ -243,17 +243,13 @@ describe('PostHistoryDialog', () => {
     });
 
     it('[sync-upsert] 同期成功後に upsert して一覧を更新する', async () => {
-        repositoryMock.upsertFetchedEvents.mockResolvedValueOnce({
-            insertedCount: 1,
-            updatedCount: 0,
-            unchangedCount: 0,
+        let saved = false;
+        repositoryMock.upsertFetchedEvents.mockImplementationOnce(async () => {
+            saved = true;
+            return { insertedCount: 1, updatedCount: 0, unchangedCount: 0 };
         });
-        repositoryMock.countForPubkey
-            .mockResolvedValueOnce(0)
-            .mockResolvedValueOnce(1);
-        repositoryMock.getPage
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([createRecord()]);
+        repositoryMock.countForPubkey.mockImplementation(async () => saved ? 1 : 0);
+        repositoryMock.getPage.mockImplementation(async () => saved ? [createRecord()] : []);
         relayFetchServiceMock.fetchLatest.mockReturnValue({
             promise: Promise.resolve({
                 status: 'success',
@@ -297,6 +293,10 @@ describe('PostHistoryDialog', () => {
                     },
                 ],
                 fetchedAt: 5000,
+                relayFetchCoverage: expect.objectContaining({
+                    ownerPubkeyHex: 'a'.repeat(64), kindsKey: '1,42,1111', expectedRevision: 0,
+                    relays: expect.any(Array), isActive: expect.any(Function),
+                }),
             });
             expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
             expectDefaultMediaReplacement();

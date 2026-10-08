@@ -21,6 +21,7 @@ export interface PostHistoryVisibilityResumeSyncRequest {
     ownerPubkeyHex: string;
     hiddenAtSeconds: number;
     relayConfig?: RelayConfig | null;
+    getRelayConfig?: () => RelayConfig | null | undefined;
     reconcileDirectReplyCandidates?: (
         candidates: PostHistoryInboundDirectReplyCandidate[],
     ) => Promise<PostHistoryInboundReplyReconciliationResult>;
@@ -63,6 +64,7 @@ export class PostHistoryVisibilityResumeSyncService {
         const authoredTask = this.lightweightSyncCoordinator.runAuthored(rxNostr, {
             ownerPubkeyHex: params.ownerPubkeyHex,
             relayConfig: params.relayConfig,
+            getRelayConfig: params.getRelayConfig,
             reason: "visibility-resume",
             since: Math.max(
                 0,

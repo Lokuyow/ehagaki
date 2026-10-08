@@ -22,8 +22,14 @@
     import { formatPostHistoryMonthLabel } from "../../lib/postHistoryDialogUtils";
     import { toPostHistoryDeletionRequestReferenceRecord } from "../../lib/postHistoryDeletionUtils";
 
+    import { postHistoryRelayCoverageRepository } from "../../lib/storage/postHistoryRelayCoverageRepository";
+    import { resolvePostHistoryAuthoredRelayUrls } from "../../lib/postHistoryRelayResolver";
+    import { createPostHistoryCoverageHarness } from "./postHistoryCoverageHarness";
+
+    const isRelayCoverageScenario = new URLSearchParams(window.location.search).has("relay-coverage");
     const HARNESS_SECRET_KEY = generateSecretKey();
-    const HARNESS_PUBKEY = getPublicKey(HARNESS_SECRET_KEY);
+    const coverageHarness = isRelayCoverageScenario ? createPostHistoryCoverageHarness(HARNESS_SECRET_KEY) : null;
+    const HARNESS_PUBKEY = coverageHarness?.control.owner ?? getPublicKey(HARNESS_SECRET_KEY);
     const isInfiniteScrollScenario = new URLSearchParams(window.location.search).has("infinite-scroll");
     const isSearchProgressScenario = new URLSearchParams(window.location.search).has("search-progress");
     const isLongPreviewScenario = new URLSearchParams(window.location.search).has("long-preview");
@@ -566,6 +572,13 @@
     };
 
     onMount(async () => {
+        if (coverageHarness) {
+            await coverageHarness.initialize();
+            (window as any).__POST_HISTORY_COVERAGE__ = coverageHarness.control;
+            ready = true;
+            (window as HarnessWindow).__POST_HISTORY_HARNESS__!.ready = true;
+            return;
+        }
         if (isSearchProgressScenario) {
             const gate = { entered: false, reads: 0, finished: false, release: null as (() => void) | null };
             (window as HarnessWindow).__POST_HISTORY_SEARCH_SCAN_GATE__ = gate;
@@ -656,6 +669,15 @@
         await ehagakiDb.postHistoryChildInteractions.bulkPut(
             interactionRecords,
         );
+        // The saved-history scenarios explicitly represent previously queried ranges.
+        const canonical = resolvePostHistoryAuthoredRelayUrls(undefined);
+        const revision = await postHistoryRelayCoverageRepository.getLocalRevision(HARNESS_PUBKEY);
+        await ehagakiDb.transaction("rw", ehagakiDb.meta, async () => { await postHistoryRelayCoverageRepository.record({
+            ownerPubkeyHex: HARNESS_PUBKEY, kindsKey: "1,42,1111", expectedRevision: revision, isActive: () => true,
+            relays: canonical.map((relayUrl) => ({ relayUrl, ranges: [{
+                since: isSparseScenario ? sparseVisiblePost.createdAt : 0, until: Math.floor(Date.now() / 1000),
+            }] })),
+        }); });
         if (isSparseScenario) {
             await postHistoryVisibleRangeRepository.save({
                 pubkeyHex: HARNESS_PUBKEY,
@@ -764,7 +786,8 @@
                 show={showDialog}
                 onClose={() => (showDialog = false)}
                 pubkeyHex={HARNESS_PUBKEY}
-                rxNostr={{
+                relayConfig={coverageHarness?.relayConfig}
+                rxNostr={coverageHarness?.rxNostr ?? {
                     use: () => ({
                         subscribe: () => ({ unsubscribe: () => undefined }),
                     }),
