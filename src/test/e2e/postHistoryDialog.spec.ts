@@ -42,6 +42,8 @@ type HarnessState = {
 type HarnessWindow = Window & typeof globalThis & {
     __POST_HISTORY_COVERAGE__?: { owner: string; eventIds: string[]; headRequests: number;
         backupJsonl: string; backupRange: { since: number; until: number };
+        futurePostJsonl: string; readFuturePost: () => Promise<{ createdAt: number } | undefined>;
+        importFromSecondConnection: () => Promise<{ status: string; restoredRangeChanged?: boolean }>;
         readRestoredRanges: () => Promise<{ since: number; until: number }[]>;
         readSavedCount: () => Promise<number>;
         readOtherAccountSavedCount: () => Promise<number>;
@@ -930,7 +932,8 @@ async function expectTooltip(
 }
 
 test.describe('PostHistoryDialog Playwright', () => {
-    async function importCoverageBackup(page: Page, name = 'citrine-1700000000000.jsonl', suffix = '') {
+    async function importCoverageBackup(page: Page, name?: string, suffix = '', partial = false) {
+        name ??= await page.evaluate(() => `citrine-${Date.now()}.jsonl`);
         const jsonl = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.backupJsonl);
         await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
         await page.getByRole('menuitem', { name: 'JSONLをインポート' }).click();
@@ -942,7 +945,7 @@ test.describe('PostHistoryDialog Playwright', () => {
             const status = document.querySelector('.post-history-import-dialog .import-progress-status');
             return status && status.textContent?.trim() !== '読み込み中...';
         });
-        await expect(dialog.getByText(suffix ? '処理を完了しましたが、一部を取り込めませんでした' : '読み込みが完了しました', { exact: true })).toBeVisible();
+        await expect(dialog.getByText(partial ? '処理を完了しましたが、一部を取り込めませんでした' : '読み込みが完了しました', { exact: true })).toBeVisible();
         await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
     }
 
@@ -1060,12 +1063,53 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(0);
     });
 
+    test('Citrine future signed post is saved without suppressing the current dialog-open refresh', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?relay-coverage=citrine');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+        const futureJsonl = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.futurePostJsonl);
+        const futureFilename = await page.evaluate(() => `citrine-${Date.now() + 365 * 86400 * 1000}.jsonl`);
+        await importCoverageBackup(page, futureFilename, futureJsonl);
+        const restored = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.backupRange);
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.readRestoredRanges())).toEqual([restored]);
+        const future = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.readFuturePost());
+        const now = await page.evaluate(() => Math.floor(Date.now() / 1000));
+        expect(future!.createdAt).toBeGreaterThan(now);
+        expect(restored.until).toBeLessThan(now);
+        await page.reload();
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequests)).toBe(4);
+        const requests = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.authoredRequests.filter((request) => request.limit === 30));
+        for (const request of requests) {
+            expect(request.since).toBeLessThanOrEqual(request.until!);
+            expect(request.until).toBeGreaterThanOrEqual(now);
+            expect(request.until).toBeLessThanOrEqual(await page.evaluate(() => Math.floor(Date.now() / 1000)));
+        }
+        await expect(page.getByText('coverage future post', { exact: true })).toBeVisible();
+    });
+
+    test('Citrine restoration from another database connection replans active open catchup', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?relay-coverage=citrine-head');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(5);
+        expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.importFromSecondConnection()))
+            .toMatchObject({ status: 'completed', restoredRangeChanged: true });
+        const restored = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.backupRange);
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.at(-1)?.since)).toBe(restored.until + 1);
+        expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(10);
+        await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.release());
+        await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+        const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
+        await expect.poll(async () => (await historyEventIds(page)).slice(0, 50)).toEqual(ids.slice(0, 50));
+        expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(10);
+    });
+
     for (const partial of [false, true]) {
         test(`Citrine import keeps ${partial ? 'partial backups' : 'general JSONL'} outside restoration continuity`, async ({ page }) => {
             await page.goto('post-history-dialog-playwright.html?relay-coverage=citrine');
             await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
             await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
-            await importCoverageBackup(page, partial ? 'citrine-1700000000000.jsonl' : 'history.jsonl', partial ? 'broken\n' : '');
+            await importCoverageBackup(page, partial ? undefined : 'history.jsonl', partial ? 'broken\n' : '', partial);
             expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.readRestoredRanges())).toEqual([]);
             await scrollHistoryToBottom(page);
             await expect.poll(async () => (await historyEventIds(page)).length).toBe(60);

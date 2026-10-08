@@ -3488,6 +3488,21 @@ export function usePostHistoryListing({
         );
     }
 
+    function getDialogOpenConnectionRange(ranges: PostHistoryCoverageRange[], anchor: number | null): PostHistoryCoverageRange | undefined {
+        return anchor === null ? ranges.at(-1)
+            : ranges.find((range) => range.since <= anchor && range.until >= anchor)
+                ?? ranges.filter((range) => range.until < anchor).at(-1)
+                ?? ranges.at(-1);
+    }
+
+    function shouldReplanActiveOpenRefresh(): boolean {
+        if (openRefreshRequestId === null || (openRefreshSince === undefined && currentFetchTask === null)) return false;
+        const range = getDialogOpenConnectionRange(browsingContinuity, coverageAnchorCreatedAt);
+        return range !== undefined
+            && restoredRanges.some((restored) => restored.since <= range.until && restored.until >= range.until)
+            && (openRefreshSince === undefined || range.until + 1 > openRefreshSince);
+    }
+
     async function refreshRecentFromRelaysOnDialogOpen(): Promise<void> {
         const pubkeyHex = getPubkeyHex();
         const rxNostr = getRxNostr();
@@ -3513,10 +3528,7 @@ export function usePostHistoryListing({
         const anchor = coverageAnchorCreatedAt;
         // A partial recent query can leave a separate head above the entry
         // window. Reconnect to its saved component, not to that detached head.
-        const previousRange = anchor === null ? previousCoverage.at(-1)
-            : previousCoverage.find((range) => range.since <= anchor && range.until >= anchor)
-                ?? previousCoverage.filter((range) => range.until < anchor).at(-1)
-                ?? previousCoverage.at(-1);
+        const previousRange = getDialogOpenConnectionRange(previousCoverage, anchor);
         // An explicit lower bound also certifies empty seconds between the new
         // head and the previous range. Backup restoration supplies only the
         // browsing boundary; the query still produces its own relay evidence.
@@ -4755,9 +4767,7 @@ export function usePostHistoryListing({
         if (isDestroyed || generation !== coverageGeneration || getPubkeyHex() !== owner || !getShow()) return;
         if (result?.restoredRangeChanged) await readBrowsingContinuity(owner);
         if (isDestroyed || generation !== coverageGeneration || getPubkeyHex() !== owner || !getShow()) return;
-        const refreshSince = openRefreshSince;
-        const resumeOpenRefresh = result?.restoredRangeChanged === true && openRefreshRequestId !== null
-            && (refreshSince === undefined || restoredRanges.some((range) => range.until >= refreshSince));
+        const resumeOpenRefresh = result?.restoredRangeChanged === true && shouldReplanActiveOpenRefresh();
         if (resumeOpenRefresh) { cancelCurrentSync(); state.syncStatus = "idle"; }
         invalidatePendingLoadRequests();
         if (result?.restoredRangeChanged && result.insertedPostCount + result.updatedPostCount + result.appliedDeletionPostCount === 0) {
@@ -4773,7 +4783,7 @@ export function usePostHistoryListing({
         const hasDetachedEntryHead = !isSearchMode && state.listingMode === "contiguous"
             && newest !== undefined && coverageAnchorCreatedAt !== null
             && (!newestRange || newestRange.since > coverageAnchorCreatedAt);
-        if (result?.restoredRangeChanged && (resumeOpenRefresh || hasDetachedEntryHead)
+        if (result?.restoredRangeChanged && (resumeOpenRefresh || (hasDetachedEntryHead && openRefreshRequestId === null))
             && !isDestroyed && generation === coverageGeneration && getPubkeyHex() === owner && getShow()) {
             void refreshRecentFromRelaysOnDialogOpen();
         }
@@ -4885,6 +4895,9 @@ export function usePostHistoryListing({
                 if (isDestroyed || generation !== coverageGeneration || !getShow() || getPubkeyHex() !== owner) return;
                 quorumCoverage = getPostHistoryQuorumCoverage(record.relays, relays);
                 restoredRanges = restored.ranges;
+                // The same boundary check also handles restoration committed by
+                // another tab, without restarting a head query for older ranges.
+                if (shouldReplanActiveOpenRefresh()) void refreshRecentFromRelaysOnDialogOpen();
                 if (coverageAnchorCreatedAt === null) return;
                 const next = getPostHistoryConnectedCoverageUntil(getPostHistoryBrowsingContinuity(quorumCoverage, restoredRanges), coverageAnchorCreatedAt);
                 if (next === state.visibleUntil) return;

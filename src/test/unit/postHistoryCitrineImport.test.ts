@@ -63,6 +63,28 @@ describe("Citrine import restoration", () => {
             expect((await h.run(h.jsonl([h.post(100), h.post(200)]), name)).status).toBe("completed");
             expect((await h.ranges.get(h.owner, kindsKey)).ranges).toEqual([]);
         });
+    it.each([1_700_000_050, 1_700_000_200])("saves future posts but bounds restoration by export time %s and import time", async (exportSecond) => {
+        const h = setup();
+        const now = 1_700_000_100;
+        vi.spyOn(Date, "now").mockReturnValue(now * 1000);
+        const historical = [h.post(now - 200), h.post(now - 100)];
+        const afterExport = h.post(now - 25);
+        const future = h.post(now + 75);
+        const result = await h.run(h.jsonl([...historical, afterExport, future]), `citrine-${exportSecond * 1000}.jsonl`);
+        expect(result).toMatchObject({ status: "completed", insertedPostCount: 4, failedPostEventCount: 0, restoredRangeChanged: true });
+        expect((await h.db.postHistory.get(future.id))?.rawEvent).toEqual(JSON.parse(JSON.stringify(future)));
+        expect((await h.ranges.get(h.owner, kindsKey)).ranges).toEqual([{
+            since: historical[0].created_at,
+            until: exportSecond < now ? historical[1].created_at : afterExport.created_at,
+        }]);
+    });
+    it("creates no restoration range when every post is newer than the candidate ceiling", async () => {
+        const h = setup(); const now = 1_700_000_100;
+        vi.spyOn(Date, "now").mockReturnValue(now * 1000);
+        expect(await h.run(h.jsonl([h.post(now + 1), h.post(now + 200)]), `citrine-${(now + 1000) * 1000}.jsonl`))
+            .toMatchObject({ status: "completed", insertedPostCount: 2 });
+        expect((await h.ranges.get(h.owner, kindsKey)).ranges).toEqual([]);
+    });
     it("registers a backup on an all-unchanged reimport and keeps gaps between files", async () => {
         const h = setup(); const first = h.jsonl([h.post(100), h.post(200)]);
         await h.run(first, "history.jsonl");

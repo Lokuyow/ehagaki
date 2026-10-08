@@ -57,6 +57,19 @@ describe("Citrine browsing continuity", () => {
         expect(screen.queryByRole("button", { name: "保存済みの古い投稿を表示" })).toBeNull();
         view.unmount();
     });
+    it("refreshes through now when a future local post lies outside the restored range", async () => {
+        seedPostHistoryRestoredRange(base - 159, base);
+        const future = createRecord({ eventId: "future", content: "future saved post", createdAt: base + 86400 });
+        const original = repositoryMock.getLatestVisibleChunk.getMockImplementation()!;
+        repositoryMock.getLatestVisibleChunk.mockImplementation(async (input) => [future, ...(await original(input))].slice(0, input.limit));
+        const view = render(PostHistoryDialog, { props });
+        await screen.findByText(future.content);
+        await waitFor(() => expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledOnce());
+        expect(relayFetchServiceMock.fetchLatest.mock.calls[0][1]).toMatchObject({
+            reason: "dialog-open-refresh", since: base + 1, until: base + 100,
+        });
+        view.unmount();
+    });
     it("retains restored continuity when the relay configuration changes", async () => {
         seedPostHistoryRestoredRange(base - 159, base);
         const view = render(PostHistoryDialog, { props });

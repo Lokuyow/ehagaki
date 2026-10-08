@@ -170,6 +170,9 @@ export class PostHistoryJsonlImportService {
         const nameTimestamp = /^citrine-([1-9]\d*)\.jsonl$/.exec(input.file.name ?? "")?.[1];
         const isCitrine = nameTimestamp !== undefined && Number.isSafeInteger(Number(nameTimestamp))
             && Number(nameTimestamp) <= 8_640_000_000_000_000;
+        // Exporter clock skew may only narrow the candidates. Future posts are
+        // still saved, but cannot certify the time between the backup and now.
+        const restoredPostUpperBound = Math.floor(Math.min(Number(nameTimestamp), Date.now()) / 1000);
         let lastProgressNotificationAt: number | null = null;
         const totalBytes = Number.isFinite(input.file.size) && input.file.size > 0
             ? input.file.size
@@ -372,7 +375,7 @@ export class PostHistoryJsonlImportService {
             } else if ([1, 42, 1111].includes(event.kind)) {
                 result.uniquePostEventCount += 1;
                 if (!Number.isSafeInteger(event.created_at) || event.created_at < 0 || event.created_at >= Number.MAX_SAFE_INTEGER) validPostTimes = false;
-                else {
+                else if (event.created_at <= restoredPostUpperBound) {
                     oldestPost = Math.min(oldestPost ?? event.created_at, event.created_at);
                     newestPost = Math.max(newestPost ?? event.created_at, event.created_at);
                 }

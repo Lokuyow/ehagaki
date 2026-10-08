@@ -2,15 +2,17 @@ import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
 import type { RxNostr, RxReq } from "rx-nostr";
 import { Subject } from "rxjs";
 import type { NostrEvent } from "../../lib/types";
-import { postHistoryRepository } from "../../lib/storage/postHistoryRepository";
-import { ehagakiDb } from "../../lib/storage/ehagakiDb";
+import { postHistoryRepository, DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
+import { ehagakiDb, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { postHistoryRelayCoverageRepository } from "../../lib/storage/postHistoryRelayCoverageRepository";
 import { buildPostHistoryVisibleKindsKey } from "../../lib/storage/postHistoryVisibleRangeRepository";
 import { POST_HISTORY_FETCH_KINDS } from "../../lib/postHistoryRelayFetchService";
-import { postHistoryImportedRangesRepository } from "../../lib/storage/postHistoryImportedRangesRepository";
+import { postHistoryImportedRangesRepository, DexiePostHistoryImportedRangesRepository } from "../../lib/storage/postHistoryImportedRangesRepository";
+import { getPostHistoryLocalRevision } from "../../lib/storage/postHistoryLocalWriteScope";
+import { PostHistoryJsonlImportService } from "../../lib/postHistoryJsonlImportService";
 
 const fixtureKeyPrefix = "post-history-coverage-signed-fixture";
-type Fixture = { owner: string; events: NostrEvent[]; farOlder: NostrEvent; localPost: NostrEvent; otherAccountPost: NostrEvent };
+type Fixture = { owner: string; events: NostrEvent[]; farOlder: NostrEvent; localPost: NostrEvent; otherAccountPost: NostrEvent; futurePost: NostrEvent };
 const relayUrls = Array.from({ length: 5 }, (_, i) => `wss://coverage-${i}.example.test/`);
 const kindsKey = buildPostHistoryVisibleKindsKey([...POST_HISTORY_FETCH_KINDS]);
 
@@ -32,7 +34,8 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
         const farOlder = finalizeEvent({ kind: 1, tags: [], content: "coverage next saved area", created_at: base - 2000 * 60 }, secret);
         const localPost = finalizeEvent({ kind: 1, tags: [], content: "coverage local post", created_at: base + 1 }, secret);
         const otherAccountPost = finalizeEvent({ kind: 1, tags: [], content: "other account saved post", created_at: base }, generateSecretKey());
-        return { owner, events, farOlder, localPost, otherAccountPost };
+        const futurePost = finalizeEvent({ kind: 1, tags: [], content: "coverage future post", created_at: base + 365 * 86400 }, secret);
+        return { owner, events, farOlder, localPost, otherAccountPost, futurePost };
     })();
     if (!stored) sessionStorage.setItem(fixtureKey, JSON.stringify(fixture));
     const messages = new Subject<any>();
@@ -44,6 +47,21 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
     const control = { owner: fixture.owner, eventIds: fixture.events.map((event) => event.id), headRequests: 0,
         backupJsonl: fixture.events.slice(scenario === "citrine-gap" ? 110 : 60).map((event) => JSON.stringify(event)).join("\n") + "\n",
         backupRange: { since: fixture.events[309].created_at, until: fixture.events[scenario === "citrine-gap" ? 110 : 60].created_at },
+        futurePostJsonl: JSON.stringify(fixture.futurePost) + "\n",
+        readFuturePost: () => ehagakiDb.postHistory.get(fixture.futurePost.id),
+        importFromSecondConnection: async () => {
+            const second = new EHagakiDB(ehagakiDb.name);
+            try {
+                return await new PostHistoryJsonlImportService({
+                    postHistoryRepository: new DexiePostHistoryRepository(second),
+                    importedRangesRepository: new DexiePostHistoryImportedRangesRepository(second),
+                    getLocalRevision: (owner) => getPostHistoryLocalRevision(second, owner),
+                }).importFile({ ownerPubkeyHex: fixture.owner, getCurrentPubkeyHex: () => fixture.owner,
+                    // Keep this test about publication during an active query;
+                    // a large signature batch can outlast its normal 6s timeout.
+                    file: new File([fixture.events[60], fixture.events[309]].map((event) => JSON.stringify(event) + "\n"), `citrine-${Date.now()}.jsonl`) });
+            } finally { second.close(); }
+        },
         readRestoredRanges: async () => (await postHistoryImportedRangesRepository.get(fixture.owner, kindsKey)).ranges,
         readSavedCount: () => postHistoryRepository.countForPubkey(fixture.owner),
         readOtherAccountSavedCount: () => postHistoryRepository.countForPubkey(fixture.otherAccountPost.pubkey),
