@@ -40,6 +40,8 @@ type HarnessState = {
 };
 
 type HarnessWindow = Window & typeof globalThis & {
+    __POST_HISTORY_COVERAGE__?: { owner: string; eventIds: string[]; headRequests: number;
+        olderRequests: { relayUrl: string; since: number; until: number }[]; release: () => void };
     __POST_HISTORY_HARNESS__?: HarnessState;
     __POST_HISTORY_ACTION_TARGETS__?: {
         replyEventId: string | null;
@@ -963,6 +965,99 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect.poll(() => historyEventIds(page)).toEqual(
             harness.infiniteScrollEventIds.slice(0, 100),
         );
+    });
+
+    for (const emptyGap of [false, true]) {
+        test(`relay coverage bridges ${emptyGap ? 'an empty gap' : 'a gap'}, reuses saved history and preserves its scroll anchor after reopen and reload`, async ({ page }, testInfo) => {
+            // This story includes signed fixture setup, backfill, paging, reopen and reload.
+            test.setTimeout(60_000);
+            await page.goto(`post-history-dialog-playwright.html?relay-coverage=${emptyGap ? 'empty-gap' : 'gap'}`);
+            await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+            const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
+            const expectedIds = emptyGap ? ids.filter((_, i) => i < 100 || i >= 110) : ids;
+            const fetchButton = page.getByRole('button', { name: 'リレーから続きを取得' });
+            const rows = () => historyEventIds(page);
+            await expect.poll(rows).toEqual(expectedIds.slice(0, 50));
+            await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequests)).toBe(4);
+            await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+            await scrollHistoryToBottom(page);
+            await expect.poll(rows).toEqual(expectedIds.slice(0, 100));
+            await scrollHistoryToBottom(page);
+            await expect(fetchButton).toBeVisible();
+            await expect(page.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeVisible();
+            await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(0);
+            await fetchButton.scrollIntoViewIfNeeded();
+            const anchor = await getFirstVisiblePostSnapshot(page);
+            expect(anchor).not.toBeNull();
+            await fetchButton.click();
+            await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(5);
+            await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.release());
+            await expect.poll(rows).toEqual(expectedIds.slice(0, 150));
+            await expect(fetchButton).toHaveCount(0);
+            await expect.poll(async () => {
+                const after = await getPostSnapshotByEventId(page, anchor!.eventId);
+                return after ? Math.abs(after.offsetTop - anchor!.offsetTop) : Infinity;
+            }).toBeLessThanOrEqual(1);
+            await page.screenshot({ path: testInfo.outputPath('connected-history.png') });
+
+            for (let i = 0; i < 4; i++) {
+                const lastBefore = (await rows()).at(-1);
+                await scrollHistoryToBottom(page);
+                await expect.poll(async () => (await rows()).at(-1)).not.toBe(lastBefore);
+                if ((await rows()).at(-1) === ids[309]) break;
+                await expect(fetchButton).toHaveCount(0);
+            }
+            await expect.poll(async () => (await rows()).at(-1)).toBe(ids[309]);
+            await scrollHistoryToBottom(page);
+            await expect(fetchButton).toBeVisible();
+            await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(5);
+            await page.getByRole('button', { name: '閉じる', exact: true }).click();
+            await page.getByTestId('post-history-reopen').click();
+            await expect.poll(async () => (await rows()).at(-1)).toBe(ids[309]);
+            await expect(fetchButton).toBeVisible();
+
+            await page.reload();
+            await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+            await expect.poll(rows).toEqual(expectedIds.slice(0, 50));
+            await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequests)).toBe(4);
+            await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+            for (const last of [99, 149]) {
+                await scrollHistoryToBottom(page);
+                await expect.poll(async () => (await rows()).at(-1)).toBe(expectedIds[last]);
+                await expect(fetchButton).toHaveCount(0);
+            }
+            await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(0);
+        });
+    }
+
+    test('a refreshed head stops at its uncovered gap before reconnecting older saved history', async ({ page }, testInfo) => {
+        await page.goto('post-history-dialog-playwright.html?relay-coverage=new-head');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
+        const rows = () => historyEventIds(page);
+        const fetchButton = page.getByRole('button', { name: 'リレーから続きを取得' });
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequests)).toBe(4);
+        await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+        await expect.poll(rows).toEqual(ids.slice(0, 50));
+        await scrollHistoryToBottom(page);
+        await expect.poll(rows).toEqual(ids.slice(0, 60));
+        await scrollHistoryToBottom(page);
+        await expect(fetchButton).toBeVisible();
+        await expect(page.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeVisible();
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(0);
+        await fetchButton.scrollIntoViewIfNeeded();
+        const anchor = await getFirstVisiblePostSnapshot(page);
+        expect(anchor).not.toBeNull();
+        await fetchButton.click();
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(5);
+        await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.release());
+        await expect.poll(rows).toEqual(ids.slice(0, 110));
+        await expect(fetchButton).toHaveCount(0);
+        await expect.poll(async () => {
+            const after = await getPostSnapshotByEventId(page, anchor!.eventId);
+            return after ? Math.abs(after.offsetTop - anchor!.offsetTop) : Infinity;
+        }).toBeLessThanOrEqual(1);
+        await page.screenshot({ path: testInfo.outputPath('connected-head-history.png') });
     });
 
     test('scrolling during resize observer recreation is not suppressed', async ({ page }) => {
@@ -2741,6 +2836,9 @@ test.describe('PostHistoryDialog Playwright', () => {
         await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
         await page.getByRole('menuitem', { name: '検索' }).click();
         await page.getByRole('searchbox', { name: '検索' }).fill('sensitive preview body');
+        // Search initially keeps normal-history rows until its first page is ready.
+        await expect(page.locator('.post-history-item')).toHaveCount(1);
+        await expect(page.locator('.post-history-container')).toHaveAttribute('aria-busy', 'false');
 
         const result = page.locator('.post-history-item').first();
         await expect(result.locator('.content-warning-prompt')).toBeVisible();

@@ -28,6 +28,7 @@ export const POST_HISTORY_FOREGROUND_PERIODIC_AUTHORED_INITIAL_LOOKBACK_SECONDS 
 export interface PostHistoryForegroundPeriodicSyncRequest {
     ownerPubkeyHex: string;
     relayConfig?: RelayConfig | null;
+    getRelayConfig?: () => RelayConfig | null | undefined;
     reconcileDirectReplyCandidates?: (
         candidates: PostHistoryInboundDirectReplyCandidate[],
     ) => Promise<PostHistoryInboundReplyReconciliationResult>;
@@ -248,6 +249,7 @@ export class PostHistoryForegroundPeriodicSyncService {
         const task = this.lightweightSyncCoordinator.runAuthored(rxNostr, {
             ownerPubkeyHex: params.ownerPubkeyHex,
             relayConfig: params.relayConfig,
+            getRelayConfig: params.getRelayConfig,
             reason: "foreground-periodic",
             kinds: [1, 42, 1111],
             since,
@@ -311,6 +313,7 @@ export class PostHistoryForegroundPeriodicSyncService {
         const task = this.lightweightSyncCoordinator.runAuthored(rxNostr, {
             ownerPubkeyHex: params.ownerPubkeyHex,
             relayConfig: params.relayConfig,
+            getRelayConfig: params.getRelayConfig,
             reason: "foreground-periodic",
             kinds: [1, 42, 1111],
             since: pending.since,

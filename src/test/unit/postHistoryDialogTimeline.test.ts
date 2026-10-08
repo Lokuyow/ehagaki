@@ -1140,7 +1140,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect.objectContaining({
                 pubkeyHex: PUBKEY_HEX,
                 createdAt: jumpTarget.createdAt - 1,
-                visibleUntil: null,
+                visibleUntil: 0,
                 query: { contiguous: false },
             }),
         );
@@ -2565,6 +2565,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             value: 720,
         });
 
+        await waitFor(() => expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled());
         await openPostHistoryMenu();
         await fireEvent.click(await screen.findByRole('menuitem', { name: '最古へ移動' }));
 

@@ -1,3 +1,4 @@
+import { getPostHistoryAuthoredRelayScopeKey } from "../postHistoryRelayResolver";
 import { onMount } from "svelte";
 import type { RxNostr } from "rx-nostr";
 import type {
@@ -113,6 +114,7 @@ export function usePostHistoryVisibilityResumeSync({
         const reconciliationPubkeyHex = getReconciliationPubkeyHex() ?? null;
         const rxNostr = getRxNostr();
         const relayConfig = getRelayConfig();
+        const relayScopeKey = getPostHistoryAuthoredRelayScopeKey(relayConfig);
 
         if (
             !visible
@@ -131,6 +133,7 @@ export function usePostHistoryVisibilityResumeSync({
         const task = postHistoryVisibilityResumeSyncService.syncAfterVisibilityResume(rxNostr, {
             ownerPubkeyHex,
             relayConfig,
+            getRelayConfig,
             hiddenAtSeconds: pendingResumeSince,
             reconcileDirectReplyCandidates,
             onSavedSelfPosts,
@@ -140,7 +143,8 @@ export function usePostHistoryVisibilityResumeSync({
                 && getIsAuthenticated()
                 && getPubkeyHex() === ownerPubkeyHex
                 && getRxNostr() === rxNostr
-                && getReconciliationPubkeyHex() === ownerPubkeyHex,
+                && getReconciliationPubkeyHex() === ownerPubkeyHex
+                && getPostHistoryAuthoredRelayScopeKey(getRelayConfig()) === relayScopeKey,
         });
         currentTask = task;
 

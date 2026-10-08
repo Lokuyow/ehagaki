@@ -1,3 +1,8 @@
+import { liveQuery } from "dexie";
+import { createPostHistoryAuthoredFetchScope, persistPostHistoryAuthoredFetch } from "../postHistoryAuthoredFetchPersistence";
+import { getPostHistoryAuthoredRelayScopeKey, resolvePostHistoryAuthoredRelayUrls } from "../postHistoryRelayResolver";
+import { getPostHistoryQuorumCoverage, getPostHistoryConnectedCoverageUntil, type PostHistoryCoverageRange } from "../postHistoryRelayCoverage";
+import { postHistoryRelayCoverageRepository } from "../storage/postHistoryRelayCoverageRepository";
 import type { RxNostr } from "rx-nostr";
 import {
     POST_HISTORY_BOOTSTRAP_FETCH_LIMIT,
@@ -63,7 +68,7 @@ import {
 } from "../storage/postHistoryVisibleRangeRepository";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 import type { RelayConfig } from "../types";
-import { onDestroy, tick } from "svelte";
+import { onDestroy, tick, untrack } from "svelte";
 
 export type PostHistorySyncStatus =
     | "idle"
@@ -165,6 +170,7 @@ function reportPostHistoryManualRepairPhase(
 }
 
 interface PersistedPostHistoryListingSnapshot {
+    coverageAnchorCreatedAt?: number | null;
     loadedPosts: PostHistoryRecord[];
     searchPosts: PostHistoryRecord[];
     searchQuery: string;
@@ -384,7 +390,6 @@ const POST_HISTORY_VISIBLE_KINDS_KEY = buildPostHistoryVisibleKindsKey([
 const POST_HISTORY_REPAIR_PREFERRED_PADDING_SECONDS = 24 * 60 * 60;
 const POST_HISTORY_JUMP_FETCH_RADIUS_SECONDS = 3 * 24 * 60 * 60;
 const POST_HISTORY_JUMP_FETCH_LIMIT = 100;
-const POST_HISTORY_JUMP_FRONTIER_CONNECT_TOLERANCE_SECONDS = 12 * 60 * 60;
 function didDateChunkMissTarget(
     chunk: PostHistoryRecord[],
     targetCreatedAt: number,
@@ -575,6 +580,7 @@ function cloneListingSnapshot(
         nextUntil: snapshot.nextUntil,
         lastDialogOpenRefreshAt: snapshot.lastDialogOpenRefreshAt,
         visibleUntil: snapshot.visibleUntil,
+        coverageAnchorCreatedAt: snapshot.coverageAnchorCreatedAt ?? null,
         hasJumpCacheAnchors: snapshot.hasJumpCacheAnchors ?? false,
         hasOlderLocal: snapshot.hasOlderLocal,
         hasNewerLocal: snapshot.hasNewerLocal,
@@ -696,6 +702,13 @@ export function usePostHistoryListing({
         latestOlderBackfillUiResult: null as OlderBackfillUiResult | null,
     });
 
+    let coverageAnchorCreatedAt = $state<number | null>(persistedListingSnapshot.coverageAnchorCreatedAt ?? null);
+    let quorumCoverage = $state<PostHistoryCoverageRange[]>([]);
+    let activeCoverageRelayKey = getPostHistoryAuthoredRelayScopeKey(getRelayConfig());
+    let activeCoverageOwner = getPubkeyHex();
+    let activeCoverageRuntime = getRxNostr();
+    let coverageGeneration = 0;
+    let isDestroyed = false;
     let loadRequestId = 0;
     let hasCompletedFirstPostPaint = false;
     let mediaPrefetchReady = $state(false);
@@ -1066,6 +1079,8 @@ export function usePostHistoryListing({
         state.nextUntil = null;
         state.lastDialogOpenRefreshAt = null;
         state.visibleUntil = null;
+        coverageAnchorCreatedAt = null;
+        quorumCoverage = [];
         state.hasJumpCacheAnchors = false;
         state.hasOlderLocal = false;
         state.hasNewerLocal = false;
@@ -1113,6 +1128,7 @@ export function usePostHistoryListing({
             nextUntil: state.nextUntil,
             lastDialogOpenRefreshAt: state.lastDialogOpenRefreshAt,
             visibleUntil: state.visibleUntil,
+            coverageAnchorCreatedAt,
             hasJumpCacheAnchors: state.hasJumpCacheAnchors,
             hasOlderLocal: state.hasOlderLocal,
             hasNewerLocal: state.hasNewerLocal,
@@ -1124,6 +1140,8 @@ export function usePostHistoryListing({
     }
 
     function resetListingStateAfterLocalDelete(): void {
+        coverageAnchorCreatedAt = null;
+        quorumCoverage = [];
         clearContiguousProgress();
         invalidateTotalCountRequest();
         relationRepairCoordinator.resetOlderRevealRepairContext();
@@ -1187,6 +1205,7 @@ export function usePostHistoryListing({
     }
 
     function prepareForClose(): boolean {
+        coverageGeneration += 1;
         const shouldClearAllSessionScrollState = discardSparseListingRestoreState();
         cancelCurrentSync();
         cancelCurrentViewRefetch();
@@ -1198,6 +1217,7 @@ export function usePostHistoryListing({
     }
 
     function resetState(): void {
+        coverageGeneration += 1;
         discardSparseListingRestoreState();
         cancelCurrentSync();
         cancelCurrentViewRefetch();
@@ -1480,23 +1500,43 @@ export function usePostHistoryListing({
         }];
     }
 
-    async function readVisibleUntil(pubkeyHex: string): Promise<number | null> {
-        const visibleRange = await postHistoryVisibleRangeRepository.get(
-            pubkeyHex,
-            POST_HISTORY_VISIBLE_KINDS_KEY,
-        );
+    async function readQuorumCoverage(pubkeyHex: string): Promise<PostHistoryCoverageRange[]> {
+        if (isDestroyed) return [];
+        const generation = coverageGeneration;
+        const relays = resolvePostHistoryAuthoredRelayUrls(getRelayConfig());
+        const record = await postHistoryRelayCoverageRepository.get(pubkeyHex, POST_HISTORY_VISIBLE_KINDS_KEY);
+        const ranges = getPostHistoryQuorumCoverage(record.relays, relays);
+        if (isDestroyed || generation !== coverageGeneration || !getShow() || getPubkeyHex() !== pubkeyHex) return [];
+        quorumCoverage = ranges;
+        return ranges;
+    }
 
-        return visibleRange?.visibleUntil ?? null;
+    async function readVisibleUntil(pubkeyHex: string): Promise<number | null> {
+        if (coverageAnchorCreatedAt === null) {
+            // Legacy state may limit the entry window, but never certifies its continuation.
+            return (await postHistoryVisibleRangeRepository.get(pubkeyHex, POST_HISTORY_VISIBLE_KINDS_KEY))?.visibleUntil ?? null;
+        }
+        const anchor = coverageAnchorCreatedAt;
+        return getPostHistoryConnectedCoverageUntil(await readQuorumCoverage(pubkeyHex), anchor);
+    }
+
+    async function createAuthoredScope(pubkeyHex: string, rxNostr: RxNostr, requestId: number, kinds = [...POST_HISTORY_FETCH_KINDS] as number[]) {
+        const relayConfig = getRelayConfig();
+        const generation = coverageGeneration;
+        return createPostHistoryAuthoredFetchScope({ ownerPubkeyHex: pubkeyHex, rxNostr, kinds, relayConfig,
+            getRelayConfig, isActive: () => generation === coverageGeneration && isCurrentFetchRequest(requestId)
+                && getShow() && getPubkeyHex() === pubkeyHex && getRxNostr() === rxNostr });
     }
 
     async function refreshVisibleUntil(
         pubkeyHex: string,
         expectedRequestId: number | null = null,
     ): Promise<number | null> {
+        const generation = coverageGeneration;
         const visibleUntil = await readVisibleUntil(pubkeyHex);
 
         if (
-            getShow()
+            !isDestroyed && generation === coverageGeneration && getShow()
             && getPubkeyHex() === pubkeyHex
             && (expectedRequestId === null || expectedRequestId === loadRequestId)
         ) {
@@ -1529,109 +1569,35 @@ export function usePostHistoryListing({
         return hasJumpCacheAnchors;
     }
 
-    async function updateVisibleUntilFromFetch(
-        pubkeyHex: string,
-        result: PostHistoryRelayFetchResult,
-    ): Promise<number | null> {
-        const currentVisibleUntil = await readVisibleUntil(pubkeyHex);
-        const candidateVisibleUntil = (() => {
-            if (result.events.length === 0) {
-                return null;
-            }
-
-            if (canContinueRelayHistory(result)) {
-                return result.nextUntil;
-            }
-
-            return typeof result.oldestCreatedAt === "number"
-                ? result.oldestCreatedAt
-                : null;
-        })();
-        const nextVisibleUntil = typeof candidateVisibleUntil === "number"
-            ? typeof currentVisibleUntil === "number"
-                ? Math.min(currentVisibleUntil, candidateVisibleUntil)
-                : candidateVisibleUntil
-            : currentVisibleUntil;
-
-        if (nextVisibleUntil !== currentVisibleUntil) {
-            await postHistoryVisibleRangeRepository.save({
-                pubkeyHex,
-                kindsKey: POST_HISTORY_VISIBLE_KINDS_KEY,
-                visibleUntil: nextVisibleUntil,
-            });
+    async function updateVisibleUntilFromFetch(pubkeyHex: string, _result: PostHistoryRelayFetchResult): Promise<number | null> {
+        const generation = coverageGeneration;
+        const requestId = fetchRequestId;
+        const isCurrent = () => !isDestroyed && generation === coverageGeneration && requestId === fetchRequestId
+            && getShow() && getPubkeyHex() === pubkeyHex;
+        if (coverageAnchorCreatedAt === null) {
+            const entryPosts = await postHistoryRepository.getLatestVisibleChunk({ pubkeyHex, visibleUntil: null, limit: pageSize });
+            if (!isCurrent()) return null;
+            coverageAnchorCreatedAt = entryPosts.length ? Math.min(...entryPosts.map((post) => post.createdAt)) : null;
         }
-
-        state.visibleUntil = nextVisibleUntil;
-        return nextVisibleUntil;
+        const next = await readVisibleUntil(pubkeyHex);
+        if (isCurrent()) state.visibleUntil = next;
+        return next;
     }
 
-    async function updateVisibleUntilFromOlderBackfillFetch(
-        pubkeyHex: string,
-        result: PostHistoryRelayFetchResult,
-    ): Promise<number | null> {
-        const currentVisibleUntil = await readVisibleUntil(pubkeyHex);
-        const oldestCreatedAt = resolveOldestCreatedAtFromFetchResult(result);
-        const nextVisibleUntil = typeof oldestCreatedAt === "number"
-            ? typeof currentVisibleUntil === "number"
-                ? Math.min(currentVisibleUntil, oldestCreatedAt)
-                : oldestCreatedAt
-            : currentVisibleUntil;
-
-        if (nextVisibleUntil !== currentVisibleUntil) {
-            await postHistoryVisibleRangeRepository.save({
-                pubkeyHex,
-                kindsKey: POST_HISTORY_VISIBLE_KINDS_KEY,
-                visibleUntil: nextVisibleUntil,
-            });
-        }
-
-        state.visibleUntil = nextVisibleUntil;
-        return nextVisibleUntil;
+    async function updateVisibleUntilFromOlderBackfillFetch(pubkeyHex: string, result: PostHistoryRelayFetchResult) {
+        return updateVisibleUntilFromFetch(pubkeyHex, result);
     }
 
     async function maybeExtendVisibleUntilFromCurrentViewRefetchResult(
-        pubkeyHex: string,
-        previousVisibleUntil: number | null,
-        processedRanges: Array<{
-            source: string;
-            status: string;
-            since?: number;
-            until?: number;
-        }>,
+        pubkeyHex: string, _previousVisibleUntil: number | null,
+        _processedRanges: Array<{ source: string; status: string; since?: number; until?: number }>,
     ): Promise<number | null> {
-        if (typeof previousVisibleUntil !== "number") {
-            return previousVisibleUntil;
-        }
-
-        const candidateVisibleUntils = processedRanges
-            .filter((range) =>
-                range.source === "preferred"
-                && range.status === "complete"
-                && typeof range.since === "number"
-                && typeof range.until === "number"
-                && range.until >= previousVisibleUntil - 1,
-            )
-            .map((range) => range.since as number);
-
-        if (candidateVisibleUntils.length === 0) {
-            return previousVisibleUntil;
-        }
-
-        const nextVisibleUntil = Math.min(
-            previousVisibleUntil,
-            ...candidateVisibleUntils,
-        );
-        if (nextVisibleUntil === previousVisibleUntil) {
-            return previousVisibleUntil;
-        }
-
-        await postHistoryVisibleRangeRepository.save({
-            pubkeyHex,
-            kindsKey: POST_HISTORY_VISIBLE_KINDS_KEY,
-            visibleUntil: nextVisibleUntil,
-        });
-        state.visibleUntil = nextVisibleUntil;
-        return nextVisibleUntil;
+        const generation = coverageGeneration;
+        const task = currentViewRefetchTask;
+        const next = await readVisibleUntil(pubkeyHex);
+        if (!isDestroyed && generation === coverageGeneration && task === currentViewRefetchTask
+            && getShow() && getPubkeyHex() === pubkeyHex) state.visibleUntil = next;
+        return next;
     }
 
     async function countVisiblePosts(
@@ -1749,7 +1715,9 @@ export function usePostHistoryListing({
             pubkeyHex,
             visibleUntil,
         );
-        const currentVisibleUntil = await readVisibleUntil(pubkeyHex);
+        // The snapshot retains the display floor; every use validates against
+        // fresh persisted coverage before querying an older page.
+        const currentVisibleUntil = state.visibleUntil;
         const revisionAfterQuery = getPostHistorySearchRevision(pubkeyHex);
         if (
             revisionAfterQuery !== revisionBeforeQuery
@@ -2037,6 +2005,7 @@ export function usePostHistoryListing({
         expectedRequestId: number | null = null,
         options: { skipOlderCheck?: boolean } = {},
     ): Promise<void> {
+        const generation = coverageGeneration;
         if (currentPosts.length === 0) {
             if (
                 getShow() &&
@@ -2105,6 +2074,7 @@ export function usePostHistoryListing({
         ]);
 
         if (
+            generation !== coverageGeneration || visibleUntil !== state.visibleUntil ||
             !getShow() ||
             getPubkeyHex() !== pubkeyHex ||
             (expectedRequestId !== null && expectedRequestId !== loadRequestId)
@@ -2140,7 +2110,7 @@ export function usePostHistoryListing({
         }
 
         const requestId = ++loadRequestId;
-        const visibleUntil = await refreshVisibleUntil(pubkeyHex, requestId);
+        let visibleUntil = await refreshVisibleUntil(pubkeyHex, requestId);
         const revisionBeforeLatestQuery = getPostHistorySearchRevision(pubkeyHex);
         const latestPosts = await postHistoryRepository.getLatestVisibleChunk({
             pubkeyHex,
@@ -2160,12 +2130,22 @@ export function usePostHistoryListing({
         state.listingMode = "contiguous";
         state.sparseSource = null;
         state.loadedPosts = latestPosts;
+        const nextCoverageAnchor = latestPosts.length > 0
+            ? Math.min(...latestPosts.map((post) => post.createdAt)) : null;
+        const needsCoverageProjection = coverageAnchorCreatedAt !== nextCoverageAnchor;
+        // A rebuilt latest window must not inherit an older window's continuity
+        // across an uncovered gap, even when that older coverage remains valid.
+        coverageAnchorCreatedAt = nextCoverageAnchor;
         if (!await waitForFirstPostPaint(
             pubkeyHex,
             () => isCurrentPostHistoryLoad(pubkeyHex, requestId),
             () => state.loadedPosts.length > 0,
         )) {
             return;
+        }
+        if (needsCoverageProjection) {
+            visibleUntil = await refreshVisibleUntil(pubkeyHex, requestId);
+            if (!isCurrentPostHistoryLoad(pubkeyHex, requestId)) return;
         }
         if (!skipTotalCountRefresh) {
             refreshTotalCountFromRepository({ force: forceTotalCount });
@@ -2189,9 +2169,7 @@ export function usePostHistoryListing({
                 return false;
             });
         } else {
-            void progressReady.catch(() => {
-                clearContiguousProgress();
-            });
+            void progressReady.catch(() => { clearContiguousProgress(); });
         }
 
         const canSkipOlderAvailability =
@@ -3001,6 +2979,8 @@ export function usePostHistoryListing({
         );
         const repairUntil = createdAt;
 
+        const authoredScope = await createAuthoredScope(pubkeyHex, rxNostr, syncRequestId);
+        if (!authoredScope.isActive()) return false;
         const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
             pubkeyHex,
             relayConfig: getRelayConfig(),
@@ -3016,16 +2996,14 @@ export function usePostHistoryListing({
         }
 
         currentFetchTask = null;
-        if (!getShow() || relayResult.status === "cancelled") {
+        if (!authoredScope.isActive() || relayResult.status === "cancelled") {
             state.syncStatus = "idle";
             return false;
         }
 
-        if (relayResult.events.length > 0) {
-            await postHistoryRepository.upsertFetchedEvents({
-                events: relayResult.events,
-                fetchedAt: relayResult.fetchedAt,
-            });
+        if (relayResult.events.length > 0 || relayResult.relayFetchCoverage?.length) {
+            const saved = await persistPostHistoryAuthoredFetch(relayResult, authoredScope);
+            if (saved.applied === false || !authoredScope.isActive()) return false;
             await postHistoryJumpCacheAnchorRepository.addForPubkey({
                 pubkeyHex,
                 centerCreatedAt: createdAt,
@@ -3368,6 +3346,8 @@ export function usePostHistoryListing({
             return;
         }
 
+        const authoredScope = await createAuthoredScope(pubkeyHex, rxNostr, requestId);
+        if (!authoredScope.isActive()) return;
         const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
             pubkeyHex,
             relayConfig: getRelayConfig(),
@@ -3390,15 +3370,14 @@ export function usePostHistoryListing({
         }
 
         currentFetchTask = null;
-        if (!getShow() || result.status === "cancelled") {
+        if (!authoredScope.isActive() || result.status === "cancelled") {
             return;
         }
 
-        if (result.events.length > 0) {
-            upsertSummary = await postHistoryRepository.upsertFetchedEvents({
-                events: result.events,
-                fetchedAt: result.fetchedAt,
-            });
+        if (result.events.length > 0 || result.relayFetchCoverage?.length) {
+            const saved = await persistPostHistoryAuthoredFetch(result, authoredScope);
+            if (saved.applied === false || !authoredScope.isActive()) return;
+            upsertSummary = saved;
             const savedEventIds = resolveFetchedAuthoredEventIds(result.events);
             if (savedEventIds.length > 0) {
                 await onSavedAuthoredPosts(savedEventIds);
@@ -3469,6 +3448,7 @@ export function usePostHistoryListing({
             ownerPubkeyHex: pubkeyHex,
             relayConfig: getRelayConfig(),
             reason: "dialog-open-refresh",
+            getRelayConfig,
             limit: POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT,
             timeoutMs: POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS,
             onSavedSelfPosts: onSavedAuthoredPosts,
@@ -3804,6 +3784,18 @@ export function usePostHistoryListing({
             return false;
         }
 
+        // A background query or reopened session may already have bridged the gap.
+        // Recompute before launching another request, then consume that local page.
+        if (state.listingMode === "contiguous") {
+            await refreshVisibleUntil(pubkeyHex);
+            await refreshTimelineAvailability(pubkeyHex);
+            if (!getShow() || getPubkeyHex() !== pubkeyHex || getRxNostr() !== rxNostr) return false;
+            if (state.hasOlderLocal) {
+                clearContiguousProgress();
+                return loadOlderVisiblePosts({ anchorEventId: options.anchorEventId, useContiguousProgress: false });
+            }
+        }
+
         cancelCurrentSync();
         const requestId = ++fetchRequestId;
         state.syncStatus = "older-syncing";
@@ -3836,6 +3828,9 @@ export function usePostHistoryListing({
             }
 
             const effectiveFetchUntil = (() => {
+                if (typeof previousVisibleUntil === "number" && !isSparseListingContext(previousVisibleUntil)) {
+                    return previousVisibleUntil;
+                }
                 if (typeof resolvedFetchUntil === "number") {
                     if (usingBatchCursor) {
                         return resolvedFetchUntil;
@@ -3853,7 +3848,9 @@ export function usePostHistoryListing({
                 return batchChanged;
             }
 
-            const until = Math.trunc(effectiveFetchUntil) - 1;
+            const rangesBeforeFetch = await readQuorumCoverage(pubkeyHex);
+            const frontierCovered = rangesBeforeFetch.some((range) => range.since <= effectiveFetchUntil && range.until >= effectiveFetchUntil);
+            const until = Math.trunc(effectiveFetchUntil) - (frontierCovered ? 1 : 0);
             if (until < 0) {
                 setOlderBackfillNextCursor(null, null);
                 state.syncStatus = "idle";
@@ -3900,6 +3897,8 @@ export function usePostHistoryListing({
                 appliedDeletionCount: 0,
             };
 
+            const authoredScope = await createAuthoredScope(pubkeyHex, rxNostr, requestId);
+            if (!authoredScope.isActive()) return batchChanged;
             const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
                 pubkeyHex,
                 relayConfig: getRelayConfig(),
@@ -3917,16 +3916,15 @@ export function usePostHistoryListing({
             }
 
             currentFetchTask = null;
-            if (!getShow() || result.status === "cancelled") {
+            if (!authoredScope.isActive() || result.status === "cancelled") {
                 batchStoppedReason = "status-cancelled";
                 return batchChanged;
             }
 
-            if (result.events.length > 0) {
-                upsertSummary = await postHistoryRepository.upsertFetchedEvents({
-                    events: result.events,
-                    fetchedAt: result.fetchedAt,
-                });
+            if (result.events.length > 0 || result.relayFetchCoverage?.length) {
+                const saved = await persistPostHistoryAuthoredFetch(result, authoredScope);
+                if (saved.applied === false || !authoredScope.isActive()) return batchChanged;
+                upsertSummary = saved;
                 didMateriallyChange =
                     upsertSummary.insertedCount + upsertSummary.updatedCount > 0;
             }
@@ -3952,33 +3950,7 @@ export function usePostHistoryListing({
                 return batchChanged;
             }
 
-            const connectedAnchorsResult =
-                !isSparseBackfillContext && typeof nextVisibleUntil === "number"
-                    ? await postHistoryJumpCacheAnchorRepository.reconcileWithFrontier({
-                        pubkeyHex,
-                        frontierVisibleUntil: nextVisibleUntil,
-                        toleranceSec:
-                            POST_HISTORY_JUMP_FRONTIER_CONNECT_TOLERANCE_SECONDS,
-                    })
-                    : null;
-            const effectiveVisibleUntil = connectedAnchorsResult
-                ? connectedAnchorsResult.nextVisibleUntil
-                : nextVisibleUntil;
-            if (connectedAnchorsResult) {
-                state.hasJumpCacheAnchors =
-                    connectedAnchorsResult.anchors.length > 0;
-            }
-            if (
-                connectedAnchorsResult
-                && connectedAnchorsResult.nextVisibleUntil !== nextVisibleUntil
-            ) {
-                await postHistoryVisibleRangeRepository.save({
-                    pubkeyHex,
-                    kindsKey: POST_HISTORY_VISIBLE_KINDS_KEY,
-                    visibleUntil: connectedAnchorsResult.nextVisibleUntil,
-                });
-                state.visibleUntil = connectedAnchorsResult.nextVisibleUntil;
-            }
+            const effectiveVisibleUntil = nextVisibleUntil;
 
             const nextCount = await countVisiblePosts(pubkeyHex, effectiveVisibleUntil);
             if (!isCurrentFetchRequest(requestId) || !getShow()) {
@@ -4041,6 +4013,7 @@ export function usePostHistoryListing({
             } else if (result.events.length > 0) {
                 olderBackfillSearch.consecutiveEmptyCount = 0;
             }
+            if (typeof effectiveVisibleUntil === "number" && !isSparseBackfillContext) nextUntilCursor = effectiveVisibleUntil;
             setOlderBackfillNextCursor(nextUntilCursor, nextContinuationSince);
 
             logOlderBackfillResult(
@@ -4131,7 +4104,12 @@ export function usePostHistoryListing({
                 exploredSeconds: nextExploredSeconds,
                 maxExploreSeconds,
             });
-            const shouldContinueForSmallBatch = retryDecision.shouldContinue;
+            const connectedSavedRange = typeof effectiveVisibleUntil === "number" && typeof previousVisibleUntil === "number"
+                && rangesBeforeFetch.some((range) => range.until < previousVisibleUntil && effectiveVisibleUntil <= range.since);
+            const coverageAdvanced = typeof effectiveVisibleUntil === "number" && typeof previousVisibleUntil === "number"
+                && effectiveVisibleUntil < previousVisibleUntil;
+            const shouldContinueForSmallBatch = retryDecision.shouldContinue && coverageAdvanced
+                && !state.hasOlderLocal && !connectedSavedRange;
             const nextAutoRetryCount = shouldContinueForSmallBatch
                 ? autoRetryCount + 1
                 : autoRetryCount;
@@ -4259,6 +4237,8 @@ export function usePostHistoryListing({
                 pubkeyHex,
                 relayConfig: getRelayConfig(),
                 preferredRanges,
+                getRelayConfig,
+                isActive: () => getShow() && getPubkeyHex() === pubkeyHex && getRxNostr() === rxNostr,
                 onProgress: async () => undefined,
             });
         } catch (error) {
@@ -4537,10 +4517,9 @@ export function usePostHistoryListing({
         cancelCurrentSync();
         cancelCurrentViewRefetch();
 
+        postHistoryLightweightSyncCoordinator.cancelOwnerTasks(pubkeyHex);
         const results = await Promise.allSettled([
             postHistoryRepository.deleteLocalHistoryForPubkey(pubkeyHex),
-            postHistoryJumpCacheAnchorRepository.clearForPubkey(pubkeyHex),
-            postHistoryVisibleRangeRepository.clearForPubkey(pubkeyHex),
         ]);
 
         if (results.some((result) => result.status === "rejected")) {
@@ -4689,6 +4668,33 @@ export function usePostHistoryListing({
                 }
             });
     }
+
+    $effect(() => {
+        const key = getPostHistoryAuthoredRelayScopeKey(getRelayConfig());
+        const owner = getPubkeyHex();
+        const runtime = getRxNostr();
+        if (key !== activeCoverageRelayKey || owner !== activeCoverageOwner || runtime !== activeCoverageRuntime) {
+            activeCoverageRelayKey = key;
+            activeCoverageOwner = owner;
+            activeCoverageRuntime = runtime;
+            coverageGeneration += 1;
+            untrack(() => { cancelCurrentSync(); cancelCurrentViewRefetch(); invalidatePendingLoadRequests(); });
+        }
+        if (!getShow() || !owner) return;
+        const generation = coverageGeneration;
+        const relays = resolvePostHistoryAuthoredRelayUrls(getRelayConfig());
+        const subscription = liveQuery(() => postHistoryRelayCoverageRepository.get(owner, POST_HISTORY_VISIBLE_KINDS_KEY))
+            .subscribe({ next: (record) => {
+                if (isDestroyed || generation !== coverageGeneration || !getShow() || getPubkeyHex() !== owner) return;
+                quorumCoverage = getPostHistoryQuorumCoverage(record.relays, relays);
+                if (coverageAnchorCreatedAt === null) return;
+                const next = getPostHistoryConnectedCoverageUntil(quorumCoverage, coverageAnchorCreatedAt);
+                if (next === state.visibleUntil) return;
+                state.visibleUntil = next; clearContiguousProgress();
+                if (hasCompletedFirstPostPaint) void refreshTimelineAvailability(owner);
+            }, error: () => { /* A failed read grants no additional coverage. */ } });
+        return () => subscription.unsubscribe();
+    });
 
     $effect(() => {
         const nextPubkeyKey = resolveListingSnapshotKey(getPubkeyHex());
@@ -4881,6 +4887,10 @@ export function usePostHistoryListing({
     });
 
     onDestroy(() => {
+        isDestroyed = true;
+        coverageGeneration += 1;
+        cancelCurrentSync();
+        cancelCurrentViewRefetch();
         loadRequestId += 1;
         searchLoadRequestId += 1;
         initialLocalLoadGeneration += 1;

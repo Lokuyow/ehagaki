@@ -1,3 +1,4 @@
+import { createPostHistoryAuthoredFetchScope, persistPostHistoryAuthoredFetch } from "./postHistoryAuthoredFetchPersistence";
 import type { RxNostr } from "rx-nostr";
 import {
     POST_HISTORY_REPAIR_FETCH_LIMIT,
@@ -17,6 +18,8 @@ export interface PostHistoryCurrentViewRefetchParams {
     pubkeyHex: string;
     relayConfig?: RelayConfig | null;
     preferredRanges: PostHistoryCurrentViewRefetchRange[];
+    isActive?: () => boolean;
+    getRelayConfig?: () => RelayConfig | null | undefined;
     onProgress?: (
         progress: PostHistoryCurrentViewRefetchProgress,
     ) => void | Promise<void>;
@@ -316,6 +319,11 @@ export class PostHistoryCurrentViewRefetchService {
                     break;
                 }
 
+                const scope = await createPostHistoryAuthoredFetchScope({ ownerPubkeyHex: params.pubkeyHex,
+                    rxNostr, kinds: range.kinds, relayConfig: params.relayConfig,
+                    getRelayConfig: params.getRelayConfig ?? (() => params.relayConfig),
+                    isActive: () => !cancelled && params.isActive?.() !== false });
+                if (!scope.isActive()) { cancelled = true; break; }
                 const fetchTask = this.postHistoryRelayFetchService.fetchLatest(rxNostr, {
                     pubkeyHex: params.pubkeyHex,
                     relayConfig: params.relayConfig,
@@ -343,6 +351,7 @@ export class PostHistoryCurrentViewRefetchService {
                 }
                 primaryFetchDurationMs += Math.max(0, this.now() - primaryFetchStartedAt);
                 currentFetchTask = null;
+                if (!scope.isActive() || result.status === "cancelled") { cancelled = true; break; }
                 attemptedRangeCount += 1;
                 receivedEventCount += result.events.length;
                 hadFetchError = hadFetchError || result.status === "error";
@@ -359,15 +368,13 @@ export class PostHistoryCurrentViewRefetchService {
                 let rangeUpdatedCount = 0;
                 let rangeUnchangedCount = 0;
 
-                if (result.events.length > 0) {
+                if (result.events.length > 0 || result.relayFetchCoverage?.length) {
                     const primaryPersistStartedAt = this.now();
                     primaryPersistAttemptCount += 1;
                     let upsertSummary: Awaited<ReturnType<PostHistoryRepository["upsertFetchedEvents"]>>;
                     try {
-                        upsertSummary = await this.postHistoryRepository.upsertFetchedEvents({
-                            events: result.events,
-                            fetchedAt: result.fetchedAt,
-                        });
+                        upsertSummary = await persistPostHistoryAuthoredFetch(result, scope, this.postHistoryRepository);
+                        if (upsertSummary.applied === false) { cancelled = true; break; }
                     } catch (error) {
                         primaryPersistDurationMs += Math.max(0, this.now() - primaryPersistStartedAt);
                         throw new PostHistoryCurrentViewRefetchFailure(
@@ -452,7 +459,7 @@ export class PostHistoryCurrentViewRefetchService {
                     hadFailures = true;
                 }
 
-                if (cancelled || result.status === "cancelled") {
+                if (cancelled || !scope.isActive()) {
                     cancelled = true;
                     break;
                 }

@@ -6,6 +6,8 @@ import { postHistoryLightweightSyncCoordinator } from '../../lib/postHistoryLigh
 import { clearPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
 import { clearPostHistoryDialogScrollStates } from '../../lib/postHistoryDialogScrollState';
 import { clearPostHistoryShouldReturnToLatestAfterLocalPost } from '../../lib/postHistoryLatestRequest';
+import { resolvePostHistoryAuthoredRelayUrls } from '../../lib/postHistoryRelayResolver';
+import { getPostHistoryQuorumCoverage, type PostHistoryRelayCoverage } from '../../lib/postHistoryRelayCoverage';
 
 const hoisted = vi.hoisted(() => {
     const translationOverrides: Record<string, string> = {};
@@ -200,6 +202,8 @@ const hoisted = vi.hoisted(() => {
             clear: vi.fn(),
             clearForPubkey: vi.fn(),
         },
+        relayCoverageRepositoryMock: { get: vi.fn(), getLocalRevision: vi.fn() },
+        completeAuthoredQueryFixture: vi.fn(),
         jumpCacheAnchorRepositoryMock: {
             getForPubkey: vi.fn(),
             addForPubkey: vi.fn(),
@@ -298,6 +302,14 @@ export const replyFetchServiceMock = hoisted.replyFetchServiceMock;
 export const contextFetchServiceMock = hoisted.contextFetchServiceMock;
 export const deletionFetchServiceMock = hoisted.deletionFetchServiceMock;
 export const visibleRangeRepositoryMock = hoisted.visibleRangeRepositoryMock;
+export const relayCoverageRepositoryMock = hoisted.relayCoverageRepositoryMock;
+let fixtureCoverageRanges: { since: number; until: number }[] = [];
+export function seedPostHistoryCoverage(since: number, until = 2_000_000_000): void {
+    fixtureCoverageRanges.push({ since, until });
+}
+export function completedRelayCoverage(since: number, until = 2_000_000_000): PostHistoryRelayCoverage[] {
+    return resolvePostHistoryAuthoredRelayUrls(undefined).map((relayUrl) => ({ relayUrl, ranges: [{ since, until }] }));
+}
 export const jumpCacheAnchorRepositoryMock = hoisted.jumpCacheAnchorRepositoryMock;
 export const repairCursorRepositoryMock = hoisted.repairCursorRepositoryMock;
 export const syncCoverageRepositoryMock = hoisted.syncCoverageRepositoryMock;
@@ -443,6 +455,11 @@ vi.mock('../../lib/storage/postHistoryVisibleRangeRepository', async () => {
     };
 });
 
+vi.mock('../../lib/storage/postHistoryRelayCoverageRepository', async () => ({
+    ...await vi.importActual('../../lib/storage/postHistoryRelayCoverageRepository'),
+    postHistoryRelayCoverageRepository: hoisted.relayCoverageRepositoryMock,
+}));
+
 vi.mock('../../lib/storage/postHistoryJumpCacheAnchorRepository', async () => {
     const actual = await vi.importActual<typeof import('../../lib/storage/postHistoryJumpCacheAnchorRepository')>('../../lib/storage/postHistoryJumpCacheAnchorRepository');
     return {
@@ -462,7 +479,13 @@ vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     POST_HISTORY_OLDER_FETCH_TIMEOUT_MS: 25_000,
     POST_HISTORY_PAGE_SIZE: 50,
     POST_HISTORY_REPAIR_FETCH_LIMIT: 250,
-    postHistoryRelayFetchService: hoisted.relayFetchServiceMock,
+    postHistoryRelayFetchService: {
+        fetchLatest: (rxNostr: unknown, input: Record<string, any>) => {
+            const task = hoisted.relayFetchServiceMock.fetchLatest(rxNostr, input);
+            return { ...task, promise: task.promise.then((result: Record<string, any>) =>
+                hoisted.completeAuthoredQueryFixture(input, result)) };
+        },
+    },
 }));
 
 vi.mock('../../lib/postHistoryCurrentViewRefetchService', () => ({
@@ -625,7 +648,9 @@ export async function waitForSearchDebounce(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 300));
 }
 
-export function resetPostHistoryDialogHarness(options: { listingMode?: 'chunk' | 'page-adapter' } = {}): void {
+export function resetPostHistoryDialogHarness(options: {
+    listingMode?: 'chunk' | 'page-adapter'; coverageMode?: 'saved' | 'entry' | 'none';
+} = {}): void {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
         callback(0);
         return 1;
@@ -636,6 +661,7 @@ export function resetPostHistoryDialogHarness(options: { listingMode?: 'chunk' |
     clearPostHistoryDialogScrollStates();
     clearPostHistoryShouldReturnToLatestAfterLocalPost();
     vi.resetAllMocks();
+    fixtureCoverageRanges = [];
     for (const key of Object.keys(hoisted.translationOverrides)) {
         delete hoisted.translationOverrides[key];
     }
@@ -658,12 +684,12 @@ export function resetPostHistoryDialogHarness(options: { listingMode?: 'chunk' |
     repositoryMock.hasPostsBeforeCreatedAt.mockResolvedValue(false);
     repositoryMock.getSparseChunk.mockResolvedValue([]);
     repositoryMock.countForPubkey.mockResolvedValue(0);
-    repositoryMock.countVisibleForPubkey.mockImplementation(async () => {
+    repositoryMock.countVisibleForPubkey.mockImplementation(async (owner: string) => {
         const lastCount = repositoryMock.countForPubkey.mock.results.at(-1);
         if (lastCount?.type === 'return') {
             return await lastCount.value;
         }
-        return 0;
+        return repositoryMock.countForPubkey.getMockImplementation()?.(owner) ?? 0;
     });
     repositoryMock.getExistingEventIdsForPubkey.mockResolvedValue([]);
     repositoryMock.getOldestCreatedAt.mockResolvedValue(null);
@@ -713,6 +739,39 @@ export function resetPostHistoryDialogHarness(options: { listingMode?: 'chunk' |
     visibleRangeRepositoryMock.save.mockResolvedValue(null);
     visibleRangeRepositoryMock.clear.mockResolvedValue(undefined);
     visibleRangeRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
+    relayCoverageRepositoryMock.getLocalRevision.mockResolvedValue(0);
+    const canonical = resolvePostHistoryAuthoredRelayUrls(undefined);
+    // These legacy component fixtures describe an already queried saved range.
+    // Declare its relay evidence explicitly in the fixture adapter. Production
+    // never converts the old display metadata to coverage.
+    relayCoverageRepositoryMock.get.mockImplementation(async (ownerPubkeyHex: string, kindsKey: string) => {
+        const declared = await visibleRangeRepositoryMock.get(ownerPubkeyHex, kindsKey);
+        const floor = declared?.visibleUntil ?? (options.coverageMode === 'entry' || options.coverageMode === 'none' ? null : 0);
+        const relays: PostHistoryRelayCoverage[] = floor === null ? [] : canonical.map((relayUrl) => ({
+            relayUrl, ranges: [{ since: floor, until: 2_000_000_000 }],
+        }));
+        relays.push(...canonical.map((relayUrl) => ({ relayUrl, ranges: fixtureCoverageRanges })));
+        for (let index = 0; index < repositoryMock.upsertFetchedEvents.mock.calls.length; index++) {
+            const write = repositoryMock.upsertFetchedEvents.mock.calls[index][0]?.relayFetchCoverage;
+            if (write?.ownerPubkeyHex !== ownerPubkeyHex || write.kindsKey !== kindsKey) continue;
+            const saved = repositoryMock.upsertFetchedEvents.mock.results[index];
+            if (saved?.type !== 'return') continue;
+            try { if ((await saved.value)?.applied !== false) relays.push(...write.relays); } catch { /* rollback */ }
+        }
+        return { schemaVersion: 1, ownerPubkeyHex, kindsKey, relays };
+    });
+    hoisted.completeAuthoredQueryFixture.mockImplementation((input: Record<string, any>, result: Record<string, any>) => {
+        if (result.relayFetchCoverage || result.status !== 'success') return result;
+        let since = input.since ?? (result.events.length ? (result.hasMore ? result.nextUntil : result.oldestCreatedAt)
+            ?? Math.min(...result.events.map((item: any) => item.event.created_at)) : null);
+        if (since !== null && result.hasMore && result.events.length) {
+            since = Math.max(since, Math.min(...result.events.map((item: any) => item.event.created_at)) + 1);
+        }
+        const until = input.until ?? Math.floor(Date.now() / 1000);
+        return { ...result, relayFetchCoverage: since === null ? [] : canonical.map((relayUrl) => ({
+            relayUrl, ranges: [{ since, until }],
+        })) };
+    });
     inboundInteractionsSyncStateRepositoryMock.get.mockResolvedValue(null);
     inboundInteractionsSyncStateRepositoryMock.save.mockResolvedValue({});
     inboundInteractionsSyncStateRepositoryMock.clearForPubkey.mockResolvedValue(undefined);

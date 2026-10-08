@@ -828,6 +828,7 @@
             && !history.isSearchMode
             && history.state.listingMode === "contiguous"
             && history.state.hasOlderLocal
+            && !history.isFetchingOlderFromRelays
             && !history.isRefetchingAroundCurrentView;
         if (!enabled || !supportsAutoLoadOlder) {
             autoLoadOlderAwaitingExit = false;
@@ -1389,6 +1390,8 @@
         const changed = await history.fetchOlderFromRelays({
             anchorEventId: scrollAnchor?.eventId,
         });
+        // Restore against the committed rows and completion status geometry.
+        await tick();
 
         let didRestoreAnchor = false;
         let didPreserveScrollTop = false;

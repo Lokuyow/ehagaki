@@ -5995,7 +5995,9 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(repositoryMock.deleteLocalHistoryForPubkey).toHaveBeenCalledWith('a'.repeat(64));
             expect(replyEventsRepositoryMock.deleteForPostHistoryPubkey).not.toHaveBeenCalled();
-            expect(visibleRangeRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
+            // Display metadata and relay coverage are cleared inside the same DB
+            // transaction as history, rather than a separate component write.
+            expect(visibleRangeRepositoryMock.clearForPubkey).not.toHaveBeenCalled();
             expect(authoredSyncStateRepositoryMock.clearForPubkey).not.toHaveBeenCalled();
             expect(inboundInteractionsSyncStateRepositoryMock.clearForPubkey).not.toHaveBeenCalled();
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
