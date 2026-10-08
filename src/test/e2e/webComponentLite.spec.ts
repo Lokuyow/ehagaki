@@ -243,8 +243,8 @@ test("pastes HTML with clipboard plain text and sends that content through Host-
     const composer = page.locator("ehagaki-composer");
     const editor = composer.locator(".tiptap-editor");
     await editor.click();
-    const plain = "# copied heading\r\n- copied item\r\n| A | B |\r\n```ts\r\nconst x = 1;\r\n```\r\n**literal**";
-    const expectedPlain = plain.replace(/\r\n?/g, "\n");
+    const plain = "# copied heading\r\n- **copied item**\r\n| A | B |\r\n```ts\r\nconst x = `test`;\r\n```\r\n**literal**\r\nRun `npm test`";
+    const expectedPlain = "copied heading\n- copied item\n| A | B |\nconst x = `test`;\nliteral\nRun npm test";
     const html = '<h3>HTML heading</h3><p>HTML <em>emphasis</em></p>' +
         '<ol start="2"><li>HTML first</li><li>HTML second</li></ol>' +
         '<table><tr><th>HTML column</th></tr><tr><td>HTML cell</td></tr></table>' +
