@@ -11,7 +11,9 @@ type Fixture = { owner: string; events: NostrEvent[]; farOlder: NostrEvent };
 const relayUrls = Array.from({ length: 5 }, (_, i) => `wss://coverage-${i}.example.test/`);
 
 /** Only public data and signed events survive reload; no signing key is stored. */
-export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "gap" | "empty-gap" | "new-head" = "gap") {
+export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "gap" | "empty-gap" | "new-head" | "bounded-gap" = "gap") {
+    const gapStart = scenario === "bounded-gap" ? 150 : 100;
+    const gapEnd = gapStart + 10;
     const fixtureKey = `${fixtureKeyPrefix}:${scenario}`;
     const stored = sessionStorage.getItem(fixtureKey);
     const fixture: Fixture = stored ? JSON.parse(stored) : (() => {
@@ -49,7 +51,7 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
                     if (relayUrls.indexOf(relayUrl) >= 3) {
                         errors.next({ from: relayUrl }); stream.complete(); return;
                     }
-                    const candidates = older ? (scenario === "empty-gap" ? [] : fixture.events.slice(100, 110))
+                    const candidates = older ? (scenario === "empty-gap" ? [] : fixture.events.slice(gapStart, gapEnd))
                         : scenario === "new-head" && authored && filter.since === undefined
                             ? fixture.events.slice(relayUrls.indexOf(relayUrl) * 20, (relayUrls.indexOf(relayUrl) + 1) * 20) : [];
                     const events = candidates.filter((event) =>
@@ -77,7 +79,7 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
             if (stored) return;
             await postHistoryRepository.deleteLocalHistoryForPubkey(fixture.owner);
             const savedEvents = scenario === "new-head" ? fixture.events.slice(60)
-                : [...fixture.events.slice(0, 100), ...fixture.events.slice(110)];
+                : [...fixture.events.slice(0, gapStart), ...fixture.events.slice(gapEnd)];
             await ehagakiDb.postHistory.bulkPut([...savedEvents, fixture.farOlder].map((event) => ({
                 id: event.id, eventId: event.id, pubkeyHex: fixture.owner, kind: event.kind, content: event.content,
                 tags: event.tags, createdAt: event.created_at, postedAt: event.created_at * 1000,
@@ -89,8 +91,8 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
                 relays: relayUrls.map((relayUrl) => ({ relayUrl, ranges: scenario === "new-head"
                     ? [{ since: fixture.events[309].created_at, until: fixture.events[60].created_at }]
                     : [
-                        { since: fixture.events[99].created_at, until: fixture.events[0].created_at },
-                        { since: fixture.events[309].created_at, until: fixture.events[110].created_at },
+                        { since: fixture.events[gapStart - 1].created_at, until: fixture.events[0].created_at },
+                        { since: fixture.events[309].created_at, until: fixture.events[gapEnd].created_at },
                     ] })),
             }); });
         } };
