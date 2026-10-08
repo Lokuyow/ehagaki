@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import {
     PUBKEY_HEX,
     PostHistoryDialog,
@@ -190,8 +190,14 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(screen.getByText('ローカル履歴')).toBeTruthy();
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled();
-            expect(screen.getByText('リレーと同期中...')).toBeTruthy();
+            expect(screen.getAllByText('リレーと同期中...')).toHaveLength(2);
         });
+
+        const footer = document.querySelector<HTMLElement>('.post-history-sync-footer');
+        expect(footer).toBeTruthy();
+        expect(within(footer!).getByText('リレーと同期中...')).toBeTruthy();
+        expect(footer!.querySelector('.inline-spinner')).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'リレーから続きを取得' })).toBeNull();
 
         expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledWith(
             {} as any,

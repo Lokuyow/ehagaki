@@ -14,7 +14,9 @@ const relayUrls = Array.from({ length: 5 }, (_, i) => `wss://coverage-${i}.examp
 const kindsKey = buildPostHistoryVisibleKindsKey([...POST_HISTORY_FETCH_KINDS]);
 
 /** Only public data and signed events survive reload; no signing key is stored. */
-export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "gap" | "empty-gap" | "new-head" | "bounded-gap" = "gap") {
+export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "gap" | "empty-gap" | "new-head" | "sync-footer" | "bounded-gap" = "gap") {
+    const isHeadScenario = scenario === "new-head" || scenario === "sync-footer";
+    const savedHeadEnd = scenario === "sync-footer" ? 109 : 309;
     const gapStart = scenario === "bounded-gap" ? 150 : 100;
     const gapEnd = gapStart + 10;
     const fixtureKey = `${fixtureKeyPrefix}:${scenario}`;
@@ -67,7 +69,7 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
                 const filter = filters[0] as { authors?: string[]; kinds?: number[]; since?: number; until?: number; limit?: number };
                 if (!filter || !relayUrl) return;
                 const authored = filter.authors?.includes(fixture.owner) && filter.kinds?.includes(1);
-                const latestSavedTimestamp = fixture.events[scenario === "new-head" ? 60 : 0].created_at;
+                const latestSavedTimestamp = fixture.events[isHeadScenario ? 60 : 0].created_at;
                 const catchup = authored && filter.limit === 150 && filter.since !== undefined
                     && filter.since >= latestSavedTimestamp;
                 const older = authored && !catchup && filter.since !== undefined && filter.until !== undefined && filter.limit === 150;
@@ -77,7 +79,7 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
                         errors.next({ from: relayUrl }); stream.complete(); return;
                     }
                     const candidates = older ? (scenario === "empty-gap" ? [] : fixture.events.slice(gapStart, gapEnd))
-                        : scenario === "new-head" && authored ? fixture.events.slice(0, 60)
+                        : isHeadScenario && authored ? fixture.events.slice(0, 60)
                             : authored && localPosted ? [fixture.localPost] : [];
                     const events = candidates.filter((event) =>
                         (filter.since === undefined || event.created_at >= filter.since)
@@ -126,7 +128,7 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
             };
             if (stored) return;
             await postHistoryRepository.deleteLocalHistoryForPubkey(fixture.owner);
-            const savedEvents = scenario === "new-head" ? fixture.events.slice(60)
+            const savedEvents = isHeadScenario ? fixture.events.slice(60, savedHeadEnd + 1)
                 : [...fixture.events.slice(0, gapStart), ...fixture.events.slice(gapEnd)];
             await ehagakiDb.postHistory.bulkPut([...savedEvents, fixture.farOlder].map((event) => ({
                 id: event.id, eventId: event.id, pubkeyHex: fixture.owner, kind: event.kind, content: event.content,
@@ -136,8 +138,8 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
             const expectedRevision = await postHistoryRelayCoverageRepository.getLocalRevision(fixture.owner);
             await ehagakiDb.transaction("rw", ehagakiDb.meta, async () => { await postHistoryRelayCoverageRepository.record({
                 ownerPubkeyHex: fixture.owner, kindsKey, expectedRevision, isActive: () => true,
-                relays: relayUrls.map((relayUrl) => ({ relayUrl, ranges: scenario === "new-head"
-                    ? [{ since: fixture.events[309].created_at, until: fixture.events[60].created_at }]
+                relays: relayUrls.map((relayUrl) => ({ relayUrl, ranges: isHeadScenario
+                    ? [{ since: fixture.events[savedHeadEnd].created_at, until: fixture.events[60].created_at }]
                     : [
                         { since: fixture.events[gapStart - 1].created_at, until: fixture.events[0].created_at },
                         { since: fixture.events[309].created_at, until: fixture.events[gapEnd].created_at },
