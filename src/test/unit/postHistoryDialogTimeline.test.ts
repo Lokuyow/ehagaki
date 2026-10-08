@@ -59,8 +59,12 @@ class MockIntersectionObserver {
     }
 
     trigger(target: Element, isIntersecting: boolean): void {
+        this.triggerSequence(target, [isIntersecting]);
+    }
+
+    triggerSequence(target: Element, intersections: boolean[]): void {
         this.callback(
-            [{ target, isIntersecting } as IntersectionObserverEntry],
+            intersections.map((isIntersecting) => ({ target, isIntersecting } as IntersectionObserverEntry)),
             this as unknown as IntersectionObserver,
         );
     }
@@ -477,6 +481,114 @@ describe('PostHistoryDialog timeline navigation', () => {
         reopenedObserver?.trigger(reopenedOlderSentinel, true);
         await waitFor(() => expect(pageChunkRequestCount).toBe(3));
 
+        view.unmount();
+    });
+
+    it.each([
+        { direction: 'older', delta: 1 },
+        { direction: 'newer', delta: -1 },
+    ].flatMap(({ direction, delta }) =>
+        (['batchIdle', 'batchLoading', 'scrollAfterCommit', 'pendingExit', 'pendingOutside', 'pendingResize', 'pendingClose'] as const).map((scenario) => ({ direction, delta, scenario })),
+    ))('$direction向きの高速再進入を回収する: $scenario', async ({ direction, delta, scenario }) => {
+        MockIntersectionObserver.reset();
+        MockResizeObserver.reset();
+        vi.stubGlobal('IntersectionObserver', MockIntersectionObserver as unknown as typeof IntersectionObserver);
+        vi.stubGlobal('ResizeObserver', MockResizeObserver as unknown as typeof ResizeObserver);
+        let containerHeight = 320;
+        vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
+            return this.classList.contains('post-history-container') ? containerHeight : 0;
+        });
+        const posts = Array.from({ length: 300 }, (_, index) => createRecord({
+            eventId: index.toString(16).padStart(64, '0'),
+            id: index.toString(16).padStart(64, '0'),
+            content: `fast ${direction} ${scenario} ${index}`,
+            createdAt: 1_700_000_000 - index,
+        }));
+        const firstChunk = createDeferred<ReturnType<typeof createRecord>[]>();
+        const firstPosts = direction === 'older' ? posts.slice(50, 100) : posts.slice(100, 150);
+        const secondPosts = direction === 'older' ? posts.slice(100, 150) : posts.slice(50, 100);
+        let chunkRequests = 0;
+        repositoryMock.countForPubkey.mockResolvedValue(posts.length);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue(direction === 'older' ? posts.slice(0, 50) : posts.slice(150, 200));
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ limit }: { limit: number }) => {
+            if (limit === 1) return [posts[200]];
+            if (direction !== 'older') return [];
+            chunkRequests += 1;
+            return chunkRequests === 1 ? firstChunk.promise : secondPosts;
+        });
+        repositoryMock.getNewerVisibleChunk.mockImplementation(async ({ limit }: { limit: number }) => {
+            if (direction !== 'newer') return [];
+            if (limit === 1) return [posts[149]];
+            chunkRequests += 1;
+            return chunkRequests === 1 ? firstChunk.promise : secondPosts;
+        });
+        const view = render(PostHistoryDialog, { props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX } });
+        await screen.findByText(`fast ${direction} ${scenario} ${direction === 'older' ? 0 : 150}`);
+        const container = getHistoryContainer();
+        mockHistoryItemLayout(container);
+        if (direction === 'newer') container.scrollTop = 100;
+        const selector = direction === 'older'
+            ? '.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)'
+            : '.post-history-auto-load-newer-sentinel';
+        await waitFor(() => expect(document.querySelector(selector)).toBeInstanceOf(HTMLElement));
+        const sentinel = document.querySelector(selector) as HTMLElement;
+        let sentinelTop = 200;
+        Object.defineProperty(sentinel, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => createMockRect(sentinelTop, 1),
+        });
+        const observer = MockIntersectionObserver.instances.find((item) => item.observedTargets.has(sentinel))!;
+        observer.trigger(sentinel, true);
+        await waitFor(() => expect(chunkRequests).toBe(1));
+
+        if (scenario.startsWith('pending') || scenario === 'batchLoading') {
+            observer.triggerSequence(sentinel, [false, true]);
+            await Promise.resolve();
+            expect(chunkRequests).toBe(1);
+            if (scenario === 'pendingExit') observer.trigger(sentinel, false);
+        }
+        if (scenario === 'pendingClose') {
+            await view.rerender({ show: false, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX });
+            firstChunk.resolve(firstPosts);
+            await view.rerender({ show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX });
+            await screen.findByText(`fast ${direction} ${scenario} ${direction === 'older' ? 0 : 150}`);
+            await waitFor(() => expect(getHistoryContainer().getAttribute('aria-busy')).toBe('false'));
+            observer.triggerSequence(sentinel, [false, true]);
+            expect(chunkRequests).toBe(1);
+            view.unmount();
+            return;
+        }
+        if (scenario === 'pendingResize') {
+            containerHeight = 400;
+            for (const resizeObserver of MockResizeObserver.instances) {
+                if (resizeObserver.observedTargets.has(container)) resizeObserver.trigger(container);
+            }
+            await waitFor(() => expect(MockIntersectionObserver.instances.filter((item) => item.observedTargets.has(sentinel))).toHaveLength(2));
+            const resizedObserver = MockIntersectionObserver.instances.filter((item) => item.observedTargets.has(sentinel)).at(-1)!;
+            resizedObserver.trigger(sentinel, true);
+            observer.triggerSequence(sentinel, [false, true]);
+        }
+        if (scenario === 'scrollAfterCommit' || scenario === 'pendingOutside') sentinelTop = direction === 'older' ? 2_000 : -2_000;
+        firstChunk.resolve(firstPosts);
+        await screen.findByText(`fast ${direction} ${scenario} ${direction === 'older' ? 99 : 100}`);
+        await waitFor(() => expect(container.getAttribute('aria-busy')).toBe('false'));
+
+        if (scenario === 'batchIdle') observer.triggerSequence(sentinel, [false, true]);
+        if (scenario === 'scrollAfterCommit') {
+            expect(chunkRequests).toBe(1);
+            sentinelTop = 200;
+            container.scrollTop += delta;
+            await fireEvent.scroll(container);
+        }
+        if (scenario.startsWith('pending')) {
+            expect(chunkRequests).toBe(1);
+        } else {
+            await waitFor(() => expect(chunkRequests).toBe(2));
+            await screen.findByText(`fast ${direction} ${scenario} ${direction === 'older' ? 149 : 50}`);
+            observer.trigger(sentinel, true);
+            await Promise.resolve();
+            expect(chunkRequests).toBe(2);
+        }
         view.unmount();
     });
 
