@@ -971,6 +971,38 @@ test.describe('PostHistoryDialog Playwright', () => {
         );
     });
 
+    test('fast scrolling across newly loaded chunks reaches both ends without an extra exit and return', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?infinite-scroll=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const expectedIds = await page.evaluate(() =>
+            (window as HarnessWindow).__POST_HISTORY_HARNESS__!.infiniteScrollEventIds,
+        );
+        await expectVisiblePostCount(page, 50);
+
+        const scrollAcrossChunks = (direction: 'older' | 'newer', targetId: string) =>
+            page.locator('.post-history-container').evaluate(async (element, { direction, targetId }) => {
+                const root = element as HTMLDivElement;
+                const seen = new Set<string>();
+                for (let frame = 0; frame < 360; frame += 1) {
+                    const items = Array.from(root.querySelectorAll<HTMLElement>('.post-history-item'));
+                    if (items.length > 150) throw new Error('History exceeded its 150-post window');
+                    for (const item of items) seen.add(item.dataset.postHistoryEventId!);
+                    root.scrollTop = direction === 'older' ? root.scrollHeight : 0;
+                    root.dispatchEvent(new Event('scroll', { bubbles: true }));
+                    const edgeItem = direction === 'older' ? items.at(-1) : items[0];
+                    if (edgeItem?.dataset.postHistoryEventId === targetId) break;
+                    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                }
+                return [...seen];
+            }, { direction, targetId });
+
+        expect(new Set(await scrollAcrossChunks('older', expectedIds.at(-1)!))).toEqual(new Set(expectedIds));
+        expect(await historyEventIds(page)).toEqual(expectedIds.slice(-150));
+        await expect(page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)')).toHaveCount(0);
+        expect(new Set(await scrollAcrossChunks('newer', expectedIds[0]))).toEqual(new Set(expectedIds));
+        expect(await historyEventIds(page)).toEqual(expectedIds.slice(0, 150));
+    });
+
     test('older relay preparation immediately shows loading before local checks and preserves the scroll anchor', async ({ page }) => {
         await page.goto('post-history-dialog-playwright.html?relay-coverage=gap');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));

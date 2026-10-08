@@ -370,6 +370,8 @@
               sentinel: HTMLDivElement;
               resizeGeneration: number;
               scrollTop: number;
+              reconcileAfterCommit: () => void;
+              resumeAfterLoad: () => void;
           }
         | null = null;
     let autoLoadNewerObserverContext:
@@ -378,6 +380,8 @@
               sentinel: HTMLDivElement;
               resizeGeneration: number;
               scrollTop: number;
+              reconcileAfterCommit: () => void;
+              resumeAfterLoad: () => void;
           }
         | null = null;
     const supportsAutoLoadOlder = typeof IntersectionObserver !== "undefined";
@@ -843,15 +847,10 @@
             previousObserverContext?.root === root
             && previousObserverContext.sentinel === sentinel
             && previousObserverContext.resizeGeneration !== resizeGeneration;
-        autoLoadOlderObserverContext = {
-            root,
-            sentinel,
-            resizeGeneration,
-            scrollTop: root.scrollTop,
-        };
         let receivedInitialEntry = false;
         let isObserverActive = true;
         let awaitingResizeApproach = false;
+        let hasPendingApproach = false;
         let lastScrollTop = root.scrollTop;
 
         const isOlderSentinelInPrefetchRegion = () => {
@@ -863,8 +862,61 @@
                 && sentinelRect.bottom >= rootRect.top;
         };
 
-        const handlePendingResizeApproach = () => {
-            if (!isObserverActive || !awaitingResizeApproach) {
+        const recordExit = () => {
+            autoLoadOlderSentinelIsIntersecting = false;
+            autoLoadOlderAwaitingExit = false;
+            awaitingResizeApproach = false;
+            hasPendingApproach = false;
+        };
+
+        const requestApproach = () => {
+            if (
+                !isObserverActive
+                || awaitingResizeApproach
+                || autoLoadOlderAwaitingExit
+                || !canAutoLoadOlderPosts()
+            ) {
+                return;
+            }
+            if (isAutoLoadingOlder) {
+                hasPendingApproach = true;
+                return;
+            }
+            hasPendingApproach = false;
+            void handleAutoLoadOlder();
+        };
+
+        autoLoadOlderObserverContext = {
+            root,
+            sentinel,
+            resizeGeneration,
+            scrollTop: root.scrollTop,
+            reconcileAfterCommit: () => {
+                if (!isObserverActive) {
+                    return;
+                }
+                // Observe the exit before a fast scroll can return to the new
+                // tail between IntersectionObserver notifications.
+                lastScrollTop = root.scrollTop;
+                if (!isOlderSentinelInPrefetchRegion()) {
+                    recordExit();
+                }
+            },
+            resumeAfterLoad: () => {
+                if (!isObserverActive || !hasPendingApproach) {
+                    return;
+                }
+                hasPendingApproach = false;
+                if (!isOlderSentinelInPrefetchRegion()) {
+                    recordExit();
+                    return;
+                }
+                requestApproach();
+            },
+        };
+
+        const handleScrollApproach = () => {
+            if (!isObserverActive) {
                 return;
             }
 
@@ -872,18 +924,17 @@
             const movedTowardOlder = scrollTop > lastScrollTop;
             lastScrollTop = scrollTop;
 
-            if (
-                !awaitingResizeApproach
-                || !movedTowardOlder
-                || !autoLoadOlderSentinelIsIntersecting
-                || !isOlderSentinelInPrefetchRegion()
-            ) {
+            if (!isOlderSentinelInPrefetchRegion()) {
+                recordExit();
+                return;
+            }
+            if (!movedTowardOlder) {
                 return;
             }
 
             awaitingResizeApproach = false;
-            root.removeEventListener("scroll", handlePendingResizeApproach);
-            void handleAutoLoadOlder();
+            autoLoadOlderSentinelIsIntersecting = true;
+            requestApproach();
         };
 
         const observer = new IntersectionObserver(
@@ -892,44 +943,32 @@
                     return;
                 }
 
-                const isIntersecting = entries.some(
-                    (entry) => entry.isIntersecting,
-                );
-                const isInitialEntry = !receivedInitialEntry;
-                receivedInitialEntry = true;
-                autoLoadOlderSentinelIsIntersecting = isIntersecting;
+                for (const entry of entries) {
+                    if (entry.target !== sentinel) {
+                        continue;
+                    }
+                    const isInitialEntry = !receivedInitialEntry;
+                    receivedInitialEntry = true;
+                    autoLoadOlderSentinelIsIntersecting = entry.isIntersecting;
 
-                if (!isIntersecting) {
-                    awaitingResizeApproach = false;
-                    root.removeEventListener("scroll", handlePendingResizeApproach);
+                    if (!entry.isIntersecting) {
+                        recordExit();
+                        continue;
+                    }
+
                     if (
-                        autoLoadOlderAwaitingExit
-                        && !isAutoLoadingOlder
+                        isInitialEntry
+                        && suppressInitialIntersectionForResize
+                        && typeof previousScrollTop === "number"
+                        && root.scrollTop <= previousScrollTop
                     ) {
-                        autoLoadOlderAwaitingExit = false;
+                        awaitingResizeApproach = true;
+                        continue;
                     }
-                    return;
+
+                    awaitingResizeApproach = false;
+                    requestApproach();
                 }
-
-                if (
-                    isInitialEntry
-                    && suppressInitialIntersectionForResize
-                    && typeof previousScrollTop === "number"
-                    && root.scrollTop <= previousScrollTop
-                ) {
-                    awaitingResizeApproach = isIntersecting;
-                    if (awaitingResizeApproach) {
-                        root.addEventListener("scroll", handlePendingResizeApproach, {
-                            passive: true,
-                        });
-                    }
-                    return;
-                }
-
-                awaitingResizeApproach = false;
-                root.removeEventListener("scroll", handlePendingResizeApproach);
-
-                void handleAutoLoadOlder();
             },
             {
                 root,
@@ -938,11 +977,13 @@
             },
         );
         observer.observe(sentinel);
+        root.addEventListener("scroll", handleScrollApproach, { passive: true });
 
         return () => {
             isObserverActive = false;
             awaitingResizeApproach = false;
-            root.removeEventListener("scroll", handlePendingResizeApproach);
+            hasPendingApproach = false;
+            root.removeEventListener("scroll", handleScrollApproach);
             observer.disconnect();
         };
     });
@@ -997,14 +1038,9 @@
                     && previousObserverContext.sentinel === sentinel
                     && previousObserverContext.resizeGeneration !== resizeGeneration;
 
-                autoLoadNewerObserverContext = {
-                    root,
-                    sentinel,
-                    resizeGeneration,
-                    scrollTop: root.scrollTop,
-                };
                 let receivedInitialEntry = false;
                 let awaitingResizeApproach = false;
+                let hasPendingApproach = false;
                 let lastScrollTop = root.scrollTop;
 
                 const isNewerSentinelInPrefetchRegion = () => {
@@ -1016,8 +1052,59 @@
                         && sentinelRect.top <= rootRect.bottom;
                 };
 
-                const handlePendingResizeApproach = () => {
-                    if (!isObserverActive || !awaitingResizeApproach) {
+                const recordExit = () => {
+                    autoLoadNewerSentinelIsIntersecting = false;
+                    autoLoadNewerAwaitingExit = false;
+                    awaitingResizeApproach = false;
+                    hasPendingApproach = false;
+                };
+
+                const requestApproach = () => {
+                    if (
+                        !isObserverActive
+                        || awaitingResizeApproach
+                        || autoLoadNewerAwaitingExit
+                        || !canAutoLoadNewerPosts()
+                    ) {
+                        return;
+                    }
+                    if (isAutoLoadingNewer) {
+                        hasPendingApproach = true;
+                        return;
+                    }
+                    hasPendingApproach = false;
+                    void handleAutoLoadNewer();
+                };
+
+                autoLoadNewerObserverContext = {
+                    root,
+                    sentinel,
+                    resizeGeneration,
+                    scrollTop: root.scrollTop,
+                    reconcileAfterCommit: () => {
+                        if (!isObserverActive) {
+                            return;
+                        }
+                        lastScrollTop = root.scrollTop;
+                        if (!isNewerSentinelInPrefetchRegion()) {
+                            recordExit();
+                        }
+                    },
+                    resumeAfterLoad: () => {
+                        if (!isObserverActive || !hasPendingApproach) {
+                            return;
+                        }
+                        hasPendingApproach = false;
+                        if (!isNewerSentinelInPrefetchRegion()) {
+                            recordExit();
+                            return;
+                        }
+                        requestApproach();
+                    },
+                };
+
+                const handleScrollApproach = () => {
+                    if (!isObserverActive) {
                         return;
                     }
 
@@ -1025,18 +1112,17 @@
                     const movedTowardNewer = scrollTop < lastScrollTop;
                     lastScrollTop = scrollTop;
 
-                    if (
-                        !awaitingResizeApproach
-                        || !movedTowardNewer
-                        || !autoLoadNewerSentinelIsIntersecting
-                        || !isNewerSentinelInPrefetchRegion()
-                    ) {
+                    if (!isNewerSentinelInPrefetchRegion()) {
+                        recordExit();
+                        return;
+                    }
+                    if (!movedTowardNewer) {
                         return;
                     }
 
                     awaitingResizeApproach = false;
-                    root.removeEventListener("scroll", handlePendingResizeApproach);
-                    void handleAutoLoadNewer();
+                    autoLoadNewerSentinelIsIntersecting = true;
+                    requestApproach();
                 };
 
                 const observer = new IntersectionObserver(
@@ -1045,44 +1131,32 @@
                             return;
                         }
 
-                        const isIntersecting = entries.some(
-                            (entry) => entry.isIntersecting,
-                        );
-                        const isInitialEntry = !receivedInitialEntry;
-                        receivedInitialEntry = true;
-                        autoLoadNewerSentinelIsIntersecting = isIntersecting;
+                        for (const entry of entries) {
+                            if (entry.target !== sentinel) {
+                                continue;
+                            }
+                            const isInitialEntry = !receivedInitialEntry;
+                            receivedInitialEntry = true;
+                            autoLoadNewerSentinelIsIntersecting = entry.isIntersecting;
 
-                        if (!isIntersecting) {
-                            awaitingResizeApproach = false;
-                            root.removeEventListener("scroll", handlePendingResizeApproach);
+                            if (!entry.isIntersecting) {
+                                recordExit();
+                                continue;
+                            }
+
                             if (
-                                autoLoadNewerAwaitingExit
-                                && !isAutoLoadingNewer
+                                isInitialEntry
+                                && suppressInitialIntersectionForResize
+                                && typeof previousScrollTop === "number"
+                                && root.scrollTop >= previousScrollTop
                             ) {
-                                autoLoadNewerAwaitingExit = false;
+                                awaitingResizeApproach = true;
+                                continue;
                             }
-                            return;
+
+                            awaitingResizeApproach = false;
+                            requestApproach();
                         }
-
-                        if (
-                            isInitialEntry
-                            && suppressInitialIntersectionForResize
-                            && typeof previousScrollTop === "number"
-                            && root.scrollTop >= previousScrollTop
-                        ) {
-                            awaitingResizeApproach = isIntersecting;
-                            if (awaitingResizeApproach) {
-                                root.addEventListener("scroll", handlePendingResizeApproach, {
-                                    passive: true,
-                                });
-                            }
-                            return;
-                        }
-
-                        awaitingResizeApproach = false;
-                        root.removeEventListener("scroll", handlePendingResizeApproach);
-
-                        void handleAutoLoadNewer();
                     },
                     {
                         root,
@@ -1091,8 +1165,11 @@
                     },
                 );
                 observer.observe(sentinel);
+                root.addEventListener("scroll", handleScrollApproach, { passive: true });
                 cleanupObserver = () => {
-                    root.removeEventListener("scroll", handlePendingResizeApproach);
+                    hasPendingApproach = false;
+                    awaitingResizeApproach = false;
+                    root.removeEventListener("scroll", handleScrollApproach);
                     observer.disconnect();
                 };
             });
@@ -1317,6 +1394,8 @@
                 historyViewport.restoreHistoryScrollAnchor(scrollAnchor, {
                     flushUpdates: false,
                 });
+                autoLoadOlderObserverContext?.reconcileAfterCommit();
+                autoLoadNewerObserverContext?.reconcileAfterCommit();
             },
         };
     }
@@ -1340,6 +1419,7 @@
             if (!autoLoadOlderSentinelIsIntersecting) {
                 autoLoadOlderAwaitingExit = false;
             }
+            autoLoadOlderObserverContext?.resumeAfterLoad();
         }
     }
 
@@ -1371,6 +1451,7 @@
             if (!autoLoadNewerSentinelIsIntersecting) {
                 autoLoadNewerAwaitingExit = false;
             }
+            autoLoadNewerObserverContext?.resumeAfterLoad();
         }
     }
 
