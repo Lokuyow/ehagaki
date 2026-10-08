@@ -1,3 +1,5 @@
+import { scanHttpUrlCandidates } from '../utils/httpUrlCandidates';
+
 /**
  * Removes a small set of visual Markdown markers from clipboard plain text.
  * Input lines are expected to have already been normalized by
@@ -67,5 +69,27 @@ function findSingleBacktick(line: string, from: number): number {
 }
 
 function removeEmphasisMarkers(text: string): string {
+    const candidates = scanHttpUrlCandidates(text);
+    if (candidates.length === 0) {
+        return stripEmphasisMarkers(text);
+    }
+
+    let result = '';
+    let cursor = 0;
+
+    for (const candidate of candidates) {
+        if (candidate.start < cursor) {
+            continue;
+        }
+
+        result += stripEmphasisMarkers(text.slice(cursor, candidate.start));
+        result += text.slice(candidate.start, candidate.end);
+        cursor = candidate.end;
+    }
+
+    return result + stripEmphasisMarkers(text.slice(cursor));
+}
+
+function stripEmphasisMarkers(text: string): string {
     return text.replace(/\*\*|__|~~/g, '');
 }

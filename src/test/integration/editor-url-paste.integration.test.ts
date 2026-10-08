@@ -142,8 +142,8 @@ describe('エディター・URLペースト統合テスト', () => {
 
     describe('実ClipboardEvent相当のURLペースト分岐', () => {
         it('タイトル付き単一リンクのFriendly URLは、タイトルではなくplain URLとして貼り付けられること', () => {
-            const url = 'https://lokuyow.github.io/ehagaki/';
-            const html = '<div><!-- harmless metadata --><a href="https://lokuyow.github.io/ehagaki/">eHagaki</a></div>';
+            const url = 'https://lokuyow.github.io/ehagaki/foo__bar/';
+            const html = `<div><!-- harmless metadata --><a href="${url}">eHagaki</a></div>`;
 
             expect(invokePasteHandler(editor, createClipboardData(url, html))).toBe(true);
             expect(editor.getText()).toBe(url);

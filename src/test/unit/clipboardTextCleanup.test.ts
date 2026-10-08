@@ -110,6 +110,22 @@ describe('cleanupExternalRichPasteLines', () => {
         ]);
     });
 
+    it('preserves emphasis-like characters inside HTTP URLs while cleaning surrounding text', () => {
+        expect(cleanupExternalRichPasteLines([
+            'https://example.com/foo__bar',
+            '[label](https://example.com/foo__bar)',
+            '![alt](https://example.com/foo__bar.png)',
+            'foo__bar **bold** ~~strike~~',
+            '**before** https://example.com/foo__bar ~~after~~',
+        ])).toEqual([
+            'https://example.com/foo__bar',
+            '[label](https://example.com/foo__bar)',
+            '![alt](https://example.com/foo__bar.png)',
+            'foobar bold strike',
+            'before https://example.com/foo__bar after',
+        ]);
+    });
+
     it('cleans the supplied plain representation without rebuilding its structure', () => {
         expect(cleanupExternalRichPasteLines([
             'こんな二層モデルで考えると分かりやすいです。',
