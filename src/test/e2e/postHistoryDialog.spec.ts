@@ -1144,6 +1144,27 @@ test.describe('PostHistoryDialog Playwright', () => {
         }
     });
 
+    test('initial relay sync remains visible at the bottom while scrolling through saved history', async ({ page }, testInfo) => {
+        await page.goto('post-history-dialog-playwright.html?relay-coverage=sync-footer');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
+        const footer = page.locator('.post-history-sync-footer');
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(5);
+        await expect.poll(() => historyEventIds(page)).toEqual(ids.slice(60, 110));
+
+        await scrollHistoryToBottom(page);
+        await expect(footer.getByText('リレーと同期中...')).toBeVisible();
+        await expect(footer.locator('.inline-spinner')).toBeInViewport();
+        await expect(page.getByRole('button', { name: 'リレーから続きを取得' })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: '保存済みの古い投稿を表示' })).toHaveCount(0);
+        await page.screenshot({ path: testInfo.outputPath('initial-sync-footer.png') });
+
+        await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.release());
+        await expect(footer).toHaveCount(0);
+        await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+        await expect(page.locator('.post-history-list li')).not.toHaveCount(0);
+    });
+
     test('a refreshed head automatically reconnects older saved history across its saturated boundary', async ({ page }, testInfo) => {
         await page.goto('post-history-dialog-playwright.html?relay-coverage=new-head');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));

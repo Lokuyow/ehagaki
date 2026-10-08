@@ -3792,7 +3792,7 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(screen.getByText('open refresh中の親投稿')).toBeTruthy();
-            expect(screen.getByText('リレーと同期中...')).toBeTruthy();
+            expect(screen.getAllByText('リレーと同期中...')).toHaveLength(2);
         });
         await openPostActionMenu();
         await waitFor(() => {
@@ -3817,7 +3817,7 @@ describe('PostHistoryDialog', () => {
         });
         expect(screen.getAllByText('open refresh中の親投稿')).toHaveLength(1);
         expect(screen.queryByText('open refresh中に保存された返信')).toBeNull();
-        expect(screen.getByText('リレーと同期中...')).toBeTruthy();
+        expect(screen.getAllByText('リレーと同期中...')).toHaveLength(2);
     });
 
     it('[inbound-realtime] closed dialog ignores saved reply and authored post UI signals', async () => {

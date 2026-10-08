@@ -3447,7 +3447,7 @@
                             bind:this={autoLoadOlderSentinel}
                             class="post-history-auto-load-sentinel"
                         >
-                            {#if isAutoLoadingOlder}
+                            {#if isAutoLoadingOlder && history.syncStatus !== "syncing"}
                                 <LoadingPlaceholder
                                     variant="spinner"
                                     showLoader={true}
@@ -3581,6 +3581,16 @@
             {:else if history.isSearchMode && history.posts.length > 0}
                 <div class="post-history-search-bottom-spacer" aria-hidden="true"></div>
             {/if}
+        {/if}
+        {#if !history.isSearchMode && history.syncStatus === "syncing"}
+            <div class="post-history-nav-row post-history-sync-footer" role="status">
+                <LoadingPlaceholder
+                    text={$_("postHistory.syncing")}
+                    variant="spinner"
+                    showLoader={true}
+                    loaderSize={24}
+                />
+            </div>
         {/if}
     </div>
 
