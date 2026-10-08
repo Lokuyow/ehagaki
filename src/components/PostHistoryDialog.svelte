@@ -3458,11 +3458,22 @@
                                     history.isRefetchingAroundCurrentView}
                                 onClick={() => void handleFetchOlderFromRelays()}
                             >
-                                <div
-                                    class="cloud-download-icon svg-icon"
-                                    aria-hidden="true"
-                                ></div>
-                                {$_("postHistory.fetchOlderFromRelays")}
+                                {#if history.isFetchingOlderFromRelays}
+                                    <LoadingPlaceholder
+                                        text={$_(
+                                            "postHistory.fetchOlderFromRelaysLoading",
+                                        )}
+                                        showLoader={true}
+                                        loaderSize={28}
+                                        customClass="post-history-nav-loading-placeholder"
+                                    />
+                                {:else}
+                                    <div
+                                        class="cloud-download-icon svg-icon"
+                                        aria-hidden="true"
+                                    ></div>
+                                    {$_("postHistory.fetchOlderFromRelays")}
+                                {/if}
                             </Button>
                         {/if}
                         <Button

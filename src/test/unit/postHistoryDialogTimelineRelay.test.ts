@@ -859,6 +859,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         { remainingOutside: false, label: '全範囲が接続した場合は境界UIを消す' },
         { remainingOutside: true, label: '一部だけ接続した場合は境界UIを維持する' },
     ])('older-backfill 後に範囲外投稿を再判定し、$label', async ({ remainingOutside }) => {
+        const olderFetch = createDeferred<Record<string, unknown>>();
         let visibleUntil = 1_000;
         const latest = createRecord({
             eventId: 'boundary-refresh-latest',
@@ -921,24 +922,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 cancel: vi.fn(),
             })
             .mockReturnValueOnce({
-                promise: Promise.resolve(createRelayFetchResult({
-                    fetchedAt: 2_000,
-                    oldestCreatedAt: finalVisibleUntil,
-                    relayFetchCoverage: completedRelayCoverage(finalVisibleUntil, 999),
-                    events: fetchedPosts.map((post) => ({
-                        event: {
-                            id: post.eventId,
-                            pubkey: PUBKEY_HEX,
-                            kind: 1,
-                            content: post.content,
-                            tags: [],
-                            created_at: post.createdAt,
-                            sig: 'd'.repeat(128),
-                        },
-                        relayUrls: ['wss://relay.example.com/'],
-                    })),
-                    relayUrls: ['wss://relay.example.com/'],
-                })),
+                promise: olderFetch.promise,
                 cancel: vi.fn(),
             });
 
@@ -957,7 +941,36 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await clickRelayFetchButton();
 
         await waitFor(() => {
+            const button = screen.getByRole('button', { name: 'リレーから取得中...' });
+            expect(button.hasAttribute('disabled')).toBe(true);
+            expect(button.querySelector('.loader-container')).not.toBeNull();
+            expect(button.querySelector('.inline-spinner')).toBeNull();
+            expect(button.querySelector('.cloud-download-icon')).toBeNull();
+            expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
+        });
+
+        olderFetch.resolve(createRelayFetchResult({
+            fetchedAt: 2_000,
+            oldestCreatedAt: finalVisibleUntil,
+            events: fetchedPosts.map((post) => ({
+                event: {
+                    id: post.eventId,
+                    pubkey: PUBKEY_HEX,
+                    kind: 1,
+                    content: post.content,
+                    tags: [],
+                    created_at: post.createdAt,
+                    sig: 'd'.repeat(128),
+                },
+                relayUrls: ['wss://relay.example.com/'],
+            })),
+            relayFetchCoverage: completedRelayCoverage(finalVisibleUntil, 999),
+            relayUrls: ['wss://relay.example.com/'],
+        }));
+
+        await waitFor(() => {
             expect(readPersistedPostHistoryListingSnapshotForPubkey(PUBKEY_HEX)?.visibleUntil).toBe(finalVisibleUntil);
+            expect(screen.queryByRole('button', { name: 'リレーから取得中...' })).toBeNull();
             if (remainingOutside) {
                 expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
             } else {
