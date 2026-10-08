@@ -5,10 +5,13 @@ import type { NostrEvent } from "../../lib/types";
 import { postHistoryRepository } from "../../lib/storage/postHistoryRepository";
 import { ehagakiDb } from "../../lib/storage/ehagakiDb";
 import { postHistoryRelayCoverageRepository } from "../../lib/storage/postHistoryRelayCoverageRepository";
+import { buildPostHistoryVisibleKindsKey } from "../../lib/storage/postHistoryVisibleRangeRepository";
+import { POST_HISTORY_FETCH_KINDS } from "../../lib/postHistoryRelayFetchService";
 
 const fixtureKeyPrefix = "post-history-coverage-signed-fixture";
 type Fixture = { owner: string; events: NostrEvent[]; farOlder: NostrEvent };
 const relayUrls = Array.from({ length: 5 }, (_, i) => `wss://coverage-${i}.example.test/`);
+const kindsKey = buildPostHistoryVisibleKindsKey([...POST_HISTORY_FETCH_KINDS]);
 
 /** Only public data and signed events survive reload; no signing key is stored. */
 export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "gap" | "empty-gap" | "new-head" | "bounded-gap" = "gap") {
@@ -30,7 +33,18 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
     const errors = new Subject<any>();
     const connections = new Subject<any>();
     const pending: (() => void)[] = [];
+    const preparation = { hold: false, entered: false, checks: 0, coveredGapReads: 0, release: null as (() => void) | null };
     const control = { owner: fixture.owner, eventIds: fixture.events.map((event) => event.id), headRequests: 0,
+        preparation,
+        coverGap: async () => {
+            const expectedRevision = await postHistoryRelayCoverageRepository.getLocalRevision(fixture.owner);
+            await ehagakiDb.transaction("rw", ehagakiDb.meta, async () => postHistoryRelayCoverageRepository.record({
+                ownerPubkeyHex: fixture.owner, kindsKey, expectedRevision, isActive: () => true,
+                relays: relayUrls.map((relayUrl) => ({ relayUrl, ranges: [{
+                    since: fixture.events[gapEnd].created_at, until: fixture.events[gapStart - 1].created_at,
+                }] })),
+            }));
+        },
         olderRequests: [] as { relayUrl: string; since: number; until: number }[],
         release: () => { for (const complete of pending.splice(0)) complete(); } };
     const rxNostr = {
@@ -76,6 +90,28 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
     } as unknown as RxNostr;
     return { rxNostr, control, relayConfig: Object.fromEntries(relayUrls.map((url) => [url, { read: true, write: true }])),
         initialize: async () => {
+            const getCoverage = postHistoryRelayCoverageRepository.get.bind(postHistoryRelayCoverageRepository);
+            postHistoryRelayCoverageRepository.get = async (owner, key) => {
+                const record = await getCoverage(owner, key);
+                if (owner === fixture.owner && record.relays.some((relay) => relay.ranges.some((range) =>
+                    range.since <= fixture.events[gapEnd].created_at && range.until >= fixture.events[gapStart - 1].created_at))) {
+                    preparation.coveredGapReads += 1;
+                }
+                return record;
+            };
+            const hasOlderVisiblePosts = postHistoryRepository.hasOlderVisiblePosts.bind(postHistoryRepository);
+            postHistoryRepository.hasOlderVisiblePosts = async (options) => {
+                if (options.pubkeyHex === fixture.owner) {
+                    preparation.checks += 1;
+                    if (preparation.hold) {
+                        preparation.hold = false;
+                        preparation.entered = true;
+                        await new Promise<void>((resolve) => { preparation.release = resolve; });
+                        preparation.release = null;
+                    }
+                }
+                return hasOlderVisiblePosts(options);
+            };
             if (stored) return;
             await postHistoryRepository.deleteLocalHistoryForPubkey(fixture.owner);
             const savedEvents = scenario === "new-head" ? fixture.events.slice(60)
@@ -87,7 +123,7 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
             })));
             const expectedRevision = await postHistoryRelayCoverageRepository.getLocalRevision(fixture.owner);
             await ehagakiDb.transaction("rw", ehagakiDb.meta, async () => { await postHistoryRelayCoverageRepository.record({
-                ownerPubkeyHex: fixture.owner, kindsKey: "1,42,1111", expectedRevision, isActive: () => true,
+                ownerPubkeyHex: fixture.owner, kindsKey, expectedRevision, isActive: () => true,
                 relays: relayUrls.map((relayUrl) => ({ relayUrl, ranges: scenario === "new-head"
                     ? [{ since: fixture.events[309].created_at, until: fixture.events[60].created_at }]
                     : [

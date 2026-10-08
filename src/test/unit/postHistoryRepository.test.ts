@@ -127,6 +127,7 @@ function createInstrumentedTimelineDb(records: PostHistoryRecord[]) {
             private readonly upper: unknown,
             private readonly includeLower: boolean,
             private readonly includeUpper: boolean,
+            private readonly index: string,
         ) {}
 
         reverse() {
@@ -146,9 +147,14 @@ function createInstrumentedTimelineDb(records: PostHistoryRecord[]) {
 
         private materialize(): PostHistoryRecord[] {
             const result: PostHistoryRecord[] = [];
-            const source = this.reversed ? [...ascending].reverse() : ascending;
+            const keyOf = this.index === POST_HISTORY_TIMELINE_INDEX
+                ? timelineKey
+                : (record: PostHistoryRecord) => [record.pubkeyHex, record.createdAt];
+            const ordered = this.index === POST_HISTORY_TIMELINE_INDEX
+                ? ascending : [...records].sort((left, right) => cmp(keyOf(left), keyOf(right)));
+            const source = this.reversed ? [...ordered].reverse() : ordered;
             for (const record of source) {
-                const key = timelineKey(record);
+                const key = keyOf(record);
                 const lowerComparison = cmp(key, this.lower);
                 const upperComparison = cmp(key, this.upper);
                 if (
@@ -176,6 +182,10 @@ function createInstrumentedTimelineDb(records: PostHistoryRecord[]) {
             materializedCounts.push(result.length);
             filterEvaluatedCounts.push(this.filterEvaluated);
             return result;
+        }
+
+        async count() {
+            return this.materialize().length;
         }
 
         async toArray() {
@@ -206,6 +216,7 @@ function createInstrumentedTimelineDb(records: PostHistoryRecord[]) {
                         upper,
                         includeLower,
                         includeUpper,
+                        index,
                     );
                 },
             };
@@ -1439,6 +1450,69 @@ describe("DexiePostHistoryRepository", () => {
             });
 
             expect(filterEvaluatedCounts.at(-1)).toBe(outOfRangeCount);
+        },
+    );
+
+    it.each([7_000, 35_000, 64_999])(
+        "older existence excludes out-of-range saved posts (%d records)",
+        async (outOfRangeCount) => {
+            const pubkeyHex = "b".repeat(64);
+            const cursor = createPostHistoryRecord({ pubkeyHex, eventId: "boundary", postedAt: 70_000, createdAt: 1_000 });
+            const records = [cursor, ...Array.from({ length: outOfRangeCount }, (_, i) =>
+                createPostHistoryRecord({ pubkeyHex, eventId: `saved-${i}`, postedAt: 69_999 - i, createdAt: 999 - i }))];
+            const { db, filterEvaluatedCounts } = createInstrumentedTimelineDb(records);
+            const repository = new DexiePostHistoryRepository(db as any, () => 1000);
+            await expect(repository.hasOlderVisiblePosts({ pubkeyHex, visibleUntil: 1_000, cursor })).resolves.toBe(false);
+            expect(filterEvaluatedCounts.at(-1)).toBe(1);
+        },
+    );
+
+    it("older existence respects coverage, supported kinds and complete timeline order", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkeyHex = "b".repeat(64);
+        const cursor = createPostHistoryRecord({ pubkeyHex, eventId: "c", postedAt: 5000, createdAt: 1000 });
+        const older = createPostHistoryRecord({ pubkeyHex, eventId: "b", postedAt: 5000, createdAt: 1000 });
+        const imported = createPostHistoryRecord({ pubkeyHex, eventId: "imported", postedAt: 4000, createdAt: 2000 });
+        await db.postHistory.bulkPut([
+            cursor,
+            createPostHistoryRecord({ pubkeyHex, eventId: "d", postedAt: 5000, createdAt: 1000 }),
+            createPostHistoryRecord({ pubkeyHex, eventId: "newer", postedAt: 6000, createdAt: 1500 }),
+            { ...createPostHistoryRecord({ pubkeyHex, eventId: "unsupported", postedAt: 3000, createdAt: 2000 }), kind: 36 },
+            createPostHistoryRecord({ pubkeyHex: "e".repeat(64), eventId: "other", postedAt: 3000, createdAt: 2000 }),
+            createPostHistoryRecord({ pubkeyHex, eventId: "outside", postedAt: 3000, createdAt: 999 }),
+        ]);
+        const options = { pubkeyHex, cursor, visibleUntil: 1000 };
+        await expect(repository.hasOlderVisiblePosts(options)).resolves.toBe(false);
+        await expect(repository.hasOlderVisiblePosts({ ...options, visibleUntil: null })).resolves.toBe(true);
+        await expect(repository.hasOlderVisiblePosts({ ...options, pubkeyHex: null })).resolves.toBe(false);
+        for (const kind of [1, 42, 1111]) {
+            await db.postHistory.put({ ...older, kind });
+            await expect(repository.hasOlderVisiblePosts(options)).resolves.toBe(true);
+            await expect(repository.hasOlderVisiblePosts({ ...options, visibleUntil: 1001 })).resolves.toBe(false);
+        }
+        await db.postHistory.delete(older.id);
+        await db.postHistory.put(imported);
+        await expect(repository.hasOlderVisiblePosts({ ...options, visibleUntil: 1001 })).resolves.toBe(true);
+        await expect(repository.hasOlderVisiblePosts({ ...options, visibleUntil: 2001 })).resolves.toBe(false);
+        db.close();
+    });
+
+    it.each([7_000, 35_000, 64_999])(
+        "older existence does not scan already-visible history (%d records)",
+        async (visibleCount) => {
+            const pubkeyHex = "b".repeat(64);
+            const cursor = createPostHistoryRecord({ pubkeyHex, eventId: "boundary", postedAt: 1000, createdAt: 1000 });
+            const records = [cursor,
+                ...Array.from({ length: visibleCount }, (_, i) => createPostHistoryRecord({
+                    pubkeyHex, eventId: `visible-${i}`, postedAt: 1001 + i, createdAt: 1001 + i,
+                })),
+                createPostHistoryRecord({ pubkeyHex, eventId: "outside", postedAt: 999, createdAt: 999 }),
+            ];
+            const { db, filterEvaluatedCounts } = createInstrumentedTimelineDb(records);
+            const repository = new DexiePostHistoryRepository(db as any, () => 1000);
+            await expect(repository.hasOlderVisiblePosts({ pubkeyHex, visibleUntil: 1000, cursor })).resolves.toBe(false);
+            expect(filterEvaluatedCounts.at(-1)).toBe(1);
         },
     );
 
