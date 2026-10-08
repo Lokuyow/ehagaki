@@ -34,6 +34,7 @@ export const POST_HISTORY_FETCH_TIMEOUT_MS = POST_HISTORY_BOOTSTRAP_FETCH_TIMEOU
 export type PostHistoryFetchReason =
     | "bootstrap"
     | "dialog-open-refresh"
+    | "dialog-open-catchup"
     | "visibility-resume"
     | "foreground-periodic"
     | "older-backfill"
@@ -148,6 +149,7 @@ function resolveFetchLimit(
             case "visibility-resume":
             case "foreground-periodic":
                 return POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT;
+            case "dialog-open-catchup":
             case "older-backfill":
                 return POST_HISTORY_OLDER_FETCH_LIMIT;
             case "repair-visible-range":
@@ -173,6 +175,7 @@ function resolveFetchTimeoutMs(
 
     switch (reason) {
         case "dialog-open-refresh":
+        case "dialog-open-catchup":
         case "visibility-resume":
         case "foreground-periodic":
             return POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS;

@@ -40,7 +40,9 @@ export type PostHistoryLightweightSyncReason =
 export interface PostHistoryLightweightAuthoredSyncRequest {
     ownerPubkeyHex: string;
     relayConfig?: RelayConfig | null;
-    reason: PostHistoryLightweightSyncReason;
+    reason: PostHistoryLightweightSyncReason | "dialog-open-catchup";
+    /** Keeps every page of an open-time catchup bound to the pre-delete history. */
+    expectedLocalRevision?: number;
     kinds?: number[];
     since?: number;
     until?: number;
@@ -178,7 +180,8 @@ export class PostHistoryLightweightSyncCoordinator {
             const initialScope = await createPostHistoryAuthoredFetchScope({ ownerPubkeyHex: params.ownerPubkeyHex,
                 rxNostr, kinds: params.kinds ?? [...POST_HISTORY_FETCH_KINDS], relayConfig: params.relayConfig,
                 getRelayConfig: params.getRelayConfig ?? (() => params.relayConfig), isActive: consumerIsActive });
-            if (!initialScope.isActive()) return cancelled();
+            if (!initialScope.isActive() || (params.expectedLocalRevision !== undefined
+                && initialScope.expectedRevision !== params.expectedLocalRevision)) return cancelled();
             let runtimeId = this.runtimeIds.get(rxNostr);
             if (runtimeId === undefined) { runtimeId = ++this.nextRuntimeId; this.runtimeIds.set(rxNostr, runtimeId); }
             key = JSON.stringify([params.ownerPubkeyHex, runtimeId, initialScope.expectedRevision, relayScopeKey,

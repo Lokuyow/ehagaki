@@ -729,6 +729,7 @@ export function usePostHistoryListing({
     let isSearchPageLoading = $state(false);
     let searchResultStatus = $state<PostHistoryLocalLoadStatus>("idle");
     let hasStartedInitialSync = false;
+    let forceDialogOpenRefreshAfterLocalPost = false;
     let hasAttemptedInitialLocalLoad = false;
     let initialLocalLoadKey: string | null = null;
     let initialLocalLoadStatus = $state<PostHistoryLocalLoadStatus>("idle");
@@ -857,6 +858,7 @@ export function usePostHistoryListing({
     );
     const showSavedPostsBoundary = $derived(
         !isSearchMode
+        && state.syncStatus !== "syncing"
         && state.listingMode === "contiguous"
         && typeof state.visibleUntil === "number"
         && state.loadedPosts.length > 0
@@ -1238,6 +1240,7 @@ export function usePostHistoryListing({
         clearCurrentViewRefetchFeedback();
         clearSyncStatusMessageClearTimeout();
         hasStartedInitialSync = false;
+        forceDialogOpenRefreshAfterLocalPost = false;
         hasAttemptedInitialLocalLoad = false;
         initialLocalLoadKey = null;
         initialLocalLoadGeneration += 1;
@@ -2114,11 +2117,13 @@ export function usePostHistoryListing({
             skipTotalCountRefresh = false,
             skipOlderAvailabilityCheck = false,
             awaitProgress = false,
+            awaitAvailability = false,
         }: {
             forceTotalCount?: boolean;
             skipTotalCountRefresh?: boolean;
             skipOlderAvailabilityCheck?: boolean;
             awaitProgress?: boolean;
+            awaitAvailability?: boolean;
         } = {},
     ): Promise<void> {
         clearContiguousProgress();
@@ -2206,7 +2211,7 @@ export function usePostHistoryListing({
                 > contiguousProgress.reachedVisibleCount;
         }
 
-        void refreshSavedPostsOutsideVisibleRange(
+        const savedAvailability = refreshSavedPostsOutsideVisibleRange(
             pubkeyHex,
             visibleUntil,
             requestId,
@@ -2214,7 +2219,7 @@ export function usePostHistoryListing({
             // Saved-range detection is auxiliary and must not delay the first post.
         });
 
-        void refreshTimelineAvailability(
+        const timelineAvailability = refreshTimelineAvailability(
             pubkeyHex,
             latestPosts,
             requestId,
@@ -2235,6 +2240,7 @@ export function usePostHistoryListing({
                 // Preserve the existing behavior: no relay refresh follows a
                 // failed timeline availability check.
             });
+        if (awaitAvailability) await Promise.all([savedAvailability, timelineAvailability]);
     }
 
     async function reloadVisibleWindowFromCurrentNewest(
@@ -3468,41 +3474,65 @@ export function usePostHistoryListing({
         const requestId = ++fetchRequestId;
         state.syncStatus = "syncing";
         state.lastDialogOpenRefreshAt = Date.now();
+        const upperBound = Math.floor(state.lastDialogOpenRefreshAt / 1000);
+        const generation = coverageGeneration;
+        const relayConfig = getRelayConfig();
+        const isActive = () => !isDestroyed && generation === coverageGeneration
+            && isCurrentFetchRequest(requestId) && getShow()
+            && getPubkeyHex() === pubkeyHex && getRxNostr() === rxNostr;
+        const expectedLocalRevision = await postHistoryRelayCoverageRepository.getLocalRevision(pubkeyHex);
         const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
-        if (
-            !isCurrentFetchRequest(requestId) ||
-            !getShow() ||
-            getPubkeyHex() !== pubkeyHex
-        ) {
-            return;
-        }
+        const previousCoverage = await readQuorumCoverage(pubkeyHex);
+        const anchor = coverageAnchorCreatedAt;
+        // A partial recent query can leave a separate head above the entry
+        // window. Reconnect to its saved component, not to that detached head.
+        const previousRange = anchor === null ? previousCoverage.at(-1)
+            : previousCoverage.find((range) => range.since <= anchor && range.until >= anchor)
+                ?? previousCoverage.filter((range) => range.until < anchor).at(-1)
+                ?? previousCoverage.at(-1);
+        // An explicit lower bound also certifies empty seconds between the new
+        // head and the previous range. Local posts never supply that evidence.
+        const since = previousRange ? Math.min(previousRange.until, upperBound) : undefined;
+        if (!isActive()) return;
 
-        const task = postHistoryLightweightSyncCoordinator.runAuthored(rxNostr, {
-            ownerPubkeyHex: pubkeyHex,
-            relayConfig: getRelayConfig(),
-            reason: "dialog-open-refresh",
-            getRelayConfig,
-            limit: POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT,
-            timeoutMs: POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS,
-            onSavedSelfPosts: onSavedAuthoredPosts,
-        });
-        currentFetchTask = task;
+        let until = upperBound;
+        let frontier = upperBound + 1;
+        let catchingUp = false;
+        let result: PostHistoryRelayFetchResult;
+        const upsertSummary = { insertedCount: 0, updatedCount: 0 };
+        while (true) {
+            const task = postHistoryLightweightSyncCoordinator.runAuthored(rxNostr, {
+                ownerPubkeyHex: pubkeyHex, relayConfig, getRelayConfig, isActive,
+                expectedLocalRevision,
+                reason: catchingUp ? "dialog-open-catchup" : "dialog-open-refresh",
+                ...(since === undefined ? {} : { since }), until,
+                limit: catchingUp ? POST_HISTORY_OLDER_FETCH_LIMIT : POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT,
+                timeoutMs: POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS,
+                onSavedSelfPosts: onSavedAuthoredPosts,
+            });
+            currentFetchTask = task;
+            const page = await task.promise;
+            if (!isActive() || currentFetchTask !== task) return;
+            currentFetchTask = null;
+            result = page.fetchResult;
+            if (result.status === "cancelled") {
+                state.syncStatus = "idle";
+                return;
+            }
+            upsertSummary.insertedCount += page.upsertSummary.insertedCount;
+            upsertSummary.updatedCount += page.upsertSummary.updatedCount;
+            if (since === undefined) break;
 
-        const lightweightResult = await task.promise;
-        const result = lightweightResult.fetchResult;
-        const upsertSummary = lightweightResult.upsertSummary;
-
-        if (!isCurrentFetchRequest(requestId) || currentFetchTask !== task) {
-            return;
-        }
-
-        currentFetchTask = null;
-        if (!getShow() || result.status === "cancelled") {
-            return;
-        }
-
-        if (!isCurrentFetchRequest(requestId) || !getShow()) {
-            return;
+            const ranges = await readQuorumCoverage(pubkeyHex);
+            if (!isActive()) return;
+            const nextFrontier = ranges.find((range) => range.since <= upperBound && range.until >= upperBound)?.since
+                ?? upperBound + 1;
+            if (nextFrontier <= since || (catchingUp && nextFrontier >= frontier)) break;
+            frontier = nextFrontier;
+            // Requery the saturated boundary second; until - 1 here skips only
+            // seconds already covered, never an unresolved same-second limit.
+            until = Math.min(upperBound, frontier - 1);
+            catchingUp = true;
         }
 
         const nextVisibleUntil = await updateVisibleUntilFromFetch(
@@ -3525,12 +3555,6 @@ export function usePostHistoryListing({
 
         updateRelayHistoryCursorAfterDialogRefresh(result);
 
-        state.syncStatus = resolveSyncStatusAfterFetch(
-            result,
-            refreshDecision.didMateriallyChange,
-        );
-        scheduleSyncStatusMessageClearIfNeeded();
-
         if (refreshDecision.applyAction === "reload-search-page") {
             await rebuildSearchResultsThroughPage(
                 state.searchPage,
@@ -3544,6 +3568,7 @@ export function usePostHistoryListing({
                 forceTotalCount: refreshDecision.didMateriallyChange,
                 skipOlderAvailabilityCheck: requiresBoundedRebase,
                 awaitProgress: requiresBoundedRebase,
+                awaitAvailability: true,
             });
         } else if (
             refreshDecision.applyAction === "refresh-count-and-availability"
@@ -3557,6 +3582,7 @@ export function usePostHistoryListing({
                     skipOlderAvailabilityCheck:
                         !refreshDecision.didVisibleMateriallyChange,
                     awaitProgress: !refreshDecision.didVisibleMateriallyChange,
+                    awaitAvailability: true,
                 });
             } else {
                 clearContiguousProgress();
@@ -3566,6 +3592,9 @@ export function usePostHistoryListing({
                 await refreshTimelineAvailability(pubkeyHex);
             }
         }
+        if (!isActive()) return;
+        state.syncStatus = resolveSyncStatusAfterFetch(result, refreshDecision.didMateriallyChange);
+        scheduleSyncStatusMessageClearIfNeeded();
     }
 
     function shouldRunDialogOpenRefresh(): boolean {
@@ -3596,7 +3625,14 @@ export function usePostHistoryListing({
             return;
         }
 
-        if (shouldRunDialogOpenRefresh()) {
+        const latestCoveredUntil = quorumCoverage.at(-1)?.until;
+        const latestAnchor = coverageAnchorCreatedAt;
+        const hasUncoveredLatest = (latestCoveredUntil !== undefined
+            && localPosts.some((post) => post.createdAt > latestCoveredUntil))
+            || (latestAnchor !== null && !quorumCoverage.some((range) =>
+                range.since <= latestAnchor && range.until >= latestAnchor));
+        if (forceDialogOpenRefreshAfterLocalPost || hasUncoveredLatest || shouldRunDialogOpenRefresh()) {
+            forceDialogOpenRefreshAfterLocalPost = false;
             void refreshRecentFromRelaysOnDialogOpen();
         }
     }
@@ -4755,7 +4791,10 @@ export function usePostHistoryListing({
             activeCoverageOwner = owner;
             activeCoverageRuntime = runtime;
             coverageGeneration += 1;
-            untrack(() => { cancelCurrentSync(); cancelCurrentViewRefetch(); invalidatePendingLoadRequests(); });
+            untrack(() => {
+                cancelCurrentSync(); cancelCurrentViewRefetch(); invalidatePendingLoadRequests();
+                if (state.syncStatus === "syncing") state.syncStatus = "idle";
+            });
         }
         if (!getShow() || !owner) return;
         const generation = coverageGeneration;
@@ -4800,6 +4839,7 @@ export function usePostHistoryListing({
         resetOlderBackfillSearchState();
         relationRepairCoordinator.resetOlderRevealRepairContext();
         hasStartedInitialSync = false;
+        forceDialogOpenRefreshAfterLocalPost = false;
         hasAttemptedInitialLocalLoad = false;
         initialLocalLoadKey = null;
         initialLocalLoadGeneration += 1;
@@ -4904,6 +4944,7 @@ export function usePostHistoryListing({
         const pendingLatestRequest =
             consumePostHistoryShouldReturnToLatestAfterLocalPost(getPubkeyHex());
         if (shouldApplyPendingLatestRequest(pendingLatestRequest, sessionScrollState)) {
+            forceDialogOpenRefreshAfterLocalPost = true;
             onSessionScrollStateInvalidated();
             startInitialLocalLoad(loadLatestVisiblePosts);
             return;

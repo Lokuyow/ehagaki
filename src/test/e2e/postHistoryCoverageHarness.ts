@@ -9,7 +9,7 @@ import { buildPostHistoryVisibleKindsKey } from "../../lib/storage/postHistoryVi
 import { POST_HISTORY_FETCH_KINDS } from "../../lib/postHistoryRelayFetchService";
 
 const fixtureKeyPrefix = "post-history-coverage-signed-fixture";
-type Fixture = { owner: string; events: NostrEvent[]; farOlder: NostrEvent };
+type Fixture = { owner: string; events: NostrEvent[]; farOlder: NostrEvent; localPost: NostrEvent };
 const relayUrls = Array.from({ length: 5 }, (_, i) => `wss://coverage-${i}.example.test/`);
 const kindsKey = buildPostHistoryVisibleKindsKey([...POST_HISTORY_FETCH_KINDS]);
 
@@ -26,7 +26,8 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
             kind: 1, tags: [], content: `coverage post ${i}`, created_at: base - i * 60,
         }, secret));
         const farOlder = finalizeEvent({ kind: 1, tags: [], content: "coverage next saved area", created_at: base - 2000 * 60 }, secret);
-        return { owner, events, farOlder };
+        const localPost = finalizeEvent({ kind: 1, tags: [], content: "coverage local post", created_at: base + 1 }, secret);
+        return { owner, events, farOlder, localPost };
     })();
     if (!stored) sessionStorage.setItem(fixtureKey, JSON.stringify(fixture));
     const messages = new Subject<any>();
@@ -34,6 +35,7 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
     const connections = new Subject<any>();
     const pending: (() => void)[] = [];
     const preparation = { hold: false, entered: false, checks: 0, coveredGapReads: 0, release: null as (() => void) | null };
+    let localPosted = false;
     const control = { owner: fixture.owner, eventIds: fixture.events.map((event) => event.id), headRequests: 0,
         preparation,
         coverGap: async () => {
@@ -46,6 +48,12 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
             }));
         },
         olderRequests: [] as { relayUrl: string; since: number; until: number }[],
+        catchupRequests: [] as { relayUrl: string; since: number; until: number }[],
+        postLocal: async () => {
+            await postHistoryRepository.putPostedEvent({ event: fixture.localPost, acceptedRelays: [], relayHints: [] });
+            localPosted = true;
+            return fixture.localPost.id;
+        },
         release: () => { for (const complete of pending.splice(0)) complete(); } };
     const rxNostr = {
         createAllMessageObservable: () => messages,
@@ -59,15 +67,18 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
                 const filter = filters[0] as { authors?: string[]; kinds?: number[]; since?: number; until?: number; limit?: number };
                 if (!filter || !relayUrl) return;
                 const authored = filter.authors?.includes(fixture.owner) && filter.kinds?.includes(1);
-                const older = authored && filter.since !== undefined && filter.until !== undefined && filter.limit === 150;
-                if (authored && filter.since === undefined) control.headRequests += 1;
+                const latestSavedTimestamp = fixture.events[scenario === "new-head" ? 60 : 0].created_at;
+                const catchup = authored && filter.limit === 150 && filter.since !== undefined
+                    && filter.since >= latestSavedTimestamp;
+                const older = authored && !catchup && filter.since !== undefined && filter.until !== undefined && filter.limit === 150;
+                if (authored && filter.limit === 30) control.headRequests += 1;
                 const complete = () => {
                     if (relayUrls.indexOf(relayUrl) >= 3) {
                         errors.next({ from: relayUrl }); stream.complete(); return;
                     }
                     const candidates = older ? (scenario === "empty-gap" ? [] : fixture.events.slice(gapStart, gapEnd))
-                        : scenario === "new-head" && authored && filter.since === undefined
-                            ? fixture.events.slice(relayUrls.indexOf(relayUrl) * 20, (relayUrls.indexOf(relayUrl) + 1) * 20) : [];
+                        : scenario === "new-head" && authored ? fixture.events.slice(0, 60)
+                            : authored && localPosted ? [fixture.localPost] : [];
                     const events = candidates.filter((event) =>
                         (filter.since === undefined || event.created_at >= filter.since)
                         && (filter.until === undefined || event.created_at <= filter.until),
@@ -80,8 +91,9 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
                     stream.complete();
                     messages.next({ type: "EOSE", from: relayUrl, subId, message: ["EOSE", subId] });
                 };
-                if (older) {
-                    control.olderRequests.push({ relayUrl, since: filter.since!, until: filter.until! });
+                if (older || catchup) {
+                    (catchup ? control.catchupRequests : control.olderRequests)
+                        .push({ relayUrl, since: filter.since!, until: filter.until! });
                     pending.push(complete);
                 } else queueMicrotask(complete);
             });

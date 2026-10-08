@@ -166,6 +166,16 @@ describe("PostHistoryRelayFetchService", () => {
         expect(result.canonicalRelayUrls).toHaveLength(9);
         expect(getPostHistoryQuorumCoverage(result.relayFetchCoverage!, result.canonicalRelayUrls!)).toEqual([]);
     });
+    it("open catchup queries all canonical relays with the older page limit", async () => {
+        const h = harness(9, { reason: "dialog-open-catchup" });
+        expect(h.streams.size).toBe(9);
+        expect(h.streams.get(urls[0])!.filters[0]).toMatchObject({ since: 10, until: 200, limit: 150 });
+        for (let i = 0; i < 5; i++) h.eose(i);
+        for (let i = 5; i < 9; i++) h.fail(i);
+        const result = await h.task.promise;
+        expect(getPostHistoryQuorumCoverage(result.relayFetchCoverage!, result.canonicalRelayUrls!))
+            .toEqual([{ since: 10, until: 200 }]);
+    });
     it("Host read defaults override user config and are not capped, including empty Host config", async () => {
         activateHostRelayConfig(config(9));
         const h = harness(1, { reason: "dialog-open-refresh" });

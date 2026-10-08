@@ -622,7 +622,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
-    it('dialog-open-refresh は保守的継続時だけ notice を出し、close 後も既存 cursor から続ける', async () => {
+    it('最新側が未確認なら TTL 内でも open refresh を行い、既存の older cursor を維持する', async () => {
         const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
         const post = createRecord({
             eventId: 'cursor-local',
@@ -662,6 +662,10 @@ describe('PostHistoryDialog timeline relay flows', () => {
                     fetchedAt: 3000,
                     relayUrls: ['wss://relay.example.com/'],
                 })),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({ fetchedAt: 4000 })),
                 cancel: vi.fn(),
             });
 
@@ -720,7 +724,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             });
 
             await waitFor(() => {
-                expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(2);
+                expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(3);
                 expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
                 expect(screen.queryByText('未取得の投稿がまだある可能性があります。')).toBeNull();
             });
@@ -729,7 +733,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
             await waitFor(() => {
                 expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
-                    3,
+                    4,
                     {} as any,
                     expect.objectContaining({
                         pubkeyHex: PUBKEY_HEX,
@@ -2992,6 +2996,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
             return [];
         });
         repositoryMock.upsertFetchedEvents
+            // The bounded open query now records its empty successful coverage.
+            .mockResolvedValueOnce({ insertedCount: 0, updatedCount: 0, unchangedCount: 0 })
             .mockResolvedValueOnce({
                 insertedCount: firstBatchPosts.length,
                 updatedCount: 0,

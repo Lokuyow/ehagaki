@@ -24,6 +24,14 @@ function harness() {
 }
 
 describe("scoped lightweight authored synchronization", () => {
+    it("rejects a catchup page whose history revision changed before transport", async () => {
+        const h = harness();
+        const task = h.coordinator.runAuthored(h.runtime, { ...h.request,
+            reason: "dialog-open-catchup", expectedLocalRevision: -1 });
+        expect((await task.promise).fetchResult.status).toBe("cancelled");
+        expect(h.fetchLatest).not.toHaveBeenCalled();
+        expect(h.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
     it("owner cancellation also invalidates a lease before its source has started", async () => {
         const h = harness();
         const task = h.coordinator.runAuthored(h.runtime, h.request);

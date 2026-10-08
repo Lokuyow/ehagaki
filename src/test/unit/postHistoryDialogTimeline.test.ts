@@ -577,6 +577,8 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
             expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
             expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('2件');
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledOnce();
+            expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
 
         await fireEvent.click(screen.getByRole('button', { name: '保存済みの古い投稿を表示' }));
