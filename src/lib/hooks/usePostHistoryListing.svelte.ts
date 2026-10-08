@@ -222,6 +222,7 @@ interface LoadOlderVisiblePostsMetrics {
 interface LoadOlderVisiblePostsOptions {
     anchorEventId?: string | null;
     autoLoadViewportCommit?: AutoLoadViewportCommit;
+    relayFetchViewportCommit?: OlderRelayFetchViewportCommit;
     metrics?: LoadOlderVisiblePostsMetrics;
     reason?: LoadOlderVisiblePostsReason;
     useContiguousProgress?: boolean;
@@ -286,6 +287,12 @@ interface OlderBackfillUiResult {
 
 interface FetchOlderFromRelaysOptions {
     anchorEventId?: string | null;
+    viewportCommit?: OlderRelayFetchViewportCommit;
+}
+
+interface OlderRelayFetchViewportCommit {
+    captureAnchorEventId: () => string | null;
+    onCommitted: () => void;
 }
 
 function resolveFetchedAuthoredEventIds(
@@ -2003,9 +2010,19 @@ export function usePostHistoryListing({
         pubkeyHex: string,
         currentPosts: PostHistoryRecord[] = state.loadedPosts,
         expectedRequestId: number | null = null,
-        options: { skipOlderCheck?: boolean } = {},
+        options: {
+            skipOlderCheck?: boolean;
+            deferDuringOlderRelayFetch?: boolean;
+        } = {},
     ): Promise<void> {
         const generation = coverageGeneration;
+        const syncRequestId = fetchRequestId;
+        if (isDestroyed || !getShow()) {
+            return;
+        }
+        if (options.deferDuringOlderRelayFetch && isFetchingOlderFromRelays) {
+            return;
+        }
         if (currentPosts.length === 0) {
             if (
                 getShow() &&
@@ -2074,7 +2091,9 @@ export function usePostHistoryListing({
         ]);
 
         if (
-            generation !== coverageGeneration || visibleUntil !== state.visibleUntil ||
+            isDestroyed || generation !== coverageGeneration || visibleUntil !== state.visibleUntil ||
+            (options.deferDuringOlderRelayFetch
+                && (isFetchingOlderFromRelays || syncRequestId !== fetchRequestId)) ||
             !getShow() ||
             getPubkeyHex() !== pubkeyHex ||
             (expectedRequestId !== null && expectedRequestId !== loadRequestId)
@@ -2556,10 +2575,12 @@ export function usePostHistoryListing({
             return false;
         }
 
+        const relayFetchAnchorEventId =
+            options.relayFetchViewportCommit?.captureAnchorEventId();
         const mergedResult = mergeOlderVisiblePostsForState(
             currentLoadedPosts,
             olderPosts,
-            autoLoadAnchorEventId ?? options.anchorEventId,
+            autoLoadAnchorEventId ?? relayFetchAnchorEventId ?? options.anchorEventId,
         );
         const newlyVisibleOlderPosts =
             options.reason === "normal-older-reveal"
@@ -2657,6 +2678,7 @@ export function usePostHistoryListing({
             metrics.didDeferOlderPosts = mergedResult.didDeferOlderPosts;
         }
         options.autoLoadViewportCommit?.onCommitted();
+        options.relayFetchViewportCommit?.onCommitted();
         if (canDeriveOlderAvailability) {
             void refreshTimelineAvailability(
                 pubkeyHex,
@@ -2713,9 +2735,14 @@ export function usePostHistoryListing({
         const mergedResult = mergeOlderVisiblePostsForState(
             currentLoadedPosts,
             olderPosts,
-            options.anchorEventId,
+            options.relayFetchViewportCommit?.captureAnchorEventId()
+                ?? options.anchorEventId,
         );
         state.loadedPosts = mergedResult.posts;
+        if (options.relayFetchViewportCommit && mergedResult.didTrimForOlderAppend) {
+            state.hasNewerLocal = true;
+        }
+        options.relayFetchViewportCommit?.onCommitted();
         await refreshTimelineAvailability(pubkeyHex, mergedResult.posts, requestId);
         if (mergedResult.didDeferOlderPosts) {
             state.hasOlderLocal = true;
@@ -2762,9 +2789,14 @@ export function usePostHistoryListing({
         const mergedResult = mergeOlderVisiblePostsForState(
             currentLoadedPosts,
             olderPosts,
-            options.anchorEventId,
+            options.relayFetchViewportCommit?.captureAnchorEventId()
+                ?? options.anchorEventId,
         );
         state.loadedPosts = mergedResult.posts;
+        if (options.relayFetchViewportCommit && mergedResult.didTrimForOlderAppend) {
+            state.hasNewerLocal = true;
+        }
+        options.relayFetchViewportCommit?.onCommitted();
         await refreshTimelineAvailability(pubkeyHex, mergedResult.posts, requestId);
         if (mergedResult.didDeferOlderPosts) {
             state.hasOlderLocal = true;
@@ -3792,7 +3824,11 @@ export function usePostHistoryListing({
             if (!getShow() || getPubkeyHex() !== pubkeyHex || getRxNostr() !== rxNostr) return false;
             if (state.hasOlderLocal) {
                 clearContiguousProgress();
-                return loadOlderVisiblePosts({ anchorEventId: options.anchorEventId, useContiguousProgress: false });
+                return loadOlderVisiblePosts({
+                    anchorEventId: options.anchorEventId,
+                    relayFetchViewportCommit: options.viewportCommit,
+                    useContiguousProgress: false,
+                });
             }
         }
 
@@ -4051,13 +4087,16 @@ export function usePostHistoryListing({
                     didLoadFetchedOlderPosts = state.sparseSource === "saved"
                         ? await loadOlderSavedPosts(pubkeyHex, loadRequestId, {
                             anchorEventId: options.anchorEventId,
+                            relayFetchViewportCommit: options.viewportCommit,
                         })
                         : isSparseBackfillContext
                             ? await loadOlderSparsePosts(pubkeyHex, loadRequestId, {
                                 anchorEventId: options.anchorEventId,
+                                relayFetchViewportCommit: options.viewportCommit,
                             })
                             : await loadOlderVisiblePosts({
                                 anchorEventId: options.anchorEventId,
+                                relayFetchViewportCommit: options.viewportCommit,
                                 metrics: olderLoadMetrics,
                                 reason: "normal-older-reveal",
                                 useContiguousProgress: false,
@@ -4691,7 +4730,15 @@ export function usePostHistoryListing({
                 const next = getPostHistoryConnectedCoverageUntil(quorumCoverage, coverageAnchorCreatedAt);
                 if (next === state.visibleUntil) return;
                 state.visibleUntil = next; clearContiguousProgress();
-                if (hasCompletedFirstPostPaint) void refreshTimelineAvailability(owner);
+                // The active backfill owns availability for the rows it commits.
+                // Publishing it against the old rows can remove the bottom
+                // controls and clamp scrollTop before that page is appended.
+                if (hasCompletedFirstPostPaint) void refreshTimelineAvailability(
+                    owner,
+                    state.loadedPosts,
+                    null,
+                    { deferDuringOlderRelayFetch: true },
+                );
             }, error: () => { /* A failed read grants no additional coverage. */ } });
         return () => subscription.unsubscribe();
     });

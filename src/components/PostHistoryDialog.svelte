@@ -1382,27 +1382,49 @@
     }
 
     async function handleFetchOlderFromRelays(): Promise<void> {
-        const scrollAnchor = historyViewport.captureHistoryScrollAnchor();
+        let scrollAnchor = historyViewport.captureHistoryScrollAnchor();
         const previousScrollTop = historyContainer?.scrollTop ?? null;
+        let scrollTopToRestore = previousScrollTop;
         const loadedPostsBeforeLength = history.state.loadedPosts.length;
         const scrollHeightBefore = historyContainer?.scrollHeight ?? null;
         const clientHeight = historyContainer?.clientHeight ?? null;
+        let didRestoreAnchor = false;
+        let didPreserveScrollTop = false;
+        const restoreScrollPosition = () => {
+            if (scrollTopToRestore === null || !show || !historyContainer) {
+                return;
+            }
+            didRestoreAnchor = historyViewport.restoreHistoryScrollAnchor(
+                scrollAnchor,
+                { flushUpdates: false },
+            );
+            if (!didRestoreAnchor) {
+                historyContainer.scrollTop = scrollTopToRestore;
+                didPreserveScrollTop = true;
+            }
+        };
         const changed = await history.fetchOlderFromRelays({
             anchorEventId: scrollAnchor?.eventId,
+            viewportCommit: {
+                captureAnchorEventId: () => {
+                    scrollAnchor = historyViewport.captureHistoryScrollAnchor();
+                    if (scrollAnchor) {
+                        scrollTopToRestore = historyContainer?.scrollTop ?? null;
+                    }
+                    return scrollAnchor?.eventId ?? null;
+                },
+                onCommitted: () => {
+                    flushSync();
+                    restoreScrollPosition();
+                },
+            },
         });
         // Restore against the committed rows and completion status geometry.
         await tick();
 
-        let didRestoreAnchor = false;
-        let didPreserveScrollTop = false;
         const didFollowBottom = false;
-        if (changed && previousScrollTop !== null && show && historyContainer) {
-            didRestoreAnchor =
-                historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
-            if (!didRestoreAnchor) {
-                historyContainer.scrollTop = previousScrollTop;
-                didPreserveScrollTop = true;
-            }
+        if (changed) {
+            restoreScrollPosition();
         }
 
         const olderBackfillUiResult = history.latestOlderBackfillUiResult;

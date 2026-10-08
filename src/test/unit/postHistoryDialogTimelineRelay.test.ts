@@ -3551,7 +3551,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
-    it('anchor が取れる場合は older-backfill 後に anchor 復元を優先する', async () => {
+    it('anchor が取れる場合は追加直後に復元し、availability 確認の完了を待たない', async () => {
         let allowOlderChunk = false;
         const latest = createRecord({
             eventId: 'anchor-restore-latest',
@@ -3661,31 +3661,42 @@ describe('PostHistoryDialog timeline relay flows', () => {
             toJSON: () => ({}),
         };
         vi.spyOn(historyContainer, 'getBoundingClientRect').mockReturnValue(containerRect as DOMRect);
-        let anchorTop = 20;
         const items = Array.from(
             historyContainer.querySelectorAll<HTMLElement>('[data-post-history-event-id]'),
         );
         if (items.length > 0) {
-            vi.spyOn(items[0], 'getBoundingClientRect').mockImplementation(() => ({
-                ...containerRect,
-                top: anchorTop,
-                bottom: anchorTop + 60,
-                height: 60,
-            }) as DOMRect);
+            vi.spyOn(items[0], 'getBoundingClientRect').mockImplementation(() => {
+                const appended = historyContainer.querySelector(
+                    '[data-post-history-event-id="anchor-restore-older"]',
+                );
+                const anchorTop = 20 + (appended ? 40 : 0)
+                    - (historyContainer.scrollTop - 300);
+                return {
+                    ...containerRect,
+                    top: anchorTop,
+                    bottom: anchorTop + 60,
+                    height: 60,
+                } as DOMRect;
+            });
         }
         historyContainer.scrollTop = 300;
         const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
+        let releaseAvailability: (() => void) | null = null;
 
         repositoryMock.getOlderVisibleChunk.mockImplementation(async (options: {
             cursor?: { eventId: string };
             limit?: number;
         }) => {
+            if (options.cursor?.eventId === 'anchor-restore-older' && options.limit === 1) {
+                return new Promise<typeof fetchedOlder[]>((resolve) => {
+                    releaseAvailability = () => resolve([]);
+                });
+            }
             if (
                 allowOlderChunk &&
                 options.cursor?.eventId === 'anchor-restore-second' &&
                 options.limit === 50
             ) {
-                anchorTop = 60;
                 return [fetchedOlder];
             }
 
@@ -3697,8 +3708,13 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(screen.getByText('追加された古い投稿')).toBeTruthy();
             expect(screen.getByText('アンカー対象の投稿')).toBeTruthy();
+            expect(releaseAvailability).not.toBeNull();
             expect(historyContainer.scrollTop).toBe(340);
         });
+        releaseAvailability!();
+        await waitFor(() => expect(debugSpy).toHaveBeenCalledWith(
+            'post_history_older_backfill_scroll', expect.any(Object),
+        ));
         const scrollSummaryCall = debugSpy.mock.calls.find(
             ([label]) => label === 'post_history_older_backfill_scroll',
         );

@@ -991,6 +991,8 @@ test.describe('PostHistoryDialog Playwright', () => {
             expect(anchor).not.toBeNull();
             await fetchButton.click();
             await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(5);
+            const frameSampling = startPostPositionFrameSampling(page, anchor!.eventId);
+            await frameSampling.started;
             await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.release());
             await expect.poll(rows).toEqual(expectedIds.slice(0, 150));
             await expect(fetchButton).toHaveCount(0);
@@ -998,6 +1000,10 @@ test.describe('PostHistoryDialog Playwright', () => {
                 const after = await getPostSnapshotByEventId(page, anchor!.eventId);
                 return after ? Math.abs(after.offsetTop - anchor!.offsetTop) : Infinity;
             }).toBeLessThanOrEqual(1);
+            await frameSampling.stop();
+            for (const sample of await frameSampling.samples) {
+                expect(Math.abs(sample.relativeTop - anchor!.offsetTop)).toBeLessThanOrEqual(1);
+            }
             await page.screenshot({ path: testInfo.outputPath('connected-history.png') });
 
             for (let i = 0; i < 4; i++) {
@@ -1030,6 +1036,37 @@ test.describe('PostHistoryDialog Playwright', () => {
         });
     }
 
+    test('relay backfill trims the bounded window without moving the visible post in any frame', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?relay-coverage=bounded-gap');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
+        const rows = () => historyEventIds(page);
+        const fetchButton = page.getByRole('button', { name: 'リレーから続きを取得' });
+        await expect.poll(rows).toEqual(ids.slice(0, 50));
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequests)).toBe(4);
+        await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+        for (const count of [100, 150]) {
+            await scrollHistoryToBottom(page);
+            await expect.poll(rows).toEqual(ids.slice(0, count));
+        }
+        await scrollHistoryToBottom(page);
+        await expect(fetchButton).toBeVisible();
+        await fetchButton.scrollIntoViewIfNeeded();
+        const anchor = await getFirstVisiblePostSnapshot(page);
+        expect(anchor).not.toBeNull();
+        await fetchButton.click();
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(5);
+        const frameSampling = startPostPositionFrameSampling(page, anchor!.eventId);
+        await frameSampling.started;
+        await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.release());
+        await expect.poll(rows).toEqual(ids.slice(50, 200));
+        await expect(fetchButton).toHaveCount(0);
+        await frameSampling.stop();
+        for (const sample of await frameSampling.samples) {
+            expect(Math.abs(sample.relativeTop - anchor!.offsetTop)).toBeLessThanOrEqual(1);
+        }
+    });
+
     test('a refreshed head stops at its uncovered gap before reconnecting older saved history', async ({ page }, testInfo) => {
         await page.goto('post-history-dialog-playwright.html?relay-coverage=new-head');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
@@ -1050,6 +1087,8 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(anchor).not.toBeNull();
         await fetchButton.click();
         await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(5);
+        const frameSampling = startPostPositionFrameSampling(page, anchor!.eventId);
+        await frameSampling.started;
         await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.release());
         await expect.poll(rows).toEqual(ids.slice(0, 110));
         await expect(fetchButton).toHaveCount(0);
@@ -1057,6 +1096,10 @@ test.describe('PostHistoryDialog Playwright', () => {
             const after = await getPostSnapshotByEventId(page, anchor!.eventId);
             return after ? Math.abs(after.offsetTop - anchor!.offsetTop) : Infinity;
         }).toBeLessThanOrEqual(1);
+        await frameSampling.stop();
+        for (const sample of await frameSampling.samples) {
+            expect(Math.abs(sample.relativeTop - anchor!.offsetTop)).toBeLessThanOrEqual(1);
+        }
         await page.screenshot({ path: testInfo.outputPath('connected-head-history.png') });
     });
 
