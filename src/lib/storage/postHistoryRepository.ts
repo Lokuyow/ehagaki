@@ -68,6 +68,10 @@ export type PostHistoryVisibleChunkCursorOptions =
         cursor: PostHistoryTimelineCursor;
     };
 
+export type PostHistoryOlderVisiblePostsOptions = PostHistoryVisibleQueryOptions & {
+    cursor: PostHistoryTimelineCursor;
+};
+
 export type PostHistoryVisibleChunkFromCreatedAtOptions =
     PostHistoryVisibleChunkOptions & {
         createdAt: number;
@@ -145,6 +149,7 @@ export interface PostHistoryRepository {
     getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]>;
     getLatestVisibleChunk(options: PostHistoryVisibleChunkOptions): Promise<PostHistoryRecord[]>;
     getOlderVisibleChunk(options: PostHistoryVisibleChunkCursorOptions): Promise<PostHistoryRecord[]>;
+    hasOlderVisiblePosts(options: PostHistoryOlderVisiblePostsOptions): Promise<boolean>;
     getNewerVisibleChunk(options: PostHistoryVisibleChunkCursorOptions): Promise<PostHistoryRecord[]>;
     getOldestVisibleChunk(options: PostHistoryOldestVisibleChunkOptions): Promise<PostHistoryRecord[]>;
     getVisibleChunkFromCreatedAt(options: PostHistoryVisibleChunkFromCreatedAtOptions): Promise<PostHistoryRecord[]>;
@@ -562,6 +567,32 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .filter((record) => matchesVisibleUntil(record, visibleUntil))
             .limit(limit)
             .toArray();
+    }
+
+    async hasOlderVisiblePosts(options: PostHistoryOlderVisiblePostsOptions): Promise<boolean> {
+        if (!options.pubkeyHex) return false;
+
+        const visibleUntil = normalizeVisibleUntil(options.visibleUntil);
+        const older = this.db.postHistory
+            .where(POST_HISTORY_TIMELINE_INDEX)
+            .between(getTimelineBounds(options.pubkeyHex).lower,
+                toTimelineKey(options.pubkeyHex, options.cursor), true, false);
+        let collection = older;
+        if (visibleUntil !== null) {
+            const visible = this.db.postHistory
+                .where("[pubkeyHex+createdAt]")
+                .between([options.pubkeyHex, visibleUntil], [options.pubkeyHex, Dexie.maxKey]);
+            // Unfiltered counts use IndexedDB's index keys, without loading post
+            // bodies. Check the smaller side of the intersection: avoid scanning
+            // either a large saved tail or a large already-visible history.
+            const [olderCount, visibleCount] = await Promise.all([older.count(), visible.count()]);
+            if (olderCount === 0 || visibleCount === 0) return false;
+            collection = visibleCount <= olderCount ? visible : older;
+        }
+
+        return (await collection
+            .filter((record) => matchesVisibleUntil(record, visibleUntil) && isOlderThanTimelineCursor(record, options.cursor))
+            .first()) !== undefined;
     }
 
     async getNewerVisibleChunk(

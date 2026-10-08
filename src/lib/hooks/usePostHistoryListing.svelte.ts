@@ -908,6 +908,7 @@ export function usePostHistoryListing({
         fetchRequestId += 1;
         currentFetchTask?.cancel();
         currentFetchTask = null;
+        if (state.syncStatus === "older-syncing") state.syncStatus = "idle";
     }
 
     function clearContiguousProgress(): void {
@@ -3812,17 +3813,59 @@ export function usePostHistoryListing({
     ): Promise<boolean> {
         const pubkeyHex = getPubkeyHex();
         const rxNostr = getRxNostr();
-        if (!pubkeyHex || !rxNostr || !canFetchOlderFromRelays) {
+        if (!getShow() || !pubkeyHex || !rxNostr || !canFetchOlderFromRelays) {
             return false;
         }
 
+        cancelCurrentSync();
+        const requestId = ++fetchRequestId;
+        const generation = coverageGeneration;
+        const relayScopeKey = getPostHistoryAuthoredRelayScopeKey(getRelayConfig());
+        const isActive = () => !isDestroyed && generation === coverageGeneration
+            && isCurrentFetchRequest(requestId) && getShow()
+            && getPubkeyHex() === pubkeyHex && getRxNostr() === rxNostr
+            && getPostHistoryAuthoredRelayScopeKey(getRelayConfig()) === relayScopeKey;
+        state.syncStatus = "older-syncing";
+
+        try {
+            return await fetchOlderFromRelaysForRequest(pubkeyHex, rxNostr, requestId, isActive, options);
+        } catch {
+            if (isActive()) {
+                currentFetchTask?.cancel();
+                currentFetchTask = null;
+                state.syncStatus = "failed";
+                scheduleSyncStatusMessageClearIfNeeded();
+            }
+            return false;
+        } finally {
+            if (isActive() && state.syncStatus === "older-syncing") state.syncStatus = "idle";
+        }
+    }
+
+    async function fetchOlderFromRelaysForRequest(
+        pubkeyHex: string,
+        rxNostr: RxNostr,
+        requestId: number,
+        isActive: () => boolean,
+        options: FetchOlderFromRelaysOptions,
+    ): Promise<boolean> {
+        let preparedVisibleUntil: number | null | undefined;
         // A background query or reopened session may already have bridged the gap.
-        // Recompute before launching another request, then consume that local page.
-        if (state.listingMode === "contiguous") {
-            await refreshVisibleUntil(pubkeyHex);
-            await refreshTimelineAvailability(pubkeyHex);
-            if (!getShow() || getPubkeyHex() !== pubkeyHex || getRxNostr() !== rxNostr) return false;
-            if (state.hasOlderLocal) {
+        // Check only the older side, without publishing availability against the
+        // old rows before the local page and its viewport anchor are committed.
+        while (state.listingMode === "contiguous") {
+            const visibleUntil = await refreshVisibleUntil(pubkeyHex);
+            if (!isActive()) return false;
+            const cursor = toTimelineCursor(state.loadedPosts.at(-1));
+            const hasOlderLocal = cursor ? await postHistoryRepository.hasOlderVisiblePosts({
+                pubkeyHex, visibleUntil, cursor,
+            }) : false;
+            if (!isActive()) return false;
+            if (state.listingMode !== "contiguous") break;
+            if (state.visibleUntil !== visibleUntil
+                || (cursor && !sameTimelineCursor(cursor, toTimelineCursor(state.loadedPosts.at(-1))))) continue;
+            preparedVisibleUntil = visibleUntil;
+            if (hasOlderLocal) {
                 clearContiguousProgress();
                 return loadOlderVisiblePosts({
                     anchorEventId: options.anchorEventId,
@@ -3830,11 +3873,9 @@ export function usePostHistoryListing({
                     useContiguousProgress: false,
                 });
             }
+            break;
         }
 
-        cancelCurrentSync();
-        const requestId = ++fetchRequestId;
-        state.syncStatus = "older-syncing";
         const maxAttempts = POST_HISTORY_OLDER_BACKFILL_MAX_ATTEMPTS_PER_CLICK;
         const maxExploreSeconds = POST_HISTORY_OLDER_BACKFILL_MAX_AUTO_EXPLORE_SECONDS;
         const targetVisibleAdded = Math.max(1, Math.min(pageSize, 30));
@@ -3854,12 +3895,11 @@ export function usePostHistoryListing({
             const resolvedFetchUntil =
                 batchNextUntil ?? await resolveOlderRelayFetchUntil(pubkeyHex);
             const usingBatchCursor = typeof batchNextUntil === "number";
-            const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
-            if (
-                !isCurrentFetchRequest(requestId) ||
-                !getShow() ||
-                getPubkeyHex() !== pubkeyHex
-            ) {
+            const previousVisibleUntil = attemptIndex === 1
+                && preparedVisibleUntil !== undefined && preparedVisibleUntil === state.visibleUntil
+                ? preparedVisibleUntil
+                : await refreshVisibleUntil(pubkeyHex);
+            if (!isActive()) {
                 return batchChanged;
             }
 
@@ -3885,6 +3925,7 @@ export function usePostHistoryListing({
             }
 
             const rangesBeforeFetch = await readQuorumCoverage(pubkeyHex);
+            if (!isActive()) return batchChanged;
             const frontierCovered = rangesBeforeFetch.some((range) => range.since <= effectiveFetchUntil && range.until >= effectiveFetchUntil);
             const until = Math.trunc(effectiveFetchUntil) - (frontierCovered ? 1 : 0);
             if (until < 0) {
@@ -3913,11 +3954,7 @@ export function usePostHistoryListing({
             };
 
             const previousCount = await countVisiblePosts(pubkeyHex, previousVisibleUntil);
-            if (
-                !isCurrentFetchRequest(requestId) ||
-                !getShow() ||
-                getPubkeyHex() !== pubkeyHex
-            ) {
+            if (!isActive()) {
                 return batchChanged;
             }
 
@@ -3934,7 +3971,7 @@ export function usePostHistoryListing({
             };
 
             const authoredScope = await createAuthoredScope(pubkeyHex, rxNostr, requestId);
-            if (!authoredScope.isActive()) return batchChanged;
+            if (!isActive() || !authoredScope.isActive()) return batchChanged;
             const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
                 pubkeyHex,
                 relayConfig: getRelayConfig(),
@@ -3947,7 +3984,7 @@ export function usePostHistoryListing({
             currentFetchTask = task;
 
             const result = await task.promise;
-            if (!isCurrentFetchRequest(requestId) || currentFetchTask !== task) {
+            if (!isActive() || currentFetchTask !== task) {
                 return batchChanged;
             }
 
@@ -3964,7 +4001,7 @@ export function usePostHistoryListing({
                 didMateriallyChange =
                     upsertSummary.insertedCount + upsertSummary.updatedCount > 0;
             }
-            if (!isCurrentFetchRequest(requestId) || !getShow()) {
+            if (!isActive()) {
                 return batchChanged;
             }
 
@@ -3982,14 +4019,14 @@ export function usePostHistoryListing({
                     pubkeyHex,
                     result,
                 );
-            if (!isCurrentFetchRequest(requestId) || !getShow()) {
+            if (!isActive()) {
                 return batchChanged;
             }
 
             const effectiveVisibleUntil = nextVisibleUntil;
 
             const nextCount = await countVisiblePosts(pubkeyHex, effectiveVisibleUntil);
-            if (!isCurrentFetchRequest(requestId) || !getShow()) {
+            if (!isActive()) {
                 return batchChanged;
             }
 
@@ -4009,7 +4046,7 @@ export function usePostHistoryListing({
                 null,
                 requestId,
             );
-            if (!isCurrentFetchRequest(requestId) || !getShow()) {
+            if (!isActive()) {
                 return batchChanged;
             }
 
@@ -4108,6 +4145,7 @@ export function usePostHistoryListing({
                 }
             }
 
+            if (!isActive()) return batchChanged;
             const attemptChanged =
                 didLoadFetchedOlderPosts ||
                 didVisibleCountIncrease ||

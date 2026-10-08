@@ -149,6 +149,7 @@ const hoisted = vi.hoisted(() => {
             getPage: vi.fn(),
             getLatestVisibleChunk: vi.fn(),
             getOlderVisibleChunk: vi.fn(),
+            hasOlderVisiblePosts: vi.fn(),
             getNewerVisibleChunk: vi.fn(),
             getOldestVisibleChunk: vi.fn(),
             getVisibleChunkFromCreatedAt: vi.fn(),
@@ -676,6 +677,9 @@ export function resetPostHistoryDialogHarness(options: {
         return [];
     });
     repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+    repositoryMock.hasOlderVisiblePosts.mockImplementation(async (options) =>
+        (await repositoryMock.getOlderVisibleChunk({ ...options, limit: 1 })).length > 0,
+    );
     repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
     repositoryMock.getVisibleChunkFromCreatedAt.mockImplementation(async ({ pubkeyHex, visibleUntil, limit }: Record<string, unknown>) =>
         repositoryMock.getLatestVisibleChunk({ pubkeyHex, visibleUntil, limit }),
