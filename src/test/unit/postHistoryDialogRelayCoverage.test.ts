@@ -75,6 +75,46 @@ describe("post history relay coverage continuity", () => {
         view.unmount();
     });
 
+    it.each([true, false])("rebases latest-window continuity after a new head (head coverage: %s)", async (hasHeadCoverage) => {
+        const old = records;
+        const head = Array.from({ length: 60 }, (_, i) => createRecord({ eventId: `head-${i}`,
+            content: `new head ${i}`, createdAt: base + 1000 - i, postedAt: (base + 1000 - i) * 1000 }));
+        let saved = old;
+        const visible = (floor: number | null) => saved.filter((post) => floor == null || post.createdAt >= floor);
+        repositoryMock.getLatestVisibleChunk.mockImplementation(async ({ visibleUntil, limit }) => visible(visibleUntil).slice(0, limit));
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ visibleUntil, cursor, limit }) =>
+            visible(visibleUntil).filter((post) => post.createdAt < cursor.createdAt).slice(0, limit));
+        repositoryMock.countForPubkey.mockImplementation(async () => saved.length);
+        repositoryMock.countVisibleForPubkey.mockImplementation(async (_owner, floor) => visible(floor).length);
+        repositoryMock.hasPostsBeforeCreatedAt.mockImplementation(async (_owner, floor) => saved.some((post) => post.createdAt < floor));
+        repositoryMock.upsertFetchedEvents.mockImplementation(async () => {
+            saved = [...head, ...old];
+            return { insertedCount: head.length, updatedCount: 0, unchangedCount: 0, appliedDeletionCount: 0 };
+        });
+        seedPostHistoryCoverage(base - 160, base);
+        let release!: (value: ReturnType<typeof createRelayFetchResult>) => void;
+        const pending = new Promise<ReturnType<typeof createRelayFetchResult>>((resolve) => { release = resolve; });
+        relayFetchServiceMock.fetchLatest.mockReturnValue({ promise: pending, cancel: vi.fn() });
+        const view = render(PostHistoryDialog, { props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX, rxNostr: {} as any } });
+        await screen.findByText("coverage row 49");
+        await waitFor(() => expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledOnce());
+        release(createRelayFetchResult({ events: head.map((record) => ({ event: {
+            id: record.eventId, pubkey: PUBKEY_HEX, kind: 1, content: record.content,
+            tags: [], created_at: record.createdAt, sig: "c".repeat(128),
+        }, relayUrls: [] })), oldestCreatedAt: base + 941, newestCreatedAt: base + 1000,
+            relayFetchCoverage: hasHeadCoverage ? completedRelayCoverage(base + 941, base + 1100) : [] }));
+        await screen.findByText("new head 49");
+        if (hasHeadCoverage) {
+            await fireEvent.click(await screen.findByRole("button", { name: "さらに古い投稿を表示" }));
+            await screen.findByText("new head 59");
+        }
+        await screen.findByRole("button", { name: "リレーから続きを取得" });
+        expect(screen.queryByText("coverage row 0")).toBeNull();
+        expect(screen.queryByRole("button", { name: "さらに古い投稿を表示" })).toBeNull();
+        expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledOnce();
+        view.unmount();
+    });
+
     it("reevaluates changed relay configuration while retaining the current rows", async () => {
         seedPostHistoryCoverage(base - 160, base);
         const props = { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX, rxNostr: {} as any };

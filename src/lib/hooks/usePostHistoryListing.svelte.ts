@@ -2130,10 +2130,12 @@ export function usePostHistoryListing({
         state.listingMode = "contiguous";
         state.sparseSource = null;
         state.loadedPosts = latestPosts;
-        const needsCoverageProjection = coverageAnchorCreatedAt === null && latestPosts.length > 0;
-        if (needsCoverageProjection) {
-            coverageAnchorCreatedAt = Math.min(...latestPosts.map((post) => post.createdAt));
-        }
+        const nextCoverageAnchor = latestPosts.length > 0
+            ? Math.min(...latestPosts.map((post) => post.createdAt)) : null;
+        const needsCoverageProjection = coverageAnchorCreatedAt !== nextCoverageAnchor;
+        // A rebuilt latest window must not inherit an older window's continuity
+        // across an uncovered gap, even when that older coverage remains valid.
+        coverageAnchorCreatedAt = nextCoverageAnchor;
         if (!await waitForFirstPostPaint(
             pubkeyHex,
             () => isCurrentPostHistoryLoad(pubkeyHex, requestId),

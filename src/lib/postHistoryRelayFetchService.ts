@@ -204,7 +204,6 @@ type RelayFetchState = RelayPacketAccumulator & {
     verificationDrained: boolean;
     finished: boolean;
     failed: boolean;
-    termination: PostHistoryRelayOutcome["termination"];
 };
 
 export class PostHistoryRelayFetchService {
@@ -233,8 +232,7 @@ export class PostHistoryRelayFetchService {
             const requestId = buildRepairFetchRxReqId();
             return { relayUrl, subId: `${requestId}:0`, request: createRxBackwardReq(requestId),
                 rawCount: 0, eventIds: new Set(), oldestCreatedAt: null, newestCreatedAt: null,
-                eoseReceived: false, verificationDrained: false, finished: false, failed: false,
-                termination: "timeout" };
+                eoseReceived: false, verificationDrained: false, finished: false, failed: false };
         });
         const stateByRelay = new Map(states.map((state) => [state.relayUrl, state]));
         const eventRelayUrls = new Set<string>();
@@ -245,6 +243,7 @@ export class PostHistoryRelayFetchService {
         const diagnostics: SubscriptionLike[] = [];
         let resolved = false;
         let launching = true;
+        let completionScheduled = false;
         let completedByRxNostr = false;
         let completedByLocalTimeout = false;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -264,7 +263,9 @@ export class PostHistoryRelayFetchService {
             const relayOutcomes = states.map((state): PostHistoryRelayOutcome => ({
                 relayUrl: state.relayUrl, eoseReceived: state.eoseReceived,
                 verificationDrained: state.verificationDrained,
-                termination: status === "cancelled" ? "cancelled" : state.termination,
+                termination: status === "cancelled" ? "cancelled"
+                    : state.eoseReceived && state.verificationDrained ? "eose"
+                    : state.failed ? "error" : "timeout",
                 rawCount: state.rawCount, oldestCreatedAt: state.oldestCreatedAt,
                 saturated: state.rawCount >= limit,
             }));
@@ -304,10 +305,16 @@ export class PostHistoryRelayFetchService {
             };
         };
         const tryFinish = () => {
-            if (!launching && states.every((state) => state.finished)) {
+            if (resolved || completionScheduled) return;
+            completionScheduled = true;
+            // rx-nostr can complete use() before the same terminal packet reaches
+            // all-message observers. Reconcile both signals after that dispatch.
+            queueMicrotask(() => {
+                completionScheduled = false;
+                if (resolved || launching || !states.every((state) => state.finished)) return;
                 completedByRxNostr = true;
                 finish(states.length && states.every((state) => state.failed) ? "error" : "success");
-            }
+            });
         };
         const readState = (from: string | undefined) => {
             const relayUrl = RelayConfigUtils.sanitizeExternalRelayUrls(from ? [from] : [])[0];
@@ -331,10 +338,10 @@ export class PostHistoryRelayFetchService {
                 };
                 subscribeDiagnostic(rxNostr.createAllMessageObservable?.(), (packet: MessagePacket) => {
                     const state = readState(packet.from);
-                    if (!state || state.finished || resolved) return;
+                    if (!state || resolved) return;
                     if (packet.type === "NOTICE") { noticeRelayUrls.add(state.relayUrl); return; }
                     if ((packet as { subId?: string }).subId !== state.subId) return;
-                    if (packet.type === "EVENT") { state.rawCount += 1; return; }
+                    if (packet.type === "EVENT") { if (!state.finished) state.rawCount += 1; return; }
                     if (packet.type === "EOSE") { state.eoseReceived = true; return; }
                     if (packet.type === "CLOSED") {
                         closedRelayUrls.add(state.relayUrl);
@@ -377,11 +384,10 @@ export class PostHistoryRelayFetchService {
                         complete: () => {
                             state.verificationDrained = true;
                             state.finished = true;
-                            state.termination = state.eoseReceived ? "eose" : state.failed ? "error" : "timeout";
                             tryFinish();
                         },
                         error: () => {
-                            state.finished = true; state.failed = true; state.termination = "error";
+                            state.finished = true; state.failed = true;
                             errorRelayUrls.add(state.relayUrl); tryFinish();
                         },
                     });
