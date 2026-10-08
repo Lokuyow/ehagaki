@@ -6,6 +6,7 @@ import type { NostrEvent } from "../types";
 import { bumpPostHistorySearchRevision } from "../postHistoryLocalSearchRevision";
 import { ehagakiDb, type EHagakiDB, type SensitivePayloadRecord } from "./ehagakiDb";
 import { reconcileSensitivePayloadDeletionForCandidate } from "./sensitivePayloadDeletionReconciler";
+import { assertPostHistoryLocalWriteCurrent, type PostHistoryLocalWriteScope } from "./postHistoryLocalWriteScope";
 
 export const SENSITIVE_PAYLOAD_SCHEMA_VERSION = 1;
 
@@ -15,6 +16,7 @@ export interface SaveSensitivePayloadInput {
     acceptedRelays?: string[];
     fetchedRelays?: string[];
     relayHints?: string[];
+    localWriteScope?: PostHistoryLocalWriteScope;
 }
 
 export interface SensitivePayloadRepository {
@@ -76,10 +78,13 @@ export class DexieSensitivePayloadRepository implements SensitivePayloadReposito
             updatedAt: this.now(),
             schemaVersion: SENSITIVE_PAYLOAD_SCHEMA_VERSION,
         };
-        const saved = await this.db.transaction("rw", this.db.sensitivePayloads, async () => {
+        const saved = await this.db.transaction("rw", [this.db.sensitivePayloads,
+            ...(input.localWriteScope ? [this.db.meta] : [])], async () => {
+            await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
             const current = await this.db.sensitivePayloads.get(event.id);
             if (current?.deletedAt !== undefined) return false;
             await this.db.sensitivePayloads.put(record);
+            await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
             return true;
         });
         if (!saved) return;

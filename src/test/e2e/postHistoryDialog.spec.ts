@@ -41,6 +41,12 @@ type HarnessState = {
 
 type HarnessWindow = Window & typeof globalThis & {
     __POST_HISTORY_COVERAGE__?: { owner: string; eventIds: string[]; headRequests: number;
+        backupJsonl: string; backupRange: { since: number; until: number };
+        readRestoredRanges: () => Promise<{ since: number; until: number }[]>;
+        readSavedCount: () => Promise<number>;
+        readOtherAccountSavedCount: () => Promise<number>;
+        removeOtherAccountHistory: () => Promise<void>;
+        authoredRequests: { since?: number; until?: number; limit?: number }[];
         preparation: { hold: boolean; entered: boolean; checks: number; coveredGapReads: number; release: (() => void) | null };
         coverGap: () => Promise<void>;
         olderRequests: { relayUrl: string; since: number; until: number }[];
@@ -924,6 +930,151 @@ async function expectTooltip(
 }
 
 test.describe('PostHistoryDialog Playwright', () => {
+    async function importCoverageBackup(page: Page, name = 'citrine-1700000000000.jsonl', suffix = '') {
+        const jsonl = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.backupJsonl);
+        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+        await page.getByRole('menuitem', { name: 'JSONLをインポート' }).click();
+        const dialog = page.locator('.post-history-import-dialog');
+        await dialog.locator('input[type="file"]').setInputFiles({ name, mimeType: 'application/x-ndjson', buffer: Buffer.from(jsonl + suffix) });
+        // A full signed backup is a finite import operation; wait for its terminal
+        // state, then assert success rather than treating progress as completion.
+        await page.waitForFunction(() => {
+            const status = document.querySelector('.post-history-import-dialog .import-progress-status');
+            return status && status.textContent?.trim() !== '読み込み中...';
+        });
+        await expect(dialog.getByText(suffix ? '処理を完了しましたが、一部を取り込めませんでした' : '読み込みが完了しました', { exact: true })).toBeVisible();
+        await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
+    }
+
+    test('Citrine backup scrolls locally through its restored range after reopen and reload', async ({ page }, testInfo) => {
+        test.setTimeout(60_000);
+        await page.goto('post-history-dialog-playwright.html?relay-coverage=citrine');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+        await importCoverageBackup(page);
+        const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
+        const backupRange = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.backupRange);
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.readRestoredRanges())).toEqual([backupRange]);
+        for (const end of [99, 149, 199, 249, 299, 309]) {
+            await scrollHistoryToBottom(page);
+            await expect.poll(async () => (await historyEventIds(page)).at(-1)).toBe(ids[end]);
+            expect((await historyEventIds(page)).length).toBeLessThanOrEqual(150);
+            if (end < 309) await expect(page.getByRole('button', { name: 'リレーから続きを取得' })).toHaveCount(0);
+        }
+        await scrollHistoryToBottom(page);
+        await expect(page.getByRole('button', { name: 'リレーから続きを取得' })).toBeVisible();
+        await expect(page.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeVisible();
+        expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(0);
+        await page.screenshot({ path: testInfo.outputPath('citrine-restored-history.png') });
+        await page.getByRole('button', { name: '閉じる', exact: true }).click();
+        await page.getByTestId('post-history-reopen').click();
+        await expect.poll(async () => (await historyEventIds(page)).at(-1)).toBe(ids[309]);
+        await page.reload();
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        await expect.poll(() => historyEventIds(page)).toEqual(ids.slice(0, 50));
+        await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+        await scrollHistoryToBottom(page);
+        await expect.poll(() => historyEventIds(page)).toEqual(ids.slice(0, 100));
+        expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(0);
+    });
+
+    for (const retainOtherAccount of [false, true]) {
+        test(`Citrine restored ranges are cleared with local history and stay cleared after reload (${retainOtherAccount ? 'other account preserved' : 'single account'})`, async ({ page, browserName }) => {
+            test.skip(!retainOtherAccount && browserName === 'webkit' && process.platform === 'win32',
+                'Windows Playwright WebKit reloads during the existing single-account IndexedDB clear() path, also reproduced on main acd624a4.');
+            test.setTimeout(60_000);
+            await page.goto('post-history-dialog-playwright.html?relay-coverage=citrine');
+            await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+            await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+            if (!retainOtherAccount) await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.removeOtherAccountHistory());
+            await importCoverageBackup(page);
+            await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.readSavedCount())).toBe(311);
+            await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+            await page.getByRole('menuitem', { name: '保存済み投稿履歴をクリア' }).click();
+            await page.getByRole('button', { name: 'クリアする', exact: true }).click();
+            await expect(page.getByRole('alertdialog', { name: '保存済み投稿履歴をクリア', exact: true })).toHaveCount(0, { timeout: 30_000 });
+            await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.readSavedCount())).toBe(0);
+            expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.readOtherAccountSavedCount())).toBe(retainOtherAccount ? 1 : 0);
+            await expect(page.locator('.post-history-list .post-history-item')).toHaveCount(0);
+            await expect(page.getByText('投稿履歴はありません', { exact: true })).toBeVisible();
+            await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.readRestoredRanges())).toEqual([]);
+            await page.reload();
+            await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+            await page.waitForFunction(() => document.querySelector('.post-history-dialog .empty-message')?.textContent?.includes('投稿履歴はありません'));
+            await expect(page.getByText('投稿履歴はありません', { exact: true })).toBeVisible();
+            expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.readRestoredRanges())).toEqual([]);
+            expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.readOtherAccountSavedCount())).toBe(retainOtherAccount ? 1 : 0);
+        });
+    }
+
+    test('Citrine backup leaves the intervening hole fetchable without querying the restored interval', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?relay-coverage=citrine-gap');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+        await importCoverageBackup(page);
+        await scrollHistoryToBottom(page);
+        await expect.poll(async () => (await historyEventIds(page)).length).toBe(100);
+        await scrollHistoryToBottom(page);
+        const button = page.getByRole('button', { name: 'リレーから続きを取得' });
+        await expect(button).toBeVisible();
+        await expect(button).toBeEnabled();
+        await button.scrollIntoViewIfNeeded();
+        const anchor = await getFirstVisiblePostSnapshot(page);
+        expect(anchor).not.toBeNull();
+        await button.click();
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(5);
+        const requests = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests);
+        const restored = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.backupRange);
+        for (const request of requests) expect(request.since).toBe(restored.until + 1);
+        await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.release());
+        await expect.poll(async () => (await historyEventIds(page)).length).toBe(150);
+        await expect(button).toHaveCount(0);
+        await expect.poll(async () => {
+            const after = await getPostSnapshotByEventId(page, anchor!.eventId);
+            return after ? Math.abs(after.offsetTop - anchor!.offsetTop) : Infinity;
+        }).toBeLessThanOrEqual(1);
+    });
+
+    test('Citrine backup replans an active open catchup and stops at the restored head', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?relay-coverage=citrine-head');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(5);
+        await importCoverageBackup(page);
+        const restored = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.backupRange);
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.at(-1)?.since)).toBe(restored.until + 1);
+        await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.release());
+        await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+        const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
+        // Keep the existing open-refresh rebase and viewport autoload behavior.
+        await expect.poll(async () => (await historyEventIds(page)).slice(0, 50)).toEqual(ids.slice(0, 50));
+        const entryRows = await historyEventIds(page);
+        expect(entryRows).toEqual(ids.slice(0, entryRows.length));
+        expect(entryRows.length % 50).toBe(0);
+        expect(entryRows.length).toBeLessThanOrEqual(150);
+        await scrollHistoryToBottom(page);
+        await expect.poll(() => historyEventIds(page)).toEqual(ids.slice(0, Math.min(150, entryRows.length + 50)));
+        await expect(page.getByRole('button', { name: 'リレーから続きを取得' })).toHaveCount(0);
+        await page.reload();
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+        expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(0);
+    });
+
+    for (const partial of [false, true]) {
+        test(`Citrine import keeps ${partial ? 'partial backups' : 'general JSONL'} outside restoration continuity`, async ({ page }) => {
+            await page.goto('post-history-dialog-playwright.html?relay-coverage=citrine');
+            await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+            await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+            await importCoverageBackup(page, partial ? 'citrine-1700000000000.jsonl' : 'history.jsonl', partial ? 'broken\n' : '');
+            expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.readRestoredRanges())).toEqual([]);
+            await scrollHistoryToBottom(page);
+            await expect.poll(async () => (await historyEventIds(page)).length).toBe(60);
+            await scrollHistoryToBottom(page);
+            await expect(page.getByRole('button', { name: 'リレーから続きを取得' })).toBeVisible();
+            await expect(page.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeVisible();
+        });
+    }
+
     test('latest contiguous history has no top auto-load reservation', async ({ page }) => {
         await gotoInfiniteScrollHarness(page);
         const geometry = await page.locator('.post-history-container').evaluate((containerElement) => {
@@ -1044,6 +1195,8 @@ test.describe('PostHistoryDialog Playwright', () => {
     test('older relay preparation rechecks a coverage boundary advanced by a background query', async ({ page }) => {
         await page.goto('post-history-dialog-playwright.html?relay-coverage=empty-gap');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequests)).toBe(4);
+        await expect(page.getByText('リレーと同期中...', { exact: true })).toHaveCount(0);
         const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
         await expect.poll(() => historyEventIds(page)).toEqual(ids.slice(0, 50));
         await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);

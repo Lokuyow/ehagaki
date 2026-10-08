@@ -8,6 +8,9 @@ import { clearPostHistoryDialogScrollStates } from '../../lib/postHistoryDialogS
 import { clearPostHistoryShouldReturnToLatestAfterLocalPost } from '../../lib/postHistoryLatestRequest';
 import { resolvePostHistoryAuthoredRelayUrls } from '../../lib/postHistoryRelayResolver';
 import { getPostHistoryQuorumCoverage, type PostHistoryRelayCoverage } from '../../lib/postHistoryRelayCoverage';
+import { ehagakiDb } from '../../lib/storage/ehagakiDb';
+
+const originalDbTransaction = ehagakiDb.transaction.bind(ehagakiDb);
 
 const hoisted = vi.hoisted(() => {
     const translationOverrides: Record<string, string> = {};
@@ -204,6 +207,7 @@ const hoisted = vi.hoisted(() => {
             clearForPubkey: vi.fn(),
         },
         relayCoverageRepositoryMock: { get: vi.fn(), getLocalRevision: vi.fn() },
+        importedRangesRepositoryMock: { get: vi.fn() },
         completeAuthoredQueryFixture: vi.fn(),
         jumpCacheAnchorRepositoryMock: {
             getForPubkey: vi.fn(),
@@ -304,6 +308,11 @@ export const contextFetchServiceMock = hoisted.contextFetchServiceMock;
 export const deletionFetchServiceMock = hoisted.deletionFetchServiceMock;
 export const visibleRangeRepositoryMock = hoisted.visibleRangeRepositoryMock;
 export const relayCoverageRepositoryMock = hoisted.relayCoverageRepositoryMock;
+export const importedRangesRepositoryMock = hoisted.importedRangesRepositoryMock;
+let fixtureRestoredRanges: { since: number; until: number }[] = [];
+export function seedPostHistoryRestoredRange(since: number, until: number): void {
+    fixtureRestoredRanges.push({ since, until });
+}
 let fixtureCoverageRanges: { since: number; until: number }[] = [];
 export function seedPostHistoryCoverage(since: number, until = 2_000_000_000): void {
     fixtureCoverageRanges.push({ since, until });
@@ -459,6 +468,14 @@ vi.mock('../../lib/storage/postHistoryVisibleRangeRepository', async () => {
 vi.mock('../../lib/storage/postHistoryRelayCoverageRepository', async () => ({
     ...await vi.importActual('../../lib/storage/postHistoryRelayCoverageRepository'),
     postHistoryRelayCoverageRepository: hoisted.relayCoverageRepositoryMock,
+}));
+vi.mock('../../lib/storage/postHistoryImportedRangesRepository', async () => ({
+    ...await vi.importActual('../../lib/storage/postHistoryImportedRangesRepository'),
+    postHistoryImportedRangesRepository: hoisted.importedRangesRepositoryMock,
+}));
+vi.mock('../../lib/storage/postHistoryLocalWriteScope', async () => ({
+    ...await vi.importActual('../../lib/storage/postHistoryLocalWriteScope'),
+    getPostHistoryLocalRevision: (_db: unknown, owner: string) => hoisted.relayCoverageRepositoryMock.getLocalRevision(owner),
 }));
 
 vi.mock('../../lib/storage/postHistoryJumpCacheAnchorRepository', async () => {
@@ -662,7 +679,16 @@ export function resetPostHistoryDialogHarness(options: {
     clearPostHistoryDialogScrollStates();
     clearPostHistoryShouldReturnToLatestAfterLocalPost();
     vi.resetAllMocks();
+    // Repository snapshots are mocked in component tests. Real transaction
+    // atomicity and liveQuery notifications belong to the DB/browser tests.
+    vi.spyOn(ehagakiDb, 'transaction').mockImplementation(((mode: string, ...args: unknown[]) => {
+        if (mode === 'r' && args[0] === ehagakiDb.meta) {
+            return Promise.resolve((args.at(-1) as () => unknown)());
+        }
+        return Reflect.apply(originalDbTransaction, ehagakiDb, [mode, ...args]);
+    }) as typeof ehagakiDb.transaction);
     fixtureCoverageRanges = [];
+    fixtureRestoredRanges = [];
     for (const key of Object.keys(hoisted.translationOverrides)) {
         delete hoisted.translationOverrides[key];
     }
@@ -744,6 +770,10 @@ export function resetPostHistoryDialogHarness(options: {
     visibleRangeRepositoryMock.clear.mockResolvedValue(undefined);
     visibleRangeRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
     relayCoverageRepositoryMock.getLocalRevision.mockResolvedValue(0);
+    importedRangesRepositoryMock.get.mockImplementation(async (ownerPubkeyHex: string, kindsKey: string) => ({
+        schemaVersion: 1, source: 'citrine-backup', ownerPubkeyHex, kindsKey, localRevision: 0,
+        ranges: ownerPubkeyHex === PUBKEY_HEX ? fixtureRestoredRanges : [],
+    }));
     const canonical = resolvePostHistoryAuthoredRelayUrls(undefined);
     // These legacy component fixtures describe an already queried saved range.
     // Declare its relay evidence explicitly in the fixture adapter. Production

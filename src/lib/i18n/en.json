@@ -198,6 +198,7 @@
     "importProgressBarLabel": "JSONL import progress",
     "importComplete": "Import complete",
     "importPartial": "Import completed, but some items could not be imported",
+    "importBackupRangeFailed": "Posts were imported, but the restored history range could not be saved. Please import the same file again.",
     "importFailed": "Could not read the file",
     "importCancelled": "Import cancelled",
     "importAccountChanged": "Import stopped because the account changed",

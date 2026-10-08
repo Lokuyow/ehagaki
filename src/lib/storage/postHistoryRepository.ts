@@ -34,6 +34,7 @@ import { ehagakiDb } from "./ehagakiDb";
 import { POST_HISTORY_TIMELINE_INDEX } from "./ehagakiDbConstants";
 import { DexiePostHistoryRelayCoverageRepository, PostHistoryCoverageStaleError, type PostHistoryCoverageWrite } from "./postHistoryRelayCoverageRepository";
 import { reconcileSensitivePayloadDeletionForStructure } from "./sensitivePayloadDeletionReconciler";
+import { assertPostHistoryLocalWriteCurrent, PostHistoryLocalWriteStaleError, type PostHistoryLocalWriteScope } from "./postHistoryLocalWriteScope";
 
 export const POST_HISTORY_SCHEMA_VERSION = 2;
 
@@ -112,6 +113,7 @@ export type PostHistoryUpsertFetchedEventsInput = {
     events: PostHistoryFetchedEventItem[];
     fetchedAt?: number;
     relayFetchCoverage?: PostHistoryCoverageWrite;
+    localWriteScope?: PostHistoryLocalWriteScope;
 };
 
 export type PostHistoryUpsertFetchedEventsResult = {
@@ -900,7 +902,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
                 return [{ ...item, event: verified.event, attestation: verified.attestation }];
             });
-        if (normalizedItems.length === 0 && !input.relayFetchCoverage) {
+        if (normalizedItems.length === 0 && !input.relayFetchCoverage && !input.localWriteScope) {
             return {
                 insertedCount: 0,
                 updatedCount: 0,
@@ -922,8 +924,9 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             await this.db.transaction(
                 "rw",
                 [this.db.postHistory, this.db.postHistoryDeletionRequests, this.db.sensitivePayloads,
-                    ...(input.relayFetchCoverage ? [this.db.meta] : [])],
+                    ...(input.relayFetchCoverage || input.localWriteScope ? [this.db.meta] : [])],
                 async () => {
+                    await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
                     if (input.relayFetchCoverage && !await coverageRepository.isCurrent(input.relayFetchCoverage)) {
                         throw new PostHistoryCoverageStaleError();
                     }
@@ -1074,11 +1077,12 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                         await coverageRepository.record(input.relayFetchCoverage);
                         if (!await coverageRepository.isCurrent(input.relayFetchCoverage)) throw new PostHistoryCoverageStaleError();
                     }
+                    await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
                 },
             );
 
         } catch (error) {
-            if (error instanceof PostHistoryCoverageStaleError) return {
+            if (error instanceof PostHistoryLocalWriteStaleError) return {
                 insertedCount: 0, updatedCount: 0, unchangedCount: 0, appliedDeletionCount: 0, applied: false,
             };
             throw error;
@@ -1152,10 +1156,10 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     async deleteForPubkey(pubkeyHex: string | null | undefined): Promise<void> {
         if (!pubkeyHex) return;
 
-        const deletedCount = await this.db.postHistory
-            .where("pubkeyHex")
-            .equals(pubkeyHex)
-            .delete();
+        const deletedCount = await this.db.transaction("rw", this.db.postHistory, this.db.meta, async () => {
+            await new DexiePostHistoryRelayCoverageRepository(this.db, this.now).clearForPubkey(pubkeyHex);
+            return this.db.postHistory.where("pubkeyHex").equals(pubkeyHex).delete();
+        });
         if (deletedCount > 0) {
             bumpPostHistorySearchRevision(pubkeyHex);
         }

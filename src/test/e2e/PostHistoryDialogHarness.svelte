@@ -31,6 +31,7 @@
     const coverageScenario = new URLSearchParams(window.location.search).get("relay-coverage");
     const coverageHarness = isRelayCoverageScenario ? createPostHistoryCoverageHarness(HARNESS_SECRET_KEY,
         coverageScenario === "empty-gap" || coverageScenario === "new-head" || coverageScenario === "sync-footer" || coverageScenario === "bounded-gap"
+            || coverageScenario === "citrine" || coverageScenario === "citrine-gap" || coverageScenario === "citrine-head"
             ? coverageScenario : "gap") : null;
     const HARNESS_PUBKEY = coverageHarness?.control.owner ?? getPublicKey(HARNESS_SECRET_KEY);
     const isInfiniteScrollScenario = new URLSearchParams(window.location.search).has("infinite-scroll");

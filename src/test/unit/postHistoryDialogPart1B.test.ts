@@ -80,6 +80,9 @@ async function findRepairButton(): Promise<HTMLElement> {
 }
 
 async function openFreshRepairButton(): Promise<HTMLElement> {
+    // These repair fixtures first complete the empty open-time relay query.
+    await waitFor(() => expect(repositoryMock.upsertFetchedEvents).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText('リレーと同期中...')).toBeNull());
     const trigger = await screen.findByRole('button', { name: '投稿履歴メニューを開く' });
     if (trigger.getAttribute('aria-expanded') === 'true') {
         await fireEvent.click(trigger);
