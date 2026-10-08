@@ -12,8 +12,8 @@
  * - 末尾の改行を適切に処理（余分な空行を作成しない）
  * - 空白行（改行のみの行）を維持
  * - コピー時にノードのコンテンツから改行を正しく抽出
- * - HTML付きclipboardもtext/plainを優先し、HTML-onlyは既定処理へ委譲
- * - clipboard textはMarkdown解釈せず、改行だけを正規化
+ * - 外部rich pasteはclipboardのtext/plainをsourceとして軽量なmarkup cleanupを適用
+ * - plain-only pasteはMarkdown記法を変更せず、改行だけを正規化
  * - 自アプリからのコピーの場合は連続空行を制限
  * 
  * Tiptap v2 / ProseMirror仕様:
@@ -28,6 +28,7 @@ import type { Node as PMNode, Schema } from 'prosemirror-model';
 import { normalizeClipboardText, serializeParagraphs } from '../utils/clipboardUtils';
 import { debugClipboardData } from '../utils/clipboardDebug';
 import { normalizeEmojiShortcode } from '../customEmoji';
+import { cleanupExternalRichPasteLines } from './clipboardTextCleanup';
 
 // ================================================================================
 // 内部ヘルパー関数
@@ -109,10 +110,20 @@ export const ClipboardExtension = Extension.create({
     name: 'clipboardExtension',
 
     addProseMirrorPlugins() {
+        let pastedAsPlainText = false;
+
         return [
             new Plugin({
                 key: new PluginKey('clipboardExtension'),
                 props: {
+                    transformPastedText(text, plain) {
+                        pastedAsPlainText = plain;
+                        return text;
+                    },
+                    transformPastedHTML(html) {
+                        pastedAsPlainText = false;
+                        return html;
+                    },
                     /**
                      * handlePaste
                      * 
@@ -123,7 +134,7 @@ export const ClipboardExtension = Extension.create({
                      * 
                      * 処理フロー:
                      * 1. file/media clipboard は既存の経路へ委譲
-                     * 2. HTMLの有無にかかわらずtext/plainを取得し、既存の規則で正規化
+                     * 2. HTML付き通常pasteだけplain textのmarkup cleanupを適用
                      * 3. plain textがなければHTMLの既定ProseMirror処理へ委譲
                      * 4. 1つのpaste transactionで選択範囲へ挿入
                      */
@@ -158,6 +169,7 @@ export const ClipboardExtension = Extension.create({
                         // 自Editor clipboardだけは従来の空行正規化を維持する。
                         const hasHtml = clipboardData.types.includes('text/html');
                         let collapseEmptyLines = false;
+                        let isSelfCopy = false;
 
                         if (hasHtml) {
                             const html = clipboardData.getData('text/html');
@@ -166,6 +178,7 @@ export const ClipboardExtension = Extension.create({
                             const isFromLegacyEditor =
                                 html.includes('data-block="true"') && html.includes('data-editor=');
 
+                            isSelfCopy = isFromCurrentEditor || isFromLegacyEditor;
                             collapseEmptyLines = isFromCurrentEditor || isFromLegacyEditor;
 
                             if (import.meta.env.MODE === 'development') {
@@ -179,11 +192,15 @@ export const ClipboardExtension = Extension.create({
                         }
 
                         // HTML付きclipboardも、既存plain-text pasteと同じ改行正規化・段落化を使う。
-                        // Markdown記法は解釈せず、URLはContentTrackingExtensionに任せる。
-                        const lines = normalizeClipboardText(text, {
+                        // HTMLは意味解釈せず、rich clipboardに限る軽量cleanup後のURL判定はContentTrackingに任せる。
+                        let lines = normalizeClipboardText(text, {
                             collapseEmptyLines,
                             maxConsecutiveEmptyLines: 1
                         }).lines;
+
+                        if (hasHtml && !pastedAsPlainText && !isSelfCopy) {
+                            lines = cleanupExternalRichPasteLines(lines);
+                        }
 
                         // 空のテキストの場合はデフォルト処理に委譲
                         if (lines.length === 0) {

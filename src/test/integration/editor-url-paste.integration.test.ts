@@ -196,13 +196,13 @@ describe('エディター・URLペースト統合テスト', () => {
 
     describe('external rich clipboard uses text/plain', () => {
         it('HTMLとplain textが異なる場合はplain textを通常paste規則で挿入すること', () => {
-            const plain = '# copied heading\r\n- copied item\r\n| A | B |\r\n```ts\r\nconst x = 1;\r\n```\r\n**literal**';
+            const plain = '# copied heading\r\n- **copied item**\r\n| A | B |\r\n```ts\r\nconst x = 1;\r\n```\r\n**literal**';
             const html = '<h2>HTML heading</h2><ul><li>HTML item</li></ul>' +
                 '<table><tr><th>HTML column</th></tr><tr><td>HTML cell</td></tr></table>' +
                 '<pre><code>HTML code</code></pre><p><strong>HTML bold</strong></p>';
 
             expect(invokePasteHandler(editor, createClipboardData(plain, html))).toBe(true);
-            expect(getParagraphText(editor)).toBe(plain.replace(/\r\n?/g, '\n'));
+            expect(getParagraphText(editor)).toBe('copied heading\n- copied item\n| A | B |\nconst x = 1;\nliteral');
             expect(editor.getHTML()).not.toMatch(/<(?:h[1-6]|ul|ol|li|table|pre|strong|code)\b/i);
             expect(editor.getText()).not.toMatch(/【|■|［\/?コード］/);
         });
@@ -231,8 +231,14 @@ describe('エディター・URLペースト統合テスト', () => {
 
         it('自Editorのcopy HTMLは新しい変換を通さず既存の空行正規化を使うこと', () => {
             const html = '<p class="editor-paragraph" data-pm-slice="1 1 []">first</p><p class="editor-paragraph">second</p>';
-            expect(invokePasteHandler(editor, createClipboardData('first\nsecond', html))).toBe(true);
-            expect(getParagraphText(editor)).toBe('first\nsecond');
+            expect(invokePasteHandler(editor, createClipboardData('**first**\n\nsecond', html))).toBe(true);
+            expect(getParagraphText(editor)).toBe('**first**\n\nsecond');
+        });
+
+        it('legacy self-copyはmarkup文字列を保持しつつ既存の空行正規化を使うこと', () => {
+            const html = '<div data-block="true" data-editor="ehagaki"><p>first</p></div>';
+            expect(invokePasteHandler(editor, createClipboardData('**first**\n\n\nsecond', html))).toBe(true);
+            expect(getParagraphText(editor)).toBe('**first**\n\nsecond');
         });
 
         it('file clipboardを消費せず既存media処理へ委譲すること', () => {
@@ -248,7 +254,7 @@ describe('エディター・URLペースト統合テスト', () => {
             editor = createEditor('<p>Alpha omega</p>');
             editor.commands.setTextSelection({ from: 7, to: 12 });
 
-            expect(invokePasteHandler(editor, createClipboardData('new\nvalue', '<p>HTML replacement</p>'))).toBe(true);
+            expect(invokePasteHandler(editor, createClipboardData('**new**\nvalue', '<p>HTML replacement</p>'))).toBe(true);
             expect(getParagraphText(editor)).toBe('Alpha new\nvalue');
             expect(editor.state.selection.empty).toBe(true);
             const pasteSelection = editor.state.selection.from;
@@ -262,7 +268,7 @@ describe('エディター・URLペースト統合テスト', () => {
 
         it('短時間の入力・paste・入力は既存のUndoRedo groupingを維持すること', () => {
             editor.commands.insertContent('typed before');
-            expect(invokePasteHandler(editor, createClipboardData('pasted', '<ul><li>HTML item</li></ul>'))).toBe(true);
+            expect(invokePasteHandler(editor, createClipboardData('**pasted**', '<ul><li>HTML item</li></ul>'))).toBe(true);
             editor.commands.insertContent(' typed after');
             expect(getParagraphText(editor)).toBe('typed beforepasted typed after');
 
