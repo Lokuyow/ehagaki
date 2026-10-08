@@ -3447,7 +3447,7 @@
                             bind:this={autoLoadOlderSentinel}
                             class="post-history-auto-load-sentinel"
                         >
-                            {#if isAutoLoadingOlder}
+                            {#if isAutoLoadingOlder && history.syncStatus !== "syncing"}
                                 <LoadingPlaceholder
                                     variant="spinner"
                                     showLoader={true}

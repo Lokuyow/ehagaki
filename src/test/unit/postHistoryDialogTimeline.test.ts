@@ -288,6 +288,49 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
+    it('初期リレー同期とローカル追加読み込みが重なる間は末尾の同期表示だけを出す', async () => {
+        const localChunk = createDeferred<ReturnType<typeof createRecord>[]>();
+        const relayFetch = createDeferred<ReturnType<typeof createRelayFetchResult>>();
+        const posts = Array.from({ length: 100 }, (_, index) => createRecord({
+            eventId: index.toString(16).padStart(64, '0'),
+            content: `overlapping load ${index}`,
+            createdAt: 1_700_000_000 - index,
+        }));
+        MockIntersectionObserver.reset();
+        vi.stubGlobal('IntersectionObserver', MockIntersectionObserver as unknown as typeof IntersectionObserver);
+        vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
+            return this.classList.contains('post-history-container') ? 320 : 0;
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(posts.length);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue(posts.slice(0, 50));
+        repositoryMock.getOlderVisibleChunk.mockImplementation(({ limit }: { limit: number }) =>
+            limit === 1 ? Promise.resolve([posts[50]]) : localChunk.promise,
+        );
+        relayFetchServiceMock.fetchLatest.mockReturnValue({ promise: relayFetch.promise, cancel: vi.fn() });
+        const view = render(PostHistoryDialog, { props: {
+            show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX, rxNostr: {} as any,
+        } });
+        await screen.findByText('overlapping load 0');
+        await waitFor(() => expect(document.querySelector('.post-history-sync-footer')).toBeTruthy());
+        const sentinel = document.querySelector<HTMLElement>('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)')!;
+        const observer = MockIntersectionObserver.instances.find((item) => item.observedTargets.has(sentinel));
+        expect(observer).toBeTruthy();
+        observer!.trigger(sentinel, true);
+        await waitFor(() => expect(getHistoryContainer().getAttribute('aria-busy')).toBe('true'));
+        expect(document.querySelector('.post-history-sync-footer .inline-spinner')).toBeTruthy();
+        expect(sentinel.querySelector('.inline-spinner')).toBeNull();
+
+        relayFetch.resolve(createRelayFetchResult());
+        await waitFor(() => {
+            expect(document.querySelector('.post-history-sync-footer')).toBeNull();
+            expect(sentinel.querySelector('.inline-spinner')).toBeTruthy();
+        });
+        localChunk.resolve(posts.slice(50));
+        await waitFor(() => expect(getHistoryContainer().getAttribute('aria-busy')).toBe('false'));
+        expect(sentinel.querySelector('.inline-spinner')).toBeNull();
+        view.unmount();
+    });
+
     it('先読みobserverは初回交差で読み込み、resize再構成ではlatch中に追加読み込みしない', async () => {
         let containerHeight = 320;
         const firstChunk = createDeferred<ReturnType<typeof createRecord>[]>();
