@@ -94,7 +94,8 @@ describe("post history relay coverage continuity", () => {
         seedPostHistoryCoverage(base - 160, base);
         let release!: (value: ReturnType<typeof createRelayFetchResult>) => void;
         const pending = new Promise<ReturnType<typeof createRelayFetchResult>>((resolve) => { release = resolve; });
-        relayFetchServiceMock.fetchLatest.mockReturnValue({ promise: pending, cancel: vi.fn() });
+        relayFetchServiceMock.fetchLatest.mockReturnValueOnce({ promise: pending, cancel: vi.fn() })
+            .mockReturnValue({ promise: Promise.resolve(createRelayFetchResult({ relayFetchCoverage: [] })), cancel: vi.fn() });
         const view = render(PostHistoryDialog, { props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX, rxNostr: {} as any } });
         await screen.findByText("coverage row 49");
         await waitFor(() => expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledOnce());
@@ -111,7 +112,8 @@ describe("post history relay coverage continuity", () => {
         await screen.findByRole("button", { name: "リレーから続きを取得" });
         expect(screen.queryByText("coverage row 0")).toBeNull();
         expect(screen.queryByRole("button", { name: "さらに古い投稿を表示" })).toBeNull();
-        expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledOnce();
+        expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(2);
+        expect(relayFetchServiceMock.fetchLatest.mock.calls[1][1].reason).toBe("dialog-open-catchup");
         view.unmount();
     });
 

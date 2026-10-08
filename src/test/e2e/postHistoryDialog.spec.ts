@@ -43,7 +43,9 @@ type HarnessWindow = Window & typeof globalThis & {
     __POST_HISTORY_COVERAGE__?: { owner: string; eventIds: string[]; headRequests: number;
         preparation: { hold: boolean; entered: boolean; checks: number; coveredGapReads: number; release: (() => void) | null };
         coverGap: () => Promise<void>;
-        olderRequests: { relayUrl: string; since: number; until: number }[]; release: () => void };
+        olderRequests: { relayUrl: string; since: number; until: number }[];
+        catchupRequests: { relayUrl: string; since: number; until: number }[];
+        postLocal: () => Promise<string>; release: () => void };
     __POST_HISTORY_HARNESS__?: HarnessState;
     __POST_HISTORY_ACTION_TARGETS__?: {
         replyEventId: string | null;
@@ -1096,6 +1098,18 @@ test.describe('PostHistoryDialog Playwright', () => {
                 await expect(fetchButton).toHaveCount(0);
             }
             await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(0);
+
+            await page.getByRole('button', { name: '閉じる', exact: true }).click();
+            const localPostId = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.postLocal());
+            await page.getByTestId('post-history-reopen').click();
+            await expect.poll(rows).toEqual([localPostId, ...expectedIds.slice(0, 49)]);
+            await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequests)).toBe(8);
+            await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+            await scrollHistoryToBottom(page);
+            await expect.poll(rows).toEqual([localPostId, ...expectedIds.slice(0, 99)]);
+            await expect(fetchButton).toHaveCount(0);
+            await expect(page.getByRole('button', { name: '保存済みの古い投稿を表示' })).toHaveCount(0);
+            await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(0);
         });
     }
 
@@ -1130,39 +1144,27 @@ test.describe('PostHistoryDialog Playwright', () => {
         }
     });
 
-    test('a refreshed head stops at its uncovered gap before reconnecting older saved history', async ({ page }, testInfo) => {
+    test('a refreshed head automatically reconnects older saved history across its saturated boundary', async ({ page }, testInfo) => {
         await page.goto('post-history-dialog-playwright.html?relay-coverage=new-head');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
         const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
         const rows = () => historyEventIds(page);
         const fetchButton = page.getByRole('button', { name: 'リレーから続きを取得' });
         await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequests)).toBe(4);
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(5);
+        await expect.poll(rows).toEqual(ids.slice(60, 110));
+        await expect(page.locator('.status-loading-placeholder .loader-container')).toBeVisible();
+        await expect(fetchButton).toHaveCount(0);
+        await expect(page.getByRole('button', { name: '保存済みの古い投稿を表示' })).toHaveCount(0);
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(0);
+        await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.release());
         await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
         await expect.poll(rows).toEqual(ids.slice(0, 50));
         await scrollHistoryToBottom(page);
-        await expect.poll(rows).toEqual(ids.slice(0, 60));
-        await scrollHistoryToBottom(page);
-        await expect(fetchButton).toBeVisible();
-        await expect(page.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeVisible();
-        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(0);
-        await fetchButton.scrollIntoViewIfNeeded();
-        const anchor = await getFirstVisiblePostSnapshot(page);
-        expect(anchor).not.toBeNull();
-        await fetchButton.click();
-        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(5);
-        const frameSampling = startPostPositionFrameSampling(page, anchor!.eventId);
-        await frameSampling.started;
-        await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.release());
-        await expect.poll(rows).toEqual(ids.slice(0, 110));
+        await expect.poll(rows).toEqual(ids.slice(0, 100));
         await expect(fetchButton).toHaveCount(0);
-        await expect.poll(async () => {
-            const after = await getPostSnapshotByEventId(page, anchor!.eventId);
-            return after ? Math.abs(after.offsetTop - anchor!.offsetTop) : Infinity;
-        }).toBeLessThanOrEqual(1);
-        await frameSampling.stop();
-        for (const sample of await frameSampling.samples) {
-            expect(Math.abs(sample.relativeTop - anchor!.offsetTop)).toBeLessThanOrEqual(1);
-        }
+        await expect(page.getByRole('button', { name: '保存済みの古い投稿を表示' })).toHaveCount(0);
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(0);
         await page.screenshot({ path: testInfo.outputPath('connected-head-history.png') });
     });
 

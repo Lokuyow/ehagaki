@@ -3765,6 +3765,7 @@ describe('PostHistoryDialog', () => {
             parentEventId,
             content: 'open refresh中に保存された返信',
         });
+        const runtime = {} as any;
         let storedReplies: any[] = [];
 
         repositoryMock.getPage.mockResolvedValue([post]);
@@ -3785,7 +3786,7 @@ describe('PostHistoryDialog', () => {
                 onClose: vi.fn(),
                 onReplyPost: vi.fn(),
                 pubkeyHex: 'a'.repeat(64),
-                rxNostr: {} as any,
+                rxNostr: runtime,
             },
         });
 
@@ -3804,7 +3805,7 @@ describe('PostHistoryDialog', () => {
             onClose: vi.fn(),
             onReplyPost: vi.fn(),
             pubkeyHex: 'a'.repeat(64),
-            rxNostr: {} as any,
+            rxNostr: runtime,
             inboundInteractionSave: {
                 revision: 1,
                 parentEventIds: [parentEventId],
