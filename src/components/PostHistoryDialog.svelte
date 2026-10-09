@@ -17,6 +17,7 @@
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
     import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
     import PostHistoryImportDialog from "./PostHistoryImportDialog.svelte";
+    import type { PostHistoryJsonlImportResult } from "../lib/postHistoryJsonlImportService";
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostHistoryRepliesBadgeButton from "./PostHistoryRepliesBadgeButton.svelte";
     import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
@@ -2215,10 +2216,13 @@
         }
     }
 
-    async function handleImportedPostHistory(): Promise<void> {
+    async function handleImportedPostHistory(result: PostHistoryJsonlImportResult): Promise<void> {
+        const owner = pubkeyHex;
+        const requestId = surroundingPostsNavigationRequestId;
         const scrollAnchor = historyViewport.captureHistoryScrollAnchor();
         const previousScrollTop = historyContainer?.scrollTop ?? null;
-        await history.refreshAfterLocalImport();
+        await history.refreshAfterLocalImport(result);
+        if (!show || pubkeyHex !== owner || requestId !== surroundingPostsNavigationRequestId) return;
         if (!history.isSearchMode && historyContainer) {
             const restored = historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
             if (!restored && previousScrollTop !== null) {
@@ -2324,7 +2328,10 @@
     }
 
     async function handleLocalHistoryDeleteConfirm(): Promise<void> {
+        const owner = pubkeyHex;
+        const requestId = ++surroundingPostsNavigationRequestId;
         const deleted = await history.deleteLocalHistory();
+        if (!show || pubkeyHex !== owner || requestId !== surroundingPostsNavigationRequestId) return;
         if (deleted) {
             historyViewport.clearAllSessionScrollAnchorsForCurrentPubkey();
             localHistoryDeleteConfirmOpen = false;

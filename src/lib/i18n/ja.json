@@ -198,6 +198,7 @@
     "importProgressBarLabel": "JSONLインポートの進捗",
     "importComplete": "読み込みが完了しました",
     "importPartial": "処理を完了しましたが、一部を取り込めませんでした",
+    "importBackupRangeFailed": "投稿は取り込みましたが、復元した期間の記録を保存できませんでした。同じファイルを再度取り込んでください。",
     "importFailed": "ファイルを読み込めませんでした",
     "importCancelled": "読み込みを中止しました",
     "importAccountChanged": "アカウントが変更されたため読み込みを中止しました",

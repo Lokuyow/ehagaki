@@ -1,21 +1,25 @@
-import { finalizeEvent, getPublicKey } from "nostr-tools";
+import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
 import type { RxNostr, RxReq } from "rx-nostr";
 import { Subject } from "rxjs";
 import type { NostrEvent } from "../../lib/types";
-import { postHistoryRepository } from "../../lib/storage/postHistoryRepository";
-import { ehagakiDb } from "../../lib/storage/ehagakiDb";
+import { postHistoryRepository, DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
+import { ehagakiDb, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { postHistoryRelayCoverageRepository } from "../../lib/storage/postHistoryRelayCoverageRepository";
 import { buildPostHistoryVisibleKindsKey } from "../../lib/storage/postHistoryVisibleRangeRepository";
 import { POST_HISTORY_FETCH_KINDS } from "../../lib/postHistoryRelayFetchService";
+import { postHistoryImportedRangesRepository, DexiePostHistoryImportedRangesRepository } from "../../lib/storage/postHistoryImportedRangesRepository";
+import { getPostHistoryLocalRevision } from "../../lib/storage/postHistoryLocalWriteScope";
+import { PostHistoryJsonlImportService } from "../../lib/postHistoryJsonlImportService";
 
 const fixtureKeyPrefix = "post-history-coverage-signed-fixture";
-type Fixture = { owner: string; events: NostrEvent[]; farOlder: NostrEvent; localPost: NostrEvent };
+type Fixture = { owner: string; events: NostrEvent[]; farOlder: NostrEvent; localPost: NostrEvent; otherAccountPost: NostrEvent; futurePost: NostrEvent };
 const relayUrls = Array.from({ length: 5 }, (_, i) => `wss://coverage-${i}.example.test/`);
 const kindsKey = buildPostHistoryVisibleKindsKey([...POST_HISTORY_FETCH_KINDS]);
 
 /** Only public data and signed events survive reload; no signing key is stored. */
-export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "gap" | "empty-gap" | "new-head" | "sync-footer" | "bounded-gap" = "gap") {
-    const isHeadScenario = scenario === "new-head" || scenario === "sync-footer";
+export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "gap" | "empty-gap" | "new-head" | "sync-footer" | "bounded-gap" | "citrine" | "citrine-gap" | "citrine-head" = "gap") {
+    const isCitrine = scenario.startsWith("citrine");
+    const isHeadScenario = scenario === "new-head" || scenario === "sync-footer" || scenario === "citrine-head";
     const savedHeadEnd = scenario === "sync-footer" ? 109 : 309;
     const gapStart = scenario === "bounded-gap" ? 150 : 100;
     const gapEnd = gapStart + 10;
@@ -29,7 +33,9 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
         }, secret));
         const farOlder = finalizeEvent({ kind: 1, tags: [], content: "coverage next saved area", created_at: base - 2000 * 60 }, secret);
         const localPost = finalizeEvent({ kind: 1, tags: [], content: "coverage local post", created_at: base + 1 }, secret);
-        return { owner, events, farOlder, localPost };
+        const otherAccountPost = finalizeEvent({ kind: 1, tags: [], content: "other account saved post", created_at: base }, generateSecretKey());
+        const futurePost = finalizeEvent({ kind: 1, tags: [], content: "coverage future post", created_at: base + 365 * 86400 }, secret);
+        return { owner, events, farOlder, localPost, otherAccountPost, futurePost };
     })();
     if (!stored) sessionStorage.setItem(fixtureKey, JSON.stringify(fixture));
     const messages = new Subject<any>();
@@ -39,6 +45,28 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
     const preparation = { hold: false, entered: false, checks: 0, coveredGapReads: 0, release: null as (() => void) | null };
     let localPosted = false;
     const control = { owner: fixture.owner, eventIds: fixture.events.map((event) => event.id), headRequests: 0,
+        backupJsonl: fixture.events.slice(scenario === "citrine-gap" ? 110 : 60).map((event) => JSON.stringify(event)).join("\n") + "\n",
+        backupRange: { since: fixture.events[309].created_at, until: fixture.events[scenario === "citrine-gap" ? 110 : 60].created_at },
+        futurePostJsonl: JSON.stringify(fixture.futurePost) + "\n",
+        readFuturePost: () => ehagakiDb.postHistory.get(fixture.futurePost.id),
+        importFromSecondConnection: async () => {
+            const second = new EHagakiDB(ehagakiDb.name);
+            try {
+                return await new PostHistoryJsonlImportService({
+                    postHistoryRepository: new DexiePostHistoryRepository(second),
+                    importedRangesRepository: new DexiePostHistoryImportedRangesRepository(second),
+                    getLocalRevision: (owner) => getPostHistoryLocalRevision(second, owner),
+                }).importFile({ ownerPubkeyHex: fixture.owner, getCurrentPubkeyHex: () => fixture.owner,
+                    // Keep this test about publication during an active query;
+                    // a large signature batch can outlast its normal 6s timeout.
+                    file: new File([fixture.events[60], fixture.events[309]].map((event) => JSON.stringify(event) + "\n"), `citrine-${Date.now()}.jsonl`) });
+            } finally { second.close(); }
+        },
+        readRestoredRanges: async () => (await postHistoryImportedRangesRepository.get(fixture.owner, kindsKey)).ranges,
+        readSavedCount: () => postHistoryRepository.countForPubkey(fixture.owner),
+        readOtherAccountSavedCount: () => postHistoryRepository.countForPubkey(fixture.otherAccountPost.pubkey),
+        removeOtherAccountHistory: () => postHistoryRepository.deleteLocalHistoryForPubkey(fixture.otherAccountPost.pubkey),
+        authoredRequests: [] as { since?: number; until?: number; limit?: number }[],
         preparation,
         coverGap: async () => {
             const expectedRevision = await postHistoryRelayCoverageRepository.getLocalRevision(fixture.owner);
@@ -69,9 +97,10 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
                 const filter = filters[0] as { authors?: string[]; kinds?: number[]; since?: number; until?: number; limit?: number };
                 if (!filter || !relayUrl) return;
                 const authored = filter.authors?.includes(fixture.owner) && filter.kinds?.includes(1);
+                if (authored) control.authoredRequests.push({ since: filter.since, until: filter.until, limit: filter.limit });
                 const latestSavedTimestamp = fixture.events[isHeadScenario ? 60 : 0].created_at;
                 const catchup = authored && filter.limit === 150 && filter.since !== undefined
-                    && filter.since >= latestSavedTimestamp;
+                    && (scenario === "citrine-head" || filter.since >= latestSavedTimestamp);
                 const older = authored && !catchup && filter.since !== undefined && filter.until !== undefined && filter.limit === 150;
                 if (authored && filter.limit === 30) control.headRequests += 1;
                 const complete = () => {
@@ -128,17 +157,21 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
             };
             if (stored) return;
             await postHistoryRepository.deleteLocalHistoryForPubkey(fixture.owner);
-            const savedEvents = isHeadScenario ? fixture.events.slice(60, savedHeadEnd + 1)
+            const savedEvents = isCitrine ? (isHeadScenario ? fixture.events.slice(60, 110) : fixture.events.slice(0, scenario === "citrine-gap" ? 100 : 60))
+                : isHeadScenario ? fixture.events.slice(60, savedHeadEnd + 1)
                 : [...fixture.events.slice(0, gapStart), ...fixture.events.slice(gapEnd)];
-            await ehagakiDb.postHistory.bulkPut([...savedEvents, fixture.farOlder].map((event) => ({
-                id: event.id, eventId: event.id, pubkeyHex: fixture.owner, kind: event.kind, content: event.content,
+            await ehagakiDb.postHistory.bulkPut([...savedEvents, fixture.farOlder, ...(isCitrine ? [fixture.otherAccountPost] : [])].map((event) => ({
+                id: event.id, eventId: event.id, pubkeyHex: event.pubkey, kind: event.kind, content: event.content,
                 tags: event.tags, createdAt: event.created_at, postedAt: event.created_at * 1000,
                 relayHints: [], acceptedRelays: [], media: [], rawEvent: event, updatedAt: Date.now(), schemaVersion: 2,
             })));
             const expectedRevision = await postHistoryRelayCoverageRepository.getLocalRevision(fixture.owner);
             await ehagakiDb.transaction("rw", ehagakiDb.meta, async () => { await postHistoryRelayCoverageRepository.record({
                 ownerPubkeyHex: fixture.owner, kindsKey, expectedRevision, isActive: () => true,
-                relays: relayUrls.map((relayUrl) => ({ relayUrl, ranges: isHeadScenario
+                relays: relayUrls.map((relayUrl) => ({ relayUrl, ranges: isCitrine
+                    ? (isHeadScenario ? [{ since: fixture.farOlder.created_at, until: fixture.farOlder.created_at }]
+                        : [{ since: scenario === "citrine-gap" ? fixture.events[99].created_at : fixture.events[60].created_at + 1, until: fixture.events[0].created_at }])
+                    : isHeadScenario
                     ? [{ since: fixture.events[savedHeadEnd].created_at, until: fixture.events[60].created_at }]
                     : [
                         { since: fixture.events[gapStart - 1].created_at, until: fixture.events[0].created_at },

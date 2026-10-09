@@ -34,6 +34,7 @@ const translations: Record<string, string> = {
     "postHistory.importProgressBarLabel": "JSONLインポートの進捗",
     "postHistory.importComplete": "読み込みが完了しました",
     "postHistory.importPartial": "処理を完了しましたが、一部を取り込めませんでした",
+    "postHistory.importBackupRangeFailed": "投稿は取り込みましたが、復元した期間の記録を保存できませんでした。同じファイルを再度取り込んでください。",
     "postHistory.importFailed": "ファイルを読み込めませんでした",
     "postHistory.importCancelled": "読み込みを中止しました",
     "postHistory.importAccountChanged": "アカウントが変更されたため読み込みを中止しました",
@@ -100,6 +101,35 @@ function createResult(
 }
 
 describe("PostHistoryImportDialog", () => {
+    it("復元区間だけの更新でも一覧へ結果を通知する", async () => {
+        const result = createResult({ insertedPostCount: 0, unchangedPostCount: 1, restoredRangeChanged: true });
+        importFileMock.mockResolvedValue(result);
+        const onImported = vi.fn();
+        render(PostHistoryImportDialog, { props: { open: true, ownerPubkeyHex: "a".repeat(64),
+            getCurrentPubkeyHex: () => "a".repeat(64), onImported } });
+        await fireEvent.change(screen.getByLabelText("JSONLファイルを選択", { selector: "input" }), { target: { files: [new File(["event"], "citrine-1700000000000.jsonl")] } });
+        await waitFor(() => expect(onImported).toHaveBeenCalledWith(result));
+    });
+    it("復元区間保存の失敗を投稿取込失敗と区別して表示する", async () => {
+        importFileMock.mockResolvedValue(createResult({ status: "partial", restoredRangeSaveFailed: true }));
+        render(PostHistoryImportDialog, { props: { open: true, ownerPubkeyHex: "a".repeat(64), getCurrentPubkeyHex: () => "a".repeat(64) } });
+        await fireEvent.change(screen.getByLabelText("JSONLファイルを選択", { selector: "input" }), { target: { files: [new File(["event"], "citrine-1700000000000.jsonl")] } });
+        await screen.findByText(translations["postHistory.importBackupRangeFailed"]);
+        expect(screen.queryByText(translations["postHistory.importPartial"])).toBeNull();
+    });
+    it("破棄後の完了は通知せずimportをabortする", async () => {
+        let finish!: (result: PostHistoryJsonlImportResult) => void;
+        importFileMock.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+        const onImported = vi.fn();
+        const view = render(PostHistoryImportDialog, { props: { open: true, ownerPubkeyHex: "a".repeat(64), getCurrentPubkeyHex: () => "a".repeat(64), onImported } });
+        await fireEvent.change(screen.getByLabelText("JSONLファイルを選択", { selector: "input" }), { target: { files: [new File(["event"], "backup.jsonl")] } });
+        const signal = importFileMock.mock.calls[0][0].signal;
+        view.unmount();
+        expect(signal.aborted).toBe(true);
+        finish(createResult());
+        await Promise.resolve();
+        expect(onImported).not.toHaveBeenCalled();
+    });
     beforeEach(() => {
         importFileMock.mockReset();
     });

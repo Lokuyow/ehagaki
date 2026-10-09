@@ -1,9 +1,10 @@
 import { RelayConfigUtils } from "../relayConfigUtils";
 import { mergePostHistoryCoverageRanges, type PostHistoryRelayCoverage } from "../postHistoryRelayCoverage";
 import { ehagakiDb, type EHagakiDB } from "./ehagakiDb";
+import { advancePostHistoryLocalRevision, getPostHistoryLocalRevision, isPostHistoryLocalWriteCurrent, PostHistoryLocalWriteStaleError, type PostHistoryLocalWriteScope } from "./postHistoryLocalWriteScope";
+import { POST_HISTORY_IMPORTED_RANGES_PREFIX } from "./postHistoryImportedRangesRepository";
 
 export const POST_HISTORY_RELAY_COVERAGE_PREFIX = "postHistoryRelayCoverage:";
-const LOCAL_REVISION_PREFIX = "postHistoryLocalRevision:";
 
 export interface PostHistoryRelayFetchCoverage {
     schemaVersion: 1;
@@ -12,12 +13,9 @@ export interface PostHistoryRelayFetchCoverage {
     relays: PostHistoryRelayCoverage[];
 }
 
-export interface PostHistoryCoverageWrite {
-    ownerPubkeyHex: string;
+export interface PostHistoryCoverageWrite extends PostHistoryLocalWriteScope {
     kindsKey: string;
     relays: PostHistoryRelayCoverage[];
-    expectedRevision: number;
-    isActive: () => boolean;
 }
 
 export class DexiePostHistoryRelayCoverageRepository {
@@ -36,13 +34,11 @@ export class DexiePostHistoryRelayCoverageRepository {
     }
 
     async getLocalRevision(ownerPubkeyHex: string): Promise<number> {
-        const value = (await this.db.meta.get(`${LOCAL_REVISION_PREFIX}${ownerPubkeyHex}`))?.value;
-        return typeof value === "number" && Number.isSafeInteger(value) ? value : 0;
+        return getPostHistoryLocalRevision(this.db, ownerPubkeyHex);
     }
 
     async isCurrent(write: PostHistoryCoverageWrite): Promise<boolean> {
-        return write.isActive() && await this.getLocalRevision(write.ownerPubkeyHex) === write.expectedRevision
-            && write.isActive();
+        return isPostHistoryLocalWriteCurrent(this.db, write);
     }
 
     /** Caller owns the transaction that also saves the corresponding events. */
@@ -66,19 +62,16 @@ export class DexiePostHistoryRelayCoverageRepository {
 
     /** Also runs for an empty history. The revision prevents a pre-delete fetch from repopulating it. */
     async clearForPubkey(ownerPubkeyHex: string): Promise<void> {
-        const prefixes = [POST_HISTORY_RELAY_COVERAGE_PREFIX, "postHistoryVisibleRange:", "postHistoryJumpCacheAnchors:"]
+        const prefixes = [POST_HISTORY_RELAY_COVERAGE_PREFIX, POST_HISTORY_IMPORTED_RANGES_PREFIX, "postHistoryVisibleRange:", "postHistoryJumpCacheAnchors:"]
             .map((prefix) => `${prefix}${ownerPubkeyHex}`);
         const keys = await this.db.meta.filter(({ key }) => prefixes.some((prefix) =>
             key === prefix || key.startsWith(`${prefix}:`),
         )).primaryKeys();
-        const revision = await this.getLocalRevision(ownerPubkeyHex);
         await this.db.meta.bulkDelete(keys);
-        await this.db.meta.put({ key: `${LOCAL_REVISION_PREFIX}${ownerPubkeyHex}`, value: revision + 1, updatedAt: this.now() });
+        await advancePostHistoryLocalRevision(this.db, ownerPubkeyHex, this.now());
     }
 }
 
-export class PostHistoryCoverageStaleError extends Error {
-    constructor() { super("Post history fetch is no longer active"); }
-}
+export class PostHistoryCoverageStaleError extends PostHistoryLocalWriteStaleError {}
 
 export const postHistoryRelayCoverageRepository = new DexiePostHistoryRelayCoverageRepository();

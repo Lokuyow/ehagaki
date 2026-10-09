@@ -23,6 +23,7 @@ import { getSensitivePayloadReference, verifySensitivePayloadLink } from "../sen
 import { isFullyVerifiedEvent } from "../sensitiveEventUtils";
 import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
 import { bumpPostHistorySearchRevision } from "../postHistoryLocalSearchRevision";
+import { assertPostHistoryLocalWriteCurrent, type PostHistoryLocalWriteScope } from "./postHistoryLocalWriteScope";
 import { reconcileSensitivePayloadDeletionForStructure, reconcileSensitivePayloadDeletionForCandidate } from "./sensitivePayloadDeletionReconciler";
 import {
     ehagakiDb,
@@ -58,6 +59,7 @@ export interface UpsertImportedPostHistoryDeletionEventsInput {
     ownerPubkeyHex: string;
     deletionEvents: NostrEvent[];
     fetchedAt?: number;
+    localWriteScope?: PostHistoryLocalWriteScope;
 }
 
 export interface UpsertImportedPostHistoryDeletionEventsResult {
@@ -566,9 +568,10 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
 
         await this.db.transaction(
             "rw",
-            this.db.postHistoryDeletionRequests,
-            this.db.postHistory,
+            [this.db.postHistoryDeletionRequests, this.db.postHistory,
+                ...(input.localWriteScope ? [this.db.meta] : [])],
             async () => {
+                await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
                 const existingRecords = await this.db.postHistoryDeletionRequests.bulkGet(
                     candidates.map((candidate) => candidate.record.id),
                 );
@@ -664,6 +667,7 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                     });
                     appliedDeletionCount += 1;
                 }
+                await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
             },
         );
 
