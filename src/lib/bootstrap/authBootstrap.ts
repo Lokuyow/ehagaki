@@ -32,7 +32,7 @@ interface AccountListStoreLike {
 }
 
 interface ProfileDataStoreLike {
-    set: (value: any) => void;
+    set: (value: ProfileData) => void;
 }
 
 interface BooleanStoreLike {

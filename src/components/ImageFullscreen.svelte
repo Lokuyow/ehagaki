@@ -38,7 +38,7 @@
         openingFocusOrigin = null,
     }: Props = $props();
 
-    let activePhotoSwipe: any = null;
+    let activePhotoSwipe: PhotoSwipe | null = null;
     let historyPushed = false;
     let closeMode: CloseMode = null;
     let closeFinalizing = false;
@@ -127,32 +127,34 @@
         void finalizeClose();
     }
 
-    function bindCustomContentEvents(instance: any) {
-        instance.on("contentLoad", (event: any) => {
-            if (event.content?.data?.type !== "video") {
+    function bindCustomContentEvents(instance: PhotoSwipe) {
+        instance.on("contentLoad", (event) => {
+            const data = event.content.data;
+            if (data.type !== "video" || typeof data.src !== "string") {
                 return;
             }
 
             event.preventDefault();
             event.content.element = createFullscreenVideoSlideElement(
-                event.content.data,
+                { src: data.src, alt: data.alt, type: "video" },
             );
         });
 
-        instance.on("contentAppend", (event: any) => {
-            if (event.content?.data?.type !== "video") {
+        instance.on("contentAppend", (event) => {
+            if (event.content.data.type !== "video") {
                 return;
             }
 
-            if (event.content.element && !event.content.element.parentNode) {
+            const slide = event.content.slide;
+            if (event.content.element && !event.content.element.parentNode && slide) {
                 event.preventDefault();
-                event.content.slide.container.appendChild(
+                slide.container.appendChild(
                     event.content.element,
                 );
             }
         });
 
-        instance.on("contentRemove", (event: any) => {
+        instance.on("contentRemove", (event) => {
             if (event.content?.data?.type !== "video") {
                 return;
             }
@@ -165,7 +167,7 @@
             }
         });
 
-        instance.on("contentDeactivate", (event: any) => {
+        instance.on("contentDeactivate", (event) => {
             if (event.content?.data?.type !== "video") {
                 return;
             }
@@ -173,7 +175,7 @@
             pauseFullscreenVideoContent(event.content);
         });
 
-        instance.on("contentDestroy", (event: any) => {
+        instance.on("contentDestroy", (event) => {
             if (event.content?.data?.type !== "video") {
                 return;
             }

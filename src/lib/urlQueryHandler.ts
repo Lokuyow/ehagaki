@@ -10,6 +10,10 @@ import { normalizeChannelPictureUrl } from './channelPictureUrlUtils';
 
 export { decodeEventPointerValue } from './eventPointerUtils';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function trimToNull(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null;
@@ -109,7 +113,7 @@ export function getReplyQuoteFromEmbedPayload(
 export function getChannelFromEmbedPayload(
   payload: EmbedComposerSetContextPayload,
 ): ChannelContextQueryTarget | null {
-  if (!payload.channel || typeof payload.channel !== 'object') {
+  if (!isRecord(payload.channel)) {
     return null;
   }
 
@@ -132,7 +136,7 @@ export function getChannelFromEmbedPayload(
       (value): value is string => typeof value === 'string',
     )
     : [];
-  const channel = payload.channel as unknown as Record<string, unknown>;
+  const channel = payload.channel;
   const name = readEmbedMetadataField(channel, 'name');
   const about = readEmbedMetadataField(channel, 'about');
   const picture = readEmbedPictureField(channel);

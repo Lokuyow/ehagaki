@@ -11,7 +11,7 @@ import type { ParentClientCapability, ParentClientSessionData } from "./types";
 
 const DEFAULT_TIMEOUT_MS = 10000;
 const PUBKEY_HEX_PATTERN = /^[0-9a-f]{64}$/i;
-const VALID_PARENT_CLIENT_CAPABILITIES = new Set<ParentClientCapability>([
+const VALID_PARENT_CLIENT_CAPABILITIES = new Set<string>([
     'signEvent',
     'nip44.encrypt',
     'nip44.decrypt',
@@ -77,7 +77,7 @@ type PendingRequest = {
     kind: 'auth' | 'rpc';
     requestedCapabilities?: ParentClientCapability[];
     rpcMethod?: ParentClientCapability;
-    resolve: (value: any) => void;
+    resolve: (value: unknown) => void;
     reject: (reason?: unknown) => void;
     timeoutId: ReturnType<typeof setTimeout>;
 };
@@ -109,7 +109,7 @@ function isStringArray(value: unknown): value is string[] {
 function isCapabilityArray(value: unknown): value is ParentClientCapability[] {
     return Array.isArray(value)
         && value.every((item): item is ParentClientCapability =>
-            VALID_PARENT_CLIENT_CAPABILITIES.has(item as ParentClientCapability),
+            typeof item === 'string' && VALID_PARENT_CLIENT_CAPABILITIES.has(item),
         );
 }
 
@@ -141,6 +141,7 @@ function normalizeParentClientSession(value: unknown): ParentClientSessionData |
         value.version !== 1
         || !isHex64(value.pubkeyHex)
         || !isValidParentOrigin(value.parentOrigin)
+        || typeof value.connectedAt !== 'number'
         || capabilities.length === 0
         || !capabilities.includes('signEvent')
     ) {
@@ -148,8 +149,11 @@ function normalizeParentClientSession(value: unknown): ParentClientSessionData |
     }
 
     return {
-        ...(value as unknown as ParentClientSessionData),
+        version: 1,
+        pubkeyHex: value.pubkeyHex,
+        parentOrigin: value.parentOrigin,
         capabilities,
+        connectedAt: value.connectedAt,
     };
 }
 
@@ -174,13 +178,12 @@ function validateAuthResultPayload(
     if (!isRecord(payload) || !isHex64(payload.pubkeyHex)) {
         return null;
     }
-    if (payload.capabilities !== undefined && !isCapabilityArray(payload.capabilities)) {
+    const rawCapabilities = payload.capabilities;
+    if (rawCapabilities !== undefined && !isCapabilityArray(rawCapabilities)) {
         return null;
     }
 
-    const returnedCapabilities = dedupeCapabilities(
-        payload.capabilities as ParentClientCapability[] | undefined,
-    );
+    const returnedCapabilities = dedupeCapabilities(rawCapabilities);
     if (
         requestedCapabilities?.length
         && returnedCapabilities.some((capability) => !requestedCapabilities.includes(capability))
@@ -239,16 +242,14 @@ export class ParentClientSignerAdapter {
         tags?: string[][];
         created_at?: number;
         pubkey?: string;
-    }): Promise<any> {
-        const template = {
+    }): Promise<unknown> {
+        return this.service.signEvent({
             kind: params.kind,
             content: params.content,
             tags: params.tags ?? [],
             created_at: params.created_at ?? Math.floor(Date.now() / 1000),
             ...(params.pubkey ? { pubkey: params.pubkey } : {}),
-        };
-
-        return this.service.signEvent(template);
+        });
     }
 
     async getPublicKey(): Promise<string> {
@@ -386,19 +387,25 @@ export class ParentClientAuthService {
         return this.activeSession.pubkeyHex;
     }
 
-    async signEvent(event: any): Promise<any> {
+    async signEvent(event: {
+        kind: number;
+        content: string;
+        tags?: string[][];
+        created_at?: number;
+        pubkey?: string;
+    }): Promise<unknown> {
         this.assertCapability("signEvent");
-        return this.requestRpc("signEvent", { event });
+        return this.requestRpc<unknown>("signEvent", { event });
     }
 
     async nip44Encrypt(pubkey: string, plaintext: string): Promise<string> {
         this.assertCapability("nip44.encrypt");
-        return this.requestRpc("nip44.encrypt", { pubkey, plaintext });
+        return this.requestRpc<string>("nip44.encrypt", { pubkey, plaintext });
     }
 
     async nip44Decrypt(pubkey: string, ciphertext: string): Promise<string> {
         this.assertCapability("nip44.decrypt");
-        return this.requestRpc("nip44.decrypt", { pubkey, ciphertext });
+        return this.requestRpc<string>("nip44.decrypt", { pubkey, ciphertext });
     }
 
     getSigner(): ParentClientSignerAdapter | null {
@@ -501,7 +508,7 @@ export class ParentClientAuthService {
                 ...(type === 'auth.request'
                     ? { requestedCapabilities: (payload as ParentClientAuthRequestPayload).capabilities }
                     : { rpcMethod: (payload as ParentClientRpcRequestPayload).method }),
-                resolve,
+                resolve: (value) => resolve(value as T),
                 reject,
                 timeoutId,
             });

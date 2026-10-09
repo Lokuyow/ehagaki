@@ -24,7 +24,7 @@ export function shouldShowDevLog(): boolean {
 }
 
 // --- devLog追加関数 ---
-function logToDevFooter(...args: any[]) {
+function logToDevFooter(...args: unknown[]) {
     const entry = args
         .map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a)))
         .join(" ");
@@ -38,45 +38,45 @@ const originalConsoleInfo = console.info;
 const originalConsoleWarn = console.warn;
 const originalConsoleError = console.error;
 if (typeof window !== "undefined") {
-    (window as any).__originalConsoleLog = originalConsoleLog;
+    window.__originalConsoleLog = originalConsoleLog;
 }
 
 if (
     (shouldShowDevLog() || FORCE_SHOW_FLOATING_DEV_LOG) &&
     ENABLE_DEV_LOG_HOOK &&
-    !(window as any).__devLogHooked
+    !window.__devLogHooked
 ) {
-    const shouldSkipDevFooterLog = (args: any[]): boolean => {
+    const shouldSkipDevFooterLog = (args: unknown[]): boolean => {
         const firstArg = args[0];
         return typeof firstArg === 'string' && firstArg.includes('[FooterInfoDisplay Debug]');
     };
 
-    console.log = function (...args: any[]) {
+    console.log = function (...args: unknown[]) {
         originalConsoleLog.apply(console, args);
         if (shouldSkipDevFooterLog(args)) return;
         logToDevFooter(...args);
     };
-    console.debug = function (...args: any[]) {
+    console.debug = function (...args: unknown[]) {
         originalConsoleDebug.apply(console, args);
         if (shouldSkipDevFooterLog(args)) return;
         logToDevFooter(...args);
     };
-    console.info = function (...args: any[]) {
+    console.info = function (...args: unknown[]) {
         originalConsoleInfo.apply(console, args);
         if (shouldSkipDevFooterLog(args)) return;
         logToDevFooter(...args);
     };
-    console.warn = function (...args: any[]) {
+    console.warn = function (...args: unknown[]) {
         originalConsoleWarn.apply(console, args);
         if (shouldSkipDevFooterLog(args)) return;
         logToDevFooter(...args);
     };
-    console.error = function (...args: any[]) {
+    console.error = function (...args: unknown[]) {
         originalConsoleError.apply(console, args);
         if (shouldSkipDevFooterLog(args)) return;
         logToDevFooter(...args);
     };
-    (window as any).__devLogHooked = true;
+    window.__devLogHooked = true;
 
     if (FORCE_SHOW_FLOATING_DEV_LOG && import.meta.env.MODE === "production") {
         logToDevFooter("🔧 Debug mode enabled in production");
@@ -102,6 +102,11 @@ export async function copyDevLogWithFallback(logsArg?: string[]): Promise<void> 
 // --- showSwUpdateModalDebug: SW更新ボタン強制表示デバッグ機能 ---
 declare global {
     interface Window {
+        __originalConsoleLog?: typeof console.log;
+        __devLogHooked?: boolean;
+        testDevLog?: () => void;
+        showPostSuccessDebug?: () => void;
+        showPostErrorDebug?: () => void;
         showSwUpdateModalDebug?: () => void;
         showSwUpdateInstallingDebug?: () => void;
         showSwUpdateReadyDebug?: () => void;
@@ -129,11 +134,11 @@ if (typeof window !== "undefined") {
 
 // --- dev用: post success/error強制表示デバッグ ---
 if (shouldShowDevLog()) {
-    (window as any).testDevLog = () => {
+    window.testDevLog = () => {
         console.log("テスト用ログ出力:", new Date().toISOString());
         logToDevFooter("直接devLogに追加:", Math.random());
     };
-    (window as any).showPostSuccessDebug = () => {
+    window.showPostSuccessDebug = () => {
         editorState.postStatus = {
             ...editorState.postStatus,
             success: true,
@@ -142,7 +147,7 @@ if (shouldShowDevLog()) {
             completed: true
         };
     };
-    (window as any).showPostErrorDebug = () => {
+    window.showPostErrorDebug = () => {
         editorState.postStatus = {
             ...editorState.postStatus,
             success: false,

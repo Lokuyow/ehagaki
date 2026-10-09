@@ -1,6 +1,6 @@
 // tags専用のSvelteランストア
 
-import type { HashtagData } from '../lib/types';
+import type { HashtagData, ImageImetaMetadataMap } from '../lib/types';
 
 // --- ハッシュタグデータストア ---
 
@@ -18,16 +18,7 @@ export function getHashtagDataSnapshot(): HashtagData {
 }
 
 // --- imeta情報の一時保存ストア ---
-export interface ImageImetaMap {
-    [url: string]: {
-        m: string; // MIME type (必須)
-        blurhash?: string;
-        dim?: string;
-        alt?: string;
-        ox?: string; // オリジナルファイルのSHA-256ハッシュを追加
-        [key: string]: any;
-    };
-}
+export type ImageImetaMap = ImageImetaMetadataMap;
 
 // 画像サイズ情報マップストア
 export interface ImageSizeMap {

@@ -75,7 +75,7 @@ export function createHostOwnedUploadDependencies(
         extractImageBlurhashMap,
         calculateImageHash,
         getMimeTypeFromUrl,
-        createImetaTag: async (params: any) => await createImetaTag(params),
+        createImetaTag,
         imageSizeMapStore,
     };
 }

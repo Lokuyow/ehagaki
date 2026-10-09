@@ -1,4 +1,5 @@
 import { kinds, nip44 } from 'nostr-tools';
+import type { VerifiedEvent } from 'nostr-tools';
 import * as ipaddr from 'ipaddr.js';
 import {
     BunkerSigner,
@@ -327,7 +328,7 @@ export class Nip46SignerAdapter {
         tags?: string[][];
         created_at?: number;
         pubkey?: string;
-    }): Promise<any> {
+    }): Promise<VerifiedEvent> {
         const effectivePubkey =
             typeof params.pubkey === 'string' && params.pubkey.length > 0
                 ? params.pubkey

@@ -23,6 +23,8 @@ import { buildUploadFailureMessage } from "./uploadResultUtils";
 import { resolveCurrentUploadDestination } from "./upload/resolveCurrentUploadDestination";
 export { resolveCurrentUploadDestination } from "./upload/resolveCurrentUploadDestination";
 import { getAppStorage } from "./appStorage";
+
+const DEFAULT_FILE_UPLOAD_MANAGER: UploadHelperDependencies["FileUploadManager"] = FileUploadManager;
 import { showUploadErrorMessage, uploadHelper } from "./uploadHelper";
 import { isDefaultUploadAborted } from "./uploadAbortUtils";
 
@@ -44,18 +46,12 @@ function createDefaultDependencies(): UploadHelperDependencies {
         localStorage: getAppStorage(),
         crypto: window.crypto.subtle,
         tick,
-        FileUploadManager: FileUploadManager as unknown as new (
-            deps?: FileUploadDependencies,
-            auth?: AuthService,
-            imageCompression?: CompressionService,
-            videoCompression?: CompressionService,
-            mime?: MimeTypeSupportInterface,
-        ) => FileUploadManagerInterface,
+        FileUploadManager: DEFAULT_FILE_UPLOAD_MANAGER,
         getImageDimensions,
         extractImageBlurhashMap,
         calculateImageHash,
         getMimeTypeFromUrl,
-        createImetaTag: async (params: any) => await createImetaTag(params),
+        createImetaTag,
         imageSizeMapStore,
         isUploadAborted: isDefaultUploadAborted,
         resolveUploadDestination: resolveCurrentUploadDestination,
@@ -66,7 +62,7 @@ function createNormalFileUploadManager(
     dependencies: UploadHelperDependencies,
 ): FileUploadManagerInterface {
     const isUploadAborted = dependencies.isUploadAborted ?? isDefaultUploadAborted;
-    if (dependencies.FileUploadManager !== (FileUploadManager as unknown as UploadHelperDependencies["FileUploadManager"])) {
+    if (dependencies.FileUploadManager !== DEFAULT_FILE_UPLOAD_MANAGER) {
         return new dependencies.FileUploadManager({
             localStorage: dependencies.localStorage,
             fetch: window.fetch.bind(window),

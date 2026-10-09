@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
+import { build as buildBrowserProbe } from 'esbuild';
 import { HASHED_PRECACHE_ASSET_PATTERN } from '../../lib/swPrecacheInstall';
 
 const manifestPattern = /\[\{"revision":(?:null|"[^"]*"),"url":"[^"]+"\}(?:,\{"revision":(?:null|"[^"]*"),"url":"[^"]+"\})*\]/;
@@ -112,6 +113,24 @@ async function enterApp(page: Page, url: string) {
     await page.reload();
     await page.locator('.settings-btn').click();
     await expect(page.locator('.settings-dialog')).toBeVisible();
+}
+
+let sharedMediaProbeScript: Promise<string> | undefined;
+
+function getSharedMediaProbeScript(): Promise<string> {
+    sharedMediaProbeScript ??= buildBrowserProbe({
+        entryPoints: [resolve('src/test/e2e/swSharedMediaProbe.ts')],
+        bundle: true,
+        format: 'iife',
+        platform: 'browser',
+        target: 'es2022',
+        write: false,
+    }).then(({ outputFiles }) => {
+        const script = outputFiles[0]?.text;
+        if (!script) throw new Error('failed to build the Service Worker media probe');
+        return script;
+    });
+    return sharedMediaProbeScript;
 }
 
 async function startUpdate(page: Page) {
@@ -252,6 +271,86 @@ for (const basePath of ['/ehagaki/', '/'] as const) {
             await reopened.goto(fixture.url, { waitUntil: 'domcontentloaded' });
             await reopened.locator('.settings-btn').click();
             await expect(reopened.locator('.settings-dialog')).toBeVisible();
+        } finally { await fixture.close(); }
+    });
+
+    test(`${basePath} round-trips a share-target File through the production Service Worker MessageChannel`, async ({ page }) => {
+        const fixture = await createFixture(basePath);
+        try {
+            await page.addInitScript(() => {
+                if (!('serviceWorker' in navigator)) return;
+                navigator.serviceWorker.addEventListener('message', (event: MessageEvent<unknown>) => {
+                    const message = event.data;
+                    if (
+                        typeof message === 'object'
+                        && message !== null
+                        && 'type' in message
+                        && message.type === 'SHARED_MEDIA'
+                    ) {
+                        event.stopImmediatePropagation();
+                    }
+                });
+            });
+            await enterApp(page, fixture.url);
+            await page.addScriptTag({ content: await getSharedMediaProbeScript() });
+
+            const controllerUrl = await page.evaluate(
+                () => navigator.serviceWorker.controller?.scriptURL ?? null,
+            );
+            expect(controllerUrl).toBe(`${new URL(fixture.url).origin}${basePath}sw.js`);
+
+            const postResult = await page.evaluate(async () => {
+                const file = new File(
+                    [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])],
+                    'service-worker-roundtrip.png',
+                    { type: 'image/png', lastModified: 1_700_000_000_000 },
+                );
+                const formData = new FormData();
+                formData.append('media', file, file.name);
+                formData.append('title', 'Service Worker File round-trip');
+
+                const response = await fetch(new URL('upload', window.location.href), {
+                    method: 'POST',
+                    body: formData,
+                });
+                return {
+                    status: response.status,
+                    redirected: response.redirected,
+                    url: response.url,
+                };
+            });
+
+            expect(postResult.status).toBe(200);
+            expect(postResult.redirected).toBe(true);
+            expect(new URL(postResult.url).searchParams.get('shared')).toBe('true');
+
+            const directResponse = await page.evaluate(async () => {
+                return await window.__swSharedMediaProbe.requestSharedMediaFromServiceWorker();
+            });
+            expect(directResponse).toMatchObject({
+                received: true,
+                firstImageIsFile: true,
+                fileName: 'service-worker-roundtrip.png',
+                fileType: 'image/png',
+                fileSize: 8,
+            });
+            expect(directResponse.shareId).toBeTruthy();
+            if (!directResponse.shareId) {
+                throw new Error('Service Worker shared media response has no shareId');
+            }
+
+            const fallbackResult = await page.evaluate(async (shareId) => {
+                return await window.__swSharedMediaProbe.getSharedMediaWithFallback(shareId);
+            }, directResponse.shareId);
+            expect(fallbackResult.databaseRecordDeleted).toBe(true);
+            expect(fallbackResult).toMatchObject({
+                received: true,
+                firstImageIsFile: true,
+                fileName: 'service-worker-roundtrip.png',
+                fileType: 'image/png',
+                fileSize: 8,
+                shareId: directResponse.shareId,
+            });
         } finally { await fixture.close(); }
     });
 }

@@ -31,6 +31,16 @@ type EditorWithPlaceholderState = Editor & {
     __placeholderState?: PlaceholderState;
 };
 
+type EditorWithOutsideClickHandler = Editor & {
+    __outsideClickHandler?: (event: MouseEvent | TouchEvent) => void;
+};
+
+declare global {
+    interface Window {
+        __currentEditor?: EditorWithPlaceholderState;
+    }
+}
+
 // PCで Shift+Enter を Enter（新しいパラグラフ）と同じ挙動にする
 const ShiftEnterToParagraph = Extension.create({
     name: 'shiftEnterToParagraph',
@@ -139,15 +149,16 @@ const GapCursorFocusReset = Extension.create({
         document.addEventListener('touchstart', handleOutsideClick);
 
         // クリーンアップ用に参照を保存
-        (this.editor as any).__outsideClickHandler = handleOutsideClick;
+        (this.editor as EditorWithOutsideClickHandler).__outsideClickHandler = handleOutsideClick;
     },
 
     onDestroy() {
-        const handleOutsideClick = (this.editor as any).__outsideClickHandler;
+        const editor = this.editor as EditorWithOutsideClickHandler;
+        const handleOutsideClick = editor.__outsideClickHandler;
         if (handleOutsideClick) {
             document.removeEventListener('mousedown', handleOutsideClick);
             document.removeEventListener('touchstart', handleOutsideClick);
-            delete (this.editor as any).__outsideClickHandler;
+            delete editor.__outsideClickHandler;
         }
     },
 });
@@ -250,7 +261,7 @@ export function createEditorStore(options: EditorConfigOptions) {
                 defaultProtocol: 'https',
                 // Tiptap v3の新しいAPI: URL検証をより詳細に制御
                 // ペースト時のリンク検証に使用される
-                isAllowedUri: (url: string, ctx: any) => {
+                isAllowedUri: (url, ctx) => {
                     // デフォルトの検証を実行
                     if (!ctx.defaultValidate(url)) return false;
 
@@ -432,7 +443,7 @@ export function createEditorStore(options: EditorConfigOptions) {
         onCreate({ editor }) {
             // エディター作成時にグローバル参照を設定
             (editor as EditorWithPlaceholderState).__placeholderState = placeholderState;
-            (window as any).__currentEditor = editor;
+            window.__currentEditor = editor;
             onCreate?.(editor);
         },
         onUpdate() {
@@ -440,7 +451,7 @@ export function createEditorStore(options: EditorConfigOptions) {
         },
         onDestroy() {
             // エディター破棄時にグローバル参照をクリア
-            delete (window as any).__currentEditor;
+            delete window.__currentEditor;
             onDestroy?.();
         }
     });

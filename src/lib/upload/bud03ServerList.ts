@@ -150,9 +150,9 @@ export function fetchBud03ServerList(params: {
                 rxReq,
                 hasExplicitRelays ? { on: { relays: sanitizedRelays } } : undefined,
             ).subscribe({
-                next: (packet: any) => {
+                next: (packet) => {
                     if (packet?.event?.kind === BUD03_KIND && packet.event.pubkey === pubkeyHex) {
-                        events.push(packet.event as Bud03ServerListEvent);
+                        events.push(packet.event);
                     }
                 },
                 complete: finish,

@@ -1,5 +1,6 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import type { RxNostr } from "rx-nostr";
+import type { EventTemplate } from "nostr-tools";
 import { authState } from "../stores/authStore.svelte";
 import { writeRelaysStore } from "../stores/relayStore.svelte";
 import { isHostRelayConfigActive } from "./hostRelayRuntime";
@@ -14,6 +15,7 @@ import {
 } from "./postHistoryRawEventVerification";
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
 import type { SensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
+import type { WindowNostr } from "nostr-tools/nip07";
 import { sensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
 import { getSensitivePayloadReference, verifySensitivePayloadLink } from "./sensitiveContentPayload";
 import { postHistoryContextFetchService } from "./postHistoryContextFetchService";
@@ -41,7 +43,7 @@ export interface DeletionRequestResult extends PostResult {
 }
 
 export interface DeletionSigner {
-    signEvent?: (event: any) => Promise<any>;
+    signEvent?: (event: EventTemplate) => Promise<unknown>;
 }
 
 export interface PostDeletionServiceDeps {
@@ -50,9 +52,7 @@ export interface PostDeletionServiceDeps {
     };
     keyManager?: KeyManagerInterface;
     window?: {
-        nostr?: {
-            signEvent?: (event: any) => Promise<any>;
-        };
+        nostr?: Partial<Pick<WindowNostr, "signEvent">>;
     };
     console?: Console;
     seckeySignerFn?: (key: string) => DeletionSigner;
@@ -275,15 +275,15 @@ export class PostDeletionService {
             associatedPayload?.id,
         );
 
-        let signedEvent: any;
+        let signedEvent: NostrEvent;
         try {
             assertSession();
             const prepared = prepareSignedEventTemplate(deletionEvent);
-            signedEvent = await signerResolution.signEvent!(prepared.signerTemplate);
+            const signerResult = await signerResolution.signEvent!(prepared.signerTemplate);
             assertSession();
             signedEvent = validateSignedEventResult(
                 prepared.expectedTemplate,
-                signedEvent,
+                signerResult,
                 currentPubkey,
             );
             assertSession();
@@ -430,7 +430,7 @@ export class PostDeletionService {
         auth: AuthState,
         nip46Signer?: DeletionSigner | null,
     ): {
-        signEvent?: (event: any) => Promise<any>;
+        signEvent?: DeletionSigner["signEvent"];
         error?: string;
     } {
         if (auth.type === "nip07") {
@@ -470,7 +470,7 @@ export class PostDeletionService {
     private resolveExternalSigner(
         signer: DeletionSigner | null | undefined,
         missingSignerError: string,
-    ): { signEvent?: (event: any) => Promise<any>; error?: string } {
+    ): { signEvent?: DeletionSigner["signEvent"]; error?: string } {
         if (!signer) {
             return { error: missingSignerError };
         }

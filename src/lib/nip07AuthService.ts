@@ -1,6 +1,12 @@
 import { nip19 } from "nostr-tools";
+import type { EventTemplate } from "nostr-tools";
 import { waitNostr } from "nip07-awaiter";
-import type { AuthResult, PublicKeyData } from "./types";
+import type { AuthResult, NostrEvent, PublicKeyData } from "./types";
+
+type Nip07Extension = {
+    getPublicKey: () => Promise<string>;
+    signEvent: (event: EventTemplate) => Promise<NostrEvent>;
+};
 
 // --- NIP-07（ブラウザ拡張機能）認証サービス ---
 
@@ -12,15 +18,21 @@ export class Nip07AuthService {
     /**
      * 捕捉したwindow.nostrの参照。
      */
-    private capturedNostr: any;
+    private capturedNostr: Nip07Extension | null;
 
     /** テスト用: waitNostrの代替関数 */
-    private waitNostrFn: (timeout: number, options?: { signal?: AbortSignal }) => Promise<any>;
+    private waitNostrFn: (
+        timeout: number,
+        options?: { signal?: AbortSignal },
+    ) => Promise<Nip07Extension | undefined>;
 
     constructor(
         private windowObj: Window = typeof window !== 'undefined' ? window : {} as Window,
         private console: Console = typeof window !== 'undefined' ? window.console : {} as Console,
-        waitNostrFn?: (timeout: number) => Promise<any>,
+        waitNostrFn?: (
+            timeout: number,
+            options?: { signal?: AbortSignal },
+        ) => Promise<Nip07Extension | undefined>,
     ) {
         // 構築時点でwindow.nostrを捕捉する
         this.capturedNostr = this.getValidNostr();
@@ -30,17 +42,9 @@ export class Nip07AuthService {
     /**
      * windowObj.nostrが有効なNIP-07インターフェースを持つか確認し、持つなら返す
      */
-    private getValidNostr(): any {
-        const nostr = (this.windowObj as any)?.nostr;
-        if (
-            typeof nostr === 'object' &&
-            nostr !== null &&
-            typeof nostr.getPublicKey === 'function' &&
-            typeof nostr.signEvent === 'function'
-        ) {
-            return nostr;
-        }
-        return null;
+    private getValidNostr(): Nip07Extension | null {
+        const nostr: unknown = this.windowObj.nostr;
+        return isNip07Extension(nostr) ? nostr : null;
     }
 
     /**
@@ -60,7 +64,7 @@ export class Nip07AuthService {
     ): Promise<boolean> {
         if (this.isAvailable()) return true;
 
-        let nostr: any;
+        let nostr: Nip07Extension | undefined;
         try {
             nostr = options.signal
                 ? await this.waitNostrFn(maxWaitMs, options)
@@ -81,7 +85,8 @@ export class Nip07AuthService {
     async authenticate(
         options: { timeoutMs?: number } = {},
     ): Promise<AuthResult & { pubkeyData?: PublicKeyData }> {
-        if (!this.isAvailable()) {
+        const nostr = this.capturedNostr;
+        if (!nostr) {
             return { success: false, error: 'nip07_not_available' };
         }
 
@@ -89,7 +94,7 @@ export class Nip07AuthService {
 
         try {
             const readPromise = Promise.resolve().then(
-                () => this.capturedNostr.getPublicKey(),
+                () => nostr.getPublicKey(),
             );
             const timeoutMs = options.timeoutMs;
             const pubkeyHex: string = typeof timeoutMs === 'number' && timeoutMs > 0
@@ -130,10 +135,20 @@ export class Nip07AuthService {
     /**
      * NIP-07経由でイベントに署名
      */
-    async signEvent(event: any): Promise<any> {
-        if (!this.isAvailable()) {
+    async signEvent(event: EventTemplate): Promise<NostrEvent> {
+        const nostr = this.capturedNostr;
+        if (!nostr) {
             throw new Error('NIP-07 extension is not available');
         }
-        return await this.capturedNostr.signEvent(event);
+        return await nostr.signEvent(event);
     }
+}
+
+function isNip07Extension(value: unknown): value is Nip07Extension {
+    return typeof value === "object"
+        && value !== null
+        && "getPublicKey" in value
+        && typeof value.getPublicKey === "function"
+        && "signEvent" in value
+        && typeof value.signEvent === "function";
 }

@@ -1114,7 +1114,7 @@ describe('PostEventSender', () => {
 
     it('署名者付きでイベントを送信する', async () => {
         const event = { kind: 1, content: 'test' };
-        const signer = { sign: vi.fn() };
+        const signer = { signEvent: vi.fn(), getPublicKey: vi.fn() };
 
         // 成功レスポンスのモック
         const mockObservable = {

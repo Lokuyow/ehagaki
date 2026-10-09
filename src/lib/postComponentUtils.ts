@@ -2,6 +2,7 @@ import type { Editor as TipTapEditor } from '@tiptap/core';
 
 import type {
     FullscreenMediaItem,
+    ImageImetaMetadataMap,
     MediaGalleryItem,
     PostResult,
     PostStatus,
@@ -19,10 +20,10 @@ interface SecretKeyPostManager {
         editor: TipTapEditor,
         imageOxMap: Record<string, string>,
         imageXMap: Record<string, string>,
-    ) => Record<string, any>;
+    ) => ImageImetaMetadataMap;
     submitPost: (
         content: string,
-        imageImetaMap?: Record<string, any>,
+        imageImetaMap?: ImageImetaMetadataMap,
         emojiTags?: string[][],
     ) => Promise<PostResult>;
 }
@@ -180,7 +181,7 @@ export function collectFullscreenMediaItems(params: {
 
     const items: FullscreenMediaItem[] = [];
 
-    params.currentEditor.state.doc.descendants((node: any) => {
+    params.currentEditor.state.doc.descendants((node) => {
         if (
             (node.type.name === 'image' || node.type.name === 'video') &&
             !node.attrs.isPlaceholder
@@ -231,7 +232,7 @@ export function getFullscreenMediaItemAt(
 }
 
 type TransferableEditorMediaNode = {
-    node: any;
+    node: import("prosemirror-model").Node;
     pos: number;
 };
 
@@ -240,7 +241,7 @@ function collectTransferableEditorMediaNodes(
 ): TransferableEditorMediaNode[] {
     const mediaNodes: TransferableEditorMediaNode[] = [];
 
-    currentEditor.state.doc.descendants((node: any, pos: number) => {
+    currentEditor.state.doc.descendants((node, pos) => {
         if (
             (node.type.name === 'image' || node.type.name === 'video') &&
             !node.attrs.isPlaceholder

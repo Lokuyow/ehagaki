@@ -46,10 +46,6 @@ function validateCustomEmojiCatalog(
     return next;
 }
 
-type HostOwnedAppInstance = {
-    setHostCustomEmojis(catalog: EHagakiCustomEmojiCatalogItem[]): Promise<void>;
-};
-
 /**
  * The Lite entry keeps the public Custom Element API but uses the Host-owned
  * composition root. This is intentionally a build-time root, not a runtime
@@ -97,7 +93,11 @@ export class EHagakiHostOwnedLiteComposerElement extends EHagakiComposerElement 
         const validated = validateCustomEmojiCatalog(catalog);
         this.#hostCustomEmojiCatalog = validated;
         return this.enqueue(async () => {
-            const app = this.requireApp() as unknown as HostOwnedAppInstance;
+            const app = this.requireApp();
+            if (!("setHostCustomEmojis" in app)
+                || typeof app.setHostCustomEmojis !== "function") {
+                throw new Error("Host-owned Composer app is unavailable.");
+            }
             await app.setHostCustomEmojis(validated.map((item) => ({ ...item })));
         });
     }

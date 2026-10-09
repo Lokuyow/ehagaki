@@ -45,7 +45,7 @@ export interface UseImageDragOptions {
     /** isPlaceholder のリアクティブ getter */
     getIsPlaceholder: () => boolean;
     /** node.attrs のリアクティブ getter */
-    getNodeAttrs: () => Record<string, any>;
+    getNodeAttrs: () => Record<string, unknown>;
     /**
      * タップ・クリック処理コールバック
      * タッチエンド時に短押しと判定された場合に呼び出される

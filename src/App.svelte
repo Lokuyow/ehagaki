@@ -33,6 +33,7 @@
   import ReasonInput from "./components/ReasonInput.svelte";
   import ChannelContextPreview from "./components/ChannelContextPreview.svelte";
   import ImageFullscreen from "./components/ImageFullscreen.svelte";
+  import type PostComponentType from "./components/PostComponent.svelte";
   import ReplyQuotePreview from "./components/ReplyQuotePreview.svelte";
   import {
     authState,
@@ -452,7 +453,7 @@
   let parentClientAvailable = $state(false);
   // NIP-07拡張機能の検出状態（nos2x等の遅延注入に対応するためリアクティブ）
   let nip07ExtensionAvailable = $state(authService.isNip07Available());
-  let postComponentRef: any = $state();
+  let postComponentRef: PostComponentType | null = $state(null);
   let isLoggingOut = $state(false); // 追加: ログアウト中の状態管理
   let isSwitchingAccount = $state(false); // アカウント切替中フラグ
   let nip46OperationState = $state<Nip46ConnectionOperationState>(
@@ -1753,8 +1754,8 @@
       }
       if (
         rxNostr &&
-        typeof (rxNostr as unknown as { dispose?: unknown }).dispose ===
-          "function"
+        "dispose" in rxNostr &&
+        typeof rxNostr.dispose === "function"
       ) {
         rxNostr = disposeNostrSession(rxNostr);
       } else {
