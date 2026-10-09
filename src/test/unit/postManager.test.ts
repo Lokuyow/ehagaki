@@ -2614,6 +2614,7 @@ describe('PostManager統合テスト', () => {
                             type: 'ok',
                             message: ''
                         });
+                        observer.complete();
                     });
                     return { unsubscribe: vi.fn() };
                 })
