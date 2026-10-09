@@ -26,7 +26,6 @@ import { Plugin, PluginKey } from 'prosemirror-state';
 import { Slice, Fragment } from 'prosemirror-model';
 import type { Node as PMNode, Schema } from 'prosemirror-model';
 import { normalizeClipboardText, serializeParagraphs } from '../utils/clipboardUtils';
-import { debugClipboardData } from '../utils/clipboardDebug';
 import { normalizeEmojiShortcode } from '../customEmoji';
 import { cleanupExternalRichPasteLines } from './clipboardTextCleanup';
 
@@ -151,11 +150,6 @@ export const ClipboardExtension = Extension.create({
                             return false;
                         }
 
-                        // デバッグ情報を出力（開発環境のみ）
-                        if (import.meta.env.MODE === 'development') {
-                            debugClipboardData(clipboardData, 'Paste');
-                        }
-
                         // 画像ファイルのペーストは別処理に委譲
                         const hasFiles = clipboardData.files && clipboardData.files.length > 0;
                         if (hasFiles) {
@@ -181,9 +175,6 @@ export const ClipboardExtension = Extension.create({
                             isSelfCopy = isFromCurrentEditor || isFromLegacyEditor;
                             collapseEmptyLines = isFromCurrentEditor || isFromLegacyEditor;
 
-                            if (import.meta.env.MODE === 'development') {
-                                console.log('📋 From own app:', collapseEmptyLines);
-                            }
                         }
 
                         if (!text) {
@@ -214,14 +205,6 @@ export const ClipboardExtension = Extension.create({
                         const fragment = Fragment.from(paragraphNodes);
                         const customSlice = new Slice(fragment, 1, 1);
 
-                        if (import.meta.env.MODE === 'development') {
-                            console.log('📋 handlePaste: paragraph-based paste', {
-                                originalText: text,
-                                lines: lines.length,
-                                paragraphCount: paragraphNodes.length
-                            });
-                        }
-
                         // トランザクションを作成
                         // 
                         // Tiptap v3 UndoRedo拡張の仕様:
@@ -236,14 +219,6 @@ export const ClipboardExtension = Extension.create({
                             .setMeta('paste', true)
                             .setMeta('uiEvent', 'paste')
                             .setMeta('addToHistory', true);
-
-                        if (import.meta.env.MODE === 'development') {
-                            console.log('📋 handlePaste: dispatching transaction', {
-                                docChanged: tr.docChanged,
-                                steps: tr.steps.length,
-                                linesCount: lines.length
-                            });
-                        }
 
                         dispatch(tr);
 

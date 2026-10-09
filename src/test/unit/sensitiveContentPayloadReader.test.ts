@@ -132,7 +132,6 @@ describe("sensitiveContentPayloadReader", () => {
 
     it("rejects invalid cached and fetched pairs instead of revealing candidate text", async () => {
         const secretKey = generateSecretKey();
-        const { structure } = createPair(secretKey);
         const wrongK = finalizeEvent({
             kind: 36,
             content: "must not appear",

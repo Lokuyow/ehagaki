@@ -1,5 +1,5 @@
 import { createFileSizeInfo } from "./utils/fileSizeUtils";
-import { calculateSHA256Hex, getImageDimensions } from "./utils/fileUtils";
+import { getImageDimensions } from "./utils/fileUtils";
 import { setImageSizeInfoFromFileSize } from "../stores/uploadStore.svelte";
 import { VideoCompressionService } from "./videoCompression/videoCompressionService";
 import type {
@@ -161,15 +161,6 @@ export class FileUploadManager implements FileUploadManagerInterface {
       if (!file) return { success: false, error: "No file selected" };
       if (this.isUploadAborted(operation?.signal)) {
         return { success: false, error: 'Upload aborted by user', aborted: true };
-      }
-
-      let ox: string | undefined = undefined;
-      if (!operation?.headless) {
-        try {
-          ox = await calculateSHA256Hex(file, this.dependencies.crypto, this.isUploadAborted.bind(this));
-        } catch (e) {
-          ox = undefined;
-        }
       }
 
       const originalSize = file.size;

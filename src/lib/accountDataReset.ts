@@ -74,12 +74,3 @@ export async function resetManagedAccountData(
         ),
     );
 }
-
-export const accountDataResetInternals = {
-    LOCAL_STORAGE_FIXED_KEYS,
-    LOCAL_STORAGE_PREFIX_KEYS,
-    PROFILE_CACHE_NAMES,
-    CUSTOM_EMOJI_CACHE_NAMES,
-    CHANNEL_IMAGE_CACHE_NAMES,
-    removeManagedLocalStorageKeys,
-};

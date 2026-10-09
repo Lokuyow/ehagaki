@@ -17,7 +17,6 @@ import type {
 } from "./storage/ehagakiDb";
 import type { NostrEvent } from "./types";
 import { getSensitivePayloadReference, verifySensitivePayloadLink } from "./sensitiveContentPayload";
-import { isFullyVerifiedEvent } from "./sensitiveEventUtils";
 
 export const POST_HISTORY_JSONL_CHUNK_SIZE = 1024 * 1024;
 export const POST_HISTORY_LEGACY_WRITE_BATCH_SIZE = 100;

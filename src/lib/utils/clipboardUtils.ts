@@ -101,63 +101,6 @@ export function serializeParagraphs(paragraphs: string[]): string {
 }
 
 // ================================================================================
-// デバッグ用ユーティリティ（開発環境のみ使用）
-// ================================================================================
-
-/**
- * デバッグ用: テキストの改行構造を可視化
- * 
- * @param text - 確認対象のテキスト
- * @returns 改行コードが可視化された文字列
- */
-export function visualizeLineBreaks(text: string): string {
-    return text
-        .replace(/\r\n/g, '[CRLF]')
-        .replace(/\n/g, '[LF]')
-        .replace(/\r/g, '[CR]');
-}
-
-/**
- * 改行統計情報
- */
-export interface LineBreakAnalysis {
-    /** CRLF改行の数 */
-    crlfCount: number;
-    /** LF改行の数（CRLF以外） */
-    lfCount: number;
-    /** CR改行の数（CRLF以外） */
-    crCount: number;
-    /** 総行数 */
-    totalLines: number;
-    /** 末尾に改行があるか */
-    hasTrailingNewline: boolean;
-}
-
-/**
- * テキストの改行統計を取得
- * 
- * @param text - 分析対象のテキスト
- * @returns 改行に関する統計情報
- */
-export function analyzeLineBreaks(text: string): LineBreakAnalysis {
-    const crlfCount = (text.match(/\r\n/g) || []).length;
-    const lfCount = (text.match(/(?<!\r)\n/g) || []).length;
-    const crCount = (text.match(/\r(?!\n)/g) || []).length;
-
-    const normalized = normalizeLineBreaks(text);
-    const lines = normalized.split('\n');
-    const hasTrailingNewline = normalized.endsWith('\n');
-
-    return {
-        crlfCount,
-        lfCount,
-        crCount,
-        totalLines: hasTrailingNewline ? lines.length - 1 : lines.length,
-        hasTrailingNewline
-    };
-}
-
-// ================================================================================
 // クリップボードコピー機能
 // ================================================================================
 

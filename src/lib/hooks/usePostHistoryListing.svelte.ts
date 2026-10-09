@@ -419,7 +419,6 @@ function didDateChunkMissTarget(
 
 export const POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS = 12 * 60 * 60;
 // Keep expanded scans bounded so older-backfill stays a windowed author query instead of drifting back to a wide until-only search.
-const POST_HISTORY_OLDER_BACKFILL_MAX_WINDOW_SECONDS = 30 * 24 * 60 * 60;
 const POST_HISTORY_OLDER_BACKFILL_MIN_CONTINUATION_SECONDS = 60 * 60;
 const POST_HISTORY_OLDER_BACKFILL_WINDOW_SEQUENCE = [
     12 * 60 * 60,
@@ -428,14 +427,6 @@ const POST_HISTORY_OLDER_BACKFILL_WINDOW_SEQUENCE = [
     7 * 24 * 60 * 60,
     14 * 24 * 60 * 60,
     30 * 24 * 60 * 60,
-] as const;
-const POST_HISTORY_OLDER_BACKFILL_WINDOW_SEQUENCE_LABELS = [
-    "12h",
-    "1d",
-    "3d",
-    "7d",
-    "14d",
-    "30d",
 ] as const;
 const POST_HISTORY_OLDER_BACKFILL_MAX_ATTEMPTS_PER_CLICK = 6;
 const POST_HISTORY_OLDER_BACKFILL_MAX_AUTO_EXPLORE_SECONDS =
@@ -1386,60 +1377,6 @@ export function usePostHistoryListing({
         olderBackfillSearch.exhausted = nextUntil === null;
         state.nextUntil = nextUntil;
         state.hasMoreRemote = nextUntil !== null;
-    }
-
-    function updateOlderBackfillSearchState(
-        result: PostHistoryRelayFetchResult,
-        range: OlderBackfillSearchRange,
-        limit: number,
-    ): void {
-        const hitLimitReasons = resolveOlderBackfillLimitHitReasons(result, limit);
-        const hitLimit = hitLimitReasons.length > 0;
-        const oldestCreatedAt = resolveOldestCreatedAtFromFetchResult(result);
-        const remainingWindowSeconds =
-            typeof oldestCreatedAt === "number" && oldestCreatedAt > range.since
-                ? oldestCreatedAt - range.since
-                : 0;
-        const defaultOlderCursor = range.since > 0 ? range.since : null;
-        let nextUntil = defaultOlderCursor;
-        let continuationSince: number | null = null;
-
-        olderBackfillSearch.lastRange = {
-            ...range,
-            hitLimit,
-        };
-
-        if (result.status === "success" && result.events.length === 0) {
-            olderBackfillSearch.consecutiveEmptyCount += 1;
-            olderBackfillSearch.windowSeconds = Math.min(
-                olderBackfillSearch.windowSeconds * 2,
-                POST_HISTORY_OLDER_BACKFILL_MAX_WINDOW_SECONDS,
-            );
-            setOlderBackfillNextCursor(nextUntil, null);
-            return;
-        }
-
-        if (result.events.length > 0) {
-            olderBackfillSearch.consecutiveEmptyCount = 0;
-            olderBackfillSearch.windowSeconds =
-                POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS;
-
-            if (
-                (hitLimit || result.status !== "success") &&
-                typeof oldestCreatedAt === "number" &&
-                oldestCreatedAt > range.since &&
-                remainingWindowSeconds >= POST_HISTORY_OLDER_BACKFILL_MIN_CONTINUATION_SECONDS
-            ) {
-                nextUntil = oldestCreatedAt;
-                continuationSince = range.since;
-            }
-
-            setOlderBackfillNextCursor(nextUntil, continuationSince);
-            return;
-        }
-
-        const retryUntil = range.until + 1;
-        setOlderBackfillNextCursor(retryUntil, olderBackfillSearch.continuationSince);
     }
 
     function logOlderBackfillResult(
@@ -3977,7 +3914,6 @@ export function usePostHistoryListing({
         let batchNextUntil: number | null = null;
         let batchContinuationSince: number | null = null;
         let batchChanged = false;
-        let batchStoppedReason: string | null = null;
         let autoRetryCount = 0;
         let autoRetryReason: string | null = null;
 
@@ -4024,8 +3960,6 @@ export function usePostHistoryListing({
             );
             const windowSeconds =
                 POST_HISTORY_OLDER_BACKFILL_WINDOW_SEQUENCE[windowIndex];
-            const windowLabel =
-                POST_HISTORY_OLDER_BACKFILL_WINDOW_SEQUENCE_LABELS[windowIndex];
             const uncovered = getPostHistoryOlderUncoveredRange(rangesBeforeFetch, Math.trunc(effectiveFetchUntil), windowSeconds, batchContinuationSince);
             if (!uncovered) {
                 setOlderBackfillNextCursor(null, null);
@@ -4074,7 +4008,6 @@ export function usePostHistoryListing({
 
             currentFetchTask = null;
             if (!authoredScope.isActive() || result.status === "cancelled") {
-                batchStoppedReason = "status-cancelled";
                 return batchChanged;
             }
 
@@ -4240,14 +4173,10 @@ export function usePostHistoryListing({
                 typeof nextUntilCursor === "number" &&
                 nextUntilCursor < effectiveFetchUntil;
             const currentVisibleCount = nextCount;
-            const visibleAddedThisAttempt = Math.max(0, nextCount - previousCount);
             const totalVisibleAdded = Math.max(
                 0,
                 currentVisibleCount - (clickStartVisibleCount ?? currentVisibleCount),
             );
-            const postsPerDay = fetchRange.windowSeconds > 0
-                ? visibleAddedThisAttempt / (fetchRange.windowSeconds / (24 * 60 * 60))
-                : null;
             const cursorAdvancedSeconds = typeof nextUntilCursor === "number"
                 ? Math.max(0, effectiveFetchUntil - nextUntilCursor)
                 : Math.max(0, effectiveFetchUntil);
@@ -4302,7 +4231,6 @@ export function usePostHistoryListing({
                 autoRetryCount = nextAutoRetryCount;
                 autoRetryReason = retryDecision.reason;
                 batchChanged = nextBatchChanged;
-                batchStoppedReason = null;
                 batchNextUntil = nextUntilCursor;
                 batchContinuationSince = nextContinuationSince;
                 if (!canContinueWithinWindow) {
@@ -4316,7 +4244,6 @@ export function usePostHistoryListing({
 
             autoRetryReason = retryDecision.reason;
             batchChanged = nextBatchChanged;
-            batchStoppedReason = retryDecision.reason;
 
             state.latestOlderBackfillUiResult = {
                 changed: batchChanged,

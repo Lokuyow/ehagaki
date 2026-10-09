@@ -308,7 +308,7 @@ describe('ConfirmDialog', () => {
     });
 
     it('confirmVariant="danger"が正しく適用される', () => {
-        const { container } = render(ConfirmDialog, {
+        render(ConfirmDialog, {
             props: {
                 open: true,
                 description: 'テストメッセージ',

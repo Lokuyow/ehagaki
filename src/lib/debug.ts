@@ -23,9 +23,6 @@ export function shouldShowDevLog(): boolean {
     return isPreviewOrDevEnv();
 }
 
-// --- 既存のストアを更新 ---
-const isPreviewOrDev: boolean = shouldShowDevLog();
-
 // --- devLog追加関数 ---
 function logToDevFooter(...args: any[]) {
     const entry = args

@@ -15,7 +15,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EditorState, TextSelection } from '@tiptap/pm/state';
 import { Schema } from '@tiptap/pm/model';
-import { closeHistory, history, undo, redo } from '@tiptap/pm/history';
+import { closeHistory, history, undo } from '@tiptap/pm/history';
 
 // PWA関連のモック
 vi.mock("virtual:pwa-register/svelte", () => ({
@@ -97,7 +97,7 @@ describe('エディター履歴管理 - 統合テスト', () => {
      * ヘルパー: Undoを実行
      */
     function performUndo(state: EditorState): EditorState {
-        const command = undo(state, (tr) => state = state.apply(tr));
+        undo(state, (tr) => state = state.apply(tr));
         return state;
     }
 

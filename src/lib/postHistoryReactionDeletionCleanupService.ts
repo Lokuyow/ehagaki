@@ -89,10 +89,6 @@ function toDeletedReactionEventIds(
     );
 }
 
-function toParentEventIds(items: ReactionCleanupItem[]): string[] {
-    return uniqueEventIds(items.map((item) => item.parentEventId));
-}
-
 export class PostHistoryReactionDeletionCleanupService {
     private reactionRecordsAdapter: Pick<PostHistoryReactionRecordsAdapter, "getReactionRecords">;
     private deletionFetchService: Pick<PostHistoryDeletionFetchService, "fetchDeletionRequests">;

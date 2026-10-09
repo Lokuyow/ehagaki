@@ -21,10 +21,7 @@ import type {
     RelayConfig,
 } from "./types";
 import type { ComposerTargetPointer } from "./composerTargetUtils";
-import {
-    postHistoryDeletionRequestsRepository,
-    type PostHistoryDeletionRequestsRepository,
-} from "./storage/postHistoryDeletionRequestsRepository";
+import type { PostHistoryDeletionRequestsRepository } from "./storage/postHistoryDeletionRequestsRepository";
 
 export type ComposerTargetResolvePhase =
     | "event-loading"
@@ -113,9 +110,6 @@ export function createComposerTargetResolver(
     const verifyEventFn = deps.verifyEventFn
         ?? ((event: NostrEvent) =>
             validateEvent(event as never) && verifyEvent(event as never));
-    const deletionRequestsRepository = deps.deletionRequestsRepository
-        ?? postHistoryDeletionRequestsRepository;
-
     function resolve(params: ResolveComposerTargetParams): ComposerTargetResolveTask {
         let cancelled = false;
         let eventTask: ReferencedEventFetchTask | null = null;

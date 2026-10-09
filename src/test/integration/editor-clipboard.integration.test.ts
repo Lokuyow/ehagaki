@@ -383,9 +383,6 @@ Second line with #tag2 and https://example.org
             const plainText = htmlContent.replace(/<[^>]+>/g, '');
             expect(plainText).toBe('Check #NostrVisit https://example.com');
 
-            // スペースを補完（実際の実装では必要）
-            const correctedText = plainText.replace(/([a-z])([A-Z])/g, '$1 $2');
-
             // ハッシュタグ抽出
             const hashtags = extractHashtagsFromContent(plainText);
             expect(hashtags.length).toBeGreaterThan(0);

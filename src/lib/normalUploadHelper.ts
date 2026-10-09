@@ -14,7 +14,6 @@ import type {
     CompressionService,
     FileUploadDependencies,
     FileUploadManagerInterface,
-    FileUploadResponse,
     MimeTypeSupportInterface,
     UploadHelperDependencies,
     UploadHelperResult,

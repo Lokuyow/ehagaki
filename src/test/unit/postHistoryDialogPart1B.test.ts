@@ -2,16 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import {
     PostHistoryDialog,
-    channelContextServiceMock,
-    channelMetadataRepositoryMock,
     cleanupPostHistoryDialogHarness,
-    clipboardMock,
-    customEmojiImageMetaRepositoryMock,
-    customEmojiMock,
     localSearchServiceMock,
-    nostrUtilsMock,
-    postDeletionServiceMock,
-    postMediaCacheServiceMock,
     relayFetchServiceMock,
     repairServiceMock,
     repositoryMock,
@@ -50,12 +42,6 @@ function createDeferred<T>() {
     });
 
     return { promise, resolve };
-}
-
-function expectDefaultMediaReplacement(): void {
-    expect(screen.getByText('投稿本文')).toBeTruthy();
-    expect(screen.getByTitle('image.jpg')).toBeTruthy();
-    expect(screen.queryByText('https://example.com/image.jpg')).toBeNull();
 }
 
 async function openPostHistoryMenu(): Promise<void> {
@@ -458,6 +444,5 @@ describe('PostHistoryDialog', () => {
         expect((await findRepairButton()).hasAttribute('data-disabled')).toBe(true);
         expect(repairServiceMock.refetchAroundCurrentView).not.toHaveBeenCalled();
     });
-
 
 });

@@ -1,22 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { render, screen, waitFor } from '@testing-library/svelte';
 import {
     PostHistoryDialog,
-    channelContextServiceMock,
-    channelMetadataRepositoryMock,
     cleanupPostHistoryDialogHarness,
-    clipboardMock,
     customEmojiImageMetaRepositoryMock,
     customEmojiMock,
-    localSearchServiceMock,
-    nostrUtilsMock,
-    postDeletionServiceMock,
-    postMediaCacheServiceMock,
-    relayFetchServiceMock,
-    repairServiceMock,
     repositoryMock,
     resetPostHistoryDialogHarness,
-    visibleRangeRepositoryMock,
 } from './postHistoryDialogTestHarness';
 function createRecord(overrides: Record<string, any> = {}) {
     return {
@@ -50,33 +40,6 @@ function createDeferred<T>() {
     });
 
     return { promise, resolve };
-}
-
-function expectDefaultMediaReplacement(): void {
-    expect(screen.getByText('投稿本文')).toBeTruthy();
-    expect(screen.getByTitle('image.jpg')).toBeTruthy();
-    expect(screen.queryByText('https://example.com/image.jpg')).toBeNull();
-}
-
-async function openPostHistoryMenu(): Promise<void> {
-    const trigger = await screen.findByRole('button', { name: '投稿履歴メニューを開く' });
-    await fireEvent.click(trigger);
-}
-
-async function openSearchBar(): Promise<HTMLInputElement> {
-    await openPostHistoryMenu();
-    await fireEvent.click(await screen.findByRole('menuitem', { name: '検索' }));
-    return screen.findByRole('searchbox', { name: '検索' }) as Promise<HTMLInputElement>;
-}
-
-async function findRepairButton(): Promise<HTMLElement> {
-    const existing = screen.queryByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ });
-    if (existing) {
-        return existing as HTMLElement;
-    }
-
-    await openPostHistoryMenu();
-    return screen.findByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ }) as Promise<HTMLElement>;
 }
 
 describe('PostHistoryDialog', () => {
@@ -226,7 +189,7 @@ describe('PostHistoryDialog', () => {
             }),
         ]);
 
-        const { container } = render(PostHistoryDialog, {
+        render(PostHistoryDialog, {
             props: {
                 show: true,
                 onClose: vi.fn(),
@@ -290,6 +253,5 @@ describe('PostHistoryDialog', () => {
         expect(screen.getByRole('img', { name: ':blobcat:' })).toBeTruthy();
         expect(screen.getByText(':blobcat:')).toBeTruthy();
     });
-
 
 });

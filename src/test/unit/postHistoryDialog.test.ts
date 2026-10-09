@@ -4,26 +4,19 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/sve
 import {
     PostHistoryDialog,
     authoredSyncStateRepositoryMock,
-    channelContextServiceMock,
-    channelMetadataRepositoryMock,
     cleanupPostHistoryDialogHarness,
-    clipboardMock,
     contextFetchServiceMock,
-    customEmojiImageMetaRepositoryMock,
     customEmojiMock,
     deletionFetchServiceMock,
     deletionRequestsRepositoryMock,
-    directReplyFetchMetadataRepositoryMock,
     inboundInteractionsSyncStateRepositoryMock,
     localSearchServiceMock,
-    nostrUtilsMock,
     postDeletionServiceMock,
     postHistoryJsonlExportServiceMock,
     postMediaCacheServiceMock,
     profileFetchDataMock,
     profilesRepositoryMock,
     relayFetchServiceMock,
-    repairServiceMock,
     replyEventsRepositoryMock,
     replyFetchServiceMock,
     repositoryMock,
@@ -314,12 +307,6 @@ function createDeletionEvent(overrides: Record<string, any> = {}) {
         created_at: overrides.createdAt ?? 1_700_000_040,
         sig: overrides.sig ?? 'a'.repeat(128),
     };
-}
-
-function expectDefaultMediaReplacement(): void {
-    expect(screen.getByText('投稿本文')).toBeTruthy();
-    expect(screen.getByTitle('image.jpg')).toBeTruthy();
-    expect(screen.queryByText('https://example.com/image.jpg')).toBeNull();
 }
 
 function mockCachedImagePreviews(entries: Record<string, string>): void {
@@ -2067,7 +2054,7 @@ describe('PostHistoryDialog', () => {
             }),
         });
 
-        const view = render(PostHistoryDialog, {
+        render(PostHistoryDialog, {
             props: {
                 show: true,
                 onClose: vi.fn(),
@@ -3494,7 +3481,7 @@ describe('PostHistoryDialog', () => {
             secondFavoriteReaction,
         ]);
 
-        const view = render(PostHistoryDialog, {
+        render(PostHistoryDialog, {
             props: {
                 show: true,
                 onClose: vi.fn(),

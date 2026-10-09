@@ -2,10 +2,6 @@ import { test, expect } from "@playwright/test";
 
 const emptySlots = { left: null, right: null };
 
-async function setSlots(page: import("@playwright/test").Page, slots: { left: string | null; right: string | null }) {
-    await page.evaluate((value) => localStorage.setItem("footerSettingShortcuts", JSON.stringify(value)), slots);
-}
-
 async function enterApp(page: import("@playwright/test").Page) {
     await page.goto("/");
     const start = page.getByRole("button", { name: "はじめる" });
@@ -901,7 +897,6 @@ test("aligns Footer shortcut slots with its icon heading without narrow dialog o
             };
             const headingIcon = dialogElement.querySelector<HTMLElement>(".footer-shortcuts-setting-icon")!;
             const referenceIcon = dialogElement.querySelector<HTMLElement>(".client-tag-setting-icon")!;
-            const heading = dialogElement.querySelector<HTMLElement>(".footer-shortcuts-setting-heading .setting-label")!;
             const leftSlot = dialogElement.querySelector<HTMLElement>("#footer-shortcut-left")!.closest<HTMLElement>(".footer-shortcut-slot")!;
             const rightSlot = dialogElement.querySelector<HTMLElement>("#footer-shortcut-right")!.closest<HTMLElement>(".footer-shortcut-slot")!;
             const leftLabel = leftSlot.querySelector<HTMLElement>("span")!;

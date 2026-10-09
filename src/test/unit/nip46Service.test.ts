@@ -458,34 +458,6 @@ describe('Nip46Service', () => {
             close: closeSubscription,
         });
 
-        const sendRequest = options.sendRequestPromise
-            ? vi.fn().mockReturnValue(options.sendRequestPromise)
-            : options.sendRequestError !== undefined
-                ? vi.fn().mockRejectedValue(options.sendRequestError)
-                : vi.fn().mockResolvedValue(
-                    options.sendRequestResult ?? JSON.stringify(initialRelays),
-                );
-
-        const fallbackGetPublicKey = options.fallbackGetPublicKeyPromise
-            ? vi.fn().mockReturnValue(options.fallbackGetPublicKeyPromise)
-            : options.fallbackGetPublicKeyError !== undefined
-                ? vi.fn().mockRejectedValue(options.fallbackGetPublicKeyError)
-                : vi.fn().mockResolvedValue(
-                    options.fallbackGetPublicKeyResult
-                    ?? options.userPubkey
-                    ?? TEST_USER_PUBKEY,
-                );
-
-        const interimGetPublicKey = options.interimGetPublicKeyPromise
-            ? vi.fn().mockReturnValue(options.interimGetPublicKeyPromise)
-            : options.interimGetPublicKeyError !== undefined
-                ? vi.fn().mockRejectedValue(options.interimGetPublicKeyError)
-                : vi.fn().mockResolvedValue(
-                    options.interimGetPublicKeyResult
-                    ?? options.userPubkey
-                    ?? TEST_USER_PUBKEY,
-                );
-
         const interimSigner = createMockNostrConnectSigner({
             remoteSignerPubkey,
             relays: initialRelays,

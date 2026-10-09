@@ -3,7 +3,6 @@ import type { RxNostr } from "rx-nostr";
 import {
     createPostHistoryRelatedTargetResolver,
     type PostHistoryRelatedTargetResolver,
-    type PostHistoryRelatedTargetSnapshot,
     type RelatedTargetDescriptor,
 } from "../postHistoryRelatedTargetResolver.svelte";
 import {
@@ -180,16 +179,6 @@ interface UsePostHistoryThreadGraphParams {
     replyFetchService?: Pick<PostHistoryReplyFetchService, "fetchDirectReplies">;
     deletionFetchService?: Pick<PostHistoryDeletionFetchService, "fetchDeletionRequests">;
     relatedTargetResolver?: PostHistoryRelatedTargetResolver;
-}
-
-function buildInitialRepliesActionState(): PostHistoryThreadGraphRepliesActionState {
-    return {
-        status: "unloaded",
-        visible: false,
-        replies: [],
-        replyCount: 0,
-        error: null,
-    };
 }
 
 function sanitizeRelayUrls(urls: string[]): string[] {
@@ -373,27 +362,6 @@ export function usePostHistoryThreadGraph({
                 reactionProfilesByPubkey,
             ),
         };
-    }
-
-    function setReactionSummary(
-        parentEventId: string,
-        records: PostHistoryChildInteractionRecord[],
-    ): void {
-        reactionSummaryByParentId = {
-            ...reactionSummaryByParentId,
-            [parentEventId]: summarizePostHistoryReactionRecords(records),
-        };
-    }
-
-    function setReactionRecords(
-        parentEventId: string,
-        records: PostHistoryChildInteractionRecord[],
-    ): void {
-        reactionRecordsByParentId = {
-            ...reactionRecordsByParentId,
-            [parentEventId]: records,
-        };
-        rebuildReactionReadModelForParent(parentEventId);
     }
 
     function setReactionProfile(pubkey: string, profile: ProfileData | null): void {
@@ -610,10 +578,6 @@ export function usePostHistoryThreadGraph({
 
     function getParentRelayHints(post: PostHistoryRecord, node: PostHistoryThreadGraphNode): string[] {
         return postHistoryReplyParentTargetDiscoveryAdapter.getRelayHints(post, node);
-    }
-
-    function getParentAuthorHint(node: PostHistoryThreadGraphNode): string | null {
-        return postHistoryReplyParentTargetDiscoveryAdapter.getAuthorHint(node);
     }
 
     function getChildrenRelayHints(post: PostHistoryRecord, node: PostHistoryThreadGraphNode): string[] {
