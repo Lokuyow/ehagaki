@@ -680,7 +680,10 @@ test("boots from production site output and exercises the public sample API", as
     const reply = nip19.noteEncode("a".repeat(64));
     const quote = nip19.noteEncode("b".repeat(64));
     const secondQuote = nip19.noteEncode("c".repeat(64));
-    await page.locator("#context-reply").fill(reply);
+    const replyInput = page.locator("#context-reply");
+    // This case covers the sample API button; mobile Chromium's emulated keyboard can drop text while filling this field.
+    await replyInput.evaluate((element, value) => { (element as HTMLInputElement).value = value; }, reply);
+    await expect(replyInput).toHaveValue(reply);
     await page.getByRole("button", { name: "返信先を反映" }).click();
     await expect(page.locator("#component-status")).toHaveText("返信先を反映しました");
     await page.locator("#context-quote-one").fill(quote);

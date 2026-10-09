@@ -23,12 +23,15 @@ type HarnessState = {
     >;
     oversizedPostContentLength: number;
     linkTargetUrl: string;
+    resolverEventIds: string[];
+    cancelledResolverEventIds: string[];
     applications: Array<{ action: string; kind: number; eventId: string }>;
 };
 
 type HarnessWindow = Window & typeof globalThis & {
     __COMPOSER_TARGET_HARNESS__?: HarnessState & {
         seedReactionFixtures: () => Promise<void>;
+        releaseStaleResolver: () => void;
     };
 };
 
@@ -44,6 +47,8 @@ async function gotoHarness(page: Page): Promise<HarnessState> {
             inputs: harness.inputs,
             oversizedPostContentLength: harness.oversizedPostContentLength,
             linkTargetUrl: harness.linkTargetUrl,
+            resolverEventIds: harness.resolverEventIds,
+            cancelledResolverEventIds: harness.cancelledResolverEventIds,
             applications: harness.applications,
         };
     });
@@ -239,12 +244,26 @@ test.describe("composer target dialog fixture", () => {
         await input.fill(harness.inputs.nsec);
         await expect(page.getByText("秘密鍵は宛先として使用できません")).toBeVisible();
 
+        const initialResolverCount = await page.evaluate(() =>
+            (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.resolverEventIds.length,
+        );
         await input.fill(harness.inputs.stale);
-        await page.waitForTimeout(300);
+        await expect.poll(() => page.evaluate(() =>
+            (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.resolverEventIds.length,
+        )).toBe(initialResolverCount + 1);
+        const staleEventId = await page.evaluate(() =>
+            (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.resolverEventIds.at(-1),
+        );
         await input.fill(harness.inputs.kind40);
-        await expect(page.getByRole("button", { name: "投稿する" })).toBeVisible();
-        await page.waitForTimeout(750);
-        await expect(page.getByRole("button", { name: "投稿する" })).toBeVisible();
+        const publishButton = page.getByRole("button", { name: "投稿する" });
+        await expect(publishButton).toBeVisible();
+        await expect.poll(() => page.evaluate(() =>
+            (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.cancelledResolverEventIds,
+        )).toContain(staleEventId);
+        await page.evaluate(() =>
+            (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.releaseStaleResolver(),
+        );
+        await expect(publishButton).toBeVisible();
         await expect(page.getByRole("button", { name: "リプライ" })).toBeHidden();
     });
 

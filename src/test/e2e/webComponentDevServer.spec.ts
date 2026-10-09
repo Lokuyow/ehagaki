@@ -209,6 +209,10 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         await expect(page.locator("ehagaki-composer .custom-emoji-button")).toHaveCount(1);
         await page.locator("ehagaki-composer .custom-emoji-button").click();
         await expect(page.locator("ehagaki-composer .emoji-button")).toHaveCount(3);
+        await expect.poll(() => page.locator("ehagaki-composer .emoji-button img").evaluateAll((images) => images.every((image) => {
+            const img = image as HTMLImageElement;
+            return img.complete && img.naturalWidth > 0;
+        }))).toBe(true);
         const autoGrowPickerGeometry = await page.locator("ehagaki-composer").evaluate((element) => {
             const editor = element.shadowRoot!.querySelector<HTMLElement>(".tiptap-editor")!;
             const style = getComputedStyle(editor);
@@ -234,10 +238,6 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         ))).toBe(preferredHeight + 16);
         await page.locator("#follow-preferred-height").uncheck();
         await expect(page.locator("#mount")).toHaveCSS("height", "460px");
-        await expect.poll(() => page.locator("ehagaki-composer .emoji-button img").evaluateAll((images) => images.every((image) => {
-            const img = image as HTMLImageElement;
-            return img.complete && img.naturalWidth > 0;
-        }))).toBe(true);
         await page.locator("ehagaki-composer .emoji-button[aria-label=':wave:']").click();
         await expect(page.locator("ehagaki-composer .custom-emoji-image")).toHaveCount(1);
         await page.locator("#remove-composer").click();

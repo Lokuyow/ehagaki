@@ -377,6 +377,7 @@ describe('PostHistoryDialog', () => {
     });
 
     it('[repair-search-mode-disabled] 検索中は repair button を disabled にする', async () => {
+        vi.useFakeTimers();
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
             createRecord({ eventId: 'page-1', content: '一覧の投稿' }),
@@ -416,11 +417,13 @@ describe('PostHistoryDialog', () => {
 
         const searchInput = await openSearchBar();
         await fireEvent.input(searchInput, { target: { value: '一致' } });
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await vi.advanceTimersByTimeAsync(250);
 
         await waitFor(() => {
             expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalled();
         });
+        await screen.findByText('検索一致');
+        await vi.advanceTimersByTimeAsync(1);
         expect(localSearchServiceMock.searchLocalPosts.mock.calls.at(-1)?.[0]).toMatchObject({
             pubkeyHex: 'a'.repeat(64),
             query: '一致',

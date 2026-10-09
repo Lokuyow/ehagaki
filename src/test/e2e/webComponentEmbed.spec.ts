@@ -46,11 +46,12 @@ async function expectQualityOptionsOnOneLine(
     const geometry = await radios.evaluateAll((elements) => elements.map((element) => {
         const radio = element as HTMLElement;
         const rect = radio.getBoundingClientRect();
+        const cssPixel = (value: number) => Math.round(value * 1_000) / 1_000;
         return {
             label: radio.getAttribute("aria-label"),
             top: rect.top,
-            width: rect.width,
-            height: rect.height,
+            width: cssPixel(rect.width),
+            height: cssPixel(rect.height),
             whiteSpace: getComputedStyle(radio).whiteSpace,
         };
     }));
@@ -2132,7 +2133,7 @@ test("cleans only legacy Web Component nsec state and restores the remaining NIP
 
 test("keeps authenticated profile and post history dialogs inside the component", async ({ page }) => {
     await page.goto(hostOrigin);
-    const result = await page.evaluate(async ({ componentStoragePrefix, testPubkeyHex }) => {
+    await page.evaluate(async ({ componentStoragePrefix, testPubkeyHex }) => {
         window.nostr = {
             getPublicKey: async () => testPubkeyHex,
             signEvent: async (event: any) => ({ ...event, id: "22".repeat(32), sig: "33".repeat(64) }),
@@ -2150,14 +2151,18 @@ test("keeps authenticated profile and post history dialogs inside the component"
         composer.style.height = "520px";
         document.body.append(composer);
         await composer.whenReady();
-        const shadow = composer.shadowRoot!;
-        const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        for (let frame = 0; frame < 8; frame += 1) await nextFrame();
-        const profileButton = shadow.querySelector<HTMLButtonElement>(".profile-display");
-        if (!profileButton) throw new Error("authenticated profile button did not render");
-        profileButton.click();
-        for (let frame = 0; frame < 8; frame += 1) await nextFrame();
-        const overlayRoot = shadow.querySelector<HTMLElement>('.ehagaki-web-component-overlays')!;
+    }, { componentStoragePrefix, testPubkeyHex });
+
+    const composer = page.locator("ehagaki-composer");
+    const profileButton = composer.locator(".profile-display");
+    await expect(profileButton).toBeVisible();
+    await profileButton.click();
+    const profileDialog = composer.locator(".profile-dialog");
+    const dialogOverlay = composer.locator(".ehagaki-web-component-overlays .dialog-overlay");
+    await expect(profileDialog).toBeVisible();
+    await expect(dialogOverlay).toBeVisible();
+    const profile = await composer.evaluate((element) => {
+        const overlayRoot = element.shadowRoot!.querySelector<HTMLElement>(".ehagaki-web-component-overlays")!;
         const rect = (element: Element | null) => {
             if (!(element instanceof HTMLElement)) return null;
             const value = element.getBoundingClientRect();
@@ -2174,12 +2179,26 @@ test("keeps authenticated profile and post history dialogs inside the component"
             idsFit: profileIds.every((element) => element.scrollWidth <= element.clientWidth),
             copyButtonsFit: profileCopyButtons.every((element) => element.getBoundingClientRect().width >= 40),
         };
-        overlayRoot.querySelector<HTMLButtonElement>(".modal-close")?.click();
-        for (let frame = 0; frame < 8; frame += 1) await nextFrame();
-        const historyButton = shadow.querySelector<HTMLButtonElement>(".post-history-btn");
-        if (!historyButton) throw new Error("post history button did not render");
-        historyButton.click();
-        for (let frame = 0; frame < 12; frame += 1) await nextFrame();
+        return profile;
+    });
+
+    await profileDialog.locator(".modal-close").click();
+    await expect(profileDialog).toBeHidden();
+    const historyButton = composer.locator(".post-history-btn");
+    await expect(historyButton).toBeVisible();
+    await historyButton.click();
+    const historyDialog = composer.locator(".post-history-dialog");
+    await expect(historyDialog).toBeVisible();
+    await expect(dialogOverlay).toBeVisible();
+    await expect(historyDialog.locator(".post-history-container")).toBeVisible();
+    await expect(historyDialog.locator(".dialog-footer")).toBeVisible();
+    const history = await composer.evaluate((element) => {
+        const overlayRoot = element.shadowRoot!.querySelector<HTMLElement>(".ehagaki-web-component-overlays")!;
+        const rect = (element: Element | null) => {
+            if (!(element instanceof HTMLElement)) return null;
+            const value = element.getBoundingClientRect();
+            return { top: value.top, bottom: value.bottom, left: value.left, right: value.right };
+        };
         const historyDialog = overlayRoot.querySelector<HTMLElement>(".post-history-dialog");
         const historyOverlay = overlayRoot.querySelector<HTMLElement>(".dialog-overlay");
         const historyList = overlayRoot.querySelector<HTMLElement>(".post-history-container");
@@ -2192,14 +2211,19 @@ test("keeps authenticated profile and post history dialogs inside the component"
             listScrollHeight: historyList?.scrollHeight ?? 0,
             listClientHeight: historyList?.clientHeight ?? 0,
         };
-        overlayRoot.querySelector<HTMLButtonElement>(".modal-close")?.click();
-        for (let frame = 0; frame < 8; frame += 1) await nextFrame();
-        return {
-            component: rect(composer),
-            profile,
-            history,
-        };
-    }, { componentStoragePrefix, testPubkeyHex });
+        return history;
+    });
+    await historyDialog.locator(".modal-close").click();
+    await expect(historyDialog).toBeHidden();
+
+    const result = {
+        component: await composer.evaluate((element) => {
+            const value = element.getBoundingClientRect();
+            return { top: value.top, bottom: value.bottom, left: value.left, right: value.right };
+        }),
+        profile,
+        history,
+    };
 
     expect(result.profile.dialog).not.toBeNull();
     expect(result.profile.overlay).not.toBeNull();
@@ -2712,6 +2736,7 @@ test("Full Web Component restores left and right footer shortcuts in its storage
     await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}imageQualityLevel`), componentStoragePrefix)).toBe("none");
     const popoverGeometry = await composer.evaluate((element) => {
         const shadow = element.shadowRoot!;
+        const cssPixel = (value: number) => Math.round(value * 1_000) / 1_000;
         const overlay = shadow.querySelector<HTMLElement>(".ehagaki-web-component-overlays")!;
         const boundary = overlay.parentElement!;
         const popover = shadow.querySelector<HTMLElement>(".footer-setting-shortcut-popover")!;
@@ -2723,8 +2748,8 @@ test("Full Web Component restores left and right footer shortcuts in its storage
             return {
                 label: radio.getAttribute("aria-label"),
                 top: rect.top,
-                width: rect.width,
-                height: rect.height,
+                width: cssPixel(rect.width),
+                height: cssPixel(rect.height),
                 whiteSpace: getComputedStyle(radio).whiteSpace,
             };
         });
@@ -2749,7 +2774,7 @@ test("Full Web Component restores left and right footer shortcuts in its storage
     expect(Math.max(...popoverGeometry.radioRects.map((radio) => radio.top)) - Math.min(...popoverGeometry.radioRects.map((radio) => radio.top))).toBeLessThanOrEqual(1);
     for (const rect of popoverGeometry.radioRects) {
         expect(rect.width).toBeGreaterThanOrEqual(44);
-        expect(rect.height).toBeGreaterThanOrEqual(44);
+        expect(Math.round(rect.height * 1_000) / 1_000).toBeGreaterThanOrEqual(44);
         expect(rect.whiteSpace).toBe("nowrap");
     }
     await imageGroup.getByRole("radio", { name: "Low" }).click();
@@ -2775,6 +2800,7 @@ test("Full Web Component restores left and right footer shortcuts in its storage
 
     const result = await composer.evaluate((element) => {
         const shadow = element.shadowRoot!;
+        const cssPixel = (value: number) => Math.round(value * 1_000) / 1_000;
         const component = element.getBoundingClientRect();
         const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
         const shortcuts = Array.from(shadow.querySelectorAll<HTMLElement>(".footer-setting-shortcut-button"));
@@ -2788,10 +2814,15 @@ test("Full Web Component restores left and right footer shortcuts in its storage
             footerLeft: footerRect.left,
             footerRight: footerRect.right,
             footerTop: footerRect.top,
-            footerHeight: footerRect.height,
+            footerHeight: cssPixel(footerRect.height),
             shortcutRects: shortcuts.map((shortcut) => {
                 const rect = shortcut.getBoundingClientRect();
-                return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
+                return {
+                    left: rect.left,
+                    right: rect.right,
+                    width: cssPixel(rect.width),
+                    height: cssPixel(rect.height),
+                };
             }),
             shortcutGaps: (() => {
                 const rects = shortcuts.map((shortcut) => shortcut.getBoundingClientRect());
@@ -2837,6 +2868,7 @@ test("Full Web Component contains 72px quote and reply pair pills at 320px", asy
     await expect(buttons.nth(1)).toHaveAttribute("aria-pressed", "false");
     const geometry = await composer.evaluate((element) => {
         const shadow = element.shadowRoot!;
+        const cssPixel = (value: number) => Math.round(value * 1_000) / 1_000;
         const hostRect = element.getBoundingClientRect();
         const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
         const footerRect = footer.getBoundingClientRect();
@@ -2846,10 +2878,10 @@ test("Full Web Component contains 72px quote and reply pair pills at 320px", asy
             const main = button.querySelector<HTMLElement>(".paired-main-icon")!.getBoundingClientRect();
             const notification = button.querySelector<HTMLElement>(".paired-notification-icon")!.getBoundingClientRect();
             return {
-                left: rect.left, right: rect.right, width: rect.width, height: rect.height,
-                main: { width: main.width, height: main.height },
-                notification: { width: notification.width, height: notification.height },
-                iconGap: notification.left - main.right,
+                left: rect.left, right: rect.right, width: cssPixel(rect.width), height: cssPixel(rect.height),
+                main: { width: cssPixel(main.width), height: cssPixel(main.height) },
+                notification: { width: cssPixel(notification.width), height: cssPixel(notification.height) },
+                iconGap: cssPixel(notification.left - main.right),
             };
         });
         return {

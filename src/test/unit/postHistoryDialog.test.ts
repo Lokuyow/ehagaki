@@ -976,6 +976,7 @@ describe('PostHistoryDialog', () => {
     });
 
     it('[export-download] menuからJSONLをダウンロードし、ファイル情報とObject URL解放を設定する', async () => {
+        vi.useFakeTimers();
         const createObjectURL = vi.fn((_blob: Blob) => 'blob:post-history');
         const revokeObjectURL = vi.fn();
         const originalCreateObjectURL = URL.createObjectURL;
@@ -1028,7 +1029,7 @@ describe('PostHistoryDialog', () => {
             const anchor = click.mock.instances[0] as HTMLAnchorElement;
             expect(anchor.download).toMatch(/^ehagaki-post-history-\d{4}-\d{2}-\d{2}\.jsonl$/);
             expect(anchor.href).toContain('blob:post-history');
-            await new Promise((resolve) => setTimeout(resolve, 1100));
+            await vi.advanceTimersByTimeAsync(1000);
             expect(revokeObjectURL).toHaveBeenCalledWith('blob:post-history');
         } finally {
             Object.defineProperty(URL, 'createObjectURL', {

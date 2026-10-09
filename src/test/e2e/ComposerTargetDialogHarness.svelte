@@ -78,6 +78,9 @@
     ].join(" ")}`;
 
     const reactionEmojiUrl = "https://example.com/reaction-party.png";
+    const resolverEventIds: string[] = [];
+    const cancelledResolverEventIds: string[] = [];
+    let releaseStaleResolver: (() => void) | null = null;
 
     function makeReaction(
         targetEventId: string,
@@ -288,25 +291,21 @@
 
     const resolver = {
         resolve(params: { pointer: { eventId: string } }) {
+            const eventId = params.pointer.eventId;
             let cancelled = false;
-            let timer: ReturnType<typeof setTimeout> | undefined;
-            const delay = params.pointer.eventId === ids.stale ? 700 : 20;
-            const promise = new Promise<ComposerTargetResolveResult>(
-                (resolve) => {
-                    timer = setTimeout(() => {
-                        resolve(
-                            cancelled
-                                ? { status: "cancelled" }
-                                : resolveForId(params.pointer.eventId),
-                        );
-                    }, delay);
-                },
-            );
+            resolverEventIds.push(eventId);
+            const promise = eventId === ids.stale
+                ? new Promise<ComposerTargetResolveResult>((resolve) => {
+                    releaseStaleResolver = () => resolve(
+                        cancelled ? { status: "cancelled" } : resolveForId(eventId),
+                    );
+                })
+                : Promise.resolve().then(() => resolveForId(eventId));
             return {
                 promise,
                 cancel() {
                     cancelled = true;
-                    if (timer !== undefined) clearTimeout(timer);
+                    if (eventId === ids.stale) cancelledResolverEventIds.push(eventId);
                 },
             };
         },
@@ -326,6 +325,13 @@
         inputs,
         linkTargetUrl,
         oversizedPostContentLength: oversizedPostContent.length,
+        resolverEventIds,
+        cancelledResolverEventIds,
+        releaseStaleResolver() {
+            if (!releaseStaleResolver) throw new Error("stale resolver was not started");
+            releaseStaleResolver();
+            releaseStaleResolver = null;
+        },
         get applications() {
             return applications;
         },
