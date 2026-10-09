@@ -15,10 +15,17 @@ import { POST_HISTORY_FETCH_KINDS } from "../../lib/postHistoryRelayFetchService
 
 const databases = new Set<EHagakiDB>();
 const kindsKey = buildPostHistoryVisibleKindsKey([...POST_HISTORY_FETCH_KINDS]);
-function setup() {
+const multiBatchSecret = generateSecretKey();
+const multiBatchJsonl = `${Array.from({ length: 501 }, (_, index) => JSON.stringify(finalizeEvent({
+    created_at: 100 + index,
+    kind: 1,
+    tags: [],
+    content: `post ${100 + index}`,
+}, multiBatchSecret))).join("\n")}\n`;
+
+function setup(secret = generateSecretKey()) {
     const db = new EHagakiDB(`citrine-import-${crypto.randomUUID()}`);
     databases.add(db);
-    const secret = generateSecretKey();
     const owner = getPublicKey(secret);
     const post = (time: number, kind = 1) => finalizeEvent({ created_at: time, kind, tags: [], content: `post ${time}` }, secret);
     const repository = new DexiePostHistoryRepository(db);
@@ -94,14 +101,14 @@ describe("Citrine import restoration", () => {
         expect((await h.ranges.get(h.owner, kindsKey)).ranges).toEqual([{ since: 10, until: 20 }, { since: 100, until: 200 }]);
     });
     it("does not publish until every batch has succeeded", async () => {
-        const h = setup(); const events = Array.from({ length: 501 }, (_, i) => h.post(100 + i));
+        const h = setup(multiBatchSecret);
         const observations: unknown[] = [];
         const original = h.repository.upsertFetchedEvents.bind(h.repository);
         vi.spyOn(h.repository, "upsertFetchedEvents").mockImplementation(async (input) => {
             observations.push((await h.ranges.get(h.owner, kindsKey)).ranges);
             return original(input);
         });
-        expect(await h.run(h.jsonl(events))).toMatchObject({ status: "completed", insertedPostCount: 501 });
+        expect(await h.run(multiBatchJsonl)).toMatchObject({ status: "completed", insertedPostCount: 501 });
         expect(observations).toEqual([[], []]);
         expect((await h.ranges.get(h.owner, kindsKey)).ranges).toEqual([{ since: 100, until: 600 }]);
     });
@@ -176,7 +183,7 @@ describe("Citrine import restoration", () => {
         expect((await h.ranges.get(h.owner, kindsKey)).ranges).toEqual([]);
     });
     it.each(["cancel", "account", "delete"])("stops a multi-batch import after %s", async (change) => {
-        const h = setup(); const abort = new AbortController(); let current = h.owner;
+        const h = setup(multiBatchSecret); const abort = new AbortController(); let current = h.owner;
         const original = h.repository.upsertFetchedEvents.bind(h.repository);
         vi.spyOn(h.repository, "upsertFetchedEvents").mockImplementation(async (input) => {
             const saved = await original(input);
@@ -185,7 +192,7 @@ describe("Citrine import restoration", () => {
             if (change === "delete") await h.repository.deleteLocalHistoryForPubkey(h.owner);
             return saved;
         });
-        const result = await h.run(h.jsonl(Array.from({ length: 501 }, (_, i) => h.post(100 + i))), undefined,
+        const result = await h.run(multiBatchJsonl, undefined,
             { signal: abort.signal, getCurrentPubkeyHex: () => current });
         expect(result.status).toBe(change === "account" ? "account-changed" : "cancelled");
         expect(h.repository.upsertFetchedEvents).toHaveBeenCalledOnce();
