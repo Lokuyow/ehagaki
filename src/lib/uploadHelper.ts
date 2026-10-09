@@ -1,4 +1,3 @@
-import { tick } from "svelte";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import {
     mediaFreePlacementStore,
@@ -11,9 +10,7 @@ import type {
     FileUploadResponse,
     UploadHelperDependencies,
     FileUploadManagerInterface,
-    UploadProgress,
     UploadInfoCallbacks,
-    ImageDimensions,
     UploadDestination,
 } from "./types";
 import {
@@ -23,7 +20,6 @@ import {
     insertPlaceholdersIntoGallery,
     replacePlaceholdersInGallery,
 } from "./editor/placeholderManager";
-import { buildUploadFailureMessage } from "./uploadResultUtils";
 import { isDefaultUploadAborted, resetDefaultUploadAbort } from "./uploadAbortUtils";
 import { generateDevImetaTags } from './uploadImetaUtils';
 import {

@@ -950,17 +950,6 @@ async function resolveNostrConnectRelayResolution(
     };
 }
 
-function areRelaySetsEqual(left: string[], right: string[]): boolean {
-    if (left.length !== right.length) {
-        return false;
-    }
-
-    const leftSorted = [...left].sort();
-    const rightSorted = [...right].sort();
-
-    return leftSorted.every((relay, index) => relay === rightSorted[index]);
-}
-
 // --- NIP-46サービス ---
 export class Nip46Service {
     private bunkerSigner: BunkerSigner | null = null;

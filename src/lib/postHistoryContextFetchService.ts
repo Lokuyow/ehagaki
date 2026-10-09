@@ -4,7 +4,6 @@ import {
 } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./relayLists";
 import {
-    isHostRelayConfigActive,
     mergeHostReadDefaultsWithHints,
 } from "./hostRelayRuntime";
 import { RelayConfigUtils } from "./relayConfigUtils";

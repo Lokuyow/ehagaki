@@ -4,7 +4,6 @@ import {
     PUBKEY_HEX,
     PostHistoryDialog,
     cleanupPostHistoryDialogHarness,
-    clickMenuAction,
     createDeferred,
     createRecord,
     createRelayFetchResult,
@@ -3235,7 +3234,6 @@ describe('PostHistoryDialog timeline relay flows', () => {
         seedPostHistoryCoverage(latestCreatedAt);
         const firstUntil = latestCreatedAt - 1;
         const firstSince = firstUntil - initialWindowSeconds;
-        const secondUntil = firstSince - 1;
         const fetchedCreatedAt = firstSince + (5 * 60);
 
         repositoryMock.countForPubkey.mockResolvedValue(1);

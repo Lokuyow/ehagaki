@@ -165,7 +165,7 @@ describe("PostHistoryReactionDeletionCleanupService", () => {
     });
 
     it("admitted reaction ids だけを cleanup 対象にする", async () => {
-        const { service, deletionFetchService } = createService();
+        const { deletionFetchService } = createService();
         const otherReactionId = "3".repeat(64);
         const reactionRecordsAdapter = {
             getReactionRecords: vi.fn(async () => [

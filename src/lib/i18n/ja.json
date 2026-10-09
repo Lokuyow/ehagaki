@@ -261,7 +261,6 @@
     "previousPage": "前へ",
     "nextPage": "次へ",
     "lastPage": "最後のページ",
-    "page": "{page} / {total} ページ",
     "noMorePosts": "取得できる古い投稿はありません",
     "channel": "チャンネル",
     "channelLoading": "読み込み中...",
@@ -565,13 +564,11 @@
     "success": {
       "compact_post_success": "投稿完了",
       "post_success": "投稿した",
-      "post_partial_success": "一部のリレーへ投稿した",
       "sent": "送った",
       "to_everyone": "みんなに届け"
     },
     "error": {
       "post_error": "投稿エラー",
-      "reply_target_event_unavailable": "返信先を確認できません。返信先を再取得してから投稿してください。",
       "post_rejected": "リレーによる拒否",
       "post_timeout": "時間切れにより送信未確定",
       "post_network_error": "ネットワークエラー"

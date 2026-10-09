@@ -7,7 +7,7 @@ import { clearPersistedPostHistoryViewState } from '../../lib/postHistoryDialogV
 import { clearPostHistoryDialogScrollStates } from '../../lib/postHistoryDialogScrollState';
 import { clearPostHistoryShouldReturnToLatestAfterLocalPost } from '../../lib/postHistoryLatestRequest';
 import { resolvePostHistoryAuthoredRelayUrls } from '../../lib/postHistoryRelayResolver';
-import { getPostHistoryQuorumCoverage, type PostHistoryRelayCoverage } from '../../lib/postHistoryRelayCoverage';
+import { type PostHistoryRelayCoverage } from '../../lib/postHistoryRelayCoverage';
 import { ehagakiDb } from '../../lib/storage/ehagakiDb';
 
 const originalDbTransaction = ehagakiDb.transaction.bind(ehagakiDb);
@@ -291,14 +291,13 @@ const hoisted = vi.hoisted(() => {
     };
 });
 
-const mockTranslate = hoisted.mockTranslate;
 export function setPostHistoryDialogTranslationOverrides(overrides: Record<string, string>): void {
     Object.assign(hoisted.translationOverrides, overrides);
 }
 export const repositoryMock = hoisted.repositoryMock;
 export const replyEventsRepositoryMock = hoisted.replyEventsRepositoryMock;
 export const deletionRequestsRepositoryMock = hoisted.deletionRequestsRepositoryMock;
-export const directReplyFetchMetadataRepositoryMock = hoisted.directReplyFetchMetadataRepositoryMock;
+const directReplyFetchMetadataRepositoryMock = hoisted.directReplyFetchMetadataRepositoryMock;
 export const inboundInteractionsSyncStateRepositoryMock = hoisted.inboundInteractionsSyncStateRepositoryMock;
 export const authoredSyncStateRepositoryMock = hoisted.authoredSyncStateRepositoryMock;
 export const profilesRepositoryMock = hoisted.profilesRepositoryMock;
@@ -308,7 +307,7 @@ export const contextFetchServiceMock = hoisted.contextFetchServiceMock;
 export const deletionFetchServiceMock = hoisted.deletionFetchServiceMock;
 export const visibleRangeRepositoryMock = hoisted.visibleRangeRepositoryMock;
 export const relayCoverageRepositoryMock = hoisted.relayCoverageRepositoryMock;
-export const importedRangesRepositoryMock = hoisted.importedRangesRepositoryMock;
+const importedRangesRepositoryMock = hoisted.importedRangesRepositoryMock;
 let fixtureRestoredRanges: { since: number; until: number }[] = [];
 export function seedPostHistoryRestoredRange(since: number, until: number): void {
     fixtureRestoredRanges.push({ since, until });
@@ -321,8 +320,8 @@ export function completedRelayCoverage(since: number, until = 2_000_000_000): Po
     return resolvePostHistoryAuthoredRelayUrls(undefined).map((relayUrl) => ({ relayUrl, ranges: [{ since, until }] }));
 }
 export const jumpCacheAnchorRepositoryMock = hoisted.jumpCacheAnchorRepositoryMock;
-export const repairCursorRepositoryMock = hoisted.repairCursorRepositoryMock;
-export const syncCoverageRepositoryMock = hoisted.syncCoverageRepositoryMock;
+const repairCursorRepositoryMock = hoisted.repairCursorRepositoryMock;
+const syncCoverageRepositoryMock = hoisted.syncCoverageRepositoryMock;
 export const relayFetchServiceMock = hoisted.relayFetchServiceMock;
 export const repairServiceMock = hoisted.repairServiceMock;
 export const replyRepairServiceMock = hoisted.replyRepairServiceMock;
@@ -975,11 +974,3 @@ export function cleanupPostHistoryDialogHarness(): void {
     vi.useRealTimers();
     vi.unstubAllGlobals();
 }
-
-export {
-    cleanup,
-    fireEvent,
-    render,
-    screen,
-    waitFor,
-};

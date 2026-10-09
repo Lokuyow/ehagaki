@@ -60,10 +60,6 @@ interface ParentClientRpcRequestPayload {
     params?: Record<string, unknown>;
 }
 
-interface ParentClientRpcResultPayload<T = unknown> {
-    result: T;
-}
-
 interface ParentClientRpcErrorPayload {
     code?: string;
     message: string;

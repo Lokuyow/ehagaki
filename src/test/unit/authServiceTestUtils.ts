@@ -34,7 +34,7 @@ export function createMockDependencies(): AuthServiceDependencies {
     };
 }
 
-export function createMockNip07Window(pubkeyHex: string): Window {
+function createMockNip07Window(pubkeyHex: string): Window {
     return {
         nostr: {
             getPublicKey: vi.fn().mockResolvedValue(pubkeyHex),

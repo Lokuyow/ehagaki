@@ -20,7 +20,6 @@ import { processReplyQuoteReference } from './externalReplyQuoteBootstrapUtils';
 import type {
     ChannelContextQueryTarget,
     NostrEvent,
-    ReplyQuoteQueryTarget,
     ReplyQuoteQueryResult,
     ReplyQuoteHydrationTarget,
     ReplyQuoteUpdateTarget,

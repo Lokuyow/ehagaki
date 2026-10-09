@@ -7,7 +7,7 @@ import { mediaFreePlacementStore } from "../stores/uploadStore.svelte";
 import { hashtagDataStore, getHashtagDataSnapshot, contentWarningStore, contentWarningReasonStore, hashtagPinStore } from "../stores/tagsStore.svelte";
 import { createImetaTag } from "./tags/imetaTag";
 import { buildClientTag } from "./tags/clientTag";
-import { extractContentWithImages, extractPostContentWithEmojiTags, type ExtractedPostContent } from "./utils/editorDocumentUtils";
+import { extractPostContentWithEmojiTags, type ExtractedPostContent } from "./utils/editorDocumentUtils";
 import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
 import { resetEditorState, resetPostStatus } from "../stores/editorStore.svelte";
 import type { PostResult, PostManagerDeps, HashtagStore } from "./types";
@@ -32,7 +32,6 @@ import {
 } from "./signedEventResultValidator";
 import {
   buildNip22ReplyTags,
-  isFullyVerifiedEvent,
   resolveSubmissionKind,
 } from "./sensitiveEventUtils";
 import {
@@ -40,8 +39,6 @@ import {
   buildSensitiveStructureEvent,
   type SensitiveContentStructureKind,
 } from "./sensitiveContentPayload";
-import { parsePostHistoryThreadReferences } from "./postHistoryNip10Utils";
-import { postHistoryRepository } from "./storage/postHistoryRepository";
 import { sensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
 
 // 後方互換性のためre-export

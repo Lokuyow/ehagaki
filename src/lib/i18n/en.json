@@ -261,7 +261,6 @@
     "previousPage": "Previous",
     "nextPage": "Next",
     "lastPage": "Last page",
-    "page": "Page {page} / {total}",
     "noMorePosts": "No older posts are available",
     "channel": "Channel",
     "channelLoading": "Loading...",
@@ -565,13 +564,11 @@
     "success": {
       "compact_post_success": "Post complete",
       "post_success": "Posted",
-      "post_partial_success": "Posted to some relays",
       "sent": "Sent it.",
       "to_everyone": "Delivered to everyone."
     },
     "error": {
       "post_error": "Post error",
-      "reply_target_event_unavailable": "The reply target could not be verified. Fetch it again before posting.",
       "post_rejected": "Rejected by relays",
       "post_timeout": "Timed out before submit",
       "post_network_error": "Network error"

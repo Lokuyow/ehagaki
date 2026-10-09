@@ -37,7 +37,6 @@ export function createDelayedNip07RecoveryController(
     let targetPubkey: string | null = null;
     let generation = 0;
     let attemptPromise: Promise<void> | null = null;
-    let providerWaitPromise: Promise<void> | null = null;
     let abortController: AbortController | null = null;
     let listenersAttached = false;
 
@@ -59,7 +58,6 @@ export function createDelayedNip07RecoveryController(
         }
         abortController?.abort();
         abortController = null;
-        providerWaitPromise = null;
         targetPubkey = null;
     };
 
@@ -115,15 +113,12 @@ export function createDelayedNip07RecoveryController(
 
             if (!deps.nip07Service.isAvailable()) {
                 abortController = new AbortController();
-                providerWaitPromise = deps.nip07Service
+                void deps.nip07Service
                     .waitForExtension(Number.POSITIVE_INFINITY, { signal: abortController.signal })
                     .then((available) => {
                         if (available) trigger();
                     })
-                    .catch(() => undefined)
-                    .finally(() => {
-                        providerWaitPromise = null;
-                    });
+                    .catch(() => undefined);
             }
         },
         markTransition(): void {

@@ -108,7 +108,6 @@ describe("ShareHandler", () => {
     it("processSharedMediaOnLaunchが成功時にストアが更新される", async () => {
         // FileUploadManagerのprocessSharedMediaOnLaunchをモック
         const file = createTestFile({ name: "test.jpg", type: "image/jpeg", content: new Uint8Array(1234) });
-        const metadata = { name: "test.jpg" };
         // @ts-ignore
         handler.fileUploadManager.processSharedMediaOnLaunch = vi.fn().mockResolvedValue({
             success: true,

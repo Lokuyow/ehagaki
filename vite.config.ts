@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
-import basicSsl from '@vitejs/plugin-basic-ssl';
 import { HASHED_PRECACHE_ASSET_PATTERN } from './src/lib/swPrecacheInstall';
 import {
   fixedLegacyBridgeEmitPlugin,
@@ -109,7 +108,6 @@ export default defineConfig({
   plugins: [
     fixedLegacyBridgeEmitPlugin(fixedLegacyBridgeManifest),
     svelte(),
-    // basicSsl(),
     VitePWA({
       registerType: 'prompt',
       strategies: 'injectManifest',

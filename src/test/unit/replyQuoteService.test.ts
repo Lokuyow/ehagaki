@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ReplyQuoteService } from "../../lib/replyQuoteService";
 import type { NostrEvent, ReplyQuoteState } from "../../lib/types";
-import { createMockConsole, createMockRxNostr, createMockObservable } from "../helpers";
+import { createMockConsole, createMockObservable } from "../helpers";
 import type { MockConsole } from "../helpers";
 import type { RxNostr } from "rx-nostr";
 import { nip19 } from "nostr-tools";

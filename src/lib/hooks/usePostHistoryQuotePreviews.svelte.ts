@@ -18,7 +18,6 @@ import {
 import {
     EMPTY_POST_HISTORY_QUOTE_TARGET_INDEX,
     postHistoryQuoteTargetDiscoveryAdapter,
-    type PostHistoryQuoteTargetContext,
 } from "../postHistoryRelatedTargetDiscoveryAdapter";
 import {
     postHistoryDeletionRequestsRepository,

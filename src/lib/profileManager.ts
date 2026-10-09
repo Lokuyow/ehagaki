@@ -136,8 +136,8 @@ export class ProfileNetworkFetcher {
   constructor(
     private rxNostr: ReturnType<typeof createRxNostr>,
     private profileDataFactory: ProfileDataFactory,
-    private setTimeoutFn: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any,
-    private clearTimeoutFn: (timeoutId: any) => void,
+    setTimeoutFn: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any,
+    clearTimeoutFn: (timeoutId: any) => void,
     private console: Console
   ) { }
 
@@ -145,7 +145,6 @@ export class ProfileNetworkFetcher {
     pubkeyHex: string,
     opts?: { writeRelays?: string[]; forceRemote?: boolean; timeoutMs?: number; additionalRelays?: string[] }
   ): Promise<ProfileData | null> {
-    const timeoutMs = opts?.timeoutMs ?? 3000;
     const additionalRelays = RelayConfigUtils.sanitizeExternalRelayUrls(opts?.additionalRelays);
 
     return new Promise<ProfileData | null>((resolve) => {

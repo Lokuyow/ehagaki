@@ -13,7 +13,6 @@ import {
 
 describe('swListenerUtils', () => {
     it('createInstallEventListener は waitUntil に handler を渡す', () => {
-        const promise = Promise.resolve();
         const waitUntil = vi.fn();
 
         createInstallEventListener(vi.fn(async () => { }))({

@@ -339,7 +339,7 @@ describe('ImageCompressionService', () => {
                 const compressedFile = new File([compressedContent], 'large.jpg', { type: 'image/webp' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
 
-                const result = await service.compress(file);
+                await service.compress(file);
                 expect(imageCompressionMock).toHaveBeenCalled();
             });
         });
