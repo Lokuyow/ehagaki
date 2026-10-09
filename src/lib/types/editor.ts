@@ -62,13 +62,13 @@ export interface RelayRejection {
 // Editor and Utils types
 export interface NodeData {
     type: string;
-    attrs?: any;
-    content?: any[];
+    attrs?: Record<string, unknown>;
+    content?: NodeData[];
 }
 
 export interface DragEvent {
     type: "start" | "move" | "end";
-    details?: any;
+    details?: Record<string, unknown>;
     getPos?: () => number;
 }
 

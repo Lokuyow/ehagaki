@@ -1,5 +1,6 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import type { Authenticator } from "rx-nostr";
+import type { EventTemplate } from "nostr-tools";
 import { makeAuthEvent } from "nostr-tools/nip42";
 import type { Signer } from "nostr-tools/signer";
 import { keyManager } from "./keyManager.svelte";
@@ -19,6 +20,11 @@ import {
 } from "./signedEventResultValidator";
 import { encodeBlossomAuthorizationHeader } from "./upload/blossomAuthorization";
 import { awaitUploadOperation, throwIfUploadAborted } from "./upload/uploadOperation";
+
+type SessionEventSigner = {
+    getPublicKey: () => Promise<string>;
+    signEvent: (template: EventTemplate) => Promise<unknown>;
+};
 
 // --- NIP-98認証サービス ---
 export class NostrAuthService implements AuthService {
@@ -41,7 +47,7 @@ export class NostrAuthService implements AuthService {
         return this.createSessionBoundSigner(signer, sessionPubkey);
     }
 
-    private async getSessionEventSigner(sessionPubkey: string): Promise<Signer> {
+    private async getSessionEventSigner(sessionPubkey: string): Promise<SessionEventSigner> {
         const auth = authState.value;
         if (!auth.isAuthenticated || auth.pubkey !== sessionPubkey) {
             throw new AuthenticationRequiredError();
@@ -58,7 +64,7 @@ export class NostrAuthService implements AuthService {
             }
             return {
                 getPublicKey: async () => sessionPubkey,
-                signEvent: async (event) => await seckeySigner(storedKey).signEvent(event) as any,
+                signEvent: async (event) => seckeySigner(storedKey).signEvent(event),
             };
         }
 
@@ -73,7 +79,7 @@ export class NostrAuthService implements AuthService {
         }
 
         if (auth.type === 'nip07') {
-            const nostr = (window as any)?.nostr;
+            const nostr = window.nostr;
             if (!nostr?.signEvent) throw new AuthenticationRequiredError();
             return {
                 getPublicKey: async () => {
@@ -97,7 +103,7 @@ export class NostrAuthService implements AuthService {
         throw new AuthenticationRequiredError();
     }
 
-    private createSessionBoundSigner(signer: Signer, sessionPubkey: string): Signer {
+    private createSessionBoundSigner(signer: SessionEventSigner, sessionPubkey: string): Signer {
         return {
             getPublicKey: async () => {
                 this.assertOperationActive();
@@ -130,12 +136,12 @@ export class NostrAuthService implements AuthService {
                 );
                 this.assertOperationActive();
                 assertCurrentSession(sessionPubkey);
-                return validated as any;
+                return validated;
             },
         };
     }
 
-    private async getCurrentNip46Signer(expectedPubkey: string): Promise<Signer> {
+    private async getCurrentNip46Signer(expectedPubkey: string): Promise<SessionEventSigner> {
         this.assertOperationActive();
         const authBefore = authState.value;
         if (
@@ -256,13 +262,17 @@ function getAuthTagValue(tags: unknown, name: string): string {
     return tag[1];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function validateAuthEvent(
-    event: any,
+    event: unknown,
     relayUrl: string,
     challenge: string,
     sessionPubkey?: string,
 ): void {
-    if (event?.kind !== 22242 || event?.content !== '') {
+    if (!isRecord(event) || event.kind !== 22242 || event.content !== '') {
         throw new Error('Invalid NIP-42 authentication event');
     }
     if (getAuthTagValue(event.tags, 'relay') !== relayUrl
@@ -287,7 +297,7 @@ export function createNip42Authenticator(sessionPubkey: string): (boundRelayUrl:
                 assertCurrentSession(sessionPubkey);
                 return sessionPubkey;
             },
-            signEvent: async (params: any) => {
+            signEvent: async (params) => {
                 assertCurrentSession(sessionPubkey);
                 const challenge = getAuthTagValue(params.tags, 'challenge');
                 const relayUrl = getAuthTagValue(params.tags, 'relay');
@@ -317,7 +327,15 @@ export function createNip42Authenticator(sessionPubkey: string): (boundRelayUrl:
                         method: 'sign_event:22242',
                         stage: 'success',
                     });
-                    return signed as any;
+                    return {
+                        id: signed.id,
+                        sig: signed.sig,
+                        kind: params.kind,
+                        tags: signed.tags,
+                        pubkey: signed.pubkey,
+                        content: signed.content,
+                        created_at: signed.created_at,
+                    };
                 } catch (error) {
                     console.warn('nip42_auth_sign_failed', {
                         method: 'sign_event:22242',

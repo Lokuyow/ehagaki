@@ -11,7 +11,8 @@ import {
 import { settingsStore } from "../../stores/settingsStore.svelte";
 import { currentEditorStore } from "../../stores/editorStore.svelte";
 import { removeAllPlaceholders } from "../utils/editorNodeActions";
-type TranslateFn = (key: string, options?: any) => string;
+import type { I18nFunction } from "../types";
+type TranslateFn = I18nFunction;
 
 export interface FooterProgressDisplayModel {
     text: string;

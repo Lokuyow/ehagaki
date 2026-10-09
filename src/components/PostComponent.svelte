@@ -8,6 +8,7 @@
   import type { RxNostr } from "rx-nostr";
   import type {
     FullscreenMediaItem,
+    ImageImetaMetadataMap,
     PostResult,
     UploadHelperResult,
     EditorSubmitTrigger,
@@ -161,7 +162,7 @@
     isHostOwned && hostOwnedConfig?.editorSubmitButtonEnabled === true,
   );
   let hostMountActive = true;
-  let editor: any = $state(null);
+  let editor: ReturnType<typeof initializeEditor>["editor"] | null = $state(null);
   let currentEditor: TipTapEditor | null = $state(null);
   let submittedCompositionController = $state<SubmittedCompositionController | null>(null);
   let submittedCompositionReadOnly = $state(false);
@@ -961,12 +962,12 @@
 
   function createHostOwnedMediaImetaMap(
     editorInstance: TipTapEditor,
-  ): Record<string, any> {
+  ): ImageImetaMetadataMap {
     if (!mediaFreePlacement) {
       return mediaGalleryStore.getMediaImetaMap();
     }
-    const mediaMetadata: Record<string, any> = {};
-    editorInstance.state.doc.descendants((node: any) => {
+    const mediaMetadata: ImageImetaMetadataMap = {};
+    editorInstance.state.doc.descendants((node) => {
       if (
         (node.type?.name !== "image" && node.type?.name !== "video") ||
         !node.attrs?.src ||

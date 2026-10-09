@@ -336,7 +336,10 @@ export class PostHistoryRelayFetchService {
                 return;
             }
             try {
-                const subscribeDiagnostic = (source: { subscribe: (observer: any) => SubscriptionLike } | undefined, next: (packet: any) => void) => {
+                const subscribeDiagnostic = <TPacket>(
+                    source: { subscribe: (observer: { next: (packet: TPacket) => void }) => SubscriptionLike } | undefined,
+                    next: (packet: TPacket) => void,
+                ) => {
                     if (source) diagnostics.push(source.subscribe({ next }));
                 };
                 subscribeDiagnostic(rxNostr.createAllMessageObservable?.(), (packet: MessagePacket) => {

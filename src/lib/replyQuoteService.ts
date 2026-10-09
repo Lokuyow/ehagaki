@@ -43,10 +43,11 @@ export class ReplyQuoteService {
     fetchReferencedEvent(
         eventId: string,
         relayHints: string[],
-        rxNostr: RxNostr,
+        rxNostr?: RxNostr,
         relayConfig?: RelayConfig | null,
         timeoutMs: number = 5000
     ): Promise<NostrEvent | null> {
+        if (!rxNostr) return Promise.resolve(null);
         return this.fetchReferencedEventTask(
             eventId,
             relayHints,
@@ -69,7 +70,7 @@ export class ReplyQuoteService {
         const promise = new Promise<ReferencedEventFetchResult>((resolve) => {
             const rxReq = createRxBackwardReq();
             let resolved = false;
-            let subscription: any = undefined;
+            let subscription: { unsubscribe(): void } | undefined;
             let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
             const cleanup = () => {
@@ -112,13 +113,13 @@ export class ReplyQuoteService {
 
             try {
                 const nextSubscription = rxNostr.use(rxReq, { on: onParams }).subscribe({
-                    next: (packet: any) => {
+                    next: (packet) => {
                         if (resolved) return;
                         if (packet.event?.id === eventId) {
                             this.console.log('参照イベントを取得:', packet.event.id);
                             safeResolve({
                                 status: 'found',
-                                event: packet.event as NostrEvent,
+                                event: packet.event,
                                 relayUrl: typeof packet.from === 'string'
                                     ? packet.from
                                     : null,
@@ -131,7 +132,7 @@ export class ReplyQuoteService {
                             safeResolve({ status: 'not-found' });
                         }
                     },
-                    error: (error: any) => {
+                    error: (error) => {
                         this.console.error('参照イベント取得エラー:', error);
                         safeResolve({ status: 'error' });
                     }

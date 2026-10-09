@@ -14,7 +14,8 @@ import type {
   SharedMediaData,
   SharedMediaProcessingResult,
   FileUploadManagerInterface,
-  UploadDestination
+  UploadDestination,
+  FileSizeInfo,
 } from "./types";
 import {
   DEFAULT_API_URL,
@@ -155,7 +156,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
     destination?: UploadDestination,
     operation?: { signal?: AbortSignal; headless?: boolean },
   ): Promise<FileUploadResponse> {
-    let sizeInfo: any = undefined; // sizeInfoを関数スコープで宣言
+    let sizeInfo: FileSizeInfo | undefined;
 
     try {
       if (!file) return { success: false, error: "No file selected" };

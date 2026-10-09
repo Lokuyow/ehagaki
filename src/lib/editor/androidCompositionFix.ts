@@ -25,6 +25,8 @@ export const AndroidCompositionFix = Extension.create({
         return {
             keepAliveInterval: null as ReturnType<typeof setInterval> | null,
             isComposing: false,
+            compositionStartHandler: null as (() => void) | null,
+            compositionEndHandler: null as (() => void) | null,
         };
     },
 
@@ -74,8 +76,8 @@ export const AndroidCompositionFix = Extension.create({
         editor.view.dom.addEventListener('compositionend', handleCompositionEnd);
 
         // クリーンアップ用に参照を保存
-        (this as any).__compositionStartHandler = handleCompositionStart;
-        (this as any).__compositionEndHandler = handleCompositionEnd;
+        storage.compositionStartHandler = handleCompositionStart;
+        storage.compositionEndHandler = handleCompositionEnd;
     },
 
     onDestroy() {
@@ -91,8 +93,8 @@ export const AndroidCompositionFix = Extension.create({
         }
 
         // イベントリスナーを削除
-        const startHandler = (this as any).__compositionStartHandler;
-        const endHandler = (this as any).__compositionEndHandler;
+        const startHandler = storage.compositionStartHandler;
+        const endHandler = storage.compositionEndHandler;
 
         if (this.editor?.view?.dom) {
             if (startHandler) {
@@ -102,5 +104,7 @@ export const AndroidCompositionFix = Extension.create({
                 this.editor.view.dom.removeEventListener('compositionend', endHandler);
             }
         }
+        storage.compositionStartHandler = null;
+        storage.compositionEndHandler = null;
     },
 });

@@ -12,7 +12,7 @@ it('owns copied content/emoji tags until consumption and computes metadata at co
     const pendingPost = postComponentUIStore.getPendingPost();
     const pendingEmojiTags = postComponentUIStore.getPendingEmojiTags();
     const currentEditor = {} as any;
-    const metadata = { image: { blurhash: 'confirmation-time' } };
+    const metadata = { image: { m: 'image/png', blurhash: 'confirmation-time' } };
     const postManager = {
         prepareImageBlurhashMap: vi.fn(() => metadata),
         submitPost: vi.fn(async () => ({ success: true })),

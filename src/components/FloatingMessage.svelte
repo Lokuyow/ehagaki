@@ -1,5 +1,6 @@
 <script lang="ts">
     import { tick } from "svelte";
+    import type { Snippet } from "svelte";
     import { Portal } from "bits-ui";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
@@ -14,7 +15,7 @@
         x?: number;
         y?: number;
         variant?: "pointer" | "top-right" | "container-top-right";
-        children?: () => any;
+        children?: Snippet;
     }>();
 
     let container: HTMLDivElement | undefined = $state();

@@ -1,5 +1,5 @@
 // メディアギャラリーストア（メディア下部固定モード用）
-import type { MediaGalleryItem } from '../lib/types';
+import type { ImageImetaMetadataMap, MediaGalleryItem } from '../lib/types';
 
 let mediaGalleryItems = $state<MediaGalleryItem[]>([]);
 
@@ -41,8 +41,8 @@ export const mediaGalleryStore = {
     },
 
     /** 投稿用の imeta メタデータマップを返す（画像のみ） */
-    getImageBlurhashMap: (): Record<string, { m: string; blurhash?: string; ox?: string; x?: string; dim?: string; alt?: string; size?: number; uploadProtocol?: 'blossom' | 'nip96' | 'custom-http' }> => {
-        const result: Record<string, { m: string; blurhash?: string; ox?: string; x?: string; dim?: string; alt?: string; size?: number; uploadProtocol?: 'blossom' | 'nip96' | 'custom-http' }> = {};
+    getImageBlurhashMap: (): ImageImetaMetadataMap => {
+        const result: ImageImetaMetadataMap = {};
         for (const item of mediaGalleryItems) {
             if (!item.isPlaceholder && item.src && item.type === 'image') {
                 result[item.src] = {
@@ -61,26 +61,8 @@ export const mediaGalleryStore = {
     },
 
     /** 投稿用の imeta メタデータを画像・動画の双方から返す（Host-owned用） */
-    getMediaImetaMap: (): Record<string, {
-        m: string;
-        blurhash?: string;
-        ox?: string;
-        x?: string;
-        dim?: string;
-        alt?: string;
-        size?: number;
-        uploadProtocol?: 'blossom' | 'nip96' | 'custom-http';
-    }> => {
-        const result: Record<string, {
-            m: string;
-            blurhash?: string;
-            ox?: string;
-            x?: string;
-            dim?: string;
-            alt?: string;
-            size?: number;
-            uploadProtocol?: 'blossom' | 'nip96' | 'custom-http';
-        }> = {};
+    getMediaImetaMap: (): ImageImetaMetadataMap => {
+        const result: ImageImetaMetadataMap = {};
         for (const item of mediaGalleryItems) {
             if (!item.isPlaceholder && item.src && item.mimeType) {
                 result[item.src] = {

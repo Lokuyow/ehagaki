@@ -1,4 +1,4 @@
-import { getEventHash, validateEvent, verifyEvent, type EventTemplate } from "nostr-tools";
+import { getEventHash, validateEvent, verifyEvent, type EventTemplate, type VerifiedEvent } from "nostr-tools";
 import type { NostrEvent } from "./types";
 
 type SignerEventTemplate = EventTemplate & Record<string, unknown>;
@@ -74,7 +74,7 @@ export function validateSignedEventResult(
     template: unknown,
     signedEvent: unknown,
     expectedPubkey: string,
-): NostrEvent {
+): VerifiedEvent {
     if (!template || typeof template !== "object"
         || !signedEvent || typeof signedEvent !== "object"
         || typeof expectedPubkey !== "string" || !expectedPubkey) {
@@ -95,9 +95,9 @@ export function validateSignedEventResult(
     } as NostrEvent;
 
     try {
-        if (!validateEvent(snapshot as never)
-            || snapshot.id !== getEventHash(snapshot as never)
-            || !verifyEvent(snapshot as never)
+        if (!validateEvent(snapshot)
+            || snapshot.id !== getEventHash(snapshot)
+            || !verifyEvent(snapshot)
             || snapshot.pubkey !== expectedPubkey
             || snapshot.kind !== requested.kind
             || snapshot.content !== requested.content

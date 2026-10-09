@@ -81,7 +81,7 @@ describe('createPostStatusHandlers', () => {
 describe('submitPendingPostWithSecretKey', () => {
     it('成功時は start の後に success を呼ぶ', async () => {
         const postManager = {
-            prepareImageBlurhashMap: vi.fn(() => ({ image: { blurhash: 'hash' } })),
+            prepareImageBlurhashMap: vi.fn(() => ({ image: { m: 'image/png', blurhash: 'hash' } })),
             submitPost: vi.fn(async () => ({ success: true })),
         };
         const currentEditor = { id: 'editor' } as any;
@@ -106,7 +106,7 @@ describe('submitPendingPostWithSecretKey', () => {
             { image: 'x' },
         );
         expect(postManager.submitPost).toHaveBeenCalledWith('pending', {
-            image: { blurhash: 'hash' },
+            image: { m: 'image/png', blurhash: 'hash' },
         });
         expect(onStart).toHaveBeenCalledOnce();
         expect(onSuccess).toHaveBeenCalledOnce();

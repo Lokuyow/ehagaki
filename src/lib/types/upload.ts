@@ -3,7 +3,7 @@
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import type { Signer } from "nostr-tools/signer";
 export type { VideoCompressionLevel } from '../videoCompression/videoCompressionConfig';
-import type { ImageDimensions } from './media';
+import type { ImetaField, ImageDimensions } from './media';
 
 // Upload-related types
 export interface UploadProgress {
@@ -255,7 +255,7 @@ export interface UploadHelperDependencies {
     extractImageBlurhashMap: (editor: TipTapEditor) => Record<string, string>;
     calculateImageHash: (url: string) => Promise<string | null>;
     getMimeTypeFromUrl: (url: string) => string;
-    createImetaTag: (params: any) => Promise<string[]>;
+    createImetaTag: (params: ImetaField) => Promise<string[]>;
     imageSizeMapStore: {
         update: (updater: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void;
     };

@@ -1,5 +1,6 @@
 import type { RxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
+import type { EventTemplate } from "nostr-tools";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { keyManager } from "./keyManager.svelte";
 import { authState } from "../stores/authStore.svelte";
@@ -10,11 +11,11 @@ import { buildClientTag } from "./tags/clientTag";
 import { extractPostContentWithEmojiTags, type ExtractedPostContent } from "./utils/editorDocumentUtils";
 import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
 import { resetEditorState, resetPostStatus } from "../stores/editorStore.svelte";
-import type { PostResult, PostManagerDeps, HashtagStore } from "./types";
+import type { ImageImetaMetadataMap, PostResult, PostManagerDeps, HashtagStore, NostrEvent, PostManagerSigner } from "./types";
 import { iframeMessageService } from "./iframeMessageService";
 import { saveHashtagsToHistory } from "./utils/hashtagHistory";
 import { mediaGalleryStore } from "../stores/mediaGalleryStore.svelte";
-import { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEventSender } from "./postEventBuilder";
+import { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEventSender, type PostEventTemplate } from "./postEventBuilder";
 import { ReplyQuoteService } from "./replyQuoteService";
 import { replyQuoteState, clearReplyQuote } from "../stores/replyQuoteStore.svelte";
 import { settingsStore } from "../stores/settingsStore.svelte";
@@ -43,16 +44,6 @@ import { sensitivePayloadRepository } from "./storage/sensitivePayloadRepository
 
 // 後方互換性のためre-export
 export { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEventSender } from "./postEventBuilder";
-
-type ImageImetaMap = Record<string, {
-  m: string;
-  blurhash?: string;
-  dim?: string;
-  alt?: string;
-  size?: number;
-  uploadProtocol?: 'blossom' | 'nip96' | 'custom-http';
-  [key: string]: any;
-}>;
 
 type ReplyQuoteNotifyOptions = {
   eventId?: string;
@@ -170,8 +161,8 @@ export class PostManager {
     processedContent: string;
     hashtags: string[];
     tags: string[][];
-    pubkey?: string;
-    imageImetaMap?: ImageImetaMap;
+    pubkey: string;
+    imageImetaMap?: ImageImetaMetadataMap;
     contentWarningEnabled: boolean;
     contentWarningReason: string;
     failClosedContentWarning: boolean;
@@ -179,8 +170,8 @@ export class PostManager {
     replyQuoteTags?: string[][];
     channelContext?: import("./types").ChannelContextState | null;
     emojiTags?: string[][];
-  }): Promise<any> {
-    return PostEventBuilder.buildEvent(
+  }): Promise<PostEventTemplate & { pubkey: string }> {
+    const event = await PostEventBuilder.buildEvent(
       params.processedContent,
       params.hashtags,
       params.tags,
@@ -196,6 +187,7 @@ export class PostManager {
       params.failClosedContentWarning,
       params.publicationKind,
     );
+    return { ...event, pubkey: params.pubkey };
   }
 
   private async buildNip22ReplyTags(
@@ -231,7 +223,7 @@ export class PostManager {
   }
 
   private async saveSubmittedPostHistory(params: {
-    event: any;
+    event: NostrEvent;
     attestation: PostHistoryRawEventAttestation;
     result: PostResult;
     additionalWriteRelays?: string[];
@@ -264,13 +256,13 @@ export class PostManager {
   }
 
   private async sendPreparedEvent(params: {
-    event: any;
+    event: PostEventTemplate & { pubkey: string };
     sessionPubkey: string;
     hashtags: string[];
     rqNotifyOptions?: ReplyQuoteNotifyOptions;
-    signer?: any;
+    signer?: PostManagerSigner;
     additionalWriteRelays?: string[];
-    signEvent?: (event: any) => Promise<any>;
+    signEvent?: (event: EventTemplate) => Promise<unknown>;
     logSignedEvent?: boolean;
     splitSensitiveContent: boolean;
     writeRelaySnapshot: string[];
@@ -311,7 +303,7 @@ export class PostManager {
     };
 
     const publishSignedEvent = async (
-      template: any,
+      template: PostEventTemplate & { pubkey: string },
       targetRelays: string[],
     ): Promise<SignedPublishOutcome> => {
       if (params.signer && !signEvent) {
@@ -319,7 +311,7 @@ export class PostManager {
       }
       assertOperationActive();
       const prepared = prepareSignedEventTemplate(template);
-      let signedEvent: any;
+      let signedEvent: unknown;
       try {
         signedEvent = signEvent
           ? await signEvent(prepared.signerTemplate)
@@ -328,7 +320,7 @@ export class PostManager {
         return { success: false, result: { success: false, error: "post_error" } };
       }
       assertOperationActive();
-      let eventToSend: any;
+      let eventToSend: NostrEvent;
       try {
         eventToSend = validateSignedEventResult(
           prepared.expectedTemplate,
@@ -363,7 +355,7 @@ export class PostManager {
     };
 
     const usePayload = params.splitSensitiveContent
-      && params.event.tags?.some((tag: string[]) => tag[0] === "content-warning");
+      && params.event.tags.some((tag) => tag[0] === "content-warning");
 
     let structureTemplate = params.event;
     let publishTargets = relayTargets;
@@ -467,7 +459,7 @@ export class PostManager {
 
   async submitPost(
     content: string,
-    imageImetaMap?: ImageImetaMap,
+    imageImetaMap?: ImageImetaMetadataMap,
     emojiTags: string[][] = [],
   ): Promise<PostResult> {
     // 末尾のメディアURL直後の改行を削除
@@ -682,8 +674,8 @@ export class PostManager {
             return this.notifyPostFailure('pubkey_not_found');
           }
 
-          const signEvent = typeof (windowObj.nostr as any).signEvent === 'function'
-            ? (windowObj.nostr as { signEvent: (event: any) => Promise<any> }).signEvent.bind(windowObj.nostr)
+          const signEvent = typeof windowObj.nostr.signEvent === 'function'
+            ? windowObj.nostr.signEvent.bind(windowObj.nostr)
             : undefined;
 
           if (!signEvent) {
@@ -917,7 +909,7 @@ export class PostManager {
     return this.preparePostPayload(editor).content;
   }
 
-  prepareImageBlurhashMap(editor: TipTapEditor, imageOxMap: Record<string, string>, imageXMap: Record<string, string>): Record<string, any> {
+  prepareImageBlurhashMap(editor: TipTapEditor, imageOxMap: Record<string, string>, imageXMap: Record<string, string>): ImageImetaMetadataMap {
     if (!this.deps.mediaFreePlacementStore!.value) {
       // ギャラリーモード: ギャラリーのメタデータを使用
       return this.deps.mediaGalleryStore!.getImageBlurhashMap();
@@ -929,7 +921,7 @@ export class PostManager {
       size?: number;
       uploadProtocol?: 'blossom' | 'nip96' | 'custom-http';
     }> = {};
-    editor?.state?.doc?.descendants?.((node: any) => {
+    editor?.state?.doc?.descendants?.((node) => {
       if (node.type?.name !== 'image' || !node.attrs?.src || node.attrs?.isPlaceholder) {
         return;
       }
@@ -947,7 +939,7 @@ export class PostManager {
     });
 
     const rawImageBlurhashMap = this.deps.extractImageBlurhashMapFn!(editor);
-    const imageBlurhashMap: Record<string, any> = {};
+    const imageBlurhashMap: ImageImetaMetadataMap = {};
     for (const [url, blurhash] of Object.entries(rawImageBlurhashMap)) {
       imageBlurhashMap[url] = {
         m: getMimeTypeFromUrl(url),

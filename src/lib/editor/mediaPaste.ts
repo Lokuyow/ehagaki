@@ -1,5 +1,7 @@
 import { Extension } from '@tiptap/core';
+import type { Node as PMNode, ResolvedPos, Schema } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { validateAndNormalizeImageUrl, validateAndNormalizeVideoUrl } from '../utils/editorUrlUtils';
 import { mediaFreePlacementStore } from '../../stores/uploadStore.svelte';
 import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
@@ -31,18 +33,18 @@ function extractMediaUrls(text: string): MediaUrl[] {
 }
 
 // 空パラグラフ判定（改善版）
-function isInEmptyParagraph(selection: any, $from: any): boolean {
+function isInEmptyParagraph($from: ResolvedPos): boolean {
     const parent = $from.parent;
     return parent.type.name === 'paragraph' &&
         parent.textContent.trim().length === 0;
 }
 
 // 現在の選択位置が空のパラグラフ内かどうか判定
-function getCurrentEmptyParagraphRange(state: any): { start: number; end: number } | null {
+function getCurrentEmptyParagraphRange(state: EditorState): { start: number; end: number } | null {
     const { selection } = state;
     const $from = state.doc.resolve(selection.from);
 
-    if (isInEmptyParagraph(selection, $from)) {
+    if (isInEmptyParagraph($from)) {
         const paragraphDepth = $from.depth;
         const paragraphStart = $from.start(paragraphDepth);
         const paragraphEnd = $from.end(paragraphDepth);
@@ -53,7 +55,7 @@ function getCurrentEmptyParagraphRange(state: any): { start: number; end: number
 }
 
 // メディアノード配列生成（画像または動画）
-function createMediaNodes(mediaUrls: MediaUrl[], schema: any) {
+function createMediaNodes(mediaUrls: MediaUrl[], schema: Schema): PMNode[] {
     return mediaUrls.map((media, index) => {
         const timestamp = Date.now();
         if (media.type === 'image') {
@@ -73,13 +75,13 @@ function createMediaNodes(mediaUrls: MediaUrl[], schema: any) {
 }
 
 // 空パラグラフを削除（改善版）
-function removeEmptyParagraphs(tx: any) {
+function removeEmptyParagraphs(tx: Transaction): Transaction {
     const doc = tx.doc;
     if (!doc) return tx;
 
     const deletions: [number, number][] = [];
 
-    doc.descendants((node: any, pos: number) => {
+    doc.descendants((node, pos) => {
         if (node.type.name !== 'paragraph') return;
 
         // 空のパラグラフかつメディア（画像・動画）を含まない場合に削除対象とする
@@ -90,7 +92,7 @@ function removeEmptyParagraphs(tx: any) {
             }
 
             let hasMedia = false;
-            node.descendants((n: any) => {
+            node.descendants((n) => {
                 if (n.type && (n.type.name === 'image' || n.type.name === 'video')) {
                     hasMedia = true;
                     return false;
@@ -173,7 +175,7 @@ export const MediaPasteExtension = Extension.create({
                                 // 通常の挿入処理（フォーカスを維持）
                                 let insertPos = selection.from;
 
-                                mediaNodes.forEach((mediaNode: any) => {
+                                mediaNodes.forEach((mediaNode) => {
                                     transaction = transaction.insert(insertPos, mediaNode);
                                     insertPos += mediaNode.nodeSize;
                                 });
@@ -225,7 +227,7 @@ export const MediaPasteExtension = Extension.create({
 
                                 // メディアノードを挿入（フォーカスを維持）
                                 let insertPos = from;
-                                mediaNodes.forEach((mediaNode: any) => {
+                                mediaNodes.forEach((mediaNode) => {
                                     transaction = transaction.insert(insertPos, mediaNode);
                                     insertPos += mediaNode.nodeSize;
                                 });

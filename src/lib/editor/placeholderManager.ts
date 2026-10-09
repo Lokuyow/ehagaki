@@ -80,15 +80,21 @@ function removeGalleryPlaceholder(
 }
 
 /** NIP-94メタデータから各フィールドを抽出する */
-function extractNip94Metadata(nip94: Record<string, any>) {
+function extractNip94Metadata(nip94: Record<string, string | number | undefined>) {
     return {
-        mFromServer: nip94['m'] ?? undefined as string | undefined,
-        altFromServer: nip94['alt'] ?? undefined as string | undefined,
-        serverBlurhash: nip94['blurhash'] ?? nip94['b'] ?? undefined as string | undefined,
-        oxFromServer: nip94['ox'] ?? nip94['o'] ?? undefined as string | undefined,
-        xFromServer: nip94['x'] ?? undefined as string | undefined,
-        dimFromServer: nip94['dim'] ?? undefined as string | undefined,
-        sizeFromServer: nip94['size'] ?? undefined as string | number | undefined,
+        mFromServer: typeof nip94['m'] === 'string' ? nip94['m'] : undefined,
+        altFromServer: typeof nip94['alt'] === 'string' ? nip94['alt'] : undefined,
+        serverBlurhash: typeof nip94['blurhash'] === 'string'
+            ? nip94['blurhash']
+            : typeof nip94['b'] === 'string' ? nip94['b'] : undefined,
+        oxFromServer: typeof nip94['ox'] === 'string'
+            ? nip94['ox']
+            : typeof nip94['o'] === 'string' ? nip94['o'] : undefined,
+        xFromServer: typeof nip94['x'] === 'string' ? nip94['x'] : undefined,
+        dimFromServer: typeof nip94['dim'] === 'string' ? nip94['dim'] : undefined,
+        sizeFromServer: typeof nip94['size'] === 'number' || typeof nip94['size'] === 'string'
+            ? nip94['size']
+            : undefined,
     };
 }
 
@@ -445,7 +451,7 @@ export function insertPlaceholdersIntoEditor(
             isImageNodeSelected,
             selectionType: selection.constructor.name,
             selectionFrom: selection.from,
-            selectionTo: (selection as any).to,
+            selectionTo: selection.to,
             docSize: state.doc.content.size
         });
     }
@@ -470,7 +476,10 @@ export function insertPlaceholdersIntoEditor(
             if (isVideo) {
                 node = state.schema.nodes.video.create({ src: placeholderId, isPlaceholder: true });
             } else {
-                const imageAttrs: any = { src: placeholderId, isPlaceholder: true };
+                const imageAttrs: Record<string, string | boolean> = {
+                    src: placeholderId,
+                    isPlaceholder: true,
+                };
                 if (dimensions) {
                     imageAttrs.dim = `${dimensions.width}x${dimensions.height}`;
                     imageSizeMapStore.update(map => ({ ...map, [placeholderId]: dimensions }));
@@ -547,8 +556,8 @@ export async function replacePlaceholdersWithResults(
                 onVideoSuccess: ({ url, matched, result }) => {
                     findAndExecuteOnNode(
                         currentEditor,
-                        (node: any) => node.type?.name === 'video' && node.attrs?.src === matched.placeholderId,
-                        (node: any, pos: number) => {
+                        (node) => node.type.name === 'video' && node.attrs.src === matched.placeholderId,
+                        (node, pos) => {
                             const hostMetadata = result.hostOwnedMedia === true
                                 ? extractNip94Metadata(result.nip94 || {})
                                 : null;
@@ -572,9 +581,9 @@ export async function replacePlaceholdersWithResults(
                 onImageSuccess: async ({ url, matched, imageMetadata }) => {
                     findAndExecuteOnNode(
                         currentEditor,
-                        (node: any) => node.type?.name === 'image' && node.attrs?.src === matched.placeholderId,
-                        (node: any, pos: number) => {
-                            const newAttrs: any = {
+                        (node) => node.type.name === 'image' && node.attrs.src === matched.placeholderId,
+                        (node, pos) => {
+                            const newAttrs: Record<string, string | number | boolean | null | undefined> = {
                                 ...node.attrs,
                                 src: url,
                                 isPlaceholder: false,

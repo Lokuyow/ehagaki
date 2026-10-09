@@ -10,9 +10,20 @@ import { domUtils } from "../utils/appDomUtils";
 import type { Node as PMNode } from "prosemirror-model"; // 追加
 import { NodeSelection } from "prosemirror-state";
 import type {
+    EditorSubmitTrigger,
+    PostStatus,
     SetupEventListenersParams,
     EditorEventHandlers,
 } from "../types";
+
+export type EditorDomActionContainer = HTMLElement & {
+    __uploadFiles?: (files: File[] | FileList) => void;
+    __currentEditor?: TipTapEditor | null | (() => TipTapEditor | null);
+    __hasStoredKey?: boolean | (() => boolean);
+    __hasPostingCapability?: boolean | (() => boolean);
+    __postStatus?: PostStatus | (() => PostStatus);
+    __submitPost?: (trigger?: EditorSubmitTrigger) => Promise<void>;
+};
 
 // ヘルパー: dataTransfer から「内部ドラッグ（エディタ内ノード移動）」か「外部ファイルドラッグ」か判定
 function isInternalTiptapDrag(dt: DataTransfer | null | undefined): boolean {
@@ -27,7 +38,7 @@ function hasExternalFiles(dt: DataTransfer | null | undefined): boolean {
     if (!dt) return false;
     // types に "Files" が含まれるか、実際に files が存在するかで判定
     try {
-        const types = Array.from(dt.types as any);
+        const types = Array.from(dt.types);
         return types.includes("Files") || (dt.files && dt.files.length > 0);
     } catch {
         return !!(dt.files && dt.files.length > 0);
@@ -35,15 +46,15 @@ function hasExternalFiles(dt: DataTransfer | null | undefined): boolean {
 }
 
 function isPostSending(node: HTMLElement): boolean {
-    const rawPostStatus = (node as any).__postStatus;
+    const rawPostStatus = (node as EditorDomActionContainer).__postStatus;
     const postStatus = typeof rawPostStatus === "function"
         ? rawPostStatus()
-        : rawPostStatus as { sending: boolean } | undefined;
+        : rawPostStatus;
     return postStatus?.sending === true;
 }
 
 function canUploadFiles(node: HTMLElement): boolean {
-    return typeof (node as any).__uploadFiles === "function";
+    return typeof (node as EditorDomActionContainer).__uploadFiles === "function";
 }
 
 // fileDropAction
@@ -103,9 +114,10 @@ export function fileDropAction(node: HTMLElement) {
         // 外部のファイルがあればアップロード処理を呼ぶ
         if (dt?.files && dt.files.length > 0) {
             // node.__uploadFilesが関数なら呼び出す
-            if (typeof (node as any).__uploadFiles === "function") {
+            const editorContainer = node as EditorDomActionContainer;
+            if (typeof editorContainer.__uploadFiles === "function") {
                 event.preventDefault(); // 外部ファイルドロップは preventDefault して処理を受け取る
-                (node as any).__uploadFiles(dt.files);
+                editorContainer.__uploadFiles(dt.files);
             }
         } else {
             // もし text/uri-list などの URL ドロップを検出したい場合はここで処理を追加
@@ -195,7 +207,7 @@ export function pasteAction(node: HTMLElement) {
         }
         if (files.length > 0) {
             event.preventDefault();
-            (node as any).__uploadFiles?.(files);
+            (node as EditorDomActionContainer).__uploadFiles?.(files);
         }
         // テキストペーストはClipboardExtensionに委譲
     }
@@ -272,24 +284,25 @@ export function keydownAction(node: HTMLElement, enabled = true) {
 
             // node.__currentEditor 等はコンポーネント側で関数ラッパーとして渡されることがあるため、
             // 関数なら実行して実体を取得する
-            const rawCurrentEditor = (node as any).__currentEditor;
-            const currentEditor = typeof rawCurrentEditor === 'function' ? rawCurrentEditor() : rawCurrentEditor as TipTapEditor | undefined;
+            const editorContainer = node as EditorDomActionContainer;
+            const rawCurrentEditor = editorContainer.__currentEditor;
+            const currentEditor = typeof rawCurrentEditor === 'function' ? rawCurrentEditor() : rawCurrentEditor;
 
-            const rawHasPostingCapability = (node as any).__hasPostingCapability;
+            const rawHasPostingCapability = editorContainer.__hasPostingCapability;
             const hasPostingCapability = typeof rawHasPostingCapability === 'function'
                 ? rawHasPostingCapability()
-                : rawHasPostingCapability as boolean | undefined;
-            const rawHasStoredKey = (node as any).__hasStoredKey;
+                : rawHasPostingCapability;
+            const rawHasStoredKey = editorContainer.__hasStoredKey;
             const hasStoredKey = typeof rawHasStoredKey === 'function'
                 ? rawHasStoredKey()
-                : rawHasStoredKey as boolean | undefined;
+                : rawHasStoredKey;
 
-            const rawPostStatus = (node as any).__postStatus;
-            const postStatus = typeof rawPostStatus === 'function' ? rawPostStatus() : rawPostStatus as { sending: boolean } | undefined;
+            const rawPostStatus = editorContainer.__postStatus;
+            const postStatus = typeof rawPostStatus === 'function' ? rawPostStatus() : rawPostStatus;
 
             const content = currentEditor ? extractContentWithImages(currentEditor) : "";
             if (!postStatus?.sending && content.trim() && (hasPostingCapability ?? hasStoredKey)) {
-                (node as any).__submitPost?.();
+                void editorContainer.__submitPost?.();
             }
         }
     }
@@ -306,7 +319,7 @@ export function hasImageInDoc(doc: PMNode | undefined | null): boolean {
     let found = false;
     doc?.descendants((node: PMNode) => {
         if (found) return false; // 早期終了
-        if ((node as any).type?.name === "image") found = true;
+        if (node.type.name === "image") found = true;
     });
     return found;
 }
@@ -316,7 +329,7 @@ export function hasVideoInDoc(doc: PMNode | undefined | null): boolean {
     let found = false;
     doc?.descendants((node: PMNode) => {
         if (found) return false; // 早期終了
-        if ((node as any).type?.name === "video") found = true;
+        if (node.type.name === "video") found = true;
     });
     return found;
 }
@@ -326,7 +339,7 @@ export function hasMediaInDoc(doc: PMNode | undefined | null): boolean {
     let found = false;
     doc?.descendants((node: PMNode) => {
         if (found) return false; // 早期終了
-        const name = (node as any).type?.name;
+        const name = node.type.name;
         if (name === "image" || name === "video") found = true;
     });
     return found;

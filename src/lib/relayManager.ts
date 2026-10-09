@@ -119,8 +119,8 @@ export class RelayNetworkFetcher {
     constructor(
         private rxNostr: RxNostr,
         private console: Console,
-        private setTimeoutFn: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any,
-        private clearTimeoutFn: (timeoutId: any) => void
+        private setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>,
+        private clearTimeoutFn: (timeoutId: ReturnType<typeof setTimeout>) => void
     ) { }
 
     async fetchKind10002(
@@ -134,8 +134,8 @@ export class RelayNetworkFetcher {
             const rxReq = createRxBackwardReq();
             let found = false;
             let resolved = false;
-            let subscription: any = undefined;
-            let timeoutId: any = undefined;
+            let subscription: { unsubscribe(): void } | undefined;
+            let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
             const cleanup = () => {
                 if (timeoutId !== undefined) {
@@ -162,7 +162,7 @@ export class RelayNetworkFetcher {
                 }, Math.max(1, timeoutMs));
 
                 subscription = this.rxNostr.use(rxReq, { on: { relays } }).subscribe({
-                    next: (packet: any) => {
+                    next: (packet) => {
                         if (resolved) return;
 
                         if (packet.event?.kind === 10002 && packet.event.pubkey === pubkeyHex) {
@@ -194,7 +194,7 @@ export class RelayNetworkFetcher {
                         }
                         safeResolve({ success: found, error: found ? undefined : 'not_found' });
                     },
-                    error: (error: any) => {
+                    error: (error) => {
                         if (resolved) return;
                         this.console.error("Kind 10002取得エラー:", error);
                         safeResolve({ success: false, error: 'network_error' });
@@ -234,8 +234,8 @@ export class RelayNetworkFetcher {
             const rxReq = createRxBackwardReq();
             let found = false;
             let resolved = false;
-            let subscription: any = undefined;
-            let timeoutId: any = undefined;
+            let subscription: { unsubscribe(): void } | undefined;
+            let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
             const cleanup = () => {
                 if (timeoutId !== undefined) {
@@ -262,7 +262,7 @@ export class RelayNetworkFetcher {
                 }, Math.max(1, timeoutMs));
 
                 subscription = this.rxNostr.use(rxReq, { on: { relays } }).subscribe({
-                    next: (packet: any) => {
+                    next: (packet) => {
                         if (resolved) return;
 
                         if (packet.event?.kind === 3 && packet.event.pubkey === pubkeyHex) {
@@ -291,7 +291,7 @@ export class RelayNetworkFetcher {
                         }
                         safeResolve({ success: found, error: found ? undefined : 'not_found' });
                     },
-                    error: (error: any) => {
+                    error: (error) => {
                         if (resolved) return;
                         this.console.error("Kind 3取得エラー:", error);
                         safeResolve({ success: false, error: 'network_error' });

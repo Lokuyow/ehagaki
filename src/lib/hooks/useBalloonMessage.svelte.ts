@@ -19,9 +19,16 @@
 
 import { onMount } from "svelte";
 import { BalloonMessageManager } from "../balloonMessageManager";
-import type { BalloonMessage } from "../types";
+import type { BalloonMessage, I18nFunction } from "../types";
 import { editorState, updatePostStatus } from "../../stores/editorStore.svelte";
 import { shouldShowDevLog } from "../debug";
+
+declare global {
+    interface Window {
+        showBalloonDebug?: (message: string) => void;
+        hideBalloonDebug?: () => void;
+    }
+}
 
 interface UseBalloonMessageOptions {
     /** バルーン自動非表示のミリ秒（デフォルト: 3000） */
@@ -72,7 +79,7 @@ export function selectCompactBalloonMessage({
  * @param options - オプション設定
  */
 export function useBalloonMessage(
-    getTranslate: () => ((key: string, options?: any) => string) | undefined,
+    getTranslate: () => I18nFunction | undefined,
     getLocaleReady: () => boolean,
     options: UseBalloonMessageOptions = {}
 ): UseBalloonMessageReturn {
@@ -286,10 +293,10 @@ export function useBalloonMessage(
         document.addEventListener("visibilitychange", handleVisibilityChange);
         handleSharedError();
         if (shouldShowDevLog()) {
-            (window as any).showBalloonDebug = (msg: string) => {
+            window.showBalloonDebug = (msg: string) => {
                 debugMessage = { type: "flavor", message: msg };
             };
-            (window as any).hideBalloonDebug = () => {
+            window.hideBalloonDebug = () => {
                 debugMessage = null;
             };
         }

@@ -22,7 +22,7 @@ export interface UseCustomEmojiDragOptions {
     getElement: () => HTMLElement | undefined;
     getPos: () => number | undefined;
     dragState: CustomEmojiDragStateRef;
-    getNodeAttrs: () => Record<string, any>;
+    getNodeAttrs: () => Record<string, unknown>;
 }
 
 function dispatchCustomEmojiDragEvent(

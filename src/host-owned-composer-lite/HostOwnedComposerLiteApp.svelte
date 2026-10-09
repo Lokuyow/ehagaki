@@ -8,7 +8,7 @@
   import ReasonInput from "../components/ReasonInput.svelte";
   import ChannelContextPreview from "../components/ChannelContextPreview.svelte";
   import ReplyQuotePreview from "../components/ReplyQuotePreview.svelte";
-  import type { Component } from "svelte";
+  import type HostOwnedCustomEmojiPickerComponent from "./HostOwnedCustomEmojiPicker.svelte";
   import type { HostOwnedCustomEmojiItem } from "./HostOwnedCustomEmojiPicker.svelte";
   import type { AppEmbedAppliedSettingKey, AppEmbedNotificationPort } from "../lib/appEmbedController";
   import type { AppPostNotificationPort } from "../lib/appNotificationPort";
@@ -86,7 +86,7 @@
   });
   let postComponentRef: PostComponentType | null = $state(null);
   let customEmojiPickerOpen = $state(false);
-  let HostOwnedCustomEmojiPicker: Component<any> | null = $state(null);
+  let HostOwnedCustomEmojiPicker: typeof HostOwnedCustomEmojiPickerComponent | null = $state(null);
   let hostCustomEmojiItems = $state<HostOwnedCustomEmojiItem[]>([]);
   let composerScrollRegionEl: HTMLDivElement | null = $state(null);
   let composerScrollContentEl: HTMLDivElement | null = $state(null);

@@ -1,11 +1,22 @@
 // imeta.ts
 // NIP-92 imetaタグ生成ユーティリティ
 import { isDefaultUploadAborted } from '../uploadAbortUtils';
+import type { FileMetadataObject } from 'nostr-tools/nip94';
+import type { ImetaField } from '../types/media';
 
-export interface ImetaField extends Partial<Record<string, any>> {
-    url: string;
-    x?: string; // アップロード後画像のSHA-256ハッシュ
-    [key: string]: any;
+export type { ImetaField } from '../types/media';
+
+interface ImageBlurhashNode {
+    type?: { name?: string };
+    attrs?: Record<string, unknown>;
+}
+
+interface ImageBlurhashEditor {
+    state?: {
+        doc?: {
+            descendants: (callback: (node: ImageBlurhashNode) => void) => void;
+        };
+    };
 }
 
 /**
@@ -32,22 +43,23 @@ export async function createImetaTag(fields: ImetaField): Promise<string[]> {
         }
     }
     // NIP-94イベントテンプレートを生成（xとoxは値がある場合のみ追加）
-    const nip94Params: Record<string, any> = {
+    const nip94Params: FileMetadataObject = {
         content: fields.content || "",
         url: fields.url,
         m: fields.m,
-        size: fields.size,
-        dim: dim,
-        blurhash: fields.blurhash,
-        thumb: fields.thumb,
-        image: fields.image,
-        summary: fields.summary,
-        alt: fields.alt,
-        fallback: fields.fallback,
+        x: fields.x || "",
+        ox: fields.ox && fields.uploadProtocol !== 'blossom' ? fields.ox : "",
+        ...(fields.size !== undefined ? { size: String(fields.size) } : {}),
+        ...(dim !== undefined ? { dim } : {}),
+        ...(fields.blurhash !== undefined ? { blurhash: fields.blurhash } : {}),
+        ...(fields.thumb !== undefined ? { thumb: fields.thumb } : {}),
+        ...(fields.image !== undefined ? { image: fields.image } : {}),
+        ...(fields.summary !== undefined ? { summary: fields.summary } : {}),
+        ...(fields.alt !== undefined ? { alt: fields.alt } : {}),
+        ...(fields.fallback !== undefined ? { fallback: fields.fallback } : {}),
     };
     if (fields.x) nip94Params.x = fields.x;
-    if (fields.ox && fields.uploadProtocol !== 'blossom') nip94Params.ox = fields.ox;
-    const nip94Event = (await import("nostr-tools/nip94")).generateEventTemplate(nip94Params as any);
+    const nip94Event = (await import("nostr-tools/nip94")).generateEventTemplate(nip94Params);
     // imetaタグはNIP-94のタグをスペース区切りのkey value形式に変換
     const imeta: string[] = [
         `url ${fields.url}`
@@ -148,17 +160,17 @@ export async function generateBlurhashForFile(
  * @param editor Tiptapエディターインスタンス
  * @returns 画像URLとblurhashのマッピング
  */
-export function extractImageBlurhashMap(editor: any): Record<string, string> {
+export function extractImageBlurhashMap(editor: ImageBlurhashEditor | null): Record<string, string> {
     const imageBlurhashMap: Record<string, string> = {};
 
-    if (editor && editor.state && editor.state.doc) {
-        editor.state.doc.descendants((node: any) => {
+    if (editor?.state?.doc) {
+        editor.state.doc.descendants((node) => {
             if (
                 node.type?.name === "image" &&
-                node.attrs?.src &&
-                node.attrs?.blurhash &&
+                typeof node.attrs?.src === "string" &&
+                typeof node.attrs?.blurhash === "string" &&
                 !node.attrs?.isPlaceholder && // プレースホルダーを除外
-                !node.attrs?.src?.startsWith('placeholder-') // プレースホルダーIDを除外
+                !node.attrs.src.startsWith('placeholder-') // プレースホルダーIDを除外
             ) {
                 imageBlurhashMap[node.attrs.src] = node.attrs.blurhash;
             }

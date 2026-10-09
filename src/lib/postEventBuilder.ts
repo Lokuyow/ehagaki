@@ -3,10 +3,12 @@ import { ALLOWED_IMAGE_EXTENSIONS, ALLOWED_VIDEO_EXTENSIONS } from "./constants"
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type {
     ChannelContextState,
+    ImetaField,
     PostResult,
     RelayRejection,
     RelayRejectionCategory,
 } from "./types";
+import type { ImageImetaMetadataMap } from "./types";
 
 // --- 純粋関数（依存性なし） ---
 
@@ -47,14 +49,20 @@ export class PostValidator {
     }
 }
 
+type RxNostrEventParameters = Parameters<RxNostr["send"]>[0];
+export type PostEventTemplate = Omit<RxNostrEventParameters, "tags" | "created_at"> & {
+    tags: string[][];
+    created_at: number;
+};
+
 export class PostEventBuilder {
     static async buildEvent(
         content: string,
         hashtags: string[],
         tags: string[][],
         pubkey?: string,
-        imageImetaMap?: Record<string, { m: string; blurhash?: string; dim?: string; alt?: string;[key: string]: any }>,
-        createImetaTagFn?: (meta: any) => Promise<string[]>,
+        imageImetaMap?: ImageImetaMetadataMap,
+        createImetaTagFn?: (meta: ImetaField) => Promise<string[]>,
         getClientTagFn?: () => string[] | null,
         contentWarningEnabled?: boolean,
         contentWarningReason?: string,
@@ -63,7 +71,7 @@ export class PostEventBuilder {
         emojiTags?: string[][],
         failClosedContentWarning?: boolean,
         publicationKind?: number,
-    ): Promise<any> {
+    ): Promise<PostEventTemplate> {
         // リプライ/引用タグを先頭に配置
         const eventTags: string[][] = [];
 
@@ -132,7 +140,7 @@ export class PostEventBuilder {
             }
         }
 
-        const event: any = {
+        const event: PostEventTemplate = {
             kind: publicationKind ?? (channelContext ? 42 : 1),
             content,
             tags: eventTags,
@@ -159,8 +167,8 @@ export class PostEventSender {
     ) { }
 
     sendEvent(
-        event: any,
-        signerOrOptions?: any | SendEventOptions,
+        event: RxNostrEventParameters,
+        signerOrOptions?: unknown,
     ): Promise<PostResult> {
         const options = normalizeSendEventOptions(signerOrOptions);
         if (
@@ -180,7 +188,7 @@ export class PostEventSender {
 
         return new Promise((resolve) => {
             let resolved = false;
-            let subscription: any = null;
+            let subscription: { unsubscribe(): void } | null = null;
             let settleTimer: ReturnType<typeof setTimeout> | undefined;
             let resultEventId = event.id;
             let successSettleScheduled = false;
@@ -249,15 +257,38 @@ export class PostEventSender {
                 }
             };
 
-            const observer = {
-                next: (packet: any) => {
+            const sendOptions: NonNullable<Parameters<RxNostr["send"]>[1]> = {
+                completeOn: "all-ok",
+                signer: options.signer ?? noopSigner(),
+            };
+            if ((options.targetRelays?.length ?? 0) > 0 || options.includeDefaultWriteRelays) {
+                sendOptions.on = {
+                    ...((options.targetRelays?.length ?? 0) > 0
+                        ? { relays: options.targetRelays }
+                        : {}),
+                    ...(options.includeDefaultWriteRelays
+                        ? { defaultWriteRelays: true }
+                        : {}),
+                };
+            }
+
+            scheduleSettle(this.settleTimeouts.initialMs);
+            subscription = this.rxNostr.send(event, sendOptions).subscribe({
+                next: (packet) => {
                     this.console.log('リレー送信結果', {
                         stage: 'publish',
                         outcome: packet.ok ? 'success' : 'failure',
                     });
                     const relay = typeof packet.from === "string" ? packet.from : "";
                     if (!relay) return;
-                    resultEventId = packet.event?.id || packet.eventId || resultEventId;
+                    const packetEventId = "event" in packet
+                        && packet.event !== null
+                        && typeof packet.event === "object"
+                        && "id" in packet.event
+                        && typeof packet.event.id === "string"
+                        ? packet.event.id
+                        : undefined;
+                    resultEventId = packetEventId || packet.eventId || resultEventId;
 
                     if (!packet.done) {
                         if (!packet.ok && getRejectionCategory(packet.notice) === "auth-required") {
@@ -302,28 +333,12 @@ export class PostEventSender {
                         safeResolve(getResult());
                     }
                 }
-            };
-
-            const sendOptions: any = { completeOn: "all-ok" as const };
-            sendOptions.signer = options.signer ?? noopSigner();
-            if ((options.targetRelays?.length ?? 0) > 0 || options.includeDefaultWriteRelays) {
-                sendOptions.on = {
-                    ...((options.targetRelays?.length ?? 0) > 0
-                        ? { relays: options.targetRelays }
-                        : {}),
-                    ...(options.includeDefaultWriteRelays
-                        ? { defaultWriteRelays: true }
-                        : {}),
-                };
-            }
-
-            scheduleSettle(this.settleTimeouts.initialMs);
-            subscription = this.rxNostr.send(event, sendOptions).subscribe(observer);
+            });
         });
     }
 }
 
-function hasExplicitTargetRelays(signerOrOptions?: any | SendEventOptions): boolean {
+function hasExplicitTargetRelays(signerOrOptions?: unknown): boolean {
     return !!signerOrOptions
         && typeof signerOrOptions === "object"
         && "targetRelays" in signerOrOptions;
@@ -342,13 +357,9 @@ export interface PostEventSenderSettleTimeouts {
 }
 
 function normalizeSendEventOptions(
-    signerOrOptions?: any | SendEventOptions,
+    signerOrOptions?: unknown,
 ): Required<Pick<SendEventOptions, "includeDefaultWriteRelays">> & SendEventOptions {
-    if (signerOrOptions && typeof signerOrOptions === "object" && (
-        "signer" in signerOrOptions
-        || "targetRelays" in signerOrOptions
-        || "includeDefaultWriteRelays" in signerOrOptions
-    )) {
+    if (isSendEventOptions(signerOrOptions)) {
         return {
             ...signerOrOptions,
             targetRelays: RelayConfigUtils.sanitizeExternalRelayUrls(signerOrOptions.targetRelays),
@@ -357,10 +368,27 @@ function normalizeSendEventOptions(
     }
 
     return {
-        signer: signerOrOptions as EventSigner | undefined,
+        ...(isEventSigner(signerOrOptions) ? { signer: signerOrOptions } : {}),
         targetRelays: [],
         includeDefaultWriteRelays: true,
     };
+}
+
+function isSendEventOptions(
+    value: unknown,
+): value is SendEventOptions {
+    return value !== null
+        && typeof value === "object"
+        && ("signer" in value
+            || "targetRelays" in value
+            || "includeDefaultWriteRelays" in value);
+}
+
+function isEventSigner(value: unknown): value is EventSigner {
+    return value !== null
+        && typeof value === "object"
+        && "signEvent" in value
+        && typeof value.signEvent === "function";
 }
 
 function resolveTargetRelays(rxNostr: RxNostr, options: SendEventOptions): string[] {
