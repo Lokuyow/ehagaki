@@ -9,6 +9,8 @@ import {
     getHistoryContainer,
     localSearchServiceMock,
     openSearchBar,
+    expectPostHistoryCountLabel,
+    readPostHistoryCountLabel,
     postMediaCacheServiceMock,
     postHistoryJsonlImportServiceMock,
     relayFetchServiceMock,
@@ -96,7 +98,7 @@ describe('PostHistoryDialog timeline search', () => {
         await waitFor(() => expect(searchOptions?.onProgress).toBeTypeOf('function'));
         await searchOptions.onProgress?.({ phase: 'partial', items: [post] });
         expect(screen.getByText(post.content)).toBeTruthy();
-        expect(screen.getByText('件数を確認中...')).toBeTruthy();
+        expect(await readPostHistoryCountLabel()).toBe('件数を確認中...');
         expect(input.getAttribute('aria-busy')).toBe('true');
         expect(screen.queryByText('一致する投稿はありません')).toBeNull();
         expect(screen.queryByRole('button', { name: 'さらに古い検索結果を表示' })).toBeNull();
@@ -106,7 +108,7 @@ describe('PostHistoryDialog timeline search', () => {
         expect(await screen.findByRole('menuitem', { name: '前後の投稿を表示' })).toBeTruthy();
         completion.resolve({ items: [post], total: 51, hasNext: true });
         await waitFor(() => expect(input.getAttribute('aria-busy')).toBe('false'));
-        expect(screen.getByText('51件')).toBeTruthy();
+        await expectPostHistoryCountLabel('51件');
         expect(screen.getByRole('button', { name: 'さらに古い検索結果を表示' })).toBeTruthy();
     });
 
@@ -125,7 +127,7 @@ describe('PostHistoryDialog timeline search', () => {
         await waitFor(() => expect(searchOptions?.onProgress).toBeTypeOf('function'));
         await searchOptions.onProgress?.({ phase: 'partial', items: [post] });
         completion.reject(new Error('scan failed'));
-        await waitFor(() => expect(screen.getByText('件数を確認できません')).toBeTruthy());
+        await expectPostHistoryCountLabel('件数を確認できません');
         expect(screen.getByText(post.content)).toBeTruthy();
         expect(input.getAttribute('aria-busy')).toBe('false');
     });
@@ -572,7 +574,7 @@ describe('PostHistoryDialog timeline search', () => {
         cleanupPostHistoryDialogHarness();
     });
 
-    it('メニューから検索バーを開くと検索入力欄へフォーカスする', async () => {
+    it('ヘッダーの検索ボタンから検索バーを開くと検索入力欄へフォーカスする', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
             createRecord({ eventId: 'search-focus-normal', content: '通常一覧' }),
@@ -1733,7 +1735,7 @@ describe('PostHistoryDialog timeline search', () => {
             });
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: '検索を閉じる' }));
+        await fireEvent.click(document.querySelector('.post-history-search-close') as HTMLElement);
         const loadOlderButton = await screen.findByRole('button', { name: 'さらに古い投稿を表示' });
         expect(loadOlderButton.hasAttribute('disabled')).toBe(false);
         expect(screen.getByText('通常の最新投稿')).toBeTruthy();

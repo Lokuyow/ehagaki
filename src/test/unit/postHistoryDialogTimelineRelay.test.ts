@@ -9,8 +9,8 @@ import {
     createRelayFetchResult,
     getHistoryContainer,
     jumpCacheAnchorRepositoryMock,
-    openPostHistoryMenu,
     postMediaCacheServiceMock,
+    expectPostHistoryCountLabel,
     relayFetchServiceMock,
     replyRepairServiceMock,
     repairServiceMock,
@@ -24,16 +24,13 @@ import { classifyPostHistoryInboundInteraction } from '../../lib/postHistoryInbo
 import { PostHistoryInboundReplyReconciliationService } from '../../lib/postHistoryInboundReplyReconciliationService';
 import { readPersistedPostHistoryListingSnapshotForPubkey } from '../../lib/hooks/usePostHistoryListing.svelte';
 
-async function clickEnabledMenuAction(name: string): Promise<void> {
+async function clickEnabledRefetchButton(): Promise<void> {
     // The first local paint intentionally precedes the open refresh. Wait for
-    // that request to start before testing the menu's settled enabled state.
+    // that request to start before testing the settled enabled state.
     await waitFor(() => expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled());
-    await openPostHistoryMenu();
-    const item = await screen.findByRole('menuitem', { name });
-    await waitFor(() => {
-        expect(item.hasAttribute('data-disabled')).toBe(false);
-    });
-    await fireEvent.click(item);
+    const button = await screen.findByRole('button', { name: '表示中の投稿付近を再取得' });
+    await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false));
+    await fireEvent.click(button);
 }
 
 async function clickRelayFetchButton(): Promise<void> {
@@ -858,8 +855,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(readPersistedPostHistoryListingSnapshotForPubkey(PUBKEY_HEX)?.visibleUntil).toBe(180);
             expect(screen.getByText('初回表示できる投稿')).toBeTruthy();
             expect(screen.queryByText('初回ではまだ表示しない投稿')).toBeNull();
-            expect(screen.getByText('2件')).toBeTruthy();
         });
+        await expectPostHistoryCountLabel('2件');
 
         view.unmount();
     });
@@ -1048,9 +1045,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             },
         });
 
-        await waitFor(() => {
-            expect(screen.getByText('50件')).toBeTruthy();
-        });
+        await expectPostHistoryCountLabel('50件');
 
         await waitFor(() => {
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled();
@@ -1061,7 +1056,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
         const countCallCountBeforeRepair = repositoryMock.countForPubkey.mock.calls.length;
 
-        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+        await clickEnabledRefetchButton();
 
         await waitFor(() => {
             expect(repairServiceMock.refetchAroundCurrentView).toHaveBeenCalledTimes(1);
@@ -1104,8 +1099,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(screen.getByText('1件追加')).toBeTruthy();
             expect(screen.getByText('修復された投稿')).toBeTruthy();
-            expect(screen.getByText('51件')).toBeTruthy();
         });
+        await expectPostHistoryCountLabel('51件');
         expect(repositoryMock.countForPubkey.mock.calls.length).toBe(countCallCountBeforeRepair + 1);
 
         view.unmount();
@@ -1167,7 +1162,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
 
-        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+        await clickEnabledRefetchButton();
 
         await waitFor(() => {
             expect(repairServiceMock.refetchAroundCurrentView).toHaveBeenCalledTimes(1);
@@ -1390,7 +1385,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(repositoryMock.countForPubkey).toHaveBeenCalled();
         });
         const countCallsBeforeRefetch = repositoryMock.countForPubkey.mock.calls.length;
-        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+        await clickEnabledRefetchButton();
 
         await waitFor(() => {
             expect(screen.getByText('一部取得後の更新')).toBeTruthy();
@@ -1461,7 +1456,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(repositoryMock.countForPubkey).toHaveBeenCalled();
         });
-        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+        await clickEnabledRefetchButton();
         await waitFor(() => {
             expect(replyRepairServiceMock.repairVisibleRangeRelations).toHaveBeenCalledTimes(1);
         });
@@ -1518,7 +1513,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled();
             expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
-        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+        await clickEnabledRefetchButton();
 
         await waitFor(() => {
             expect(replyRepairServiceMock.repairVisibleRangeRelations).toHaveBeenCalledTimes(1);
@@ -1569,7 +1564,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
-        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+        await clickEnabledRefetchButton();
 
         await new Promise((resolve) => setTimeout(resolve, 0));
         expect(replyRepairServiceMock.repairVisibleRangeRelations).not.toHaveBeenCalled();
@@ -1609,7 +1604,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
-        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+        await clickEnabledRefetchButton();
         await view.rerender({ show: false });
         repairComplete.resolve({
             status: 'success',
@@ -1760,7 +1755,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
 
-        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+        await clickEnabledRefetchButton();
 
         await waitFor(() => {
             expect(screen.getByText('追加なし')).toBeTruthy();
@@ -1842,7 +1837,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
 
-        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+        await clickEnabledRefetchButton();
         await waitFor(() => {
             expect(replyRepairServiceMock.repairVisibleRangeRelations).toHaveBeenCalledTimes(1);
         });
@@ -1912,7 +1907,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.getByText('既存投稿')).toBeTruthy();
         });
 
-        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+        await clickEnabledRefetchButton();
 
         await waitFor(() => {
             expect(screen.getByText('1件追加')).toBeTruthy();
@@ -2055,7 +2050,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.getByText('既存投稿')).toBeTruthy();
         });
 
-        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+        await clickEnabledRefetchButton();
 
         await waitFor(() => {
             expect(screen.getByText('追加なし')).toBeTruthy();
@@ -2114,7 +2109,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.getByText('既存投稿')).toBeTruthy();
         });
 
-        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+        await clickEnabledRefetchButton();
 
         await waitFor(() => {
             expect(screen.getByText('取得失敗')).toBeTruthy();
@@ -2153,7 +2148,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
 
-        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+        await clickEnabledRefetchButton();
 
         await new Promise((resolve) => setTimeout(resolve, 0));
         await Promise.resolve();

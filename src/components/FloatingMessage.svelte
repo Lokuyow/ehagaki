@@ -9,12 +9,18 @@
         x = 0,
         y = 0,
         variant = "pointer",
+        anchor = null,
         children = undefined,
     } = $props<{
         show?: boolean;
         x?: number;
         y?: number;
-        variant?: "pointer" | "top-right" | "container-top-right";
+        variant?:
+            | "pointer"
+            | "top-right"
+            | "container-top-right"
+            | "anchor-bottom-right";
+        anchor?: HTMLElement | null;
         children?: Snippet;
     }>();
 
@@ -22,6 +28,7 @@
     let messageX = $state(0);
     let messageY = $state(0);
     let messageMaxWidth = $state(320);
+    let anchorPositionReady = $state(false);
 
     const SCREEN_PADDING = 10;
     const { overlayTarget, layoutTarget } = getAppRuntimeEnvironment();
@@ -84,6 +91,73 @@
             messageY = bounds.top + SCREEN_PADDING;
         })();
     });
+
+    $effect(() => {
+        if (variant !== "anchor-bottom-right") {
+            return;
+        }
+
+        if (!show || !container || !anchor) {
+            anchorPositionReady = false;
+            return;
+        }
+
+        let disposed = false;
+        anchorPositionReady = false;
+        const updatePosition = async () => {
+            await tick();
+            if (disposed || !container || !anchor) return;
+
+            const anchorBounds = anchor.getBoundingClientRect();
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            const availableWidth = Math.max(
+                0,
+                viewportWidth - SCREEN_PADDING * 2,
+            );
+            const nextMaxWidth = Math.min(320, availableWidth);
+            if (messageMaxWidth !== nextMaxWidth) {
+                messageMaxWidth = nextMaxWidth;
+                await tick();
+                if (disposed || !container) return;
+            }
+
+            const messageBounds = container.getBoundingClientRect();
+            messageX = Math.max(
+                SCREEN_PADDING,
+                Math.min(
+                    anchorBounds.right - messageBounds.width,
+                    viewportWidth - messageBounds.width - SCREEN_PADDING,
+                ),
+            );
+            messageY = Math.max(
+                SCREEN_PADDING,
+                Math.min(
+                    anchorBounds.bottom + 8,
+                    viewportHeight - messageBounds.height - SCREEN_PADDING,
+                ),
+            );
+            anchorPositionReady = true;
+        };
+
+        const scheduleUpdate = () => void updatePosition();
+        window.addEventListener("resize", scheduleUpdate);
+        window.addEventListener("scroll", scheduleUpdate, true);
+        const resizeObserver =
+            typeof ResizeObserver === "undefined"
+                ? null
+                : new ResizeObserver(scheduleUpdate);
+        resizeObserver?.observe(anchor);
+        resizeObserver?.observe(container);
+        scheduleUpdate();
+
+        return () => {
+            disposed = true;
+            window.removeEventListener("resize", scheduleUpdate);
+            window.removeEventListener("scroll", scheduleUpdate, true);
+            resizeObserver?.disconnect();
+        };
+    });
 </script>
 
 {#if show}
@@ -94,10 +168,14 @@
                 ? 'top-right'
                 : variant === 'container-top-right'
                   ? 'container-top-right'
+                  : variant === 'anchor-bottom-right'
+                    ? 'anchor-bottom-right'
                   : 'pointer'}"
             style={variant === "container-top-right"
                 ? `left: ${messageX}px; top: ${messageY}px; width: ${messageMaxWidth}px;`
-                : variant === "pointer"
+                : variant === "anchor-bottom-right"
+                  ? `left: ${messageX}px; top: ${messageY}px; max-width: ${messageMaxWidth}px; visibility: ${anchorPositionReady ? "visible" : "hidden"};`
+                  : variant === "pointer"
                   ? `left: ${messageX}px; top: ${messageY}px;`
                   : undefined}
             role="status"
@@ -139,6 +217,13 @@
     }
 
     .floating-message.container-top-right {
+        top: auto;
+        right: auto;
+        box-sizing: border-box;
+        white-space: normal;
+    }
+
+    .floating-message.anchor-bottom-right {
         top: auto;
         right: auto;
         box-sizing: border-box;

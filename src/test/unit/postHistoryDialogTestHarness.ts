@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
+import { tick } from 'svelte';
 import { vi } from 'vitest';
 import { clearPersistedPostHistoryListingSnapshots } from '../../lib/hooks/usePostHistoryListing.svelte';
 import { postHistoryLightweightSyncCoordinator } from '../../lib/postHistoryLightweightSyncCoordinator';
@@ -642,9 +643,59 @@ export async function openPostHistoryMenu(): Promise<void> {
 }
 
 export async function openSearchBar(): Promise<HTMLInputElement> {
-    await openPostHistoryMenu();
-    await fireEvent.click(await screen.findByRole('menuitem', { name: '検索' }));
+    await fireEvent.click(await screen.findByRole('button', { name: '検索' }));
     return screen.findByRole('searchbox', { name: '検索' }) as Promise<HTMLInputElement>;
+}
+
+export async function openJumpDatePanel(): Promise<void> {
+    const button = document.querySelector<HTMLButtonElement>(
+        '.post-history-heading-calendar-button',
+    );
+    if (!button) {
+        throw new Error('投稿履歴ヘッダーの日付移動ボタンが見つかりません');
+    }
+    await fireEvent.click(button);
+}
+
+export async function readPostHistoryCountLabel(): Promise<string> {
+    const trigger = await screen.findByRole('button', { name: '投稿履歴メニューを開く' });
+    const openedHere = trigger.getAttribute('aria-expanded') !== 'true';
+    if (openedHere) {
+        await fireEvent.click(trigger);
+    }
+    await tick();
+    const summary = document.querySelector('.post-history-menu-summary');
+    if (!(summary instanceof HTMLElement)) {
+        throw new Error('投稿履歴メニューの件数表示が見つかりません');
+    }
+    const label = summary.textContent?.trim() ?? '';
+    if (openedHere) {
+        await fireEvent.click(trigger);
+    }
+    return label;
+}
+
+export async function expectPostHistoryCountLabel(expected: string): Promise<void> {
+    const trigger = await screen.findByRole('button', { name: '投稿履歴メニューを開く' });
+    const openedHere = trigger.getAttribute('aria-expanded') !== 'true';
+    if (openedHere) {
+        await fireEvent.click(trigger);
+    }
+    try {
+        for (let attempt = 0; attempt < 12; attempt += 1) {
+            await tick();
+            const summary = document.querySelector('.post-history-menu-summary');
+            if (summary instanceof HTMLElement && summary.textContent?.trim() === expected) {
+                return;
+            }
+            await Promise.resolve();
+        }
+        throw new Error(`件数表示が ${expected} ではありません`);
+    } finally {
+        if (openedHere) {
+            await fireEvent.click(trigger);
+        }
+    }
 }
 
 export async function clickMenuAction(name: string): Promise<void> {

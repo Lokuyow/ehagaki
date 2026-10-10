@@ -339,10 +339,30 @@ async function readExportVerificationStates(page: Page): Promise<Array<{
     });
 }
 
+async function expectSummaryLabel(page: Page, label: string) {
+    const trigger = page.getByRole('button', { name: '投稿履歴メニューを開く' });
+    const openedHere = (await trigger.getAttribute('aria-expanded')) !== 'true';
+    if (openedHere) await trigger.click();
+    const summary = page.locator('.post-history-menu-summary');
+    await expect(summary).toBeVisible();
+    await expect(summary).toHaveText(label);
+    if (openedHere) {
+        await trigger.click();
+        await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    }
+}
+
 async function expectSummary(page: Page, total: number) {
-    const summary = page.locator('.post-history-summary-count');
+    const trigger = page.getByRole('button', { name: '投稿履歴メニューを開く' });
+    const openedHere = (await trigger.getAttribute('aria-expanded')) !== 'true';
+    if (openedHere) await trigger.click();
+    const summary = page.locator('.post-history-menu-summary');
     await expect(summary).toBeVisible();
     await expect(summary).toContainText(`${total}件`);
+    if (openedHere) {
+        await trigger.click();
+        await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    }
 }
 
 async function expectCurrentMonthLabel(page: Page, label: string) {
@@ -363,8 +383,7 @@ async function scrollPostIntoViewByEventId(page: Page, eventId: string) {
 
 async function jumpToDate(page: Page, date: string) {
     const [year, month, day] = date.split('-');
-    await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
-    await page.getByRole('menuitem', { name: '日付へ移動' }).click();
+    await page.locator('.post-history-heading-calendar-button').click();
     await expect(page.locator('.post-history-date-picker-input')).toBeVisible();
     const yearSegment = page.locator('.post-history-date-picker-segment[data-segment="year"]');
     const monthSegment = page.locator('.post-history-date-picker-segment[data-segment="month"]');
@@ -1384,8 +1403,19 @@ test.describe('PostHistoryDialog Playwright', () => {
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
         const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
         const footer = page.locator('.post-history-sync-footer');
+        const heading = page.locator('.post-history-heading');
+        const statusToast = page.locator('.floating-message.anchor-bottom-right[role="status"]');
         await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(5);
         await expect.poll(() => historyEventIds(page)).toEqual(ids.slice(60, 110));
+
+        await expect(statusToast).toContainText('リレーと同期中...');
+        await expect(heading.locator('.status-loading-placeholder')).toHaveCount(0);
+        const headingBounds = await heading.boundingBox();
+        const toastBounds = await statusToast.boundingBox();
+        expect(headingBounds).not.toBeNull();
+        expect(toastBounds).not.toBeNull();
+        expect(toastBounds!.y).toBeGreaterThanOrEqual(headingBounds!.y + headingBounds!.height);
+        expect(Math.abs(toastBounds!.x + toastBounds!.width - (headingBounds!.x + headingBounds!.width))).toBeLessThanOrEqual(16);
 
         await scrollHistoryToBottom(page);
         await expect(footer.getByText('リレーと同期中...')).toBeVisible();
@@ -1397,7 +1427,54 @@ test.describe('PostHistoryDialog Playwright', () => {
         await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.release());
         await expect(footer).toHaveCount(0);
         await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+        const headingAfterSync = await heading.boundingBox();
+        expect(headingAfterSync?.height).toBe(headingBounds?.height);
         await expect(page.locator('.post-history-list li')).not.toHaveCount(0);
+    });
+
+    test('heading controls stay aligned without overlap at 360 CSS px', async ({ page }) => {
+        await page.setViewportSize({ width: 360, height: 800 });
+        await page.goto('post-history-dialog-playwright.html');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+
+        const heading = page.locator('.post-history-heading');
+        const calendar = page.getByRole('button', { name: '日付へ移動' });
+        const refetch = page.getByRole('button', { name: '表示中の投稿付近を再取得' });
+        const search = page.getByRole('button', { name: '検索' });
+        const menu = page.getByRole('button', { name: '投稿履歴メニューを開く' });
+        await expect(calendar).toBeVisible();
+        await expect(refetch).toBeVisible();
+        await expect(search).toBeVisible();
+        await expect(menu).toBeVisible();
+
+        const layout = await heading.evaluate((element) => {
+            const rect = (selector: string) => {
+                const bounds = element.querySelector<HTMLElement>(selector)!.getBoundingClientRect();
+                return { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom };
+            };
+            const headingBounds = element.getBoundingClientRect();
+            return {
+                bounds: {
+                    left: headingBounds.left,
+                    right: headingBounds.right,
+                    top: headingBounds.top,
+                    bottom: headingBounds.bottom,
+                },
+                calendar: rect('.post-history-heading-calendar-button'),
+                refetch: rect('.post-history-heading-refetch-button'),
+                search: rect('.post-history-heading-search-button'),
+                menu: rect('.post-history-heading-menu-trigger'),
+            };
+        });
+        expect(layout.calendar.left).toBeGreaterThanOrEqual(layout.bounds.left);
+        expect(layout.calendar.right).toBeLessThanOrEqual(layout.refetch.left);
+        expect(layout.refetch.right).toBeLessThanOrEqual(layout.search.left);
+        expect(layout.search.right).toBeLessThanOrEqual(layout.menu.left);
+        expect(layout.menu.right).toBeLessThanOrEqual(layout.bounds.right);
+        for (const control of [layout.calendar, layout.refetch, layout.search, layout.menu]) {
+            expect(control.bottom).toBeGreaterThan(layout.bounds.top);
+            expect(control.top).toBeLessThan(layout.bounds.bottom);
+        }
     });
 
     test('a refreshed head automatically reconnects older saved history across its saturated boundary', async ({ page }, testInfo) => {
@@ -1608,8 +1685,7 @@ test.describe('PostHistoryDialog Playwright', () => {
     test('search result jumps to the exact saved post and aligns it to the viewport top', async ({ page }) => {
         const harness = await gotoSparseHarness(page);
 
-        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
-        await page.getByRole('menuitem', { name: '検索' }).click();
+        await page.getByRole('button', { name: '検索' }).click();
         await page.getByRole('searchbox', { name: '検索' }).fill('alpha');
 
         const targetItem = page.locator(
@@ -2376,8 +2452,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await scrollPostIntoView(page, harness.scrollTargetContent);
         await expectCurrentMonthLabel(page, harness.scrollTargetMonthLabel);
 
-        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
-        await page.getByRole('menuitem', { name: '検索' }).click();
+        await page.getByRole('button', { name: '検索' }).click();
         await page.getByRole('searchbox', { name: '検索' }).fill('alpha');
         await expectSummary(page, harness.matchingPosts);
         await expectVisiblePostCount(page, 50);
@@ -2391,13 +2466,12 @@ test.describe('PostHistoryDialog Playwright', () => {
     test('partial search results remain operable and anchored before the final count is available', async ({ page }) => {
         await page.goto('post-history-dialog-playwright.html?search-progress=1');
         await page.waitForFunction(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready);
-        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
-        await page.getByRole('menuitem', { name: '検索' }).click();
+        await page.getByRole('button', { name: '検索' }).click();
         const input = page.getByRole('searchbox', { name: '検索' });
         await input.fill('alpha');
         await page.waitForFunction(() => (window as HarnessWindow).__POST_HISTORY_SEARCH_SCAN_GATE__?.entered);
         await expectVisiblePostCount(page, 25);
-        await expect(page.locator('.post-history-summary-count')).toHaveText('件数を確認中...');
+        await expectSummaryLabel(page, '件数を確認中...');
         await expect(input).toHaveAttribute('aria-busy', 'true');
         await expect(page.getByRole('button', { name: 'さらに古い検索結果を表示' })).toHaveCount(0);
         const first = page.locator('.post-history-item').first();
@@ -2421,14 +2495,13 @@ test.describe('PostHistoryDialog Playwright', () => {
     test('Sensitive partial search keeps a revealed body when the final count completes', async ({ page }) => {
         await page.goto('post-history-dialog-playwright.html?search-progress=1&sensitive-preview=1');
         await page.waitForFunction(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready);
-        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
-        await page.getByRole('menuitem', { name: '検索' }).click();
+        await page.getByRole('button', { name: '検索' }).click();
         await page.getByRole('searchbox', { name: '検索' }).fill('sensitive preview body');
         await page.waitForFunction(() => (window as HarnessWindow).__POST_HISTORY_SEARCH_SCAN_GATE__?.entered);
         const result = page.locator('.post-history-item').first();
         await result.getByRole('button', { name: '本文を表示' }).click();
         await expect(result.getByText('playwright sensitive preview body')).toBeVisible();
-        await expect(page.locator('.post-history-summary-count')).toHaveText('件数を確認中...');
+        await expectSummaryLabel(page, '件数を確認中...');
         await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_SEARCH_SCAN_GATE__?.release?.());
         await expectSummary(page, 1);
         await expect(result.getByText('playwright sensitive preview body')).toBeVisible();
@@ -2438,8 +2511,7 @@ test.describe('PostHistoryDialog Playwright', () => {
     test('closing during partial search stops further batch reads and resets the reopened dialog', async ({ page }) => {
         await page.goto('post-history-dialog-playwright.html?search-progress=1');
         await page.waitForFunction(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready);
-        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
-        await page.getByRole('menuitem', { name: '検索' }).click();
+        await page.getByRole('button', { name: '検索' }).click();
         await page.getByRole('searchbox', { name: '検索' }).fill('alpha');
         await page.waitForFunction(() => (window as HarnessWindow).__POST_HISTORY_SEARCH_SCAN_GATE__?.entered);
         await expectVisiblePostCount(page, 25);
@@ -2459,8 +2531,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expectSummary(page, harness.totalPosts);
         await expectVisiblePostCount(page, 50);
 
-        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
-        await page.getByRole('menuitem', { name: '検索' }).click();
+        await page.getByRole('button', { name: '検索' }).click();
         await page.getByRole('searchbox', { name: '検索' }).fill('alpha');
         await expectSummary(page, harness.matchingPosts);
         await expectVisiblePostCount(page, 50);
@@ -3197,8 +3268,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await page.route('https://example.com/sensitive-emoji.svg', (route) => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"/>' }));
         await page.goto('post-history-dialog-playwright.html?sensitive-preview=1');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
-        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
-        await page.getByRole('menuitem', { name: '検索' }).click();
+        await page.getByRole('button', { name: '検索' }).click();
         await page.getByRole('searchbox', { name: '検索' }).fill('sensitive preview body');
         // Search initially keeps normal-history rows until its first page is ready.
         await expect(page.locator('.post-history-item')).toHaveCount(1);
