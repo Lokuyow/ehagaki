@@ -1,4 +1,6 @@
 import type { RxNostr } from "rx-nostr";
+import { verifyRepostTarget } from "./postRepostUtils";
+import { attestFullyVerifiedPostHistoryRawEvent } from "./postHistoryRawEventVerification";
 import {
     postHistoryContextFetchService,
     type PostHistoryContextFetchService,
@@ -61,6 +63,7 @@ export interface PostHistoryRelatedTargetSnapshot {
 }
 
 interface CreatePostHistoryRelatedTargetResolverParams {
+    loadRepostTarget?: (descriptor: RelatedTargetDescriptor) => Promise<{ event: NostrEvent; relayHints: string[] } | null>;
     getShow: () => boolean;
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
@@ -75,6 +78,7 @@ interface CreatePostHistoryRelatedTargetResolverParams {
 }
 
 interface EnsureRelatedTargetOptions {
+    requireRelayHint?: boolean;
     force?: boolean;
     background?: boolean;
 }
@@ -134,6 +138,7 @@ export function createPostHistoryRelatedTargetResolver({
     deletionRequestsRepositoryImpl = postHistoryDeletionRequestsRepository,
     deletionFetchService = postHistoryDeletionFetchService,
     profileSyncCoordinator = undefined,
+    loadRepostTarget = undefined,
 }: CreatePostHistoryRelatedTargetResolverParams) {
     const profileSync = profileSyncCoordinator
         ?? createPostHistoryProfileSyncCoordinator({ getShow, getRxNostr });
@@ -403,12 +408,30 @@ export function createPostHistoryRelatedTargetResolver({
         const mergedSnapshot = snapshotsByTargetId[descriptor.targetEventId]
             ?? createInitialSnapshot(descriptor);
         const preserveResolvedState = !!options.background && existingBeforeMerge?.status === "resolved";
+        // A signed event of another kind can still be valid for a quote/thread.
+        // Let the Repost projection reject it without poisoning the shared ID cache.
+        if (descriptor.relationKind === "repost" && existingBeforeMerge?.status === "resolved") {
+            const cached = attestFullyVerifiedPostHistoryRawEvent(existingBeforeMerge.event)?.event;
+            if (cached?.id === descriptor.targetEventId && cached.kind !== 1) return existingBeforeMerge;
+            if (cached?.id === descriptor.targetEventId) {
+                const generation = scopeGenerationByKey[descriptor.scopeKey];
+                const deleted = await isDeletedTarget(cached.pubkey, cached.id);
+                if (!getShow() || generation !== scopeGenerationByKey[descriptor.scopeKey]
+                    || !scopeKeysByTargetId.get(cached.id)?.has(descriptor.scopeKey)) return null;
+                if (deleted) return applySnapshotUpdate(cached.id, { status: "deleted", event: null,
+                    authorPubkey: cached.pubkey, errorCode: null, updatedAt: Date.now() });
+            }
+        }
 
-        if (!options.force && existingBeforeMerge) {
+        if (!options.force && existingBeforeMerge && (!options.requireRelayHint || existingBeforeMerge.relayHints.length > 0)) {
             if (
                 existingBeforeMerge.status === "resolved"
                 || existingBeforeMerge.status === "deleted"
             ) {
+                if (descriptor.relationKind === "repost" && existingBeforeMerge.status === "resolved"
+                    && !verifyRepostTarget(existingBeforeMerge.event, { eventId: descriptor.targetEventId, authorHint: null, relayHints: [] })) {
+                    return await ensureTarget(descriptor, { ...options, force: true });
+                }
                 if (existingBeforeMerge.status === "resolved" && existingBeforeMerge.authorPubkey) {
                     ensureProfileForTarget(
                         existingBeforeMerge.authorPubkey,
@@ -459,6 +482,20 @@ export function createPostHistoryRelatedTargetResolver({
                     });
                 }
 
+                const repostLocal = descriptor.relationKind === "repost" ? await loadRepostTarget?.(descriptor) : null;
+                if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) return null;
+                const localVerified = repostLocal && verifyRepostTarget(repostLocal.event, {
+                    eventId: descriptor.targetEventId, authorHint: null, relayHints: descriptor.relayHints ?? [],
+                });
+                if (localVerified && (!options.requireRelayHint || repostLocal!.relayHints.length > 0)) {
+                    const hints = sanitizeRelayHints([...repostLocal!.relayHints, ...mergedSnapshot.relayHints]);
+                    const snapshot = applySnapshotUpdate(descriptor.targetEventId, { status: "resolved",
+                        event: localVerified.event, authorPubkey: localVerified.event.pubkey, relayHints: hints,
+                        errorCode: null, updatedAt: Date.now() });
+                    ensureProfileForTarget(localVerified.event.pubkey, hints);
+                    void runDeletionCheck(localVerified.event, hints, { background: true });
+                    return snapshot;
+                }
                 const existingRecord = await postHistoryRepositoryImpl.getByEventId(
                     descriptor.targetEventId,
                 );
@@ -466,7 +503,10 @@ export function createPostHistoryRelatedTargetResolver({
                     return snapshotsByTargetId[descriptor.targetEventId] ?? null;
                 }
 
-                if (existingRecord) {
+                if (existingRecord && (!options.requireRelayHint || [...existingRecord.relayHints, ...existingRecord.acceptedRelays, ...(existingRecord.fetchedRelays ?? [])].length > 0)
+                    && (descriptor.relationKind !== "repost" || verifyRepostTarget(existingRecord.rawEvent, {
+                    eventId: descriptor.targetEventId, authorHint: null, relayHints: [],
+                }))) {
                     const recordRelayHints = sanitizeRelayHints([
                         ...mergedSnapshot.relayHints,
                         ...existingRecord.relayHints,
@@ -484,7 +524,9 @@ export function createPostHistoryRelatedTargetResolver({
                         });
                     }
 
-                    const storedEvent = toEventFromPostHistoryRecord(existingRecord);
+                    const storedEvent = descriptor.relationKind === "repost"
+                        ? verifyRepostTarget(existingRecord.rawEvent)!.event
+                        : toEventFromPostHistoryRecord(existingRecord);
                     const event = storedEvent;
                     const targetRelayHints = recordRelayHints;
                     const snapshot = applySnapshotUpdate(descriptor.targetEventId, {
@@ -500,7 +542,7 @@ export function createPostHistoryRelatedTargetResolver({
                     return snapshotsByTargetId[descriptor.targetEventId] ?? snapshot;
                 }
 
-                if (descriptor.authorHint) {
+                if (descriptor.authorHint && descriptor.relationKind !== "repost") {
                     const deletedByAuthorHint = await runDeletionCheck(
                         createSyntheticTargetEvent(
                             descriptor.targetEventId,
@@ -547,7 +589,7 @@ export function createPostHistoryRelatedTargetResolver({
                 }
 
                 if (!result.event) {
-                    if (descriptor.authorHint) {
+                    if (descriptor.authorHint && descriptor.relationKind !== "repost") {
                         const deletedAfterFetch = await runDeletionCheck(
                             createSyntheticTargetEvent(
                                 descriptor.targetEventId,
@@ -583,6 +625,9 @@ export function createPostHistoryRelatedTargetResolver({
                     ...mergedSnapshot.relayHints,
                 ]);
                 const resolvedEvent = result.event;
+                if (descriptor.relationKind === "repost" && !verifyRepostTarget(resolvedEvent, {
+                    eventId: descriptor.targetEventId, authorHint: null, relayHints: [],
+                })) throw new Error("invalid_repost_target");
                 const resolvedRelayHints = pointerRelayHints;
                 const deletedAfterResolve = await runDeletionCheck(
                     resolvedEvent,

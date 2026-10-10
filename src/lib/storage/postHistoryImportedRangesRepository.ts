@@ -1,4 +1,5 @@
 import { mergePostHistoryCoverageRanges, type PostHistoryCoverageRange } from "../postHistoryRelayCoverage";
+import { POST_HISTORY_AUTHORED_KINDS_KEY, POST_HISTORY_LEGACY_KINDS_KEY } from "../postHistoryKinds";
 import { ehagakiDb, type EHagakiDB } from "./ehagakiDb";
 import { assertPostHistoryLocalWriteCurrent, getPostHistoryLocalRevision, type PostHistoryLocalWriteScope } from "./postHistoryLocalWriteScope";
 
@@ -20,11 +21,15 @@ export class DexiePostHistoryImportedRangesRepository {
     async get(ownerPubkeyHex: string, kindsKey: string): Promise<PostHistoryImportedRanges> {
         return this.db.transaction("r", this.db.meta, async () => {
             const localRevision = await getPostHistoryLocalRevision(this.db, ownerPubkeyHex);
-            const record = (await this.db.meta.get(`${POST_HISTORY_IMPORTED_RANGES_PREFIX}${ownerPubkeyHex}:${kindsKey}`))?.value as Partial<PostHistoryImportedRanges> | undefined;
-            const ranges = record?.schemaVersion === 1 && record.source === "citrine-backup"
-                && record.ownerPubkeyHex === ownerPubkeyHex && record.kindsKey === kindsKey
-                && record.localRevision === localRevision && Array.isArray(record.ranges)
-                ? mergePostHistoryCoverageRanges(record.ranges) : [];
+            const records = await this.db.meta.bulkGet([`${POST_HISTORY_IMPORTED_RANGES_PREFIX}${ownerPubkeyHex}:${kindsKey}`,
+                ...(kindsKey === POST_HISTORY_AUTHORED_KINDS_KEY ? [`${POST_HISTORY_IMPORTED_RANGES_PREFIX}${ownerPubkeyHex}:${POST_HISTORY_LEGACY_KINDS_KEY}`] : [])]);
+            const ranges = mergePostHistoryCoverageRanges(records.flatMap((item, index) => {
+                const record = item?.value as Partial<PostHistoryImportedRanges> | undefined;
+                const expectedKey = index === 0 ? kindsKey : POST_HISTORY_LEGACY_KINDS_KEY;
+                return record?.schemaVersion === 1 && record.source === "citrine-backup"
+                    && record.ownerPubkeyHex === ownerPubkeyHex && record.kindsKey === expectedKey
+                    && record.localRevision === localRevision && Array.isArray(record.ranges) ? record.ranges : [];
+            }));
             return { schemaVersion: 1, source: "citrine-backup", ownerPubkeyHex, kindsKey, localRevision, ranges };
         });
     }

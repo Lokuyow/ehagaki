@@ -71,6 +71,7 @@ export interface UpsertImportedPostHistoryDeletionEventsResult {
 }
 
 export interface SaveLocalPostHistoryDeletionInput {
+    targetEvent?: NostrEvent;
     targetEventId?: string;
     targetEventIds?: string[];
     deletionEvent: NostrEvent;
@@ -289,7 +290,13 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
             this.db.postHistory,
             this.db.sensitivePayloads,
             async () => {
-                const targetRecord = await this.db.postHistory.get(targetEventIds[0]!);
+                const suppliedTarget = input.targetEvent ? attestFullyVerifiedPostHistoryRawEvent(input.targetEvent)?.event : null;
+                const storedTargetRecord = await this.db.postHistory.get(targetEventIds[0]!);
+                const targetRecord = storedTargetRecord
+                    ?? (suppliedTarget && suppliedTarget.id === targetEventIds[0] ? {
+                        eventId: suppliedTarget.id, pubkeyHex: suppliedTarget.pubkey,
+                        kind: suppliedTarget.kind, rawEvent: suppliedTarget,
+                    } : undefined);
                 if (
                     !targetRecord
                     || !isSupportedPostHistoryDeletionTargetKind(targetRecord.kind)
@@ -358,11 +365,11 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                 }
 
                 if (
-                    targetRecord.deletedAt !== input.deletedAt
-                    || targetRecord.deletionEventId !== deletionEvent.id
+                    storedTargetRecord && (storedTargetRecord.deletedAt !== input.deletedAt
+                    || storedTargetRecord.deletionEventId !== deletionEvent.id)
                 ) {
                     await this.db.postHistory.put({
-                        ...targetRecord,
+                        ...storedTargetRecord,
                         deletedAt: input.deletedAt,
                         deletionEventId: deletionEvent.id,
                         updatedAt: this.now(),

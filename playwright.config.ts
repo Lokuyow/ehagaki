@@ -63,6 +63,7 @@ export default defineConfig({
                 '**/footerSettingShortcuts.spec.ts',
                 '**/postEditorSending.spec.ts',
                 '**/postHistoryDialog.spec.ts',
+                '**/postRepost.spec.ts',
                 '**/sensitiveContentPayload.spec.ts',
             ],
             use: {
@@ -72,7 +73,7 @@ export default defineConfig({
         },
         {
             name: 'desktop-firefox',
-            testMatch: '**/webComponentEmbed.spec.ts',
+            testMatch: ['**/webComponentEmbed.spec.ts', '**/postRepost.spec.ts'],
             use: {
                 ...devices['Desktop Firefox'],
             },

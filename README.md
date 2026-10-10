@@ -59,6 +59,8 @@ https://lokuyow.github.io/ehagaki/?quote=note1...
 - リプライ: NIP-10準拠のe/pタグを自動構築（スレッドroot引き継ぎ対応）
 - Sensitive Content Payload形式のkind、NIP-22 topology、wire仕様は[公開仕様書](docs/SENSITIVE_CONTENT.md)を参照してください。
 - 引用: NIP-18準拠のqタグを自動構築し、投稿時に引用イベントとして処理されます
+- リポスト: 投稿履歴と「宛先を指定」のkind 1投稿の右側メニューからkind 6を送信できます。contentは常に空文字で、元投稿はe/pタグとリレーヒントから参照します。署名を検証した元投稿はRepost履歴に関連付けてローカル保存し、本文の表示・検索に利用します。kind 16は対象外です。
+- RepostのJSONL出力は署名済みouter eventだけを含みます。元投稿snapshotは別行に出力しないため、新規DBへimportした場合は参照情報から再取得します。取得できない元投稿は未解決状態で表示し、再試行できます。
 - URLクエリ由来の参照イベントはプレビュー表示されます
 - エディタ本文に `nostr:nevent1...` または `nostr:note1...` を含めた場合も引用として処理されます
 - 本文中の複数の `nostr:` URI は出現順に処理されます

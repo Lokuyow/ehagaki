@@ -47,14 +47,14 @@
 
 ## リポスト
 
-- 機能: READMEはNIP-18 Reposts対応を掲げる。
+- 機能: kind 1のRepost作成、authored kind 6の同期・履歴表示、検証済み元投稿snapshotの永続化。
 - 関連NIP: NIP-18
-- event kind: NIP上は`6`またはgeneric repostの`16`が関係するが、現在の実装で構築・取得する箇所は確認できなかった。
-- 主なtag: 現在の実装では確認できなかった。
-- 主な実装ファイル: 実装ファイルは確認できなかった。`README.md`の対応NIP一覧にのみ記載がある。
-- 主な関数または責務: 確認できなかった。
-- 関連テスト: kind 6/16またはrepostを対象にするテストは確認できなかった。
-- 注意点: 実装済みと推測しない。変更要求では期待するkind、content、`e`/`p`/`a` semanticsをtaskと適用NIPから判断し、重要な未解決の選択だけAGENTS.mdの確認条件に従う。
+- event kind: outerは`6`、targetは`1`。generic repost `16`はPhase 1対象外。
+- 主なtag: target IDと取得先relayを持つ`e`、target authorの`p`。作成contentは常に空文字。
+- 主な実装ファイル: `postRepostService.ts`、`postRepostUtils.ts`、`postHistoryRepository.ts`、`postHistoryRelatedTargetResolver.svelte.ts`、`usePostHistoryRepostPreviews.svelte.ts`、`PostHistoryRepostPreview.svelte`。
+- 主な関数または責務: serviceが署名・publishと同じouter/targetの再保存を所有する。repositoryがouter recordの`repostTarget`を保存し、既存related-target resolverが参照に基づく解決・検証・要求共有・retryを所有する。元投稿をauthored行として追加しない。
+- 関連テスト: `postRepost.test.ts`、`postRepost.spec.ts`。
+- 注意点: 外部kind 6のcontentもtarget取得元・検索対象にしない。outerの日時・管理操作とtargetの本文・content actionを分ける。JSONLはouterだけを出力し、snapshot欠損はe/p/relay hintから復旧する。旧kinds coverageをkind 6取得の証拠にしない。
 
 ## NIP-19識別子
 

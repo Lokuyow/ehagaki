@@ -1,4 +1,5 @@
 import { getEventHash as getRxNostrEventHash } from "@rx-nostr/crypto";
+import { isPostHistoryAuthoredKind } from "./postHistoryKinds";
 import { validateEvent, verifyEvent } from "nostr-tools";
 import { extractDeletionTargetEventIds } from "./postHistoryDeletionUtils";
 import {
@@ -372,7 +373,7 @@ export async function exportPostHistoryRecords(
     const exportedPayloadIds = new Set<string>();
 
     for (const record of scopedPostRecords) {
-        if (![1, 42, 1111].includes(record.kind)) {
+        if (!isPostHistoryAuthoredKind(record.kind)) {
             continue;
         }
         if (
@@ -435,7 +436,7 @@ export async function exportPostHistoryRecords(
     const unrecoverableDeletedPostEventIds = new Set<string>();
     for (const record of scopedPostRecords) {
         if (
-            ![1, 42, 1111].includes(record.kind)
+            !isPostHistoryAuthoredKind(record.kind)
             || record.deletedAt === undefined
             || !exportablePostEventIds.has(record.eventId)
             || validDeletionTargetEventIds.has(record.eventId)

@@ -12,6 +12,11 @@
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
+    import PostRepostMenuItem from "./PostRepostMenuItem.svelte";
+    import PostRepostFeedback from "./PostRepostFeedback.svelte";
+    import type { RepostPostHandler } from "../lib/hooks/usePostRepostOperation.svelte";
+    import type { PostRepostResult } from "../lib/postRepostService";
+    import { createPostHistoryRelatedTargetResolver } from "../lib/postHistoryRelatedTargetResolver.svelte";
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
     import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
@@ -104,6 +109,10 @@
         profileService?: Pick<RelayProfileService, "fetchProfileRealtime">;
         resolver?: ComposerTargetResolver;
         pubkeyHex?: string | null;
+        onRepostPost?: RepostPostHandler;
+        repostPending?: boolean;
+        onRetryRepostSave?: (result: PostRepostResult) => Promise<boolean>;
+        repostSaveFailure?: PostRepostResult | null;
     }
 
     let {
@@ -115,8 +124,33 @@
         profileService = undefined,
         resolver = createComposerTargetResolver(),
         pubkeyHex = null,
+        onRepostPost = undefined,
+        repostPending = false,
+        onRetryRepostSave = undefined,
+        repostSaveFailure = null,
     }: Props = $props();
 
+    let repostResolver: ReturnType<typeof createPostHistoryRelatedTargetResolver> | undefined;
+    function getRepostResolver() {
+        return repostResolver ??= createPostHistoryRelatedTargetResolver({ getShow: () => show,
+            getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig });
+    }
+    let repostResult = $state<PostRepostResult | null>(null);
+    let repostGeneration = 0;
+    $effect(() => { show; pubkeyHex; repostGeneration++; repostResult = null; });
+    onDestroy(() => repostResolver?.reset());
+    async function handleRepost(post: PostHistoryRecord) {
+        if (!onRepostPost || repostPending) return;
+        repostResult = null;
+        const generation = repostGeneration;
+        const eventId = post.eventId;
+        const result = await onRepostPost(post, async () => {
+            const resolved = await getRepostResolver().ensureTarget({ relationKind: "repost", scopeKey: "composer-repost",
+                targetEventId: post.eventId, authorHint: post.pubkeyHex, relayHints: [] }, { force: true, requireRelayHint: true });
+            return resolved?.relayHints ?? [];
+        });
+        if (show && generation === repostGeneration && target?.event.id === eventId) repostResult = result;
+    }
     let inputValue = $state("");
     let inputElement: HTMLInputElement | null = $state(null);
     let targetPreviewElement: HTMLElement | null = $state(null);
@@ -389,6 +423,10 @@
     }
 
     function resetTargetActionUiState(): void {
+        repostResolver?.reset();
+        repostResolver = undefined;
+        repostGeneration++;
+        repostResult = null;
         postActionUi.reset();
         rawJsonDialogOpen = false;
         selectedRawEvent = null;
@@ -524,6 +562,7 @@
             postedAt: event.created_at * 1000,
             relayHints: [...resolvedTarget.relayHints],
             acceptedRelays: [],
+            ...(resolvedTarget.fetchedRelayUrl ? { fetchedRelays: [resolvedTarget.fetchedRelayUrl] } : {}),
             media: [],
             rawEvent: event,
             ...(channelRelayHints ? { channelRelayHints } : {}),
@@ -1023,6 +1062,9 @@
                                 )}
                             >
                                 {#snippet items()}
+                                    {#if onRepostPost && post.kind === 1}
+                                        <PostRepostMenuItem pending={repostPending} onSelect={() => void handleRepost(post)} />
+                                    {/if}
                                     <DropdownMenu.Item
                                         class="menu-action-button"
                                         onSelect={() =>
@@ -1103,6 +1145,7 @@
     </div>
 
     {#snippet footer()}
+        <PostRepostFeedback result={repostResult ?? repostSaveFailure} pending={repostPending} onRetrySave={onRetryRepostSave} />
         <Dialog.Close>
             {#snippet child({ props })}
                 <Button

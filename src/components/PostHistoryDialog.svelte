@@ -11,6 +11,12 @@
     import FloatingMessage from "./FloatingMessage.svelte";
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import PostHistoryRepostPreview from "./PostHistoryRepostPreview.svelte";
+    import PostRepostFeedback from "./PostRepostFeedback.svelte";
+    import { usePostHistoryRepostPreviews, loadStoredRepostTarget } from "../lib/hooks/usePostHistoryRepostPreviews.svelte";
+    import type { RepostPostHandler } from "../lib/hooks/usePostRepostOperation.svelte";
+    import type { PostRepostResult } from "../lib/postRepostService";
+    import { isPostHistoryRawEventConsistent } from "../lib/postHistoryEventUtils";
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
     import PostHistoryRecordActionItems from "./PostHistoryRecordActionItems.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
@@ -122,6 +128,10 @@
             post: PostHistoryRecord,
         ) => void | boolean | Promise<boolean>;
         onQuotePost?: (post: PostHistoryRecord) => void;
+        onRepostPost?: RepostPostHandler;
+        repostPending?: boolean;
+        onRetryRepostSave?: (result: PostRepostResult) => Promise<boolean>;
+        repostSaveFailure?: PostRepostResult | null;
         pubkeyHex?: string | null;
         rxNostr?: RxNostr;
         relayConfig?: RelayConfig | null;
@@ -147,6 +157,10 @@
         onClose,
         onReplyPost = undefined,
         onQuotePost = undefined,
+        onRepostPost = undefined,
+        repostPending = false,
+        onRetryRepostSave = undefined,
+        repostSaveFailure = null,
         pubkeyHex = null,
         rxNostr = undefined,
         relayConfig = null,
@@ -162,6 +176,7 @@
         getRxNostr: () => rxNostr,
     });
     const relatedTargetResolver = createPostHistoryRelatedTargetResolver({
+        loadRepostTarget: loadStoredRepostTarget,
         getShow: () => show,
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
@@ -198,6 +213,29 @@
         },
         pageSize: POST_HISTORY_PAGE_SIZE,
     });
+    const repostPreviews = usePostHistoryRepostPreviews({
+        getShow: () => show, getPubkey: () => pubkeyHex, getPosts: () => history.posts,
+        resolver: relatedTargetResolver,
+    });
+    let repostResult = $state<PostRepostResult | null>(null);
+    let repostMessageX = $state(20);
+    let repostMessageY = $state(80);
+    let repostUiGeneration = 0;
+    $effect(() => { show; pubkeyHex; repostUiGeneration++; repostResult = null; });
+    function canRepost(post: PostHistoryRecord): boolean {
+        return !!onRepostPost && post.kind === 1 && post.deletedAt === undefined
+            && isPostHistoryRawEventConsistent(post.rawEvent, post);
+    }
+    async function handleRepost(post: PostHistoryRecord, event: Event) {
+        if (!onRepostPost || repostPending || !canRepost(post)) return;
+        repostResult = null;
+        const rect = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null;
+        const position = calculateContextMenuPosition(rect?.left ?? 20, rect?.top ?? 80);
+        repostMessageX = position.x; repostMessageY = position.y;
+        const generation = repostUiGeneration;
+        const result = await onRepostPost(post, () => repostPreviews.resolveRelayHint(post));
+        if (generation === repostUiGeneration && show) repostResult = result;
+    }
     const channelDisplay = usePostHistoryChannelDisplay({
         getShow: () => show,
         getPosts: () => history.posts,
@@ -419,7 +457,7 @@
     function buildDisplayPreviewModel(
         post: PostHistoryRecord,
     ): PostContentRenderModel {
-        const content = resolveEventContentBody(post.content, post.tags);
+        const content = post.kind === 6 ? "" : resolveEventContentBody(post.content, post.tags);
         const displayContent = stripPostHistoryInlineQuoteUrisForDisplay({
             ...post,
             content,
@@ -2317,6 +2355,9 @@
                 ...deleteRequestState,
                 [targetPost.eventId]: undefined,
             };
+            if (targetPost.kind === 1) {
+                for (const outer of history.posts) if (outer.kind === 6) repostPreviews.retry(outer);
+            }
         } else {
             deleteRequestState = {
                 ...deleteRequestState,
@@ -2821,6 +2862,16 @@
                     >
                         <div class="post-history-main">
                             <div class="post-preview">
+                                {#if post.kind === 6}
+                                    <PostHistoryRepostPreview {post} preview={repostPreviews.getPreview(post)}
+                                        menu={repostRecordMenu} onRetry={() => repostPreviews.retry(post)}
+                                        onReplyPost={onReplyPost ? handleReplyPost : undefined}
+                                        onQuotePost={onQuotePost ? handleQuotePost : undefined}
+                                        loadSensitiveBody={getSensitiveBodyLoader(repostPreviews.getPreview(post).event)}
+                                        scrollRoot={historyContainer} onImageOpen={handleImageOpen}
+                                        emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                                        emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} />
+                                {:else}
                                 {#if post.kind === 42 || post.deletedAt || hasDeletionFailed(post) || !(onReplyPost || onQuotePost)}
                                     <div class="post-preview-header">
                                         {#if post.kind === 42}
@@ -2942,6 +2993,8 @@
                                                                 {/if}
                                                                 <PostHistoryRecordActionItems
                                                                     order="standard"
+                                                                    onRepost={canRepost(post) ? (event) => void handleRepost(post, event) : undefined}
+                                                                    {repostPending}
                                                                     copyFailed={copyNeventUi.copyState[
                                                                         post.eventId
                                                                     ] === "failed"}
@@ -3408,6 +3461,8 @@
                                                         {/if}
                                                         <PostHistoryRecordActionItems
                                                             order="standard"
+                                                            onRepost={canRepost(post) ? (event) => void handleRepost(post, event) : undefined}
+                                                            {repostPending}
                                                             copyFailed={copyNeventUi.copyState[
                                                                 post.eventId
                                                             ] === "failed"}
@@ -3522,6 +3577,7 @@
                                         onOpenDeleteConfirm={openNodeDeleteConfirm}
                                     />
                                 </div>
+                                {/if}
                             </div>
                         </div>
                     </li>
@@ -3719,6 +3775,7 @@
     />
 
     {#snippet footer()}
+        <PostRepostFeedback result={repostResult ?? repostSaveFailure} pending={repostPending} x={repostMessageX} y={repostMessageY} onRetrySave={onRetryRepostSave} />
         <Dialog.Close>
             {#snippet child({ props })}
                 <Button
@@ -3824,6 +3881,30 @@
     </div>
 </FloatingMessage>
 
+
+{#snippet repostRecordMenu(record: PostHistoryRecord, menuKey: string)}
+    <PostHistoryActionMenu open={postActionUi.isPostMenuOpen(menuKey)}
+        restoreFocusOnClose={true}
+        onOpenChange={(open) => setExclusivePostMenuOpen(menuKey, open)}
+        triggerAriaLabel={$_(record.kind === 6 ? "repost.outerActions" : "repost.targetActions")}
+        timestamp={formatPostedAtExact(record.postedAt, $locale)}>
+        {#snippet items()}
+            <PostHistoryRecordActionItems order="standard"
+                onRepost={canRepost(record) ? (event) => void handleRepost(record, event) : undefined} {repostPending}
+                copyFailed={copyNeventUi.copyState[record.eventId] === "failed"}
+                showBroadcast={canBroadcastPost(record)} broadcastSending={isBroadcastSending(record)}
+                showDelete={canDeletePost(record)} showDeleteSeparator={true} deletionSending={isDeletionSending(record)}
+                onCopyPointerDown={(event) => copyNeventUi.captureCopyPointerPosition(record, event)}
+                onCopyNevent={(event) => void copyNeventUi.handleCopyNevent(record, event)}
+                externalClientLabel={getExternalClientOpenLabel()} onOpenExternalClient={() => handleOpenExternalClient(record)}
+                onShowRawJson={() => openRawJson(record.rawEvent, record.relayHints)}
+                onBroadcastPointerDown={(event) => captureBroadcastPointerPosition(record, event)}
+                onBroadcastPost={(event) => void handleBroadcastPost(record, event)}
+                onOpenDeleteConfirm={() => openDeleteConfirm(record)} />
+        {/snippet}
+    </PostHistoryActionMenu>
+{/snippet}
+
 <style>
     :global(.post-history-dialog.dialog) {
         top: 0;
@@ -3846,6 +3927,10 @@
         max-height: none;
         overflow: hidden;
         padding: 0;
+    }
+
+    :global(.post-history-dialog .dialog-footer) {
+        flex: 0 0 auto;
     }
 
     .post-history-heading {

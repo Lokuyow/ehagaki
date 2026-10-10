@@ -193,6 +193,12 @@ export interface PostHistoryMediaRecord {
     uploadProtocol?: 'blossom' | 'nip96' | 'custom-http';
 }
 
+export interface PostHistoryRepostTarget {
+    rawEvent: import("../types").NostrEvent;
+    rawEventVerification: { status: "valid"; ruleVersion: number };
+    relayHints: string[];
+}
+
 export interface PostHistoryRecord {
     id: string;
     eventId: string;
@@ -207,6 +213,7 @@ export interface PostHistoryRecord {
     fetchedRelays?: string[];
     media: PostHistoryMediaRecord[];
     rawEvent: unknown;
+    repostTarget?: PostHistoryRepostTarget;
     rawEventVerification?: {
         status: 'valid' | 'invalid';
         ruleVersion: number;

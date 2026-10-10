@@ -1,4 +1,5 @@
 import type { RxNostr } from "rx-nostr";
+import { POST_HISTORY_AUTHORED_KINDS } from "./postHistoryKinds";
 import type {
     PostHistoryInboundDirectReplyCandidate,
     PostHistoryInboundReplyReconciliationResult,
@@ -251,7 +252,7 @@ export class PostHistoryForegroundPeriodicSyncService {
             relayConfig: params.relayConfig,
             getRelayConfig: params.getRelayConfig,
             reason: "foreground-periodic",
-            kinds: [1, 42, 1111],
+            kinds: [...POST_HISTORY_AUTHORED_KINDS],
             since,
             until: requestUpperBoundTimestamp,
             onSavedSelfPosts: params.onSavedSelfPosts,
@@ -315,7 +316,7 @@ export class PostHistoryForegroundPeriodicSyncService {
             relayConfig: params.relayConfig,
             getRelayConfig: params.getRelayConfig,
             reason: "foreground-periodic",
-            kinds: [1, 42, 1111],
+            kinds: [...POST_HISTORY_AUTHORED_KINDS],
             since: pending.since,
             until: pendingUntil,
             onSavedSelfPosts: params.onSavedSelfPosts,
