@@ -9,6 +9,7 @@ import {
     nostrUtilsMock,
     relayFetchServiceMock,
     repositoryMock,
+    expectPostHistoryCountLabel,
     resetPostHistoryDialogHarness,
 } from './postHistoryDialogTestHarness';
 function createRecord(overrides: Record<string, any> = {}) {
@@ -42,14 +43,8 @@ function expectDefaultMediaReplacement(): void {
     expect(screen.queryByText('https://example.com/image.jpg')).toBeNull();
 }
 
-async function openPostHistoryMenu(): Promise<void> {
-    const trigger = await screen.findByRole('button', { name: '投稿履歴メニューを開く' });
-    await fireEvent.click(trigger);
-}
-
 async function openSearchBar(): Promise<HTMLInputElement> {
-    await openPostHistoryMenu();
-    await fireEvent.click(await screen.findByRole('menuitem', { name: '検索' }));
+    await fireEvent.click(await screen.findByRole('button', { name: '検索' }));
     return screen.findByRole('searchbox', { name: '検索' }) as Promise<HTMLInputElement>;
 }
 
@@ -102,8 +97,8 @@ describe('PostHistoryDialog', () => {
             });
             expect(screen.getByText('needle result')).toBeTruthy();
             expect(screen.queryByText('通常一覧')).toBeNull();
-            expect(screen.getByText('1件')).toBeTruthy();
         });
+        await expectPostHistoryCountLabel('1件');
     });
 
     it('[search-no-results] 検索結果 0 件では searchNoResults を表示し、検索入力を消すと通常表示へ戻る', async () => {

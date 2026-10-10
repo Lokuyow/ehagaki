@@ -46,6 +46,9 @@
     let sends = 0;
     let signed = 0;
     let deletionRequests = 0;
+    let holdHistory = query.has("hold-history");
+    const historyResponses = new Set<() => void>();
+    const publishResponses = new Set<() => void>();
     let lastResult: { success: boolean; error?: string; historySaved?: boolean } | null = null;
     const sentEvents: { id: string; kind: number; tags: string[][] }[] = [];
     let replyId: string | null = null;
@@ -59,12 +62,18 @@
         send: (event: NostrEvent) => {
             sends++; sentEvents.push({ id: event.id, kind: event.kind, tags: event.tags });
             const ok = !rejectPublish; rejectPublish = false;
+            if (query.has("hold-publish")) return new Observable(observer => {
+                const respond = () => { observer.next({ ok, done: true, from: relay, eventId: event.id }); observer.complete(); };
+                publishResponses.add(respond);
+                return () => publishResponses.delete(respond);
+            });
             return of({ ok, done: true, from: relay, eventId: event.id });
         },
         use: (req: RxReq) => new Observable((observer) => {
+            const heldResponses = new Set<() => void>();
             const subscription = req.getReqPacketObservable().subscribe(({ filters }) => {
                 const filter = filters[0];
-                queueMicrotask(() => {
+                const respond = () => {
                     if (filter?.ids?.includes(target.id) && allowTarget) observer.next({ event: target, from: relay });
                     if (deletedOnRelay && filter?.kinds?.includes(5) && filter.authors?.includes(target.pubkey)
                         && filter["#e"]?.includes(target.id)) {
@@ -76,9 +85,13 @@
                     observer.complete();
                     const subId = `${req.rxReqId}:0`;
                     messages.next({ type: "EOSE", from: relay, subId, message: ["EOSE", subId] });
-                });
+                };
+                if (holdHistory && filter?.authors?.includes(owner) && filter.kinds?.includes(6)) {
+                    heldResponses.add(respond); historyResponses.add(respond);
+                }
+                else queueMicrotask(respond);
             });
-            return () => subscription.unsubscribe();
+            return () => { subscription.unsubscribe(); heldResponses.forEach(respond => historyResponses.delete(respond)); };
         }),
     } as unknown as RxNostr;
     // Exercise the actual rx-nostr request/EOSE/verification/publish path. Only
@@ -138,7 +151,7 @@
             signEvent: async template => { signed++; return signer.signEvent(template); },
         }; },
         createSender: (runtime) => new PostEventSender(runtime, { log() {}, warn() {}, error() {} } as Console,
-            { initialMs: 200, successMs: 10, authMs: 200 }),
+            { initialMs: query.has("hold-publish") ? 30_000 : 200, successMs: 10, authMs: 200 }),
         saveHistory: async (input) => {
             if (failSave) { failSave = false; throw new Error("test storage failure"); }
             await postHistoryRepository.putPostedEvent(input);
@@ -216,6 +229,8 @@
                 return nip19.noteEncode(target.id);
             },
             rejectNextPublish: () => { rejectPublish = true; },
+            releaseHistory: () => { holdHistory = false; [...historyResponses].forEach(respond => respond()); historyResponses.clear(); },
+            releasePublish: () => { [...publishResponses].forEach(respond => respond()); },
         };
         ready = true;
     })(); });

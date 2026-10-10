@@ -4,12 +4,61 @@ type State = { sends: number; signed: number; replyId?: string; quoteId?: string
     sentEvents: { id: string; kind: number; tags: string[][] }[];
     lastResult?: { success: boolean; error?: string }; rows: { id: string; kind: number; content: string; targetId?: string; targetKind?: number }[] };
 type FixtureWindow = Window & { __REPOST__: { ready: boolean; targetId: string; targetInput: string; read(): Promise<State>; allowTarget(): void;
-    deleteOnRelay(): void; rememberDeletion(): Promise<unknown>; nextTarget(): string; rejectNextPublish(): void } };
+    deleteOnRelay(): void; rememberDeletion(): Promise<unknown>; nextTarget(): string; rejectNextPublish(): void;
+    releaseHistory(): void; releasePublish(): void } };
 const read = (page: Page) => page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.read());
 async function open(page: Page, query = "") {
     await page.goto(`post-history-dialog-playwright.html?repost=1${query}`);
     await page.waitForFunction(() => (window as unknown as FixtureWindow).__REPOST__?.ready);
 }
+
+test('history header controls and anchored status coexist with Repost sending and success feedback', async ({ page }, testInfo) => {
+    await open(page, '&hold-history=1&hold-publish=1');
+    const heading = page.locator('.post-history-heading');
+    const status = page.locator('.floating-message.anchor-bottom-right');
+    await expect(status).toContainText('リレーと同期中...');
+    await expect(status).toBeVisible();
+    await expect(heading.locator('.post-history-heading-calendar-button')).toBeVisible();
+    await expect(heading.locator('.post-history-heading-search-button')).toBeVisible();
+    await expect(heading.locator('.post-history-heading-refetch-button')).toBeDisabled();
+    await expect(heading.locator('.post-history-summary-count')).toHaveCount(0);
+    await heading.locator('.post-history-heading-menu-trigger').click();
+    await expect(page.locator('.post-history-menu-summary')).toContainText('1件保存');
+    await expect(page.getByRole('menuitem', { name: '検索', exact: true })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    const post = page.locator('.post-history-item').first();
+    await post.getByRole('button', { name: 'アクションを表示', exact: true }).click();
+    const items = await page.getByRole('menuitem').allTextContents();
+    expect(items.findIndex(text => text.trim() === 'リポスト') + 1).toBe(items.findIndex(text => text.trim() === 'イベントJSONを表示'));
+    await page.getByRole('menuitem', { name: 'リポスト', exact: true }).click();
+    await expect(page.locator('.repost-message')).toHaveText('リポスト送信中…');
+    await expect(page.locator('.repost-message')).toBeVisible();
+    await expect.poll(async () => { const state = await read(page); return [state.signed, state.sends]; }).toEqual([1, 1]);
+    await expect(status).toContainText('リレーと同期中...');
+    await post.getByRole('button', { name: 'アクションを表示', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: 'リポスト送信中…', exact: true })).toBeDisabled();
+    await page.keyboard.press('Escape');
+
+    await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.releasePublish());
+    await expect(page.locator('.repost-message')).toHaveText('リポストしました');
+    await expect(page.locator('.repost-message')).toBeVisible();
+    await expect(page.locator('.post-history-repost')).toContainText('original searchable post');
+    await expect(status).toContainText('リレーと同期中...');
+    const headingBox = await heading.boundingBox();
+    const statusBox = await status.boundingBox();
+    expect(statusBox!.y).toBeCloseTo(headingBox!.y + headingBox!.height + 8, 0);
+    expect(statusBox!.x + statusBox!.width).toBeLessThanOrEqual(headingBox!.x + headingBox!.width);
+    expect(await page.locator('html').evaluate(element => element.scrollWidth > element.clientWidth)).toBe(false);
+    await page.screenshot({ path: testInfo.outputPath('history-header-repost-feedback.png') });
+
+    await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.releaseHistory());
+    await expect(heading.locator('.post-history-heading-refetch-button')).toBeEnabled();
+    await heading.locator('.post-history-heading-search-button').click();
+    await page.locator('.post-history-search-input').fill('original searchable post');
+    await expect(page.locator('.post-history-repost')).toContainText('original searchable post');
+    await expect(page.locator('.post-preview-footer').getByRole('button', { name: 'リポスト', exact: true })).toHaveCount(0);
+});
 
 for (const entry of ['history', 'Composer'] as const) {
     for (const deleted of [false, true]) {
