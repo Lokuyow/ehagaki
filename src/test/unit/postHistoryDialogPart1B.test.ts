@@ -140,6 +140,8 @@ describe('PostHistoryDialog', () => {
 
         const statusToast = document.querySelector('.floating-message.anchor-bottom-right[role="status"]');
         expect(statusToast?.textContent).toContain('再取得中...');
+        expect(statusToast?.querySelector('.info-icon')).toBeNull();
+        expect(statusToast?.querySelector('.status-loading-placeholder .loader-container')).toBeTruthy();
         expect(statusToast?.closest('.post-history-heading')).toBeNull();
         expect(document.querySelector('.post-history-heading .status-loading-placeholder')).toBeNull();
 

@@ -19,6 +19,20 @@ describe("FloatingMessage", () => {
         expect(message.getAttribute("role")).not.toBe("dialog");
         expect(message.hasAttribute("aria-modal")).toBe(false);
         expect(message.hasAttribute("tabindex")).toBe(false);
+        expect(message.querySelector(".info-icon")).toBeTruthy();
+    });
+
+    it("can hide the default info icon when the message content supplies its own loader", () => {
+        render(FloatingMessage, {
+            props: {
+                show: true,
+                showInfoIcon: false,
+            },
+        });
+
+        const message = screen.getByRole("status");
+
+        expect(message.querySelector(".info-icon")).toBeNull();
     });
 
     it("does not render when hidden", () => {

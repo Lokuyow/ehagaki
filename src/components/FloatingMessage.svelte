@@ -10,6 +10,7 @@
         y = 0,
         variant = "pointer",
         anchor = null,
+        showInfoIcon = true,
         children = undefined,
     } = $props<{
         show?: boolean;
@@ -21,6 +22,7 @@
             | "container-top-right"
             | "anchor-bottom-right";
         anchor?: HTMLElement | null;
+        showInfoIcon?: boolean;
         children?: Snippet;
     }>();
 
@@ -183,7 +185,9 @@
             aria-atomic="true"
         >
             <div class="floating-message-body">
-                <span class="info-icon svg-icon" aria-hidden="true"></span>
+                {#if showInfoIcon}
+                    <span class="info-icon svg-icon" aria-hidden="true"></span>
+                {/if}
                 <div class="floating-message-content">
                     {@render children?.()}
                 </div>
