@@ -74,12 +74,6 @@ export function usePostHistoryRepostPreviews(params: { getShow: () => boolean;
         return () => { generation++; params.resolver.invalidateScope(scopeKey); };
     });
     onDestroy(() => { generation++; params.resolver.invalidateScope(scopeKey); });
-    return { getPreview, retry: (post: PostHistoryRecord) => { void ensure(post, !saveErrors[post.eventId]).catch(() => undefined); },
-        async resolveRelayHint(post: PostHistoryRecord) {
-            const snapshot = await params.resolver.ensureTarget({ relationKind: "repost", scopeKey,
-                targetEventId: post.eventId, authorHint: post.pubkeyHex, relayHints: [], }, { force: true, requireRelayHint: true });
-            return snapshot?.event && verifyRepostTarget(snapshot.event, { eventId: post.eventId, authorHint: post.pubkeyHex, relayHints: [] })
-                ? snapshot.relayHints : [];
-        } };
+    return { getPreview, retry: (post: PostHistoryRecord) => { void ensure(post, !saveErrors[post.eventId]).catch(() => undefined); } };
 }
 export type RepostPreviewState = ReturnType<ReturnType<typeof usePostHistoryRepostPreviews>["getPreview"]>;

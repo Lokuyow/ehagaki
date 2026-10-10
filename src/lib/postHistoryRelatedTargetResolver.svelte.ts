@@ -151,8 +151,8 @@ export function createPostHistoryRelatedTargetResolver({
     const scopeKeysByTargetId = new Map<string, Set<string>>();
     const pendingLoadsByTargetId = new Map<string, Promise<PostHistoryRelatedTargetSnapshot | null>>();
     const loadTasksByTargetId = new Map<string, PostHistoryContextFetchTask>();
-    const pendingDeletionChecksByTargetId = new Map<string, Promise<boolean>>();
-    const deletionTasksByTargetId = new Map<string, PostHistoryDeletionFetchTask>();
+    const pendingDeletionChecksByTarget = new Map<string, Promise<{ deleted: boolean; complete: boolean }>>();
+    const deletionTasksByTarget = new Map<string, PostHistoryDeletionFetchTask>();
     const loadRequestIdsByTargetId = new Map<string, number>();
     let nextLoadRequestId = 0;
 
@@ -319,7 +319,7 @@ export function createPostHistoryRelatedTargetResolver({
     async function runDeletionCheck(
         targetEvent: NostrEvent,
         relayHints: string[],
-        options: { background?: boolean } = {},
+        options: { background?: boolean; requireComplete?: boolean } = {},
     ): Promise<boolean> {
         if (!targetEvent.pubkey || !targetEvent.id) {
             return false;
@@ -337,23 +337,22 @@ export function createPostHistoryRelatedTargetResolver({
             return true;
         }
 
-        if (pendingDeletionChecksByTargetId.has(targetEvent.id)) {
-            return pendingDeletionChecksByTargetId.get(targetEvent.id) ?? false;
-        }
-
         const rxNostr = getRxNostr();
         if (!rxNostr) {
+            if (options.requireComplete) throw new Error("deletion_confirmation_incomplete");
             return false;
         }
 
-        const taskPromise = (async (): Promise<boolean> => {
+        // An unverified author hint for the same ID must not satisfy a verified author's check.
+        const deletionKey = `${targetEvent.pubkey}:${targetEvent.id}`;
+        const taskPromise: Promise<{ deleted: boolean; complete: boolean }> = pendingDeletionChecksByTarget.get(deletionKey) ?? Promise.resolve().then(async () => {
             try {
                 const task = deletionFetchService.fetchDeletionRequests(rxNostr, {
                     targets: [{ event: targetEvent, relayUrls: relayHints }],
                     relayHints,
                     relayConfig: getRelayConfig(),
                 });
-                deletionTasksByTargetId.set(targetEvent.id, task);
+                deletionTasksByTarget.set(deletionKey, task);
 
                 const result = await task.promise;
                 if (result.events.length > 0) {
@@ -376,37 +375,45 @@ export function createPostHistoryRelatedTargetResolver({
                     });
                 }
 
-                return deleted;
+                return { deleted, complete: result.status === "success" };
             } catch {
-                return false;
+                return { deleted: false, complete: false };
             } finally {
-                deletionTasksByTargetId.delete(targetEvent.id);
-                pendingDeletionChecksByTargetId.delete(targetEvent.id);
+                if (pendingDeletionChecksByTarget.get(deletionKey) === taskPromise) {
+                    deletionTasksByTarget.delete(deletionKey);
+                    pendingDeletionChecksByTarget.delete(deletionKey);
+                }
             }
-        })();
+        });
 
-        pendingDeletionChecksByTargetId.set(targetEvent.id, taskPromise);
+        pendingDeletionChecksByTarget.set(deletionKey, taskPromise);
         if (options.background) {
             void taskPromise;
             return false;
         }
 
-        return taskPromise;
+        const result = await taskPromise;
+        if (!result.deleted && options.requireComplete && !result.complete) {
+            throw new Error("deletion_confirmation_incomplete");
+        }
+        return result.deleted;
     }
 
     function isCurrentLoadRequest(targetEventId: string, requestId: number): boolean {
         return loadRequestIdsByTargetId.get(targetEventId) === requestId;
     }
 
-    async function ensureTarget(
+    async function resolveTarget(
         descriptor: RelatedTargetDescriptor,
         options: EnsureRelatedTargetOptions = {},
+        repostPreparation?: { target: NostrEvent },
     ): Promise<PostHistoryRelatedTargetSnapshot | null> {
         registerDescriptor(descriptor);
         const existingBeforeMerge = snapshotsByTargetId[descriptor.targetEventId];
         const contextChanged = mergeDescriptorContext(descriptor);
         const mergedSnapshot = snapshotsByTargetId[descriptor.targetEventId]
             ?? createInitialSnapshot(descriptor);
+        const canUsePreparedTarget = !!repostPreparation && mergedSnapshot.relayHints.length > 0;
         const preserveResolvedState = !!options.background && existingBeforeMerge?.status === "resolved";
         // A signed event of another kind can still be valid for a quote/thread.
         // Let the Repost projection reject it without poisoning the shared ID cache.
@@ -430,7 +437,7 @@ export function createPostHistoryRelatedTargetResolver({
             ) {
                 if (descriptor.relationKind === "repost" && existingBeforeMerge.status === "resolved"
                     && !verifyRepostTarget(existingBeforeMerge.event, { eventId: descriptor.targetEventId, authorHint: null, relayHints: [] })) {
-                    return await ensureTarget(descriptor, { ...options, force: true });
+                    return await resolveTarget(descriptor, { ...options, force: true }, repostPreparation);
                 }
                 if (existingBeforeMerge.status === "resolved" && existingBeforeMerge.authorPubkey) {
                     ensureProfileForTarget(
@@ -444,6 +451,7 @@ export function createPostHistoryRelatedTargetResolver({
 
             if (
                 existingBeforeMerge.status === "loading"
+                && !canUsePreparedTarget
                 && pendingLoadsByTargetId.has(descriptor.targetEventId)
             ) {
                 return await pendingLoadsByTargetId.get(descriptor.targetEventId)
@@ -458,7 +466,7 @@ export function createPostHistoryRelatedTargetResolver({
             }
         }
 
-        if (!options.force && pendingLoadsByTargetId.has(descriptor.targetEventId)) {
+        if (!options.force && !canUsePreparedTarget && pendingLoadsByTargetId.has(descriptor.targetEventId)) {
             return await pendingLoadsByTargetId.get(descriptor.targetEventId)
                 ?? snapshotsByTargetId[descriptor.targetEventId]
                 ?? mergedSnapshot;
@@ -482,7 +490,9 @@ export function createPostHistoryRelatedTargetResolver({
                     });
                 }
 
-                const repostLocal = descriptor.relationKind === "repost" ? await loadRepostTarget?.(descriptor) : null;
+                const repostLocal = repostPreparation
+                    ? { event: repostPreparation.target, relayHints: mergedSnapshot.relayHints }
+                    : descriptor.relationKind === "repost" ? await loadRepostTarget?.(descriptor) : null;
                 if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) return null;
                 const localVerified = repostLocal && verifyRepostTarget(repostLocal.event, {
                     eventId: descriptor.targetEventId, authorHint: null, relayHints: descriptor.relayHints ?? [],
@@ -493,7 +503,7 @@ export function createPostHistoryRelatedTargetResolver({
                         event: localVerified.event, authorPubkey: localVerified.event.pubkey, relayHints: hints,
                         errorCode: null, updatedAt: Date.now() });
                     ensureProfileForTarget(localVerified.event.pubkey, hints);
-                    void runDeletionCheck(localVerified.event, hints, { background: true });
+                    if (!repostPreparation) void runDeletionCheck(localVerified.event, hints, { background: true });
                     return snapshot;
                 }
                 const existingRecord = await postHistoryRepositoryImpl.getByEventId(
@@ -538,7 +548,7 @@ export function createPostHistoryRelatedTargetResolver({
                         updatedAt: Date.now(),
                     });
                     ensureProfileForTarget(event.pubkey, targetRelayHints);
-                    void runDeletionCheck(event, targetRelayHints, { background: true });
+                    if (!repostPreparation) void runDeletionCheck(event, targetRelayHints, { background: true });
                     return snapshotsByTargetId[descriptor.targetEventId] ?? snapshot;
                 }
 
@@ -629,7 +639,7 @@ export function createPostHistoryRelatedTargetResolver({
                     eventId: descriptor.targetEventId, authorHint: null, relayHints: [],
                 })) throw new Error("invalid_repost_target");
                 const resolvedRelayHints = pointerRelayHints;
-                const deletedAfterResolve = await runDeletionCheck(
+                const deletedAfterResolve = !repostPreparation && await runDeletionCheck(
                     resolvedEvent,
                     resolvedRelayHints,
                 );
@@ -691,6 +701,31 @@ export function createPostHistoryRelatedTargetResolver({
         return await taskPromise;
     }
 
+    async function ensureTarget(descriptor: RelatedTargetDescriptor, options: EnsureRelatedTargetOptions = {}) {
+        return resolveTarget(descriptor, options);
+    }
+
+    /** One foreground boundary for provenance and deletion confirmation before signing. */
+    async function prepareRepostTarget(descriptor: RelatedTargetDescriptor, target: NostrEvent) {
+        const verified = verifyRepostTarget(target, { eventId: descriptor.targetEventId,
+            authorHint: descriptor.authorHint ?? null, relayHints: descriptor.relayHints ?? [] });
+        if (descriptor.relationKind !== "repost" || !verified || !getShow() || !getRxNostr()) return null;
+        registerDescriptor(descriptor);
+        const scopes = scopeKeysByTargetId.get(descriptor.targetEventId);
+        const generation = scopeGenerationByKey[descriptor.scopeKey];
+        const runtime = getRxNostr();
+        const isCurrent = () => getShow() && getRxNostr() === runtime
+            && scopes === scopeKeysByTargetId.get(descriptor.targetEventId)
+            && scopes?.has(descriptor.scopeKey) && generation === scopeGenerationByKey[descriptor.scopeKey];
+        const snapshot = await resolveTarget(descriptor, { requireRelayHint: true }, { target: verified.event });
+        if (!isCurrent() || snapshot?.status !== "resolved" || !verifyRepostTarget(snapshot.event, {
+            eventId: verified.event.id, authorHint: verified.event.pubkey, relayHints: [],
+        })) return null;
+        const deleted = await runDeletionCheck(verified.event, snapshot.relayHints, { requireComplete: true });
+        if (!isCurrent()) return null;
+        return deleted ? snapshotsByTargetId[descriptor.targetEventId] ?? null : snapshot;
+    }
+
     async function ensureTargets(
         descriptors: RelatedTargetDescriptor[],
         options: EnsureRelatedTargetOptions = {},
@@ -736,10 +771,13 @@ export function createPostHistoryRelatedTargetResolver({
                 loadRequestIdsByTargetId.delete(targetEventId);
                 loadTasksByTargetId.get(targetEventId)?.cancel();
                 loadTasksByTargetId.delete(targetEventId);
-                deletionTasksByTargetId.get(targetEventId)?.cancel();
-                deletionTasksByTargetId.delete(targetEventId);
+                for (const [key, task] of deletionTasksByTarget) {
+                    if (!key.endsWith(`:${targetEventId}`)) continue;
+                    task.cancel();
+                    deletionTasksByTarget.delete(key);
+                    pendingDeletionChecksByTarget.delete(key);
+                }
                 pendingLoadsByTargetId.delete(targetEventId);
-                pendingDeletionChecksByTargetId.delete(targetEventId);
             }
         }
 
@@ -753,11 +791,11 @@ export function createPostHistoryRelatedTargetResolver({
 
     function reset(): void {
         loadTasksByTargetId.forEach((task) => task.cancel());
-        deletionTasksByTargetId.forEach((task) => task.cancel());
+        deletionTasksByTarget.forEach((task) => task.cancel());
         loadTasksByTargetId.clear();
-        deletionTasksByTargetId.clear();
+        deletionTasksByTarget.clear();
         pendingLoadsByTargetId.clear();
-        pendingDeletionChecksByTargetId.clear();
+        pendingDeletionChecksByTarget.clear();
         targetIdsByScopeKey.clear();
         scopeKeysByTargetId.clear();
         if (ownsProfileSync) {
@@ -771,6 +809,7 @@ export function createPostHistoryRelatedTargetResolver({
 
     return {
         ensureTarget,
+        prepareRepostTarget,
         ensureTargets,
         retryTarget,
         getTargetSnapshot,

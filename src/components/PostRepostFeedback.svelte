@@ -3,12 +3,13 @@
     import type { PostRepostResult } from "../lib/postRepostService";
     import FloatingMessage from "./FloatingMessage.svelte";
     import Button from "./Button.svelte";
-    interface Props { result: PostRepostResult | null; pending?: boolean; x?: number; y?: number;
+    interface Props { result: PostRepostResult | null; saveFailure?: PostRepostResult | null; pending?: boolean; x?: number; y?: number;
         onRetrySave?: (result: PostRepostResult) => Promise<boolean> }
-    let { result, pending = false, x = 20, y = 80, onRetrySave }: Props = $props();
+    let { result, saveFailure = null, pending = false, x = 20, y = 80, onRetrySave }: Props = $props();
     let visible = $state(false);
     let retrying = $state(false);
     let completedRetry = $state.raw<PostRepostResult | null>(null);
+    const retryResult = $derived(saveFailure ?? (result?.retryInput ? result : null));
     $effect(() => {
         visible = pending || (!!result && result !== completedRetry && result.error !== "repost_stale");
         if (pending) return;
@@ -21,19 +22,19 @@
         : result.historySaved === false ? "repost.saveFailed"
         : (result.rejectedRelays?.length || result.timedOutRelays?.length) ? "repost.partial" : "repost.sent");
     async function retry() {
-        if (!result || !onRetrySave || retrying) return;
+        if (!retryResult || !onRetrySave || retrying) return;
+        const failed = retryResult;
         retrying = true;
-        try { if (await onRetrySave(result)) { completedRetry = result; visible = false; } } finally { retrying = false; }
+        try { if (await onRetrySave(failed)) { completedRetry = failed; if (result === failed) visible = false; } } finally { retrying = false; }
     }
 </script>
-{#if visible && result?.retryInput && onRetrySave}
+{#if retryResult && retryResult !== completedRetry && onRetrySave}
     <div class="repost-save-feedback" role="status">
         <span>{$_("repost.saveFailed")}</span>
-        <Button className="repost-retry-save" variant="default" shape="rounded" disabled={retrying} onClick={() => void retry()}>{$_("repost.retrySave")}</Button>
+        <Button className="repost-retry-save" variant="default" shape="rounded" disabled={pending || retrying} onClick={() => void retry()}>{$_("repost.retrySave")}</Button>
     </div>
-{:else}
-    <FloatingMessage show={visible} {x} {y}><div>{$_(message)}</div></FloatingMessage>
 {/if}
+<FloatingMessage show={visible && (pending || !result?.retryInput)} {x} {y}><div>{$_(message)}</div></FloatingMessage>
 <style>
     .repost-save-feedback {
         display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: 8px;

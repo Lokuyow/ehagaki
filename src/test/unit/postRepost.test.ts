@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
 import { buildRepostEvent, getRepostReference, verifyRepostTarget } from "../../lib/postRepostUtils";
-import { PostRepostService } from "../../lib/postRepostService";
+import { PostRepostService, type PrepareRepostTarget } from "../../lib/postRepostService";
 import { EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
 import { advancePostHistoryLocalRevision } from "../../lib/storage/postHistoryLocalWriteScope";
@@ -20,6 +20,8 @@ import { DexiePostHistoryRelayCoverageRepository } from "../../lib/storage/postH
 const relay = "wss://relay.example.com/";
 const sign = (kind = 1, content = "original searchable post", tags: string[][] = []) =>
     createPlainNostrEventSnapshot(finalizeEvent({ kind, content, tags, created_at: 100 }, generateSecretKey()));
+const confirmedTarget: PrepareRepostTarget = async (event, relayHints) => ({ targetEventId: event.id,
+    status: "resolved", event, profile: null, authorPubkey: event.pubkey, relayHints, errorCode: null, updatedAt: 0 });
 const dbs: EHagakiDB[] = [];
 afterEach(async () => { await Promise.all(dbs.splice(0).map((db) => db.delete())); });
 function repository() {
@@ -29,6 +31,15 @@ function repository() {
 function outer(target: NostrEvent, content = "") { return sign(6, content, [["e", target.id, relay], ["p", target.pubkey]]); }
 
 describe("kind 6 reference and wire policy", () => {
+    it.each([true, false])("allows extra valid p tags and checks the verified target author (target first: %s)", (targetFirst) => {
+        const target = sign(); const other = sign().pubkey;
+        const authors = targetFirst ? [target.pubkey, other] : [other, target.pubkey];
+        const reference = getRepostReference(outer(target));
+        const multi = getRepostReference({ kind: 6, tags: [["e", target.id, relay], ...authors.map(pubkey => ["p", pubkey])] });
+        expect(multi).not.toBeNull();
+        expect(verifyRepostTarget(target, multi)).not.toBeNull();
+        expect(verifyRepostTarget(target, { ...reference!, authorHint: null, authorHints: [other, sign().pubkey] })).toBeNull();
+    });
     it.each([{ tags: [] }, { tags: [["-"]] }])("always constructs empty content for target tags %j", ({ tags }) => {
         const target = sign(1, "private fixture body", tags);
         expect(buildRepostEvent(target, "a".repeat(64), relay, 200)).toEqual({
@@ -148,16 +159,111 @@ describe("Repost signing, publishing and save retry", () => {
         const key = generateSecretKey(); const auth = { value: { type: "nip07", isAuthenticated: true, pubkey: getPublicKey(key) } as AuthState };
         const signEvent = vi.fn(async (template): Promise<NostrEvent> => createPlainNostrEventSnapshot(finalizeEvent(template, key)));
         const sendEvent = vi.fn(async (event) => ({ success: true, eventId: event.id, acceptedRelays: [relay] }));
+        const createSender = vi.fn(() => ({ sendEvent }));
         const repost = new PostRepostService({ authStateStore: auth, getNip07Signer: () => ({ signEvent }),
             getWriteRelays: () => [relay], getClientTag: () => null, getLocalRevision: async () => 0,
-            isTargetDeleted: async () => false,
-            saveHistory, createSender: () => ({ sendEvent }) });
-        return { repost, auth, signEvent, sendEvent, saveHistory };
+            saveHistory, createSender });
+        return { repost, auth, signEvent, sendEvent, createSender, saveHistory };
     }
+    function preparation(target: NostrEvent, deletionEvents: NostrEvent[] = [], status: "success" | "timeout" | "error" = "success") {
+        const { db, repo } = repository();
+        const deletions = new DexiePostHistoryDeletionRequestsRepository(db);
+        const fetchEventById = vi.fn(() => ({ promise: Promise.resolve({ event: target, relayUrl: relay }), cancel: vi.fn() }));
+        const fetchDeletionRequests = vi.fn(() => ({ promise: Promise.resolve({ status,
+            events: deletionEvents.map(event => ({ event, relayUrls: [relay] })), fetchedAt: 200, relayUrls: [relay] }), cancel: vi.fn() }));
+        const rx = {} as never;
+        const resolver = createPostHistoryRelatedTargetResolver({ getShow: () => true, getRxNostr: () => rx,
+            getRelayConfig: () => ({ [relay]: { read: true, write: true } }), postHistoryRepositoryImpl: repo,
+            contextFetchService: { fetchEventById }, deletionFetchService: { fetchDeletionRequests },
+            deletionRequestsRepositoryImpl: deletions,
+            profileSyncCoordinator: { ensureProfile: () => null, subscribe: () => () => undefined, reset() {} } as never });
+        const descriptor = { targetEventId: target.id, authorHint: target.pubkey, relationKind: "repost", scopeKey: "send" };
+        const prepareTarget: PrepareRepostTarget = (event, relayHints) => resolver.prepareRepostTarget({ ...descriptor, relayHints }, event);
+        return { db, repo, deletions, resolver, descriptor, prepareTarget, fetchEventById, fetchDeletionRequests };
+    }
+    it.each(["Composer", "history", "resolved Repost target"])("blocks %s with a known relay hint and a relay-only valid deletion before signing", async (entry) => {
+        const key = generateSecretKey(); const target = createPlainNostrEventSnapshot(finalizeEvent({ kind: 1, content: "target", tags: [], created_at: 100 }, key));
+        const deletion = createPlainNostrEventSnapshot(finalizeEvent({ kind: 5, content: "", tags: [["e", target.id], ["k", "1"]], created_at: 200 }, key));
+        const setup = preparation(target, [deletion]);
+        if (entry === "history") await setup.repo.putPostedEvent({ event: target, relayHints: [relay] });
+        if (entry === "resolved Repost target") {
+            // Resolve first without a tombstone, then make the relay-only deletion available.
+            setup.fetchDeletionRequests.mockReturnValueOnce({ promise: Promise.resolve({ status: "success", events: [], fetchedAt: 100, relayUrls: [relay] }), cancel: vi.fn() });
+            await setup.resolver.ensureTarget({ ...setup.descriptor, relayHints: [relay] });
+        }
+        expect((await setup.deletions.getDeletedTargets([{ targetAuthorPubkey: target.pubkey, targetEventId: target.id }])).size).toBe(0);
+        const { repost, signEvent, sendEvent, createSender } = service();
+        expect(await repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: setup.prepareTarget })).toMatchObject({ success: false });
+        expect(signEvent).not.toHaveBeenCalled(); expect(sendEvent).not.toHaveBeenCalled();
+        expect(createSender).not.toHaveBeenCalled();
+        expect((await setup.deletions.getDeletedTargets([{ targetAuthorPubkey: target.pubkey, targetEventId: target.id }])).get(target.pubkey)?.has(target.id)).toBe(true);
+        expect(setup.fetchEventById).toHaveBeenCalledTimes(entry === "resolved Repost target" ? 1 : 0);
+        setup.resolver.reset();
+    });
+    it.each([true, false])("confirms deletion and provenance once for an eligible target (hint present: %s)", async (hasHint) => {
+        const target = sign(); const setup = preparation(target); const { repost, signEvent, sendEvent } = service();
+        expect(await repost.repost({ target, relayHints: hasHint ? [relay] : [], rxNostr: {} as never, prepareTarget: setup.prepareTarget })).toMatchObject({ success: true, historySaved: true });
+        expect(signEvent).toHaveBeenCalledTimes(1); expect(sendEvent).toHaveBeenCalledTimes(1);
+        expect(setup.fetchEventById).toHaveBeenCalledTimes(hasHint ? 0 : 1);
+        expect(setup.fetchDeletionRequests).toHaveBeenCalledTimes(1);
+        setup.resolver.reset();
+    });
+    it.each(["timeout", "error"] as const)("does not sign or publish when deletion confirmation is incomplete (%s)", async (status) => {
+        const target = sign(); const setup = preparation(target, [], status); const { repost, signEvent, sendEvent } = service();
+        expect((await repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: setup.prepareTarget })).success).toBe(false);
+        expect(signEvent).not.toHaveBeenCalled(); expect(sendEvent).not.toHaveBeenCalled();
+        setup.resolver.reset();
+    });
+    it("ignores deletion requests with an invalid signature, a different author or a different target", async () => {
+        const key = generateSecretKey(); const target = createPlainNostrEventSnapshot(finalizeEvent({ kind: 1, content: "target", tags: [], created_at: 100 }, key));
+        const deletion = finalizeEvent({ kind: 5, content: "", tags: [["e", target.id]], created_at: 200 }, key);
+        const setup = preparation(target, [{ ...deletion, sig: "0".repeat(128) }, sign(5, "", [["e", target.id]]),
+            finalizeEvent({ kind: 5, content: "", tags: [["e", sign().id]], created_at: 200 }, key)]);
+        const { repost, signEvent, sendEvent } = service();
+        expect((await repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: setup.prepareTarget })).success).toBe(true);
+        expect(signEvent).toHaveBeenCalledTimes(1); expect(sendEvent).toHaveBeenCalledTimes(1);
+        expect(await setup.db.postHistoryDeletionRequests.count()).toBe(0);
+        setup.resolver.reset();
+    });
+    it.each([false, true])("shares an in-flight preview deletion check and stops after scope cancellation (%s)", async (cancel) => {
+        const target = sign(); const setup = preparation(target);
+        await setup.repo.putPostedEvent({ event: target, relayHints: [relay] });
+        let finish!: (result: { status: "success" | "cancelled"; events: []; fetchedAt: number; relayUrls: string[] }) => void;
+        const promise = new Promise<{ status: "success" | "cancelled"; events: []; fetchedAt: number; relayUrls: string[] }>(resolve => { finish = resolve; });
+        setup.fetchDeletionRequests.mockReturnValueOnce({ promise: promise as never,
+            cancel: vi.fn(() => finish({ status: "cancelled", events: [], fetchedAt: 0, relayUrls: [relay] })) });
+        await setup.resolver.ensureTarget({ ...setup.descriptor, relayHints: [relay] });
+        await vi.waitFor(() => expect(setup.fetchDeletionRequests).toHaveBeenCalledTimes(1));
+        const { repost, signEvent, sendEvent } = service();
+        const prepareTarget = vi.fn(setup.prepareTarget);
+        const operation = repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget });
+        await vi.waitFor(() => expect(prepareTarget).toHaveBeenCalledTimes(1));
+        expect(signEvent).not.toHaveBeenCalled(); expect(sendEvent).not.toHaveBeenCalled();
+        if (cancel) setup.resolver.invalidateScope(setup.descriptor.scopeKey);
+        else finish({ status: "success", events: [], fetchedAt: 0, relayUrls: [relay] });
+        expect((await operation).success).toBe(!cancel);
+        expect(setup.fetchDeletionRequests).toHaveBeenCalledTimes(1);
+        expect(signEvent).toHaveBeenCalledTimes(cancel ? 0 : 1); expect(sendEvent).toHaveBeenCalledTimes(cancel ? 0 : 1);
+        setup.resolver.reset();
+    });
+    it("does not use a different author hint's in-flight deletion check for the verified target", async () => {
+        const target = sign(); const setup = preparation(target);
+        let finish!: () => void;
+        setup.fetchDeletionRequests.mockReturnValueOnce({ promise: new Promise(resolve => {
+            finish = () => resolve({ status: "success", events: [], fetchedAt: 0, relayUrls: [relay] });
+        }), cancel: vi.fn() });
+        const quote = setup.resolver.ensureTarget({ ...setup.descriptor, relationKind: "quote", scopeKey: "quote", authorHint: sign().pubkey });
+        await vi.waitFor(() => expect(setup.fetchDeletionRequests).toHaveBeenCalledTimes(1));
+        const snapshot = await setup.prepareTarget(target, [relay]);
+        expect(snapshot?.status).toBe("resolved");
+        expect(setup.fetchDeletionRequests).toHaveBeenCalledTimes(2);
+        finish(); await quote;
+        setup.resolver.reset();
+    });
     it("retries exactly the original outer/target pair without signing or publishing again", async () => {
         const saved = vi.fn().mockRejectedValueOnce(new Error("quota")).mockResolvedValue(undefined);
         const { repost, signEvent, sendEvent } = service(saved); const target = sign();
-        const result = await repost.repost({ target, relayHints: [relay], rxNostr: {} as never });
+        const result = await repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: confirmedTarget });
         expect(result).toMatchObject({ success: true, historySaved: false });
         expect(result.retryInput?.event.content).toBe("");
         expect(result.retryInput?.repostTarget?.event).toEqual(target);
@@ -169,16 +275,22 @@ describe("Repost signing, publishing and save retry", () => {
         const { repost, auth, signEvent, sendEvent } = service();
         let finish: (event: NostrEvent) => void = () => undefined;
         signEvent.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
-        const target = sign(); const pending = repost.repost({ target, relayHints: [relay], rxNostr: {} as never });
+        const target = sign(); const pending = repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: confirmedTarget });
         await vi.waitFor(() => expect(signEvent).toHaveBeenCalledTimes(1));
-        expect((await repost.repost({ target, relayHints: [relay], rxNostr: {} as never })).error).toBe("repost_busy");
+        expect((await repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: confirmedTarget })).error).toBe("repost_busy");
         auth.value = { ...auth.value, isAuthenticated: false };
         finish(sign()); expect((await pending).success).toBe(false); expect(sendEvent).not.toHaveBeenCalled();
     });
     it("requires a target relay before signing", async () => {
         const { repost, signEvent } = service();
-        expect((await repost.repost({ target: sign(), relayHints: [], rxNostr: {} as never })).error).toBe("repost_relay_missing");
+        expect((await repost.repost({ target: sign(), relayHints: [], rxNostr: {} as never, prepareTarget: confirmedTarget })).error).toBe("repost_relay_missing");
         expect(signEvent).not.toHaveBeenCalled();
+    });
+    it("requires the resolver's send preparation even when a relay hint is already available", async () => {
+        const { repost, signEvent, sendEvent } = service();
+        expect((await repost.repost({ target: sign(), relayHints: [relay], rxNostr: {} as never,
+            prepareTarget: undefined as never })).success).toBe(false);
+        expect(signEvent).not.toHaveBeenCalled(); expect(sendEvent).not.toHaveBeenCalled();
     });
     it.each(["nip07", "nip46", "parentClient", "nsec" ] as const)("supports the existing %s signer without the composer", async (type) => {
         const key = generateSecretKey(); const pubkey = getPublicKey(key);
@@ -190,8 +302,8 @@ describe("Repost signing, publishing and save retry", () => {
             getNip07Signer: () => signer, getNip46Signer: async () => signer, getParentClientSigner: () => signer,
             keyManager: { getFromStore: () => "fixture-key-reference" } as never, seckeySignerFn: () => signer,
             getWriteRelays: () => [relay], getClientTag: () => ["client", "eHagaki"], getLocalRevision: async () => 0,
-            isTargetDeleted: async () => false, saveHistory, createSender: () => ({ sendEvent }) });
-        expect(await repost.repost({ target: sign(), relayHints: [], resolveRelayHint: async () => [relay], rxNostr: {} as never })).toMatchObject({ success: true, historySaved: true });
+            saveHistory, createSender: () => ({ sendEvent }) });
+        expect(await repost.repost({ target: sign(), relayHints: [], rxNostr: {} as never, prepareTarget: (event) => confirmedTarget(event, [relay]) })).toMatchObject({ success: true, historySaved: true });
         expect(signEvent).toHaveBeenCalledTimes(1);
         expect(saveHistory.mock.calls[0]?.[0].event.tags).toContainEqual(["client", "eHagaki"]);
         expect(sendEvent.mock.calls[0]?.[1]).toEqual({ targetRelays: [relay], includeDefaultWriteRelays: false });
@@ -199,13 +311,13 @@ describe("Repost signing, publishing and save retry", () => {
     it("rejects a signer that changes the signed template", async () => {
         const { repost, signEvent, sendEvent } = service();
         signEvent.mockImplementationOnce(async () => sign(6, "unexpected content"));
-        expect((await repost.repost({ target: sign(), relayHints: [relay], rxNostr: {} as never })).success).toBe(false);
+        expect((await repost.repost({ target: sign(), relayHints: [relay], rxNostr: {} as never, prepareTarget: confirmedTarget })).success).toBe(false);
         expect(sendEvent).not.toHaveBeenCalled();
     });
     it("preserves publication outcomes and does not save a failed publish", async () => {
         const { repost, sendEvent, saveHistory } = service();
         sendEvent.mockResolvedValueOnce({ success: false, error: "post_timeout" } as never);
-        expect(await repost.repost({ target: sign(), relayHints: [relay], rxNostr: {} as never })).toEqual({ success: false, error: "post_timeout" });
+        expect(await repost.repost({ target: sign(), relayHints: [relay], rxNostr: {} as never, prepareTarget: confirmedTarget })).toEqual({ success: false, error: "post_timeout" });
         expect(saveHistory).not.toHaveBeenCalled();
     });
     it("saves a published pair for the captured author even when the session changes during publish", async () => {
@@ -214,7 +326,7 @@ describe("Repost signing, publishing and save retry", () => {
             auth.value = { ...auth.value, pubkey: sign().pubkey };
             return { success: true, eventId: event.id, acceptedRelays: [relay] };
         });
-        expect((await repost.repost({ target: sign(), relayHints: [relay], rxNostr: {} as never })).historySaved).toBe(true);
+        expect((await repost.repost({ target: sign(), relayHints: [relay], rxNostr: {} as never, prepareTarget: confirmedTarget })).historySaved).toBe(true);
         expect(saveHistory.mock.calls[0]?.[0]).toMatchObject({ event: { pubkey: owner }, localWriteScope: { ownerPubkeyHex: owner } });
     });
 });

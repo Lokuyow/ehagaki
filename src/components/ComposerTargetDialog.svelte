@@ -137,18 +137,19 @@
     }
     let repostResult = $state<PostRepostResult | null>(null);
     let repostGeneration = 0;
-    $effect(() => { show; pubkeyHex; repostGeneration++; repostResult = null; });
+    $effect(() => {
+        show; pubkeyHex; repostGeneration++; repostResult = null;
+        return () => repostResolver?.invalidateScope("composer-repost");
+    });
     onDestroy(() => repostResolver?.reset());
     async function handleRepost(post: PostHistoryRecord) {
         if (!onRepostPost || repostPending) return;
         repostResult = null;
         const generation = repostGeneration;
         const eventId = post.eventId;
-        const result = await onRepostPost(post, async () => {
-            const resolved = await getRepostResolver().ensureTarget({ relationKind: "repost", scopeKey: "composer-repost",
-                targetEventId: post.eventId, authorHint: post.pubkeyHex, relayHints: [] }, { force: true, requireRelayHint: true });
-            return resolved?.relayHints ?? [];
-        });
+        const result = await onRepostPost(post, (event, relayHints) =>
+            getRepostResolver().prepareRepostTarget({ relationKind: "repost", scopeKey: "composer-repost",
+                targetEventId: event.id, authorHint: event.pubkey, relayHints }, event));
         if (show && generation === repostGeneration && target?.event.id === eventId) repostResult = result;
     }
     let inputValue = $state("");
@@ -1145,7 +1146,7 @@
     </div>
 
     {#snippet footer()}
-        <PostRepostFeedback result={repostResult ?? repostSaveFailure} pending={repostPending} onRetrySave={onRetryRepostSave} />
+        <PostRepostFeedback result={repostResult} saveFailure={repostSaveFailure} pending={repostPending} onRetrySave={onRetryRepostSave} />
         <Dialog.Close>
             {#snippet child({ props })}
                 <Button

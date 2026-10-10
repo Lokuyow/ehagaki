@@ -221,7 +221,10 @@
     let repostMessageX = $state(20);
     let repostMessageY = $state(80);
     let repostUiGeneration = 0;
-    $effect(() => { show; pubkeyHex; repostUiGeneration++; repostResult = null; });
+    $effect(() => {
+        show; pubkeyHex; repostUiGeneration++; repostResult = null;
+        return () => relatedTargetResolver.invalidateScope("post-history-repost-operation");
+    });
     function canRepost(post: PostHistoryRecord): boolean {
         return !!onRepostPost && post.kind === 1 && post.deletedAt === undefined
             && isPostHistoryRawEventConsistent(post.rawEvent, post);
@@ -233,7 +236,9 @@
         const position = calculateContextMenuPosition(rect?.left ?? 20, rect?.top ?? 80);
         repostMessageX = position.x; repostMessageY = position.y;
         const generation = repostUiGeneration;
-        const result = await onRepostPost(post, () => repostPreviews.resolveRelayHint(post));
+        const result = await onRepostPost(post, (target, relayHints) => relatedTargetResolver.prepareRepostTarget({
+            relationKind: "repost", scopeKey: "post-history-repost-operation",
+            targetEventId: target.id, authorHint: target.pubkey, relayHints }, target));
         if (generation === repostUiGeneration && show) repostResult = result;
     }
     const channelDisplay = usePostHistoryChannelDisplay({
@@ -3775,7 +3780,7 @@
     />
 
     {#snippet footer()}
-        <PostRepostFeedback result={repostResult ?? repostSaveFailure} pending={repostPending} x={repostMessageX} y={repostMessageY} onRetrySave={onRetryRepostSave} />
+        <PostRepostFeedback result={repostResult} saveFailure={repostSaveFailure} pending={repostPending} x={repostMessageX} y={repostMessageY} onRetrySave={onRetryRepostSave} />
         <Dialog.Close>
             {#snippet child({ props })}
                 <Button

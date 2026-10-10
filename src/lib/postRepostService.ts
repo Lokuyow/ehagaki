@@ -18,10 +18,11 @@ import { attestFullyVerifiedPostHistoryRawEvent } from "./postHistoryRawEventVer
 import { postHistoryRepository, type PostHistorySaveInput } from "./storage/postHistoryRepository";
 import { ehagakiDb } from "./storage/ehagakiDb";
 import { getPostHistoryLocalRevision } from "./storage/postHistoryLocalWriteScope";
-import { postHistoryDeletionRequestsRepository } from "./storage/postHistoryDeletionRequestsRepository";
+import type { PostHistoryRelatedTargetSnapshot } from "./postHistoryRelatedTargetResolver.svelte";
 import type { AuthState, KeyManagerInterface, NostrEvent, PostResult } from "./types";
 
 interface Signer { signEvent?: (event: EventTemplate) => Promise<unknown> }
+export type PrepareRepostTarget = (target: NostrEvent, relayHints: string[]) => Promise<PostHistoryRelatedTargetSnapshot | null>;
 export interface PostRepostResult extends PostResult {
     historySaved?: boolean;
     retryInput?: PostHistorySaveInput;
@@ -36,7 +37,6 @@ export interface PostRepostServiceDeps {
     getWriteRelays?: () => string[];
     getClientTag?: () => string[] | null;
     getLocalRevision?: (pubkey: string) => Promise<number>;
-    isTargetDeleted?: (target: NostrEvent) => Promise<boolean>;
     saveHistory?: (input: PostHistorySaveInput) => Promise<void>;
     createSender?: (rx: RxNostr) => Pick<PostEventSender, "sendEvent">;
     now?: () => number;
@@ -56,12 +56,6 @@ export class PostRepostService {
             getWriteRelays: deps.getWriteRelays ?? (() => writeRelaysStore.value),
             getClientTag: deps.getClientTag ?? (() => buildClientTag(settingsStore.clientTagEnabled)),
             getLocalRevision: deps.getLocalRevision ?? ((pubkey: string) => getPostHistoryLocalRevision(ehagakiDb, pubkey)),
-            isTargetDeleted: deps.isTargetDeleted ?? (async (target: NostrEvent) => {
-                const deleted = await postHistoryDeletionRequestsRepository.getDeletedTargets([
-                    { targetAuthorPubkey: target.pubkey, targetEventId: target.id },
-                ]);
-                return deleted.get(target.pubkey)?.has(target.id) ?? false;
-            }),
             saveHistory: deps.saveHistory ?? ((input: PostHistorySaveInput) => postHistoryRepository.putPostedEvent(input)),
             createSender: deps.createSender ?? ((rx: RxNostr) => new PostEventSender(rx, console)),
             now: deps.now ?? Date.now,
@@ -69,7 +63,7 @@ export class PostRepostService {
     }
 
     async repost(params: { target: NostrEvent; relayHints: string[]; rxNostr?: RxNostr;
-        isCurrent?: () => boolean; resolveRelayHint?: () => Promise<string[]> }): Promise<PostRepostResult> {
+        isCurrent?: () => boolean; prepareTarget: PrepareRepostTarget }): Promise<PostRepostResult> {
         if (this.pending) return { success: false, error: "repost_busy" };
         this.pending = true;
         try {
@@ -82,12 +76,14 @@ export class PostRepostService {
             };
             const target = verifyRepostTarget(params.target);
             if (!target) return { success: false, error: "invalid_repost_target" };
-            if (await this.deps.isTargetDeleted(target.event)) return { success: false, error: "invalid_repost_target" };
-            assertCurrent();
             const expectedRevision = await this.deps.getLocalRevision(pubkey);
-            let hints = RelayConfigUtils.sanitizeExternalRelayUrls(params.relayHints);
-            if (!hints.length && params.resolveRelayHint) hints = RelayConfigUtils.sanitizeExternalRelayUrls(await params.resolveRelayHint());
             assertCurrent();
+            const preparedTarget = await params.prepareTarget(target.event, RelayConfigUtils.sanitizeExternalRelayUrls(params.relayHints));
+            assertCurrent();
+            if (preparedTarget?.status !== "resolved" || !verifyRepostTarget(preparedTarget.event, {
+                eventId: target.event.id, authorHint: target.event.pubkey, relayHints: [],
+            })) return { success: false, error: "invalid_repost_target" };
+            const hints = RelayConfigUtils.sanitizeExternalRelayUrls(preparedTarget.relayHints);
             if (!hints.length) return { success: false, error: "repost_relay_missing" };
             const writeRelays = RelayConfigUtils.sanitizeExternalRelayUrls(this.deps.getWriteRelays());
             if (!writeRelays.length) return { success: false, error: "no_write_relays" };

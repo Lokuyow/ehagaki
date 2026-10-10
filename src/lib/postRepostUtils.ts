@@ -8,6 +8,7 @@ import { isHex64 } from "./utils/nostrHexUtils";
 export interface RepostReference {
     eventId: string;
     authorHint: string | null;
+    authorHints?: string[];
     relayHints: string[];
 }
 
@@ -19,9 +20,9 @@ export function getRepostReference(event: Pick<NostrEvent, "kind" | "tags">): Re
     const ids = new Set(references.map((tag) => tag[1]));
     const authors = event.tags.filter((tag) => tag[0] === "p");
     if (ids.size !== 1 || authors.some((tag) => !isHex64(tag[1]))) return null;
-    const pubkeys = new Set(authors.map((tag) => tag[1]));
-    if (pubkeys.size > 1) return null;
-    return { eventId: references[0]![1]!, authorHint: authors[0]?.[1] ?? null,
+    const pubkeys = new Set(authors.map((tag) => tag[1]!));
+    return { eventId: references[0]![1]!, authorHint: pubkeys.size === 1 ? authors[0]![1]! : null,
+        ...(pubkeys.size > 1 ? { authorHints: [...pubkeys] } : {}),
         relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(references.map((tag) => tag[2] ?? "")) };
 }
 
@@ -29,7 +30,8 @@ export function verifyRepostTarget(event: unknown, reference?: RepostReference |
     const verified = attestFullyVerifiedPostHistoryRawEvent(event);
     if (!verified || verified.event.kind !== 1) return null;
     if (reference && (verified.event.id !== reference.eventId
-        || (reference.authorHint && verified.event.pubkey !== reference.authorHint))) return null;
+        || (reference.authorHint && verified.event.pubkey !== reference.authorHint)
+        || (reference.authorHints?.length && !reference.authorHints.includes(verified.event.pubkey)))) return null;
     return verified;
 }
 

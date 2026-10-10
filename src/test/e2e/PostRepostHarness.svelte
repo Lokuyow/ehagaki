@@ -35,6 +35,8 @@
     let saved = $state<{ revision: number; eventIds: string[] } | null>(null);
     let allowTarget = !query.has("missing");
     let failSave = query.has("save-failure");
+    let deletedOnRelay = false;
+    let rejectPublish = false;
     let sends = 0;
     let signed = 0;
     let lastResult: { success: boolean; error?: string; historySaved?: boolean } | null = null;
@@ -49,13 +51,19 @@
         createConnectionStateObservable: () => new Subject(),
         send: (event: NostrEvent) => {
             sends++; sentEvents.push({ id: event.id, kind: event.kind, tags: event.tags });
-            return of({ ok: true, done: true, from: relay, eventId: event.id });
+            const ok = !rejectPublish; rejectPublish = false;
+            return of({ ok, done: true, from: relay, eventId: event.id });
         },
         use: (req: RxReq) => new Observable((observer) => {
             const subscription = req.getReqPacketObservable().subscribe(({ filters }) => {
                 const filter = filters[0];
                 queueMicrotask(() => {
                     if (filter?.ids?.includes(target.id) && allowTarget) observer.next({ event: target, from: relay });
+                    if (deletedOnRelay && filter?.kinds?.includes(5) && filter.authors?.includes(target.pubkey)
+                        && filter["#e"]?.includes(target.id)) {
+                        observer.next({ event: finalizeEvent({ kind: 5, created_at: target.created_at + 1,
+                            content: "", tags: [["e", target.id], ["k", "1"]] }, targetKey), from: relay });
+                    }
                     if (incomingOuter && filter?.authors?.includes(owner) && filter.kinds?.includes(6))
                         observer.next({ event: incomingOuter, from: relay });
                     observer.complete();
@@ -106,7 +114,8 @@
             await postHistoryRepository.putPostedEvent({ event: target, acceptedRelays: [relay], relayHints: [relay] });
         if (!existing.length && query.has("external")) {
             const outer = finalizeEvent({ kind: 6, created_at: Math.floor(Date.now()/1000),
-                content: "opaque content must never appear", tags: [["e", target.id, relay], ["p", target.pubkey]] }, ownerKey);
+                content: "opaque content must never appear", tags: [["e", target.id, relay],
+                    ...(query.has("extra-author") ? [["p", getPublicKey(generateSecretKey())]] : []), ["p", target.pubkey]] }, ownerKey);
             incomingOuter = outer;
             if (query.get("external") === "import") await new PostHistoryJsonlImportService().importFile({
                 file: new File([JSON.stringify(outer)+"\n"], "repost.jsonl"), ownerPubkeyHex: owner, getCurrentPubkeyHex: () => owner });
@@ -131,6 +140,13 @@
                 rows: rows.map((row) => ({ id: row.eventId, kind: row.kind, content: row.content,
                     targetId: row.repostTarget?.rawEvent.id, targetKind: row.repostTarget?.rawEvent.kind })),
             }; }, allowTarget: () => { allowTarget = true; },
+            deleteOnRelay: () => { deletedOnRelay = true; },
+            nextTarget: () => {
+                target = finalizeEvent({ kind: 1, created_at: fixtureTarget.created_at + 1,
+                    content: "another original post", tags: [] }, targetKey);
+                return nip19.noteEncode(target.id);
+            },
+            rejectNextPublish: () => { rejectPublish = true; },
         };
         ready = true;
     })(); });

@@ -1,10 +1,10 @@
 import type { RxNostr } from "rx-nostr";
 import { onDestroy } from "svelte";
-import { postRepostService, type PostRepostResult, type PostRepostService } from "../postRepostService";
+import { postRepostService, type PostRepostResult, type PostRepostService, type PrepareRepostTarget } from "../postRepostService";
 import { isPostHistoryRawEventConsistent } from "../postHistoryEventUtils";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 
-export type RepostPostHandler = (post: PostHistoryRecord, resolveRelayHint?: () => Promise<string[]>) => Promise<PostRepostResult>;
+export type RepostPostHandler = (post: PostHistoryRecord, prepareTarget: PrepareRepostTarget) => Promise<PostRepostResult>;
 export function usePostRepostOperation(params: { getPubkey: () => string | null | undefined;
     getRxNostr: () => RxNostr | undefined; onSaved: (ids: string[]) => void | Promise<void>; service?: PostRepostService }) {
     const service = params.service ?? postRepostService;
@@ -13,7 +13,7 @@ export function usePostRepostOperation(params: { getPubkey: () => string | null 
     let generation = 0;
     $effect(() => { params.getPubkey(); params.getRxNostr(); generation++; });
     onDestroy(() => { generation++; });
-    const execute: RepostPostHandler = async (post, resolveRelayHint) => {
+    const execute: RepostPostHandler = async (post, prepareTarget) => {
         if (pending || post.deletedAt !== undefined || post.kind !== 1
             || !isPostHistoryRawEventConsistent(post.rawEvent, post)) return { success: false, error: "invalid_repost_target" };
         pending = true;
@@ -24,7 +24,7 @@ export function usePostRepostOperation(params: { getPubkey: () => string | null 
         try {
             const result = await service.repost({ target: post.rawEvent,
                 relayHints: [...(post.fetchedRelays ?? []), ...post.acceptedRelays, ...post.relayHints],
-                rxNostr: rx, isCurrent, resolveRelayHint });
+                rxNostr: rx, isCurrent, prepareTarget });
             if (result.retryInput) failedSaves = [...failedSaves, result];
             if (!isCurrent()) return { ...result, error: "repost_stale" };
             if (result.historySaved && result.eventId) await params.onSaved([result.eventId]);
