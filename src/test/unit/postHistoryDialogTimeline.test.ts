@@ -10,9 +10,11 @@ import {
     createRecord,
     getHistoryContainer,
     jumpCacheAnchorRepositoryMock,
+    openJumpDatePanel,
     localSearchServiceMock,
     openPostHistoryMenu,
     openSearchBar,
+    expectPostHistoryCountLabel,
     postMediaCacheServiceMock,
     replyRepairServiceMock,
     repositoryMock,
@@ -234,9 +236,9 @@ describe('PostHistoryDialog timeline navigation', () => {
         await waitFor(() => {
             expect(screen.getByText('古い投稿')).toBeTruthy();
             expect(screen.getByText('最古投稿')).toBeTruthy();
-            expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('4件');
             expect(document.querySelector('.post-history-summary-range')).toBeNull();
         });
+        await expectPostHistoryCountLabel('4件');
 
         view.unmount();
     });
@@ -731,10 +733,10 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
             expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
             expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
-            expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('2件');
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledOnce();
             expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
+        await expectPostHistoryCountLabel('2件');
 
         await fireEvent.click(screen.getByRole('button', { name: '保存済みの古い投稿を表示' }));
 
@@ -976,7 +978,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await waitFor(() => expect(screen.getByText('jump route 最新')).toBeTruthy());
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2020-09-13');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -1076,7 +1078,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         await waitFor(() => expect(screen.getByText('jump oldest 最新')).toBeTruthy());
         await waitFor(() => expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled());
         relayFetchServiceMock.fetchLatest.mockClear();
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2020-09-13');
         await fireEvent.click(getJumpDateSubmitButton());
         await waitFor(() => expect(screen.getByText('jump oldest 対象')).toBeTruthy());
@@ -1286,7 +1288,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await waitFor(() => expect(screen.getByText('null frontier 最新')).toBeTruthy());
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2020-09-13');
         await fireEvent.click(getJumpDateSubmitButton());
         await waitFor(() => expect(screen.getByText('null frontier 対象')).toBeTruthy());
@@ -1355,33 +1357,17 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         await waitFor(() => {
             expect(screen.getByRole('heading', { level: 3, name: '5/3(金)' })).toBeTruthy();
-            expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('2件');
             expect(document.querySelector('.post-history-summary-range')).toBeNull();
         });
+        const monthLabel = document.querySelector<HTMLElement>('.post-history-current-month');
+        expect(monthLabel).toBeTruthy();
+        await fireEvent.click(monthLabel!);
+        expect(screen.queryByLabelText('日付')).toBeNull();
 
-        await fireEvent.click(document.querySelector('.post-history-current-month') as HTMLElement);
-
-        await waitFor(() => {
-            expect(screen.getByLabelText('日付')).toBeTruthy();
-        });
-
-        await fireEvent.click(document.querySelector('.post-history-current-month') as HTMLElement);
-
-        await waitFor(() => {
-            expect(screen.queryByLabelText('日付')).toBeNull();
-        });
-
-        await clickMenuAction('日付へ移動');
-
-        await waitFor(() => {
-            expect(screen.getByLabelText('日付')).toBeTruthy();
-        });
-
-        await clickMenuAction('日付へ移動');
-
-        await waitFor(() => {
-            expect(screen.queryByLabelText('日付')).toBeNull();
-        });
+        await openJumpDatePanel();
+        await waitFor(() => expect(screen.getByLabelText('日付')).toBeTruthy());
+        await openJumpDatePanel();
+        await waitFor(() => expect(screen.queryByLabelText('日付')).toBeNull());
 
         historyContainer.scrollTop = 84;
         await fireEvent.scroll(historyContainer);
@@ -1445,8 +1431,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
         });
 
-        await openPostHistoryMenu();
-        await fireEvent.click(await screen.findByRole('menuitem', { name: '日付へ移動' }));
+        await openJumpDatePanel();
         await setJumpDateValue('2024-01-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -1557,7 +1542,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2023-10-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -1640,17 +1625,17 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         await waitFor(() => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
-            expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('15件');
         });
+        await expectPostHistoryCountLabel('15件');
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2024-12-28');
         await fireEvent.click(getJumpDateSubmitButton());
 
         await waitFor(() => {
             expect(screen.getByText('ジャンプ先投稿')).toBeTruthy();
-            expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('32件');
         });
+        await expectPostHistoryCountLabel('32件');
 
         view.unmount();
     });
@@ -1721,7 +1706,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('今見えている最古投稿')).toBeTruthy();
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2023-10-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -1943,7 +1928,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('jump reopen 最新')).toBeTruthy();
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2020-09-13');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -2212,7 +2197,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             savedAt: 200,
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2020-09-13');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -2989,7 +2974,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2024-01-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -3111,7 +3096,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('投稿 0')).toBeTruthy();
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2024-01-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -3182,7 +3167,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2024-01-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -3496,7 +3481,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('投稿前の5/16投稿')).toBeTruthy();
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2026-05-12');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -3612,7 +3597,7 @@ describe('PostHistoryDialog timeline navigation', () => {
                 expect(screen.getByText('2026/5/16 の最新寄り投稿')).toBeTruthy();
             });
 
-            await clickMenuAction('日付へ移動');
+            await openJumpDatePanel();
             await setJumpDateValue(dateInput);
             await fireEvent.click(getJumpDateSubmitButton());
 

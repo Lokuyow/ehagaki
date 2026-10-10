@@ -32,14 +32,8 @@ function createRecord(overrides: Record<string, any> = {}) {
     };
 }
 
-async function openPostHistoryMenu(): Promise<void> {
-    const trigger = await screen.findByRole('button', { name: '投稿履歴メニューを開く' });
-    await fireEvent.click(trigger);
-}
-
 async function openSearchBar(): Promise<HTMLInputElement> {
-    await openPostHistoryMenu();
-    await fireEvent.click(await screen.findByRole('menuitem', { name: '検索' }));
+    await fireEvent.click(await screen.findByRole('button', { name: '検索' }));
     return screen.findByRole('searchbox', { name: '検索' }) as Promise<HTMLInputElement>;
 }
 

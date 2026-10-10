@@ -352,6 +352,7 @@
     let fullscreenMediaItems = $state<FullscreenMediaItem[]>([]);
     let fullscreenIndex = $state(-1);
     let showImageFullscreen = $state(false);
+    let postHistoryHeadingElement = $state<HTMLDivElement | null>(null);
     let historyContainer = $state<HTMLDivElement | null>(null);
     let autoLoadOlderSentinel = $state<HTMLDivElement | null>(null);
     let isAutoLoadingOlder = $state(false);
@@ -2231,7 +2232,7 @@
         }
     }
 
-    function handleRefetchAroundCurrentViewFromMenu(): void {
+    function handleRefetchAroundCurrentView(): void {
         headingMenuOpen = false;
         void history.refetchAroundCurrentView();
     }
@@ -2357,19 +2358,31 @@
     {#if sensitivePayloadDeletionOmitted}
         <p role="status">{$_("postHistory.sensitivePayloadDeletionOmitted")}</p>
     {/if}
-    <div class="post-history-heading">
+    <div
+        class="post-history-heading"
+        bind:this={postHistoryHeadingElement}
+    >
         <div class="post-history-heading-main">
             {#if historyViewport.currentMonthLabel}
                 <h3 class="post-history-current-month-heading">
-                    <button
-                        type="button"
-                        class="post-history-current-month"
-                        onclick={toggleJumpDate}
-                    >
+                    <span class="post-history-current-month">
                         {historyViewport.currentMonthLabel}
-                    </button>
+                    </span>
                 </h3>
             {/if}
+            <Button
+                className="post-history-heading-action-button post-history-heading-calendar-button"
+                variant="default"
+                shape="square"
+                contentLayout="icon"
+                ariaLabel={$_("postHistory.jumpToDate")}
+                onClick={toggleJumpDate}
+            >
+                <div
+                    class="calendar-icon svg-icon"
+                    aria-hidden="true"
+                ></div>
+            </Button>
         </div>
         <div class="post-history-heading-actions">
             {#if exportRunning}
@@ -2389,32 +2402,32 @@
                     state="loading"
                     customClass="status-loading-placeholder"
                 />
-            {:else if headingStatusMessageKey}
-                <LoadingPlaceholder
-                    text={headingStatusMessageValues
-                        ? $_(headingStatusMessageKey, {
-                              values: headingStatusMessageValues,
-                          })
-                        : $_(headingStatusMessageKey)}
-                    showLoader={history.showStatusLoader}
-                    loaderSize={30}
-                    state={history.showStatusLoader ? "loading" : "complete"}
-                    customClass={`status-loading-placeholder${
-                        headingStatusError ? " status-error" : ""
-                    }`}
-                />
             {/if}
-            {#if buildVisibleCountLabel()}
-                <div class="post-history-heading-summary">
-                    <div class="post-history-summary-row">
-                        <span
-                            class="post-history-summary-line post-history-summary-count"
-                        >
-                            {buildVisibleCountLabel()}
-                        </span>
-                    </div>
-                </div>
-            {/if}
+            <Button
+                className="post-history-heading-action-button post-history-heading-refetch-button"
+                variant="default"
+                shape="square"
+                contentLayout="icon"
+                ariaLabel={$_("postHistory.repair")}
+                disabled={!history.canRefetchAroundCurrentView}
+                onClick={handleRefetchAroundCurrentView}
+            >
+                <div class="repair-icon svg-icon" aria-hidden="true"></div>
+            </Button>
+            <Button
+                className="post-history-heading-action-button post-history-heading-search-button"
+                variant="default"
+                shape="square"
+                contentLayout="icon"
+                ariaLabel={$_(
+                    activeUtilityPanel === "search"
+                        ? "postHistory.hideSearch"
+                        : "postHistory.showSearch",
+                )}
+                onClick={toggleSearch}
+            >
+                <div class="search-icon svg-icon" aria-hidden="true"></div>
+            </Button>
             <DropdownMenu.Root bind:open={headingMenuOpen}>
                 <DropdownMenu.Trigger
                     class={`menu-trigger post-history-menu-trigger post-history-heading-menu-trigger ${headingMenuOpen ? "is-open" : ""}`.trim()}
@@ -2434,30 +2447,21 @@
                             event.preventDefault()}
                     >
                         <div class="post-history-menu-body">
-                            <DropdownMenu.Item
-                                class="menu-action-button"
-                                onSelect={toggleSearch}
-                            >
+                            {#if buildVisibleCountLabel()}
                                 <div
-                                    class="search-icon svg-icon"
-                                    aria-hidden="true"
-                                ></div>
-                                <span>{$_("postHistory.showSearch")}</span>
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Item
-                                class="menu-action-button"
-                                disabled={!history.canRefetchAroundCurrentView}
-                                onSelect={handleRefetchAroundCurrentViewFromMenu}
-                            >
-                                <div
-                                    class="repair-icon svg-icon"
-                                    aria-hidden="true"
-                                ></div>
-                                <span>{$_("postHistory.repair")}</span>
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Separator
-                                class="post-history-menu-separator"
-                            />
+                                    class="post-history-menu-summary"
+                                    role="presentation"
+                                >
+                                    <span
+                                        class="post-history-summary-line post-history-summary-count"
+                                    >
+                                        {buildVisibleCountLabel()}
+                                    </span>
+                                </div>
+                                <DropdownMenu.Separator
+                                    class="post-history-menu-separator"
+                                />
+                            {/if}
                             <DropdownMenu.Item
                                 class="menu-action-button"
                                 disabled={!canUseReturnToLatest}
@@ -2468,16 +2472,6 @@
                                     aria-hidden="true"
                                 ></div>
                                 <span>{$_("postHistory.returnToLatest")}</span>
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Item
-                                class="menu-action-button"
-                                onSelect={toggleJumpDate}
-                            >
-                                <div
-                                    class="calendar-icon svg-icon"
-                                    aria-hidden="true"
-                                ></div>
-                                <span>{$_("postHistory.jumpToDate")}</span>
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
                                 class="menu-action-button"
@@ -3737,6 +3731,30 @@
     {/snippet}
 </DialogWrapper>
 
+<FloatingMessage
+    show={show && !exportRunning && !!headingStatusMessageKey}
+    variant="anchor-bottom-right"
+    anchor={postHistoryHeadingElement}
+    anchorRightOffset={16}
+    showInfoIcon={!history.showStatusLoader}
+>
+    {#if headingStatusMessageKey}
+        <LoadingPlaceholder
+            text={headingStatusMessageValues
+                ? $_(headingStatusMessageKey, {
+                      values: headingStatusMessageValues,
+                  })
+                : $_(headingStatusMessageKey)}
+            showLoader={history.showStatusLoader}
+            loaderSize={30}
+            state={history.showStatusLoader ? "loading" : "complete"}
+            customClass={`status-loading-placeholder post-history-heading-status-placeholder${
+                headingStatusError ? " status-error" : ""
+            }`}
+        />
+    {/if}
+</FloatingMessage>
+
 <ConfirmDialog
     open={postActionUi.deleteConfirmOpen}
     onOpenChange={postActionUi.setDeleteConfirmOpen}
@@ -3862,19 +3880,25 @@
     }
 
     .post-history-heading-main {
+        display: flex;
+        align-items: center;
         flex: 1 1 auto;
         min-width: 0;
         align-self: stretch;
+        gap: 4px;
     }
 
     .post-history-current-month-heading {
         display: flex;
         align-items: center;
+        flex: 0 1 auto;
+        min-width: 0;
         height: 100%;
         margin: 0;
     }
 
     .post-history-current-month {
+        display: block;
         color: var(--text-light);
         font-size: 1.75rem;
         line-height: 1.05;
@@ -3885,9 +3909,43 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        padding: 0 12px;
+        padding-left:12px;
+    }
+
+    :global(.post-history-heading-action-button) {
+        width: 50px;
+        height: 50px;
+        min-width: 50px;
+        min-height: 50px;
+        flex: 0 0 50px;
+        padding: 0;
+        border: 0;
+        color: var(--text-muted);
+        background-color: var(--dialog-bg);
         --btn-bg: var(--dialog-bg);
-        --text: var(--text-light);
+    }
+
+    :global(.post-history-heading-action-button .svg-icon) {
+        width: 22px;
+        height: 22px;
+        background-color: currentColor;
+        --svg: currentColor;
+    }
+
+    :global(
+            .post-history-heading-refetch-button .svg-icon,
+            .post-history-heading-search-button .svg-icon
+        ) {
+        width: 24px;
+        height: 24px;
+    }
+
+    :global(.post-history-heading-calendar-button .calendar-icon) {
+        mask-image: url("/icons/calendar_today_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    :global(.post-history-heading-refetch-button:disabled) {
+        opacity: 0.45;
     }
 
     .post-history-heading-actions {
@@ -3897,7 +3955,7 @@
         align-self: stretch;
         flex: 0 0 auto;
         min-width: 0;
-        gap: 4px;
+        gap: 0;
         white-space: nowrap;
     }
 
@@ -3915,19 +3973,12 @@
         --svg: currentColor;
     }
 
-    .post-history-heading-summary {
-        display: flex;
-        align-items: center;
+    :global(.post-history-menu-summary) {
+        padding: 8px 12px 4px;
         color: var(--text-muted);
         font-size: 0.875rem;
-    }
-
-    .post-history-summary-row {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 8px;
-        min-width: 0;
+        line-height: 1.35;
+        user-select: text;
     }
 
     .post-history-summary-line {
@@ -4325,6 +4376,10 @@
         height: auto;
     }
 
+    :global(.post-history-heading-status-placeholder) {
+        color: var(--svg);
+    }
+
     :global(.status-loading-placeholder .loader-container) {
         :global(.square) {
             background: currentColor;
@@ -4341,6 +4396,10 @@
 
     :global(.status-error) {
         color: var(--danger);
+    }
+
+    :global(.post-history-heading-status-placeholder.status-error) {
+        color: var(--svg);
     }
 
     :global(.status-loading-placeholder.status-error .square) {
