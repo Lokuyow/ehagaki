@@ -47,14 +47,16 @@
 
 ## リポスト
 
-- 機能: READMEはNIP-18 Reposts対応を掲げる。
+- 機能: kind 1のRepost作成、authored kind 6の同期・履歴表示、検証済み元投稿snapshotの永続化。
 - 関連NIP: NIP-18
-- event kind: NIP上は`6`またはgeneric repostの`16`が関係するが、現在の実装で構築・取得する箇所は確認できなかった。
-- 主なtag: 現在の実装では確認できなかった。
-- 主な実装ファイル: 実装ファイルは確認できなかった。`README.md`の対応NIP一覧にのみ記載がある。
-- 主な関数または責務: 確認できなかった。
-- 関連テスト: kind 6/16またはrepostを対象にするテストは確認できなかった。
-- 注意点: 実装済みと推測しない。変更要求では期待するkind、content、`e`/`p`/`a` semanticsをtaskと適用NIPから判断し、重要な未解決の選択だけAGENTS.mdの確認条件に従う。
+- event kind: outerは`6`、targetは`1`。generic repost `16`はPhase 1対象外。
+- 主なtag: target IDと取得先relayを持つ`e`、target authorの`p`。作成contentは常に空文字。
+- 主な実装ファイル: `postRepostService.ts`、`postRepostUtils.ts`、`postHistoryRepository.ts`、`postHistoryRelatedTargetResolver.svelte.ts`、`usePostHistoryRepostPreviews.svelte.ts`、`PostHistoryRepostPreview.svelte`。
+- 主な関数または責務: serviceが署名・publishと同じouter/targetの再保存を所有する。repositoryがouter recordの`repostTarget`を保存し、既存related-target resolverが参照に基づく解決・検証・要求共有・retryを所有する。元投稿をauthored行として追加しない。
+- 送信前の境界: 全Repost入口はresolverの`prepareRepostTarget()`で元投稿のfull verification、relay provenance、既知のローカル削除要求を確認する。検証済みtargetとhintがあればネットワーク削除確認を開始・待機せず署名・publishへ進む。hint欠損時のtarget取得は既存resolverが所有する。複数の有効な`p` tagは取得・検証後に元投稿authorが含まれるか判定する。
+- 削除要求の背景取得: 既存resolverのpreview解決がdeletion fetch/repositoryを所有し、Repost送信とは独立して動作する。Repostはそのpending taskを待機・昇格・複製せず、未取得・timeout・errorを送信拒否の理由にしない。後から検証・保存された有効な削除要求は以後の表示と操作へ適用する。
+- 関連テスト: `postRepost.test.ts`、`postRepostTransport.test.ts`（実rx-nostr・秘密鍵signer）、`postRepost.spec.ts`。
+- 注意点: 外部kind 6のcontentもtarget取得元・検索対象にしない。outerの日時・管理操作とtargetの本文・content actionを分ける。JSONLはouterだけを出力し、snapshot欠損はe/p/relay hintから復旧する。旧kinds coverageをkind 6取得の証拠にしない。
 
 ## NIP-19識別子
 

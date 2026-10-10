@@ -14,6 +14,7 @@
         tooltipContent?: string;
         enableTooltip?: boolean;
         lazy?: boolean;
+        restoreFocusOnClose?: boolean;
     }
 
     let {
@@ -27,6 +28,7 @@
         tooltipContent = undefined,
         enableTooltip = false,
         lazy = false,
+        restoreFocusOnClose = false,
     }: Props = $props();
     const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
     let menuInitialized = $state(false);
@@ -136,7 +138,10 @@
                 class="post-history-menu-content"
                 trapFocus={false}
                 preventScroll={false}
-                onCloseAutoFocus={(event: Event) => event.preventDefault()}
+                onCloseAutoFocus={(event: Event) => {
+                    event.preventDefault();
+                    if (restoreFocusOnClose) triggerElement?.focus({ preventScroll: true });
+                }}
             >
                 <div class="post-history-menu-body">
                     {#if timestamp}

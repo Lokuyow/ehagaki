@@ -31,6 +31,7 @@ export type ComposerTargetResolvePhase =
 export interface ComposerResolvedTarget {
     event: NostrEvent;
     relayHints: string[];
+    fetchedRelayUrl?: string | null;
     authorProfile: ProfileData | null;
     channelContext: ChannelContextState | null;
     channelCreatorPubkey: string | null;
@@ -264,6 +265,7 @@ export function createComposerTargetResolver(
                 target: {
                     event,
                     relayHints,
+                    fetchedRelayUrl,
                     authorProfile,
                     channelContext,
                     channelCreatorPubkey,

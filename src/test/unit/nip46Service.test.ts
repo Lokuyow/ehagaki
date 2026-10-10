@@ -26,6 +26,11 @@ const EXPECTED_NIP46_CLIENT_METADATA = {
 };
 
 describe('NIP46_REQUESTED_PERMISSIONS', () => {
+    it('requests kind 6 signing without generic Repost permission', () => {
+        expect(NIP46_REQUESTED_PERMISSIONS).toContain('sign_event:6');
+        expect(NIP46_REQUESTED_PERMS).toContain('sign_event:6');
+        expect(NIP46_REQUESTED_PERMISSIONS).not.toContain('sign_event:16');
+    });
     it('NIP-42 AUTHイベントの署名許可を要求する', () => {
         expect(NIP46_REQUESTED_PERMISSIONS).toContain('sign_event:22242');
         expect(NIP46_REQUESTED_PERMS).toContain('sign_event:22242');

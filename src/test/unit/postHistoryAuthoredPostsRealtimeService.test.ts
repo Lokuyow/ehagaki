@@ -86,7 +86,7 @@ describe("PostHistoryAuthoredPostsRealtimeService", () => {
         });
         expect(rxNostrMock.emittedFilters).toEqual([{
             authors: [OWNER_PUBKEY],
-            kinds: [1, 42, 1111],
+            kinds: [1, 6, 42, 1111],
             since: 1_699_999_940,
         }]);
         expect(postHistoryRepository.upsertFetchedEvents).toHaveBeenCalledWith({

@@ -16,6 +16,8 @@ import {
 import { getSensitivePayloadReference, verifySensitivePayloadLink } from "./sensitiveContentPayload";
 import { sensitivePayloadRepository, type SensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
 import { isPostHistoryRawEventConsistent } from "./postHistoryEventUtils";
+import { getRepostReference, verifyRepostTarget } from "./postRepostUtils";
+import { extractPostHistoryMedia } from "./postHistoryMediaUtils";
 import type { NostrEvent } from "./types";
 
 export interface SearchLocalPostsOptions {
@@ -109,8 +111,12 @@ function buildSearchText(
     channelMetadata: ChannelMetadataCache | null,
     sensitiveBody = "",
 ): string {
+    const target = post.kind === 6 && post.repostTarget && getRepostReference(post)
+        ? verifyRepostTarget(post.repostTarget.rawEvent, getRepostReference(post))?.event : null;
     return [
-        post.content,
+        post.kind === 6 ? "" : post.content,
+        ...(target ? [target.content, target.id, target.pubkey, target.tags.flat().join(" "),
+            ...extractPostHistoryMedia(target).flatMap((media) => [media.url, media.alt ?? ""])] : []),
         sensitiveBody,
         post.eventId,
         String(post.kind),
@@ -200,9 +206,13 @@ export class PostHistoryLocalSearchService {
     ): Promise<PostHistoryRecord[]> {
         const structures = posts.flatMap((post) => {
             if (!isPostHistoryRawEventConsistent(post.rawEvent, post)) return [];
-            const structure = post.rawEvent as NostrEvent;
+            const structure = post.kind === 6
+                ? post.repostTarget && getRepostReference(post)
+                    ? verifyRepostTarget(post.repostTarget.rawEvent, getRepostReference(post))?.event : null
+                : post.rawEvent as NostrEvent;
+            if (!structure) return [];
             const reference = getSensitivePayloadReference(structure);
-            return reference ? [{ structure, payloadId: reference.eventId }] : [];
+            return reference ? [{ structure, payloadId: reference.eventId, historyEventId: post.eventId }] : [];
         });
         const payloadRecords = structures.length > 0
             ? await this.sensitivePayloadRepositoryImpl.getByIds(
@@ -212,12 +222,12 @@ export class PostHistoryLocalSearchService {
         this.assertBuildActive(entry);
         const payloadById = new Map(payloadRecords.map((record) => [record.id, record]));
         const bodyByStructureId = new Map<string, string>();
-        for (const { structure, payloadId } of structures) {
+        for (const { structure, payloadId, historyEventId } of structures) {
             const record = payloadById.get(payloadId);
             if (!record || record.deletedAt !== undefined) continue;
             const payload = record.rawEvent as NostrEvent;
             if (verifySensitivePayloadLink(structure, payload, payloadId)) {
-                bodyByStructureId.set(structure.id, payload.content);
+                bodyByStructureId.set(historyEventId, payload.content);
             }
         }
         const channelEventIds = extractChannelEventIds(posts)

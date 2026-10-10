@@ -14,6 +14,8 @@ vi.mock("svelte-i18n", () => ({
             "postHistory.broadcast": "ブロードキャスト",
             "postHistory.delete": "削除",
             "postHistory.deleteSending": "送信中",
+            "repost.action": "リポスト",
+            "repost.sending": "リポスト送信中…",
         };
         return messages[key] ?? key;
     }),
@@ -27,6 +29,19 @@ function menuItemNames(): string[] {
 }
 
 describe("PostHistoryRecordActionItems", () => {
+    it("places Repost immediately before raw JSON and disables it while pending", async () => {
+        const onRepost = vi.fn();
+        render(PostHistoryRecordActionItemsHarness, { onRepost });
+        expect(menuItemNames()).toEqual(["neventをコピー", "リポスト", "イベントJSONを表示", "ブロードキャスト", "削除"]);
+        await fireEvent.click(screen.getByRole("menuitem", { name: "リポスト" }));
+        expect(onRepost).toHaveBeenCalledTimes(1);
+        cleanup();
+        render(PostHistoryRecordActionItemsHarness, { onRepost, repostPending: true });
+        const pending = screen.getByRole("menuitem", { name: "リポスト送信中…" });
+        expect(pending.getAttribute("aria-disabled")).toBe("true");
+        await fireEvent.click(pending);
+        expect(onRepost).toHaveBeenCalledTimes(1);
+    });
     it("standard order keeps a delete separator only when requested", () => {
         const { container } = render(PostHistoryRecordActionItemsHarness, {
             showDeleteSeparator: false,

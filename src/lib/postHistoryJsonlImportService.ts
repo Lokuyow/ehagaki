@@ -1,5 +1,6 @@
 import { validateEvent } from "nostr-tools";
 import { POST_HISTORY_FETCH_KINDS } from "./postHistoryRelayFetchService";
+import { isPostHistoryAuthoredKind } from "./postHistoryKinds";
 import { buildPostHistoryVisibleKindsKey } from "./storage/postHistoryVisibleRangeRepository";
 import { postHistoryImportedRangesRepository, type DexiePostHistoryImportedRangesRepository } from "./storage/postHistoryImportedRangesRepository";
 import { ehagakiDb } from "./storage/ehagakiDb";
@@ -354,7 +355,7 @@ export class PostHistoryJsonlImportService {
                 result.otherAccountCount += 1;
                 return null;
             }
-            if (![1, 36, 42, 1111, 5].includes(event.kind)) {
+            if (!isPostHistoryAuthoredKind(event.kind) && ![36, 5].includes(event.kind)) {
                 result.unsupportedKindCount += 1;
                 return null;
             }
@@ -372,7 +373,7 @@ export class PostHistoryJsonlImportService {
             if (event.kind === 36) {
                 result.uniquePayloadEventCount += 1;
                 buffer.push({ type: "payload", ...verified });
-            } else if ([1, 42, 1111].includes(event.kind)) {
+            } else if (isPostHistoryAuthoredKind(event.kind)) {
                 result.uniquePostEventCount += 1;
                 if (!Number.isSafeInteger(event.created_at) || event.created_at < 0 || event.created_at >= Number.MAX_SAFE_INTEGER) validPostTimes = false;
                 else if (event.created_at <= restoredPostUpperBound) {

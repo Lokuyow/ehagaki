@@ -1,8 +1,11 @@
 import Dexie, { cmp } from "dexie";
+import { isPostHistoryAuthoredKind } from "../postHistoryKinds";
+import { createRepostTargetSnapshot, getRepostReference } from "../postRepostUtils";
 import {
     cloneNostrEvent,
     extractPostHistoryChannelReference,
     isSameSignedNostrEvent,
+    isPostHistoryRawEventConsistent,
 } from "../postHistoryEventUtils";
 import {
     comparePostHistoryDeletionRequests,
@@ -44,6 +47,8 @@ export type PostHistorySaveInput = {
     acceptedRelays?: string[];
     relayHints?: string[];
     postedAt?: number;
+    repostTarget?: { event: NostrEvent; relayHints?: string[] };
+    localWriteScope?: PostHistoryLocalWriteScope;
 };
 
 export type PostHistoryPageOptions = PostHistoryRepositoryOptions & {
@@ -161,6 +166,7 @@ export interface PostHistoryRepository {
     countForPubkey(pubkeyHex: string | null | undefined): Promise<number>;
     countVisibleForPubkey(pubkeyHex: string | null | undefined, visibleUntil?: number | null): Promise<number>;
     putPostedEvent(input: PostHistorySaveInput): Promise<void>;
+    attachRepostTarget(input: { outerEventId: string; target: NostrEvent; relayHints?: string[]; localWriteScope: PostHistoryLocalWriteScope }): Promise<boolean>;
     upsertFetchedEvents(input: PostHistoryUpsertFetchedEventsInput): Promise<PostHistoryUpsertFetchedEventsResult>;
     getOldestCreatedAt(pubkeyHex: string | null | undefined): Promise<number | null>;
     markDeleted(eventId: string, deletionEventId: string, deletedAt?: number): Promise<void>;
@@ -284,7 +290,7 @@ function getTimelineBounds(pubkeyHex: string): {
 }
 
 function isSupportedPost(record: PostHistoryRecord): boolean {
-    return [1, 42, 1111].includes(record.kind);
+    return isPostHistoryAuthoredKind(record.kind);
 }
 
 function matchesVisibleUntil(
@@ -319,7 +325,7 @@ function toRecord(input: PostHistorySaveInput, now: () => number): PostHistoryRe
         postedAt: input.postedAt ?? updatedAt,
         relayHints,
         acceptedRelays,
-        media: extractPostHistoryMedia(event),
+        media: event.kind === 6 ? [] : extractPostHistoryMedia(event),
         rawEvent: cloneNostrEvent(event),
         rawEventVerification: { ...VALID_RAW_EVENT_VERIFICATION },
         ...(channelReference.channelEventId
@@ -883,12 +889,53 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             throw new Error("invalid_post_history_raw_event");
         }
 
-        await this.db.postHistory.put(toRecord({ ...input, event: verified.event }, this.now));
+        const reference = getRepostReference(verified.event);
+        const target = input.repostTarget
+            ? reference && createRepostTargetSnapshot(input.repostTarget.event, input.repostTarget.relayHints, reference)
+            : null;
+        if (input.repostTarget && !target) throw new Error("invalid_repost_target");
+        if (input.localWriteScope && input.localWriteScope.ownerPubkeyHex !== verified.event.pubkey) {
+            throw new Error("invalid_post_history_owner");
+        }
+        await this.db.transaction("rw", this.db.postHistory, this.db.meta, async () => {
+            await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
+            const existing = await this.db.postHistory.get(verified.event.id);
+            await this.db.postHistory.put({ ...toRecord({ ...input, event: verified.event }, this.now),
+                ...(verified.event.kind === 6 && existing ? {
+                    postedAt: existing.postedAt, fetchedRelays: existing.fetchedRelays,
+                    deletedAt: existing.deletedAt, deletionEventId: existing.deletionEventId,
+                } : {}),
+                ...(target ? { repostTarget: target } : existing?.repostTarget && reference
+                    && createRepostTargetSnapshot(existing.repostTarget.rawEvent, existing.repostTarget.relayHints, reference)
+                    ? { repostTarget: existing.repostTarget } : {}) });
+            await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
+        });
         bumpPostHistorySearchRevision(verified.event.pubkey);
         markPostHistoryShouldReturnToLatestAfterLocalPost({
             pubkeyHex: verified.event.pubkey,
             eventId: verified.event.id,
         });
+    }
+
+    async attachRepostTarget(input: { outerEventId: string; target: NostrEvent; relayHints?: string[]; localWriteScope: PostHistoryLocalWriteScope }): Promise<boolean> {
+        let changed = false;
+        await this.db.transaction("rw", this.db.postHistory, this.db.meta, async () => {
+            await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
+            const outer = await this.db.postHistory.get(input.outerEventId);
+            if (!outer || outer.pubkeyHex !== input.localWriteScope.ownerPubkeyHex || outer.deletedAt !== undefined) return;
+            if (!isPostHistoryRawEventConsistent(outer.rawEvent, outer) || !attestFullyVerifiedPostHistoryRawEvent(outer.rawEvent)) return;
+            const reference = getRepostReference(outer);
+            if (!reference) return;
+            const target = createRepostTargetSnapshot(input.target, input.relayHints, reference);
+            if (!target) throw new Error("invalid_repost_target");
+            if (outer.repostTarget && isSameSignedNostrEvent(outer.repostTarget.rawEvent, target.rawEvent)
+                && areStringArraysEqual(outer.repostTarget.relayHints, target.relayHints)) return;
+            await this.db.postHistory.update(outer.id, { repostTarget: target, updatedAt: this.now() });
+            await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
+            changed = true;
+        });
+        if (changed) bumpPostHistorySearchRevision(input.localWriteScope.ownerPubkeyHex);
+        return changed;
     }
 
     async upsertFetchedEvents(input: PostHistoryUpsertFetchedEventsInput): Promise<PostHistoryUpsertFetchedEventsResult> {
@@ -988,7 +1035,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                             relayHints,
                             acceptedRelays: existingRecord?.acceptedRelays ?? [],
                             ...(fetchedRelays.length > 0 ? { fetchedRelays } : {}),
-                            media: !replaceRawEvent && existingRecord
+                            media: item.event.kind === 6 ? [] : !replaceRawEvent && existingRecord
                                 ? cloneMedia(existingRecord.media)
                                 : extractPostHistoryMedia(item.event),
                             rawEvent: !replaceRawEvent && existingRecord
@@ -1014,6 +1061,9 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                                 ? { deletionEventId: existingRecord.deletionEventId }
                                 : {}),
                             updatedAt: this.now(),
+                            ...(existingRecord?.repostTarget && getRepostReference(item.event)
+                                && createRepostTargetSnapshot(existingRecord.repostTarget.rawEvent, existingRecord.repostTarget.relayHints, getRepostReference(item.event))
+                                ? { repostTarget: existingRecord.repostTarget } : {}),
                             schemaVersion: POST_HISTORY_SCHEMA_VERSION,
                         } satisfies PostHistoryRecord;
 

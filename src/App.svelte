@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { usePostRepostOperation } from "./lib/hooks/usePostRepostOperation.svelte";
   import { onMount } from "svelte";
   import "./i18n";
   import { _, locale, waitLocale } from "svelte-i18n";
@@ -965,6 +966,9 @@
     reconcileDirectReplyCandidates:
       postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates,
   });
+
+  const repostOperation = usePostRepostOperation({ getPubkey: () => authState.value.pubkey,
+    getRxNostr: () => rxNostr, onSaved: (ids) => handleSavedSelfPosts(ids) });
 
   async function handleSavedSelfPosts(eventIds: string[]): Promise<void> {
     await postHistoryInboundReplyReconciliation.notifySelfPostsSaved(eventIds);
@@ -2347,6 +2351,9 @@
       {/if}
       {#if showPostHistoryDialogStore.value && PostHistoryDialogComponent}
         <PostHistoryDialogComponent
+          onRepostPost={repostOperation.execute} repostPending={repostOperation.pending}
+          repostSaveFailure={repostOperation.saveFailure}
+          onRetryRepostSave={repostOperation.retrySave}
           show={showPostHistoryDialogStore.value}
           onClose={postHistoryDialog.close}
           onReplyPost={handlePostHistoryReply}
@@ -2363,6 +2370,9 @@
       {/if}
       {#if showComposerTargetDialogStore.value && ComposerTargetDialogComponent}
         <ComposerTargetDialogComponent
+          onRepostPost={repostOperation.execute} repostPending={repostOperation.pending}
+          repostSaveFailure={repostOperation.saveFailure}
+          onRetryRepostSave={repostOperation.retrySave}
           show={showComposerTargetDialogStore.value}
           onClose={composerTargetDialog.close}
           onApply={handleComposerTargetApply}

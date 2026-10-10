@@ -32,7 +32,7 @@ import {
     validateSignedEventResult,
 } from "./signedEventResultValidator";
 
-export const POST_DELETION_SUPPORTED_KINDS = [1, 42, 1111] as const;
+export const POST_DELETION_SUPPORTED_KINDS = [1, 6, 42, 1111] as const;
 
 export interface DeletionRequestResult extends PostResult {
     deletedAt?: number;
@@ -339,6 +339,7 @@ export class PostDeletionService {
 
         try {
             await this.deps.postHistoryDeletionRequestsRepository.saveLocalDeletion({
+                targetEvent: isFullyVerifiedEvent(params.post.rawEvent) ? params.post.rawEvent : undefined,
                 targetEventIds: deletionEvent.tags
                     .filter((tag) => tag[0] === "e")
                     .map((tag) => tag[1]!),
