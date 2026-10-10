@@ -2373,7 +2373,7 @@
             <Button
                 className="post-history-heading-action-button post-history-heading-calendar-button"
                 variant="default"
-                shape="circle"
+                shape="square"
                 contentLayout="icon"
                 ariaLabel={$_("postHistory.jumpToDate")}
                 onClick={toggleJumpDate}
@@ -2406,7 +2406,7 @@
             <Button
                 className="post-history-heading-action-button post-history-heading-refetch-button"
                 variant="default"
-                shape="circle"
+                shape="square"
                 contentLayout="icon"
                 ariaLabel={$_("postHistory.repair")}
                 disabled={!history.canRefetchAroundCurrentView}
@@ -2417,7 +2417,7 @@
             <Button
                 className="post-history-heading-action-button post-history-heading-search-button"
                 variant="default"
-                shape="circle"
+                shape="square"
                 contentLayout="icon"
                 ariaLabel={$_(
                     activeUtilityPanel === "search"
@@ -3911,20 +3911,23 @@
     }
 
     :global(.post-history-heading-action-button) {
-        width: 40px;
-        height: 40px;
-        min-width: 40px;
-        flex: 0 0 40px;
+        width: 50px;
+        height: 50px;
+        min-width: 50px;
+        min-height: 50px;
+        flex: 0 0 50px;
         padding: 0;
         border: 0;
-        color: var(--text-light);
-        --btn-bg: transparent;
+        color: var(--text-muted);
+        background-color: var(--dialog-bg);
+        --btn-bg: var(--dialog-bg);
     }
 
     :global(.post-history-heading-action-button .svg-icon) {
-        width: 24px;
-        height: 24px;
+        width: 20px;
+        height: 20px;
         background-color: currentColor;
+        --svg: currentColor;
     }
 
     :global(.post-history-heading-calendar-button .calendar-icon) {
@@ -3942,7 +3945,7 @@
         align-self: stretch;
         flex: 0 0 auto;
         min-width: 0;
-        gap: 4px;
+        gap: 0;
         white-space: nowrap;
     }
 
