@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-type State = { sends: number; signed: number; replyId?: string; quoteId?: string; deletionCount: number;
+type State = { sends: number; signed: number; replyId?: string; quoteId?: string; deletionCount: number; deletionRequests: number;
     sentEvents: { id: string; kind: number; tags: string[][] }[];
     lastResult?: { success: boolean; error?: string }; rows: { id: string; kind: number; content: string; targetId?: string; targetKind?: number }[] };
 type FixtureWindow = Window & { __REPOST__: { ready: boolean; targetId: string; targetInput: string; read(): Promise<State>; allowTarget(): void;
@@ -10,6 +10,41 @@ async function open(page: Page, query = "") {
     await page.goto(`post-history-dialog-playwright.html?repost=1${query}`);
     await page.waitForFunction(() => (window as unknown as FixtureWindow).__REPOST__?.ready);
 }
+
+for (const entry of ['history', 'Composer'] as const) {
+    for (const deleted of [false, true]) {
+        test(`${entry} secret-key Repost waits for a slow relay deletion check (${deleted ? 'deleted' : 'eligible'})`, async ({ page }) => {
+            await open(page, '&transport=1' + (entry === 'Composer' ? '&source=target' : ''));
+            if (entry === 'Composer') {
+                await page.locator('.composer-target-dialog input').fill(await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.targetInput));
+                await expect(page.locator('.composer-target-dialog')).toContainText('original searchable post');
+            }
+            if (deleted) await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.deleteOnRelay());
+            const container = entry === 'Composer' ? page.locator('.composer-target-dialog') : page.locator('.post-history-item').first();
+            await container.getByRole('button', { name: 'アクションを表示', exact: true }).click();
+            await page.getByRole('menuitem', { name: 'リポスト', exact: true }).click();
+            await expect.poll(async () => (await read(page)).deletionRequests).toBe(2);
+            await expect(page.locator('.floating-message')).toContainText('リポスト送信中');
+            await expect.poll(async () => { const state = await read(page); return [state.lastResult?.success, state.signed, state.sends, state.deletionCount]; },
+                { timeout: 12_000 }).toEqual(deleted ? [false, 0, 0, 1] : [true, 1, 1, 0]);
+            expect((await read(page)).rows.filter(row => row.kind === 6)).toHaveLength(deleted ? 0 : 1);
+            if (!deleted) expect((await read(page)).rows.find(row => row.kind === 6)).toMatchObject({ content: '', targetKind: 1 });
+        });
+    }
+}
+
+test('an incomplete relay deletion check explains the failure and does not sign or publish', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 740 });
+    await open(page, '&transport=1&closed=1');
+    await page.locator('.post-history-item').first().getByRole('button', { name: 'アクションを表示', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'リポスト', exact: true }).click();
+    await expect(page.locator('.floating-message')).toContainText('元投稿の削除状態を確認できませんでした', { timeout: 12_000 });
+    expect(await read(page)).toMatchObject({ signed: 0, sends: 0, lastResult: { success: false, error: 'repost_deletion_unconfirmed' } });
+    const message = await page.locator('.floating-message-content').boundingBox();
+    expect(message!.x).toBeGreaterThanOrEqual(0);
+    expect(message!.x + message!.width).toBeLessThanOrEqual(360);
+    expect(await page.locator('html').evaluate(element => element.scrollWidth > element.clientWidth)).toBe(false);
+});
 
 for (const entry of ['history', 'Composer', 'resolved target'] as const) {
     test(`${entry} blocks a relay-only deletion before signing even with a verified target and relay hint`, async ({ page }) => {

@@ -18,7 +18,8 @@
         return () => clearTimeout(timeout);
     });
     const message = $derived(pending ? "repost.sending" : !result?.success
-        ? result?.error === "repost_relay_missing" ? "repost.relayMissing" : "repost.failed"
+        ? result?.error === "repost_relay_missing" ? "repost.relayMissing"
+            : result?.error === "repost_deletion_unconfirmed" ? "repost.deletionUnconfirmed" : "repost.failed"
         : result.historySaved === false ? "repost.saveFailed"
         : (result.rejectedRelays?.length || result.timedOutRelays?.length) ? "repost.partial" : "repost.sent");
     async function retry() {
@@ -34,8 +35,9 @@
         <Button className="repost-retry-save" variant="default" shape="rounded" disabled={pending || retrying} onClick={() => void retry()}>{$_("repost.retrySave")}</Button>
     </div>
 {/if}
-<FloatingMessage show={visible && (pending || !result?.retryInput)} {x} {y}><div>{$_(message)}</div></FloatingMessage>
+<FloatingMessage show={visible && (pending || !result?.retryInput)} {x} {y}><div class="repost-message">{$_(message)}</div></FloatingMessage>
 <style>
+    .repost-message { white-space: normal; overflow-wrap: anywhere; }
     .repost-save-feedback {
         display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: 8px;
         min-width: 0; width: 100%; padding: 8px 12px; box-sizing: border-box;

@@ -1,12 +1,13 @@
 <script lang="ts">
-    import { onMount } from "svelte";
-    import { finalizeEvent, generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
+    import { onDestroy, onMount } from "svelte";
+    import { finalizeEvent, generateSecretKey, getPublicKey, nip19, verifyEvent } from "nostr-tools";
+    import { seckeySigner } from "@rx-nostr/crypto";
     import type { EventTemplate } from "nostr-tools";
     import { Observable, Subject, of } from "rxjs";
-    import type { RxNostr, RxReq } from "rx-nostr";
+    import { createRxNostr, type RxNostr, type RxReq } from "rx-nostr";
     import PostHistoryDialog from "../../components/PostHistoryDialog.svelte";
     import ComposerTargetDialog from "../../components/ComposerTargetDialog.svelte";
-    import { setNip07Auth } from "../../stores/authStore.svelte";
+    import { setNip07Auth, setNsecAuth, secretKeyStore } from "../../stores/authStore.svelte";
     import { writeRelaysStore } from "../../stores/relayStore.svelte";
     import { postHistoryRepository } from "../../lib/storage/postHistoryRepository";
     import { ehagakiDb } from "../../lib/storage/ehagakiDb";
@@ -21,6 +22,10 @@
 
     const query = new URLSearchParams(location.search);
     const relay = "wss://relay.example.com/";
+    const slowRelay = "wss://slow-relay.example.com/";
+    const realTransport = query.has("transport");
+    const relayConfig = { [relay]: { read: true, write: true },
+        ...(realTransport ? { [slowRelay]: { read: true, write: false } } : {}) };
     const ownerKey = generateSecretKey();
     const targetKey = query.has("self-target") ? ownerKey
         : query.get("source") === "target" || query.has("external") ? generateSecretKey() : ownerKey;
@@ -39,13 +44,14 @@
     let rejectPublish = false;
     let sends = 0;
     let signed = 0;
+    let deletionRequests = 0;
     let lastResult: { success: boolean; error?: string; historySaved?: boolean } | null = null;
     const sentEvents: { id: string; kind: number; tags: string[][] }[] = [];
     let replyId: string | null = null;
     let quoteId: string | null = null;
     let incomingOuter: NostrEvent | null = null;
     const messages = new Subject<unknown>();
-    const rx = {
+    const injectedRx = {
         createAllMessageObservable: () => messages,
         createAllErrorObservable: () => new Subject(),
         createConnectionStateObservable: () => new Subject(),
@@ -74,8 +80,61 @@
             return () => subscription.unsubscribe();
         }),
     } as unknown as RxNostr;
+    // Exercise the actual rx-nostr request/EOSE/verification/publish path. Only
+    // the socket is synthetic, and fixture keys stay in memory.
+    class FixtureRelaySocket extends EventTarget {
+        readyState = 0;
+        private timers = new Map<string, ReturnType<typeof setTimeout>>();
+        readonly url: string;
+        constructor(url: string) {
+            super();
+            this.url = new URL(url).href;
+            queueMicrotask(() => { this.readyState = 1; this.dispatchEvent(new Event("open")); });
+        }
+        private receive(message: unknown[]) {
+            this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(message) }));
+        }
+        send(data: string) {
+            const message = JSON.parse(data) as unknown[];
+            if (message[0] === "REQ") {
+                const subId = message[1] as string;
+                const filter = message[2] as { kinds?: number[]; ids?: string[]; authors?: string[]; "#e"?: string[] };
+                const deletion = filter.kinds?.includes(5);
+                if (deletion) deletionRequests++;
+                this.timers.set(subId, setTimeout(() => {
+                    this.timers.delete(subId);
+                    if (filter.ids?.includes(target.id) && allowTarget) this.receive(["EVENT", subId, target]);
+                    if (deletion && deletedOnRelay && this.url === slowRelay && filter.authors?.includes(target.pubkey)
+                        && filter["#e"]?.includes(target.id)) this.receive(["EVENT", subId, finalizeEvent({ kind: 5,
+                            created_at: target.created_at + 1, content: "", tags: [["e", target.id], ["k", "1"]] }, targetKey)]);
+                    this.receive(query.has("closed") && deletion && this.url === slowRelay
+                        ? ["CLOSED", subId, "error: fixture"] : ["EOSE", subId]);
+                }, deletion && this.url === slowRelay ? 5_000 : 0));
+            } else if (message[0] === "EVENT") {
+                const event = message[1] as NostrEvent;
+                sends++; sentEvents.push({ id: event.id, kind: event.kind, tags: event.tags });
+                const ok = !rejectPublish; rejectPublish = false;
+                queueMicrotask(() => this.receive(["OK", event.id, ok, ""]));
+            } else if (message[0] === "CLOSE") {
+                const subId = message[1] as string;
+                clearTimeout(this.timers.get(subId)); this.timers.delete(subId);
+            }
+        }
+        close() {
+            this.readyState = 3;
+            this.timers.forEach(timer => clearTimeout(timer)); this.timers.clear();
+            this.dispatchEvent(new CloseEvent("close", { code: 1000 }));
+        }
+    }
+    const rx = realTransport ? createRxNostr({ verifier: async event => verifyEvent(event), skipFetchNip11: true,
+        retry: { strategy: "off" }, websocketCtor: FixtureRelaySocket as never }) : injectedRx;
+    if (realTransport) rx.setDefaultRelays(relayConfig);
+    onDestroy(() => { if (realTransport) rx.dispose(); });
     const service = new PostRepostService({ getWriteRelays: () => [relay], getClientTag: () => null,
         getNip07Signer: () => ({ signEvent: async (template) => { signed++; return finalizeEvent(template, ownerKey); } }),
+        seckeySignerFn: key => { const signer = seckeySigner(key); return {
+            signEvent: async template => { signed++; return signer.signEvent(template); },
+        }; },
         createSender: (runtime) => new PostEventSender(runtime, { log() {}, warn() {}, error() {} } as Console,
             { initialMs: 200, successMs: 10, authMs: 200 }),
         saveHistory: async (input) => {
@@ -106,7 +165,10 @@
             ?? existing.find((record) => record.kind === 6)?.repostTarget?.rawEvent) as NostrEvent | undefined;
         if (oldTarget) target = oldTarget;
         if (existing.length) owner = existing.find((record) => record.kind === 6)?.pubkeyHex ?? target.pubkey;
-        setNip07Auth(owner, nip19.npubEncode(owner), nip19.nprofileEncode({ pubkey: owner, relays: [relay] }));
+        if (realTransport) {
+            secretKeyStore.set(nip19.nsecEncode(ownerKey));
+            setNsecAuth(owner, nip19.npubEncode(owner), nip19.nprofileEncode({ pubkey: owner, relays: [relay] }));
+        } else setNip07Auth(owner, nip19.npubEncode(owner), nip19.nprofileEncode({ pubkey: owner, relays: [relay] }));
         writeRelaysStore.set([relay]);
         window.nostr = { getPublicKey: async () => owner,
             signEvent: signFixture };
@@ -135,7 +197,7 @@
         (window as unknown as { __REPOST__: unknown }).__REPOST__ = {
             ready: true, targetId: target.id, targetInput: nip19.noteEncode(target.id), owner,
             read: async () => { const rows = await ehagakiDb.postHistory.toArray(); return {
-                sends, signed, lastResult, sentEvents, replyId, quoteId,
+                sends, signed, lastResult, sentEvents, replyId, quoteId, deletionRequests,
                 deletionCount: await ehagakiDb.postHistoryDeletionRequests.count(),
                 rows: rows.map((row) => ({ id: row.eventId, kind: row.kind, content: row.content,
                     targetId: row.repostTarget?.rawEvent.id, targetKind: row.repostTarget?.rawEvent.kind })),
@@ -155,12 +217,12 @@
     <button onclick={() => { targetOpen = false; historyOpen = true; }}>Open history</button>
     <button onclick={() => { historyOpen = false; targetOpen = true; }}>Open target</button>
     <PostHistoryDialog show={historyOpen} onClose={() => historyOpen = false} pubkeyHex={owner} rxNostr={rx}
-        relayConfig={{ [relay]: { read: true, write: true } }} authoredSelfPostSave={saved}
+        {relayConfig} authoredSelfPostSave={saved}
         onReplyPost={post => { replyId = post.eventId; }} onQuotePost={post => { quoteId = post.eventId; }}
         onRepostPost={execute} repostPending={operation.pending} onRetryRepostSave={operation.retrySave}
         repostSaveFailure={operation.saveFailure} />
     <ComposerTargetDialog show={targetOpen} onClose={() => targetOpen = false} onApply={() => true}
-        pubkeyHex={owner} rxNostr={rx} relayConfig={{ [relay]: { read: true, write: true } }} {resolver}
+        pubkeyHex={owner} rxNostr={rx} {relayConfig} {resolver}
         onRepostPost={execute} repostPending={operation.pending} onRetryRepostSave={operation.retrySave}
         repostSaveFailure={operation.saveFailure} />
 {/if}

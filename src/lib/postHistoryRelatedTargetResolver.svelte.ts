@@ -151,7 +151,10 @@ export function createPostHistoryRelatedTargetResolver({
     const scopeKeysByTargetId = new Map<string, Set<string>>();
     const pendingLoadsByTargetId = new Map<string, Promise<PostHistoryRelatedTargetSnapshot | null>>();
     const loadTasksByTargetId = new Map<string, PostHistoryContextFetchTask>();
-    const pendingDeletionChecksByTarget = new Map<string, Promise<{ deleted: boolean; complete: boolean }>>();
+    const pendingDeletionChecksByTarget = new Map<string, {
+        promise: Promise<{ deleted: boolean; complete: boolean }>;
+        requireComplete: boolean;
+    }>();
     const deletionTasksByTarget = new Map<string, PostHistoryDeletionFetchTask>();
     const loadRequestIdsByTargetId = new Map<string, number>();
     let nextLoadRequestId = 0;
@@ -345,54 +348,66 @@ export function createPostHistoryRelatedTargetResolver({
 
         // An unverified author hint for the same ID must not satisfy a verified author's check.
         const deletionKey = `${targetEvent.pubkey}:${targetEvent.id}`;
-        const taskPromise: Promise<{ deleted: boolean; complete: boolean }> = pendingDeletionChecksByTarget.get(deletionKey) ?? Promise.resolve().then(async () => {
-            try {
-                const task = deletionFetchService.fetchDeletionRequests(rxNostr, {
-                    targets: [{ event: targetEvent, relayUrls: relayHints }],
-                    relayHints,
-                    relayConfig: getRelayConfig(),
-                });
-                deletionTasksByTarget.set(deletionKey, task);
-
-                const result = await task.promise;
-                if (result.events.length > 0) {
-                    await deletionRequestsRepositoryImpl.upsertValidDeletionRequests({
-                        targetEvents: [targetEvent],
-                        deletionEvents: result.events,
-                        fetchedAt: result.fetchedAt,
-                    });
-                }
-
-                const deleted = await isDeletedTarget(targetEvent.pubkey, targetEvent.id);
-                if (deleted) {
-                    applySnapshotUpdate(targetEvent.id, {
-                        status: "deleted",
-                        event: null,
-                        authorPubkey: targetEvent.pubkey,
+        let pending = pendingDeletionChecksByTarget.get(deletionKey);
+        if (pending && options.requireComplete) {
+            pending.requireComplete = true;
+            deletionTasksByTarget.get(deletionKey)?.requireComplete?.();
+        }
+        if (!pending) {
+            // A foreground waiter can arrive before this deferred task starts,
+            // or upgrade the same task after its preview request has started.
+            const check = { requireComplete: options.requireComplete ?? false,
+                promise: Promise.resolve({ deleted: false, complete: false }) };
+            check.promise = Promise.resolve().then(async () => {
+                try {
+                    const task = deletionFetchService.fetchDeletionRequests(rxNostr, {
+                        targets: [{ event: targetEvent, relayUrls: relayHints }],
                         relayHints,
-                        errorCode: null,
-                        updatedAt: Date.now(),
+                        relayConfig: getRelayConfig(),
+                        requireComplete: check.requireComplete,
                     });
-                }
+                    deletionTasksByTarget.set(deletionKey, task);
 
-                return { deleted, complete: result.status === "success" };
-            } catch {
-                return { deleted: false, complete: false };
-            } finally {
-                if (pendingDeletionChecksByTarget.get(deletionKey) === taskPromise) {
-                    deletionTasksByTarget.delete(deletionKey);
-                    pendingDeletionChecksByTarget.delete(deletionKey);
-                }
-            }
-        });
+                    const result = await task.promise;
+                    if (result.events.length > 0) {
+                        await deletionRequestsRepositoryImpl.upsertValidDeletionRequests({
+                            targetEvents: [targetEvent],
+                            deletionEvents: result.events,
+                            fetchedAt: result.fetchedAt,
+                        });
+                    }
 
-        pendingDeletionChecksByTarget.set(deletionKey, taskPromise);
+                    const deleted = await isDeletedTarget(targetEvent.pubkey, targetEvent.id);
+                    if (deleted) {
+                        applySnapshotUpdate(targetEvent.id, {
+                            status: "deleted",
+                            event: null,
+                            authorPubkey: targetEvent.pubkey,
+                            relayHints,
+                            errorCode: null,
+                            updatedAt: Date.now(),
+                        });
+                    }
+
+                    return { deleted, complete: result.status === "success" };
+                } catch {
+                    return { deleted: false, complete: false };
+                } finally {
+                    if (pendingDeletionChecksByTarget.get(deletionKey) === check) {
+                        deletionTasksByTarget.delete(deletionKey);
+                        pendingDeletionChecksByTarget.delete(deletionKey);
+                    }
+                }
+            });
+            pendingDeletionChecksByTarget.set(deletionKey, check);
+            pending = check;
+        }
         if (options.background) {
-            void taskPromise;
+            void pending.promise;
             return false;
         }
 
-        const result = await taskPromise;
+        const result = await pending.promise;
         if (!result.deleted && options.requireComplete && !result.complete) {
             throw new Error("deletion_confirmation_incomplete");
         }

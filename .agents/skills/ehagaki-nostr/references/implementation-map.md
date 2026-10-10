@@ -54,7 +54,8 @@
 - 主な実装ファイル: `postRepostService.ts`、`postRepostUtils.ts`、`postHistoryRepository.ts`、`postHistoryRelatedTargetResolver.svelte.ts`、`usePostHistoryRepostPreviews.svelte.ts`、`PostHistoryRepostPreview.svelte`。
 - 主な関数または責務: serviceが署名・publishと同じouter/targetの再保存を所有する。repositoryがouter recordの`repostTarget`を保存し、既存related-target resolverが参照に基づく解決・検証・要求共有・retryを所有する。元投稿をauthored行として追加しない。
 - 送信前の境界: 全Repost入口はresolverの`prepareRepostTarget()`で元投稿のfull verification、relay provenance、ローカルとRelayの削除確認をまとめる。削除確認が完了しない場合も署名・publishへ進まない。削除取得・検証・保存と要求共有は既存deletion fetch/repositoryを再利用する。複数の有効な`p` tagは取得・検証後に元投稿authorが含まれるか判定する。
-- 関連テスト: `postRepost.test.ts`、`postRepost.spec.ts`。
+- 削除確認の完了: foreground Repostは既存deletion fetchの35秒deadlineでrx-nostrのEOSE/AUTH待機を許容し、previewの4秒deadlineで切らない。共有中のpreview要求は再fetchせず同じtaskを昇格する。各Relay・author要求の実EOSEと検証済みstreamのdrainを必要とし、CLOSEDやlibrary timeoutのcompleteだけでは未削除と判定しない。
+- 関連テスト: `postRepost.test.ts`、`postRepostTransport.test.ts`（実rx-nostr・秘密鍵signer）、`postRepost.spec.ts`。
 - 注意点: 外部kind 6のcontentもtarget取得元・検索対象にしない。outerの日時・管理操作とtargetの本文・content actionを分ける。JSONLはouterだけを出力し、snapshot欠損はe/p/relay hintから復旧する。旧kinds coverageをkind 6取得の証拠にしない。
 
 ## NIP-19識別子

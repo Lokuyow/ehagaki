@@ -7,6 +7,7 @@
     "partial": "Reposted (some relays did not accept it)",
     "failed": "Could not repost",
     "relayMissing": "Could not determine a relay for the original post",
+    "deletionUnconfirmed": "Could not confirm whether the original post was deleted. Check the relay connection and try again",
     "saveFailed": "Repost sent, but history could not be saved",
     "retrySave": "Save again",
     "targetLoading": "Loading original post…",

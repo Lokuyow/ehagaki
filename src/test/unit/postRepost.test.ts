@@ -210,7 +210,7 @@ describe("Repost signing, publishing and save retry", () => {
     });
     it.each(["timeout", "error"] as const)("does not sign or publish when deletion confirmation is incomplete (%s)", async (status) => {
         const target = sign(); const setup = preparation(target, [], status); const { repost, signEvent, sendEvent } = service();
-        expect((await repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: setup.prepareTarget })).success).toBe(false);
+        expect(await repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: setup.prepareTarget })).toMatchObject({ success: false, error: "repost_deletion_unconfirmed" });
         expect(signEvent).not.toHaveBeenCalled(); expect(sendEvent).not.toHaveBeenCalled();
         setup.resolver.reset();
     });
