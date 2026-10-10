@@ -9,5 +9,5 @@
     <span>{$_(pending ? "repost.sending" : "repost.action")}</span>
 </DropdownMenu.Item>
 <style>
-    :global(.repost-icon) { mask-image: url("/icons/sync_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg"); }
+    :global(.repost-icon) { mask-image: url("/icons/repost.svg"); }
 </style>

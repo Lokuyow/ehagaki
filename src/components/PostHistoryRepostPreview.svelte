@@ -5,9 +5,7 @@
     import type { RepostPreviewState } from "../lib/hooks/usePostHistoryRepostPreviews.svelte";
     import type { FullscreenMediaItem } from "../lib/types";
     import { repostTargetToPost } from "../lib/postRepostUtils";
-    import { formatPostedAt } from "../lib/postHistoryDialogUtils";
     import PostHistoryRelatedEventCard from "./PostHistoryRelatedEventCard.svelte";
-    import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
     import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
     import Button from "./Button.svelte";
     interface Props {
@@ -30,7 +28,13 @@
         : preview.status === "loading" ? "repost.targetLoading" : "repost.targetMissing");
 </script>
 <div class="post-history-repost" data-repost-event-id={post.eventId}>
-    <div class="post-history-repost-label">↻ {$_("repost.entry")}</div>
+    <div class="post-history-repost-label">
+        <span class="post-history-repost-title">
+            <span class="post-history-repost-icon svg-icon" aria-hidden="true"></span>
+            <span>{$_("repost.entry")}</span>
+        </span>
+        {@render menu?.(post, `repost-outer:${post.eventId}`)}
+    </div>
     {#if post.deletedAt !== undefined}
         <p>{$_("postHistory.deleted")}</p>
     {:else if preview.status === "resolved" && preview.event && target}
@@ -51,11 +55,28 @@
             <Button onClick={onRetry}>{$_("postHistory.contextRetry")}</Button>
         {/if}
     {/if}
-    <PostHistoryPreviewFooter formattedDate={formatPostedAt(post.postedAt)}>
-        {#snippet trailing()}{@render menu?.(post, `repost-outer:${post.eventId}`)}{/snippet}
-    </PostHistoryPreviewFooter>
 </div>
 <style>
     .post-history-repost { min-width: 0; }
-    .post-history-repost-label { color: var(--text-muted); padding: 6px 10px; }
+    .post-history-repost-label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        color: var(--btn-post-preview-action);
+    }
+    .post-history-repost-title { display: flex; align-items: center; gap: 6px; min-width: 0; padding-left: 6px;}
+    .post-history-repost-icon {
+        --icon-size: 22px;
+        --svg: currentColor;
+        mask-image: url("/icons/repost.svg");
+    }
+    :global(.post-history-repost-label .post-history-menu-trigger) {
+        inline-size: 28px;
+        block-size: 28px;
+        min-inline-size: 28px;
+        min-block-size: 28px;
+        flex: 0 0 28px;
+        padding: 0;
+    }
 </style>
