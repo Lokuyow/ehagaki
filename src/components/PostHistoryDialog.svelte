@@ -3734,7 +3734,6 @@
 <FloatingMessage
     show={show && !exportRunning && !!headingStatusMessageKey}
     variant="anchor-bottom-right"
-    customClass="post-history-heading-status-toast"
     anchor={postHistoryHeadingElement}
     anchorRightOffset={16}
     showInfoIcon={!history.showStatusLoader}

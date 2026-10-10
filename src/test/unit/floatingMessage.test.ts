@@ -35,20 +35,6 @@ describe("FloatingMessage", () => {
         expect(message.querySelector(".info-icon")).toBeNull();
     });
 
-    it("applies a caller class to scope toast presentation", () => {
-        render(FloatingMessage, {
-            props: {
-                show: true,
-                customClass: "post-history-heading-status-toast",
-            },
-        });
-
-        const toast = screen.getByRole("status");
-        expect(toast.classList.contains("post-history-heading-status-toast")).toBe(
-            true,
-        );
-    });
-
     it("does not render when hidden", () => {
         render(FloatingMessage, {
             props: {
