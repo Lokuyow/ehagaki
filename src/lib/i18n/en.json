@@ -4,7 +4,6 @@
     "sending": "Reposting…",
     "entry": "Repost",
     "sent": "Reposted",
-    "partial": "Reposted (some relays did not accept it)",
     "failed": "Could not repost",
     "relayMissing": "Could not determine a relay for the original post",
     "saveFailed": "Repost sent, but history could not be saved",

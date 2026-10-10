@@ -219,8 +219,6 @@
         resolver: relatedTargetResolver,
     });
     let repostResult = $state<PostRepostResult | null>(null);
-    let repostMessageX = $state(20);
-    let repostMessageY = $state(80);
     let repostUiGeneration = 0;
     $effect(() => {
         show; pubkeyHex; repostUiGeneration++; repostResult = null;
@@ -230,12 +228,9 @@
         return !!onRepostPost && isRepostTargetKind(post.kind) && post.deletedAt === undefined
             && isPostHistoryRawEventConsistent(post.rawEvent, post);
     }
-    async function handleRepost(post: PostHistoryRecord, event: Event) {
+    async function handleRepost(post: PostHistoryRecord) {
         if (!onRepostPost || repostPending || !canRepost(post)) return;
         repostResult = null;
-        const rect = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null;
-        const position = calculateContextMenuPosition(rect?.left ?? 20, rect?.top ?? 80);
-        repostMessageX = position.x; repostMessageY = position.y;
         const generation = repostUiGeneration;
         const result = await onRepostPost(post, (target, relayHints) => relatedTargetResolver.prepareRepostTarget({
             relationKind: "repost", scopeKey: "post-history-repost-operation",
@@ -3004,7 +2999,7 @@
                                                                 {/if}
                                                                 <PostHistoryRecordActionItems
                                                                     order="standard"
-                                                                    onRepost={canRepost(post) ? (event) => void handleRepost(post, event) : undefined}
+                                                                    onRepost={canRepost(post) ? () => void handleRepost(post) : undefined}
                                                                     {repostPending}
                                                                     copyFailed={copyNeventUi.copyState[
                                                                         post.eventId
@@ -3472,7 +3467,7 @@
                                                         {/if}
                                                         <PostHistoryRecordActionItems
                                                             order="standard"
-                                                            onRepost={canRepost(post) ? (event) => void handleRepost(post, event) : undefined}
+                                                            onRepost={canRepost(post) ? () => void handleRepost(post) : undefined}
                                                             {repostPending}
                                                             copyFailed={copyNeventUi.copyState[
                                                                 post.eventId
@@ -3786,7 +3781,7 @@
     />
 
     {#snippet footer()}
-        <PostRepostFeedback result={repostResult} saveFailure={repostSaveFailure} pending={repostPending} x={repostMessageX} y={repostMessageY} onRetrySave={onRetryRepostSave} />
+        <PostRepostFeedback result={repostResult} saveFailure={repostSaveFailure} pending={repostPending} onRetrySave={onRetryRepostSave} />
         <Dialog.Close>
             {#snippet child({ props })}
                 <Button
@@ -3925,7 +3920,7 @@
         timestamp={formatPostedAtExact(record.postedAt, $locale)}>
         {#snippet items()}
             <PostHistoryRecordActionItems order="standard"
-                onRepost={canRepost(record) ? (event) => void handleRepost(record, event) : undefined} {repostPending}
+                onRepost={canRepost(record) ? () => void handleRepost(record) : undefined} {repostPending}
                 copyFailed={copyNeventUi.copyState[record.eventId] === "failed"}
                 showBroadcast={canBroadcastPost(record)} broadcastSending={isBroadcastSending(record)}
                 showDelete={canDeletePost(record)} showDeleteSeparator={true} deletionSending={isDeletionSending(record)}
