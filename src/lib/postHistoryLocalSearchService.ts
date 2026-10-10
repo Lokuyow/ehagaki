@@ -15,8 +15,8 @@ import {
 } from "./postHistoryLocalSearchRevision";
 import { getSensitivePayloadReference, verifySensitivePayloadLink } from "./sensitiveContentPayload";
 import { sensitivePayloadRepository, type SensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
-import { isPostHistoryRawEventConsistent } from "./postHistoryEventUtils";
-import { getRepostReference, verifyRepostTarget } from "./postRepostUtils";
+import { extractPostHistoryChannelReference, isPostHistoryRawEventConsistent } from "./postHistoryEventUtils";
+import { getRepostReference, isRepostOuterKind, verifySupportedRepostTarget } from "./postRepostUtils";
 import { extractPostHistoryMedia } from "./postHistoryMediaUtils";
 import type { NostrEvent } from "./types";
 
@@ -106,15 +106,24 @@ function areRevisionSnapshotsEqual(
         && left.channelMetadata === right.channelMetadata;
 }
 
+function getSearchTarget(post: PostHistoryRecord) {
+    const reference = isRepostOuterKind(post.kind) && getRepostReference(post);
+    return reference && post.repostTarget ? verifySupportedRepostTarget(post.repostTarget.rawEvent, reference)?.event : null;
+}
+
+function getSearchChannelId(post: PostHistoryRecord, target: NostrEvent | null | undefined) {
+    if (!isRepostOuterKind(post.kind)) return post.channelEventId;
+    return target ? extractPostHistoryChannelReference(target).channelEventId : undefined;
+}
+
 function buildSearchText(
     post: PostHistoryRecord,
     channelMetadata: ChannelMetadataCache | null,
     sensitiveBody = "",
+    target: NostrEvent | null | undefined = null,
 ): string {
-    const target = post.kind === 6 && post.repostTarget && getRepostReference(post)
-        ? verifyRepostTarget(post.repostTarget.rawEvent, getRepostReference(post))?.event : null;
     return [
-        post.kind === 6 ? "" : post.content,
+        isRepostOuterKind(post.kind) ? "" : post.content,
         ...(target ? [target.content, target.id, target.pubkey, target.tags.flat().join(" "),
             ...extractPostHistoryMedia(target).flatMap((media) => [media.url, media.alt ?? ""])] : []),
         sensitiveBody,
@@ -122,7 +131,7 @@ function buildSearchText(
         String(post.kind),
         post.tags.flat().join(" "),
         ...post.media.flatMap((media) => [media.url, media.alt ?? ""]),
-        post.channelEventId ?? "",
+        getSearchChannelId(post, target) ?? "",
         post.relayHints.join(" "),
         post.acceptedRelays.join(" "),
         post.fetchedRelays?.join(" ") ?? "",
@@ -133,11 +142,11 @@ function buildSearchText(
         .toLowerCase();
 }
 
-function extractChannelEventIds(posts: PostHistoryRecord[]): string[] {
+function extractChannelEventIds(posts: PostHistoryRecord[], targets: Map<string, NostrEvent | null | undefined>): string[] {
     return Array.from(
         new Set(
             posts
-                .map((post) => post.channelEventId)
+                .map((post) => getSearchChannelId(post, targets.get(post.eventId)))
                 .filter(
                     (channelEventId): channelEventId is string =>
                         typeof channelEventId === "string" &&
@@ -204,11 +213,11 @@ export class PostHistoryLocalSearchService {
         queryTokens: string[],
         channelMetadataById: Map<string, ChannelMetadataCache | null>,
     ): Promise<PostHistoryRecord[]> {
+        const targets = new Map(posts.map(post => [post.eventId, getSearchTarget(post)]));
         const structures = posts.flatMap((post) => {
             if (!isPostHistoryRawEventConsistent(post.rawEvent, post)) return [];
-            const structure = post.kind === 6
-                ? post.repostTarget && getRepostReference(post)
-                    ? verifyRepostTarget(post.repostTarget.rawEvent, getRepostReference(post))?.event : null
+            const structure = isRepostOuterKind(post.kind)
+                ? targets.get(post.eventId)
                 : post.rawEvent as NostrEvent;
             if (!structure) return [];
             const reference = getSensitivePayloadReference(structure);
@@ -230,7 +239,7 @@ export class PostHistoryLocalSearchService {
                 bodyByStructureId.set(historyEventId, payload.content);
             }
         }
-        const channelEventIds = extractChannelEventIds(posts)
+        const channelEventIds = extractChannelEventIds(posts, targets)
             .filter((id) => !channelMetadataById.has(id));
 
         if (channelEventIds.length > 0) {
@@ -245,12 +254,15 @@ export class PostHistoryLocalSearchService {
         }
 
         return posts.filter((post) => {
+            const target = targets.get(post.eventId);
+            const channelId = getSearchChannelId(post, target);
             const searchText = buildSearchText(
                 post,
-                post.channelEventId
-                    ? channelMetadataById.get(post.channelEventId) ?? null
+                channelId
+                    ? channelMetadataById.get(channelId) ?? null
                     : null,
                 bodyByStructureId.get(post.eventId) ?? "",
+                target,
             );
 
             return queryTokens.every((token) => searchText.includes(token));

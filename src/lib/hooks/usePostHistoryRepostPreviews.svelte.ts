@@ -1,6 +1,6 @@
 import { onDestroy } from "svelte";
 import type { PostHistoryRelatedTargetResolver, RelatedTargetDescriptor } from "../postHistoryRelatedTargetResolver.svelte";
-import { getRepostReference, verifyRepostTarget } from "../postRepostUtils";
+import { classifyRepostTargetKind, getRepostReference, isRepostOuterKind, parseRepostReference, verifyRepostTarget, verifySupportedRepostTarget } from "../postRepostUtils";
 import { postHistoryRepository } from "../storage/postHistoryRepository";
 import { ehagakiDb, type PostHistoryRecord } from "../storage/ehagakiDb";
 import { getPostHistoryLocalRevision } from "../storage/postHistoryLocalWriteScope";
@@ -12,10 +12,12 @@ export async function loadStoredRepostTarget(descriptor: RelatedTargetDescriptor
     const reference = outer && getRepostReference(outer);
     const target = outer?.repostTarget ?? (outer && reference
         ? (await ehagakiDb.postHistory.where("pubkeyHex").equals(outer.pubkeyHex)
-            .filter((record) => record.kind === 6 && record.repostTarget?.rawEvent.id === reference.eventId).first())?.repostTarget
+            .filter((record) => isRepostOuterKind(record.kind) && record.repostTarget?.rawEvent.id === reference.eventId).first())?.repostTarget
         : undefined);
     const verified = reference && reference.eventId === descriptor.targetEventId && target
-        ? verifyRepostTarget(target.rawEvent, reference) : null;
+        // The resolver shares raw events by ID. Each outer's constraints and
+        // supported kind are checked by getPreview() and snapshot persistence.
+        ? verifyRepostTarget(target.rawEvent, { eventId: descriptor.targetEventId, authorHint: null, relayHints: [] }) : null;
     return verified ? { event: verified.event, relayHints: target!.relayHints } : null;
 }
 
@@ -32,11 +34,16 @@ export function usePostHistoryRepostPreviews(params: { getShow: () => boolean;
     }
     function getPreview(post: PostHistoryRecord) {
         params.resolver.getScopeRevision(scopeKey);
-        const ref = getRepostReference(post);
-        if (!ref) return { status: "invalid-reference" as const, event: null, profile: null, relayHints: [] };
+        const parsed = parseRepostReference(post);
+        const ref = parsed.reference;
+        if (!ref) return { status: parsed.status, event: null, profile: null, relayHints: [] };
         const snapshot = params.resolver.getTargetSnapshot(ref.eventId);
         if (snapshot?.event && !verifyRepostTarget(snapshot.event, ref)) {
             return { status: "invalid-target" as const, event: null, profile: null, relayHints: snapshot.relayHints };
+        }
+        if (snapshot?.event) {
+            const status = classifyRepostTargetKind(ref.outerKind, snapshot.event.kind);
+            if (status !== "supported") return { status, event: null, profile: null, relayHints: snapshot.relayHints };
         }
         return { status: snapshot?.status ?? "loading", event: snapshot?.event ?? null,
             profile: snapshot?.profile ?? null, relayHints: snapshot?.relayHints ?? ref.relayHints,
@@ -56,7 +63,8 @@ export function usePostHistoryRepostPreviews(params: { getShow: () => boolean;
             ? await params.resolver.retryTarget(desc)
             : await params.resolver.ensureTarget(desc, { force: !!post.repostTarget && cached?.status !== "resolved" });
         if (!isActive() || !snapshot?.event) return;
-        const verified = verifyRepostTarget(snapshot.event, getRepostReference(post));
+        const reference = getRepostReference(post);
+        const verified = reference && verifySupportedRepostTarget(snapshot.event, reference);
         if (!verified) return;
         try {
             await postHistoryRepository.attachRepostTarget({ outerEventId: post.eventId, target: verified.event,
@@ -70,7 +78,7 @@ export function usePostHistoryRepostPreviews(params: { getShow: () => boolean;
         const posts = params.getPosts();
         const owner = params.getPubkey();
         if (!params.getShow() || !owner) return;
-        for (const post of posts) if (post.kind === 6 && post.deletedAt === undefined) void ensure(post).catch(() => undefined);
+        for (const post of posts) if (isRepostOuterKind(post.kind) && post.deletedAt === undefined) void ensure(post).catch(() => undefined);
         return () => { generation++; params.resolver.invalidateScope(scopeKey); };
     });
     onDestroy(() => { generation++; params.resolver.invalidateScope(scopeKey); });

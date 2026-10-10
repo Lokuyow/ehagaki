@@ -1,10 +1,11 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
-import { buildRepostEvent, getRepostReference, verifyRepostTarget } from "../../lib/postRepostUtils";
+import { buildRepostEvent, classifyRepostTargetKind, createRepostTargetSnapshot, getRepostReference, parseRepostReference, repostTargetToPost, verifyRepostTarget, verifySupportedRepostTarget } from "../../lib/postRepostUtils";
 import { PostRepostService, type PrepareRepostTarget } from "../../lib/postRepostService";
-import { EHagakiDB } from "../../lib/storage/ehagakiDb";
-import { DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
+import { EHagakiDB, ehagakiDb } from "../../lib/storage/ehagakiDb";
+import { DexiePostHistoryRepository, postHistoryRepository } from "../../lib/storage/postHistoryRepository";
+import { loadStoredRepostTarget } from "../../lib/hooks/usePostHistoryRepostPreviews.svelte";
 import { advancePostHistoryLocalRevision } from "../../lib/storage/postHistoryLocalWriteScope";
 import { exportPostHistoryRecords } from "../../lib/postHistoryJsonlExportEngine";
 import { PostHistoryLocalSearchService } from "../../lib/postHistoryLocalSearchService";
@@ -49,7 +50,7 @@ describe("kind 6 reference and wire policy", () => {
     });
     it("rejects unsupported, unsigned and mismatching targets", () => {
         const target = sign(); const ref = getRepostReference(outer(target))!;
-        expect(verifyRepostTarget(sign(42))).toBeNull();
+        expect(() => buildRepostEvent(sign(40), target.pubkey, relay, 200)).toThrow();
         expect(verifyRepostTarget({ ...target, sig: "0".repeat(128) })).toBeNull();
         expect(verifyRepostTarget(sign(), ref)).toBeNull();
         expect(verifyRepostTarget(target, { ...ref, authorHint: "a".repeat(64) })).toBeNull();
@@ -61,6 +62,85 @@ describe("kind 6 reference and wire policy", () => {
         expect(getRepostReference({ ...event, tags: [...event.tags, ["e", "f".repeat(64), relay]] })).toBeNull();
         const ignoredContent = { ...event, content: "not JSON" };
         expect(getRepostReference(ignoredContent)).toEqual(getRepostReference(event));
+    });
+});
+
+describe("Generic Repost references and supported target projection", () => {
+    it.each([42, 1111])("builds kind 16 for %s without copying target tags", (kind) => {
+        const target = sign(kind, "body", [["e", "b".repeat(64), relay, "root"], ["k", "1"], ["-"], ["content-warning", "CW"]]);
+        expect(buildRepostEvent(target, "a".repeat(64), relay, 200, ["client", "eHagaki"])).toEqual({
+            kind: 16, content: "", pubkey: "a".repeat(64), created_at: 200,
+            tags: [["e", target.id, relay], ["p", target.pubkey], ["k", String(kind)], ["client", "eHagaki"]],
+        });
+    });
+    it.each(["0", "1", "42", "1111", "65535"])("accepts canonical k %s and its duplicates", (value) => {
+        const target = sign(Number(value));
+        const ref = getRepostReference({ kind: 16, tags: [["e", target.id], ["k", value], ["k", value]] });
+        expect(ref?.targetKindHint).toBe(Number(value));
+        expect(verifyRepostTarget(target, ref)).not.toBeNull();
+    });
+    it.each(["", "-1", "-0", "+42", "42.0", "4.2e1", " 42", "42 ", "42\n", "\t42", "0x2a", "4_2", "042", "00", "65536", "9007199254740991", "NaN"])("rejects noncanonical or out-of-range k %j", (value) => {
+        expect(parseRepostReference({ kind: 16, tags: [["e", "a".repeat(64)], ["k", value]] }).status).toBe("invalid-reference");
+    });
+    it("permits missing k, rejects conflicting k/e/p and distinguishes a-only references", () => {
+        const target = sign(42);
+        const tags = [["e", target.id, relay], ["p", target.pubkey]];
+        expect(getRepostReference({ kind: 16, tags })?.targetKindHint).toBeNull();
+        expect(getRepostReference({ kind: 16, tags: [...tags, ["a", "30023:author:name"]] })).not.toBeNull();
+        for (const extra of [[["k", "42"], ["k", "1111"]], [["k"]], [["e", sign().id]], [["p", "invalid"]]]) {
+            expect(parseRepostReference({ kind: 16, tags: [...tags, ...extra] }).status).toBe("invalid-reference");
+        }
+        expect(parseRepostReference({ kind: 16, tags: [["a", "30023:author:name"]] }).status).toBe("unsupported-reference");
+        expect(verifyRepostTarget(target, { ...getRepostReference({ kind: 16, tags })!, targetKindHint: 1111 })).toBeNull();
+    });
+    it.each([
+        [6, 1, "supported"], [6, 42, "outer-target-kind-mismatch"], [6, 1111, "outer-target-kind-mismatch"],
+        [16, 1, "outer-target-kind-mismatch"], [16, 20, "unsupported-target-kind"],
+        [16, 42, "supported"], [16, 1111, "supported"],
+    ] as const)("separates integrity from classification for %s -> %s (%s)", async (outerKind, targetKind, classification) => {
+        const { repo } = repository(); const target = sign(targetKind, "target-only-token");
+        const event = sign(outerKind, JSON.stringify(target), [["e", target.id], ["p", target.pubkey], ...(outerKind === 16 ? [["k", String(targetKind)]] : [])]);
+        const ref = getRepostReference(event)!;
+        expect(verifyRepostTarget(target, ref)).not.toBeNull();
+        expect(classifyRepostTargetKind(ref.outerKind, target.kind)).toBe(classification);
+        expect(!!verifySupportedRepostTarget(target, ref)).toBe(classification === "supported");
+        expect(!!createRepostTargetSnapshot(target, [], ref)).toBe(classification === "supported");
+        await repo.upsertFetchedEvents({ events: [{ event }] });
+        if (classification !== "supported") {
+            await expect(repo.attachRepostTarget({ outerEventId: event.id, target,
+                localWriteScope: { ownerPubkeyHex: event.pubkey, expectedRevision: 0, isActive: () => true } })).rejects.toThrow("invalid_repost_target");
+            expect((await repo.getByEventId(event.id))?.repostTarget).toBeUndefined();
+            const search = new PostHistoryLocalSearchService(repo);
+            expect((await search.searchLocalPosts({ pubkeyHex: event.pubkey, query: "target-only-token", page: 1, pageSize: 50 })).total).toBe(0);
+            expect((await exportPostHistoryRecords(event.pubkey, [ (await repo.getByEventId(event.id))! ], [], { includeJsonl: true })).jsonl?.trim()).toBe(JSON.stringify(event));
+        }
+    });
+    it.each([42, 1111])("persists %s snapshot across echo, searches target and exports only outer", async (kind) => {
+        const { db, repo } = repository(); const target = sign(kind);
+        const event = sign(16, "opaque-only-token", [["e", target.id, relay], ["p", target.pubkey], ["k", String(kind)]]);
+        await repo.putPostedEvent({ event, repostTarget: { event: target, relayHints: [relay] } });
+        await repo.upsertFetchedEvents({ events: [{ event, relayUrls: [relay] }] });
+        const record = (await repo.getByEventId(event.id))!;
+        expect(record.repostTarget?.rawEvent).toEqual(target);
+        expect(record.media).toEqual([]);
+        expect(await db.postHistory.count()).toBe(1);
+        const search = new PostHistoryLocalSearchService(repo);
+        expect((await search.searchLocalPosts({ pubkeyHex: event.pubkey, query: "searchable", page: 1, pageSize: 50 })).items.map(post => post.eventId)).toEqual([event.id]);
+        expect((await search.searchLocalPosts({ pubkeyHex: event.pubkey, query: "opaque-only-token", page: 1, pageSize: 50 })).total).toBe(0);
+        expect((await exportPostHistoryRecords(event.pubkey, [record], [], { includeJsonl: true })).jsonl?.trim()).toBe(JSON.stringify(event));
+    });
+    it("enriches channel search through the target projection without channel fields on outer", async () => {
+        const { repo } = repository(); const channelId = "b".repeat(64);
+        const target = sign(42, "channel body", [["e", channelId, "wss://channel.example.com/", "root"]]);
+        const event = sign(16, "", [["e", target.id, relay], ["k", "42"]]);
+        await repo.putPostedEvent({ event, repostTarget: { event: target, relayHints: [relay] } });
+        const getMany = vi.fn(async () => [{ channelEventId: channelId, name: "enriched room", about: "room topic", picture: null, relays: [], relayHints: [] }]);
+        const search = new PostHistoryLocalSearchService(repo, { getMany } as never);
+        expect((await search.searchLocalPosts({ pubkeyHex: event.pubkey, query: "enriched room", page: 1, pageSize: 50 })).total).toBe(1);
+        expect(getMany).toHaveBeenCalledWith([channelId]);
+        expect(repostTargetToPost(target, [relay])).toMatchObject({ channelEventId: channelId, channelRelayHints: ["wss://channel.example.com/"] });
+        const record = (await repo.getByEventId(event.id))!;
+        expect(record.channelEventId).toBeUndefined(); expect(record.channelRelayHints).toBeUndefined();
     });
 });
 
@@ -128,20 +208,42 @@ describe("repost persistence and interoperability", () => {
     it("does not reuse pre-Repost sync completion metadata", async () => {
         const { db } = repository(); const owner = sign().pubkey;
         await db.meta.put({ key: `postHistoryAuthoredSyncState:${owner}`, updatedAt: 1, value: { completedThroughTimestamp: 999 } });
+        await db.meta.put({ key: `postHistoryAuthoredSyncState:${owner}:1,6,42,1111`, updatedAt: 1,
+            value: { completedThroughTimestamp: 999, pendingCatchupSinceTimestamp: 900, cooldownUntil: 999999 } });
         const state = new DexiePostHistoryAuthoredSyncStateRepository(db);
         expect(await state.get(owner)).toBeNull();
         await state.save(owner, { completedThroughTimestamp: 200 });
-        expect(await db.meta.get(`postHistoryAuthoredSyncState:${owner}:1,6,42,1111`)).toBeDefined();
+        expect(await db.meta.get(`postHistoryAuthoredSyncState:${owner}:1,6,16,42,1111`)).toBeDefined();
     });
-    it("preserves legacy browsing ranges without claiming kind 6 relay coverage", async () => {
+    it.each(["1,42,1111", "1,6,42,1111"])("preserves %s browsing ranges without claiming kind 16 relay coverage", async (oldKey) => {
         const { db } = repository(); const owner = sign().pubkey;
         const visible = new DexiePostHistoryVisibleRangeRepository(db);
-        await visible.save({ pubkeyHex: owner, kindsKey: "1,42,1111", visibleUntil: 200 });
+        await visible.save({ pubkeyHex: owner, kindsKey: oldKey, visibleUntil: 200 });
         await new DexiePostHistoryImportedRangesRepository(db).record({ ownerPubkeyHex: owner,
-            expectedRevision: 0, isActive: () => true, kindsKey: "1,42,1111", range: { since: 1, until: 200 } });
-        expect(await visible.get(owner, "1,6,42,1111")).toMatchObject({ kindsKey: "1,6,42,1111", visibleUntil: 200 });
-        expect((await new DexiePostHistoryImportedRangesRepository(db).get(owner, "1,6,42,1111")).ranges).toEqual([{ since: 1, until: 200 }]);
-        expect((await new DexiePostHistoryRelayCoverageRepository(db).get(owner, "1,6,42,1111")).relays).toEqual([]);
+            expectedRevision: 0, isActive: () => true, kindsKey: oldKey, range: { since: 1, until: 200 } });
+        const coverage = new DexiePostHistoryRelayCoverageRepository(db);
+        await coverage.record({ ownerPubkeyHex: owner, expectedRevision: 0, isActive: () => true,
+            kindsKey: oldKey, relays: [{ relayUrl: relay, ranges: [{ since: 1, until: 200 }] }] });
+        expect(await visible.get(owner, "1,6,16,42,1111")).toMatchObject({ kindsKey: "1,6,16,42,1111", visibleUntil: 200 });
+        expect((await new DexiePostHistoryImportedRangesRepository(db).get(owner, "1,6,16,42,1111")).ranges).toEqual([{ since: 1, until: 200 }]);
+        expect((await new DexiePostHistoryRelayCoverageRepository(db).get(owner, "1,6,16,42,1111")).relays).toEqual([]);
+    });
+    it("prefers current visible range, merges valid old imported ranges and rejects stale old ranges", async () => {
+        const { db } = repository(); const owner = sign().pubkey;
+        const visible = new DexiePostHistoryVisibleRangeRepository(db);
+        for (const [key, until] of [["1,42,1111", 100], ["1,6,42,1111", 200], ["1,6,16,42,1111", 300]] as const) {
+            await visible.save({ pubkeyHex: owner, kindsKey: key, visibleUntil: until });
+        }
+        expect((await visible.get(owner, "1,6,16,42,1111"))?.visibleUntil).toBe(300);
+        await visible.clear(owner, "1,6,16,42,1111");
+        expect((await visible.get(owner, "1,6,16,42,1111"))?.visibleUntil).toBe(200);
+        const imported = new DexiePostHistoryImportedRangesRepository(db);
+        for (const [key, range] of [["1,42,1111", { since: 1, until: 100 }], ["1,6,42,1111", { since: 101, until: 200 }]] as const) {
+            await imported.record({ ownerPubkeyHex: owner, expectedRevision: 0, isActive: () => true, kindsKey: key, range });
+        }
+        expect((await imported.get(owner, "1,6,16,42,1111")).ranges).toEqual([{ since: 1, until: 200 }]);
+        await db.transaction("rw", db.meta, () => advancePostHistoryLocalRevision(db, owner, 300));
+        expect((await imported.get(owner, "1,6,16,42,1111")).ranges).toEqual([]);
     });
     it("can persist a valid self-target deletion without inserting its target into history", async () => {
         const { db } = repository(); const key = generateSecretKey();
@@ -306,9 +408,9 @@ describe("Repost signing, publishing and save retry", () => {
         await preview;
         setup.resolver.reset();
     });
-    it("retries exactly the original outer/target pair without signing or publishing again", async () => {
+    it.each([1, 42, 1111])("retries the original kind %s outer/target pair without signing or publishing again", async (kind) => {
         const saved = vi.fn().mockRejectedValueOnce(new Error("quota")).mockResolvedValue(undefined);
-        const { repost, signEvent, sendEvent } = service(saved); const target = sign();
+        const { repost, signEvent, sendEvent } = service(saved); const target = sign(kind);
         const result = await repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: confirmedTarget });
         expect(result).toMatchObject({ success: true, historySaved: false });
         expect(result.retryInput?.event.content).toBe("");
@@ -317,11 +419,11 @@ describe("Repost signing, publishing and save retry", () => {
         expect(saved.mock.calls[0]?.[0]).toBe(saved.mock.calls[1]?.[0]);
         expect(signEvent).toHaveBeenCalledTimes(1); expect(sendEvent).toHaveBeenCalledTimes(1);
     });
-    it("blocks concurrent execution and stops when the session changes during signing", async () => {
+    it.each([1, 42, 1111])("blocks concurrent kind %s execution and stops when the session changes during signing", async (kind) => {
         const { repost, auth, signEvent, sendEvent } = service();
         let finish: (event: NostrEvent) => void = () => undefined;
         signEvent.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
-        const target = sign(); const pending = repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: confirmedTarget });
+        const target = sign(kind); const pending = repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: confirmedTarget });
         await vi.waitFor(() => expect(signEvent).toHaveBeenCalledTimes(1));
         expect((await repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: confirmedTarget })).error).toBe("repost_busy");
         auth.value = { ...auth.value, isAuthenticated: false };
@@ -338,7 +440,7 @@ describe("Repost signing, publishing and save retry", () => {
             prepareTarget: undefined as never })).success).toBe(false);
         expect(signEvent).not.toHaveBeenCalled(); expect(sendEvent).not.toHaveBeenCalled();
     });
-    it.each(["nip07", "nip46", "parentClient", "nsec" ] as const)("supports the existing %s signer without the composer", async (type) => {
+    it.each((["nip07", "nip46", "parentClient", "nsec"] as const).flatMap(type => [1, 42, 1111].map(kind => ({ type, kind }))))("supports $type signing target kind $kind without the composer", async ({ type, kind }) => {
         const key = generateSecretKey(); const pubkey = getPublicKey(key);
         const signEvent = vi.fn(async template => createPlainNostrEventSnapshot(finalizeEvent(template, key)));
         const signer = { signEvent };
@@ -349,15 +451,16 @@ describe("Repost signing, publishing and save retry", () => {
             keyManager: { getFromStore: () => "fixture-key-reference" } as never, seckeySignerFn: () => signer,
             getWriteRelays: () => [relay], getClientTag: () => ["client", "eHagaki"], getLocalRevision: async () => 0,
             saveHistory, createSender: () => ({ sendEvent }) });
-        expect(await repost.repost({ target: sign(), relayHints: [], rxNostr: {} as never, prepareTarget: (event) => confirmedTarget(event, [relay]) })).toMatchObject({ success: true, historySaved: true });
+        expect(await repost.repost({ target: sign(kind), relayHints: [], rxNostr: {} as never, prepareTarget: (event) => confirmedTarget(event, [relay]) })).toMatchObject({ success: true, historySaved: true });
         expect(signEvent).toHaveBeenCalledTimes(1);
+        expect(saveHistory.mock.calls[0]?.[0].event).toMatchObject({ kind: kind === 1 ? 6 : 16, content: "" });
         expect(saveHistory.mock.calls[0]?.[0].event.tags).toContainEqual(["client", "eHagaki"]);
         expect(sendEvent.mock.calls[0]?.[1]).toEqual({ targetRelays: [relay], includeDefaultWriteRelays: false });
     });
-    it("rejects a signer that changes the signed template", async () => {
+    it.each([1, 42, 1111])("rejects a signer that changes the kind %s signed template", async (kind) => {
         const { repost, signEvent, sendEvent } = service();
         signEvent.mockImplementationOnce(async () => sign(6, "unexpected content"));
-        expect((await repost.repost({ target: sign(), relayHints: [relay], rxNostr: {} as never, prepareTarget: confirmedTarget })).success).toBe(false);
+        expect((await repost.repost({ target: sign(kind), relayHints: [relay], rxNostr: {} as never, prepareTarget: confirmedTarget })).success).toBe(false);
         expect(sendEvent).not.toHaveBeenCalled();
     });
     it("preserves publication outcomes and does not save a failed publish", async () => {
@@ -378,6 +481,27 @@ describe("Repost signing, publishing and save retry", () => {
 });
 
 describe("single related-target resolver for Reposts", () => {
+    it.each(["author", "kind-hint", "outer-kind"])("reads a shared verified snapshot independently of another outer's %s mismatch", async (mismatch) => {
+        const target = sign(42); const key = generateSecretKey();
+        const good = createPlainNostrEventSnapshot(finalizeEvent({ kind: 16, created_at: 100, content: "",
+            tags: [["e", target.id, relay], ["p", target.pubkey], ["k", "42"]] }, key));
+        const bad = createPlainNostrEventSnapshot(finalizeEvent({ kind: mismatch === "outer-kind" ? 6 : 16, created_at: 200, content: "",
+            tags: [["e", target.id], ["p", mismatch === "author" ? sign().pubkey : target.pubkey],
+                ["k", mismatch === "kind-hint" ? "1111" : "42"]] }, key));
+        try {
+            await postHistoryRepository.putPostedEvent({ event: good, repostTarget: { event: target, relayHints: [relay] } });
+            await postHistoryRepository.upsertFetchedEvents({ events: [{ event: bad }] });
+            const candidate = await loadStoredRepostTarget({ sourceEventId: bad.id, targetEventId: target.id,
+                scopeKey: "shared", relationKind: "repost" });
+            expect(candidate && createPlainNostrEventSnapshot(candidate.event)).toEqual(target);
+            expect(candidate?.relayHints).toEqual([relay]);
+            expect(verifySupportedRepostTarget(candidate?.event, getRepostReference(bad)!)).toBeNull();
+            expect(verifySupportedRepostTarget(candidate?.event, getRepostReference(good)!)).not.toBeNull();
+            expect((await postHistoryRepository.getByEventId(bad.id))?.repostTarget).toBeUndefined();
+        } finally {
+            await ehagakiDb.postHistory.bulkDelete([good.id, bad.id]);
+        }
+    });
     function resolverFor(target: NostrEvent, deleted = new Map<string, Set<string>>()) {
         const fetch = vi.fn(() => ({ promise: Promise.resolve({ event: target, relayUrl: relay }), cancel: vi.fn() }));
         const resolver = createPostHistoryRelatedTargetResolver({ getShow: () => true, getRxNostr: () => ({} as never),
@@ -404,12 +528,14 @@ describe("single related-target resolver for Reposts", () => {
         expect(fetch).toHaveBeenCalledTimes(1);
         resolver.reset();
     });
-    it("keeps a valid other-kind quote cache when a Repost reference asks for the same ID", async () => {
-        const target = sign(42); const { resolver, fetch, descriptor } = resolverFor(target);
+    it.each([1, 20, 42, 1111])("keeps a valid kind %s quote cache when an outer-specific Repost classification rejects it", async (kind) => {
+        const target = sign(kind); const { resolver, fetch, descriptor } = resolverFor(target);
         const quote = { ...descriptor, relationKind: "quote", scopeKey: "quotes" };
         expect((await resolver.ensureTarget(quote))?.event).toEqual(target);
-        expect((await resolver.retryTarget(descriptor))?.event).toEqual(target);
-        expect(verifyRepostTarget(resolver.getTargetSnapshot(target.id)?.event)).toBeNull();
+        expect((await resolver.ensureTarget(descriptor))?.event).toEqual(target);
+        const ref = getRepostReference({ kind: kind === 1 ? 16 : 6, tags: [["e", target.id]] })!;
+        expect(verifySupportedRepostTarget(resolver.getTargetSnapshot(target.id)?.event, ref)).toBeNull();
+        expect(verifyRepostTarget(resolver.getTargetSnapshot(target.id)?.event)).not.toBeNull();
         expect((await resolver.ensureTarget(quote))?.status).toBe("resolved");
         expect(fetch).toHaveBeenCalledTimes(1);
         resolver.reset();

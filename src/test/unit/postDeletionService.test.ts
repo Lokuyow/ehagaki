@@ -135,7 +135,7 @@ describe("postDeletionService helpers", () => {
         });
     });
 
-    it.each([1, 42, 1111])("kind:%s eventの削除要求はevent IDと実kindを参照する", (kind) => {
+    it.each([1, 6, 16, 42, 1111])("kind:%s eventの削除要求はevent IDと実kindを参照する", (kind) => {
         const eventId = "9".repeat(64);
         const post = createRecord({ eventId, kind });
         expect(canRequestPostDeletion(post, "a".repeat(64))).toBe(true);

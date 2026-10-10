@@ -12,6 +12,9 @@
     import { postHistoryRepository } from "../../lib/storage/postHistoryRepository";
     import { postHistoryDeletionRequestsRepository } from "../../lib/storage/postHistoryDeletionRequestsRepository";
     import { ehagakiDb } from "../../lib/storage/ehagakiDb";
+    import { channelMetadataRepository } from "../../lib/storage/channelMetadataRepository";
+    import { isRepostOuterKind, isRepostTargetKind } from "../../lib/postRepostUtils";
+    import { exportPostHistoryRecords } from "../../lib/postHistoryJsonlExportEngine";
     import { PostRepostService } from "../../lib/postRepostService";
     import { PostEventSender } from "../../lib/postEventBuilder";
     import { usePostRepostOperation } from "../../lib/hooks/usePostRepostOperation.svelte";
@@ -30,9 +33,15 @@
     const ownerKey = generateSecretKey();
     const targetKey = query.has("self-target") ? ownerKey
         : query.get("source") === "target" || query.has("external") ? generateSecretKey() : ownerKey;
-    const fixtureTarget = finalizeEvent({ kind: 1, created_at: Math.floor(Date.now()/1000)-100,
+    const targetKind = Number(query.get("target-kind") ?? "1");
+    const outerKind = targetKind === 1 ? 6 : 16;
+    const channelRoot = finalizeEvent({ kind: 40, created_at: 100, content: JSON.stringify({ name: "Generic channel", about: "channel enrichment" }), tags: [] }, generateSecretKey());
+    const targetTags = targetKind === 42 ? [["e", channelRoot.id, "wss://channel.example.com/", "root"]]
+        : targetKind === 1111 ? [["E", channelRoot.id, relay], ["K", "40"], ["P", channelRoot.pubkey],
+            ["e", channelRoot.id, relay], ["k", "40"], ["p", channelRoot.pubkey]] : [];
+    const fixtureTarget = finalizeEvent({ kind: targetKind, created_at: Math.floor(Date.now()/1000)-100,
         content: "original searchable post" + (query.has("cw") ? "\n" + "long fixture text ".repeat(100) + "\nhttps://media.example.com/repost.png" : ""),
-        tags: [...(query.has("protected") ? [["-"]] : []), ...(query.has("cw") ? [["content-warning", "fixture CW"]] : [])] }, targetKey);
+        tags: [...targetTags, ...(query.has("protected") ? [["-"]] : []), ...(query.has("cw") ? [["content-warning", "fixture CW"]] : [])] }, targetKey);
     let target = $state<NostrEvent>(fixtureTarget);
     let owner = $state(getPublicKey(ownerKey));
     let ready = $state(false);
@@ -78,15 +87,15 @@
                     if (deletedOnRelay && filter?.kinds?.includes(5) && filter.authors?.includes(target.pubkey)
                         && filter["#e"]?.includes(target.id)) {
                         observer.next({ event: finalizeEvent({ kind: 5, created_at: target.created_at + 1,
-                            content: "", tags: [["e", target.id], ["k", "1"]] }, targetKey), from: relay });
+                            content: "", tags: [["e", target.id], ["k", String(target.kind)]] }, targetKey), from: relay });
                     }
-                    if (incomingOuter && filter?.authors?.includes(owner) && filter.kinds?.includes(6))
+                    if (incomingOuter && filter?.authors?.includes(owner) && filter.kinds?.includes(outerKind))
                         observer.next({ event: incomingOuter, from: relay });
                     observer.complete();
                     const subId = `${req.rxReqId}:0`;
                     messages.next({ type: "EOSE", from: relay, subId, message: ["EOSE", subId] });
                 };
-                if (holdHistory && filter?.authors?.includes(owner) && filter.kinds?.includes(6)) {
+                if (holdHistory && filter?.authors?.includes(owner) && filter.kinds?.includes(outerKind)) {
                     heldResponses.add(respond); historyResponses.add(respond);
                 }
                 else queueMicrotask(respond);
@@ -121,7 +130,7 @@
                     if (filter.ids?.includes(target.id) && allowTarget) this.receive(["EVENT", subId, target]);
                     if (deletion && deletedOnRelay && this.url === slowRelay && filter.authors?.includes(target.pubkey)
                         && filter["#e"]?.includes(target.id)) this.receive(["EVENT", subId, finalizeEvent({ kind: 5,
-                            created_at: target.created_at + 1, content: "", tags: [["e", target.id], ["k", "1"]] }, targetKey)]);
+                            created_at: target.created_at + 1, content: "", tags: [["e", target.id], ["k", String(target.kind)]] }, targetKey)]);
                     this.receive(query.has("closed") && deletion && this.url === slowRelay
                         ? ["CLOSED", subId, "error: fixture"] : ["EOSE", subId]);
                 }, deletion && this.url === slowRelay ? 5_000 : 0));
@@ -175,11 +184,16 @@
         return { ...finalizeEvent(template, ownerKey), kind: template.kind };
     }
     onMount(() => { void (async () => {
+        if (targetKind === 42) await channelMetadataRepository.upsertResolvedChannel({
+            channelEventId: channelRoot.id, creatorPubkey: channelRoot.pubkey, createEventCreatedAt: channelRoot.created_at,
+            quality: "verified-metadata", metadataLookup: "complete", name: "Generic channel", about: "channel enrichment", picture: null,
+            verifiedSourceRelays: ["wss://channel.example.com/"],
+        });
         const existing = await ehagakiDb.postHistory.toArray();
-        const oldTarget = (existing.find((record) => record.kind === 1)?.rawEvent
-            ?? existing.find((record) => record.kind === 6)?.repostTarget?.rawEvent) as NostrEvent | undefined;
+        const oldTarget = (existing.find((record) => isRepostTargetKind(record.kind))?.rawEvent
+            ?? existing.find((record) => isRepostOuterKind(record.kind))?.repostTarget?.rawEvent) as NostrEvent | undefined;
         if (oldTarget) target = oldTarget;
-        if (existing.length) owner = existing.find((record) => record.kind === 6)?.pubkeyHex ?? target.pubkey;
+        if (existing.length) owner = existing.find((record) => isRepostOuterKind(record.kind))?.pubkeyHex ?? target.pubkey;
         if (realTransport) {
             secretKeyStore.set(nip19.nsecEncode(ownerKey));
             setNsecAuth(owner, nip19.npubEncode(owner), nip19.nprofileEncode({ pubkey: owner, relays: [relay] }));
@@ -190,9 +204,9 @@
         if (!existing.length && !query.has("external") && query.get("source") !== "target")
             await postHistoryRepository.putPostedEvent({ event: target, acceptedRelays: [relay], relayHints: [relay] });
         if (!existing.length && query.has("external")) {
-            const outer = finalizeEvent({ kind: 6, created_at: Math.floor(Date.now()/1000),
+            const outer = finalizeEvent({ kind: query.has("outer-kind") ? Number(query.get("outer-kind")) : outerKind, created_at: Math.floor(Date.now()/1000),
                 content: "opaque content must never appear", tags: [["e", target.id, relay],
-                    ...(query.has("extra-author") ? [["p", getPublicKey(generateSecretKey())]] : []), ["p", target.pubkey]] }, ownerKey);
+                    ...(query.has("extra-author") ? [["p", getPublicKey(generateSecretKey())]] : []), ["p", target.pubkey], ...(outerKind === 16 && !query.has("missing-k") ? [["k", query.get("k") ?? String(target.kind)]] : [])] }, ownerKey);
             incomingOuter = outer;
             if (query.get("external") === "import") await new PostHistoryJsonlImportService().importFile({
                 file: new File([JSON.stringify(outer)+"\n"], "repost.jsonl"), ownerPubkeyHex: owner, getCurrentPubkeyHex: () => owner });
@@ -215,17 +229,18 @@
                 sends, signed, lastResult, sentEvents, replyId, quoteId, deletionRequests,
                 deletionCount: await ehagakiDb.postHistoryDeletionRequests.count(),
                 rows: rows.map((row) => ({ id: row.eventId, kind: row.kind, content: row.content,
-                    targetId: row.repostTarget?.rawEvent.id, targetKind: row.repostTarget?.rawEvent.kind })),
+                    targetId: row.repostTarget?.rawEvent.id, targetKind: row.repostTarget?.rawEvent.kind, channelEventId: row.channelEventId, channelRelayHints: row.channelRelayHints })),
             }; }, allowTarget: () => { allowTarget = true; },
             deleteOnRelay: () => { deletedOnRelay = true; },
             rememberDeletion: () => postHistoryDeletionRequestsRepository.upsertValidDeletionRequests({
                 targetEvents: [target], deletionEvents: [{ event: finalizeEvent({ kind: 5,
-                    created_at: target.created_at + 1, content: "", tags: [["e", target.id], ["k", "1"]] }, targetKey), relayUrls: [relay] }],
+                    created_at: target.created_at + 1, content: "", tags: [["e", target.id], ["k", String(target.kind)]] }, targetKey), relayUrls: [relay] }],
                 fetchedAt: Date.now(),
             }),
+            export: async () => (await exportPostHistoryRecords(owner, await ehagakiDb.postHistory.toArray(), [], { includeJsonl: true })).jsonl,
             nextTarget: () => {
-                target = finalizeEvent({ kind: 1, created_at: fixtureTarget.created_at + 1,
-                    content: "another original post", tags: [] }, targetKey);
+                target = finalizeEvent({ kind: targetKind, created_at: fixtureTarget.created_at + 1,
+                    content: "another original post", tags: targetTags }, targetKey);
                 return nip19.noteEncode(target.id);
             },
             rejectNextPublish: () => { rejectPublish = true; },

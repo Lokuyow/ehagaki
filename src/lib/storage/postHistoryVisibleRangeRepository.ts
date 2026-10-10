@@ -1,5 +1,5 @@
 import type { EHagakiDB } from "./ehagakiDb";
-import { POST_HISTORY_AUTHORED_KINDS_KEY, POST_HISTORY_LEGACY_KINDS_KEY } from "../postHistoryKinds";
+import { POST_HISTORY_AUTHORED_KINDS_KEY, POST_HISTORY_PREVIOUS_KINDS_KEYS } from "../postHistoryKinds";
 import { ehagakiDb } from "./ehagakiDb";
 
 const POST_HISTORY_VISIBLE_RANGE_KEY_PREFIX = "postHistoryVisibleRange:";
@@ -54,20 +54,13 @@ export class DexiePostHistoryVisibleRangeRepository implements PostHistoryVisibl
     ) { }
 
     async get(pubkeyHex: string, kindsKey: string): Promise<PostHistoryVisibleRange | null> {
-        const record = await this.db.meta.get(buildVisibleRangeKey(pubkeyHex, kindsKey))
-            ?? (kindsKey === POST_HISTORY_AUTHORED_KINDS_KEY
-                ? await this.db.meta.get(buildVisibleRangeKey(pubkeyHex, POST_HISTORY_LEGACY_KINDS_KEY)) : undefined);
-        if (!record || !isValidVisibleRangeValue(record.value) || record.value.pubkeyHex !== pubkeyHex
-            || (record.value.kindsKey !== kindsKey
-                && !(kindsKey === POST_HISTORY_AUTHORED_KINDS_KEY && record.value.kindsKey === POST_HISTORY_LEGACY_KINDS_KEY))) {
-            return null;
+        const keys = [kindsKey, ...(kindsKey === POST_HISTORY_AUTHORED_KINDS_KEY ? POST_HISTORY_PREVIOUS_KINDS_KEYS : [])];
+        for (const key of keys) {
+            const record = await this.db.meta.get(buildVisibleRangeKey(pubkeyHex, key));
+            if (!record || !isValidVisibleRangeValue(record.value) || record.value.pubkeyHex !== pubkeyHex || record.value.kindsKey !== key) continue;
+            return { ...record.value, kindsKey, updatedAt: record.updatedAt };
         }
-
-        return {
-            ...record.value,
-            kindsKey,
-            updatedAt: record.updatedAt,
-        };
+        return null;
     }
 
     async save(range: Omit<PostHistoryVisibleRange, "updatedAt">): Promise<PostHistoryVisibleRange> {

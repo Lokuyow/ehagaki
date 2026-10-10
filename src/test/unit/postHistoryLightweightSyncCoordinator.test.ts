@@ -49,7 +49,7 @@ describe("scoped lightweight authored synchronization", () => {
         expect(next.joinedExisting).toBe(true);
         expect(h.upsertFetchedEvents).toHaveBeenCalledOnce(); expect(firstSaved).toHaveBeenCalledOnce(); expect(nextSaved).not.toHaveBeenCalled();
         expect(h.upsertFetchedEvents.mock.calls[0][0]).toMatchObject({ relayFetchCoverage: {
-            ownerPubkeyHex: owner, kindsKey: "1,6,42,1111", expectedRevision: expect.any(Number), relays: expect.any(Array),
+            ownerPubkeyHex: owner, kindsKey: "1,6,16,42,1111", expectedRevision: expect.any(Number), relays: expect.any(Array),
         } });
     });
     it.each(["range", "reason", "runtime", "kinds", "config"])("does not share different %s conditions", async (difference) => {

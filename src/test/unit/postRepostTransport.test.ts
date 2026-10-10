@@ -49,10 +49,10 @@ afterEach(async () => {
     vi.useRealTimers();
 });
 
-function setup(eoseTimeout = 30_000, verifyDeletion?: () => Promise<void>) {
+function setup(targetKind: number, eoseTimeout = 30_000, verifyDeletion?: () => Promise<void>) {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     const targetKey = generateSecretKey(); const ownerKey = generateSecretKey();
-    const target = finalizeEvent({ kind: 1, content: "fixture", tags: [], created_at: 100 }, targetKey);
+    const target = finalizeEvent({ kind: targetKind, content: "fixture", tags: [], created_at: 100 }, targetKey);
     const urls = ["wss://fast.example.test/", "wss://slow.example.test/"];
     const rx: RxNostr = createRxNostr({ verifier: async event => {
         if (event.kind === 5) await verifyDeletion?.();
@@ -96,20 +96,22 @@ function setup(eoseTimeout = 30_000, verifyDeletion?: () => Promise<void>) {
     return { target, targetKey, repo, db, resolver, descriptor, repost, requests, signEvent, sendEvent, fetchDeletionRequests };
 }
 
-describe("Immediate Repost through real rx-nostr and secret-key signing", () => {
+describe.each([1, 42, 1111])("Immediate kind %s Repost through real rx-nostr and secret-key signing", (targetKind) => {
+    const outerKind = targetKind === 1 ? 6 : 16;
+    const kindTags = targetKind === 1 ? [] : [["k", String(targetKind)]];
     it("signs and saves a verified target without issuing a deletion request", async () => {
-        const fixture = setup();
+        const fixture = setup(targetKind);
         const result = await drain(fixture.repost());
         expect(result).toMatchObject({ success: true, historySaved: true });
         expect(fixture.fetchDeletionRequests).not.toHaveBeenCalled();
         expect(RelaySocket.instances).toHaveLength(0);
         expect(fixture.signEvent).toHaveBeenCalledTimes(1); expect(fixture.sendEvent).toHaveBeenCalledTimes(1);
         expect(verifyEvent(result.event!)).toBe(true);
-        expect(result.event).toMatchObject({ kind: 6, content: "", tags: [["e", fixture.target.id, "wss://fast.example.test/"], ["p", fixture.target.pubkey]] });
+        expect(result.event).toMatchObject({ kind: outerKind, content: "", tags: [["e", fixture.target.id, "wss://fast.example.test/"], ["p", fixture.target.pubkey], ...kindTags] });
         expect((await fixture.repo.getByEventId(result.eventId!))?.repostTarget?.rawEvent.id).toBe(fixture.target.id);
     });
     it("obtains missing relay provenance by event ID before signing without querying deletions", async () => {
-        const fixture = setup();
+        const fixture = setup(targetKind);
         const operation = fixture.repost([]);
         const [, slow] = await fixture.requests();
         for (const socket of RelaySocket.instances) {
@@ -121,7 +123,7 @@ describe("Immediate Repost through real rx-nostr and secret-key signing", () => 
         const result = await drain(operation);
         expect(result).toMatchObject({ success: true, historySaved: true });
         expect(verifyEvent(result.event!)).toBe(true);
-        expect(result.event).toMatchObject({ kind: 6, content: "", tags: [["e", fixture.target.id, "wss://slow.example.test/"], ["p", fixture.target.pubkey]] });
+        expect(result.event).toMatchObject({ kind: outerKind, content: "", tags: [["e", fixture.target.id, "wss://slow.example.test/"], ["p", fixture.target.pubkey], ...kindTags] });
         expect(fixture.signEvent).toHaveBeenCalledTimes(1); expect(fixture.sendEvent).toHaveBeenCalledTimes(1);
         expect(fixture.fetchDeletionRequests).not.toHaveBeenCalled();
         expect((await fixture.repo.getByEventId(result.eventId!))?.repostTarget).toMatchObject({
@@ -129,7 +131,7 @@ describe("Immediate Repost through real rx-nostr and secret-key signing", () => 
         });
     });
     it.each(["closed", "rx-timeout"])("publishes after an incomplete background lookup (%s)", async termination => {
-        const fixture = setup(1_000);
+        const fixture = setup(targetKind, 1_000);
         await drain(fixture.repo.putPostedEvent({ event: fixture.target, relayHints: fixture.descriptor.relayHints }));
         await drain(fixture.resolver.ensureTarget({ ...fixture.descriptor, scopeKey: "preview" }));
         const [fast, slow] = await fixture.requests();
@@ -142,7 +144,7 @@ describe("Immediate Repost through real rx-nostr and secret-key signing", () => 
         expect(fixture.fetchDeletionRequests).toHaveBeenCalledTimes(1);
     });
     it("publishes while preview deletion requests are pending and never upgrades or duplicates them", async () => {
-        const fixture = setup();
+        const fixture = setup(targetKind);
         await drain(fixture.repo.putPostedEvent({ event: fixture.target, relayHints: fixture.descriptor.relayHints }));
         await drain(fixture.resolver.ensureTarget({ ...fixture.descriptor, relationKind: "quote", scopeKey: "preview" }));
         const [fast, slow] = await fixture.requests();
@@ -163,7 +165,7 @@ describe("Immediate Repost through real rx-nostr and secret-key signing", () => 
         let release!: () => void;
         const verification = new Promise<void>(resolve => { release = resolve; });
         const verifyDeletion = vi.fn(() => verification);
-        const fixture = setup(30_000, verifyDeletion);
+        const fixture = setup(targetKind, 30_000, verifyDeletion);
         await drain(fixture.repo.putPostedEvent({ event: fixture.target, relayHints: fixture.descriptor.relayHints }));
         await drain(fixture.resolver.ensureTarget({ ...fixture.descriptor, scopeKey: "preview" }));
         const [fast, slow] = await fixture.requests();
@@ -178,10 +180,10 @@ describe("Immediate Repost through real rx-nostr and secret-key signing", () => 
         await vi.waitFor(async () => expect(await fixture.db.postHistoryDeletionRequests.count()).toBe(1));
         expect((await drain(fixture.repost())).success).toBe(false);
         expect(fixture.signEvent).toHaveBeenCalledTimes(1); expect(fixture.sendEvent).toHaveBeenCalledTimes(1);
-        expect((await fixture.db.postHistory.toArray()).filter(row => row.kind === 6)).toHaveLength(1);
+        expect((await fixture.db.postHistory.toArray()).filter(row => row.kind === outerKind)).toHaveLength(1);
     });
     it("publishes even when the preview relays never respond", async () => {
-        const fixture = setup(60_000);
+        const fixture = setup(targetKind, 60_000);
         await drain(fixture.repo.putPostedEvent({ event: fixture.target, relayHints: fixture.descriptor.relayHints }));
         await drain(fixture.resolver.ensureTarget({ ...fixture.descriptor, scopeKey: "preview" }));
         await fixture.requests();

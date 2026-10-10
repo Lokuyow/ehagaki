@@ -4,7 +4,6 @@
     "sending": "リポスト送信中…",
     "entry": "リポスト",
     "sent": "リポストしました",
-    "partial": "リポストしました（一部のリレーへ送信できませんでした）",
     "failed": "リポストできませんでした",
     "relayMissing": "元投稿の取得先リレーを確認できませんでした",
     "saveFailed": "リポストは送信済みですが、履歴を保存できませんでした",
@@ -14,6 +13,8 @@
     "targetSaveFailed": "元投稿をオフライン用に保存できませんでした",
     "targetDeleted": "元投稿は削除済みです",
     "targetInvalid": "元投稿の参照情報を確認できませんでした",
+    "targetUnsupported": "この元投稿のkindには対応していません",
+    "referenceUnsupported": "このリポストの参照形式には対応していません",
     "outerActions": "リポストの操作",
     "targetActions": "元投稿の操作"
   },

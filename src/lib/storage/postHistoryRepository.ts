@@ -1,6 +1,6 @@
 import Dexie, { cmp } from "dexie";
 import { isPostHistoryAuthoredKind } from "../postHistoryKinds";
-import { createRepostTargetSnapshot, getRepostReference } from "../postRepostUtils";
+import { createRepostTargetSnapshot, getRepostReference, isRepostOuterKind } from "../postRepostUtils";
 import {
     cloneNostrEvent,
     extractPostHistoryChannelReference,
@@ -325,7 +325,7 @@ function toRecord(input: PostHistorySaveInput, now: () => number): PostHistoryRe
         postedAt: input.postedAt ?? updatedAt,
         relayHints,
         acceptedRelays,
-        media: event.kind === 6 ? [] : extractPostHistoryMedia(event),
+        media: isRepostOuterKind(event.kind) ? [] : extractPostHistoryMedia(event),
         rawEvent: cloneNostrEvent(event),
         rawEventVerification: { ...VALID_RAW_EVENT_VERIFICATION },
         ...(channelReference.channelEventId
@@ -901,7 +901,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
             const existing = await this.db.postHistory.get(verified.event.id);
             await this.db.postHistory.put({ ...toRecord({ ...input, event: verified.event }, this.now),
-                ...(verified.event.kind === 6 && existing ? {
+                ...(isRepostOuterKind(verified.event.kind) && existing ? {
                     postedAt: existing.postedAt, fetchedRelays: existing.fetchedRelays,
                     deletedAt: existing.deletedAt, deletionEventId: existing.deletionEventId,
                 } : {}),
@@ -1035,7 +1035,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                             relayHints,
                             acceptedRelays: existingRecord?.acceptedRelays ?? [],
                             ...(fetchedRelays.length > 0 ? { fetchedRelays } : {}),
-                            media: item.event.kind === 6 ? [] : !replaceRawEvent && existingRecord
+                            media: isRepostOuterKind(item.event.kind) ? [] : !replaceRawEvent && existingRecord
                                 ? cloneMedia(existingRecord.media)
                                 : extractPostHistoryMedia(item.event),
                             rawEvent: !replaceRawEvent && existingRecord

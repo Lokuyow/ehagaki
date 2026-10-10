@@ -304,6 +304,7 @@ export const NIP46_REQUESTED_PERMISSIONS = [
     'ping',
     'sign_event:1',
     'sign_event:6',
+    'sign_event:16',
     'sign_event:36',
     'sign_event:1111',
     'sign_event:5',

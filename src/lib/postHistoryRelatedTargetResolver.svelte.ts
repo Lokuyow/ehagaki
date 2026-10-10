@@ -1,5 +1,5 @@
 import type { RxNostr } from "rx-nostr";
-import { verifyRepostTarget } from "./postRepostUtils";
+import { isRepostTargetKind, verifyRepostTarget } from "./postRepostUtils";
 import { attestFullyVerifiedPostHistoryRawEvent } from "./postHistoryRawEventVerification";
 import {
     postHistoryContextFetchService,
@@ -412,7 +412,6 @@ export function createPostHistoryRelatedTargetResolver({
         // Let the Repost projection reject it without poisoning the shared ID cache.
         if (descriptor.relationKind === "repost" && existingBeforeMerge?.status === "resolved") {
             const cached = attestFullyVerifiedPostHistoryRawEvent(existingBeforeMerge.event)?.event;
-            if (cached?.id === descriptor.targetEventId && cached.kind !== 1) return existingBeforeMerge;
             if (cached?.id === descriptor.targetEventId) {
                 const generation = scopeGenerationByKey[descriptor.scopeKey];
                 const deleted = await isDeletedTarget(cached.pubkey, cached.id);
@@ -707,7 +706,7 @@ export function createPostHistoryRelatedTargetResolver({
     async function prepareRepostTarget(descriptor: RelatedTargetDescriptor, target: NostrEvent) {
         const verified = verifyRepostTarget(target, { eventId: descriptor.targetEventId,
             authorHint: descriptor.authorHint ?? null, relayHints: descriptor.relayHints ?? [] });
-        if (descriptor.relationKind !== "repost" || !verified || !getShow() || !getRxNostr()) return null;
+        if (descriptor.relationKind !== "repost" || !verified || !isRepostTargetKind(verified.event.kind) || !getShow() || !getRxNostr()) return null;
         registerDescriptor(descriptor);
         const scopes = scopeKeysByTargetId.get(descriptor.targetEventId);
         const generation = scopeGenerationByKey[descriptor.scopeKey];

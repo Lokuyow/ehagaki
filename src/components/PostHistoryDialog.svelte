@@ -16,6 +16,7 @@
     import { usePostHistoryRepostPreviews, loadStoredRepostTarget } from "../lib/hooks/usePostHistoryRepostPreviews.svelte";
     import type { RepostPostHandler } from "../lib/hooks/usePostRepostOperation.svelte";
     import type { PostRepostResult } from "../lib/postRepostService";
+    import { isRepostOuterKind, isRepostTargetKind, repostTargetToPost } from "../lib/postRepostUtils";
     import { isPostHistoryRawEventConsistent } from "../lib/postHistoryEventUtils";
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
     import PostHistoryRecordActionItems from "./PostHistoryRecordActionItems.svelte";
@@ -218,23 +219,18 @@
         resolver: relatedTargetResolver,
     });
     let repostResult = $state<PostRepostResult | null>(null);
-    let repostMessageX = $state(20);
-    let repostMessageY = $state(80);
     let repostUiGeneration = 0;
     $effect(() => {
         show; pubkeyHex; repostUiGeneration++; repostResult = null;
         return () => relatedTargetResolver.invalidateScope("post-history-repost-operation");
     });
     function canRepost(post: PostHistoryRecord): boolean {
-        return !!onRepostPost && post.kind === 1 && post.deletedAt === undefined
+        return !!onRepostPost && isRepostTargetKind(post.kind) && post.deletedAt === undefined
             && isPostHistoryRawEventConsistent(post.rawEvent, post);
     }
-    async function handleRepost(post: PostHistoryRecord, event: Event) {
+    async function handleRepost(post: PostHistoryRecord) {
         if (!onRepostPost || repostPending || !canRepost(post)) return;
         repostResult = null;
-        const rect = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null;
-        const position = calculateContextMenuPosition(rect?.left ?? 20, rect?.top ?? 80);
-        repostMessageX = position.x; repostMessageY = position.y;
         const generation = repostUiGeneration;
         const result = await onRepostPost(post, (target, relayHints) => relatedTargetResolver.prepareRepostTarget({
             relationKind: "repost", scopeKey: "post-history-repost-operation",
@@ -243,7 +239,12 @@
     }
     const channelDisplay = usePostHistoryChannelDisplay({
         getShow: () => show,
-        getPosts: () => history.posts,
+        getPosts: () => [...history.posts, ...history.posts.flatMap((post) => {
+            if (!isRepostOuterKind(post.kind)) return [];
+            const preview = repostPreviews.getPreview(post);
+            return preview.status === "resolved" && preview.event?.kind === 42
+                ? [repostTargetToPost(preview.event, preview.relayHints)] : [];
+        })],
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
         getIsSearchMode: () => history.isSearchMode,
@@ -256,6 +257,12 @@
         relatedTargetResolver,
         profileSyncCoordinator,
     });
+
+    function getRepostChannelText(post: PostHistoryRecord): string | null {
+        const preview = repostPreviews.getPreview(post);
+        return preview.status === "resolved" && preview.event?.kind === 42
+            ? channelDisplay.getChannelText(repostTargetToPost(preview.event, preview.relayHints), $_) : null;
+    }
 
     function collectQuoteRelatedTargetDescriptors(posts: PostHistoryRecord[]) {
         const quoteIndex =
@@ -463,7 +470,7 @@
     function buildDisplayPreviewModel(
         post: PostHistoryRecord,
     ): PostContentRenderModel {
-        const content = post.kind === 6 ? "" : resolveEventContentBody(post.content, post.tags);
+        const content = isRepostOuterKind(post.kind) ? "" : resolveEventContentBody(post.content, post.tags);
         const displayContent = stripPostHistoryInlineQuoteUrisForDisplay({
             ...post,
             content,
@@ -2361,8 +2368,8 @@
                 ...deleteRequestState,
                 [targetPost.eventId]: undefined,
             };
-            if (targetPost.kind === 1) {
-                for (const outer of history.posts) if (outer.kind === 6) repostPreviews.retry(outer);
+            if (isRepostTargetKind(targetPost.kind)) {
+                for (const outer of history.posts) if (isRepostOuterKind(outer.kind)) repostPreviews.retry(outer);
             }
         } else {
             deleteRequestState = {
@@ -2861,9 +2868,9 @@
                     >
                         <div class="post-history-main">
                             <div class="post-preview">
-                                {#if post.kind === 6}
+                                {#if isRepostOuterKind(post.kind)}
                                     <PostHistoryRepostPreview {post} preview={repostPreviews.getPreview(post)}
-                                        menu={repostRecordMenu} onRetry={() => repostPreviews.retry(post)}
+                                        channelText={getRepostChannelText(post)} menu={repostRecordMenu} onRetry={() => repostPreviews.retry(post)}
                                         onReplyPost={onReplyPost ? handleReplyPost : undefined}
                                         onQuotePost={onQuotePost ? handleQuotePost : undefined}
                                         loadSensitiveBody={getSensitiveBodyLoader(repostPreviews.getPreview(post).event)}
@@ -2992,7 +2999,7 @@
                                                                 {/if}
                                                                 <PostHistoryRecordActionItems
                                                                     order="standard"
-                                                                    onRepost={canRepost(post) ? (event) => void handleRepost(post, event) : undefined}
+                                                                    onRepost={canRepost(post) ? () => void handleRepost(post) : undefined}
                                                                     {repostPending}
                                                                     copyFailed={copyNeventUi.copyState[
                                                                         post.eventId
@@ -3460,7 +3467,7 @@
                                                         {/if}
                                                         <PostHistoryRecordActionItems
                                                             order="standard"
-                                                            onRepost={canRepost(post) ? (event) => void handleRepost(post, event) : undefined}
+                                                            onRepost={canRepost(post) ? () => void handleRepost(post) : undefined}
                                                             {repostPending}
                                                             copyFailed={copyNeventUi.copyState[
                                                                 post.eventId
@@ -3774,7 +3781,14 @@
     />
 
     {#snippet footer()}
-        <PostRepostFeedback result={repostResult} saveFailure={repostSaveFailure} pending={repostPending} x={repostMessageX} y={repostMessageY} onRetrySave={onRetryRepostSave} />
+        <PostRepostFeedback
+            result={repostResult}
+            saveFailure={repostSaveFailure}
+            pending={repostPending}
+            anchor={postHistoryHeadingElement}
+            anchorRightOffset={16}
+            onRetrySave={onRetryRepostSave}
+        />
         <Dialog.Close>
             {#snippet child({ props })}
                 <Button
@@ -3909,11 +3923,11 @@
     <PostHistoryActionMenu open={postActionUi.isPostMenuOpen(menuKey)}
         restoreFocusOnClose={true}
         onOpenChange={(open) => setExclusivePostMenuOpen(menuKey, open)}
-        triggerAriaLabel={$_(record.kind === 6 ? "repost.outerActions" : "repost.targetActions")}
+        triggerAriaLabel={$_(isRepostOuterKind(record.kind) ? "repost.outerActions" : "repost.targetActions")}
         timestamp={formatPostedAtExact(record.postedAt, $locale)}>
         {#snippet items()}
             <PostHistoryRecordActionItems order="standard"
-                onRepost={canRepost(record) ? (event) => void handleRepost(record, event) : undefined} {repostPending}
+                onRepost={canRepost(record) ? () => void handleRepost(record) : undefined} {repostPending}
                 copyFailed={copyNeventUi.copyState[record.eventId] === "failed"}
                 showBroadcast={canBroadcastPost(record)} broadcastSending={isBroadcastSending(record)}
                 showDelete={canDeletePost(record)} showDeleteSeparator={true} deletionSending={isDeletionSending(record)}

@@ -16,6 +16,7 @@
     import PostRepostFeedback from "./PostRepostFeedback.svelte";
     import type { RepostPostHandler } from "../lib/hooks/usePostRepostOperation.svelte";
     import type { PostRepostResult } from "../lib/postRepostService";
+    import { isRepostTargetKind } from "../lib/postRepostUtils";
     import { createPostHistoryRelatedTargetResolver } from "../lib/postHistoryRelatedTargetResolver.svelte";
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
     import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
@@ -1063,7 +1064,7 @@
                                 )}
                             >
                                 {#snippet items()}
-                                    {#if onRepostPost && post.kind === 1}
+                                    {#if onRepostPost && isRepostTargetKind(post.kind)}
                                         <PostRepostMenuItem pending={repostPending} onSelect={() => void handleRepost(post)} />
                                     {/if}
                                     <DropdownMenu.Item

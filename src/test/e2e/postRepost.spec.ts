@@ -2,20 +2,59 @@ import { expect, test, type Page } from "@playwright/test";
 
 type State = { sends: number; signed: number; replyId?: string; quoteId?: string; deletionCount: number; deletionRequests: number;
     sentEvents: { id: string; kind: number; tags: string[][] }[];
-    lastResult?: { success: boolean; error?: string }; rows: { id: string; kind: number; content: string; targetId?: string; targetKind?: number }[] };
+    lastResult?: { success: boolean; error?: string }; rows: { id: string; kind: number; content: string; targetId?: string; targetKind?: number; channelEventId?: string; channelRelayHints?: string[] }[] };
 type FixtureWindow = Window & { __REPOST__: { ready: boolean; targetId: string; targetInput: string; read(): Promise<State>; allowTarget(): void;
     deleteOnRelay(): void; rememberDeletion(): Promise<unknown>; nextTarget(): string; rejectNextPublish(): void;
-    releaseHistory(): void; releasePublish(): void } };
+    export(): Promise<string>; releaseHistory(): void; releasePublish(): void } };
 const read = (page: Page) => page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.read());
 async function open(page: Page, query = "") {
-    await page.goto(`post-history-dialog-playwright.html?repost=1${query}`);
+    const group = test.info().titlePath.find(title => /^target kind /.test(title));
+    const kind = group?.split(" ")[2] ?? "1";
+    const params = new URLSearchParams(`repost=1&target-kind=${kind}`);
+    new URLSearchParams(query).forEach((value, key) => params.set(key, value));
+    await page.goto(`post-history-dialog-playwright.html?${params}`);
     await page.waitForFunction(() => (window as unknown as FixtureWindow).__REPOST__?.ready);
 }
+
+for (const targetKind of [1, 42, 1111]) {
+const outerKind = targetKind === 1 ? 6 : 16;
+test.describe(`target kind ${targetKind}`, () => {
+
+test('supported target projection keeps channel enrichment, wire tags, menu layout and outer-only JSONL', async ({ page }) => {
+    await open(page, '&external=import&missing-k=1');
+    const card = page.locator('.post-history-repost');
+    await expect(card).toContainText('original searchable post');
+    await expect.poll(async () => (await read(page)).rows[0]?.targetKind).toBe(targetKind);
+    const outer = (await read(page)).rows[0]!;
+    expect(outer.channelEventId).toBeUndefined(); expect(outer.channelRelayHints).toBeUndefined();
+    if (targetKind === 42) {
+        await expect(card.locator('.repost-channel-row')).toContainText('Generic channel');
+        await page.locator('.post-history-heading-search-button').click();
+        await page.locator('.post-history-search-input').fill('Generic channel');
+        await expect(card).toContainText('original searchable post');
+    }
+    await expect(card.locator(':scope > .post-preview-footer')).toHaveCount(0);
+    const button = card.locator('.post-history-repost-label .post-history-menu-trigger');
+    const box = await button.boundingBox();
+    expect(box?.width).toBe(28); expect(box?.height).toBe(28);
+    expect(await card.locator('.post-history-repost-icon').evaluate(el => getComputedStyle(el).maskImage)).toContain('repost.svg');
+    const jsonl = await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.export());
+    const events = jsonl.trim().split('\n').map(line => JSON.parse(line));
+    expect(events).toHaveLength(1); expect(events[0]).toMatchObject({ id: outer.id, kind: outerKind });
+    expect(events[0].tags).toContainEqual(['e', outer.targetId, 'wss://relay.example.com/']);
+    await card.getByRole('button', { name: '元投稿の操作', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'リポスト', exact: true }).click();
+    await expect.poll(async () => (await read(page)).lastResult?.success).toBe(true);
+    const sent = (await read(page)).sentEvents.find(event => event.kind === outerKind)!;
+    expect(sent.tags).toContainEqual(['e', outer.targetId, 'wss://relay.example.com/']);
+    if (targetKind !== 1) expect(sent.tags).toContainEqual(['k', String(targetKind)]);
+    else expect(sent.tags.some(tag => tag[0] === 'k')).toBe(false);
+});
 
 test('history header controls and anchored status coexist with Repost sending and success feedback', async ({ page }, testInfo) => {
     await open(page, '&hold-history=1&hold-publish=1');
     const heading = page.locator('.post-history-heading');
-    const status = page.locator('.floating-message.anchor-bottom-right');
+    const status = page.locator('.floating-message.anchor-bottom-right').filter({ has: page.locator('.post-history-heading-status-placeholder') });
     await expect(status).toContainText('リレーと同期中...');
     await expect(status).toBeVisible();
     await expect(heading.locator('.post-history-heading-calendar-button')).toBeVisible();
@@ -34,6 +73,7 @@ test('history header controls and anchored status coexist with Repost sending an
     await page.getByRole('menuitem', { name: 'リポスト', exact: true }).click();
     await expect(page.locator('.repost-message')).toHaveText('リポスト送信中…');
     await expect(page.locator('.repost-message')).toBeVisible();
+    const repostToast = page.locator('.floating-message.anchor-bottom-right').filter({ has: page.locator('.repost-message') });
     await expect.poll(async () => { const state = await read(page); return [state.signed, state.sends]; }).toEqual([1, 1]);
     await expect(status).toContainText('リレーと同期中...');
     await post.getByRole('button', { name: 'アクションを表示', exact: true }).click();
@@ -43,12 +83,13 @@ test('history header controls and anchored status coexist with Repost sending an
     await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.releasePublish());
     await expect(page.locator('.repost-message')).toHaveText('リポストしました');
     await expect(page.locator('.repost-message')).toBeVisible();
+    await expect(repostToast).toBeVisible();
     await expect(page.locator('.post-history-repost')).toContainText('original searchable post');
     await expect(status).toContainText('リレーと同期中...');
     const headingBox = await heading.boundingBox();
-    const statusBox = await status.boundingBox();
+    const statusBox = await repostToast.boundingBox();
     expect(statusBox!.y).toBeCloseTo(headingBox!.y + headingBox!.height + 8, 0);
-    expect(statusBox!.x + statusBox!.width).toBeLessThanOrEqual(headingBox!.x + headingBox!.width);
+    expect(statusBox!.x + statusBox!.width).toBeLessThanOrEqual(headingBox!.x + headingBox!.width - 16);
     expect(await page.locator('html').evaluate(element => element.scrollWidth > element.clientWidth)).toBe(false);
     await page.screenshot({ path: testInfo.outputPath('history-header-repost-feedback.png') });
 
@@ -75,8 +116,8 @@ for (const entry of ['history', 'Composer'] as const) {
             await expect.poll(async () => { const state = await read(page); return [state.lastResult?.success, state.signed, state.sends, state.deletionCount]; },
                 { timeout: 3_000 }).toEqual([true, 1, 1, 0]);
             expect((await read(page)).deletionRequests).toBe(0);
-            expect((await read(page)).rows.filter(row => row.kind === 6)).toHaveLength(1);
-            expect((await read(page)).rows.find(row => row.kind === 6)).toMatchObject({ content: '', targetKind: 1 });
+            expect((await read(page)).rows.filter(row => row.kind === outerKind)).toHaveLength(1);
+            expect((await read(page)).rows.find(row => row.kind === outerKind)).toMatchObject({ content: '', targetKind });
         });
     }
 }
@@ -102,7 +143,7 @@ for (const entry of ['history', 'Composer', 'resolved target'] as const) {
             await page.locator('.composer-target-dialog input').fill(await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.targetInput));
             await expect(page.locator('.composer-target-dialog')).toContainText('original searchable post');
         } else if (entry === 'resolved target') {
-            await expect.poll(async () => (await read(page)).rows[0]?.targetKind).toBe(1);
+            await expect.poll(async () => (await read(page)).rows[0]?.targetKind).toBe(targetKind);
         }
         expect((await read(page)).deletionCount).toBe(0);
         const container = entry === 'Composer' ? page.locator('.composer-target-dialog') : page.locator('.post-history-item').first();
@@ -117,12 +158,12 @@ for (const entry of ['history', 'Composer', 'resolved target'] as const) {
             await expect(container).toContainText('元投稿は削除済みです');
             await expect(container.getByRole('button', { name: '元投稿の操作', exact: true })).toHaveCount(0);
             expect(await read(page)).toMatchObject({ signed: 0, sends: 0, deletionCount: 1 });
-            expect((await read(page)).rows.filter(row => row.kind === 6)).toHaveLength(1);
+            expect((await read(page)).rows.filter(row => row.kind === outerKind)).toHaveLength(1);
             return;
         }
         await page.getByRole('menuitem', { name: 'リポスト', exact: true }).click();
         await expect.poll(async () => { const state = await read(page); return [state.lastResult?.success, state.signed, state.sends, state.deletionCount]; }).toEqual([false, 0, 0, 1]);
-        expect((await read(page)).sentEvents.filter(event => event.kind === 6)).toHaveLength(0);
+        expect((await read(page)).sentEvents.filter(event => event.kind === outerKind)).toHaveLength(0);
     });
 }
 
@@ -133,16 +174,16 @@ for (const entry of ['history', 'Composer', 'resolved target'] as const) {
             await page.locator('.composer-target-dialog input').fill(await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.targetInput));
             await expect(page.locator('.composer-target-dialog')).toContainText('original searchable post');
         } else if (entry === 'resolved target') {
-            await expect.poll(async () => (await read(page)).rows[0]?.targetKind).toBe(1);
+            await expect.poll(async () => (await read(page)).rows[0]?.targetKind).toBe(targetKind);
         }
-        const before = (await read(page)).rows.filter(row => row.kind === 6).length;
+        const before = (await read(page)).rows.filter(row => row.kind === outerKind).length;
         await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.deleteOnRelay());
         const container = entry === 'Composer' ? page.locator('.composer-target-dialog') : page.locator('.post-history-item').first();
         await container.getByRole('button', { name: entry === 'resolved target' ? '元投稿の操作' : 'アクションを表示', exact: true }).click();
         await page.getByRole('menuitem', { name: 'リポスト', exact: true }).click();
         await expect.poll(async () => (await read(page)).lastResult?.success).toBe(true);
         expect(await read(page)).toMatchObject({ signed: 1, sends: 1, deletionCount: 0 });
-        expect((await read(page)).rows.filter(row => row.kind === 6)).toHaveLength(before + 1);
+        expect((await read(page)).rows.filter(row => row.kind === outerKind)).toHaveLength(before + 1);
     });
 }
 
@@ -182,10 +223,10 @@ test("history menu publishes empty-content Repost and retains the snapshot after
     await normal.getByRole('button', { name: 'アクションを表示', exact: true }).click();
     await page.getByRole('menuitem', { name: 'リポスト', exact: true }).click();
     await expect.poll(async () => { const state = await read(page); return [
-        state.rows.filter(row => row.kind === 6).length, state.signed, state.sends, state.lastResult?.error ?? null, errors,
+        state.rows.filter(row => row.kind === outerKind).length, state.signed, state.sends, state.lastResult?.error ?? null, errors,
     ]; }).toEqual([1, 1, 1, null, []]);
     const state = await read(page);
-    expect(state.rows.find(row => row.kind === 6)).toMatchObject({ content: "", targetKind: 1 });
+    expect(state.rows.find(row => row.kind === outerKind)).toMatchObject({ content: "", targetKind });
     expect(state.sends).toBe(1);
     await expect(page.locator('.post-history-repost')).toContainText('original searchable post');
     await context.setOffline(true);
@@ -219,7 +260,7 @@ test("Composer target uses the menu, persists only the outer row, and retries th
     await expect(page.getByRole('button', { name: '再保存', exact: true })).toHaveCount(0);
     await expect.poll(async () => (await read(page)).rows.length).toBe(1);
     const state = await read(page);
-    expect(state.rows[0]).toMatchObject({ kind: 6, content: '', targetKind: 1 });
+    expect(state.rows[0]).toMatchObject({ kind: outerKind, content: '', targetKind });
     expect(state.sends).toBe(1); expect(state.signed).toBe(1);
 });
 
@@ -231,13 +272,13 @@ test("reference-based import preserves unresolved outer and recovers on retry", 
     await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.allowTarget());
     await page.locator('.post-history-repost').getByRole('button', { name: '再試行', exact: true }).click();
     await expect(page.locator('.post-history-repost')).toContainText('original searchable post');
-    await expect.poll(async () => (await read(page)).rows[0]?.targetKind).toBe(1);
+    await expect.poll(async () => (await read(page)).rows[0]?.targetKind).toBe(targetKind);
     expect((await read(page)).rows).toHaveLength(1);
 });
 
 test("Repost menus and content reflow in a 320px iframe", async ({ page }) => {
     await open(page, '&external=relay');
-    await expect.poll(async () => (await read(page)).rows[0]?.targetKind).toBe(1);
+    await expect.poll(async () => (await read(page)).rows[0]?.targetKind).toBe(targetKind);
     const url = page.url();
     await page.setContent(`<iframe title="Full history fixture" src="${url}" style="width:320px;height:650px;border:0"></iframe>`);
     const frame = page.frameLocator('iframe');
@@ -251,7 +292,7 @@ test("Repost menus and content reflow in a 320px iframe", async ({ page }) => {
 test("verified realtime outer resolves and persists its target without adding an authored target row", async ({ page }) => {
     await open(page, '&external=realtime');
     await expect(page.locator('.post-history-repost')).toContainText('original searchable post');
-    await expect.poll(async () => (await read(page)).rows[0]?.targetKind).toBe(1);
+    await expect.poll(async () => (await read(page)).rows[0]?.targetKind).toBe(targetKind);
     expect((await read(page)).rows).toHaveLength(1);
 });
 
@@ -259,14 +300,14 @@ test("outer and self-target raw JSON, reply, quote, resend and deletion keep the
     await open(page, '&external=import&self-target=1');
     const card = page.locator('.post-history-repost');
     await expect(card).toContainText('original searchable post');
-    await expect.poll(async () => (await read(page)).rows[0]?.targetKind).toBe(1);
+    await expect.poll(async () => (await read(page)).rows[0]?.targetKind).toBe(targetKind);
     const outer = (await read(page)).rows[0]!;
     await card.getByRole('button', { name: 'リプライ', exact: true }).click();
     await page.getByRole('button', { name: 'Open history' }).click();
     await card.getByRole('button', { name: '引用', exact: true }).click();
     await page.getByRole('button', { name: 'Open history' }).click();
     expect(await read(page)).toMatchObject({ replyId: outer.targetId, quoteId: outer.targetId });
-    for (const [label, id, kind] of [['リポストの操作', outer.id, 6], ['元投稿の操作', outer.targetId, 1]] as const) {
+    for (const [label, id, kind] of [['リポストの操作', outer.id, outerKind], ['元投稿の操作', outer.targetId, targetKind]] as const) {
         await card.getByRole('button', { name: label, exact: true }).click();
         await page.locator('[role="menu"][data-state="open"]').getByRole('menuitem', { name: 'イベントJSONを表示', exact: true }).click();
         const dialog = page.getByRole('dialog', { name: 'イベントJSON' });
@@ -318,4 +359,34 @@ test("360px CW and media preserve the gate, footer placement and keyboard menu f
     await card.getByRole('button', { name: '本文を表示', exact: true }).click();
     await expect(card).toContainText('long fixture text');
     await expect(card.locator('.post-preview-media')).toBeVisible();
+});
+
+});
+}
+
+for (const [outerKind, targetKind, message] of [
+    [6, 42, '元投稿の参照情報を確認できませんでした'],
+    [16, 1, '元投稿の参照情報を確認できませんでした'],
+    [16, 20, 'この元投稿のkindには対応していません'],
+] as const) {
+    test(`${outerKind} -> ${targetKind} preserves outer management without a target projection`, async ({ page }) => {
+        await open(page, `&external=import&target-kind=${targetKind}&outer-kind=${outerKind}`);
+        const card = page.locator('.post-history-repost');
+        await expect(card).toContainText(message);
+        await expect(card).not.toContainText('original searchable post');
+        await expect(card.getByRole('button', { name: '元投稿の操作', exact: true })).toHaveCount(0);
+        expect((await read(page)).rows).toHaveLength(1);
+        expect((await read(page)).rows[0]?.targetId).toBeUndefined();
+        await card.getByRole('button', { name: 'リポストの操作', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'イベントJSONを表示', exact: true }).click();
+        const raw = JSON.parse(await page.locator('.raw-json-content').innerText());
+        expect(raw).toMatchObject({ kind: outerKind, content: 'opaque content must never appear' });
+    });
+}
+
+test('kind 40 Composer target keeps its existing menu without a Repost action', async ({ page }) => {
+    await open(page, '&source=target&target-kind=40');
+    await page.locator('.composer-target-dialog input').fill(await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.targetInput));
+    await page.locator('.composer-target-dialog').getByRole('button', { name: 'アクションを表示', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: 'リポスト', exact: true })).toHaveCount(0);
 });

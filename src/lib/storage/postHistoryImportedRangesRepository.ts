@@ -1,5 +1,5 @@
 import { mergePostHistoryCoverageRanges, type PostHistoryCoverageRange } from "../postHistoryRelayCoverage";
-import { POST_HISTORY_AUTHORED_KINDS_KEY, POST_HISTORY_LEGACY_KINDS_KEY } from "../postHistoryKinds";
+import { POST_HISTORY_AUTHORED_KINDS_KEY, POST_HISTORY_PREVIOUS_KINDS_KEYS } from "../postHistoryKinds";
 import { ehagakiDb, type EHagakiDB } from "./ehagakiDb";
 import { assertPostHistoryLocalWriteCurrent, getPostHistoryLocalRevision, type PostHistoryLocalWriteScope } from "./postHistoryLocalWriteScope";
 
@@ -21,11 +21,11 @@ export class DexiePostHistoryImportedRangesRepository {
     async get(ownerPubkeyHex: string, kindsKey: string): Promise<PostHistoryImportedRanges> {
         return this.db.transaction("r", this.db.meta, async () => {
             const localRevision = await getPostHistoryLocalRevision(this.db, ownerPubkeyHex);
-            const records = await this.db.meta.bulkGet([`${POST_HISTORY_IMPORTED_RANGES_PREFIX}${ownerPubkeyHex}:${kindsKey}`,
-                ...(kindsKey === POST_HISTORY_AUTHORED_KINDS_KEY ? [`${POST_HISTORY_IMPORTED_RANGES_PREFIX}${ownerPubkeyHex}:${POST_HISTORY_LEGACY_KINDS_KEY}`] : [])]);
+            const keys = [kindsKey, ...(kindsKey === POST_HISTORY_AUTHORED_KINDS_KEY ? POST_HISTORY_PREVIOUS_KINDS_KEYS : [])];
+            const records = await this.db.meta.bulkGet(keys.map((key) => `${POST_HISTORY_IMPORTED_RANGES_PREFIX}${ownerPubkeyHex}:${key}`));
             const ranges = mergePostHistoryCoverageRanges(records.flatMap((item, index) => {
                 const record = item?.value as Partial<PostHistoryImportedRanges> | undefined;
-                const expectedKey = index === 0 ? kindsKey : POST_HISTORY_LEGACY_KINDS_KEY;
+                const expectedKey = keys[index];
                 return record?.schemaVersion === 1 && record.source === "citrine-backup"
                     && record.ownerPubkeyHex === ownerPubkeyHex && record.kindsKey === expectedKey
                     && record.localRevision === localRevision && Array.isArray(record.ranges) ? record.ranges : [];

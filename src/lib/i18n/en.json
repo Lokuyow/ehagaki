@@ -4,7 +4,6 @@
     "sending": "Reposting…",
     "entry": "Repost",
     "sent": "Reposted",
-    "partial": "Reposted (some relays did not accept it)",
     "failed": "Could not repost",
     "relayMissing": "Could not determine a relay for the original post",
     "saveFailed": "Repost sent, but history could not be saved",
@@ -14,6 +13,8 @@
     "targetSaveFailed": "Could not save the original post for offline use",
     "targetDeleted": "Original post was deleted",
     "targetInvalid": "Could not verify the original post reference",
+    "targetUnsupported": "This original post kind is not supported",
+    "referenceUnsupported": "This repost reference type is not supported",
     "outerActions": "Repost actions",
     "targetActions": "Original post actions"
   },
