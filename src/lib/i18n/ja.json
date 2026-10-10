@@ -14,6 +14,8 @@
     "targetSaveFailed": "元投稿をオフライン用に保存できませんでした",
     "targetDeleted": "元投稿は削除済みです",
     "targetInvalid": "元投稿の参照情報を確認できませんでした",
+    "targetUnsupported": "この元投稿のkindには対応していません",
+    "referenceUnsupported": "このリポストの参照形式には対応していません",
     "outerActions": "リポストの操作",
     "targetActions": "元投稿の操作"
   },

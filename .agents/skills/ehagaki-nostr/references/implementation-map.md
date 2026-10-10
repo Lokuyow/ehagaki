@@ -47,16 +47,18 @@
 
 ## リポスト
 
-- 機能: kind 1のRepost作成、authored kind 6の同期・履歴表示、検証済み元投稿snapshotの永続化。
+- 機能: kind 1のRepostとkind 42／1111のGeneric Repost作成、authored kind 6／16の同期・履歴表示、検証済み元投稿snapshotの永続化。
 - 関連NIP: NIP-18
-- event kind: outerは`6`、targetは`1`。generic repost `16`はPhase 1対象外。
-- 主なtag: target IDと取得先relayを持つ`e`、target authorの`p`。作成contentは常に空文字。
+- event kind: target `1`はouter `6`、target `42`／`1111`はouter `16`。replaceable/addressable target、`a` resolution、未知kindの作成UIは対象外。
+- 主なtag: target IDと取得元relayを持つ`e`、target authorの`p`、kind 16ではtarget kindの`k`。作成contentは常に空文字。targetのreply/channel/CW tagsはouterへコピーしない。NIP-46は`sign_event:6`／`sign_event:16`を要求する。
 - 主な実装ファイル: `postRepostService.ts`、`postRepostUtils.ts`、`postHistoryRepository.ts`、`postHistoryRelatedTargetResolver.svelte.ts`、`usePostHistoryRepostPreviews.svelte.ts`、`PostHistoryRepostPreview.svelte`。
 - 主な関数または責務: serviceが署名・publishと同じouter/targetの再保存を所有する。repositoryがouter recordの`repostTarget`を保存し、既存related-target resolverが参照に基づく解決・検証・要求共有・retryを所有する。元投稿をauthored行として追加しない。
+- reference境界: `parseRepostReference()`がeの一意性、pの形式、kind 16のoptional kを検査する。kは0〜65535のcanonical decimal stringのみで、同値重複を許容し異値混在を拒否する。`verifyRepostTarget()`がfull verificationとID／p／k整合性を確認し、`classifyRepostTargetKind()`が6→1／16→42・1111をsupported、6→非1／16→1をouter-target-kind-mismatch、その他のreference-consistentな16→非1をunsupported-target-kindへ分ける。outerごとの判定を共有event-ID raw cacheのerrorにしない。snapshot保存・検索は`verifySupportedRepostTarget()`を通す。
+- channel projection: kind 42 target自身からNIP-28 channel referenceを導出し、既存`usePostHistoryChannelDisplay`／`channelContextCoordinator`／channel metadata repositoryを使う。表示・検索の一時投影だけに使用し、kind 16 outerの`channelEventId`／`channelRelayHints`へ保存せずthread nodeにも扱わない。
 - 送信前の境界: 全Repost入口はresolverの`prepareRepostTarget()`で元投稿のfull verification、relay provenance、既知のローカル削除要求を確認する。検証済みtargetとhintがあればネットワーク削除確認を開始・待機せず署名・publishへ進む。hint欠損時のtarget取得は既存resolverが所有する。複数の有効な`p` tagは取得・検証後に元投稿authorが含まれるか判定する。
 - 削除要求の背景取得: 既存resolverのpreview解決がdeletion fetch/repositoryを所有し、Repost送信とは独立して動作する。Repostはそのpending taskを待機・昇格・複製せず、未取得・timeout・errorを送信拒否の理由にしない。後から検証・保存された有効な削除要求は以後の表示と操作へ適用する。
 - 関連テスト: `postRepost.test.ts`、`postRepostTransport.test.ts`（実rx-nostr・秘密鍵signer）、`postRepost.spec.ts`。
-- 注意点: 外部kind 6のcontentもtarget取得元・検索対象にしない。outerの日時・管理操作とtargetの本文・content actionを分ける。JSONLはouterだけを出力し、snapshot欠損はe/p/relay hintから復旧する。旧kinds coverageをkind 6取得の証拠にしない。
+- 注意点: 外部kind 6／16のcontentもtarget取得元・検索対象にしない。mismatch／unsupportedではouterのraw JSON・export・管理操作を保持し、target snapshot／本文／検索／content actionsへ進めない。outerの日時・管理操作とtargetの本文・content actionを分ける。Repost label右側の28px管理menuとtarget footerを維持し、outerの下部footerは設けない。JSONLはouterだけを出力し、snapshot欠損はe/p/k/relay hintから復旧する。authored kinds keyは`1,6,16,42,1111`。旧`1,6,42,1111`／`1,42,1111`のcoverage・watermarkをkind 16取得の証拠にせず、visible range／Citrine imported rangesだけを閲覧継続に使う。
 
 ## NIP-19識別子
 

@@ -14,6 +14,8 @@
     "targetSaveFailed": "Could not save the original post for offline use",
     "targetDeleted": "Original post was deleted",
     "targetInvalid": "Could not verify the original post reference",
+    "targetUnsupported": "This original post kind is not supported",
+    "referenceUnsupported": "This repost reference type is not supported",
     "outerActions": "Repost actions",
     "targetActions": "Original post actions"
   },

@@ -9,7 +9,7 @@ import { nip46Service } from "./nip46Service";
 import { parentClientAuthService } from "./parentClientAuthService";
 import { PostEventSender } from "./postEventBuilder";
 import { buildClientTag } from "./tags/clientTag";
-import { buildRepostEvent, verifyRepostTarget } from "./postRepostUtils";
+import { buildRepostEvent, isRepostTargetKind, verifyRepostTarget } from "./postRepostUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import { assertActiveSession } from "./sessionLiveness";
 import { createPlainNostrEventSnapshot } from "./postHistoryEventUtils";
@@ -75,7 +75,7 @@ export class PostRepostService {
                 if (this.deps.authStateStore.value.type !== auth.type || params.isCurrent?.() === false) throw new Error("session_changed");
             };
             const target = verifyRepostTarget(params.target);
-            if (!target) return { success: false, error: "invalid_repost_target" };
+            if (!target || !isRepostTargetKind(target.event.kind)) return { success: false, error: "invalid_repost_target" };
             const expectedRevision = await this.deps.getLocalRevision(pubkey);
             assertCurrent();
             const preparedTarget = await params.prepareTarget(target.event, RelayConfigUtils.sanitizeExternalRelayUrls(params.relayHints));

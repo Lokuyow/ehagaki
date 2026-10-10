@@ -11,6 +11,7 @@
     interface Props {
         post: PostHistoryRecord; preview: RepostPreviewState;
         menu?: Snippet<[PostHistoryRecord, string]>;
+        channelText?: string | null;
         onRetry: () => void;
         onReplyPost?: (post: PostHistoryRecord) => void | Promise<void>;
         onQuotePost?: (post: PostHistoryRecord) => void;
@@ -20,11 +21,13 @@
         emojiLoadStateByUrl?: Record<string, import("../lib/postContentPreview").PostContentEmojiLoadState | undefined>;
         emojiImageMetaByUrl?: Record<string, import("../lib/postContentPreview").PostContentEmojiImageMeta | undefined>;
     }
-    let { post, preview, menu, onRetry, onReplyPost, onQuotePost, loadSensitiveBody,
+    let { post, preview, menu, channelText = null, onRetry, onReplyPost, onQuotePost, loadSensitiveBody,
         scrollRoot = null, onImageOpen, emojiLoadStateByUrl = {}, emojiImageMetaByUrl = {} }: Props = $props();
     const target = $derived(preview.event ? repostTargetToPost(preview.event, preview.relayHints) : null);
     const message = $derived(preview.status === "deleted" ? "repost.targetDeleted"
-        : preview.status === "invalid-reference" || preview.status === "invalid-target" ? "repost.targetInvalid"
+        : preview.status === "unsupported-target-kind" ? "repost.targetUnsupported"
+        : preview.status === "unsupported-reference" ? "repost.referenceUnsupported"
+        : preview.status === "invalid-reference" || preview.status === "invalid-target" || preview.status === "outer-target-kind-mismatch" ? "repost.targetInvalid"
         : preview.status === "loading" ? "repost.targetLoading" : "repost.targetMissing");
 </script>
 <div class="post-history-repost" data-repost-event-id={post.eventId}>
@@ -40,6 +43,14 @@
     {:else if preview.status === "resolved" && preview.event && target}
         <PostHistoryRelatedEventCard event={preview.event} profile={preview.profile} {loadSensitiveBody}
             {scrollRoot} {onImageOpen} {emojiLoadStateByUrl} {emojiImageMetaByUrl}>
+            {#snippet topActions()}
+                {#if channelText}
+                    <div class="repost-channel-row">
+                        <span>{$_("postHistory.channel")}</span>
+                        <strong>{channelText}</strong>
+                    </div>
+                {/if}
+            {/snippet}
             {#snippet footerActions()}
                 <PostHistoryPostActions post={target} {onReplyPost} {onQuotePost} />
             {/snippet}
@@ -51,13 +62,14 @@
         {/if}
     {:else}
         <p role="status">{$_(message)}</p>
-        {#if preview.status !== "loading" && preview.status !== "deleted" && preview.status !== "invalid-reference"}
+        {#if preview.status === "not-found" || preview.status === "error" || preview.status === "invalid-target"}
             <Button onClick={onRetry}>{$_("postHistory.contextRetry")}</Button>
         {/if}
     {/if}
 </div>
 <style>
     .post-history-repost { min-width: 0; }
+    .repost-channel-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px; overflow-wrap: anywhere; }
     .post-history-repost-label {
         display: flex;
         align-items: center;

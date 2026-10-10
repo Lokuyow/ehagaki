@@ -2,6 +2,7 @@ import type { RxNostr } from "rx-nostr";
 import { onDestroy } from "svelte";
 import { postRepostService, type PostRepostResult, type PostRepostService, type PrepareRepostTarget } from "../postRepostService";
 import { isPostHistoryRawEventConsistent } from "../postHistoryEventUtils";
+import { isRepostTargetKind } from "../postRepostUtils";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 
 export type RepostPostHandler = (post: PostHistoryRecord, prepareTarget: PrepareRepostTarget) => Promise<PostRepostResult>;
@@ -14,7 +15,7 @@ export function usePostRepostOperation(params: { getPubkey: () => string | null 
     $effect(() => { params.getPubkey(); params.getRxNostr(); generation++; });
     onDestroy(() => { generation++; });
     const execute: RepostPostHandler = async (post, prepareTarget) => {
-        if (pending || post.deletedAt !== undefined || post.kind !== 1
+        if (pending || post.deletedAt !== undefined || !isRepostTargetKind(post.kind)
             || !isPostHistoryRawEventConsistent(post.rawEvent, post)) return { success: false, error: "invalid_repost_target" };
         pending = true;
         const current = generation;
