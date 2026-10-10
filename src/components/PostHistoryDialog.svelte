@@ -3735,7 +3735,7 @@
     show={show && !exportRunning && !!headingStatusMessageKey}
     variant="anchor-bottom-right"
     anchor={postHistoryHeadingElement}
-    anchorRightOffset={12}
+    anchorRightOffset={24}
     showInfoIcon={!history.showStatusLoader}
 >
     {#if headingStatusMessageKey}
