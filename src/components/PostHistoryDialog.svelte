@@ -3924,8 +3924,8 @@
     }
 
     :global(.post-history-heading-action-button .svg-icon) {
-        width: 20px;
-        height: 20px;
+        width: 22px;
+        height: 22px;
         background-color: currentColor;
         --svg: currentColor;
     }
