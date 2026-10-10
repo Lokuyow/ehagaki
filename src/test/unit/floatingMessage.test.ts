@@ -82,7 +82,7 @@ describe("FloatingMessage", () => {
                 show: true,
                 variant: "anchor-bottom-right",
                 anchor,
-                anchorRightOffset: 24,
+                anchorRightOffset: 16,
             },
         });
 
@@ -109,7 +109,7 @@ describe("FloatingMessage", () => {
         window.dispatchEvent(new Event("resize"));
         await waitFor(() => {
             expect(message.style.visibility).toBe("visible");
-            expect(message.style.left).toBe("276px");
+            expect(message.style.left).toBe("284px");
             expect(message.style.top).toBe("76px");
             expect(message.getAttribute("role")).toBe("status");
             expect(message.getAttribute("aria-live")).toBe("polite");
