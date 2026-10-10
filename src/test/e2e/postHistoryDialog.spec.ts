@@ -144,6 +144,9 @@ async function expectContentWarningLayout(container: Locator): Promise<void> {
 async function gotoLayoutStabilityHarness(page: Page) {
     await page.goto('post-history-dialog-playwright.html?layout-stability=1');
     await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+    await expect(page.locator('.post-history-list li')).toHaveCount(50);
+    await expect(page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)'))
+        .toHaveCount(1);
     return page.evaluate<HarnessState>(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState);
 }
 
@@ -193,6 +196,7 @@ async function gotoInfiniteScrollHarness(
         `post-history-dialog-playwright.html?infinite-scroll=1${options.longPreviews ? '&long-preview=1' : ''}`,
     );
     await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+    await expect(page.locator('.post-history-list li')).toHaveCount(50);
     if (options.fixContainerHeight !== false) {
         await page.locator('.post-history-container').evaluate((element) => {
             const container = element as HTMLDivElement;
@@ -1039,6 +1043,8 @@ test.describe('PostHistoryDialog Playwright', () => {
     });
 
     test('Citrine backup replans an active open catchup and stops at the restored head', async ({ page }) => {
+        // The 250-event signed import, catchup rebase, scroll, and reload take 34.2s on focused mobile WebKit.
+        test.setTimeout(60_000);
         await page.goto('post-history-dialog-playwright.html?relay-coverage=citrine-head');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
         await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(5);
