@@ -12,7 +12,8 @@
  * - 末尾の改行を適切に処理（余分な空行を作成しない）
  * - 空白行（改行のみの行）を維持
  * - コピー時にノードのコンテンツから改行を正しく抽出
- * - リッチテキスト（太字、イタリック）の場合は書式を保持
+ * - 外部rich pasteはclipboardのtext/plainをsourceとして軽量なmarkup cleanupを適用
+ * - plain-only pasteはMarkdown記法を変更せず、改行だけを正規化
  * - 自アプリからのコピーの場合は連続空行を制限
  * 
  * Tiptap v2 / ProseMirror仕様:
@@ -25,8 +26,8 @@ import { Plugin, PluginKey } from 'prosemirror-state';
 import { Slice, Fragment } from 'prosemirror-model';
 import type { Node as PMNode, Schema } from 'prosemirror-model';
 import { normalizeClipboardText, serializeParagraphs } from '../utils/clipboardUtils';
-import { debugClipboardData } from '../utils/clipboardDebug';
 import { normalizeEmojiShortcode } from '../customEmoji';
+import { cleanupExternalRichPasteLines } from './clipboardTextCleanup';
 
 // ================================================================================
 // 内部ヘルパー関数
@@ -95,136 +96,9 @@ function extractParagraphsFromSlice(slice: Slice): string[] {
     return paragraphs;
 }
 
-const NON_CONTENT_HTML_TAGS = new Set([
-    'base',
-    'head',
-    'link',
-    'meta',
-    'noscript',
-    'script',
-    'style',
-    'template',
-    'title',
-]);
-
-const NON_TEXTUAL_LINK_TAGS = new Set([
-    'audio',
-    'br',
-    'canvas',
-    'embed',
-    'iframe',
-    'img',
-    'object',
-    'svg',
-    'video',
-]);
-
-const SUBSTANTIVE_NON_TEXTUAL_HTML_TAGS = new Set([
-    'audio',
-    'button',
-    'canvas',
-    'embed',
-    'iframe',
-    'img',
-    'input',
-    'object',
-    'picture',
-    'select',
-    'svg',
-    'textarea',
-    'video',
-]);
-
-function parseHttpUrl(value: string): URL | null {
-    try {
-        const url = new URL(value);
-        return url.protocol === 'http:' || url.protocol === 'https:' ? url : null;
-    } catch {
-        return null;
-    }
-}
-
-function hasOnlyNamedTextContent(anchor: Element): boolean {
-    let hasText = false;
-
-    const visit = (node: Node): boolean => {
-        if (node.nodeType === Node.TEXT_NODE) {
-            hasText ||= (node.textContent ?? '').trim().length > 0;
-            return true;
-        }
-
-        if (node.nodeType !== Node.ELEMENT_NODE) {
-            return true;
-        }
-
-        const element = node as Element;
-        if (NON_TEXTUAL_LINK_TAGS.has(element.tagName.toLowerCase())) {
-            return false;
-        }
-
-        return Array.from(element.childNodes).every(visit);
-    };
-
-    return visit(anchor) && hasText;
-}
-
-function hasSubstantiveContentOutsideAnchor(node: Node, insideAnchor = false): boolean {
-    if (node.nodeType === Node.TEXT_NODE) {
-        return !insideAnchor && (node.textContent ?? '').trim().length > 0;
-    }
-
-    if (node.nodeType !== Node.ELEMENT_NODE) {
-        return false;
-    }
-
-    const element = node as Element;
-    const tagName = element.tagName.toLowerCase();
-    if (NON_CONTENT_HTML_TAGS.has(tagName)) {
-        return false;
-    }
-
-    if (SUBSTANTIVE_NON_TEXTUAL_HTML_TAGS.has(tagName)) {
-        return !insideAnchor;
-    }
-
-    const isAnchor = tagName === 'a';
-    return Array.from(element.childNodes).some((child) =>
-        hasSubstantiveContentOutsideAnchor(child, insideAnchor || isAnchor),
-    );
-}
-
-/**
- * Detects the address-bar "titled hyperlink" shape without depending on a
- * browser-specific UA or a particular HTML serialization.
- *
- * The original text is intentionally required to be exactly one URL. That
- * keeps the fallback insertion identical to the existing plain-text path.
- */
-function isFriendlyUrlClipboard(text: string, html: string): boolean {
-    if (!text || text.trim() !== text || /\s/.test(text)) {
-        return false;
-    }
-
-    const plainUrl = parseHttpUrl(text);
-    if (!plainUrl) {
-        return false;
-    }
-
+function isFromCurrentEditorClipboard(html: string): boolean {
     const parsed = new DOMParser().parseFromString(html, 'text/html');
-    const anchors = Array.from(parsed.querySelectorAll('a'));
-    if (anchors.length !== 1) {
-        return false;
-    }
-
-    const [anchor] = anchors;
-    const href = anchor.getAttribute('href');
-    const linkedUrl = href ? parseHttpUrl(href) : null;
-    if (!linkedUrl || linkedUrl.href !== plainUrl.href || !hasOnlyNamedTextContent(anchor)) {
-        return false;
-    }
-
-    const root = parsed.body ?? parsed.documentElement;
-    return !hasSubstantiveContentOutsideAnchor(root);
+    return parsed.querySelector('p.editor-paragraph[data-pm-slice]') !== null;
 }
 
 // ================================================================================
@@ -235,10 +109,20 @@ export const ClipboardExtension = Extension.create({
     name: 'clipboardExtension',
 
     addProseMirrorPlugins() {
+        let pastedAsPlainText = false;
+
         return [
             new Plugin({
                 key: new PluginKey('clipboardExtension'),
                 props: {
+                    transformPastedText(text, plain) {
+                        pastedAsPlainText = plain;
+                        return text;
+                    },
+                    transformPastedHTML(html) {
+                        pastedAsPlainText = false;
+                        return html;
+                    },
                     /**
                      * handlePaste
                      * 
@@ -248,12 +132,10 @@ export const ClipboardExtension = Extension.create({
                      * - falseを返すとデフォルト処理に委譲
                      * 
                      * 処理フロー:
-                     * 1. ClipboardDataからプレーンテキストを取得
-                     * 2. HTMLが含まれる場合はリッチテキストかチェック
-                     * 3. URLを含む場合はTiptapのLink機能に委譲
-                     * 4. テキストを正規化して行配列に変換
-                     * 5. 行配列を段落ノードに変換
-                     * 6. Sliceを作成してエディタに挿入
+                     * 1. file/media clipboard は既存の経路へ委譲
+                     * 2. HTML付き通常pasteだけplain textのmarkup cleanupを適用
+                     * 3. plain textがなければHTMLの既定ProseMirror処理へ委譲
+                     * 4. 1つのpaste transactionで選択範囲へ挿入
                      */
                     handlePaste(view, event, slice) {
                         if (view.editable === false) {
@@ -268,11 +150,6 @@ export const ClipboardExtension = Extension.create({
                             return false;
                         }
 
-                        // デバッグ情報を出力（開発環境のみ）
-                        if (import.meta.env.MODE === 'development') {
-                            debugClipboardData(clipboardData, 'Paste');
-                        }
-
                         // 画像ファイルのペーストは別処理に委譲
                         const hasFiles = clipboardData.files && clipboardData.files.length > 0;
                         if (hasFiles) {
@@ -281,58 +158,40 @@ export const ClipboardExtension = Extension.create({
 
                         // プレーンテキストを取得
                         const text = clipboardData.getData('text/plain');
-                        if (!text) {
-                            return false; // テキストがない場合はデフォルト処理
-                        }
 
-                        // HTMLが含まれる場合の処理
+                        // HTMLはrich pasteのsignalとして扱い、本文はtext/plainから取得する。
+                        // 自Editor clipboardだけは従来の空行正規化を維持する。
                         const hasHtml = clipboardData.types.includes('text/html');
                         let collapseEmptyLines = false;
+                        let isSelfCopy = false;
 
                         if (hasHtml) {
                             const html = clipboardData.getData('text/html');
+                            // Preserve this editor's own ProseMirror clipboard payloads.
+                            const isFromCurrentEditor = isFromCurrentEditorClipboard(html);
+                            const isFromLegacyEditor =
+                                html.includes('data-block="true"') && html.includes('data-editor=');
 
-                            // Edge and similar address bars may expose a URL as
-                            // plain text while the HTML representation contains
-                            // only a titled link. Route this narrow shape through
-                            // the existing plain-text paste path so the title is
-                            // not inserted as the document content.
-                            const isFriendlyUrl = isFriendlyUrlClipboard(text, html);
+                            isSelfCopy = isFromCurrentEditor || isFromLegacyEditor;
+                            collapseEmptyLines = isFromCurrentEditor || isFromLegacyEditor;
 
-                            // リッチテキスト（太字、イタリック、リンク）を検出
-                            // リッチテキストの場合はデフォルト処理に委譲して書式を保持
-                            const hasRichFormatting =
-                                html.includes('<strong>') ||
-                                html.includes('<b>') ||
-                                html.includes('<em>') ||
-                                html.includes('<i>') ||
-                                html.includes('<a ') || // リンクタグを検出
-                                html.includes('<a>');
-
-                            if (hasRichFormatting && !isFriendlyUrl) {
-                                return false; // デフォルト処理で書式を保持（Tiptap Link機能が処理）
-                            }
-
-                            // 自アプリからのコピー（data-block + data-editor）を検出
-                            // このパターンの場合、連続空行を制限する
-                            const isFromOwnApp =
-                                html.includes('data-block="true"') &&
-                                html.includes('data-editor=');
-
-                            collapseEmptyLines = isFromOwnApp;
-
-                            if (import.meta.env.MODE === 'development') {
-                                console.log('📋 From own app:', isFromOwnApp);
-                            }
                         }
 
-                        // テキストを正規化して行配列に変換
-                        // 注意: URLを含むプレーンテキストの場合も段落ノードとして挿入し、
-                        // ContentTrackingExtensionがappendTransactionでリンク化する
-                        const { lines } = normalizeClipboardText(text, {
+                        if (!text) {
+                            // HTMLのみのclipboardは独自変換せず、既定のProseMirror pasteへ委譲する。
+                            return false;
+                        }
+
+                        // HTML付きclipboardも、既存plain-text pasteと同じ改行正規化・段落化を使う。
+                        // HTMLは意味解釈せず、rich clipboardに限る軽量cleanup後のURL判定はContentTrackingに任せる。
+                        let lines = normalizeClipboardText(text, {
                             collapseEmptyLines,
                             maxConsecutiveEmptyLines: 1
-                        });
+                        }).lines;
+
+                        if (hasHtml && !pastedAsPlainText && !isSelfCopy) {
+                            lines = cleanupExternalRichPasteLines(lines);
+                        }
 
                         // 空のテキストの場合はデフォルト処理に委譲
                         if (lines.length === 0) {
@@ -346,14 +205,6 @@ export const ClipboardExtension = Extension.create({
                         const fragment = Fragment.from(paragraphNodes);
                         const customSlice = new Slice(fragment, 1, 1);
 
-                        if (import.meta.env.MODE === 'development') {
-                            console.log('📋 handlePaste: paragraph-based paste', {
-                                originalText: text,
-                                lines: lines.length,
-                                paragraphCount: paragraphNodes.length
-                            });
-                        }
-
                         // トランザクションを作成
                         // 
                         // Tiptap v3 UndoRedo拡張の仕様:
@@ -361,22 +212,13 @@ export const ClipboardExtension = Extension.create({
                         // - addToHistory: trueで履歴に記録（デフォルト動作だが明示的に設定）
                         // - uiEvent: 'paste'でペーストイベントとして記録
                         //
-                        // UndoRedoの動作:
-                        // - ペースト操作は自動的に独立した履歴グループとして扱われる
-                        // - newGroupDelay内でも、ペースト操作は必ず新しいグループを開始する
+                        // UndoRedoの grouping は既存の時間・隣接 transaction の規則に任せる。
+                        // paste metadata 自体は独立した履歴グループを保証しない。
                         const tr = state.tr
                             .replaceSelection(customSlice)
                             .setMeta('paste', true)
                             .setMeta('uiEvent', 'paste')
                             .setMeta('addToHistory', true);
-
-                        if (import.meta.env.MODE === 'development') {
-                            console.log('📋 handlePaste: dispatching transaction', {
-                                docChanged: tr.docChanged,
-                                steps: tr.steps.length,
-                                linesCount: lines.length
-                            });
-                        }
 
                         dispatch(tr);
 

@@ -1,9 +1,19 @@
 import { validateEvent } from "nostr-tools";
+import { POST_HISTORY_FETCH_KINDS } from "./postHistoryRelayFetchService";
+import { isPostHistoryAuthoredKind } from "./postHistoryKinds";
+import { buildPostHistoryVisibleKindsKey } from "./storage/postHistoryVisibleRangeRepository";
+import { postHistoryImportedRangesRepository, type DexiePostHistoryImportedRangesRepository } from "./storage/postHistoryImportedRangesRepository";
+import { ehagakiDb } from "./storage/ehagakiDb";
+import { getPostHistoryLocalRevision, PostHistoryLocalWriteStaleError, type PostHistoryLocalWriteScope } from "./storage/postHistoryLocalWriteScope";
 import {
     attestFullyVerifiedPostHistoryRawEvent,
     type PostHistoryRawEventAttestation,
 } from "./postHistoryRawEventVerification";
 import type { NostrEvent } from "./types";
+import {
+    sensitivePayloadRepository,
+    type SensitivePayloadRepository,
+} from "./storage/sensitivePayloadRepository";
 import {
     postHistoryDeletionRequestsRepository,
     type PostHistoryDeletionRequestsRepository,
@@ -28,6 +38,9 @@ export type PostHistoryJsonlImportStatus =
 
 export interface PostHistoryJsonlImportResult {
     status: PostHistoryJsonlImportStatus;
+    localRevision?: number;
+    restoredRangeChanged?: boolean;
+    restoredRangeSaveFailed?: boolean;
     nonEmptyLineCount: number;
     invalidJsonCount: number;
     invalidStructureCount: number;
@@ -48,6 +61,9 @@ export interface PostHistoryJsonlImportResult {
     unsupportedDeletionEventCount: number;
     failedDeletionEventCount: number;
     appliedDeletionPostCount: number;
+    uniquePayloadEventCount: number;
+    savedPayloadCandidateCount: number;
+    failedPayloadEventCount: number;
 }
 
 export interface PostHistoryJsonlImportProgress {
@@ -57,7 +73,7 @@ export interface PostHistoryJsonlImportProgress {
 }
 
 export interface PostHistoryJsonlImportInput {
-    file: Pick<File, "stream" | "size">;
+    file: Pick<File, "stream" | "size"> & Partial<Pick<File, "name">>;
     ownerPubkeyHex: string;
     getCurrentPubkeyHex: () => string | null | undefined;
     signal?: AbortSignal;
@@ -65,15 +81,19 @@ export interface PostHistoryJsonlImportInput {
 }
 
 export interface PostHistoryJsonlImportServiceDeps {
+    getLocalRevision?: (ownerPubkeyHex: string) => Promise<number>;
+    importedRangesRepository?: Pick<DexiePostHistoryImportedRangesRepository, "record">;
     postHistoryRepository?: Pick<PostHistoryRepository, "upsertFetchedEvents">;
     deletionRequestsRepository?: Pick<
         PostHistoryDeletionRequestsRepository,
         "upsertImportedDeletionEvents"
     >;
+    sensitivePayloadRepository?: Pick<SensitivePayloadRepository, "putCandidate">;
 }
 
 type BufferedImportEvent =
     | { type: "post"; event: NostrEvent; attestation: PostHistoryRawEventAttestation }
+    | { type: "payload"; event: NostrEvent; attestation: PostHistoryRawEventAttestation }
     | { type: "deletion"; event: NostrEvent; attestation: PostHistoryRawEventAttestation };
 
 function createEmptyResult(): PostHistoryJsonlImportResult {
@@ -99,6 +119,9 @@ function createEmptyResult(): PostHistoryJsonlImportResult {
         unsupportedDeletionEventCount: 0,
         failedDeletionEventCount: 0,
         appliedDeletionPostCount: 0,
+        uniquePayloadEventCount: 0,
+        savedPayloadCandidateCount: 0,
+        failedPayloadEventCount: 0,
     };
 }
 
@@ -115,16 +138,23 @@ function getValidDeletionETagCount(event: NostrEvent): number {
 }
 
 export class PostHistoryJsonlImportService {
+    private getLocalRevision: (ownerPubkeyHex: string) => Promise<number>;
+    private importedRangesRepository: Pick<DexiePostHistoryImportedRangesRepository, "record">;
     private postHistoryRepository: Pick<PostHistoryRepository, "upsertFetchedEvents">;
     private deletionRequestsRepository: Pick<
         PostHistoryDeletionRequestsRepository,
         "upsertImportedDeletionEvents"
     >;
+    private sensitivePayloadRepository: Pick<SensitivePayloadRepository, "putCandidate">;
 
     constructor(deps: PostHistoryJsonlImportServiceDeps = {}) {
+        this.getLocalRevision = deps.getLocalRevision ?? ((owner) => getPostHistoryLocalRevision(ehagakiDb, owner));
+        this.importedRangesRepository = deps.importedRangesRepository ?? postHistoryImportedRangesRepository;
         this.postHistoryRepository = deps.postHistoryRepository ?? postHistoryRepository;
         this.deletionRequestsRepository = deps.deletionRequestsRepository
             ?? postHistoryDeletionRequestsRepository;
+        this.sensitivePayloadRepository = deps.sensitivePayloadRepository
+            ?? sensitivePayloadRepository;
     }
 
     async importFile(input: PostHistoryJsonlImportInput): Promise<PostHistoryJsonlImportResult> {
@@ -132,6 +162,18 @@ export class PostHistoryJsonlImportService {
         const processedEventIds = new Set<string>();
         const buffer: BufferedImportEvent[] = [];
         let hadSaveFailure = false;
+        let localWriteInvalidated = false;
+        let localRevisionReadFailed = false;
+        let oldestPost: number | null = null;
+        let newestPost: number | null = null;
+        let validPostTimes = true;
+        let readBytes = 0;
+        const nameTimestamp = /^citrine-([1-9]\d*)\.jsonl$/.exec(input.file.name ?? "")?.[1];
+        const isCitrine = nameTimestamp !== undefined && Number.isSafeInteger(Number(nameTimestamp))
+            && Number(nameTimestamp) <= 8_640_000_000_000_000;
+        // Exporter clock skew may only narrow the candidates. Future posts are
+        // still saved, but cannot certify the time between the backup and now.
+        const restoredPostUpperBound = Math.floor(Math.min(Number(nameTimestamp), Date.now()) / 1000);
         let lastProgressNotificationAt: number | null = null;
         const totalBytes = Number.isFinite(input.file.size) && input.file.size > 0
             ? input.file.size
@@ -149,6 +191,8 @@ export class PostHistoryJsonlImportService {
             if (input.getCurrentPubkeyHex() !== input.ownerPubkeyHex) {
                 return "account-changed";
             }
+            if (localRevisionReadFailed) return result.nonEmptyLineCount > 0 ? "partial" : "failed";
+            if (localWriteInvalidated) return "cancelled";
             return null;
         };
         const emitProgress = (force = false): void => {
@@ -177,7 +221,28 @@ export class PostHistoryJsonlImportService {
                 Math.max(processedBytes, processedBytes + byteCount),
             );
         };
+        try {
+            result.localRevision = await this.getLocalRevision(input.ownerPubkeyHex);
+        } catch {
+            result.status = "failed";
+            emitProgress(true);
+            return result;
+        }
+        const localWriteScope: PostHistoryLocalWriteScope = {
+            ownerPubkeyHex: input.ownerPubkeyHex, expectedRevision: result.localRevision,
+            isActive: () => getStopStatus() === null,
+        };
+        const checkLocalRevision = async (): Promise<PostHistoryJsonlImportStatus | null> => {
+            try {
+                if (await this.getLocalRevision(input.ownerPubkeyHex) !== localWriteScope.expectedRevision) localWriteInvalidated = true;
+            } catch {
+                localRevisionReadFailed = true;
+            }
+            return getStopStatus();
+        };
         const flush = async (): Promise<PostHistoryJsonlImportStatus | null> => {
+            const revisionStatus = await checkLocalRevision();
+            if (revisionStatus) { buffer.length = 0; return revisionStatus; }
             if (buffer.length === 0) {
                 return getStopStatus();
             }
@@ -198,18 +263,25 @@ export class PostHistoryJsonlImportService {
                 .filter((item): item is Extract<BufferedImportEvent, { type: "deletion" }> =>
                     item.type === "deletion")
                 .map((item) => item.event);
+            const payloads = buffer
+                .filter((item): item is Extract<BufferedImportEvent, { type: "payload" }> =>
+                    item.type === "payload")
+                .map((item) => ({ event: item.event, attestation: item.attestation }));
             buffer.length = 0;
 
             if (posts.length > 0) {
                 try {
                     const summary = await this.postHistoryRepository.upsertFetchedEvents({
                         events: posts,
+                        localWriteScope,
                     });
+                    if (summary.applied === false) { localWriteInvalidated = true; return getStopStatus(); }
                     result.insertedPostCount += summary.insertedCount;
                     result.updatedPostCount += summary.updatedCount;
                     result.unchangedPostCount += summary.unchangedCount;
                     result.appliedDeletionPostCount += summary.appliedDeletionCount;
-                } catch {
+                } catch (error) {
+                    if (error instanceof PostHistoryLocalWriteStaleError) { localWriteInvalidated = true; return getStopStatus(); }
                     result.failedPostEventCount += posts.length;
                     hadSaveFailure = true;
                 }
@@ -226,20 +298,35 @@ export class PostHistoryJsonlImportService {
                         .upsertImportedDeletionEvents({
                             ownerPubkeyHex: input.ownerPubkeyHex,
                             deletionEvents,
+                            localWriteScope,
                         });
                     result.insertedDeletionRequestCount += summary.insertedCount;
                     result.updatedDeletionRequestCount += summary.updatedCount;
                     result.unchangedDeletionRequestCount += summary.unchangedCount;
                     result.unsupportedDeletionEventCount += summary.ignoredCount;
                     result.appliedDeletionPostCount += summary.appliedDeletionCount;
-                } catch {
+                } catch (error) {
+                    if (error instanceof PostHistoryLocalWriteStaleError) { localWriteInvalidated = true; return getStopStatus(); }
                     result.failedDeletionEventCount += deletionEvents.length;
                     hadSaveFailure = true;
                 }
             }
 
+            for (const payload of payloads) {
+                const stopBeforePayload = getStopStatus();
+                if (stopBeforePayload) return stopBeforePayload;
+                try {
+                    await this.sensitivePayloadRepository.putCandidate({ ...payload, localWriteScope });
+                    result.savedPayloadCandidateCount += 1;
+                } catch (error) {
+                    if (error instanceof PostHistoryLocalWriteStaleError) { localWriteInvalidated = true; return getStopStatus(); }
+                    result.failedPayloadEventCount += 1;
+                    hadSaveFailure = true;
+                }
+            }
+
             emitProgress();
-            return getStopStatus();
+            return checkLocalRevision();
         };
         const processLine = async (line: string): Promise<PostHistoryJsonlImportStatus | null> => {
             const stopStatus = getStopStatus();
@@ -268,7 +355,7 @@ export class PostHistoryJsonlImportService {
                 result.otherAccountCount += 1;
                 return null;
             }
-            if (event.kind !== 1 && event.kind !== 42 && event.kind !== 5) {
+            if (!isPostHistoryAuthoredKind(event.kind) && ![36, 5].includes(event.kind)) {
                 result.unsupportedKindCount += 1;
                 return null;
             }
@@ -283,8 +370,16 @@ export class PostHistoryJsonlImportService {
             }
             processedEventIds.add(event.id);
 
-            if (event.kind === 1 || event.kind === 42) {
+            if (event.kind === 36) {
+                result.uniquePayloadEventCount += 1;
+                buffer.push({ type: "payload", ...verified });
+            } else if (isPostHistoryAuthoredKind(event.kind)) {
                 result.uniquePostEventCount += 1;
+                if (!Number.isSafeInteger(event.created_at) || event.created_at < 0 || event.created_at >= Number.MAX_SAFE_INTEGER) validPostTimes = false;
+                else if (event.created_at <= restoredPostUpperBound) {
+                    oldestPost = Math.min(oldestPost ?? event.created_at, event.created_at);
+                    newestPost = Math.max(newestPost ?? event.created_at, event.created_at);
+                }
                 buffer.push({ type: "post", ...verified });
             } else if (event.kind === 5) {
                 result.uniqueDeletionEventCount += 1;
@@ -343,6 +438,7 @@ export class PostHistoryJsonlImportService {
                     break;
                 }
 
+                readBytes += chunk.value.byteLength;
                 remainder += decoder.decode(chunk.value, { stream: true });
                 const lines = remainder.split("\n");
                 remainder = lines.pop() ?? "";
@@ -389,6 +485,24 @@ export class PostHistoryJsonlImportService {
             return result;
         }
         result.status = hadSaveFailure || hasInputRejections() ? "partial" : "completed";
+        if (isCitrine && result.status === "completed" && readBytes === totalBytes && validPostTimes
+            && oldestPost !== null && newestPost !== null
+            && result.insertedPostCount + result.updatedPostCount + result.unchangedPostCount === result.uniquePostEventCount) {
+            try {
+                result.restoredRangeChanged = await this.importedRangesRepository.record({
+                    ...localWriteScope, kindsKey: buildPostHistoryVisibleKindsKey([...POST_HISTORY_FETCH_KINDS]),
+                    range: { since: oldestPost, until: newestPost },
+                });
+            } catch (error) {
+                if (error instanceof PostHistoryLocalWriteStaleError) {
+                    localWriteInvalidated = true;
+                    result.status = getStopStatus()!;
+                } else {
+                    result.status = "partial";
+                    result.restoredRangeSaveFailed = true;
+                }
+            }
+        }
         emitProgress(true);
         return result;
     }

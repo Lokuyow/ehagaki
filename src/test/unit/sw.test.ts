@@ -595,6 +595,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             await processServiceWorkerInstall({
                 logger: ServiceWorkerDependencies.console,
                 version: SW_VERSION,
+                installPrecache: async () => {},
             });
         }
 
@@ -756,7 +757,7 @@ describe('Service Worker Tests', () => {
 
     describe('IndexedDBManager', () => {
         it('uses the shared native IndexedDB version', () => {
-            expect(swModule.INDEXEDDB_VERSION).toBe(150);
+            expect(swModule.INDEXEDDB_VERSION).toBe(160);
         });
 
         it('should save shared media in the app database', async () => {

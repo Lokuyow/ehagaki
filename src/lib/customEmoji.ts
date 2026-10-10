@@ -1,4 +1,5 @@
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
+import type { Filter } from "nostr-tools";
 import type { EmojisRepository } from "./storage/emojisRepository";
 import {
     prepareCachedEmojiItems,
@@ -408,7 +409,7 @@ export async function writeCachedCustomEmojiItems(
 
 function fetchEvents(params: {
     rxNostr: RxNostr;
-    filter: any;
+    filter: Filter;
     timeoutMs?: number;
 }): Promise<NostrEventLike[]> {
     const { rxNostr, filter, timeoutMs = 4000 } = params;
@@ -435,9 +436,9 @@ function fetchEvents(params: {
 
         try {
             subscription = rxNostr.use(rxReq).subscribe({
-                next: (packet: any) => {
+                next: (packet) => {
                     if (packet?.event?.tags) {
-                        events.push(packet.event as NostrEventLike);
+                        events.push(packet.event);
                     }
                 },
                 complete: safeResolve,

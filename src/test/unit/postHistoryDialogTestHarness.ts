@@ -1,11 +1,17 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
+import { tick } from 'svelte';
 import { vi } from 'vitest';
 import { clearPersistedPostHistoryListingSnapshots } from '../../lib/hooks/usePostHistoryListing.svelte';
 import { postHistoryLightweightSyncCoordinator } from '../../lib/postHistoryLightweightSyncCoordinator';
 import { clearPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
 import { clearPostHistoryDialogScrollStates } from '../../lib/postHistoryDialogScrollState';
 import { clearPostHistoryShouldReturnToLatestAfterLocalPost } from '../../lib/postHistoryLatestRequest';
+import { resolvePostHistoryAuthoredRelayUrls } from '../../lib/postHistoryRelayResolver';
+import { type PostHistoryRelayCoverage } from '../../lib/postHistoryRelayCoverage';
+import { ehagakiDb } from '../../lib/storage/ehagakiDb';
+
+const originalDbTransaction = ehagakiDb.transaction.bind(ehagakiDb);
 
 const hoisted = vi.hoisted(() => {
     const translationOverrides: Record<string, string> = {};
@@ -147,6 +153,7 @@ const hoisted = vi.hoisted(() => {
             getPage: vi.fn(),
             getLatestVisibleChunk: vi.fn(),
             getOlderVisibleChunk: vi.fn(),
+            hasOlderVisiblePosts: vi.fn(),
             getNewerVisibleChunk: vi.fn(),
             getOldestVisibleChunk: vi.fn(),
             getVisibleChunkFromCreatedAt: vi.fn(),
@@ -200,6 +207,9 @@ const hoisted = vi.hoisted(() => {
             clear: vi.fn(),
             clearForPubkey: vi.fn(),
         },
+        relayCoverageRepositoryMock: { get: vi.fn(), getLocalRevision: vi.fn() },
+        importedRangesRepositoryMock: { get: vi.fn() },
+        completeAuthoredQueryFixture: vi.fn(),
         jumpCacheAnchorRepositoryMock: {
             getForPubkey: vi.fn(),
             addForPubkey: vi.fn(),
@@ -226,6 +236,7 @@ const hoisted = vi.hoisted(() => {
         },
         localSearchServiceMock: {
             searchLocalPosts: vi.fn(),
+            clearCache: vi.fn(),
         },
         postHistoryJsonlImportServiceMock: {
             importFile: vi.fn(),
@@ -281,14 +292,13 @@ const hoisted = vi.hoisted(() => {
     };
 });
 
-const mockTranslate = hoisted.mockTranslate;
 export function setPostHistoryDialogTranslationOverrides(overrides: Record<string, string>): void {
     Object.assign(hoisted.translationOverrides, overrides);
 }
 export const repositoryMock = hoisted.repositoryMock;
 export const replyEventsRepositoryMock = hoisted.replyEventsRepositoryMock;
 export const deletionRequestsRepositoryMock = hoisted.deletionRequestsRepositoryMock;
-export const directReplyFetchMetadataRepositoryMock = hoisted.directReplyFetchMetadataRepositoryMock;
+const directReplyFetchMetadataRepositoryMock = hoisted.directReplyFetchMetadataRepositoryMock;
 export const inboundInteractionsSyncStateRepositoryMock = hoisted.inboundInteractionsSyncStateRepositoryMock;
 export const authoredSyncStateRepositoryMock = hoisted.authoredSyncStateRepositoryMock;
 export const profilesRepositoryMock = hoisted.profilesRepositoryMock;
@@ -297,9 +307,22 @@ export const replyFetchServiceMock = hoisted.replyFetchServiceMock;
 export const contextFetchServiceMock = hoisted.contextFetchServiceMock;
 export const deletionFetchServiceMock = hoisted.deletionFetchServiceMock;
 export const visibleRangeRepositoryMock = hoisted.visibleRangeRepositoryMock;
+export const relayCoverageRepositoryMock = hoisted.relayCoverageRepositoryMock;
+const importedRangesRepositoryMock = hoisted.importedRangesRepositoryMock;
+let fixtureRestoredRanges: { since: number; until: number }[] = [];
+export function seedPostHistoryRestoredRange(since: number, until: number): void {
+    fixtureRestoredRanges.push({ since, until });
+}
+let fixtureCoverageRanges: { since: number; until: number }[] = [];
+export function seedPostHistoryCoverage(since: number, until = 2_000_000_000): void {
+    fixtureCoverageRanges.push({ since, until });
+}
+export function completedRelayCoverage(since: number, until = 2_000_000_000): PostHistoryRelayCoverage[] {
+    return resolvePostHistoryAuthoredRelayUrls(undefined).map((relayUrl) => ({ relayUrl, ranges: [{ since, until }] }));
+}
 export const jumpCacheAnchorRepositoryMock = hoisted.jumpCacheAnchorRepositoryMock;
-export const repairCursorRepositoryMock = hoisted.repairCursorRepositoryMock;
-export const syncCoverageRepositoryMock = hoisted.syncCoverageRepositoryMock;
+const repairCursorRepositoryMock = hoisted.repairCursorRepositoryMock;
+const syncCoverageRepositoryMock = hoisted.syncCoverageRepositoryMock;
 export const relayFetchServiceMock = hoisted.relayFetchServiceMock;
 export const repairServiceMock = hoisted.repairServiceMock;
 export const replyRepairServiceMock = hoisted.replyRepairServiceMock;
@@ -442,6 +465,19 @@ vi.mock('../../lib/storage/postHistoryVisibleRangeRepository', async () => {
     };
 });
 
+vi.mock('../../lib/storage/postHistoryRelayCoverageRepository', async () => ({
+    ...await vi.importActual('../../lib/storage/postHistoryRelayCoverageRepository'),
+    postHistoryRelayCoverageRepository: hoisted.relayCoverageRepositoryMock,
+}));
+vi.mock('../../lib/storage/postHistoryImportedRangesRepository', async () => ({
+    ...await vi.importActual('../../lib/storage/postHistoryImportedRangesRepository'),
+    postHistoryImportedRangesRepository: hoisted.importedRangesRepositoryMock,
+}));
+vi.mock('../../lib/storage/postHistoryLocalWriteScope', async () => ({
+    ...await vi.importActual('../../lib/storage/postHistoryLocalWriteScope'),
+    getPostHistoryLocalRevision: (_db: unknown, owner: string) => hoisted.relayCoverageRepositoryMock.getLocalRevision(owner),
+}));
+
 vi.mock('../../lib/storage/postHistoryJumpCacheAnchorRepository', async () => {
     const actual = await vi.importActual<typeof import('../../lib/storage/postHistoryJumpCacheAnchorRepository')>('../../lib/storage/postHistoryJumpCacheAnchorRepository');
     return {
@@ -451,7 +487,7 @@ vi.mock('../../lib/storage/postHistoryJumpCacheAnchorRepository', async () => {
 });
 
 vi.mock('../../lib/postHistoryRelayFetchService', () => ({
-    POST_HISTORY_FETCH_KINDS: [1, 42],
+    POST_HISTORY_FETCH_KINDS: [1, 42, 1111],
     POST_HISTORY_BOOTSTRAP_FETCH_LIMIT: 150,
     POST_HISTORY_BOOTSTRAP_FETCH_TIMEOUT_MS: 20_000,
     POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT: 30,
@@ -461,7 +497,13 @@ vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     POST_HISTORY_OLDER_FETCH_TIMEOUT_MS: 25_000,
     POST_HISTORY_PAGE_SIZE: 50,
     POST_HISTORY_REPAIR_FETCH_LIMIT: 250,
-    postHistoryRelayFetchService: hoisted.relayFetchServiceMock,
+    postHistoryRelayFetchService: {
+        fetchLatest: (rxNostr: unknown, input: Record<string, any>) => {
+            const task = hoisted.relayFetchServiceMock.fetchLatest(rxNostr, input);
+            return { ...task, promise: task.promise.then((result: Record<string, any>) =>
+                hoisted.completeAuthoredQueryFixture(input, result)) };
+        },
+    },
 }));
 
 vi.mock('../../lib/postHistoryCurrentViewRefetchService', () => ({
@@ -489,7 +531,7 @@ vi.mock('../../lib/postDeletionService', () => ({
         !!currentPubkey
         && post.pubkeyHex === currentPubkey
         && typeof post.deletedAt !== 'number'
-        && [1, 42].includes(post.kind),
+        && [1, 42, 1111].includes(post.kind),
     postDeletionService: hoisted.postDeletionServiceMock,
 }));
 
@@ -601,9 +643,59 @@ export async function openPostHistoryMenu(): Promise<void> {
 }
 
 export async function openSearchBar(): Promise<HTMLInputElement> {
-    await openPostHistoryMenu();
-    await fireEvent.click(await screen.findByRole('menuitem', { name: '検索' }));
+    await fireEvent.click(await screen.findByRole('button', { name: '検索' }));
     return screen.findByRole('searchbox', { name: '検索' }) as Promise<HTMLInputElement>;
+}
+
+export async function openJumpDatePanel(): Promise<void> {
+    const button = document.querySelector<HTMLButtonElement>(
+        '.post-history-heading-calendar-button',
+    );
+    if (!button) {
+        throw new Error('投稿履歴ヘッダーの日付移動ボタンが見つかりません');
+    }
+    await fireEvent.click(button);
+}
+
+export async function readPostHistoryCountLabel(): Promise<string> {
+    const trigger = await screen.findByRole('button', { name: '投稿履歴メニューを開く' });
+    const openedHere = trigger.getAttribute('aria-expanded') !== 'true';
+    if (openedHere) {
+        await fireEvent.click(trigger);
+    }
+    await tick();
+    const summary = document.querySelector('.post-history-menu-summary');
+    if (!(summary instanceof HTMLElement)) {
+        throw new Error('投稿履歴メニューの件数表示が見つかりません');
+    }
+    const label = summary.textContent?.trim() ?? '';
+    if (openedHere) {
+        await fireEvent.click(trigger);
+    }
+    return label;
+}
+
+export async function expectPostHistoryCountLabel(expected: string): Promise<void> {
+    const trigger = await screen.findByRole('button', { name: '投稿履歴メニューを開く' });
+    const openedHere = trigger.getAttribute('aria-expanded') !== 'true';
+    if (openedHere) {
+        await fireEvent.click(trigger);
+    }
+    try {
+        for (let attempt = 0; attempt < 12; attempt += 1) {
+            await tick();
+            const summary = document.querySelector('.post-history-menu-summary');
+            if (summary instanceof HTMLElement && summary.textContent?.trim() === expected) {
+                return;
+            }
+            await Promise.resolve();
+        }
+        throw new Error(`件数表示が ${expected} ではありません`);
+    } finally {
+        if (openedHere) {
+            await fireEvent.click(trigger);
+        }
+    }
 }
 
 export async function clickMenuAction(name: string): Promise<void> {
@@ -624,7 +716,9 @@ export async function waitForSearchDebounce(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 300));
 }
 
-export function resetPostHistoryDialogHarness(options: { listingMode?: 'chunk' | 'page-adapter' } = {}): void {
+export function resetPostHistoryDialogHarness(options: {
+    listingMode?: 'chunk' | 'page-adapter'; coverageMode?: 'saved' | 'entry' | 'none';
+} = {}): void {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
         callback(0);
         return 1;
@@ -635,6 +729,16 @@ export function resetPostHistoryDialogHarness(options: { listingMode?: 'chunk' |
     clearPostHistoryDialogScrollStates();
     clearPostHistoryShouldReturnToLatestAfterLocalPost();
     vi.resetAllMocks();
+    // Repository snapshots are mocked in component tests. Real transaction
+    // atomicity and liveQuery notifications belong to the DB/browser tests.
+    vi.spyOn(ehagakiDb, 'transaction').mockImplementation(((mode: string, ...args: unknown[]) => {
+        if (mode === 'r' && args[0] === ehagakiDb.meta) {
+            return Promise.resolve((args.at(-1) as () => unknown)());
+        }
+        return Reflect.apply(originalDbTransaction, ehagakiDb, [mode, ...args]);
+    }) as typeof ehagakiDb.transaction);
+    fixtureCoverageRanges = [];
+    fixtureRestoredRanges = [];
     for (const key of Object.keys(hoisted.translationOverrides)) {
         delete hoisted.translationOverrides[key];
     }
@@ -649,6 +753,9 @@ export function resetPostHistoryDialogHarness(options: { listingMode?: 'chunk' |
         return [];
     });
     repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+    repositoryMock.hasOlderVisiblePosts.mockImplementation(async (options) =>
+        (await repositoryMock.getOlderVisibleChunk({ ...options, limit: 1 })).length > 0,
+    );
     repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
     repositoryMock.getVisibleChunkFromCreatedAt.mockImplementation(async ({ pubkeyHex, visibleUntil, limit }: Record<string, unknown>) =>
         repositoryMock.getLatestVisibleChunk({ pubkeyHex, visibleUntil, limit }),
@@ -657,12 +764,12 @@ export function resetPostHistoryDialogHarness(options: { listingMode?: 'chunk' |
     repositoryMock.hasPostsBeforeCreatedAt.mockResolvedValue(false);
     repositoryMock.getSparseChunk.mockResolvedValue([]);
     repositoryMock.countForPubkey.mockResolvedValue(0);
-    repositoryMock.countVisibleForPubkey.mockImplementation(async () => {
+    repositoryMock.countVisibleForPubkey.mockImplementation(async (owner: string) => {
         const lastCount = repositoryMock.countForPubkey.mock.results.at(-1);
         if (lastCount?.type === 'return') {
             return await lastCount.value;
         }
-        return 0;
+        return repositoryMock.countForPubkey.getMockImplementation()?.(owner) ?? 0;
     });
     repositoryMock.getExistingEventIdsForPubkey.mockResolvedValue([]);
     repositoryMock.getOldestCreatedAt.mockResolvedValue(null);
@@ -712,6 +819,43 @@ export function resetPostHistoryDialogHarness(options: { listingMode?: 'chunk' |
     visibleRangeRepositoryMock.save.mockResolvedValue(null);
     visibleRangeRepositoryMock.clear.mockResolvedValue(undefined);
     visibleRangeRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
+    relayCoverageRepositoryMock.getLocalRevision.mockResolvedValue(0);
+    importedRangesRepositoryMock.get.mockImplementation(async (ownerPubkeyHex: string, kindsKey: string) => ({
+        schemaVersion: 1, source: 'citrine-backup', ownerPubkeyHex, kindsKey, localRevision: 0,
+        ranges: ownerPubkeyHex === PUBKEY_HEX ? fixtureRestoredRanges : [],
+    }));
+    const canonical = resolvePostHistoryAuthoredRelayUrls(undefined);
+    // These legacy component fixtures describe an already queried saved range.
+    // Declare its relay evidence explicitly in the fixture adapter. Production
+    // never converts the old display metadata to coverage.
+    relayCoverageRepositoryMock.get.mockImplementation(async (ownerPubkeyHex: string, kindsKey: string) => {
+        const declared = await visibleRangeRepositoryMock.get(ownerPubkeyHex, kindsKey);
+        const floor = declared?.visibleUntil ?? (options.coverageMode === 'entry' || options.coverageMode === 'none' ? null : 0);
+        const relays: PostHistoryRelayCoverage[] = floor === null ? [] : canonical.map((relayUrl) => ({
+            relayUrl, ranges: [{ since: floor, until: 2_000_000_000 }],
+        }));
+        relays.push(...canonical.map((relayUrl) => ({ relayUrl, ranges: fixtureCoverageRanges })));
+        for (let index = 0; index < repositoryMock.upsertFetchedEvents.mock.calls.length; index++) {
+            const write = repositoryMock.upsertFetchedEvents.mock.calls[index][0]?.relayFetchCoverage;
+            if (write?.ownerPubkeyHex !== ownerPubkeyHex || write.kindsKey !== kindsKey) continue;
+            const saved = repositoryMock.upsertFetchedEvents.mock.results[index];
+            if (saved?.type !== 'return') continue;
+            try { if ((await saved.value)?.applied !== false) relays.push(...write.relays); } catch { /* rollback */ }
+        }
+        return { schemaVersion: 1, ownerPubkeyHex, kindsKey, relays };
+    });
+    hoisted.completeAuthoredQueryFixture.mockImplementation((input: Record<string, any>, result: Record<string, any>) => {
+        if (result.relayFetchCoverage || result.status !== 'success') return result;
+        let since = input.since ?? (result.events.length ? (result.hasMore ? result.nextUntil : result.oldestCreatedAt)
+            ?? Math.min(...result.events.map((item: any) => item.event.created_at)) : null);
+        if (since !== null && result.hasMore && result.events.length) {
+            since = Math.max(since, Math.min(...result.events.map((item: any) => item.event.created_at)) + 1);
+        }
+        const until = input.until ?? Math.floor(Date.now() / 1000);
+        return { ...result, relayFetchCoverage: since === null ? [] : canonical.map((relayUrl) => ({
+            relayUrl, ranges: [{ since, until }],
+        })) };
+    });
     inboundInteractionsSyncStateRepositoryMock.get.mockResolvedValue(null);
     inboundInteractionsSyncStateRepositoryMock.save.mockResolvedValue({});
     inboundInteractionsSyncStateRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
@@ -881,11 +1025,3 @@ export function cleanupPostHistoryDialogHarness(): void {
     vi.useRealTimers();
     vi.unstubAllGlobals();
 }
-
-export {
-    cleanup,
-    fireEvent,
-    render,
-    screen,
-    waitFor,
-};

@@ -35,6 +35,36 @@ export interface MediaGalleryItem {
     uploadProtocol?: 'blossom' | 'nip96' | 'custom-http';
 }
 
+export interface ImageImetaMetadata {
+    m: string;
+    blurhash?: string;
+    dim?: string;
+    alt?: string;
+    ox?: string;
+    x?: string;
+    size?: number;
+    uploadProtocol?: 'blossom' | 'nip96' | 'custom-http';
+}
+
+export type ImageImetaMetadataMap = Record<string, ImageImetaMetadata>;
+
+export interface ImetaField {
+    url: string;
+    m: string;
+    content?: string;
+    x?: string;
+    ox?: string;
+    size?: number | string;
+    dim?: string;
+    blurhash?: string;
+    thumb?: string;
+    image?: string;
+    summary?: string;
+    alt?: string;
+    fallback?: string[];
+    uploadProtocol?: ImageImetaMetadata['uploadProtocol'];
+}
+
 export interface SharedMediaMetadata {
     name?: string;
     type?: string;

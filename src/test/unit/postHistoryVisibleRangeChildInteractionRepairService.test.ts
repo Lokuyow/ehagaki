@@ -299,7 +299,7 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
 
         expect(rxNostrMock.emittedFilters).toEqual([
             {
-                kinds: [1, 7],
+                kinds: [1, 7, 1111],
                 "#e": [kind1Parent],
                 limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT,
             },
@@ -332,6 +332,76 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
             savedParentEventIds: [kind1Parent],
             savedDirectReplyCount: 1,
             incompleteParentEventIds: [],
+        });
+    });
+
+    it("visible kind:1111 parentではkind:1111の返信も取得対象にする", async () => {
+        const harness = createRxNostrHarness();
+        const service = new PostHistoryVisibleRangeChildInteractionRepairService({
+            childInteractionsRepository: { upsertChildInteractions: vi.fn() } as any,
+            setTimeoutFn: (() => 1) as any,
+            clearTimeoutFn: vi.fn(),
+            now: () => 500,
+        });
+        const task = service.repairVisibleRangeRelations(harness.rxNostr as any, {
+            ownerPubkeyHex: OWNER,
+            visiblePosts: [createPost("8".repeat(64), 1111)],
+            relationKinds: ["reply"],
+            relayConfig: { "wss://relay.example.com": { read: true, write: false } },
+        });
+        harness.emitEose("wss://relay.example.com");
+        harness.complete();
+        await task.promise;
+
+        expect(rxNostrMock.emittedFilters).toEqual([{
+            kinds: [1111],
+            "#e": ["8".repeat(64)],
+            limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT,
+        }]);
+    });
+
+    it("関連カードreaction-only経路は明示ターゲットと統合relay hintsを使い、owner投稿へ偽装しない", async () => {
+        const targetId = "9".repeat(64);
+        const harness = createRxNostrHarness();
+        const upsertChildInteractions = vi.fn(async () => ({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+            ignoredCount: 0,
+        }));
+        const service = new PostHistoryVisibleRangeChildInteractionRepairService({
+            childInteractionsRepository: { upsertChildInteractions } as any,
+            setTimeoutFn: (() => 1) as any,
+            clearTimeoutFn: vi.fn(),
+            now: () => 700,
+        });
+        const task = service.repairRelatedCardReactions(harness.rxNostr as any, {
+            targets: [
+                { eventId: targetId, relayHints: ["wss://quote.example.com"] },
+                { eventId: targetId, relayHints: ["wss://thread.example.com"] },
+            ],
+            relayConfig: { "wss://relay.example.com": { read: true, write: false } },
+        });
+        harness.emitEvent({
+            event: createReaction({ tags: [["e", targetId, "", "root"]] }),
+            from: "wss://relay.example.com",
+        });
+        harness.emitEose("wss://relay.example.com");
+        harness.complete();
+
+        await expect(task.promise).resolves.toEqual({ status: "success", targetEventIds: [targetId] });
+        expect(rxNostrMock.emittedFilters).toEqual([{
+            kinds: [7],
+            "#e": [targetId],
+            limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT,
+        }]);
+        expect(upsertChildInteractions).toHaveBeenCalledWith({
+            parentEventId: targetId,
+            events: [{
+                event: expect.objectContaining({ kind: 7 }),
+                relayUrls: ["wss://relay.example.com/"],
+            }],
+            fetchedAt: 700,
         });
     });
 

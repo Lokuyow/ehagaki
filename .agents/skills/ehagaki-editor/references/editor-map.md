@@ -24,7 +24,7 @@
 
 `editorConfig.ts` の registration 順は実際の ordering dependency である。submit-on-Enter時のみ `SubmitOnPlainEnter` を先頭に追加し、StarterKit、Link、Image、UniqueID、Focus、`GapCursorFocusReset`、`ShiftEnterToParagraph`、`ContentTrackingExtension`、`HashtagSuggestion`、Video、CustomEmoji、`CustomEmojiSuggestion`、`ToolbarCaretExtension`、`ClipboardExtension`、`MediaPasteExtension`、`ImageDragDropExtension`、`CustomEmojiDragDropExtension`、`SmartBackspaceExtension`、`AndroidCompositionFix`、Placeholder の順へ続く。
 
-- `ClipboardExtension` は MediaPaste より先に登録され、`enablePasteRules` は `clipboardExtension` と `customEmoji` のみである。順序を変更する前に text / file / URL / emoji paste の consumer を確認する。
+- `ClipboardExtension` は MediaPaste より先に extension 登録されるが、現在の ProseMirror paste handler の実行順では MediaPaste が先に処理する。`enablePasteRules` は `clipboardExtension` と `customEmoji` のみである。順序を変更する前に text / file / URL / emoji paste の consumer を確認する。
 - `GapCursorFocusReset` は media NodeSelection の visual focus と editor 外クリック / touch の selection reset を管理する。document listener を `onDestroy` で外す。
 - `ToolbarCaretExtension` は plugin metadata keyed by its `PluginKey` と widget decoration を用いる。`showToolbarCaret()` と focus handler の transaction は `addToHistory: false` である。
 - `SmartBackspaceExtension` は先頭の空 paragraph と後続 image の限定された Backspace case を処理する。
@@ -34,7 +34,7 @@
 - `src/lib/editor/contentTracking.ts:ContentTrackingExtension` は三つの plugin を作る。hashtag decoration、URL / image conversion の `appendTransaction`、debounced content update tracker である。
 - hashtag decoration は `getChangedRange()` と `getChangedTextBlocks()` で affected textblock だけを再計算し、`DecorationSet.map()` で既存 decoration を mapping する。
 - URL normalization は changed document transaction だけを扱い、`content-tracking-normalized` metadata を持つ自身の transaction を再処理しない。変更範囲を先に収集し、`collectBlockChanges()` の remove mark / add mark / image replacement を position 降順で適用する。`processUrlsAndImages()` が document を変えない場合は `null` を返す。
-- paste transaction (`paste` metadata) は link conversion を行うが image URL conversion を skip する。返却する normalization transaction は `addToHistory: false` と content-tracking metadata を設定する。undo / redo の grouping を変えるときは `src/test/integration/editor-history.integration.test.ts` と URL paste coverage を確認する。
+- paste transaction (`paste` metadata) は link conversion を行うが image URL conversion を skip する。返却する normalization transaction は `addToHistory: false` と content-tracking metadata を設定する。paste metadata 自体は独立した undo group を保証しないため、grouping は `UndoRedo` の隣接 transaction / `newGroupDelay` 規則に従う。undo / redo を変えるときは `src/test/integration/editor-history.integration.test.ts` と URL paste coverage を確認する。
 - content update tracker は doc change ごとに以前の timeout を clear し、`CONTENT_TRACKING_CONFIG.DEBOUNCE_DELAY`（現在 300ms）後に hashtag data を更新して `window` の `editor-content-changed` event に extracted plain text を載せる。extension destroy は timeout を clear する。
 
 ## Editor-to-application flow and reverse inputs
@@ -51,7 +51,7 @@
 
 ## Clipboard, paste, drag, and composition
 
-- `ClipboardExtension` は plain text を normalized lines / paragraph Slice にし、`paste`、`uiEvent: paste`、`addToHistory: true` を set して dispatch する。file clipboard は次の owner へ委譲し、rich HTML は default handling に委譲する。copy は paragraph / image / video を plain text へ serialise する。`src/test/integration/editor-clipboard.integration.test.ts` が paragraph、HTML、history behavior を扱う。
+- `ClipboardExtension` は `text/plain` を投稿本文のsourceとする。HTML付き通常pasteだけは、このtextへ限定的なheading/emphasis/code marker cleanupを行う。plain-onlyとexplicit plainは改行正規化以外のcleanupを行わず、HTML-onlyとfile pasteは既定のownerへ委譲する。自Editor HTML clipboardでは既存の空行正規化を保つ。plain linesはparagraph Sliceとして `paste`、`uiEvent: paste`、`addToHistory: true` を set してdispatchする。`src/lib/editor/clipboardTextCleanup.ts` が外部rich paste用cleanupを担い、`src/test/unit/clipboardTextCleanup.test.ts` と `src/test/integration/editor-url-paste.integration.test.ts` がcleanup、clipboard source、history behaviorを扱う。copyはparagraph / image / videoをplain textへserialiseする。
 - `editorDomActions.svelte.ts:pasteAction()` は image file clipboard を upload handler へ渡し、text paste を ClipboardExtension へ残す。`fileDropAction()` は external file drop を upload handler へ、internal `application/x-tiptap-node` drag を ProseMirror plugin へ残す。
 - `MediaPasteExtension` は pasted / typed media URL を image or video node（free placement）または media gallery（gallery mode）に移す。text URL の link / image conversion は ContentTracking の別経路である。`src/test/integration/editor-media.integration.test.ts`、`src/test/unit/imagePaste.test.ts`、`src/test/integration/editor-url-paste.integration.test.ts` を参照する。
 - `ImageDragDropExtension` と `CustomEmojiDragDropExtension` は plugin state、widget decorations、internal MIME、touch custom events、plugin-view listener cleanup を担当する。position-changing moves は `src/lib/utils/editorNodeActions.ts` の `moveImageNode()` / `moveCustomEmojiNode()` が dispatch する。custom emoji move は node selection を設定する。native/touch contenteditable drag の再現や geometry は browser debug skill を併用する。

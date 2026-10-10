@@ -91,7 +91,9 @@ export function validateEmbedComposerSetContextPayload(
     }
     validateChannel(value.channel);
 
-    return value as unknown as EmbedComposerSetContextPayload;
+    // Preloaded events, profiles, and picture hints are narrowed by their
+    // dedicated selectors when they are consumed.
+    return value as EmbedComposerSetContextPayload;
 }
 
 /**

@@ -26,7 +26,7 @@ export const HashtagSuggestion = Extension.create({
                     component: HashtagSuggestionList,
                 }),
 
-                command: ({ editor, range, props }: { editor: any; range: any; props: string }) => {
+                command: ({ editor, range, props }) => {
                     editor
                         .chain()
                         .focus()

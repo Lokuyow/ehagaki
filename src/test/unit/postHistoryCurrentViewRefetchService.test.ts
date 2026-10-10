@@ -673,6 +673,7 @@ describe("PostHistoryCurrentViewRefetchService", () => {
             preferredRanges: [{ kinds: [1, 42], rangeUnit: "custom", since: 100, until: 200, limit: 250 }],
         });
 
+        await vi.waitFor(() => expect((service as any).postHistoryRelayFetchService.fetchLatest).toHaveBeenCalledOnce());
         now = 100;
         resolveFetch(createFetchResult({
             events: [{

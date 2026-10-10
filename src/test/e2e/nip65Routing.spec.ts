@@ -11,7 +11,7 @@ const recipientRelay = "wss://recipient.example/";
 const silentAuthorRelay = "wss://silent-author.example/";
 const silentRecipientRelay = "wss://silent-recipient.example/";
 
-async function relayFixture(page: Page, mode: "fast" | "hung" | "timeout", silentClasses: "none" | "author" | "recipient" | "both" = "none") {
+async function relayFixture(page: Page, mode: "fast" | "hung" | "timeout", silentClasses: "none" | "author" | "recipient" | "both" = "none", manual = false) {
     const secret = generateSecretKey();
     const target = finalizeEvent({ kind: 1, created_at: 100, tags: [], content: "Local target fixture" }, secret);
     const recipientRelays = [recipientRelay, ...(["recipient", "both"].includes(silentClasses) ? [silentRecipientRelay] : [])];
@@ -19,6 +19,8 @@ async function relayFixture(page: Page, mode: "fast" | "hung" | "timeout", silen
     const requests: Array<{ relay: string; kind: number | undefined }> = [];
     const closes: string[] = [];
     const publications: Array<{ relay: string; eventId: string; verified: boolean; hasRecipient: boolean }> = [];
+    const stages: Array<{ relay: string; eventId: string; kind: number }> = [];
+    const pendingAcks = new Map<string, () => void>();
     await page.routeWebSocket(/^wss:\/\//, (socket) => {
         socket.onMessage((raw) => {
             const message = JSON.parse(raw.toString());
@@ -29,6 +31,11 @@ async function relayFixture(page: Page, mode: "fast" | "hung" | "timeout", silen
                     relay: socket.url(), eventId: event.id, verified: verifyEvent(event),
                     hasRecipient: event.tags.some((tag: string[]) => tag[0] === "p" && tag[1] === target.pubkey),
                 });
+                stages.push({ relay: socket.url(), eventId: event.id, kind: event.kind });
+                if (manual) {
+                    pendingAcks.set(`${socket.url()}:${event.kind}`, () => socket.send(JSON.stringify(["OK", event.id, true, ""])));
+                    return;
+                }
                 if (![silentAuthorRelay, silentRecipientRelay].includes(socket.url())) {
                     socket.send(JSON.stringify(["OK", event.id, true, ""]));
                 }
@@ -57,7 +64,13 @@ async function relayFixture(page: Page, mode: "fast" | "hung" | "timeout", silen
     return {
         pubkey: target.pubkey,
         pointer: nip19.neventEncode({ id: target.id, author: target.pubkey, kind: 1, relays: [contextualRelay] }),
-        requests, closes, publications,
+        requests, closes, publications, stages,
+        ack: (relay: string, kind: number) => {
+            const key = `${relay}:${kind}`;
+            const ack = pendingAcks.get(key);
+            if (!ack) throw new Error("fixture publish not started");
+            pendingAcks.delete(key); ack();
+        },
     };
 }
 
@@ -131,5 +144,52 @@ for (const silentClasses of ["author", "recipient", "both"] as const) {
             ...extraAuthors,
             ...(["recipient", "both"].includes(silentClasses) ? [silentRecipientRelay] : []),
         ]));
+    });
+}
+
+for (const sensitive of [false, true]) {
+    test(`recipient ACK precedes author ACK without crossing classes (${sensitive ? "Sensitive pair" : "ordinary"})`, async ({ page }) => {
+        const fixture = await relayFixture(page, "hung", "none", true);
+        const pending = page.evaluate(({ pointer, authorRelay, sensitive }) =>
+            window.__NIP65_ROUTING_HARNESS__.reply(pointer, authorRelay, "cold", [], sensitive),
+        { pointer: fixture.pointer, authorRelay, sensitive });
+        const seen = (relay: string, kind: number) => fixture.stages.filter(stage => stage.relay === relay && stage.kind === kind);
+        const structureKind = 1;
+        if (sensitive) {
+            await expect.poll(() => seen(authorRelay, 36).length).toBe(1);
+            // Discovery and recipient Payload launch proceed while author Payload is unacknowledged.
+            await expect.poll(() => seen(recipientRelay, 36).length).toBe(1);
+            expect(fixture.stages.filter(stage => stage.kind === structureKind)).toEqual([]);
+            fixture.ack(authorRelay, 36);
+            await expect.poll(() => seen(authorRelay, structureKind).length).toBe(1);
+            expect(seen(recipientRelay, structureKind)).toEqual([]);
+            fixture.ack(recipientRelay, 36);
+        }
+        await expect.poll(() => seen(recipientRelay, structureKind).length).toBe(1);
+        await expect.poll(() => seen(authorRelay, structureKind).length).toBe(1);
+        expect(seen(authorRelay, structureKind)[0]!.eventId).toBe(seen(recipientRelay, structureKind)[0]!.eventId);
+        fixture.ack(recipientRelay, structureKind);
+        await page.waitForFunction(({ relay, kind }) => window.__NIP65_ROUTING_PROGRESS__.waves
+            .some(wave => wave.kind === kind && wave.relays.includes(relay) && wave.completed), { relay: recipientRelay, kind: structureKind });
+        const progress = await page.evaluate(() => window.__NIP65_ROUTING_PROGRESS__);
+        const authorWave = progress.waves.find(wave => wave.kind === structureKind && wave.relays.includes(authorRelay))!;
+        expect(authorWave.acceptedRelays).toEqual([]); expect(authorWave.completed).toBe(false);
+        expect(progress.finished).toBe(false);
+        fixture.ack(authorRelay, structureKind);
+        const result = await pending;
+        expect(result.result).toMatchObject({ success: true, fullyDelivered: true,
+            delivery: { authorWrite: { acceptedRelays: [authorRelay] }, taggedUserRead: { [fixture.pubkey]: { acceptedRelays: [recipientRelay] } } } });
+        expect(new Set(result.result.acceptedRelays)).toEqual(new Set([authorRelay, recipientRelay]));
+        expect(result.history).toEqual([{ eventId: result.result.eventId, verified: true, acceptedRelays: expect.arrayContaining([authorRelay, recipientRelay]) }]);
+        expect(fixture.publications.every(packet => packet.verified)).toBe(true);
+        if (sensitive) {
+            expect(result.signedKinds).toEqual([36, 1]);
+            expect(result.payloadCache).toEqual([{ eventId: seen(authorRelay, 36)[0]!.eventId, acceptedRelays: expect.arrayContaining([authorRelay, recipientRelay]) }]);
+            expect(fixture.stages).toHaveLength(4);
+            for (const relay of [authorRelay, recipientRelay]) {
+                expect(seen(relay, 36)).toHaveLength(1); expect(seen(relay, 1)).toHaveLength(1);
+                expect(fixture.stages.indexOf(seen(relay, 36)[0]!)).toBeLessThan(fixture.stages.indexOf(seen(relay, 1)[0]!));
+            }
+        }
     });
 }

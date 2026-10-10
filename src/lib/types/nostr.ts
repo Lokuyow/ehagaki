@@ -2,6 +2,9 @@
 
 import type { createRxNostr } from "rx-nostr";
 import type { Editor as TipTapEditor } from "@tiptap/core";
+import type { EventTemplate } from "nostr-tools";
+import type { WindowNostr } from "nostr-tools/nip07";
+import type { ImetaField, ImageImetaMetadataMap } from "./media";
 import type { AppPostNotificationPort } from "../appNotificationPort";
 import type { PostHistoryRawEventAttestation } from "../postHistoryRawEventVerification";
 
@@ -116,8 +119,8 @@ export type RelayConfig = { [url: string]: { read: boolean; write: boolean } } |
 export interface RelayManagerDeps {
     localStorage?: Storage;
     console?: Console;
-    setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any;
-    clearTimeoutFn?: (timeoutId: any) => void;
+    setTimeoutFn?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
+    clearTimeoutFn?: (timeoutId: ReturnType<typeof setTimeout>) => void;
     onRelayConfigSaved?: (pubkeyHex: string, relayConfig: RelayConfig | null) => void | Promise<void>;
     relayListUpdatedStore?: {
         value: number;
@@ -174,7 +177,7 @@ export interface PostManagerDeps {
     };
     mediaGalleryStore?: {
         getContentUrls: () => string[];
-        getImageBlurhashMap: () => Record<string, any>;
+        getImageBlurhashMap: () => ImageImetaMetadataMap;
         clearAll: () => void;
     };
     contentWarningStore?: {
@@ -187,23 +190,22 @@ export interface PostManagerDeps {
     };
     hashtagSnapshotFn?: (store: HashtagStore) => HashtagData;
     keyManager?: KeyManagerInterface;
-    window?: {
-        nostr?: {
-            signEvent: (event: any) => Promise<any>;
-        };
-    };
+    window?: { nostr?: Pick<WindowNostr, "signEvent"> };
     console?: Console;
-    createImetaTagFn?: (meta: any) => Promise<string[]>;
+    createImetaTagFn?: (meta: ImetaField) => Promise<string[]>;
     getClientTagFn?: () => string[] | null;
-    seckeySignerFn?: (key: string) => any;
-    getNip46SignerForSessionFn?: (expectedPubkey: string) => Promise<any>;
-    getParentClientSignerFn?: () => any;
+    seckeySignerFn?: (key: string) => PostManagerSigner;
+    getNip46SignerForSessionFn?: (
+        expectedPubkey: string,
+    ) => Promise<PostManagerSigner | null | undefined>;
+    getParentClientSignerFn?: () => PostManagerSigner | null | undefined;
     savePostHistoryFn?: (input: {
         event: NostrEvent;
         attestation?: PostHistoryRawEventAttestation;
         acceptedRelays?: string[];
         relayHints?: string[];
     }) => void | Promise<void>;
+    saveSensitivePayloadFn?: (input: import("../storage/sensitivePayloadRepository").SaveSensitivePayloadInput) => void | Promise<void>;
     writeRelaysStore?: { value: string[] };
     extractContentWithImagesFn?: (editor: TipTapEditor) => string;
     extractContentWithEmojiTagsFn?: (editor: TipTapEditor) => {
@@ -228,6 +230,7 @@ export interface PostManagerDeps {
     replyQuoteState?: { value: ReplyQuoteComposerState };
     settingsStore?: {
         clientTagEnabled?: boolean;
+        failClosedContentWarning?: boolean;
         quoteNotificationEnabled: boolean;
         replyNotificationEnabled?: boolean;
     };
@@ -238,6 +241,10 @@ export interface PostManagerDeps {
         extractInlineQuoteTags?: (content: string, includePTags?: boolean) => string[][];
     };
     clearReplyQuoteFn?: () => void;
+}
+
+export interface PostManagerSigner {
+    signEvent: (event: EventTemplate) => Promise<unknown>;
 }
 
 // マルチアカウント管理
@@ -251,8 +258,8 @@ export interface StoredAccount {
 export interface ProfileManagerDeps {
     localStorage?: Storage;
     navigator?: Navigator;
-    setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any;
-    clearTimeoutFn?: (timeoutId: any) => void;
+    setTimeoutFn?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
+    clearTimeoutFn?: (timeoutId: ReturnType<typeof setTimeout>) => void;
     console?: Console;
     rxNostrFactory?: () => ReturnType<typeof createRxNostr>;
 }
@@ -396,6 +403,8 @@ export interface ReplyQuoteUpdateTarget {
     eventId: string;
     mode: ReplyQuoteMode;
     ownerToken: symbol;
+    /** Optional canonical relay evidence to store while hydrating a resolved event. */
+    relayHints?: string[];
 }
 
 export interface ChannelContextQueryTarget {
@@ -410,10 +419,7 @@ export interface ChannelContextQueryTarget {
 // Global Window extensions
 declare global {
     interface Window {
-        nostr?: {
-            getPublicKey(): Promise<string>;
-            signEvent: (event: any) => Promise<any>;
-        };
+        nostr?: WindowNostr;
         nostrZap?: {
             initTargets: () => void;
         };

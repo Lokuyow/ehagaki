@@ -1,5 +1,9 @@
 import type { InitializeEditorParams, InitializeEditorResult, CleanupEditorParams } from '../types';
-import { setupEventListeners, cleanupEventListeners } from './editorDomActions.svelte';
+import {
+    setupEventListeners,
+    cleanupEventListeners,
+    type EditorDomActionContainer,
+} from './editorDomActions.svelte';
 import type { Editor as TipTapEditor } from '@tiptap/core';
 import { createEditorStore as createTiptapEditorStore } from './editorConfig';
 import {
@@ -67,7 +71,7 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
 
     // エディターコンテナに必要なプロパティを設定
     if (editorContainerEl) {
-        Object.assign(editorContainerEl, {
+        Object.assign(editorContainerEl as EditorDomActionContainer, {
             __uploadFiles: uploadFiles,
             __currentEditor: () => latestEditor,
             __hasStoredKey: () => hasStoredKey,
@@ -115,11 +119,12 @@ export function cleanupEditor(params: CleanupEditorParams): void {
 
     // エディターコンテナのプロパティをクリア
     if (editorContainerEl) {
-        delete (editorContainerEl as any).__uploadFiles;
-        delete (editorContainerEl as any).__currentEditor;
-        delete (editorContainerEl as any).__hasStoredKey;
-        delete (editorContainerEl as any).__hasPostingCapability;
-        delete (editorContainerEl as any).__postStatus;
-        delete (editorContainerEl as any).__submitPost;
+        const actionContainer = editorContainerEl as EditorDomActionContainer;
+        delete actionContainer.__uploadFiles;
+        delete actionContainer.__currentEditor;
+        delete actionContainer.__hasStoredKey;
+        delete actionContainer.__hasPostingCapability;
+        delete actionContainer.__postStatus;
+        delete actionContainer.__submitPost;
     }
 }

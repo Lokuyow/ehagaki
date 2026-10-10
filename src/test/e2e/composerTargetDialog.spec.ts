@@ -4,6 +4,8 @@ type HarnessState = {
     ready: boolean;
     inputs: Record<
         | "kind1"
+        | "sensitive"
+        | "sensitivePayload"
         | "kind40"
         | "kind42"
         | "stale"
@@ -21,11 +23,16 @@ type HarnessState = {
     >;
     oversizedPostContentLength: number;
     linkTargetUrl: string;
-    applications: Array<{ action: string; kind: number }>;
+    resolverEventIds: string[];
+    cancelledResolverEventIds: string[];
+    applications: Array<{ action: string; kind: number; eventId: string }>;
 };
 
 type HarnessWindow = Window & typeof globalThis & {
-    __COMPOSER_TARGET_HARNESS__?: HarnessState;
+    __COMPOSER_TARGET_HARNESS__?: HarnessState & {
+        seedReactionFixtures: () => Promise<void>;
+        releaseStaleResolver: () => void;
+    };
 };
 
 async function gotoHarness(page: Page): Promise<HarnessState> {
@@ -33,9 +40,18 @@ async function gotoHarness(page: Page): Promise<HarnessState> {
     await page.waitForFunction(() =>
         Boolean((window as HarnessWindow).__COMPOSER_TARGET_HARNESS__?.ready)
     );
-    return page.evaluate(() =>
-        (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__ as HarnessState
-    );
+    return page.evaluate(() => {
+        const harness = (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!;
+        return {
+            ready: harness.ready,
+            inputs: harness.inputs,
+            oversizedPostContentLength: harness.oversizedPostContentLength,
+            linkTargetUrl: harness.linkTargetUrl,
+            resolverEventIds: harness.resolverEventIds,
+            cancelledResolverEventIds: harness.cancelledResolverEventIds,
+            applications: harness.applications,
+        };
+    });
 }
 
 async function openDialog(page: Page, language: "ja" | "en" = "ja"): Promise<void> {
@@ -67,6 +83,78 @@ async function expectTooltip(
 }
 
 test.describe("composer target dialog fixture", () => {
+    test("解決済みkind 1/42のリアクション詳細を既存アクション列で表示する", async ({ page }) => {
+        let emojiRequests = 0;
+        await page.route("https://example.com/reaction-party.png", async (route) => {
+            emojiRequests += 1;
+            await route.fulfill({
+                status: 200,
+                contentType: "image/png",
+                body: Buffer.from(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jW9sAAAAASUVORK5CYII=",
+                    "base64",
+                ),
+            });
+        });
+        const harness = await gotoHarness(page);
+        await page.evaluate(async () => {
+            await (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.seedReactionFixtures();
+        });
+        await page.setViewportSize({ width: 320, height: 780 });
+        await openDialog(page);
+
+        const targetPreview = page.locator(".target-preview");
+        const reactionButton = (label: "表示" | "隠す") => page.getByRole("button", {
+            name: label === "表示" ? "リアクション 2件を表示" : "リアクションを隠す",
+        });
+        const expectNoHorizontalOverflow = async () => {
+            const dimensions = await targetPreview.evaluate((element) => ({
+                clientWidth: element.clientWidth,
+                scrollWidth: element.scrollWidth,
+            }));
+            expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth + 1);
+        };
+
+        await page.getByLabel("イベントID").fill(harness.inputs.kind1);
+        await expect(reactionButton("表示")).toBeVisible();
+        await expect(page.getByRole("button", { name: "リプライ" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "引用" })).toBeVisible();
+        await expectNoHorizontalOverflow();
+        const widthBeforeExpand = await targetPreview.evaluate((element) => element.clientWidth);
+        expect(emojiRequests).toBe(0);
+
+        await reactionButton("表示").click();
+        const details = page.locator(".post-preview-reactions-panel");
+        await expect(details).toBeVisible();
+        await expect(details.locator(".post-preview-reaction-chip")).toHaveCount(2);
+        await expect(details.locator(".post-preview-reaction-symbol")).toBeVisible();
+        await expect(details.getByRole("img", { name: ":party:" })).toBeVisible();
+        await expect(details.locator(".post-preview-reaction-actor")).toHaveCount(2);
+        await expect(reactionButton("隠す")).toBeVisible();
+        await expectNoHorizontalOverflow();
+        expect(await targetPreview.evaluate((element) => element.clientWidth)).toBe(widthBeforeExpand);
+        expect(emojiRequests).toBeGreaterThan(0);
+
+        // Switching target clears the previous target's expanded detail state.
+        await page.getByLabel("イベントID").fill(harness.inputs.kind42);
+        await expect(reactionButton("表示")).toBeVisible();
+        await expect(reactionButton("隠す")).toHaveCount(0);
+        await expect(page.locator(".post-preview-reactions-panel")).toHaveCount(0);
+        await expectNoHorizontalOverflow();
+        await reactionButton("表示").click();
+        await expect(details).toBeVisible();
+        await expect(details.locator(".post-preview-reaction-chip")).toHaveCount(2);
+        await expect(details.locator(".post-preview-reaction-symbol")).toBeVisible();
+        await expect(details.getByRole("img", { name: ":party:" })).toBeVisible();
+        await expect(details.locator(".post-preview-reaction-actor")).toHaveCount(2);
+        await expect(page.getByRole("button", { name: "リプライ" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "引用" })).toBeVisible();
+        await expectNoHorizontalOverflow();
+
+        await reactionButton("隠す").click();
+        await expect(page.locator(".post-preview-reactions-panel")).toHaveCount(0);
+    });
+
     test("standalone uses the shared Base button surface and effective Accent border", async ({ page }) => {
         await gotoHarness(page);
         await page.evaluate(() => {
@@ -118,6 +206,33 @@ test.describe("composer target dialog fixture", () => {
         );
     });
 
+    test("Sensitive Structureのreply/quoteはStructure IDを使い、kind 36 payloadはtargetにしない", async ({ page }) => {
+        const harness = await gotoHarness(page);
+        for (const action of ["リプライ", "引用"] as const) {
+            await openDialog(page);
+            await page.getByLabel("イベントID").fill(harness.inputs.sensitive);
+            await expect(page.getByRole("button", { name: action })).toBeVisible();
+            await expect(page.locator(".content-warning-prompt")).toBeVisible();
+            await page.getByRole("button", { name: action }).click();
+            await expect(page.getByRole("dialog")).toBeHidden();
+            const lastApplication = await page.evaluate(() =>
+                (window as any).__COMPOSER_TARGET_HARNESS__.applications.at(-1),
+            );
+            expect(lastApplication).toEqual({
+                action: action === "リプライ" ? "reply" : "quote",
+                kind: 1,
+                eventId: "d".repeat(64),
+            });
+        }
+
+        await openDialog(page);
+        await page.getByLabel("イベントID").fill(harness.inputs.sensitivePayload);
+        await expect(page.getByText("この種類のイベントはまだ宛先に指定できません")).toBeVisible();
+        await expect(page.getByRole("button", { name: "リプライ" })).toBeHidden();
+        await expect(page.getByRole("button", { name: "引用" })).toBeHidden();
+        await expect(page.getByLabel("適用結果")).toHaveText("1:reply,1:quote");
+    });
+
     test("unsupportedとnsecを拒否し、入力競合では新しい結果だけを表示する", async ({ page }) => {
         const harness = await gotoHarness(page);
         await openDialog(page);
@@ -129,12 +244,26 @@ test.describe("composer target dialog fixture", () => {
         await input.fill(harness.inputs.nsec);
         await expect(page.getByText("秘密鍵は宛先として使用できません")).toBeVisible();
 
+        const initialResolverCount = await page.evaluate(() =>
+            (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.resolverEventIds.length,
+        );
         await input.fill(harness.inputs.stale);
-        await page.waitForTimeout(300);
+        await expect.poll(() => page.evaluate(() =>
+            (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.resolverEventIds.length,
+        )).toBe(initialResolverCount + 1);
+        const staleEventId = await page.evaluate(() =>
+            (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.resolverEventIds.at(-1),
+        );
         await input.fill(harness.inputs.kind40);
-        await expect(page.getByRole("button", { name: "投稿する" })).toBeVisible();
-        await page.waitForTimeout(750);
-        await expect(page.getByRole("button", { name: "投稿する" })).toBeVisible();
+        const publishButton = page.getByRole("button", { name: "投稿する" });
+        await expect(publishButton).toBeVisible();
+        await expect.poll(() => page.evaluate(() =>
+            (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.cancelledResolverEventIds,
+        )).toContain(staleEventId);
+        await page.evaluate(() =>
+            (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.releaseStaleResolver(),
+        );
+        await expect(publishButton).toBeVisible();
         await expect(page.getByRole("button", { name: "リプライ" })).toBeHidden();
     });
 
@@ -221,17 +350,26 @@ test.describe("composer target dialog fixture", () => {
                 const replyGroup = actions.querySelector<HTMLElement>(
                     ":scope > .post-preview-action-buttons-group",
                 )!;
-                const reply = replyGroup.querySelector<HTMLElement>(
+                const replyCell = replyGroup.querySelector<HTMLElement>(
+                    ":scope > .post-preview-reply-action-cell",
+                )!;
+                const quoteCell = replyGroup.querySelector<HTMLElement>(
+                    ":scope > .post-preview-quote-action-cell",
+                )!;
+                const reactionCell = replyGroup.querySelector<HTMLElement>(
+                    ":scope > .post-preview-reaction-action-cell",
+                )!;
+                const reply = replyCell.querySelector<HTMLElement>(
                     "button[aria-label='リプライ']",
                 )!;
-                const repliesSlot = replyGroup.querySelector<HTMLElement>(
+                const repliesSlot = replyCell.querySelector<HTMLElement>(
                     ".post-preview-footer-replies-slot",
                 )!;
-                const quote = actions.querySelector<HTMLElement>(
-                    ":scope > button[aria-label='引用']",
+                const quote = quoteCell.querySelector<HTMLElement>(
+                    "button[aria-label='引用']",
                 )!;
-                const reactionSlot = actions.querySelector<HTMLElement>(
-                    ":scope > .post-preview-footer-reaction-slot",
+                const reactionSlot = reactionCell.querySelector<HTMLElement>(
+                    ".post-preview-footer-reaction-slot",
                 )!;
                 const menu = card.querySelector<HTMLElement>(
                     ".post-history-menu-trigger",
@@ -243,6 +381,7 @@ test.describe("composer target dialog fixture", () => {
                         left: rect.left,
                         right: rect.right,
                         width: rect.width,
+                        height: rect.height,
                         top: rect.top,
                         bottom: rect.bottom,
                     };
@@ -254,14 +393,24 @@ test.describe("composer target dialog fixture", () => {
                     actions: toRect(actions),
                     reply: toRect(reply),
                     quote: toRect(quote),
+                    replyCell: toRect(replyCell),
+                    quoteCell: toRect(quoteCell),
+                    reactionCell: toRect(reactionCell),
                     repliesSlot: toRect(repliesSlot),
                     reactionSlot: toRect(reactionSlot),
                     menu: toRect(menu),
                     dialog: toRect(dialog),
                     structure: {
+                        directCellCount: replyGroup.querySelectorAll(
+                            ":scope > .post-preview-action-cell",
+                        ).length,
+                        cellsInExpectedOrder: replyGroup.children[0] === replyCell
+                            && replyGroup.children[1] === quoteCell
+                            && replyGroup.children[2] === reactionCell,
                         replyGroupContainsQuote: replyGroup.contains(quote),
                         repliesSlotIsEmpty: repliesSlot.childElementCount === 0,
                         reactionSlotIsEmpty: reactionSlot.childElementCount === 0,
+                        reactionCellHasNoButton: !reactionCell.querySelector("button"),
                     },
                     backgrounds: {
                         card: getComputedStyle(card).backgroundColor,
@@ -274,27 +423,38 @@ test.describe("composer target dialog fixture", () => {
                     horizontalOverflow:
                         document.documentElement.scrollWidth -
                         document.documentElement.clientWidth,
+                    previewOverflow: card.scrollWidth - card.clientWidth,
                 };
             });
 
-            expect(geometry.structure.replyGroupContainsQuote).toBe(false);
+            expect(geometry.structure.directCellCount).toBe(3);
+            expect(geometry.structure.cellsInExpectedOrder).toBe(true);
+            expect(geometry.structure.replyGroupContainsQuote).toBe(true);
             expect(geometry.structure.repliesSlotIsEmpty).toBe(true);
             expect(geometry.structure.reactionSlotIsEmpty).toBe(true);
+            expect(geometry.structure.reactionCellHasNoButton).toBe(true);
             expect(geometry.footer.left).toBeGreaterThanOrEqual(geometry.card.left);
             expect(geometry.footer.right).toBeLessThanOrEqual(geometry.card.right);
+            expect(geometry.footer.bottom - geometry.footer.top).toBe(36);
             expect(geometry.horizontalOverflow).toBeLessThanOrEqual(0);
+            expect(geometry.previewOverflow).toBeLessThanOrEqual(1);
             expect(geometry.date.right).toBeLessThanOrEqual(geometry.actions.left);
             expect(geometry.actions.right).toBeLessThanOrEqual(geometry.menu.left);
+            for (const button of [geometry.reply, geometry.quote]) {
+                expect(button.width).toBeGreaterThanOrEqual(35);
+                expect(button.width).toBeLessThanOrEqual(37);
+                expect(button.height).toBeGreaterThanOrEqual(35);
+                expect(button.height).toBeLessThanOrEqual(37);
+                expect(button.left).toBeGreaterThanOrEqual(geometry.footer.left);
+                expect(button.right).toBeLessThanOrEqual(geometry.footer.right);
+                expect(button.top).toBeGreaterThanOrEqual(geometry.footer.top);
+                expect(button.bottom).toBeLessThanOrEqual(geometry.footer.bottom);
+            }
             expect(geometry.reply.left).toBeLessThan(geometry.quote.left);
-            expect(geometry.quote.left).toBeLessThan(geometry.reactionSlot.left);
-            const actionCenterGap =
-                geometry.quote.left + geometry.quote.width / 2
-                - (geometry.reply.left + geometry.reply.width / 2);
-            expect(actionCenterGap).toBeGreaterThan(
-                testInfo.project.name === "desktop-chromium"
-                    ? geometry.footer.width * 0.1
-                    : 0,
-            );
+            expect(geometry.replyCell.left).toBeLessThan(geometry.quoteCell.left);
+            expect(geometry.quoteCell.left).toBeLessThan(geometry.reactionCell.left);
+            expect(geometry.reply.right).toBeLessThanOrEqual(geometry.quote.left);
+            expect(geometry.quote.right).toBeLessThanOrEqual(geometry.reactionCell.right);
             expect(geometry.actions.left).toBeGreaterThanOrEqual(0);
             expect(geometry.menu.right).toBeLessThanOrEqual(geometry.viewportWidth);
             expect(geometry.dialog.top).toBeGreaterThanOrEqual(0);
@@ -304,6 +464,24 @@ test.describe("composer target dialog fixture", () => {
             expect(geometry.backgrounds.reply).toBe(geometry.backgrounds.card);
             expect(geometry.backgrounds.quote).toBe(geometry.backgrounds.card);
             expect(geometry.backgrounds.menu).toBe(geometry.backgrounds.card);
+
+            await page.screenshot({
+                path: testInfo.outputPath(
+                    `composer-target-footer-${testInfo.project.name}-${input === harness.inputs.kind1 ? "kind1" : "kind42"}.png`,
+                ),
+                fullPage: false,
+            });
+        }
+
+        if (testInfo.project.name === "desktop-chromium") {
+            await page.setViewportSize({ width: 320, height: 720 });
+            for (const input of [harness.inputs.kind1, harness.inputs.kind42]) {
+                await page.getByLabel("イベントID").fill(input);
+                const previewOverflow = await page.locator(".target-preview").evaluate(
+                    (preview) => preview.scrollWidth - preview.clientWidth,
+                );
+                expect(previewOverflow).toBeLessThanOrEqual(1);
+            }
         }
 
         await page.getByLabel("イベントID").fill(harness.inputs.kind40);

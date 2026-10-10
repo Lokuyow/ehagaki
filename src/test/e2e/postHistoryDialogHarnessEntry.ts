@@ -9,4 +9,7 @@ if (!target) {
     throw new Error('Harness mount target was not found.');
 }
 
-mount(PostHistoryDialogHarness, { target });
+if (new URLSearchParams(location.search).has("repost")) {
+    const { default: PostRepostHarness } = await import("./PostRepostHarness.svelte");
+    mount(PostRepostHarness, { target });
+} else mount(PostHistoryDialogHarness, { target });

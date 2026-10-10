@@ -4,29 +4,24 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/sve
 import {
     PostHistoryDialog,
     authoredSyncStateRepositoryMock,
-    channelContextServiceMock,
-    channelMetadataRepositoryMock,
     cleanupPostHistoryDialogHarness,
-    clipboardMock,
     contextFetchServiceMock,
-    customEmojiImageMetaRepositoryMock,
     customEmojiMock,
     deletionFetchServiceMock,
     deletionRequestsRepositoryMock,
-    directReplyFetchMetadataRepositoryMock,
     inboundInteractionsSyncStateRepositoryMock,
     localSearchServiceMock,
-    nostrUtilsMock,
     postDeletionServiceMock,
     postHistoryJsonlExportServiceMock,
     postMediaCacheServiceMock,
     profileFetchDataMock,
     profilesRepositoryMock,
     relayFetchServiceMock,
-    repairServiceMock,
     replyEventsRepositoryMock,
     replyFetchServiceMock,
     repositoryMock,
+    expectPostHistoryCountLabel,
+    readPostHistoryCountLabel,
     resetPostHistoryDialogHarness,
     setPostHistoryDialogTranslationOverrides,
     visibleRangeRepositoryMock,
@@ -316,12 +311,6 @@ function createDeletionEvent(overrides: Record<string, any> = {}) {
     };
 }
 
-function expectDefaultMediaReplacement(): void {
-    expect(screen.getByText('投稿本文')).toBeTruthy();
-    expect(screen.getByTitle('image.jpg')).toBeTruthy();
-    expect(screen.queryByText('https://example.com/image.jpg')).toBeNull();
-}
-
 function mockCachedImagePreviews(entries: Record<string, string>): void {
     postMediaCacheServiceMock.getCachedMediaDescriptor.mockImplementation(async (url: string) => {
         if (!(url in entries)) {
@@ -395,24 +384,16 @@ async function clickPostRepliesMenuAction(
 }
 
 async function openSearchBar(): Promise<HTMLInputElement> {
-    await openPostHistoryMenu();
-    await fireEvent.click(await screen.findByRole('menuitem', { name: '検索' }));
+    await fireEvent.click(await screen.findByRole('button', { name: '検索' }));
     return screen.findByRole('searchbox', { name: '検索' }) as Promise<HTMLInputElement>;
 }
 
 async function toggleSearchFromMenu(): Promise<void> {
-    await openPostHistoryMenu();
-    await fireEvent.click(await screen.findByRole('menuitem', { name: '検索' }));
+    await fireEvent.click(document.querySelector('.post-history-heading-search-button') as HTMLElement);
 }
 
 async function findRepairButton(): Promise<HTMLElement> {
-    const existing = screen.queryByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ });
-    if (existing) {
-        return existing as HTMLElement;
-    }
-
-    await openPostHistoryMenu();
-    return screen.findByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ }) as Promise<HTMLElement>;
+    return screen.findByRole('button', { name: '表示中の投稿付近を再取得' }) as Promise<HTMLElement>;
 }
 
 describe('PostHistoryDialog', () => {
@@ -658,12 +639,10 @@ describe('PostHistoryDialog', () => {
         });
 
         await findHistoryItem(post.eventId);
-        expect(screen.getByText('件数を確認中...')).toBeTruthy();
+        expect(await readPostHistoryCountLabel()).toBe('件数を確認中...');
 
         deferredCount.resolve(1);
-        await waitFor(() => {
-            expect(screen.getByText('1件')).toBeTruthy();
-        });
+        await expectPostHistoryCountLabel('1件');
     });
 
     it('[count-after-latest-chunk] 最新チャンク反映前には総件数を開始しない', async () => {
@@ -846,9 +825,7 @@ describe('PostHistoryDialog', () => {
             });
             expect(repositoryMock.countForPubkey).not.toHaveBeenCalledWith(firstPubkey);
             staleFirstCount.resolve(99);
-            await waitFor(() => {
-                expect(screen.getByText('1件')).toBeTruthy();
-            });
+            await expectPostHistoryCountLabel('1件');
             view.unmount();
         } finally {
             animationFrames.restore();
@@ -886,12 +863,10 @@ describe('PostHistoryDialog', () => {
         await findHistoryItem(olderPost.eventId);
 
         deferredCount.resolve(2);
-        await waitFor(() => {
-            expect(screen.getByText('2件')).toBeTruthy();
-        });
+        await expectPostHistoryCountLabel('2件');
     });
 
-    it('[repair-menu-button] post-history-heading のメニュー内に repair button を表示する', async () => {
+    it('[heading-actions-and-menu-summary] 頻繁な操作をヘッダーへ置き、件数と残り操作をメニューに置く', async () => {
         render(PostHistoryDialog, {
             props: {
                 show: true,
@@ -902,12 +877,41 @@ describe('PostHistoryDialog', () => {
         });
 
         const repairButton = await findRepairButton();
+        const calendarButton = screen.getByRole('button', { name: '日付へ移動' });
+        const searchButton = screen.getByRole('button', { name: '検索' });
+        const menuTrigger = screen.getByRole('button', { name: '投稿履歴メニューを開く' });
         const heading = document.body.querySelector('.post-history-heading');
         const headingActions = document.body.querySelector('.post-history-heading-actions');
 
         expect(heading).toBeTruthy();
-        expect(headingActions?.textContent).not.toContain('表示中の投稿付近を再取得');
+        expect(heading?.querySelector('.post-history-summary-count')).toBeNull();
+        expect(headingActions).toBeTruthy();
+        expect(Array.from(headingActions!.querySelectorAll('button')).map((button) => button.getAttribute('aria-label'))).toEqual([
+            '表示中の投稿付近を再取得',
+            '検索',
+            '投稿履歴メニューを開く',
+        ]);
         expect(repairButton).toBeTruthy();
+        expect(calendarButton).toBeTruthy();
+        expect(searchButton).toBeTruthy();
+
+        await fireEvent.click(menuTrigger);
+        const menu = await screen.findByRole('menu');
+        const summary = menu.querySelector<HTMLElement>('.post-history-menu-summary')!;
+        expect(summary).toBeTruthy();
+        expect(summary.textContent?.trim()).not.toBe('');
+        expect(summary.querySelector('button, [role="menuitem"], [tabindex="0"]')).toBeNull();
+        expect(summary.compareDocumentPosition(within(menu).getAllByRole('menuitem')[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(within(menu).queryByRole('menuitem', { name: '検索' })).toBeNull();
+        expect(within(menu).queryByRole('menuitem', { name: '表示中の投稿付近を再取得' })).toBeNull();
+        expect(within(menu).queryByRole('menuitem', { name: '日付へ移動' })).toBeNull();
+
+        await fireEvent.click(searchButton);
+        const searchInput = await screen.findByRole('searchbox', { name: '検索' });
+        await waitFor(() => expect(document.activeElement).toBe(searchInput));
+        const searchToggle = document.querySelector('.post-history-heading-search-button') as HTMLElement;
+        expect(searchToggle.getAttribute('aria-label')).toBe('検索を閉じる');
+        await fireEvent.click(searchToggle);
     });
 
     it('[import-menu-button] repairの後、履歴クリアの前にimportを表示する', async () => {
@@ -923,11 +927,8 @@ describe('PostHistoryDialog', () => {
         await openPostHistoryMenu();
         const menuItems = await screen.findAllByRole('menuitem');
         const labels = menuItems.map((item) => item.textContent?.trim());
-        expect(labels.indexOf('表示中の投稿付近を再取得')).toBe(
-            labels.indexOf('検索') + 1,
-        );
         expect(labels.indexOf('JSONLをインポート')).toBeGreaterThan(
-            labels.indexOf('表示中の投稿付近を再取得'),
+            labels.indexOf('最新へ戻る'),
         );
         expect(labels.indexOf('JSONLをインポート')).toBeLessThan(
             labels.indexOf('保存済み投稿履歴をクリア'),
@@ -948,7 +949,7 @@ describe('PostHistoryDialog', () => {
         const menuItems = await screen.findAllByRole('menuitem');
         const labels = menuItems.map((item) => item.textContent?.trim());
         expect(labels.indexOf('エクスポート')).toBeGreaterThan(
-            labels.indexOf('表示中の投稿付近を再取得'),
+            labels.indexOf('最古へ移動'),
         );
         expect(labels.indexOf('エクスポート')).toBeLessThan(
             labels.indexOf('JSONLをインポート'),
@@ -989,6 +990,7 @@ describe('PostHistoryDialog', () => {
     });
 
     it('[export-download] menuからJSONLをダウンロードし、ファイル情報とObject URL解放を設定する', async () => {
+        vi.useFakeTimers();
         const createObjectURL = vi.fn((_blob: Blob) => 'blob:post-history');
         const revokeObjectURL = vi.fn();
         const originalCreateObjectURL = URL.createObjectURL;
@@ -1041,7 +1043,7 @@ describe('PostHistoryDialog', () => {
             const anchor = click.mock.instances[0] as HTMLAnchorElement;
             expect(anchor.download).toMatch(/^ehagaki-post-history-\d{4}-\d{2}-\d{2}\.jsonl$/);
             expect(anchor.href).toContain('blob:post-history');
-            await new Promise((resolve) => setTimeout(resolve, 1100));
+            await vi.advanceTimersByTimeAsync(1000);
             expect(revokeObjectURL).toHaveBeenCalledWith('blob:post-history');
         } finally {
             Object.defineProperty(URL, 'createObjectURL', {
@@ -1143,7 +1145,12 @@ describe('PostHistoryDialog', () => {
 
     it('[export-running] export実行中は再実行を操作不可にする', async () => {
         const deferred = createDeferred<any>();
+        const syncCancel = vi.fn();
         const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+        relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
+            promise: new Promise(() => undefined),
+            cancel: syncCancel,
+        });
         postHistoryJsonlExportServiceMock.exportForPubkeyInWorker.mockReturnValueOnce(deferred.promise);
         try {
             render(PostHistoryDialog, {
@@ -1151,11 +1158,24 @@ describe('PostHistoryDialog', () => {
                     show: true,
                     onClose: vi.fn(),
                     pubkeyHex: 'a'.repeat(64),
+                    rxNostr: {} as any,
                 },
             });
 
+            await waitFor(() => {
+                expect(document.querySelector('.floating-message.anchor-bottom-right')?.textContent)
+                    .toContain('リレーと同期中...');
+            });
             await openPostHistoryMenu();
             await fireEvent.click(await screen.findByRole('menuitem', { name: 'エクスポート' }));
+            await waitFor(() => {
+                expect(document.querySelector('.post-history-heading .status-loading-placeholder'))
+                    .toBeTruthy();
+                expect(document.querySelector('.floating-message.anchor-bottom-right'))
+                    .toBeNull();
+            });
+            expect(document.querySelector('.post-history-sync-footer')?.textContent)
+                .toContain('リレーと同期中...');
             await openPostHistoryMenu();
             const exportItem = await screen.findByRole('menuitem', { name: 'エクスポート' });
             expect(exportItem.getAttribute('data-disabled')).not.toBeNull();
@@ -1172,6 +1192,10 @@ describe('PostHistoryDialog', () => {
                 blob: new Blob([], { type: 'application/x-ndjson;charset=utf-8' }),
             });
             await new Promise((resolve) => setTimeout(resolve, 0));
+            await waitFor(() => {
+                expect(document.querySelector('.floating-message.anchor-bottom-right')?.textContent)
+                    .toContain('リレーと同期中...');
+            });
         } finally {
             click.mockRestore();
         }
@@ -2067,7 +2091,7 @@ describe('PostHistoryDialog', () => {
             }),
         });
 
-        const view = render(PostHistoryDialog, {
+        render(PostHistoryDialog, {
             props: {
                 show: true,
                 onClose: vi.fn(),
@@ -3494,7 +3518,7 @@ describe('PostHistoryDialog', () => {
             secondFavoriteReaction,
         ]);
 
-        const view = render(PostHistoryDialog, {
+        render(PostHistoryDialog, {
             props: {
                 show: true,
                 onClose: vi.fn(),
@@ -3765,6 +3789,7 @@ describe('PostHistoryDialog', () => {
             parentEventId,
             content: 'open refresh中に保存された返信',
         });
+        const runtime = {} as any;
         let storedReplies: any[] = [];
 
         repositoryMock.getPage.mockResolvedValue([post]);
@@ -3785,13 +3810,13 @@ describe('PostHistoryDialog', () => {
                 onClose: vi.fn(),
                 onReplyPost: vi.fn(),
                 pubkeyHex: 'a'.repeat(64),
-                rxNostr: {} as any,
+                rxNostr: runtime,
             },
         });
 
         await waitFor(() => {
             expect(screen.getByText('open refresh中の親投稿')).toBeTruthy();
-            expect(screen.getByText('リレーと同期中...')).toBeTruthy();
+            expect(screen.getAllByText('リレーと同期中...')).toHaveLength(2);
         });
         await openPostActionMenu();
         await waitFor(() => {
@@ -3804,7 +3829,7 @@ describe('PostHistoryDialog', () => {
             onClose: vi.fn(),
             onReplyPost: vi.fn(),
             pubkeyHex: 'a'.repeat(64),
-            rxNostr: {} as any,
+            rxNostr: runtime,
             inboundInteractionSave: {
                 revision: 1,
                 parentEventIds: [parentEventId],
@@ -3816,7 +3841,7 @@ describe('PostHistoryDialog', () => {
         });
         expect(screen.getAllByText('open refresh中の親投稿')).toHaveLength(1);
         expect(screen.queryByText('open refresh中に保存された返信')).toBeNull();
-        expect(screen.getByText('リレーと同期中...')).toBeTruthy();
+        expect(screen.getAllByText('リレーと同期中...')).toHaveLength(2);
     });
 
     it('[inbound-realtime] closed dialog ignores saved reply and authored post UI signals', async () => {
@@ -4701,9 +4726,7 @@ describe('PostHistoryDialog', () => {
 
         expect(screen.queryByText('返信')).toBeNull();
         expect(screen.queryByText('自分の返信')).toBeNull();
-        await waitFor(() => {
-            expect(screen.getByText('1件')).toBeTruthy();
-        });
+        await expectPostHistoryCountLabel('1件');
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
         expect(replyEventsRepositoryMock.upsertDirectReplies).toHaveBeenCalledWith(expect.objectContaining({
             parentEventId: '1'.repeat(64),
@@ -5923,6 +5946,7 @@ describe('PostHistoryDialog', () => {
                 query: '一致',
                 page: 1,
                 pageSize: 50,
+                onProgress: expect.any(Function),
             });
         });
 
@@ -5944,10 +5968,11 @@ describe('PostHistoryDialog', () => {
                 query: '一致',
                 page: 1,
                 pageSize: 50,
+                onProgress: expect.any(Function),
             });
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: '検索を閉じる' }));
+        await fireEvent.click(document.querySelector('.post-history-heading-search-button') as HTMLElement);
 
         await waitFor(() => {
             expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
@@ -5993,7 +6018,9 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(repositoryMock.deleteLocalHistoryForPubkey).toHaveBeenCalledWith('a'.repeat(64));
             expect(replyEventsRepositoryMock.deleteForPostHistoryPubkey).not.toHaveBeenCalled();
-            expect(visibleRangeRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
+            // Display metadata and relay coverage are cleared inside the same DB
+            // transaction as history, rather than a separate component write.
+            expect(visibleRangeRepositoryMock.clearForPubkey).not.toHaveBeenCalled();
             expect(authoredSyncStateRepositoryMock.clearForPubkey).not.toHaveBeenCalled();
             expect(inboundInteractionsSyncStateRepositoryMock.clearForPubkey).not.toHaveBeenCalled();
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
@@ -6105,18 +6132,17 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(screen.getByText('削除対象')).toBeTruthy();
-            expect(screen.getByText('件数を確認中...')).toBeTruthy();
         });
+        await expectPostHistoryCountLabel('件数を確認中...');
 
         await openPostHistoryMenu();
         await fireEvent.click(await screen.findByRole('menuitem', { name: '保存済み投稿履歴をクリア' }));
         await fireEvent.click(screen.getByRole('button', { name: 'クリアする' }));
 
-        await waitFor(() => {
+        await waitFor(async () => {
             expect(screen.getByText('保存済み投稿履歴のクリアに失敗しました')).toBeTruthy();
-            expect(screen.getByText('件数を確認できません')).toBeTruthy();
-            expect(screen.queryByText('件数を確認中...')).toBeNull();
         });
+        await expectPostHistoryCountLabel('件数を確認できません');
 
         countDeferred.resolve(1);
     });

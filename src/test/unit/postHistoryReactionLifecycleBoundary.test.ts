@@ -48,6 +48,7 @@ describe("postHistoryReactionLifecycle boundary contract", () => {
             .filter((filePath) => filePath !== "lib/postHistoryReactionLifecycleTrigger.ts");
 
         expect(importers.sort()).toEqual([
+            "lib/hooks/usePostHistoryRelatedReactions.svelte.ts",
             "lib/postHistoryChildInteractionDeletionLifecycleTrigger.ts",
         ]);
     });

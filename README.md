@@ -19,9 +19,16 @@ eHagaki（えはがき）は、画像・動画圧縮機能付きの投稿専用N
 - **PWA・共有インテント対応**: モバイル・デスクトップ両対応。Androidは外部アプリの共有ボタンから直接メディアアップロード可能
 - **ドラフト機能**: 投稿内容を下書きとして保存し、後から編集・投稿が可能
 - **リプライ・引用・チャンネル投稿**: 各種URLクエリや`nostr:` URIを通じたリプライ・引用投稿（NIP-10, NIP-18）に対応。パブリックチャット（NIP-28）のチャンネルへの投稿もサポート
-- **Content Warning (CW)**: センシティブなコンテンツ（NIP-36）に対する警告の設定が可能
+- **Content Warning (CW)**: 標準NIP-36に加え、本文をkind `36` payloadへ分けるeHagaki独自の実験的形式を選択できます。元の投稿kind `1` / `42` / `1111`を維持します。詳細なwire仕様は[公開仕様書](docs/SENSITIVE_CONTENT.md)を参照してください。
 - **埋め込み**: iframe、Full Web Component、Host-owned Composer Lite Web Componentの3方式を提供
 - **多言語対応**: 日本語・英語に対応（ブラウザ設定から自動判定）
+
+## ドキュメント
+
+- Sensitive Content Payload形式（実験的仕様）: [docs/SENSITIVE_CONTENT.md](docs/SENSITIVE_CONTENT.md)
+- 埋め込み・統合ガイド: [docs/EMBEDDING.md](docs/EMBEDDING.md)
+- iframe詳細仕様: [docs/IFRAME_EMBEDDING.md](docs/IFRAME_EMBEDDING.md)
+- Web Component API詳細: [docs/WEB_COMPONENT.md](docs/WEB_COMPONENT.md)
 
 ## URLクエリ
 
@@ -50,7 +57,12 @@ https://lokuyow.github.io/ehagaki/?quote=note1...
 ```
 
 - リプライ: NIP-10準拠のe/pタグを自動構築（スレッドroot引き継ぎ対応）
+- Sensitive Content Payload形式のkind、NIP-22 topology、wire仕様は[公開仕様書](docs/SENSITIVE_CONTENT.md)を参照してください。
 - 引用: NIP-18準拠のqタグを自動構築し、投稿時に引用イベントとして処理されます
+- リポスト: 投稿履歴と「宛先を指定」の右側メニューから、kind 1投稿はkind 6、kind 42／1111投稿はkind 16を送信できます。作成contentは常に空文字で、元投稿はe/pタグと取得元リレーヒントから参照し、kind 16にはtarget kindを示すkタグも付けます。署名・参照・対応kindを検証した元投稿はRepost履歴に関連付けてローカル保存し、本文・media・CW・channel情報の表示と検索に利用します。その他のkindやa参照によるGeneric Repostは対象外です。
+- RepostのJSONL出力は署名済みouter eventだけを含みます。元投稿snapshotは別行に出力しないため、新規DBへimportした場合は参照情報から再取得します。取得できない元投稿は未解決状態で表示し、再試行できます。
+- Repostは検証済みの元投稿とリレーヒントがあれば、ネットワーク削除確認を待たずに署名・送信します。既にローカルで把握している有効な削除要求がある元投稿は送信しません。削除要求の背景取得は既存の関連target resolverが扱い、未取得やtimeoutを送信の失敗理由にしません。履歴保存に失敗したRepostの「再保存」は、その後の送信結果にかかわらず利用できます。
+- 外部kind 6／16のcontentは元投稿の取得元や検索対象にしません。参照不整合や未対応targetでもouterの署名済みeventと管理操作は保持します。kind 16のkタグは欠損を許容し、存在する場合は0〜65535の正規10進文字列と実target kindとの一致を確認します。kind 16を含まない旧relay coverage／同期状態は新しい同期証拠に流用せず、旧閲覧範囲とCitrine復元範囲だけを閲覧継続に使用します。
 - URLクエリ由来の参照イベントはプレビュー表示されます
 - エディタ本文に `nostr:nevent1...` または `nostr:note1...` を含めた場合も引用として処理されます
 - 本文中の複数の `nostr:` URI は出現順に処理されます
@@ -100,6 +112,7 @@ Web Componentではiframeのparent-client auth/RPCや `postMessage` を使いま
 - NIP-07 window.nostr capability for web browsers https://github.com/nostr-protocol/nips/blob/master/07.md
 - NIP-09 Event Deletion Request https://github.com/nostr-protocol/nips/blob/master/09.md
 - NIP-10 Text Notes and Threads https://github.com/nostr-protocol/nips/blob/master/10.md
+- NIP-22 Comments https://github.com/nostr-protocol/nips/blob/master/22.md
 - NIP-18 Reposts https://github.com/nostr-protocol/nips/blob/master/18.md
 - NIP-19 bech32-encoded entities https://github.com/nostr-protocol/nips/blob/master/19.md
 - NIP-21 nostr: URI scheme https://github.com/nostr-protocol/nips/blob/master/21.md

@@ -9,17 +9,19 @@
         PostHistoryThreadGraphNodeState,
     } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
+import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionReadModel";
     import type {
         PostContentEmojiImageMeta,
         PostContentEmojiLoadState,
         PostContentRenderModel,
     } from "../lib/postContentPreview";
-    import type { FullscreenMediaItem } from "../lib/types";
+    import type { FullscreenMediaItem, NostrEvent } from "../lib/types";
 
     interface Props {
         state: PostHistoryThreadGraphAnchorState;
         section: "parent" | "children";
         previewModelByEventId?: Record<string, PostContentRenderModel>;
+        getSensitiveBodyLoader?: (event: NostrEvent) => (() => Promise<string | null>) | undefined;
         emojiLoadStateByUrl?: Record<
             string,
             PostContentEmojiLoadState | undefined
@@ -40,6 +42,10 @@
             post: PostHistoryRecord,
         ) => boolean | void | Promise<boolean | void>;
         onQuotePost?: (post: PostHistoryRecord) => void;
+        getReactionReadModel?: (eventId: string) => PostHistoryReactionReadModel | null;
+        isReactionExpanded?: (eventId: string) => boolean;
+        getReactionLabel?: (eventId: string) => string;
+        onToggleReaction?: (eventId: string) => void;
         onToggleParent?: () => void;
         onRetryParent?: () => void;
         onToggleNodeParent?: (nodeEventId: string) => void;
@@ -82,6 +88,7 @@
         state,
         section,
         previewModelByEventId = {},
+        getSensitiveBodyLoader = undefined,
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         scrollRoot = null,
@@ -89,6 +96,10 @@
         buildPostRecordForNode = undefined,
         onReplyPost = undefined,
         onQuotePost = undefined,
+        getReactionReadModel = undefined,
+        isReactionExpanded = undefined,
+        getReactionLabel = undefined,
+        onToggleReaction = undefined,
         onToggleParent = undefined,
         onRetryParent = undefined,
         onToggleNodeParent = undefined,
@@ -163,6 +174,7 @@
             <PostHistoryThreadGraphNodeView
                 state={state.parentNodeState}
                 {previewModelByEventId}
+                {getSensitiveBodyLoader}
                 {emojiLoadStateByUrl}
                 {emojiImageMetaByUrl}
                 {scrollRoot}
@@ -170,6 +182,10 @@
                 {buildPostRecordForNode}
                 {onReplyPost}
                 {onQuotePost}
+                {getReactionReadModel}
+                {isReactionExpanded}
+                {getReactionLabel}
+                {onToggleReaction}
                 onToggleParent={onToggleNodeParent}
                 onRetryParent={onRetryNodeParent}
                 onToggleChildren={onToggleNodeChildren}
@@ -191,6 +207,7 @@
             <PostHistoryThreadGraphNodeView
                 state={fallbackParentNodeState}
                 {previewModelByEventId}
+                {getSensitiveBodyLoader}
                 {emojiLoadStateByUrl}
                 {emojiImageMetaByUrl}
                 {scrollRoot}
@@ -198,6 +215,10 @@
                 {buildPostRecordForNode}
                 {onReplyPost}
                 {onQuotePost}
+                {getReactionReadModel}
+                {isReactionExpanded}
+                {getReactionLabel}
+                {onToggleReaction}
                 onToggleParent={onToggleNodeParent}
                 onRetryParent={onRetryNodeParent}
                 onToggleChildren={onToggleNodeChildren}
@@ -266,6 +287,7 @@
                 <PostHistoryThreadGraphNodeView
                     state={replyState}
                     {previewModelByEventId}
+                    {getSensitiveBodyLoader}
                     {emojiLoadStateByUrl}
                     {emojiImageMetaByUrl}
                     {scrollRoot}
@@ -273,6 +295,10 @@
                     {buildPostRecordForNode}
                     {onReplyPost}
                     {onQuotePost}
+                    {getReactionReadModel}
+                    {isReactionExpanded}
+                    {getReactionLabel}
+                    {onToggleReaction}
                     onToggleParent={onToggleNodeParent}
                     onRetryParent={onRetryNodeParent}
                     onToggleChildren={onToggleNodeChildren}

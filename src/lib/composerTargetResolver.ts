@@ -22,6 +22,7 @@ import type {
     RelayConfig,
 } from "./types";
 import type { ComposerTargetPointer } from "./composerTargetUtils";
+import type { PostHistoryDeletionRequestsRepository } from "./storage/postHistoryDeletionRequestsRepository";
 
 export type ComposerTargetResolvePhase =
     | "event-loading"
@@ -31,6 +32,7 @@ export type ComposerTargetResolvePhase =
 export interface ComposerResolvedTarget {
     event: NostrEvent;
     relayHints: string[];
+    fetchedRelayUrl?: string | null;
     authorProfile: ProfileData | null;
     channelContext: ChannelContextState | null;
     channelCreatorPubkey: string | null;
@@ -66,6 +68,7 @@ interface ComposerTargetResolverDeps {
     channelCoordinator?: Pick<ChannelContextCoordinator, "resolveInternal">;
     verifyEventFn?: (event: NostrEvent) => boolean;
     lookupAuthorWriteRelaysFn?: (pubkeyHex: string) => Promise<string[]>;
+    deletionRequestsRepository?: Pick<PostHistoryDeletionRequestsRepository, "getDeletedTargets">;
 }
 
 export interface ResolveComposerTargetParams {
@@ -246,7 +249,8 @@ export function createComposerTargetResolver(
                 return { status: "error", reason: "network" };
             }
 
-            const event = fetched.event;
+            let event = fetched.event;
+            let fetchedRelayUrl = fetched.relayUrl;
             if (!verifyEventFn(event)) {
                 return { status: "error", reason: "invalid-event" };
             }
@@ -266,8 +270,8 @@ export function createComposerTargetResolver(
 
             const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls(
                 [
+                    ...(fetchedRelayUrl ? [fetchedRelayUrl] : []),
                     ...params.pointer.relayHints,
-                    ...(fetched.relayUrl ? [fetched.relayUrl] : []),
                 ],
                 { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
             );
@@ -372,6 +376,7 @@ export function createComposerTargetResolver(
                 target: {
                     event,
                     relayHints,
+                    fetchedRelayUrl,
                     authorProfile,
                     channelContext,
                     channelCreatorPubkey,

@@ -1,6 +1,7 @@
 <script lang="ts">
     import { DropdownMenu } from "bits-ui";
     import { _ } from "svelte-i18n";
+    import PostRepostMenuItem from "./PostRepostMenuItem.svelte";
 
     type ActionOrder = "standard" | "raw-json-first";
 
@@ -17,6 +18,8 @@
         externalClientLabel?: string;
         onOpenExternalClient?: (event: Event) => void;
         onShowRawJson: () => void;
+        onRepost?: (event: Event) => void;
+        repostPending?: boolean;
         onBroadcastPointerDown: (event: PointerEvent) => void;
         onBroadcastPost: (event: Event) => void;
         onOpenDeleteConfirm: () => void;
@@ -35,6 +38,8 @@
         externalClientLabel = undefined,
         onOpenExternalClient = undefined,
         onShowRawJson,
+        onRepost = undefined,
+        repostPending = false,
         onBroadcastPointerDown,
         onBroadcastPost,
         onOpenDeleteConfirm,
@@ -57,6 +62,7 @@
 {/snippet}
 
 {#snippet rawJsonItem()}
+    {#if onRepost}<PostRepostMenuItem pending={repostPending} onSelect={onRepost} />{/if}
     <DropdownMenu.Item
         class="menu-action-button"
         onSelect={() => onShowRawJson()}

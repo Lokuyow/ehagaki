@@ -471,6 +471,7 @@ iframe.contentWindow.postMessage({
 - `clientTagEnabled`
 - `quoteNotificationEnabled`
 - `replyNotificationEnabled`
+- `failClosedContentWarning`
 - `imageQualityLevel`
 - `videoQualityLevel`
 - `imageCompressionLevel`（旧キー、読み込み互換用）
@@ -483,6 +484,7 @@ iframe.contentWindow.postMessage({
 - `settingsPreferenceMetadata`
 - `firstVisit`
 - `sharedMediaProcessed`
+- `footerSettingShortcuts`
 
 親ページ側では、eHagaki のキーと衝突しないように prefix を付けて保存することを推奨します。
 
@@ -495,6 +497,7 @@ const ALLOWED_STORAGE_KEYS = new Set([
   'clientTagEnabled',
   'quoteNotificationEnabled',
   'replyNotificationEnabled',
+  'failClosedContentWarning',
   'imageQualityLevel',
   'videoQualityLevel',
   'imageCompressionLevel',
@@ -507,6 +510,7 @@ const ALLOWED_STORAGE_KEYS = new Set([
   'settingsPreferenceMetadata',
   'firstVisit',
   'sharedMediaProcessed',
+  'footerSettingShortcuts',
 ]);
 
 function postToIframe(message) {
@@ -571,6 +575,8 @@ window.addEventListener('message', (event) => {
 ```
 
 初回描画のテーマ、言語、カラーのちらつきを抑えたい場合は、親ページに保存済みの `themeMode` / `locale` / `accentColor` / `baseColor` を iframe URL の `defaultTheme` / `defaultLocale` / `defaultAccentColor` / `defaultBaseColor` にも反映してください。起動後に `storage.get` の結果が返ると、iframe 側の設定ストアも親保存値へ同期されます。外部forced/default query自体は親storageへ保存されません。
+
+child は従来からある storage key をまとめて要求し、新しい key は別 request で要求します。そのため `failClosedContentWarning` を知らない strict な v1 Host でも既存 key の get / set / remove は継続します。新しい key の親保存・復元には Host 側 allowlist への追加が必要です。上記 sample は新しい key に対応していますが、すでに公開済みの Host は自動更新されません。
 
 #### IndexedDB 設定の親保存委譲
 

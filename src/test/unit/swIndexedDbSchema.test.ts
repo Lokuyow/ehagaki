@@ -100,6 +100,11 @@ describe('swIndexedDbSchema', () => {
                 keyPath: POST_HISTORY_TIMELINE_KEY_PATH,
             },
             {
+                storeName: 'sensitivePayloads',
+                indexName: 'pubkeyHex',
+                keyPath: 'pubkeyHex',
+            },
+            {
                 storeName: 'postHistoryChildInteractions',
                 indexName: '[parentEventId+createdAt]',
                 keyPath: ['parentEventId', 'createdAt'],
@@ -128,7 +133,7 @@ describe('swIndexedDbSchema', () => {
 
         ensureCurrentEHagakiDbSchema(db, 'sharedMedia');
 
-        expect(db.createObjectStore).toHaveBeenCalledTimes(17);
+        expect(db.createObjectStore).toHaveBeenCalledTimes(18);
         expect(getCreatedStore(createdStores, 'meta').keyPath).toBe('key');
 
         indexAssertions.forEach(({ storeName, indexName, keyPath }) => {

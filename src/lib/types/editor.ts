@@ -30,6 +30,8 @@ export interface EditorState {
 export interface PostResult {
     success: boolean;
     fullyDelivered?: boolean;
+    /** Internal success state: the published event belongs to a prior session, so preserve the active composer. */
+    preserveComposerContent?: boolean;
     error?: string;
     eventId?: string;
     acceptedRelays?: string[];
@@ -78,13 +80,13 @@ export interface RelayRejection {
 // Editor and Utils types
 export interface NodeData {
     type: string;
-    attrs?: any;
-    content?: any[];
+    attrs?: Record<string, unknown>;
+    content?: NodeData[];
 }
 
 export interface DragEvent {
     type: "start" | "move" | "end";
-    details?: any;
+    details?: Record<string, unknown>;
     getPos?: () => number;
 }
 

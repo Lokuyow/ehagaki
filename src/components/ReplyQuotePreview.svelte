@@ -8,6 +8,7 @@
     import ProfileAvatar from "./ProfileAvatar.svelte";
     import {
         buildPostContentRenderModel,
+        resolveEventContentBody,
         type PostContentEmojiImageMeta,
         type PostContentEmojiLoadState,
         type PostContentRenderModel,
@@ -17,7 +18,6 @@
         ReplyQuoteMode,
         ReplyQuoteState,
     } from "../lib/types";
-    import { sanitizePlainText } from "../lib/utils/domSanitizer";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
@@ -25,6 +25,7 @@
         reference: ReplyQuoteState;
         mode: ReplyQuoteMode;
         model?: PostContentRenderModel;
+        loadSensitiveBody?: () => Promise<string | null>;
         emojiLoadStateByUrl?: Record<
             string,
             PostContentEmojiLoadState | undefined
@@ -50,6 +51,7 @@
         reference,
         mode,
         model = undefined,
+        loadSensitiveBody = undefined,
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         onImageOpen = undefined,
@@ -90,15 +92,20 @@
             });
         }
 
+        const content = resolveEventContentBody(
+            referencedEvent.content,
+            referencedEvent.tags,
+        );
         return buildPostContentRenderModel({
-            sourceContent: referencedEvent.content,
-            displayContent: sanitizePlainText(referencedEvent.content),
+            kind: referencedEvent.kind,
+            sourceContent: content,
+            displayContent: content,
             tags: referencedEvent.tags,
         });
     });
 
     let canToggleExpand = $derived(
-        resolvedModel.hasRenderableText || resolvedModel.hasRenderableMedia,
+        resolvedModel.hasRenderableText || resolvedModel.hasRenderableMedia || !!resolvedModel.contentWarning,
     );
 
     let showLoadingStatus = $derived(reference.loading && showDelayedLoading);
@@ -354,6 +361,8 @@
     {#snippet content()}
         <PostContentPreview
             model={resolvedModel}
+            {loadSensitiveBody}
+            contentWarningEventId={reference.eventId}
             density="reply"
             {emojiLoadStateByUrl}
             {emojiImageMetaByUrl}

@@ -11,7 +11,7 @@ export type PostHistoryDirectReplyLifecycleSource = PostHistoryRelationLifecycle
 export type PostHistoryDirectReplyLifecycleStateStatus = PostHistoryRelationLifecycleStateStatus;
 
 export const POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND = 1;
-export type PostHistoryDirectReplyLifecycleKind = 1 | 42;
+export type PostHistoryDirectReplyLifecycleKind = 1 | 42 | 1111;
 export const POST_HISTORY_DIRECT_REPLY_LIFECYCLE_MAX_RETRY_COUNT = 3;
 export const POST_HISTORY_DIRECT_REPLY_LIFECYCLE_RETRY_COOLDOWN_MS = 5_000;
 const POST_HISTORY_DIRECT_REPLY_RELATION_KIND = "reply";
@@ -56,7 +56,7 @@ export function buildPostHistoryDirectReplyLifecycleRequestKey(
 export function parsePostHistoryDirectReplyLifecycleRequestKey(
     requestKey: string,
 ): PostHistoryDirectReplyLifecycleKeyCandidate | null {
-    const parsed = ([1, 42] as const)
+    const parsed = ([1, 42, 1111] as const)
         .map((kind) => parsePostHistoryRelationLifecycleRequestKey(
             requestKey,
             kind,

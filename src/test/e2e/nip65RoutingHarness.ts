@@ -1,5 +1,7 @@
 import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent } from "nostr-tools";
 import { createRxNostr } from "rx-nostr";
+import { tap, finalize } from "rxjs";
+import { sensitivePayloadRepository } from "../../lib/storage/sensitivePayloadRepository";
 import { Nip65RelayDirectory, getNip65RelayDirectory } from "../../lib/nip65RelayDirectory";
 import { parseComposerTargetInput } from "../../lib/composerTargetUtils";
 import { createComposerTargetResolver } from "../../lib/composerTargetResolver";
@@ -13,8 +15,8 @@ import type { AuthState } from "../../lib/types";
 
 const quietConsole = { log() {}, warn() {}, error() {} } as unknown as Console;
 
-async function reply(input: string, authorRelay: string, mode: "cold" | "warm" | "prefetch", extraAuthorRelays: string[] = []) {
-    const rxNostr = createRxNostr({ verifier: async (event) => verifyEvent(event) });
+async function reply(input: string, authorRelay: string, mode: "cold" | "warm" | "prefetch", extraAuthorRelays: string[] = [], sensitive = false) {
+    const rxNostr = createRxNostr({ verifier: async (event) => verifyEvent(event), skipFetchNip11: true, retry: { strategy: "off" } });
     const relayConfig = Object.fromEntries([authorRelay, ...extraAuthorRelays].map((relay) => [relay, { read: true, write: true }]));
     rxNostr.setDefaultRelays(relayConfig);
     clearReplyQuote();
@@ -54,9 +56,22 @@ async function reply(input: string, authorRelay: string, mode: "cold" | "warm" |
             npub: "", nprofile: "", isValid: true, isInitialized: true,
         } as AuthState };
         const history: Array<{ eventId: string; verified: boolean; acceptedRelays?: string[] }> = [];
+        const signedKinds: number[] = [];
+        let payloadId: string | undefined;
         const manager = new PostManager(rxNostr, {
             authStateStore, replyQuoteState, console: quietConsole,
-            getParentClientSignerFn: () => ({ signEvent: async (event: Parameters<typeof finalizeEvent>[0]) => finalizeEvent(event, secret) }),
+            getParentClientSignerFn: () => ({ signEvent: async (event: Parameters<typeof finalizeEvent>[0]) => {
+                signedKinds.push(event.kind);
+                return finalizeEvent(event, secret);
+            } }),
+            settingsStore: { failClosedContentWarning: sensitive, clientTagEnabled: false } as never,
+            contentWarningStore: { value: sensitive, reset() {} },
+            contentWarningReasonStore: { value: "fixture", reset() {} },
+            writeRelaysStore: { value: [authorRelay, ...extraAuthorRelays] },
+            saveSensitivePayloadFn: async (input) => {
+                payloadId = input.event.id;
+                await sensitivePayloadRepository.putCandidate(input);
+            },
             getClientTagFn: () => null,
             saveHashtagsToHistoryFn: () => {},
             notificationPort: { notifyPostSuccess: () => true, notifyPostError: () => true },
@@ -65,18 +80,26 @@ async function reply(input: string, authorRelay: string, mode: "cold" | "warm" |
             },
         });
         const startedAt = performance.now();
-        const waves: Array<{ relays: string[]; startedMs: number }> = [];
+        const waves: Array<{ relays: string[]; startedMs: number; eventId?: string; kind?: number; acceptedRelays: string[]; completed: boolean }> = [];
+        window.__NIP65_ROUTING_PROGRESS__ = { waves, finished: false };
         const send = rxNostr.send.bind(rxNostr);
         rxNostr.send = (event, options) => {
             const on = options?.on as { relays?: string[]; defaultWriteRelays?: boolean } | undefined;
-            waves.push({
+            const wave = {
                 relays: [...(on?.defaultWriteRelays ? Object.keys(relayConfig) : []), ...(on?.relays ?? [])],
                 startedMs: performance.now() - startedAt,
-            });
-            return send(event, options);
+                eventId: event.id, kind: event.kind, acceptedRelays: [] as string[], completed: false,
+            };
+            waves.push(wave);
+            return send(event, options).pipe(tap({
+                next: packet => { if (packet.done && packet.ok) wave.acceptedRelays.push(packet.from); },
+            }), finalize(() => { wave.completed = true; }));
         };
         const result = await manager.submitPost("Local routing fixture");
-        return { state, result, history, waves, completedMs: performance.now() - startedAt };
+        window.__NIP65_ROUTING_PROGRESS__.finished = true;
+        const payloadCache = payloadId ? (await sensitivePayloadRepository.getByIds([payloadId]))
+            .map(record => ({ eventId: record.id, acceptedRelays: record.acceptedRelays })) : [];
+        return { state, result, history, waves, signedKinds, payloadCache, completedMs: performance.now() - startedAt };
     } finally {
         rxNostr.dispose();
         clearReplyQuote();
@@ -84,7 +107,7 @@ async function reply(input: string, authorRelay: string, mode: "cold" | "warm" |
 }
 
 async function directory(pubkey: string, discoveryRelays: string[]) {
-    const rxNostr = createRxNostr({ verifier: async (event) => verifyEvent(event) });
+    const rxNostr = createRxNostr({ verifier: async (event) => verifyEvent(event), skipFetchNip11: true, retry: { strategy: "off" } });
     try {
         return await new Nip65RelayDirectory(rxNostr).lookup(pubkey, { discoveryRelays });
     } finally {
@@ -95,6 +118,7 @@ async function directory(pubkey: string, discoveryRelays: string[]) {
 declare global {
     interface Window {
         __NIP65_ROUTING_HARNESS__: { reply: typeof reply; directory: typeof directory };
+        __NIP65_ROUTING_PROGRESS__: { waves: Array<{ relays: string[]; kind?: number; acceptedRelays: string[]; completed: boolean }>; finished: boolean };
     }
 }
 window.__NIP65_ROUTING_HARNESS__ = { reply, directory };

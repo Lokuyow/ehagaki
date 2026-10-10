@@ -6,8 +6,6 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import { 
     normalizeClipboardText, 
     serializeParagraphs, 
-    visualizeLineBreaks,
-    analyzeLineBreaks,
     tryCopyToClipboard,
 } from '../../lib/utils/clipboardUtils';
 
@@ -164,75 +162,6 @@ describe('clipboardUtils', () => {
             const result = serializeParagraphs(paragraphs);
             
             expect(result).toBe('');
-        });
-    });
-
-    describe('visualizeLineBreaks', () => {
-        it('CRLF改行を可視化', () => {
-            const text = 'Line 1\r\nLine 2';
-            const result = visualizeLineBreaks(text);
-            
-            expect(result).toBe('Line 1[CRLF]Line 2');
-        });
-
-        it('LF改行を可視化', () => {
-            const text = 'Line 1\nLine 2';
-            const result = visualizeLineBreaks(text);
-            
-            expect(result).toBe('Line 1[LF]Line 2');
-        });
-
-        it('CR改行を可視化', () => {
-            const text = 'Line 1\rLine 2';
-            const result = visualizeLineBreaks(text);
-            
-            expect(result).toBe('Line 1[CR]Line 2');
-        });
-
-        it('混在する改行を可視化', () => {
-            const text = 'Line 1\r\nLine 2\nLine 3\rLine 4';
-            const result = visualizeLineBreaks(text);
-            
-            expect(result).toBe('Line 1[CRLF]Line 2[LF]Line 3[CR]Line 4');
-        });
-    });
-
-    describe('analyzeLineBreaks', () => {
-        it('CRLF改行を分析', () => {
-            const text = 'Line 1\r\nLine 2\r\nLine 3';
-            const result = analyzeLineBreaks(text);
-            
-            expect(result.crlfCount).toBe(2);
-            expect(result.lfCount).toBe(0);
-            expect(result.crCount).toBe(0);
-            expect(result.totalLines).toBe(3);
-            expect(result.hasTrailingNewline).toBe(false);
-        });
-
-        it('LF改行を分析', () => {
-            const text = 'Line 1\nLine 2\nLine 3';
-            const result = analyzeLineBreaks(text);
-            
-            expect(result.crlfCount).toBe(0);
-            expect(result.lfCount).toBe(2);
-            expect(result.crCount).toBe(0);
-            expect(result.totalLines).toBe(3);
-        });
-
-        it('末尾の改行を検出', () => {
-            const text = 'Line 1\nLine 2\n';
-            const result = analyzeLineBreaks(text);
-            
-            expect(result.hasTrailingNewline).toBe(true);
-            expect(result.totalLines).toBe(2);
-        });
-
-        it('空のテキストを分析', () => {
-            const text = '';
-            const result = analyzeLineBreaks(text);
-            
-            expect(result.totalLines).toBe(1);
-            expect(result.hasTrailingNewline).toBe(false);
         });
     });
 

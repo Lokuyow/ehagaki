@@ -1,6 +1,5 @@
 import {
     parsePostHistoryReactionLifecycleRequestKey,
-    type PostHistoryReactionLifecycleCandidate,
     type PostHistoryReactionLifecycleStateRecord,
 } from "./postHistoryReactionLifecycleTypes";
 import {

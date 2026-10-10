@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { usePostRepostOperation } from "./lib/hooks/usePostRepostOperation.svelte";
   import { onMount } from "svelte";
   import "./i18n";
   import { _, locale, waitLocale } from "svelte-i18n";
@@ -33,6 +34,7 @@
   import ReasonInput from "./components/ReasonInput.svelte";
   import ChannelContextPreview from "./components/ChannelContextPreview.svelte";
   import ImageFullscreen from "./components/ImageFullscreen.svelte";
+  import type PostComponentType from "./components/PostComponent.svelte";
   import ReplyQuotePreview from "./components/ReplyQuotePreview.svelte";
   import {
     authState,
@@ -89,6 +91,7 @@
     settingsStore,
     consumeFirstVisitFlag,
   } from "./stores/settingsStore.svelte";
+  import { footerSettingShortcutsStore } from "./stores/footerSettingShortcutsStore.svelte";
   import { themeColorStore } from "./stores/themeColorStore.svelte";
   import { sharedMediaRepository } from "./lib/storage/sharedMediaRepository";
   import { composeSharedText } from "./lib/sharedContentUtils";
@@ -219,13 +222,16 @@
   import { usePostContentEmojiState } from "./lib/hooks/usePostContentEmojiState.svelte";
   import {
     buildPostContentRenderModel,
+    resolveEventContentBody,
     type PostContentRenderModel,
   } from "./lib/postContentPreview";
-  import { sanitizePlainText } from "./lib/utils/domSanitizer";
+  import { createSensitivePayloadBodyLoader } from "./lib/sensitiveContentPayloadReader";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
   import { uploadDestinationStore } from "./stores/uploadDestinationStore.svelte";
   import { uploadFiles as normalUploadFiles } from "./lib/normalUploadHelper";
+  import { uploadFileForHost as uploadHeadlessFile } from "./lib/upload/headlessUpload";
+  import type { EHagakiUploadResult } from "./web-component/types";
 
   const appRuntimeEnvironment = getAppRuntimeEnvironment();
   interface Props {
@@ -448,7 +454,7 @@
   let parentClientAvailable = $state(false);
   // NIP-07拡張機能の検出状態（nos2x等の遅延注入に対応するためリアクティブ）
   let nip07ExtensionAvailable = $state(authService.isNip07Available());
-  let postComponentRef: any = $state();
+  let postComponentRef: PostComponentType | null = $state(null);
   let isLoggingOut = $state(false); // 追加: ログアウト中の状態管理
   let isSwitchingAccount = $state(false); // アカウント切替中フラグ
   let nip46OperationState = $state<Nip46ConnectionOperationState>(
@@ -494,9 +500,12 @@
         continue;
       }
 
+      const content = resolveEventContentBody(event.content, event.tags);
+
       models[reference.eventId] = buildPostContentRenderModel({
-        sourceContent: event.content,
-        displayContent: sanitizePlainText(event.content),
+        kind: event.kind,
+        sourceContent: content,
+        displayContent: content,
         tags: event.tags,
       });
     }
@@ -958,6 +967,9 @@
       postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates,
   });
 
+  const repostOperation = usePostRepostOperation({ getPubkey: () => authState.value.pubkey,
+    getRxNostr: () => rxNostr, onSaved: (ids) => handleSavedSelfPosts(ids) });
+
   async function handleSavedSelfPosts(eventIds: string[]): Promise<void> {
     await postHistoryInboundReplyReconciliation.notifySelfPostsSaved(eventIds);
     latestAuthoredSelfPostSave = {
@@ -1363,6 +1375,7 @@
       applyStoredSettingsSnapshot: () => {
         settingsStore.applyStoredSnapshot();
         themeColorStore.reload();
+        footerSettingShortcutsStore.reload();
       },
       persistEmbedStorageKeys: () => {
         embedStorageService.persistLocalStorageKeys([...EMBED_STORAGE_KEYS]);
@@ -1440,6 +1453,19 @@
     payload: EmbedSettingsSetPayload,
   ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>> {
     return appEmbedController.applySettings(payload);
+  }
+
+  /** Full Web Component upload path. It deliberately avoids Composer upload UI state. */
+  export async function uploadFileForHost(
+    file: File,
+    options: { signal: AbortSignal },
+  ): Promise<EHagakiUploadResult> {
+    if (editorState.isUploading || editorState.isSubmitPending || editorState.postStatus.sending) {
+      const error = new Error("An editor upload or post operation is already in progress.");
+      error.name = "upload_in_progress";
+      throw error;
+    }
+    return await uploadHeadlessFile(file, options.signal);
   }
 
   /** Public in-process editor control used by the Direct Web Component root. */
@@ -1732,8 +1758,8 @@
       }
       if (
         rxNostr &&
-        typeof (rxNostr as unknown as { dispose?: unknown }).dispose ===
-          "function"
+        "dispose" in rxNostr &&
+        typeof rxNostr.dispose === "function"
       ) {
         rxNostr = disposeNostrSession(rxNostr);
       } else {
@@ -2059,6 +2085,13 @@
                   model={getComposerReferencePreviewModel(
                     replyQuoteState.value.reply,
                   )}
+                  loadSensitiveBody={createSensitivePayloadBodyLoader({
+                    ownerPubkey: authState.value.pubkey,
+                    structure: replyQuoteState.value.reply.referencedEvent,
+                    relayHints: replyQuoteState.value.reply.relayHints,
+                    rxNostr,
+                    relayConfig: relayConfigStore.value,
+                  })}
                   emojiLoadStateByUrl={composerReferenceEmojiState.emojiLoadStateByUrl}
                   emojiImageMetaByUrl={composerReferenceEmojiState.emojiImageMetaByUrl}
                   onImageOpen={handleReferenceImageOpen}
@@ -2124,6 +2157,13 @@
                   reference={quote}
                   mode="quote"
                   model={getComposerReferencePreviewModel(quote)}
+                  loadSensitiveBody={createSensitivePayloadBodyLoader({
+                    ownerPubkey: authState.value.pubkey,
+                    structure: quote.referencedEvent,
+                    relayHints: quote.relayHints,
+                    rxNostr,
+                    relayConfig: relayConfigStore.value,
+                  })}
                   emojiLoadStateByUrl={composerReferenceEmojiState.emojiLoadStateByUrl}
                   emojiImageMetaByUrl={composerReferenceEmojiState.emojiImageMetaByUrl}
                   onImageOpen={handleReferenceImageOpen}
@@ -2311,6 +2351,9 @@
       {/if}
       {#if showPostHistoryDialogStore.value && PostHistoryDialogComponent}
         <PostHistoryDialogComponent
+          onRepostPost={repostOperation.execute} repostPending={repostOperation.pending}
+          repostSaveFailure={repostOperation.saveFailure}
+          onRetryRepostSave={repostOperation.retrySave}
           show={showPostHistoryDialogStore.value}
           onClose={postHistoryDialog.close}
           onReplyPost={handlePostHistoryReply}
@@ -2327,6 +2370,9 @@
       {/if}
       {#if showComposerTargetDialogStore.value && ComposerTargetDialogComponent}
         <ComposerTargetDialogComponent
+          onRepostPost={repostOperation.execute} repostPending={repostOperation.pending}
+          repostSaveFailure={repostOperation.saveFailure}
+          onRetryRepostSave={repostOperation.retrySave}
           show={showComposerTargetDialogStore.value}
           onClose={composerTargetDialog.close}
           onApply={handleComposerTargetApply}

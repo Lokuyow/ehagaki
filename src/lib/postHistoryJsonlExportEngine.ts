@@ -1,4 +1,5 @@
 import { getEventHash as getRxNostrEventHash } from "@rx-nostr/crypto";
+import { isPostHistoryAuthoredKind } from "./postHistoryKinds";
 import { validateEvent, verifyEvent } from "nostr-tools";
 import { extractDeletionTargetEventIds } from "./postHistoryDeletionUtils";
 import {
@@ -13,8 +14,10 @@ import {
 import type {
     PostHistoryDeletionRequestRecord,
     PostHistoryRecord,
+    SensitivePayloadRecord,
 } from "./storage/ehagakiDb";
 import type { NostrEvent } from "./types";
+import { getSensitivePayloadReference, verifySensitivePayloadLink } from "./sensitiveContentPayload";
 
 export const POST_HISTORY_JSONL_CHUNK_SIZE = 1024 * 1024;
 export const POST_HISTORY_LEGACY_WRITE_BATCH_SIZE = 100;
@@ -24,9 +27,11 @@ export type PostHistoryJsonlExportResult = {
     exportedEventCount: number;
     exportedPostEventCount: number;
     exportedDeletionEventCount: number;
+    exportedPayloadEventCount: number;
     skippedPostCount: number;
     missingDeletionRawEventCount: number;
     invalidDeletionRawEventCount: number;
+    missingPayloadEventCount: number;
     isPartial: boolean;
 };
 
@@ -66,6 +71,7 @@ export type PostHistoryJsonlExportEngineOptions = {
     pubkeyHex: string;
     postRecords: PostHistoryRecord[];
     deletionRecords: PostHistoryDeletionRequestRecord[];
+    sensitivePayloadRecords?: SensitivePayloadRecord[];
     verificationStores?: PostHistoryVerificationStores;
     onProgress?: (progress: PostHistoryJsonlExportProgress) => void;
     includeJsonl?: boolean;
@@ -303,9 +309,11 @@ function createEmptyResult(): Omit<PostHistoryJsonlExportResult, "jsonl"> {
         exportedEventCount: 0,
         exportedPostEventCount: 0,
         exportedDeletionEventCount: 0,
+        exportedPayloadEventCount: 0,
         skippedPostCount: 0,
         missingDeletionRawEventCount: 0,
         invalidDeletionRawEventCount: 0,
+        missingPayloadEventCount: 0,
         isPartial: false,
     };
 }
@@ -345,7 +353,7 @@ export async function exportPostHistoryRecords(
     pubkeyHex: string,
     postRecords: PostHistoryRecord[],
     deletionRecords: PostHistoryDeletionRequestRecord[],
-    options: Pick<PostHistoryJsonlExportEngineOptions, "onProgress" | "includeJsonl"> = {},
+    options: Pick<PostHistoryJsonlExportEngineOptions, "onProgress" | "includeJsonl" | "sensitivePayloadRecords"> = {},
 ): Promise<PostHistoryJsonlExportEngineResult> {
     const result = createEmptyResult();
     const postEvents: NostrEvent[] = [];
@@ -357,9 +365,15 @@ export async function exportPostHistoryRecords(
     const scopedDeletionRecords = deletionRecords.filter(
         (record) => record.targetAuthorPubkey === pubkeyHex,
     );
+    const payloadsById = new Map(
+        (options.sensitivePayloadRecords ?? [])
+            .filter((record) => record.pubkeyHex === pubkeyHex && record.deletedAt === undefined)
+            .map((record) => [record.id, record] as const),
+    );
+    const exportedPayloadIds = new Set<string>();
 
     for (const record of scopedPostRecords) {
-        if (record.kind !== 1 && record.kind !== 42) {
+        if (!isPostHistoryAuthoredKind(record.kind)) {
             continue;
         }
         if (
@@ -374,6 +388,20 @@ export async function exportPostHistoryRecords(
         postEvents.push(toExportableSignedEvent(record.rawEvent));
         exportablePostEventIds.add(record.eventId);
         result.exportedPostEventCount += 1;
+        const structure = record.rawEvent as NostrEvent;
+        const payloadReference = getSensitivePayloadReference(structure);
+        if (!payloadReference) continue;
+        const candidate = payloadsById.get(payloadReference.eventId);
+        const payload = candidate?.rawEvent as NostrEvent | undefined;
+        if (!payload || !verifySensitivePayloadLink(structure, payload, payloadReference.eventId)) {
+            result.missingPayloadEventCount += 1;
+            continue;
+        }
+        if (!exportedPayloadIds.has(payload.id)) {
+            exportedPayloadIds.add(payload.id);
+            postEvents.push(toExportableSignedEvent(payload));
+            result.exportedPayloadEventCount += 1;
+        }
     }
 
     const deletionRecordsByEventId = new Map<string, PostHistoryDeletionRequestRecord[]>();
@@ -408,7 +436,7 @@ export async function exportPostHistoryRecords(
     const unrecoverableDeletedPostEventIds = new Set<string>();
     for (const record of scopedPostRecords) {
         if (
-            (record.kind !== 1 && record.kind !== 42)
+            !isPostHistoryAuthoredKind(record.kind)
             || record.deletedAt === undefined
             || !exportablePostEventIds.has(record.eventId)
             || validDeletionTargetEventIds.has(record.eventId)
@@ -426,7 +454,8 @@ export async function exportPostHistoryRecords(
     result.exportedEventCount = events.length;
     result.isPartial = result.skippedPostCount > 0
         || result.missingDeletionRawEventCount > 0
-        || result.invalidDeletionRawEventCount > 0;
+        || result.invalidDeletionRawEventCount > 0
+        || result.missingPayloadEventCount > 0;
 
     options.onProgress?.({ phase: "creating" });
     const serialized = createJsonlBlob(events, options.includeJsonl === true);

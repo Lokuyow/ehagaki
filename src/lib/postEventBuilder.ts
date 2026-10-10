@@ -3,10 +3,12 @@ import { ALLOWED_IMAGE_EXTENSIONS, ALLOWED_VIDEO_EXTENSIONS } from "./constants"
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type {
     ChannelContextState,
+    ImetaField,
     PostResult,
     RelayRejection,
     RelayRejectionCategory,
 } from "./types";
+import type { ImageImetaMetadataMap } from "./types";
 
 // --- 純粋関数（依存性なし） ---
 
@@ -47,21 +49,29 @@ export class PostValidator {
     }
 }
 
+type RxNostrEventParameters = Parameters<RxNostr["send"]>[0];
+export type PostEventTemplate = Omit<RxNostrEventParameters, "tags" | "created_at"> & {
+    tags: string[][];
+    created_at: number;
+};
+
 export class PostEventBuilder {
     static async buildEvent(
         content: string,
         hashtags: string[],
         tags: string[][],
         pubkey?: string,
-        imageImetaMap?: Record<string, { m: string; blurhash?: string; dim?: string; alt?: string;[key: string]: any }>,
-        createImetaTagFn?: (meta: any) => Promise<string[]>,
+        imageImetaMap?: ImageImetaMetadataMap,
+        createImetaTagFn?: (meta: ImetaField) => Promise<string[]>,
         getClientTagFn?: () => string[] | null,
         contentWarningEnabled?: boolean,
         contentWarningReason?: string,
         replyQuoteTags?: string[][],
         channelContext?: ChannelContextState | null,
         emojiTags?: string[][],
-    ): Promise<any> {
+        failClosedContentWarning?: boolean,
+        publicationKind?: number,
+    ): Promise<PostEventTemplate> {
         // リプライ/引用タグを先頭に配置
         const eventTags: string[][] = [];
 
@@ -85,18 +95,26 @@ export class PostEventBuilder {
             eventTags.push(...hashtags.map((hashtag: string) => ['t', hashtag.toLowerCase()]));
         }
 
-        // Content Warning タグ追加 (NIP-36)
-        // nsfw ハッシュタグがある場合も自動的に content-warning タグを追加
-        const hasNsfwTag = eventTags.some(tag => tag[0] === 't' && tag[1] === 'nsfw');
-        if (contentWarningEnabled || hasNsfwTag) {
-            if (contentWarningReason && contentWarningReason.trim()) {
-                eventTags.push(['content-warning', contentWarningReason.trim()]);
-            } else {
-                eventTags.push(['content-warning']);
+        // Content Warning形式が実験的fail-closed opt-inなら、CWとNSFWを独立させる。
+        if (failClosedContentWarning) {
+            if (contentWarningEnabled) {
+                const reason = contentWarningReason?.trim() ?? "";
+                eventTags.push(reason
+                    ? ["content-warning", reason]
+                    : ["content-warning"]);
             }
-            // Content Warning有効時は 'nsfw' ハッシュタグも自動追加（重複チェック）
-            if (contentWarningEnabled && !hasNsfwTag) {
-                eventTags.push(['t', 'nsfw']);
+        } else {
+            // 現行NIP-36形式と既存のCW/NSFW自動連動を維持する。
+            const hasNsfwTag = eventTags.some(tag => tag[0] === 't' && tag[1] === 'nsfw');
+            if (contentWarningEnabled || hasNsfwTag) {
+                if (contentWarningReason && contentWarningReason.trim()) {
+                    eventTags.push(['content-warning', contentWarningReason.trim()]);
+                } else {
+                    eventTags.push(['content-warning']);
+                }
+                if (contentWarningEnabled && !hasNsfwTag) {
+                    eventTags.push(['t', 'nsfw']);
+                }
             }
         }
 
@@ -122,8 +140,8 @@ export class PostEventBuilder {
             }
         }
 
-        const event: any = {
-            kind: channelContext ? 42 : 1,
+        const event: PostEventTemplate = {
+            kind: publicationKind ?? (channelContext ? 42 : 1),
             content,
             tags: eventTags,
             created_at: Math.floor(Date.now() / 1000)
@@ -159,8 +177,8 @@ export class PostEventSender {
     }
 
     sendEvent(
-        event: any,
-        signerOrOptions?: any | SendEventOptions,
+        event: RxNostrEventParameters,
+        signerOrOptions?: unknown,
     ): Promise<PostResult> {
         const options = normalizeSendEventOptions(signerOrOptions);
         if (
@@ -180,7 +198,7 @@ export class PostEventSender {
 
         return new Promise((resolve) => {
             let resolved = false;
-            let subscription: any = null;
+            let subscription: { unsubscribe(): void } | null = null;
             let settleTimer: ReturnType<typeof setTimeout> | undefined;
             let resultEventId = event.id;
             let successSettleScheduled = false;
@@ -275,16 +293,24 @@ export class PostEventSender {
                 }
             };
 
-            const observer = {
-                next: (packet: any) => {
+            const observer: import("rxjs").Observer<import("rx-nostr").OkPacketAgainstEvent> = {
+                next: (packet) => {
                     if (resolved) return;
                     this.console.log('リレー送信結果', {
                         stage: 'publish',
                         outcome: packet.ok ? 'success' : 'failure',
                     });
-                    const relay = typeof packet.from === "string" ? packet.from : "";
+                    const relay = RelayConfigUtils.normalizeExternalRelayUrl(packet.from) ?? packet.from;
                     if (!relay) return;
-                    resultEventId = packet.event?.id || packet.eventId || resultEventId;
+                    if (targetRelays.length > 0 && !targetRelays.includes(relay)) return;
+                    const packetEventId = "event" in packet
+                        && packet.event !== null
+                        && typeof packet.event === "object"
+                        && "id" in packet.event
+                        && typeof packet.event.id === "string"
+                        ? packet.event.id
+                        : undefined;
+                    resultEventId = packetEventId || packet.eventId || resultEventId;
 
                     if (!packet.done) {
                         if (!packet.ok && getRejectionCategory(packet.notice) === "auth-required") {
@@ -311,6 +337,7 @@ export class PostEventSender {
                             scheduleSettle(this.settleTimeouts.successMs);
                         }
                     } else {
+                        if (acceptedRelays.has(relay)) return;
                         pendingAuthRelays.delete(relay);
                         rejectedByRelay.set(relay, {
                             relay,
@@ -356,8 +383,7 @@ export class PostEventSender {
                 }
             };
 
-            const sendOptions: any = { completeOn: "all-ok" as const };
-            sendOptions.signer = options.signer ?? noopSigner();
+            const sendOptions: NonNullable<Parameters<RxNostr["send"]>[1]> = { completeOn: "all-ok", signer: options.signer ?? noopSigner() };
             if ((options.targetRelays?.length ?? 0) > 0 || options.includeDefaultWriteRelays) {
                 sendOptions.on = {
                     ...((options.targetRelays?.length ?? 0) > 0
@@ -384,7 +410,7 @@ export class PostEventSender {
     }
 }
 
-function hasExplicitTargetRelays(signerOrOptions?: any | SendEventOptions): boolean {
+function hasExplicitTargetRelays(signerOrOptions?: unknown): boolean {
     return !!signerOrOptions
         && typeof signerOrOptions === "object"
         && "targetRelays" in signerOrOptions;
@@ -411,13 +437,9 @@ export interface PostEventSenderSettleTimeouts {
 }
 
 function normalizeSendEventOptions(
-    signerOrOptions?: any | SendEventOptions,
+    signerOrOptions?: unknown,
 ): Required<Pick<SendEventOptions, "includeDefaultWriteRelays">> & SendEventOptions {
-    if (signerOrOptions && typeof signerOrOptions === "object" && (
-        "signer" in signerOrOptions
-        || "targetRelays" in signerOrOptions
-        || "includeDefaultWriteRelays" in signerOrOptions
-    )) {
+    if (isSendEventOptions(signerOrOptions)) {
         return {
             ...signerOrOptions,
             targetRelays: RelayConfigUtils.sanitizeExternalRelayUrls(signerOrOptions.targetRelays),
@@ -426,10 +448,27 @@ function normalizeSendEventOptions(
     }
 
     return {
-        signer: signerOrOptions as EventSigner | undefined,
+        ...(isEventSigner(signerOrOptions) ? { signer: signerOrOptions } : {}),
         targetRelays: [],
         includeDefaultWriteRelays: true,
     };
+}
+
+function isSendEventOptions(
+    value: unknown,
+): value is SendEventOptions {
+    return value !== null
+        && typeof value === "object"
+        && ("signer" in value
+            || "targetRelays" in value
+            || "includeDefaultWriteRelays" in value);
+}
+
+function isEventSigner(value: unknown): value is EventSigner {
+    return value !== null
+        && typeof value === "object"
+        && "signEvent" in value
+        && typeof value.signEvent === "function";
 }
 
 function resolveTargetRelays(rxNostr: RxNostr, options: SendEventOptions): string[] {

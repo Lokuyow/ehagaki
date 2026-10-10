@@ -76,7 +76,7 @@ export function resolveVisibleOlderRevealChildInteractionRepairParentPosts(
 
     for (const post of candidatePosts) {
         if (
-            (post.kind !== 1 && post.kind !== 42)
+            ![1, 42, 1111].includes(post.kind)
             || post.pubkeyHex !== ownerPubkeyHex
             || !currentVisiblePostIds.has(post.eventId)
             || parentPostsByEventId.has(post.eventId)

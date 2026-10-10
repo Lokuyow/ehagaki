@@ -1,4 +1,5 @@
 import type { RxNostr } from "rx-nostr";
+import { POST_HISTORY_AUTHORED_KINDS } from "./postHistoryKinds";
 import type {
     PostHistoryInboundDirectReplyCandidate,
     PostHistoryInboundReplyReconciliationResult,
@@ -28,6 +29,7 @@ export const POST_HISTORY_FOREGROUND_PERIODIC_AUTHORED_INITIAL_LOOKBACK_SECONDS 
 export interface PostHistoryForegroundPeriodicSyncRequest {
     ownerPubkeyHex: string;
     relayConfig?: RelayConfig | null;
+    getRelayConfig?: () => RelayConfig | null | undefined;
     reconcileDirectReplyCandidates?: (
         candidates: PostHistoryInboundDirectReplyCandidate[],
     ) => Promise<PostHistoryInboundReplyReconciliationResult>;
@@ -248,8 +250,9 @@ export class PostHistoryForegroundPeriodicSyncService {
         const task = this.lightweightSyncCoordinator.runAuthored(rxNostr, {
             ownerPubkeyHex: params.ownerPubkeyHex,
             relayConfig: params.relayConfig,
+            getRelayConfig: params.getRelayConfig,
             reason: "foreground-periodic",
-            kinds: [1, 42],
+            kinds: [...POST_HISTORY_AUTHORED_KINDS],
             since,
             until: requestUpperBoundTimestamp,
             onSavedSelfPosts: params.onSavedSelfPosts,
@@ -311,8 +314,9 @@ export class PostHistoryForegroundPeriodicSyncService {
         const task = this.lightweightSyncCoordinator.runAuthored(rxNostr, {
             ownerPubkeyHex: params.ownerPubkeyHex,
             relayConfig: params.relayConfig,
+            getRelayConfig: params.getRelayConfig,
             reason: "foreground-periodic",
-            kinds: [1, 42],
+            kinds: [...POST_HISTORY_AUTHORED_KINDS],
             since: pending.since,
             until: pendingUntil,
             onSavedSelfPosts: params.onSavedSelfPosts,

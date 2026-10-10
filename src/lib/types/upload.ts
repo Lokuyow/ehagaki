@@ -3,7 +3,7 @@
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import type { Signer } from "nostr-tools/signer";
 export type { VideoCompressionLevel } from '../videoCompression/videoCompressionConfig';
-import type { ImageDimensions } from './media';
+import type { ImetaField, ImageDimensions } from './media';
 
 // Upload-related types
 export interface UploadProgress {
@@ -127,6 +127,8 @@ export interface UploadAdapterUploadParams {
     fetch: typeof fetch;
     metadata?: Record<string, string | number | undefined>;
     devMode?: boolean;
+    /** Operation-local cancellation; normal editor uploads leave it unset. */
+    signal?: AbortSignal;
 }
 
 export interface UploadProtocolAdapter {
@@ -176,7 +178,7 @@ export interface FileUploadDependencies {
 }
 
 export interface CompressionService {
-    compress(file: File): Promise<VideoCompressionResult>;
+    compress(file: File, options?: { signal?: AbortSignal }): Promise<VideoCompressionResult>;
     hasCompressionSettings?(): boolean;
     abort?(): void;
 }
@@ -253,7 +255,7 @@ export interface UploadHelperDependencies {
     extractImageBlurhashMap: (editor: TipTapEditor) => Record<string, string>;
     calculateImageHash: (url: string) => Promise<string | null>;
     getMimeTypeFromUrl: (url: string) => string;
-    createImetaTag: (params: any) => Promise<string[]>;
+    createImetaTag: (params: ImetaField) => Promise<string[]>;
     imageSizeMapStore: {
         update: (updater: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void;
     };

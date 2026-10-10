@@ -14,6 +14,10 @@ import {
 } from './profilePictureUrlUtils';
 import { getAppStorage } from './appStorage';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 // --- URL処理の純粋関数（依存性なし） ---
 export class ProfileUrlUtils {
   static addCacheBuster(imageUrl: string): string {
@@ -42,7 +46,7 @@ export class ProfileDataFactory {
   constructor(private deps: ProfileManagerDeps = {}) { }
 
   createProfileData(
-    content: any,
+    content: unknown,
     pubkeyHex: string,
     options?: { profileRelays?: string[]; writeRelays?: string[]; forceRemote?: boolean }
   ): ProfileData {
@@ -50,7 +54,8 @@ export class ProfileDataFactory {
     const writeRelays = options?.writeRelays || [];
     const forceRemote = options?.forceRemote || false;
 
-    let picture = content?.picture || "";
+    const profile = isRecord(content) ? content : {};
+    let picture = typeof profile.picture === 'string' ? profile.picture : "";
 
     if (picture) {
       if (forceRemote) {
@@ -61,8 +66,8 @@ export class ProfileDataFactory {
     }
 
     return {
-      name: content?.name || "",
-      displayName: content?.display_name || "",
+      name: typeof profile.name === 'string' ? profile.name : "",
+      displayName: typeof profile.display_name === 'string' ? profile.display_name : "",
       picture,
       npub: toNpub(pubkeyHex),
       nprofile: toNprofile(pubkeyHex, profileRelays, writeRelays),
@@ -136,8 +141,8 @@ export class ProfileNetworkFetcher {
   constructor(
     private rxNostr: ReturnType<typeof createRxNostr>,
     private profileDataFactory: ProfileDataFactory,
-    private setTimeoutFn: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any,
-    private clearTimeoutFn: (timeoutId: any) => void,
+    setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>,
+    clearTimeoutFn: (timeoutId: ReturnType<typeof setTimeout>) => void,
     private console: Console
   ) { }
 
@@ -145,7 +150,6 @@ export class ProfileNetworkFetcher {
     pubkeyHex: string,
     opts?: { writeRelays?: string[]; forceRemote?: boolean; timeoutMs?: number; additionalRelays?: string[] }
   ): Promise<ProfileData | null> {
-    const timeoutMs = opts?.timeoutMs ?? 3000;
     const additionalRelays = RelayConfigUtils.sanitizeExternalRelayUrls(opts?.additionalRelays);
 
     return new Promise<ProfileData | null>((resolve) => {
@@ -154,7 +158,7 @@ export class ProfileNetworkFetcher {
       let resolved = false;
 
       // サブスクリプションの型安全な保持
-      let subscription: any = undefined;
+      let subscription: { unsubscribe(): void } | undefined;
 
       const cleanup = () => {
         if (subscription && typeof subscription.unsubscribe === "function") {
@@ -186,7 +190,7 @@ export class ProfileNetworkFetcher {
           if (packet.event?.kind === 0 && packet.event.pubkey === pubkeyHex) {
             found = true;
             try {
-              const content = JSON.parse(packet.event.content);
+              const content: unknown = JSON.parse(packet.event.content);
 
               // rx-nostr v3: packet.from でリレーURLを取得（末尾にスラッシュを付ける）
               const profileRelays: string[] = [];

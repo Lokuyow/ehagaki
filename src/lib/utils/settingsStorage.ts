@@ -5,6 +5,7 @@ import {
     DEFAULT_MEDIA_FREE_PLACEMENT,
     DEFAULT_QUOTE_NOTIFICATION_ENABLED,
     DEFAULT_REPLY_NOTIFICATION_ENABLED,
+    DEFAULT_FAIL_CLOSED_CONTENT_WARNING,
     DEFAULT_SHOW_FLAVOR_TEXT,
     DEFAULT_SHOW_MASCOT,
     STORAGE_KEYS,
@@ -36,6 +37,7 @@ export type ManagedPreferenceKey =
     | "clientTagEnabled"
     | "quoteNotificationEnabled"
     | "replyNotificationEnabled"
+    | "failClosedContentWarning"
     | "imageQualityLevel"
     | "videoQualityLevel"
     | "mediaFreePlacement"
@@ -316,6 +318,14 @@ export function getReplyNotificationEnabledPreference(storage: ReadWriteStorage)
     );
 }
 
+export function getFailClosedContentWarningPreference(storage: ReadWriteStorage): boolean {
+    return getStoredBooleanPreference(
+        storage,
+        STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING,
+        DEFAULT_FAIL_CLOSED_CONTENT_WARNING,
+    );
+}
+
 export function getImageCompressionLevelPreference(
     storage: Pick<Storage, "getItem" | "setItem"> & Partial<Pick<Storage, "removeItem">>,
     selectedCompression?: string,
@@ -539,6 +549,16 @@ export function setReplyNotificationEnabledPreference(
 ): boolean {
     storage.setItem(STORAGE_KEYS.REPLY_NOTIFICATION_ENABLED, enabled ? "true" : "false");
     setPreferenceSource(storage, "replyNotificationEnabled", source);
+    return enabled;
+}
+
+export function setFailClosedContentWarningPreference(
+    storage: ReadWriteStorage,
+    enabled: boolean,
+    source: PreferenceSource = "user",
+): boolean {
+    storage.setItem(STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING, enabled ? "true" : "false");
+    setPreferenceSource(storage, "failClosedContentWarning", source);
     return enabled;
 }
 

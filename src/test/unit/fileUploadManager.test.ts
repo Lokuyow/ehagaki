@@ -480,6 +480,59 @@ describe('FileUploadManager', () => {
             });
         });
 
+        it('headless upload passes its local signal and skips post-media persistence', async () => {
+            const file = createMockFile('host.png', 'image/png', 1000);
+            const signalController = new AbortController();
+            const mockCompressionService = {
+                compress: vi.fn().mockResolvedValue({ file, wasCompressed: false, wasSkipped: true }),
+                hasCompressionSettings: vi.fn().mockReturnValue(false),
+                setProgressCallback: vi.fn(),
+                abort: vi.fn(),
+            } as unknown as CompressionService;
+            uploadManager = new FileUploadManager(
+                mockDependencies,
+                { buildAuthHeader: vi.fn() },
+                mockCompressionService,
+            );
+            vi.mocked(postMediaCacheServiceMock.persistUploadedMedia).mockClear();
+            mockFetch.mockResolvedValue(createMockResponse(true, 200, {
+                url: 'https://example.com/host.png',
+            }));
+            const destination: UploadDestination = {
+                id: 'headless-custom',
+                pubkeyHex: null,
+                name: 'Custom HTTP',
+                protocol: 'custom-http',
+                serverUrl: 'https://upload.example.com',
+                isDefault: true,
+                enabled: true,
+                createdAt: 1,
+                updatedAt: 1,
+                capabilities: {
+                    maxUploadSize: null,
+                    supportedMimeTypes: [],
+                    supportsDelete: false,
+                    supportsList: false,
+                    supportsMirror: false,
+                    supportsMediaOptimization: false,
+                    authRequired: false,
+                    source: 'test',
+                },
+                auth: { type: 'none' },
+                schemaVersion: 1,
+            };
+
+            const result = await uploadManager.uploadFileForHost(file, destination, signalController.signal);
+
+            expect(result).toMatchObject({ success: true, url: 'https://example.com/host.png', uploadProtocol: 'custom-http' });
+            expect(result.nip94).toBeUndefined();
+            expect(result.dimensions).toBeUndefined();
+            expect(mockCompressionService.compress).toHaveBeenCalledWith(file, { signal: signalController.signal });
+            expect(mockFetch).toHaveBeenCalledWith('https://upload.example.com', expect.objectContaining({ signal: signalController.signal }));
+            expect(postMediaCacheServiceMock.persistUploadedMedia).not.toHaveBeenCalled();
+            expect(mockDependencies.setImageSizeInfoFromFileSize).not.toHaveBeenCalled();
+        });
+
         it('保存済みアップロード先がない場合はロケール既定の送信先を使うが localStorage へは書き戻さない', async () => {
             const file = createMockFile('test.jpg', 'image/jpeg', 1000);
 

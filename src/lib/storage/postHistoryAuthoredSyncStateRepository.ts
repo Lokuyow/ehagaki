@@ -1,4 +1,5 @@
 import type { EHagakiDB } from "./ehagakiDb";
+import { POST_HISTORY_AUTHORED_KINDS_KEY } from "../postHistoryKinds";
 import { ehagakiDb } from "./ehagakiDb";
 
 const POST_HISTORY_AUTHORED_SYNC_STATE_KEY_PREFIX = "postHistoryAuthoredSyncState:";
@@ -50,7 +51,7 @@ export interface PostHistoryAuthoredSyncStateRepository {
 }
 
 function buildStateKey(ownerPubkeyHex: string): string {
-    return `${POST_HISTORY_AUTHORED_SYNC_STATE_KEY_PREFIX}${ownerPubkeyHex}`;
+    return `${POST_HISTORY_AUTHORED_SYNC_STATE_KEY_PREFIX}${ownerPubkeyHex}:${POST_HISTORY_AUTHORED_KINDS_KEY}`;
 }
 
 function isTimestampOrNull(value: unknown): value is number | null {
@@ -186,7 +187,8 @@ implements PostHistoryAuthoredSyncStateRepository {
             return;
         }
 
-        await this.db.meta.delete(buildStateKey(ownerPubkeyHex));
+        const prefix = `${POST_HISTORY_AUTHORED_SYNC_STATE_KEY_PREFIX}${ownerPubkeyHex}`;
+        await this.db.meta.filter((record) => record.key === prefix || record.key.startsWith(`${prefix}:`)).delete();
     }
 }
 

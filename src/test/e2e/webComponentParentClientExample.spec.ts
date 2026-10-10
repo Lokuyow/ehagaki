@@ -13,6 +13,13 @@ const securityFixturePath = "/ehagaki/security-fixture.js";
 declare global {
     interface Window {
         __securityFixtureLoaded?: boolean;
+        __headlessUploadTest?: {
+            mode: "success" | "abort" | "disconnect";
+            calls: number;
+            fileName: string;
+            signal?: AbortSignal;
+            rejectDisconnected?: () => void;
+        };
     }
 }
 
@@ -673,7 +680,10 @@ test("boots from production site output and exercises the public sample API", as
     const reply = nip19.noteEncode("a".repeat(64));
     const quote = nip19.noteEncode("b".repeat(64));
     const secondQuote = nip19.noteEncode("c".repeat(64));
-    await page.locator("#context-reply").fill(reply);
+    const replyInput = page.locator("#context-reply");
+    // This case covers the sample API button; mobile Chromium's emulated keyboard can drop text while filling this field.
+    await replyInput.evaluate((element, value) => { (element as HTMLInputElement).value = value; }, reply);
+    await expect(replyInput).toHaveValue(reply);
     await page.getByRole("button", { name: "返信先を反映" }).click();
     await expect(page.locator("#component-status")).toHaveText("返信先を反映しました");
     await page.locator("#context-quote-one").fill(quote);
@@ -694,6 +704,168 @@ test("boots from production site output and exercises the public sample API", as
     await expect(page.locator("#component-status")).toContainText("投稿内容を反映できませんでした");
     await expect(page.locator("#event-log")).toHaveValue(/ehagaki-composer-context-updated/);
 
+});
+
+test("runs the Headless uploadFile playground flow with a synthetic public API result", async ({ page }) => {
+    await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+    await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
+    await expect(page.locator("#headless-upload-status")).toHaveText("ready");
+    await expect(page.locator("#headless-upload-start")).toBeDisabled();
+    expect(await page.locator("ehagaki-composer").evaluate((element) =>
+        typeof (element as HTMLElement & { uploadFile?: unknown }).uploadFile === "function",
+    )).toBe(true);
+
+    const editorBefore = await page.locator("ehagaki-composer").evaluate((element) =>
+        element.shadowRoot?.querySelector(".tiptap-editor")?.textContent,
+    );
+    await page.locator("#headless-upload-file").setInputFiles({
+        name: "avatar.png",
+        mimeType: "image/png",
+        buffer: Buffer.from("synthetic image fixture"),
+    });
+    await expect(page.locator("#headless-upload-selection")).toContainText("avatar.png");
+    await expect(page.locator("#headless-upload-start")).toBeEnabled();
+
+    await page.locator("ehagaki-composer").evaluate((element) => {
+        const testState = {
+            mode: "success" as "success" | "abort" | "disconnect",
+            calls: 0,
+            fileName: "",
+            signal: undefined as AbortSignal | undefined,
+            rejectDisconnected: undefined as (() => void) | undefined,
+        };
+        window.__headlessUploadTest = testState;
+        Object.defineProperty(element, "uploadFile", {
+            configurable: true,
+            value: (file: File, options?: { signal?: AbortSignal }) => {
+                testState.calls += 1;
+                testState.fileName = file.name;
+                testState.signal = options?.signal;
+                if (testState.mode === "abort") {
+                    return new Promise((_, reject) => {
+                        const signal = options?.signal;
+                        if (!signal) {
+                            reject(new Error("Expected the Host AbortSignal"));
+                            return;
+                        }
+                        const rejectAbort = () => reject(new DOMException("Aborted by Host", "AbortError"));
+                        if (signal.aborted) rejectAbort();
+                        else signal.addEventListener("abort", rejectAbort, { once: true });
+                    });
+                }
+                if (testState.mode === "disconnect") {
+                    return new Promise((_, reject) => {
+                        testState.rejectDisconnected = () => {
+                            const error = new Error("Component was disconnected");
+                            error.name = "DisconnectedError";
+                            reject(error);
+                        };
+                    });
+                }
+                return Promise.resolve({
+                    url: "https://uploads.example.test/avatar.png",
+                    mimeType: "image/png",
+                    dim: "32x24",
+                    sha256: "a".repeat(64),
+                    blurhash: "LEHV6nWB2yk8pyo0adR*.7kCMdnj",
+                });
+            },
+        });
+    });
+
+    await page.locator("#headless-upload-start").click();
+    await expect(page.locator("#headless-upload-status")).toHaveText("success");
+    await expect(page.locator("#headless-upload-result")).toContainText('"mimeType": "image/png"');
+    await expect(page.locator("#headless-upload-result")).toContainText('"dim": "32x24"');
+    await expect(page.locator("#headless-upload-result")).toContainText('"sha256":');
+    await expect(page.locator("#headless-upload-result")).toContainText('"blurhash": "LEHV6nWB2yk8pyo0adR*.7kCMdnj"');
+    const resultLink = page.locator("#headless-upload-link");
+    await expect(resultLink).toBeVisible();
+    await expect(resultLink).toHaveAttribute("href", "https://uploads.example.test/avatar.png");
+    await expect(resultLink).toHaveAttribute("target", "_blank");
+    await expect(page.locator("#headless-upload-start")).toBeEnabled();
+    await expect(page.locator("#headless-upload-cancel")).toBeDisabled();
+    expect(await page.evaluate(() => ({
+        calls: window.__headlessUploadTest?.calls,
+        fileName: window.__headlessUploadTest?.fileName,
+        hasSignal: window.__headlessUploadTest?.signal instanceof AbortSignal,
+    }))).toEqual({ calls: 1, fileName: "avatar.png", hasSignal: true });
+
+    await page.evaluate(() => {
+        if (window.__headlessUploadTest) window.__headlessUploadTest.mode = "abort";
+    });
+    await page.locator("#headless-upload-start").click();
+    await expect(page.locator("#headless-upload-status")).toHaveText("uploading");
+    await expect(page.locator("#headless-upload-start")).toBeDisabled();
+    await expect(page.locator("#headless-upload-cancel")).toBeEnabled();
+    await page.locator("#headless-upload-cancel").click();
+    await expect(page.locator("#headless-upload-status")).toHaveText("aborted");
+    await expect(page.locator("#headless-upload-result")).toContainText('"name": "AbortError"');
+    await expect(page.locator("#headless-upload-link")).toBeHidden();
+    await expect(page.locator("#headless-upload-start")).toBeEnabled();
+    await expect(page.locator("#headless-upload-cancel")).toBeDisabled();
+    expect(await page.evaluate(() => ({
+        calls: window.__headlessUploadTest?.calls,
+        aborted: window.__headlessUploadTest?.signal?.aborted,
+    }))).toEqual({ calls: 2, aborted: true });
+    await expect(page.locator("#event-log")).toHaveValue(/headless upload started.*headless upload succeeded.*headless upload started.*headless upload aborted/s);
+    await expect(page.locator("#event-log")).not.toContainText("synthetic image fixture");
+
+    await page.evaluate(() => {
+        if (window.__headlessUploadTest) window.__headlessUploadTest.mode = "disconnect";
+    });
+    await page.locator("#headless-upload-start").click();
+    await expect(page.locator("#headless-upload-status")).toHaveText("uploading");
+    await page.getByRole("button", { name: "削除して非表示" }).click();
+    await expect(page.locator("ehagaki-composer")).toHaveCount(0);
+    expect(await page.evaluate(() => window.__headlessUploadTest?.signal?.aborted)).toBe(false);
+    await expect(page.locator("#event-log")).toHaveValue(/primary: disconnected/);
+    await page.evaluate(() => {
+        window.__headlessUploadTest?.rejectDisconnected?.();
+    });
+    await expect(page.locator("#headless-upload-status")).toHaveText("error");
+    await expect(page.locator("#headless-upload-result")).toContainText('"name": "DisconnectedError"');
+    await expect(page.locator("#headless-upload-result")).toContainText('"message": "Component was disconnected"');
+
+    await page.getByRole("button", { name: "作成して表示" }).click();
+    await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
+    await expect(page.locator("#headless-upload-status")).toHaveText("ready");
+    await expect(page.locator("#headless-upload-start")).toBeEnabled();
+    await page.locator("ehagaki-composer").evaluate((element) => {
+        const state = window.__headlessUploadTest!;
+        Object.defineProperty(element, "uploadFile", {
+            configurable: true,
+            value: (file: File, options?: { signal?: AbortSignal }) => {
+                state.calls += 1;
+                state.fileName = file.name;
+                state.signal = options?.signal;
+                return Promise.resolve({
+                    url: "https://uploads.example.test/recreated-avatar.png",
+                    mimeType: "image/png",
+                });
+            },
+        });
+    });
+    await page.locator("#headless-upload-start").click();
+    await expect(page.locator("#headless-upload-status")).toHaveText("success");
+    await expect(page.locator("#headless-upload-link")).toHaveAttribute("href", "https://uploads.example.test/recreated-avatar.png");
+    expect(await page.evaluate(() => window.__headlessUploadTest?.calls)).toBe(4);
+    expect(await page.locator("ehagaki-composer").evaluate((element) => {
+        let owner = Object.getPrototypeOf(element);
+        while (owner && !Object.prototype.hasOwnProperty.call(owner, "uploadFile")) {
+            owner = Object.getPrototypeOf(owner);
+        }
+        if (!owner) return false;
+        Object.defineProperty(owner, "uploadFile", { configurable: true, writable: true, value: undefined });
+        return true;
+    })).toBe(true);
+    await page.getByRole("button", { name: "作り直す" }).click();
+    await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
+    await expect(page.locator("#headless-upload-status")).toHaveText("uploadFile() 未対応");
+    await expect(page.locator("#headless-upload-start")).toBeDisabled();
+    expect(await page.locator("ehagaki-composer").evaluate((element) =>
+        element.shadowRoot?.querySelector(".tiptap-editor")?.textContent,
+    )).toBe(editorBefore);
 });
 
 test("does not create a second primary while auto-mount waits for the module", async ({ page }) => {

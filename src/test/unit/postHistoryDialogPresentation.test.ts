@@ -11,6 +11,18 @@ import {
 } from "../../lib/postHistoryDialogPresentation";
 
 describe("postHistoryDialogPresentation", () => {
+    it("search summaries distinguish partial results from a final count and a failed scan", () => {
+        expect(resolvePostHistoryCountSummaryState({
+            totalCount: 50, totalCountKnown: false, totalCountStatus: "loading", isSearchMode: true,
+        })).toEqual({ key: "postHistory.countLoading" });
+        expect(resolvePostHistoryCountSummaryState({
+            totalCount: 50, totalCountKnown: false, totalCountStatus: "failed", isSearchMode: true,
+        })).toEqual({ key: "postHistory.countUnavailable" });
+        expect(resolvePostHistoryCountSummaryState({
+            totalCount: 51, totalCountKnown: true, totalCountStatus: "ready", isSearchMode: true,
+        })).toEqual({ key: "postHistory.searchCountSummary", values: { total: 51 } });
+    });
+
     it("通常表示の件数 summary は未知状態を0件と扱わず、既知の0件は表示する", () => {
         expect(resolvePostHistoryCountSummaryState({
             totalCount: 0,
@@ -166,7 +178,9 @@ describe("postHistoryDialogPresentation", () => {
         expect(isPostHistoryFavoriteReactionContent("👍")).toBe(false);
     });
 
-    it("reaction表示はカスタム絵文字ショートコードを保持し、通常値は1グラフェムに制限する", () => {
+    it("empty reactionをlikeとして扱い、カスタム値は保持して通常値を1グラフェムに制限する", () => {
+        expect(resolvePostHistoryReactionDisplayContent("")).toBe("+");
+        expect(resolvePostHistoryReactionDisplayContent("   ")).toBe("+");
         expect(resolvePostHistoryReactionDisplayContent(":kubipaca_kao:")).toBe(":kubipaca_kao:");
         expect(resolvePostHistoryReactionDisplayContent("🙂‍↕️🙂‍↕️🙂‍↕️")).toBe("🙂‍↕️");
         expect(resolvePostHistoryReactionDisplayContent("abc")).toBe("a");

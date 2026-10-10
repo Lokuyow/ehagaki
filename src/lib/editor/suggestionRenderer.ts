@@ -1,4 +1,5 @@
 import { mount, unmount } from 'svelte';
+import type { Component } from 'svelte';
 import { getAppRuntimeEnvironment } from '../appRuntimeEnvironment';
 
 type MountInstance = ReturnType<typeof mount>;
@@ -10,15 +11,20 @@ export interface SuggestionListExports {
     resetIndex?: () => void;
 }
 
+interface SuggestionListProps<T> {
+    items: T[];
+    onSelect: (item: T) => void;
+}
+
 interface CreateSuggestionRendererOptions<T> {
-    component: any;
+    component: Component<SuggestionListProps<T>, SuggestionListExports>;
     className?: string;
     approxDropdownHeight?: number;
     zIndex?: string;
     getProps?: (params: {
         items: T[];
         command: (item: T) => void;
-    }) => Record<string, unknown>;
+    }) => SuggestionListProps<T>;
 }
 
 interface SuggestionRenderProps<T> {

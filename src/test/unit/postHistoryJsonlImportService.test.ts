@@ -22,6 +22,31 @@ function createSignedEvent(
     }, secretKey);
 }
 
+let bulkEventFixture: {
+    pubkey: string;
+    posts: readonly string[];
+    deletion: string;
+} | undefined;
+
+function getBulkEventFixture() {
+    if (!bulkEventFixture) {
+        const secretKey = generateSecretKey();
+        bulkEventFixture = Object.freeze({
+            pubkey: getPublicKey(secretKey),
+            posts: Object.freeze(Array.from(
+                { length: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE * 2 + 1 },
+                (_, index) => JSON.stringify(createSignedEvent(secretKey, { content: `bulk-post-${index}` })),
+            )),
+            deletion: JSON.stringify(createSignedEvent(secretKey, {
+                kind: 5,
+                tags: [["e", "1".repeat(64)]],
+            })),
+        });
+    }
+
+    return bulkEventFixture;
+}
+
 function createFile(content: string): Pick<File, "stream" | "size"> {
     const bytes = new TextEncoder().encode(content);
     return {
@@ -118,17 +143,13 @@ describe("PostHistoryJsonlImportService", () => {
     });
 
     it("保存対象イベント500件を1回のflushでrepositoryへ渡す", async () => {
-        const secretKey = generateSecretKey();
-        const pubkey = getPublicKey(secretKey);
-        const events = Array.from(
-            { length: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE },
-            (_, index) => createSignedEvent(secretKey, { content: `event-${index}` }),
-        );
+        const { pubkey, posts } = getBulkEventFixture();
+        const events = posts.slice(0, POST_HISTORY_JSONL_IMPORT_BATCH_SIZE);
         const deps = createRepositoryMocks();
         const service = new PostHistoryJsonlImportService(deps);
 
         const result = await service.importFile({
-            file: createFile(events.map((event) => JSON.stringify(event)).join("\n")),
+            file: createFile(events.join("\n")),
             ownerPubkeyHex: pubkey,
             getCurrentPubkeyHex: () => pubkey,
         });
@@ -140,17 +161,13 @@ describe("PostHistoryJsonlImportService", () => {
     });
 
     it("501件の保存対象イベントを500件と1件へ分けてflushする", async () => {
-        const secretKey = generateSecretKey();
-        const pubkey = getPublicKey(secretKey);
-        const events = Array.from(
-            { length: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE + 1 },
-            (_, index) => createSignedEvent(secretKey, { content: `event-${index}` }),
-        );
+        const { pubkey, posts } = getBulkEventFixture();
+        const events = posts.slice(0, POST_HISTORY_JSONL_IMPORT_BATCH_SIZE + 1);
         const deps = createRepositoryMocks();
         const service = new PostHistoryJsonlImportService(deps);
 
         await service.importFile({
-            file: createFile(events.map((event) => JSON.stringify(event)).join("\n")),
+            file: createFile(events.join("\n")),
             ownerPubkeyHex: pubkey,
             getCurrentPubkeyHex: () => pubkey,
         });
@@ -162,21 +179,13 @@ describe("PostHistoryJsonlImportService", () => {
     });
 
     it("投稿と削除要求の合計500件で同じflushを実行する", async () => {
-        const secretKey = generateSecretKey();
-        const pubkey = getPublicKey(secretKey);
-        const posts = Array.from(
-            { length: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE - 1 },
-            (_, index) => createSignedEvent(secretKey, { content: `post-${index}` }),
-        );
-        const deletion = createSignedEvent(secretKey, {
-            kind: 5,
-            tags: [["e", "1".repeat(64)]],
-        });
+        const { pubkey, posts, deletion } = getBulkEventFixture();
+        const batchPosts = posts.slice(0, POST_HISTORY_JSONL_IMPORT_BATCH_SIZE - 1);
         const deps = createRepositoryMocks();
         const service = new PostHistoryJsonlImportService(deps);
 
         await service.importFile({
-            file: createFile([...posts, deletion].map((event) => JSON.stringify(event)).join("\n")),
+            file: createFile([...batchPosts, deletion].join("\n")),
             ownerPubkeyHex: pubkey,
             getCurrentPubkeyHex: () => pubkey,
         });
@@ -211,6 +220,47 @@ describe("PostHistoryJsonlImportService", () => {
             fileDuplicateCount: 1,
         });
         expect(deps.postHistoryRepository.upsertFetchedEvents).toHaveBeenCalledTimes(1);
+    });
+
+    it("kind 36を投稿履歴へ入れずpayload candidateとして保存する", async () => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const payload = createSignedEvent(secretKey, {
+            kind: 36,
+            content: "Sensitive body",
+            tags: [["k", "1"]],
+        });
+        const structure = createSignedEvent(secretKey, {
+            kind: 1,
+            content: "",
+            tags: [["content-warning", "reason"], ["c", payload.id]],
+        });
+        const deps = createRepositoryMocks();
+        const putCandidate = vi.fn().mockResolvedValue(undefined);
+        const service = new PostHistoryJsonlImportService({
+            ...deps,
+            sensitivePayloadRepository: { putCandidate },
+        });
+
+        const result = await service.importFile({
+            file: createFile([payload, structure].map((event) => JSON.stringify(event)).join("\n")),
+            ownerPubkeyHex: pubkey,
+            getCurrentPubkeyHex: () => pubkey,
+        });
+
+        expect(result).toMatchObject({
+            uniquePostEventCount: 1,
+            insertedPostCount: 1,
+            uniquePayloadEventCount: 1,
+            savedPayloadCandidateCount: 1,
+        });
+        expect(deps.postHistoryRepository.upsertFetchedEvents).toHaveBeenCalledTimes(1);
+        expect(deps.postHistoryRepository.upsertFetchedEvents.mock.calls[0][0].events)
+            .toMatchObject([{ event: { kind: 1, content: "" } }]);
+        expect(putCandidate).toHaveBeenCalledOnce();
+        expect(putCandidate).toHaveBeenCalledWith(expect.objectContaining({
+            event: expect.objectContaining({ kind: 36, content: "Sensitive body" }),
+        }));
     });
 
     it("有効なkind 1と不正JSONが混在すると保存後もpartialになる", async () => {
@@ -296,19 +346,14 @@ describe("PostHistoryJsonlImportService", () => {
     });
 
     it("同一イベントがバッチ境界を越えてもファイル内重複分類を維持する", async () => {
-        const secretKey = generateSecretKey();
-        const pubkey = getPublicKey(secretKey);
-        const first = createSignedEvent(secretKey, { content: "event-0" });
-        const events = [first];
-        for (let index = 1; index < POST_HISTORY_JSONL_IMPORT_BATCH_SIZE; index += 1) {
-            events.push(createSignedEvent(secretKey, { content: `event-${index}` }));
-        }
-        events.push(first);
+        const { pubkey, posts } = getBulkEventFixture();
+        const first = posts[0];
+        const events = [...posts.slice(0, POST_HISTORY_JSONL_IMPORT_BATCH_SIZE), first];
         const deps = createRepositoryMocks();
         const service = new PostHistoryJsonlImportService(deps);
 
         const result = await service.importFile({
-            file: createFile(events.map((event) => JSON.stringify(event)).join("\n")),
+            file: createFile(events.join("\n")),
             ownerPubkeyHex: pubkey,
             getCurrentPubkeyHex: () => pubkey,
         });
@@ -602,17 +647,12 @@ describe("PostHistoryJsonlImportService", () => {
     });
 
     it("投稿区分のcommit後にアカウントが変わった場合は同じbufferのkind 5を保存しない", async () => {
-        const secretKey = generateSecretKey();
-        const pubkey = getPublicKey(secretKey);
+        const { pubkey, posts, deletion } = getBulkEventFixture();
         const otherPubkey = getPublicKey(generateSecretKey());
-        const events = Array.from(
-            { length: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE - 1 },
-            (_, index) => createSignedEvent(secretKey, { content: `post-${index}` }),
-        );
-        events.push(createSignedEvent(secretKey, {
-            kind: 5,
-            tags: [["e", "1".repeat(64)]],
-        }));
+        const events = [
+            ...posts.slice(0, POST_HISTORY_JSONL_IMPORT_BATCH_SIZE - 1),
+            deletion,
+        ];
         const deps = createRepositoryMocks();
         const onProgress = vi.fn();
         let currentPubkey = pubkey;
@@ -628,7 +668,7 @@ describe("PostHistoryJsonlImportService", () => {
         const service = new PostHistoryJsonlImportService(deps);
 
         const result = await service.importFile({
-            file: createFile(events.map((event) => JSON.stringify(event)).join("\n")),
+            file: createFile(events.join("\n")),
             ownerPubkeyHex: pubkey,
             getCurrentPubkeyHex: () => currentPubkey,
             onProgress,
@@ -648,12 +688,8 @@ describe("PostHistoryJsonlImportService", () => {
     it("通常のflush通知を250ms未満では間引き、最新の最終結果を強制通知する", async () => {
         let now = 0;
         vi.spyOn(performance, "now").mockImplementation(() => now);
-        const secretKey = generateSecretKey();
-        const pubkey = getPublicKey(secretKey);
-        const events = Array.from(
-            { length: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE * 2 },
-            (_, index) => createSignedEvent(secretKey, { content: `event-${index}` }),
-        );
+        const { pubkey, posts } = getBulkEventFixture();
+        const events = posts.slice(0, POST_HISTORY_JSONL_IMPORT_BATCH_SIZE * 2);
         const deps = createRepositoryMocks();
         let saveCallCount = 0;
         deps.postHistoryRepository.upsertFetchedEvents.mockImplementation(async (input) => {
@@ -672,7 +708,7 @@ describe("PostHistoryJsonlImportService", () => {
         const service = new PostHistoryJsonlImportService(deps);
 
         const result = await service.importFile({
-            file: createFile(events.map((event) => JSON.stringify(event)).join("\n")),
+            file: createFile(events.join("\n")),
             ownerPubkeyHex: pubkey,
             getCurrentPubkeyHex: () => pubkey,
             onProgress,
@@ -692,12 +728,8 @@ describe("PostHistoryJsonlImportService", () => {
     it("前回通知から250ms経過したflushでは新しい進捗を通知する", async () => {
         let now = 0;
         vi.spyOn(performance, "now").mockImplementation(() => now);
-        const secretKey = generateSecretKey();
-        const pubkey = getPublicKey(secretKey);
-        const events = Array.from(
-            { length: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE * 2 },
-            (_, index) => createSignedEvent(secretKey, { content: `event-${index}` }),
-        );
+        const { pubkey, posts } = getBulkEventFixture();
+        const events = posts.slice(0, POST_HISTORY_JSONL_IMPORT_BATCH_SIZE * 2);
         const deps = createRepositoryMocks();
         let saveCallCount = 0;
         deps.postHistoryRepository.upsertFetchedEvents.mockImplementation(async (input) => {
@@ -717,7 +749,7 @@ describe("PostHistoryJsonlImportService", () => {
         const service = new PostHistoryJsonlImportService(deps);
 
         await service.importFile({
-            file: createFile(events.map((event) => JSON.stringify(event)).join("\n")),
+            file: createFile(events.join("\n")),
             ownerPubkeyHex: pubkey,
             getCurrentPubkeyHex: () => pubkey,
             onProgress,
@@ -790,17 +822,13 @@ describe("PostHistoryJsonlImportService", () => {
 
     it("中間通知直後でもpartialの最終結果を強制通知する", async () => {
         vi.spyOn(performance, "now").mockReturnValue(0);
-        const secretKey = generateSecretKey();
-        const pubkey = getPublicKey(secretKey);
-        const events = Array.from(
-            { length: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE },
-            (_, index) => createSignedEvent(secretKey, { content: `event-${index}` }),
-        );
+        const { pubkey, posts } = getBulkEventFixture();
+        const events = posts.slice(0, POST_HISTORY_JSONL_IMPORT_BATCH_SIZE);
         const onProgress = vi.fn();
         const service = new PostHistoryJsonlImportService(createRepositoryMocks());
 
         const result = await service.importFile({
-            file: createFile(`${events.map((event) => JSON.stringify(event)).join("\n")}\nnot-json`),
+            file: createFile(`${events.join("\n")}\nnot-json`),
             ownerPubkeyHex: pubkey,
             getCurrentPubkeyHex: () => pubkey,
             onProgress,

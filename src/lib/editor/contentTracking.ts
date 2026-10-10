@@ -1,7 +1,7 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Mark as PMMark, Node as PMNode } from '@tiptap/pm/model';
 import {
     validateAndNormalizeImageUrl,
     isWordBoundary,
@@ -150,14 +150,14 @@ function collectBlockChanges(
     type: 'removeMark' | 'addMark' | 'replaceImage';
     from: number;
     to: number;
-    mark?: any;
+    mark?: PMMark;
     imageUrl?: string;
 }> {
     const changes: Array<{
         type: 'removeMark' | 'addMark' | 'replaceImage';
         from: number;
         to: number;
-        mark?: any;
+        mark?: PMMark;
         imageUrl?: string;
     }> = [];
     let fullText = '';
@@ -333,7 +333,7 @@ function processUrlsAndImages(
         type: 'removeMark' | 'addMark' | 'replaceImage';
         from: number;
         to: number;
-        mark?: any;
+        mark?: PMMark;
         imageUrl?: string;
     }> = [];
 

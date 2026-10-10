@@ -248,13 +248,21 @@ describe('Nip07AuthService', () => {
         it('window.nostrが利用不可の場合に例外を投げる', async () => {
             const service = new Nip07AuthService(createMockWindow(), mockConsole);
 
-            await expect(service.signEvent({ kind: 1 })).rejects.toThrow(
+            await expect(service.signEvent({ kind: 1, content: '', created_at: 0, tags: [] })).rejects.toThrow(
                 'NIP-07 extension is not available'
             );
         });
 
         it('正常にイベントに署名する', async () => {
-            const signedEvent = { id: 'test-id', sig: 'test-sig' };
+            const signedEvent = {
+                id: 'test-id',
+                pubkey: 'test-pubkey',
+                created_at: 0,
+                kind: 1,
+                tags: [],
+                content: '',
+                sig: 'test-sig',
+            };
             const service = new Nip07AuthService(
                 createMockWindow({
                     getPublicKey: vi.fn(),
@@ -263,7 +271,7 @@ describe('Nip07AuthService', () => {
                 mockConsole
             );
 
-            const result = await service.signEvent({ kind: 1 });
+            const result = await service.signEvent({ kind: 1, content: '', created_at: 0, tags: [] });
 
             expect(result).toBe(signedEvent);
         });

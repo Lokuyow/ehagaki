@@ -56,7 +56,9 @@ function resolveReactionEmojiUrl(
 function resolveReactionDisplayContent(content: string): string {
     const normalized = content.trim();
     if (!normalized) {
-        return "";
+        // NIP-25 treats an empty kind 7 content as a like. Keep its detail
+        // group aligned with the aggregate count and the existing heart UI.
+        return "+";
     }
 
     if (isCustomEmojiShortcodeText(normalized)) {

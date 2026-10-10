@@ -14,6 +14,7 @@
     interface Props {
         preview: PostHistoryQuotePreviewState;
         model?: PostContentRenderModel;
+        loadSensitiveBody?: () => Promise<string | null>;
         emojiLoadStateByUrl?: Record<
             string,
             PostContentEmojiLoadState | undefined
@@ -29,18 +30,21 @@
         }) => void;
         onRetry?: (eventId: string) => void;
         footerActions?: Snippet;
+        footerDetails?: Snippet;
         footerMenu?: Snippet;
     }
 
     let {
         preview,
         model = undefined,
+        loadSensitiveBody = undefined,
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         scrollRoot = null,
         onImageOpen = undefined,
         onRetry = undefined,
         footerActions = undefined,
+        footerDetails = undefined,
         footerMenu = undefined,
     }: Props = $props();
 
@@ -63,11 +67,13 @@
         event={preview.event}
         profile={preview.profile}
         {model}
+        {loadSensitiveBody}
         {emojiLoadStateByUrl}
         {emojiImageMetaByUrl}
         {scrollRoot}
         {onImageOpen}
         {footerActions}
+        {footerDetails}
         {footerMenu}
     />
 {:else}

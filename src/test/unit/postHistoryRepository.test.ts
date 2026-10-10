@@ -127,6 +127,7 @@ function createInstrumentedTimelineDb(records: PostHistoryRecord[]) {
             private readonly upper: unknown,
             private readonly includeLower: boolean,
             private readonly includeUpper: boolean,
+            private readonly index: string,
         ) {}
 
         reverse() {
@@ -146,9 +147,14 @@ function createInstrumentedTimelineDb(records: PostHistoryRecord[]) {
 
         private materialize(): PostHistoryRecord[] {
             const result: PostHistoryRecord[] = [];
-            const source = this.reversed ? [...ascending].reverse() : ascending;
+            const keyOf = this.index === POST_HISTORY_TIMELINE_INDEX
+                ? timelineKey
+                : (record: PostHistoryRecord) => [record.pubkeyHex, record.createdAt];
+            const ordered = this.index === POST_HISTORY_TIMELINE_INDEX
+                ? ascending : [...records].sort((left, right) => cmp(keyOf(left), keyOf(right)));
+            const source = this.reversed ? [...ordered].reverse() : ordered;
             for (const record of source) {
-                const key = timelineKey(record);
+                const key = keyOf(record);
                 const lowerComparison = cmp(key, this.lower);
                 const upperComparison = cmp(key, this.upper);
                 if (
@@ -176,6 +182,10 @@ function createInstrumentedTimelineDb(records: PostHistoryRecord[]) {
             materializedCounts.push(result.length);
             filterEvaluatedCounts.push(this.filterEvaluated);
             return result;
+        }
+
+        async count() {
+            return this.materialize().length;
         }
 
         async toArray() {
@@ -206,6 +216,7 @@ function createInstrumentedTimelineDb(records: PostHistoryRecord[]) {
                         upper,
                         includeLower,
                         includeUpper,
+                        index,
                     );
                 },
             };
@@ -265,6 +276,61 @@ beforeEach(() => {
 });
 
 describe("DexiePostHistoryRepository", () => {
+    it("search scan continues through unsupported kinds and timestamp ties without crossing accounts", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db);
+        const pubkeyHex = "b".repeat(64);
+        const records = [
+            { ...createPostHistoryRecord({ pubkeyHex, eventId: "f".repeat(64), postedAt: 200, createdAt: 100 }), kind: 36 },
+            createPostHistoryRecord({ pubkeyHex, eventId: "c".repeat(64), postedAt: 200, createdAt: 100 }),
+            createPostHistoryRecord({ pubkeyHex, eventId: "b".repeat(64), postedAt: 200, createdAt: 100 }),
+            createPostHistoryRecord({ pubkeyHex, eventId: "a".repeat(64), postedAt: 200, createdAt: 90 }),
+            createPostHistoryRecord({ pubkeyHex, eventId: "d".repeat(64), postedAt: 100, createdAt: 200 }),
+            createPostHistoryRecord({ pubkeyHex: "e".repeat(64), eventId: "e".repeat(64), postedAt: 300, createdAt: 300 }),
+        ];
+        await db.postHistory.bulkPut(records.reverse());
+        const first = await repository.getSearchScanChunk({ pubkeyHex, limit: 1 });
+        expect(first.items).toEqual([]);
+        expect(first.hasMore).toBe(true);
+        expect(first.nextCursor?.eventId).toBe("f".repeat(64));
+        const found: PostHistoryRecord[] = [];
+        let chunk = first;
+        while (chunk.hasMore) {
+            chunk = await repository.getSearchScanChunk({ pubkeyHex, limit: 2, cursor: chunk.nextCursor! });
+            found.push(...chunk.items);
+        }
+        expect(found.map((post) => post.eventId)).toEqual(["c", "b", "a", "d"].map((id) => id.repeat(64)));
+        expect(found).toEqual(await repository.getAll({ pubkeyHex }));
+        expect(await repository.getSearchScanChunk({ pubkeyHex: null, limit: 2 }))
+            .toEqual({ items: [], nextCursor: null, hasMore: false });
+        db.close();
+    });
+
+    it('uses supported post kinds for every listing, count, and anchor without a legacy adapter', async () => {
+        const db = createTestDb();
+        await db.open();
+        const repo = new DexiePostHistoryRepository(db);
+        const pubkeyHex = 'b'.repeat(64);
+        const supported = [1, 42, 1111].map((kind, index) => ({ ...createPostHistoryRecord({ pubkeyHex, eventId: String(index).repeat(64), createdAt: 100 + index, postedAt: 100 + index }), kind }));
+        const unsupported = [36, 3636].map((kind, index) => ({ ...createPostHistoryRecord({ pubkeyHex, eventId: String(index + 4).repeat(64), createdAt: 50, postedAt: 200 + index }), kind }));
+        await db.postHistory.bulkPut([...supported, ...unsupported]);
+        const options = { pubkeyHex, limit: 10 };
+        for (const records of [
+            await repo.getAll(options), await repo.getPage({ pubkeyHex, page: 1, pageSize: 3 }),
+            await repo.getLatestVisibleChunk(options), await repo.getOldestVisibleChunk(options),
+            await repo.getOldestVisibleChunk({ ...options, visibleUntil: 0 }),
+            await repo.getVisibleChunkFromCreatedAt({ ...options, createdAt: 300 }),
+            await repo.getSparseChunk({ ...options, visibleUntil: 300, direction: 'latest' }),
+        ]) expect(records.map((record) => record.kind).sort((a,b) => a-b)).toEqual([1, 42, 1111]);
+        expect(await repo.countForPubkey(pubkeyHex)).toBe(3);
+        expect(await repo.countVisibleForPubkey(pubkeyHex, 0)).toBe(3);
+        expect(await repo.getByEventId(unsupported[0]!.eventId)).toBeNull();
+        expect(await repo.getVisibleChunkAroundEventId({ ...options, eventId: unsupported[0]!.eventId })).toEqual([]);
+        expect(await repo.hasPostsBeforeCreatedAt(pubkeyHex, 90)).toBe(false);
+        expect(await repo.getOldestCreatedAt(pubkeyHex)).toBe(100);
+        expect(await db.postHistory.count()).toBe(5);
+        db.close();
+    });
     it("default console 依存で初期化できる", () => {
         const db = createTestDb();
 
@@ -982,6 +1048,34 @@ describe("DexiePostHistoryRepository", () => {
         db.close();
     });
 
+    it("通常のsupported-kind semanticsでkind 1 Structureを保存し、kind 36は履歴投稿にしない", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 9000);
+        const pubkey = "b".repeat(64);
+        const structureId = "7".repeat(64);
+        const payloadId = "6".repeat(64);
+        const structure = createSignedEvent({
+            id: structureId,
+            pubkey,
+            kind: 1,
+            content: "",
+            tags: [["content-warning", "Spoiler"], ["c", payloadId]],
+        });
+
+        const result = await repository.upsertFetchedEvents({
+            events: [
+                { event: structure, relayUrls: ["wss://relay.example.com"] },
+            ],
+            fetchedAt: 9000,
+        });
+        const records = await repository.getAll({ pubkeyHex: pubkey });
+
+        expect(result).toMatchObject({ insertedCount: 1, updatedCount: 0, unchangedCount: 0 });
+        expect(records.map((record) => [record.eventId, record.kind])).toEqual([[structureId, 1]]);
+        expect(await repository.getByEventId(payloadId)).toBeNull();
+        db.close();
+    });
+
     it("同一 fetched event を再 upsert しても実質変更がなければ unchanged として返す", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 9000);
@@ -1356,6 +1450,69 @@ describe("DexiePostHistoryRepository", () => {
             });
 
             expect(filterEvaluatedCounts.at(-1)).toBe(outOfRangeCount);
+        },
+    );
+
+    it.each([7_000, 35_000, 64_999])(
+        "older existence excludes out-of-range saved posts (%d records)",
+        async (outOfRangeCount) => {
+            const pubkeyHex = "b".repeat(64);
+            const cursor = createPostHistoryRecord({ pubkeyHex, eventId: "boundary", postedAt: 70_000, createdAt: 1_000 });
+            const records = [cursor, ...Array.from({ length: outOfRangeCount }, (_, i) =>
+                createPostHistoryRecord({ pubkeyHex, eventId: `saved-${i}`, postedAt: 69_999 - i, createdAt: 999 - i }))];
+            const { db, filterEvaluatedCounts } = createInstrumentedTimelineDb(records);
+            const repository = new DexiePostHistoryRepository(db as any, () => 1000);
+            await expect(repository.hasOlderVisiblePosts({ pubkeyHex, visibleUntil: 1_000, cursor })).resolves.toBe(false);
+            expect(filterEvaluatedCounts.at(-1)).toBe(1);
+        },
+    );
+
+    it("older existence respects coverage, supported kinds and complete timeline order", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkeyHex = "b".repeat(64);
+        const cursor = createPostHistoryRecord({ pubkeyHex, eventId: "c", postedAt: 5000, createdAt: 1000 });
+        const older = createPostHistoryRecord({ pubkeyHex, eventId: "b", postedAt: 5000, createdAt: 1000 });
+        const imported = createPostHistoryRecord({ pubkeyHex, eventId: "imported", postedAt: 4000, createdAt: 2000 });
+        await db.postHistory.bulkPut([
+            cursor,
+            createPostHistoryRecord({ pubkeyHex, eventId: "d", postedAt: 5000, createdAt: 1000 }),
+            createPostHistoryRecord({ pubkeyHex, eventId: "newer", postedAt: 6000, createdAt: 1500 }),
+            { ...createPostHistoryRecord({ pubkeyHex, eventId: "unsupported", postedAt: 3000, createdAt: 2000 }), kind: 36 },
+            createPostHistoryRecord({ pubkeyHex: "e".repeat(64), eventId: "other", postedAt: 3000, createdAt: 2000 }),
+            createPostHistoryRecord({ pubkeyHex, eventId: "outside", postedAt: 3000, createdAt: 999 }),
+        ]);
+        const options = { pubkeyHex, cursor, visibleUntil: 1000 };
+        await expect(repository.hasOlderVisiblePosts(options)).resolves.toBe(false);
+        await expect(repository.hasOlderVisiblePosts({ ...options, visibleUntil: null })).resolves.toBe(true);
+        await expect(repository.hasOlderVisiblePosts({ ...options, pubkeyHex: null })).resolves.toBe(false);
+        for (const kind of [1, 42, 1111]) {
+            await db.postHistory.put({ ...older, kind });
+            await expect(repository.hasOlderVisiblePosts(options)).resolves.toBe(true);
+            await expect(repository.hasOlderVisiblePosts({ ...options, visibleUntil: 1001 })).resolves.toBe(false);
+        }
+        await db.postHistory.delete(older.id);
+        await db.postHistory.put(imported);
+        await expect(repository.hasOlderVisiblePosts({ ...options, visibleUntil: 1001 })).resolves.toBe(true);
+        await expect(repository.hasOlderVisiblePosts({ ...options, visibleUntil: 2001 })).resolves.toBe(false);
+        db.close();
+    });
+
+    it.each([7_000, 35_000, 64_999])(
+        "older existence does not scan already-visible history (%d records)",
+        async (visibleCount) => {
+            const pubkeyHex = "b".repeat(64);
+            const cursor = createPostHistoryRecord({ pubkeyHex, eventId: "boundary", postedAt: 1000, createdAt: 1000 });
+            const records = [cursor,
+                ...Array.from({ length: visibleCount }, (_, i) => createPostHistoryRecord({
+                    pubkeyHex, eventId: `visible-${i}`, postedAt: 1001 + i, createdAt: 1001 + i,
+                })),
+                createPostHistoryRecord({ pubkeyHex, eventId: "outside", postedAt: 999, createdAt: 999 }),
+            ];
+            const { db, filterEvaluatedCounts } = createInstrumentedTimelineDb(records);
+            const repository = new DexiePostHistoryRepository(db as any, () => 1000);
+            await expect(repository.hasOlderVisiblePosts({ pubkeyHex, visibleUntil: 1000, cursor })).resolves.toBe(false);
+            expect(filterEvaluatedCounts.at(-1)).toBe(1);
         },
     );
 

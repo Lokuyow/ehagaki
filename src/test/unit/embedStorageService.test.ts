@@ -5,8 +5,36 @@ import {
     EMBED_MESSAGE_VERSION,
 } from '../../lib/embedProtocol';
 import { EmbedStorageService } from '../../lib/embedStorageService';
+import {
+    EMBED_SETTING_STORAGE_KEYS,
+    EMBED_STORAGE_KEYS,
+    EMBED_STORAGE_OPTIONAL_KEYS,
+    EMBED_V1_COMPATIBILITY_STORAGE_KEYS,
+} from '../../lib/embedStorageKeys';
 import { createMockConsole, type MockConsole, MockStorage } from '../helpers';
 import { createMockWindow } from '../embedWindowTestUtils';
+
+const LEGACY_V1_STORAGE_ALLOWLIST = [
+    'locale',
+    'themeMode',
+    'darkMode',
+    'clientTagEnabled',
+    'quoteNotificationEnabled',
+    'replyNotificationEnabled',
+    'imageQualityLevel',
+    'videoQualityLevel',
+    'imageCompressionLevel',
+    'videoCompressionLevel',
+    'mediaFreePlacement',
+    'showMascot',
+    'showFlavorText',
+    'accentColor',
+    'baseColor',
+    'settingsPreferenceMetadata',
+    'firstVisit',
+    'sharedMediaProcessed',
+    'footerSettingShortcuts',
+] as const;
 
 describe('EmbedStorageService', () => {
     let mockConsole: MockConsole;
@@ -20,6 +48,15 @@ describe('EmbedStorageService', () => {
         const service = new EmbedStorageService(windowObj, mockConsole);
 
         expect(service.initialize()).toBe(false);
+    });
+
+    it('allowed storage keys は固定v1集合とpost-v1集合からだけ構成する', () => {
+        expect(new Set(EMBED_V1_COMPATIBILITY_STORAGE_KEYS)).toEqual(new Set(LEGACY_V1_STORAGE_ALLOWLIST));
+        expect(EMBED_STORAGE_OPTIONAL_KEYS).toEqual([STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING]);
+        expect(new Set(EMBED_STORAGE_KEYS)).toEqual(new Set([
+            ...LEGACY_V1_STORAGE_ALLOWLIST,
+            STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING,
+        ]));
     });
 
     it('storage.get を送信し、storage.result を返す', async () => {
@@ -60,6 +97,201 @@ describe('EmbedStorageService', () => {
                 [STORAGE_KEYS.LOCALE]: 'en',
             },
         });
+    });
+
+    it('追加 key を無視する strict v1 Host でも既存 snapshot を取得する', async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new EmbedStorageService(windowObj, mockConsole, 10);
+        service.initialize();
+
+        const pending = service.get([
+            STORAGE_KEYS.ACCENT_COLOR,
+            STORAGE_KEYS.BASE_COLOR,
+            STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING,
+        ]);
+        const legacyRequest = parent.postMessage.mock.calls.find(([message]) =>
+            message.type === 'storage.get' && message.payload.keys.includes(STORAGE_KEYS.ACCENT_COLOR),
+        )?.[0];
+        const optionalRequest = parent.postMessage.mock.calls.find(([message]) =>
+            message.type === 'storage.get' && message.payload.keys.includes(STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING),
+        )?.[0];
+        expect(legacyRequest.payload.keys).toEqual([STORAGE_KEYS.ACCENT_COLOR, STORAGE_KEYS.BASE_COLOR]);
+        expect(optionalRequest.payload.keys).toEqual([STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING]);
+        expect(legacyRequest.payload.keys.every((key: string) =>
+            LEGACY_V1_STORAGE_ALLOWLIST.includes(key as typeof LEGACY_V1_STORAGE_ALLOWLIST[number]),
+        )).toBe(true);
+        expect(LEGACY_V1_STORAGE_ALLOWLIST).not.toContain(STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING);
+
+        listeners.get('message')?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: EMBED_MESSAGE_VERSION,
+                type: 'storage.result',
+                requestId: legacyRequest.requestId,
+                payload: {
+                    timestamp: Date.now(),
+                    values: {
+                        [STORAGE_KEYS.ACCENT_COLOR]: '#112233',
+                        [STORAGE_KEYS.BASE_COLOR]: '#223344',
+                    },
+                },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+
+        await expect(pending).resolves.toMatchObject({
+            values: {
+                [STORAGE_KEYS.ACCENT_COLOR]: '#112233',
+                [STORAGE_KEYS.BASE_COLOR]: '#223344',
+            },
+        });
+    });
+
+    it('strict v1 Host の追加 key 拒否で既存 key の persist/remove を失わない', async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new EmbedStorageService(windowObj, mockConsole);
+        service.initialize();
+
+        const setPending = service.set({
+            [STORAGE_KEYS.ACCENT_COLOR]: '#112233',
+            [STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING]: 'true',
+        });
+        const setRequests = parent.postMessage.mock.calls.map(([message]) => message);
+        expect(setRequests.map((message) => message.payload)).toEqual([
+            { values: { [STORAGE_KEYS.ACCENT_COLOR]: '#112233' } },
+            { values: { [STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING]: 'true' } },
+        ]);
+        const respond = (message: any, type: 'storage.result' | 'storage.error', payload: unknown) => {
+            listeners.get('message')?.({
+                data: {
+                    namespace: EMBED_MESSAGE_NAMESPACE,
+                    version: EMBED_MESSAGE_VERSION,
+                    type,
+                    requestId: message.requestId,
+                    payload: type === 'storage.result'
+                        ? { timestamp: Date.now(), ...payload as object }
+                        : { timestamp: Date.now(), code: 'unsupported_key' },
+                },
+                origin: 'https://parent.example.com',
+                source: parent,
+            } as unknown as MessageEvent);
+        };
+        const respondAsLegacyV1Host = (message: any, successPayload: unknown) => {
+            const keys = message.type === 'storage.set'
+                ? Object.keys(message.payload.values)
+                : message.payload.keys;
+            const allowed = keys.every((key: string) =>
+                LEGACY_V1_STORAGE_ALLOWLIST.includes(key as typeof LEGACY_V1_STORAGE_ALLOWLIST[number]),
+            );
+            respond(
+                message,
+                allowed ? 'storage.result' : 'storage.error',
+                allowed ? successPayload : {},
+            );
+        };
+        respondAsLegacyV1Host(setRequests[0], { applied: [STORAGE_KEYS.ACCENT_COLOR] });
+        respondAsLegacyV1Host(setRequests[1], {});
+        await expect(setPending).resolves.toMatchObject({ applied: [STORAGE_KEYS.ACCENT_COLOR] });
+
+        const removePending = service.remove([
+            STORAGE_KEYS.BASE_COLOR,
+            STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING,
+        ]);
+        const removeRequests = parent.postMessage.mock.calls.slice(2).map(([message]) => message);
+        expect(removeRequests.map((message) => message.payload)).toEqual([
+            { keys: [STORAGE_KEYS.BASE_COLOR] },
+            { keys: [STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING] },
+        ]);
+        respondAsLegacyV1Host(removeRequests[0], { removed: [STORAGE_KEYS.BASE_COLOR] });
+        respondAsLegacyV1Host(removeRequests[1], {});
+        await expect(removePending).resolves.toMatchObject({ removed: [STORAGE_KEYS.BASE_COLOR] });
+    });
+
+    it('新 Host では追加 key を get / set / remove できる', async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new EmbedStorageService(windowObj, mockConsole);
+        service.initialize();
+        const key = STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING;
+        expect(EMBED_STORAGE_OPTIONAL_KEYS).toContain(key);
+
+        const sendResult = (message: any, payload: unknown) => listeners.get('message')?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: EMBED_MESSAGE_VERSION,
+                type: 'storage.result',
+                requestId: message.requestId,
+                payload: { timestamp: Date.now(), ...payload as object },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+        const latestRequest = () => {
+            const latest = parent.postMessage.mock.calls.at(-1)?.[0];
+            if (!latest) throw new Error('expected a storage request');
+            return latest;
+        };
+
+        const setPending = service.set({ [key]: 'true' });
+        sendResult(latestRequest(), { applied: [key] });
+        await expect(setPending).resolves.toMatchObject({ applied: [key] });
+
+        const getPending = service.get([key]);
+        sendResult(latestRequest(), { values: { [key]: 'true' } });
+        const snapshot = await getPending;
+        const storage = new MockStorage();
+        expect(service.applySnapshotToLocalStorage(snapshot.values, storage)).toEqual([key]);
+        expect(storage.getItem(key)).toBe('true');
+
+        const removePending = service.remove([key]);
+        sendResult(latestRequest(), { removed: [key] });
+        await expect(removePending).resolves.toMatchObject({ removed: [key] });
+    });
+
+    it('optional-only get/set/remove は失敗をすべて呼び出し元へ返す', async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new EmbedStorageService(windowObj, mockConsole, 10);
+        service.initialize();
+        const key = STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING;
+        const respondError = (message: any) => listeners.get('message')?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: EMBED_MESSAGE_VERSION,
+                type: 'storage.error',
+                requestId: message.requestId,
+                payload: { timestamp: Date.now(), code: 'unsupported_key' },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+
+        const getPending = service.get([key]);
+        const getRequest = parent.postMessage.mock.calls.at(-1)?.[0];
+        if (!getRequest) throw new Error('expected storage.get request');
+        await expect(getPending).rejects.toMatchObject({ code: 'storage_request_timeout' });
+        listeners.get('message')?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: EMBED_MESSAGE_VERSION,
+                type: 'storage.result',
+                requestId: getRequest.requestId,
+                payload: { timestamp: Date.now(), values: { [key]: 'true' } },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+
+        const setPending = service.set({ [key]: 'true' });
+        const setRequest = parent.postMessage.mock.calls.at(-1)?.[0];
+        if (!setRequest) throw new Error('expected storage.set request');
+        respondError(setRequest);
+        await expect(setPending).rejects.toMatchObject({ code: 'unsupported_key' });
+
+        const removePending = service.remove([key]);
+        const removeRequest = parent.postMessage.mock.calls.at(-1)?.[0];
+        if (!removeRequest) throw new Error('expected storage.remove request');
+        respondError(removeRequest);
+        await expect(removePending).rejects.toMatchObject({ code: 'unsupported_key' });
     });
 
     it('origin が一致しない storage.result は無視して timeout する', async () => {
@@ -189,5 +421,16 @@ describe('EmbedStorageService', () => {
         expect(storage.getItem(STORAGE_KEYS.LOCALE)).toBe('ja');
         expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBeNull();
         expect(storage.getItem('nostr-secret-key')).toBeNull();
+    });
+
+    it('Footer shortcut preference はstorage委譲を許可し、settings.setの設定対象には含めない', () => {
+        expect(EMBED_STORAGE_KEYS).toContain(STORAGE_KEYS.FOOTER_SETTING_SHORTCUTS);
+        expect(EMBED_SETTING_STORAGE_KEYS).not.toContain(STORAGE_KEYS.FOOTER_SETTING_SHORTCUTS);
+        expect(EMBED_STORAGE_KEYS).not.toContain('nostr-secret-key');
+    });
+
+    it('fail-closed CW preference は既存のembed設定storage委譲を使う', () => {
+        expect(EMBED_SETTING_STORAGE_KEYS).toContain(STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING);
+        expect(EMBED_STORAGE_KEYS).toContain(STORAGE_KEYS.FAIL_CLOSED_CONTENT_WARNING);
     });
 });

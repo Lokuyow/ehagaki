@@ -3,6 +3,35 @@ import { SHARE_HANDLER_CONFIG } from '../constants';
 import { sharedMediaRepository } from "../storage/sharedMediaRepository";
 import { getAppRuntimeEnvironment } from "../appRuntimeEnvironment";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isSharedMediaMetadata(value: unknown): boolean {
+    return isRecord(value)
+        && (value.name === undefined || typeof value.name === 'string')
+        && (value.type === undefined || typeof value.type === 'string')
+        && (value.size === undefined || typeof value.size === 'number')
+        && (value.timestamp === undefined || typeof value.timestamp === 'string');
+}
+
+function isSharedMediaData(value: unknown): value is SharedMediaData {
+    return isRecord(value)
+        && Array.isArray(value.images)
+        && value.images.every((image) => typeof File !== 'undefined' && image instanceof File)
+        && (value.metadata === undefined
+            || (Array.isArray(value.metadata) && value.metadata.every(isSharedMediaMetadata)))
+        && (value.title === undefined || typeof value.title === 'string')
+        && (value.text === undefined || typeof value.text === 'string')
+        && (value.url === undefined || typeof value.url === 'string')
+        && (value.shareId === undefined || value.shareId === null || typeof value.shareId === 'string')
+        && (value.bodyStatus === undefined
+            || value.bodyStatus === 'pending'
+            || value.bodyStatus === 'applied'
+            || value.bodyStatus === 'not-applicable')
+        && (value.automaticRetryCount === undefined || typeof value.automaticRetryCount === 'number');
+}
+
 /**
  * リクエストIDを生成
  */
@@ -18,9 +47,9 @@ function generateRequestId(): string {
  * Service Workerにメッセージを送信し、レスポンスを待つ共通関数
  */
 async function sendMessageToServiceWorker(
-    message: any,
+    message: Record<string, unknown>,
     timeoutMs: number = SHARE_HANDLER_CONFIG.REQUEST_TIMEOUT
-): Promise<any> {
+): Promise<unknown> {
     if (
         !getAppRuntimeEnvironment().serviceWorkerEnabled
         || !navigator.serviceWorker.controller
@@ -37,10 +66,10 @@ async function sendMessageToServiceWorker(
             reject(new Error('ServiceWorker communication timeout'));
         }, timeoutMs);
 
-        messageChannel.port1.onmessage = (event: MessageEvent) => {
+        messageChannel.port1.onmessage = (event: MessageEvent<unknown>) => {
             clearTimeout(timeout);
             messageChannel.port1.close();
-            const { data } = event.data || {};
+            const data = isRecord(event.data) ? event.data.data : undefined;
             resolve(data);
         };
 
@@ -70,7 +99,7 @@ async function sendMessageToServiceWorker(
 export async function acknowledgeSharedMedia(shareId: string): Promise<boolean> {
     try {
         const response = await sendMessageToServiceWorker({ action: 'acknowledgeSharedMedia', shareId }, 1000);
-        return response?.cleared === true;
+        return isRecord(response) && response.cleared === true;
     } catch (error) {
         console.warn('Failed to acknowledge shared media in Service Worker:', error);
         return false;
@@ -108,7 +137,10 @@ async function waitForServiceWorkerController(): Promise<void> {
 async function requestSharedMediaWithMessageChannel(): Promise<SharedMediaData | null> {
     try {
         const data = await sendMessageToServiceWorker({ action: 'getSharedMedia' });
-        return data && Array.isArray(data.images) && (data.images.length > 0 || data.title || data.text || data.url) ? data : null;
+        return isSharedMediaData(data)
+            && (data.images.length > 0 || data.title || data.text || data.url)
+            ? data
+            : null;
     } catch (error) {
         console.error('Failed to send message to ServiceWorker:', error);
         return null;
@@ -153,7 +185,10 @@ export async function getSharedMediaWithFallback(): Promise<SharedMediaData | nu
 
         try {
             const data = await sendMessageToServiceWorker({ action: 'getSharedMediaForce' }, 1000);
-            const result = data && Array.isArray(data.images) && (data.images.length > 0 || data.title || data.text || data.url) ? data : null;
+            const result = isSharedMediaData(data)
+                && (data.images.length > 0 || data.title || data.text || data.url)
+                ? data
+                : null;
             if (result) {
                 console.log('Shared media retrieved via forced Service Worker request');
                 return result;

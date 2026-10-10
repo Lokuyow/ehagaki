@@ -1,3 +1,4 @@
+import { getPostHistoryAuthoredRelayScopeKey } from "../postHistoryRelayResolver";
 import { onMount } from "svelte";
 import type { RxNostr } from "rx-nostr";
 import {
@@ -90,20 +91,24 @@ export function usePostHistoryForegroundPeriodicSync({
         ownerPubkeyHex: string;
         rxNostr: RxNostr;
     }): Promise<void> {
+        const relayConfig = getRelayConfig();
+        const relayScopeKey = getPostHistoryAuthoredRelayScopeKey(relayConfig);
         const isActive = () =>
             params.generation === sessionGeneration
             && state.visible
             && getIsAuthenticated()
             && getPubkeyHex() === params.ownerPubkeyHex
             && getRxNostr() === params.rxNostr
-            && getReconciliationPubkeyHex() === params.ownerPubkeyHex;
+            && getReconciliationPubkeyHex() === params.ownerPubkeyHex
+            && getPostHistoryAuthoredRelayScopeKey(getRelayConfig()) === relayScopeKey;
         if (!isActive()) {
             return;
         }
 
         const task = postHistoryForegroundPeriodicSyncService.sync(params.rxNostr, {
             ownerPubkeyHex: params.ownerPubkeyHex,
-            relayConfig: getRelayConfig(),
+            relayConfig,
+            getRelayConfig,
             reconcileDirectReplyCandidates,
             onSavedSelfPosts,
             isActive,
@@ -139,6 +144,7 @@ export function usePostHistoryForegroundPeriodicSync({
     });
 
     $effect(() => {
+        getPostHistoryAuthoredRelayScopeKey(getRelayConfig());
         const visible = state.visible;
         const isAuthenticated = getIsAuthenticated();
         const ownerPubkeyHex = getPubkeyHex() ?? null;

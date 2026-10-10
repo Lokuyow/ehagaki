@@ -12,8 +12,17 @@
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
+    import PostRepostMenuItem from "./PostRepostMenuItem.svelte";
+    import PostRepostFeedback from "./PostRepostFeedback.svelte";
+    import type { RepostPostHandler } from "../lib/hooks/usePostRepostOperation.svelte";
+    import type { PostRepostResult } from "../lib/postRepostService";
+    import { isRepostTargetKind } from "../lib/postRepostUtils";
+    import { createPostHistoryRelatedTargetResolver } from "../lib/postHistoryRelatedTargetResolver.svelte";
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
+    import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
+    import PostHistoryReactionActionButton from "./PostHistoryReactionActionButton.svelte";
+    import PostHistoryReactionDetails from "./PostHistoryReactionDetails.svelte";
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostPreviewFooterActionButton from "./PostPreviewFooterActionButton.svelte";
     import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
@@ -45,8 +54,13 @@
     } from "../lib/types";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { usePostContentEmojiState } from "../lib/hooks/usePostContentEmojiState.svelte";
+    import { usePostHistoryRelatedReactions } from "../lib/hooks/usePostHistoryRelatedReactions.svelte";
     import { usePostHistoryPostActionUiController } from "../lib/hooks/usePostHistoryPostActionUiController.svelte";
-    import { buildPostContentRenderModel } from "../lib/postContentPreview";
+    import { createPostHistoryProfileSyncCoordinator } from "../lib/postHistoryProfileSync";
+    import {
+        buildPostContentRenderModel,
+        resolveEventContentBody,
+    } from "../lib/postContentPreview";
     import {
         canRequestPostDeletion,
         postDeletionService,
@@ -62,6 +76,7 @@
     import { calculateContextMenuPosition } from "../lib/utils/appUtils";
     import { sanitizePlainText } from "../lib/utils/domSanitizer";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
+    import { createSensitivePayloadBodyLoader } from "../lib/sensitiveContentPayloadReader";
 
     type DialogPhase =
         | "empty"
@@ -95,6 +110,10 @@
         profileService?: Pick<RelayProfileService, "fetchProfileRealtime">;
         resolver?: ComposerTargetResolver;
         pubkeyHex?: string | null;
+        onRepostPost?: RepostPostHandler;
+        repostPending?: boolean;
+        onRetryRepostSave?: (result: PostRepostResult) => Promise<boolean>;
+        repostSaveFailure?: PostRepostResult | null;
     }
 
     let {
@@ -106,8 +125,34 @@
         profileService = undefined,
         resolver = createComposerTargetResolver(),
         pubkeyHex = null,
+        onRepostPost = undefined,
+        repostPending = false,
+        onRetryRepostSave = undefined,
+        repostSaveFailure = null,
     }: Props = $props();
 
+    let repostResolver: ReturnType<typeof createPostHistoryRelatedTargetResolver> | undefined;
+    function getRepostResolver() {
+        return repostResolver ??= createPostHistoryRelatedTargetResolver({ getShow: () => show,
+            getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig });
+    }
+    let repostResult = $state<PostRepostResult | null>(null);
+    let repostGeneration = 0;
+    $effect(() => {
+        show; pubkeyHex; repostGeneration++; repostResult = null;
+        return () => repostResolver?.invalidateScope("composer-repost");
+    });
+    onDestroy(() => repostResolver?.reset());
+    async function handleRepost(post: PostHistoryRecord) {
+        if (!onRepostPost || repostPending) return;
+        repostResult = null;
+        const generation = repostGeneration;
+        const eventId = post.eventId;
+        const result = await onRepostPost(post, (event, relayHints) =>
+            getRepostResolver().prepareRepostTarget({ relationKind: "repost", scopeKey: "composer-repost",
+                targetEventId: event.id, authorHint: event.pubkey, relayHints }, event));
+        if (show && generation === repostGeneration && target?.event.id === eventId) repostResult = result;
+    }
     let inputValue = $state("");
     let inputElement: HTMLInputElement | null = $state(null);
     let targetPreviewElement: HTMLElement | null = $state(null);
@@ -147,12 +192,13 @@
     let lastBroadcastPointerPosition = $state<
         { eventId: string; x: number; y: number } | undefined
     >(undefined);
+    let expandedReactionEventId = $state<string | null>(null);
 
     let targetActions = $derived(
         target
             ? getComposerTargetActions(
                   target.event.kind,
-                  target.event.kind === 1 || !!target.channelQuery,
+                  [1, 1111].includes(target.event.kind) || !!target.channelQuery,
               )
             : [],
     );
@@ -180,9 +226,8 @@
         );
     });
     let rawPreviewContent = $derived.by(() => {
-        const content = previewEvent?.content;
-        if (!content || previewEvent?.kind === 40) return "";
-        return content;
+        if (!previewEvent || previewEvent.kind === 40) return "";
+        return resolveEventContentBody(previewEvent.content, previewEvent.tags);
     });
     let collapsedContent = $derived(
         limitComposerTargetCollapsedContent(rawPreviewContent),
@@ -204,6 +249,56 @@
         getPosts: () => previewCollapsePosts,
         getContainer: () => targetPreviewElement,
     });
+    const reactionProfileSyncCoordinator = createPostHistoryProfileSyncCoordinator({
+        getShow: () => show,
+        getRxNostr: () => rxNostr,
+    });
+    let reactionTargets = $derived.by(() =>
+        target && [1, 42, 1111].includes(target.event.kind)
+            ? [{ eventId: target.event.id, relayHints: [...target.relayHints] }]
+            : [],
+    );
+    const relatedReactions = usePostHistoryRelatedReactions({
+        getShow: () => show,
+        getPubkeyHex: () => pubkeyHex,
+        getRxNostr: () => rxNostr,
+        getRelayConfig: () => relayConfig,
+        getTargets: () => reactionTargets,
+        profileSync: reactionProfileSyncCoordinator,
+        source: "composer-target-display",
+    });
+    let targetReactionReadModel = $derived.by(() =>
+        target && [1, 42, 1111].includes(target.event.kind)
+            ? relatedReactions.getReadModel(target.event.id)
+            : null,
+    );
+    let isTargetReactionsExpanded = $derived(
+        !!target && expandedReactionEventId === target.event.id,
+    );
+    let previousReactionTargetId: string | null = null;
+    $effect(() => {
+        const eventId = show && target
+            && [1, 42, 1111].includes(target.event.kind)
+            ? target.event.id
+            : null;
+        if (eventId === previousReactionTargetId) return;
+        previousReactionTargetId = eventId;
+        expandedReactionEventId = null;
+        reactionProfileSyncCoordinator.reset();
+    });
+
+    function toggleTargetReactions(): void {
+        if (!target || !targetReactionReadModel?.totalCount) return;
+        expandedReactionEventId = isTargetReactionsExpanded
+            ? null
+            : target.event.id;
+    }
+
+    function getTargetReactionsActionLabel(count: number): string {
+        return isTargetReactionsExpanded
+            ? $_("postHistory.hideReactions")
+            : $_("postHistory.showReactionsWithCount", { values: { count } });
+    }
     const previewCollapseAction = previewCollapse.previewRef;
     let previewCollapsePost = $derived(previewCollapsePosts[0]);
     let isPreviewExpanded = $derived(
@@ -211,12 +306,10 @@
             ? previewCollapse.isPostExpanded(previewCollapsePost)
             : false,
     );
-    let displayedContent = $derived.by(() =>
-        sanitizePlainText(
-            isPreviewExpanded
-                ? rawPreviewContent
-                : collapsedContent.content,
-        ),
+    let displayedContent = $derived(
+        isPreviewExpanded
+            ? rawPreviewContent
+            : collapsedContent.content,
     );
     let sourcePreviewRenderModel = $derived.by(() =>
         previewEvent?.kind === 40
@@ -224,10 +317,12 @@
                   sourceContent: "",
                   displayContent: "",
                   tags: [],
+                  kind: previewEvent?.kind,
                   media: [],
               })
             : buildPostContentRenderModel({
                   sourceContent: rawPreviewContent,
+                  kind: previewEvent?.kind,
                   tags: previewEvent?.tags ?? [],
               }),
     );
@@ -238,12 +333,22 @@
 
         return buildPostContentRenderModel({
             sourceContent: rawPreviewContent,
+            kind: previewEvent?.kind,
             displayContent: sourcePreviewRenderModel.hasRenderableText
                 ? displayedContent
                 : "",
             tags: previewEvent?.tags ?? [],
             media: sourcePreviewRenderModel.media,
         });
+    });
+    let dialogEmojiUrls = $derived.by(() => {
+        const urls = new Set(previewRenderModel.previewContent.emojiUrls);
+        if (isTargetReactionsExpanded) {
+            for (const group of targetReactionReadModel?.groups ?? []) {
+                if (group.emojiUrl) urls.add(group.emojiUrl);
+            }
+        }
+        return [...urls];
     });
     let hasCollapsiblePreviewText = $derived(
         sourcePreviewRenderModel.hasRenderableText,
@@ -296,8 +401,8 @@
             phase === "profile-loading",
     );
     const emojiState = usePostContentEmojiState({
-        getShow: () => show && previewRenderModel.previewContent.emojiUrls.length > 0,
-        getEmojiUrls: () => previewRenderModel.previewContent.emojiUrls,
+        getShow: () => show && dialogEmojiUrls.length > 0,
+        getEmojiUrls: () => dialogEmojiUrls,
         onStateChanged: () => previewCollapse.remeasure(),
     });
 
@@ -320,6 +425,10 @@
     }
 
     function resetTargetActionUiState(): void {
+        repostResolver?.reset();
+        repostResolver = undefined;
+        repostGeneration++;
+        repostResult = null;
         postActionUi.reset();
         rawJsonDialogOpen = false;
         selectedRawEvent = null;
@@ -338,6 +447,8 @@
         partialEvent = null;
         partialAuthorProfile = null;
         retryRevision = 0;
+        expandedReactionEventId = null;
+        reactionProfileSyncCoordinator.reset();
         resetTargetActionUiState();
         emojiState.resetState();
         fullscreenMediaItems = [];
@@ -453,6 +564,7 @@
             postedAt: event.created_at * 1000,
             relayHints: [...resolvedTarget.relayHints],
             acceptedRelays: [],
+            ...(resolvedTarget.fetchedRelayUrl ? { fetchedRelays: [resolvedTarget.fetchedRelayUrl] } : {}),
             media: [],
             rawEvent: event,
             ...(channelRelayHints ? { channelRelayHints } : {}),
@@ -701,6 +813,7 @@
         generation += 1;
         clearAsyncWork();
         hideBroadcastFloatingMessage();
+        reactionProfileSyncCoordinator.dispose();
     });
 </script>
 
@@ -830,6 +943,14 @@
                     </div>
                     <PostContentPreview
                     model={previewRenderModel}
+                    loadSensitiveBody={createSensitivePayloadBodyLoader({
+                        ownerPubkey: pubkeyHex,
+                        structure: previewEvent,
+                        relayHints: target?.relayHints,
+                        rxNostr,
+                        relayConfig,
+                    })}
+                    contentWarningEventId={previewEvent.id}
                     density="dialog"
                     emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                     emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
@@ -881,57 +1002,46 @@
                 >
                     {#snippet actions()}
                         {#if target}
-                            {#if targetActions.includes("reply")}
-                                <div class="post-preview-action-buttons-group">
+                            {#if targetActions.includes("reply") || targetActions.includes("quote")}
+                                {#if targetPost}
+                                    <PostHistoryPostActions
+                                        post={targetPost}
+                                        onReplyPost={targetActions.includes("reply")
+                                            ? () => handleApply("reply")
+                                            : undefined}
+                                        onQuotePost={targetActions.includes("quote")
+                                            ? () => handleApply("quote")
+                                            : undefined}
+                                    >
+                                        {#snippet reactionExtras()}
+                                            {#if targetReactionReadModel && targetReactionReadModel.totalCount > 0}
+                                                <PostHistoryReactionActionButton
+                                                    count={targetReactionReadModel.totalCount}
+                                                    expanded={isTargetReactionsExpanded}
+                                                    ariaLabel={getTargetReactionsActionLabel(targetReactionReadModel.totalCount)}
+                                                    onToggle={toggleTargetReactions}
+                                                />
+                                            {/if}
+                                        {/snippet}
+                                    </PostHistoryPostActions>
+                                {/if}
+                            {:else if targetActions.includes("channel")}
+                                <div class="composer-target-channel-action">
                                     <PostPreviewFooterActionButton
                                         type="button"
                                         className="post-preview-action-button post-history-action-button"
-                                        ariaLabel={$_("replyQuote.reply_label")}
+                                        ariaLabel={$_("composerTarget.post")}
                                         contentLayout="icon"
                                         shape="circle"
-                                        onClick={() => handleApply("reply")}
-                                        tooltipContent={$_("replyQuote.reply_label")}
+                                        onClick={() => handleApply("channel")}
+                                        tooltipContent={$_("composerTarget.post")}
                                     >
                                         <div
-                                            class="reply-icon svg-icon"
+                                            class="post-icon svg-icon"
                                             aria-hidden="true"
                                         ></div>
                                     </PostPreviewFooterActionButton>
-                                    <div class="post-preview-footer-replies-slot"></div>
                                 </div>
-                            {/if}
-                            {#if targetActions.includes("quote")}
-                                <PostPreviewFooterActionButton
-                                    type="button"
-                                    className="post-preview-action-button post-history-action-button"
-                                    ariaLabel={$_("replyQuote.quote_label")}
-                                    contentLayout="icon"
-                                    shape="circle"
-                                    onClick={() => handleApply("quote")}
-                                    tooltipContent={$_("replyQuote.quote_label")}
-                                >
-                                    <div
-                                        class="quote-icon svg-icon"
-                                        aria-hidden="true"
-                                    ></div>
-                                </PostPreviewFooterActionButton>
-                                <div class="post-preview-footer-reaction-slot"></div>
-                            {/if}
-                            {#if targetActions.includes("channel")}
-                                <PostPreviewFooterActionButton
-                                    type="button"
-                                    className="post-preview-action-button post-history-action-button"
-                                    ariaLabel={$_("composerTarget.post")}
-                                    contentLayout="icon"
-                                    shape="circle"
-                                    onClick={() => handleApply("channel")}
-                                    tooltipContent={$_("composerTarget.post")}
-                                >
-                                    <div
-                                        class="post-icon svg-icon"
-                                        aria-hidden="true"
-                                    ></div>
-                                </PostPreviewFooterActionButton>
                             {/if}
                         {/if}
                     {/snippet}
@@ -954,6 +1064,9 @@
                                 )}
                             >
                                 {#snippet items()}
+                                    {#if onRepostPost && isRepostTargetKind(post.kind)}
+                                        <PostRepostMenuItem pending={repostPending} onSelect={() => void handleRepost(post)} />
+                                    {/if}
                                     <DropdownMenu.Item
                                         class="menu-action-button"
                                         onSelect={() =>
@@ -1015,10 +1128,17 @@
                         {/if}
                     {/snippet}
                 </PostHistoryPreviewFooter>
+                {#if targetReactionReadModel && targetReactionReadModel.totalCount > 0 && isTargetReactionsExpanded}
+                    <PostHistoryReactionDetails
+                        readModel={targetReactionReadModel}
+                        emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                        emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                    />
+                {/if}
             </section>
         {/if}
 
-        {#if target && target.event.kind !== 1 && target.event.kind !== 40 && target.event.kind !== 42}
+        {#if target && ![1, 40, 42, 1111].includes(target.event.kind)}
             <p class="unsupported-kind">
                 {$_("composerTarget.unsupportedKind")}
             </p>
@@ -1027,6 +1147,7 @@
     </div>
 
     {#snippet footer()}
+        <PostRepostFeedback result={repostResult} saveFailure={repostSaveFailure} pending={repostPending} onRetrySave={onRetryRepostSave} />
         <Dialog.Close>
             {#snippet child({ props })}
                 <Button
@@ -1254,18 +1375,14 @@
         background: var(--bg-input);
     }
 
+    .composer-target-channel-action {
+        display: flex;
+        width: 100%;
+        justify-content: center;
+    }
+
     :global(.target-preview .post-preview-footer) {
         --post-history-preview-footer-surface: var(--bg-input);
-    }
-
-    :global(.target-preview .post-preview-footer-replies-slot) {
-        flex: 0 1 36px;
-        min-width: 0;
-    }
-
-    :global(.target-preview .post-preview-footer-reaction-slot) {
-        flex: 0 1 70px;
-        min-width: 0;
     }
 
     .target-preview-body {

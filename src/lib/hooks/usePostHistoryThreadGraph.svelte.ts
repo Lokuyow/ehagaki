@@ -3,7 +3,6 @@ import type { RxNostr } from "rx-nostr";
 import {
     createPostHistoryRelatedTargetResolver,
     type PostHistoryRelatedTargetResolver,
-    type PostHistoryRelatedTargetSnapshot,
     type RelatedTargetDescriptor,
 } from "../postHistoryRelatedTargetResolver.svelte";
 import {
@@ -180,16 +179,6 @@ interface UsePostHistoryThreadGraphParams {
     replyFetchService?: Pick<PostHistoryReplyFetchService, "fetchDirectReplies">;
     deletionFetchService?: Pick<PostHistoryDeletionFetchService, "fetchDeletionRequests">;
     relatedTargetResolver?: PostHistoryRelatedTargetResolver;
-}
-
-function buildInitialRepliesActionState(): PostHistoryThreadGraphRepliesActionState {
-    return {
-        status: "unloaded",
-        visible: false,
-        replies: [],
-        replyCount: 0,
-        error: null,
-    };
 }
 
 function sanitizeRelayUrls(urls: string[]): string[] {
@@ -373,27 +362,6 @@ export function usePostHistoryThreadGraph({
                 reactionProfilesByPubkey,
             ),
         };
-    }
-
-    function setReactionSummary(
-        parentEventId: string,
-        records: PostHistoryChildInteractionRecord[],
-    ): void {
-        reactionSummaryByParentId = {
-            ...reactionSummaryByParentId,
-            [parentEventId]: summarizePostHistoryReactionRecords(records),
-        };
-    }
-
-    function setReactionRecords(
-        parentEventId: string,
-        records: PostHistoryChildInteractionRecord[],
-    ): void {
-        reactionRecordsByParentId = {
-            ...reactionRecordsByParentId,
-            [parentEventId]: records,
-        };
-        rebuildReactionReadModelForParent(parentEventId);
     }
 
     function setReactionProfile(pubkey: string, profile: ProfileData | null): void {
@@ -610,10 +578,6 @@ export function usePostHistoryThreadGraph({
 
     function getParentRelayHints(post: PostHistoryRecord, node: PostHistoryThreadGraphNode): string[] {
         return postHistoryReplyParentTargetDiscoveryAdapter.getRelayHints(post, node);
-    }
-
-    function getParentAuthorHint(node: PostHistoryThreadGraphNode): string | null {
-        return postHistoryReplyParentTargetDiscoveryAdapter.getAuthorHint(node);
     }
 
     function getChildrenRelayHints(post: PostHistoryRecord, node: PostHistoryThreadGraphNode): string[] {
@@ -2471,7 +2435,7 @@ export function usePostHistoryThreadGraph({
                                 reactionAuthorPubkeys.add(record.authorPubkey);
                                 rememberProfileRelayUrls(record.authorPubkey, anchorNode.relayUrls);
                             }
-                        } else if (record.kind === 1 || record.kind === 42) {
+                        } else if ([1, 42, 1111].includes(record.kind)) {
                             if (!isValidPostHistoryCachedDirectReply({
                                 parentNode: anchorNode,
                                 record,
@@ -2844,7 +2808,7 @@ export function usePostHistoryThreadGraph({
         event: NostrEvent | null | undefined,
         posts: PostHistoryRecord[] = [],
     ): Promise<boolean> {
-        if (!event?.id || (event.kind !== 1 && event.kind !== 42)) {
+        if (!event?.id || ![1, 42, 1111].includes(event.kind)) {
             return true;
         }
 

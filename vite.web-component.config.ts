@@ -1,3 +1,4 @@
+import { verifyRxNostrPatch } from "./scripts/verifyRxNostrPatch.mjs";
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { viteStaticCopy } from "vite-plugin-static-copy";
@@ -65,6 +66,8 @@ function resolveHostOwnedLiteFullOnlyImports() {
  * plugin, manifest, service worker registration, share target, and fixed
  * iframe bridge used by the regular application build.
  */
+verifyRxNostrPatch();
+
 export default defineConfig(({ mode }) => {
     const isHostOwnedLite = mode === "host-owned-lite";
     const isWatchBuild = mode === "web-component-watch";

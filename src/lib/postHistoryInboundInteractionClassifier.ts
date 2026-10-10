@@ -28,6 +28,10 @@ function eventHasPTag(event: NostrEvent, pubkeyHex: string): boolean {
     return event.tags.some((tag) => tag[0] === "p" && tag[1] === pubkeyHex);
 }
 
+function eventHasRootAuthorTag(event: NostrEvent, pubkeyHex: string): boolean {
+    return event.tags.some((tag) => tag[0] === "P" && tag[1] === pubkeyHex);
+}
+
 function findFirstTagValue(event: NostrEvent, tagName: string): string | null {
     for (const tag of event.tags) {
         if (tag[0] === tagName && isHex64(tag[1])) {
@@ -62,7 +66,7 @@ export function classifyPostHistoryInboundInteraction(input: {
         };
     }
 
-    if (event.kind !== 1 && event.kind !== 42) {
+    if (event.kind !== 1 && event.kind !== 42 && event.kind !== 1111) {
         return {
             type: "unsupported",
             event,
@@ -77,7 +81,8 @@ export function classifyPostHistoryInboundInteraction(input: {
 
     const references = parsePostHistoryThreadReferences(event);
     const includesOwnerPTag = eventHasPTag(event, ownerPubkeyHex);
-    if (!includesOwnerPTag) {
+    const includesOwnerRootTag = eventHasRootAuthorTag(event, ownerPubkeyHex);
+    if (!includesOwnerPTag && !includesOwnerRootTag) {
         return {
             type: "unsupported",
             event,
@@ -95,18 +100,25 @@ export function classifyPostHistoryInboundInteraction(input: {
         && references.parentId !== event.id
     ) {
         const ownerPostParentConfirmed = ownerPostEventIds.has(references.parentId);
-        return {
-            type: ownerPostParentConfirmed ? "direct-reply" : "direct-reply-candidate",
-            event,
-            references,
-            parentEventId: references.parentId,
-            rootEventId: references.rootId,
-            targetEventId: references.parentId,
-            targetAuthorPubkey: ownerPubkeyHex,
-            reason: ownerPostParentConfirmed
-                ? "owner-post-parent"
-                : "owner-post-parent-unconfirmed",
-        };
+        const isNip22Comment = event.kind === 1111;
+        const ownerIsDirectParent = ownerPostParentConfirmed
+            || (isNip22Comment
+                ? references.parentPubkey === ownerPubkeyHex
+                : includesOwnerPTag);
+        if (ownerIsDirectParent) {
+            return {
+                type: ownerPostParentConfirmed ? "direct-reply" : "direct-reply-candidate",
+                event,
+                references,
+                parentEventId: references.parentId,
+                rootEventId: references.rootId,
+                targetEventId: references.parentId,
+                targetAuthorPubkey: ownerPubkeyHex,
+                reason: ownerPostParentConfirmed
+                    ? "owner-post-parent"
+                    : "owner-post-parent-unconfirmed",
+            };
+        }
     }
 
     return {

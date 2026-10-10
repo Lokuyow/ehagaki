@@ -82,6 +82,33 @@ describe("waitForUploadedMediaAvailability", () => {
         } satisfies Partial<UploadedMediaAvailabilityError>));
     });
 
+    it("stops an in-flight availability probe with AbortError", async () => {
+        const controller = new AbortController();
+        let markStarted!: () => void;
+        const started = new Promise<void>((resolve) => { markStarted = resolve; });
+        const fetchMock = vi.fn((_url: string | URL, init?: RequestInit) => {
+            markStarted();
+            return new Promise<Response>((_resolve, reject) => {
+                init?.signal?.addEventListener("abort", () => {
+                    const error = new Error("aborted");
+                    error.name = "AbortError";
+                    reject(error);
+                }, { once: true });
+            });
+        });
+        const waiting = waitForUploadedMediaAvailability({
+            url: "https://cdn.example/file.png",
+            mimeType: "image/png",
+            fetch: fetchMock as unknown as typeof fetch,
+            signal: controller.signal,
+        });
+
+        await started;
+        expect(fetchMock.mock.calls[0][1]?.signal).toBe(controller.signal);
+        controller.abort();
+        await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+    });
+
     it("retries when HEAD returns a share.yabu.me style placeholder image response", async () => {
         vi.useFakeTimers();
 

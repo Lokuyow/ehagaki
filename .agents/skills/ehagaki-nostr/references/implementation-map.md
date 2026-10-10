@@ -7,7 +7,7 @@
 ## 使用中のNostr関連ライブラリ
 
 - `nostr-tools`: `^2.23.3`
-- `rx-nostr`: `^3.7.6`
+- `rx-nostr`: `3.7.8` exact pin。#204のsend target relay isolationをversion付きpatchで補正し、install/Vite/Vitestでsource・ESM・CJS・UMDのSHA-256を検証する（`docs/RX_NOSTR_PATCH.md`）。
 - `@rx-nostr/crypto`: `^3.1.6`
 - `nip07-awaiter`: `^1.1.0`
 - 関連パッケージ: `nostr-zap ^1.3.0`、`nostr-zap-view ^1.4.6`
@@ -22,17 +22,18 @@
 - 主な関数または責務: `PostManager.submitPost`が投稿状態とtagを統合してoperation開始時のpubkeyを固定し、`PostEventBuilder.buildEvent`がevent templateを構築し、`PostManager.sendPreparedEvent`が署名前に比較用snapshotとsigner入力用cloneを分離したうえで、active sessionと署名結果のtemplate一致を検証してから`PostEventSender.sendEvent`へ渡す。
 - 関連テスト: `src/test/unit/postManager.test.ts`、`src/test/unit/signedEventResultValidator.test.ts`、`src/test/unit/signedEventSessionBoundaries.integration.test.ts`
 - 注意点: `PostEventBuilder.buildEvent`はreply/quote系tagを先頭に置く。送信と構築を同じ責務へ戻さない。publish開始前のsession変更は送信を防ぐが、publish成功後はverified event自身のpubkeyでPost History保存を完了させる。
+- NIP-65配送: `PostManager.publishNip65Event`がauthor Write/additionalのinitial publishと、元Structureのp tagsによるrecipient Read discoveryを並行して進める。SensitiveはrelayごとにPayload ACK true後だけStructureを送り、一度だけ署名したStructureと固定c hintを共有する。配送成功はStructure ACK基準、Payload ACKはatomic unionを行うSensitive cacheに保持する。transport/AUTHは`PostEventSender`、discovery/cache freshnessは`nip65RelayDirectory`が所有する。
 
 ## リプライ
 
-- 機能: kind 1またはkind 42へのreply targetを取得し、thread tagと通知先を構築する。
-- 関連NIP: NIP-10。public chatではNIP-28も関係する。
-- event kind: 投稿先により`1`または`42`
-- 主なtag: marked `e` (`root`、`reply`)、`p`。kind 42ではchannel rootの`e`も必要になる。
-- 主な実装ファイル: `src/lib/replyQuoteService.ts`、`src/lib/postManager.ts`、`src/lib/postHistoryNip10Utils.ts`、`src/stores/replyQuoteStore.svelte.ts`
-- 主な関数または責務: `parsePostHistoryThreadReferences`（`parseKind1ThreadReferences`/`parseKind42ThreadReferences`）がNIP-10 thread semanticsのcanonical ownerであり、`ReplyQuoteService.extractThreadInfo`は既存composer shapeへのprojection、`buildReplyTags`はwire tag構築、`fetchReferencedEventTask`は取得を担う。
-- 関連テスト: `src/test/unit/replyQuoteService.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/unit/postHistoryNip10Utils.test.ts`、`src/test/unit/replyQuoteStore.test.ts`
-- 注意点: root、直接parent、marker、author、relay hintを別々に検証する。kind 42のchannel rootとreply parentを混同しない。
+- 機能: kind 1/42へのNIP-10 replyとkind 1111へのNIP-22 comment reply targetを取得し、thread topologyと通知先を構築する。
+- 関連NIP: NIP-10、NIP-22。public chatではNIP-28も関係する。
+- event kind: `1`、`42`、`1111`。kind `36`はSensitive本文payloadで、reply parentや投稿履歴kindではない。
+- 主なtag: NIP-10のmarked `e` (`root`、`reply`) と`p`、NIP-22のroot `E/A/I`・`K/P`およびparent `e/a/i`・`k/p`。
+- 主な実装ファイル: `src/lib/replyQuoteService.ts`、`src/lib/postManager.ts`、`src/lib/postHistoryNip10Utils.ts`、`src/lib/postHistoryNip22Utils.ts`、`src/lib/sensitiveEventUtils.ts`、`src/stores/replyQuoteStore.svelte.ts`
+- 主な関数または責務: `parsePostHistoryThreadReferences`がkind 1/42のNIP-10とkind 1111のNIP-22参照を既存thread projectionへ解決する。`parseNip22CommentReferences`はroot scopeとdirect parentを検証し、addressable parentの`a`+current-version `e`併記を受理する。`buildNip22ReplyTags`はroot scopeを維持して直接parentを設定する。`ReplyQuoteService.fetchReferencedEventTask`はeventと実取得Relayを返す。
+- 関連テスト: `src/test/unit/replyQuoteService.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/unit/postHistoryNip10Utils.test.ts`、`src/test/unit/sensitiveEventUtils.test.ts`、`src/test/unit/replyQuoteStore.test.ts`
+- 注意点: root、直接parent、marker、author、relay hintを別々に検証する。kind 42のchannel rootとreply parentを混同しない。NIP-22の`a`+`e`は1組のaddressable parentとして扱い、別scopeの曖昧な重複は拒否する。
 
 ## 引用
 
@@ -47,14 +48,18 @@
 
 ## リポスト
 
-- 機能: READMEはNIP-18 Reposts対応を掲げる。
+- 機能: kind 1のRepostとkind 42／1111のGeneric Repost作成、authored kind 6／16の同期・履歴表示、検証済み元投稿snapshotの永続化。
 - 関連NIP: NIP-18
-- event kind: NIP上は`6`またはgeneric repostの`16`が関係するが、現在の実装で構築・取得する箇所は確認できなかった。
-- 主なtag: 現在の実装では確認できなかった。
-- 主な実装ファイル: 実装ファイルは確認できなかった。`README.md`の対応NIP一覧にのみ記載がある。
-- 主な関数または責務: 確認できなかった。
-- 関連テスト: kind 6/16またはrepostを対象にするテストは確認できなかった。
-- 注意点: 実装済みと推測しない。変更要求では期待するkind、content、`e`/`p`/`a` semanticsをtaskと適用NIPから判断し、重要な未解決の選択だけAGENTS.mdの確認条件に従う。
+- event kind: target `1`はouter `6`、target `42`／`1111`はouter `16`。replaceable/addressable target、`a` resolution、未知kindの作成UIは対象外。
+- 主なtag: target IDと取得元relayを持つ`e`、target authorの`p`、kind 16ではtarget kindの`k`。作成contentは常に空文字。targetのreply/channel/CW tagsはouterへコピーしない。NIP-46は`sign_event:6`／`sign_event:16`を要求する。
+- 主な実装ファイル: `postRepostService.ts`、`postRepostUtils.ts`、`postHistoryRepository.ts`、`postHistoryRelatedTargetResolver.svelte.ts`、`usePostHistoryRepostPreviews.svelte.ts`、`PostHistoryRepostPreview.svelte`。
+- 主な関数または責務: serviceが署名・publishと同じouter/targetの再保存を所有する。repositoryがouter recordの`repostTarget`を保存し、既存related-target resolverが参照に基づく解決・検証・要求共有・retryを所有する。元投稿をauthored行として追加しない。
+- reference境界: `parseRepostReference()`がeの一意性、pの形式、kind 16のoptional kを検査する。kは0〜65535のcanonical decimal stringのみで、同値重複を許容し異値混在を拒否する。`verifyRepostTarget()`がfull verificationとID／p／k整合性を確認し、`classifyRepostTargetKind()`が6→1／16→42・1111をsupported、6→非1／16→1をouter-target-kind-mismatch、その他のreference-consistentな16→非1をunsupported-target-kindへ分ける。outerごとの判定を共有event-ID raw cacheのerrorにしない。snapshot保存・検索は`verifySupportedRepostTarget()`を通す。
+- channel projection: kind 42 target自身からNIP-28 channel referenceを導出し、既存`usePostHistoryChannelDisplay`／`channelContextCoordinator`／channel metadata repositoryを使う。表示・検索の一時投影だけに使用し、kind 16 outerの`channelEventId`／`channelRelayHints`へ保存せずthread nodeにも扱わない。
+- 送信前の境界: 全Repost入口はresolverの`prepareRepostTarget()`で元投稿のfull verification、relay provenance、既知のローカル削除要求を確認する。検証済みtargetとhintがあればネットワーク削除確認を開始・待機せず署名・publishへ進む。hint欠損時のtarget取得は既存resolverが所有する。複数の有効な`p` tagは取得・検証後に元投稿authorが含まれるか判定する。
+- 削除要求の背景取得: 既存resolverのpreview解決がdeletion fetch/repositoryを所有し、Repost送信とは独立して動作する。Repostはそのpending taskを待機・昇格・複製せず、未取得・timeout・errorを送信拒否の理由にしない。後から検証・保存された有効な削除要求は以後の表示と操作へ適用する。
+- 関連テスト: `postRepost.test.ts`、`postRepostTransport.test.ts`（実rx-nostr・秘密鍵signer）、`postRepost.spec.ts`。
+- 注意点: 外部kind 6／16のcontentもtarget取得元・検索対象にしない。mismatch／unsupportedではouterのraw JSON・export・管理操作を保持し、target snapshot／本文／検索／content actionsへ進めない。outerの日時・管理操作とtargetの本文・content actionを分ける。Repost label右側の28px管理menuとtarget footerを維持し、outerの下部footerは設けない。JSONLはouterだけを出力し、snapshot欠損はe/p/k/relay hintから復旧する。authored kinds keyは`1,6,16,42,1111`。旧`1,6,42,1111`／`1,42,1111`のcoverage・watermarkをkind 16取得の証拠にせず、visible range／Citrine imported rangesだけを閲覧継続に使う。
 
 ## NIP-19識別子
 
@@ -108,16 +113,18 @@
 - 関連テスト: `src/test/unit/channelContextService.test.ts`、`src/test/unit/channelContextCoordinator.test.ts`、`src/test/unit/channelContextApplyController.test.ts`、`src/test/unit/composerTargetResolver.test.ts`、`src/test/unit/channelPictureUrlUtils.test.ts`、`src/test/unit/channelPicture.test.ts`、`src/test/unit/swChannelImageCacheUtils.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/e2e/composerTargetDialog.spec.ts`
 - 注意点: channel metadata由来relay hint、外部入力relay、write relayはprovenanceが異なる。kind 42のchannel rootをUI表示から推測せずparser結果を使う。URL query、iframe、draftのpicture overrideは検証済みmetadataと同一視せず、チャンネル画像キャッシュへ保存しない。
 
-## Content Warning
+## Content WarningとSensitive Content Payload
 
-- 機能: 投稿へContent WarningとNSFW tagを付与する。
-- 関連NIP: NIP-36
-- event kind: `1`または`42`
-- 主なtag: `content-warning`、`t`=`nsfw`
-- 主な実装ファイル: `src/lib/postEventBuilder.ts`、`src/lib/postManager.ts`、`src/components/KeyboardButtonBar.svelte`、`src/components/ReasonInput.svelte`
-- 主な関数または責務: `PostEventBuilder.buildEvent`が理由の有無と既存NSFW hashtagを考慮してtagを構築し、`PostManager.submitPost`がstore状態を渡す。
-- 関連テスト: `src/test/unit/postManager.test.ts`、`src/test/unit/keyboardButtonBar.test.ts`
-- 注意点: Content Warning有効時は`nsfw` hashtagも追加し、既存tagを重複させない。
+- 機能: 標準NIP-36送信と、CW本文をkind `36` payloadへ分けるeHagaki独自の実験形式を構築・検証・表示する。
+- 関連NIP: 標準CWはNIP-36。payload形式はNIPではない。kind `1111`のcomment topologyはNIP-22。
+- event kind: Structureは通常投稿`1`、Public Chat`42`、NIP-22 Comment`1111`を維持し、Sensitive本文payloadにkind `36`を使う。kind `3636`やkind `1` companionは使わない。
+- 主なtag: Structureの`content-warning`と`c`、payloadの単一`k`、通常の`t=nsfw`、NIP-22 root/parent scope tags。
+- 主な実装ファイル: `src/lib/postManager.ts`、`src/lib/postEventBuilder.ts`、`src/lib/sensitiveContentPayload.ts`、`src/lib/sensitiveContentPayloadReader.ts`、`src/lib/storage/sensitivePayloadRepository.ts`、`src/lib/postHistoryNip22Utils.ts`、`src/components/PostContentPreview.svelte`。
+- 主な関数または責務: `PostEventBuilder.buildEvent`が元kindと通常tagsを構築し、`PostManager.sendPreparedEvent`が完成した元eventからkind `36` payloadと空content Structureを作り、payload先行・Structure後続で送る。`verifySensitivePayloadLink`はStructureとpayloadのID/signature、c参照、kind、同一pubkey、単一`k`の組を検証する。`loadSensitivePayloadContent`は明示reveal時にのみlocal-first lookupとRelay取得を行う。previewは共通CW gateを維持する。
+- 関連テスト: `src/test/unit/postManager.test.ts`、`src/test/unit/sensitiveEventUtils.test.ts`、`src/test/unit/sensitivePayloadRepository.test.ts`、`src/test/unit/postHistoryLocalSearchService.test.ts`、`src/test/unit/postHistoryJsonlExportEngine.test.ts`。
+- 注意点: fail-closed設定OFFでは既存のCW/`nsfw`自動連動を維持し、ONでは独立させる。旧`content-warning[2]`本文tagは受信互換として解釈する。payload本文は未検証時に表示、検索、export、削除対象へ使わない。Host-owned Liteは独立builder/公開contractを維持し、この通常投稿設定を参照しない。
+- lifecycle: sender/runtimeとaccountを投稿操作へcaptureし、payload accept後のscope変更ではStructureを送らない。body loaderはscope内でcacheを`liveQuery`観測し、取得cancelと取得前後の削除確認を行う。共有previewはaccount/runtime変更・破棄・tombstoneで本文を無効化し、reveal後の本文からmediaとemojiを解決する。text-onlyのCWもreply/quote展開対象になる。
+- 削除: payloadだけを指すimported kind 5も、author範囲の既存Structure候補とのpair検証後に適用する。削除serviceはlocal-firstで未cache payloadをID取得し、検証できない場合はStructure-onlyと本文削除の省略を結果/UIへ明示する。履歴listing・count・anchorは通常のsupported kind集合`1/42/1111`で絞る。
 
 ## カスタム絵文字
 
@@ -154,7 +161,7 @@
 
 - 機能: bunker/Nostr Connect接続、session復元、remote signer署名、relay選択、接続状態管理を行う。
 - 関連NIP: NIP-46
-- event kind: NIP-46 transport eventは`24133`。eHagakiが要求する署名範囲は`1`、`5`、`42`、`10063`、`22242`、`27235`、`24242`。
+- event kind: NIP-46 transport eventは`24133`。eHagakiが要求する署名範囲は`1`、`5`、`36`、`42`、`1111`、`10063`、`22242`、`27235`、`24242`。
 - 主なtag: NIP-46接続で利用する`p`、Nostr Connect URIのrelay/secret/metadata、各署名対象eventのtag
 - 主な実装ファイル: `src/lib/nip46Service.ts`、`src/lib/nip46AuthFlowCoordinator.ts`、`src/lib/nip46PendingOperationUtils.ts`、`src/lib/nip46ConnectUiUtils.ts`、`src/lib/authService.ts`
 - 主な関数または責務: `Nip46Service.connect`、`startNostrConnect`、`reconnect`、`ensureConnection`、`getSignerForSession`、`disconnect`と`Nip46SignerAdapter.signEvent`が接続、同一sessionのruntime signer復旧、Signer adapterを分担する。`NIP46_CLIENT_METADATA`はname `eHagaki`、GitHub Pages URL、webp icon URLをconnect requestとNostr Connect URIへ渡し、`NIP46_REQUESTED_PERMISSIONS`/`NIP46_REQUESTED_PERMS`が要求権限のsource of truthである。NIP-46 relayはvalidation・normalization済みのsigner-provided candidate setをsessionとruntime `BunkerSigner`へ保持し、接続確認は最初のreachable relayで進める。fresh `BunkerSigner`はglobal commit前にdirect `get_public_key`でlive user identityを確認し、negotiated final relayのtimeout-only retryはremote signerのrelay subscription移行を待つ。`reconnect`と`rebuildConnection`はcandidate-firstで進める。rebuildはsession/runtime/persistence bindingのsnapshot所有権を確認し、snapshot bindingへのsession保存成功後にcandidateをcommitする。remote signer pubkeyをuser identityへfallbackしない。
@@ -174,25 +181,30 @@
 
 ## 関連イベント取得
 
-- 機能: reply parent、quote target、deletion requestなどpost historyの関連eventを発見・取得・cache・表示状態へ解決する。
-- 関連NIP: NIP-09、NIP-10、NIP-18、NIP-21
-- event kind: target `1`/`42`など、deletion request `5`
-- 主なtag: replyの`e`/`p`、quoteの`q`、deletionの`e`/`a`
-- 主な実装ファイル: `src/lib/postHistoryRelatedTargetDiscoveryAdapter.ts`、`src/lib/postHistoryRelatedTargetResolver.svelte.ts`、`src/lib/postHistoryContextFetchService.ts`、`src/lib/postHistoryDeletionFetchService.ts`、`src/lib/storage/postHistoryRepository.ts`
-- 主な関数または責務: discovery adapterが`RelatedTargetDescriptor`を生成し、`createPostHistoryRelatedTargetResolver`がlocal-first lookup、network fetch、deletion check、profile sync、scope cancelを調整する。
+- 機能: reply parent、quote target、payloadを参照するStructure、deletion requestなどpost historyの関連eventを発見・取得・cache・表示状態へ解決する。
+- 関連NIP: NIP-09、NIP-10、NIP-18、NIP-21、NIP-22
+- 関連テスト: `src/test/unit/postHistoryRelatedTargetDiscoveryAdapter.test.ts`、`src/test/unit/postHistoryRelatedTargetResolver.test.ts`、`src/test/unit/postHistoryRelatedEventCard.test.ts`、`src/test/e2e/postHistoryDialog.spec.ts`
+- 注意点: discovery、descriptor、fetch、cache、renderingの境界を維持する。target ID単位のpending共有とscope generationでstale completionを防ぐ。
+- event kind: target `1`/`42`/`1111`、Sensitive payload `36`、deletion request `5`。payloadは投稿行ではなく補助cacheへ保存する。
+- 主なtag: replyの`e`/`p`、NIP-22の`E/A/I`と`e/a/i`、quoteの`q`、Structureの`content-warning`と`c`、payloadの`k`、deletionの`e`/`a`。
+- 主な実装ファイル: `src/lib/postHistoryRelatedTargetDiscoveryAdapter.ts`、`src/lib/postHistoryRelatedTargetResolver.svelte.ts`、`src/lib/postHistoryContextFetchService.ts`、`src/lib/postHistoryDeletionFetchService.ts`、`src/lib/sensitiveContentPayloadReader.ts`、`src/lib/storage/postHistoryRepository.ts`。
+- 主な関数または責務: discovery adapterがcanonical Structureの`RelatedTargetDescriptor`を生成し、`createPostHistoryRelatedTargetResolver`がStructureのlocal-first lookup、network fetch、deletion check、profile sync、scope cancelを調整する。payload本文は別readerがpair検証後にだけStructureへprojectionし、target event自体をpayloadへredirectしない。
 - 関連テスト: `src/test/unit/postHistoryRelatedTargetDiscoveryAdapter.test.ts`、`src/test/unit/postHistoryRelatedTargetResolver.test.ts`、`src/test/unit/postHistoryRelatedEventCard.test.ts`、`src/test/e2e/postHistoryDialog.spec.ts`
 - 注意点: discovery、descriptor、fetch、cache、renderingの境界を維持する。target ID単位のpending共有とscope generationでstale completionを防ぐ。
 
 ## 投稿履歴JSONLインポートと削除要求
 
-- 機能: Nostr JSONLをstreamingで検証し、現在のアカウントによるkind 1/42を投稿履歴へ統合し、kind 5の有効な`e`タグを削除要求として保存する。対象未取得の削除要求はpendingとして保持し、実際の対象eventとauthorが一致した時点で検証済みへ昇格する。
+- 機能: Nostr JSONLをstreamingで検証し、現在のアカウントによるkind 1/42/1111を投稿履歴へ統合し、kind 36を補助payload candidate、kind 5を削除要求として保存する。payloadはStructureとのpair検証前に本文用途へ昇格せず、対象未取得の削除要求はpendingとして保持する。
 - 関連NIP: NIP-01、NIP-09、NIP-28。
-- event kind: 投稿履歴対象`1`/`42`、将来の削除要求保持対象`6`/`7`/`16`/`20`/`21`/`22`、deletion request `5`。
+- event kind: 投稿履歴対象`1`/`42`/`1111`、Sensitive payload candidate `36`、削除要求`5`。
 - 主なtag: kind 5の`e`と任意の`k`。Phase 1のJSONLインポートでは`e`に64文字の小文字16進event IDだけを受理し、対象未取得時は正常な`k`がすべて保存対象外kindの場合だけ削除要求を除外する。
 - 主な実装ファイル: `src/lib/postHistoryJsonlImportService.ts`、`src/lib/postHistoryJsonlExportService.ts`、`src/lib/postHistoryDeletionUtils.ts`、`src/lib/storage/postHistoryRepository.ts`、`src/lib/storage/postHistoryDeletionRequestsRepository.ts`、`src/lib/postDeletionService.ts`、`src/lib/signedEventResultValidator.ts`、`src/lib/sessionLiveness.ts`、`src/components/PostHistoryImportDialog.svelte`、`src/components/PostHistoryDialog.svelte`。
 - 主な関数または責務: `postHistoryRawEventVerification.ts`が投稿履歴専用のRxNostr `use()`境界（RxNostrの署名検証後にstructureとevent ID一致を補完）と非永続attestationを担う。local signerとJSONL importはsymbolやライブラリ検証cacheを引き継がないplain NIP-01 snapshotで完全検証し、構造不正な外部signer結果は例外を漏らさず検証失敗として返す。repositoryはattestationがなければ完全検証fallbackを行い、recordのoptionalな`rawEventVerification`で保存済みrawの検証規則versionを保持する。`PostHistoryJsonlImportService.importFile`がfatal UTF-8 decode、行分類、ファイル全体のevent ID重複排除、500 event単位のflushを担う。`postHistoryJsonlExportEngine.ts`がlegacy migration、raw整合性確認、partial集計、stable sort、chunked JSONL/Blob生成の共有実装であり、production `postHistoryJsonlExportWorker.ts`と互換用`PostHistoryJsonlExportService.exportForPubkey`が同じengineを呼ぶ。`upsertImportedDeletionEvents`がJSONL由来kind 5をpendingまたは検証済みとして保存し、`saveLocalDeletion`がpublish成功後のkind 5 raw eventと投稿削除状態を同一transactionで保存する。`getDeletedTargets`は`targetVerified !== false`の削除要求だけを既存resolverへ返す。
 - 関連テスト: `src/test/unit/postHistoryRawEventVerification.test.ts`、`src/test/unit/postHistorySignerVerification.integration.test.ts`、`src/test/unit/postHistoryRawEventAttestationRepository.integration.test.ts`、`src/test/unit/postHistoryJsonlExportEngine.test.ts`、`src/test/unit/postHistoryJsonlImportService.test.ts`、`src/test/unit/postHistoryJsonlExportService.test.ts`、`src/test/unit/postHistoryDeletionRequestsRepository.test.ts`、`src/test/unit/postHistoryRepository.test.ts`、`src/test/unit/postHistoryRelatedTargetResolver.test.ts`、`src/test/unit/postHistoryImportDialog.test.ts`、`src/test/unit/postHistoryDialog.test.ts`、`src/test/e2e/postHistoryDialog.spec.ts`。
-- 注意点: 削除要求の`deletedAt`はNostr秒、投稿履歴の`deletedAt`はミリ秒であり、適用境界だけで1000倍する。`k`なし、不正`k`あり、保存対象kindと対象外kindの混在は対象kind不明としてpending保存し、対象event実体があれば申告`k`より実kindを優先する。`targetVerified`なしの既存recordは後方互換上検証済みとして扱い、pendingを`authorHint`だけの事前削除判定へ流さない。local deletionはsigner呼び出し前の独立snapshotに対して署名結果を検証し、publish開始前のsessionも確認するが、publish成功後のsession変更だけを理由に`saveLocalDeletion`を中止しない。JSONL由来relay URLは追加せず、object store・索引・DB versionを増やさない。
+- 注意点: 削除要求の`deletedAt`はNostr秒、投稿履歴の`deletedAt`はミリ秒であり、適用境界だけで1000倍する。`k`なし、不正`k`あり、保存対象kindと対象外kindの混在は対象kind不明としてpending保存し、対象event実体があれば申告`k`より実kindを優先する。`targetVerified`なしの既存recordは後方互換上検証済みとして扱い、pendingを`authorHint`だけの事前削除判定へ流さない。local deletionはsigner呼び出し前の独立snapshotに対して署名結果を検証し、publish開始前のsessionも確認するが、publish成功後のsession変更だけを理由に`saveLocalDeletion`を中止しない。JSONL由来relay URLは追加せず、DB version 16の`sensitivePayloads`補助storeはService Worker schemaと一致させる。payload candidateは対応Structureとのpair検証後だけ本文検索・export・削除へ使う。
+
+- Citrine復元: `citrine-<Unix milliseconds>.jsonl`の標準名に一致し、EOF・バイト数・全保存の正常完了を確認した場合だけ、現在accountのkind 1/42/1111のうち、filenameのexport時刻とimport開始時刻の早い方以前にある投稿の最古〜最新秒を`postHistoryImportedRangesRepository`へ保存する。別account・対象外kindの正常除外は許容するが、kind 5/36やファイル名の日時で範囲を広げない。上限より新しい署名済み投稿も保存するが、復元rangeの境界候補から外す。一般名・改名・partial/cancelには新しい区間を作らない。全件unchangedでも登録できる。metadata保存だけの失敗はpartialと専用の説明で表示し、投稿保存失敗件数へ混ぜない。標準名は発行元の証明ではなく、正常な行境界で切れたexportも識別できない。
+- importの各保存と最終区間登録は`postHistoryLocalWriteScope`のowner/revision/activeガードをtransaction内で確認する。閉じる・破棄・account変更はabortし、完了通知もowner/revision/request IDを確認する。既存のlocal revisionを持たない版へのdowngrade対応は行わない。
 
 ## relay管理
 
@@ -223,9 +235,9 @@
 - event kind: 主に`1`と`42`。composer targetは取得済みevent kindに従うが、kind 40のJSON contentは投稿本文previewとして表示しない。
 - 主なtag: `emoji`、`imeta`。
 - 主な実装ファイル: `src/lib/postContentPreview.ts`、`src/lib/postHistoryMediaUtils.ts`、`src/lib/postHistoryDialogUtils.ts`、`src/components/PostContentPreview.svelte`、`src/components/PostHistoryPreviewContent.svelte`、`src/components/PostHistoryMediaList.svelte`。
-- 主な関数または責務: `buildPostContentRenderModel`はmedia抽出用`sourceContent`と本文segment用`displayContent`を分離し、`media`省略時だけ`content`/`tags`からdescriptorを構築する。明示された`media`は空配列も含めて正とし、保存済みMIME、Blurhash、dim、alt、size、upload protocolを維持する。表示面はprofile、日時、操作、折りたたみ、fullscreen viewer状態を所有する。
+- 主な関数または責務: `buildPostContentRenderModel`はmedia抽出用`sourceContent`と本文segment用`displayContent`を分離し、CW tag第3要素が存在するときはそれを本文として使う（空文字も有効）。`PostContentPreview`が全表示面共通でCW理由と明示解除UIを表示し、解除までは本文と関連mediaを隠す。`media`省略時だけ`content`/`tags`からdescriptorを構築し、明示mediaにCW本文由来URLがある場合は保存済みmetadataを保って補完する。
 - 関連テスト: `src/test/unit/postContentPreview.test.ts`、`src/test/unit/postHistoryMediaUtils.test.ts`、`src/test/unit/postHistoryDialogUtils.test.ts`、`src/test/unit/postHistoryMediaList.test.ts`、`src/test/unit/postHistoryPreviewContent.test.ts`、`src/test/unit/replyQuotePreview.test.ts`、`src/test/unit/composerTargetDialog.test.ts`、`src/test/e2e/composerTargetDialog.spec.ts`。
-- 注意点: 現在は投稿内の全画像を1galleryへ集約し、既存の抽出順、URL重複排除、1〜10枚以上のrow構成、全画像を対象にするfullscreen順を維持する。本文に存在しない`imeta`も表示対象に残すのはNIP-92の必須動作ではなく、既存eHagaki dataとの互換性維持である。
+- 注意点: 投稿履歴本体、関連投稿、reply/quote preview、composer target previewはいずれも共有`PostContentPreview`を使う。旧形式は`event.content`、第3要素付き形式はtag内本文を表示し、NIP-50検索対象になることや本文の秘匿は保証しない。既存の画像gallery集約、抽出順、URL重複排除、fullscreen順、`imeta`互換表示を維持する。
 
 ## upload認証
 
@@ -243,5 +255,9 @@
 
 - 一回取得は主に`createRxBackwardReq`を使い、`emit`後に`over()`し、成功・EOSE・error・timeout・cancelで`unsubscribe()`する。
 - 継続購読は`src/lib/postHistoryAuthoredPostsRealtimeService.ts`と`src/lib/postHistoryInboundInteractionsRealtimeService.ts`で`createRxForwardReq`を使う。所有hookとvisibility/account lifecycleを確認する。
-- relay横断取得、retry、可視範囲repairは`src/lib/postHistoryRelayFetchService.ts`などpost history専用serviceへ分離されている。authored の`repair-visible-range`はwrite（無ければread、無ければfallback）baselineとread best-effortを別REQにし、baseline raw EOSE後にbest-effortだけを止め、coverage verified streamのdrain完了を待ってcoverage/saturationを`PostHistoryCurrentViewRefetchService`へ渡す。このrepair専用coverageはshared fetch statusや通常の履歴取得へ漏らさない。`postHistoryVisibleRangeChildInteractionRepairService`はdestination Relayとcoverage baselineを分け、candidate requestごとのEOSEとRelay別fetch limit到達でcheckedを判定する。いずれもNIP-42の`auth-required:` CLOSEDを再送後のEOSEを妨げる恒久failureとして扱わない。汎用化前に既存scopeを確認する。
+- authored の有限時間取得は `postHistoryRelayFetchService.ts` がリレーごとの REQ/EOSE と検証ストリームの drain を管理する。対象は `postHistoryRelayResolver` の canonical 集合（Host read defaults 全件、通常は write/read 和集合または fallback）で対等に扱い、現在の集合の `ceil(N / 2)` 以上の coverage を各秒で集計する。recent の最大4件 cap は quorum の分母を縮めない。timeout/error/connection failure/cancel は EOSE の票ではなく、quorum 到達だけでは残りの取得を停止しない。
+- `postHistoryRelayCoverage.ts` は inclusive range の merge（重複と1秒隣接）、quorum と連続区間、リレーごとの raw limit saturation を扱う。saturation 時は最古の検証済み event の秒を除外する。coverage は取得を実施した証拠であり、全投稿の完全取得ではない。`postHistoryRelayCoverageRepository` は account/kind集合/relay の range を既存 meta に保存する。投稿 upsert と coverage 更新は同一 transaction で、削除 revision と consumer/session/runtime/config generation が stale 書き戻しを防ぐ。ローカル履歴削除は全 kind集合の coverage と旧境界・jump anchor も削除する。
+- `postHistoryAuthoredFetchPersistence` は bootstrap、older、date jump、current-view repair と、`PostHistoryLightweightSyncCoordinator.runAuthored` 経由の dialog refresh/resume/foreground fresh-head/pending catch-up を保存へ接続する。realtime、ID取得、import、ローカル投稿から時間 relay coverage は生成しない。`usePostHistoryListing` は現在の canonical 集合のquorum rangeと、別のmetaに保存したCitrine復元rangeの和集合を通常閲覧のcontinuityとして利用する。復元rangeはrelay票・scheduler watermarkへ変換せず、relay configから独立する。visibleUntilはqueryの表示境界に留め、旧表示境界・投稿密度・jump anchorをcoverageの証拠にしない。older-backfillは次の未確認・未復元の穴でREQを止め、接続した保存済み区間をローカルで表示する。最古の復元秒より前は取得可能なままである。schedulerのwatermark/cursorは引き続き履歴UIのfallbackに使わない。物理履歴削除は復元rangeも同一transactionで削除し、保存時local revisionの不一致もreaderで拒否する。
+- `postHistoryVisibleRangeChildInteractionRepairService` は従来どおり destination Relay と coverage baseline を分け、candidate request ごとの EOSE と Relay別 fetch limit 到達で checked を判定する。authored と child interaction のいずれも NIP-42 の `auth-required:` CLOSED を再送後の EOSE を妨げる恒久 failure にしない。
+- 投稿履歴openは開始時の最新表示範囲に連なる閲覧continuity range（未接続なら直前のrange）を接続先とする。Citrine復元上端の翌秒、または従来のrelay上端と、取得上限を固定し、30件のbounded refreshで繋がらなければ`dialog-open-catchup`でcanonical Relay全件へ150件ずつ問い合わせる（各6秒）。frontierが進む間だけ続け、同一秒のsaturationを飛ばさない。区間のない初回は30件refreshだけで終了する。import完了または別DB接続からのliveQuery更新で進行中のopen取得の接続先が復元により新しくなった場合だけ取得を取消して下限を再計画し、下限より古い区間追加では最新側の取得を維持する。復元metadataだけの追加を、遅れて完了したopen取得のwindow再構成理由にしない。ローカル投稿後と最新側の未接続時は60秒TTLを省略し、全pageを開始時の削除revisionとconsumer generationにboundする。
 - browser固有のcomposer targetとpost history表示は既存の`src/test/e2e/composerTargetDialog.spec.ts`、`src/test/e2e/postHistoryDialog.spec.ts`を使う。protocol-only変更のためだけにPlaywrightを追加しない。

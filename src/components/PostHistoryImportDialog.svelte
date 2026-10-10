@@ -4,6 +4,8 @@
     import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
+    import { ehagakiDb } from "../lib/storage/ehagakiDb";
+    import { getPostHistoryLocalRevision } from "../lib/storage/postHistoryLocalWriteScope";
     import {
         postHistoryJsonlImportService,
         type PostHistoryJsonlImportProgress,
@@ -15,7 +17,7 @@
         ownerPubkeyHex: string | null | undefined;
         getCurrentPubkeyHex: () => string | null | undefined;
         onOpenChange?: (open: boolean) => void;
-        onImported?: () => void | Promise<void>;
+        onImported?: (result: PostHistoryJsonlImportResult) => void | Promise<void>;
     }
 
     let {
@@ -38,6 +40,7 @@
     let elapsedTimer: ReturnType<typeof setInterval> | null = null;
     let startedAt: number | null = null;
     let requestId = 0;
+    let runningOwner: string | null = null;
     let wasOpen = false;
 
     let displayedProcessedBytes = $derived(importProgress?.processedBytes ?? processedBytes);
@@ -123,7 +126,8 @@
         if (running) return "postHistory.importReading";
         if (!result) return null;
         if (result.status === "completed") return "postHistory.importComplete";
-        if (result.status === "partial") return "postHistory.importPartial";
+        if (result.status === "partial") return result.restoredRangeSaveFailed
+            ? "postHistory.importBackupRangeFailed" : "postHistory.importPartial";
         if (result.status === "account-changed") return "postHistory.importAccountChanged";
         if (result.status === "cancelled") return "postHistory.importCancelled";
         return "postHistory.importFailed";
@@ -210,6 +214,8 @@
         }
 
         const currentRequestId = ++requestId;
+        const owner = ownerPubkeyHex;
+        runningOwner = owner;
         const controller = new AbortController();
         abortController = controller;
         running = true;
@@ -221,7 +227,7 @@
         try {
             const importResult = await postHistoryJsonlImportService.importFile({
                 file,
-                ownerPubkeyHex,
+                ownerPubkeyHex: owner,
                 getCurrentPubkeyHex,
                 signal: controller.signal,
                 onProgress: (progress) => {
@@ -243,11 +249,18 @@
             }
 
             result = importResult;
+            if (getCurrentPubkeyHex() !== owner || ownerPubkeyHex !== owner) return;
+            if (importResult.localRevision !== undefined) {
+                try {
+                    if (await getPostHistoryLocalRevision(ehagakiDb, owner) !== importResult.localRevision) return;
+                } catch { return; }
+            }
+            if (currentRequestId !== requestId || !open || getCurrentPubkeyHex() !== owner) return;
             const changedPostCount = importResult.insertedPostCount
                 + importResult.updatedPostCount
                 + importResult.appliedDeletionPostCount;
-            if (changedPostCount > 0) {
-                await onImported?.();
+            if (changedPostCount > 0 || importResult.restoredRangeChanged) {
+                await onImported?.(importResult);
             }
         } finally {
             if (currentRequestId === requestId) {
@@ -268,6 +281,10 @@
     }
 
     $effect(() => {
+        if (running && ownerPubkeyHex !== runningOwner) cancelImport();
+    });
+
+    $effect(() => {
         if (open && !wasOpen) {
             resetState();
         } else if (!open && wasOpen) {
@@ -276,7 +293,11 @@
         wasOpen = open;
     });
 
-    onDestroy(stopElapsedTimer);
+    onDestroy(() => {
+        requestId += 1;
+        abortController?.abort();
+        stopElapsedTimer();
+    });
 </script>
 
 <DialogWrapper

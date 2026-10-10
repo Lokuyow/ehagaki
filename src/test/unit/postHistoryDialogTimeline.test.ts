@@ -10,9 +10,11 @@ import {
     createRecord,
     getHistoryContainer,
     jumpCacheAnchorRepositoryMock,
+    openJumpDatePanel,
     localSearchServiceMock,
     openPostHistoryMenu,
     openSearchBar,
+    expectPostHistoryCountLabel,
     postMediaCacheServiceMock,
     replyRepairServiceMock,
     repositoryMock,
@@ -59,8 +61,12 @@ class MockIntersectionObserver {
     }
 
     trigger(target: Element, isIntersecting: boolean): void {
+        this.triggerSequence(target, [isIntersecting]);
+    }
+
+    triggerSequence(target: Element, intersections: boolean[]): void {
         this.callback(
-            [{ target, isIntersecting } as IntersectionObserverEntry],
+            intersections.map((isIntersecting) => ({ target, isIntersecting } as IntersectionObserverEntry)),
             this as unknown as IntersectionObserver,
         );
     }
@@ -230,9 +236,9 @@ describe('PostHistoryDialog timeline navigation', () => {
         await waitFor(() => {
             expect(screen.getByText('古い投稿')).toBeTruthy();
             expect(screen.getByText('最古投稿')).toBeTruthy();
-            expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('4件');
             expect(document.querySelector('.post-history-summary-range')).toBeNull();
         });
+        await expectPostHistoryCountLabel('4件');
 
         view.unmount();
     });
@@ -285,6 +291,49 @@ describe('PostHistoryDialog timeline navigation', () => {
         expect(screen.getByRole('button', { name: '新しい投稿を表示' })).toBeTruthy();
         expect(document.querySelector('.post-history-auto-load-newer-sentinel')).toBeNull();
 
+        view.unmount();
+    });
+
+    it('初期リレー同期とローカル追加読み込みが重なる間は末尾の同期表示だけを出す', async () => {
+        const localChunk = createDeferred<ReturnType<typeof createRecord>[]>();
+        const relayFetch = createDeferred<ReturnType<typeof createRelayFetchResult>>();
+        const posts = Array.from({ length: 100 }, (_, index) => createRecord({
+            eventId: index.toString(16).padStart(64, '0'),
+            content: `overlapping load ${index}`,
+            createdAt: 1_700_000_000 - index,
+        }));
+        MockIntersectionObserver.reset();
+        vi.stubGlobal('IntersectionObserver', MockIntersectionObserver as unknown as typeof IntersectionObserver);
+        vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
+            return this.classList.contains('post-history-container') ? 320 : 0;
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(posts.length);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue(posts.slice(0, 50));
+        repositoryMock.getOlderVisibleChunk.mockImplementation(({ limit }: { limit: number }) =>
+            limit === 1 ? Promise.resolve([posts[50]]) : localChunk.promise,
+        );
+        relayFetchServiceMock.fetchLatest.mockReturnValue({ promise: relayFetch.promise, cancel: vi.fn() });
+        const view = render(PostHistoryDialog, { props: {
+            show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX, rxNostr: {} as any,
+        } });
+        await screen.findByText('overlapping load 0');
+        await waitFor(() => expect(document.querySelector('.post-history-sync-footer')).toBeTruthy());
+        const sentinel = document.querySelector<HTMLElement>('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)')!;
+        const observer = MockIntersectionObserver.instances.find((item) => item.observedTargets.has(sentinel));
+        expect(observer).toBeTruthy();
+        observer!.trigger(sentinel, true);
+        await waitFor(() => expect(getHistoryContainer().getAttribute('aria-busy')).toBe('true'));
+        expect(document.querySelector('.post-history-sync-footer .inline-spinner')).toBeTruthy();
+        expect(sentinel.querySelector('.inline-spinner')).toBeNull();
+
+        relayFetch.resolve(createRelayFetchResult());
+        await waitFor(() => {
+            expect(document.querySelector('.post-history-sync-footer')).toBeNull();
+            expect(sentinel.querySelector('.inline-spinner')).toBeTruthy();
+        });
+        localChunk.resolve(posts.slice(50));
+        await waitFor(() => expect(getHistoryContainer().getAttribute('aria-busy')).toBe('false'));
+        expect(sentinel.querySelector('.inline-spinner')).toBeNull();
         view.unmount();
     });
 
@@ -437,6 +486,209 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
+    it.each([
+        { direction: 'older', delta: 1 },
+        { direction: 'newer', delta: -1 },
+    ].flatMap(({ direction, delta }) =>
+        (['batchIdle', 'batchLoading', 'scrollAfterCommit', 'pendingExit', 'pendingOutside', 'pendingResize', 'pendingClose'] as const).map((scenario) => ({ direction, delta, scenario })),
+    ))('$direction向きの高速再進入を回収する: $scenario', async ({ direction, delta, scenario }) => {
+        MockIntersectionObserver.reset();
+        MockResizeObserver.reset();
+        vi.stubGlobal('IntersectionObserver', MockIntersectionObserver as unknown as typeof IntersectionObserver);
+        vi.stubGlobal('ResizeObserver', MockResizeObserver as unknown as typeof ResizeObserver);
+        let containerHeight = 320;
+        vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
+            return this.classList.contains('post-history-container') ? containerHeight : 0;
+        });
+        const posts = Array.from({ length: 300 }, (_, index) => createRecord({
+            eventId: index.toString(16).padStart(64, '0'),
+            id: index.toString(16).padStart(64, '0'),
+            content: `fast ${direction} ${scenario} ${index}`,
+            createdAt: 1_700_000_000 - index,
+        }));
+        const firstChunk = createDeferred<ReturnType<typeof createRecord>[]>();
+        const firstPosts = direction === 'older' ? posts.slice(50, 100) : posts.slice(100, 150);
+        const secondPosts = direction === 'older' ? posts.slice(100, 150) : posts.slice(50, 100);
+        let chunkRequests = 0;
+        repositoryMock.countForPubkey.mockResolvedValue(posts.length);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue(direction === 'older' ? posts.slice(0, 50) : posts.slice(150, 200));
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ limit }: { limit: number }) => {
+            if (limit === 1) return [posts[200]];
+            if (direction !== 'older') return [];
+            chunkRequests += 1;
+            return chunkRequests === 1 ? firstChunk.promise : secondPosts;
+        });
+        repositoryMock.getNewerVisibleChunk.mockImplementation(async ({ limit }: { limit: number }) => {
+            if (direction !== 'newer') return [];
+            if (limit === 1) return [posts[149]];
+            chunkRequests += 1;
+            return chunkRequests === 1 ? firstChunk.promise : secondPosts;
+        });
+        const view = render(PostHistoryDialog, { props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX } });
+        await screen.findByText(`fast ${direction} ${scenario} ${direction === 'older' ? 0 : 150}`);
+        const container = getHistoryContainer();
+        mockHistoryItemLayout(container);
+        if (direction === 'newer') container.scrollTop = 100;
+        const selector = direction === 'older'
+            ? '.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)'
+            : '.post-history-auto-load-newer-sentinel';
+        await waitFor(() => expect(document.querySelector(selector)).toBeInstanceOf(HTMLElement));
+        const sentinel = document.querySelector(selector) as HTMLElement;
+        let sentinelTop = 200;
+        Object.defineProperty(sentinel, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => createMockRect(sentinelTop, 1),
+        });
+        const observer = MockIntersectionObserver.instances.find((item) => item.observedTargets.has(sentinel))!;
+        observer.trigger(sentinel, true);
+        await waitFor(() => expect(chunkRequests).toBe(1));
+
+        if (scenario.startsWith('pending') || scenario === 'batchLoading') {
+            observer.triggerSequence(sentinel, [false, true]);
+            await Promise.resolve();
+            expect(chunkRequests).toBe(1);
+            if (scenario === 'pendingExit') observer.trigger(sentinel, false);
+        }
+        if (scenario === 'pendingClose') {
+            await view.rerender({ show: false, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX });
+            firstChunk.resolve(firstPosts);
+            await view.rerender({ show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX });
+            await screen.findByText(`fast ${direction} ${scenario} ${direction === 'older' ? 0 : 150}`);
+            await waitFor(() => expect(getHistoryContainer().getAttribute('aria-busy')).toBe('false'));
+            observer.triggerSequence(sentinel, [false, true]);
+            expect(chunkRequests).toBe(1);
+            view.unmount();
+            return;
+        }
+        if (scenario === 'pendingResize') {
+            containerHeight = 400;
+            for (const resizeObserver of MockResizeObserver.instances) {
+                if (resizeObserver.observedTargets.has(container)) resizeObserver.trigger(container);
+            }
+            await waitFor(() => expect(MockIntersectionObserver.instances.filter((item) => item.observedTargets.has(sentinel))).toHaveLength(2));
+            const resizedObserver = MockIntersectionObserver.instances.filter((item) => item.observedTargets.has(sentinel)).at(-1)!;
+            resizedObserver.trigger(sentinel, true);
+            observer.triggerSequence(sentinel, [false, true]);
+        }
+        if (scenario === 'scrollAfterCommit' || scenario === 'pendingOutside') sentinelTop = direction === 'older' ? 2_000 : -2_000;
+        firstChunk.resolve(firstPosts);
+        await screen.findByText(`fast ${direction} ${scenario} ${direction === 'older' ? 99 : 100}`);
+        await waitFor(() => expect(container.getAttribute('aria-busy')).toBe('false'));
+
+        if (scenario === 'batchIdle') observer.triggerSequence(sentinel, [false, true]);
+        if (scenario === 'scrollAfterCommit') {
+            expect(chunkRequests).toBe(1);
+            sentinelTop = 200;
+            container.scrollTop += delta;
+            await fireEvent.scroll(container);
+        }
+        if (scenario.startsWith('pending')) {
+            expect(chunkRequests).toBe(1);
+        } else {
+            await waitFor(() => expect(chunkRequests).toBe(2));
+            await screen.findByText(`fast ${direction} ${scenario} ${direction === 'older' ? 149 : 50}`);
+            observer.trigger(sentinel, true);
+            await Promise.resolve();
+            expect(chunkRequests).toBe(2);
+        }
+        view.unmount();
+    });
+
+    it.each([
+        { direction: 'older', label: '古い投稿', delta: 1 },
+        { direction: 'newer', label: '新しい投稿', delta: -1 },
+    ] as const)('resize抑制後の$label向きscrollだけを一度回収し、旧observer callbackを無視する', async ({ direction, delta }) => {
+        let containerHeight = 320;
+        const posts = Array.from({ length: 200 }, (_, index) =>
+            createRecord({
+                eventId: index.toString(16).padStart(64, '0'),
+                id: index.toString(16).padStart(64, '0'),
+                content: `pending ${direction} ${index}`,
+                createdAt: 1_700_000_000 - index,
+                postedAt: Date.UTC(2024, 0, 2) - index * 1_000,
+            }),
+        );
+        MockIntersectionObserver.reset();
+        MockResizeObserver.reset();
+        vi.stubGlobal('IntersectionObserver', MockIntersectionObserver as unknown as typeof IntersectionObserver);
+        vi.stubGlobal('ResizeObserver', MockResizeObserver as unknown as typeof ResizeObserver);
+        vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
+            return this.classList.contains('post-history-container') ? containerHeight : 0;
+        });
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            const height = this.classList.contains('post-history-container') ? containerHeight : 20;
+            return createMockRect(0, height);
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(posts.length);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue(
+            direction === 'older' ? posts.slice(0, 50) : posts.slice(50, 100),
+        );
+        repositoryMock.getNewerVisibleChunk.mockImplementation(async ({ limit }: { limit: number }) =>
+            direction === 'newer'
+                ? limit === 1 ? [posts[49]] : posts.slice(0, 50)
+                : [],
+        );
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ limit }: { limit: number }) =>
+            direction === 'older'
+                ? limit === 1 ? [posts[50]] : posts.slice(50, 100)
+                : limit === 1 ? [posts[100]] : [],
+        );
+
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
+        });
+        await screen.findByText(`pending ${direction} ${direction === 'older' ? 0 : 50}`);
+        const container = getHistoryContainer();
+        const sentinelSelector = direction === 'older'
+            ? '.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)'
+            : '.post-history-auto-load-newer-sentinel';
+        await waitFor(() => expect(document.querySelector(sentinelSelector)).toBeInstanceOf(HTMLElement));
+        const sentinel = document.querySelector(sentinelSelector) as HTMLElement;
+        mockHistoryItemLayout(container);
+        Object.defineProperty(sentinel, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => createMockRect(200, 1),
+        });
+
+        const oldObserver = MockIntersectionObserver.instances.find((observer) => observer.observedTargets.has(sentinel));
+        expect(oldObserver).toBeTruthy();
+        oldObserver?.trigger(sentinel, false);
+        if (direction === 'newer') {
+            container.scrollTop = 100;
+            await fireEvent.scroll(container);
+        }
+        containerHeight = 400;
+        for (const observer of MockResizeObserver.instances) {
+            if (observer.observedTargets.has(container)) observer.trigger(container);
+        }
+        await waitFor(() => expect(MockIntersectionObserver.instances.filter((observer) => observer.observedTargets.has(sentinel))).toHaveLength(2));
+        const resizedObserver = MockIntersectionObserver.instances.at(-1);
+        expect(resizedObserver?.observedTargets.has(sentinel)).toBe(true);
+
+        resizedObserver?.trigger(sentinel, true);
+        await Promise.resolve();
+        const chunkLimit = 50;
+        const chunkRequests = () => direction === 'older'
+            ? repositoryMock.getOlderVisibleChunk.mock.calls.filter(([options]) => options.limit === chunkLimit).length
+            : repositoryMock.getNewerVisibleChunk.mock.calls.filter(([options]) => options.limit === chunkLimit).length;
+        expect(chunkRequests()).toBe(0);
+
+        // A delayed notification from the disconnected observer must not clear the new observer's shared state.
+        oldObserver?.trigger(sentinel, false);
+        expect(chunkRequests()).toBe(0);
+
+        container.scrollTop += delta;
+        await fireEvent.scroll(container);
+        await waitFor(() => expect(chunkRequests()).toBe(1));
+        await screen.findByText(`pending ${direction} ${direction === 'older' ? 99 : 0}`);
+        container.scrollTop += delta;
+        await fireEvent.scroll(container);
+        await Promise.resolve();
+        expect(chunkRequests()).toBe(1);
+        view.unmount();
+    });
+
     it('連続範囲の末尾で保存済みの古い投稿を明示的に表示し、relay を呼ばない', async () => {
         const newest = createRecord({
             eventId: 'boundary-newest',
@@ -453,7 +705,7 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: 1_000,
             updatedAt: 1,
         });
@@ -481,8 +733,10 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
             expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
             expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
-            expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('2件');
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledOnce();
+            expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
+        await expectPostHistoryCountLabel('2件');
 
         await fireEvent.click(screen.getByRole('button', { name: '保存済みの古い投稿を表示' }));
 
@@ -512,7 +766,7 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: 1_500,
             updatedAt: 1,
         });
@@ -558,7 +812,7 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: 1_500,
             updatedAt: 1,
         });
@@ -600,7 +854,7 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: 1_500,
             updatedAt: 1,
         });
@@ -646,7 +900,7 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         visibleRangeRepositoryMock.get.mockImplementation(async () => ({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil,
             updatedAt: 1,
         }));
@@ -697,7 +951,7 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: 1_650_000_000,
             updatedAt: 1,
         });
@@ -724,7 +978,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await waitFor(() => expect(screen.getByText('jump route 最新')).toBeTruthy());
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2020-09-13');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -784,7 +1038,7 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: 1_650_000_000,
             updatedAt: 1,
         });
@@ -824,7 +1078,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         await waitFor(() => expect(screen.getByText('jump oldest 最新')).toBeTruthy());
         await waitFor(() => expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled());
         relayFetchServiceMock.fetchLatest.mockClear();
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2020-09-13');
         await fireEvent.click(getJumpDateSubmitButton());
         await waitFor(() => expect(screen.getByText('jump oldest 対象')).toBeTruthy());
@@ -909,7 +1163,7 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: 1_000,
             updatedAt: 1,
         });
@@ -1034,7 +1288,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await waitFor(() => expect(screen.getByText('null frontier 最新')).toBeTruthy());
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2020-09-13');
         await fireEvent.click(getJumpDateSubmitButton());
         await waitFor(() => expect(screen.getByText('null frontier 対象')).toBeTruthy());
@@ -1045,7 +1299,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect.objectContaining({
                 pubkeyHex: PUBKEY_HEX,
                 createdAt: jumpTarget.createdAt - 1,
-                visibleUntil: null,
+                visibleUntil: 0,
                 query: { contiguous: false },
             }),
         );
@@ -1103,33 +1357,17 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         await waitFor(() => {
             expect(screen.getByRole('heading', { level: 3, name: '5/3(金)' })).toBeTruthy();
-            expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('2件');
             expect(document.querySelector('.post-history-summary-range')).toBeNull();
         });
+        const monthLabel = document.querySelector<HTMLElement>('.post-history-current-month');
+        expect(monthLabel).toBeTruthy();
+        await fireEvent.click(monthLabel!);
+        expect(screen.queryByLabelText('日付')).toBeNull();
 
-        await fireEvent.click(document.querySelector('.post-history-current-month') as HTMLElement);
-
-        await waitFor(() => {
-            expect(screen.getByLabelText('日付')).toBeTruthy();
-        });
-
-        await fireEvent.click(document.querySelector('.post-history-current-month') as HTMLElement);
-
-        await waitFor(() => {
-            expect(screen.queryByLabelText('日付')).toBeNull();
-        });
-
-        await clickMenuAction('日付へ移動');
-
-        await waitFor(() => {
-            expect(screen.getByLabelText('日付')).toBeTruthy();
-        });
-
-        await clickMenuAction('日付へ移動');
-
-        await waitFor(() => {
-            expect(screen.queryByLabelText('日付')).toBeNull();
-        });
+        await openJumpDatePanel();
+        await waitFor(() => expect(screen.getByLabelText('日付')).toBeTruthy());
+        await openJumpDatePanel();
+        await waitFor(() => expect(screen.queryByLabelText('日付')).toBeNull());
 
         historyContainer.scrollTop = 84;
         await fireEvent.scroll(historyContainer);
@@ -1193,8 +1431,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
         });
 
-        await openPostHistoryMenu();
-        await fireEvent.click(await screen.findByRole('menuitem', { name: '日付へ移動' }));
+        await openJumpDatePanel();
         await setJumpDateValue('2024-01-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -1305,7 +1542,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2023-10-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -1388,17 +1625,17 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         await waitFor(() => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
-            expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('15件');
         });
+        await expectPostHistoryCountLabel('15件');
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2024-12-28');
         await fireEvent.click(getJumpDateSubmitButton());
 
         await waitFor(() => {
             expect(screen.getByText('ジャンプ先投稿')).toBeTruthy();
-            expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('32件');
         });
+        await expectPostHistoryCountLabel('32件');
 
         view.unmount();
     });
@@ -1469,7 +1706,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('今見えている最古投稿')).toBeTruthy();
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2023-10-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -1555,7 +1792,7 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: 1_000,
             updatedAt: 1,
         });
@@ -1663,7 +1900,7 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: 1_650_000_000,
             updatedAt: 1,
         });
@@ -1691,7 +1928,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('jump reopen 最新')).toBeTruthy();
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2020-09-13');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -1770,7 +2007,7 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: 1_000,
             updatedAt: 1,
         });
@@ -1917,7 +2154,7 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: 1_650_000_000,
             updatedAt: 1,
         });
@@ -1960,7 +2197,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             savedAt: 200,
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2020-09-13');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -2055,7 +2292,7 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: 1_000,
             updatedAt: 1,
         });
@@ -2158,7 +2395,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             pubkeyHex === PUBKEY_HEX
                 ? {
                     pubkeyHex: PUBKEY_HEX,
-                    kindsKey: '1,42',
+                    kindsKey: '1,42,1111',
                     visibleUntil: 1_000,
                     updatedAt: 1,
                 }
@@ -2331,7 +2568,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             pubkeyHex === PUBKEY_HEX
                 ? {
                     pubkeyHex: PUBKEY_HEX,
-                    kindsKey: '1,42',
+                    kindsKey: '1,42,1111',
                     visibleUntil: 1_000,
                     updatedAt: 1,
                 }
@@ -2470,6 +2707,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             value: 720,
         });
 
+        await waitFor(() => expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled());
         await openPostHistoryMenu();
         await fireEvent.click(await screen.findByRole('menuitem', { name: '最古へ移動' }));
 
@@ -2736,7 +2974,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2024-01-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -2858,7 +3096,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('投稿 0')).toBeTruthy();
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2024-01-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -2929,7 +3167,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2024-01-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -3243,7 +3481,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('投稿前の5/16投稿')).toBeTruthy();
         });
 
-        await clickMenuAction('日付へ移動');
+        await openJumpDatePanel();
         await setJumpDateValue('2026-05-12');
         await fireEvent.click(getJumpDateSubmitButton());
 
@@ -3359,7 +3597,7 @@ describe('PostHistoryDialog timeline navigation', () => {
                 expect(screen.getByText('2026/5/16 の最新寄り投稿')).toBeTruthy();
             });
 
-            await clickMenuAction('日付へ移動');
+            await openJumpDatePanel();
             await setJumpDateValue(dateInput);
             await fireEvent.click(getJumpDateSubmitButton());
 

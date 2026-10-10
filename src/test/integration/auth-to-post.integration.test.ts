@@ -197,7 +197,6 @@ describe('認証から投稿までの統合テスト', () => {
 
         beforeEach(() => {
             // DOMをモック
-            const canvas = document.createElement('canvas');
             const ctx = {
                 fillStyle: '',
                 fillRect: vi.fn()

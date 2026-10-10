@@ -145,14 +145,14 @@
 ## PWA、share target、service worker
 
 - **主な症状または責務:** injectManifest、prompt update、precache/runtime cache、share target POST、既存client focus/notify、新規client open、SW-client MessageChannelを扱う。
-- **主な実装ファイル:** `vite.config.ts`、`public/sw.js`、`src/main.ts`、`src/stores/swStore.svelte.ts`、`src/lib/shareHandler.ts`、`src/lib/utils/swCommunication.ts`、`src/lib/swClientUtils.ts`、`src/lib/swListenerUtils.ts`、`src/lib/swMessageDispatchUtils.ts`。
+- **主な実装ファイル:** `vite.config.ts`、`public/sw.js`、`src/lib/swPrecacheInstall.ts`、`src/lib/bootstrap/serviceWorkerBootstrap.ts`、`src/main.ts`、`src/stores/swStore.svelte.ts`、`src/lib/shareHandler.ts`、`src/lib/utils/swCommunication.ts`、`src/lib/swClientUtils.ts`、`src/lib/swListenerUtils.ts`、`src/lib/swMessageDispatchUtils.ts`。
 - **主な関数、store、hook、controller:** VitePWA `injectManifest`、`useRegisterSW()`、`createAcceptedServiceWorkerUpdateReloadController()`、`getSharedMediaWithFallback()`、`redirectToAvailableSharedClient()`、`focusAndNotifySharedClient()`、`registerServiceWorkerEventListeners()`、`ChannelImageCacheController`、`ChannelPicture`。
 - **Event source:** SW `install/activate/fetch/message`、manifest share-target POST、`controllerchange`、registration update、MessageChannel response、`EHAGAKI_DB_UPGRADE_BLOCKED`／`EHAGAKI_DB_UPGRADE_UNBLOCKED`。
 - **StateまたはCSS変数:** SW version/cache names、precache manifest、`ServiceWorkerState.sharedMediaCache`、`swUpdateStatus`、`dbUpgradeBlocked`、更新を承認した現在ページだけが保持するreload許可、shared media IndexedDB record、`channelImageCacheMeta`。DB blockedはSW更新statusと分離し、blockedだった同一openの成功通知だけで解除する。チャンネル画像はmount時のSW control状態を固定し、表示途中の`controllerchange`ではproxyへ切り替えない。
-- **Cleanup所有者:** SW event listenerはworker lifetime。MessageChannelはresponse/timeoutでportをcloseする。`controllerchange` listenerはresolve/timeoutで解除する。
-- **関連テスト:** `src/test/unit/sw.test.ts`、`src/test/unit/swListenerUtils.test.ts`、`src/test/unit/swMessageDispatchUtils.test.ts`、`src/test/unit/swClientUtils.test.ts`、`src/test/unit/shareHandler.test.ts`、`src/test/unit/fileUploadManager.test.ts`。
+- **Cleanup所有者:** SW event listenerはworker lifetime、bootstrapの`controllerchange` listenerはpage lifetime。MessageChannelはresponse/timeoutでportをcloseする。SW通信の一時的な`controllerchange` listenerはresolve/timeoutで解除する。
+- **関連テスト:** `src/test/unit/sw.test.ts`、`src/test/unit/swPrecacheInstall.test.ts`、`src/test/unit/swStore.test.ts`、`src/test/unit/swListenerUtils.test.ts`、`src/test/unit/swMessageDispatchUtils.test.ts`、`src/test/unit/swClientUtils.test.ts`、`src/test/unit/shareHandler.test.ts`、`src/test/unit/fileUploadManager.test.ts`。`npm run test:e2e:sw`は本番ビルドで更新・移行・接続断を確認する。
 - **Playwrightまたは実端末確認が必要になる条件:** install/update/offline/cache、share sheetからのPOST、standalone window reuse、stale worker/clientはinstalled PWAまたは専用browser環境が必要。
-- **注意点:** `vite.config.ts`のbaseはVercel以外`/ehagaki/`。`ffmpeg-core/**/*`はprecache対象外。prompt更新は固定timerではなくWorkboxのcontrol change完了後に、承認したページだけをreloadする。SW変更ではmirrored unit testsと`npm run build`を必ず確認する。
+- **注意点:** `vite.config.ts`のbaseはVercel以外`/ehagaki/`。`ffmpeg-core/**/*`はprecache対象外。prompt更新はブラウザの`controllerchange`を共有reload制御に渡し、承認したページだけをreloadする。Workboxの通知との重複は同じ制御で除く。SW変更ではmirrored unit testsと`npm run build`を必ず確認する。
 
 ## IndexedDB、Dexie、複数context
 

@@ -12,6 +12,7 @@
     interface Props {
         node: PostHistoryThreadGraphNode;
         model?: PostContentRenderModel;
+        loadSensitiveBody?: () => Promise<string | null>;
         emojiLoadStateByUrl?: Record<
             string,
             PostContentEmojiLoadState | undefined
@@ -28,12 +29,14 @@
         topActions?: Snippet;
         footerLeftExtras?: Snippet;
         footerActions?: Snippet;
+        footerDetails?: Snippet;
         footerMenu?: Snippet;
     }
 
     let {
         node,
         model = undefined,
+        loadSensitiveBody = undefined,
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         scrollRoot = null,
@@ -41,6 +44,7 @@
         topActions = undefined,
         footerLeftExtras = undefined,
         footerActions = undefined,
+        footerDetails = undefined,
         footerMenu = undefined,
     }: Props = $props();
 
@@ -50,6 +54,7 @@
     event={node.event}
     profile={node.profile}
     {model}
+    {loadSensitiveBody}
     {emojiLoadStateByUrl}
     {emojiImageMetaByUrl}
     {scrollRoot}
@@ -57,5 +62,6 @@
     {topActions}
     {footerLeftExtras}
     {footerActions}
+    {footerDetails}
     {footerMenu}
 />

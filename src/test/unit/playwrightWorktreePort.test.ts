@@ -129,6 +129,7 @@ describe('Playwright config connection values', () => {
                 'android-chromium',
                 'mobile-webkit',
                 'desktop-firefox',
+                'desktop-firefox-editor-paste',
             ]);
             expect(config.projects?.[2]?.testMatch).toBe(
                 '**/webComponentLite.spec.ts',
@@ -145,8 +146,11 @@ describe('Playwright config connection values', () => {
                 '**/webComponentEmbed.spec.ts',
                 '**/webComponentLite.spec.ts',
                 '**/webComponentParentClientExample.spec.ts',
+                '**/footerSettingShortcuts.spec.ts',
                 '**/postEditorSending.spec.ts',
                 '**/postHistoryDialog.spec.ts',
+                '**/postRepost.spec.ts',
+                '**/sensitiveContentPayload.spec.ts',
             ]);
         } finally {
             if (originalPortOverride === undefined) {

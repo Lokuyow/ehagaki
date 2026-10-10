@@ -1,4 +1,5 @@
 import { ReplyQuoteService } from "../replyQuoteService";
+import type { RxNostr } from "rx-nostr";
 import { checkIfOpenedFromShare } from "../shareHandler";
 import {
     getChannelFromUrlQuery,
@@ -20,16 +21,17 @@ import { processReplyQuoteReference } from './externalReplyQuoteBootstrapUtils';
 import type {
     ChannelContextQueryTarget,
     NostrEvent,
-    ReplyQuoteQueryTarget,
     ReplyQuoteQueryResult,
     ReplyQuoteHydrationTarget,
     ReplyQuoteUpdateTarget,
+    RelayConfig,
+    SharedMediaMetadata,
 } from "../types";
 import type { EmbedPreloadedProfilePresentation } from '../embedProtocol';
 
 interface SharedMediaStoreLike {
     files: File[];
-    metadata?: any;
+    metadata?: SharedMediaMetadata[];
     title: string;
     text: string;
     url: string;
@@ -48,11 +50,15 @@ export interface RunExternalInputBootstrapParams {
     updateUrlQueryContentStore: (content: string) => void;
     applyChannelContextQuery: (query: ChannelContextQueryTarget) => void;
     setReplyQuote: (value: ReplyQuoteQueryResult) => ReplyQuoteHydrationTarget[];
-    updateReferencedEvent: (target: ReplyQuoteUpdateTarget, event: any, threadInfo: any) => void;
+    updateReferencedEvent: (
+        target: ReplyQuoteUpdateTarget,
+        event: NostrEvent,
+        threadInfo: ReturnType<ReplyQuoteService['extractThreadInfo']>,
+    ) => void;
     initializeReplyNotificationRecipients?: (target: ReplyQuoteUpdateTarget, event: NostrEvent) => void;
     setReplyQuoteError: (target: ReplyQuoteUpdateTarget, message: string) => void;
-    rxNostr?: any;
-    relayConfig: any;
+    rxNostr?: RxNostr;
+    relayConfig?: RelayConfig | null;
     locationHref: string;
     allowSharedMediaRecovery?: boolean;
 }

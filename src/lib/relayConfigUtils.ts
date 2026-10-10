@@ -7,11 +7,16 @@ const DECOMMISSIONED_RELAY_URLS = new Set<string>(DECOMMISSIONED_RELAYS);
 
 // --- 純粋関数（依存性なし） ---
 export class RelayConfigParser {
-    static parseKind10002Tags(tags: any[]): RelayConfig {
+    static parseKind10002Tags(tags: readonly unknown[]): RelayConfig {
         const relayConfigs: { [url: string]: { read: boolean; write: boolean } } = {};
 
         tags
-            .filter((tag) => Array.isArray(tag) && (tag.length === 2 || tag.length === 3) && tag[0] === "r")
+            .filter((tag): tag is string[] =>
+                Array.isArray(tag)
+                && tag.every((value): value is string => typeof value === 'string')
+                && (tag.length === 2 || tag.length === 3)
+                && tag[0] === "r",
+            )
             .forEach((tag) => {
                 const url = typeof tag[1] === "string"
                     ? RelayConfigUtils.normalizeExternalRelayUrl(tag[1])
@@ -49,22 +54,21 @@ export class RelayConfigParser {
         }
     }
 
-    static isValidRelayConfig(config: any): config is RelayConfig {
+    static isValidRelayConfig(config: unknown): config is RelayConfig {
         if (!config) return false;
 
         if (Array.isArray(config)) {
             return config.every(item => typeof item === 'string');
         }
 
-        if (typeof config === 'object') {
-            return Object.entries(config).every(([url, conf]) =>
-                typeof url === 'string' &&
-                conf &&
-                typeof conf === 'object' &&
-                'read' in conf &&
-                'write' in conf &&
-                typeof conf.read === 'boolean' &&
-                typeof conf.write === 'boolean'
+        if (typeof config === 'object' && config !== null) {
+            return Object.entries(config).every(([, conf]) =>
+                typeof conf === 'object'
+                && conf !== null
+                && 'read' in conf
+                && 'write' in conf
+                && typeof conf.read === 'boolean'
+                && typeof conf.write === 'boolean',
             );
         }
 

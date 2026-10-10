@@ -266,7 +266,10 @@ describe("signed-event contract at post-history boundaries", () => {
             acceptedRelays: [authorWriteRelay],
         });
 
-        await expect(resultPromise).resolves.toMatchObject({ success: true });
+        await expect(resultPromise).resolves.toMatchObject({
+            success: true,
+            preserveComposerContent: true,
+        });
         expect(savePostHistoryFn).toHaveBeenCalledWith(expect.objectContaining({
             event: expect.objectContaining({ pubkey: pubkeyA, content: "published A post" }),
         }));

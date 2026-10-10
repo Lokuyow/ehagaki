@@ -19,8 +19,12 @@ import {
     type RawEventVerificationState,
 } from "../postHistoryRawEventVerification";
 import type { NostrEvent } from "../types";
+import { getSensitivePayloadReference, verifySensitivePayloadLink } from "../sensitiveContentPayload";
+import { isFullyVerifiedEvent } from "../sensitiveEventUtils";
 import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
 import { bumpPostHistorySearchRevision } from "../postHistoryLocalSearchRevision";
+import { assertPostHistoryLocalWriteCurrent, type PostHistoryLocalWriteScope } from "./postHistoryLocalWriteScope";
+import { reconcileSensitivePayloadDeletionForStructure, reconcileSensitivePayloadDeletionForCandidate } from "./sensitivePayloadDeletionReconciler";
 import {
     ehagakiDb,
     type EHagakiDB,
@@ -55,6 +59,7 @@ export interface UpsertImportedPostHistoryDeletionEventsInput {
     ownerPubkeyHex: string;
     deletionEvents: NostrEvent[];
     fetchedAt?: number;
+    localWriteScope?: PostHistoryLocalWriteScope;
 }
 
 export interface UpsertImportedPostHistoryDeletionEventsResult {
@@ -66,7 +71,9 @@ export interface UpsertImportedPostHistoryDeletionEventsResult {
 }
 
 export interface SaveLocalPostHistoryDeletionInput {
-    targetEventId: string;
+    targetEvent?: NostrEvent;
+    targetEventId?: string;
+    targetEventIds?: string[];
     deletionEvent: NostrEvent;
     attestation?: PostHistoryRawEventAttestation;
     deletedAt: number;
@@ -262,8 +269,12 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
             throw new Error("invalid_local_deletion_event");
         }
         const deletionEvent = verified.event;
+        const targetEventIds = Array.from(new Set([
+            ...(input.targetEventId ? [input.targetEventId] : []),
+            ...(input.targetEventIds ?? []),
+        ]));
         if (
-            !input.targetEventId
+            targetEventIds.length === 0
             || deletionEvent.kind !== 5
             || !NOSTR_EVENT_ID_PATTERN.test(deletionEvent.id)
         ) {
@@ -277,8 +288,15 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
             "rw",
             this.db.postHistoryDeletionRequests,
             this.db.postHistory,
+            this.db.sensitivePayloads,
             async () => {
-                const targetRecord = await this.db.postHistory.get(input.targetEventId);
+                const suppliedTarget = input.targetEvent ? attestFullyVerifiedPostHistoryRawEvent(input.targetEvent)?.event : null;
+                const storedTargetRecord = await this.db.postHistory.get(targetEventIds[0]!);
+                const targetRecord = storedTargetRecord
+                    ?? (suppliedTarget && suppliedTarget.id === targetEventIds[0] ? {
+                        eventId: suppliedTarget.id, pubkeyHex: suppliedTarget.pubkey,
+                        kind: suppliedTarget.kind, rawEvent: suppliedTarget,
+                    } : undefined);
                 if (
                     !targetRecord
                     || !isSupportedPostHistoryDeletionTargetKind(targetRecord.kind)
@@ -290,29 +308,68 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                     throw new Error("local_deletion_target_not_found");
                 }
 
-                const nextRecord = toPostHistoryDeletionRequestReferenceRecord({
-                    deletionEvent,
-                    targetEventId: targetRecord.eventId,
-                    targetVerified: true,
-                    relayUrls: input.relayUrls,
-                    fetchedAt,
-                }, this.now);
-                nextRecord.rawEventVerification = { ...VALID_RAW_EVENT_VERIFICATION };
-                const existingRecord = await this.db.postHistoryDeletionRequests.get(
-                    nextRecord.id,
-                );
-                const mergedRecord = existingRecord
-                    ? mergeDeletionRequestRecord(existingRecord, nextRecord, this.now)
-                    : nextRecord;
+                const structure = targetRecord.rawEvent as NostrEvent;
+                const reference = isFullyVerifiedEvent(structure)
+                    ? getSensitivePayloadReference(structure)
+                    : null;
+                const associatedPayloadId = reference?.eventId;
+                for (const targetEventId of targetEventIds) {
+                    let targetVerified = false;
+                    if (targetEventId === targetRecord.eventId) {
+                        targetVerified = isValidDeletionRequestForTarget(deletionEvent, {
+                            id: targetRecord.eventId,
+                            pubkey: targetRecord.pubkeyHex,
+                        });
+                    } else if (targetEventId === associatedPayloadId) {
+                        const payloadRecord = await this.db.sensitivePayloads.get(targetEventId);
+                        targetVerified = !!payloadRecord
+                            && payloadRecord.deletedAt === undefined
+                            && payloadRecord.pubkeyHex === targetRecord.pubkeyHex
+                            && verifySensitivePayloadLink(
+                                structure,
+                                payloadRecord.rawEvent as NostrEvent,
+                                targetEventId,
+                            )
+                            && isValidDeletionRequestForTarget(deletionEvent, {
+                                id: targetEventId,
+                                pubkey: targetRecord.pubkeyHex,
+                            });
+                    }
+                    if (!targetVerified) continue;
 
-                await this.db.postHistoryDeletionRequests.put(mergedRecord);
+                    const nextRecord = toPostHistoryDeletionRequestReferenceRecord({
+                        deletionEvent,
+                        targetEventId,
+                        targetVerified: true,
+                        relayUrls: input.relayUrls,
+                        fetchedAt,
+                    }, this.now);
+                    nextRecord.rawEventVerification = { ...VALID_RAW_EVENT_VERIFICATION };
+                    const existingRecord = await this.db.postHistoryDeletionRequests.get(nextRecord.id);
+                    const mergedRecord = existingRecord
+                        ? mergeDeletionRequestRecord(existingRecord, nextRecord, this.now)
+                        : nextRecord;
+                    await this.db.postHistoryDeletionRequests.put(mergedRecord);
+
+                    if (targetEventId === associatedPayloadId) {
+                        const payloadRecord = await this.db.sensitivePayloads.get(targetEventId);
+                        if (payloadRecord) {
+                            await this.db.sensitivePayloads.put({
+                                ...payloadRecord,
+                                deletedAt: input.deletedAt,
+                                deletionEventId: deletionEvent.id,
+                                updatedAt: this.now(),
+                            });
+                        }
+                    }
+                }
 
                 if (
-                    targetRecord.deletedAt !== input.deletedAt
-                    || targetRecord.deletionEventId !== deletionEvent.id
+                    storedTargetRecord && (storedTargetRecord.deletedAt !== input.deletedAt
+                    || storedTargetRecord.deletionEventId !== deletionEvent.id)
                 ) {
                     await this.db.postHistory.put({
-                        ...targetRecord,
+                        ...storedTargetRecord,
                         deletedAt: input.deletedAt,
                         deletionEventId: deletionEvent.id,
                         updatedAt: this.now(),
@@ -518,9 +575,10 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
 
         await this.db.transaction(
             "rw",
-            this.db.postHistoryDeletionRequests,
-            this.db.postHistory,
+            [this.db.postHistoryDeletionRequests, this.db.postHistory,
+                ...(input.localWriteScope ? [this.db.meta] : [])],
             async () => {
+                await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
                 const existingRecords = await this.db.postHistoryDeletionRequests.bulkGet(
                     candidates.map((candidate) => candidate.record.id),
                 );
@@ -616,8 +674,21 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                     });
                     appliedDeletionCount += 1;
                 }
+                await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
             },
         );
+
+        const importedTargetIds = Array.from(new Set(
+            candidates.map((candidate) => candidate.record.targetEventId),
+        ));
+        for (const targetEventId of importedTargetIds) {
+            await reconcileSensitivePayloadDeletionForCandidate(targetEventId, this.db, this.now);
+            await reconcileSensitivePayloadDeletionForStructure(
+                targetEventId,
+                this.db,
+                this.now,
+            );
+        }
 
         return {
             insertedCount,

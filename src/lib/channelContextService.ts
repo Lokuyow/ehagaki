@@ -1,5 +1,6 @@
 import { createRxBackwardReq } from "rx-nostr";
 import type { RxNostr } from "rx-nostr";
+import type { Filter } from "nostr-tools";
 import { FALLBACK_RELAYS } from "./relayLists";
 import { isHostRelayConfigActive } from "./hostRelayRuntime";
 import { compareChannelMetadataEventVersions } from "./channelMetadataEventOrder";
@@ -517,7 +518,8 @@ export class ChannelContextService {
                     subscription = undefined;
                     return;
                 }
-                rxReq.emit({ kinds: [41], authors: [authorPubkey], "#e": [eventId] } as any);
+                const filter: Filter = { kinds: [41], authors: [authorPubkey], "#e": [eventId] };
+                rxReq.emit(filter);
                 rxReq.over();
             } catch (cause) {
                 this.console.error("チャンネル metadata リクエスト作成エラー:", cause);

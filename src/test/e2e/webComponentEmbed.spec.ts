@@ -37,6 +37,53 @@ const hostRequests = new Set<string>();
 const componentStoragePrefix = "ehagaki.web-component.v1:";
 const testPubkeyHex = "11".repeat(32);
 
+async function expectQualityOptionsOnOneLine(
+    group: import("@playwright/test").Locator,
+    expectedLabels: string[],
+) {
+    const radios = group.getByRole("radio");
+    await expect(radios).toHaveCount(4);
+    const geometry = await radios.evaluateAll((elements) => elements.map((element) => {
+        const radio = element as HTMLElement;
+        const rect = radio.getBoundingClientRect();
+        const cssPixel = (value: number) => Math.round(value * 1_000) / 1_000;
+        return {
+            label: radio.getAttribute("aria-label"),
+            top: rect.top,
+            width: cssPixel(rect.width),
+            height: cssPixel(rect.height),
+            whiteSpace: getComputedStyle(radio).whiteSpace,
+        };
+    }));
+    expect(geometry.map((radio) => radio.label)).toEqual(expectedLabels);
+    expect(Math.max(...geometry.map((radio) => radio.top)) - Math.min(...geometry.map((radio) => radio.top))).toBeLessThanOrEqual(1);
+    for (const radio of geometry) {
+        expect(radio.width).toBeGreaterThanOrEqual(44);
+        expect(radio.height).toBeGreaterThanOrEqual(44);
+        expect(radio.whiteSpace).toBe("nowrap");
+    }
+}
+
+async function expectPopoverPaddingBalanced(popover: import("@playwright/test").Locator) {
+    const geometry = await popover.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const radios = Array.from(element.querySelectorAll<HTMLElement>('button[role="radio"]'));
+        const rect = element.getBoundingClientRect();
+        const borderLeft = Number.parseFloat(style.borderLeftWidth);
+        const borderRight = Number.parseFloat(style.borderRightWidth);
+        const leftInnerEdge = rect.left + borderLeft + Number.parseFloat(style.paddingLeft);
+        const rightInnerEdge = rect.right - borderRight - Number.parseFloat(style.paddingRight);
+        return {
+            leftGap: radios[0]!.getBoundingClientRect().left - leftInnerEdge,
+            rightGap: rightInnerEdge - radios[radios.length - 1]!.getBoundingClientRect().right,
+        };
+    });
+    expect(geometry.leftGap).toBeGreaterThanOrEqual(-1);
+    expect(geometry.rightGap).toBeGreaterThanOrEqual(-1);
+    expect(Math.abs(geometry.leftGap - geometry.rightGap)).toBeLessThanOrEqual(3);
+    expect(geometry.rightGap).toBeLessThanOrEqual(8);
+}
+
 const sentinels = {
     locale: "host-locale",
     themeMode: "host-theme",
@@ -293,6 +340,25 @@ test("Full Web Component does not expose the Lite preferred-height API", async (
         preferredHeight: null,
         preferredHeightEvents: 0,
     });
+});
+
+test("Full exposes headless upload only after ready and does not queue pre-ready calls", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+            uploadFile(file: File, options?: { signal?: AbortSignal }): Promise<unknown>;
+        };
+        document.body.append(composer);
+        const preReadyError = await composer.uploadFile(
+            new File([new Uint8Array([1])], "profile.png", { type: "image/png" }),
+        ).then(() => null, (error: Error) => error.name);
+        await composer.whenReady();
+        return { uploadFileType: typeof composer.uploadFile, preReadyError };
+    }, { componentOrigin });
+
+    expect(result).toEqual({ uploadFileType: "function", preReadyError: "not_ready" });
 });
 
 test("exposes the common editor empty state API through the Full element", async ({ page }) => {
@@ -2067,7 +2133,7 @@ test("cleans only legacy Web Component nsec state and restores the remaining NIP
 
 test("keeps authenticated profile and post history dialogs inside the component", async ({ page }) => {
     await page.goto(hostOrigin);
-    const result = await page.evaluate(async ({ componentStoragePrefix, testPubkeyHex }) => {
+    await page.evaluate(async ({ componentStoragePrefix, testPubkeyHex }) => {
         window.nostr = {
             getPublicKey: async () => testPubkeyHex,
             signEvent: async (event: any) => ({ ...event, id: "22".repeat(32), sig: "33".repeat(64) }),
@@ -2085,14 +2151,18 @@ test("keeps authenticated profile and post history dialogs inside the component"
         composer.style.height = "520px";
         document.body.append(composer);
         await composer.whenReady();
-        const shadow = composer.shadowRoot!;
-        const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        for (let frame = 0; frame < 8; frame += 1) await nextFrame();
-        const profileButton = shadow.querySelector<HTMLButtonElement>(".profile-display");
-        if (!profileButton) throw new Error("authenticated profile button did not render");
-        profileButton.click();
-        for (let frame = 0; frame < 8; frame += 1) await nextFrame();
-        const overlayRoot = shadow.querySelector<HTMLElement>('.ehagaki-web-component-overlays')!;
+    }, { componentStoragePrefix, testPubkeyHex });
+
+    const composer = page.locator("ehagaki-composer");
+    const profileButton = composer.locator(".profile-display");
+    await expect(profileButton).toBeVisible();
+    await profileButton.click();
+    const profileDialog = composer.locator(".profile-dialog");
+    const dialogOverlay = composer.locator(".ehagaki-web-component-overlays .dialog-overlay");
+    await expect(profileDialog).toBeVisible();
+    await expect(dialogOverlay).toBeVisible();
+    const profile = await composer.evaluate((element) => {
+        const overlayRoot = element.shadowRoot!.querySelector<HTMLElement>(".ehagaki-web-component-overlays")!;
         const rect = (element: Element | null) => {
             if (!(element instanceof HTMLElement)) return null;
             const value = element.getBoundingClientRect();
@@ -2109,12 +2179,26 @@ test("keeps authenticated profile and post history dialogs inside the component"
             idsFit: profileIds.every((element) => element.scrollWidth <= element.clientWidth),
             copyButtonsFit: profileCopyButtons.every((element) => element.getBoundingClientRect().width >= 40),
         };
-        overlayRoot.querySelector<HTMLButtonElement>(".modal-close")?.click();
-        for (let frame = 0; frame < 8; frame += 1) await nextFrame();
-        const historyButton = shadow.querySelector<HTMLButtonElement>(".post-history-btn");
-        if (!historyButton) throw new Error("post history button did not render");
-        historyButton.click();
-        for (let frame = 0; frame < 12; frame += 1) await nextFrame();
+        return profile;
+    });
+
+    await profileDialog.locator(".modal-close").click();
+    await expect(profileDialog).toBeHidden();
+    const historyButton = composer.locator(".post-history-btn");
+    await expect(historyButton).toBeVisible();
+    await historyButton.click();
+    const historyDialog = composer.locator(".post-history-dialog");
+    await expect(historyDialog).toBeVisible();
+    await expect(dialogOverlay).toBeVisible();
+    await expect(historyDialog.locator(".post-history-container")).toBeVisible();
+    await expect(historyDialog.locator(".dialog-footer")).toBeVisible();
+    const history = await composer.evaluate((element) => {
+        const overlayRoot = element.shadowRoot!.querySelector<HTMLElement>(".ehagaki-web-component-overlays")!;
+        const rect = (element: Element | null) => {
+            if (!(element instanceof HTMLElement)) return null;
+            const value = element.getBoundingClientRect();
+            return { top: value.top, bottom: value.bottom, left: value.left, right: value.right };
+        };
         const historyDialog = overlayRoot.querySelector<HTMLElement>(".post-history-dialog");
         const historyOverlay = overlayRoot.querySelector<HTMLElement>(".dialog-overlay");
         const historyList = overlayRoot.querySelector<HTMLElement>(".post-history-container");
@@ -2127,14 +2211,19 @@ test("keeps authenticated profile and post history dialogs inside the component"
             listScrollHeight: historyList?.scrollHeight ?? 0,
             listClientHeight: historyList?.clientHeight ?? 0,
         };
-        overlayRoot.querySelector<HTMLButtonElement>(".modal-close")?.click();
-        for (let frame = 0; frame < 8; frame += 1) await nextFrame();
-        return {
-            component: rect(composer),
-            profile,
-            history,
-        };
-    }, { componentStoragePrefix, testPubkeyHex });
+        return history;
+    });
+    await historyDialog.locator(".modal-close").click();
+    await expect(historyDialog).toBeHidden();
+
+    const result = {
+        component: await composer.evaluate((element) => {
+            const value = element.getBoundingClientRect();
+            return { top: value.top, bottom: value.bottom, left: value.left, right: value.right };
+        }),
+        profile,
+        history,
+    };
 
     expect(result.profile.dialog).not.toBeNull();
     expect(result.profile.overlay).not.toBeNull();
@@ -2547,6 +2636,47 @@ test("uses a verified preloaded event in Direct Web Component setContext", async
     expect(invalidResult).toBe("resolved");
 });
 
+test("renders preloaded fail-closed CW body as literal text in the Full composer preview", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const literalTail = "<b>nostr</b> <script>alert(1)</script>";
+    const event = finalizeEvent({
+        kind: 1,
+        content: "",
+        tags: [
+            ["content-warning", "Spoiler", `:kitten: ${literalTail}`],
+            ["emoji", "kitten", "https://example.com/kitten.png"],
+        ],
+        created_at: 1,
+    }, generateSecretKey());
+    const reply = nip19.neventEncode({ id: event.id, author: event.pubkey });
+
+    await page.evaluate(async ({ reply, event }) => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+            setContext(value: unknown): Promise<void>;
+        };
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setContext({ reply, preloadedEvents: { [event.id]: event } });
+    }, { reply, event });
+
+    const composer = page.locator("ehagaki-composer");
+    const preview = composer.locator(".reply-quote-preview");
+    await expect(preview).toHaveCount(1);
+    await preview.locator(".preview-label").click();
+    await expect(preview.getByRole("button", { name: "本文を表示" })).toBeVisible();
+    await expect(preview).not.toContainText(literalTail);
+    await expect(preview.locator("b, script")).toHaveCount(0);
+
+    await preview.getByRole("button", { name: "本文を表示" }).click();
+    const protectedContent = preview.locator(".post-preview-content");
+    await expect.poll(() => protectedContent.evaluate((element) => element.textContent ?? ""))
+        .toContain(literalTail);
+    await expect(protectedContent.locator("b, script")).toHaveCount(0);
+    await expect(protectedContent.locator(".post-history-custom-emoji-slot")).toHaveCount(1);
+});
+
 
 
 test("Full self-publish does not expose Host-owned methods", async ({ page }) => {
@@ -2574,4 +2704,204 @@ test("Full self-publish does not expose Host-owned methods", async ({ page }) =>
         setCustomEmojis: "undefined",
         initializationErrors: [],
     });
+});
+
+test("Full Web Component restores left and right footer shortcuts in its storage namespace at 320px", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin, componentStoragePrefix }) => {
+        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"left":"image-quality","right":"video-quality"}');
+        localStorage.setItem(`${componentStoragePrefix}imageQualityLevel`, "none");
+        localStorage.setItem(`${componentStoragePrefix}videoQualityLevel`, "none");
+        localStorage.setItem(`${componentStoragePrefix}locale`, "en");
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & { whenReady(): Promise<void> };
+        composer.style.cssText = "display:block;width:320px;height:640px";
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin, componentStoragePrefix });
+
+    const composer = page.locator("ehagaki-composer");
+    const shortcutButtons = composer.locator(".footer-setting-shortcut-button");
+    await expect(shortcutButtons).toHaveCount(2);
+    await expect(shortcutButtons.first()).toBeVisible();
+    await expect(shortcutButtons.first()).toHaveAttribute("aria-label", /Image Quality:/);
+    await expect(shortcutButtons.nth(1)).toHaveAttribute("aria-label", /Video Quality:/);
+    await shortcutButtons.first().click();
+    const imagePopover = composer.locator(".footer-setting-shortcut-popover");
+    await expect(imagePopover).toBeVisible();
+    const imageGroup = composer.getByRole("radiogroup", { name: "Image Quality" });
+    await expect(imageGroup.getByRole("radio")).toHaveCount(4);
+    await expect(imageGroup.getByRole("radio", { name: "Original" })).toHaveAttribute("aria-checked", "true");
+    await expectPopoverPaddingBalanced(imagePopover);
+    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}imageQualityLevel`), componentStoragePrefix)).toBe("none");
+    const popoverGeometry = await composer.evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const cssPixel = (value: number) => Math.round(value * 1_000) / 1_000;
+        const overlay = shadow.querySelector<HTMLElement>(".ehagaki-web-component-overlays")!;
+        const boundary = overlay.parentElement!;
+        const popover = shadow.querySelector<HTMLElement>(".footer-setting-shortcut-popover")!;
+        const componentRect = element.getBoundingClientRect();
+        const boundaryRect = boundary.getBoundingClientRect();
+        const popoverRect = popover.getBoundingClientRect();
+        const radioRects = Array.from(popover.querySelectorAll<HTMLElement>('button[role="radio"]')).map((radio) => {
+            const rect = radio.getBoundingClientRect();
+            return {
+                label: radio.getAttribute("aria-label"),
+                top: rect.top,
+                width: cssPixel(rect.width),
+                height: cssPixel(rect.height),
+                whiteSpace: getComputedStyle(radio).whiteSpace,
+            };
+        });
+        return {
+            overlayContainsPopover: overlay.contains(popover),
+            component: { left: componentRect.left, right: componentRect.right, width: componentRect.width, scrollWidth: element.scrollWidth },
+            boundary: { left: boundaryRect.left, right: boundaryRect.right, top: boundaryRect.top, bottom: boundaryRect.bottom, scrollWidth: boundary.scrollWidth },
+            popover: { left: popoverRect.left, right: popoverRect.right, top: popoverRect.top, bottom: popoverRect.bottom },
+            radioRects,
+        };
+    });
+    expect(popoverGeometry.overlayContainsPopover).toBe(true);
+    expect(popoverGeometry.component.width).toBe(320);
+    expect(popoverGeometry.component.scrollWidth).toBeLessThanOrEqual(320);
+    expect(popoverGeometry.boundary.scrollWidth).toBeLessThanOrEqual(320);
+    expect(popoverGeometry.popover.left).toBeGreaterThanOrEqual(popoverGeometry.boundary.left);
+    expect(popoverGeometry.popover.right).toBeLessThanOrEqual(popoverGeometry.boundary.right);
+    expect(popoverGeometry.popover.top).toBeGreaterThanOrEqual(popoverGeometry.boundary.top);
+    expect(popoverGeometry.popover.bottom).toBeLessThanOrEqual(popoverGeometry.boundary.bottom);
+    expect(popoverGeometry.radioRects).toHaveLength(4);
+    expect(popoverGeometry.radioRects.map((radio) => radio.label)).toEqual(["Original", "High", "Medium", "Low"]);
+    expect(Math.max(...popoverGeometry.radioRects.map((radio) => radio.top)) - Math.min(...popoverGeometry.radioRects.map((radio) => radio.top))).toBeLessThanOrEqual(1);
+    for (const rect of popoverGeometry.radioRects) {
+        expect(rect.width).toBeGreaterThanOrEqual(44);
+        expect(Math.round(rect.height * 1_000) / 1_000).toBeGreaterThanOrEqual(44);
+        expect(rect.whiteSpace).toBe("nowrap");
+    }
+    await imageGroup.getByRole("radio", { name: "Low" }).click();
+    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}imageQualityLevel`), componentStoragePrefix)).toBe("low");
+    await expect(imagePopover).toHaveCount(0);
+    await expect(shortcutButtons.first()).toHaveAttribute("aria-label", "Image Quality: Lo");
+    await expect(shortcutButtons.first().locator(".quality-shortcut-label")).toHaveText("L");
+    await expect(composer.locator(".floating-message")).toHaveCount(0);
+
+    await shortcutButtons.nth(1).click();
+    const videoPopover = composer.locator(".footer-setting-shortcut-popover");
+    await expect(videoPopover).toBeVisible();
+    const videoGroup = composer.getByRole("radiogroup", { name: "Video Quality" });
+    await expect(videoGroup.getByRole("radio")).toHaveCount(4);
+    await expectQualityOptionsOnOneLine(videoGroup, ["Original", "High", "Medium", "Low"]);
+    await expectPopoverPaddingBalanced(videoPopover);
+    await videoGroup.getByRole("radio", { name: "Low" }).click();
+    await expect.poll(() => page.evaluate((prefix) => localStorage.getItem(`${prefix}videoQualityLevel`), componentStoragePrefix)).toBe("low");
+    await expect(videoPopover).toHaveCount(0);
+    await expect(shortcutButtons.nth(1)).toHaveAttribute("aria-label", "Video Quality: Lo");
+    await expect(shortcutButtons.nth(1).locator(".quality-shortcut-label")).toHaveText("L");
+    await expect(composer.locator(".floating-message")).toHaveCount(0);
+
+    const result = await composer.evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const cssPixel = (value: number) => Math.round(value * 1_000) / 1_000;
+        const component = element.getBoundingClientRect();
+        const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
+        const shortcuts = Array.from(shadow.querySelectorAll<HTMLElement>(".footer-setting-shortcut-button"));
+        const footerRect = footer.getBoundingClientRect();
+        return {
+            componentWidth: component.width,
+            componentLeft: component.left,
+            componentRight: component.right,
+            componentScrollWidth: element.scrollWidth,
+            footerScrollWidth: footer.scrollWidth,
+            footerLeft: footerRect.left,
+            footerRight: footerRect.right,
+            footerTop: footerRect.top,
+            footerHeight: cssPixel(footerRect.height),
+            shortcutRects: shortcuts.map((shortcut) => {
+                const rect = shortcut.getBoundingClientRect();
+                return {
+                    left: rect.left,
+                    right: rect.right,
+                    width: cssPixel(rect.width),
+                    height: cssPixel(rect.height),
+                };
+            }),
+            shortcutGaps: (() => {
+                const rects = shortcuts.map((shortcut) => shortcut.getBoundingClientRect());
+                return rects[1]!.left - rects[0]!.right;
+            })(),
+            postHistoryCount: shadow.querySelectorAll(".post-history-btn").length,
+            popoverCount: document.querySelectorAll(".footer-setting-shortcut-popover").length,
+        };
+    });
+    expect(result.componentWidth).toBe(320);
+    expect(result.componentScrollWidth).toBeLessThanOrEqual(result.componentWidth);
+    expect(result.footerScrollWidth).toBeLessThanOrEqual(320);
+    expect(result.footerHeight).toBe(66);
+    expect(result.postHistoryCount).toBe(0);
+    expect(result.popoverCount).toBe(0);
+    expect(result.shortcutRects).toHaveLength(2);
+    expect(result.shortcutGaps).toBeGreaterThanOrEqual(5.5);
+    for (const rect of result.shortcutRects) {
+        expect(rect.left).toBeGreaterThanOrEqual(result.footerLeft - 0.5);
+        expect(rect.right).toBeLessThanOrEqual(result.footerRight + 0.5);
+        expect(rect.width).toBeGreaterThanOrEqual(44);
+        expect(rect.height).toBeGreaterThanOrEqual(44);
+    }
+});
+
+test("Full Web Component contains 72px quote and reply pair pills at 320px", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin, componentStoragePrefix }) => {
+        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"left":"quote-notification","right":"reply-notification"}');
+        localStorage.setItem(`${componentStoragePrefix}quoteNotificationEnabled`, "false");
+        localStorage.setItem(`${componentStoragePrefix}replyNotificationEnabled`, "false");
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & { whenReady(): Promise<void> };
+        composer.style.cssText = "display:block;width:320px;height:640px";
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin, componentStoragePrefix });
+
+    const composer = page.locator("ehagaki-composer");
+    const buttons = composer.locator(".footer-setting-shortcut-button");
+    await expect(buttons).toHaveCount(2);
+    await expect(buttons.nth(0)).toHaveAttribute("aria-pressed", "false");
+    await expect(buttons.nth(1)).toHaveAttribute("aria-pressed", "false");
+    const geometry = await composer.evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const cssPixel = (value: number) => Math.round(value * 1_000) / 1_000;
+        const hostRect = element.getBoundingClientRect();
+        const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
+        const footerRect = footer.getBoundingClientRect();
+        const buttons = Array.from(shadow.querySelectorAll<HTMLElement>(".footer-setting-shortcut-button"));
+        const rects = buttons.map((button) => {
+            const rect = button.getBoundingClientRect();
+            const main = button.querySelector<HTMLElement>(".paired-main-icon")!.getBoundingClientRect();
+            const notification = button.querySelector<HTMLElement>(".paired-notification-icon")!.getBoundingClientRect();
+            return {
+                left: rect.left, right: rect.right, width: cssPixel(rect.width), height: cssPixel(rect.height),
+                main: { width: cssPixel(main.width), height: cssPixel(main.height) },
+                notification: { width: cssPixel(notification.width), height: cssPixel(notification.height) },
+                iconGap: cssPixel(notification.left - main.right),
+            };
+        });
+        return {
+            host: { width: hostRect.width, left: hostRect.left, right: hostRect.right, scrollWidth: element.scrollWidth },
+            footer: { left: footerRect.left, right: footerRect.right, scrollWidth: footer.scrollWidth },
+            gap: rects[1].left - rects[0].right,
+            rects,
+        };
+    });
+    expect(geometry.host.width).toBe(320);
+    expect(geometry.host.scrollWidth).toBeLessThanOrEqual(320);
+    expect(geometry.footer.scrollWidth).toBeLessThanOrEqual(320);
+    expect(geometry.gap).toBeGreaterThanOrEqual(5.5);
+    for (const rect of geometry.rects) {
+        expect(rect.left).toBeGreaterThanOrEqual(geometry.footer.left - 0.5);
+        expect(rect.right).toBeLessThanOrEqual(geometry.footer.right + 0.5);
+        expect(rect.width).toBe(72);
+        expect(rect.height).toBe(50);
+        expect(rect.main).toEqual({ width: 24, height: 24 });
+        expect(rect.notification).toEqual({ width: 24, height: 24 });
+        expect(rect.iconGap).toBe(4);
+    }
 });

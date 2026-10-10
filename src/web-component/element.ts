@@ -32,6 +32,7 @@ type ReadyBoundary = {
     resolve: () => void;
     reject: (reason?: unknown) => void;
     state: "pending" | "resolved" | "rejected";
+    reason?: unknown;
     /** Assigned when this boundary becomes a concrete connection attempt. */
     token: number | null;
     /** Disconnect and initialization failure retire a boundary permanently. */
@@ -43,6 +44,12 @@ let activeInstance: EHagakiComposerElement | null = null;
 function createError(code: EHagakiComposerInitializationErrorDetail["code"], message: string): Error {
     const error = new Error(message);
     error.name = code;
+    return error;
+}
+
+function createNamedError(name: string, message: string): Error {
+    const error = new Error(message);
+    error.name = name;
     return error;
 }
 
@@ -248,9 +255,9 @@ export abstract class EHagakiComposerElement extends HTMLElement {
         this.#mountPromise = null;
         if (this.#readyBoundary.state === "pending") {
             this.#readyBoundary.state = "rejected";
-            this.#readyBoundary.reject(
-                createError("disconnected", "Component was disconnected before it became ready."),
-            );
+            const reason = createError("disconnected", "Component was disconnected before it became ready.");
+            this.#readyBoundary.reason = reason;
+            this.#readyBoundary.reject(reason);
         }
     }
 
@@ -387,6 +394,38 @@ export abstract class EHagakiComposerElement extends HTMLElement {
         return this.#app;
     }
 
+    /** Synchronous readiness snapshot for Full-only imperative operations. */
+    protected requireCurrentReadyApp(): { app: AppInstance; generation: number } {
+        const boundary = this.#readyBoundary;
+        if (boundary.state === "rejected") {
+            throw boundary.reason ?? createError("initialization_failed", "eHagaki Composer could not be initialized.");
+        }
+        if (!this.isConnected) {
+            if (this.#hasStartedConnectionAttempt) {
+                throw createError("disconnected", "Component is disconnected.");
+            }
+            throw createNamedError("not_ready", "Call uploadFile() after whenReady() resolves.");
+        }
+        if (
+            boundary.state !== "resolved"
+            || !boundary.active
+            || boundary.token === null
+            || boundary.token !== this.#connectionGeneration
+            || !this.#app
+        ) {
+            throw createNamedError("not_ready", "Call uploadFile() after whenReady() resolves.");
+        }
+        return { app: this.#app, generation: boundary.token };
+    }
+
+    protected isCurrentConnection(generation: number): boolean {
+        return this.isConnected
+            && generation === this.#connectionGeneration
+            && this.#readyBoundary.active
+            && this.#readyBoundary.token === generation
+            && this.#readyBoundary.state === "resolved";
+    }
+
     /** Each distribution provides its own build-time composition root. */
     protected abstract loadApp(): Promise<{ default: any }>;
 
@@ -486,6 +525,7 @@ export abstract class EHagakiComposerElement extends HTMLElement {
     ): void {
         this.#readyBoundary.state = "rejected";
         this.#readyBoundary.active = false;
+        this.#readyBoundary.reason = reason;
         this.#readyBoundary.reject(reason);
         this.dispatchSafeEvent("ehagaki-initialization-error", { code, message });
     }

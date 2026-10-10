@@ -168,8 +168,8 @@ export function formatDraftTimestamp(timestamp: number): string {
     const day = 24 * hour;
 
     // ロケールと翻訳関数を取得
-    const loc = (getStore(locale) as string) || 'en';
-    const t = getStore(_) as (id: string | { id: string }, values?: Record<string, any>) => string;
+    const loc = getStore(locale) || 'en';
+    const t = getStore(_);
     const rtf = new Intl.RelativeTimeFormat(loc, { numeric: 'auto' });
 
     if (diff < minute) {

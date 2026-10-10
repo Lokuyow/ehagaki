@@ -1,18 +1,25 @@
 import { ReplyQuoteService } from '../replyQuoteService';
+import type { RxNostr } from 'rx-nostr';
 import type {
     NostrEvent,
     ReplyQuoteHydrationTarget,
     ReplyQuoteUpdateTarget,
+    RelayConfig,
 } from '../types';
 import type { EmbedPreloadedProfilePresentation } from '../embedProtocol';
 
 export interface ProcessReplyQuoteReferenceParams {
     reference: ReplyQuoteHydrationTarget;
-    replyQuoteService: Pick<ReplyQuoteService, 'fetchReferencedEvent' | 'extractThreadInfo'>;
+    replyQuoteService: Pick<ReplyQuoteService, 'fetchReferencedEvent' | 'extractThreadInfo'>
+        & Partial<Pick<ReplyQuoteService, 'fetchReferencedEventTask'>>;
     initialEvent?: NostrEvent;
-    rxNostr?: any;
-    relayConfig: any;
-    updateReferencedEvent: (target: ReplyQuoteUpdateTarget, event: any, threadInfo: any) => void;
+    rxNostr?: RxNostr;
+    relayConfig?: RelayConfig | null;
+    updateReferencedEvent: (
+        target: ReplyQuoteUpdateTarget,
+        event: NostrEvent,
+        threadInfo: ReturnType<ReplyQuoteService['extractThreadInfo']>,
+    ) => void;
     initializeReplyNotificationRecipients?: (target: ReplyQuoteUpdateTarget, event: NostrEvent) => void;
     setReplyQuoteError: (target: ReplyQuoteUpdateTarget, message: string) => void;
     preloadedProfiles?: Readonly<Record<string, EmbedPreloadedProfilePresentation>>;
@@ -34,19 +41,19 @@ export async function processReplyQuoteReference({
     preloadedProfiles,
     applyPreloadedAuthorPreviewPresentation,
 }: ProcessReplyQuoteReferenceParams): Promise<void> {
-    const event = initialEvent
-        ?? await replyQuoteService.fetchReferencedEvent(
+    const fetchedEvent = initialEvent ?? await replyQuoteService.fetchReferencedEvent(
             reference.eventId,
             reference.relayHints,
             rxNostr,
             relayConfig,
         );
 
-    if (!event) {
+    if (!fetchedEvent) {
         setReplyQuoteError(reference, 'Event not found');
         return;
     }
 
+    const event = fetchedEvent;
     const threadInfo = replyQuoteService.extractThreadInfo(event);
     updateReferencedEvent(reference, event, threadInfo);
     if (preloadedProfiles && applyPreloadedAuthorPreviewPresentation) {

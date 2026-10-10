@@ -2,16 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import {
     PostHistoryDialog,
-    channelContextServiceMock,
-    channelMetadataRepositoryMock,
     cleanupPostHistoryDialogHarness,
-    clipboardMock,
-    customEmojiImageMetaRepositoryMock,
-    customEmojiMock,
     localSearchServiceMock,
-    nostrUtilsMock,
-    postDeletionServiceMock,
-    postMediaCacheServiceMock,
     relayFetchServiceMock,
     repairServiceMock,
     repositoryMock,
@@ -52,47 +44,26 @@ function createDeferred<T>() {
     return { promise, resolve };
 }
 
-function expectDefaultMediaReplacement(): void {
-    expect(screen.getByText('投稿本文')).toBeTruthy();
-    expect(screen.getByTitle('image.jpg')).toBeTruthy();
-    expect(screen.queryByText('https://example.com/image.jpg')).toBeNull();
-}
-
-async function openPostHistoryMenu(): Promise<void> {
-    const trigger = await screen.findByRole('button', { name: '投稿履歴メニューを開く' });
-    await fireEvent.click(trigger);
-}
-
 async function openSearchBar(): Promise<HTMLInputElement> {
-    await openPostHistoryMenu();
-    await fireEvent.click(await screen.findByRole('menuitem', { name: '検索' }));
+    await fireEvent.click(await screen.findByRole('button', { name: '検索' }));
     return screen.findByRole('searchbox', { name: '検索' }) as Promise<HTMLInputElement>;
 }
 
 async function findRepairButton(): Promise<HTMLElement> {
-    const existing = screen.queryByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ });
-    if (existing) {
-        return existing as HTMLElement;
-    }
-
-    await openPostHistoryMenu();
-    return screen.findByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ }) as Promise<HTMLElement>;
+    return screen.findByRole('button', { name: '表示中の投稿付近を再取得' }) as Promise<HTMLElement>;
 }
 
 async function openFreshRepairButton(): Promise<HTMLElement> {
-    const trigger = await screen.findByRole('button', { name: '投稿履歴メニューを開く' });
-    if (trigger.getAttribute('aria-expanded') === 'true') {
-        await fireEvent.click(trigger);
-    }
-
-    await openPostHistoryMenu();
-    return screen.findByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ }) as Promise<HTMLElement>;
+    // These repair fixtures first complete the empty open-time relay query.
+    await waitFor(() => expect(repositoryMock.upsertFetchedEvents).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText('リレーと同期中...')).toBeNull());
+    return screen.findByRole('button', { name: '表示中の投稿付近を再取得' }) as Promise<HTMLElement>;
 }
 
-async function activateMenuItem(item: HTMLElement): Promise<void> {
-    item.focus();
-    await fireEvent.keyDown(item, { key: 'Enter', code: 'Enter' });
-    await fireEvent.click(item);
+async function activateButton(button: HTMLElement): Promise<void> {
+    button.focus();
+    await fireEvent.keyDown(button, { key: 'Enter', code: 'Enter' });
+    await fireEvent.click(button);
 }
 
 describe('PostHistoryDialog', () => {
@@ -158,16 +129,24 @@ describe('PostHistoryDialog', () => {
         const repairButton = await openFreshRepairButton();
 
         await waitFor(() => {
-            expect(repairButton.hasAttribute('data-disabled')).toBe(false);
+            expect(repairButton.hasAttribute('disabled')).toBe(false);
         });
 
-        await activateMenuItem(repairButton);
+        await activateButton(repairButton);
 
         await waitFor(() => {
             expect(screen.getByText('再取得中...')).toBeTruthy();
         });
 
-        expect((await findRepairButton()).hasAttribute('data-disabled')).toBe(true);
+        const statusToast = document.querySelector('.floating-message.anchor-bottom-right[role="status"]');
+        expect(statusToast?.textContent).toContain('再取得中...');
+        expect(statusToast?.querySelector('.info-icon')).toBeNull();
+        expect(statusToast?.querySelector('.status-loading-placeholder .loader-container')).toBeTruthy();
+        expect(statusToast?.querySelector('.post-history-heading-status-placeholder')).toBeTruthy();
+        expect(statusToast?.closest('.post-history-heading')).toBeNull();
+        expect(document.querySelector('.post-history-heading .status-loading-placeholder')).toBeNull();
+
+        expect((await findRepairButton()).hasAttribute('disabled')).toBe(true);
 
         repairTask.resolve({
             status: 'success',
@@ -239,10 +218,10 @@ describe('PostHistoryDialog', () => {
         const repairButton = await openFreshRepairButton();
 
         await waitFor(() => {
-            expect(repairButton.hasAttribute('data-disabled')).toBe(false);
+            expect(repairButton.hasAttribute('disabled')).toBe(false);
         });
 
-        await activateMenuItem(repairButton);
+        await activateButton(repairButton);
 
         await waitFor(() => {
             expect(repairServiceMock.refetchAroundCurrentView).toHaveBeenCalledTimes(1);
@@ -272,7 +251,7 @@ describe('PostHistoryDialog', () => {
         repositoryMock.getPage.mockResolvedValue([pagePost]);
         visibleRangeRepositoryMock.get.mockImplementation(async () => ({
             pubkeyHex,
-            kindsKey: '1,42',
+            kindsKey: '1,42,1111',
             visibleUntil: currentVisibleUntil,
             updatedAt: 1000,
         }));
@@ -342,12 +321,12 @@ describe('PostHistoryDialog', () => {
         const repairButton = await openFreshRepairButton();
 
         await waitFor(() => {
-            expect(repairButton.hasAttribute('data-disabled')).toBe(false);
+            expect(repairButton.hasAttribute('disabled')).toBe(false);
         });
 
         const getPageCallCountBeforeRepair = repositoryMock.getPage.mock.calls.length;
 
-        await activateMenuItem(repairButton);
+        await activateButton(repairButton);
 
         await waitFor(() => {
             expect(repairServiceMock.refetchAroundCurrentView).toHaveBeenCalledTimes(1);
@@ -358,7 +337,7 @@ describe('PostHistoryDialog', () => {
             pubkeyHex,
             relayConfig: null,
             preferredRanges: [{
-                kinds: [1, 42],
+                kinds: [1, 42, 1111],
                 rangeUnit: 'custom',
                 since: expectedSince,
                 until: expectedUntil,
@@ -388,6 +367,7 @@ describe('PostHistoryDialog', () => {
     });
 
     it('[repair-search-mode-disabled] 検索中は repair button を disabled にする', async () => {
+        vi.useFakeTimers();
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
             createRecord({ eventId: 'page-1', content: '一覧の投稿' }),
@@ -427,18 +407,20 @@ describe('PostHistoryDialog', () => {
 
         const searchInput = await openSearchBar();
         await fireEvent.input(searchInput, { target: { value: '一致' } });
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await vi.advanceTimersByTimeAsync(250);
 
         await waitFor(() => {
             expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalled();
         });
+        await screen.findByText('検索一致');
+        await vi.advanceTimersByTimeAsync(1);
         expect(localSearchServiceMock.searchLocalPosts.mock.calls.at(-1)?.[0]).toMatchObject({
             pubkeyHex: 'a'.repeat(64),
             query: '一致',
             page: 1,
             pageSize: 50,
         });
-        expect((await findRepairButton()).hasAttribute('data-disabled')).toBe(true);
+        expect((await findRepairButton()).hasAttribute('disabled')).toBe(true);
         expect(repairServiceMock.refetchAroundCurrentView).not.toHaveBeenCalled();
     });
 
@@ -452,9 +434,8 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        expect((await findRepairButton()).hasAttribute('data-disabled')).toBe(true);
+        expect((await findRepairButton()).hasAttribute('disabled')).toBe(true);
         expect(repairServiceMock.refetchAroundCurrentView).not.toHaveBeenCalled();
     });
-
 
 });

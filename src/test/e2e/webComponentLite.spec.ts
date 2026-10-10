@@ -125,8 +125,19 @@ async function mountHostOwned(page: import("@playwright/test").Page) {
         await composer.setSettings({ mediaFreePlacement: true, imageQualityLevel: "low", videoQualityLevel: "low" });
         await composer.setCustomEmojis([{ shortcode: "wave", url: "https://example.invalid/wave.webp" }]);
         await composer.setContext({ content: "#lite", reply: "note1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygsglnzgl", quotes: [] });
-        return { events, assetBase: composer.assetBase };
+        return { events, assetBase: composer.assetBase, uploadFileType: typeof (composer as any).uploadFile };
     }, { componentOrigin });
+}
+
+async function pasteHtml(editor: import("@playwright/test").Locator, html: string, text: string) {
+    await editor.evaluate((element, clipboard) => {
+        const data = new DataTransfer();
+        data.setData("text/plain", clipboard.text);
+        data.setData("text/html", clipboard.html);
+        const event = new Event("paste", { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "clipboardData", { value: data });
+        element.dispatchEvent(event);
+    }, { html, text });
 }
 
 test("Lite minimal configuration exposes only text composition and preserves success/failure content", async ({ page }) => {
@@ -207,6 +218,51 @@ test("Lite minimal configuration exposes only text composition and preserves suc
     await replacement.locator("button.post-button").click();
     await expect.poll(() => page.evaluate(() => (window as any).__liteMinimalState.errors)).toBe(1);
     await expect(replacement.locator(".tiptap-editor")).toContainText("keep after failure");
+});
+
+test("pastes HTML with clipboard plain text and sends that content through Host-owned Lite", async ({ page, isMobile }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = { outputs: [] as any[] };
+        (window as any).__litePasteState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.configureHostOwned({
+            submit(output: unknown) {
+                state.outputs.push(JSON.parse(JSON.stringify(output)));
+                return { eventId: "c".repeat(64) };
+            },
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    await editor.click();
+    const plain = "# copied heading\r\n- **copied item**\r\n| A | B |\r\n```ts\r\nconst x = `test`;\r\n```\r\n**literal**\r\nRun `npm test`";
+    const expectedPlain = "copied heading\n- copied item\n| A | B |\nconst x = `test`;\nliteral\nRun npm test";
+    const html = '<h3>HTML heading</h3><p>HTML <em>emphasis</em></p>' +
+        '<ol start="2"><li>HTML first</li><li>HTML second</li></ol>' +
+        '<table><tr><th>HTML column</th></tr><tr><td>HTML cell</td></tr></table>' +
+        '<pre><code>HTML code</code></pre>';
+    await pasteHtml(editor, html, plain);
+    await expect(editor.locator("p")).toHaveText(expectedPlain.split("\n"));
+    await expect(editor.locator("h1, h2, h3, strong, em, ul, ol, li, table, pre, code")).toHaveCount(0);
+
+    const undoModifier = isMobile ? "Meta" : "Control";
+    await editor.press(`${undoModifier}+z`);
+    await expect(editor).toHaveText("");
+    await editor.press(`${undoModifier}+Shift+z`);
+    await expect(editor.locator("p")).toHaveText(expectedPlain.split("\n"));
+
+    await composer.locator("button.post-button").click();
+    await expect.poll(() => page.evaluate(() => (window as any).__litePasteState.outputs.length)).toBe(1);
+    expect(await page.evaluate(() => (window as any).__litePasteState.outputs[0].content))
+        .toBe(expectedPlain);
 });
 
 test("controls the Host-owned Lite editor focus through the public API without changing content or caret", async ({ page }) => {
@@ -2086,6 +2142,7 @@ test("Lite keeps the explicit distribution asset base and lifecycle", async ({ p
     const lite = await mountHostOwned(page);
     expect(lite.events).toContain("ehagaki-ready");
     expect(lite.assetBase).toBe(`${componentOrigin}/host-owned/`);
+    expect(lite.uploadFileType).toBe("undefined");
 });
 
 test("Lite does not carry a queued context operation into a reconnect", async ({ page }) => {

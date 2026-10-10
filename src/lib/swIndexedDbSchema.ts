@@ -147,6 +147,13 @@ export function ensureCurrentEHagakiDbSchema(
         { name: '[pubkeyHex+createdAt]', keyPath: ['pubkeyHex', 'createdAt'] },
         { name: POST_HISTORY_TIMELINE_INDEX, keyPath: POST_HISTORY_TIMELINE_KEY_PATH },
     ]);
+    createObjectStoreIfMissing(db, 'sensitivePayloads', 'id', [
+        { name: 'pubkeyHex', keyPath: 'pubkeyHex' },
+        { name: 'structureKind', keyPath: 'structureKind' },
+        { name: 'createdAt', keyPath: 'createdAt' },
+        { name: 'updatedAt', keyPath: 'updatedAt' },
+        { name: 'deletedAt', keyPath: 'deletedAt' },
+    ]);
     if (postHistoryAlreadyExists && upgradeTransaction) {
         const postHistoryStore = upgradeTransaction.objectStore('postHistory');
         if (!postHistoryStore.indexNames?.contains(POST_HISTORY_TIMELINE_INDEX)) {

@@ -72,8 +72,8 @@ export function generateDraftPreview(
         document,
     );
 
-    const loc = (getStore(locale) as string) || 'en';
-    const t = getStore(_) as (id: string | { id: string }, values?: Record<string, any>) => string;
+    const loc = getStore(locale) || 'en';
+    const t = getStore(_);
 
     let imageLabel = '[画像]';
     let videoLabel = '[動画]';

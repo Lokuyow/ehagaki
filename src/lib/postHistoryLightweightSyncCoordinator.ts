@@ -1,3 +1,7 @@
+import { createPostHistoryAuthoredFetchScope, persistPostHistoryAuthoredFetch, EMPTY_POST_HISTORY_FETCH_SAVE } from "./postHistoryAuthoredFetchPersistence";
+import { getPostHistoryAuthoredRelayScopeKey } from "./postHistoryRelayResolver";
+import { POST_HISTORY_FETCH_KINDS } from "./postHistoryRelayFetchService";
+import type { PostHistoryCoverageWrite } from "./storage/postHistoryRelayCoverageRepository";
 import type { RxNostr } from "rx-nostr";
 import type {
     PostHistoryInboundDirectReplyCandidate,
@@ -36,13 +40,16 @@ export type PostHistoryLightweightSyncReason =
 export interface PostHistoryLightweightAuthoredSyncRequest {
     ownerPubkeyHex: string;
     relayConfig?: RelayConfig | null;
-    reason: PostHistoryLightweightSyncReason;
+    reason: PostHistoryLightweightSyncReason | "dialog-open-catchup";
+    /** Keeps every page of an open-time catchup bound to the pre-delete history. */
+    expectedLocalRevision?: number;
     kinds?: number[];
     since?: number;
     until?: number;
     limit?: number;
     timeoutMs?: number;
     onSavedSelfPosts?: (eventIds: string[]) => void | Promise<void>;
+    getRelayConfig?: () => RelayConfig | null | undefined;
     isActive?: () => boolean;
 }
 
@@ -89,6 +96,8 @@ export interface PostHistoryLightweightSyncCoordinatorDeps {
 }
 
 type InFlightAuthored = {
+    ownerPubkeyHex: string;
+    consumers: Map<symbol, PostHistoryLightweightAuthoredSyncRequest>;
     sourceTask: PostHistoryRelayFetchTask;
     promise: Promise<PostHistoryLightweightAuthoredSyncResult>;
     leases: Set<symbol>;
@@ -125,7 +134,10 @@ export class PostHistoryLightweightSyncCoordinator {
         "saveLatestObservedCreatedAt"
     >;
     private now: () => number;
-    private inFlightAuthoredByOwner = new Map<string, InFlightAuthored>();
+    private inFlightAuthored = new Map<string, InFlightAuthored>();
+    private runtimeIds = new WeakMap<object, number>();
+    private nextRuntimeId = 0;
+    private ownerCancellationRevisions = new Map<string, number>();
     private inFlightInboundByOwner = new Map<string, InFlightInbound>();
     private latestSuccessfulAuthoredAtByOwner = new Map<string, number>();
     private latestSuccessfulInboundAtByOwner = new Map<string, number>();
@@ -145,47 +157,75 @@ export class PostHistoryLightweightSyncCoordinator {
         rxNostr: RxNostr,
         params: PostHistoryLightweightAuthoredSyncRequest,
     ): PostHistoryLightweightAuthoredSyncTask {
-        const inFlight = this.inFlightAuthoredByOwner.get(params.ownerPubkeyHex);
-        if (inFlight) {
-            return this.joinAuthored(params.ownerPubkeyHex, inFlight);
-        }
-
-        const lease = Symbol("post-history-authored-lightweight-lease");
-        let sourceActive = true;
-        const sourceTask = this.postHistoryRelayFetchService.fetchLatest(rxNostr, {
-            pubkeyHex: params.ownerPubkeyHex,
-            relayConfig: params.relayConfig,
-            reason: params.reason,
-            ...(params.kinds ? { kinds: params.kinds } : {}),
-            ...(typeof params.since === "number" ? { since: params.since } : {}),
-            ...(typeof params.until === "number" ? { until: params.until } : {}),
-            ...(typeof params.limit === "number" ? { limit: params.limit } : {}),
-            ...(typeof params.timeoutMs === "number" ? { timeoutMs: params.timeoutMs } : {}),
+        const lease = Symbol("post-history-authored-lease");
+        let active = true;
+        let joinedExisting = false;
+        let entry: InFlightAuthored | null = null;
+        let key = "";
+        const relayScopeKey = getPostHistoryAuthoredRelayScopeKey(params.relayConfig);
+        const ownerRevision = this.ownerCancellationRevisions.get(params.ownerPubkeyHex) ?? 0;
+        const consumerIsActive = () => active
+            && ownerRevision === (this.ownerCancellationRevisions.get(params.ownerPubkeyHex) ?? 0)
+            && params.isActive?.() !== false
+            && getPostHistoryAuthoredRelayScopeKey(params.getRelayConfig ? params.getRelayConfig() : params.relayConfig) === relayScopeKey;
+        const cancelled = (): PostHistoryLightweightAuthoredSyncResult => ({
+            fetchResult: { status: "cancelled", events: [], fetchedAt: this.now(), nextUntil: null, hasMore: false,
+                relayUrls: [], observedRelayUrls: [], rawCount: 0, uniqueCount: 0, duplicateCount: 0,
+                perRelayCounts: [], oldestCreatedAt: null, newestCreatedAt: null, requestedRelayUrls: [],
+                eventRelayUrls: [], eoseRelayUrls: [], closedRelayUrls: [], errorRelayUrls: [], downRelayUrls: [],
+                completedByRxNostr: false, completedByLocalTimeout: false, hasAnyRelayResponse: false, allRelaysFailed: false },
+            upsertSummary: EMPTY_POST_HISTORY_FETCH_SAVE, savedSelfPostEventIds: [],
         });
-        const isActive = () => sourceActive && params.isActive?.() !== false;
-        const promise = this.saveAuthored(sourceTask, params, isActive)
-            .finally(() => {
-                const current = this.inFlightAuthoredByOwner.get(params.ownerPubkeyHex);
-                if (current?.promise === promise) {
-                    this.inFlightAuthoredByOwner.delete(params.ownerPubkeyHex);
-                }
-            });
-        const inFlightAuthored: InFlightAuthored = {
-            sourceTask,
-            promise,
-            leases: new Set([lease]),
-            cancelSource: () => {
-                sourceActive = false;
-                sourceTask.cancel();
-            },
-        };
-        this.inFlightAuthoredByOwner.set(params.ownerPubkeyHex, inFlightAuthored);
-
-        return {
-            promise,
-            cancel: () => this.releaseAuthored(params.ownerPubkeyHex, inFlightAuthored, lease),
-            joinedExisting: false,
-        };
+        const promise = (async () => {
+            const initialScope = await createPostHistoryAuthoredFetchScope({ ownerPubkeyHex: params.ownerPubkeyHex,
+                rxNostr, kinds: params.kinds ?? [...POST_HISTORY_FETCH_KINDS], relayConfig: params.relayConfig,
+                getRelayConfig: params.getRelayConfig ?? (() => params.relayConfig), isActive: consumerIsActive });
+            if (!initialScope.isActive() || (params.expectedLocalRevision !== undefined
+                && initialScope.expectedRevision !== params.expectedLocalRevision)) return cancelled();
+            let runtimeId = this.runtimeIds.get(rxNostr);
+            if (runtimeId === undefined) { runtimeId = ++this.nextRuntimeId; this.runtimeIds.set(rxNostr, runtimeId); }
+            key = JSON.stringify([params.ownerPubkeyHex, runtimeId, initialScope.expectedRevision, relayScopeKey,
+                initialScope.kindsKey, params.reason, params.since ?? null, params.until ?? null,
+                params.limit ?? null, params.timeoutMs ?? null]);
+            const existing = this.inFlightAuthored.get(key);
+            const consumer = { ...params, isActive: consumerIsActive };
+            if (existing) {
+                entry = existing;
+                existing.leases.add(lease);
+                existing.consumers.set(lease, consumer);
+                joinedExisting = true;
+            } else {
+                let sourceActive = true;
+                const consumers = new Map([[lease, consumer]]);
+                const isActive = () => sourceActive && [...consumers.values()].some((value) => value.isActive?.() !== false);
+                const sourceTask = this.postHistoryRelayFetchService.fetchLatest(rxNostr, {
+                    pubkeyHex: params.ownerPubkeyHex, relayConfig: params.relayConfig, reason: params.reason,
+                    ...(params.kinds ? { kinds: params.kinds } : {}),
+                    ...(params.since === undefined ? {} : { since: params.since }),
+                    ...(params.until === undefined ? {} : { until: params.until }),
+                    ...(params.limit === undefined ? {} : { limit: params.limit }),
+                    ...(params.timeoutMs === undefined ? {} : { timeoutMs: params.timeoutMs }),
+                });
+                const scope = { ...initialScope, isActive };
+                const saveParams = { ...params, onSavedSelfPosts: (ids: string[]) =>
+                    [...consumers.values()].find((value) => value.isActive?.() !== false)?.onSavedSelfPosts?.(ids) };
+                const sharedPromise = this.saveAuthored(sourceTask, saveParams, isActive, scope).finally(() => {
+                    if (this.inFlightAuthored.get(key)?.promise === sharedPromise) this.inFlightAuthored.delete(key);
+                });
+                entry = { ownerPubkeyHex: params.ownerPubkeyHex, sourceTask, promise: sharedPromise, consumers,
+                    leases: new Set([lease]), cancelSource: () => { sourceActive = false; sourceTask.cancel(); } };
+                this.inFlightAuthored.set(key, entry);
+            }
+            const result = await entry.promise;
+            return consumerIsActive() ? result : cancelled();
+        })();
+        return { promise, get joinedExisting() { return joinedExisting; }, cancel: () => {
+            active = false;
+            if (entry) {
+                entry.consumers.delete(lease);
+                this.releaseAuthored(key, entry, lease);
+            }
+        } };
     }
 
     runInbound(
@@ -251,10 +291,13 @@ export class PostHistoryLightweightSyncCoordinator {
     }
 
     cancelOwnerTasks(ownerPubkeyHex: string): void {
-        const authored = this.inFlightAuthoredByOwner.get(ownerPubkeyHex);
-        if (authored) {
-            authored.cancelSource();
-            this.inFlightAuthoredByOwner.delete(ownerPubkeyHex);
+        // Also invalidate leases still awaiting their persistent deletion revision.
+        this.ownerCancellationRevisions.set(ownerPubkeyHex, (this.ownerCancellationRevisions.get(ownerPubkeyHex) ?? 0) + 1);
+        for (const [key, authored] of this.inFlightAuthored) {
+            if (authored.ownerPubkeyHex === ownerPubkeyHex) {
+                authored.cancelSource();
+                this.inFlightAuthored.delete(key);
+            }
         }
 
         const inbound = this.inFlightInboundByOwner.get(ownerPubkeyHex);
@@ -268,20 +311,18 @@ export class PostHistoryLightweightSyncCoordinator {
         task: PostHistoryRelayFetchTask,
         params: PostHistoryLightweightAuthoredSyncRequest,
         isActive: () => boolean,
+        scope: Omit<PostHistoryCoverageWrite, "relays">,
     ): Promise<PostHistoryLightweightAuthoredSyncResult> {
         const fetchResult = await task.promise;
         if (!isActive() || fetchResult.status === "cancelled") {
-            return { fetchResult, upsertSummary: EMPTY_UPSERT_SUMMARY, savedSelfPostEventIds: [] };
+            return { fetchResult: { ...fetchResult, status: "cancelled" }, upsertSummary: EMPTY_UPSERT_SUMMARY, savedSelfPostEventIds: [] };
         }
 
-        const upsertSummary = fetchResult.events.length > 0
-            ? await this.postHistoryRepository.upsertFetchedEvents({
-                events: fetchResult.events,
-                fetchedAt: fetchResult.fetchedAt,
-            })
-            : EMPTY_UPSERT_SUMMARY;
+        const upsertSummary = await persistPostHistoryAuthoredFetch(fetchResult, scope, this.postHistoryRepository);
+        if (upsertSummary.applied === false) return { fetchResult: { ...fetchResult, status: "cancelled" },
+            upsertSummary, savedSelfPostEventIds: [] };
         if (!isActive()) {
-            return { fetchResult, upsertSummary, savedSelfPostEventIds: [] };
+            return { fetchResult: { ...fetchResult, status: "cancelled" }, upsertSummary, savedSelfPostEventIds: [] };
         }
 
         if (fetchResult.status === "success") {
@@ -291,7 +332,7 @@ export class PostHistoryLightweightSyncCoordinator {
             );
         }
         if (!isActive()) {
-            return { fetchResult, upsertSummary, savedSelfPostEventIds: [] };
+            return { fetchResult: { ...fetchResult, status: "cancelled" }, upsertSummary, savedSelfPostEventIds: [] };
         }
 
         const savedSelfPostEventIds = fetchedEventIds(fetchResult);
@@ -303,19 +344,6 @@ export class PostHistoryLightweightSyncCoordinator {
         }
 
         return { fetchResult, upsertSummary, savedSelfPostEventIds };
-    }
-
-    private joinAuthored(
-        ownerPubkeyHex: string,
-        inFlight: InFlightAuthored,
-    ): PostHistoryLightweightAuthoredSyncTask {
-        const lease = Symbol("post-history-authored-lightweight-join");
-        inFlight.leases.add(lease);
-        return {
-            promise: inFlight.promise,
-            cancel: () => this.releaseAuthored(ownerPubkeyHex, inFlight, lease),
-            joinedExisting: true,
-        };
     }
 
     private joinInbound(
@@ -332,7 +360,7 @@ export class PostHistoryLightweightSyncCoordinator {
     }
 
     private releaseAuthored(
-        ownerPubkeyHex: string,
+        key: string,
         inFlight: InFlightAuthored,
         lease: symbol,
     ): void {
@@ -342,8 +370,8 @@ export class PostHistoryLightweightSyncCoordinator {
         }
 
         inFlight.cancelSource();
-        if (this.inFlightAuthoredByOwner.get(ownerPubkeyHex) === inFlight) {
-            this.inFlightAuthoredByOwner.delete(ownerPubkeyHex);
+        if (this.inFlightAuthored.get(key) === inFlight) {
+            this.inFlightAuthored.delete(key);
         }
     }
 

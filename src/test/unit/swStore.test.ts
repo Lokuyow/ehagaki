@@ -139,4 +139,38 @@ describe("swStore DB upgrade blocked state", () => {
         expect(staleStore.staleAssetReloadState.required).toBe(false);
         expect(staleStore.staleAssetReloadState.promptRevision).toBe(0);
     });
+
+    it("Workboxのwaiting通知より前に承認した更新もnative controllerchangeで一度だけreloadする", async () => {
+        const reload = vi.fn();
+        vi.stubGlobal("window", { location: { reload } });
+        Reflect.set(serviceWorkerEvents, "controller", {});
+        const store = await import("../../stores/swStore.svelte");
+        const bootstrap = await import("../../lib/bootstrap/serviceWorkerBootstrap");
+        bootstrap.startServiceWorkerRegistration();
+        await store.handleSwUpdate();
+
+        Reflect.set(serviceWorkerEvents, "controller", {});
+        serviceWorkerEvents.dispatchEvent(new Event("controllerchange"));
+        expect(reload).toHaveBeenCalledOnce();
+        testState.registerOptions?.onNeedReload?.();
+        expect(reload).toHaveBeenCalledOnce();
+    });
+
+    it("初回controller取得はstale化せず、その後の外部更新は既存のstale制御に渡す", async () => {
+        Reflect.set(serviceWorkerEvents, "controller", null);
+        const bootstrap = await import("../../lib/bootstrap/serviceWorkerBootstrap");
+        const staleStore = await import("../../stores/staleAssetReloadStore.svelte");
+        bootstrap.startServiceWorkerRegistration();
+        const firstController = {};
+        Reflect.set(serviceWorkerEvents, "controller", firstController);
+        serviceWorkerEvents.dispatchEvent(new Event("controllerchange"));
+        expect(staleStore.staleAssetReloadState.required).toBe(false);
+        serviceWorkerEvents.dispatchEvent(new Event("controllerchange"));
+        expect(staleStore.staleAssetReloadState.required).toBe(false);
+
+        Reflect.set(serviceWorkerEvents, "controller", {});
+        serviceWorkerEvents.dispatchEvent(new Event("controllerchange"));
+        expect(staleStore.staleAssetReloadState.required).toBe(true);
+        expect(staleStore.staleAssetReloadState.promptRevision).toBe(1);
+    });
 });

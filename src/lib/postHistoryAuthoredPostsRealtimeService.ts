@@ -1,4 +1,5 @@
 import { createRxForwardReq, type RxNostr } from "rx-nostr";
+import { POST_HISTORY_AUTHORED_KINDS, isPostHistoryAuthoredKind } from "./postHistoryKinds";
 import { resolvePostHistoryRelayUrls } from "./postHistoryRelayResolver";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import {
@@ -97,7 +98,7 @@ export class PostHistoryAuthoredPostsRealtimeService {
 
             rxReq.emit({
                 authors: [params.ownerPubkeyHex],
-                kinds: [1, 42],
+                kinds: [...POST_HISTORY_AUTHORED_KINDS],
                 since: subscribedSince,
             } as never);
         } catch (error) {
@@ -127,7 +128,7 @@ export class PostHistoryAuthoredPostsRealtimeService {
             !isActive()
             || !event?.id
             || event.pubkey !== params.ownerPubkeyHex
-            || (event.kind !== 1 && event.kind !== 42)
+            || !isPostHistoryAuthoredKind(event.kind)
         ) {
             return;
         }

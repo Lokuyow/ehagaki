@@ -11,15 +11,25 @@
     import FloatingMessage from "./FloatingMessage.svelte";
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import PostHistoryRepostPreview from "./PostHistoryRepostPreview.svelte";
+    import PostRepostFeedback from "./PostRepostFeedback.svelte";
+    import { usePostHistoryRepostPreviews, loadStoredRepostTarget } from "../lib/hooks/usePostHistoryRepostPreviews.svelte";
+    import type { RepostPostHandler } from "../lib/hooks/usePostRepostOperation.svelte";
+    import type { PostRepostResult } from "../lib/postRepostService";
+    import { isRepostOuterKind, isRepostTargetKind, repostTargetToPost } from "../lib/postRepostUtils";
+    import { isPostHistoryRawEventConsistent } from "../lib/postHistoryEventUtils";
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
     import PostHistoryRecordActionItems from "./PostHistoryRecordActionItems.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
     import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
     import PostHistoryImportDialog from "./PostHistoryImportDialog.svelte";
+    import type { PostHistoryJsonlImportResult } from "../lib/postHistoryJsonlImportService";
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostHistoryRepliesBadgeButton from "./PostHistoryRepliesBadgeButton.svelte";
     import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
+    import PostHistoryReactionDetails from "./PostHistoryReactionDetails.svelte";
+    import PostHistoryReactionActionButton from "./PostHistoryReactionActionButton.svelte";
     import PostPreviewFooterActionButton from "./PostPreviewFooterActionButton.svelte";
     import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
     import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
@@ -35,6 +45,7 @@
     import { usePostHistoryDialogViewport } from "../lib/hooks/usePostHistoryDialogViewport.svelte";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { usePostHistoryThreadGraph } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
+    import { usePostHistoryRelatedReactions } from "../lib/hooks/usePostHistoryRelatedReactions.svelte";
     import { usePostHistoryInboundInteractionsSync } from "../lib/hooks/usePostHistoryInboundInteractionsSync.svelte";
     import type { PostHistoryThreadGraphNodeState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import type {
@@ -51,6 +62,8 @@
     } from "../lib/postHistoryDialogUtils";
     import {
         buildPostContentRenderModel,
+        resolveEventContentBody,
+        type SensitiveBodyCacheStatus,
         type PostContentRenderModel,
     } from "../lib/postContentPreview";
     import {
@@ -66,6 +79,10 @@
     import { createPostHistoryProfileSyncCoordinator } from "../lib/postHistoryProfileSync";
     import { postHistoryQuoteTargetDiscoveryAdapter } from "../lib/postHistoryRelatedTargetDiscoveryAdapter";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
+    import {
+        createSensitivePayloadBodyLoader,
+        loadVerifiedSensitivePayloadEvent,
+    } from "../lib/sensitiveContentPayloadReader";
     import { reconcilePendingDeletionRequestsForParentEventIds } from "../lib/postHistoryPendingDeletionRequestsReconcile";
     import { triggerPostHistoryChildInteractionDeletionLifecycle } from "../lib/postHistoryChildInteractionDeletionLifecycleTrigger";
     import { formatPostHistoryReactionActorLabel } from "../lib/postHistoryReactionReadModel";
@@ -112,6 +129,10 @@
             post: PostHistoryRecord,
         ) => void | boolean | Promise<boolean>;
         onQuotePost?: (post: PostHistoryRecord) => void;
+        onRepostPost?: RepostPostHandler;
+        repostPending?: boolean;
+        onRetryRepostSave?: (result: PostRepostResult) => Promise<boolean>;
+        repostSaveFailure?: PostRepostResult | null;
         pubkeyHex?: string | null;
         rxNostr?: RxNostr;
         relayConfig?: RelayConfig | null;
@@ -137,6 +158,10 @@
         onClose,
         onReplyPost = undefined,
         onQuotePost = undefined,
+        onRepostPost = undefined,
+        repostPending = false,
+        onRetryRepostSave = undefined,
+        repostSaveFailure = null,
         pubkeyHex = null,
         rxNostr = undefined,
         relayConfig = null,
@@ -152,6 +177,7 @@
         getRxNostr: () => rxNostr,
     });
     const relatedTargetResolver = createPostHistoryRelatedTargetResolver({
+        loadRepostTarget: loadStoredRepostTarget,
         getShow: () => show,
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
@@ -188,9 +214,37 @@
         },
         pageSize: POST_HISTORY_PAGE_SIZE,
     });
+    const repostPreviews = usePostHistoryRepostPreviews({
+        getShow: () => show, getPubkey: () => pubkeyHex, getPosts: () => history.posts,
+        resolver: relatedTargetResolver,
+    });
+    let repostResult = $state<PostRepostResult | null>(null);
+    let repostUiGeneration = 0;
+    $effect(() => {
+        show; pubkeyHex; repostUiGeneration++; repostResult = null;
+        return () => relatedTargetResolver.invalidateScope("post-history-repost-operation");
+    });
+    function canRepost(post: PostHistoryRecord): boolean {
+        return !!onRepostPost && isRepostTargetKind(post.kind) && post.deletedAt === undefined
+            && isPostHistoryRawEventConsistent(post.rawEvent, post);
+    }
+    async function handleRepost(post: PostHistoryRecord) {
+        if (!onRepostPost || repostPending || !canRepost(post)) return;
+        repostResult = null;
+        const generation = repostUiGeneration;
+        const result = await onRepostPost(post, (target, relayHints) => relatedTargetResolver.prepareRepostTarget({
+            relationKind: "repost", scopeKey: "post-history-repost-operation",
+            targetEventId: target.id, authorHint: target.pubkey, relayHints }, target));
+        if (generation === repostUiGeneration && show) repostResult = result;
+    }
     const channelDisplay = usePostHistoryChannelDisplay({
         getShow: () => show,
-        getPosts: () => history.posts,
+        getPosts: () => [...history.posts, ...history.posts.flatMap((post) => {
+            if (!isRepostOuterKind(post.kind)) return [];
+            const preview = repostPreviews.getPreview(post);
+            return preview.status === "resolved" && preview.event?.kind === 42
+                ? [repostTargetToPost(preview.event, preview.relayHints)] : [];
+        })],
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
         getIsSearchMode: () => history.isSearchMode,
@@ -203,6 +257,12 @@
         relatedTargetResolver,
         profileSyncCoordinator,
     });
+
+    function getRepostChannelText(post: PostHistoryRecord): string | null {
+        const preview = repostPreviews.getPreview(post);
+        return preview.status === "resolved" && preview.event?.kind === 42
+            ? channelDisplay.getChannelText(repostTargetToPost(preview.event, preview.relayHints), $_) : null;
+    }
 
     function collectQuoteRelatedTargetDescriptors(posts: PostHistoryRecord[]) {
         const quoteIndex =
@@ -221,6 +281,37 @@
         getRelayConfig: () => relayConfig,
         relatedTargetResolver,
         profileSyncCoordinator,
+    });
+    function getRelatedReactionTargets() {
+        const targets = new Map<string, string[]>();
+        const addTarget = (eventId: string, relayHints: string[]) => {
+            if (!eventId || history.posts.some((post) => post.eventId === eventId)) return;
+            targets.set(eventId, Array.from(new Set([...(targets.get(eventId) ?? []), ...relayHints])));
+        };
+        const visitNode = (nodeState: PostHistoryThreadGraphNodeState | null) => {
+            if (!nodeState) return;
+            addTarget(nodeState.node.eventId, nodeState.node.relayUrls);
+            visitNode(nodeState.parentNodeState);
+            nodeState.replyNodeStates.forEach(visitNode);
+        };
+        for (const post of history.posts) {
+            const anchorState = postHistoryThreadGraph.getAnchorState(post);
+            visitNode(anchorState.parentNodeState);
+            anchorState.replyNodeStates.forEach(visitNode);
+            for (const quote of quotePreviews.getQuotePreviews(post)) {
+                if (quote.status === "resolved") addTarget(quote.event.id, quote.relayHints);
+            }
+        }
+        return Array.from(targets, ([eventId, relayHints]) => ({ eventId, relayHints }));
+    }
+    let relatedReactionTargets = $derived.by(getRelatedReactionTargets);
+    const relatedReactions = usePostHistoryRelatedReactions({
+        getShow: () => show,
+        getPubkeyHex: () => pubkeyHex,
+        getRxNostr: () => rxNostr,
+        getRelayConfig: () => relayConfig,
+        getTargets: () => relatedReactionTargets,
+        profileSync: profileSyncCoordinator,
     });
     usePostHistoryInboundInteractionsSync({
         getShow: () => show,
@@ -285,6 +376,8 @@
         | undefined;
     let rawJsonDialogOpen = $state(false);
     let selectedRawEvent = $state<unknown>(null);
+    let selectedRawRelayHints = $state<string[]>([]);
+    let rawJsonSelectionVersion = $state(0);
     let deleteRequestState = $state<
         Record<string, "sending" | "failed" | undefined>
     >({});
@@ -309,9 +402,9 @@
     let fullscreenMediaItems = $state<FullscreenMediaItem[]>([]);
     let fullscreenIndex = $state(-1);
     let showImageFullscreen = $state(false);
+    let postHistoryHeadingElement = $state<HTMLDivElement | null>(null);
     let historyContainer = $state<HTMLDivElement | null>(null);
     let autoLoadOlderSentinel = $state<HTMLDivElement | null>(null);
-    let autoLoadNewerSentinel = $state<HTMLDivElement | null>(null);
     let isAutoLoadingOlder = $state(false);
     let isAutoLoadingNewer = $state(false);
     let autoLoadRootHeight = $state<number | null>(null);
@@ -329,6 +422,8 @@
               sentinel: HTMLDivElement;
               resizeGeneration: number;
               scrollTop: number;
+              reconcileAfterCommit: () => void;
+              resumeAfterLoad: () => void;
           }
         | null = null;
     let autoLoadNewerObserverContext:
@@ -337,14 +432,23 @@
               sentinel: HTMLDivElement;
               resizeGeneration: number;
               scrollTop: number;
+              reconcileAfterCommit: () => void;
+              resumeAfterLoad: () => void;
           }
         | null = null;
     const supportsAutoLoadOlder = typeof IntersectionObserver !== "undefined";
+    let hasNewerAutoLoadTopReservation = $state(false);
+    let pendingNewerAutoLoadTopReservationRestore: {
+        anchor: ReturnType<typeof historyViewport.captureHistoryScrollAnchor>;
+    } | null = null;
     let searchInputElement = $state<HTMLInputElement | null>(null);
     let showDelayedListLoading = $state(false);
     const previewCollapse = usePostHistoryPreviewCollapse({
         getShow: () => show,
-        getPosts: () => history.posts,
+        getPosts: () => history.posts.map((post) => ({
+            ...post,
+            content: resolveEventContentBody(post.content, post.tags),
+        })),
         getContainer: () => historyContainer,
     });
     const reactionEmojiSlotWidthByUrl = new Map<string, number>();
@@ -366,12 +470,26 @@
     function buildDisplayPreviewModel(
         post: PostHistoryRecord,
     ): PostContentRenderModel {
-        const displayContent = stripPostHistoryInlineQuoteUrisForDisplay(post);
+        const content = isRepostOuterKind(post.kind) ? "" : resolveEventContentBody(post.content, post.tags);
+        const displayContent = stripPostHistoryInlineQuoteUrisForDisplay({
+            ...post,
+            content,
+        });
         return buildPostContentRenderModel({
-            sourceContent: displayContent,
+            kind: post.kind,
+            sourceContent: content,
             displayContent,
             tags: post.tags,
             media: post.media,
+        });
+    }
+
+    function getSensitiveBodyLoader(event: NostrEvent | null | undefined) {
+        return createSensitivePayloadBodyLoader({
+            ownerPubkey: pubkeyHex,
+            structure: event,
+            rxNostr,
+            relayConfig,
         });
     }
 
@@ -463,6 +581,7 @@
         }
 
         models[event.id] = buildPostContentRenderModel({
+            kind: event.kind,
             sourceContent: event.content,
             tags: event.tags,
         });
@@ -543,6 +662,14 @@
                 if (reactionGroup.emojiUrl) {
                     urls.add(reactionGroup.emojiUrl);
                 }
+            }
+        }
+
+        for (const target of relatedReactionTargets) {
+            if (!reactionsExpandedByEventId[target.eventId]) continue;
+            const reactionModel = getRelatedReactionReadModel(target.eventId);
+            for (const reactionGroup of reactionModel?.groups ?? []) {
+                if (reactionGroup.emojiUrl) urls.add(reactionGroup.emojiUrl);
             }
         }
 
@@ -632,6 +759,37 @@
     }
 
     useDialogHistory(() => show, handleClose, true);
+
+    $effect.pre(() => {
+        const shouldReserveTopSlot =
+            supportsAutoLoadOlder
+            && !history.isSearchMode
+            && history.state.listingMode === "contiguous"
+            && !isExplicitNavigation
+            && history.state.hasNewerLocal;
+
+        if (untrack(() => hasNewerAutoLoadTopReservation) === shouldReserveTopSlot) {
+            return;
+        }
+
+        pendingNewerAutoLoadTopReservationRestore = {
+            anchor: historyViewport.captureHistoryScrollAnchor(),
+        };
+        hasNewerAutoLoadTopReservation = shouldReserveTopSlot;
+    });
+
+    $effect(() => {
+        hasNewerAutoLoadTopReservation;
+        const pendingRestore = untrack(
+            () => pendingNewerAutoLoadTopReservationRestore,
+        );
+        if (!pendingRestore) {
+            return;
+        }
+
+        historyViewport.restoreHistoryScrollAnchor(pendingRestore.anchor);
+        pendingNewerAutoLoadTopReservationRestore = null;
+    });
 
     $effect(() => {
         if (show) {
@@ -726,8 +884,8 @@
             && !history.isSearchMode
             && history.state.listingMode === "contiguous"
             && history.state.hasOlderLocal
+            && !history.isFetchingOlderFromRelays
             && !history.isRefetchingAroundCurrentView;
-
         if (!enabled || !supportsAutoLoadOlder) {
             autoLoadOlderAwaitingExit = false;
             autoLoadOlderSentinelIsIntersecting = false;
@@ -735,43 +893,134 @@
             return;
         }
 
+        const previousObserverContext = autoLoadOlderObserverContext;
+        const previousScrollTop = previousObserverContext?.scrollTop;
         const suppressInitialIntersectionForResize =
-            autoLoadOlderObserverContext?.root === root
-            && autoLoadOlderObserverContext.sentinel === sentinel
-            && autoLoadOlderObserverContext.resizeGeneration !== resizeGeneration
-            && root.scrollTop <= autoLoadOlderObserverContext.scrollTop;
+            previousObserverContext?.root === root
+            && previousObserverContext.sentinel === sentinel
+            && previousObserverContext.resizeGeneration !== resizeGeneration;
+        let receivedInitialEntry = false;
+        let isObserverActive = true;
+        let awaitingResizeApproach = false;
+        let hasPendingApproach = false;
+        let lastScrollTop = root.scrollTop;
+
+        const isOlderSentinelInPrefetchRegion = () => {
+            const rootRect = root.getBoundingClientRect();
+            const sentinelRect = sentinel.getBoundingClientRect();
+            return sentinelRect.left < rootRect.right
+                && sentinelRect.right > rootRect.left
+                && sentinelRect.top <= rootRect.bottom + rootHeight * 2
+                && sentinelRect.bottom >= rootRect.top;
+        };
+
+        const recordExit = () => {
+            autoLoadOlderSentinelIsIntersecting = false;
+            autoLoadOlderAwaitingExit = false;
+            awaitingResizeApproach = false;
+            hasPendingApproach = false;
+        };
+
+        const requestApproach = () => {
+            if (
+                !isObserverActive
+                || awaitingResizeApproach
+                || autoLoadOlderAwaitingExit
+                || !canAutoLoadOlderPosts()
+            ) {
+                return;
+            }
+            if (isAutoLoadingOlder) {
+                hasPendingApproach = true;
+                return;
+            }
+            hasPendingApproach = false;
+            void handleAutoLoadOlder();
+        };
+
         autoLoadOlderObserverContext = {
             root,
             sentinel,
             resizeGeneration,
             scrollTop: root.scrollTop,
+            reconcileAfterCommit: () => {
+                if (!isObserverActive) {
+                    return;
+                }
+                // Observe the exit before a fast scroll can return to the new
+                // tail between IntersectionObserver notifications.
+                lastScrollTop = root.scrollTop;
+                if (!isOlderSentinelInPrefetchRegion()) {
+                    recordExit();
+                }
+            },
+            resumeAfterLoad: () => {
+                if (!isObserverActive || !hasPendingApproach) {
+                    return;
+                }
+                hasPendingApproach = false;
+                if (!isOlderSentinelInPrefetchRegion()) {
+                    recordExit();
+                    return;
+                }
+                requestApproach();
+            },
         };
-        let receivedInitialEntry = false;
+
+        const handleScrollApproach = () => {
+            if (!isObserverActive) {
+                return;
+            }
+
+            const scrollTop = root.scrollTop;
+            const movedTowardOlder = scrollTop > lastScrollTop;
+            lastScrollTop = scrollTop;
+
+            if (!isOlderSentinelInPrefetchRegion()) {
+                recordExit();
+                return;
+            }
+            if (!movedTowardOlder) {
+                return;
+            }
+
+            awaitingResizeApproach = false;
+            autoLoadOlderSentinelIsIntersecting = true;
+            requestApproach();
+        };
 
         const observer = new IntersectionObserver(
             (entries) => {
-                const isIntersecting = entries.some(
-                    (entry) => entry.isIntersecting,
-                );
-                const isInitialEntry = !receivedInitialEntry;
-                receivedInitialEntry = true;
-                autoLoadOlderSentinelIsIntersecting = isIntersecting;
+                if (!isObserverActive) {
+                    return;
+                }
 
-                if (!isIntersecting) {
-                    if (
-                        autoLoadOlderAwaitingExit
-                        && !isAutoLoadingOlder
-                    ) {
-                        autoLoadOlderAwaitingExit = false;
+                for (const entry of entries) {
+                    if (entry.target !== sentinel) {
+                        continue;
                     }
-                    return;
-                }
+                    const isInitialEntry = !receivedInitialEntry;
+                    receivedInitialEntry = true;
+                    autoLoadOlderSentinelIsIntersecting = entry.isIntersecting;
 
-                if (isInitialEntry && suppressInitialIntersectionForResize) {
-                    return;
-                }
+                    if (!entry.isIntersecting) {
+                        recordExit();
+                        continue;
+                    }
 
-                void handleAutoLoadOlder();
+                    if (
+                        isInitialEntry
+                        && suppressInitialIntersectionForResize
+                        && typeof previousScrollTop === "number"
+                        && root.scrollTop <= previousScrollTop
+                    ) {
+                        awaitingResizeApproach = true;
+                        continue;
+                    }
+
+                    awaitingResizeApproach = false;
+                    requestApproach();
+                }
             },
             {
                 root,
@@ -780,29 +1029,32 @@
             },
         );
         observer.observe(sentinel);
+        root.addEventListener("scroll", handleScrollApproach, { passive: true });
 
         return () => {
+            isObserverActive = false;
+            awaitingResizeApproach = false;
+            hasPendingApproach = false;
+            root.removeEventListener("scroll", handleScrollApproach);
             observer.disconnect();
         };
     });
 
     $effect(() => {
-        const sentinel = autoLoadNewerSentinel;
         const root = historyContainer;
         const rootHeight = autoLoadRootHeight;
         const resizeGeneration = autoLoadRootResizeGeneration;
         const enabled =
             show
-            && !!sentinel
             && !!root
             && rootHeight !== null
             && rootHeight > 0
             && !history.isSearchMode
             && history.state.listingMode === "contiguous"
             && history.state.hasNewerLocal
+            && hasNewerAutoLoadTopReservation
             && !isExplicitNavigation
             && !history.isRefetchingAroundCurrentView;
-
         if (!enabled || !supportsAutoLoadOlder) {
             autoLoadNewerAwaitingExit = false;
             autoLoadNewerSentinelIsIntersecting = false;
@@ -810,54 +1062,177 @@
             return;
         }
 
-        const suppressInitialIntersectionForResize =
-            autoLoadNewerObserverContext?.root === root
-            && autoLoadNewerObserverContext.sentinel === sentinel
-            && autoLoadNewerObserverContext.resizeGeneration !== resizeGeneration
-            && root.scrollTop >= autoLoadNewerObserverContext.scrollTop;
-        autoLoadNewerObserverContext = {
-            root,
-            sentinel,
-            resizeGeneration,
-            scrollTop: root.scrollTop,
-        };
-        let receivedInitialEntry = false;
+        const previousObserverContext = autoLoadNewerObserverContext;
+        const previousScrollTop = previousObserverContext?.scrollTop;
+        let isObserverActive = true;
+        let cleanupObserver = () => {};
+        let setupFrame: number | null = null;
+        void tick().then(() => {
+            if (!isObserverActive) {
+                return;
+            }
 
-        const observer = new IntersectionObserver(
-            (entries) => {
-                const isIntersecting = entries.some(
-                    (entry) => entry.isIntersecting,
+            setupFrame = requestAnimationFrame(() => {
+                setupFrame = null;
+                if (!isObserverActive) {
+                    return;
+                }
+
+                const sentinel = root.querySelector<HTMLDivElement>(
+                    ".post-history-auto-load-newer-sentinel",
                 );
-                const isInitialEntry = !receivedInitialEntry;
-                receivedInitialEntry = true;
-                autoLoadNewerSentinelIsIntersecting = isIntersecting;
+                if (!sentinel || historyContainer !== root) {
+                    return;
+                }
 
-                if (!isIntersecting) {
+                const suppressInitialIntersectionForResize =
+                    previousObserverContext?.root === root
+                    && previousObserverContext.sentinel === sentinel
+                    && previousObserverContext.resizeGeneration !== resizeGeneration;
+
+                let receivedInitialEntry = false;
+                let awaitingResizeApproach = false;
+                let hasPendingApproach = false;
+                let lastScrollTop = root.scrollTop;
+
+                const isNewerSentinelInPrefetchRegion = () => {
+                    const rootRect = root.getBoundingClientRect();
+                    const sentinelRect = sentinel.getBoundingClientRect();
+                    return sentinelRect.left < rootRect.right
+                        && sentinelRect.right > rootRect.left
+                        && sentinelRect.bottom >= rootRect.top - rootHeight * 2
+                        && sentinelRect.top <= rootRect.bottom;
+                };
+
+                const recordExit = () => {
+                    autoLoadNewerSentinelIsIntersecting = false;
+                    autoLoadNewerAwaitingExit = false;
+                    awaitingResizeApproach = false;
+                    hasPendingApproach = false;
+                };
+
+                const requestApproach = () => {
                     if (
-                        autoLoadNewerAwaitingExit
-                        && !isAutoLoadingNewer
+                        !isObserverActive
+                        || awaitingResizeApproach
+                        || autoLoadNewerAwaitingExit
+                        || !canAutoLoadNewerPosts()
                     ) {
-                        autoLoadNewerAwaitingExit = false;
+                        return;
                     }
-                    return;
-                }
+                    if (isAutoLoadingNewer) {
+                        hasPendingApproach = true;
+                        return;
+                    }
+                    hasPendingApproach = false;
+                    void handleAutoLoadNewer();
+                };
 
-                if (isInitialEntry && suppressInitialIntersectionForResize) {
-                    return;
-                }
+                autoLoadNewerObserverContext = {
+                    root,
+                    sentinel,
+                    resizeGeneration,
+                    scrollTop: root.scrollTop,
+                    reconcileAfterCommit: () => {
+                        if (!isObserverActive) {
+                            return;
+                        }
+                        lastScrollTop = root.scrollTop;
+                        if (!isNewerSentinelInPrefetchRegion()) {
+                            recordExit();
+                        }
+                    },
+                    resumeAfterLoad: () => {
+                        if (!isObserverActive || !hasPendingApproach) {
+                            return;
+                        }
+                        hasPendingApproach = false;
+                        if (!isNewerSentinelInPrefetchRegion()) {
+                            recordExit();
+                            return;
+                        }
+                        requestApproach();
+                    },
+                };
 
-                void handleAutoLoadNewer();
-            },
-            {
-                root,
-                rootMargin: `${rootHeight * 2}px 0px 0px 0px`,
-                threshold: 0,
-            },
-        );
-        observer.observe(sentinel);
+                const handleScrollApproach = () => {
+                    if (!isObserverActive) {
+                        return;
+                    }
+
+                    const scrollTop = root.scrollTop;
+                    const movedTowardNewer = scrollTop < lastScrollTop;
+                    lastScrollTop = scrollTop;
+
+                    if (!isNewerSentinelInPrefetchRegion()) {
+                        recordExit();
+                        return;
+                    }
+                    if (!movedTowardNewer) {
+                        return;
+                    }
+
+                    awaitingResizeApproach = false;
+                    autoLoadNewerSentinelIsIntersecting = true;
+                    requestApproach();
+                };
+
+                const observer = new IntersectionObserver(
+                    (entries) => {
+                        if (!isObserverActive) {
+                            return;
+                        }
+
+                        for (const entry of entries) {
+                            if (entry.target !== sentinel) {
+                                continue;
+                            }
+                            const isInitialEntry = !receivedInitialEntry;
+                            receivedInitialEntry = true;
+                            autoLoadNewerSentinelIsIntersecting = entry.isIntersecting;
+
+                            if (!entry.isIntersecting) {
+                                recordExit();
+                                continue;
+                            }
+
+                            if (
+                                isInitialEntry
+                                && suppressInitialIntersectionForResize
+                                && typeof previousScrollTop === "number"
+                                && root.scrollTop >= previousScrollTop
+                            ) {
+                                awaitingResizeApproach = true;
+                                continue;
+                            }
+
+                            awaitingResizeApproach = false;
+                            requestApproach();
+                        }
+                    },
+                    {
+                        root,
+                        rootMargin: `${rootHeight * 2}px 0px 0px 0px`,
+                        threshold: 0,
+                    },
+                );
+                observer.observe(sentinel);
+                root.addEventListener("scroll", handleScrollApproach, { passive: true });
+                cleanupObserver = () => {
+                    hasPendingApproach = false;
+                    awaitingResizeApproach = false;
+                    root.removeEventListener("scroll", handleScrollApproach);
+                    observer.disconnect();
+                };
+            });
+        });
 
         return () => {
-            observer.disconnect();
+            isObserverActive = false;
+            if (setupFrame !== null) {
+                cancelAnimationFrame(setupFrame);
+            }
+            cleanupObserver();
         };
     });
 
@@ -986,8 +1361,8 @@
         return translateDialogMessage(
             resolvePostHistoryCountSummaryState({
                 totalCount: history.displayTotalCount,
-                totalCountKnown: history.state.totalCountKnown,
-                totalCountStatus: history.state.totalCountStatus,
+                totalCountKnown: history.displayTotalCountKnown,
+                totalCountStatus: history.displayTotalCountStatus,
                 isSearchMode: history.isSearchMode,
             }),
         );
@@ -1071,6 +1446,8 @@
                 historyViewport.restoreHistoryScrollAnchor(scrollAnchor, {
                     flushUpdates: false,
                 });
+                autoLoadOlderObserverContext?.reconcileAfterCommit();
+                autoLoadNewerObserverContext?.reconcileAfterCommit();
             },
         };
     }
@@ -1094,6 +1471,7 @@
             if (!autoLoadOlderSentinelIsIntersecting) {
                 autoLoadOlderAwaitingExit = false;
             }
+            autoLoadOlderObserverContext?.resumeAfterLoad();
         }
     }
 
@@ -1125,6 +1503,7 @@
             if (!autoLoadNewerSentinelIsIntersecting) {
                 autoLoadNewerAwaitingExit = false;
             }
+            autoLoadNewerObserverContext?.resumeAfterLoad();
         }
     }
 
@@ -1136,25 +1515,49 @@
     }
 
     async function handleFetchOlderFromRelays(): Promise<void> {
-        const scrollAnchor = historyViewport.captureHistoryScrollAnchor();
+        let scrollAnchor = historyViewport.captureHistoryScrollAnchor();
         const previousScrollTop = historyContainer?.scrollTop ?? null;
+        let scrollTopToRestore = previousScrollTop;
         const loadedPostsBeforeLength = history.state.loadedPosts.length;
         const scrollHeightBefore = historyContainer?.scrollHeight ?? null;
         const clientHeight = historyContainer?.clientHeight ?? null;
-        const changed = await history.fetchOlderFromRelays({
-            anchorEventId: scrollAnchor?.eventId,
-        });
-
         let didRestoreAnchor = false;
         let didPreserveScrollTop = false;
-        const didFollowBottom = false;
-        if (changed && previousScrollTop !== null && show && historyContainer) {
-            didRestoreAnchor =
-                historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
+        const restoreScrollPosition = () => {
+            if (scrollTopToRestore === null || !show || !historyContainer) {
+                return;
+            }
+            didRestoreAnchor = historyViewport.restoreHistoryScrollAnchor(
+                scrollAnchor,
+                { flushUpdates: false },
+            );
             if (!didRestoreAnchor) {
-                historyContainer.scrollTop = previousScrollTop;
+                historyContainer.scrollTop = scrollTopToRestore;
                 didPreserveScrollTop = true;
             }
+        };
+        const changed = await history.fetchOlderFromRelays({
+            anchorEventId: scrollAnchor?.eventId,
+            viewportCommit: {
+                captureAnchorEventId: () => {
+                    scrollAnchor = historyViewport.captureHistoryScrollAnchor();
+                    if (scrollAnchor) {
+                        scrollTopToRestore = historyContainer?.scrollTop ?? null;
+                    }
+                    return scrollAnchor?.eventId ?? null;
+                },
+                onCommitted: () => {
+                    flushSync();
+                    restoreScrollPosition();
+                },
+            },
+        });
+        // Restore against the committed rows and completion status geometry.
+        await tick();
+
+        const didFollowBottom = false;
+        if (changed) {
+            restoreScrollPosition();
         }
 
         const olderBackfillUiResult = history.latestOlderBackfillUiResult;
@@ -1276,6 +1679,34 @@
         return !!reactionsExpandedByEventId[post.eventId];
     }
 
+    function isReactionExpandedByEventId(eventId: string): boolean {
+        return !!reactionsExpandedByEventId[eventId];
+    }
+
+    function toggleReactionsByEventId(eventId: string): void {
+        reactionsExpandedByEventId = {
+            ...reactionsExpandedByEventId,
+            [eventId]: !reactionsExpandedByEventId[eventId],
+        };
+    }
+
+    function getRelatedReactionReadModel(eventId: string) {
+        const ownerPost = history.posts.find((post) => post.eventId === eventId);
+        if (ownerPost) {
+            return postHistoryThreadGraph.getAnchorState(ownerPost).reactionReadModel;
+        }
+
+        return relatedReactions.getReadModel(eventId);
+    }
+
+    function getRelatedReactionLabel(eventId: string): string {
+        const model = getRelatedReactionReadModel(eventId);
+        return translateDialogMessage(resolvePostHistoryReactionsActionLabelState({
+            visible: isReactionExpandedByEventId(eventId),
+            reactionCount: model?.totalCount ?? 0,
+        })) ?? "";
+    }
+
     function getReactionsActionLabel(post: PostHistoryRecord): string {
         const reactionCount =
             postHistoryThreadGraph.getAnchorState(post).reactionSummary
@@ -1303,10 +1734,7 @@
     }
 
     function toggleReactions(post: PostHistoryRecord): void {
-        reactionsExpandedByEventId = {
-            ...reactionsExpandedByEventId,
-            [post.eventId]: !reactionsExpandedByEventId[post.eventId],
-        };
+        toggleReactionsByEventId(post.eventId);
     }
 
     function handleRepliesAction(post: PostHistoryRecord): void {
@@ -1495,15 +1923,45 @@
         postActionUi.setPostMenuOpen(menuKey, open);
     }
 
-    function openRawJson(rawEvent: unknown): void {
+    function openRawJson(rawEvent: unknown, relayHints: string[] = []): void {
         selectedRawEvent = rawEvent;
+        selectedRawRelayHints = [...relayHints];
+        rawJsonSelectionVersion += 1;
         rawJsonDialogOpen = true;
+    }
+
+    function loadRawJsonPayload(
+        structure: NostrEvent,
+        signal: AbortSignal,
+    ): Promise<NostrEvent | null> {
+        const runtimeAtStart = rxNostr;
+        const pubkeyAtStart = pubkeyHex;
+        return loadVerifiedSensitivePayloadEvent({
+            structure,
+            relayHints: selectedRawRelayHints,
+            rxNostr: runtimeAtStart,
+            relayConfig,
+            signal,
+        }).then((payload) =>
+            signal.aborted
+                || runtimeAtStart !== rxNostr
+                || pubkeyAtStart !== pubkeyHex
+                ? null
+                : payload,
+        );
+    }
+
+    function observeRawJsonPayload(
+        structure: NostrEvent,
+        onChange: (status: SensitiveBodyCacheStatus) => void,
+    ): () => void {
+        return getSensitiveBodyLoader(structure)?.observe?.(onChange) ?? (() => {});
     }
 
     function handleNodeShowRawJson(
         nodeState: PostHistoryThreadGraphNodeState,
     ): void {
-        openRawJson(nodeState.node.event);
+        openRawJson(nodeState.node.event, nodeState.node.relayUrls);
     }
 
     function isNodeCopyFailed(nodeEventId: string): boolean {
@@ -1809,10 +2267,13 @@
         }
     }
 
-    async function handleImportedPostHistory(): Promise<void> {
+    async function handleImportedPostHistory(result: PostHistoryJsonlImportResult): Promise<void> {
+        const owner = pubkeyHex;
+        const requestId = surroundingPostsNavigationRequestId;
         const scrollAnchor = historyViewport.captureHistoryScrollAnchor();
         const previousScrollTop = historyContainer?.scrollTop ?? null;
-        await history.refreshAfterLocalImport();
+        await history.refreshAfterLocalImport(result);
+        if (!show || pubkeyHex !== owner || requestId !== surroundingPostsNavigationRequestId) return;
         if (!history.isSearchMode && historyContainer) {
             const restored = historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
             if (!restored && previousScrollTop !== null) {
@@ -1821,7 +2282,7 @@
         }
     }
 
-    function handleRefetchAroundCurrentViewFromMenu(): void {
+    function handleRefetchAroundCurrentView(): void {
         headingMenuOpen = false;
         void history.refetchAroundCurrentView();
     }
@@ -1864,6 +2325,10 @@
         fullscreenIndex = -1;
     }
 
+    let sensitivePayloadDeletionOmitted = $state(false);
+    $effect(() => {
+        if (!show) sensitivePayloadDeletionOmitted = false;
+    });
     async function handleDeleteConfirm(): Promise<void> {
         const targetPost = postActionUi.deleteTargetPost;
         if (!targetPost) {
@@ -1879,6 +2344,7 @@
             post: targetPost,
             rxNostr,
         });
+        sensitivePayloadDeletionOmitted = result.success && result.sensitivePayloadOmitted === true;
 
         if (
             result.success &&
@@ -1902,6 +2368,9 @@
                 ...deleteRequestState,
                 [targetPost.eventId]: undefined,
             };
+            if (isRepostTargetKind(targetPost.kind)) {
+                for (const outer of history.posts) if (isRepostOuterKind(outer.kind)) repostPreviews.retry(outer);
+            }
         } else {
             deleteRequestState = {
                 ...deleteRequestState,
@@ -1913,7 +2382,10 @@
     }
 
     async function handleLocalHistoryDeleteConfirm(): Promise<void> {
+        const owner = pubkeyHex;
+        const requestId = ++surroundingPostsNavigationRequestId;
         const deleted = await history.deleteLocalHistory();
+        if (!show || pubkeyHex !== owner || requestId !== surroundingPostsNavigationRequestId) return;
         if (deleted) {
             historyViewport.clearAllSessionScrollAnchorsForCurrentPubkey();
             localHistoryDeleteConfirmOpen = false;
@@ -1936,19 +2408,34 @@
     showPagination={false}
     initialFocus="content"
 >
-    <div class="post-history-heading">
+    {#if sensitivePayloadDeletionOmitted}
+        <p role="status">{$_("postHistory.sensitivePayloadDeletionOmitted")}</p>
+    {/if}
+    <div
+        class="post-history-heading"
+        bind:this={postHistoryHeadingElement}
+    >
         <div class="post-history-heading-main">
             {#if historyViewport.currentMonthLabel}
                 <h3 class="post-history-current-month-heading">
-                    <button
-                        type="button"
-                        class="post-history-current-month"
-                        onclick={toggleJumpDate}
-                    >
+                    <span class="post-history-current-month">
                         {historyViewport.currentMonthLabel}
-                    </button>
+                    </span>
                 </h3>
             {/if}
+            <Button
+                className="post-history-heading-action-button post-history-heading-calendar-button"
+                variant="default"
+                shape="square"
+                contentLayout="icon"
+                ariaLabel={$_("postHistory.jumpToDate")}
+                onClick={toggleJumpDate}
+            >
+                <div
+                    class="calendar-icon svg-icon"
+                    aria-hidden="true"
+                ></div>
+            </Button>
         </div>
         <div class="post-history-heading-actions">
             {#if exportRunning}
@@ -1968,32 +2455,32 @@
                     state="loading"
                     customClass="status-loading-placeholder"
                 />
-            {:else if headingStatusMessageKey}
-                <LoadingPlaceholder
-                    text={headingStatusMessageValues
-                        ? $_(headingStatusMessageKey, {
-                              values: headingStatusMessageValues,
-                          })
-                        : $_(headingStatusMessageKey)}
-                    showLoader={history.showStatusLoader}
-                    loaderSize={30}
-                    state={history.showStatusLoader ? "loading" : "complete"}
-                    customClass={`status-loading-placeholder${
-                        headingStatusError ? " status-error" : ""
-                    }`}
-                />
             {/if}
-            {#if buildVisibleCountLabel()}
-                <div class="post-history-heading-summary">
-                    <div class="post-history-summary-row">
-                        <span
-                            class="post-history-summary-line post-history-summary-count"
-                        >
-                            {buildVisibleCountLabel()}
-                        </span>
-                    </div>
-                </div>
-            {/if}
+            <Button
+                className="post-history-heading-action-button post-history-heading-refetch-button"
+                variant="default"
+                shape="square"
+                contentLayout="icon"
+                ariaLabel={$_("postHistory.repair")}
+                disabled={!history.canRefetchAroundCurrentView}
+                onClick={handleRefetchAroundCurrentView}
+            >
+                <div class="repair-icon svg-icon" aria-hidden="true"></div>
+            </Button>
+            <Button
+                className="post-history-heading-action-button post-history-heading-search-button"
+                variant="default"
+                shape="square"
+                contentLayout="icon"
+                ariaLabel={$_(
+                    activeUtilityPanel === "search"
+                        ? "postHistory.hideSearch"
+                        : "postHistory.showSearch",
+                )}
+                onClick={toggleSearch}
+            >
+                <div class="search-icon svg-icon" aria-hidden="true"></div>
+            </Button>
             <DropdownMenu.Root bind:open={headingMenuOpen}>
                 <DropdownMenu.Trigger
                     class={`menu-trigger post-history-menu-trigger post-history-heading-menu-trigger ${headingMenuOpen ? "is-open" : ""}`.trim()}
@@ -2013,30 +2500,21 @@
                             event.preventDefault()}
                     >
                         <div class="post-history-menu-body">
-                            <DropdownMenu.Item
-                                class="menu-action-button"
-                                onSelect={toggleSearch}
-                            >
+                            {#if buildVisibleCountLabel()}
                                 <div
-                                    class="search-icon svg-icon"
-                                    aria-hidden="true"
-                                ></div>
-                                <span>{$_("postHistory.showSearch")}</span>
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Item
-                                class="menu-action-button"
-                                disabled={!history.canRefetchAroundCurrentView}
-                                onSelect={handleRefetchAroundCurrentViewFromMenu}
-                            >
-                                <div
-                                    class="repair-icon svg-icon"
-                                    aria-hidden="true"
-                                ></div>
-                                <span>{$_("postHistory.repair")}</span>
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Separator
-                                class="post-history-menu-separator"
-                            />
+                                    class="post-history-menu-summary"
+                                    role="presentation"
+                                >
+                                    <span
+                                        class="post-history-summary-line post-history-summary-count"
+                                    >
+                                        {buildVisibleCountLabel()}
+                                    </span>
+                                </div>
+                                <DropdownMenu.Separator
+                                    class="post-history-menu-separator"
+                                />
+                            {/if}
                             <DropdownMenu.Item
                                 class="menu-action-button"
                                 disabled={!canUseReturnToLatest}
@@ -2047,16 +2525,6 @@
                                     aria-hidden="true"
                                 ></div>
                                 <span>{$_("postHistory.returnToLatest")}</span>
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Item
-                                class="menu-action-button"
-                                onSelect={toggleJumpDate}
-                            >
-                                <div
-                                    class="calendar-icon svg-icon"
-                                    aria-hidden="true"
-                                ></div>
-                                <span>{$_("postHistory.jumpToDate")}</span>
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
                                 class="menu-action-button"
@@ -2371,10 +2839,9 @@
                 </div>
             {/if}
             {#if supportsAutoLoadOlder && !history.isSearchMode && history.state.listingMode === "contiguous" && !isExplicitNavigation}
-                <div class="post-history-auto-load-slot post-history-auto-load-newer-slot" aria-hidden="true">
-                    {#if history.state.hasNewerLocal}
+                <div class="post-history-auto-load-slot post-history-auto-load-newer-slot" class:post-history-auto-load-newer-slot-reserved={hasNewerAutoLoadTopReservation} aria-hidden="true">
+                    {#if hasNewerAutoLoadTopReservation && history.state.hasNewerLocal}
                         <div
-                            bind:this={autoLoadNewerSentinel}
                             class="post-history-auto-load-sentinel post-history-auto-load-newer-sentinel"
                         >
                             {#if isAutoLoadingNewer}
@@ -2401,6 +2868,16 @@
                     >
                         <div class="post-history-main">
                             <div class="post-preview">
+                                {#if isRepostOuterKind(post.kind)}
+                                    <PostHistoryRepostPreview {post} preview={repostPreviews.getPreview(post)}
+                                        channelText={getRepostChannelText(post)} menu={repostRecordMenu} onRetry={() => repostPreviews.retry(post)}
+                                        onReplyPost={onReplyPost ? handleReplyPost : undefined}
+                                        onQuotePost={onQuotePost ? handleQuotePost : undefined}
+                                        loadSensitiveBody={getSensitiveBodyLoader(repostPreviews.getPreview(post).event)}
+                                        scrollRoot={historyContainer} onImageOpen={handleImageOpen}
+                                        emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                                        emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} />
+                                {:else}
                                 {#if post.kind === 42 || post.deletedAt || hasDeletionFailed(post) || !(onReplyPost || onQuotePost)}
                                     <div class="post-preview-header">
                                         {#if post.kind === 42}
@@ -2522,6 +2999,8 @@
                                                                 {/if}
                                                                 <PostHistoryRecordActionItems
                                                                     order="standard"
+                                                                    onRepost={canRepost(post) ? () => void handleRepost(post) : undefined}
+                                                                    {repostPending}
                                                                     copyFailed={copyNeventUi.copyState[
                                                                         post.eventId
                                                                     ] === "failed"}
@@ -2552,7 +3031,11 @@
                                                                             post,
                                                                         )}
                                                                     onShowRawJson={() =>
-                                                                        openRawJson(post.rawEvent)}
+                                                                        openRawJson(post.rawEvent, [
+                                                                            ...post.relayHints,
+                                                                            ...post.acceptedRelays,
+                                                                            ...(post.fetchedRelays ?? []),
+                                                                        ])}
                                                                     onBroadcastPointerDown={(event) =>
                                                                         captureBroadcastPointerPosition(
                                                                             post,
@@ -2578,6 +3061,7 @@
                                     state={graphState}
                                     section="parent"
                                     previewModelByEventId={relatedPreviewModelByEventId}
+                                    getSensitiveBodyLoader={getSensitiveBodyLoader}
                                     emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                                     emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                     scrollRoot={historyContainer}
@@ -2648,6 +3132,13 @@
                                     <div class="post-preview-body">
                                         <PostContentPreview
                                             model={getPreviewModel(post)}
+                                            loadSensitiveBody={getSensitiveBodyLoader(post.rawEvent as NostrEvent)}
+                                            resolveSensitiveDisplayContent={(rawBody) =>
+                                                stripPostHistoryInlineQuoteUrisForDisplay({
+                                                    content: rawBody,
+                                                    tags: post.tags,
+                                                })}
+                                            contentWarningEventId={post.eventId}
                                             density="standard"
                                             emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                                             emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
@@ -2678,138 +3169,175 @@
                                                         )}
                                                 />
                                             {/snippet}
-                                        </PostContentPreview>
-                                        {#if getQuotePreviewStates(post).length > 0}
-                                            <div class="post-preview-quotes">
-                                                {#each getQuotePreviewStates(post) as quotePreview (quotePreview.eventId)}
-                                                    <PostHistoryQuotePreview
-                                                        preview={quotePreview}
-                                                        model={quotePreview.status ===
-                                                        "resolved"
-                                                            ? relatedPreviewModelByEventId[
-                                                                  quotePreview
-                                                                      .event.id
-                                                              ]
-                                                            : undefined}
-                                                        emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
-                                                        emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
-                                                        scrollRoot={historyContainer}
-                                                        onImageOpen={handleImageOpen}
-                                                        onRetry={() =>
-                                                            quotePreviews.retryQuotePreview(
-                                                                quotePreview.eventId,
-                                                            )}
-                                                    >
-                                                        {#snippet footerActions()}
-                                                            {#if quotePreview.status === "resolved" && quotePreview.event.kind !== 42}
-                                                                {@const quoteActionPost = buildPostRecordFromQuoteEvent(
-                                                                    quotePreview.event,
+                                        {#snippet afterContentAndMedia()}
+                                            {#if getQuotePreviewStates(post).length > 0}
+                                                <div class="post-preview-quotes">
+                                                    {#each getQuotePreviewStates(post) as quotePreview (quotePreview.eventId)}
+                                                        <PostHistoryQuotePreview
+                                                            preview={quotePreview}
+                                                            loadSensitiveBody={quotePreview.status === "resolved"
+                                                                ? getSensitiveBodyLoader(quotePreview.event)
+                                                                : undefined}
+                                                            model={quotePreview.status ===
+                                                            "resolved"
+                                                                ? relatedPreviewModelByEventId[
+                                                                      quotePreview
+                                                                          .event.id
+                                                                  ]
+                                                                : undefined}
+                                                            emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                                                            emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                                                            scrollRoot={historyContainer}
+                                                            onImageOpen={handleImageOpen}
+                                                            onRetry={() =>
+                                                                quotePreviews.retryQuotePreview(
+                                                                    quotePreview.eventId,
                                                                 )}
-                                                                <PostHistoryPostActions
-                                                                    post={quoteActionPost}
-                                                                    onReplyPost={onReplyPost
-                                                                        ? handleReplyPost
-                                                                        : undefined}
-                                                                    onQuotePost={onQuotePost
-                                                                        ? handleQuotePost
-                                                                        : undefined}
-                                                                />
-                                                            {/if}
-                                                        {/snippet}
-                                                        {#snippet footerMenu()}
-                                                            {#if quotePreview.status === "resolved"}
-                                                                {@const quotePreviewPost =
-                                                                    buildPostRecordFromQuoteEvent(
+                                                        >
+                                                            {#snippet footerActions()}
+                                                                {#if quotePreview.status === "resolved" &&
+                                                                    (quotePreview.event.kind !== 42 ||
+                                                                        (getRelatedReactionReadModel(quotePreview.event.id)?.totalCount ?? 0) > 0)}
+                                                                    {@const quoteActionPost = buildPostRecordFromQuoteEvent(
                                                                         quotePreview.event,
                                                                     )}
-                                                                {@const quotePreviewMenuKey =
-                                                                    buildQuotePreviewMenuKey(
-                                                                        post.eventId,
-                                                                        quotePreviewPost.eventId,
-                                                                    )}
-                                                                {@const actionsLabel =
-                                                                    $_("common.showActions")}
-                                                                <PostHistoryActionMenu
-                                                                    open={postActionUi.isPostMenuOpen(
-                                                                        quotePreviewMenuKey,
-                                                                    )}
-                                                                    onOpenChange={(
-                                                                        open: boolean,
-                                                                    ) =>
-                                                                        setExclusivePostMenuOpen(
-                                                                            quotePreviewMenuKey,
-                                                                            open,
+                                                                    <PostHistoryPostActions
+                                                                        post={quoteActionPost}
+                                                                        onReplyPost={
+                                                                            quotePreview.event.kind !== 42 && onReplyPost
+                                                                                ? handleReplyPost
+                                                                                : undefined
+                                                                        }
+                                                                        onQuotePost={
+                                                                            quotePreview.event.kind !== 42 && onQuotePost
+                                                                                ? handleQuotePost
+                                                                                : undefined
+                                                                        }
+                                                                    >
+                                                                        {#snippet reactionExtras()}
+                                                                            {@const reactionModel = getRelatedReactionReadModel(quotePreview.event.id)}
+                                                                            {#if reactionModel && reactionModel.totalCount > 0}
+                                                                                <PostHistoryReactionActionButton
+                                                                                    count={reactionModel.totalCount}
+                                                                                    expanded={isReactionExpandedByEventId(quotePreview.event.id)}
+                                                                                    ariaLabel={getRelatedReactionLabel(quotePreview.event.id)}
+                                                                                    onToggle={() => toggleReactionsByEventId(quotePreview.event.id)}
+                                                                                />
+                                                                            {/if}
+                                                                        {/snippet}
+                                                                    </PostHistoryPostActions>
+                                                                {/if}
+                                                            {/snippet}
+                                                            {#snippet footerDetails()}
+                                                                {#if quotePreview.status === "resolved"}
+                                                                    {@const reactionModel = getRelatedReactionReadModel(quotePreview.event.id)}
+                                                                    {#if reactionModel && reactionModel.totalCount > 0 && isReactionExpandedByEventId(quotePreview.event.id)}
+                                                                        <PostHistoryReactionDetails readModel={reactionModel} emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl} emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} />
+                                                                    {/if}
+                                                                {/if}
+                                                            {/snippet}
+                                                            {#snippet footerMenu()}
+                                                                {#if quotePreview.status === "resolved"}
+                                                                    {@const quotePreviewPost =
+                                                                        buildPostRecordFromQuoteEvent(
+                                                                            quotePreview.event,
                                                                         )}
-                                                                    triggerAriaLabel={actionsLabel}
-                                                                    tooltipContent={actionsLabel}
-                                                                    enableTooltip={true}
-                                                                    timestamp={formatPostedAtExact(
-                                                                        quotePreviewPost.postedAt,
-                                                                        $locale,
-                                                                    )}
-                                                                >
-                                                                    {#snippet items()}
-                                                                        <PostHistoryRecordActionItems
-                                                                            order="standard"
-                                                                            copyFailed={copyNeventUi.copyState[
-                                                                                quotePreviewPost
-                                                                                    .eventId
-                                                                            ] === "failed"}
-                                                                            showBroadcast={canBroadcastPost(
-                                                                                quotePreviewPost,
+                                                                    {@const quotePreviewMenuKey =
+                                                                        buildQuotePreviewMenuKey(
+                                                                            post.eventId,
+                                                                            quotePreviewPost.eventId,
+                                                                        )}
+                                                                    {@const actionsLabel =
+                                                                        $_("common.showActions")}
+                                                                    <PostHistoryActionMenu
+                                                                        open={postActionUi.isPostMenuOpen(
+                                                                            quotePreviewMenuKey,
+                                                                        )}
+                                                                        onOpenChange={(
+                                                                            open: boolean,
+                                                                        ) =>
+                                                                            setExclusivePostMenuOpen(
+                                                                                quotePreviewMenuKey,
+                                                                                open,
                                                                             )}
-                                                                            broadcastSending={isBroadcastSending(
-                                                                                quotePreviewPost,
-                                                                            )}
-                                                                            showDelete={canDeletePost(
-                                                                                quotePreviewPost,
-                                                                            )}
-                                                                            showDeleteSeparator={true}
-                                                                            deletionSending={isDeletionSending(
-                                                                                quotePreviewPost,
-                                                                            )}
-                                                                            onCopyPointerDown={(event) =>
-                                                                                copyNeventUi.captureCopyPointerPosition(
-                                                                                    quotePreviewPost,
-                                                                                    event,
-                                                                                )}
-                                                                            onCopyNevent={(event) =>
-                                                                                void copyNeventUi.handleCopyNevent(
-                                                                                    quotePreviewPost,
-                                                                                    event,
-                                                                                )}
-                                                                            externalClientLabel={getExternalClientOpenLabel()}
-                                                                            onOpenExternalClient={() =>
-                                                                                handleOpenExternalClient(
+                                                                        triggerAriaLabel={actionsLabel}
+                                                                        tooltipContent={actionsLabel}
+                                                                        enableTooltip={true}
+                                                                        timestamp={formatPostedAtExact(
+                                                                            quotePreviewPost.postedAt,
+                                                                            $locale,
+                                                                        )}
+                                                                    >
+                                                                        {#snippet items()}
+                                                                            <PostHistoryRecordActionItems
+                                                                                order="standard"
+                                                                                copyFailed={copyNeventUi.copyState[
+                                                                                    quotePreviewPost
+                                                                                        .eventId
+                                                                                ] === "failed"}
+                                                                                showBroadcast={canBroadcastPost(
                                                                                     quotePreviewPost,
                                                                                 )}
-                                                                            onShowRawJson={() =>
-                                                                                openRawJson(
-                                                                                    quotePreviewPost.rawEvent,
-                                                                                )}
-                                                                            onBroadcastPointerDown={(event) =>
-                                                                                captureBroadcastPointerPosition(
-                                                                                    quotePreviewPost,
-                                                                                    event,
-                                                                                )}
-                                                                            onBroadcastPost={(event) =>
-                                                                                void handleBroadcastPost(
-                                                                                    quotePreviewPost,
-                                                                                    event,
-                                                                                )}
-                                                                            onOpenDeleteConfirm={() =>
-                                                                                openDeleteConfirm(
+                                                                                broadcastSending={isBroadcastSending(
                                                                                     quotePreviewPost,
                                                                                 )}
-                                                                        />
-                                                                    {/snippet}
-                                                                </PostHistoryActionMenu>
-                                                            {/if}
-                                                        {/snippet}
-                                                    </PostHistoryQuotePreview>
-                                                {/each}
-                                            </div>
-                                        {/if}
+                                                                                showDelete={canDeletePost(
+                                                                                    quotePreviewPost,
+                                                                                )}
+                                                                                showDeleteSeparator={true}
+                                                                                deletionSending={isDeletionSending(
+                                                                                    quotePreviewPost,
+                                                                                )}
+                                                                                onCopyPointerDown={(event) =>
+                                                                                    copyNeventUi.captureCopyPointerPosition(
+                                                                                        quotePreviewPost,
+                                                                                        event,
+                                                                                    )}
+                                                                                onCopyNevent={(event) =>
+                                                                                    void copyNeventUi.handleCopyNevent(
+                                                                                        quotePreviewPost,
+                                                                                        event,
+                                                                                    )}
+                                                                                externalClientLabel={getExternalClientOpenLabel()}
+                                                                                onOpenExternalClient={() =>
+                                                                                    handleOpenExternalClient(
+                                                                                        quotePreviewPost,
+                                                                                    )}
+                                                                                onShowRawJson={() =>
+                                                                                    openRawJson(
+                                                                                        quotePreviewPost.rawEvent,
+                                                                                        [
+                                                                                            ...quotePreviewPost.relayHints,
+                                                                                            ...quotePreviewPost.acceptedRelays,
+                                                                                            ...(quotePreviewPost.fetchedRelays ?? []),
+                                                                                        ],
+                                                                                    )}
+                                                                                onBroadcastPointerDown={(event) =>
+                                                                                    captureBroadcastPointerPosition(
+                                                                                        quotePreviewPost,
+                                                                                        event,
+                                                                                    )}
+                                                                                onBroadcastPost={(event) =>
+                                                                                    void handleBroadcastPost(
+                                                                                        quotePreviewPost,
+                                                                                        event,
+                                                                                    )}
+                                                                                onOpenDeleteConfirm={() =>
+                                                                                    openDeleteConfirm(
+                                                                                        quotePreviewPost,
+                                                                                    )}
+                                                                            />
+                                                                        {/snippet}
+                                                                    </PostHistoryActionMenu>
+                                                                {/if}
+                                                            {/snippet}
+                                                        </PostHistoryQuotePreview>
+                                                    {/each}
+                                                </div>
+                                            {/if}
+                                        {/snippet}
+                                        </PostContentPreview>
+
                                     </div>
                                     <PostHistoryPreviewFooter
                                             formattedDate={onReplyPost || onQuotePost ? formatPostedAt(
@@ -2840,34 +3368,12 @@
                                                     {/snippet}
                                                     {#snippet reactionExtras()}
                                                         {#if graphState.reactionSummary.totalCount > 0}
-                                                            <PostPreviewFooterActionButton
-                                                                type="button"
-                                                                className="post-preview-reactions-button"
-                                                                ariaLabel={getReactionsActionLabel(
-                                                                    post,
-                                                                )}
-                                                                shape="pill"
-                                                                selected={isReactionsExpanded(
-                                                                    post,
-                                                                )}
-                                                                onClick={() =>
-                                                                    toggleReactions(
-                                                                        post,
-                                                                    )}
-                                                                tooltipContent={getReactionsActionLabel(
-                                                                    post,
-                                                                )}
-                                                            >
-                                                                <div
-                                                                    class="favorite-icon svg-icon"
-                                                                    aria-hidden="true"
-                                                                ></div>
-                                                                <span>
-                                                                    {graphState
-                                                                        .reactionSummary
-                                                                        .totalCount}
-                                                                </span>
-                                                            </PostPreviewFooterActionButton>
+                                                            <PostHistoryReactionActionButton
+                                                                count={graphState.reactionSummary.totalCount}
+                                                                expanded={isReactionsExpanded(post)}
+                                                                ariaLabel={getReactionsActionLabel(post)}
+                                                                onToggle={() => toggleReactions(post)}
+                                                            />
                                                         {/if}
                                                     {/snippet}
                                                 </PostHistoryPostActions>
@@ -2961,6 +3467,8 @@
                                                         {/if}
                                                         <PostHistoryRecordActionItems
                                                             order="standard"
+                                                            onRepost={canRepost(post) ? () => void handleRepost(post) : undefined}
+                                                            {repostPending}
                                                             copyFailed={copyNeventUi.copyState[
                                                                 post.eventId
                                                             ] === "failed"}
@@ -2986,7 +3494,11 @@
                                                                     event,
                                                                 )}
                                                             onShowRawJson={() =>
-                                                                openRawJson(post.rawEvent)}
+                                                                openRawJson(post.rawEvent, [
+                                                                    ...post.relayHints,
+                                                                    ...post.acceptedRelays,
+                                                                    ...(post.fetchedRelays ?? []),
+                                                                ])}
                                                             onBroadcastPointerDown={(event) =>
                                                                 captureBroadcastPointerPosition(
                                                                     post,
@@ -3006,111 +3518,17 @@
                                             {/snippet}
                                         </PostHistoryPreviewFooter>
                                         {#if graphState.reactionSummary.totalCount > 0 && isReactionsExpanded(post)}
-                                            <div
-                                                class="post-preview-reactions-panel"
-                                            >
-                                                {#each getDisplayedReactionGroups(post) as reactionGroup (reactionGroup.content)}
-                                                    <div
-                                                        class="post-preview-reaction-chip"
-                                                    >
-                                                        <div
-                                                            class="post-preview-reaction-summary"
-                                                        >
-                                                            {#if isPostHistoryFavoriteReactionContent(reactionGroup.content)}
-                                                                <div
-                                                                    class="favorite-icon svg-icon post-preview-reaction-symbol"
-                                                                    aria-hidden="true"
-                                                                ></div>
-                                                            {:else if reactionGroup.emojiUrl}
-                                                                {#if hasReactionEmojiFailed(reactionGroup.emojiUrl)}
-                                                                    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-                                                                    <span
-                                                                        class="post-preview-reaction-emoji-slot post-preview-reaction-emoji-failed"
-                                                                        style={getReactionEmojiSlotStyle(
-                                                                            reactionGroup.emojiUrl,
-                                                                        )}
-                                                                        role="img"
-                                                                        tabindex="0"
-                                                                        aria-label={reactionGroup.content}
-                                                                        title={reactionGroup.content}
-                                                                    >
-                                                                        {reactionGroup.content}
-                                                                    </span>
-                                                                {:else}
-                                                                    <span
-                                                                        class="post-preview-reaction-emoji-slot"
-                                                                        style={getReactionEmojiSlotStyle(
-                                                                            reactionGroup.emojiUrl,
-                                                                        )}
-                                                                    >
-                                                                        {#if isReactionEmojiReady(reactionGroup.emojiUrl)}
-                                                                            <img
-                                                                                src={reactionGroup.emojiUrl}
-                                                                                alt={reactionGroup.content}
-                                                                                title={reactionGroup.content}
-                                                                                class="post-preview-reaction-emoji"
-                                                                                draggable="false"
-                                                                                loading="lazy"
-                                                                                decoding="async"
-                                                                            />
-                                                                        {:else}
-                                                                            <span
-                                                                                class="post-preview-reaction-emoji-placeholder"
-                                                                                aria-hidden="true"
-
-                                                                            ></span>
-                                                                        {/if}
-                                                                    </span>
-                                                                {/if}
-                                                            {:else}
-                                                                <span
-                                                                    class="post-preview-reaction-content"
-                                                                >
-                                                                    {reactionGroup.content}
-                                                                </span>
-                                                            {/if}
-                                                            <span
-                                                                class="post-preview-reaction-count"
-                                                            >
-                                                                {reactionGroup.count}
-                                                            </span>
-                                                        </div>
-                                                        <div
-                                                            class="post-preview-reaction-actors"
-                                                        >
-                                                            {#each reactionGroup.reactors as actor (actor.eventId)}
-                                                                {@const actorLabel =
-                                                                    getReactionActorLabel(
-                                                                        actor,
-                                                                    )}
-                                                                <span
-                                                                    class="post-preview-reaction-actor"
-                                                                    title={actorLabel}
-                                                                    aria-label={actorLabel}
-                                                                >
-                                                                    <ProfileAvatar
-                                                                        src={actor
-                                                                            .profile
-                                                                            ?.picture ||
-                                                                            ""}
-                                                                        alt={actorLabel}
-                                                                        rootClassName="post-preview-reaction-avatar"
-                                                                        imageClassName="post-preview-reaction-avatar-image"
-                                                                        fallbackClassName="post-preview-reaction-avatar-fallback"
-                                                                        fallbackAriaLabel={actorLabel}
-                                                                        fallbackDelayMs={0}
-                                                                    />
-                                                                </span>
-                                                            {/each}
-                                                        </div>
-                                                    </div>
-                                                {/each}
-                                            </div>
+                                            <PostHistoryReactionDetails
+                                                readModel={graphState.reactionReadModel}
+                                                emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                                                emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                                            />
                                         {/if}
                                     <PostHistoryThreadGraphPanel
                                         state={graphState}
                                         section="children"
                                         previewModelByEventId={relatedPreviewModelByEventId}
+                                        getSensitiveBodyLoader={getSensitiveBodyLoader}
                                         emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                                         emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                         scrollRoot={historyContainer}
@@ -3122,6 +3540,10 @@
                                         onQuotePost={onQuotePost
                                             ? handleQuotePost
                                             : undefined}
+                                        getReactionReadModel={getRelatedReactionReadModel}
+                                        isReactionExpanded={isReactionExpandedByEventId}
+                                        getReactionLabel={getRelatedReactionLabel}
+                                        onToggleReaction={toggleReactionsByEventId}
                                         onToggleNodeParent={(nodeEventId) =>
                                             historyViewport.preserveThreadParentToggleScroll(
                                                 post.eventId,
@@ -3161,6 +3583,7 @@
                                         onOpenDeleteConfirm={openNodeDeleteConfirm}
                                     />
                                 </div>
+                                {/if}
                             </div>
                         </div>
                     </li>
@@ -3174,7 +3597,7 @@
                             bind:this={autoLoadOlderSentinel}
                             class="post-history-auto-load-sentinel"
                         >
-                            {#if isAutoLoadingOlder}
+                            {#if isAutoLoadingOlder && history.syncStatus !== "syncing"}
                                 <LoadingPlaceholder
                                     variant="spinner"
                                     showLoader={true}
@@ -3207,11 +3630,22 @@
                                     history.isRefetchingAroundCurrentView}
                                 onClick={() => void handleFetchOlderFromRelays()}
                             >
-                                <div
-                                    class="cloud-download-icon svg-icon"
-                                    aria-hidden="true"
-                                ></div>
-                                {$_("postHistory.fetchOlderFromRelays")}
+                                {#if history.isFetchingOlderFromRelays}
+                                    <LoadingPlaceholder
+                                        text={$_(
+                                            "postHistory.fetchOlderFromRelaysLoading",
+                                        )}
+                                        showLoader={true}
+                                        loaderSize={28}
+                                        customClass="post-history-nav-loading-placeholder"
+                                    />
+                                {:else}
+                                    <div
+                                        class="cloud-download-icon svg-icon"
+                                        aria-hidden="true"
+                                    ></div>
+                                    {$_("postHistory.fetchOlderFromRelays")}
+                                {/if}
                             </Button>
                         {/if}
                         <Button
@@ -3294,7 +3728,19 @@
                         </Button>
                     {/if}
                 </div>
+            {:else if history.isSearchMode && history.posts.length > 0}
+                <div class="post-history-search-bottom-spacer" aria-hidden="true"></div>
             {/if}
+        {/if}
+        {#if !history.isSearchMode && history.syncStatus === "syncing"}
+            <div class="post-history-nav-row post-history-sync-footer" role="status">
+                <LoadingPlaceholder
+                    text={$_("postHistory.syncing")}
+                    variant="spinner"
+                    showLoader={true}
+                    loaderSize={24}
+                />
+            </div>
         {/if}
     </div>
 
@@ -3328,10 +3774,21 @@
     <PostHistoryRawJsonDialog
         open={rawJsonDialogOpen}
         rawEvent={selectedRawEvent}
+        resetKey={rawJsonSelectionVersion}
+        loadPayloadEvent={loadRawJsonPayload}
+        observePayloadStatus={observeRawJsonPayload}
         onOpenChange={(open) => (rawJsonDialogOpen = open)}
     />
 
     {#snippet footer()}
+        <PostRepostFeedback
+            result={repostResult}
+            saveFailure={repostSaveFailure}
+            pending={repostPending}
+            anchor={postHistoryHeadingElement}
+            anchorRightOffset={16}
+            onRetrySave={onRetryRepostSave}
+        />
         <Dialog.Close>
             {#snippet child({ props })}
                 <Button
@@ -3349,6 +3806,30 @@
         </Dialog.Close>
     {/snippet}
 </DialogWrapper>
+
+<FloatingMessage
+    show={show && !exportRunning && !!headingStatusMessageKey}
+    variant="anchor-bottom-right"
+    anchor={postHistoryHeadingElement}
+    anchorRightOffset={16}
+    showInfoIcon={!history.showStatusLoader}
+>
+    {#if headingStatusMessageKey}
+        <LoadingPlaceholder
+            text={headingStatusMessageValues
+                ? $_(headingStatusMessageKey, {
+                      values: headingStatusMessageValues,
+                  })
+                : $_(headingStatusMessageKey)}
+            showLoader={history.showStatusLoader}
+            loaderSize={30}
+            state={history.showStatusLoader ? "loading" : "complete"}
+            customClass={`status-loading-placeholder post-history-heading-status-placeholder${
+                headingStatusError ? " status-error" : ""
+            }`}
+        />
+    {/if}
+</FloatingMessage>
 
 <ConfirmDialog
     open={postActionUi.deleteConfirmOpen}
@@ -3437,6 +3918,30 @@
     </div>
 </FloatingMessage>
 
+
+{#snippet repostRecordMenu(record: PostHistoryRecord, menuKey: string)}
+    <PostHistoryActionMenu open={postActionUi.isPostMenuOpen(menuKey)}
+        restoreFocusOnClose={true}
+        onOpenChange={(open) => setExclusivePostMenuOpen(menuKey, open)}
+        triggerAriaLabel={$_(isRepostOuterKind(record.kind) ? "repost.outerActions" : "repost.targetActions")}
+        timestamp={formatPostedAtExact(record.postedAt, $locale)}>
+        {#snippet items()}
+            <PostHistoryRecordActionItems order="standard"
+                onRepost={canRepost(record) ? () => void handleRepost(record) : undefined} {repostPending}
+                copyFailed={copyNeventUi.copyState[record.eventId] === "failed"}
+                showBroadcast={canBroadcastPost(record)} broadcastSending={isBroadcastSending(record)}
+                showDelete={canDeletePost(record)} showDeleteSeparator={true} deletionSending={isDeletionSending(record)}
+                onCopyPointerDown={(event) => copyNeventUi.captureCopyPointerPosition(record, event)}
+                onCopyNevent={(event) => void copyNeventUi.handleCopyNevent(record, event)}
+                externalClientLabel={getExternalClientOpenLabel()} onOpenExternalClient={() => handleOpenExternalClient(record)}
+                onShowRawJson={() => openRawJson(record.rawEvent, record.relayHints)}
+                onBroadcastPointerDown={(event) => captureBroadcastPointerPosition(record, event)}
+                onBroadcastPost={(event) => void handleBroadcastPost(record, event)}
+                onOpenDeleteConfirm={() => openDeleteConfirm(record)} />
+        {/snippet}
+    </PostHistoryActionMenu>
+{/snippet}
+
 <style>
     :global(.post-history-dialog.dialog) {
         top: 0;
@@ -3461,6 +3966,10 @@
         padding: 0;
     }
 
+    :global(.post-history-dialog .dialog-footer) {
+        flex: 0 0 auto;
+    }
+
     .post-history-heading {
         display: flex;
         align-items: stretch;
@@ -3475,19 +3984,25 @@
     }
 
     .post-history-heading-main {
+        display: flex;
+        align-items: center;
         flex: 1 1 auto;
         min-width: 0;
         align-self: stretch;
+        gap: 4px;
     }
 
     .post-history-current-month-heading {
         display: flex;
         align-items: center;
+        flex: 0 1 auto;
+        min-width: 0;
         height: 100%;
         margin: 0;
     }
 
     .post-history-current-month {
+        display: block;
         color: var(--text-light);
         font-size: 1.75rem;
         line-height: 1.05;
@@ -3498,9 +4013,43 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        padding: 0 12px;
+        padding-left:12px;
+    }
+
+    :global(.post-history-heading-action-button) {
+        width: 50px;
+        height: 50px;
+        min-width: 50px;
+        min-height: 50px;
+        flex: 0 0 50px;
+        padding: 0;
+        border: 0;
+        color: var(--text-muted);
+        background-color: var(--dialog-bg);
         --btn-bg: var(--dialog-bg);
-        --text: var(--text-light);
+    }
+
+    :global(.post-history-heading-action-button .svg-icon) {
+        width: 22px;
+        height: 22px;
+        background-color: currentColor;
+        --svg: currentColor;
+    }
+
+    :global(
+            .post-history-heading-refetch-button .svg-icon,
+            .post-history-heading-search-button .svg-icon
+        ) {
+        width: 24px;
+        height: 24px;
+    }
+
+    :global(.post-history-heading-calendar-button .calendar-icon) {
+        mask-image: url("/icons/calendar_today_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    :global(.post-history-heading-refetch-button:disabled) {
+        opacity: 0.45;
     }
 
     .post-history-heading-actions {
@@ -3510,13 +4059,12 @@
         align-self: stretch;
         flex: 0 0 auto;
         min-width: 0;
-        gap: 4px;
+        gap: 0;
         white-space: nowrap;
     }
 
     :global(
             .post-history-action-button,
-            .post-preview-reactions-button,
             .post-history-thread-toggle-button
         ) {
         color: var(--btn-post-preview-action);
@@ -3524,25 +4072,17 @@
 
     :global(
             .post-history-action-button .svg-icon,
-            .post-preview-reactions-button .svg-icon,
             .post-history-thread-toggle-button .svg-icon
         ) {
         --svg: currentColor;
     }
 
-    .post-history-heading-summary {
-        display: flex;
-        align-items: center;
+    :global(.post-history-menu-summary) {
+        padding: 8px 12px 4px;
         color: var(--text-muted);
         font-size: 0.875rem;
-    }
-
-    .post-history-summary-row {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 8px;
-        min-width: 0;
+        line-height: 1.35;
+        user-select: text;
     }
 
     .post-history-summary-line {
@@ -3825,6 +4365,11 @@
         padding-top: 0;
     }
 
+    .post-history-search-bottom-spacer {
+        /* Clear the 50px return-to-latest button and its 12px bottom inset. */
+        height: 62px;
+    }
+
     .post-history-auto-load-sentinel {
         display: grid;
         width: 100%;
@@ -3837,6 +4382,11 @@
         height: 24px;
         min-height: 24px;
         place-items: center;
+    }
+
+    .post-history-auto-load-newer-slot:not(.post-history-auto-load-newer-slot-reserved) {
+        height: 0;
+        min-height: 0;
     }
 
     :global(.post-history-nav-button.primary) {
@@ -3930,6 +4480,10 @@
         height: auto;
     }
 
+    :global(.post-history-heading-status-placeholder) {
+        color: var(--svg);
+    }
+
     :global(.status-loading-placeholder .loader-container) {
         :global(.square) {
             background: currentColor;
@@ -3946,6 +4500,10 @@
 
     :global(.status-error) {
         color: var(--danger);
+    }
+
+    :global(.post-history-heading-status-placeholder.status-error) {
+        color: var(--svg);
     }
 
     :global(.status-loading-placeholder.status-error .square) {
@@ -4148,38 +4706,12 @@
             display: flex;
             flex-direction: column;
             gap: 4px;
+            margin-inline-start: -1rem;
         }
 
     }
 
-    :global(.post-preview-reactions-button) {
-        display: flex;
-        align-items: stretch;
-        gap: 4px;
-        padding: 0;
-        padding-inline: 6px;
-
-        .favorite-icon {
-            height: auto;
-            mask-image: url("/icons/favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        }
-
-        span {
-            flex: 0 0 auto;
-            height: auto;
-            line-height: 36px;
-        }
-    }
-
-    :global(.post-preview-reactions-button .svg-icon) {
-        width: 22px;
-        height: 22px;
-    }
-
-    :global(
-            .post-history-thread-toggle-button.selected,
-            .post-preview-reactions-button.selected
-        ) {
+    :global(.post-history-thread-toggle-button.selected) {
         --btn-bg: var(--post-history-preview-footer-surface, var(--dialog-bg));
         color: var(--text-light);
     }
@@ -4197,124 +4729,6 @@
                 color-mix(in srgb, var(--text), white 30%)
             );
         }
-    }
-
-    :global(.post-preview-reactions-panel) {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-        padding: 0 16px;
-    }
-
-    :global(.post-preview-reaction-chip) {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        min-height: 32px;
-        padding: 4px 8px;
-        border-radius: 18px;
-        background: color-mix(in srgb, var(--btn-bg), transparent 40%);
-        color: var(--text);
-    }
-
-    :global(.post-preview-reaction-summary) {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 2px;
-        row-gap: 4px;
-        flex-wrap: wrap;
-    }
-
-    :global(.post-preview-reaction-content) {
-        font-size: 20px;
-        line-height: 1;
-    }
-    :global(.post-preview-reaction-count) {
-        font-size: 1rem;
-        line-height: 1;
-    }
-
-    :global(.post-preview-reaction-emoji-slot) {
-        display: inline-grid;
-        margin: 0;
-        padding: 0;
-    }
-
-    :global(.post-preview-reaction-emoji),
-    :global(.post-preview-reaction-emoji-placeholder) {
-        width: 100%;
-        height: 100%;
-    }
-
-    :global(.post-preview-reaction-emoji) {
-        display: block;
-        margin: 0;
-        padding: 0;
-        object-fit: contain;
-        user-select: none;
-        -webkit-user-drag: none;
-    }
-
-    :global(.post-preview-reaction-emoji-placeholder) {
-        display: block;
-        border-radius: 4px;
-        background: rgba(127, 127, 127, 0.18);
-    }
-
-    :global(.post-preview-reaction-emoji-failed) {
-        display: inline-grid;
-        place-items: center;
-        overflow: hidden;
-        border-radius: 4px;
-        background: rgba(127, 127, 127, 0.18);
-        font-size: 0.45em;
-        line-height: 1;
-        white-space: nowrap;
-        cursor: help;
-    }
-
-    :global(.post-preview-reaction-count) {
-        color: var(--text-muted);
-    }
-
-    :global(.post-preview-reaction-actors) {
-        display: inline-flex;
-        flex-wrap: wrap;
-        gap: 2px;
-        align-items: center;
-    }
-
-    :global(.post-preview-reaction-actor) {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 26px;
-        height: 26px;
-        border-radius: 999px;
-        overflow: hidden;
-        flex: 0 0 auto;
-    }
-
-    :global(.post-preview-reaction-avatar) {
-        width: 100%;
-        height: 100%;
-    }
-
-    :global(.post-preview-reaction-avatar-image) {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-
-    :global(.post-preview-reaction-avatar-fallback) {
-        width: 100%;
-        height: 100%;
-    }
-
-    :global(.post-preview-reaction-symbol) {
-        width: 18px;
-        height: 18px;
     }
 
     .post-meta-inline {
@@ -4359,13 +4773,6 @@
 
     :global(.copy-icon) {
         mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-    }
-
-    .post-preview-reaction-symbol {
-        mask-image: url("/icons/favorite_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
-        background-color: rgb(249, 24, 128);
-        width: 20px;
-        height: 20px;
     }
 
     .search-icon {

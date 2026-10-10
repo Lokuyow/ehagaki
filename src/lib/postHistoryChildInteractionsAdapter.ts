@@ -129,7 +129,7 @@ export class RepositoryPostHistoryDirectReplyRecordsAdapter implements PostHisto
         return selectRecordsForParents(
             records,
             uniqueParentEventIds,
-            (record) => record.kind === 1 || record.kind === 42,
+            (record) => record.kind === 1 || record.kind === 42 || record.kind === 1111,
         );
     }
 }

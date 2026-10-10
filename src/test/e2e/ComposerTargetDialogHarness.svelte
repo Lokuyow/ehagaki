@@ -8,9 +8,12 @@
     } from "../../lib/composerTargetResolver";
     import type { ComposerEventTarget } from "../../lib/composerTargetApplyController";
     import type { ComposerTargetAction } from "../../lib/composerTargetUtils";
+    import { postHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryChildInteractionsRepository";
 
     const ids = {
         kind1: "1".repeat(64),
+        sensitive: "d".repeat(64),
+        sensitivePayload: "c".repeat(64),
         kind40: "4".repeat(64),
         kind42: "2".repeat(64),
         stale: "a".repeat(64),
@@ -25,6 +28,12 @@
     };
     const inputs = {
         kind1: nip19.noteEncode(ids.kind1),
+        sensitive: nip19.noteEncode(ids.sensitive),
+        sensitivePayload: nip19.neventEncode({
+            id: ids.sensitivePayload,
+            relays: ["wss://input.example.com/"],
+            kind: 1,
+        }),
         kind40: nip19.noteEncode(ids.kind40),
         kind42: nip19.noteEncode(ids.kind42),
         stale: nip19.noteEncode(ids.stale),
@@ -68,25 +77,85 @@
         videoUrl,
     ].join(" ")}`;
 
+    const reactionEmojiUrl = "https://example.com/reaction-party.png";
+    const resolverEventIds: string[] = [];
+    const cancelledResolverEventIds: string[] = [];
+    let releaseStaleResolver: (() => void) | null = null;
+
+    function makeReaction(
+        targetEventId: string,
+        eventId: string,
+        pubkey: string,
+        content: string,
+        tags: string[][] = [],
+    ) {
+        return {
+            id: eventId,
+            pubkey,
+            created_at: 2,
+            kind: 7,
+            tags: [["e", targetEventId], ...tags],
+            content,
+            sig: "e".repeat(128),
+        };
+    }
+
+    async function seedReactionFixtures(): Promise<void> {
+        const targets = [ids.kind1, ids.kind42];
+        await postHistoryChildInteractionsRepository.deleteChildInteractionsForParents(targets);
+        for (const targetEventId of targets) {
+            const prefix = targetEventId === ids.kind1 ? "a" : "b";
+            await postHistoryChildInteractionsRepository.upsertChildInteractions({
+                parentEventId: targetEventId,
+                events: [
+                    {
+                        event: makeReaction(
+                            targetEventId,
+                            prefix.repeat(64),
+                            "3".repeat(64),
+                            "+",
+                        ),
+                        relayUrls: [],
+                    },
+                    {
+                        event: makeReaction(
+                            targetEventId,
+                            (prefix === "a" ? "c" : "d").repeat(64),
+                            "4".repeat(64),
+                            ":party:",
+                            [["emoji", "party", reactionEmojiUrl]],
+                        ),
+                        relayUrls: [],
+                    },
+                ],
+            });
+        }
+    }
+
     let show = $state(false);
     let applications = $state<
-        Array<{ action: ComposerTargetAction; kind: number }>
+        Array<{ action: ComposerTargetAction; kind: number; eventId: string }>
     >([]);
 
     function makeTarget(
-        kind: 1 | 40 | 42,
+        kind: 1 | 36 | 40 | 42,
         eventId: string,
         channelName: string | null = "Fixture channel",
         content = `Fixture kind ${kind}`,
     ): ComposerResolvedTarget {
-        const hasChannel = kind !== 1;
+        const hasChannel = kind === 40 || kind === 42;
         return {
             event: {
                 id: eventId,
                 pubkey: "c".repeat(64),
                 created_at: 1,
                 kind,
-                tags: [],
+                tags: eventId === ids.sensitive
+                    ? [
+                          ["content-warning", "Sensitive fixture"],
+                          ["c", ids.sensitivePayload, "wss://payload.example.com/"],
+                      ]
+                    : kind === 36 ? [["k", "1"]] : [],
                 content:
                     kind === 40
                         ? JSON.stringify({ name: "Fixture channel" })
@@ -127,6 +196,12 @@
     }
 
     function resolveForId(eventId: string): ComposerTargetResolveResult {
+        if (eventId === ids.sensitive) {
+            return { status: "resolved", target: makeTarget(1, eventId, null, "") };
+        }
+        if (eventId === ids.sensitivePayload) {
+            return { status: "resolved", target: makeTarget(36, eventId, null, "Sensitive payload") };
+        }
         if (eventId === ids.kind40) {
             return { status: "resolved", target: makeTarget(40, eventId) };
         }
@@ -216,25 +291,21 @@
 
     const resolver = {
         resolve(params: { pointer: { eventId: string } }) {
+            const eventId = params.pointer.eventId;
             let cancelled = false;
-            let timer: ReturnType<typeof setTimeout> | undefined;
-            const delay = params.pointer.eventId === ids.stale ? 700 : 20;
-            const promise = new Promise<ComposerTargetResolveResult>(
-                (resolve) => {
-                    timer = setTimeout(() => {
-                        resolve(
-                            cancelled
-                                ? { status: "cancelled" }
-                                : resolveForId(params.pointer.eventId),
-                        );
-                    }, delay);
-                },
-            );
+            resolverEventIds.push(eventId);
+            const promise = eventId === ids.stale
+                ? new Promise<ComposerTargetResolveResult>((resolve) => {
+                    releaseStaleResolver = () => resolve(
+                        cancelled ? { status: "cancelled" } : resolveForId(eventId),
+                    );
+                })
+                : Promise.resolve().then(() => resolveForId(eventId));
             return {
                 promise,
                 cancel() {
                     cancelled = true;
-                    if (timer !== undefined) clearTimeout(timer);
+                    if (eventId === ids.stale) cancelledResolverEventIds.push(eventId);
                 },
             };
         },
@@ -244,15 +315,23 @@
         action: ComposerTargetAction,
         target: ComposerEventTarget,
     ): boolean {
-        applications = [...applications, { action, kind: target.kind }];
+        applications = [...applications, { action, kind: target.kind, eventId: target.event?.id ?? "" }];
         return true;
     }
 
     const harness = {
         ready: true,
+        seedReactionFixtures,
         inputs,
         linkTargetUrl,
         oversizedPostContentLength: oversizedPostContent.length,
+        resolverEventIds,
+        cancelledResolverEventIds,
+        releaseStaleResolver() {
+            if (!releaseStaleResolver) throw new Error("stale resolver was not started");
+            releaseStaleResolver();
+            releaseStaleResolver = null;
+        },
         get applications() {
             return applications;
         },

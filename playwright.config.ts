@@ -10,6 +10,7 @@ const endpoints = buildPlaywrightEndpoints(resolvedPort);
 
 export default defineConfig({
     testDir: './src/test/e2e',
+    testIgnore: '**/serviceWorkerUpdate.spec.ts',
     timeout: 30_000,
     expect: {
         timeout: 5_000,
@@ -30,14 +31,14 @@ export default defineConfig({
     projects: [
         {
             name: 'desktop-chromium',
-            testIgnore: '**/webComponentDevServer.spec.ts',
+            testIgnore: ['**/webComponentDevServer.spec.ts', '**/serviceWorkerUpdate.spec.ts'],
             use: {
                 ...devices['Desktop Chrome'],
             },
         },
         {
             name: 'mobile-chromium',
-            testIgnore: '**/webComponentDevServer.spec.ts',
+            testIgnore: ['**/webComponentDevServer.spec.ts', '**/serviceWorkerUpdate.spec.ts'],
             use: {
                 ...devices['iPhone 13'],
                 browserName: 'chromium',
@@ -59,8 +60,11 @@ export default defineConfig({
                 '**/webComponentEmbed.spec.ts',
                 '**/webComponentLite.spec.ts',
                 '**/webComponentParentClientExample.spec.ts',
+                '**/footerSettingShortcuts.spec.ts',
                 '**/postEditorSending.spec.ts',
                 '**/postHistoryDialog.spec.ts',
+                '**/postRepost.spec.ts',
+                '**/sensitiveContentPayload.spec.ts',
             ],
             use: {
                 ...devices['iPhone 13'],
@@ -69,7 +73,15 @@ export default defineConfig({
         },
         {
             name: 'desktop-firefox',
-            testMatch: '**/webComponentEmbed.spec.ts',
+            testMatch: ['**/webComponentEmbed.spec.ts', '**/postRepost.spec.ts'],
+            use: {
+                ...devices['Desktop Firefox'],
+            },
+        },
+        {
+            name: 'desktop-firefox-editor-paste',
+            testMatch: ['**/postEditorSending.spec.ts', '**/webComponentLite.spec.ts'],
+            grep: /pastes HTML with clipboard plain text/,
             use: {
                 ...devices['Desktop Firefox'],
             },

@@ -39,11 +39,16 @@
 
     // 全画面状態を判定
     function isFullscreen(): boolean {
+        const fullscreenDocument = document as Document & {
+            webkitFullscreenElement?: Element | null;
+            mozFullScreenElement?: Element | null;
+            msFullscreenElement?: Element | null;
+        };
         return !!(
-            document.fullscreenElement ||
-            (document as any).webkitFullscreenElement ||
-            (document as any).mozFullScreenElement ||
-            (document as any).msFullscreenElement
+            fullscreenDocument.fullscreenElement ||
+            fullscreenDocument.webkitFullscreenElement ||
+            fullscreenDocument.mozFullScreenElement ||
+            fullscreenDocument.msFullscreenElement
         );
     }
 

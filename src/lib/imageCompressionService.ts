@@ -322,8 +322,12 @@ export class ImageCompressionService implements CompressionService {
         return this.getCompressionOptions() !== null;
     }
 
-    async compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean; aborted?: boolean }> {
-        if (this.isUploadAborted()) {
+    async compress(
+        file: File,
+        operation?: { signal?: AbortSignal },
+    ): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean; aborted?: boolean }> {
+        const isAborted = () => operation?.signal?.aborted || this.isUploadAborted();
+        if (isAborted()) {
             return { file, wasCompressed: false, aborted: true };
         }
 
@@ -340,6 +344,7 @@ export class ImageCompressionService implements CompressionService {
             options: compressionOptions,
             shouldSkipMaxSizeMB,
         } = await this.applyExtremeAspectProtection(file, options);
+        if (isAborted()) return { file, wasCompressed: false, aborted: true };
 
         let usedOptions: Record<string, unknown> = {
             ...compressionOptions,
@@ -359,9 +364,11 @@ export class ImageCompressionService implements CompressionService {
             }
         }
 
-        if (this.isUploadAborted()) {
+        if (isAborted()) {
             return { file, wasCompressed: false, aborted: true };
         }
+
+        if (operation?.signal) usedOptions.signal = operation.signal;
 
         let targetMime: string = (usedOptions.fileType as string) || file.type;
         if (!this.mimeSupport.canEncodeMimeType(targetMime)) {
@@ -388,6 +395,7 @@ export class ImageCompressionService implements CompressionService {
                     finalCompressedFile = webpFallbackFile;
                 }
             }
+            if (isAborted()) return { file, wasCompressed: false, aborted: true };
 
             if (finalCompressedFile.size >= file.size) {
                 return { file, wasCompressed: false };
@@ -397,10 +405,10 @@ export class ImageCompressionService implements CompressionService {
             const outName = renameByMimeType(file.name, outType);
             const outFile = new File([finalCompressedFile], outName, { type: outType });
 
-            showCompressedImagePreview(outFile);
+            if (!operation?.signal) showCompressedImagePreview(outFile);
             return { file: outFile, wasCompressed: true };
         } catch (error) {
-            if (this.isUploadAborted()) {
+            if (isAborted()) {
                 if (this.onProgress) {
                     this.onProgress(0);
                 }

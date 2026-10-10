@@ -1,4 +1,6 @@
 import type { RxNostr } from "rx-nostr";
+import { isRepostTargetKind, verifyRepostTarget } from "./postRepostUtils";
+import { attestFullyVerifiedPostHistoryRawEvent } from "./postHistoryRawEventVerification";
 import {
     postHistoryContextFetchService,
     type PostHistoryContextFetchService,
@@ -61,6 +63,7 @@ export interface PostHistoryRelatedTargetSnapshot {
 }
 
 interface CreatePostHistoryRelatedTargetResolverParams {
+    loadRepostTarget?: (descriptor: RelatedTargetDescriptor) => Promise<{ event: NostrEvent; relayHints: string[] } | null>;
     getShow: () => boolean;
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
@@ -75,6 +78,7 @@ interface CreatePostHistoryRelatedTargetResolverParams {
 }
 
 interface EnsureRelatedTargetOptions {
+    requireRelayHint?: boolean;
     force?: boolean;
     background?: boolean;
 }
@@ -134,6 +138,7 @@ export function createPostHistoryRelatedTargetResolver({
     deletionRequestsRepositoryImpl = postHistoryDeletionRequestsRepository,
     deletionFetchService = postHistoryDeletionFetchService,
     profileSyncCoordinator = undefined,
+    loadRepostTarget = undefined,
 }: CreatePostHistoryRelatedTargetResolverParams) {
     const profileSync = profileSyncCoordinator
         ?? createPostHistoryProfileSyncCoordinator({ getShow, getRxNostr });
@@ -146,8 +151,8 @@ export function createPostHistoryRelatedTargetResolver({
     const scopeKeysByTargetId = new Map<string, Set<string>>();
     const pendingLoadsByTargetId = new Map<string, Promise<PostHistoryRelatedTargetSnapshot | null>>();
     const loadTasksByTargetId = new Map<string, PostHistoryContextFetchTask>();
-    const pendingDeletionChecksByTargetId = new Map<string, Promise<boolean>>();
-    const deletionTasksByTargetId = new Map<string, PostHistoryDeletionFetchTask>();
+    const pendingDeletionChecksByTarget = new Map<string, Promise<boolean>>();
+    const deletionTasksByTarget = new Map<string, PostHistoryDeletionFetchTask>();
     const loadRequestIdsByTargetId = new Map<string, number>();
     let nextLoadRequestId = 0;
 
@@ -332,23 +337,21 @@ export function createPostHistoryRelatedTargetResolver({
             return true;
         }
 
-        if (pendingDeletionChecksByTargetId.has(targetEvent.id)) {
-            return pendingDeletionChecksByTargetId.get(targetEvent.id) ?? false;
-        }
-
         const rxNostr = getRxNostr();
         if (!rxNostr) {
             return false;
         }
 
-        const taskPromise = (async (): Promise<boolean> => {
+        // An unverified author hint for the same ID must not satisfy a verified author's check.
+        const deletionKey = `${targetEvent.pubkey}:${targetEvent.id}`;
+        const taskPromise: Promise<boolean> = pendingDeletionChecksByTarget.get(deletionKey) ?? Promise.resolve().then(async () => {
             try {
                 const task = deletionFetchService.fetchDeletionRequests(rxNostr, {
                     targets: [{ event: targetEvent, relayUrls: relayHints }],
                     relayHints,
                     relayConfig: getRelayConfig(),
                 });
-                deletionTasksByTargetId.set(targetEvent.id, task);
+                deletionTasksByTarget.set(deletionKey, task);
 
                 const result = await task.promise;
                 if (result.events.length > 0) {
@@ -375,27 +378,29 @@ export function createPostHistoryRelatedTargetResolver({
             } catch {
                 return false;
             } finally {
-                deletionTasksByTargetId.delete(targetEvent.id);
-                pendingDeletionChecksByTargetId.delete(targetEvent.id);
+                if (pendingDeletionChecksByTarget.get(deletionKey) === taskPromise) {
+                    deletionTasksByTarget.delete(deletionKey);
+                    pendingDeletionChecksByTarget.delete(deletionKey);
+                }
             }
-        })();
-
-        pendingDeletionChecksByTargetId.set(targetEvent.id, taskPromise);
+        });
+        pendingDeletionChecksByTarget.set(deletionKey, taskPromise);
         if (options.background) {
             void taskPromise;
             return false;
         }
 
-        return taskPromise;
+        return await taskPromise;
     }
 
     function isCurrentLoadRequest(targetEventId: string, requestId: number): boolean {
         return loadRequestIdsByTargetId.get(targetEventId) === requestId;
     }
 
-    async function ensureTarget(
+    async function resolveTarget(
         descriptor: RelatedTargetDescriptor,
         options: EnsureRelatedTargetOptions = {},
+        repostPreparation?: { target: NostrEvent },
     ): Promise<PostHistoryRelatedTargetSnapshot | null> {
         registerDescriptor(descriptor);
         const existingBeforeMerge = snapshotsByTargetId[descriptor.targetEventId];
@@ -403,12 +408,29 @@ export function createPostHistoryRelatedTargetResolver({
         const mergedSnapshot = snapshotsByTargetId[descriptor.targetEventId]
             ?? createInitialSnapshot(descriptor);
         const preserveResolvedState = !!options.background && existingBeforeMerge?.status === "resolved";
+        // A signed event of another kind can still be valid for a quote/thread.
+        // Let the Repost projection reject it without poisoning the shared ID cache.
+        if (descriptor.relationKind === "repost" && existingBeforeMerge?.status === "resolved") {
+            const cached = attestFullyVerifiedPostHistoryRawEvent(existingBeforeMerge.event)?.event;
+            if (cached?.id === descriptor.targetEventId) {
+                const generation = scopeGenerationByKey[descriptor.scopeKey];
+                const deleted = await isDeletedTarget(cached.pubkey, cached.id);
+                if (!getShow() || generation !== scopeGenerationByKey[descriptor.scopeKey]
+                    || !scopeKeysByTargetId.get(cached.id)?.has(descriptor.scopeKey)) return null;
+                if (deleted) return applySnapshotUpdate(cached.id, { status: "deleted", event: null,
+                    authorPubkey: cached.pubkey, errorCode: null, updatedAt: Date.now() });
+            }
+        }
 
-        if (!options.force && existingBeforeMerge) {
+        if (!options.force && existingBeforeMerge && (!options.requireRelayHint || existingBeforeMerge.relayHints.length > 0)) {
             if (
                 existingBeforeMerge.status === "resolved"
                 || existingBeforeMerge.status === "deleted"
             ) {
+                if (descriptor.relationKind === "repost" && existingBeforeMerge.status === "resolved"
+                    && !verifyRepostTarget(existingBeforeMerge.event, { eventId: descriptor.targetEventId, authorHint: null, relayHints: [] })) {
+                    return await resolveTarget(descriptor, { ...options, force: true }, repostPreparation);
+                }
                 if (existingBeforeMerge.status === "resolved" && existingBeforeMerge.authorPubkey) {
                     ensureProfileForTarget(
                         existingBeforeMerge.authorPubkey,
@@ -421,6 +443,7 @@ export function createPostHistoryRelatedTargetResolver({
 
             if (
                 existingBeforeMerge.status === "loading"
+                && !repostPreparation
                 && pendingLoadsByTargetId.has(descriptor.targetEventId)
             ) {
                 return await pendingLoadsByTargetId.get(descriptor.targetEventId)
@@ -428,14 +451,14 @@ export function createPostHistoryRelatedTargetResolver({
                     ?? existingBeforeMerge;
             }
 
-            if (!contextChanged) {
+            if (!contextChanged && !repostPreparation) {
                 if (existingBeforeMerge.status === "not-found" || existingBeforeMerge.status === "error") {
                     return snapshotsByTargetId[descriptor.targetEventId] ?? existingBeforeMerge;
                 }
             }
         }
 
-        if (!options.force && pendingLoadsByTargetId.has(descriptor.targetEventId)) {
+        if (!options.force && !repostPreparation && pendingLoadsByTargetId.has(descriptor.targetEventId)) {
             return await pendingLoadsByTargetId.get(descriptor.targetEventId)
                 ?? snapshotsByTargetId[descriptor.targetEventId]
                 ?? mergedSnapshot;
@@ -459,6 +482,22 @@ export function createPostHistoryRelatedTargetResolver({
                     });
                 }
 
+                const repostLocal = repostPreparation
+                    ? { event: repostPreparation.target, relayHints: mergedSnapshot.relayHints }
+                    : descriptor.relationKind === "repost" ? await loadRepostTarget?.(descriptor) : null;
+                if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) return null;
+                const localVerified = repostLocal && verifyRepostTarget(repostLocal.event, {
+                    eventId: descriptor.targetEventId, authorHint: null, relayHints: descriptor.relayHints ?? [],
+                });
+                if (localVerified && (!options.requireRelayHint || repostLocal!.relayHints.length > 0)) {
+                    const hints = sanitizeRelayHints([...repostLocal!.relayHints, ...mergedSnapshot.relayHints]);
+                    const snapshot = applySnapshotUpdate(descriptor.targetEventId, { status: "resolved",
+                        event: localVerified.event, authorPubkey: localVerified.event.pubkey, relayHints: hints,
+                        errorCode: null, updatedAt: Date.now() });
+                    ensureProfileForTarget(localVerified.event.pubkey, hints);
+                    if (!repostPreparation) void runDeletionCheck(localVerified.event, hints, { background: true });
+                    return snapshot;
+                }
                 const existingRecord = await postHistoryRepositoryImpl.getByEventId(
                     descriptor.targetEventId,
                 );
@@ -466,7 +505,10 @@ export function createPostHistoryRelatedTargetResolver({
                     return snapshotsByTargetId[descriptor.targetEventId] ?? null;
                 }
 
-                if (existingRecord) {
+                if (existingRecord && (!options.requireRelayHint || [...existingRecord.relayHints, ...existingRecord.acceptedRelays, ...(existingRecord.fetchedRelays ?? [])].length > 0)
+                    && (descriptor.relationKind !== "repost" || verifyRepostTarget(existingRecord.rawEvent, {
+                    eventId: descriptor.targetEventId, authorHint: null, relayHints: [],
+                }))) {
                     const recordRelayHints = sanitizeRelayHints([
                         ...mergedSnapshot.relayHints,
                         ...existingRecord.relayHints,
@@ -484,21 +526,25 @@ export function createPostHistoryRelatedTargetResolver({
                         });
                     }
 
-                    const event = toEventFromPostHistoryRecord(existingRecord);
+                    const storedEvent = descriptor.relationKind === "repost"
+                        ? verifyRepostTarget(existingRecord.rawEvent)!.event
+                        : toEventFromPostHistoryRecord(existingRecord);
+                    const event = storedEvent;
+                    const targetRelayHints = recordRelayHints;
                     const snapshot = applySnapshotUpdate(descriptor.targetEventId, {
                         status: "resolved",
                         event,
                         authorPubkey: event.pubkey,
-                        relayHints: recordRelayHints,
+                        relayHints: targetRelayHints,
                         errorCode: null,
                         updatedAt: Date.now(),
                     });
-                    ensureProfileForTarget(event.pubkey, recordRelayHints);
-                    void runDeletionCheck(event, recordRelayHints, { background: true });
+                    ensureProfileForTarget(event.pubkey, targetRelayHints);
+                    if (!repostPreparation) void runDeletionCheck(event, targetRelayHints, { background: true });
                     return snapshotsByTargetId[descriptor.targetEventId] ?? snapshot;
                 }
 
-                if (descriptor.authorHint) {
+                if (descriptor.authorHint && descriptor.relationKind !== "repost") {
                     const deletedByAuthorHint = await runDeletionCheck(
                         createSyntheticTargetEvent(
                             descriptor.targetEventId,
@@ -531,22 +577,25 @@ export function createPostHistoryRelatedTargetResolver({
                     return snapshotsByTargetId[descriptor.targetEventId] ?? mergedSnapshot;
                 }
 
-                const fetchTask = contextFetchService.fetchEventById(rxNostr, {
-                    eventId: descriptor.targetEventId,
-                    authorHint: descriptor.authorHint,
-                    relayHints: mergedSnapshot.relayHints,
-                    relayConfig: getRelayConfig(),
-                });
+                // A preview load may be waiting on deletion discovery. Repost
+                // needs only its target fetch/provenance, never that whole load.
+                const fetchTask = (repostPreparation ? loadTasksByTargetId.get(descriptor.targetEventId) : undefined)
+                    ?? contextFetchService.fetchEventById(rxNostr, {
+                        eventId: descriptor.targetEventId,
+                        authorHint: descriptor.authorHint,
+                        relayHints: mergedSnapshot.relayHints,
+                        relayConfig: getRelayConfig(),
+                    });
                 loadTasksByTargetId.set(descriptor.targetEventId, fetchTask);
                 const result = await fetchTask.promise;
-                loadTasksByTargetId.delete(descriptor.targetEventId);
 
                 if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
                     return snapshotsByTargetId[descriptor.targetEventId] ?? null;
                 }
+                loadTasksByTargetId.delete(descriptor.targetEventId);
 
                 if (!result.event) {
-                    if (descriptor.authorHint) {
+                    if (descriptor.authorHint && descriptor.relationKind !== "repost") {
                         const deletedAfterFetch = await runDeletionCheck(
                             createSyntheticTargetEvent(
                                 descriptor.targetEventId,
@@ -577,12 +626,17 @@ export function createPostHistoryRelatedTargetResolver({
                     });
                 }
 
-                const resolvedRelayHints = sanitizeRelayHints([
-                    ...mergedSnapshot.relayHints,
+                const pointerRelayHints = sanitizeRelayHints([
                     ...(result.relayUrl ? [result.relayUrl] : []),
+                    ...mergedSnapshot.relayHints,
                 ]);
-                const deletedAfterResolve = await runDeletionCheck(
-                    result.event,
+                const resolvedEvent = result.event;
+                if (descriptor.relationKind === "repost" && !verifyRepostTarget(resolvedEvent, {
+                    eventId: descriptor.targetEventId, authorHint: null, relayHints: [],
+                })) throw new Error("invalid_repost_target");
+                const resolvedRelayHints = pointerRelayHints;
+                const deletedAfterResolve = !repostPreparation && await runDeletionCheck(
+                    resolvedEvent,
                     resolvedRelayHints,
                 );
                 if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
@@ -590,19 +644,29 @@ export function createPostHistoryRelatedTargetResolver({
                 }
 
                 if (deletedAfterResolve) {
+                    if (resolvedEvent.id !== descriptor.targetEventId) {
+                        applySnapshotUpdate(descriptor.targetEventId, {
+                            status: "deleted",
+                            event: null,
+                            authorPubkey: resolvedEvent.pubkey,
+                            relayHints: resolvedRelayHints,
+                            errorCode: null,
+                            updatedAt: Date.now(),
+                        });
+                    }
                     return snapshotsByTargetId[descriptor.targetEventId] ?? null;
                 }
 
                 const snapshot = applySnapshotUpdate(descriptor.targetEventId, {
                     status: "resolved",
-                    event: result.event,
-                    authorPubkey: result.event.pubkey,
+                    event: resolvedEvent,
+                    authorPubkey: resolvedEvent.pubkey,
                     relayHints: resolvedRelayHints,
                     errorCode: null,
                     updatedAt: Date.now(),
                 });
                 ensureProfileForTarget(
-                    result.event.pubkey,
+                    resolvedEvent.pubkey,
                     resolvedRelayHints,
                 );
                 return snapshotsByTargetId[descriptor.targetEventId] ?? snapshot;
@@ -624,13 +688,41 @@ export function createPostHistoryRelatedTargetResolver({
                     updatedAt: Date.now(),
                 });
             } finally {
-                loadTasksByTargetId.delete(descriptor.targetEventId);
-                pendingLoadsByTargetId.delete(descriptor.targetEventId);
+                if (isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
+                    loadTasksByTargetId.delete(descriptor.targetEventId);
+                    pendingLoadsByTargetId.delete(descriptor.targetEventId);
+                }
             }
         })();
 
         pendingLoadsByTargetId.set(descriptor.targetEventId, taskPromise);
         return await taskPromise;
+    }
+
+    async function ensureTarget(descriptor: RelatedTargetDescriptor, options: EnsureRelatedTargetOptions = {}) {
+        return resolveTarget(descriptor, options);
+    }
+
+    /** Validate provenance and known local deletions without waiting for network deletion checks. */
+    async function prepareRepostTarget(descriptor: RelatedTargetDescriptor, target: NostrEvent) {
+        const verified = verifyRepostTarget(target, { eventId: descriptor.targetEventId,
+            authorHint: descriptor.authorHint ?? null, relayHints: descriptor.relayHints ?? [] });
+        if (descriptor.relationKind !== "repost" || !verified || !isRepostTargetKind(verified.event.kind) || !getShow() || !getRxNostr()) return null;
+        registerDescriptor(descriptor);
+        const scopes = scopeKeysByTargetId.get(descriptor.targetEventId);
+        const generation = scopeGenerationByKey[descriptor.scopeKey];
+        const runtime = getRxNostr();
+        const isCurrent = () => getShow() && getRxNostr() === runtime
+            && scopes === scopeKeysByTargetId.get(descriptor.targetEventId)
+            && scopes?.has(descriptor.scopeKey) && generation === scopeGenerationByKey[descriptor.scopeKey];
+        const snapshot = await resolveTarget(descriptor, { requireRelayHint: true }, { target: verified.event });
+        if (!isCurrent() || snapshot?.status !== "resolved" || !verifyRepostTarget(snapshot.event, {
+            eventId: verified.event.id, authorHint: verified.event.pubkey, relayHints: [],
+        })) return null;
+        const deleted = await isDeletedTarget(verified.event.pubkey, verified.event.id);
+        if (!isCurrent()) return null;
+        return deleted ? applySnapshotUpdate(verified.event.id, { status: "deleted", event: null,
+            authorPubkey: verified.event.pubkey, errorCode: null, updatedAt: Date.now() }) : snapshot;
     }
 
     async function ensureTargets(
@@ -678,10 +770,13 @@ export function createPostHistoryRelatedTargetResolver({
                 loadRequestIdsByTargetId.delete(targetEventId);
                 loadTasksByTargetId.get(targetEventId)?.cancel();
                 loadTasksByTargetId.delete(targetEventId);
-                deletionTasksByTargetId.get(targetEventId)?.cancel();
-                deletionTasksByTargetId.delete(targetEventId);
+                for (const [key, task] of deletionTasksByTarget) {
+                    if (!key.endsWith(`:${targetEventId}`)) continue;
+                    task.cancel();
+                    deletionTasksByTarget.delete(key);
+                    pendingDeletionChecksByTarget.delete(key);
+                }
                 pendingLoadsByTargetId.delete(targetEventId);
-                pendingDeletionChecksByTargetId.delete(targetEventId);
             }
         }
 
@@ -695,11 +790,11 @@ export function createPostHistoryRelatedTargetResolver({
 
     function reset(): void {
         loadTasksByTargetId.forEach((task) => task.cancel());
-        deletionTasksByTargetId.forEach((task) => task.cancel());
+        deletionTasksByTarget.forEach((task) => task.cancel());
         loadTasksByTargetId.clear();
-        deletionTasksByTargetId.clear();
+        deletionTasksByTarget.clear();
         pendingLoadsByTargetId.clear();
-        pendingDeletionChecksByTargetId.clear();
+        pendingDeletionChecksByTarget.clear();
         targetIdsByScopeKey.clear();
         scopeKeysByTargetId.clear();
         if (ownsProfileSync) {
@@ -713,6 +808,7 @@ export function createPostHistoryRelatedTargetResolver({
 
     return {
         ensureTarget,
+        prepareRepostTarget,
         ensureTargets,
         retryTarget,
         getTargetSnapshot,

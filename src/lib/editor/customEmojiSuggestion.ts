@@ -105,7 +105,7 @@ export const CustomEmojiSuggestion = Extension.create<CustomEmojiSuggestionOptio
                     }),
                 }),
 
-                command: ({ editor, range, props }: { editor: any; range: any; props: CustomEmojiItem }) => {
+                command: ({ editor, range, props }) => {
                     const inserted = editor
                         .chain()
                         .focus()

@@ -1,8 +1,11 @@
 import Dexie, { cmp } from "dexie";
+import { isPostHistoryAuthoredKind } from "../postHistoryKinds";
+import { createRepostTargetSnapshot, getRepostReference, isRepostOuterKind } from "../postRepostUtils";
 import {
     cloneNostrEvent,
     extractPostHistoryChannelReference,
     isSameSignedNostrEvent,
+    isPostHistoryRawEventConsistent,
 } from "../postHistoryEventUtils";
 import {
     comparePostHistoryDeletionRequests,
@@ -32,6 +35,9 @@ import type {
 } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
 import { POST_HISTORY_TIMELINE_INDEX } from "./ehagakiDbConstants";
+import { DexiePostHistoryRelayCoverageRepository, PostHistoryCoverageStaleError, type PostHistoryCoverageWrite } from "./postHistoryRelayCoverageRepository";
+import { reconcileSensitivePayloadDeletionForStructure } from "./sensitivePayloadDeletionReconciler";
+import { assertPostHistoryLocalWriteCurrent, PostHistoryLocalWriteStaleError, type PostHistoryLocalWriteScope } from "./postHistoryLocalWriteScope";
 
 export const POST_HISTORY_SCHEMA_VERSION = 2;
 
@@ -41,6 +47,8 @@ export type PostHistorySaveInput = {
     acceptedRelays?: string[];
     relayHints?: string[];
     postedAt?: number;
+    repostTarget?: { event: NostrEvent; relayHints?: string[] };
+    localWriteScope?: PostHistoryLocalWriteScope;
 };
 
 export type PostHistoryPageOptions = PostHistoryRepositoryOptions & {
@@ -65,6 +73,10 @@ export type PostHistoryVisibleChunkCursorOptions =
     PostHistoryVisibleChunkOptions & {
         cursor: PostHistoryTimelineCursor;
     };
+
+export type PostHistoryOlderVisiblePostsOptions = PostHistoryVisibleQueryOptions & {
+    cursor: PostHistoryTimelineCursor;
+};
 
 export type PostHistoryVisibleChunkFromCreatedAtOptions =
     PostHistoryVisibleChunkOptions & {
@@ -105,6 +117,8 @@ export type PostHistoryFetchedEventItem = {
 export type PostHistoryUpsertFetchedEventsInput = {
     events: PostHistoryFetchedEventItem[];
     fetchedAt?: number;
+    relayFetchCoverage?: PostHistoryCoverageWrite;
+    localWriteScope?: PostHistoryLocalWriteScope;
 };
 
 export type PostHistoryUpsertFetchedEventsResult = {
@@ -112,11 +126,24 @@ export type PostHistoryUpsertFetchedEventsResult = {
     updatedCount: number;
     unchangedCount: number;
     appliedDeletionCount: number;
+    /** False when a scoped authored fetch was invalidated before commit. */
+    applied?: boolean;
 };
 
 export type PostHistoryRepositoryOptions = {
     pubkeyHex?: string | null;
 };
+
+export type PostHistorySearchScanChunkOptions = PostHistoryRepositoryOptions & {
+    cursor?: PostHistoryTimelineCursor;
+    limit: number;
+};
+
+export interface PostHistorySearchScanChunk {
+    items: PostHistoryRecord[];
+    nextCursor: PostHistoryTimelineCursor | null;
+    hasMore: boolean;
+}
 
 export interface PostHistoryRepository {
     getByEventId(eventId: string): Promise<PostHistoryRecord | null>;
@@ -125,9 +152,11 @@ export interface PostHistoryRepository {
         eventIds: string[];
     }): Promise<string[]>;
     getAll(options: PostHistoryRepositoryOptions): Promise<PostHistoryRecord[]>;
+    getSearchScanChunk(options: PostHistorySearchScanChunkOptions): Promise<PostHistorySearchScanChunk>;
     getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]>;
     getLatestVisibleChunk(options: PostHistoryVisibleChunkOptions): Promise<PostHistoryRecord[]>;
     getOlderVisibleChunk(options: PostHistoryVisibleChunkCursorOptions): Promise<PostHistoryRecord[]>;
+    hasOlderVisiblePosts(options: PostHistoryOlderVisiblePostsOptions): Promise<boolean>;
     getNewerVisibleChunk(options: PostHistoryVisibleChunkCursorOptions): Promise<PostHistoryRecord[]>;
     getOldestVisibleChunk(options: PostHistoryOldestVisibleChunkOptions): Promise<PostHistoryRecord[]>;
     getVisibleChunkFromCreatedAt(options: PostHistoryVisibleChunkFromCreatedAtOptions): Promise<PostHistoryRecord[]>;
@@ -137,6 +166,7 @@ export interface PostHistoryRepository {
     countForPubkey(pubkeyHex: string | null | undefined): Promise<number>;
     countVisibleForPubkey(pubkeyHex: string | null | undefined, visibleUntil?: number | null): Promise<number>;
     putPostedEvent(input: PostHistorySaveInput): Promise<void>;
+    attachRepostTarget(input: { outerEventId: string; target: NostrEvent; relayHints?: string[]; localWriteScope: PostHistoryLocalWriteScope }): Promise<boolean>;
     upsertFetchedEvents(input: PostHistoryUpsertFetchedEventsInput): Promise<PostHistoryUpsertFetchedEventsResult>;
     getOldestCreatedAt(pubkeyHex: string | null | undefined): Promise<number | null>;
     markDeleted(eventId: string, deletionEventId: string, deletedAt?: number): Promise<void>;
@@ -259,11 +289,15 @@ function getTimelineBounds(pubkeyHex: string): {
     };
 }
 
+function isSupportedPost(record: PostHistoryRecord): boolean {
+    return isPostHistoryAuthoredKind(record.kind);
+}
+
 function matchesVisibleUntil(
     record: PostHistoryRecord,
     visibleUntil: number | null,
 ): boolean {
-    return visibleUntil === null || record.createdAt >= visibleUntil;
+    return isSupportedPost(record) && (visibleUntil === null || record.createdAt >= visibleUntil);
 }
 
 function toPostedAtFromCreatedAt(createdAt: number): number {
@@ -291,7 +325,7 @@ function toRecord(input: PostHistorySaveInput, now: () => number): PostHistoryRe
         postedAt: input.postedAt ?? updatedAt,
         relayHints,
         acceptedRelays,
-        media: extractPostHistoryMedia(event),
+        media: isRepostOuterKind(event.kind) ? [] : extractPostHistoryMedia(event),
         rawEvent: cloneNostrEvent(event),
         rawEventVerification: { ...VALID_RAW_EVENT_VERIFICATION },
         ...(channelReference.channelEventId
@@ -426,7 +460,8 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     async getByEventId(eventId: string): Promise<PostHistoryRecord | null> {
         if (!eventId) return null;
 
-        return await this.db.postHistory.get(eventId) ?? null;
+        const record = await this.db.postHistory.get(eventId);
+        return record && isSupportedPost(record) ? record : null;
     }
 
     async getExistingEventIdsForPubkey(input: {
@@ -442,7 +477,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
         return records
             .filter((record): record is PostHistoryRecord =>
-                !!record && record.pubkeyHex === input.pubkeyHex
+                !!record && isSupportedPost(record) && record.pubkeyHex === input.pubkeyHex
             )
             .map((record) => record.eventId);
     }
@@ -456,7 +491,36 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .reverse()
             .toArray();
 
-        return sortPostHistoryRecords(records);
+        return sortPostHistoryRecords(records.filter(isSupportedPost));
+    }
+
+    async getSearchScanChunk(
+        options: PostHistorySearchScanChunkOptions,
+    ): Promise<PostHistorySearchScanChunk> {
+        if (!options.pubkeyHex) return { items: [], nextCursor: null, hasMore: false };
+
+        const limit = normalizeChunkLimit(options.limit);
+        const bounds = getTimelineBounds(options.pubkeyHex);
+        const upper = options.cursor
+            ? toTimelineKey(options.pubkeyHex, options.cursor)
+            : bounds.upper;
+        // Apply kind filtering after the bounded read so Dexie can use getAll.
+        // The continuation belongs to the raw batch, including unsupported kinds.
+        const records = await this.db.postHistory
+            .where(POST_HISTORY_TIMELINE_INDEX)
+            .between(bounds.lower, upper, true, !options.cursor)
+            .reverse()
+            .limit(limit)
+            .toArray();
+        const last = records.at(-1);
+
+        return {
+            items: records.filter(isSupportedPost),
+            nextCursor: last
+                ? { postedAt: last.postedAt, createdAt: last.createdAt, eventId: last.eventId }
+                : null,
+            hasMore: records.length === limit,
+        };
     }
 
     async getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]> {
@@ -470,6 +534,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .where(POST_HISTORY_TIMELINE_INDEX)
             .between(bounds.lower, bounds.upper)
             .reverse()
+            .filter(isSupportedPost)
             .offset((page - 1) * pageSize)
             .limit(pageSize)
             .toArray();
@@ -512,6 +577,32 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .toArray();
     }
 
+    async hasOlderVisiblePosts(options: PostHistoryOlderVisiblePostsOptions): Promise<boolean> {
+        if (!options.pubkeyHex) return false;
+
+        const visibleUntil = normalizeVisibleUntil(options.visibleUntil);
+        const older = this.db.postHistory
+            .where(POST_HISTORY_TIMELINE_INDEX)
+            .between(getTimelineBounds(options.pubkeyHex).lower,
+                toTimelineKey(options.pubkeyHex, options.cursor), true, false);
+        let collection = older;
+        if (visibleUntil !== null) {
+            const visible = this.db.postHistory
+                .where("[pubkeyHex+createdAt]")
+                .between([options.pubkeyHex, visibleUntil], [options.pubkeyHex, Dexie.maxKey]);
+            // Unfiltered counts use IndexedDB's index keys, without loading post
+            // bodies. Check the smaller side of the intersection: avoid scanning
+            // either a large saved tail or a large already-visible history.
+            const [olderCount, visibleCount] = await Promise.all([older.count(), visible.count()]);
+            if (olderCount === 0 || visibleCount === 0) return false;
+            collection = visibleCount <= olderCount ? visible : older;
+        }
+
+        return (await collection
+            .filter((record) => matchesVisibleUntil(record, visibleUntil) && isOlderThanTimelineCursor(record, options.cursor))
+            .first()) !== undefined;
+    }
+
     async getNewerVisibleChunk(
         options: PostHistoryVisibleChunkCursorOptions,
     ): Promise<PostHistoryRecord[]> {
@@ -552,7 +643,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                 )
                 .toArray();
 
-            return visibleRecords
+            return visibleRecords.filter(isSupportedPost)
                 .sort(comparePostHistoryTimelineOrder)
                 .slice(-limit);
         }
@@ -560,6 +651,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         const oldestRecords = await this.db.postHistory
             .where(POST_HISTORY_TIMELINE_INDEX)
             .between(bounds.lower, bounds.upper)
+            .filter(isSupportedPost)
             .limit(limit)
             .toArray();
 
@@ -698,6 +790,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                 true,
                 false,
             )
+            .filter(isSupportedPost)
             .limit(1)
             .count() > 0;
     }
@@ -717,7 +810,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
         const cursor = options.cursor;
         const matchesSparseRange = (record: PostHistoryRecord): boolean =>
-            record.createdAt < visibleUntil
+            isSupportedPost(record) && record.createdAt < visibleUntil
             && (
                 options.direction === "latest"
                 || (
@@ -771,6 +864,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         return this.db.postHistory
             .where("pubkeyHex")
             .equals(pubkeyHex)
+            .filter(isSupportedPost)
             .count();
     }
 
@@ -785,6 +879,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         return this.db.postHistory
             .where("[pubkeyHex+createdAt]")
             .between([pubkeyHex, normalizedVisibleUntil], [pubkeyHex, Dexie.maxKey])
+            .filter(isSupportedPost)
             .count();
     }
 
@@ -794,12 +889,53 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             throw new Error("invalid_post_history_raw_event");
         }
 
-        await this.db.postHistory.put(toRecord({ ...input, event: verified.event }, this.now));
+        const reference = getRepostReference(verified.event);
+        const target = input.repostTarget
+            ? reference && createRepostTargetSnapshot(input.repostTarget.event, input.repostTarget.relayHints, reference)
+            : null;
+        if (input.repostTarget && !target) throw new Error("invalid_repost_target");
+        if (input.localWriteScope && input.localWriteScope.ownerPubkeyHex !== verified.event.pubkey) {
+            throw new Error("invalid_post_history_owner");
+        }
+        await this.db.transaction("rw", this.db.postHistory, this.db.meta, async () => {
+            await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
+            const existing = await this.db.postHistory.get(verified.event.id);
+            await this.db.postHistory.put({ ...toRecord({ ...input, event: verified.event }, this.now),
+                ...(isRepostOuterKind(verified.event.kind) && existing ? {
+                    postedAt: existing.postedAt, fetchedRelays: existing.fetchedRelays,
+                    deletedAt: existing.deletedAt, deletionEventId: existing.deletionEventId,
+                } : {}),
+                ...(target ? { repostTarget: target } : existing?.repostTarget && reference
+                    && createRepostTargetSnapshot(existing.repostTarget.rawEvent, existing.repostTarget.relayHints, reference)
+                    ? { repostTarget: existing.repostTarget } : {}) });
+            await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
+        });
         bumpPostHistorySearchRevision(verified.event.pubkey);
         markPostHistoryShouldReturnToLatestAfterLocalPost({
             pubkeyHex: verified.event.pubkey,
             eventId: verified.event.id,
         });
+    }
+
+    async attachRepostTarget(input: { outerEventId: string; target: NostrEvent; relayHints?: string[]; localWriteScope: PostHistoryLocalWriteScope }): Promise<boolean> {
+        let changed = false;
+        await this.db.transaction("rw", this.db.postHistory, this.db.meta, async () => {
+            await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
+            const outer = await this.db.postHistory.get(input.outerEventId);
+            if (!outer || outer.pubkeyHex !== input.localWriteScope.ownerPubkeyHex || outer.deletedAt !== undefined) return;
+            if (!isPostHistoryRawEventConsistent(outer.rawEvent, outer) || !attestFullyVerifiedPostHistoryRawEvent(outer.rawEvent)) return;
+            const reference = getRepostReference(outer);
+            if (!reference) return;
+            const target = createRepostTargetSnapshot(input.target, input.relayHints, reference);
+            if (!target) throw new Error("invalid_repost_target");
+            if (outer.repostTarget && isSameSignedNostrEvent(outer.repostTarget.rawEvent, target.rawEvent)
+                && areStringArraysEqual(outer.repostTarget.relayHints, target.relayHints)) return;
+            await this.db.postHistory.update(outer.id, { repostTarget: target, updatedAt: this.now() });
+            await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
+            changed = true;
+        });
+        if (changed) bumpPostHistorySearchRevision(input.localWriteScope.ownerPubkeyHex);
+        return changed;
     }
 
     async upsertFetchedEvents(input: PostHistoryUpsertFetchedEventsInput): Promise<PostHistoryUpsertFetchedEventsResult> {
@@ -813,7 +949,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
                 return [{ ...item, event: verified.event, attestation: verified.attestation }];
             });
-        if (normalizedItems.length === 0) {
+        if (normalizedItems.length === 0 && !input.relayFetchCoverage && !input.localWriteScope) {
             return {
                 insertedCount: 0,
                 updatedCount: 0,
@@ -830,156 +966,192 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         let appliedDeletionCount = 0;
         const changedPubkeys = new Set<string>();
 
-        await this.db.transaction(
-            "rw",
-            this.db.postHistory,
-            this.db.postHistoryDeletionRequests,
-            async () => {
-                const existingRecords = await this.db.postHistory.bulkGet(eventIds);
-                const existingMap = new Map<string, PostHistoryRecord>();
-                const deletionRequestsByTargetEventId = await getDeletionRequestsByTargetEventIds(
+        const coverageRepository = new DexiePostHistoryRelayCoverageRepository(this.db, this.now);
+        try {
+            await this.db.transaction(
+                "rw",
+                [this.db.postHistory, this.db.postHistoryDeletionRequests, this.db.sensitivePayloads,
+                    ...(input.relayFetchCoverage || input.localWriteScope ? [this.db.meta] : [])],
+                async () => {
+                    await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
+                    if (input.relayFetchCoverage && !await coverageRepository.isCurrent(input.relayFetchCoverage)) {
+                        throw new PostHistoryCoverageStaleError();
+                    }
+                    const existingRecords = await this.db.postHistory.bulkGet(eventIds);
+                    const existingMap = new Map<string, PostHistoryRecord>();
+                    const deletionRequestsByTargetEventId = await getDeletionRequestsByTargetEventIds(
+                        this.db,
+                        eventIds,
+                    );
+
+                    existingRecords.forEach((record) => {
+                        if (record) {
+                            existingMap.set(record.eventId, record);
+                        }
+                    });
+
+                    const verifiedRequestUpdates: PostHistoryDeletionRequestRecord[] = [];
+                    const nextRecords = normalizedItems.map((item) => {
+                        const existingRecord = existingMap.get(item.event.id);
+                        const fetchedRelays = RelayConfigUtils.sanitizeExternalRelayUrls([
+                            ...(existingRecord?.fetchedRelays ?? []),
+                            ...item.relayUrls,
+                        ]);
+                        const rawEventChanged = !!existingRecord
+                            && !isSameSignedNostrEvent(existingRecord.rawEvent, item.event);
+                        const replaceRawEvent = !existingRecord
+                            || !rawEventChanged
+                            || !isCurrentValidRawEventVerification(
+                                existingRecord.rawEventVerification,
+                            );
+
+                        if (rawEventChanged) {
+                            this.console.warn("post_history_raw_event_conflict", item.event.id);
+                        }
+
+                        const channelReference = !replaceRawEvent && existingRecord
+                            ? {
+                                channelEventId: existingRecord.channelEventId,
+                                channelRelayHints: existingRecord.channelRelayHints,
+                            }
+                            : extractPostHistoryChannelReference(item.event);
+                        const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls([
+                            ...(existingRecord?.relayHints ?? []),
+                            ...item.relayUrls,
+                            ...(existingRecord?.acceptedRelays ?? []),
+                        ], { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT });
+
+                        const baseRecord = {
+                            id: item.event.id,
+                            eventId: item.event.id,
+                            pubkeyHex: existingRecord?.pubkeyHex ?? item.event.pubkey,
+                            kind: !replaceRawEvent && existingRecord ? existingRecord.kind : item.event.kind,
+                            content: !replaceRawEvent && existingRecord ? existingRecord.content : item.event.content,
+                            tags: !replaceRawEvent && existingRecord
+                                ? existingRecord.tags.map((tag) => [...tag])
+                                : item.event.tags.map((tag) => [...tag]),
+                            createdAt: !replaceRawEvent && existingRecord ? existingRecord.createdAt : item.event.created_at,
+                            postedAt: existingRecord?.postedAt ?? toPostedAtFromCreatedAt(item.event.created_at),
+                            relayHints,
+                            acceptedRelays: existingRecord?.acceptedRelays ?? [],
+                            ...(fetchedRelays.length > 0 ? { fetchedRelays } : {}),
+                            media: isRepostOuterKind(item.event.kind) ? [] : !replaceRawEvent && existingRecord
+                                ? cloneMedia(existingRecord.media)
+                                : extractPostHistoryMedia(item.event),
+                            rawEvent: !replaceRawEvent && existingRecord
+                                ? existingRecord.rawEvent
+                                : cloneNostrEvent(item.event),
+                            rawEventVerification: !replaceRawEvent && existingRecord
+                                ? existingRecord.rawEventVerification
+                                : { ...VALID_RAW_EVENT_VERIFICATION },
+                            fetchedAt,
+                            lastSeenAt: fetchedAt,
+                            ...(channelReference.channelEventId
+                                ? { channelEventId: channelReference.channelEventId }
+                                : existingRecord?.channelEventId
+                                    ? { channelEventId: existingRecord.channelEventId }
+                                    : {}),
+                            ...(channelReference.channelRelayHints
+                                ? { channelRelayHints: channelReference.channelRelayHints }
+                                : existingRecord?.channelRelayHints
+                                    ? { channelRelayHints: [...existingRecord.channelRelayHints] }
+                                    : {}),
+                            ...(existingRecord?.deletedAt !== undefined ? { deletedAt: existingRecord.deletedAt } : {}),
+                            ...(existingRecord?.deletionEventId
+                                ? { deletionEventId: existingRecord.deletionEventId }
+                                : {}),
+                            updatedAt: this.now(),
+                            ...(existingRecord?.repostTarget && getRepostReference(item.event)
+                                && createRepostTargetSnapshot(existingRecord.repostTarget.rawEvent, existingRecord.repostTarget.relayHints, getRepostReference(item.event))
+                                ? { repostTarget: existingRecord.repostTarget } : {}),
+                            schemaVersion: POST_HISTORY_SCHEMA_VERSION,
+                        } satisfies PostHistoryRecord;
+
+                        let didMateriallyChange = false;
+                        if (!existingRecord) {
+                            insertedCount += 1;
+                            didMateriallyChange = true;
+                        } else if (hasMaterialPostHistoryChanges(existingRecord, baseRecord)) {
+                            updatedCount += 1;
+                            didMateriallyChange = true;
+                        } else {
+                            unchangedCount += 1;
+                        }
+
+                        const applicableRequests = (deletionRequestsByTargetEventId.get(item.event.id) ?? [])
+                            .flatMap((request) => {
+                                const targetMatches = isSupportedPostHistoryDeletionTargetKind(
+                                    baseRecord.kind,
+                                )
+                                    && baseRecord.pubkeyHex === request.targetAuthorPubkey
+                                    && baseRecord.pubkeyHex === request.deletionEventPubkey;
+                                if (!targetMatches) {
+                                    return [];
+                                }
+
+                                if (!isPostHistoryDeletionTargetVerified(request)) {
+                                    const verifiedRequest = {
+                                        ...request,
+                                        targetVerified: true,
+                                        updatedAt: this.now(),
+                                        schemaVersion: POST_HISTORY_DELETION_REQUEST_SCHEMA_VERSION,
+                                    } satisfies PostHistoryDeletionRequestRecord;
+                                    verifiedRequestUpdates.push(verifiedRequest);
+                                    return [verifiedRequest];
+                                }
+
+                                return [request];
+                            })
+                            .sort(comparePostHistoryDeletionRequests);
+                        if (baseRecord.deletedAt !== undefined || applicableRequests.length === 0) {
+                            if (didMateriallyChange) {
+                                changedPubkeys.add(baseRecord.pubkeyHex);
+                            }
+                            return baseRecord;
+                        }
+
+                        appliedDeletionCount += 1;
+                        changedPubkeys.add(baseRecord.pubkeyHex);
+                        return {
+                            ...baseRecord,
+                            ...toPostHistoryDeletionState(applicableRequests[0]),
+                            updatedAt: this.now(),
+                        } satisfies PostHistoryRecord;
+                    });
+
+                    if (verifiedRequestUpdates.length > 0) {
+                        await this.db.postHistoryDeletionRequests.bulkPut(verifiedRequestUpdates);
+                    }
+                    await this.db.postHistory.bulkPut(nextRecords);
+                    if (input.relayFetchCoverage) {
+                        await coverageRepository.record(input.relayFetchCoverage);
+                        if (!await coverageRepository.isCurrent(input.relayFetchCoverage)) throw new PostHistoryCoverageStaleError();
+                    }
+                    await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
+                },
+            );
+
+        } catch (error) {
+            if (error instanceof PostHistoryLocalWriteStaleError) return {
+                insertedCount: 0, updatedCount: 0, unchangedCount: 0, appliedDeletionCount: 0, applied: false,
+            };
+            throw error;
+        }
+
+        for (const item of normalizedItems) {
+            try {
+                await reconcileSensitivePayloadDeletionForStructure(
+                    item.event.id,
                     this.db,
-                    eventIds,
+                    this.now,
                 );
-
-                existingRecords.forEach((record) => {
-                    if (record) {
-                        existingMap.set(record.eventId, record);
-                    }
-                });
-
-                const verifiedRequestUpdates: PostHistoryDeletionRequestRecord[] = [];
-                const nextRecords = normalizedItems.map((item) => {
-                    const existingRecord = existingMap.get(item.event.id);
-                    const fetchedRelays = RelayConfigUtils.sanitizeExternalRelayUrls([
-                        ...(existingRecord?.fetchedRelays ?? []),
-                        ...item.relayUrls,
-                    ]);
-                    const rawEventChanged = !!existingRecord
-                        && !isSameSignedNostrEvent(existingRecord.rawEvent, item.event);
-                    const replaceRawEvent = !existingRecord
-                        || !rawEventChanged
-                        || !isCurrentValidRawEventVerification(
-                            existingRecord.rawEventVerification,
-                        );
-
-                    if (rawEventChanged) {
-                        this.console.warn("post_history_raw_event_conflict", item.event.id);
-                    }
-
-                    const channelReference = !replaceRawEvent && existingRecord
-                        ? {
-                            channelEventId: existingRecord.channelEventId,
-                            channelRelayHints: existingRecord.channelRelayHints,
-                        }
-                        : extractPostHistoryChannelReference(item.event);
-                    const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls([
-                        ...(existingRecord?.relayHints ?? []),
-                        ...item.relayUrls,
-                        ...(existingRecord?.acceptedRelays ?? []),
-                    ], { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT });
-
-                    const baseRecord = {
-                        id: item.event.id,
-                        eventId: item.event.id,
-                        pubkeyHex: existingRecord?.pubkeyHex ?? item.event.pubkey,
-                        kind: !replaceRawEvent && existingRecord ? existingRecord.kind : item.event.kind,
-                        content: !replaceRawEvent && existingRecord ? existingRecord.content : item.event.content,
-                        tags: !replaceRawEvent && existingRecord
-                            ? existingRecord.tags.map((tag) => [...tag])
-                            : item.event.tags.map((tag) => [...tag]),
-                        createdAt: !replaceRawEvent && existingRecord ? existingRecord.createdAt : item.event.created_at,
-                        postedAt: existingRecord?.postedAt ?? toPostedAtFromCreatedAt(item.event.created_at),
-                        relayHints,
-                        acceptedRelays: existingRecord?.acceptedRelays ?? [],
-                        ...(fetchedRelays.length > 0 ? { fetchedRelays } : {}),
-                        media: !replaceRawEvent && existingRecord
-                            ? cloneMedia(existingRecord.media)
-                            : extractPostHistoryMedia(item.event),
-                        rawEvent: !replaceRawEvent && existingRecord
-                            ? existingRecord.rawEvent
-                            : cloneNostrEvent(item.event),
-                        rawEventVerification: !replaceRawEvent && existingRecord
-                            ? existingRecord.rawEventVerification
-                            : { ...VALID_RAW_EVENT_VERIFICATION },
-                        fetchedAt,
-                        lastSeenAt: fetchedAt,
-                        ...(channelReference.channelEventId
-                            ? { channelEventId: channelReference.channelEventId }
-                            : existingRecord?.channelEventId
-                                ? { channelEventId: existingRecord.channelEventId }
-                                : {}),
-                        ...(channelReference.channelRelayHints
-                            ? { channelRelayHints: channelReference.channelRelayHints }
-                            : existingRecord?.channelRelayHints
-                                ? { channelRelayHints: [...existingRecord.channelRelayHints] }
-                                : {}),
-                        ...(existingRecord?.deletedAt !== undefined ? { deletedAt: existingRecord.deletedAt } : {}),
-                        ...(existingRecord?.deletionEventId
-                            ? { deletionEventId: existingRecord.deletionEventId }
-                            : {}),
-                        updatedAt: this.now(),
-                        schemaVersion: POST_HISTORY_SCHEMA_VERSION,
-                    } satisfies PostHistoryRecord;
-
-                    let didMateriallyChange = false;
-                    if (!existingRecord) {
-                        insertedCount += 1;
-                        didMateriallyChange = true;
-                    } else if (hasMaterialPostHistoryChanges(existingRecord, baseRecord)) {
-                        updatedCount += 1;
-                        didMateriallyChange = true;
-                    } else {
-                        unchangedCount += 1;
-                    }
-
-                    const applicableRequests = (deletionRequestsByTargetEventId.get(item.event.id) ?? [])
-                        .flatMap((request) => {
-                            const targetMatches = isSupportedPostHistoryDeletionTargetKind(
-                                baseRecord.kind,
-                            )
-                                && baseRecord.pubkeyHex === request.targetAuthorPubkey
-                                && baseRecord.pubkeyHex === request.deletionEventPubkey;
-                            if (!targetMatches) {
-                                return [];
-                            }
-
-                            if (!isPostHistoryDeletionTargetVerified(request)) {
-                                const verifiedRequest = {
-                                    ...request,
-                                    targetVerified: true,
-                                    updatedAt: this.now(),
-                                    schemaVersion: POST_HISTORY_DELETION_REQUEST_SCHEMA_VERSION,
-                                } satisfies PostHistoryDeletionRequestRecord;
-                                verifiedRequestUpdates.push(verifiedRequest);
-                                return [verifiedRequest];
-                            }
-
-                            return [request];
-                        })
-                        .sort(comparePostHistoryDeletionRequests);
-                    if (baseRecord.deletedAt !== undefined || applicableRequests.length === 0) {
-                        if (didMateriallyChange) {
-                            changedPubkeys.add(baseRecord.pubkeyHex);
-                        }
-                        return baseRecord;
-                    }
-
-                    appliedDeletionCount += 1;
-                    changedPubkeys.add(baseRecord.pubkeyHex);
-                    return {
-                        ...baseRecord,
-                        ...toPostHistoryDeletionState(applicableRequests[0]),
-                        updatedAt: this.now(),
-                    } satisfies PostHistoryRecord;
-                });
-
-                if (verifiedRequestUpdates.length > 0) {
-                    await this.db.postHistoryDeletionRequests.bulkPut(verifiedRequestUpdates);
-                }
-                await this.db.postHistory.bulkPut(nextRecords);
-            },
-        );
+            } catch {
+                this.console.warn(
+                    "post_history_sensitive_payload_deletion_reconcile_failed",
+                    item.event.id,
+                );
+            }
+        }
 
         changedPubkeys.forEach(bumpPostHistorySearchRevision);
 
@@ -997,6 +1169,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         const oldestRecord = await this.db.postHistory
             .where("[pubkeyHex+createdAt]")
             .between([pubkeyHex, Dexie.minKey], [pubkeyHex, Dexie.maxKey])
+            .filter(isSupportedPost)
             .first();
 
         return oldestRecord?.createdAt ?? null;
@@ -1033,10 +1206,10 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     async deleteForPubkey(pubkeyHex: string | null | undefined): Promise<void> {
         if (!pubkeyHex) return;
 
-        const deletedCount = await this.db.postHistory
-            .where("pubkeyHex")
-            .equals(pubkeyHex)
-            .delete();
+        const deletedCount = await this.db.transaction("rw", this.db.postHistory, this.db.meta, async () => {
+            await new DexiePostHistoryRelayCoverageRepository(this.db, this.now).clearForPubkey(pubkeyHex);
+            return this.db.postHistory.where("pubkeyHex").equals(pubkeyHex).delete();
+        });
         if (deletedCount > 0) {
             bumpPostHistorySearchRevision(pubkeyHex);
         }
@@ -1048,11 +1221,19 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         if (!pubkeyHex) return;
 
         let deletedPostHistoryCount = 0;
+        let deletedPayloadCount = 0;
         await this.db.transaction(
             "rw",
             this.db.postHistory,
             this.db.postHistoryChildInteractions,
+            this.db.sensitivePayloads,
+            this.db.meta,
             async () => {
+                await new DexiePostHistoryRelayCoverageRepository(this.db, this.now).clearForPubkey(pubkeyHex);
+                deletedPayloadCount = await this.db.sensitivePayloads
+                    .where("pubkeyHex")
+                    .equals(pubkeyHex)
+                    .delete();
                 const firstPostHistoryRecord = await this.db.postHistory
                     .orderBy("pubkeyHex")
                     .first();
@@ -1096,7 +1277,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
         // Keep the search revision outside the transaction so it only advances
         // after IndexedDB has committed successfully.
-        if (deletedPostHistoryCount > 0) {
+        if (deletedPostHistoryCount > 0 || deletedPayloadCount > 0) {
             bumpPostHistorySearchRevision(pubkeyHex);
         }
     }

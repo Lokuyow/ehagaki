@@ -45,10 +45,15 @@ async function exportForPubkey(pubkeyHex: string): Promise<{
             .equals(pubkeyHex)
             .toArray(),
     ]);
+    const sensitivePayloadRecords = await ehagakiDb.sensitivePayloads
+        .where("pubkeyHex")
+        .equals(pubkeyHex)
+        .toArray();
     const { result, blob } = await runPostHistoryJsonlExportEngine({
         pubkeyHex,
         postRecords,
         deletionRecords,
+        sensitivePayloadRecords,
         verificationStores: createVerificationStores(),
         onProgress: (progress) => send({ type: "progress", progress }),
     });

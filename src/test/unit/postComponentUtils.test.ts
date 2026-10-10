@@ -111,12 +111,29 @@ describe('createPostStatusHandlers', () => {
             message: 'postComponent.post_partial_success',
         }));
     });
+
+    it('前のsessionで投稿済みならsuccess statusだけを更新して現在のcomposerを保持する', () => {
+        const updatePostStatus = vi.fn();
+        const clearContentAfterSuccess = vi.fn();
+        const onPostSuccess = vi.fn();
+        const handlers = createPostStatusHandlers({
+            updatePostStatus,
+            clearContentAfterSuccess,
+            onPostSuccess,
+        });
+
+        handlers.markSuccess({ success: true, preserveComposerContent: true });
+
+        expect(updatePostStatus).toHaveBeenCalledOnce();
+        expect(clearContentAfterSuccess).not.toHaveBeenCalled();
+        expect(onPostSuccess).not.toHaveBeenCalled();
+    });
 });
 
 describe('submitPendingPostWithSecretKey', () => {
     it('成功時は start の後に success を呼ぶ', async () => {
         const postManager = {
-            prepareImageBlurhashMap: vi.fn(() => ({ image: { blurhash: 'hash' } })),
+            prepareImageBlurhashMap: vi.fn(() => ({ image: { m: 'image/png', blurhash: 'hash' } })),
             submitPost: vi.fn(async () => ({ success: true })),
         };
         const currentEditor = { id: 'editor' } as any;
@@ -141,7 +158,7 @@ describe('submitPendingPostWithSecretKey', () => {
             { image: 'x' },
         );
         expect(postManager.submitPost).toHaveBeenCalledWith('pending', {
-            image: { blurhash: 'hash' },
+            image: { m: 'image/png', blurhash: 'hash' },
         });
         expect(onStart).toHaveBeenCalledOnce();
         expect(onSuccess).toHaveBeenCalledOnce();

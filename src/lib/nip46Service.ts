@@ -1,4 +1,5 @@
 import { kinds, nip44 } from 'nostr-tools';
+import type { VerifiedEvent } from 'nostr-tools';
 import * as ipaddr from 'ipaddr.js';
 import {
     BunkerSigner,
@@ -289,6 +290,8 @@ function getRelayConnectionFailureHint(relays: string[]): string | null {
  * - get_public_key — ログイン完了時のユーザー公開鍵取得
  * - ping — 接続状態確認。手動の接続確認と、確認済み session の長時間バックグラウンド復帰で使用
  * - sign_event:1 — ショートテキストノート（投稿）
+ * - sign_event:36 — Sensitive Content Payload
+ * - sign_event:1111 — NIP-22 comment
  * - sign_event:5 — NIP-09 Event Deletion Request（投稿削除リクエスト）
  * - sign_event:42 — NIP-28 チャンネルメッセージ（パブリックチャット投稿）
  * - sign_event:10063 — BUD-03 Blossom server list（アップロード先 publish）
@@ -300,6 +303,10 @@ export const NIP46_REQUESTED_PERMISSIONS = [
     'get_public_key',
     'ping',
     'sign_event:1',
+    'sign_event:6',
+    'sign_event:16',
+    'sign_event:36',
+    'sign_event:1111',
     'sign_event:5',
     'sign_event:42',
     'sign_event:10063',
@@ -323,7 +330,7 @@ export class Nip46SignerAdapter {
         tags?: string[][];
         created_at?: number;
         pubkey?: string;
-    }): Promise<any> {
+    }): Promise<VerifiedEvent> {
         const effectivePubkey =
             typeof params.pubkey === 'string' && params.pubkey.length > 0
                 ? params.pubkey
@@ -944,17 +951,6 @@ async function resolveNostrConnectRelayResolution(
         finalRelays: relayList.supportedRelays,
         sessionRelayResolution: 'signer-negotiated',
     };
-}
-
-function areRelaySetsEqual(left: string[], right: string[]): boolean {
-    if (left.length !== right.length) {
-        return false;
-    }
-
-    const leftSorted = [...left].sort();
-    const rightSorted = [...right].sort();
-
-    return leftSorted.every((relay, index) => relay === rightSorted[index]);
 }
 
 // --- NIP-46サービス ---

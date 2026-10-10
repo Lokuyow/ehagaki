@@ -1,5 +1,5 @@
 import { createFileSizeInfo } from "./utils/fileSizeUtils";
-import { calculateSHA256Hex, getImageDimensions } from "./utils/fileUtils";
+import { getImageDimensions } from "./utils/fileUtils";
 import { setImageSizeInfoFromFileSize } from "../stores/uploadStore.svelte";
 import { VideoCompressionService } from "./videoCompression/videoCompressionService";
 import type {
@@ -14,7 +14,8 @@ import type {
   SharedMediaData,
   SharedMediaProcessingResult,
   FileUploadManagerInterface,
-  UploadDestination
+  UploadDestination,
+  FileSizeInfo,
 } from "./types";
 import {
   DEFAULT_API_URL,
@@ -33,6 +34,7 @@ import { createLegacyUploadDestination } from "./upload/uploadDestinationPresets
 import { postMediaCacheService } from "./postMediaCacheService";
 import { getAppStorage } from "./appStorage";
 import { getAppRuntimeEnvironment } from "./appRuntimeEnvironment";
+import { AuthenticationRequiredError } from "./sessionLiveness";
 
 // ファイルアップロード専用マネージャークラス
 export class FileUploadManager implements FileUploadManagerInterface {
@@ -69,8 +71,8 @@ export class FileUploadManager implements FileUploadManagerInterface {
     this.authService = authService || new NostrAuthService();
   }
 
-  private isUploadAborted(): boolean {
-    return this.dependencies.isUploadAborted?.() ?? isDefaultUploadAborted();
+  private isUploadAborted(signal?: AbortSignal): boolean {
+    return signal?.aborted ?? this.dependencies.isUploadAborted?.() ?? isDefaultUploadAborted();
   }
 
   private updateImageSizeInfo(sizeInfo: FileUploadResponse['sizeInfo']): void {
@@ -151,24 +153,21 @@ export class FileUploadManager implements FileUploadManagerInterface {
     devMode: boolean = false,
     metadata?: Record<string, string | number | undefined>,
     callbacks?: UploadInfoCallbacks,
-    destination?: UploadDestination
+    destination?: UploadDestination,
+    operation?: { signal?: AbortSignal; headless?: boolean },
   ): Promise<FileUploadResponse> {
-    let sizeInfo: any = undefined; // sizeInfoを関数スコープで宣言
+    let sizeInfo: FileSizeInfo | undefined;
 
     try {
       if (!file) return { success: false, error: "No file selected" };
-
-      let ox: string | undefined = undefined;
-      try {
-        ox = await calculateSHA256Hex(file, this.dependencies.crypto, this.isUploadAborted.bind(this));
-      } catch (e) {
-        ox = undefined;
+      if (this.isUploadAborted(operation?.signal)) {
+        return { success: false, error: 'Upload aborted by user', aborted: true };
       }
 
       const originalSize = file.size;
 
       // 圧縮開始前に中止チェック
-      if (this.isUploadAborted()) {
+      if (this.isUploadAborted(operation?.signal)) {
         if (devMode) console.log('[FileUploadManager] Upload aborted before compression');
         return { success: false, error: 'Upload aborted by user', aborted: true };
       }
@@ -187,7 +186,10 @@ export class FileUploadManager implements FileUploadManagerInterface {
         (this.imageCompressionService as ImageCompressionService).setProgressCallback(callbacks.onImageCompressionProgress);
       }
 
-      const { file: uploadFile, wasCompressed, wasSkipped, aborted } = await compressionService.compress(file);
+      const compressionResult = operation?.signal
+        ? await compressionService.compress(file, { signal: operation.signal })
+        : await compressionService.compress(file);
+      const { file: uploadFile, wasCompressed, wasSkipped, aborted } = compressionResult;
 
       // 圧縮完了後はコールバックをクリア
       if (isVideo) {
@@ -202,9 +204,16 @@ export class FileUploadManager implements FileUploadManagerInterface {
         return { success: false, error: 'Upload aborted by user', aborted: true };
       }
 
-      const uploadDimensions = !isVideo
+      if (this.isUploadAborted(operation?.signal)) {
+        return { success: false, error: 'Upload aborted by user', aborted: true };
+      }
+
+      const uploadDimensions = !isVideo && (!operation?.headless || destination?.protocol === "blossom")
         ? await getImageDimensions(uploadFile)
         : null;
+      if (this.isUploadAborted(operation?.signal)) {
+        return { success: false, error: 'Upload aborted by user', aborted: true };
+      }
 
       const compressedSize = uploadFile.size;
 
@@ -234,10 +243,11 @@ export class FileUploadManager implements FileUploadManagerInterface {
         fetch: this.dependencies.fetch,
         metadata,
         devMode,
+        ...(operation?.signal ? { signal: operation.signal } : {}),
       });
 
       // 重要な処理前後のみ中止チェック
-      if (this.isUploadAborted()) {
+      if (this.isUploadAborted(operation?.signal)) {
         return {
           success: false,
           error: 'Upload aborted by user',
@@ -246,11 +256,11 @@ export class FileUploadManager implements FileUploadManagerInterface {
         };
       }
 
-      if (uploadResult.success && uploadResult.url) {
+      if (uploadResult.success && uploadResult.url && !operation?.headless) {
         await this.persistUploadedPostMedia(uploadResult.url, uploadFile);
       }
 
-      const normalizedNip94 = uploadResult.success
+      const normalizedNip94 = uploadResult.success && !operation?.headless
         ? {
           ...(uploadResult.nip94 ?? {}),
           size: String(uploadFile.size),
@@ -258,16 +268,41 @@ export class FileUploadManager implements FileUploadManagerInterface {
         }
         : uploadResult.nip94;
 
+      const headlessBlossomDimensions =
+        operation?.headless && uploadResult.success && uploadDestination.protocol === "blossom"
+          ? uploadDimensions
+          : null;
+      const headlessBlossomBlurhash =
+        headlessBlossomDimensions && uploadFile.type.startsWith("image/")
+          ? await this.generateBlurhashForFile(uploadFile)
+          : null;
+      if (this.isUploadAborted(operation?.signal)) {
+        return { success: false, error: 'Upload aborted by user', sizeInfo, aborted: true };
+      }
+      const resultNip94 = {
+        ...(normalizedNip94 ?? {}),
+        ...(headlessBlossomDimensions
+          ? { dim: `${headlessBlossomDimensions.width}x${headlessBlossomDimensions.height}` }
+          : {}),
+        ...(headlessBlossomBlurhash ? { blurhash: headlessBlossomBlurhash } : {}),
+      };
+
       return {
         ...uploadResult,
-        ...(normalizedNip94 ? { nip94: normalizedNip94 } : {}),
-        ...(uploadDimensions ? { dimensions: uploadDimensions } : {}),
+        ...(Object.keys(resultNip94).length ? { nip94: resultNip94 } : {}),
+        ...(uploadDimensions && (!operation?.headless || headlessBlossomDimensions)
+          ? { dimensions: uploadDimensions }
+          : {}),
         uploadProtocol: uploadDestination.protocol,
         sizeInfo
       };
     } catch (error) {
       // エラーハンドリング時の中止チェック
-      if (this.isUploadAborted()) {
+      if (operation?.headless && error instanceof AuthenticationRequiredError) {
+        throw error;
+      }
+
+      if (this.isUploadAborted(operation?.signal)) {
         return {
           success: false,
           error: 'Upload aborted by user',
@@ -300,6 +335,23 @@ export class FileUploadManager implements FileUploadManagerInterface {
         : errorMessage;
       return { success: false, error: enhancedError };
     }
+  }
+
+  /** Full Web Component path: share the normal processing and transport, without post UI side effects. */
+  async uploadFileForHost(
+    file: File,
+    destination: UploadDestination,
+    signal: AbortSignal,
+  ): Promise<FileUploadResponse> {
+    return await this.uploadFile(
+      file,
+      DEFAULT_API_URL,
+      false,
+      undefined,
+      undefined,
+      destination,
+      { signal, headless: true },
+    );
   }
 
   async uploadMultipleFiles(

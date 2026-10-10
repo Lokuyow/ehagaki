@@ -23,6 +23,7 @@
         profile?: ProfileData | null;
         media?: PostHistoryMediaRecord[];
         model?: PostContentRenderModel;
+        loadSensitiveBody?: () => Promise<string | null>;
         emojiLoadStateByUrl?: Record<
             string,
             PostContentEmojiLoadState | undefined
@@ -39,6 +40,7 @@
         topActions?: Snippet;
         footerLeftExtras?: Snippet;
         footerActions?: Snippet;
+        footerDetails?: Snippet;
         footerMenu?: Snippet;
     }
 
@@ -47,6 +49,7 @@
         profile = null,
         media = undefined,
         model = undefined,
+        loadSensitiveBody = undefined,
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         scrollRoot = null,
@@ -54,6 +57,7 @@
         topActions = undefined,
         footerLeftExtras = undefined,
         footerActions = undefined,
+        footerDetails = undefined,
         footerMenu = undefined,
     }: Props = $props();
 
@@ -69,6 +73,7 @@
     let previewModel = $derived.by(() =>
         model ??
             buildPostContentRenderModel({
+                kind: event.kind,
                 sourceContent: event.content,
                 tags: event.tags,
                 media,
@@ -97,6 +102,8 @@
         </div>
         <PostContentPreview
             model={previewModel}
+            {loadSensitiveBody}
+            contentWarningEventId={event.id}
             density="compact"
             contentClass="post-history-related-content"
             {emojiLoadStateByUrl}
@@ -111,12 +118,14 @@
             actions={footerActions}
             trailing={footerMenu}
         />
+        {@render footerDetails?.()}
     </div>
 </article>
 
 <style>
     .post-history-related-card {
         display: grid;
+        margin-inline-start: -2px;
         --post-history-related-card-bg: color-mix(
             in srgb,
             var(--dialog-bg),
@@ -127,13 +136,18 @@
         background: var(--post-history-related-card-bg);
         color: var(--text);
         font-size: 0.9rem;
-        padding-inline-start: 2px;
     }
 
     .post-history-related-card-body {
         display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        min-width: 0;
         gap: 2px;
         padding: 2px 10px 0 8px;
+    }
+
+    :global(.post-history-related-card .post-preview-footer) {
+        margin-inline: -8px -10px;
     }
 
     .post-history-related-author {

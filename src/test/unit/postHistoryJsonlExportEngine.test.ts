@@ -8,6 +8,7 @@ import { RAW_EVENT_VERIFICATION_RULE_VERSION } from "../../lib/postHistoryRawEve
 import type {
     PostHistoryDeletionRequestRecord,
     PostHistoryRecord,
+    SensitivePayloadRecord,
 } from "../../lib/storage/ehagakiDb";
 import type { NostrEvent } from "../../lib/types";
 
@@ -478,6 +479,66 @@ describe("postHistoryJsonlExportEngine", () => {
         expect(exported.result.exportedPostEventCount).toBe(1);
         expect(stored[0].rawEventVerification?.status).toBe("valid");
         expect(stored[1].rawEventVerification).toBeUndefined();
+    });
+
+    it("exports only payloads whose signed pair association matches a Structure", async () => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const payload = createEvent(secretKey, {
+            kind: 36,
+            content: "sensitive payload body",
+            created_at: 10,
+            tags: [["k", "1"]],
+        });
+        const orphan = createEvent(secretKey, {
+            kind: 36,
+            content: "orphan candidate body",
+            created_at: 11,
+            tags: [["k", "1"]],
+        });
+        const structure = markValid(createPostRecord(createEvent(secretKey, {
+            kind: 1,
+            content: "",
+            created_at: 12,
+            tags: [["content-warning", "reason"], ["c", payload.id]],
+        })));
+        const toPayloadRecord = (event: NostrEvent): SensitivePayloadRecord => ({
+            id: event.id,
+            pubkeyHex: event.pubkey,
+            structureKind: 1,
+            rawEvent: event,
+            rawEventVerification: {
+                status: "valid",
+                ruleVersion: RAW_EVENT_VERIFICATION_RULE_VERSION,
+            },
+            acceptedRelays: [],
+            fetchedRelays: [],
+            relayHints: [],
+            createdAt: event.created_at,
+            updatedAt: event.created_at,
+            schemaVersion: 1,
+        });
+
+        const exported = await runPostHistoryJsonlExportEngine({
+            pubkeyHex: pubkey,
+            postRecords: [structure],
+            deletionRecords: [],
+            sensitivePayloadRecords: [toPayloadRecord(payload), toPayloadRecord(orphan)],
+            includeJsonl: true,
+        });
+        const events = (await readJsonl(exported))
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
+
+        expect(exported.result).toMatchObject({
+            exportedPostEventCount: 1,
+            exportedPayloadEventCount: 1,
+            missingPayloadEventCount: 0,
+        });
+        expect(events.map((event: NostrEvent) => event.id)).toContain(payload.id);
+        expect(events.map((event: NostrEvent) => event.id)).not.toContain(orphan.id);
+        expect(events.map((event: NostrEvent) => event.content)).not.toContain("orphan candidate body");
     });
 
     it("can resume after a persisted batch and rejects stale verification after raw replacement", async () => {

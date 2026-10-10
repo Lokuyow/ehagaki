@@ -17,8 +17,11 @@ const eventLog = document.querySelector("#event-log");
 const isManualMode = new URLSearchParams(window.location.search).get("manual") === "1";
 
 let currentComposer = null;
+let readyComposer = null;
 let loadedModuleUrl = "";
 let moduleLoadPromise = null;
+let activeUpload = null;
+let uploadOutcome = null;
 
 const THEME_STYLE_FIELDS = [
     ["--ehagaki-accent-color", "style-accent"],
@@ -327,6 +330,9 @@ async function createComposer() {
     configureElement(element);
     installEventListeners(element, "primary");
     currentComposer = element;
+    readyComposer = null;
+    uploadOutcome = null;
+    refreshHeadlessUploadState();
     setStatus(componentStatus, "Componentを作成中です", "warn");
     setStatus(readyStatus, "準備中（whenReady(): pending、設定と投稿内容を予約済み）", "warn");
 
@@ -336,10 +342,13 @@ async function createComposer() {
     componentMount.append(element);
 
     void element.whenReady().then(() => {
+        if (element === currentComposer && element.isConnected) readyComposer = element;
         setStatus(readyStatus, "準備完了（whenReady(): resolved）", "ok");
         setStatus(componentStatus, "Componentを表示しました", "ok");
+        refreshHeadlessUploadState();
     }).catch((error) => {
         setStatus(readyStatus, `whenReady(): rejected (${safeErrorCode(error)})`, "error");
+        refreshHeadlessUploadState();
     });
     void initialSettings.then((applied) => appendLog("initial setSettings applied", { keys: [...applied] }))
         .catch((error) => appendLog("initial setSettings rejected", { code: safeErrorCode(error) }));
@@ -352,11 +361,15 @@ function destroyComposer() {
         setStatus(componentStatus, "表示中のComponentはありません", "warn");
         return;
     }
-    currentComposer.remove();
+    const removedComposer = currentComposer;
+    removedComposer.remove();
+    if (readyComposer === removedComposer) readyComposer = null;
     currentComposer = null;
+    if (!activeUpload) uploadOutcome = null;
     setStatus(componentStatus, "Componentを削除しました（設定は保持されています）", "ok");
     setStatus(readyStatus, "未接続（whenReady(): not connected）", "warn");
     appendLog("primary: disconnected", { persistentSettingsRemain: true });
+    refreshHeadlessUploadState();
 }
 
 async function recreateComposer() {
@@ -403,6 +416,129 @@ function refreshNip07Status() {
     setStatus(nip07Status, `NIP-07：利用できます（${capabilities.join(", ") || "利用可能な機能を確認できません"}）`, "ok");
 }
 
+function safeUploadUrl(value) {
+    if (typeof value !== "string") return null;
+    try {
+        const url = new URL(value);
+        if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) return null;
+        return url.href;
+    } catch {
+        return null;
+    }
+}
+
+function uploadErrorDetails(error) {
+    const name = safeErrorCode(error);
+    const message = error && typeof error.message === "string"
+        ? error.message.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 400)
+        : "アップロードに失敗しました";
+    return { name, message };
+}
+
+function setUploadOutcome(state, message, tone) {
+    uploadOutcome = { state, message, tone };
+}
+
+function refreshHeadlessUploadState() {
+    const status = getElement("headless-upload-status");
+    const fileInput = getElement("headless-upload-file");
+    const startButton = getElement("headless-upload-start");
+    const cancelButton = getElement("headless-upload-cancel");
+    const isUploading = activeUpload !== null;
+    const hasReadyComponent = !!currentComposer?.isConnected
+        && readyComposer === currentComposer
+        && typeof currentComposer.uploadFile === "function";
+
+    if (isUploading) {
+        setStatus(status, "uploading", "warn");
+    } else if (uploadOutcome) {
+        setStatus(status, uploadOutcome.message, uploadOutcome.tone);
+    } else if (!currentComposer?.isConnected) {
+        setStatus(status, "Component未作成", "warn");
+    } else if (typeof currentComposer.uploadFile !== "function") {
+        setStatus(status, "uploadFile() 未対応", "warn");
+    } else if (readyComposer !== currentComposer) {
+        setStatus(status, "Componentの準備中", "warn");
+    } else {
+        setStatus(status, "ready", "ok");
+    }
+
+    fileInput.disabled = isUploading;
+    startButton.disabled = isUploading || !hasReadyComponent || !fileInput.files?.length;
+    cancelButton.disabled = !isUploading;
+}
+
+function clearHeadlessUploadResult() {
+    getElement("headless-upload-result").textContent = "結果はここに表示されます。";
+    const link = getElement("headless-upload-link");
+    link.hidden = true;
+    link.removeAttribute("href");
+}
+
+function startHeadlessUpload() {
+    const fileInput = getElement("headless-upload-file");
+    const file = fileInput.files?.[0];
+    const composer = currentComposer;
+    if (!file || activeUpload || !composer?.isConnected
+        || readyComposer !== composer || typeof composer.uploadFile !== "function") {
+        refreshHeadlessUploadState();
+        return;
+    }
+
+    const controller = new AbortController();
+    const operation = { controller, composer };
+    activeUpload = operation;
+    uploadOutcome = null;
+    clearHeadlessUploadResult();
+    refreshHeadlessUploadState();
+    appendLog("headless upload started");
+
+    void (async () => {
+        try {
+            await composer.whenReady();
+            if (controller.signal.aborted) {
+                const error = new Error("Upload aborted");
+                error.name = "AbortError";
+                throw error;
+            }
+            const result = await composer.uploadFile(file, { signal: controller.signal });
+            const safeResult = {};
+            for (const key of ["url", "mimeType", "dim", "sha256", "blurhash"]) {
+                if (result && typeof result === "object" && result[key] !== undefined) {
+                    safeResult[key] = result[key];
+                }
+            }
+            getElement("headless-upload-result").textContent = JSON.stringify(safeResult, null, 2);
+            const url = safeUploadUrl(safeResult.url);
+            const link = getElement("headless-upload-link");
+            if (url) {
+                link.href = url;
+                link.hidden = false;
+            }
+            setUploadOutcome("success", "success", "ok");
+            appendLog("headless upload succeeded", {
+                hasUrl: !!url,
+                mimeType: typeof safeResult.mimeType === "string" ? safeResult.mimeType : undefined,
+            });
+        } catch (error) {
+            const details = uploadErrorDetails(error);
+            const state = details.name === "AbortError" ? "aborted" : "error";
+            getElement("headless-upload-result").textContent = JSON.stringify(details, null, 2);
+            setUploadOutcome(state, state, state === "error" ? "error" : "warn");
+            appendLog(`headless upload ${state}`, { name: details.name });
+        } finally {
+            if (activeUpload === operation) activeUpload = null;
+            refreshHeadlessUploadState();
+        }
+    })();
+}
+
+function cancelHeadlessUpload() {
+    if (!activeUpload) return;
+    appendLog("headless upload cancellation requested");
+    activeUpload.controller.abort();
+}
+
 function bindActions() {
     getElement("create-component").addEventListener("click", () => void createComposer().catch((error) => appendLog("create failed", { code: safeErrorCode(error) })));
     getElement("destroy-component").addEventListener("click", destroyComposer);
@@ -425,12 +561,24 @@ function bindActions() {
     getElement("preset-rose").addEventListener("click", () => selectStylePreset("rose"));
     getElement("preset-forest").addEventListener("click", () => selectStylePreset("forest"));
     getElement("preset-amber").addEventListener("click", () => selectStylePreset("amber"));
+    getElement("headless-upload-file").addEventListener("change", () => {
+        const file = getElement("headless-upload-file").files?.[0];
+        getElement("headless-upload-selection").textContent = file
+            ? `選択中: ${file.name}（${file.type || "MIME type不明"}、${file.size} bytes）`
+            : "File未選択";
+        clearHeadlessUploadResult();
+        uploadOutcome = null;
+        refreshHeadlessUploadState();
+    });
+    getElement("headless-upload-start").addEventListener("click", startHeadlessUpload);
+    getElement("headless-upload-cancel").addEventListener("click", cancelHeadlessUpload);
     getElement("clear-log").addEventListener("click", () => { eventLog.value = ""; });
 }
 
 moduleUrlInput.value = getDefaultModuleUrl();
 assetBaseInput.value = getDefaultAssetBase();
 bindActions();
+refreshHeadlessUploadState();
 refreshNip07Status();
 appendLog("sample ready", {
     sameWindowRealm: true,

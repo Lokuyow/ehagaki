@@ -26,9 +26,23 @@ const EXPECTED_NIP46_CLIENT_METADATA = {
 };
 
 describe('NIP46_REQUESTED_PERMISSIONS', () => {
+    it('requests both kind 6 and kind 16 signing', () => {
+        expect(NIP46_REQUESTED_PERMISSIONS).toContain('sign_event:6');
+        expect(NIP46_REQUESTED_PERMS).toContain('sign_event:6');
+        expect(NIP46_REQUESTED_PERMISSIONS).toContain('sign_event:16');
+    });
     it('NIP-42 AUTHイベントの署名許可を要求する', () => {
         expect(NIP46_REQUESTED_PERMISSIONS).toContain('sign_event:22242');
         expect(NIP46_REQUESTED_PERMS).toContain('sign_event:22242');
+    });
+
+    it('Sensitive Content PayloadとNIP-22 comment系の署名許可を要求する', () => {
+        for (const kind of [36, 1111]) {
+            expect(NIP46_REQUESTED_PERMISSIONS).toContain(`sign_event:${kind}`);
+            expect(NIP46_REQUESTED_PERMS).toContain(`sign_event:${kind}`);
+        }
+        expect(NIP46_REQUESTED_PERMISSIONS).not.toContain('sign_event:3636');
+        expect(NIP46_REQUESTED_PERMS).not.toContain('sign_event:3636');
     });
 });
 
@@ -448,34 +462,6 @@ describe('Nip46Service', () => {
         mockPool.subscribe.mockReturnValue({
             close: closeSubscription,
         });
-
-        const sendRequest = options.sendRequestPromise
-            ? vi.fn().mockReturnValue(options.sendRequestPromise)
-            : options.sendRequestError !== undefined
-                ? vi.fn().mockRejectedValue(options.sendRequestError)
-                : vi.fn().mockResolvedValue(
-                    options.sendRequestResult ?? JSON.stringify(initialRelays),
-                );
-
-        const fallbackGetPublicKey = options.fallbackGetPublicKeyPromise
-            ? vi.fn().mockReturnValue(options.fallbackGetPublicKeyPromise)
-            : options.fallbackGetPublicKeyError !== undefined
-                ? vi.fn().mockRejectedValue(options.fallbackGetPublicKeyError)
-                : vi.fn().mockResolvedValue(
-                    options.fallbackGetPublicKeyResult
-                    ?? options.userPubkey
-                    ?? TEST_USER_PUBKEY,
-                );
-
-        const interimGetPublicKey = options.interimGetPublicKeyPromise
-            ? vi.fn().mockReturnValue(options.interimGetPublicKeyPromise)
-            : options.interimGetPublicKeyError !== undefined
-                ? vi.fn().mockRejectedValue(options.interimGetPublicKeyError)
-                : vi.fn().mockResolvedValue(
-                    options.interimGetPublicKeyResult
-                    ?? options.userPubkey
-                    ?? TEST_USER_PUBKEY,
-                );
 
         const interimSigner = createMockNostrConnectSigner({
             remoteSignerPubkey,

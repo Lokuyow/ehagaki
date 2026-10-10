@@ -62,6 +62,8 @@ import {
     swUpdateStatus,
 } from '../../stores/swStore.svelte';
 import { settingsStore } from '../../stores/settingsStore.svelte';
+import { footerSettingShortcutsStore } from '../../stores/footerSettingShortcutsStore.svelte';
+import { themeModeStore } from '../../stores/themeStore.svelte';
 import { themeColorStore } from '../../stores/themeColorStore.svelte';
 
 describe('SettingsDialog accessibility', () => {
@@ -75,8 +77,163 @@ describe('SettingsDialog accessibility', () => {
 
     afterEach(() => {
         themeColorStore.reset();
+        footerSettingShortcutsStore.set({ left: null, right: null });
+        settingsStore.showMascot = true;
+        settingsStore.showFlavorText = true;
+        themeModeStore.set('system');
         settingsStore.externalNostrClient = 'nostter';
         settingsStore.locale = 'en';
+        settingsStore.failClosedContentWarning = false;
+    });
+
+    it('フッターshortcutの左右slotを別々に選択でき、反対slotの重複候補を無効化する', async () => {
+        settingsStore.locale = 'ja';
+        render(SettingsDialog, {
+            props: { show: true, onClose: () => {} },
+        });
+        await tick();
+
+        const left = screen.getByRole('combobox', { name: '左側' }) as HTMLSelectElement;
+        const right = screen.getByRole('combobox', { name: '右側' }) as HTMLSelectElement;
+        expect(Array.from(left.options).map((option) => option.value)).toEqual([
+            '', 'language', 'image-quality', 'video-quality', 'theme-mode',
+            'media-free-placement', 'hide-mascot', 'hide-flavor-text',
+            'quote-notification', 'reply-notification', 'client-tag',
+            'fail-closed-content-warning',
+        ]);
+        expect(
+            Array.from(left.options).find(
+                (option) => option.value === 'fail-closed-content-warning',
+            )?.textContent,
+        ).toBe('CW送信形式');
+        await fireEvent.change(left, { target: { value: 'language' } });
+        await tick();
+        expect(footerSettingShortcutsStore.value).toEqual({ left: 'language', right: null });
+        expect(Array.from(right.options).find((option) => option.value === 'language')?.disabled).toBe(true);
+        await fireEvent.change(right, { target: { value: 'image-quality' } });
+        await tick();
+        expect(footerSettingShortcutsStore.value).toEqual({ left: 'language', right: 'image-quality' });
+        expect(Array.from(left.options).find((option) => option.value === 'image-quality')?.disabled).toBe(true);
+        await fireEvent.change(left, { target: { value: '' } });
+        await tick();
+        expect(footerSettingShortcutsStore.value).toEqual({ left: null, right: 'image-quality' });
+        expect(Array.from(right.options).find((option) => option.value === 'image-quality')?.disabled).toBe(false);
+    });
+
+    it('fail-closed CW設定は詳細をinfo popoverに示し、canonical storeを切り替える', async () => {
+        settingsStore.locale = 'ja';
+        settingsStore.failClosedContentWarning = false;
+        render(SettingsDialog, {
+            props: { show: true, onClose: () => {} },
+        });
+        await tick();
+
+        const label = '対応クライアントでのみCW本文を表示';
+        expect(screen.getByText(label)).toBeTruthy();
+        expect(screen.queryByText(/NIP-36 Sensitive Content/)).toBeNull();
+        const infoButton = screen.getByRole('button', { name: 'CW設定の詳細' });
+        expect(infoButton).toBeTruthy();
+        const toggle = screen.getByRole('switch', { name: label });
+        expect(toggle.getAttribute('aria-checked')).toBe('false');
+
+        await fireEvent.click(infoButton);
+        await tick();
+        expect(screen.getByText(/通常のNIP-36 Content Warningでは、CWに対応していないクライアントで本文がそのまま表示されます/)).toBeTruthy();
+        expect(screen.getByText(/CW本文を別のkind 36 eventに分けて送信し/)).toBeTruthy();
+        expect(screen.getByText(/この形式に対応したクライアントだけが本文を取得して表示できる/)).toBeTruthy();
+        expect(screen.getByText(/Nostrの全文検索で見つからないことがあります/)).toBeTruthy();
+
+        await fireEvent.click(toggle);
+        await tick();
+        expect(settingsStore.failClosedContentWarning).toBe(true);
+        expect(toggle.getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('設定名の左にだけ指定アイコンを表示し、装飾として隠す', async () => {
+        render(SettingsDialog, {
+            props: {
+                show: true,
+                onClose: () => {},
+            },
+        });
+
+        await tick();
+
+        const iconClasses = [
+            'language-setting-icon',
+            'image-quality-icon',
+            'video-quality-icon',
+            'theme-setting-icon',
+            'media-placement-setting-icon',
+            'mascot-setting-icon',
+            'flavor-setting-icon',
+            'quote-setting-icon',
+            'reply-setting-icon',
+            'client-tag-setting-icon',
+            'fail-closed-content-warning-setting-icon',
+            'footer-shortcuts-setting-icon',
+            'relay-refresh-setting-icon',
+            'upload-destination-setting-icon',
+            'color-settings-icon',
+            'external-nostr-client-setting-icon',
+        ];
+        for (const className of iconClasses) {
+            const icon = document.querySelector(`.${className}`);
+            expect(icon, className).toBeTruthy();
+            expect(icon?.getAttribute('aria-hidden')).toBe('true');
+        }
+        expect(document.querySelectorAll('.setting-menu-icon')).toHaveLength(16);
+        expect(
+            document.querySelectorAll('.setting-menu-mask-icon'),
+        ).toHaveLength(15);
+        expect(
+            document
+                .querySelector('.mascot-setting-icon')
+                ?.classList.contains('setting-menu-mask-icon'),
+        ).toBe(false);
+        expect(
+            document.querySelector('.mascot-setting-icon')?.getAttribute('src'),
+        ).toContain('ehagaki_icon.svg');
+        locale.set('ja');
+        await waitLocale('ja');
+        expect(document.querySelector('#hide-mascot-label')?.textContent).toBe(
+            'きってんを非表示',
+        );
+        expect(
+            screen.getByRole('button', { name: '左上マスコットの説明' }),
+        ).toBeTruthy();
+
+        locale.set('en');
+        await waitLocale('en');
+        expect(document.querySelector('#hide-mascot-label')?.textContent).toBe(
+            'Hide Kit-ten',
+        );
+        expect(
+            screen.getByRole('button', { name: 'Top-left mascot description' }),
+        ).toBeTruthy();
+        expect(
+            document.querySelector(
+                '.refresh-relays-profile-btn .setting-menu-icon',
+            ),
+        ).toBeNull();
+        expect(
+            document.querySelector('.relay-toggle-label .setting-menu-icon'),
+        ).toBeNull();
+        expect(
+            document.querySelector('.lang-btn .svg-icon'),
+        ).toBeNull();
+        expect(screen.getByRole('button', { name: 'Change' })).toBeTruthy();
+        expect(
+            document.querySelector('.upload-destination-manage-btn .svg-icon'),
+        ).toBeNull();
+        expect(screen.getByRole('button', { name: 'Manage' })).toBeTruthy();
+        expect(
+            document.querySelector('.color-settings-heading .setting-label')
+                ?.textContent,
+        ).toContain('Color');
+        expect(
+            document.querySelector('#external-nostr-client-label')?.textContent,
+        ).toContain('Client for opening posts');
     });
 
     it('圧縮ラジオグループが表示ラベルをアクセシブルネームとして持つ', async () => {
@@ -301,9 +458,7 @@ describe('SettingsDialog accessibility', () => {
         if (rotateRightIcon) {
             expect(rotateRightIcon.getAttribute('aria-hidden')).toBe('true');
         }
-        expect(
-            document.body.querySelector('.lang-icon-btn')?.getAttribute('aria-hidden'),
-        ).toBe('true');
+        expect(document.body.querySelector('.lang-icon-btn')).toBeNull();
         expect(
             document.body.querySelector('.xmark-icon')?.getAttribute('aria-hidden'),
         ).toBe('true');

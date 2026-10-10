@@ -53,6 +53,55 @@ async function endComposition(editor: Locator, text: string) {
     }, text);
 }
 
+async function pasteHtml(editor: Locator, html: string, text: string) {
+    await editor.evaluate((element, clipboard) => {
+        const data = new DataTransfer();
+        data.setData('text/plain', clipboard.text);
+        data.setData('text/html', clipboard.html);
+        const event = new Event('paste', { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'clipboardData', { value: data });
+        element.dispatchEvent(event);
+    }, { html, text });
+}
+
+test('pastes HTML with clipboard plain text and submits the plain content', async ({ page, isMobile }) => {
+    await page.goto('post-editor-sending-playwright.html?withSubmit=1');
+    const editor = page.locator('.tiptap-editor');
+    await editor.click();
+
+    const plain = '# copied heading\r\n- **copied item**\r\n| A | B |\r\n```ts\r\nconst x = `test`;\r\n```\r\n**literal**\r\nRun `npm test`';
+    const expectedPlain = 'copied heading\n- copied item\n| A | B |\nconst x = `test`;\nliteral\nRun npm test';
+    const html = '<h2>HTML heading</h2><ul><li>HTML item</li></ul>' +
+        '<table><tr><th>HTML column</th></tr><tr><td>HTML cell</td></tr></table>' +
+        '<pre><code>HTML code</code></pre><p><strong>HTML bold</strong></p>';
+    await pasteHtml(editor, html, plain);
+    await expect(editor.locator('p')).toHaveText(expectedPlain.split('\n'));
+    await expect(editor.locator('h1, h2, h3, strong, ul, ol, li, table, pre, code, a')).toHaveCount(0);
+    const caret = await editor.evaluate((element) => {
+        const selection = element.ownerDocument.getSelection();
+        const anchor = selection?.anchorNode;
+        return {
+            insideEditor: anchor !== null && anchor !== undefined && element.contains(anchor),
+            atTextEnd: selection?.anchorOffset === (anchor?.textContent?.length ?? -1),
+        };
+    });
+    expect(caret).toEqual({ insideEditor: true, atTextEnd: true });
+
+    const undoModifier = isMobile ? 'Meta' : 'Control';
+    await editor.press(`${undoModifier}+z`);
+    await expect(editor).toHaveText('');
+    await editor.press(`${undoModifier}+Shift+z`);
+    await expect(editor.locator('p')).toHaveText(expectedPlain.split('\n'));
+
+    const button = page.locator('button.post-button');
+    await expect(button).toBeEnabled();
+    await button.click();
+    await expect(page.getByTestId('sending-state')).toHaveText('sending');
+    await expect.poll(() => page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(1);
+    expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions[0].content))
+        .toBe(expectedPlain);
+});
+
 test('long-press submits once without losing focus and freezes the document until success', async ({ page, browserName, isMobile }) => {
     await page.goto('post-editor-sending-playwright.html?withSubmit=1');
     const editor = page.locator('.tiptap-editor');

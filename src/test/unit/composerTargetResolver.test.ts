@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { finalizeEvent, generateSecretKey } from "nostr-tools";
 import { createComposerTargetResolver } from "../../lib/composerTargetResolver";
 import type { NostrEvent } from "../../lib/types";
 
@@ -92,8 +93,8 @@ describe("createComposerTargetResolver", () => {
             target: {
                 event: { id: eventId, kind: 1 },
                 relayHints: [
-                    "wss://hint.example/",
                     "wss://observed.example/",
+                    "wss://hint.example/",
                 ],
                 authorProfile: profile,
                 channelQuery: null,
@@ -167,6 +168,76 @@ describe("createComposerTargetResolver", () => {
         }).promise).resolves.toEqual({
             status: "error",
             reason: "invalid-event",
+        });
+    });
+
+    it("Sensitive kind 1 Structureをcomposer targetとして維持し、payloadへredirectしない", async () => {
+        const secretKey = generateSecretKey();
+        const payload = finalizeEvent({
+            kind: 36,
+            created_at: 10,
+            content: "sensitive post",
+            tags: [["k", "1"]],
+        }, secretKey);
+        const structure = finalizeEvent({
+            kind: 1,
+            created_at: 20,
+            content: "",
+            tags: [
+                ["content-warning", "Sensitive fixture"],
+                ["c", payload.id, "wss://payload-hint.example/"],
+            ],
+        }, secretKey);
+        const fetchReferencedEventTask = vi.fn((
+            requestedId: string,
+            _relayHints: string[],
+            _rxNostr: unknown,
+            _relayConfig?: unknown,
+        ) => ({
+            promise: Promise.resolve({
+                status: "found" as const,
+                event: requestedId === structure.id ? structure : payload,
+                relayUrl: requestedId === structure.id
+                    ? "wss://structure-source.example/"
+                    : "wss://payload-source.example/",
+            }),
+            cancel: vi.fn(),
+        }));
+        const fetchProfileRealtime = vi.fn().mockResolvedValue(null);
+        const resolver = createComposerTargetResolver({
+            replyQuoteService: { fetchReferencedEventTask },
+        });
+        const result = await resolver.resolve({
+            pointer: pointer({
+                eventId: structure.id,
+                authorHint: structure.pubkey,
+                kindHint: structure.kind,
+                relayHints: [
+                    "wss://pointer-one.example/",
+                    "wss://pointer-two.example/",
+                    "wss://pointer-three.example/",
+                ],
+            }),
+            rxNostr: {} as never,
+            profileService: { fetchProfileRealtime },
+        }).promise;
+
+        expect(result).toMatchObject({
+            status: "resolved",
+            target: {
+                event: { id: structure.id, kind: 1, content: "" },
+                relayHints: [
+                    "wss://structure-source.example/",
+                    "wss://pointer-one.example/",
+                    "wss://pointer-two.example/",
+                ],
+            },
+        });
+        expect(fetchReferencedEventTask).toHaveBeenCalledTimes(1);
+        expect(fetchProfileRealtime).toHaveBeenCalledWith(structure.pubkey, {
+            additionalRelays: expect.arrayContaining([
+                "wss://structure-source.example/",
+            ]),
         });
     });
 

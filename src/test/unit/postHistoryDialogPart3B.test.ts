@@ -5,18 +5,12 @@ import {
     channelContextServiceMock,
     channelMetadataRepositoryMock,
     cleanupPostHistoryDialogHarness,
-    clipboardMock,
-    customEmojiImageMetaRepositoryMock,
-    customEmojiMock,
     localSearchServiceMock,
     nostrUtilsMock,
-    postDeletionServiceMock,
-    postMediaCacheServiceMock,
     relayFetchServiceMock,
-    repairServiceMock,
     repositoryMock,
+    expectPostHistoryCountLabel,
     resetPostHistoryDialogHarness,
-    visibleRangeRepositoryMock,
 } from './postHistoryDialogTestHarness';
 function createRecord(overrides: Record<string, any> = {}) {
     return {
@@ -43,40 +37,15 @@ function createRecord(overrides: Record<string, any> = {}) {
     };
 }
 
-function createDeferred<T>() {
-    let resolve!: (value: T) => void;
-    const promise = new Promise<T>((resolvePromise) => {
-        resolve = resolvePromise;
-    });
-
-    return { promise, resolve };
-}
-
 function expectDefaultMediaReplacement(): void {
     expect(screen.getByText('投稿本文')).toBeTruthy();
     expect(screen.getByTitle('image.jpg')).toBeTruthy();
     expect(screen.queryByText('https://example.com/image.jpg')).toBeNull();
 }
 
-async function openPostHistoryMenu(): Promise<void> {
-    const trigger = await screen.findByRole('button', { name: '投稿履歴メニューを開く' });
-    await fireEvent.click(trigger);
-}
-
 async function openSearchBar(): Promise<HTMLInputElement> {
-    await openPostHistoryMenu();
-    await fireEvent.click(await screen.findByRole('menuitem', { name: '検索' }));
+    await fireEvent.click(await screen.findByRole('button', { name: '検索' }));
     return screen.findByRole('searchbox', { name: '検索' }) as Promise<HTMLInputElement>;
-}
-
-async function findRepairButton(): Promise<HTMLElement> {
-    const existing = screen.queryByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ });
-    if (existing) {
-        return existing as HTMLElement;
-    }
-
-    await openPostHistoryMenu();
-    return screen.findByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ }) as Promise<HTMLElement>;
 }
 
 describe('PostHistoryDialog', () => {
@@ -124,11 +93,12 @@ describe('PostHistoryDialog', () => {
                 query: 'needle',
                 page: 1,
                 pageSize: 50,
+                onProgress: expect.any(Function),
             });
             expect(screen.getByText('needle result')).toBeTruthy();
             expect(screen.queryByText('通常一覧')).toBeNull();
-            expect(screen.getByText('1件')).toBeTruthy();
         });
+        await expectPostHistoryCountLabel('1件');
     });
 
     it('[search-no-results] 検索結果 0 件では searchNoResults を表示し、検索入力を消すと通常表示へ戻る', async () => {
@@ -242,17 +212,13 @@ describe('PostHistoryDialog', () => {
     });
 
     it('[sync-upsert] 同期成功後に upsert して一覧を更新する', async () => {
-        repositoryMock.upsertFetchedEvents.mockResolvedValueOnce({
-            insertedCount: 1,
-            updatedCount: 0,
-            unchangedCount: 0,
+        let saved = false;
+        repositoryMock.upsertFetchedEvents.mockImplementationOnce(async () => {
+            saved = true;
+            return { insertedCount: 1, updatedCount: 0, unchangedCount: 0 };
         });
-        repositoryMock.countForPubkey
-            .mockResolvedValueOnce(0)
-            .mockResolvedValueOnce(1);
-        repositoryMock.getPage
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([createRecord()]);
+        repositoryMock.countForPubkey.mockImplementation(async () => saved ? 1 : 0);
+        repositoryMock.getPage.mockImplementation(async () => saved ? [createRecord()] : []);
         relayFetchServiceMock.fetchLatest.mockReturnValue({
             promise: Promise.resolve({
                 status: 'success',
@@ -296,11 +262,14 @@ describe('PostHistoryDialog', () => {
                     },
                 ],
                 fetchedAt: 5000,
+                relayFetchCoverage: expect.objectContaining({
+                    ownerPubkeyHex: 'a'.repeat(64), kindsKey: '1,42,1111', expectedRevision: 0,
+                    relays: expect.any(Array), isActive: expect.any(Function),
+                }),
             });
             expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
             expectDefaultMediaReplacement();
         });
     });
-
 
 });

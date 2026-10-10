@@ -51,7 +51,9 @@ function isReactionLifecycleSource(
         || source === "dialog-inbound-sync"
         || source === "inbound-realtime"
         || source === "listing-current-view"
-        || source === "listing-older-reveal";
+        || source === "listing-older-reveal"
+        || source === "related-card-display"
+        || source === "composer-target-display";
 }
 
 function isReactionLifecycleStatus(

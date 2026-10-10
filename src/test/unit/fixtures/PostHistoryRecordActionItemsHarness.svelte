@@ -17,6 +17,8 @@
         externalClientLabel?: string;
         onOpenExternalClient?: (event: Event) => void;
         onShowRawJson?: () => void;
+        onRepost?: (event: Event) => void;
+        repostPending?: boolean;
         onBroadcastPointerDown?: (event: PointerEvent) => void;
         onBroadcastPost?: (event: Event) => void;
         onOpenDeleteConfirm?: () => void;
@@ -35,6 +37,8 @@
         externalClientLabel = undefined,
         onOpenExternalClient = undefined,
         onShowRawJson = () => undefined,
+        onRepost = undefined,
+        repostPending = false,
         onBroadcastPointerDown = () => undefined,
         onBroadcastPost = () => undefined,
         onOpenDeleteConfirm = () => undefined,
@@ -62,6 +66,8 @@
             {externalClientLabel}
             {onOpenExternalClient}
             {onShowRawJson}
+            {onRepost}
+            {repostPending}
             {onBroadcastPointerDown}
             {onBroadcastPost}
             {onOpenDeleteConfirm}

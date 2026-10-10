@@ -62,4 +62,35 @@ describe("DexiePostHistoryReactionDeletionStateRepository", () => {
 
         db.close();
     });
+
+    it("related-cardとcomposer-targetのreaction lifecycle sourceを保持する", async () => {
+        const { db, repository } = createRepository();
+        const parentEventId = "5".repeat(64);
+        const relatedReactionEventId = "6".repeat(64);
+        const composerReactionEventId = "7".repeat(64);
+        await repository.saveMany([
+            {
+                requestKey: `${parentEventId}:${relatedReactionEventId}`,
+                parentEventId,
+                reactionEventId: relatedReactionEventId,
+                source: "related-card-display",
+            },
+            {
+                requestKey: `${parentEventId}:${composerReactionEventId}`,
+                parentEventId,
+                reactionEventId: composerReactionEventId,
+                source: "composer-target-display",
+            },
+        ]);
+
+        await expect(repository.getMany([
+            `${parentEventId}:${relatedReactionEventId}`,
+            `${parentEventId}:${composerReactionEventId}`,
+        ])).resolves.toMatchObject([
+            { source: "related-card-display" },
+            { source: "composer-target-display" },
+        ]);
+
+        db.close();
+    });
 });
