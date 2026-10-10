@@ -3907,7 +3907,7 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        padding: 0 8px 0 12px;
+        padding-left:12px;
     }
 
     :global(.post-history-heading-action-button) {
