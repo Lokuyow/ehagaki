@@ -3735,6 +3735,7 @@
     show={show && !exportRunning && !!headingStatusMessageKey}
     variant="anchor-bottom-right"
     anchor={postHistoryHeadingElement}
+    anchorRightOffset={12}
     showInfoIcon={!history.showStatusLoader}
 >
     {#if headingStatusMessageKey}
@@ -3747,7 +3748,7 @@
             showLoader={history.showStatusLoader}
             loaderSize={30}
             state={history.showStatusLoader ? "loading" : "complete"}
-            customClass={`status-loading-placeholder${
+            customClass={`status-loading-placeholder post-history-heading-status-placeholder${
                 headingStatusError ? " status-error" : ""
             }`}
         />
@@ -4375,6 +4376,10 @@
         height: auto;
     }
 
+    :global(.post-history-heading-status-placeholder) {
+        color: var(--svg);
+    }
+
     :global(.status-loading-placeholder .loader-container) {
         :global(.square) {
             background: currentColor;
@@ -4391,6 +4396,10 @@
 
     :global(.status-error) {
         color: var(--danger);
+    }
+
+    :global(.post-history-heading-status-placeholder.status-error) {
+        color: var(--svg);
     }
 
     :global(.status-loading-placeholder.status-error .square) {

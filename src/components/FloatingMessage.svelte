@@ -10,6 +10,7 @@
         y = 0,
         variant = "pointer",
         anchor = null,
+        anchorRightOffset = 0,
         showInfoIcon = true,
         children = undefined,
     } = $props<{
@@ -22,6 +23,7 @@
             | "container-top-right"
             | "anchor-bottom-right";
         anchor?: HTMLElement | null;
+        anchorRightOffset?: number;
         showInfoIcon?: boolean;
         children?: Snippet;
     }>();
@@ -128,7 +130,7 @@
             messageX = Math.max(
                 SCREEN_PADDING,
                 Math.min(
-                    anchorBounds.right - messageBounds.width,
+                    anchorBounds.right - messageBounds.width - anchorRightOffset,
                     viewportWidth - messageBounds.width - SCREEN_PADDING,
                 ),
             );
