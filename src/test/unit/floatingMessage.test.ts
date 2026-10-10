@@ -43,11 +43,10 @@ describe("FloatingMessage", () => {
             },
         });
 
-        expect(
-            screen
-                .getByRole("status")
-                .classList.contains("post-history-heading-status-toast"),
-        ).toBe(true);
+        const toast = screen.getByRole("status");
+        expect(toast.classList.contains("post-history-heading-status-toast")).toBe(
+            true,
+        );
     });
 
     it("does not render when hidden", () => {

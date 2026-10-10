@@ -242,6 +242,7 @@
         background-color: light-dark(hsl(0, 0%, 88%), hsl(0, 0%, 22%));
         border: none;
         border-radius: 0;
+        box-shadow: none;
     }
 
     .floating-message-body {
