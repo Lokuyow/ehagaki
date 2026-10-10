@@ -18,8 +18,7 @@
         return () => clearTimeout(timeout);
     });
     const message = $derived(pending ? "repost.sending" : !result?.success
-        ? result?.error === "repost_relay_missing" ? "repost.relayMissing"
-            : result?.error === "repost_deletion_unconfirmed" ? "repost.deletionUnconfirmed" : "repost.failed"
+        ? result?.error === "repost_relay_missing" ? "repost.relayMissing" : "repost.failed"
         : result.historySaved === false ? "repost.saveFailed"
         : (result.rejectedRelays?.length || result.timedOutRelays?.length) ? "repost.partial" : "repost.sent");
     async function retry() {

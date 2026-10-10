@@ -151,10 +151,7 @@ export function createPostHistoryRelatedTargetResolver({
     const scopeKeysByTargetId = new Map<string, Set<string>>();
     const pendingLoadsByTargetId = new Map<string, Promise<PostHistoryRelatedTargetSnapshot | null>>();
     const loadTasksByTargetId = new Map<string, PostHistoryContextFetchTask>();
-    const pendingDeletionChecksByTarget = new Map<string, {
-        promise: Promise<{ deleted: boolean; complete: boolean }>;
-        requireComplete: boolean;
-    }>();
+    const pendingDeletionChecksByTarget = new Map<string, Promise<boolean>>();
     const deletionTasksByTarget = new Map<string, PostHistoryDeletionFetchTask>();
     const loadRequestIdsByTargetId = new Map<string, number>();
     let nextLoadRequestId = 0;
@@ -322,7 +319,7 @@ export function createPostHistoryRelatedTargetResolver({
     async function runDeletionCheck(
         targetEvent: NostrEvent,
         relayHints: string[],
-        options: { background?: boolean; requireComplete?: boolean } = {},
+        options: { background?: boolean } = {},
     ): Promise<boolean> {
         if (!targetEvent.pubkey || !targetEvent.id) {
             return false;
@@ -342,76 +339,58 @@ export function createPostHistoryRelatedTargetResolver({
 
         const rxNostr = getRxNostr();
         if (!rxNostr) {
-            if (options.requireComplete) throw new Error("deletion_confirmation_incomplete");
             return false;
         }
 
         // An unverified author hint for the same ID must not satisfy a verified author's check.
         const deletionKey = `${targetEvent.pubkey}:${targetEvent.id}`;
-        let pending = pendingDeletionChecksByTarget.get(deletionKey);
-        if (pending && options.requireComplete) {
-            pending.requireComplete = true;
-            deletionTasksByTarget.get(deletionKey)?.requireComplete?.();
-        }
-        if (!pending) {
-            // A foreground waiter can arrive before this deferred task starts,
-            // or upgrade the same task after its preview request has started.
-            const check = { requireComplete: options.requireComplete ?? false,
-                promise: Promise.resolve({ deleted: false, complete: false }) };
-            check.promise = Promise.resolve().then(async () => {
-                try {
-                    const task = deletionFetchService.fetchDeletionRequests(rxNostr, {
-                        targets: [{ event: targetEvent, relayUrls: relayHints }],
-                        relayHints,
-                        relayConfig: getRelayConfig(),
-                        requireComplete: check.requireComplete,
+        const taskPromise: Promise<boolean> = pendingDeletionChecksByTarget.get(deletionKey) ?? Promise.resolve().then(async () => {
+            try {
+                const task = deletionFetchService.fetchDeletionRequests(rxNostr, {
+                    targets: [{ event: targetEvent, relayUrls: relayHints }],
+                    relayHints,
+                    relayConfig: getRelayConfig(),
+                });
+                deletionTasksByTarget.set(deletionKey, task);
+
+                const result = await task.promise;
+                if (result.events.length > 0) {
+                    await deletionRequestsRepositoryImpl.upsertValidDeletionRequests({
+                        targetEvents: [targetEvent],
+                        deletionEvents: result.events,
+                        fetchedAt: result.fetchedAt,
                     });
-                    deletionTasksByTarget.set(deletionKey, task);
-
-                    const result = await task.promise;
-                    if (result.events.length > 0) {
-                        await deletionRequestsRepositoryImpl.upsertValidDeletionRequests({
-                            targetEvents: [targetEvent],
-                            deletionEvents: result.events,
-                            fetchedAt: result.fetchedAt,
-                        });
-                    }
-
-                    const deleted = await isDeletedTarget(targetEvent.pubkey, targetEvent.id);
-                    if (deleted) {
-                        applySnapshotUpdate(targetEvent.id, {
-                            status: "deleted",
-                            event: null,
-                            authorPubkey: targetEvent.pubkey,
-                            relayHints,
-                            errorCode: null,
-                            updatedAt: Date.now(),
-                        });
-                    }
-
-                    return { deleted, complete: result.status === "success" };
-                } catch {
-                    return { deleted: false, complete: false };
-                } finally {
-                    if (pendingDeletionChecksByTarget.get(deletionKey) === check) {
-                        deletionTasksByTarget.delete(deletionKey);
-                        pendingDeletionChecksByTarget.delete(deletionKey);
-                    }
                 }
-            });
-            pendingDeletionChecksByTarget.set(deletionKey, check);
-            pending = check;
-        }
+
+                const deleted = await isDeletedTarget(targetEvent.pubkey, targetEvent.id);
+                if (deleted) {
+                    applySnapshotUpdate(targetEvent.id, {
+                        status: "deleted",
+                        event: null,
+                        authorPubkey: targetEvent.pubkey,
+                        relayHints,
+                        errorCode: null,
+                        updatedAt: Date.now(),
+                    });
+                }
+
+                return deleted;
+            } catch {
+                return false;
+            } finally {
+                if (pendingDeletionChecksByTarget.get(deletionKey) === taskPromise) {
+                    deletionTasksByTarget.delete(deletionKey);
+                    pendingDeletionChecksByTarget.delete(deletionKey);
+                }
+            }
+        });
+        pendingDeletionChecksByTarget.set(deletionKey, taskPromise);
         if (options.background) {
-            void pending.promise;
+            void taskPromise;
             return false;
         }
 
-        const result = await pending.promise;
-        if (!result.deleted && options.requireComplete && !result.complete) {
-            throw new Error("deletion_confirmation_incomplete");
-        }
-        return result.deleted;
+        return await taskPromise;
     }
 
     function isCurrentLoadRequest(targetEventId: string, requestId: number): boolean {
@@ -428,7 +407,6 @@ export function createPostHistoryRelatedTargetResolver({
         const contextChanged = mergeDescriptorContext(descriptor);
         const mergedSnapshot = snapshotsByTargetId[descriptor.targetEventId]
             ?? createInitialSnapshot(descriptor);
-        const canUsePreparedTarget = !!repostPreparation && mergedSnapshot.relayHints.length > 0;
         const preserveResolvedState = !!options.background && existingBeforeMerge?.status === "resolved";
         // A signed event of another kind can still be valid for a quote/thread.
         // Let the Repost projection reject it without poisoning the shared ID cache.
@@ -466,7 +444,7 @@ export function createPostHistoryRelatedTargetResolver({
 
             if (
                 existingBeforeMerge.status === "loading"
-                && !canUsePreparedTarget
+                && !repostPreparation
                 && pendingLoadsByTargetId.has(descriptor.targetEventId)
             ) {
                 return await pendingLoadsByTargetId.get(descriptor.targetEventId)
@@ -474,14 +452,14 @@ export function createPostHistoryRelatedTargetResolver({
                     ?? existingBeforeMerge;
             }
 
-            if (!contextChanged) {
+            if (!contextChanged && !repostPreparation) {
                 if (existingBeforeMerge.status === "not-found" || existingBeforeMerge.status === "error") {
                     return snapshotsByTargetId[descriptor.targetEventId] ?? existingBeforeMerge;
                 }
             }
         }
 
-        if (!options.force && !canUsePreparedTarget && pendingLoadsByTargetId.has(descriptor.targetEventId)) {
+        if (!options.force && !repostPreparation && pendingLoadsByTargetId.has(descriptor.targetEventId)) {
             return await pendingLoadsByTargetId.get(descriptor.targetEventId)
                 ?? snapshotsByTargetId[descriptor.targetEventId]
                 ?? mergedSnapshot;
@@ -600,18 +578,21 @@ export function createPostHistoryRelatedTargetResolver({
                     return snapshotsByTargetId[descriptor.targetEventId] ?? mergedSnapshot;
                 }
 
-                const fetchTask = contextFetchService.fetchEventById(rxNostr, {
-                    eventId: descriptor.targetEventId,
-                    relayHints: mergedSnapshot.relayHints,
-                    relayConfig: getRelayConfig(),
-                });
+                // A preview load may be waiting on deletion discovery. Repost
+                // needs only its target fetch/provenance, never that whole load.
+                const fetchTask = (repostPreparation ? loadTasksByTargetId.get(descriptor.targetEventId) : undefined)
+                    ?? contextFetchService.fetchEventById(rxNostr, {
+                        eventId: descriptor.targetEventId,
+                        relayHints: mergedSnapshot.relayHints,
+                        relayConfig: getRelayConfig(),
+                    });
                 loadTasksByTargetId.set(descriptor.targetEventId, fetchTask);
                 const result = await fetchTask.promise;
-                loadTasksByTargetId.delete(descriptor.targetEventId);
 
                 if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
                     return snapshotsByTargetId[descriptor.targetEventId] ?? null;
                 }
+                loadTasksByTargetId.delete(descriptor.targetEventId);
 
                 if (!result.event) {
                     if (descriptor.authorHint && descriptor.relationKind !== "repost") {
@@ -707,8 +688,10 @@ export function createPostHistoryRelatedTargetResolver({
                     updatedAt: Date.now(),
                 });
             } finally {
-                loadTasksByTargetId.delete(descriptor.targetEventId);
-                pendingLoadsByTargetId.delete(descriptor.targetEventId);
+                if (isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
+                    loadTasksByTargetId.delete(descriptor.targetEventId);
+                    pendingLoadsByTargetId.delete(descriptor.targetEventId);
+                }
             }
         })();
 
@@ -720,7 +703,7 @@ export function createPostHistoryRelatedTargetResolver({
         return resolveTarget(descriptor, options);
     }
 
-    /** One foreground boundary for provenance and deletion confirmation before signing. */
+    /** Validate provenance and known local deletions without waiting for network deletion checks. */
     async function prepareRepostTarget(descriptor: RelatedTargetDescriptor, target: NostrEvent) {
         const verified = verifyRepostTarget(target, { eventId: descriptor.targetEventId,
             authorHint: descriptor.authorHint ?? null, relayHints: descriptor.relayHints ?? [] });
@@ -736,9 +719,10 @@ export function createPostHistoryRelatedTargetResolver({
         if (!isCurrent() || snapshot?.status !== "resolved" || !verifyRepostTarget(snapshot.event, {
             eventId: verified.event.id, authorHint: verified.event.pubkey, relayHints: [],
         })) return null;
-        const deleted = await runDeletionCheck(verified.event, snapshot.relayHints, { requireComplete: true });
+        const deleted = await isDeletedTarget(verified.event.pubkey, verified.event.id);
         if (!isCurrent()) return null;
-        return deleted ? snapshotsByTargetId[descriptor.targetEventId] ?? null : snapshot;
+        return deleted ? applySnapshotUpdate(verified.event.id, { status: "deleted", event: null,
+            authorPubkey: verified.event.pubkey, errorCode: null, updatedAt: Date.now() }) : snapshot;
     }
 
     async function ensureTargets(

@@ -181,7 +181,7 @@ describe("Repost signing, publishing and save retry", () => {
         const prepareTarget: PrepareRepostTarget = (event, relayHints) => resolver.prepareRepostTarget({ ...descriptor, relayHints }, event);
         return { db, repo, deletions, resolver, descriptor, prepareTarget, fetchEventById, fetchDeletionRequests };
     }
-    it.each(["Composer", "history", "resolved Repost target"])("blocks %s with a known relay hint and a relay-only valid deletion before signing", async (entry) => {
+    it.each(["Composer", "history", "resolved Repost target"])("blocks %s with a known local valid deletion before signing", async (entry) => {
         const key = generateSecretKey(); const target = createPlainNostrEventSnapshot(finalizeEvent({ kind: 1, content: "target", tags: [], created_at: 100 }, key));
         const deletion = createPlainNostrEventSnapshot(finalizeEvent({ kind: 5, content: "", tags: [["e", target.id], ["k", "1"]], created_at: 200 }, key));
         const setup = preparation(target, [deletion]);
@@ -191,7 +191,8 @@ describe("Repost signing, publishing and save retry", () => {
             setup.fetchDeletionRequests.mockReturnValueOnce({ promise: Promise.resolve({ status: "success", events: [], fetchedAt: 100, relayUrls: [relay] }), cancel: vi.fn() });
             await setup.resolver.ensureTarget({ ...setup.descriptor, relayHints: [relay] });
         }
-        expect((await setup.deletions.getDeletedTargets([{ targetAuthorPubkey: target.pubkey, targetEventId: target.id }])).size).toBe(0);
+        await setup.deletions.upsertValidDeletionRequests({ targetEvents: [target],
+            deletionEvents: [{ event: deletion, relayUrls: [relay] }], fetchedAt: 200 });
         const { repost, signEvent, sendEvent, createSender } = service();
         expect(await repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: setup.prepareTarget })).toMatchObject({ success: false });
         expect(signEvent).not.toHaveBeenCalled(); expect(sendEvent).not.toHaveBeenCalled();
@@ -200,18 +201,21 @@ describe("Repost signing, publishing and save retry", () => {
         expect(setup.fetchEventById).toHaveBeenCalledTimes(entry === "resolved Repost target" ? 1 : 0);
         setup.resolver.reset();
     });
-    it.each([true, false])("confirms deletion and provenance once for an eligible target (hint present: %s)", async (hasHint) => {
+    it.each([true, false])("prepares provenance without fetching deletion requests (hint present: %s)", async (hasHint) => {
         const target = sign(); const setup = preparation(target); const { repost, signEvent, sendEvent } = service();
         expect(await repost.repost({ target, relayHints: hasHint ? [relay] : [], rxNostr: {} as never, prepareTarget: setup.prepareTarget })).toMatchObject({ success: true, historySaved: true });
         expect(signEvent).toHaveBeenCalledTimes(1); expect(sendEvent).toHaveBeenCalledTimes(1);
         expect(setup.fetchEventById).toHaveBeenCalledTimes(hasHint ? 0 : 1);
-        expect(setup.fetchDeletionRequests).toHaveBeenCalledTimes(1);
+        expect(setup.fetchDeletionRequests).not.toHaveBeenCalled();
         setup.resolver.reset();
     });
-    it.each(["timeout", "error"] as const)("does not sign or publish when deletion confirmation is incomplete (%s)", async (status) => {
+    it.each(["timeout", "error"] as const)("signs and publishes despite an incomplete background deletion lookup (%s)", async (status) => {
         const target = sign(); const setup = preparation(target, [], status); const { repost, signEvent, sendEvent } = service();
-        expect(await repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: setup.prepareTarget })).toMatchObject({ success: false, error: "repost_deletion_unconfirmed" });
-        expect(signEvent).not.toHaveBeenCalled(); expect(sendEvent).not.toHaveBeenCalled();
+        await setup.repo.putPostedEvent({ event: target, relayHints: [relay] });
+        await setup.resolver.ensureTarget({ ...setup.descriptor, relayHints: [relay] });
+        expect(await repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: setup.prepareTarget })).toMatchObject({ success: true, historySaved: true });
+        expect(signEvent).toHaveBeenCalledTimes(1); expect(sendEvent).toHaveBeenCalledTimes(1);
+        expect(setup.fetchDeletionRequests).toHaveBeenCalledTimes(1);
         setup.resolver.reset();
     });
     it("ignores deletion requests with an invalid signature, a different author or a different target", async () => {
@@ -219,13 +223,17 @@ describe("Repost signing, publishing and save retry", () => {
         const deletion = finalizeEvent({ kind: 5, content: "", tags: [["e", target.id]], created_at: 200 }, key);
         const setup = preparation(target, [{ ...deletion, sig: "0".repeat(128) }, sign(5, "", [["e", target.id]]),
             finalizeEvent({ kind: 5, content: "", tags: [["e", sign().id]], created_at: 200 }, key)]);
+        await setup.deletions.upsertValidDeletionRequests({ targetEvents: [target], deletionEvents: [
+            { event: { ...deletion, sig: "0".repeat(128) } }, { event: sign(5, "", [["e", target.id]]) },
+            { event: finalizeEvent({ kind: 5, content: "", tags: [["e", sign().id]], created_at: 200 }, key) },
+        ], fetchedAt: 200 });
         const { repost, signEvent, sendEvent } = service();
         expect((await repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: setup.prepareTarget })).success).toBe(true);
         expect(signEvent).toHaveBeenCalledTimes(1); expect(sendEvent).toHaveBeenCalledTimes(1);
         expect(await setup.db.postHistoryDeletionRequests.count()).toBe(0);
         setup.resolver.reset();
     });
-    it.each([false, true])("shares an in-flight preview deletion check and stops after scope cancellation (%s)", async (cancel) => {
+    it.each([false, true])("does not wait for a preview deletion check and still respects scope cancellation (%s)", async (cancel) => {
         const target = sign(); const setup = preparation(target);
         await setup.repo.putPostedEvent({ event: target, relayHints: [relay] });
         let finish!: (result: { status: "success" | "cancelled"; events: []; fetchedAt: number; relayUrls: string[] }) => void;
@@ -235,18 +243,19 @@ describe("Repost signing, publishing and save retry", () => {
         await setup.resolver.ensureTarget({ ...setup.descriptor, relayHints: [relay] });
         await vi.waitFor(() => expect(setup.fetchDeletionRequests).toHaveBeenCalledTimes(1));
         const { repost, signEvent, sendEvent } = service();
-        const prepareTarget = vi.fn(setup.prepareTarget);
+        const prepareTarget = vi.fn((event, hints) => {
+            const prepared = setup.prepareTarget(event, hints);
+            if (cancel) setup.resolver.invalidateScope(setup.descriptor.scopeKey);
+            return prepared;
+        });
         const operation = repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget });
-        await vi.waitFor(() => expect(prepareTarget).toHaveBeenCalledTimes(1));
-        expect(signEvent).not.toHaveBeenCalled(); expect(sendEvent).not.toHaveBeenCalled();
-        if (cancel) setup.resolver.invalidateScope(setup.descriptor.scopeKey);
-        else finish({ status: "success", events: [], fetchedAt: 0, relayUrls: [relay] });
         expect((await operation).success).toBe(!cancel);
         expect(setup.fetchDeletionRequests).toHaveBeenCalledTimes(1);
         expect(signEvent).toHaveBeenCalledTimes(cancel ? 0 : 1); expect(sendEvent).toHaveBeenCalledTimes(cancel ? 0 : 1);
+        finish({ status: "success", events: [], fetchedAt: 0, relayUrls: [relay] });
         setup.resolver.reset();
     });
-    it("does not use a different author hint's in-flight deletion check for the verified target", async () => {
+    it("does not wait for a different author hint's in-flight deletion check", async () => {
         const target = sign(); const setup = preparation(target);
         let finish!: () => void;
         setup.fetchDeletionRequests.mockReturnValueOnce({ promise: new Promise(resolve => {
@@ -256,8 +265,45 @@ describe("Repost signing, publishing and save retry", () => {
         await vi.waitFor(() => expect(setup.fetchDeletionRequests).toHaveBeenCalledTimes(1));
         const snapshot = await setup.prepareTarget(target, [relay]);
         expect(snapshot?.status).toBe("resolved");
-        expect(setup.fetchDeletionRequests).toHaveBeenCalledTimes(2);
+        expect(setup.fetchDeletionRequests).toHaveBeenCalledTimes(1);
         finish(); await quote;
+        setup.resolver.reset();
+    });
+    it("obtains a missing relay hint without waiting for a preview's pending deletion check", async () => {
+        const target = sign(); const setup = preparation(target);
+        let finish!: () => void;
+        setup.fetchDeletionRequests.mockReturnValueOnce({ promise: new Promise(resolve => {
+            finish = () => resolve({ status: "success", events: [], fetchedAt: 0, relayUrls: [relay] });
+        }), cancel: vi.fn() });
+        const preview = setup.resolver.ensureTarget({ ...setup.descriptor, relationKind: "quote", scopeKey: "preview" });
+        await vi.waitFor(() => expect(setup.fetchDeletionRequests).toHaveBeenCalledTimes(1));
+        const { repost, signEvent, sendEvent } = service();
+        const result = await repost.repost({ target, relayHints: [], rxNostr: {} as never, prepareTarget: setup.prepareTarget });
+        expect(result.success).toBe(true);
+        expect(signEvent).toHaveBeenCalledTimes(1); expect(sendEvent).toHaveBeenCalledTimes(1);
+        expect(setup.fetchEventById).toHaveBeenCalledTimes(1);
+        expect(setup.fetchDeletionRequests).toHaveBeenCalledTimes(1);
+        finish(); await preview;
+        setup.resolver.reset();
+    });
+    it("shares an existing target fetch for missing provenance without waiting for deletion discovery", async () => {
+        const target = sign(); const setup = preparation(target);
+        let finish!: () => void;
+        setup.fetchEventById.mockReturnValueOnce({ promise: new Promise(resolve => {
+            finish = () => resolve({ event: target, relayUrl: relay });
+        }), cancel: vi.fn() });
+        const preview = setup.resolver.ensureTarget({ ...setup.descriptor, scopeKey: "preview" });
+        await vi.waitFor(() => expect(setup.fetchEventById).toHaveBeenCalledTimes(1));
+        const { repost, signEvent, sendEvent } = service();
+        const prepareTarget = vi.fn(setup.prepareTarget);
+        const operation = repost.repost({ target, relayHints: [], rxNostr: {} as never, prepareTarget });
+        await vi.waitFor(() => expect(prepareTarget).toHaveBeenCalledTimes(1));
+        finish();
+        expect((await operation).success).toBe(true);
+        expect(signEvent).toHaveBeenCalledTimes(1); expect(sendEvent).toHaveBeenCalledTimes(1);
+        expect(setup.fetchEventById).toHaveBeenCalledTimes(1);
+        expect(setup.fetchDeletionRequests).not.toHaveBeenCalled();
+        await preview;
         setup.resolver.reset();
     });
     it("retries exactly the original outer/target pair without signing or publishing again", async () => {

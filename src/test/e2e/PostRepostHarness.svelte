@@ -10,6 +10,7 @@
     import { setNip07Auth, setNsecAuth, secretKeyStore } from "../../stores/authStore.svelte";
     import { writeRelaysStore } from "../../stores/relayStore.svelte";
     import { postHistoryRepository } from "../../lib/storage/postHistoryRepository";
+    import { postHistoryDeletionRequestsRepository } from "../../lib/storage/postHistoryDeletionRequestsRepository";
     import { ehagakiDb } from "../../lib/storage/ehagakiDb";
     import { PostRepostService } from "../../lib/postRepostService";
     import { PostEventSender } from "../../lib/postEventBuilder";
@@ -101,6 +102,7 @@
                 const filter = message[2] as { kinds?: number[]; ids?: string[]; authors?: string[]; "#e"?: string[] };
                 const deletion = filter.kinds?.includes(5);
                 if (deletion) deletionRequests++;
+                if (deletion && query.has("silent")) return;
                 this.timers.set(subId, setTimeout(() => {
                     this.timers.delete(subId);
                     if (filter.ids?.includes(target.id) && allowTarget) this.receive(["EVENT", subId, target]);
@@ -203,6 +205,11 @@
                     targetId: row.repostTarget?.rawEvent.id, targetKind: row.repostTarget?.rawEvent.kind })),
             }; }, allowTarget: () => { allowTarget = true; },
             deleteOnRelay: () => { deletedOnRelay = true; },
+            rememberDeletion: () => postHistoryDeletionRequestsRepository.upsertValidDeletionRequests({
+                targetEvents: [target], deletionEvents: [{ event: finalizeEvent({ kind: 5,
+                    created_at: target.created_at + 1, content: "", tags: [["e", target.id], ["k", "1"]] }, targetKey), relayUrls: [relay] }],
+                fetchedAt: Date.now(),
+            }),
             nextTarget: () => {
                 target = finalizeEvent({ kind: 1, created_at: fixtureTarget.created_at + 1,
                     content: "another original post", tags: [] }, targetKey);

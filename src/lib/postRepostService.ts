@@ -119,9 +119,8 @@ export class PostRepostService {
             } catch {
                 return { ...published, eventId: signed.id, event: signed, historySaved: false, retryInput: input };
             }
-        } catch (error) {
-            return { success: false, error: error instanceof Error && error.message === "deletion_confirmation_incomplete"
-                ? "repost_deletion_unconfirmed" : "post_error" };
+        } catch {
+            return { success: false, error: "post_error" };
         } finally { this.pending = false; }
     }
 

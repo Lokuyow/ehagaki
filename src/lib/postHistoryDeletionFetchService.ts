@@ -10,9 +10,6 @@ import type { NostrEvent, RelayConfig } from "./types";
 import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
 
 const POST_HISTORY_DELETION_FETCH_TIMEOUT_MS = 4_000;
-// rx-nostr allows 30 seconds for EOSE/AUTH. A pre-sign check must allow
-// that exchange to finish instead of using the best-effort preview deadline.
-const POST_HISTORY_DELETION_CONFIRMATION_TIMEOUT_MS = 35_000;
 const POST_HISTORY_DELETION_FETCH_RELAY_LIMIT = 8;
 const POST_HISTORY_DELETION_FETCH_TIMEOUT_WARN_INTERVAL_MS = 60_000;
 
@@ -26,7 +23,6 @@ export interface PostHistoryDeletionFetchRequest {
     relayHints?: string[];
     relayConfig?: RelayConfig | null;
     timeoutMs?: number;
-    requireComplete?: boolean;
 }
 
 export interface PostHistoryDeletionFetchedEvent {
@@ -44,7 +40,6 @@ export interface PostHistoryDeletionFetchResult {
 export interface PostHistoryDeletionFetchTask {
     promise: Promise<PostHistoryDeletionFetchResult>;
     cancel: () => void;
-    requireComplete?: () => void;
 }
 
 export interface PostHistoryDeletionFetchServiceDeps {
@@ -122,19 +117,6 @@ export class PostHistoryDeletionFetchService {
         let messageSubscription: { unsubscribe?: () => void } | undefined;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let resolveTask: ((status: PostHistoryDeletionFetchResult["status"]) => void) | undefined;
-        const startedAt = this.now();
-        let requireComplete = params.requireComplete ?? false;
-
-        const scheduleTimeout = () => {
-            if (resolved) return;
-            if (timeoutId !== undefined) this.clearTimeoutFn(timeoutId);
-            const timeoutMs = params.timeoutMs ?? (requireComplete
-                ? POST_HISTORY_DELETION_CONFIRMATION_TIMEOUT_MS : POST_HISTORY_DELETION_FETCH_TIMEOUT_MS);
-            timeoutId = this.setTimeoutFn(() => {
-                this.warnDeletionFetchTimeout();
-                resolveTask?.("timeout");
-            }, Math.max(0, startedAt + timeoutMs - this.now()));
-        };
 
         const cleanup = () => {
             if (timeoutId !== undefined) {
@@ -187,7 +169,10 @@ export class PostHistoryDeletionFetchService {
                     const from = RelayConfigUtils.sanitizeExternalRelayUrls([packet.from], { limit: 1 })[0];
                     if (from) eoseByRelay.get(from)?.add(packet.subId);
                 } });
-                scheduleTimeout();
+                timeoutId = this.setTimeoutFn(() => {
+                    this.warnDeletionFetchTimeout();
+                    safeResolve("timeout");
+                }, params.timeoutMs ?? POST_HISTORY_DELETION_FETCH_TIMEOUT_MS);
                 subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
                     on: relayUrls.length > 0
                         ? { relays: relayUrls }
@@ -227,11 +212,6 @@ export class PostHistoryDeletionFetchService {
             promise,
             cancel: () => {
                 resolveTask?.("cancelled");
-            },
-            requireComplete: () => {
-                if (requireComplete || resolved) return;
-                requireComplete = true;
-                scheduleTimeout();
             },
         };
     }
