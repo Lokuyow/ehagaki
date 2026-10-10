@@ -3930,6 +3930,14 @@
         --svg: currentColor;
     }
 
+    :global(
+            .post-history-heading-refetch-button .svg-icon,
+            .post-history-heading-search-button .svg-icon
+        ) {
+        width: 24px;
+        height: 24px;
+    }
+
     :global(.post-history-heading-calendar-button .calendar-icon) {
         mask-image: url("/icons/calendar_today_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
