@@ -12,6 +12,7 @@
         anchor = null,
         anchorRightOffset = 0,
         showInfoIcon = true,
+        customClass = "",
         children = undefined,
     } = $props<{
         show?: boolean;
@@ -25,6 +26,7 @@
         anchor?: HTMLElement | null;
         anchorRightOffset?: number;
         showInfoIcon?: boolean;
+        customClass?: string;
         children?: Snippet;
     }>();
 
@@ -168,7 +170,7 @@
     <Portal to={overlayTarget}>
         <div
             bind:this={container}
-            class="floating-message {variant === 'top-right'
+            class="floating-message {customClass} {variant === 'top-right'
                 ? 'top-right'
                 : variant === 'container-top-right'
                   ? 'container-top-right'
@@ -234,6 +236,12 @@
         right: auto;
         box-sizing: border-box;
         white-space: normal;
+    }
+
+    .floating-message.post-history-heading-status-toast {
+        background-color: light-dark(hsl(0, 0%, 88%), hsl(0, 0%, 22%));
+        border: none;
+        border-radius: 0;
     }
 
     .floating-message-body {
