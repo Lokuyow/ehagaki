@@ -18,7 +18,7 @@ vi.mock("svelte-i18n", () => ({
 afterEach(cleanup);
 
 describe("PostRepostFeedback", () => {
-    it("shows a top-right success toast without relay partial-failure detail", () => {
+    it("shows a top-right success toast by default without relay partial-failure detail", () => {
         const result: PostRepostResult = {
             success: true,
             rejectedRelays: [{ relay: "wss://relay.example.com", category: "error" }],
@@ -30,5 +30,14 @@ describe("PostRepostFeedback", () => {
         expect(screen.getByRole("status").classList.contains("top-right")).toBe(true);
         expect(screen.getByText("リポストしました")).toBeTruthy();
         expect(screen.queryByText(/一部のリレー/)).toBeNull();
+    });
+
+    it("anchors the toast below the supplied heading", () => {
+        const result: PostRepostResult = { success: true };
+        const anchor = document.createElement("div");
+
+        render(PostRepostFeedback, { props: { result, anchor, anchorRightOffset: 16 } });
+
+        expect(document.body.querySelector(".floating-message")?.classList.contains("anchor-bottom-right")).toBe(true);
     });
 });

@@ -3781,7 +3781,14 @@
     />
 
     {#snippet footer()}
-        <PostRepostFeedback result={repostResult} saveFailure={repostSaveFailure} pending={repostPending} onRetrySave={onRetryRepostSave} />
+        <PostRepostFeedback
+            result={repostResult}
+            saveFailure={repostSaveFailure}
+            pending={repostPending}
+            anchor={postHistoryHeadingElement}
+            anchorRightOffset={16}
+            onRetrySave={onRetryRepostSave}
+        />
         <Dialog.Close>
             {#snippet child({ props })}
                 <Button

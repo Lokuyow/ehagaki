@@ -4,8 +4,9 @@
     import FloatingMessage from "./FloatingMessage.svelte";
     import Button from "./Button.svelte";
     interface Props { result: PostRepostResult | null; saveFailure?: PostRepostResult | null; pending?: boolean;
+        anchor?: HTMLElement | null; anchorRightOffset?: number;
         onRetrySave?: (result: PostRepostResult) => Promise<boolean> }
-    let { result, saveFailure = null, pending = false, onRetrySave }: Props = $props();
+    let { result, saveFailure = null, pending = false, anchor = null, anchorRightOffset = 0, onRetrySave }: Props = $props();
     let visible = $state(false);
     let retrying = $state(false);
     let completedRetry = $state.raw<PostRepostResult | null>(null);
@@ -34,7 +35,14 @@
         <Button className="repost-retry-save" variant="default" shape="rounded" disabled={pending || retrying} onClick={() => void retry()}>{$_("repost.retrySave")}</Button>
     </div>
 {/if}
-<FloatingMessage show={visible && (pending || !result?.retryInput)} variant="top-right"><div class="repost-message">{$_(message)}</div></FloatingMessage>
+<FloatingMessage
+    show={visible && (pending || !result?.retryInput)}
+    variant={anchor ? "anchor-bottom-right" : "top-right"}
+    {anchor}
+    {anchorRightOffset}
+>
+    <div class="repost-message">{$_(message)}</div>
+</FloatingMessage>
 <style>
     .repost-message { white-space: normal; overflow-wrap: anywhere; }
     .repost-save-feedback {

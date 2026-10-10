@@ -54,7 +54,7 @@ test('supported target projection keeps channel enrichment, wire tags, menu layo
 test('history header controls and anchored status coexist with Repost sending and success feedback', async ({ page }, testInfo) => {
     await open(page, '&hold-history=1&hold-publish=1');
     const heading = page.locator('.post-history-heading');
-    const status = page.locator('.floating-message.anchor-bottom-right');
+    const status = page.locator('.floating-message.anchor-bottom-right').filter({ has: page.locator('.post-history-heading-status-placeholder') });
     await expect(status).toContainText('リレーと同期中...');
     await expect(status).toBeVisible();
     await expect(heading.locator('.post-history-heading-calendar-button')).toBeVisible();
@@ -73,6 +73,7 @@ test('history header controls and anchored status coexist with Repost sending an
     await page.getByRole('menuitem', { name: 'リポスト', exact: true }).click();
     await expect(page.locator('.repost-message')).toHaveText('リポスト送信中…');
     await expect(page.locator('.repost-message')).toBeVisible();
+    const repostToast = page.locator('.floating-message.anchor-bottom-right').filter({ has: page.locator('.repost-message') });
     await expect.poll(async () => { const state = await read(page); return [state.signed, state.sends]; }).toEqual([1, 1]);
     await expect(status).toContainText('リレーと同期中...');
     await post.getByRole('button', { name: 'アクションを表示', exact: true }).click();
@@ -82,12 +83,13 @@ test('history header controls and anchored status coexist with Repost sending an
     await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.releasePublish());
     await expect(page.locator('.repost-message')).toHaveText('リポストしました');
     await expect(page.locator('.repost-message')).toBeVisible();
+    await expect(repostToast).toBeVisible();
     await expect(page.locator('.post-history-repost')).toContainText('original searchable post');
     await expect(status).toContainText('リレーと同期中...');
     const headingBox = await heading.boundingBox();
-    const statusBox = await status.boundingBox();
+    const statusBox = await repostToast.boundingBox();
     expect(statusBox!.y).toBeCloseTo(headingBox!.y + headingBox!.height + 8, 0);
-    expect(statusBox!.x + statusBox!.width).toBeLessThanOrEqual(headingBox!.x + headingBox!.width);
+    expect(statusBox!.x + statusBox!.width).toBeLessThanOrEqual(headingBox!.x + headingBox!.width - 16);
     expect(await page.locator('html').evaluate(element => element.scrollWidth > element.clientWidth)).toBe(false);
     await page.screenshot({ path: testInfo.outputPath('history-header-repost-feedback.png') });
 
