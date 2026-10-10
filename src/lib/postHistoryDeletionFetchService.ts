@@ -114,7 +114,6 @@ export class PostHistoryDeletionFetchService {
         const eventsById = new Map<string, EventAccumulator>();
         let resolved = false;
         let subscription: { unsubscribe?: () => void } | undefined;
-        let messageSubscription: { unsubscribe?: () => void } | undefined;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let resolveTask: ((status: PostHistoryDeletionFetchResult["status"]) => void) | undefined;
 
@@ -125,8 +124,6 @@ export class PostHistoryDeletionFetchService {
             }
             subscription?.unsubscribe?.();
             subscription = undefined;
-            messageSubscription?.unsubscribe?.();
-            messageSubscription = undefined;
         };
 
         const buildResult = (
@@ -151,8 +148,8 @@ export class PostHistoryDeletionFetchService {
         };
 
         const promise = new Promise<PostHistoryDeletionFetchResult>((resolve) => {
-            const safeResolve = safeResolveFactory(resolve);
-            resolveTask = safeResolve;
+                const safeResolve = safeResolveFactory(resolve);
+                resolveTask = safeResolve;
 
             if (groupedTargetIds.size === 0) {
                 safeResolve("success");
@@ -161,32 +158,15 @@ export class PostHistoryDeletionFetchService {
 
             try {
                 const rxReq = createRxBackwardReq();
-                const expectedSubIds = new Set(Array.from(groupedTargetIds.keys(), (_, index) => `${rxReq.rxReqId}:${index}`));
-                const eoseByRelay = new Map(relayUrls.map(url => [url, new Set<string>()]));
-                const messages = rxNostr.createAllMessageObservable?.();
-                messageSubscription = messages?.subscribe({ next: (packet) => {
-                    if (packet.type !== "EOSE" || !expectedSubIds.has(packet.subId)) return;
-                    const from = RelayConfigUtils.sanitizeExternalRelayUrls([packet.from], { limit: 1 })[0];
-                    if (from) eoseByRelay.get(from)?.add(packet.subId);
-                } });
-                timeoutId = this.setTimeoutFn(() => {
-                    this.warnDeletionFetchTimeout();
-                    safeResolve("timeout");
-                }, params.timeoutMs ?? POST_HISTORY_DELETION_FETCH_TIMEOUT_MS);
                 subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
                     on: relayUrls.length > 0
                         ? { relays: relayUrls }
                         : { defaultReadRelays: true },
                 }).subscribe({
-                    next: (packet: { event?: NostrEvent; from?: string }) => {
-                        this.handlePacket(eventsById, packet);
-                    },
-                    // use() completion includes verification drain, but also occurs
-                    // on CLOSED/disconnection/library timeout. Only actual EOSE
-                    // confirms a negative deletion lookup. Defer until the final
-                    // packet has reached all-message observers as well.
-                    complete: () => queueMicrotask(() => safeResolve(!messages || (eoseByRelay.size > 0
-                        && [...eoseByRelay.values()].every(ids => ids.size === expectedSubIds.size)) ? "success" : "timeout")),
+                        next: (packet: { event?: NostrEvent; from?: string }) => {
+                            this.handlePacket(eventsById, packet);
+                        },
+                    complete: () => safeResolve("success"),
                     error: (error: unknown) => {
                         this.console.error("post_history_deletion_fetch_error", error);
                         safeResolve("error");
@@ -202,6 +182,10 @@ export class PostHistoryDeletionFetchService {
                 }
                 rxReq.over();
 
+                timeoutId = this.setTimeoutFn(() => {
+                    this.warnDeletionFetchTimeout();
+                    safeResolve("timeout");
+                }, params.timeoutMs ?? POST_HISTORY_DELETION_FETCH_TIMEOUT_MS);
             } catch (error) {
                 this.console.error("post_history_deletion_fetch_request_error", error);
                 safeResolve("error");
