@@ -259,7 +259,12 @@ describe("signed-event contract at post-history boundaries", () => {
         const resultPromise = manager.submitPost("published A post");
         await vi.waitFor(() => expect(sendEvent).toHaveBeenCalledOnce());
         switchAccount(authStateStore);
-        publishDeferred.resolve({ success: true, eventId: sendEvent.mock.calls[0][0].id });
+        const authorWriteRelay = manager.getEventSender()!.getDefaultWriteRelays()[0];
+        publishDeferred.resolve({
+            success: true,
+            eventId: sendEvent.mock.calls[0][0].id,
+            acceptedRelays: [authorWriteRelay],
+        });
 
         await expect(resultPromise).resolves.toMatchObject({
             success: true,

@@ -479,17 +479,21 @@ SnowCait/nostter PR #2680も `item.event` をStructure eventのまま維持し�
 ```text
 1. Sensitive化前の元event内容・tags・target状態をsnapshot
 2. kind 36 payloadを構築・署名
-3. payloadを対象write relay群へpublish
-4. payloadが1 relay以上にacceptされたことを確認
-5. payload IDと、実際にpayloadをacceptしたrelayのhintからStructure eventを構築
-6. Structure eventを署名
-7. payloadをacceptしたrelay群へStructure eventをpublish
+3. author Write / additional relayへのpayload送信と、元Structureのp tagsによるrecipient Read discoveryを並行開始
+4. 各relay自身からpayload ACK trueを得た場合だけ、そのrelayをStructure送信可能にする
+5. 最初のpayload ACKで実際にacceptしたrelay hintを固定し、payload cache保存を試みる
+6. payload IDと固定hintを持つStructure eventを一度だけ構築・署名
+7. ACK済みrelayへ同じsigned Structureを送信。discovery後の新relayでもpayload → 同relayのACK true → Structureを守る
 8. Structureも1 relay以上にacceptされたら投稿成功
 ```
 
 Structureがpayload IDを参照するためpayloadは先に署名する必要がある。
 
-また、実際にpayloadを保存したrelayを `c` hintへ入れるため、Structureの署名はpayload publish結果確定後になる。
+実際にpayloadを保存したrelayを `c` hintへ入れるため、Structure署名は最初の確認済みpayload ACK後になる。hintは後続ACKで変更せず、同一relayが後から別配送roleを持った場合は既存ACKを再利用する。relay URL単位でpayload/Structureそれぞれ一度だけ送信する（transportのAUTH再送を除く）。最終acceptedRelaysと配送class成功にはStructure ACKだけを数える。
+
+discovery budgetは3秒。各relayの各stageは送信開始から12秒、AUTHはoperation開始から30秒の共通deadlineまで待つ。Structure署名・新規送信もこの30秒以内に限定する。必要な全配送classが満たされた後は最大1500msで残りのsendをsettleする。cache/history保存はnetwork deadline外で完了を待つ。
+
+Payload ACKごとにcacheへ累積accepted relayを保存し、repositoryのread/union/putを同一Dexie transactionに収める。reject/timeout/未確認relayへStructureは送らない。cancel/logout/session/runtime変更後は新しい送信を開始せず、既に開始したsendの確認済みACKとPayload cache情報は保持する。
 
 ### 16.2 payload publish失敗
 

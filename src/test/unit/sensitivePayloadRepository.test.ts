@@ -22,6 +22,28 @@ afterEach(async () => {
 });
 
 describe("DexieSensitivePayloadRepository", () => {
+    it("atomically unions concurrent publish/fetch metadata across database connections", async () => {
+        const db = createDb();
+        const secondDb = new EHagakiDB(db.name);
+        await Promise.all([db.open(), secondDb.open()]);
+        const first = new DexieSensitivePayloadRepository(db, () => 1000);
+        const second = new DexieSensitivePayloadRepository(secondDb, () => 2000);
+        const payload = finalizeEvent({ kind: 36, content: "fixture", tags: [["k", "1"]], created_at: 10 }, generateSecretKey());
+        await first.putCandidate({ event: payload, relayHints: ["wss://hint.example/"] });
+        await Promise.all([
+            first.putCandidate({ event: payload, acceptedRelays: ["wss://author.example/"] }),
+            second.putCandidate({ event: payload, acceptedRelays: ["wss://recipient.example/"], fetchedRelays: ["wss://fetch.example/"] }),
+        ]);
+        const [record] = await first.getByIds([payload.id]);
+        expect(new Set(record!.acceptedRelays)).toEqual(new Set(["wss://author.example/", "wss://recipient.example/"]));
+        expect(record!.fetchedRelays).toEqual(["wss://fetch.example/"]);
+        expect(new Set(record!.relayHints)).toEqual(new Set(["wss://hint.example/", "wss://author.example/", "wss://recipient.example/", "wss://fetch.example/"]));
+        expect(record).toMatchObject({ createdAt: 1000, schemaVersion: 1, rawEvent: payload });
+        await first.markDeleted({ id: payload.id, pubkeyHex: payload.pubkey, deletionEventId: "d".repeat(64), deletedAt: 3000 });
+        await second.putCandidate({ event: payload, acceptedRelays: ["wss://late.example/"] });
+        expect((await first.getByIds([payload.id]))[0]).toMatchObject({ deletedAt: 3000, acceptedRelays: record!.acceptedRelays });
+        secondDb.close(); db.close();
+    });
     it.each(['pair-first', 'payload-first', 'deletion-first'])("reconciles payload-only deletion across %s import order without deleting its Structure", async (order) => {
         const db = createDb();
         await db.open();

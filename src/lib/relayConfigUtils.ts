@@ -14,26 +14,29 @@ export class RelayConfigParser {
             .filter((tag): tag is string[] =>
                 Array.isArray(tag)
                 && tag.every((value): value is string => typeof value === 'string')
-                && tag.length >= 2
+                && (tag.length === 2 || tag.length === 3)
                 && tag[0] === "r",
             )
             .forEach((tag) => {
-                const url = tag[1];
-                if (!url || typeof url !== 'string') return;
+                const url = typeof tag[1] === "string"
+                    ? RelayConfigUtils.normalizeExternalRelayUrl(tag[1])
+                    : null;
+                if (!url) return;
 
                 let read = true;
                 let write = true;
 
-                if (tag.length > 2) {
-                    if (tag.length === 3) {
-                        if (tag[2] === "read") write = false;
-                        else if (tag[2] === "write") read = false;
-                    } else {
-                        read = tag.includes("read");
-                        write = tag.includes("write");
-                    }
+                if (tag.length === 3) {
+                    if (tag[2] === "read") write = false;
+                    else if (tag[2] === "write") read = false;
+                    else return;
                 }
-                relayConfigs[url] = { read, write };
+
+                const existing = relayConfigs[url];
+                relayConfigs[url] = {
+                    read: (existing?.read ?? false) || read,
+                    write: (existing?.write ?? false) || write,
+                };
             });
 
         return relayConfigs;

@@ -68,7 +68,7 @@ function verifiedChannelSnapshot() {
 
 describe("createComposerTargetResolver", () => {
     it("kind 1を取得・検証し、プロフィールを補完する", async () => {
-        const fetchReferencedEventTask = vi.fn(() => foundTask(event()));
+        const fetchReferencedEventTask = vi.fn((_id: string, _relayHints: string[]) => foundTask(event()));
         const profile = {
             name: "alice",
             displayName: "Alice",
@@ -372,11 +372,69 @@ describe("createComposerTargetResolver", () => {
             verifyEventFn: () => true,
         });
         const task = resolver.resolve({
-            pointer: pointer(),
+            pointer: pointer({ authorHint: null }),
             rxNostr: {} as never,
         });
         task.cancel();
         await expect(task.promise).resolves.toEqual({ status: "cancelled" });
         expect(cancel).toHaveBeenCalledOnce();
+    });
+
+    it("既知relay hintから返信対象を取得し、遅いNIP-65 lookupを待たない", async () => {
+        let finishLookup!: (relays: string[]) => void;
+        const lookupAuthorWriteRelaysFn = vi.fn(() => new Promise<string[]>((resolve) => {
+            finishLookup = resolve;
+        }));
+        const fetchReferencedEventTask = vi.fn((_id: string, _relayHints: string[]) => foundTask(event()));
+        const resolver = createComposerTargetResolver({
+            replyQuoteService: { fetchReferencedEventTask },
+            lookupAuthorWriteRelaysFn,
+            verifyEventFn: () => true,
+        });
+        const explicitRelay = "wss://explicit-event-hint.example/";
+
+        await expect(resolver.resolve({
+            pointer: pointer({ relayHints: [explicitRelay] }),
+            rxNostr: {} as never,
+        }).promise).resolves.toMatchObject({ status: "resolved" });
+        expect(fetchReferencedEventTask).toHaveBeenCalledOnce();
+        expect(fetchReferencedEventTask.mock.calls[0][1]).toContain(explicitRelay);
+        finishLookup(["wss://author-write.example/"]);
+    });
+
+    it("keeps explicit event hints when the author has three Write relays", async () => {
+        const authorWriteRelays = [
+            "wss://author-write-1.example/",
+            "wss://author-write-2.example/",
+            "wss://author-write-3.example/",
+        ];
+        const explicitRelay = "wss://explicit-event-hint.example/";
+        const fetchReferencedEventTask = vi.fn((
+            _id: string,
+            relayHints: string[],
+            _rxNostr?: any,
+            _relayConfig?: any,
+            _timeoutMs?: number,
+            _authorWriteRelays?: string[],
+        ) =>
+            relayHints.includes(explicitRelay)
+                ? { promise: Promise.resolve({ status: "not-found" as const }), cancel: vi.fn() }
+                : foundTask(event()),
+        );
+        const resolver = createComposerTargetResolver({
+            replyQuoteService: { fetchReferencedEventTask },
+            lookupAuthorWriteRelaysFn: async () => authorWriteRelays,
+            verifyEventFn: () => true,
+        });
+
+        await expect(resolver.resolve({
+            pointer: pointer({ relayHints: [explicitRelay] }),
+            rxNostr: {} as never,
+        }).promise).resolves.toMatchObject({ status: "resolved" });
+
+        expect(fetchReferencedEventTask).toHaveBeenCalledTimes(2);
+        expect(fetchReferencedEventTask.mock.calls[0][1]).toEqual([explicitRelay]);
+        expect(fetchReferencedEventTask.mock.calls[1][1]).toEqual([]);
+        expect(fetchReferencedEventTask.mock.calls[1][5]).toEqual(authorWriteRelays);
     });
 });

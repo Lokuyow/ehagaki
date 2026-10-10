@@ -840,6 +840,33 @@ describe("profileMetadataCache", () => {
         }]);
     });
 
+    it("queries a known author Write relay in the bootstrap request even when bootstrap has a profile", async () => {
+        const authorWriteRelay = "wss://author-write.example/";
+        const rxNostr = createTieredRxNostr((relays) => {
+            const packets: TierTestPacket[] = [];
+            if (relays.includes(BOOTSTRAP_RELAYS[0])) {
+                packets.push({ content: { name: "Bootstrap" }, createdAt: 100 });
+            }
+            if (relays.includes(authorWriteRelay)) {
+                packets.push({ content: { name: "Author Write" }, createdAt: 200 });
+            }
+            return packets;
+        });
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            writeRelays: [authorWriteRelay],
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+
+        await expect(pending).resolves.toMatchObject({ name: "Author Write" });
+        expect(rxNostr.calls).toEqual([{
+            relays: expect.arrayContaining([...BOOTSTRAP_RELAYS, authorWriteRelay]),
+            authors: [pubkey],
+        }]);
+    });
+
     it("moves from bootstrap to contextual relays and stops before fallback", async () => {
         const contextRelay = "wss://context.example.com/";
         const rxNostr = createTieredRxNostr((relays) => (
@@ -1070,6 +1097,75 @@ describe("profileMetadataCache", () => {
         expect(repositoryMock.get).toHaveBeenCalledOnce();
         expect(rxNostr.use).not.toHaveBeenCalled();
         expect(profileMetadataCacheInternals.getPendingProfileCountForTests()).toBe(0);
+    });
+
+    it("queues a newly discovered Write relay behind an in-flight stale SWR refresh", async () => {
+        const authorWriteRelay = "wss://author-write.example.com/";
+        const staleProfile = createProfile({
+            name: "Stale cached",
+            fetchedAt: Date.now() - profileMetadataCacheInternals.PROFILE_CACHE_STALE_MS - 1,
+        });
+        repositoryMock.get.mockResolvedValue(staleProfile);
+        await expect(profileMetadataCache.getProfile(pubkey)).resolves.toMatchObject({ name: "Stale cached" });
+
+        const requests: Array<{
+            relays: string[];
+            observer: { next?: (packet: unknown) => void; complete?: () => void };
+        }> = [];
+        const rxNostr = {
+            use: vi.fn((_request: unknown, options: { on: { relays: string[] } }) => ({
+                subscribe: (observer: { next?: (packet: unknown) => void; complete?: () => void }) => {
+                    requests.push({ relays: [...options.on.relays], observer });
+                    return { unsubscribe: vi.fn() };
+                },
+            })),
+        };
+
+        const visibleProfile = await profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            allowBackgroundRefresh: true,
+        });
+        expect(visibleProfile?.name).toBe("Stale cached");
+        await flushProfileBatch();
+        expect(requests).toHaveLength(1);
+        expect(requests[0].relays).toEqual(BOOTSTRAP_RELAYS);
+
+        const joinedRequest = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            writeRelays: [authorWriteRelay],
+            forceRefresh: true,
+        });
+        expect(profileMetadataCacheInternals.getPendingProfileCountForTests()).toBe(1);
+
+        requests[0].observer.next?.({
+            event: {
+                id: eventId,
+                kind: 0,
+                pubkey,
+                content: JSON.stringify({ name: "Base refresh" }),
+                created_at: 20,
+            },
+            from: BOOTSTRAP_RELAYS[0],
+        });
+        requests[0].observer.complete?.();
+        await joinedRequest;
+        await flushProfileBatch();
+
+        expect(requests).toHaveLength(2);
+        expect(requests[1].relays).toContain(authorWriteRelay);
+        requests[1].observer.next?.({
+            event: {
+                id: "2".repeat(64),
+                kind: 0,
+                pubkey,
+                content: JSON.stringify({ name: "Author Write refresh" }),
+                created_at: 21,
+            },
+            from: authorWriteRelay,
+        });
+        requests[1].observer.complete?.();
+        await Promise.resolve();
+        await Promise.resolve();
     });
 
     it("returns bulk snapshots immediately and revalidates only stale pubkeys", async () => {

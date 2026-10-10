@@ -29,6 +29,7 @@ export interface EditorState {
 
 export interface PostResult {
     success: boolean;
+    fullyDelivered?: boolean;
     /** Internal success state: the published event belongs to a prior session, so preserve the active composer. */
     preserveComposerContent?: boolean;
     error?: string;
@@ -37,7 +38,24 @@ export interface PostResult {
     rejectedRelays?: RelayRejection[];
     timedOutRelays?: string[];
     authRequiredRelays?: string[];
+    delivery?: PostDeliverySummary;
     event?: import("./nostr").NostrEvent;
+}
+
+export interface PostDeliveryClassResult {
+    status: "delivered" | "partial" | "not-delivered" | "unavailable" | "cancelled";
+    requestedRelays: string[];
+    acceptedRelays: string[];
+    rejectedRelays: RelayRejection[];
+    timedOutRelays: string[];
+    authRequiredRelays: string[];
+    unconfirmedRelays: string[];
+}
+
+export interface PostDeliverySummary {
+    authorWrite: PostDeliveryClassResult;
+    taggedUserRead: Record<string, PostDeliveryClassResult>;
+    additional: PostDeliveryClassResult[];
 }
 
 export type RelayRejectionCategory =

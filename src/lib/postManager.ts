@@ -11,7 +11,7 @@ import { buildClientTag } from "./tags/clientTag";
 import { extractPostContentWithEmojiTags, type ExtractedPostContent } from "./utils/editorDocumentUtils";
 import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
 import { resetEditorState, resetPostStatus } from "../stores/editorStore.svelte";
-import type { ImageImetaMetadataMap, PostResult, PostManagerDeps, HashtagStore, NostrEvent, PostManagerSigner } from "./types";
+import type { PostDeliveryClassResult, PostDeliverySummary, RelayRejection, ImageImetaMetadataMap, PostResult, PostManagerDeps, HashtagStore, NostrEvent, PostManagerSigner } from "./types";
 import { iframeMessageService } from "./iframeMessageService";
 import { saveHashtagsToHistory } from "./utils/hashtagHistory";
 import { mediaGalleryStore } from "../stores/mediaGalleryStore.svelte";
@@ -41,6 +41,77 @@ import {
   type SensitiveContentStructureKind,
 } from "./sensitiveContentPayload";
 import { sensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
+import { getNip65RelayDirectory, type Nip65RelayDirectoryEntry } from "./nip65RelayDirectory";
+
+const NIP65_DISCOVERY_BUDGET_MS = 3_000;
+const NIP65_POST_OPERATION_DEADLINE_MS = 30_000;
+
+interface Nip65RelayOutcome {
+  accepted?: true;
+  rejected?: RelayRejection;
+  timedOut?: true;
+  unconfirmed?: true;
+  authRequired?: true;
+}
+
+interface Nip65RelayRoles {
+  authorWrite: boolean;
+  additional: boolean;
+  recipients: Set<string>;
+}
+
+interface ActiveNip65Operation {
+  cancel(): void;
+}
+
+function createRelayRoles(): Nip65RelayRoles {
+  return { authorWrite: false, additional: false, recipients: new Set() };
+}
+
+function createDeliveryClassResult(
+  relays: string[],
+  outcomes: Map<string, Nip65RelayOutcome>,
+  unavailable = false,
+  cancelled = false,
+): PostDeliveryClassResult {
+  const acceptedRelays: string[] = [];
+  const rejectedRelays: RelayRejection[] = [];
+  const timedOutRelays: string[] = [];
+  const authRequiredRelays: string[] = [];
+  const unconfirmedRelays: string[] = [];
+
+  for (const relay of relays) {
+    const outcome = outcomes.get(relay);
+    if (outcome?.accepted) acceptedRelays.push(relay);
+    if (outcome?.rejected) rejectedRelays.push(outcome.rejected);
+    if (outcome?.timedOut) timedOutRelays.push(relay);
+    if (outcome?.unconfirmed) unconfirmedRelays.push(relay);
+    if (outcome?.authRequired && !outcome.accepted && !outcome.rejected) {
+      authRequiredRelays.push(relay);
+    }
+  }
+
+  const delivered = acceptedRelays.length > 0;
+  const hasUnconfirmed = timedOutRelays.length > 0 || unconfirmedRelays.length > 0;
+  const hasPartialFailure = rejectedRelays.length > 0 || hasUnconfirmed;
+  const status: PostDeliveryClassResult["status"] = delivered
+    ? (hasPartialFailure ? "partial" : "delivered")
+    : cancelled
+      ? "cancelled"
+      : unavailable || relays.length === 0
+        ? "unavailable"
+        : "not-delivered";
+
+  return {
+    status,
+    requestedRelays: [...relays],
+    acceptedRelays,
+    rejectedRelays,
+    timedOutRelays,
+    authRequiredRelays,
+    unconfirmedRelays,
+  };
+}
 
 // 後方互換性のためre-export
 export { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEventSender } from "./postEventBuilder";
@@ -51,19 +122,12 @@ type ReplyQuoteNotifyOptions = {
   quotedEventIds?: string[];
 };
 
-type SignedPublishOutcome =
-  | {
-    success: true;
-    event: import("./types").NostrEvent;
-    attestation: PostHistoryRawEventAttestation;
-    result: PostResult;
-  }
-  | { success: false; result: PostResult };
-
 // --- メインのPostManager（依存性を組み合わせ） ---
 export class PostManager {
   private rxNostr: RxNostr | null = null;
   private eventSender: PostEventSender | null = null;
+  private activeNip65Operations = new Set<ActiveNip65Operation>();
+  private operationGeneration = 0;
 
   constructor(
     rxNostr?: RxNostr,
@@ -112,8 +176,19 @@ export class PostManager {
   }
 
   setRxNostr(rxNostr: RxNostr) {
+    if (this.eventSender) {
+      this.cancelActiveNip65Operations();
+    }
     this.rxNostr = rxNostr;
     this.eventSender = new PostEventSender(rxNostr, this.deps.console || console);
+  }
+
+  cancelActiveNip65Operations(): void {
+    this.operationGeneration += 1;
+    for (const operation of this.activeNip65Operations) {
+      operation.cancel();
+    }
+    this.activeNip65Operations.clear();
   }
 
   private clearReplyQuoteAfterSuccess(): void {
@@ -255,6 +330,448 @@ export class PostManager {
     }
   }
 
+  private async publishNip65Event(params: {
+    event: NostrEvent;
+    sensitive?: {
+      structureTemplate: PostEventTemplate & { pubkey: string };
+      payloadAttestation: PostHistoryRawEventAttestation;
+      signStructure(hint: string): Promise<NostrEvent>;
+    };
+    sessionPubkey: string;
+    additionalWriteRelays?: string[];
+    discoveryRelaysByRecipient?: Record<string, string[]>;
+  }): Promise<PostResult> {
+    const sender = this.eventSender;
+    const rxNostr = this.rxNostr;
+    if (!sender || !rxNostr) return { success: false, error: "nostr_not_ready" };
+
+    const authStateStore = this.deps.authStateStore!;
+    const capturedAuthState = authStateStore.value;
+    const capturedGeneration = this.operationGeneration;
+    const operationStartedAt = Date.now();
+    const discoveryDeadline = operationStartedAt + NIP65_DISCOVERY_BUDGET_MS;
+    const deadlineAt = operationStartedAt + 12_000;
+    const authDeadlineAt = operationStartedAt + NIP65_POST_OPERATION_DEADLINE_MS;
+    const defaultWriteRelays = sender.getDefaultWriteRelays();
+    if (isHostRelayConfigActive() && defaultWriteRelays.length === 0) {
+      return {
+        success: false,
+        fullyDelivered: false,
+        error: "no_write_relays",
+        acceptedRelays: [],
+        delivery: {
+          authorWrite: createDeliveryClassResult([], new Map(), true),
+          taggedUserRead: {},
+          additional: [],
+        },
+      };
+    }
+    const additionalRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
+      params.additionalWriteRelays,
+    );
+    const recipientPubkeys = Array.from(new Set<string>(
+      (params.sensitive?.structureTemplate.tags ?? params.event.tags ?? []).flatMap((tag: unknown) => {
+        if (!Array.isArray(tag) || tag[0] !== "p") return [];
+        const pubkey = tag[1];
+        return typeof pubkey === "string" && /^[0-9a-f]{64}$/i.test(pubkey) ? [pubkey] : [];
+      }),
+    ));
+    const rolesByRelay = new Map<string, Nip65RelayRoles>();
+    const recipientRelays = new Map<string, Set<string>>();
+    const recipientRouteStatus = new Map<string, "found" | "unavailable" | "cancelled">();
+    const outcomes = new Map<string, Nip65RelayOutcome>();
+    const payloadOutcomes = new Map<string, Nip65RelayOutcome>();
+    const structureLaunched = new Set<string>();
+    const payloadCached = new Set<string>();
+    let cacheWrites = Promise.resolve();
+    let structurePromise: Promise<NostrEvent | null> | undefined;
+    let structureHint: string | undefined;
+    let structureEvent: NostrEvent | undefined;
+    let structureSigningFailed = false;
+    const launchedRelays = new Set<string>();
+    const wavePromises: Promise<void>[] = [];
+    let acceptsDiscovery = true;
+    let operationActive = true;
+    let cancelled = false;
+    let lastError: string | undefined;
+    let resultFinalized = false;
+    let successTimer: ReturnType<typeof setTimeout> | undefined;
+    const successSettlement = new AbortController();
+    let resolveCancellation!: () => void;
+    const cancellation = new Promise<void>((resolve) => {
+      resolveCancellation = resolve;
+    });
+    let resolveCutoff!: () => void;
+    const cutoff = new Promise<void>((resolve) => { resolveCutoff = resolve; });
+    const closeSends = () => {
+      operationActive = false;
+      acceptsDiscovery = false;
+      // ACK progress is already recorded. Close transport and project unresolved targets.
+      successSettlement.abort();
+      for (const relay of launchedRelays) {
+        const outcome = outcomes.get(relay);
+        if (!outcome?.accepted && !outcome?.rejected) {
+          outcomes.set(relay, { ...outcome, unconfirmed: true, ...(!cancelled ? { timedOut: true as const } : {}) });
+        }
+      }
+      resultFinalized = true;
+      resolveCutoff();
+    };
+    const hardTimer = setTimeout(closeSends, Math.max(1, authDeadlineAt - Date.now()));
+
+    const operation: ActiveNip65Operation = {
+      cancel: () => {
+        if (!operationActive) return;
+        operationActive = false;
+        cancelled = true;
+        acceptsDiscovery = false;
+        resolveCancellation();
+      },
+    };
+    this.activeNip65Operations.add(operation);
+
+    const isCurrent = (): boolean => {
+      if (!operationActive || resultFinalized || structureSigningFailed || Date.now() >= authDeadlineAt) return false;
+      const currentAuth = authStateStore.value;
+      if (
+        capturedGeneration !== this.operationGeneration
+        || this.rxNostr !== rxNostr || this.eventSender !== sender
+        || currentAuth !== capturedAuthState
+        || !currentAuth.isAuthenticated
+        || currentAuth.pubkey !== params.sessionPubkey
+      ) {
+        operation.cancel();
+        return false;
+      }
+      return true;
+    };
+
+    const getRoles = (relay: string): Nip65RelayRoles => {
+      let roles = rolesByRelay.get(relay);
+      if (!roles) {
+        roles = createRelayRoles();
+        rolesByRelay.set(relay, roles);
+      }
+      return roles;
+    };
+
+    defaultWriteRelays.forEach((relay) => { getRoles(relay).authorWrite = true; });
+    additionalRelays.forEach((relay) => { getRoles(relay).additional = true; });
+
+    const settleSuccessfulClasses = (): void => {
+      const hasAck = (relays: Iterable<string>) => [...relays].some((relay) => outcomes.get(relay)?.accepted);
+      const complete = (params.sensitive !== undefined || recipientPubkeys.length > 0)
+        && hasAck(defaultWriteRelays)
+        && recipientPubkeys.every((pubkey) => hasAck(recipientRelays.get(pubkey) ?? []))
+        && (additionalRelays.length === 0 || hasAck(additionalRelays));
+      if (!complete || !isCurrent()) {
+        if (successTimer !== undefined) clearTimeout(successTimer);
+        successTimer = undefined;
+        return;
+      }
+      if (successTimer !== undefined || successSettlement.signal.aborted) return;
+      successTimer = setTimeout(() => {
+        successTimer = undefined;
+        if (isCurrent()) closeSends();
+      }, Math.min(PostEventSender.DEFAULT_SETTLE_TIMEOUTS.successMs, authDeadlineAt - Date.now()));
+    };
+
+    const applyWaveResult = (result: PostResult, targets: string[], final = true,
+      ledger = outcomes): void => {
+      if (resultFinalized) return;
+      if (final && result.error) lastError = result.error;
+      const accepted = new Set(RelayConfigUtils.sanitizeExternalRelayUrls(result.acceptedRelays));
+      const rejected = new Map(
+        (result.rejectedRelays ?? []).map((item) => [
+          RelayConfigUtils.normalizeExternalRelayUrl(item.relay) ?? item.relay,
+          item,
+        ]),
+      );
+      const timedOut = new Set(RelayConfigUtils.sanitizeExternalRelayUrls(result.timedOutRelays));
+      const authRequired = new Set(RelayConfigUtils.sanitizeExternalRelayUrls(result.authRequiredRelays));
+
+      for (const relay of targets) {
+        if (ledger.get(relay)?.accepted) continue;
+        if (accepted.has(relay)) {
+          ledger.set(relay, { accepted: true });
+        } else if (rejected.has(relay)) {
+          ledger.set(relay, {
+            rejected: { ...rejected.get(relay)!, relay },
+            ...(authRequired.has(relay) ? { authRequired: true } : {}),
+          });
+        } else if (timedOut.has(relay)) {
+          ledger.set(relay, {
+            timedOut: true,
+            unconfirmed: true,
+            ...(authRequired.has(relay) ? { authRequired: true } : {}),
+          });
+        } else {
+          ledger.set(relay, {
+            unconfirmed: true,
+            ...(authRequired.has(relay) ? { authRequired: true } : {}),
+          });
+        }
+      }
+      if (ledger === payloadOutcomes) {
+        for (const relay of targets) {
+          const payload = payloadOutcomes.get(relay);
+          if (!structureLaunched.has(relay)) {
+            outcomes.set(relay, payload?.accepted ? { unconfirmed: true } : { ...payload });
+          }
+          if (payload?.accepted) queueStructure(relay);
+        }
+      }
+      settleSuccessfulClasses();
+    };
+
+    const queueStructure = (relay: string): void => {
+      const sensitive = params.sensitive;
+      if (!sensitive || payloadCached.has(relay)) return;
+      payloadCached.add(relay);
+      // Freeze the hint on the first confirmed Payload ACK, including recipient ACKs.
+      structureHint ??= relay;
+      const acceptedRelays = [...payloadOutcomes].filter(([, value]) => value.accepted).map(([url]) => url);
+      const ownCacheWrite = cacheWrites.then(async () => {
+        try {
+          await this.deps.saveSensitivePayloadFn?.({
+            event: params.event, attestation: sensitive.payloadAttestation,
+            acceptedRelays, relayHints: [...rolesByRelay.keys()],
+          });
+        } catch {
+          this.deps.console?.warn?.("sensitive_payload_cache_save_failed", { stage: "payload-publish", reason: "storage" });
+        }
+      });
+      cacheWrites = ownCacheWrite;
+      // Reserve one shared signing promise before any asynchronous cache/signing work.
+      structurePromise ??= ownCacheWrite.then(async () => {
+        if (!isCurrent()) return null;
+        try {
+          const event = await sensitive.signStructure(structureHint!);
+          if (!isCurrent()) return null;
+          structureEvent = event;
+          return event;
+        } catch {
+          structureSigningFailed = true;
+          lastError = "post_error";
+          return null;
+        }
+      });
+      const job = (async () => {
+        await ownCacheWrite;
+        if (!isCurrent()) return;
+        const event = await structurePromise;
+        if (!event || !isCurrent() || structureLaunched.has(relay)) return;
+        structureLaunched.add(relay);
+        outcomes.set(relay, { unconfirmed: true });
+        const result = await sender.sendEvent(event, {
+          targetRelays: [relay], includeDefaultWriteRelays: false, waitForAllRelays: true,
+          deadlineAt: Math.min(Date.now() + 12_000, authDeadlineAt), authDeadlineAt,
+          settleSignal: successSettlement.signal,
+          onProgress: (progress: PostResult) => applyWaveResult(progress, [relay], false),
+        });
+        applyWaveResult(result, [relay]);
+      })().catch(() => { lastError = "post_network_error"; });
+      wavePromises.push(job);
+    };
+
+    const launchPayloads = (relayUrls: string[]): void => {
+      for (const relay of RelayConfigUtils.sanitizeExternalRelayUrls(relayUrls)) {
+        if (!isCurrent() || launchedRelays.has(relay)) continue;
+        launchedRelays.add(relay);
+        const job = sender.sendEvent(params.event, {
+          targetRelays: [relay], includeDefaultWriteRelays: false, waitForAllRelays: true,
+          deadlineAt: Math.min(Date.now() + 12_000, authDeadlineAt), authDeadlineAt,
+          settleSignal: successSettlement.signal,
+          onProgress: (progress: PostResult) => applyWaveResult(progress, [relay], false, payloadOutcomes),
+        }).then((result) => applyWaveResult(result, [relay], true, payloadOutcomes))
+          .catch(() => applyWaveResult({ success: false, error: "post_network_error" }, [relay], true, payloadOutcomes));
+        wavePromises.push(job);
+      }
+    };
+
+    const launchAdditionalRelays = (relayUrls: string[]): void => {
+      if (!isCurrent() || !acceptsDiscovery) return;
+      if (params.sensitive) { launchPayloads(relayUrls); return; }
+      const targets = RelayConfigUtils.sanitizeExternalRelayUrls(relayUrls)
+        .filter((relay) => !launchedRelays.has(relay));
+      if (targets.length === 0) return;
+      targets.forEach((relay) => launchedRelays.add(relay));
+      const wave = sender.sendEvent(params.event, {
+        targetRelays: targets,
+        includeDefaultWriteRelays: false,
+        waitForAllRelays: true,
+        deadlineAt,
+        authDeadlineAt,
+        settleSignal: successSettlement.signal,
+        onProgress: (result: PostResult) => applyWaveResult(result, targets, false),
+      }).then((result) => applyWaveResult(result, targets))
+        .catch(() => {
+          lastError = "post_network_error";
+          for (const relay of targets) {
+            if (!outcomes.has(relay)) outcomes.set(relay, { unconfirmed: true });
+          }
+        });
+      wavePromises.push(wave);
+    };
+
+    try {
+      const initialTargets = RelayConfigUtils.sanitizeExternalRelayUrls([
+        ...defaultWriteRelays,
+        ...additionalRelays,
+      ]);
+      if (params.sensitive) {
+        if (initialTargets.length === 0) lastError = "no_write_relays";
+        launchPayloads(initialTargets);
+      } else {
+        initialTargets.forEach((relay) => launchedRelays.add(relay));
+        const initialWave = sender.sendEvent(params.event, {
+          targetRelays: additionalRelays,
+          includeDefaultWriteRelays: true,
+          waitForAllRelays: recipientPubkeys.length > 0,
+          deadlineAt,
+          authDeadlineAt,
+          settleSignal: successSettlement.signal,
+          onProgress: (result: PostResult) => applyWaveResult(result, initialTargets, false),
+        }).then((result) => applyWaveResult(result, initialTargets))
+          .catch(() => {
+            lastError = "post_network_error";
+            for (const relay of initialTargets) {
+              if (!outcomes.has(relay)) outcomes.set(relay, { unconfirmed: true });
+            }
+          });
+        wavePromises.push(initialWave);
+      }
+
+      const lookups = recipientPubkeys.map(async (pubkey) => {
+        try {
+          const entry: Pick<Nip65RelayDirectoryEntry, "readRelays"> = this.deps.nip65ReadRelayLookupFn
+            ? await this.deps.nip65ReadRelayLookupFn(pubkey, {
+              discoveryRelays: params.discoveryRelaysByRecipient?.[pubkey],
+              deadlineAt: discoveryDeadline,
+              resolveOnReadRoute: true,
+            })
+            : await getNip65RelayDirectory(rxNostr).lookup(pubkey, {
+              discoveryRelays: params.discoveryRelaysByRecipient?.[pubkey],
+              deadlineAt: discoveryDeadline,
+              resolveOnReadRoute: true,
+            });
+          if (!acceptsDiscovery || !isCurrent()) return;
+          const relays = RelayConfigUtils.sanitizeExternalRelayUrls(entry.readRelays);
+          recipientRelays.set(pubkey, new Set(relays));
+          recipientRouteStatus.set(pubkey, relays.length > 0 ? "found" : "unavailable");
+          relays.forEach((relay) => getRoles(relay).recipients.add(pubkey));
+          launchAdditionalRelays(relays);
+          settleSuccessfulClasses();
+        } catch {
+          if (acceptsDiscovery && isCurrent()) {
+            recipientRelays.set(pubkey, new Set());
+            recipientRouteStatus.set(pubkey, "unavailable");
+          }
+        }
+      });
+
+      let discoveryTimer: ReturnType<typeof setTimeout> | undefined;
+      if (lookups.length > 0) {
+        await Promise.race([
+          Promise.all(lookups),
+          cancellation,
+          cutoff,
+          new Promise<void>((resolve) => {
+            discoveryTimer = setTimeout(resolve, Math.max(1, discoveryDeadline - Date.now()));
+          }),
+        ]);
+      }
+      if (discoveryTimer !== undefined) clearTimeout(discoveryTimer);
+      acceptsDiscovery = false;
+      for (const pubkey of recipientPubkeys) {
+        if (!recipientRouteStatus.has(pubkey)) {
+          recipientRelays.set(pubkey, new Set());
+          recipientRouteStatus.set(pubkey, cancelled ? "cancelled" : "unavailable");
+        }
+      }
+
+      const drainJobs = async () => {
+        let drained = 0;
+        while (drained < wavePromises.length) {
+          const batch = wavePromises.slice(drained);
+          drained = wavePromises.length;
+          await Promise.all(batch);
+        }
+      };
+      await Promise.race([drainJobs(), cutoff]);
+      // Stop launch/ACK mutation before waiting for persistence outside the network cap.
+      closeSends();
+      await cacheWrites;
+
+      const toClass = (
+        relays: string[],
+        unavailable = false,
+        wasCancelled = false,
+      ) => createDeliveryClassResult(relays, outcomes, unavailable,
+        wasCancelled || (params.sensitive !== undefined && cancelled));
+      const authorWrite = toClass(
+        defaultWriteRelays,
+        defaultWriteRelays.length === 0,
+      );
+      const taggedUserRead: Record<string, PostDeliveryClassResult> = Object.fromEntries(recipientPubkeys.map((pubkey) => {
+        const relays = [...(recipientRelays.get(pubkey) ?? [])];
+        const routeStatus = recipientRouteStatus.get(pubkey);
+        return [pubkey, toClass(
+          relays,
+          routeStatus === "unavailable",
+          routeStatus === "cancelled",
+        )];
+      }));
+      const additional: PostDeliveryClassResult[] = additionalRelays.length > 0
+        ? [toClass(additionalRelays)]
+        : [];
+      const delivery: PostDeliverySummary = { authorWrite, taggedUserRead, additional };
+      const acceptedRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
+        [...outcomes.entries()]
+          .filter(([, outcome]) => outcome.accepted)
+          .map(([relay]) => relay),
+      );
+      const rejectedRelays = [...outcomes.values()]
+        .flatMap((outcome) => outcome.rejected ? [outcome.rejected] : []);
+      const timedOutRelays = [...outcomes.entries()]
+        .filter(([, outcome]) => outcome.timedOut)
+        .map(([relay]) => relay);
+      const authRequiredRelays = [...outcomes.entries()]
+        .filter(([, outcome]) => outcome.authRequired)
+        .map(([relay]) => relay);
+      const success = acceptedRelays.length > 0;
+      const fullyDelivered = authorWrite.acceptedRelays.length > 0
+        && Object.values(taggedUserRead).every((result) => result.acceptedRelays.length > 0)
+        && additional.every((result) => result.acceptedRelays.length > 0);
+      const hasUnconfirmed = timedOutRelays.length > 0
+        || [...outcomes.values()].some((outcome) => outcome.unconfirmed);
+      const error = success
+        ? undefined
+        : params.sensitive && [...payloadOutcomes.values()].some((outcome) => outcome.accepted)
+          ? "postComponent.error.sensitive_partial_publish"
+        : lastError
+          ?? (hasUnconfirmed ? "post_timeout" : "post_rejected");
+
+      return {
+        success,
+        fullyDelivered,
+        ...(error ? { error } : {}),
+        ...(success ? { eventId: structureEvent?.id ?? params.event.id } : {}),
+        acceptedRelays,
+        ...(rejectedRelays.length ? { rejectedRelays } : {}),
+        ...(timedOutRelays.length ? { timedOutRelays } : {}),
+        ...(authRequiredRelays.length ? { authRequiredRelays } : {}),
+        delivery,
+      };
+    } finally {
+      resultFinalized = true;
+      clearTimeout(hardTimer);
+      if (successTimer !== undefined) clearTimeout(successTimer);
+      operation.cancel();
+      this.activeNip65Operations.delete(operation);
+    }
+  }
+
   private async sendPreparedEvent(params: {
     event: PostEventTemplate & { pubkey: string };
     sessionPubkey: string;
@@ -262,6 +779,7 @@ export class PostManager {
     rqNotifyOptions?: ReplyQuoteNotifyOptions;
     signer?: PostManagerSigner;
     additionalWriteRelays?: string[];
+    discoveryRelaysByRecipient?: Record<string, string[]>;
     signEvent?: (event: EventTemplate) => Promise<unknown>;
     logSignedEvent?: boolean;
     splitSensitiveContent: boolean;
@@ -273,178 +791,78 @@ export class PostManager {
       eventKind: params.event?.kind,
     });
 
+    const sender = this.eventSender;
+    const rxNostr = this.rxNostr;
+    const capturedAuth = this.deps.authStateStore!.value;
+    const generation = this.operationGeneration;
     const signEvent = params.signEvent
       ?? (typeof params.signer?.signEvent === "function"
-        ? params.signer.signEvent.bind(params.signer)
-        : undefined);
-    const sender = this.eventSender!;
-    const rxNostr = this.rxNostr;
-    const replyQuoteSnapshot = params.replyQuoteIdentity;
-    const relayTargets = RelayConfigUtils.sanitizeExternalRelayUrls(params.writeRelaySnapshot);
-    const isSessionActive = (): boolean => {
-      const current = this.deps.authStateStore!.value;
-      return current.isAuthenticated && current.pubkey === params.sessionPubkey
-        && this.rxNostr === rxNostr && this.eventSender === sender;
+        ? params.signer.signEvent.bind(params.signer) : undefined);
+    if (params.signer && !signEvent) return this.notifyPostFailure("nostr_sign_event_not_supported");
+    const isSessionActive = () => {
+      const auth = this.deps.authStateStore!.value;
+      return auth === capturedAuth && auth.isAuthenticated && auth.pubkey === params.sessionPubkey
+        && this.rxNostr === rxNostr && this.eventSender === sender
+        && this.operationGeneration === generation;
     };
-    const assertOperationActive = (): void => {
+    const signTemplate = async (template: PostEventTemplate & { pubkey: string }) => {
       assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
       if (!isSessionActive()) throw new Error("post_event_runtime_changed");
-    };
-
-    const notifySensitivePartialPublish = (result?: PostResult): PostResult => {
-      const partialResult: PostResult = {
-        success: false,
-        error: "postComponent.error.sensitive_partial_publish",
-        ...(result?.rejectedRelays ? { rejectedRelays: result.rejectedRelays } : {}),
-        ...(result?.timedOutRelays ? { timedOutRelays: result.timedOutRelays } : {}),
-      };
-      this.deps.notificationPort?.notifyPostError({ code: "sensitive_partial_publish" });
-      return partialResult;
-    };
-
-    const publishSignedEvent = async (
-      template: PostEventTemplate & { pubkey: string },
-      targetRelays: string[],
-    ): Promise<SignedPublishOutcome> => {
-      if (params.signer && !signEvent) {
-        return { success: false, result: { success: false, error: "nostr_sign_event_not_supported" } };
-      }
-      assertOperationActive();
+      if (params.signer && !signEvent) throw new Error("nostr_sign_event_not_supported");
       const prepared = prepareSignedEventTemplate(template);
-      let signedEvent: unknown;
-      try {
-        signedEvent = signEvent
-          ? await signEvent(prepared.signerTemplate)
-          : template;
-      } catch {
-        return { success: false, result: { success: false, error: "post_error" } };
-      }
-      assertOperationActive();
-      let eventToSend: NostrEvent;
-      try {
-        eventToSend = validateSignedEventResult(
-          prepared.expectedTemplate,
-          signedEvent,
-          params.sessionPubkey,
-        );
-      } catch {
-        return { success: false, result: { success: false, error: "post_error" } };
-      }
-      assertOperationActive();
-      const attested = attestFullyVerifiedPostHistoryRawEvent(eventToSend);
-      if (!attested) {
-        return { success: false, result: { success: false, error: "post_error" } };
-      }
-      if (signEvent && params.logSignedEvent) {
-        this.deps.console?.debug?.('[PostManager] signed event ready');
-      }
-      this.deps.console?.debug?.('[PostManager] sendPreparedEvent signed', {
-        eventKind: attested.event.kind,
-      });
-      assertOperationActive();
-      const result = await sender.sendEvent(attested.event, {
-        targetRelays,
-        includeDefaultWriteRelays: false,
-      });
-      return {
-        success: true,
-        event: attested.event,
-        attestation: attested.attestation,
-        result,
-      };
+      const signed = signEvent ? await signEvent(prepared.signerTemplate) : template;
+      if (!isSessionActive()) throw new Error("post_event_session_changed");
+      const event = validateSignedEventResult(prepared.expectedTemplate, signed, params.sessionPubkey);
+      const attested = attestFullyVerifiedPostHistoryRawEvent(event);
+      if (!attested) throw new Error("post_error");
+      return attested;
     };
-
     const usePayload = params.splitSensitiveContent
       && params.event.tags.some((tag) => tag[0] === "content-warning");
-
-    let structureTemplate = params.event;
-    let publishTargets = relayTargets;
-    if (usePayload) {
-      const payloadTemplate = buildSensitivePayloadEvent(
-        params.event.kind as SensitiveContentStructureKind,
-        params.event.content,
-        params.sessionPubkey,
-        params.event.created_at,
-      );
-      const payloadOutcome = await publishSignedEvent(payloadTemplate, relayTargets);
-      if (!payloadOutcome.success) {
-        return this.finalizeSubmittedPost(payloadOutcome.result, params.hashtags, params.rqNotifyOptions);
-      }
-      if (!payloadOutcome.result.success) {
-        return this.finalizeSubmittedPost(payloadOutcome.result, params.hashtags, params.rqNotifyOptions);
-      }
-
-      const acceptedPayloadRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
-        payloadOutcome.result.acceptedRelays,
-      );
-      try {
-        await this.deps.saveSensitivePayloadFn?.({
-          event: payloadOutcome.event,
-          attestation: payloadOutcome.attestation,
-          acceptedRelays: acceptedPayloadRelays,
-          relayHints: relayTargets,
-        });
-      } catch {
-        this.deps.console?.warn?.("sensitive_payload_cache_save_failed", {
-          stage: "payload-publish",
-          reason: "storage",
-        });
-      }
-
-      if (!isSessionActive()) {
-        return notifySensitivePartialPublish();
-      }
-
-      const payloadHint = acceptedPayloadRelays[0] ?? null;
-      structureTemplate = buildSensitiveStructureEvent(
-        params.event,
-        payloadOutcome.event.id,
-        payloadHint,
-      );
-      publishTargets = acceptedPayloadRelays;
-    }
-
-    let structureOutcome: SignedPublishOutcome;
+    let published: ReturnType<typeof attestFullyVerifiedPostHistoryRawEvent> = null;
+    let signed: NonNullable<ReturnType<typeof attestFullyVerifiedPostHistoryRawEvent>>;
     try {
-      structureOutcome = await publishSignedEvent(structureTemplate, publishTargets);
+      signed = await signTemplate(usePayload
+        ? buildSensitivePayloadEvent(params.event.kind as SensitiveContentStructureKind,
+          params.event.content, params.sessionPubkey, params.event.created_at)
+        : params.event);
     } catch {
-      if (usePayload) return notifySensitivePartialPublish();
-      throw new Error("post_event_session_changed");
+      return this.notifyPostFailure("post_error");
     }
-    if (!structureOutcome.success || !structureOutcome.result.success) {
-      if (usePayload) {
-        return notifySensitivePartialPublish(structureOutcome.result);
-      }
-      return this.finalizeSubmittedPost(structureOutcome.result, params.hashtags, params.rqNotifyOptions);
+    if (!usePayload) published = signed;
+    const result = await this.publishNip65Event({
+      event: signed.event,
+      sessionPubkey: params.sessionPubkey,
+      additionalWriteRelays: params.additionalWriteRelays,
+      discoveryRelaysByRecipient: params.discoveryRelaysByRecipient,
+      ...(usePayload ? { sensitive: {
+        structureTemplate: params.event,
+        payloadAttestation: signed.attestation,
+        signStructure: async (hint: string) => {
+          const attested = await signTemplate(buildSensitiveStructureEvent(params.event, signed.event.id, hint));
+          published = attested;
+          return attested.event;
+        },
+      } } : {}),
+    });
+    if (result.error === "postComponent.error.sensitive_partial_publish") {
+      this.deps.notificationPort?.notifyPostError({ code: "sensitive_partial_publish" });
+      return result;
     }
-
-    const resultWithEvent: PostResult = structureOutcome.result.success
-      ? {
-        ...structureOutcome.result,
-        eventId: structureOutcome.result.eventId ?? structureOutcome.event.id,
-        event: structureOutcome.event,
-      }
-      : structureOutcome.result;
-    await this.saveSubmittedPostHistory({
-      event: structureOutcome.event,
-      attestation: structureOutcome.attestation,
-      result: resultWithEvent,
+    const structure = published as ReturnType<typeof attestFullyVerifiedPostHistoryRawEvent>;
+    const resultWithEvent: PostResult = result.success && structure
+      ? { ...result, eventId: structure.event.id, event: structure.event } : result;
+    if (structure) await this.saveSubmittedPostHistory({
+      event: structure.event, attestation: structure.attestation, result: resultWithEvent,
       additionalWriteRelays: params.additionalWriteRelays,
       writeRelayHintSnapshot: params.writeRelayHintSnapshot,
     });
     const preserveComposerContent = !isSessionActive();
-    const finalized = this.finalizeSubmittedPost(
-      preserveComposerContent
-        ? { ...resultWithEvent, preserveComposerContent: true }
-        : resultWithEvent,
-      params.hashtags,
-      params.rqNotifyOptions,
-      !preserveComposerContent && this.getReplyQuoteIdentity() === replyQuoteSnapshot,
+    return this.finalizeSubmittedPost(
+      preserveComposerContent ? { ...resultWithEvent, preserveComposerContent: true } : resultWithEvent,
+      params.hashtags, params.rqNotifyOptions,
+      !preserveComposerContent && this.getReplyQuoteIdentity() === params.replyQuoteIdentity,
     );
-    this.deps.console?.debug?.('[PostManager] sendPreparedEvent publish completed', {
-      success: finalized.success,
-    });
-    return finalized;
   }
 
   // 外部APIは変更なし（後方互換性のため）
@@ -641,6 +1059,43 @@ export class PostManager {
         });
       }
 
+      // Contextual discovery hints are kept attached to the exact referenced
+      // author that produced each p-tag. Never infer a target from unrelated tags.
+      const discoveryRelaysByRecipient: Record<string, string[]> = {};
+      const addContextForTaggedAuthor = (
+        authorPubkey: string | null,
+        relayHints: string[],
+        associatedTags: string[][],
+      ) => {
+        if (
+          !authorPubkey
+          || !associatedTags.some((tag) => tag[0] === 'p' && tag[1] === authorPubkey)
+        ) {
+          return;
+        }
+        discoveryRelaysByRecipient[authorPubkey] = RelayConfigUtils.sanitizeExternalRelayUrls([
+          ...(discoveryRelaysByRecipient[authorPubkey] ?? []),
+          ...relayHints,
+        ]);
+      };
+      const rqServiceForDiscovery = this.deps.replyQuoteService || new ReplyQuoteService();
+      if (rqState.reply) {
+        addContextForTaggedAuthor(
+          rqState.reply.authorPubkey,
+          rqState.reply.relayHints,
+          rqServiceForDiscovery.buildReplyTags(rqState.reply),
+        );
+      }
+      for (const quote of rqState.quotes) {
+        if (quote.quoteNotificationEnabled) {
+          addContextForTaggedAuthor(
+            quote.authorPubkey,
+            quote.relayHints,
+            rqServiceForDiscovery.buildQuoteTags(quote, true),
+          );
+        }
+      }
+
       // インライン引用タグをマージ（重複排除）
       if (inlineQuoteTags.length > 0) {
         if (!replyQuoteTags) {
@@ -705,6 +1160,7 @@ export class PostManager {
             signEvent,
             logSignedEvent: true,
             additionalWriteRelays,
+            discoveryRelaysByRecipient,
             splitSensitiveContent: failClosedContentWarning,
             writeRelaySnapshot,
             writeRelayHintSnapshot,
@@ -756,6 +1212,7 @@ export class PostManager {
             rqNotifyOptions,
             signer: nip46Signer,
             additionalWriteRelays,
+            discoveryRelaysByRecipient,
             splitSensitiveContent: failClosedContentWarning,
             writeRelaySnapshot,
             writeRelayHintSnapshot,
@@ -801,6 +1258,7 @@ export class PostManager {
             rqNotifyOptions,
             signer: parentClientSigner,
             additionalWriteRelays,
+            discoveryRelaysByRecipient,
             splitSensitiveContent: failClosedContentWarning,
             writeRelaySnapshot,
             writeRelayHintSnapshot,
@@ -842,6 +1300,7 @@ export class PostManager {
         rqNotifyOptions,
         signer,
         additionalWriteRelays,
+        discoveryRelaysByRecipient,
         splitSensitiveContent: failClosedContentWarning,
         writeRelaySnapshot,
         writeRelayHintSnapshot,

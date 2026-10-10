@@ -23,7 +23,9 @@
     "test:e2e:parallel": "playwright test --workers=2",
     "test:e2e:agent": "npm run test:e2e:dev-server -- --reporter=dot && npm run test:e2e:parallel -- --reporter=dot",
     "test:e2e:sw": "playwright test --config=playwright.service-worker.config.ts",
-    "deploy": "gh-pages -d dist"
+    "deploy": "gh-pages -d dist",
+    "postinstall": "patch-package --error-on-fail && node scripts/verifyRxNostrPatch.mjs",
+    "verify:rx-nostr-patch": "node scripts/verifyRxNostrPatch.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
@@ -31,14 +33,15 @@
     "@testing-library/svelte": "^5.3.1",
     "@types/node": "^24.2.0",
     "@types/qrcode": "^1.5.6",
+    "@types/ws": "^8.18.1",
     "fake-indexeddb": "^6.2.5",
     "gh-pages": "^6.3.0",
     "happy-dom": "^20.0.8",
     "jsdom": "^26.1.0",
+    "patch-package": "8.0.1",
     "svelte": "^5.55.7",
     "svelte-check": "^4.4.8",
     "typescript": "~5.8.3",
-    "@types/ws": "^8.18.1",
     "vite": "^7.0.6",
     "vite-plugin-pwa": "^1.3.0",
     "vite-plugin-static-copy": "^3.1.3",
@@ -67,7 +70,7 @@
     "nostr-zap-view": "^1.4.6",
     "photoswipe": "^5.4.4",
     "qrcode": "^1.5.4",
-    "rx-nostr": "^3.7.6",
+    "rx-nostr": "3.7.8",
     "svelte-i18n": "^4.0.1",
     "svelte-tiptap": "^3.0.1"
   },

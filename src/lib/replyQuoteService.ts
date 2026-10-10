@@ -65,6 +65,7 @@ export class ReplyQuoteService {
         rxNostr: RxNostr,
         relayConfig?: RelayConfig | null,
         timeoutMs: number = 5000,
+        authorWriteRelays: string[] = [],
     ): ReferencedEventFetchTask {
         let cancelTask: (() => void) | undefined;
         const promise = new Promise<ReferencedEventFetchResult>((resolve) => {
@@ -97,8 +98,12 @@ export class ReplyQuoteService {
             const normalizedHints = RelayConfigUtils.sanitizeExternalRelayUrls(relayHints, {
                 limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
             });
+            const normalizedAuthorWriteRelays = RelayConfigUtils.sanitizeExternalRelayUrls(authorWriteRelays);
             const hasReadRelays = !!relayConfig && RelayConfigUtils.extractReadRelays(relayConfig).length > 0;
-            const temporaryRelays = new Set<string>(normalizedHints);
+            const temporaryRelays = new Set<string>([
+                ...normalizedHints,
+                ...normalizedAuthorWriteRelays,
+            ]);
             if (!hasReadRelays && !isHostRelayConfigActive()) {
                 RelayConfigUtils.sanitizeExternalRelayUrls(FALLBACK_RELAYS)
                     .forEach(r => temporaryRelays.add(r));
