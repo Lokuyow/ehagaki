@@ -105,11 +105,11 @@ describe("composerTargetUtils", () => {
     });
 
     it("kindごとの操作候補を返す", () => {
-        expect(getComposerTargetActions(1, false)).toEqual(["reply", "quote"]);
+        expect(getComposerTargetActions(1, false)).toEqual(["reply", "quote", "reaction"]);
         expect(getComposerTargetActions(40, true)).toEqual(["channel"]);
-        expect(getComposerTargetActions(42, true)).toEqual(["reply", "quote"]);
-        expect(getComposerTargetActions(42, false)).toEqual([]);
-        expect(getComposerTargetActions(7, true)).toEqual([]);
+        expect(getComposerTargetActions(42, true)).toEqual(["reply", "quote", "reaction"]);
+        expect(getComposerTargetActions(42, false)).toEqual(["reaction"]);
+        expect(getComposerTargetActions(7, true)).toEqual(["reaction"]);
     });
 
     it("Unicode文字単位でプレビューを省略する", () => {

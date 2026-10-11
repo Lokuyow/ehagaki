@@ -1,12 +1,15 @@
 <script lang="ts">
     import type { Snippet } from "svelte";
     import Button from "./Button.svelte";
+    import ProfileAvatar from "./ProfileAvatar.svelte";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
 
     interface Props {
         previewClass: string;
         modeIconClass: string;
         modeLabel: string;
+        authorDisplay?: string;
+        authorPicture?: string;
         expanded: boolean;
         toggleAriaLabel: string;
         clearAriaLabel: string;
@@ -24,6 +27,8 @@
         previewClass,
         modeIconClass,
         modeLabel,
+        authorDisplay = "",
+        authorPicture = "",
         expanded,
         toggleAriaLabel,
         clearAriaLabel,
@@ -61,6 +66,19 @@
                     <span class="mode-text">{modeLabel}</span>
                 </Button>
                 {@render meta?.()}
+                {#if authorDisplay}
+                    <span class="author-profile">
+                        <ProfileAvatar
+                            src={authorPicture}
+                            alt=""
+                            rootClassName="reply-quote-profile-avatar"
+                            imageClassName="reply-quote-profile-avatar-image"
+                            fallbackClassName="reply-quote-profile-avatar-fallback"
+                            fallbackAriaLabel=""
+                        />
+                        <span class="author-name">{authorDisplay}</span>
+                    </span>
+                {/if}
             </div>
             {@render status?.()}
             <Button
@@ -135,9 +153,47 @@
         flex-shrink: 0;
     }
 
-    .preview-mode-icon.reply-icon {
+    .preview-meta .preview-mode-icon:is(.reply-icon, .reaction-target-icon) {
         --icon-size: 24px;
+        width: 24px;
+        height: 24px;
         flex-shrink: 0;
+    }
+
+    .author-profile {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    .author-name {
+        min-width: 0;
+        color: var(--text-light);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    :global(.reply-quote-profile-avatar) {
+        width: 36px;
+        height: 36px;
+        flex: 0 0 auto;
+        overflow: hidden;
+        border-radius: 50%;
+    }
+
+    :global(.reply-quote-profile-avatar-image),
+    :global(.reply-quote-profile-avatar-fallback) {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+    }
+
+    :global(.reply-quote-profile-avatar-image) {
+        display: block;
+        object-fit: cover;
     }
 
     .mode-text {

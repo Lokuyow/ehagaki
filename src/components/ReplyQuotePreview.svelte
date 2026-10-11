@@ -208,6 +208,8 @@
     previewClass="reply-quote-preview"
     {modeIconClass}
     {modeLabel}
+    {authorDisplay}
+    authorPicture={reference.authorPicture ?? ""}
     {expanded}
     {canToggleExpand}
     {toggleAriaLabel}
@@ -255,19 +257,6 @@
                     </Tooltip.Portal>
                 </Tooltip.Root>
             </Tooltip.Provider>
-        {/if}
-        {#if authorDisplay}
-            <span class="author-profile">
-                <ProfileAvatar
-                    src={reference.authorPicture ?? ""}
-                    alt=""
-                    rootClassName="reply-quote-profile-avatar"
-                    imageClassName="reply-quote-profile-avatar-image"
-                    fallbackClassName="reply-quote-profile-avatar-fallback"
-                    fallbackAriaLabel=""
-                />
-                <span class="author-name">{authorDisplay}</span>
-            </span>
         {/if}
     {/snippet}
 
@@ -438,26 +427,6 @@
         color: var(--text-light);
     }
 
-    :global(.reply-quote-profile-avatar) {
-        width: 36px;
-        height: 36px;
-        flex: 0 0 auto;
-        overflow: hidden;
-        border-radius: 50%;
-    }
-
-    :global(.reply-quote-profile-avatar-image),
-    :global(.reply-quote-profile-avatar-fallback) {
-        width: 100%;
-        height: 100%;
-        border-radius: 50%;
-    }
-
-    :global(.reply-quote-profile-avatar-image) {
-        display: block;
-        object-fit: cover;
-    }
-
     :global(.reply-notification-recipient[aria-pressed="true"]) {
         background-color: light-dark(
             color-mix(in srgb, var(--btn-bg), black 18%),
@@ -486,22 +455,6 @@
 
     .bell-solid-icon {
         mask-image: url("/icons/notifications_active_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-    }
-
-    .author-profile {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        min-width: 0;
-        overflow: hidden;
-    }
-
-    .author-name {
-        min-width: 0;
-        color: var(--text-light);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
     }
 
     :global(.reply-quote-tooltip-content) {

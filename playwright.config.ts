@@ -66,6 +66,7 @@ export default defineConfig({
                 '**/postHistoryFullScan.spec.ts',
                 '**/postHistoryJsonlWorker.spec.ts',
                 '**/postRepost.spec.ts',
+                '**/postReaction.spec.ts',
                 '**/sensitiveContentPayload.spec.ts',
             ],
             use: {

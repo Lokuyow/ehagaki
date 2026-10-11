@@ -330,6 +330,24 @@ export class PostManager {
     }
   }
 
+  captureAuthorWriteRelays(): readonly string[] {
+    return Object.freeze(RelayConfigUtils.sanitizeExternalRelayUrls([
+      ...Object.values(this.rxNostr?.getDefaultRelays() ?? {}).filter(relay => relay.write).map(relay => relay.url),
+      ...(this.deps.writeRelaysStore?.value ?? []),
+    ]));
+  }
+
+  /** Internal signed-event boundary; deliberately excludes authored history and Composer finalization. */
+  async publishSignedEvent(params: { event: NostrEvent; sessionPubkey: string;
+    authorWriteRelaySnapshot: readonly string[]; discoveryRelaysByRecipient?: Record<string, string[]>;
+    isCurrent?: () => boolean }): Promise<PostResult> {
+    const verified = attestFullyVerifiedPostHistoryRawEvent(params.event);
+    if (params.isCurrent?.() === false || !verified || verified.event.pubkey !== params.sessionPubkey) {
+      return { success: false, error: 'post_error' };
+    }
+    return this.publishNip65Event({ ...params, event: verified.event });
+  }
+
   private async publishNip65Event(params: {
     event: NostrEvent;
     authorWriteRelaySnapshot: readonly string[];
@@ -341,6 +359,7 @@ export class PostManager {
     sessionPubkey: string;
     additionalWriteRelays?: readonly string[];
     discoveryRelaysByRecipient?: Record<string, string[]>;
+    isCurrent?: () => boolean;
   }): Promise<PostResult> {
     const sender = this.eventSender;
     const rxNostr = this.rxNostr;
@@ -440,6 +459,7 @@ export class PostManager {
         || currentAuth !== capturedAuthState
         || !currentAuth.isAuthenticated
         || currentAuth.pubkey !== params.sessionPubkey
+        || params.isCurrent?.() === false
       ) {
         operation.cancel();
         return false;
@@ -945,14 +965,7 @@ export class PostManager {
       const additionalWriteRelays = Object.freeze(
         RelayConfigUtils.sanitizeExternalRelayUrls(channelContext?.channelRelays),
       );
-      const authorWriteRelaySnapshot = Object.freeze(
-        RelayConfigUtils.sanitizeExternalRelayUrls([
-          ...Object.values(this.rxNostr!.getDefaultRelays())
-            .filter((relay) => relay.write)
-            .map((relay) => relay.url),
-          ...(this.deps.writeRelaysStore?.value ?? []),
-        ]),
-      );
+      const authorWriteRelaySnapshot = this.captureAuthorWriteRelays();
       if (isHostRelayConfigActive() && authorWriteRelaySnapshot.length === 0) {
         return this.notifyPostFailure("no_write_relays");
       }

@@ -12,6 +12,7 @@ import type {
     ReplyNotificationRecipient,
 } from '../lib/types';
 import { settingsStore } from './settingsStore.svelte';
+import { clearReactionTarget } from './reactionComposerStore.svelte';
 import type { EmbedPreloadedProfilePresentation } from '../lib/embedProtocol';
 
 // --- リプライ・引用状態管理 ---
@@ -164,6 +165,7 @@ export function onReplyQuoteChanged(
 }
 
 export function setReplyQuote(params: ReplyQuoteQueryResult): ReplyQuoteHydrationTarget[] {
+    clearReactionTarget();
     replyQuote = {
         reply: params.reply
             ? createReplyQuoteState({
@@ -384,6 +386,7 @@ export function applyPreloadedAuthorPreviewPresentation(
 }
 
 export function restoreReplyQuote(data: DraftReplyQuoteData): void {
+    clearReactionTarget();
     if (isLegacyDraftReplyQuoteData(data)) {
         replyQuote = {
             reply: data.mode === 'reply' ? createDraftEntryState(data) : null,
@@ -413,6 +416,7 @@ export function removeQuoteReference(eventId: string): void {
 export function addQuoteReference(
     reference: ReplyQuoteQueryTarget,
 ): ReplyQuoteHydrationTarget | null {
+    clearReactionTarget();
     if (replyQuote.quotes.some((quote) => quote.eventId === reference.eventId)) {
         return null;
     }
