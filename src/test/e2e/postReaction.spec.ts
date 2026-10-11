@@ -67,6 +67,37 @@ test('Post History outer and original actions preserve identity; Custom Emoji se
     await expect.poll(async () => (await read(page)).children[0]?.parent).toBe(h.relatedId);
     expect((await read(page)).signs).toBe(1);
 });
+for (const count of [0, 1]) {
+    test(`kind 42 quote with ${count} reactions keeps the heart and count independent`, async ({ page }) => {
+        const h = await open(page, '?quote-kind42&hold-reactions');
+        await page.getByTestId('open-history').click();
+        const quoteCard = page.locator('.post-preview-quotes .post-history-related-card');
+        await expect(quoteCard).toBeVisible();
+        const heart = quoteCard.getByRole('button', { name: 'リアクションする', exact: true });
+        await expect(heart).toBeVisible();
+        await expect(quoteCard.locator('.post-preview-reply-action-cell button')).toHaveCount(0);
+        await expect(quoteCard.locator('.post-preview-quote-action-cell button')).toHaveCount(0);
+        await expect(quoteCard.locator('.post-preview-reactions-button')).toHaveCount(0);
+        await expect(quoteCard.locator('.post-preview-reaction-chip')).toHaveCount(0);
+        if (count > 0) {
+            await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.saveIncomingReaction(true));
+            const countButton = quoteCard.getByRole('button', { name: 'リアクション 1件を表示', exact: true });
+            await expect(countButton).toHaveText('1');
+            await expect(heart).toBeVisible();
+            await countButton.click();
+            await expect(quoteCard.locator('.post-preview-reaction-chip')).toHaveCount(1);
+            await expect(page.getByRole('dialog')).toBeVisible();
+            expect((await read(page)).targetId).toBeUndefined();
+            await quoteCard.getByRole('button', { name: 'リアクションを隠す', exact: true }).click();
+            await expect(quoteCard.locator('.post-preview-reaction-chip')).toHaveCount(0);
+        }
+        await heart.click();
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        await expect(page.locator('[data-reaction-target-id]')).toHaveAttribute('data-reaction-target-id', h.relatedId);
+        await expect(page.locator('.tiptap-editor')).toBeFocused();
+    });
+}
+
 for (const change of ['switchTarget', 'switchAccount', 'destroy'] as const) {
     test(`ACK then ${change} saves old target without changing current UI`, async ({ page }) => {
         const h = await open(page, '?hold-save'); await chooseTarget(page, h.targetInput);

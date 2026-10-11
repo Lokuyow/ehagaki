@@ -3257,6 +3257,7 @@
                                                             {#snippet footerActions()}
                                                                 {#if quotePreview.status === "resolved" &&
                                                                     (quotePreview.event.kind !== 42 ||
+                                                                        onReactionPost ||
                                                                         (getRelatedReactionReadModel(quotePreview.event.id)?.totalCount ?? 0) > 0)}
                                                                     {@const quoteActionPost = buildPostRecordFromQuoteEvent(
                                                                         quotePreview.event,

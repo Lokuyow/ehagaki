@@ -24,16 +24,18 @@
     import type { ComposerResolvedTarget } from '../../lib/composerTargetResolver';
     import { focusEditor as focusEditorElement } from '../../lib/utils/appDomUtils';
     import { buildReactionEvent } from '../../lib/postReactionUtils';
+    import { postHistoryContextFetchService } from '../../lib/postHistoryContextFetchService';
 
     const query = new URLSearchParams(location.search);
     const key = generateSecretKey(); const owner = getPublicKey(key);
     const otherKey = generateSecretKey();
     const relay = 'wss://author.example/'; const recipient = 'wss://recipient.example/';
     const relayConfig = { [relay]: { read: true, write: true } };
-    const original = finalizeEvent({ kind: Number(query.get('kind')) === 16 ? 42 : 1, content: 'Original fixture', tags: [], created_at: 100 }, otherKey);
+    const original = finalizeEvent({ kind: Number(query.get('kind')) === 16 || query.has('quote-kind42') ? 42 : 1, content: 'Original fixture', tags: [], created_at: 100 }, otherKey);
     const kind = Number(query.get('kind') ?? '1');
     const target = finalizeEvent({ kind, content: kind === 6 || kind === 16 ? JSON.stringify(original) : kind === 7 ? '+' : 'Main fixture',
-        tags: kind === 6 || kind === 7 || kind === 16 ? [['e', original.id, relay, original.pubkey], ['p', original.pubkey], ['k', String(original.kind)]] : [], created_at: 200 }, key);
+        tags: kind === 6 || kind === 7 || kind === 16 ? [['e', original.id, relay, original.pubkey], ['p', original.pubkey], ['k', String(original.kind)]]
+            : query.has('quote-kind42') ? [['q', original.id, relay, original.pubkey]] : [], created_at: 200 }, key);
     const next = finalizeEvent({ kind: 1, content: 'Next fixture', tags: [], created_at: 201 }, key);
     let targetOpen = $state(false); let historyOpen = $state(false); let ready = $state(false);
     let mounted = $state(true); let pickerOpen = $state(false);
@@ -79,6 +81,11 @@
     };
     const controller = createComposerTargetApplyController({
         captureReactionOwnership: () => { const session = authState.value; const editor = currentEditorStore.value; return () => authState.value === session && currentEditorStore.value === editor; },
+        prepareReactionTarget: async target => {
+            const result = await postHistoryContextFetchService.fetchEventById(rx, { eventId: target.eventId,
+                authorHint: target.authorPubkey, relayHints: target.relayHints, relayConfig }).promise;
+            return result.event ? { event: result.event, relayHints: result.relayUrl ? [result.relayUrl, ...target.relayHints] : target.relayHints } : null;
+        },
         startChannelContextQuery: () => ({ release() {} }) as never,
         applyReplyQuoteQuery: async () => {}, hydrateReplyQuoteReferences: async () => {},
         getReplyQuoteApplyParams: () => ({}) as never, clearChannelContext() {}, hasReplyOrQuotes: () => false,
