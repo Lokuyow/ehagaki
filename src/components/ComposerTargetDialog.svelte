@@ -1039,9 +1039,24 @@
             </div>
         {/snippet}
 
+        {#snippet interactionAuthor()}
+            <span class="interaction-author">
+                <ProfileAvatar
+                    src={authorProfile?.picture ?? ""}
+                    alt=""
+                    rootClassName="composer-target-avatar"
+                    imageClassName="composer-target-avatar-image"
+                    fallbackClassName="composer-target-avatar-fallback"
+                    fallbackAriaLabel=""
+                />
+                <span class="interaction-author-name">{authorDisplay}</span>
+            </span>
+        {/snippet}
+
         {#if repostPreview && targetPost}
             <section class="composer-target-repost-preview" aria-label={$_("composerTarget.preview")}>
                 <PostHistoryRepostPreview post={targetPost} preview={repostPreview}
+                    author={interactionAuthor}
                     menu={mainTargetMenu} channelText={relatedChannelText} model={relatedRenderModel ?? undefined}
                     targetLabel={repostPreview.event && [6, 7, 16].includes(repostPreview.event.kind)
                         ? $_(interactionLabelKey(repostPreview.event.kind)) : null}
@@ -1059,6 +1074,7 @@
                 data-reaction-event-id={target.event.id}>
                 <div class="composer-target-reaction-label">
                     <div class="composer-target-reaction-title">
+                        {@render interactionAuthor()}
                         <div class="composer-target-reaction-symbol favorite-icon svg-icon" aria-hidden="true"></div>
                         <span>{$_("composerTarget.reaction")}</span>
                     </div>
@@ -1496,6 +1512,11 @@
 
     .composer-target-repost-preview { min-width: 0; }
     .interaction-label { margin: 0; font-weight: 600; }
+    .interaction-author { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--text); }
+    .interaction-author-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    :global(.interaction-author .composer-target-avatar) { width: 24px; height: 24px; }
+    :global(.composer-target-repost-preview .post-history-repost-title > span) { flex-shrink: 0; white-space: nowrap; }
+    :global(.composer-target-repost-preview .post-history-repost-title > .interaction-author) { flex-shrink: 1; }
     .composer-target-reaction-preview { min-width: 0; }
     .composer-target-reaction-preview p { margin: 0; }
     .composer-target-reaction-label {
@@ -1503,8 +1524,10 @@
         color: var(--btn-post-preview-action);
     }
     .composer-target-reaction-title { display: flex; align-items: center; gap: 6px; min-width: 0; padding-left: 6px; }
-    .composer-target-reaction-title > span { overflow-wrap: anywhere; }
+    .composer-target-reaction-title > span { flex-shrink: 0; white-space: nowrap; }
+    .composer-target-reaction-title > .interaction-author { flex-shrink: 1; }
     .composer-target-reaction-symbol {
+        flex-shrink: 0;
         width: 22px;
         height: 22px;
         flex: 0 0 22px;

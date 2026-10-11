@@ -101,7 +101,8 @@ test.describe("composer target dialog fixture", () => {
             const reaction = key === "reaction7" || key === "markerReaction" || key === "channelReaction";
             const main = page.locator(reaction ? ".composer-target-reaction-preview" : ".composer-target-repost-preview");
             const related = page.locator(reaction ? ".composer-target-reaction-preview" : ".post-history-repost");
-            await expect(main).not.toContainText("Outer fixture author");
+            await expect(main.locator(".interaction-author")).toContainText("Outer fixture author");
+            await expect(main.locator(".interaction-author .composer-target-avatar")).toBeVisible();
             await expect(page.locator(".target-preview, .composer-target-related-preview")).toHaveCount(0);
             if (reaction) {
                 await expect(main.locator(".composer-target-reaction-label")).toContainText("リアクション");

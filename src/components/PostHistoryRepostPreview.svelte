@@ -12,6 +12,7 @@
     interface Props {
         post: PostHistoryRecord; preview: Omit<RepostPreviewState, "saveFailed"> & { saveFailed?: boolean };
         menu?: Snippet<[PostHistoryRecord, string]>;
+        author?: Snippet;
         channelText?: string | null;
         model?: PostContentRenderModel;
         targetLabel?: string | null;
@@ -24,7 +25,7 @@
         emojiLoadStateByUrl?: Record<string, import("../lib/postContentPreview").PostContentEmojiLoadState | undefined>;
         emojiImageMetaByUrl?: Record<string, import("../lib/postContentPreview").PostContentEmojiImageMeta | undefined>;
     }
-    let { post, preview, menu, channelText = null, model, targetLabel = null, onRetry, onReplyPost, onQuotePost, loadSensitiveBody,
+    let { post, preview, menu, author, channelText = null, model, targetLabel = null, onRetry, onReplyPost, onQuotePost, loadSensitiveBody,
         scrollRoot = null, onImageOpen, emojiLoadStateByUrl = {}, emojiImageMetaByUrl = {} }: Props = $props();
     const target = $derived(preview.event ? repostTargetToPost(preview.event, preview.relayHints) : null);
     const message = $derived(preview.status === "deleted" ? "repost.targetDeleted"
@@ -36,6 +37,7 @@
 <div class="post-history-repost" data-repost-event-id={post.eventId}>
     <div class="post-history-repost-label">
         <span class="post-history-repost-title">
+            {@render author?.()}
             <span class="post-history-repost-icon svg-icon" aria-hidden="true"></span>
             <span>{$_("repost.entry")}</span>
         </span>

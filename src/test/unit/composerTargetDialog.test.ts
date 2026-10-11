@@ -321,7 +321,8 @@ describe("ComposerTargetDialog", () => {
         expect(card.querySelector(".post-preview-date")?.textContent).toBeTruthy();
         expect(document.querySelector(".target-preview, .composer-target-related-preview, .related-kind")).toBeNull();
         expect(preview.querySelector("h3")).toBeNull();
-        expect(preview.textContent).not.toContain("Outer author");
+        expect(preview.querySelector(".composer-target-reaction-title")?.firstElementChild?.textContent).toContain("Outer author");
+        expect(preview.querySelector(".interaction-author .composer-target-avatar")).toBeTruthy();
         expect(preview.textContent).not.toContain("kind 7");
         expect(preview.textContent).not.toContain("kind 42");
         expect(preview.querySelectorAll("button")).toHaveLength(1);
@@ -349,7 +350,8 @@ describe("ComposerTargetDialog", () => {
         expect(card.textContent).toContain("Related channel body");
         expect(card.querySelector(".post-preview-date")?.textContent).toBeTruthy();
         expect(document.querySelector(".target-preview, .composer-target-related-preview, .related-kind")).toBeNull();
-        expect(preview.textContent).not.toContain("Outer author");
+        expect(preview.querySelector(".post-history-repost-title")?.firstElementChild?.textContent).toContain("Outer author");
+        expect(preview.querySelector(".interaction-author .composer-target-avatar")).toBeTruthy();
         expect(preview.textContent).not.toContain("kind 16");
         expect(preview.textContent).not.toContain("kind 42");
         expect(preview.querySelectorAll("button")).toHaveLength(1);
