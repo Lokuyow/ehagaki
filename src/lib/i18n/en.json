@@ -179,6 +179,14 @@
       "auth-timeout": "Authentication timeouts", "auth-unresolved": "Incomplete after authentication",
       "ambiguous": "Unresolved timestamp boundaries", "safety-limit": "Stopped at a safety limit", "storage": "Storage errors"
     },
+    "fullScanAmbiguityInfo": {
+      "label": "Show additional details about the result",
+      "title": "About this result",
+      "bodyCompletion": "Fetching from this relay reached its end. However, for some time ranges, we could not confirm the NIP-67 finish notification indicating that all stored events matching the request were returned.",
+      "bodyPagination": "eHagaki divides post history into time ranges and repeats requests, splitting ranges further when they may have reached the relay's result limit. Received events are saved after duplicates are removed.",
+      "bodyEose": "A normal EOSE indicates that the relay has finished sending historical events for that request, but it does not guarantee that every stored event in the requested range was returned. Some posts may therefore be missing from relays where finish was not confirmed.",
+      "bodyStatus": "This does not mean that the connection failed or timed out. The fetch process itself reached its end, so eHagaki shows the relay as Completed."
+    },
     "sensitivePayloadDeletionOmitted": "Deletion was requested for the post, but its body payload could not be verified and was not included in the deletion request.",
     "open": "Open post history",
     "title": "Post History",

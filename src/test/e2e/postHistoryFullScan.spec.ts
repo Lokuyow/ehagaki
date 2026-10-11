@@ -22,7 +22,9 @@ async function open(page: Page, scenario = "completed", extra = "") {
 test("full scan: completes with actual summary and preserves the displayed window", async ({ page }) => {
     const { before, dialog } = await open(page);
     const ids = await page.locator(".post-history-item").evaluateAll((items) => items.map((item) => item.getAttribute("data-post-history-event-id")));
-    await expect(dialog).toContainText("リレーから、自分の過去の投稿をできるだけ取得して保存します。閉じると中止しますが、保存済みの投稿は残ります。");
+    const description = dialog.locator(".scan-heading p");
+    await expect(description).toHaveText(/リレーから、自分の過去の投稿をできるだけ取得して保存します。\s+閉じると中止しますが、保存済みの投稿は残ります。/);
+    await expect(description).toHaveCSS("white-space", "pre-line");
     await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
     await expect(dialog.getByRole("status")).toContainText("対象リレーの走査が終了しました");
     await expect(dialog).toContainText("2 / 2"); await expect(dialog.getByRole("progressbar")).toHaveCount(0);
@@ -77,19 +79,53 @@ test("full scan: four workers keep relay rows independent through queued, AUTH a
     expect(await rows.locator(".scan-relay-count").allTextContents()).toEqual(["2", "1", "0", "2", "2"]);
     await page.screenshot({ path: testInfo.outputPath("relay-progress-final.png") });
 });
-test("full scan: relay timeout, connection error and ambiguity remain distinct from empty", async ({ page }) => {
-    for (const [scenario, expected] of [["timeout", "時間切れ"], ["partial", "接続エラー"], ["ambiguous", "一部未完了"]]) {
+test("full scan: ambiguous-only relays complete with an accessible explanation while real failures stay visible", async ({ page }) => {
+    for (const [scenario, expected] of [["timeout", "時間切れ"], ["partial", "接続エラー"]]) {
         const { dialog } = await open(page, scenario);
         await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
         await expect(dialog.getByRole("status")).toContainText("一部のリレーまたは範囲が未完了");
         const rows = dialog.locator(".scan-relay-row");
-        await expect(rows.nth(1).locator(".scan-relay-state > span").first()).toHaveText(expected);
-        if (scenario !== "ambiguous") {
-            await expect(rows.nth(0).locator(".scan-relay-state")).toHaveText("完了");
-            await expect(rows.nth(0).locator(".scan-relay-count")).toHaveText("2");
-            await expect(rows.nth(1).locator(".scan-relay-count")).toHaveText("0");
-        } else expect(Number(await rows.nth(1).locator(".scan-relay-count").textContent())).toBeGreaterThan(2);
+        await expect(rows.nth(1).locator(".scan-relay-state-line > span")).toHaveText(expected);
+        await expect(rows.nth(0).locator(".scan-relay-state")).toHaveText("完了");
+        await expect(rows.nth(0).locator(".scan-relay-count")).toHaveText("2");
+        await expect(rows.nth(1).locator(".scan-relay-count")).toHaveText("0");
     }
+    const { dialog } = await open(page, "ambiguous");
+    await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
+    await expect(dialog.getByRole("status")).toContainText("対象リレーの走査が終了しました");
+    const rows = dialog.locator(".scan-relay-row");
+    await expect(rows.locator(".scan-relay-state > .scan-relay-state-line > span")).toHaveText(["完了", "完了"]);
+    await expect(rows.locator(".scan-relay-reason")).toHaveCount(0);
+    await expect(dialog).not.toContainText("取得境界を解消できない範囲");
+    const totals = dialog.locator(".scan-results section").nth(1).locator("dl div");
+    await expect(totals.nth(2).locator("dd")).toHaveText("2");
+    await expect(totals.nth(3).locator("dd")).toHaveText("0");
+    const trigger = rows.first().getByRole("button", { name: "取得結果の補足情報を表示" });
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    const popover = page.locator(".popover-content").filter({ hasText: "取得結果について" });
+    await expect(popover).toBeVisible();
+    await expect(popover).toContainText("finish 通知を確認できませんでした");
+    await expect(popover).toContainText("複数の時間範囲に分け");
+    await expect(popover).toContainText("通常の EOSE は");
+    await expect(popover).toContainText("通信エラーやタイムアウトを意味しません");
+    await page.keyboard.press("Escape");
+    await expect(popover).toBeHidden();
+
+    await page.setViewportSize({ width: 320, height: 720 });
+    const widths = await dialog.evaluate((element) => ({
+        dialogClient: element.clientWidth, dialogScroll: element.scrollWidth,
+        documentClient: document.documentElement.clientWidth, documentScroll: document.documentElement.scrollWidth,
+    }));
+    expect(widths.dialogScroll).toBeLessThanOrEqual(widths.dialogClient);
+    expect(widths.documentScroll).toBeLessThanOrEqual(widths.documentClient);
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    await expect(popover).toBeVisible();
+    const popoverBounds = await popover.boundingBox();
+    expect(popoverBounds).not.toBeNull();
+    expect(popoverBounds!.x).toBeGreaterThanOrEqual(0);
+    expect(popoverBounds!.x + popoverBounds!.width).toBeLessThanOrEqual(widths.documentClient);
 });
 test("full scan: partial and failure are distinct", async ({ page }) => {
     for (const scenario of ["partial", "failed"]) {

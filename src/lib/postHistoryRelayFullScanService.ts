@@ -17,6 +17,10 @@ export interface PostHistoryFullScanRelayProgress {
     receivedCount: number;
     issueCounts: Partial<Record<PostHistoryFullScanIssue, number>>;
 }
+export function hasOnlyPostHistoryFullScanAmbiguity(relay: Pick<PostHistoryFullScanRelayProgress, "issueCounts">): boolean {
+    const issues = Object.entries(relay.issueCounts).filter(([, count]) => (count ?? 0) > 0);
+    return issues.length === 1 && issues[0][0] === "ambiguous";
+}
 export interface PostHistoryFullScanRelayResult extends PostHistoryFullScanRelayProgress {
     requestCount: number;
     rangeSamples: PostHistoryCoverageRange[];
@@ -242,7 +246,8 @@ export class PostHistoryRelayFullScanService {
                             }
                             windowUntil = windowSince - 1;
                         }
-                        relay.status = controller.signal.aborted ? "cancelled" : Object.keys(relay.issueCounts).length ? "partial" : "completed";
+                        relay.status = controller.signal.aborted ? "cancelled"
+                            : Object.keys(relay.issueCounts).length && !hasOnlyPostHistoryFullScanAmbiguity(relay) ? "partial" : "completed";
                     } catch {
                         if (!controller.signal.aborted) {
                             issue(relay, "storage", { since: 0, until: upperBound }); storageFailed = true;

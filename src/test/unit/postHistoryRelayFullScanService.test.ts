@@ -154,7 +154,8 @@ describe("manual full relay scan", () => {
         });
         const result = await state.task.promise;
         expect(state.saved.size).toBe(4); expect(state.requests.length).toBeGreaterThan(4);
-        expect(result.status).toBe("partial"); // actual unresolved second, not missing hint
+        expect(result.status).toBe("completed");
+        expect(result.relays.every((relay) => relay.status === "completed")).toBe(true);
         expect(result.relays.every((relay) => relay.issueCounts.ambiguous)).toBe(true);
     });
     it("splits a truncated range, leaves a saturated second uncovered and continues older", async () => {
@@ -164,9 +165,26 @@ describe("manual full relay scan", () => {
             return page(matching.slice(0, 2), matching.length > 2 ? ["more"] : ["finish"]);
         });
         const result = await state.task.promise;
-        expect(result.status).toBe("partial"); expect(state.saved.has(event(10, 4).id)).toBe(true);
+        expect(result.status).toBe("completed"); expect(state.saved.has(event(10, 4).id)).toBe(true);
         expect(state.coverage.every((range) => !(range.since <= 80 && range.until >= 80))).toBe(true);
+        expect(result.relays.every((relay) => relay.status === "completed")).toBe(true);
         expect(result.relays.every((relay) => relay.issueCounts.ambiguous === 1)).toBe(true);
+    });
+    it("keeps a relay partial when ambiguity is accompanied by a timeout", async () => {
+        const boundary = event(80, 8080);
+        const state = setup((params) => {
+            if (params.relayUrl === urls[1]) return terminalPageForRelay(params.relayUrl);
+            if (params.until! < boundary.created_at) {
+                return page([], [], { status: "timeout", eoseRelayUrls: [], relayOutcomes: [], hasAnyRelayResponse: false });
+            }
+            return page([boundary], [], { rawCount: 2, events: [{ event: boundary, relayUrls: [params.relayUrl] }] });
+        });
+        const result = await state.task.promise;
+        expect(result.status).toBe("partial");
+        expect(result.relays[0].status).toBe("partial");
+        expect(result.relays[0].issueCounts.ambiguous).toBeGreaterThan(0);
+        expect(result.relays[0].issueCounts.timeout).toBeGreaterThan(0);
+        expect(result.relays[1].status).toBe("completed");
     });
     it("one timeout cannot stop the other relay or turn partial into completed", async () => {
         const state = setup((params) => params.relayUrl === urls[0]

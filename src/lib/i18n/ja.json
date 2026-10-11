@@ -160,7 +160,7 @@
     "fullScanRelays": "終了したリレー",
     "fullScanReceived": "受信件数（重複含む）",
     "fullScanUpdated": "既存の更新処理件数",
-    "fullScanCompletedRelays": "正常終了したリレー",
+    "fullScanCompletedRelays": "完了したリレー",
     "fullScanIncompleteRelays": "未完了のリレー",
     "fullScanRelayProgress": "リレーごとの取得状況",
     "fullScanRelayHost": "リレー",
@@ -178,6 +178,14 @@
       "timeout": "取得タイムアウト", "error": "リレーのエラー", "auth-rejected": "認証拒否",
       "auth-timeout": "認証タイムアウト", "auth-unresolved": "認証後も未完了",
       "ambiguous": "取得境界を解消できない範囲", "safety-limit": "安全上限による停止", "storage": "保存エラー"
+    },
+    "fullScanAmbiguityInfo": {
+      "label": "取得結果の補足情報を表示",
+      "title": "取得結果について",
+      "bodyCompletion": "このリレーからの取得処理は最後まで完了しました。ただし、一部の時間範囲では、この条件に一致する保存済みイベントをすべて返したことを示す NIP-67 の finish 通知を確認できませんでした。",
+      "bodyPagination": "eHagaki は投稿履歴を複数の時間範囲に分け、取得上限に達した可能性がある場合は範囲をさらに細かくしながら繰り返し取得します。受信したイベントは重複を除いて保存します。",
+      "bodyEose": "通常の EOSE は、そのリクエストに対する過去イベントの送信が終了したことを示しますが、その範囲の保存済みイベントをすべて返したことまでは保証しません。そのため、finish を確認できないリレーでは、一部の投稿を取得できていない可能性があります。",
+      "bodyStatus": "これは通信エラーやタイムアウトを意味しません。取得処理自体は最後まで実行できたため、eHagaki では「完了」と表示しています。"
     },
     "sensitivePayloadDeletionOmitted": "投稿の削除をリクエストしましたが、本文payloadを確認できなかったため、本文の削除はリクエストできませんでした。",
     "open": "投稿履歴を開く",

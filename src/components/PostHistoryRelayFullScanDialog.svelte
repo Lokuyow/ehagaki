@@ -3,8 +3,9 @@
     import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
+    import InfoPopoverButton from "./InfoPopoverButton.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
-    import type { PostHistoryFullScanProgress, PostHistoryFullScanResult, PostHistoryFullScanRelayProgress } from "../lib/postHistoryRelayFullScanService";
+    import { hasOnlyPostHistoryFullScanAmbiguity, type PostHistoryFullScanProgress, type PostHistoryFullScanResult, type PostHistoryFullScanRelayProgress } from "../lib/postHistoryRelayFullScanService";
     interface Props {
         open: boolean; running: boolean; canStart: boolean; elapsedMs: number;
         progress: PostHistoryFullScanProgress | null; result: PostHistoryFullScanResult | null;
@@ -16,8 +17,11 @@
         : result ? `postHistory.fullScanStatus.${result.status}` : null);
     let issueCounts = $derived.by(() => {
         const counts: Record<string, number> = {};
-        for (const relay of result?.relays ?? []) for (const [issue, count] of Object.entries(relay.issueCounts)) {
-            counts[issue] = (counts[issue] ?? 0) + (count ?? 0);
+        for (const relay of result?.relays ?? []) {
+            if (relay.status === "completed" && hasOnlyPostHistoryFullScanAmbiguity(relay)) continue;
+            for (const [issue, count] of Object.entries(relay.issueCounts)) {
+                counts[issue] = (counts[issue] ?? 0) + (count ?? 0);
+            }
         }
         return Object.entries(counts);
     });
@@ -30,7 +34,7 @@
     }
     function relayStatus(relay: PostHistoryFullScanRelayProgress) {
         if (relay.status === "running") return relay.phase;
-        if (relay.status === "completed") return relay.receivedCount === 0 ? "empty" : "completed";
+        if (relay.status === "completed") return relay.receivedCount === 0 && !hasOnlyPostHistoryFullScanAmbiguity(relay) ? "empty" : "completed";
         if (relay.status === "cancelled") return "cancelled";
         const issues = Object.entries(relay.issueCounts).filter(([, count]) => (count ?? 0) > 0).map(([issue]) => issue);
         if (issues.length && issues.every((issue) => issue === "timeout" || issue === "auth-timeout")) return "timeout";
@@ -97,10 +101,24 @@
                 <tbody>
                     {#each metrics.relays as relay (relay.relayUrl)}
                         {@const reason = relayReason(relay)}
+                        {@const ambiguityOnly = relay.status === "completed" && hasOnlyPostHistoryFullScanAmbiguity(relay)}
                         <tr class="scan-relay-row" data-relay-url={relay.relayUrl}>
                             <td><span class="scan-relay-host" title={relay.relayUrl}>{relayHost(relay.relayUrl)}</span></td>
                             <td class="scan-relay-state">
-                                <span>{$_(`postHistory.fullScanRelayStatus.${relayStatus(relay)}`)}</span>
+                                <div class="scan-relay-state-line">
+                                    <span>{$_(`postHistory.fullScanRelayStatus.${relayStatus(relay)}`)}</span>
+                                    {#if ambiguityOnly}
+                                        <InfoPopoverButton side="top" sideOffset={4} ariaLabel={$_("postHistory.fullScanAmbiguityInfo.label")}>
+                                            <div class="scan-relay-ambiguity-popover">
+                                                <h3>{$_("postHistory.fullScanAmbiguityInfo.title")}</h3>
+                                                <p>{$_("postHistory.fullScanAmbiguityInfo.bodyCompletion")}</p>
+                                                <p>{$_("postHistory.fullScanAmbiguityInfo.bodyPagination")}</p>
+                                                <p>{$_("postHistory.fullScanAmbiguityInfo.bodyEose")}</p>
+                                                <p>{$_("postHistory.fullScanAmbiguityInfo.bodyStatus")}</p>
+                                            </div>
+                                        </InfoPopoverButton>
+                                    {/if}
+                                </div>
                                 {#if reason}<span class="scan-relay-reason">{$_(`postHistory.fullScanIssue.${reason}`)}</span>{/if}
                             </td>
                             <td class="scan-relay-count">{relay.receivedCount}</td>
@@ -150,8 +168,14 @@
     .scan-relays th:last-child, .scan-relays td:last-child { text-align: right; }
     .scan-relay-row { border-top: 1px solid var(--border-hr); }
     .scan-relay-host { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .scan-relay-state-line { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; min-width: 0; }
+    .scan-relay-state-line > span { min-width: 0; overflow-wrap: anywhere; }
     .scan-relay-count { font-variant-numeric: tabular-nums; }
     .scan-relay-reason { display: block; margin-top: 4px; color: var(--text-muted); font-size: 0.75rem; }
+    .scan-relay-ambiguity-popover { width: min(320px, calc(100vw - 48px)); max-height: calc(100vh - 48px); overflow: auto; overflow-wrap: anywhere; }
+    .scan-relay-ambiguity-popover h3 { margin: 0 0 8px; font-size: 1rem; }
+    .scan-relay-ambiguity-popover p { margin: 0 0 8px; }
+    .scan-relay-ambiguity-popover p:last-child { margin-bottom: 0; }
     :global(.post-history-full-scan-dialog) { max-width: min(760px, calc(100% - 10px)); }
     @media (max-width: 680px) { .scan-results { grid-template-columns: 1fr; } }
 </style>
