@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy } from "svelte";
+    import { onDestroy, untrack } from "svelte";
     import { _, locale } from "svelte-i18n";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
     import { nip19 } from "nostr-tools";
@@ -12,11 +12,17 @@
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
+    import PostHistoryRelatedEventCard from "./PostHistoryRelatedEventCard.svelte";
+    import PostHistoryRepostPreview from "./PostHistoryRepostPreview.svelte";
+    import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
+    import { useComposerTargetRelatedPreview } from "../lib/hooks/useComposerTargetRelatedPreview.svelte";
+    import { buildComposerInteractionRenderModel } from "../lib/composerTargetRelatedPreview";
+    import type { PostHistoryRelatedTargetResolver } from "../lib/postHistoryRelatedTargetResolver.svelte";
     import PostRepostMenuItem from "./PostRepostMenuItem.svelte";
     import PostRepostFeedback from "./PostRepostFeedback.svelte";
     import type { RepostPostHandler } from "../lib/hooks/usePostRepostOperation.svelte";
     import type { PostRepostResult } from "../lib/postRepostService";
-    import { isRepostTargetKind } from "../lib/postRepostUtils";
+    import { isRepostTargetKind, repostTargetToPost } from "../lib/postRepostUtils";
     import { createPostHistoryRelatedTargetResolver } from "../lib/postHistoryRelatedTargetResolver.svelte";
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
     import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
@@ -109,6 +115,7 @@
         relayConfig?: RelayConfig | null;
         profileService?: Pick<RelayProfileService, "fetchProfileRealtime">;
         resolver?: ComposerTargetResolver;
+        relatedResolver?: PostHistoryRelatedTargetResolver;
         pubkeyHex?: string | null;
         onRepostPost?: RepostPostHandler;
         repostPending?: boolean;
@@ -124,6 +131,7 @@
         relayConfig = null,
         profileService = undefined,
         resolver = createComposerTargetResolver(),
+        relatedResolver = undefined,
         pubkeyHex = null,
         onRepostPost = undefined,
         repostPending = false,
@@ -203,6 +211,36 @@
             : [],
     );
     let previewEvent = $derived(target?.event ?? partialEvent);
+    const relatedPreviewController = useComposerTargetRelatedPreview({
+        getShow: () => show, getTarget: () => target, getRxNostr: () => rxNostr,
+        getRelayConfig: () => relayConfig, getPubkey: () => pubkeyHex, resolver: untrack(() => relatedResolver),
+    });
+    let relatedPreview = $derived(relatedPreviewController.getPreview());
+    let repostPreview = $derived(target && [6, 16].includes(target.event.kind) ? relatedPreview : null);
+    let relatedChannelPosts = $derived(relatedPreview?.status === "resolved" && relatedPreview.event?.kind === 42
+        ? [repostTargetToPost(relatedPreview.event, relatedPreview.relayHints)] : []);
+    const relatedChannelDisplay = usePostHistoryChannelDisplay({
+        getShow: () => show, getPosts: () => relatedChannelPosts,
+        getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig, getIsSearchMode: () => false,
+    });
+    let relatedChannelText = $derived(relatedChannelPosts[0]
+        ? relatedChannelDisplay.getChannelText(relatedChannelPosts[0], $_) : null);
+    let relatedRenderModel = $derived(relatedPreview?.event
+        ? [6, 7, 16].includes(relatedPreview.event.kind)
+            ? buildComposerInteractionRenderModel(relatedPreview.event)
+            : buildPostContentRenderModel({ kind: relatedPreview.event.kind,
+                sourceContent: relatedPreview.event.content, tags: relatedPreview.event.tags })
+        : null);
+    function interactionLabelKey(kind: number): string {
+        return kind === 6 ? "repost.entry" : kind === 16 ? "composerTarget.genericRepost" : "composerTarget.reaction";
+    }
+    let relatedStatusKey = $derived(relatedPreview?.status === "loading" ? "composerTarget.relatedLoading"
+        : relatedPreview?.status === "deleted" ? "composerTarget.relatedDeleted"
+        : relatedPreview?.status === "unsupported-reference" || relatedPreview?.status === "unsupported-target-kind"
+            ? "composerTarget.relatedUnsupported"
+        : relatedPreview?.status === "invalid-reference" || relatedPreview?.status === "invalid-target"
+            || relatedPreview?.status === "outer-target-kind-mismatch" ? "composerTarget.relatedInvalid"
+        : "composerTarget.relatedMissing");
     let previewPostedAt = $derived(
         previewEvent ? previewEvent.created_at * 1000 : 0,
     );
@@ -226,7 +264,7 @@
         );
     });
     let rawPreviewContent = $derived.by(() => {
-        if (!previewEvent || previewEvent.kind === 40) return "";
+        if (!previewEvent || [6, 7, 16, 40].includes(previewEvent.kind)) return "";
         return resolveEventContentBody(previewEvent.content, previewEvent.tags);
     });
     let collapsedContent = $derived(
@@ -312,7 +350,9 @@
             : collapsedContent.content,
     );
     let sourcePreviewRenderModel = $derived.by(() =>
-        previewEvent?.kind === 40
+        previewEvent && [6, 7, 16].includes(previewEvent.kind)
+            ? buildComposerInteractionRenderModel(previewEvent)
+            : previewEvent?.kind === 40
             ? buildPostContentRenderModel({
                   sourceContent: "",
                   displayContent: "",
@@ -343,6 +383,7 @@
     });
     let dialogEmojiUrls = $derived.by(() => {
         const urls = new Set(previewRenderModel.previewContent.emojiUrls);
+        for (const url of relatedRenderModel?.previewContent.emojiUrls ?? []) urls.add(url);
         if (isTargetReactionsExpanded) {
             for (const group of targetReactionReadModel?.groups ?? []) {
                 if (group.emojiUrl) urls.add(group.emojiUrl);
@@ -817,6 +858,88 @@
     });
 </script>
 
+{#snippet mainTargetMenu(post: PostHistoryRecord)}
+    {#if post.eventId === targetPost?.eventId}
+        {@const actionsLabel = $_("common.showActions")}
+        <PostHistoryActionMenu
+            open={postActionUi.isPostMenuOpen(
+                post.eventId,
+            )}
+            onOpenChange={(open) =>
+                setTargetMenuOpen(post.eventId, open)}
+            triggerAriaLabel={actionsLabel}
+            tooltipContent={actionsLabel}
+            enableTooltip={true}
+            timestamp={formatPostedAtExact(
+                post.postedAt,
+                $locale,
+            )}
+        >
+            {#snippet items()}
+                {#if onRepostPost && isRepostTargetKind(post.kind)}
+                    <PostRepostMenuItem pending={repostPending} onSelect={() => void handleRepost(post)} />
+                {/if}
+                <DropdownMenu.Item
+                    class="menu-action-button"
+                    onSelect={() =>
+                        openRawJson(post.rawEvent)}
+                >
+                    <div
+                        class="raw-json-icon svg-icon"
+                        aria-hidden="true"
+                    ></div>
+                    <span>{$_("postHistory.rawJson")}</span>
+                </DropdownMenu.Item>
+                {#if canBroadcastTargetPost}
+                    <DropdownMenu.Item
+                        class="menu-action-button"
+                        disabled={broadcastRequestState ===
+                            "sending"}
+                        onpointerdown={(event) =>
+                            captureBroadcastPointerPosition(
+                                post,
+                                event,
+                            )}
+                        onSelect={(event) =>
+                            void handleBroadcastPost(
+                                post,
+                                event,
+                            )}
+                    >
+                        <div
+                            class="broadcast-icon svg-icon"
+                            aria-hidden="true"
+                        ></div>
+                        <span>{$_("postHistory.broadcast")}</span>
+                    </DropdownMenu.Item>
+                {/if}
+                {#if canDeleteTargetPost}
+                    <DropdownMenu.Separator
+                        class="post-history-menu-separator"
+                    />
+                    <DropdownMenu.Item
+                        class="menu-action-button menu-action-button-danger"
+                        disabled={deleteRequestState ===
+                            "sending"}
+                        onSelect={() =>
+                            openDeleteConfirm(post)}
+                    >
+                        <div
+                            class="trash-icon svg-icon"
+                            aria-hidden="true"
+                        ></div>
+                        <span>
+                            {deleteRequestState === "sending"
+                                ? $_("postHistory.deleteSending")
+                                : $_("postHistory.delete")}
+                        </span>
+                    </DropdownMenu.Item>
+                {/if}
+            {/snippet}
+        </PostHistoryActionMenu>
+    {/if}
+{/snippet}
+
 <DialogWrapper
     open={show}
     onOpenChange={(open) => !open && handleClose()}
@@ -915,7 +1038,60 @@
             </div>
         {/snippet}
 
-        {#if previewEvent}
+        {#if repostPreview && targetPost}
+            <section class="composer-target-repost-preview" aria-label={$_("composerTarget.preview")}>
+                <PostHistoryRepostPreview post={targetPost} preview={repostPreview}
+                    menu={mainTargetMenu} channelText={relatedChannelText} model={relatedRenderModel ?? undefined}
+                    targetLabel={repostPreview.event && [6, 7, 16].includes(repostPreview.event.kind)
+                        ? $_(interactionLabelKey(repostPreview.event.kind)) : null}
+                    onRetry={relatedPreviewController.retry}
+                    onImageOpen={(params) => handleImageOpen({ ...params,
+                        focusOrigin: document.activeElement instanceof HTMLElement ? document.activeElement : null })}
+                    emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                    emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                    loadSensitiveBody={repostPreview.event ? createSensitivePayloadBodyLoader({ ownerPubkey: pubkeyHex,
+                        structure: repostPreview.event, relayHints: repostPreview.relayHints, rxNostr, relayConfig }) : undefined} />
+                {#if deleteRequestState === "failed"}<p class="delete-failed">{$_("postHistory.deleteFailed")}</p>{/if}
+            </section>
+        {:else if relatedPreview && target?.event.kind === 7 && targetPost}
+            <section class="composer-target-reaction-preview" aria-label={$_("composerTarget.preview")}
+                data-reaction-event-id={target.event.id}>
+                <div class="composer-target-reaction-label">
+                    <div class="composer-target-reaction-title">
+                        <div class="composer-target-reaction-symbol favorite-icon svg-icon" aria-hidden="true"></div>
+                        <span>{$_("composerTarget.reaction")}</span>
+                    </div>
+                    {@render mainTargetMenu(targetPost)}
+                </div>
+                {#if relatedPreview.status === "resolved" && relatedPreview.event && relatedRenderModel}
+                    {@const relatedEvent = relatedPreview.event}
+                    <PostHistoryRelatedEventCard event={relatedEvent} profile={relatedPreview.profile}
+                        model={relatedRenderModel} onImageOpen={(params) => handleImageOpen({ ...params,
+                            focusOrigin: document.activeElement instanceof HTMLElement ? document.activeElement : null })}
+                        emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                        emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                        loadSensitiveBody={createSensitivePayloadBodyLoader({ ownerPubkey: pubkeyHex,
+                            structure: relatedEvent, relayHints: relatedPreview.relayHints, rxNostr, relayConfig })}>
+                        {#snippet topActions()}
+                            {#if relatedChannelText}
+                                <div class="related-channel-row">
+                                    <span>{$_("postHistory.channel")}</span>
+                                    <strong>{relatedChannelText}</strong>
+                                </div>
+                            {:else if [6, 7, 16].includes(relatedEvent.kind)}
+                                <p class="related-interaction-label">{$_(interactionLabelKey(relatedEvent.kind))}</p>
+                            {/if}
+                        {/snippet}
+                    </PostHistoryRelatedEventCard>
+                {:else}
+                    <p role="status">{$_(relatedStatusKey)}</p>
+                    {#if ["not-found", "error", "invalid-target"].includes(relatedPreview.status)}
+                        <Button onClick={relatedPreviewController.retry}>{$_("postHistory.contextRetry")}</Button>
+                    {/if}
+                {/if}
+                {#if deleteRequestState === "failed"}<p class="delete-failed">{$_("postHistory.deleteFailed")}</p>{/if}
+            </section>
+        {:else if previewEvent}
             <section
                 bind:this={targetPreviewElement}
                 class="target-preview"
@@ -941,6 +1117,9 @@
                     <span>{authorDisplay}</span>
                     <span class="event-kind">kind {previewEvent.kind}</span>
                     </div>
+                    {#if [6, 7, 16].includes(previewEvent.kind)}
+                        <p class="interaction-label">{$_(interactionLabelKey(previewEvent.kind))}</p>
+                    {/if}
                     <PostContentPreview
                     model={previewRenderModel}
                     loadSensitiveBody={createSensitivePayloadBodyLoader({
@@ -1046,86 +1225,7 @@
                         {/if}
                     {/snippet}
                     {#snippet trailing()}
-                        {#if targetPost}
-                            {@const post = targetPost}
-                            {@const actionsLabel = $_("common.showActions")}
-                            <PostHistoryActionMenu
-                                open={postActionUi.isPostMenuOpen(
-                                    post.eventId,
-                                )}
-                                onOpenChange={(open) =>
-                                    setTargetMenuOpen(post.eventId, open)}
-                                triggerAriaLabel={actionsLabel}
-                                tooltipContent={actionsLabel}
-                                enableTooltip={true}
-                                timestamp={formatPostedAtExact(
-                                    post.postedAt,
-                                    $locale,
-                                )}
-                            >
-                                {#snippet items()}
-                                    {#if onRepostPost && isRepostTargetKind(post.kind)}
-                                        <PostRepostMenuItem pending={repostPending} onSelect={() => void handleRepost(post)} />
-                                    {/if}
-                                    <DropdownMenu.Item
-                                        class="menu-action-button"
-                                        onSelect={() =>
-                                            openRawJson(post.rawEvent)}
-                                    >
-                                        <div
-                                            class="raw-json-icon svg-icon"
-                                            aria-hidden="true"
-                                        ></div>
-                                        <span>{$_("postHistory.rawJson")}</span>
-                                    </DropdownMenu.Item>
-                                    {#if canBroadcastTargetPost}
-                                        <DropdownMenu.Item
-                                            class="menu-action-button"
-                                            disabled={broadcastRequestState ===
-                                                "sending"}
-                                            onpointerdown={(event) =>
-                                                captureBroadcastPointerPosition(
-                                                    post,
-                                                    event,
-                                                )}
-                                            onSelect={(event) =>
-                                                void handleBroadcastPost(
-                                                    post,
-                                                    event,
-                                                )}
-                                        >
-                                            <div
-                                                class="broadcast-icon svg-icon"
-                                                aria-hidden="true"
-                                            ></div>
-                                            <span>{$_("postHistory.broadcast")}</span>
-                                        </DropdownMenu.Item>
-                                    {/if}
-                                    {#if canDeleteTargetPost}
-                                        <DropdownMenu.Separator
-                                            class="post-history-menu-separator"
-                                        />
-                                        <DropdownMenu.Item
-                                            class="menu-action-button menu-action-button-danger"
-                                            disabled={deleteRequestState ===
-                                                "sending"}
-                                            onSelect={() =>
-                                                openDeleteConfirm(post)}
-                                        >
-                                            <div
-                                                class="trash-icon svg-icon"
-                                                aria-hidden="true"
-                                            ></div>
-                                            <span>
-                                                {deleteRequestState === "sending"
-                                                    ? $_("postHistory.deleteSending")
-                                                    : $_("postHistory.delete")}
-                                            </span>
-                                        </DropdownMenu.Item>
-                                    {/if}
-                                {/snippet}
-                            </PostHistoryActionMenu>
-                        {/if}
+                        {#if targetPost}{@render mainTargetMenu(targetPost)}{/if}
                     {/snippet}
                 </PostHistoryPreviewFooter>
                 {#if targetReactionReadModel && targetReactionReadModel.totalCount > 0 && isTargetReactionsExpanded}
@@ -1138,7 +1238,7 @@
             </section>
         {/if}
 
-        {#if target && ![1, 40, 42, 1111].includes(target.event.kind)}
+        {#if target && targetActions.length === 0 && !relatedPreview}
             <p class="unsupported-kind">
                 {$_("composerTarget.unsupportedKind")}
             </p>
@@ -1371,6 +1471,7 @@
 
     .target-preview {
         display: grid;
+        min-width: 0;
         border: 1px solid var(--border-hr);
         background: var(--bg-input);
     }
@@ -1387,9 +1488,33 @@
 
     .target-preview-body {
         display: grid;
+        min-width: 0;
         gap: 10px;
         padding: 12px;
     }
+
+    .composer-target-repost-preview { min-width: 0; }
+    .interaction-label { margin: 0; font-weight: 600; }
+    .composer-target-reaction-preview { min-width: 0; }
+    .composer-target-reaction-preview p { margin: 0; }
+    .composer-target-reaction-label {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        color: var(--btn-post-preview-action);
+    }
+    .composer-target-reaction-title { display: flex; align-items: center; gap: 6px; min-width: 0; padding-left: 6px; }
+    .composer-target-reaction-title > span { overflow-wrap: anywhere; }
+    .composer-target-reaction-symbol {
+        width: 22px;
+        height: 22px;
+        flex: 0 0 22px;
+        --svg: currentColor;
+        mask-image: url("/icons/favorite_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
+    }
+    :global(.composer-target-reaction-label .post-history-menu-trigger) {
+        inline-size: 28px; block-size: 28px; min-inline-size: 28px; min-block-size: 28px; flex: 0 0 28px; padding: 0;
+    }
+    .related-channel-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px; overflow-wrap: anywhere; }
+    .related-interaction-label { padding: 4px 6px; color: var(--text-muted); }
 
     .event-author {
         display: flex;

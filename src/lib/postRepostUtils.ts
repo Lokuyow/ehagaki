@@ -1,6 +1,8 @@
 import { createPlainNostrEventSnapshot, extractPostHistoryChannelReference } from "./postHistoryEventUtils";
 import { extractPostHistoryMedia } from "./postHistoryMediaUtils";
-import { attestFullyVerifiedPostHistoryRawEvent, RAW_EVENT_VERIFICATION_RULE_VERSION } from "./postHistoryRawEventVerification";
+import { RAW_EVENT_VERIFICATION_RULE_VERSION } from "./postHistoryRawEventVerification";
+import { verifyRelatedEvent, type RelatedEventReference } from "./relatedEventVerification";
+import type { PostHistoryRelatedTargetSnapshot } from "./postHistoryRelatedTargetResolver.svelte";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent } from "./types";
 import type { PostHistoryRecord, PostHistoryRepostTarget } from "./storage/ehagakiDb";
@@ -23,10 +25,10 @@ export function isRepostTargetKind(kind: number): kind is 1 | 42 | 1111 {
     return kind === 1 || kind === 42 || kind === 1111;
 }
 
-export function classifyRepostTargetKind(outerKind: 6 | 16, targetKind: number) {
+export function classifyRepostTargetKind(outerKind: 6 | 16, targetKind: number, supportedKinds: readonly number[] = [1, 42, 1111]) {
     if (outerKind === 6) return targetKind === 1 ? "supported" : "outer-target-kind-mismatch";
     if (targetKind === 1) return "outer-target-kind-mismatch";
-    return targetKind === 42 || targetKind === 1111 ? "supported" : "unsupported-target-kind";
+    return supportedKinds.includes(targetKind) ? "supported" : "unsupported-target-kind";
 }
 
 type RepostReferenceResult = { status: "valid"; reference: RepostReference }
@@ -64,14 +66,26 @@ export function getRepostReference(event: Pick<NostrEvent, "kind" | "tags">): Re
 }
 
 /** Integrity is independent of a particular outer's product support. */
-export function verifyRepostTarget(event: unknown, reference?: Pick<RepostReference, "eventId" | "authorHint" | "relayHints"> & Partial<Pick<RepostReference, "authorHints" | "targetKindHint">> | null) {
-    const verified = attestFullyVerifiedPostHistoryRawEvent(event);
-    if (!verified) return null;
-    if (reference && (verified.event.id !== reference.eventId
-        || (reference.authorHint && verified.event.pubkey !== reference.authorHint)
-        || (reference.authorHints?.length && !reference.authorHints.includes(verified.event.pubkey))
-        || (reference.targetKindHint != null && verified.event.kind !== reference.targetKindHint))) return null;
-    return verified;
+export function verifyRepostTarget(event: unknown, reference?: RelatedEventReference | null) {
+    return verifyRelatedEvent(event, reference);
+}
+
+/** Each outer projects its constraints without changing the shared ID cache. */
+export function resolveRepostPreview(event: Pick<NostrEvent, "kind" | "tags">,
+    snapshot: PostHistoryRelatedTargetSnapshot | null, supportedKinds?: readonly number[]) {
+    const parsed = parseRepostReference(event);
+    const ref = parsed.reference;
+    const empty = { event: null, profile: null, relayHints: snapshot?.relayHints ?? [] };
+    if (!ref) return { ...empty, status: parsed.status };
+    if (snapshot?.event && !verifyRepostTarget(snapshot.event, ref)) {
+        return { ...empty, status: "invalid-target" as const };
+    }
+    if (snapshot?.event) {
+        const status = classifyRepostTargetKind(ref.outerKind, snapshot.event.kind, supportedKinds);
+        if (status !== "supported") return { ...empty, status };
+    }
+    return { status: snapshot?.status ?? "loading", event: snapshot?.event ?? null,
+        profile: snapshot?.profile ?? null, relayHints: snapshot?.relayHints ?? ref.relayHints };
 }
 
 export function verifySupportedRepostTarget(event: unknown, reference: RepostReference) {

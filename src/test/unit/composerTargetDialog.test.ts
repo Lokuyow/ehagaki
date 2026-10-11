@@ -5,7 +5,9 @@ import {
     within,
     waitFor,
 } from "@testing-library/svelte";
-import { nip19 } from "nostr-tools";
+import { finalizeEvent, generateSecretKey, nip19 } from "nostr-tools";
+import { createPostHistoryRelatedTargetResolver } from "../../lib/postHistoryRelatedTargetResolver.svelte";
+import type { NostrEvent } from "../../lib/types";
 import { readable } from "svelte/store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ComposerTargetDialog from "../../components/ComposerTargetDialog.svelte";
@@ -16,6 +18,14 @@ import type {
 
 const relatedReactionMock = vi.hoisted(() => ({
     records: [] as any[],
+}));
+
+vi.mock("../../lib/channelContextCoordinator", () => ({
+    channelContextCoordinator: { resolveInternal: vi.fn((query) => {
+        const snapshot = { context: { eventId: query.eventId, name: "Related channel" },
+            cache: { resolutionQuality: "verified-metadata", name: "Related channel" } };
+        return { cacheReady: Promise.resolve(snapshot), refresh: Promise.resolve({ snapshot }), release: vi.fn() };
+    }) },
 }));
 
 vi.mock("../../lib/postHistoryChildInteractionsAdapter", () => ({
@@ -216,6 +226,31 @@ function createResolver(result: ComposerTargetResolveResult) {
     };
 }
 
+function signInteraction(kind: number, content: string, tags: string[][] = []): NostrEvent {
+    return finalizeEvent({ kind, content, tags, created_at: 100 }, generateSecretKey());
+}
+
+function renderRelatedTarget(outer: NostrEvent, related: NostrEvent | null) {
+    const target = { ...resolvedTarget(outer.kind), event: outer,
+        authorProfile: { name: "Outer author", displayName: "", picture: "", npub: "", nprofile: "" } };
+    const fetchEventById = vi.fn(() => ({ promise: Promise.resolve({ event: related, relayUrl: "wss://related.example/" }), cancel: vi.fn() }));
+    const runtime = {} as never;
+    const relatedResolver = createPostHistoryRelatedTargetResolver({ requireFullVerification: true,
+        getShow: () => true, getRxNostr: () => runtime, getRelayConfig: () => null,
+        postHistoryRepositoryImpl: { getByEventId: vi.fn(async () => null) },
+        contextFetchService: { fetchEventById },
+        deletionRequestsRepositoryImpl: { getDeletedTargets: vi.fn(async () => new Map()), upsertValidDeletionRequests: vi.fn() },
+        deletionFetchService: { fetchDeletionRequests: vi.fn(() => ({ promise: Promise.resolve({ status: "success" as const,
+            events: [], fetchedAt: 0, relayUrls: [] }), cancel: vi.fn() })) },
+        profileSyncCoordinator: { ensureProfile: () => ({ name: "Related author", displayName: "", picture: "", npub: "", nprofile: "" }),
+            subscribe: () => () => undefined, reset: vi.fn(), dispose: vi.fn() },
+    });
+    const onApply = vi.fn(() => true);
+    const rendered = render(ComposerTargetDialog, { show: true, onClose: vi.fn(), onApply,
+        rxNostr: {} as never, resolver: createResolver({ status: "resolved", target }), relatedResolver });
+    return { ...rendered, fetchEventById, onApply, relatedResolver };
+}
+
 async function enterNote(): Promise<void> {
     await fireEvent.input(
         screen.getByLabelText("Nostrイベント"),
@@ -267,6 +302,209 @@ async function openActionMenu(): Promise<void> {
 }
 
 describe("ComposerTargetDialog", () => {
+    it.each(["", "+", "👍 extra text", "通常のリアクション"])("renders Reaction %s in a compact label above the channel target", async content => {
+        const related = signInteraction(42, "Related reaction channel body", [["e", "a".repeat(64), "", "root"]]);
+        const outer = signInteraction(7, content, [["e", related.id, "", related.pubkey], ["p", related.pubkey]]);
+        const { onApply } = renderRelatedTarget(outer, related);
+        await enterNoteFor(outer.id);
+        await vi.advanceTimersByTimeAsync(0);
+        const preview = document.querySelector(".composer-target-reaction-preview") as HTMLElement;
+        const label = preview.querySelector(".composer-target-reaction-label") as HTMLElement;
+        const card = preview.querySelector(".post-history-related-card")!;
+        expect(preview.getAttribute("data-reaction-event-id")).toBe(outer.id);
+        expect(label.querySelector(".favorite-icon.svg-icon")).toBeTruthy();
+        expect(label.textContent).toContain("composerTarget.reaction");
+        expect(within(label).getByRole("button", { name: "アクションを表示" })).toBeTruthy();
+        expect(preview.querySelector(".related-channel-row")?.textContent).toContain("Related channel");
+        expect(card.textContent).toContain("Related author");
+        expect(card.textContent).toContain("Related reaction channel body");
+        expect(card.querySelector(".post-preview-date")?.textContent).toBeTruthy();
+        expect(document.querySelector(".target-preview, .composer-target-related-preview, .related-kind")).toBeNull();
+        expect(preview.querySelector("h3")).toBeNull();
+        expect(preview.textContent).not.toContain("Outer author");
+        expect(preview.textContent).not.toContain("kind 7");
+        expect(preview.textContent).not.toContain("kind 42");
+        expect(preview.querySelectorAll("button")).toHaveLength(1);
+        expect(onApply).not.toHaveBeenCalled();
+        await openActionMenu();
+        await fireEvent.click(screen.getByRole("menuitem", { name: "イベントJSONを表示" }));
+        const raw = screen.getByRole("dialog", { name: "イベントJSON" });
+        expect(raw.textContent).toContain(outer.id);
+        expect(raw.textContent).toContain(outer.pubkey);
+    });
+    it("renders Reposts with the shared history label, channel row and source card", async () => {
+        const related = signInteraction(42, "Related channel body", [["e", "a".repeat(64), "", "root"]]);
+        const outer = signInteraction(16, JSON.stringify(related), [["e", related.id], ["p", related.pubkey], ["k", "42"]]);
+        const { onApply } = renderRelatedTarget(outer, related);
+        await enterNoteFor(outer.id);
+        await vi.advanceTimersByTimeAsync(0);
+        const preview = document.querySelector(".post-history-repost") as HTMLElement;
+        expect(preview.getAttribute("data-repost-event-id")).toBe(outer.id);
+        expect(preview.querySelector(".post-history-repost-label")?.textContent).toContain("repost.entry");
+        expect(within(preview.querySelector(".post-history-repost-label") as HTMLElement)
+            .getByRole("button", { name: "アクションを表示" })).toBeTruthy();
+        expect(preview.querySelector(".repost-channel-row")?.textContent).toContain("Related channel");
+        const card = preview.querySelector(".post-history-related-card")!;
+        expect(card.textContent).toContain("Related author");
+        expect(card.textContent).toContain("Related channel body");
+        expect(card.querySelector(".post-preview-date")?.textContent).toBeTruthy();
+        expect(document.querySelector(".target-preview, .composer-target-related-preview, .related-kind")).toBeNull();
+        expect(preview.textContent).not.toContain("Outer author");
+        expect(preview.textContent).not.toContain("kind 16");
+        expect(preview.textContent).not.toContain("kind 42");
+        expect(preview.querySelectorAll("button")).toHaveLength(1);
+        expect(onApply).not.toHaveBeenCalled();
+        await openActionMenu();
+        await fireEvent.click(screen.getByRole("menuitem", { name: "ブロードキャスト" }));
+        expect(postActionMocks.broadcast).toHaveBeenCalledWith(expect.objectContaining({ post: expect.objectContaining({ eventId: outer.id }) }));
+    });
+    it("shows a retryable related error when cached resolution rejects", async () => {
+        const related = signInteraction(1, "Recovered cached target");
+        const outer = signInteraction(6, "", [["e", related.id]]);
+        const { relatedResolver } = renderRelatedTarget(outer, related);
+        const originalEnsure = relatedResolver.ensureTarget;
+        relatedResolver.ensureTarget = vi.fn(async () => { throw new Error("fixture cache failure"); });
+        await enterNoteFor(outer.id);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(screen.getByText("repost.targetMissing")).toBeTruthy();
+        expect(screen.getByRole("button", { name: "アクションを表示" })).toBeTruthy();
+        relatedResolver.ensureTarget = originalEnsure;
+        await fireEvent.click(screen.getByRole("button", { name: "再試行" }));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(screen.getByText("Recovered cached target")).toBeTruthy();
+    });
+    it.each(["clear", "close", "destroy"])("cancels related loading on %s and ignores its late result", async operation => {
+        const related = signInteraction(1, "Stale related body");
+        const outer = signInteraction(7, "👍", [["e", related.id]]);
+        const { fetchEventById, rerender, unmount, relatedResolver } = renderRelatedTarget(outer, null);
+        let finish!: (value: { event: NostrEvent | null; relayUrl: string }) => void;
+        const cancel = vi.fn();
+        fetchEventById.mockReturnValue({ promise: new Promise(resolve => { finish = resolve; }), cancel });
+        await enterNoteFor(outer.id);
+        expect(screen.getByText("composerTarget.relatedLoading")).toBeTruthy();
+        if (operation === "clear") await fireEvent.input(screen.getByLabelText("Nostrイベント"), { target: { value: "" } });
+        else if (operation === "close") await rerender({ show: false });
+        else unmount();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(cancel).toHaveBeenCalledOnce();
+        finish({ event: related, relayUrl: "wss://related.example/" });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(screen.queryByText("Stale related body")).toBeNull();
+        expect(relatedResolver.getTargetSnapshot(related.id)?.status).not.toBe("resolved");
+    });
+
+    it("keeps the shortcode fallback when a main Reaction emoji fails to load", async () => {
+        customEmojiMock.preloadCustomEmojiImageWithMeta.mockResolvedValue({ ready: false });
+        const related = signInteraction(1, "Related body");
+        const outer = signInteraction(7, ":party:", [["e", related.id], ["emoji", "party", "https://example.com/failing-party.png"]]);
+        renderRelatedTarget(outer, related);
+        await enterNoteFor(outer.id);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(document.querySelector(".composer-target-reaction-label .favorite-icon")).toBeTruthy();
+        expect(document.querySelector('.composer-target-reaction-label img[src="https://example.com/failing-party.png"]')).toBeNull();
+        expect(screen.getByText("Related body")).toBeTruthy();
+    });
+    it("preserves the related post's CW gate and shared media/emoji rendering", async () => {
+        const related = signInteraction(1, "CW related body https://example.com/related.jpg :party:",
+            [["content-warning", "Related warning"], ["emoji", "party", "https://example.com/related-party.png"]]);
+        const outer = signInteraction(6, "", [["e", related.id], ["p", related.pubkey]]);
+        renderRelatedTarget(outer, related);
+        await enterNoteFor(outer.id);
+        await vi.advanceTimersByTimeAsync(0);
+        const card = document.querySelector(".post-history-repost .post-history-related-card")!;
+        expect(card.textContent).toContain("Related warning");
+        expect(card.textContent).not.toContain("CW related body");
+        expect(card.querySelector('img[src="https://example.com/related.jpg"]')).toBeNull();
+        await fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "postContent.showContentWarningBody" }));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(card.textContent).toContain("CW related body");
+        expect(card.querySelector('img[src="https://example.com/related.jpg"]')).toBeTruthy();
+        expect(card.querySelector('img[src="https://example.com/related-party.png"]')).toBeTruthy();
+    });
+    it.each([[16, 6], [16, 16], [7, 6], [7, 16]])("%s -> %s hides nonempty embedded JSON and never fetches the next reference", async (outerKind, kind) => {
+        const hidden = signInteraction(1, "hidden-json-body https://example.com/hidden.jpg :hidden:");
+        const related = signInteraction(kind, JSON.stringify(hidden), [["e", hidden.id],
+            ["emoji", "hidden", "https://example.com/hidden-emoji.png"]]);
+        const outer = signInteraction(outerKind, outerKind === 7 ? "👍" : JSON.stringify(related),
+            [["e", related.id], ["p", related.pubkey], ["k", String(kind)]]);
+        const { fetchEventById, onApply } = renderRelatedTarget(outer, related);
+        await enterNoteFor(outer.id);
+        await vi.advanceTimersByTimeAsync(0);
+        const card = document.querySelector(outerKind === 7 ? ".composer-target-reaction-preview .post-history-related-card"
+            : ".post-history-repost .post-history-related-card")!;
+        expect(card.textContent).toContain(kind === 6 ? "repost.entry" : "composerTarget.genericRepost");
+        expect(card.textContent).toContain("Related author");
+        expect(outerKind === 7
+            ? document.querySelector(".composer-target-reaction-preview")?.getAttribute("data-reaction-event-id")
+            : document.querySelector(".post-history-repost")?.getAttribute("data-repost-event-id")).toBe(outer.id);
+        expect(document.querySelector(".target-preview")).toBeNull();
+        expect(card.textContent).not.toContain("hidden-json-body");
+        expect(card.textContent).not.toContain(hidden.id);
+        expect(card.querySelectorAll("a, .post-content-media, .post-history-related-content").length).toBe(0);
+        expect(customEmojiMock.preloadCustomEmojiImageWithMeta).not.toHaveBeenCalled();
+        expect(fetchEventById).toHaveBeenCalledOnce();
+        expect(fetchEventById).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ eventId: related.id }));
+        expect(screen.queryByRole("button", { name: "リプライ" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "引用" })).toBeNull();
+        expect(onApply).not.toHaveBeenCalled();
+        await openActionMenu();
+        await fireEvent.click(screen.getByRole("menuitem", { name: "イベントJSONを表示" }));
+        const raw = screen.getByRole("dialog", { name: "イベントJSON" });
+        expect(raw.textContent).toContain(outer.id);
+        expect(raw.textContent).toContain(outer.pubkey);
+    });
+
+    it("7 -> 7 displays both reactions and only loads the directly referenced event", async () => {
+        const next = signInteraction(1, "next-level-hidden");
+        const related = signInteraction(7, "👀", [["e", next.id]]);
+        const outer = signInteraction(7, "👍", [["e", related.id, "wss://target.example/", related.pubkey],
+            ["p", related.pubkey], ["k", "7"]]);
+        const { fetchEventById } = renderRelatedTarget(outer, related);
+        await enterNoteFor(outer.id);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(document.querySelector(".composer-target-reaction-label .favorite-icon")).toBeTruthy();
+        expect(document.querySelector(".composer-target-reaction-preview .post-history-related-card")!.textContent).toContain("👀");
+        expect(fetchEventById).toHaveBeenCalledOnce();
+        expect(screen.queryByText("next-level-hidden")).toBeNull();
+    });
+
+    it.each(["not-found", "network"])("keeps the main reaction and menu on %s, and retries only the related fetch", async failure => {
+        const related = signInteraction(1, "Recovered related body");
+        const outer = signInteraction(7, "+", [["e", related.id]]);
+        const { fetchEventById } = renderRelatedTarget(outer, null);
+        if (failure === "network") fetchEventById.mockImplementation(() => ({
+            promise: Promise.reject(new Error("fixture network failure")), cancel: vi.fn(),
+        }));
+        await enterNoteFor(outer.id);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(document.querySelector(".composer-target-reaction-label .favorite-icon")).toBeTruthy();
+        expect(screen.getByRole("button", { name: "アクションを表示" })).toBeTruthy();
+        expect(screen.getByText("composerTarget.relatedMissing")).toBeTruthy();
+        fetchEventById.mockReturnValue({ promise: Promise.resolve({ event: related, relayUrl: "wss://related.example/" }), cancel: vi.fn() });
+        await fireEvent.click(screen.getByRole("button", { name: "再試行" }));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(screen.getByText("Recovered related body")).toBeTruthy();
+        expect(fetchEventById).toHaveBeenCalledTimes(2);
+    });
+
+    it("rejects contradictory Reaction references without fetching or losing main content", async () => {
+        const outer = signInteraction(7, "👍", [["e", "a".repeat(64), "", "reply"], ["e", "b".repeat(64)]]);
+        const { fetchEventById } = renderRelatedTarget(outer, null);
+        await enterNoteFor(outer.id);
+        expect(screen.getByText("composerTarget.relatedInvalid")).toBeTruthy();
+        expect(document.querySelector(".composer-target-reaction-label .favorite-icon")).toBeTruthy();
+        expect(fetchEventById).not.toHaveBeenCalled();
+    });
+
+    it("loads custom emoji through the existing renderer for both main and related Reaction", async () => {
+        const related = signInteraction(7, ":party:", [["e", "a".repeat(64)], ["emoji", "party", "https://example.com/related-emoji.png"]]);
+        const outer = signInteraction(7, ":party:", [["e", related.id], ["emoji", "party", "https://example.com/main-emoji.png"]]);
+        renderRelatedTarget(outer, related);
+        await enterNoteFor(outer.id);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(document.querySelector(".composer-target-reaction-label .favorite-icon")).toBeTruthy();
+        expect(document.querySelector('.composer-target-reaction-preview .post-history-related-card img[src="https://example.com/related-emoji.png"]')).toBeTruthy();
+    });
     it("verified channel pictureを共通proxy componentで表示する", async () => {
         const original = navigator.serviceWorker;
         Object.defineProperty(navigator, "serviceWorker", {
@@ -300,6 +538,7 @@ describe("ComposerTargetDialog", () => {
     beforeEach(() => {
         vi.useFakeTimers();
         relatedReactionMock.records = [];
+        customEmojiMock.preloadCustomEmojiImageWithMeta.mockClear();
         postActionMocks.broadcast.mockReset();
         postActionMocks.requestDeletion.mockReset();
         postActionMocks.broadcast.mockResolvedValue({ success: true });

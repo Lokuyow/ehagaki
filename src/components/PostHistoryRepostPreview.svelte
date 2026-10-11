@@ -4,14 +4,17 @@
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import type { RepostPreviewState } from "../lib/hooks/usePostHistoryRepostPreviews.svelte";
     import type { FullscreenMediaItem } from "../lib/types";
+    import type { PostContentRenderModel } from "../lib/postContentPreview";
     import { repostTargetToPost } from "../lib/postRepostUtils";
     import PostHistoryRelatedEventCard from "./PostHistoryRelatedEventCard.svelte";
     import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
     import Button from "./Button.svelte";
     interface Props {
-        post: PostHistoryRecord; preview: RepostPreviewState;
+        post: PostHistoryRecord; preview: Omit<RepostPreviewState, "saveFailed"> & { saveFailed?: boolean };
         menu?: Snippet<[PostHistoryRecord, string]>;
         channelText?: string | null;
+        model?: PostContentRenderModel;
+        targetLabel?: string | null;
         onRetry: () => void;
         onReplyPost?: (post: PostHistoryRecord) => void | Promise<void>;
         onQuotePost?: (post: PostHistoryRecord) => void;
@@ -21,7 +24,7 @@
         emojiLoadStateByUrl?: Record<string, import("../lib/postContentPreview").PostContentEmojiLoadState | undefined>;
         emojiImageMetaByUrl?: Record<string, import("../lib/postContentPreview").PostContentEmojiImageMeta | undefined>;
     }
-    let { post, preview, menu, channelText = null, onRetry, onReplyPost, onQuotePost, loadSensitiveBody,
+    let { post, preview, menu, channelText = null, model, targetLabel = null, onRetry, onReplyPost, onQuotePost, loadSensitiveBody,
         scrollRoot = null, onImageOpen, emojiLoadStateByUrl = {}, emojiImageMetaByUrl = {} }: Props = $props();
     const target = $derived(preview.event ? repostTargetToPost(preview.event, preview.relayHints) : null);
     const message = $derived(preview.status === "deleted" ? "repost.targetDeleted"
@@ -41,9 +44,10 @@
     {#if post.deletedAt !== undefined}
         <p>{$_("postHistory.deleted")}</p>
     {:else if preview.status === "resolved" && preview.event && target}
-        <PostHistoryRelatedEventCard event={preview.event} profile={preview.profile} {loadSensitiveBody}
+        <PostHistoryRelatedEventCard event={preview.event} profile={preview.profile} {model} {loadSensitiveBody}
             {scrollRoot} {onImageOpen} {emojiLoadStateByUrl} {emojiImageMetaByUrl}>
             {#snippet topActions()}
+                {#if targetLabel}<div class="repost-target-label">{targetLabel}</div>{/if}
                 {#if channelText}
                     <div class="repost-channel-row">
                         <span>{$_("postHistory.channel")}</span>
@@ -69,6 +73,7 @@
 </div>
 <style>
     .post-history-repost { min-width: 0; }
+    .repost-target-label { padding: 4px 6px; color: var(--text-muted); }
     .repost-channel-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px; overflow-wrap: anywhere; }
     .post-history-repost-label {
         display: flex;

@@ -762,6 +762,16 @@
     }
   },
   "composerTarget": {
+    "genericRepost": "Generic Repost",
+    "reaction": "Reaction",
+    "relatedPreview": "Related event preview",
+    "relatedRepost": "Reposted event",
+    "relatedReaction": "Reaction target",
+    "relatedLoading": "Loading referenced event…",
+    "relatedDeleted": "Referenced event was deleted",
+    "relatedUnsupported": "This referenced event preview is not supported",
+    "relatedInvalid": "Could not verify the referenced event",
+    "relatedMissing": "Could not retrieve the referenced event",
     "title": "Choose target",
     "description": "Choose a Nostr event as the post destination, reply target, or quote target",
     "inputLabel": "Event ID",
