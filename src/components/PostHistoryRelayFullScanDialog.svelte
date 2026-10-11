@@ -123,6 +123,7 @@
 
 <style>
     .scan-heading, .scan-status, .scan-results { width: 100%; }
+    .scan-heading { text-align: center; }
     .scan-heading h2, .scan-heading p { margin: 0; }
     .scan-heading h2 { font-size: 1.25rem; }
     .scan-heading p { margin-top: 16px; font-size: 0.88rem; line-height: 1.5; white-space: pre-line; }
