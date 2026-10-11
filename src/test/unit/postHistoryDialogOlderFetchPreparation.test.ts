@@ -5,6 +5,8 @@ import {
     createRecord, createRelayFetchResult, relayCoverageRepositoryMock, relayFetchServiceMock,
     repositoryMock, resetPostHistoryDialogHarness, seedPostHistoryCoverage,
 } from "./postHistoryDialogTestHarness";
+import { postHistoryLocalBrowsingRangesRepository } from "../../lib/storage/postHistoryLocalBrowsingRangesRepository";
+import { settingsStore } from "../../stores/settingsStore.svelte";
 
 const latest = createRecord({ eventId: "preparation-head", content: "current history", createdAt: 1_700_000_000 });
 
@@ -89,6 +91,40 @@ describe("older relay fetch preparation", () => {
         await waitFor(() => expect(screen.queryByRole("button", { name: "リレーから取得中..." })).toBeNull());
         expect(olderRequests()).toHaveLength(0);
         view.unmount();
+    });
+
+    it("rechecks a changed external floor while local browsing keeps the visible floor unchanged", async () => {
+        const localFloor = latest.createdAt - 100;
+        const url = "ws://127.0.0.1:4869/";
+        settingsStore.setLocalRelayUrl(url);
+        const localRead = vi.spyOn(postHistoryLocalBrowsingRangesRepository, "get").mockResolvedValue({
+            schemaVersion: 1, source: "local-relay", ownerPubkeyHex: PUBKEY_HEX,
+            kindsKey: "1,6,16,42,1111", localRelayUrl: url, localRevision: 0,
+            browsingRanges: [{ since: localFloor, until: 2_000_000_000 }], resumeHint: null,
+        });
+        let view: Awaited<ReturnType<typeof openDialog>>["view"] | undefined;
+        try {
+            const opened = await openDialog(); view = opened.view;
+            expect(repositoryMock.getLatestVisibleChunk.mock.calls.at(-1)?.[0].visibleUntil).toBe(localFloor);
+            const older = createRecord({ eventId: "preparation-background", content: "newly covered saved history",
+                createdAt: latest.createdAt - 1 });
+            const heldRead = createDeferred<boolean>();
+            repositoryMock.hasOlderVisiblePosts.mockReturnValueOnce(heldRead.promise)
+                .mockImplementation(async ({ visibleUntil }) => visibleUntil === older.createdAt);
+            repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ limit }) => limit === 50 ? [older] : []);
+            await fireEvent.click(opened.button);
+            await waitFor(() => expect(repositoryMock.hasOlderVisiblePosts).toHaveBeenCalledOnce());
+            seedPostHistoryCoverage(older.createdAt, latest.createdAt);
+            heldRead.resolve(false);
+            await screen.findByText(older.content);
+            expect(repositoryMock.hasOlderVisiblePosts.mock.calls.map(([query]) => query.visibleUntil))
+                .toEqual([latest.createdAt, older.createdAt]);
+            expect(repositoryMock.getOlderVisibleChunk.mock.calls.find(([query]) => query.limit === 50)?.[0].visibleUntil)
+                .toBe(localFloor);
+            expect(olderRequests()).toHaveLength(0);
+        } finally {
+            view?.unmount(); settingsStore.setLocalRelayUrl(""); localRead.mockRestore();
+        }
     });
 
     it.each(["close", "account", "runtime", "relays"] as const)("does not launch an old request after %s changes during preparation", async (change) => {

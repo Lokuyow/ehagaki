@@ -4126,16 +4126,21 @@ export function usePostHistoryListing({
         // Check only the older side, without publishing availability against the
         // old rows before the local page and its viewport anchor are committed.
         while (state.listingMode === "contiguous") {
-            const visibleUntil = await readExternalVisibleUntil(pubkeyHex);
+            const externalFloor = await readExternalVisibleUntil(pubkeyHex);
             if (!isActive()) return false;
             const cursor = toTimelineCursor(state.loadedPosts.at(-1));
             const hasOlderLocal = cursor ? await postHistoryRepository.hasOlderVisiblePosts({
-                pubkeyHex, visibleUntil, cursor,
+                pubkeyHex, visibleUntil: externalFloor, cursor,
             }) : false;
             if (!isActive()) return false;
+            // The DB check may outlive a background external coverage update.
+            // Compare external floors; state.visibleUntil also includes local browsing.
+            const nextExternalFloor = await readExternalVisibleUntil(pubkeyHex);
+            if (!isActive()) return false;
             if (state.listingMode !== "contiguous") break;
-            if (cursor && !sameTimelineCursor(cursor, toTimelineCursor(state.loadedPosts.at(-1)))) continue;
-            preparedVisibleUntil = visibleUntil;
+            if (nextExternalFloor !== externalFloor
+                || (cursor && !sameTimelineCursor(cursor, toTimelineCursor(state.loadedPosts.at(-1))))) continue;
+            preparedVisibleUntil = externalFloor;
             if (hasOlderLocal) {
                 clearContiguousProgress();
                 let changed = false;
