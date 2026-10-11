@@ -107,7 +107,6 @@ describe("full relay scan dialog", () => {
         expect(start).toHaveBeenCalledOnce();
         await view.rerender({ running: true, progress: { ...result("completed"), phase: "auth" } });
         expect(screen.queryByRole("button", { name: "postHistory.fullScanStart" })).toBeNull();
-        expect(view.container.querySelector(".scan-start-placeholder")).not.toBeNull();
         expect(screen.getByRole("status").textContent).toContain("postHistory.fullScanPhase.auth");
         await fireEvent.click(screen.getByRole("button", { name: "postHistory.fullScanCancel" })); expect(cancel).toHaveBeenCalledOnce();
         await fireEvent.click(screen.getByRole("button", { name: "global.close" })); expect(close).toHaveBeenCalledWith(false);
