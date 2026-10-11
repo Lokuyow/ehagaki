@@ -181,7 +181,24 @@ test.describe("composer target dialog fixture", () => {
         await expect(page.locator(".composer-target-reaction-label .favorite-icon")).toHaveCount(1);
         await expect(page.locator(".composer-target-reaction-preview")).toContainText("取得できませんでした");
         await page.evaluate(() => (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.recoverRelated());
-        await page.getByRole("button", { name: "再試行", exact: true }).click();
+        const retryButton = page.getByRole("button", { name: "再試行", exact: true });
+        for (const width of [360, 320]) {
+            await page.setViewportSize({ width, height: 720 });
+            const overlapsFooter = await retryButton.evaluate((button) => {
+                const footer = document.querySelector<HTMLElement>(
+                    ".composer-target-content > .post-preview-footer",
+                );
+                if (!footer) throw new Error("main target footer is missing");
+                const retry = button.getBoundingClientRect();
+                const footerRect = footer.getBoundingClientRect();
+                return retry.left < footerRect.right
+                    && retry.right > footerRect.left
+                    && retry.top < footerRect.bottom
+                    && retry.bottom > footerRect.top;
+            });
+            expect(overlapsFooter, `Retry overlaps footer at ${width}px`).toBe(false);
+        }
+        await retryButton.click();
         await expect(page.locator(".composer-target-reaction-preview")).toContainText("Recovered related fixture");
     });
 
@@ -486,6 +503,9 @@ test.describe("composer target dialog fixture", () => {
                 const quote = quoteCell.querySelector<HTMLElement>(
                     "button[aria-label='引用']",
                 )!;
+                const reaction = reactionCell.querySelector<HTMLElement>(
+                    ".reaction-compose-button",
+                )!;
                 const reactionSlot = reactionCell.querySelector<HTMLElement>(
                     ".post-preview-footer-reaction-slot",
                 )!;
@@ -511,6 +531,7 @@ test.describe("composer target dialog fixture", () => {
                     actions: toRect(actions),
                     reply: toRect(reply),
                     quote: toRect(quote),
+                    reaction: toRect(reaction),
                     replyCell: toRect(replyCell),
                     quoteCell: toRect(quoteCell),
                     reactionCell: toRect(reactionCell),
@@ -528,7 +549,9 @@ test.describe("composer target dialog fixture", () => {
                         replyGroupContainsQuote: replyGroup.contains(quote),
                         repliesSlotIsEmpty: repliesSlot.childElementCount === 0,
                         reactionSlotIsEmpty: reactionSlot.childElementCount === 0,
-                        reactionCellHasNoButton: !reactionCell.querySelector("button"),
+                        reactionActionCount: reactionCell.querySelectorAll(
+                            ".reaction-compose-button",
+                        ).length,
                     },
                     backgrounds: {
                         card: getComputedStyle(card).backgroundColor,
@@ -550,7 +573,7 @@ test.describe("composer target dialog fixture", () => {
             expect(geometry.structure.replyGroupContainsQuote).toBe(true);
             expect(geometry.structure.repliesSlotIsEmpty).toBe(true);
             expect(geometry.structure.reactionSlotIsEmpty).toBe(true);
-            expect(geometry.structure.reactionCellHasNoButton).toBe(true);
+            expect(geometry.structure.reactionActionCount).toBe(1);
             expect(geometry.footer.left).toBeGreaterThanOrEqual(geometry.card.left);
             expect(geometry.footer.right).toBeLessThanOrEqual(geometry.card.right);
             expect(geometry.footer.bottom - geometry.footer.top).toBe(36);
@@ -558,7 +581,7 @@ test.describe("composer target dialog fixture", () => {
             expect(geometry.previewOverflow).toBeLessThanOrEqual(1);
             expect(geometry.date.right).toBeLessThanOrEqual(geometry.actions.left);
             expect(geometry.actions.right).toBeLessThanOrEqual(geometry.menu.left);
-            for (const button of [geometry.reply, geometry.quote]) {
+            for (const button of [geometry.reply, geometry.quote, geometry.reaction]) {
                 expect(button.width).toBeGreaterThanOrEqual(35);
                 expect(button.width).toBeLessThanOrEqual(37);
                 expect(button.height).toBeGreaterThanOrEqual(35);
@@ -573,6 +596,8 @@ test.describe("composer target dialog fixture", () => {
             expect(geometry.quoteCell.left).toBeLessThan(geometry.reactionCell.left);
             expect(geometry.reply.right).toBeLessThanOrEqual(geometry.quote.left);
             expect(geometry.quote.right).toBeLessThanOrEqual(geometry.reactionCell.right);
+            expect(geometry.quote.right).toBeLessThanOrEqual(geometry.reaction.left);
+            expect(geometry.reaction.right).toBeLessThanOrEqual(geometry.reactionCell.right);
             expect(geometry.actions.left).toBeGreaterThanOrEqual(0);
             expect(geometry.menu.right).toBeLessThanOrEqual(geometry.viewportWidth);
             expect(geometry.dialog.top).toBeGreaterThanOrEqual(0);

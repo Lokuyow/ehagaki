@@ -1168,7 +1168,12 @@
                 {:else}
                     <p role="status">{$_(relatedStatusKey)}</p>
                     {#if ["not-found", "error", "invalid-target"].includes(relatedPreview.status)}
-                        <Button onClick={relatedPreviewController.retry}>{$_("postHistory.contextRetry")}</Button>
+                        <Button
+                            className="composer-target-related-retry-button"
+                            onClick={relatedPreviewController.retry}
+                        >
+                            {$_("postHistory.contextRetry")}
+                        </Button>
                     {/if}
                 {/if}
                 {#if deleteRequestState === "failed"}<p class="delete-failed">{$_("postHistory.deleteFailed")}</p>{/if}
@@ -1516,6 +1521,12 @@
     :global(.ehagaki-app-root button.composer-target-clear-button:focus-visible) {
         outline: 2px solid var(--theme);
         outline-offset: 2px;
+    }
+
+    :global(.ehagaki-app-root button.composer-target-related-retry-button) {
+        height: auto;
+        min-height: 44px;
+        padding: 8px 12px;
     }
 
     :global(.composer-target-clear-button .svg-icon) {

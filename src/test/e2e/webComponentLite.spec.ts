@@ -1631,15 +1631,14 @@ test("Lite keeps an explicit auto-grow range while the emoji picker makes the Co
         return outer.scrollHeight > outer.clientHeight;
     })).toBe(true);
 
-    const closePickerHeight = page.evaluate(() => new Promise<number>((resolve) => {
-        const element = document.querySelector("ehagaki-composer")!;
-        element.addEventListener("ehagaki-preferred-height-change", (event) => {
-            resolve((event as CustomEvent<{ height: number }>).detail.height);
-        }, { once: true });
-    }));
     await composer.locator(".custom-emoji-button").click();
     await expect(composer.locator(".custom-emoji-picker-region")).toHaveCount(0);
-    const withoutPicker = await closePickerHeight;
+    await expect.poll(() => composer.evaluate((element) => (
+        element as HTMLElement & { preferredHeight: number | null }
+    ).preferredHeight)).toBe(beforePicker.preferredHeight);
+    const withoutPicker = await composer.evaluate((element) => (
+        element as HTMLElement & { preferredHeight: number | null }
+    ).preferredHeight);
     expect(withoutPicker).toBe(beforePicker.preferredHeight);
     await expect.poll(() => composer.evaluate((element) => {
         const outer = element.shadowRoot!.querySelector<HTMLElement>(".composer-scroll-region")!;
