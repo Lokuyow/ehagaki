@@ -117,7 +117,8 @@ test.describe("composer target dialog fixture", () => {
             await expect(related.locator("a, .post-preview-media-item")).toHaveCount(0);
             await expect(main.getByRole("button", { name: "リプライ", exact: true })).toHaveCount(0);
             await expect(main.getByRole("button", { name: "引用", exact: true })).toHaveCount(0);
-            await expect(main).toContainText(reaction ? "👍" : "リポスト");
+            if (reaction) await expect(main.locator(".composer-target-reaction-label .favorite-icon")).toHaveCount(1);
+            else await expect(main).toContainText("リポスト");
             if (key === "reaction7") await expect(related).toContainText("👀");
             if (key === "repost16" || key === "channelReaction") await expect(main.locator(".repost-channel-row, .related-channel-row")).toContainText("Related fixture channel");
             const menu = main.getByRole("button", { name: "アクションを表示" });
@@ -145,7 +146,7 @@ test.describe("composer target dialog fixture", () => {
             await page.screenshot({ path: testInfo.outputPath(`composer-repost-history-style-${width}.png`) });
         }
         await page.getByLabel("イベントID").fill(harness.inputs.reaction7);
-        await expect(page.locator(".composer-target-reaction-label")).toContainText("👍");
+        await expect(page.locator(".composer-target-reaction-label .favorite-icon")).toHaveCount(1);
         for (const width of [360, 320]) {
             await page.setViewportSize({ width, height: 720 });
             const overflow = await page.locator(".composer-target-reaction-preview").evaluate(element =>
@@ -168,7 +169,7 @@ test.describe("composer target dialog fixture", () => {
         await openDialog(page);
         await page.getByLabel("イベントID").fill(harness.inputs.heldReaction);
         await expect(page.locator(".composer-target-reaction-preview")).toContainText("参照先を取得中");
-        await expect(page.locator(".composer-target-reaction-label")).toContainText("👍");
+        await expect(page.locator(".composer-target-reaction-label .favorite-icon")).toHaveCount(1);
         await page.getByLabel("イベントID").fill(harness.inputs.invalidReaction);
         await expect(page.locator(".composer-target-reaction-preview")).toContainText("検証できませんでした");
         await page.evaluate(() => (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.releaseRelated());
@@ -176,7 +177,7 @@ test.describe("composer target dialog fixture", () => {
         expect(await page.evaluate(() => (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.relatedFetchIds.length)).toBe(1);
         expect(await page.evaluate(() => (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.relatedCancelledIds.length)).toBe(1);
         await page.getByLabel("イベントID").fill(harness.inputs.missingReaction);
-        await expect(page.locator(".composer-target-reaction-label")).toContainText("❤️");
+        await expect(page.locator(".composer-target-reaction-label .favorite-icon")).toHaveCount(1);
         await expect(page.locator(".composer-target-reaction-preview")).toContainText("取得できませんでした");
         await page.evaluate(() => (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.recoverRelated());
         await page.getByRole("button", { name: "再試行", exact: true }).click();
@@ -190,7 +191,7 @@ test.describe("composer target dialog fixture", () => {
         const harness = await gotoHarness(page);
         await openDialog(page);
         await page.getByLabel("イベントID").fill(harness.inputs.emojiReaction);
-        await expect(page.locator('.composer-target-reaction-label img[src="https://example.com/reaction-party.png"]')).toBeVisible();
+        await expect(page.locator(".composer-target-reaction-label .favorite-icon")).toHaveCount(1);
         await expect(page.locator(".composer-target-reaction-preview")).toContainText("Related fixture body");
         for (const width of [360, 320]) {
             await page.setViewportSize({ width, height: 720 });

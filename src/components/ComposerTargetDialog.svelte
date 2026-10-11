@@ -1058,12 +1058,7 @@
                 data-reaction-event-id={target.event.id}>
                 <div class="composer-target-reaction-label">
                     <div class="composer-target-reaction-title">
-                        <div class="composer-target-reaction-symbol">
-                            <PostContentPreview model={sourcePreviewRenderModel} density="compact"
-                                contentWarningEventId={target.event.id} contentClass="composer-target-reaction-content"
-                                emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
-                                emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} />
-                        </div>
+                        <div class="composer-target-reaction-symbol favorite-icon svg-icon" aria-hidden="true"></div>
                         <span>{$_("composerTarget.reaction")}</span>
                     </div>
                     {@render mainTargetMenu(targetPost)}
@@ -1508,8 +1503,13 @@
     }
     .composer-target-reaction-title { display: flex; align-items: center; gap: 6px; min-width: 0; padding-left: 6px; }
     .composer-target-reaction-title > span { overflow-wrap: anywhere; }
-    .composer-target-reaction-symbol { min-width: 0; color: var(--text); }
-    :global(.composer-target-reaction-content) { overflow-wrap: anywhere; }
+    .composer-target-reaction-symbol {
+        width: 22px;
+        height: 22px;
+        flex: 0 0 22px;
+        --svg: currentColor;
+        mask-image: url("/icons/favorite_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
+    }
     :global(.composer-target-reaction-label .post-history-menu-trigger) {
         inline-size: 28px; block-size: 28px; min-inline-size: 28px; min-block-size: 28px; flex: 0 0 28px; padding: 0;
     }
