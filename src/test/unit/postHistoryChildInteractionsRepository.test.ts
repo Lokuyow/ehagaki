@@ -33,6 +33,50 @@ afterEach(async () => {
 });
 
 describe("DexiePostHistoryChildInteractionsRepository", () => {
+    it("saves a Reaction only under its trailing e, ignoring earlier reply and p tags", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryChildInteractionsRepository(db);
+        const oldParent = "1".repeat(64), target = "2".repeat(64), author = "3".repeat(64);
+        const event = createSignedEvent({ kind: 7, tags: [
+            ["e", oldParent, "", "reply"], ["p", "4".repeat(64)],
+            ["e", target, "", author], ["p", author], ["k", "42"],
+        ] });
+        expect(await repository.upsertChildInteractions({ parentEventId: oldParent, events: [{ event }] }))
+            .toMatchObject({ insertedCount: 0, ignoredCount: 1 });
+        expect(await repository.upsertChildInteractions({ parentEventId: target, events: [{ event }],
+            reactionTarget: { eventId: target, targetAuthorPubkey: author, targetKind: 42 } }))
+            .toMatchObject({ insertedCount: 1, ignoredCount: 0 });
+        expect(await repository.getReactionInteractions(oldParent)).toEqual([]);
+        expect(await repository.getReactionInteractions(target)).toMatchObject([{ eventId: event.id, parentEventId: target }]);
+        db.close();
+    });
+
+    it.each([
+        { tags: [["e", "1".repeat(64)], ["e", "invalid"]] },
+        { tags: [["e", "1".repeat(64)], ["p", "invalid"]] },
+        { tags: [["e", "1".repeat(64)], ["k", "07"]] },
+        { tags: [["e", "1".repeat(64), "", "2".repeat(64)], ["p", "3".repeat(64)]] },
+    ])("does not persist invalid Reaction tags: $tags", async ({ tags }) => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryChildInteractionsRepository(db);
+        expect(await repository.upsertChildInteractions({ parentEventId: "1".repeat(64),
+            events: [{ event: createSignedEvent({ kind: 7, tags }) }] })).toMatchObject({ insertedCount: 0, ignoredCount: 1 });
+        expect(await db.postHistoryChildInteractions.count()).toBe(0);
+        db.close();
+    });
+
+    it.each(["author", "kind"])("rejects a Reaction contradicting a known target's %s", async mismatch => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryChildInteractionsRepository(db);
+        const target = "1".repeat(64), author = "2".repeat(64);
+        const event = createSignedEvent({ kind: 7, tags: [["e", target, "", author], ["k", "42"]] });
+        expect(await repository.upsertChildInteractions({ parentEventId: target, events: [{ event }],
+            reactionTarget: { eventId: target, targetAuthorPubkey: mismatch === "author" ? "3".repeat(64) : author,
+                targetKind: mismatch === "kind" ? 1 : 42 } })).toMatchObject({ insertedCount: 0, ignoredCount: 1 });
+        expect(await db.postHistoryChildInteractions.count()).toBe(0);
+        db.close();
+    });
+
     it("parentId が一致する kind:1 直接リプライだけを保存し、古い順で取得する", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryChildInteractionsRepository(db, () => 1000);

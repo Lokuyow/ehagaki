@@ -21,7 +21,7 @@ type HarnessState = {
         | "unsupported"
         | "nsec"
         | "repost6" | "repost16" | "repostTo6" | "repostTo16" | "reaction7" | "emojiReaction" | "channelReaction"
-        | "missingReaction" | "heldReaction" | "invalidReaction",
+        | "missingReaction" | "heldReaction" | "invalidReaction" | "markerReaction",
         string
     >;
     oversizedPostContentLength: number;
@@ -96,9 +96,9 @@ test.describe("composer target dialog fixture", () => {
         await page.emulateMedia({ colorScheme: "dark" });
         const harness = await gotoHarness(page);
         await openDialog(page);
-        for (const key of ["repost6", "repost16", "repostTo6", "repostTo16", "reaction7", "channelReaction"] as const) {
+        for (const key of ["repost6", "repost16", "repostTo6", "repostTo16", "reaction7", "markerReaction", "channelReaction"] as const) {
             await page.getByLabel("イベントID").fill(harness.inputs[key]);
-            const reaction = key === "reaction7" || key === "channelReaction";
+            const reaction = key === "reaction7" || key === "markerReaction" || key === "channelReaction";
             const main = page.locator(reaction ? ".composer-target-reaction-preview" : ".composer-target-repost-preview");
             const related = page.locator(reaction ? ".composer-target-reaction-preview" : ".post-history-repost");
             await expect(main).not.toContainText("Outer fixture author");
@@ -119,7 +119,7 @@ test.describe("composer target dialog fixture", () => {
             await expect(main.getByRole("button", { name: "引用", exact: true })).toHaveCount(0);
             if (reaction) await expect(main.locator(".composer-target-reaction-label .favorite-icon")).toHaveCount(1);
             else await expect(main).toContainText("リポスト");
-            if (key === "reaction7") await expect(related).toContainText("👀");
+            if (key === "reaction7" || key === "markerReaction") await expect(related).toContainText("👀");
             if (key === "repost16" || key === "channelReaction") await expect(main.locator(".repost-channel-row, .related-channel-row")).toContainText("Related fixture channel");
             const menu = main.getByRole("button", { name: "アクションを表示" });
             await menu.focus();

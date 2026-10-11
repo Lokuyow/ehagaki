@@ -1,13 +1,15 @@
 import type { PostHistoryChildInteractionRecord } from "./storage/ehagakiDb";
+import type { ReactionReferenceTarget } from "./reactionReference";
 import {
     postHistoryChildInteractionsRepository,
     type PostHistoryChildInteractionsRepository,
 } from "./storage/postHistoryChildInteractionsRepository";
 
 export interface PostHistoryReactionRecordsAdapter {
-    getReactionRecords(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]>;
+    getReactionRecords(parentEventId: string, target?: ReactionReferenceTarget): Promise<PostHistoryChildInteractionRecord[]>;
     getReactionRecordsForParents?(
         parentEventIds: string[],
+        targets?: ReactionReferenceTarget[],
     ): Promise<PostHistoryChildInteractionRecord[]>;
 }
 
@@ -74,21 +76,24 @@ export class RepositoryPostHistoryReactionRecordsAdapter implements PostHistoryR
         >> = postHistoryChildInteractionsRepository,
     ) {}
 
-    async getReactionRecords(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]> {
-        return (await this.repository.getChildInteractions(parentEventId))
+    async getReactionRecords(parentEventId: string, target?: ReactionReferenceTarget): Promise<PostHistoryChildInteractionRecord[]> {
+        return (await (target ? this.repository.getChildInteractions(parentEventId, target)
+            : this.repository.getChildInteractions(parentEventId)))
             .filter((record) => record.kind === 7);
     }
 
     async getReactionRecordsForParents(
         parentEventIds: string[],
+        targets?: ReactionReferenceTarget[],
     ): Promise<PostHistoryChildInteractionRecord[]> {
         const uniqueParentEventIds = Array.from(
             new Set(parentEventIds.filter((eventId) => !!eventId)),
         );
         const records = this.repository.getChildInteractionsForParents
-            ? await this.repository.getChildInteractionsForParents(uniqueParentEventIds)
+            ? await (targets ? this.repository.getChildInteractionsForParents(uniqueParentEventIds, targets)
+                : this.repository.getChildInteractionsForParents(uniqueParentEventIds))
             : (await Promise.all(uniqueParentEventIds.map((parentEventId) =>
-                this.getReactionRecords(parentEventId),
+                this.getReactionRecords(parentEventId, targets?.find(target => target.eventId === parentEventId)),
             ))).flat();
 
         return selectRecordsForParents(

@@ -111,6 +111,8 @@ export function usePostHistoryRelatedReactions(params: {
             const current = targetsByEventId.get(target.eventId);
             targetsByEventId.set(target.eventId, {
                 eventId: target.eventId,
+                targetAuthorPubkey: target.targetAuthorPubkey ?? current?.targetAuthorPubkey,
+                targetKind: target.targetKind ?? current?.targetKind,
                 relayHints: Array.from(new Set([
                     ...(current?.relayHints ?? []),
                     ...target.relayHints,
@@ -123,7 +125,7 @@ export function usePostHistoryRelatedReactions(params: {
             Object.entries(relayConfig ?? {}).sort(([left], [right]) => left.localeCompare(right)),
         );
         const completedFetchKeyFor = (target: PostHistoryRelatedReactionCardTarget) =>
-            JSON.stringify([target.eventId, target.relayHints, relayConfigKey]);
+            JSON.stringify([target.eventId, target.targetAuthorPubkey, target.targetKind, target.relayHints, relayConfigKey]);
         const attemptKeyFor = (target: PostHistoryRelatedReactionCardTarget) =>
             JSON.stringify([completedFetchKeyFor(target), currentRetryRevision]);
         const currentTargetIds = new Set(uniqueTargets.map((target) => target.eventId));
@@ -136,9 +138,9 @@ export function usePostHistoryRelatedReactions(params: {
 
         void (async () => {
             const cachedRecords = await postHistoryReactionRecordsAdapter
-                .getReactionRecordsForParents?.(eventIds)
+                .getReactionRecordsForParents?.(eventIds, uniqueTargets)
                 ?? (await Promise.all(eventIds.map((eventId) =>
-                    postHistoryReactionRecordsAdapter.getReactionRecords(eventId),
+                    postHistoryReactionRecordsAdapter.getReactionRecords(eventId, targetsByEventId.get(eventId)),
                 ))).flat();
             if (!isActive()) {
                 return;
@@ -174,9 +176,9 @@ export function usePostHistoryRelatedReactions(params: {
                 return;
             }
             const postDeletionCache = await postHistoryReactionRecordsAdapter
-                .getReactionRecordsForParents?.(eventIds)
+                .getReactionRecordsForParents?.(eventIds, uniqueTargets)
                 ?? (await Promise.all(eventIds.map((eventId) =>
-                    postHistoryReactionRecordsAdapter.getReactionRecords(eventId),
+                    postHistoryReactionRecordsAdapter.getReactionRecords(eventId, targetsByEventId.get(eventId)),
                 ))).flat();
             if (!isActive()) {
                 return;
@@ -240,9 +242,9 @@ export function usePostHistoryRelatedReactions(params: {
                     );
             }
             const refreshed = await postHistoryReactionRecordsAdapter
-                .getReactionRecordsForParents?.(eventIds)
+                .getReactionRecordsForParents?.(eventIds, uniqueTargets)
                 ?? (await Promise.all(eventIds.map((eventId) =>
-                    postHistoryReactionRecordsAdapter.getReactionRecords(eventId),
+                    postHistoryReactionRecordsAdapter.getReactionRecords(eventId, targetsByEventId.get(eventId)),
                 ))).flat();
             if (!isActive()) {
                 return;
@@ -269,9 +271,9 @@ export function usePostHistoryRelatedReactions(params: {
             }
             if (finalDeletionResult.deletedReactionEventIds.length > 0) {
                 const afterDeletion = await postHistoryReactionRecordsAdapter
-                    .getReactionRecordsForParents?.(eventIds)
+                    .getReactionRecordsForParents?.(eventIds, uniqueTargets)
                     ?? (await Promise.all(eventIds.map((eventId) =>
-                        postHistoryReactionRecordsAdapter.getReactionRecords(eventId),
+                        postHistoryReactionRecordsAdapter.getReactionRecords(eventId, targetsByEventId.get(eventId)),
                     ))).flat();
                 if (!isActive()) {
                     return;

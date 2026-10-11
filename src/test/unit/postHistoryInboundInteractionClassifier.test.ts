@@ -23,6 +23,30 @@ function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
 }
 
 describe("classifyPostHistoryInboundInteraction", () => {
+    it("kind 7 uses the last e and p instead of an earlier reply marker or owner p", () => {
+        const event = createEvent({ kind: 7, tags: [
+            ["e", ROOT_ID, "", "reply", OWNER_PUBKEY], ["p", OWNER_PUBKEY],
+            ["e", PARENT_ID, "", OTHER_AUTHOR], ["p", OTHER_AUTHOR], ["k", "1"],
+        ] });
+        expect(classifyPostHistoryInboundInteraction({ event, ownerPubkeyHex: OWNER_PUBKEY,
+            ownerPostEventIds: new Set([ROOT_ID, PARENT_ID]) })).toMatchObject({
+            type: "reaction", targetEventId: PARENT_ID, targetAuthorPubkey: OTHER_AUTHOR,
+        });
+    });
+
+    it.each([
+        [["e", PARENT_ID], ["e", "invalid"]],
+        [["e", PARENT_ID], ["p", OWNER_PUBKEY], ["p", "invalid"]],
+        [["e", PARENT_ID, "", OWNER_PUBKEY], ["p", OTHER_AUTHOR]],
+        [["e", PARENT_ID], ["k", "1"], ["k", "42"]], [],
+    ].map(tags => ({ tags })))("does not classify an invalid Reaction reference as saveable: $tags", ({ tags }) => {
+        const event = createEvent({ kind: 7, tags });
+        expect(classifyPostHistoryInboundInteraction({ event, ownerPubkeyHex: OWNER_PUBKEY,
+            ownerPostEventIds: new Set([PARENT_ID]) })).toMatchObject({
+            type: "unsupported", targetEventId: null, targetAuthorPubkey: null, reason: "invalid-reference",
+        });
+    });
+
     it("owner postHistory parentを持つkind:1をdirect-replyに分類する", () => {
         const event = createEvent({
             tags: [

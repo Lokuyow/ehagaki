@@ -112,6 +112,29 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         rxNostrMock.emittedFilters = [];
     });
 
+    it("realtime saves the trailing target only and rejects invalid or mismatched Reaction references", async () => {
+        const observer: Record<string, any> = {};
+        const { subscription, postHistoryChildInteractionsRepository, onSavedInboundInteractions } = openSubscription(observer);
+        const tags = [
+            [["e", OTHER_PARENT_ID, "", "reply"], ["p", "b".repeat(64)], ["e", PARENT_ID, "", OWNER_PUBKEY], ["p", OWNER_PUBKEY], ["k", "1"]],
+            [["e", PARENT_ID, "", "reply"], ["e", OTHER_PARENT_ID], ["p", OWNER_PUBKEY]],
+            [["e", PARENT_ID], ["e", "invalid"], ["p", OWNER_PUBKEY]],
+            [["e", PARENT_ID], ["p", OWNER_PUBKEY], ["p", "invalid"]],
+            [["e", PARENT_ID], ["p", OWNER_PUBKEY], ["k", "42"]],
+            [["e", PARENT_ID], ["p", OWNER_PUBKEY], ["p", "b".repeat(64)]],
+        ];
+        const events = tags.map((tags, index) => createEvent({ kind: 7, id: String(index + 3).repeat(64), tags }));
+        events.forEach(event => observer.next({ event, from: "wss://relay.example.com" }));
+        await subscription.waitForIdle();
+        expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledOnce();
+        expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledWith({
+            parentEventId: PARENT_ID, events: [{ event: events[0], relayUrls: ["wss://relay.example.com/"] }],
+            fetchedAt: 1_700_000_000_000,
+        });
+        expect(onSavedInboundInteractions).toHaveBeenCalledOnce();
+        subscription.stop();
+    });
+
     it("uses a forward #p kind:1 subscription with since and saves owner direct replies", async () => {
         const observer: Record<string, any> = {};
         const directReply = createEvent({ id: "3".repeat(64) });

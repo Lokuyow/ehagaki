@@ -293,7 +293,8 @@
     });
     let reactionTargets = $derived.by(() =>
         target && [1, 42, 1111].includes(target.event.kind)
-            ? [{ eventId: target.event.id, relayHints: [...target.relayHints] }]
+            ? [{ eventId: target.event.id, relayHints: [...target.relayHints],
+                  targetAuthorPubkey: target.event.pubkey, targetKind: target.event.kind }]
             : [],
     );
     const relatedReactions = usePostHistoryRelatedReactions({
