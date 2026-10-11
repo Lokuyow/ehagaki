@@ -152,7 +152,7 @@
   },
   "postHistory": {
     "fullScanTitle": "リレーから全件取得",
-    "fullScanDescription": "リレーから、自分の過去の投稿をできるだけ取得して保存します。閉じると中止しますが、保存済みの投稿は残ります。",
+    "fullScanDescription": "リレーから、自分の過去の投稿をできるだけ取得して保存します。\n閉じると中止しますが、保存済みの投稿は残ります。",
     "fullScanStart": "取得開始",
     "fullScanCancel": "取得を中止",
     "fullScanRetrieval": "取得状況",

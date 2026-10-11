@@ -125,7 +125,7 @@
     .scan-heading, .scan-status, .scan-results { width: 100%; }
     .scan-heading h2, .scan-heading p { margin: 0; }
     .scan-heading h2 { font-size: 1.25rem; }
-    .scan-heading p { margin-top: 16px; font-size: 0.88rem; line-height: 1.5; }
+    .scan-heading p { margin-top: 16px; font-size: 0.88rem; line-height: 1.5; white-space: pre-line; }
     .scan-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
     .scan-status { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 0.9rem; }
     :global(.post-history-full-scan-dialog .scan-action) { box-sizing: border-box; min-width: 50px; min-height: 50px; padding: 8px 12px; }

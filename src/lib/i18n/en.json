@@ -152,7 +152,7 @@
   },
   "postHistory": {
     "fullScanTitle": "Fetch all from relays",
-    "fullScanDescription": "Fetch and save as many of your past posts as possible from relays. Closing cancels fetching, but posts already saved will remain.",
+    "fullScanDescription": "Fetch and save as many of your past posts as possible from relays.\nClosing cancels fetching, but posts already saved will remain.",
     "fullScanStart": "Start fetching",
     "fullScanCancel": "Cancel fetching",
     "fullScanRetrieval": "Retrieval",
