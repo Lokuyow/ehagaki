@@ -105,10 +105,9 @@ test("full scan: ambiguous-only relays complete with an accessible explanation w
     await page.keyboard.press("Enter");
     const popover = page.locator(".popover-content").filter({ hasText: "取得結果について" });
     await expect(popover).toBeVisible();
-    await expect(popover).toContainText("finish 通知を確認できませんでした");
-    await expect(popover).toContainText("複数の時間範囲に分け");
-    await expect(popover).toContainText("通常の EOSE は");
-    await expect(popover).toContainText("通信エラーやタイムアウトを意味しません");
+    await expect(popover).toContainText("このリレーの取得処理は最後まで完了しました。");
+    await expect(popover).toContainText("一部の時間範囲では、すべての投稿を取得できたことを厳密には確認できませんでした。");
+    await expect(popover).toContainText("通信エラーではないため、eHagaki では「完了」と表示しています。");
     await page.keyboard.press("Escape");
     await expect(popover).toBeHidden();
 
@@ -126,6 +125,8 @@ test("full scan: ambiguous-only relays complete with an accessible explanation w
     expect(popoverBounds).not.toBeNull();
     expect(popoverBounds!.x).toBeGreaterThanOrEqual(0);
     expect(popoverBounds!.x + popoverBounds!.width).toBeLessThanOrEqual(widths.documentClient);
+    expect(popoverBounds!.y).toBeGreaterThanOrEqual(0);
+    expect(popoverBounds!.y + popoverBounds!.height).toBeLessThanOrEqual(720);
 });
 test("full scan: partial and failure are distinct", async ({ page }) => {
     for (const scenario of ["partial", "failed"]) {

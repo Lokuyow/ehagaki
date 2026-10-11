@@ -112,7 +112,6 @@
                                             <div class="scan-relay-ambiguity-popover">
                                                 <h3>{$_("postHistory.fullScanAmbiguityInfo.title")}</h3>
                                                 <p>{$_("postHistory.fullScanAmbiguityInfo.bodyCompletion")}</p>
-                                                <p>{$_("postHistory.fullScanAmbiguityInfo.bodyPagination")}</p>
                                                 <p>{$_("postHistory.fullScanAmbiguityInfo.bodyEose")}</p>
                                                 <p>{$_("postHistory.fullScanAmbiguityInfo.bodyStatus")}</p>
                                             </div>
@@ -172,7 +171,14 @@
     .scan-relay-state-line > span { min-width: 0; overflow-wrap: anywhere; }
     .scan-relay-count { font-variant-numeric: tabular-nums; }
     .scan-relay-reason { display: block; margin-top: 4px; color: var(--text-muted); font-size: 0.75rem; }
-    .scan-relay-ambiguity-popover { width: min(320px, calc(100vw - 48px)); max-height: calc(100vh - 48px); overflow: auto; overflow-wrap: anywhere; }
+    :global(.popover-content:has(.scan-relay-ambiguity-popover)) {
+        box-sizing: border-box;
+        inline-size: min(320px, calc(100vw - 24px));
+        max-inline-size: calc(100vw - 24px);
+        max-block-size: min(var(--bits-popover-content-available-height, calc(100vh - 24px)), calc(100vh - 24px));
+        overflow: auto;
+    }
+    .scan-relay-ambiguity-popover { overflow-wrap: anywhere; }
     .scan-relay-ambiguity-popover h3 { margin: 0 0 8px; font-size: 1rem; }
     .scan-relay-ambiguity-popover p { margin: 0 0 8px; }
     .scan-relay-ambiguity-popover p:last-child { margin-bottom: 0; }

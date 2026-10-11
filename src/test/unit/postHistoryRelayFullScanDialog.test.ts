@@ -64,7 +64,7 @@ describe("full relay scan dialog", () => {
         expect(totals[3].querySelector("dd")?.textContent).toBe("0");
         const trigger = within(row).getByRole("button", { name: "postHistory.fullScanAmbiguityInfo.label" });
         await fireEvent.click(trigger);
-        for (const key of ["title", "bodyCompletion", "bodyPagination", "bodyEose", "bodyStatus"]) {
+        for (const key of ["title", "bodyCompletion", "bodyEose", "bodyStatus"]) {
             expect(await screen.findByText(`postHistory.fullScanAmbiguityInfo.${key}`)).toBeTruthy();
         }
     });
