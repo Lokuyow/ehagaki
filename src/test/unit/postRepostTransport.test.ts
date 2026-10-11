@@ -4,6 +4,7 @@ import { createRxNostr, type RxNostr } from "rx-nostr";
 import { finalizeEvent, generateSecretKey, getPublicKey, nip19, verifyEvent } from "nostr-tools";
 import { seckeySigner } from "@rx-nostr/crypto";
 import { PostRepostService } from "../../lib/postRepostService";
+import { PostHistoryContextFetchService } from "../../lib/postHistoryContextFetchService";
 import { PostHistoryDeletionFetchService } from "../../lib/postHistoryDeletionFetchService";
 import { createPostHistoryRelatedTargetResolver } from "../../lib/postHistoryRelatedTargetResolver.svelte";
 import { EHagakiDB } from "../../lib/storage/ehagakiDb";
@@ -68,6 +69,7 @@ function setup(targetKind: number, eoseTimeout = 30_000, verifyDeletion?: () => 
     });
     const resolver = createPostHistoryRelatedTargetResolver({ getShow: () => true, getRxNostr: () => rx,
         getRelayConfig: () => Object.fromEntries(urls.map(url => [url, { read: true, write: false }])),
+        contextFetchService: new PostHistoryContextFetchService({ lookupAuthorWriteRelaysFn: async () => [] }),
         postHistoryRepositoryImpl: repo, deletionRequestsRepositoryImpl: deletions,
         deletionFetchService: { fetchDeletionRequests },
         profileSyncCoordinator: { ensureProfile: () => null, subscribe: () => () => undefined, reset() {} } as never });

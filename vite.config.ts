@@ -1,3 +1,4 @@
+import { verifyRxNostrPatch } from "./scripts/verifyRxNostrPatch.mjs";
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -30,6 +31,8 @@ const fixedLegacyBridgeManifest = loadFixedLegacyBridgeManifest();
 const fixedLegacyBridgePaths = fixedLegacyBridgeManifest.assets.map(asset => asset.path);
 
 // https://vite.dev/config/
+verifyRxNostrPatch();
+
 export default defineConfig({
   base: baseUrl,
   define: {

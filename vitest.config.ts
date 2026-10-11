@@ -1,6 +1,9 @@
+import { verifyRxNostrPatch } from "./scripts/verifyRxNostrPatch.mjs";
 import { configDefaults, defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { svelteTesting } from '@testing-library/svelte/vite';
+
+verifyRxNostrPatch();
 
 export default defineConfig({
   plugins: [svelte(), svelteTesting()],

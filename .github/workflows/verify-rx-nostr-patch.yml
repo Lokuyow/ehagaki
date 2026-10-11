@@ -1,0 +1,25 @@
+name: Verify rx-nostr dependency patch
+
+on:
+  pull_request:
+  push:
+    branches: [feature/nip65-outbox-routing]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run verify:rx-nostr-patch
+      - run: npm run test -- src/test/unit/rxNostrSendIsolation.test.ts

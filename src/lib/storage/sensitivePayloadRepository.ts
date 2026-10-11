@@ -49,40 +49,38 @@ export class DexieSensitivePayloadRepository implements SensitivePayloadReposito
         const attested = attestFullyVerifiedPostHistoryRawEvent(input.event);
         if (!attested) throw new Error("invalid_sensitive_payload_candidate");
         const event = attested.event;
-        const existing = await this.db.sensitivePayloads.get(event.id);
-        if (typeof existing?.deletedAt === "number") return;
-        const record: SensitivePayloadRecord = {
-            id: event.id,
-            pubkeyHex: event.pubkey,
-            structureKind: Number(event.tags.find((tag) => tag[0] === "k")![1]),
-            rawEvent: event,
-            rawEventVerification: {
-                status: "valid",
-                ruleVersion: RAW_EVENT_VERIFICATION_RULE_VERSION,
-            },
-            acceptedRelays: RelayConfigUtils.sanitizeExternalRelayUrls([
-                ...(existing?.acceptedRelays ?? []),
-                ...(input.acceptedRelays ?? []),
-            ]),
-            fetchedRelays: RelayConfigUtils.sanitizeExternalRelayUrls([
-                ...(existing?.fetchedRelays ?? []),
-                ...(input.fetchedRelays ?? []),
-            ]),
-            relayHints: RelayConfigUtils.sanitizeExternalRelayUrls([
-                ...(existing?.relayHints ?? []),
-                ...(input.relayHints ?? []),
-                ...(input.acceptedRelays ?? []),
-                ...(input.fetchedRelays ?? []),
-            ]),
-            createdAt: existing?.createdAt ?? this.now(),
-            updatedAt: this.now(),
-            schemaVersion: SENSITIVE_PAYLOAD_SCHEMA_VERSION,
-        };
         const saved = await this.db.transaction("rw", [this.db.sensitivePayloads,
             ...(input.localWriteScope ? [this.db.meta] : [])], async () => {
             await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
-            const current = await this.db.sensitivePayloads.get(event.id);
-            if (current?.deletedAt !== undefined) return false;
+            const existing = await this.db.sensitivePayloads.get(event.id);
+            if (existing?.deletedAt !== undefined) return false;
+            const record: SensitivePayloadRecord = {
+                id: event.id,
+                pubkeyHex: event.pubkey,
+                structureKind: Number(event.tags.find((tag) => tag[0] === "k")![1]),
+                rawEvent: event,
+                rawEventVerification: {
+                    status: "valid",
+                    ruleVersion: RAW_EVENT_VERIFICATION_RULE_VERSION,
+                },
+                acceptedRelays: RelayConfigUtils.sanitizeExternalRelayUrls([
+                    ...(existing?.acceptedRelays ?? []),
+                    ...(input.acceptedRelays ?? []),
+                ]),
+                fetchedRelays: RelayConfigUtils.sanitizeExternalRelayUrls([
+                    ...(existing?.fetchedRelays ?? []),
+                    ...(input.fetchedRelays ?? []),
+                ]),
+                relayHints: RelayConfigUtils.sanitizeExternalRelayUrls([
+                    ...(existing?.relayHints ?? []),
+                    ...(input.relayHints ?? []),
+                    ...(input.acceptedRelays ?? []),
+                    ...(input.fetchedRelays ?? []),
+                ]),
+                createdAt: existing?.createdAt ?? this.now(),
+                updatedAt: this.now(),
+                schemaVersion: SENSITIVE_PAYLOAD_SCHEMA_VERSION,
+            };
             await this.db.sensitivePayloads.put(record);
             await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
             return true;

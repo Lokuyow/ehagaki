@@ -1,0 +1,84 @@
+diff --git a/node_modules/rx-nostr/dist/rx-nostr.cjs b/node_modules/rx-nostr/dist/rx-nostr.cjs
+index b27751f..86d643e 100644
+--- a/node_modules/rx-nostr/dist/rx-nostr.cjs
++++ b/node_modules/rx-nostr/dist/rx-nostr.cjs
+@@ -4475,6 +4475,7 @@ class RxNostrImpl {
+     });
+     const relays = getMethodScopeRelays(this, options);
+     const targetRelays = relays === void 0 ? this.defaultWritableConnections : relays.map((url) => this.ensureNostrConnection(url));
++    const targetRelayUrls = new Set(targetRelays.map((conn) => conn.url));
+     const subject = new Subject();
+     const finishedRelays = /* @__PURE__ */ new Set();
+     let eventId = "";
+@@ -4491,7 +4492,7 @@ class RxNostrImpl {
+         return;
+       }
+       eventId = event.id;
+-      this.ok$.pipe(filter(({ eventId: eventId2 }) => eventId2 === event.id)).subscribe(subject);
++      this.ok$.pipe(filter(({ eventId: eventId2, from }) => eventId2 === event.id && targetRelayUrls.has(from))).subscribe(subject);
+       await Promise.all(targetRelays.map((conn) => conn.publish(event)));
+       if (completeOn === "sent") {
+         subject.complete();
+diff --git a/node_modules/rx-nostr/dist/rx-nostr.js b/node_modules/rx-nostr/dist/rx-nostr.js
+index 6a23ebc..93afe28 100644
+--- a/node_modules/rx-nostr/dist/rx-nostr.js
++++ b/node_modules/rx-nostr/dist/rx-nostr.js
+@@ -4473,6 +4473,7 @@ class RxNostrImpl {
+     });
+     const relays = getMethodScopeRelays(this, options);
+     const targetRelays = relays === void 0 ? this.defaultWritableConnections : relays.map((url) => this.ensureNostrConnection(url));
++    const targetRelayUrls = new Set(targetRelays.map((conn) => conn.url));
+     const subject = new Subject();
+     const finishedRelays = /* @__PURE__ */ new Set();
+     let eventId = "";
+@@ -4489,7 +4490,7 @@ class RxNostrImpl {
+         return;
+       }
+       eventId = event.id;
+-      this.ok$.pipe(filter(({ eventId: eventId2 }) => eventId2 === event.id)).subscribe(subject);
++      this.ok$.pipe(filter(({ eventId: eventId2, from }) => eventId2 === event.id && targetRelayUrls.has(from))).subscribe(subject);
+       await Promise.all(targetRelays.map((conn) => conn.publish(event)));
+       if (completeOn === "sent") {
+         subject.complete();
+diff --git a/node_modules/rx-nostr/dist/rx-nostr.umd.cjs b/node_modules/rx-nostr/dist/rx-nostr.umd.cjs
+index 7685e37..2ac15ab 100644
+--- a/node_modules/rx-nostr/dist/rx-nostr.umd.cjs
++++ b/node_modules/rx-nostr/dist/rx-nostr.umd.cjs
+@@ -4477,6 +4477,7 @@ var __publicField = (obj, key, value) => {
+       });
+       const relays = getMethodScopeRelays(this, options);
+       const targetRelays = relays === void 0 ? this.defaultWritableConnections : relays.map((url) => this.ensureNostrConnection(url));
++      const targetRelayUrls = new Set(targetRelays.map((conn) => conn.url));
+       const subject = new Subject();
+       const finishedRelays = /* @__PURE__ */ new Set();
+       let eventId = "";
+@@ -4493,7 +4494,7 @@ var __publicField = (obj, key, value) => {
+           return;
+         }
+         eventId = event.id;
+-        this.ok$.pipe(filter(({ eventId: eventId2 }) => eventId2 === event.id)).subscribe(subject);
++        this.ok$.pipe(filter(({ eventId: eventId2, from }) => eventId2 === event.id && targetRelayUrls.has(from))).subscribe(subject);
+         await Promise.all(targetRelays.map((conn) => conn.publish(event)));
+         if (completeOn === "sent") {
+           subject.complete();
+diff --git a/node_modules/rx-nostr/src/rx-nostr/rx-nostr.ts b/node_modules/rx-nostr/src/rx-nostr/rx-nostr.ts
+index bbd0c3c..0feca85 100644
+--- a/node_modules/rx-nostr/src/rx-nostr/rx-nostr.ts
++++ b/node_modules/rx-nostr/src/rx-nostr/rx-nostr.ts
+@@ -510,6 +510,7 @@ class RxNostrImpl implements RxNostr {
+       relays === undefined
+         ? this.defaultWritableConnections
+         : relays.map((url) => this.ensureNostrConnection(url));
++    const targetRelayUrls = new Set(targetRelays.map((conn) => conn.url));
+     const subject = new Subject<OkPacketAgainstEvent>();
+     const finishedRelays = new Set<string>();
+     let eventId = "";
+@@ -534,7 +535,7 @@ class RxNostrImpl implements RxNostr {
+         eventId = event.id;
+ 
+         this.ok$
+-          .pipe(filter(({ eventId }) => eventId === event.id))
++          .pipe(filter(({ eventId, from }) => eventId === event.id && targetRelayUrls.has(from)))
+           .subscribe(subject);
+ 
+         await Promise.all(targetRelays.map((conn) => conn.publish(event)));

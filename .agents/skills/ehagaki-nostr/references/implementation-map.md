@@ -7,7 +7,7 @@
 ## 使用中のNostr関連ライブラリ
 
 - `nostr-tools`: `^2.23.3`
-- `rx-nostr`: `^3.7.6`
+- `rx-nostr`: `3.7.8` exact pin。#204のsend target relay isolationをversion付きpatchで補正し、install/Vite/Vitestでsource・ESM・CJS・UMDのSHA-256を検証する（`docs/RX_NOSTR_PATCH.md`）。
 - `@rx-nostr/crypto`: `^3.1.6`
 - `nip07-awaiter`: `^1.1.0`
 - 関連パッケージ: `nostr-zap ^1.3.0`、`nostr-zap-view ^1.4.6`
@@ -22,6 +22,7 @@
 - 主な関数または責務: `PostManager.submitPost`が投稿状態とtagを統合してoperation開始時のpubkeyを固定し、`PostEventBuilder.buildEvent`がevent templateを構築し、`PostManager.sendPreparedEvent`が署名前に比較用snapshotとsigner入力用cloneを分離したうえで、active sessionと署名結果のtemplate一致を検証してから`PostEventSender.sendEvent`へ渡す。
 - 関連テスト: `src/test/unit/postManager.test.ts`、`src/test/unit/signedEventResultValidator.test.ts`、`src/test/unit/signedEventSessionBoundaries.integration.test.ts`
 - 注意点: `PostEventBuilder.buildEvent`はreply/quote系tagを先頭に置く。送信と構築を同じ責務へ戻さない。publish開始前のsession変更は送信を防ぐが、publish成功後はverified event自身のpubkeyでPost History保存を完了させる。
+- NIP-65配送: `PostManager.publishNip65Event`がauthor Write/additionalのinitial publishと、元Structureのp tagsによるrecipient Read discoveryを並行して進める。SensitiveはrelayごとにPayload ACK true後だけStructureを送り、一度だけ署名したStructureと固定c hintを共有する。配送成功はStructure ACK基準、Payload ACKはatomic unionを行うSensitive cacheに保持する。transport/AUTHは`PostEventSender`、discovery/cache freshnessは`nip65RelayDirectory`が所有する。
 
 ## リプライ
 

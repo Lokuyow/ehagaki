@@ -551,6 +551,43 @@ describe("ReplyQuoteService", () => {
             expect(capturedOnParams.relays).toContain("wss://hint-relay.example.com/");
         });
 
+        it("明示ヒントは3件に制限しつつ、4件目の作者Writeリレーも検索する", async () => {
+            const hints = [1, 2, 3, 4].map((n) => `wss://hint-${n}.example/`);
+            const authorWrites = [1, 2, 3, 4].map((n) => `wss://author-${n}.example/`);
+            let capturedOnParams: any = {};
+            const targetEvent: NostrEvent = {
+                id: "target-id", pubkey: "author", created_at: 1000, kind: 1,
+                tags: [], content: "found on fourth author relay", sig: "sig",
+            };
+            const mockRxNostr: RxNostr = {
+                use: vi.fn().mockImplementation((_req: any, opts: any) => {
+                    capturedOnParams = opts?.on || {};
+                    return {
+                        subscribe: vi.fn((observer: any) => {
+                            observer.next?.({ event: targetEvent, from: authorWrites[3] });
+                            return { unsubscribe: vi.fn() };
+                        }),
+                    };
+                }),
+            } as any;
+
+            const result = await service.fetchReferencedEventTask(
+                "target-id",
+                hints,
+                mockRxNostr,
+                { "wss://configured-read.example/": { read: true, write: false } },
+                5000,
+                authorWrites,
+            ).promise;
+
+            expect(result).toMatchObject({ status: "found", event: targetEvent });
+            expect(capturedOnParams.relays).toEqual([
+                ...hints.slice(0, 3),
+                ...authorWrites,
+            ]);
+            expect(capturedOnParams.relays).toContain(authorWrites[3]);
+        });
+
         it("無効なリレーヒントはテンポラリリレーへ追加しない", async () => {
             let capturedOnParams: any = {};
             const mockRxNostr: RxNostr = {

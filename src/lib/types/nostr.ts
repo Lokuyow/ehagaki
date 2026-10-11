@@ -163,6 +163,11 @@ export interface HashtagHistoryEntry {
 }
 
 export interface PostManagerDeps {
+    /** Test seam for per-pubkey lookup; implementations must honor the Directory's consumer deadline. */
+    nip65ReadRelayLookupFn?: (
+        pubkeyHex: string,
+        options?: { discoveryRelays?: string[]; deadlineAt?: number; resolveOnReadRoute?: boolean },
+    ) => Promise<{ readRelays: string[] }>;
     authStateStore?: {
         value: AuthState;
     };

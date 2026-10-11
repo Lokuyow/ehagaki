@@ -582,6 +582,7 @@ export function createPostHistoryRelatedTargetResolver({
                 const fetchTask = (repostPreparation ? loadTasksByTargetId.get(descriptor.targetEventId) : undefined)
                     ?? contextFetchService.fetchEventById(rxNostr, {
                         eventId: descriptor.targetEventId,
+                        authorHint: descriptor.authorHint,
                         relayHints: mergedSnapshot.relayHints,
                         relayConfig: getRelayConfig(),
                     });

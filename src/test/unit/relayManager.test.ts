@@ -26,21 +26,24 @@ describe('RelayConfigParser', () => {
             const result = RelayConfigParser.parseKind10002Tags(tags);
 
             expect(result).toEqual({
-                'wss://relay1.example.com': { read: true, write: true },
-                'wss://relay2.example.com': { read: true, write: false },
-                'wss://relay3.example.com': { read: false, write: true }
+                'wss://relay1.example.com/': { read: true, write: true },
+                'wss://relay2.example.com/': { read: true, write: false },
+                'wss://relay3.example.com/': { read: false, write: true }
             });
         });
 
-        it('複数の読み書き指定があるタグを処理する', () => {
+        it('markerのない重複URLでは権限を統合し、不明markerや余分な要素は無視する', () => {
             const tags = [
-                ['r', 'wss://relay.example.com', 'read', 'write']
+                ['r', 'wss://relay.example.com', 'read'],
+                ['r', 'wss://relay.example.com', 'write'],
+                ['r', 'wss://unknown-marker.example.com', 'admin'],
+                ['r', 'wss://extra-marker.example.com', 'read', 'write'],
             ];
 
             const result = RelayConfigParser.parseKind10002Tags(tags);
 
             expect(result).toEqual({
-                'wss://relay.example.com': { read: true, write: true }
+                'wss://relay.example.com/': { read: true, write: true }
             });
         });
 
@@ -56,7 +59,7 @@ describe('RelayConfigParser', () => {
             const result = RelayConfigParser.parseKind10002Tags(tags);
 
             expect(result).toEqual({
-                'wss://valid.example.com': { read: true, write: true }
+                'wss://valid.example.com/': { read: true, write: true }
             });
         });
 
@@ -408,8 +411,8 @@ describe('RelayNetworkFetcher', () => {
             expect(result.success).toBe(true);
             expect(result.source).toBe('kind10002');
             expect(result.relayConfig).toEqual({
-                'wss://relay1.example.com': { read: true, write: true },
-                'wss://relay2.example.com': { read: false, write: true }
+                'wss://relay1.example.com/': { read: true, write: true },
+                'wss://relay2.example.com/': { read: false, write: true }
             });
             expect(mockSubscription.unsubscribe).toHaveBeenCalled();
         });
@@ -776,7 +779,7 @@ describe('RelayManager統合テスト', () => {
             expect(result.success).toBe(true);
             expect(result.source).toBe('kind10002');
             expect(result.relayConfig).toEqual({
-                'wss://remote-relay.example.com': { read: true, write: true }
+                'wss://remote-relay.example.com/': { read: true, write: true }
             });
             expect(mockRxNostr.use).toHaveBeenCalled(); // リモート取得が実行された
         });
