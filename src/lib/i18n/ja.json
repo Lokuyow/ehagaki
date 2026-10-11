@@ -151,6 +151,30 @@
     "retrySensitivePayload": "再試行"
   },
   "postHistory": {
+    "fullScanTitle": "リレーから全件取得",
+    "fullScanDescription": "現在の投稿履歴用リレーから、自分の投稿を可能な範囲で遡って保存します。対象リレーの走査終了は、ネットワーク全体の完全取得を保証するものではありません。閉じると中止しますが、保存済みの投稿は残ります。",
+    "fullScanStart": "取得開始",
+    "fullScanCancel": "取得を中止",
+    "fullScanRetrieval": "取得状況",
+    "fullScanSaved": "保存結果",
+    "fullScanRelays": "終了したリレー",
+    "fullScanReceived": "受信件数（重複含む）",
+    "fullScanUpdated": "既存の更新処理件数",
+    "fullScanCompletedRelays": "正常終了したリレー",
+    "fullScanIncompleteRelays": "未完了のリレー",
+    "fullScanPhase": { "fetching": "リレーから取得中…", "saving": "投稿を保存中…", "auth": "リレーの認証を待っています…" },
+    "fullScanStatus": {
+      "completed": "対象リレーの走査が終了しました",
+      "partial": "一部のリレーまたは範囲が未完了です。保存済みの投稿は保持しています",
+      "cancelled": "取得を中止しました。保存済みの投稿は保持しています",
+      "stale-cancelled": "アカウントまたは取得対象が変更されたため中止しました",
+      "failed": "リレーから取得できませんでした"
+    },
+    "fullScanIssue": {
+      "timeout": "取得タイムアウト", "error": "リレーのエラー", "auth-rejected": "認証拒否",
+      "auth-timeout": "認証タイムアウト", "auth-unresolved": "認証後も未完了",
+      "ambiguous": "取得境界を解消できない範囲", "safety-limit": "安全上限による停止", "storage": "保存エラー"
+    },
     "sensitivePayloadDeletionOmitted": "投稿の削除をリクエストしましたが、本文payloadを確認できなかったため、本文の削除はリクエストできませんでした。",
     "open": "投稿履歴を開く",
     "title": "投稿履歴",

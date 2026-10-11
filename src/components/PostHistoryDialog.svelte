@@ -24,6 +24,9 @@
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
     import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
     import PostHistoryImportDialog from "./PostHistoryImportDialog.svelte";
+    import PostHistoryRelayFullScanDialog from "./PostHistoryRelayFullScanDialog.svelte";
+    import { usePostHistoryRelayFullScan } from "../lib/hooks/usePostHistoryRelayFullScan.svelte";
+    import type { PostHistoryFullScanResult } from "../lib/postHistoryRelayFullScanService";
     import type { PostHistoryJsonlImportResult } from "../lib/postHistoryJsonlImportService";
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostHistoryRepliesBadgeButton from "./PostHistoryRepliesBadgeButton.svelte";
@@ -358,6 +361,11 @@
     let appliedLatestPostedReplyEventId: string | null = null;
     let headingMenuOpen = $state(false);
     let importDialogOpen = $state(false);
+    const fullScan = usePostHistoryRelayFullScan({
+        getShow: () => show,
+        getScope: () => ({ ownerPubkeyHex: pubkeyHex, rxNostr, relayConfig }),
+        onSettled: handleFullScanSettled,
+    });
     let exportRunning = $state(false);
     let exportProgress = $state<PostHistoryJsonlExportProgress>({
         phase: "loading",
@@ -684,6 +692,7 @@
         hideExportFloatingMessage();
         postActionUi.resetDeleteConfirmation();
         importDialogOpen = false;
+        fullScan.setOpen(false);
         rawJsonDialogOpen = false;
         selectedRawEvent = null;
         localHistoryDeleteConfirmOpen = false;
@@ -724,6 +733,7 @@
         postHistoryThreadGraph.cancelCurrentGraphFetches();
         postActionUi.resetDeleteConfirmation();
         importDialogOpen = false;
+        fullScan.setOpen(false);
         rawJsonDialogOpen = false;
         selectedRawEvent = null;
         localHistoryDeleteConfirmOpen = false;
@@ -2267,6 +2277,19 @@
         }
     }
 
+    async function handleFullScanSettled(result: PostHistoryFullScanResult): Promise<void> {
+        const owner = pubkeyHex;
+        const requestId = surroundingPostsNavigationRequestId;
+        const anchor = historyViewport.captureHistoryScrollAnchor();
+        const previousScrollTop = historyContainer?.scrollTop ?? null;
+        await history.refreshAfterRelayScan(result);
+        await tick();
+        if (!show || pubkeyHex !== owner || requestId !== surroundingPostsNavigationRequestId) return;
+        if (historyContainer && !historyViewport.restoreHistoryScrollAnchor(anchor) && previousScrollTop !== null) {
+            historyContainer.scrollTop = previousScrollTop;
+        }
+    }
+
     async function handleImportedPostHistory(result: PostHistoryJsonlImportResult): Promise<void> {
         const owner = pubkeyHex;
         const requestId = surroundingPostsNavigationRequestId;
@@ -2561,6 +2584,11 @@
                                     aria-hidden="true"
                                 ></div>
                                 <span>{$_("postHistory.import")}</span>
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item class="menu-action-button" disabled={!pubkeyHex || !rxNostr}
+                                onSelect={() => { headingMenuOpen = false; fullScan.setOpen(true); }}>
+                                <div class="import-icon svg-icon" aria-hidden="true"></div>
+                                <span>{$_("postHistory.fullScanTitle")}</span>
                             </DropdownMenu.Item>
                             <DropdownMenu.Separator
                                 class="post-history-menu-separator"
@@ -3766,6 +3794,11 @@
         </div>
     {/if}
 
+    <PostHistoryRelayFullScanDialog open={fullScan.state.open} running={fullScan.state.running}
+        canStart={!!pubkeyHex && !!rxNostr} progress={fullScan.state.progress} result={fullScan.state.result}
+        elapsedMs={fullScan.state.elapsedMs} onOpenChange={fullScan.setOpen}
+        onStart={() => void fullScan.start()} onCancel={fullScan.cancel} />
+
     <PostHistoryImportDialog
         open={importDialogOpen}
         ownerPubkeyHex={pubkeyHex}
@@ -3811,7 +3844,7 @@
 </DialogWrapper>
 
 <FloatingMessage
-    show={show && !exportRunning && !!headingStatusMessageKey}
+    show={show && !fullScan.state.open && !exportRunning && !!headingStatusMessageKey}
     variant="anchor-bottom-right"
     anchor={postHistoryHeadingElement}
     anchorRightOffset={16}

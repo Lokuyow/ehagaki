@@ -151,6 +151,30 @@
     "retrySensitivePayload": "Retry"
   },
   "postHistory": {
+    "fullScanTitle": "Fetch all from relays",
+    "fullScanDescription": "Scan your posts from the current post-history relays and save what can be retrieved. Finishing the target relay scans does not guarantee completeness across the network. Closing cancels the scan and keeps posts already saved.",
+    "fullScanStart": "Start fetching",
+    "fullScanCancel": "Cancel fetching",
+    "fullScanRetrieval": "Retrieval",
+    "fullScanSaved": "Saved results",
+    "fullScanRelays": "Finished relays",
+    "fullScanReceived": "Received events (including duplicates)",
+    "fullScanUpdated": "Existing record updates",
+    "fullScanCompletedRelays": "Completed relays",
+    "fullScanIncompleteRelays": "Incomplete relays",
+    "fullScanPhase": { "fetching": "Fetching from relays…", "saving": "Saving posts…", "auth": "Waiting for relay authentication…" },
+    "fullScanStatus": {
+      "completed": "The target relay scans have finished",
+      "partial": "Some relays or ranges remain incomplete. Posts already saved have been kept",
+      "cancelled": "Fetching was cancelled. Posts already saved have been kept",
+      "stale-cancelled": "Fetching stopped because the account or scan scope changed",
+      "failed": "Could not fetch from the relays"
+    },
+    "fullScanIssue": {
+      "timeout": "Fetch timeouts", "error": "Relay errors", "auth-rejected": "Authentication rejected",
+      "auth-timeout": "Authentication timeouts", "auth-unresolved": "Incomplete after authentication",
+      "ambiguous": "Unresolved timestamp boundaries", "safety-limit": "Stopped at a safety limit", "storage": "Storage errors"
+    },
     "sensitivePayloadDeletionOmitted": "Deletion was requested for the post, but its body payload could not be verified and was not included in the deletion request.",
     "open": "Open post history",
     "title": "Post History",

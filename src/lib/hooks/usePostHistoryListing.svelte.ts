@@ -7,6 +7,7 @@ import { postHistoryImportedRangesRepository } from "../storage/postHistoryImpor
 import { getPostHistoryLocalRevision } from "../storage/postHistoryLocalWriteScope";
 import { getPostHistoryBrowsingContinuity, getPostHistoryOlderUncoveredRange } from "../postHistoryBrowsingContinuity";
 import type { PostHistoryJsonlImportResult } from "../postHistoryJsonlImportService";
+import type { PostHistoryFullScanResult } from "../postHistoryRelayFullScanService";
 import type { RxNostr } from "rx-nostr";
 import {
     POST_HISTORY_BOOTSTRAP_FETCH_LIMIT,
@@ -4685,6 +4686,32 @@ export function usePostHistoryListing({
         return true;
     }
 
+    async function refreshAfterRelayScan(result: PostHistoryFullScanResult): Promise<void> {
+        const owner = getPubkeyHex();
+        const generation = coverageGeneration;
+        let requestId = loadRequestId;
+        const current = () => !isDestroyed && getShow() && getPubkeyHex() === owner
+            && generation === coverageGeneration && requestId === loadRequestId;
+        if (!owner || owner !== result.ownerPubkeyHex || !current()
+            || await postHistoryRelayCoverageRepository.getLocalRevision(owner) !== result.localRevision || !current()) return;
+        invalidatePendingLoadRequests(); clearContiguousProgress();
+        requestId = loadRequestId;
+        if (state.searchQuery) {
+            await rebuildSearchResultsThroughPage(state.searchPage, state.searchQuery);
+            return;
+        }
+        const posts = state.loadedPosts;
+        const records = await Promise.all(posts.map((post) => postHistoryRepository.getByEventId(post.eventId)));
+        if (!current() || state.loadedPosts !== posts) return;
+        state.loadedPosts = records.flatMap((record) => record?.pubkeyHex === owner ? [record] : []);
+        if (!posts.length) { await loadLatestVisiblePosts({ forceTotalCount: true }); return; }
+        const visibleUntil = await refreshVisibleUntil(owner);
+        if (!current()) return;
+        refreshTotalCountFromRepository({ force: true });
+        await refreshTimelineAvailability(owner, state.loadedPosts, requestId);
+        if (current()) await refreshSavedPostsOutsideVisibleRange(owner, visibleUntil, requestId);
+    }
+
     async function refreshAfterLocalImport(result?: PostHistoryJsonlImportResult): Promise<void> {
         const owner = getPubkeyHex();
         if (!owner || !getShow()) return;
@@ -5263,6 +5290,7 @@ export function usePostHistoryListing({
         refetchAroundCurrentView,
         resetSearchState,
         refreshAfterLocalImport,
+        refreshAfterRelayScan,
         deleteLocalHistory,
         patchDeletedPost,
     };

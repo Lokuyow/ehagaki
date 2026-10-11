@@ -11,7 +11,7 @@ import { derivePostHistoryRelayFetchCoverage, getPostHistoryQuorumCoverage, type
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
-import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
+import { usePostHistoryRelayEvents, type PostHistoryRawEventAttestation } from "./postHistoryRawEventVerification";
 
 export { POST_HISTORY_AUTHORED_KINDS as POST_HISTORY_FETCH_KINDS } from "./postHistoryKinds";
 import { POST_HISTORY_AUTHORED_KINDS as POST_HISTORY_FETCH_KINDS } from "./postHistoryKinds";
@@ -57,6 +57,7 @@ export interface PostHistoryRelayFetchRequest {
 export interface PostHistoryRelayFetchedEvent {
     event: NostrEvent;
     relayUrls: string[];
+    attestation?: PostHistoryRawEventAttestation;
 }
 
 export interface PostHistoryRelayPerRelayCount {
@@ -101,6 +102,8 @@ export interface PostHistoryRelayFetchResult {
     coverageComplete?: boolean;
     coverageSaturated?: boolean;
     allCoverageRelaysFailed?: boolean;
+    /** Single-relay page diagnostics; never changes normal fetchLatest policy. */
+    page?: { subscriptionId: string; hints: string[]; authRequired: boolean; authAutoResent: boolean; bufferLimited: boolean; requestCount?: number; eoseReceivedAt?: number };
 }
 
 export interface PostHistoryRelayFetchTask {
@@ -118,6 +121,7 @@ export interface PostHistoryRelayFetchServiceDeps {
 type EventAccumulator = {
     event: NostrEvent;
     relayUrls: Set<string>;
+    attestation?: PostHistoryRawEventAttestation;
 };
 
 type RelayPacketAccumulator = {
@@ -190,11 +194,12 @@ function resolveFetchTimeoutMs(
     }
 }
 
-function toResultEvents(eventsById: Map<string, EventAccumulator>): PostHistoryRelayFetchedEvent[] {
+function toResultEvents(eventsById: Map<string, EventAccumulator>, includeAttestation = false): PostHistoryRelayFetchedEvent[] {
     return Array.from(eventsById.values())
         .map((item) => ({
             event: item.event,
             relayUrls: Array.from(item.relayUrls),
+            ...(includeAttestation ? { attestation: item.attestation } : {}),
         }))
         .sort((left, right) => right.event.created_at - left.event.created_at);
 }
@@ -208,6 +213,11 @@ type RelayFetchState = RelayPacketAccumulator & {
     verificationDrained: boolean;
     finished: boolean;
     failed: boolean;
+    hints: string[];
+    authRequired: boolean;
+    authAutoResent: boolean;
+    requestCount: number;
+    eoseReceivedAt?: number;
 };
 
 export class PostHistoryRelayFetchService {
@@ -222,13 +232,22 @@ export class PostHistoryRelayFetchService {
     }
 
     fetchLatest(rxNostr: RxNostr, params: PostHistoryRelayFetchRequest): PostHistoryRelayFetchTask {
+        return this.fetch(rxNostr, params);
+    }
+
+    fetchRelayPage(rxNostr: RxNostr, params: PostHistoryRelayFetchRequest & { relayUrl: string }): PostHistoryRelayFetchTask {
+        return this.fetch(rxNostr, params, params.relayUrl);
+    }
+
+    private fetch(rxNostr: RxNostr, params: PostHistoryRelayFetchRequest, pageRelayUrl?: string): PostHistoryRelayFetchTask {
         const startedAt = this.now();
         const kinds = params.kinds ?? [...POST_HISTORY_FETCH_KINDS];
         const limit = resolveFetchLimit(params.reason, params.limit);
         const timeoutMs = resolveFetchTimeoutMs(params.reason, params.timeoutMs);
-        const canonicalRelayUrls = resolvePostHistoryAuthoredRelayUrls(params.relayConfig);
+        const canonicalRelayUrls = pageRelayUrl === undefined ? resolvePostHistoryAuthoredRelayUrls(params.relayConfig)
+            : RelayConfigUtils.sanitizeExternalRelayUrls([pageRelayUrl]);
         const recent = ["dialog-open-refresh", "visibility-resume", "foreground-periodic"].includes(params.reason ?? "");
-        const relayUrls = recent && !isHostRelayConfigActive()
+        const relayUrls = !pageRelayUrl && recent && !isHostRelayConfigActive()
             ? canonicalRelayUrls.slice(0, POST_HISTORY_DIALOG_OPEN_REFRESH_MAX_RELAY_COUNT) : canonicalRelayUrls;
         const coverageUntil = params.until ?? Math.max(0, Math.floor(startedAt / 1000));
         const eventsById = new Map<string, EventAccumulator>();
@@ -236,7 +255,8 @@ export class PostHistoryRelayFetchService {
             const requestId = buildRepairFetchRxReqId();
             return { relayUrl, subId: `${requestId}:0`, request: createRxBackwardReq(requestId),
                 rawCount: 0, eventIds: new Set(), oldestCreatedAt: null, newestCreatedAt: null,
-                eoseReceived: false, verificationDrained: false, finished: false, failed: false };
+                eoseReceived: false, verificationDrained: false, finished: false, failed: false,
+                hints: [], authRequired: false, authAutoResent: false, requestCount: 0 };
         });
         const stateByRelay = new Map(states.map((state) => [state.relayUrl, state]));
         const eventRelayUrls = new Set<string>();
@@ -250,6 +270,7 @@ export class PostHistoryRelayFetchService {
         let completionScheduled = false;
         let completedByRxNostr = false;
         let completedByLocalTimeout = false;
+        let bufferLimited = false;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let finish: (status: PostHistoryRelayFetchStatus) => void = () => undefined;
 
@@ -260,7 +281,7 @@ export class PostHistoryRelayFetchService {
             diagnostics.forEach((subscription) => subscription.unsubscribe?.());
         };
         const buildResult = (status: PostHistoryRelayFetchStatus): PostHistoryRelayFetchResult => {
-            const events = toResultEvents(eventsById);
+            const events = toResultEvents(eventsById, pageRelayUrl !== undefined);
             const timestamps = events.map(({ event }) => event.created_at);
             const oldestCreatedAt = timestamps.length ? Math.min(...timestamps) : null;
             const newestCreatedAt = timestamps.length ? Math.max(...timestamps) : null;
@@ -301,6 +322,9 @@ export class PostHistoryRelayFetchService {
                 downRelayUrls: toSortedRelayUrls(downRelayUrls), completedByRxNostr, completedByLocalTimeout,
                 hasAnyRelayResponse, allRelaysFailed, canonicalRelayUrls, relayOutcomes, relayFetchCoverage,
                 coverageRequestRange: { since: params.since ?? null, until: coverageUntil },
+                ...(pageRelayUrl && states[0] ? { page: { subscriptionId: states[0].subId, hints: states[0].hints,
+                    authRequired: states[0].authRequired, authAutoResent: states[0].authAutoResent, bufferLimited,
+                    requestCount: states[0].requestCount, eoseReceivedAt: states[0].eoseReceivedAt } } : {}),
                 ...(params.reason === "repair-visible-range" ? {
                     coverageRelayUrls: canonicalRelayUrls, coverageEoseRelayUrls: completedRelays.map((relay) => relay.relayUrl),
                     bestEffortRelayUrls: [], coverageComplete: quorumReached && fullRequestCovered,
@@ -348,14 +372,36 @@ export class PostHistoryRelayFetchService {
                     if (!state || resolved) return;
                     if (packet.type === "NOTICE") { noticeRelayUrls.add(state.relayUrl); return; }
                     if ((packet as { subId?: string }).subId !== state.subId) return;
-                    if (packet.type === "EVENT") { if (!state.finished) state.rawCount += 1; return; }
-                    if (packet.type === "EOSE") { state.eoseReceived = true; return; }
+                    if (packet.type === "EVENT") {
+                        if (!state.finished) state.rawCount += 1;
+                        if (pageRelayUrl && state.rawCount > limit * 4) { bufferLimited = true; finish("error"); }
+                        return;
+                    }
+                    if (packet.type === "EOSE") {
+                        state.eoseReceived = true;
+                        state.eoseReceivedAt = this.now();
+                        const message: unknown = packet.message;
+                        state.hints = Array.isArray(message) && Array.isArray(message[2])
+                            ? message[2].filter((hint): hint is string => typeof hint === "string" && ["finish", "more", "auth"].includes(hint)) : [];
+                        return;
+                    }
                     if (packet.type === "CLOSED") {
                         closedRelayUrls.add(state.relayUrl);
                         const notice = (packet as { notice?: string }).notice;
-                        if (!notice?.startsWith("auth-required:")) state.failed = true;
+                        if (notice?.startsWith("auth-required:")) state.authRequired = true;
+                        else state.failed = true;
                     }
                 });
+                if (pageRelayUrl && rxNostr.createOutgoingMessageObservable) diagnostics.push(rxNostr.createOutgoingMessageObservable().subscribe({
+                    next: (packet) => {
+                        const message: unknown = packet.message;
+                        const state = readState(packet.to);
+                        if (state && Array.isArray(message) && message[0] === "REQ" && message[1] === state.subId) {
+                            state.requestCount++;
+                            if (state.authRequired) state.authAutoResent = true;
+                        }
+                    },
+                }));
                 subscribeDiagnostic(rxNostr.createAllErrorObservable?.(), (packet: ErrorPacket) => {
                     const state = readState(packet.from);
                     if (state && !state.finished) { state.failed = true; errorRelayUrls.add(state.relayUrl); }
@@ -385,7 +431,10 @@ export class PostHistoryRelayFetchService {
                             // Real transports report raw packets independently. Injected sources may only expose verified packets.
                             if (!rxNostr.createAllMessageObservable) state.rawCount += 1;
                             const existing = eventsById.get(event.id);
-                            if (!existing) eventsById.set(event.id, { event, relayUrls: new Set([state.relayUrl]) });
+                            if (!existing) {
+                                if (pageRelayUrl && eventsById.size >= limit) { bufferLimited = true; finish("error"); return; }
+                                eventsById.set(event.id, { event, relayUrls: new Set([state.relayUrl]), attestation: packet.attestation });
+                            }
                             else if (isSameSignedNostrEvent(existing.event, event)) existing.relayUrls.add(state.relayUrl);
                         },
                         complete: () => {

@@ -60,6 +60,56 @@ type AttestationEntry = {
 const attestations = new WeakMap<object, AttestationEntry>();
 const eventAttestations = new WeakMap<object, PostHistoryRawEventAttestation>();
 const relaySources = new WeakMap<object, PostHistoryRelayEventSource>();
+type EventVerifier = (event: NostrEvent) => boolean | Promise<boolean>;
+const scanVerifierCaches = new WeakMap<RxNostr, ReturnType<typeof createPostHistoryScanVerifier>>();
+
+/** Only exact, successfully verified wire fingerprints may bypass Schnorr. */
+export function createPostHistoryScanVerifier(baseVerifier: EventVerifier, capacity = 1024, pendingCapacity = 64) {
+    const valid = new Map<string, true>();
+    const pending = new Map<string, Promise<boolean>>();
+    let scope: { owner: string; kinds: readonly number[] } | null = null;
+    let generation = 0;
+    const verify = async (event: NostrEvent): Promise<boolean> => {
+        if (!scope || event.pubkey !== scope.owner || !scope.kinds.includes(event.kind)) return baseVerifier(event);
+        if (!isSignedNostrEvent(event)) return false;
+        const snapshot = createPlainNostrEventSnapshot(event);
+        const fingerprint = createFingerprint(snapshot);
+        if (!fingerprint) return false;
+        const key = `${RAW_EVENT_VERIFICATION_RULE_VERSION}:${fingerprint}`;
+        const currentGeneration = generation;
+        let result: boolean;
+        if (valid.has(key)) {
+            valid.delete(key); valid.set(key, true);
+            result = true;
+        } else {
+            let verification = pending.get(key);
+            if (!verification) {
+                verification = Promise.resolve().then(() => baseVerifier(snapshot));
+                if (pending.size < pendingCapacity) pending.set(key, verification);
+            }
+            try { result = await verification; }
+            finally { if (pending.get(key) === verification) pending.delete(key); }
+            if (result && generation === currentGeneration && scope) {
+                valid.delete(key); valid.set(key, true);
+                while (valid.size > capacity) valid.delete(valid.keys().next().value!);
+            }
+        }
+        return result && createFingerprint(event) === fingerprint;
+    };
+    return { verify, acquire(owner: string, kinds: readonly number[]) {
+        if (scope) throw new Error("A post-history scan is already using this verifier");
+        scope = { owner, kinds: [...kinds] }; generation += 1;
+        return () => { scope = null; generation += 1; valid.clear(); pending.clear(); };
+    } };
+}
+
+export function registerPostHistoryScanVerifier(rxNostr: RxNostr, cache: ReturnType<typeof createPostHistoryScanVerifier>): void {
+    scanVerifierCaches.set(rxNostr, cache);
+}
+
+export function acquirePostHistoryScanVerification(rxNostr: RxNostr, owner: string, kinds: readonly number[]): () => void {
+    return scanVerifierCaches.get(rxNostr)?.acquire(owner, kinds) ?? (() => undefined);
+}
 
 function createFingerprint(event: NostrEvent): string | null {
     if (!validateEvent(event as never)) {

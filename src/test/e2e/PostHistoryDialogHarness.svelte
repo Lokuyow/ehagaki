@@ -25,9 +25,13 @@
     import { postHistoryRelayCoverageRepository } from "../../lib/storage/postHistoryRelayCoverageRepository";
     import { resolvePostHistoryAuthoredRelayUrls } from "../../lib/postHistoryRelayResolver";
     import { createPostHistoryCoverageHarness } from "./postHistoryCoverageHarness";
+    import { createPostHistoryFullScanHarness } from "./postHistoryFullScanHarness";
 
     const isRelayCoverageScenario = new URLSearchParams(window.location.search).has("relay-coverage");
     const HARNESS_SECRET_KEY = generateSecretKey();
+    const fullScanScenario = new URLSearchParams(window.location.search).get("full-scan");
+    const fullScanHarness = fullScanScenario ? createPostHistoryFullScanHarness(HARNESS_SECRET_KEY, fullScanScenario) : null;
+    if (fullScanHarness) Object.assign(window, { __POST_HISTORY_FULL_SCAN__: fullScanHarness.control });
     const coverageScenario = new URLSearchParams(window.location.search).get("relay-coverage");
     const coverageHarness = isRelayCoverageScenario ? createPostHistoryCoverageHarness(HARNESS_SECRET_KEY,
         coverageScenario === "empty-gap" || coverageScenario === "new-head" || coverageScenario === "sync-footer" || coverageScenario === "bounded-gap"
@@ -116,6 +120,7 @@
 
     let ready = $state(false);
     let showDialog = $state(true);
+    if (fullScanHarness) Object.assign(fullScanHarness.control, { closeParent: () => { showDialog = false; } });
 
     type HarnessState = {
         ready: boolean;
@@ -674,7 +679,7 @@
             interactionRecords,
         );
         // The saved-history scenarios explicitly represent previously queried ranges.
-        const canonical = resolvePostHistoryAuthoredRelayUrls(undefined);
+        const canonical = resolvePostHistoryAuthoredRelayUrls(fullScanHarness?.relayConfig);
         const revision = await postHistoryRelayCoverageRepository.getLocalRevision(HARNESS_PUBKEY);
         await ehagakiDb.transaction("rw", ehagakiDb.meta, async () => { await postHistoryRelayCoverageRepository.record({
             ownerPubkeyHex: HARNESS_PUBKEY, kindsKey: buildPostHistoryVisibleKindsKey([...POST_HISTORY_FETCH_KINDS]), expectedRevision: revision, isActive: () => true,
@@ -790,8 +795,8 @@
                 show={showDialog}
                 onClose={() => (showDialog = false)}
                 pubkeyHex={HARNESS_PUBKEY}
-                relayConfig={coverageHarness?.relayConfig}
-                rxNostr={coverageHarness?.rxNostr ?? {
+                relayConfig={fullScanHarness?.relayConfig ?? coverageHarness?.relayConfig}
+                rxNostr={fullScanHarness?.runtime ?? coverageHarness?.rxNostr ?? {
                     use: () => ({
                         subscribe: () => ({ unsubscribe: () => undefined }),
                     }),
