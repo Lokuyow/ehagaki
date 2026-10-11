@@ -35,8 +35,8 @@
         {#if error}{$_(`settingsDialog.local_relay_${error}_error`)}{/if}
     </span>
     <div class="actions">
-        <Button onClick={() => save(input)}>{$_("settingsDialog.local_relay_save")}</Button>
-        <Button onClick={() => save("")}>{$_("settingsDialog.local_relay_clear")}</Button>
+        <Button variant="default" shape="rounded" onClick={() => save(input)}>{$_("settingsDialog.local_relay_save")}</Button>
+        <Button variant="default" shape="rounded" onClick={() => save("")}>{$_("settingsDialog.local_relay_clear")}</Button>
     </div>
 </section>
 
