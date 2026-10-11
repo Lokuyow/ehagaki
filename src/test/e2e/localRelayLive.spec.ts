@@ -7,16 +7,21 @@ test.use({ trace: "off" });
 const externalUrl = "wss://external.example/";
 
 async function fixture(page: Page, options: { externalOk?: boolean; localMode?: "accept" | "reject" | "auth" | "silent";
-    localCount?: number; externalRead?: "accept" | "closed" | "silent" } = {}) {
+    localCount?: number; externalCount?: number; externalRead?: "accept" | "closed" | "silent" | "hold-older" } = {}) {
     const secret = generateSecretKey(), pubkey = getPublicKey(secret);
     const sign = (template: EventTemplate) => finalizeEvent(template, secret);
-    const now = Math.floor(Date.now() / 1000) - 10;
+    // Keep the multi-page regression corpus outside the app's live forward subscription.
+    const now = Math.floor(Date.now() / 1000) - (options.externalCount ? 300 : 10);
+    const historyStep = options.externalCount ? 60 : 1;
     const localPost = sign({ kind: 1, created_at: now, tags: [], content: "Citrine local fixture" });
     const externalPost = sign({ kind: 1, created_at: now - 1, tags: [], content: "External history fixture" });
     const relayList = sign({ kind: 10002, created_at: now, tags: [["r", externalUrl]], content: "" });
     const localCorpus = options.localCount ? Array.from({ length: options.localCount }, (_, i) =>
-        sign({ kind: 1, created_at: now - i, tags: [], content: `Local pagination ${i}` })) : [localPost];
-    const externalCorpus = [externalPost, relayList];
+        sign({ kind: 1, created_at: now - i * historyStep, tags: [], content: `Local pagination ${i}` })) : [localPost];
+    const externalCorpus = options.externalCount ? [
+        ...(options.localCount ? localCorpus.slice(0, options.externalCount) : Array.from({ length: options.externalCount }, (_, i) =>
+            sign({ kind: 1, created_at: now - i * historyStep, tags: [], content: `External pagination ${i}` }))), relayList,
+    ] : [externalPost, relayList];
     const localRequests: Filter[] = [], externalRequests: Filter[] = [];
     const localWrites: ReturnType<typeof sign>[] = [], externalWrites: ReturnType<typeof sign>[] = [];
     let externalRead = options.externalRead ?? "accept";
@@ -68,7 +73,10 @@ async function fixture(page: Page, options: { externalOk?: boolean; localMode?: 
             };
             if (message.slice(2).some((filter: Filter) => filter.kinds?.includes(1))) {
                 if (externalRead === "closed") { socket.send(JSON.stringify(["CLOSED", message[1], "error: fixture unavailable"])); return; }
-                if (externalRead === "silent") { heldExternal.push(respond); return; }
+                if (externalRead === "silent" || (externalRead === "hold-older"
+                    && message.slice(2).some((filter: Filter) => filter.kinds?.includes(1) && filter.limit === 150 && filter.until !== undefined))) {
+                    heldExternal.push(respond); return;
+                }
             }
             respond();
         }
@@ -117,6 +125,124 @@ async function posts(page: Page): Promise<Array<{ eventId: string; acceptedRelay
             read.onerror = () => { reject(read.error); db.close(); };
         };
     }));
+}
+
+async function historyMeta(page: Page): Promise<Array<{ key: string; value: any }>> {
+    return page.evaluate(() => new Promise((resolve, reject) => {
+        const open = indexedDB.open("eHagakiDB"); open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+            const db = open.result, read = db.transaction("meta").objectStore("meta").getAll();
+            read.onsuccess = () => { resolve(read.result); db.close(); }; read.onerror = () => { reject(read.error); db.close(); };
+        };
+    }));
+}
+
+const relayOlder = (page: Page) => page.getByRole("button", { name: "リレーから続きを取得", exact: true });
+async function returnToLatest(page: Page, firstContent: string) {
+    await page.locator(".post-history-latest-button").click();
+    await expect(page.getByText(firstContent, { exact: true })).toBeVisible();
+    await expect.poll(() => page.locator(".post-history-container").evaluate(el => el.scrollTop)).toBe(0);
+    // Observe the button's normal viewport reset before beginning the next gesture.
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+}
+async function browseSavedThrough(page: Page, corpus: Array<{ id: string }>, end: number) {
+    const order = new Map(corpus.map((event, index) => [event.id, index]));
+    for (let step = 0; step < Math.ceil(corpus.length / 50) + 2; step++) {
+        const ids = await page.locator(".post-history-item").evaluateAll(nodes => nodes.map(node => node.getAttribute("data-post-history-event-id")!));
+        const oldest = Math.max(...ids.map(id => order.get(id) ?? -1));
+        expect(ids.length).toBeLessThanOrEqual(150); expect(new Set(ids).size).toBe(ids.length);
+        if (oldest >= end) {
+            await expect(page.locator(`[data-post-history-event-id="${corpus[end].id}"]`)).toBeAttached(); return;
+        }
+        // Repeat a real approach to the bottom if an anchor-preserving commit was still in flight.
+        await expect.poll(async () => {
+            await page.locator(".post-history-container").evaluate(el => {
+                el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight - 200);
+                el.dispatchEvent(new Event("scroll", { bubbles: true }));
+                el.scrollTop = el.scrollHeight; el.dispatchEvent(new Event("scroll", { bubbles: true }));
+            });
+            return page.locator(`[data-post-history-event-id="${corpus[oldest + 1].id}"]`).count();
+        }).toBe(1);
+        // The true frontier may now be in the window, but no earlier boundary may block this step.
+        const nextIds = await page.locator(".post-history-item").evaluateAll(nodes => nodes.map(node => node.getAttribute("data-post-history-event-id")!));
+        if (Math.max(...nextIds.map(id => order.get(id) ?? -1)) < end) await expect(relayOlder(page)).toHaveCount(0);
+    }
+    throw new Error("Saved history did not reach its established frontier");
+}
+
+test("external-only saved coverage survives reload and the next older REQ advances", async ({ page }) => {
+    const f = await fixture(page, { externalCount: 650 });
+    try {
+        expect(await page.evaluate(() => localStorage.getItem("localRelayUrl"))).toBeFalsy();
+        const corpus = f.externalCorpus.filter(event => event.kind === 1);
+        await page.locator(".post-history-btn").click(); await expect(page.getByText("External pagination 49", { exact: true })).toBeVisible();
+        await browseSavedThrough(page, corpus, 148); await expect(relayOlder(page)).toBeEnabled();
+        await relayOlder(page).click(); await expect.poll(async () => (await posts(page)).length).toBe(299);
+        await browseSavedThrough(page, corpus, 297);
+        const older = () => f.externalRequests.filter(filter => filter.kinds?.includes(1) && filter.until !== undefined && filter.limit === 150);
+        const first = older().at(-1)!; expect(first.until).toBe(f.now - 149 * 60);
+        const coverageBefore = (await historyMeta(page)).find(row => row.key.startsWith("postHistoryRelayCoverage:"))!.value;
+        await page.reload(); await page.locator(".post-history-btn").click();
+        await expect(page.getByText("External pagination 49", { exact: true })).toBeVisible();
+        await browseSavedThrough(page, corpus, 297); expect(older()).toHaveLength(1);
+        expect(await posts(page)).toHaveLength(299);
+        const coverageAfter = (await historyMeta(page)).find(row => row.key.startsWith("postHistoryRelayCoverage:"))!.value;
+        expect(coverageAfter.relays[0].ranges[0].since).toBe(coverageBefore.relays[0].ranges[0].since);
+        await expect(relayOlder(page)).toBeEnabled(); await relayOlder(page).click();
+        await expect.poll(() => older().length).toBe(2);
+        expect(older()[1].until).toBeLessThan(first.until!); expect(older()[1].since).toBeLessThan(first.since!);
+        expect(f.localRequests).toHaveLength(0);
+    } finally { await f.stop(); }
+});
+
+for (const restart of ["reopen", "reload"] as const) {
+    test(`local-first saved browsing survives ${restart} while external older is pending`, async ({ page }) => {
+        const f = await fixture(page, { localCount: 650, externalCount: 650, externalRead: "hold-older" });
+        try {
+            await setUrl(page, f.localUrl); await page.locator(".post-history-btn").click();
+            await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible();
+            await browseSavedThrough(page, f.localCorpus, 148); await expect(relayOlder(page)).toBeEnabled(); await relayOlder(page).click();
+            await expect.poll(async () => (await posts(page)).length).toBe(299); await browseSavedThrough(page, f.localCorpus, 297);
+            const before = (await historyMeta(page)).find(row => row.key.startsWith("postHistoryLocalBrowsingRanges:"))!.value;
+            const authoredOlder = () => f.localRequests.filter(filter => filter.kinds?.includes(1) && filter.until !== undefined && filter.limit === 150);
+            const externalBefore = (await historyMeta(page)).find(row => row.key.startsWith("postHistoryRelayCoverage:"))!.value;
+            expect(before.browsingRanges[0].since).toBeLessThan(externalBefore.relays[0].ranges[0].since);
+            await returnToLatest(page, "Local pagination 0");
+            // Latest navigation must keep the same committed browsing frontier.
+            await browseSavedThrough(page, f.localCorpus, 297); expect(authoredOlder()).toHaveLength(1);
+            await returnToLatest(page, "Local pagination 0");
+            await f.stop(); // Restoring browsing cannot depend on a new successful local connection.
+            if (restart === "reload") await page.reload(); else await page.keyboard.press("Escape");
+            await page.locator(".post-history-btn").click(); await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible();
+            await browseSavedThrough(page, f.localCorpus, 297); expect(authoredOlder()).toHaveLength(1);
+            const after = (await historyMeta(page)).find(row => row.key.startsWith("postHistoryLocalBrowsingRanges:"))!.value;
+            expect(after).toEqual(before);
+            const externalAfter = (await historyMeta(page)).find(row => row.key.startsWith("postHistoryRelayCoverage:"))!.value;
+            expect(externalAfter.relays[0].ranges[0].since).toBe(externalBefore.relays[0].ranges[0].since);
+        } finally { await f.stop(); }
+    });
+
+    test(`a drained local continuation rechecks later older additions after ${restart}`, async ({ page }) => {
+        const f = await fixture(page, { localCount: 60, externalRead: "closed" });
+        try {
+            await setUrl(page, f.localUrl); await page.locator(".post-history-btn").click();
+            await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible(); await browseSavedThrough(page, f.localCorpus, 59);
+            const record = (await historyMeta(page)).find(row => row.key.startsWith("postHistoryLocalBrowsingRanges:"))!.value;
+            const authored = () => f.localRequests.filter(filter => filter.kinds?.includes(1)); const count = authored().length;
+            await expect(relayOlder(page)).toBeEnabled(); await relayOlder(page).click(); expect(authored()).toHaveLength(count);
+            await returnToLatest(page, "Local pagination 0");
+            if (restart === "reload") await page.reload(); else await page.keyboard.press("Escape");
+            f.localCorpus.push(...Array.from({ length: 25 }, (_, i) => f.sign({ kind: 1, created_at: f.now - 60 - i, tags: [], content: `Later older ${i}` })));
+            await page.locator(".post-history-btn").click(); await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible();
+            await browseSavedThrough(page, f.localCorpus, 59); await expect(relayOlder(page)).toBeEnabled(); await relayOlder(page).click();
+            await expect(page.getByText("Later older 0", { exact: true })).toBeVisible(); await browseSavedThrough(page, f.localCorpus, 84);
+            expect(await posts(page)).toHaveLength(85);
+            const after = (await historyMeta(page)).find(row => row.key.startsWith("postHistoryLocalBrowsingRanges:"))!.value;
+            expect(after.browsingRanges[0].since).toBeLessThan(record.browsingRanges[0].since);
+            expect(after.browsingRanges[0].until).toBeGreaterThanOrEqual(record.browsingRanges[0].until);
+            expect(authored().at(-1)?.until).toBe(record.resumeHint.nextUntil);
+        } finally { await f.stop(); }
+    });
 }
 
 test("HTTPS tab uses the real loopback socket, merges history, keeps external refresh and survives a stopped relay", async ({ page }, testInfo) => {
@@ -288,6 +414,7 @@ test("non-advancing saturated second stops local continuation without certifying
             created_at: f.now - 50, tags: [], content: `Dense unresolved ${i}` })));
         await setUrl(page, f.localUrl); await page.locator(".post-history-btn").click();
         await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible();
+        await expect(page.getByText("リレーと同期中...", { exact: true })).toHaveCount(0);
         const button = page.getByRole("button", { name: "リレーから続きを取得", exact: true });
         const authored = () => f.localRequests.filter(filter => filter.kinds?.includes(1));
         await expect(button).toBeEnabled(); await button.click();
@@ -298,6 +425,18 @@ test("non-advancing saturated second stops local continuation without certifying
         expect(await page.locator(".post-history-item").allTextContents()).not.toEqual(expect.arrayContaining([expect.stringContaining("Dense unresolved")]));
         expect(await page.locator(".post-history-item").count()).toBe(50);
         await expect(button).toBeEnabled(); await button.click(); expect(authored()).toHaveLength(2);
+        const record = (await historyMeta(page)).find(row => row.key.startsWith("postHistoryLocalBrowsingRanges:"))!.value;
+        expect(record.browsingRanges[0].since).toBe(f.now - 49);
+        expect(record.resumeHint.nextUntil).toBe(f.now - 50);
+        await page.keyboard.press("Escape"); await page.locator(".post-history-btn").click();
+        await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible();
+        await expect.poll(() => authored().some(filter => filter.limit === 30)).toBe(true);
+        await expect(page.getByText("リレーと同期中...", { exact: true })).toHaveCount(0);
+        const olderBounds = () => authored().filter(filter => filter.until === f.now - 50 && filter.limit === 150);
+        await expect(button).toBeEnabled(); await button.click(); await expect.poll(() => olderBounds().length).toBe(2);
+        for (let i = 0; i < 2; i++) { await expect(button).toBeEnabled(); await button.click(); }
+        expect(olderBounds()).toHaveLength(2); // One finite recheck per new session, then the existing guard stops again.
+        expect((await historyMeta(page)).find(row => row.key.startsWith("postHistoryLocalBrowsingRanges:"))!.value.browsingRanges[0].since).toBe(f.now - 49);
     } finally { await f.stop(); }
 });
 

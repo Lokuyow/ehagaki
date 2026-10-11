@@ -38,6 +38,7 @@ import { POST_HISTORY_TIMELINE_INDEX } from "./ehagakiDbConstants";
 import { DexiePostHistoryRelayCoverageRepository, PostHistoryCoverageStaleError, type PostHistoryCoverageWrite } from "./postHistoryRelayCoverageRepository";
 import { reconcileSensitivePayloadDeletionForStructure } from "./sensitivePayloadDeletionReconciler";
 import { assertPostHistoryLocalWriteCurrent, PostHistoryLocalWriteStaleError, type PostHistoryLocalWriteScope } from "./postHistoryLocalWriteScope";
+import { DexiePostHistoryLocalBrowsingRangesRepository, type PostHistoryLocalBrowsingWrite } from "./postHistoryLocalBrowsingRangesRepository";
 
 export const POST_HISTORY_SCHEMA_VERSION = 2;
 
@@ -119,6 +120,7 @@ export type PostHistoryUpsertFetchedEventsInput = {
     fetchedAt?: number;
     relayFetchCoverage?: PostHistoryCoverageWrite;
     localWriteScope?: PostHistoryLocalWriteScope;
+    localBrowsingWrite?: PostHistoryLocalBrowsingWrite;
 };
 
 export type PostHistoryUpsertFetchedEventsResult = {
@@ -949,7 +951,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
                 return [{ ...item, event: verified.event, attestation: verified.attestation }];
             });
-        if (normalizedItems.length === 0 && !input.relayFetchCoverage && !input.localWriteScope) {
+        if (normalizedItems.length === 0 && !input.relayFetchCoverage && !input.localWriteScope && !input.localBrowsingWrite) {
             return {
                 insertedCount: 0,
                 updatedCount: 0,
@@ -971,9 +973,10 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             await this.db.transaction(
                 "rw",
                 [this.db.postHistory, this.db.postHistoryDeletionRequests, this.db.sensitivePayloads,
-                    ...(input.relayFetchCoverage || input.localWriteScope ? [this.db.meta] : [])],
+                    ...(input.relayFetchCoverage || input.localWriteScope || input.localBrowsingWrite ? [this.db.meta] : [])],
                 async () => {
                     await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
+                    await assertPostHistoryLocalWriteCurrent(this.db, input.localBrowsingWrite);
                     if (input.relayFetchCoverage && !await coverageRepository.isCurrent(input.relayFetchCoverage)) {
                         throw new PostHistoryCoverageStaleError();
                     }
@@ -1127,6 +1130,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                         await coverageRepository.record(input.relayFetchCoverage);
                         if (!await coverageRepository.isCurrent(input.relayFetchCoverage)) throw new PostHistoryCoverageStaleError();
                     }
+                    if (input.localBrowsingWrite) await new DexiePostHistoryLocalBrowsingRangesRepository(this.db, this.now).record(input.localBrowsingWrite);
                     await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
                 },
             );

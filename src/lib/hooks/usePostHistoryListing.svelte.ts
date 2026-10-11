@@ -8,6 +8,9 @@ import { getPostHistoryAuthoredRelayScopeKey, resolvePostHistoryAuthoredRelayUrl
 import { getPostHistoryQuorumCoverage, getPostHistoryConnectedCoverageUntil, type PostHistoryCoverageRange } from "../postHistoryRelayCoverage";
 import { postHistoryRelayCoverageRepository } from "../storage/postHistoryRelayCoverageRepository";
 import { postHistoryImportedRangesRepository } from "../storage/postHistoryImportedRangesRepository";
+import { postHistoryLocalBrowsingRangesRepository, type PostHistoryLocalBrowsingRanges } from "../storage/postHistoryLocalBrowsingRangesRepository";
+import { normalizeLocalRelayUrl } from "../localRelayUrl";
+import { getAppRuntimeEnvironment } from "../appRuntimeEnvironment";
 import { getPostHistoryLocalRevision } from "../storage/postHistoryLocalWriteScope";
 import { getPostHistoryBrowsingContinuity, getPostHistoryOlderUncoveredRange } from "../postHistoryBrowsingContinuity";
 import type { PostHistoryJsonlImportResult } from "../postHistoryJsonlImportService";
@@ -751,6 +754,7 @@ export function usePostHistoryListing({
     let currentFetchTask: PostHistoryRelayFetchTask | PostHistoryLightweightAuthoredSyncTask | null = null;
     let currentLocalFetchTask: LocalRelayTask<LocalRelayHistoryReadResult> | null = null;
     let localFetchGeneration = 0;
+    // Resume hint only; session-local localHasMore supplies the continuation guard.
     let localNextUntil = $state<number | null>(null);
     let localHasMore = $state(true);
     let localReadBusy = $state(false);
@@ -1012,10 +1016,14 @@ export function usePostHistoryListing({
         const committedTask: LocalRelayTask<LocalRelayHistoryReadResult> = { cancel: task.cancel, promise: task.promise.then(async (result) => {
             if (!result || !isActive() || result.sessionGeneration !== sessionGeneration) return null;
             if (await postHistoryRelayCoverageRepository.getLocalRevision(owner) !== result.localRevision || !isActive()) return null;
+            // This query's meta write can seed a hint before its result arrives.
+            // Decide head continuation from the cursor captured at request start.
             if (reason !== "repair-visible-range" && (reason !== "dialog-open-refresh" || previousNextUntil === null)) {
                 localHasMore = result.hasMore && (reason !== "older-backfill"
                     || previousNextUntil === null || (result.nextUntil !== null && result.nextUntil < previousNextUntil));
-                localNextUntil = result.nextUntil;
+                // A durable hint may have been restored while this head read was in flight.
+                // Keep the oldest resume bound rather than overwriting it with the head cursor.
+                if (result.nextUntil !== null) localNextUntil = Math.min(localNextUntil ?? result.nextUntil, result.nextUntil);
             }
             let browsingChanged = false;
             await commitHistoryViewport(() => onLocalHistoryChanged(async () => {
@@ -1613,19 +1621,35 @@ export function usePostHistoryListing({
 
     async function readContinuityRecords(pubkeyHex: string) {
         // One snapshot also keeps every source observable by liveQuery.
+        const url = getLocalBrowsingUrl();
         return ehagakiDb.transaction("r", ehagakiDb.meta, async () => {
             const revision = await getPostHistoryLocalRevision(ehagakiDb, pubkeyHex);
             const coverage = await postHistoryRelayCoverageRepository.get(pubkeyHex, POST_HISTORY_VISIBLE_KINDS_KEY);
             const restored = await postHistoryImportedRangesRepository.get(pubkeyHex, POST_HISTORY_VISIBLE_KINDS_KEY);
-            return [coverage, restored, revision] as const;
+            const local = url ? await postHistoryLocalBrowsingRangesRepository.get(pubkeyHex, POST_HISTORY_VISIBLE_KINDS_KEY, url) : null;
+            return [coverage, restored, revision, local, url] as const;
         });
+    }
+
+    function getLocalBrowsingUrl(): string | null {
+        return getAppRuntimeEnvironment().runtimeKind === "standalone"
+            ? normalizeLocalRelayUrl(settingsStore.localRelayUrl ?? "") : null;
+    }
+
+    function restoreLocalBrowsingRecord(record: PostHistoryLocalBrowsingRanges | null): void {
+        if (!record || record.localRelayUrl !== getLocalBrowsingUrl() || record.localRevision !== observedLocalRevision) return;
+        localBrowsingRanges = record.browsingRanges;
+        localBrowsingRevision = record.localRevision;
+        // Never restore a hasMore/exhausted decision. A new session can recheck the relay.
+        if (record.resumeHint) localNextUntil = localNextUntil === null ? record.resumeHint.nextUntil
+            : Math.min(localNextUntil, record.resumeHint.nextUntil);
     }
 
     async function readExternalContinuity(pubkeyHex: string): Promise<PostHistoryCoverageRange[]> {
         if (isDestroyed) return [];
         const generation = coverageGeneration;
         const relays = resolvePostHistoryAuthoredRelayUrls(getRelayConfig());
-        const [record, restored, beforeRevision] = await readContinuityRecords(pubkeyHex);
+        const [record, restored, beforeRevision, local, url] = await readContinuityRecords(pubkeyHex);
         const ranges = getPostHistoryQuorumCoverage(record.relays, relays);
         const revision = await postHistoryRelayCoverageRepository.getLocalRevision(pubkeyHex);
         if (revision !== beforeRevision || revision !== restored.localRevision) return [];
@@ -1634,14 +1658,14 @@ export function usePostHistoryListing({
         restoredRanges = restored.ranges;
         if (observedLocalRevision !== null && observedLocalRevision !== revision) resetLocalContinuity();
         observedLocalRevision = revision;
+        if (url === getLocalBrowsingUrl()) restoreLocalBrowsingRecord(local);
         return getPostHistoryBrowsingContinuity(ranges, restored.ranges);
     }
 
     async function readBrowsingContinuity(pubkeyHex: string): Promise<PostHistoryCoverageRange[]> {
         const external = await readExternalContinuity(pubkeyHex);
         const local = localBrowsingRevision === observedLocalRevision
-            && localSessionGeneration === postHistoryLocalRelayService.getSessionGeneration()
-            && postHistoryLocalRelayService.isConfigured(pubkeyHex) ? localBrowsingRanges : [];
+            && getLocalBrowsingUrl() ? localBrowsingRanges : [];
         return getPostHistoryBrowsingContinuity(external, local);
     }
 
@@ -2283,6 +2307,7 @@ export function usePostHistoryListing({
         state.listingMode = "contiguous";
         state.sparseSource = null;
         state.loadedPosts = latestPosts;
+        state.hasNewerLocal = false;
         const nextCoverageAnchor = latestPosts.length > 0
             ? Math.min(...latestPosts.map((post) => post.createdAt)) : null;
         const needsCoverageProjection = coverageAnchorCreatedAt !== nextCoverageAnchor;
@@ -5052,6 +5077,7 @@ export function usePostHistoryListing({
         const key = getPostHistoryAuthoredRelayScopeKey(getRelayConfig());
         const owner = getPubkeyHex();
         const runtime = getRxNostr();
+        const localUrl = getLocalBrowsingUrl();
         if (key !== activeCoverageRelayKey || owner !== activeCoverageOwner || runtime !== activeCoverageRuntime) {
             activeCoverageRelayKey = key;
             activeCoverageOwner = owner;
@@ -5067,16 +5093,18 @@ export function usePostHistoryListing({
         const relays = resolvePostHistoryAuthoredRelayUrls(getRelayConfig());
         // Dexie must retain its observation context across both async reads.
         const subscription = liveQuery(async () => await readContinuityRecords(owner))
-            .subscribe({ next: async ([record, restored, beforeRevision]) => {
+            .subscribe({ next: async ([record, restored, beforeRevision, local, url]) => {
                 try {
                     const revision = await postHistoryRelayCoverageRepository.getLocalRevision(owner);
                     if (revision !== beforeRevision || revision !== restored.localRevision) return;
                 } catch { return; }
-                if (isDestroyed || generation !== coverageGeneration || !getShow() || getPubkeyHex() !== owner) return;
+                if (isDestroyed || generation !== coverageGeneration || !getShow() || getPubkeyHex() !== owner
+                    || url !== localUrl || url !== getLocalBrowsingUrl()) return;
                 quorumCoverage = getPostHistoryQuorumCoverage(record.relays, relays);
                 restoredRanges = restored.ranges;
                 if (observedLocalRevision !== null && observedLocalRevision !== beforeRevision) resetLocalContinuity();
                 observedLocalRevision = beforeRevision;
+                restoreLocalBrowsingRecord(local);
                 // The same boundary check also handles restoration committed by
                 // another tab, without restarting a head query for older ranges.
                 if (shouldReplanActiveOpenRefresh()) void refreshRecentFromRelaysOnDialogOpen();

@@ -2,7 +2,7 @@ import { getAppRuntimeEnvironment } from "./appRuntimeEnvironment";
 import { normalizeLocalRelayUrl } from "./localRelayUrl";
 import { LocalRelayTransport, type LocalRelayTask, type LocalRelayPage } from "./localRelayTransport";
 import { POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS, type PostHistoryRelayFetchRequest } from "./postHistoryRelayFetchService";
-import { isPostHistoryAuthoredKind } from "./postHistoryKinds";
+import { isPostHistoryAuthoredKind, POST_HISTORY_AUTHORED_KINDS_KEY } from "./postHistoryKinds";
 import { attestFullyVerifiedPostHistoryRawEvent, isCurrentPostHistoryRawEventAttestation,
     type AttestedPostHistoryRawEvent } from "./postHistoryRawEventVerification";
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
@@ -149,8 +149,15 @@ export class PostHistoryLocalRelayService {
                 expectedRevision: localRevision, isActive: active };
             const page = await this.getTransport().fetchAuthored(session.url, request, abort.signal).promise;
             if (!page || !active()) return null;
+            // A resume hint is not exhaustion evidence. Empty pages retain their request bound;
+            // head refreshes may seed a missing hint, but cannot rewind older pagination.
+            const resumeUntil = page.nextUntil ?? request.until;
             const saved = await this.repository.upsertFetchedEvents({ events: page.events.map((item) => ({ ...item, relayUrls: [] })),
-                fetchedAt: page.fetchedAt, localWriteScope: scope });
+                fetchedAt: page.fetchedAt, localWriteScope: scope,
+                localBrowsingWrite: { ...scope, kindsKey: POST_HISTORY_AUTHORED_KINDS_KEY, localRelayUrl: session.url,
+                    browsingRanges: page.browsingRanges,
+                    ...(request.reason !== "repair-visible-range" && resumeUntil !== undefined && resumeUntil !== null
+                        ? { resumeHint: { nextUntil: resumeUntil }, initializeResumeHintOnly: request.reason !== "older-backfill" } : {}) } });
             if (saved.applied === false || !active()) return null;
             let changed = saved.insertedCount + saved.updatedCount + saved.appliedDeletionCount > 0;
             const targets = [...new Map([...page.events.map(({ event }) => event), ...(request.targets ?? [])]

@@ -9,6 +9,7 @@ import { DexiePostHistoryDeletionRequestsRepository } from "../../lib/storage/po
 import { getPostHistoryLocalRevision } from "../../lib/storage/postHistoryLocalWriteScope";
 import { DexiePostHistoryRelayCoverageRepository } from "../../lib/storage/postHistoryRelayCoverageRepository";
 import { DexiePostHistoryImportedRangesRepository } from "../../lib/storage/postHistoryImportedRangesRepository";
+import { DexiePostHistoryLocalBrowsingRangesRepository } from "../../lib/storage/postHistoryLocalBrowsingRangesRepository";
 import { LocalRelayTransport } from "../../lib/localRelayTransport";
 import { PostHistoryLocalRelayService } from "../../lib/postHistoryLocalRelayService";
 import { attestFullyVerifiedPostHistoryRawEvent } from "../../lib/postHistoryRawEventVerification";
@@ -159,6 +160,33 @@ describe("local relay with real rx-nostr verification and IndexedDB", () => {
         configure(); LocalSocket.corpus = [sign(1)]; LocalSocket.rejectRelated = true;
         expect(await read().promise).toMatchObject({ changed: true, browsingRanges: [{ since: 100, until: 200 }] });
         expect(await repository.countForPubkey(owner)).toBe(1);
+        expect((await new DexiePostHistoryLocalBrowsingRangesRepository(db).get(owner, "1,6,16,42,1111", url)).browsingRanges)
+            .toEqual([{ since: 100, until: 200 }]);
+    });
+
+    it("retains committed evidence across sessions and discovers later older additions without permanent exhaustion", async () => {
+        configure(); LocalSocket.corpus = [sign(1, 100)];
+        const local = new DexiePostHistoryLocalBrowsingRangesRepository(db);
+        expect(await read().promise).toMatchObject({ hasMore: false, nextUntil: 100 });
+        service.cancelSession(); db.close(); await db.open(); configure();
+        LocalSocket.corpus.push(sign(1, 50));
+        const hint = (await local.get(owner, "1,6,16,42,1111", url)).resumeHint!;
+        expect(await service.read({ pubkeyHex: owner, reason: "older-backfill", until: hint.nextUntil, isActive: () => true }).promise)
+            .toMatchObject({ hasMore: false, nextUntil: 50 });
+        expect(await repository.countForPubkey(owner)).toBe(2);
+        expect((await local.get(owner, "1,6,16,42,1111", url)).browsingRanges).toEqual([{ since: 50, until: 200 }]);
+    });
+
+    it("an empty older page preserves its resume bound, and head refresh cannot rewind it", async () => {
+        configure(); LocalSocket.corpus = [sign(1, 100)]; await read().promise;
+        const local = new DexiePostHistoryLocalBrowsingRangesRepository(db);
+        await service.read({ pubkeyHex: owner, reason: "older-backfill", until: 90, isActive: () => true }).promise;
+        expect((await local.get(owner, "1,6,16,42,1111", url)).resumeHint).toEqual({ nextUntil: 90 });
+        await service.read({ pubkeyHex: owner, reason: "dialog-open-refresh", until: 200, isActive: () => true }).promise;
+        expect((await local.get(owner, "1,6,16,42,1111", url)).resumeHint).toEqual({ nextUntil: 90 });
+        service.cancelSession(); configure(); LocalSocket.corpus.push(sign(1, 50));
+        expect(await service.read({ pubkeyHex: owner, reason: "older-backfill", until: 90, isActive: () => true }).promise)
+            .toMatchObject({ nextUntil: 50 });
     });
 
     it("invalidates same-owner same-URL evidence when the service session is recreated", async () => {

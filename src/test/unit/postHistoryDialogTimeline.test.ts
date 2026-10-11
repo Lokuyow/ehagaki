@@ -616,48 +616,70 @@ describe('PostHistoryDialog timeline navigation', () => {
             return this.classList.contains('post-history-container') ? containerHeight : 0;
         });
         vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            if (this.classList.contains('post-history-auto-load-newer-sentinel')) return createMockRect(-2_000, 1);
             const height = this.classList.contains('post-history-container') ? containerHeight : 20;
             return createMockRect(0, height);
         });
 
         repositoryMock.countForPubkey.mockResolvedValue(posts.length);
-        repositoryMock.getLatestVisibleChunk.mockResolvedValue(
-            direction === 'older' ? posts.slice(0, 50) : posts.slice(50, 100),
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue(posts.slice(0, 50));
+        repositoryMock.getNewerVisibleChunk.mockImplementation(async ({ limit, cursor }: { limit: number; cursor: { createdAt: number } }) =>
+            posts.filter(post => post.createdAt > cursor.createdAt).slice(-limit),
         );
-        repositoryMock.getNewerVisibleChunk.mockImplementation(async ({ limit }: { limit: number }) =>
-            direction === 'newer'
-                ? limit === 1 ? [posts[49]] : posts.slice(0, 50)
-                : [],
-        );
-        repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ limit }: { limit: number }) =>
-            direction === 'older'
-                ? limit === 1 ? [posts[50]] : posts.slice(50, 100)
-                : limit === 1 ? [posts[100]] : [],
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ limit, cursor }: { limit: number; cursor: { createdAt: number } }) =>
+            posts.filter(post => post.createdAt < cursor.createdAt).slice(0, limit),
         );
 
         const view = render(PostHistoryDialog, {
             props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
         });
+        await screen.findByText(`pending ${direction} 0`);
+        if (direction === 'newer') {
+            // Reach a real contiguous older window through bounded pagination.
+            // A latest query must not pretend there are newer rows above it.
+            for (const end of [99, 149, 199]) {
+                let olderSentinel: Element | null = null;
+                let observer: MockIntersectionObserver | undefined;
+                await waitFor(() => {
+                    if (screen.queryByText(`pending newer ${end}`)) return;
+                    olderSentinel = document.querySelector('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)');
+                    observer = MockIntersectionObserver.instances.findLast(item => !!olderSentinel && item.observedTargets.has(olderSentinel) && !item.disconnect.mock.calls.length);
+                    expect(observer).toBeTruthy();
+                });
+                if (screen.queryByText(`pending newer ${end}`)) continue;
+                const olderContainer = getHistoryContainer();
+                mockHistoryItemLayout(olderContainer);
+                olderContainer.scrollTop = (olderContainer.querySelectorAll('.post-history-item').length - 4) * 84;
+                await fireEvent.scroll(olderContainer);
+                observer!.triggerSequence(olderSentinel!, [false, true]);
+                await screen.findByText(`pending newer ${end}`);
+                await waitFor(() => expect(getHistoryContainer().getAttribute('aria-busy')).toBe('false'));
+            }
+        }
         await screen.findByText(`pending ${direction} ${direction === 'older' ? 0 : 50}`);
         const container = getHistoryContainer();
+        Object.defineProperty(container, 'scrollHeight', {
+            configurable: true,
+            get: () => container.querySelectorAll('.post-history-item').length * 84,
+        });
         const sentinelSelector = direction === 'older'
             ? '.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)'
             : '.post-history-auto-load-newer-sentinel';
         await waitFor(() => expect(document.querySelector(sentinelSelector)).toBeInstanceOf(HTMLElement));
         const sentinel = document.querySelector(sentinelSelector) as HTMLElement;
+        if (direction === 'newer') {
+            container.scrollTop = 100;
+            await fireEvent.scroll(container);
+        }
         mockHistoryItemLayout(container);
         Object.defineProperty(sentinel, 'getBoundingClientRect', {
             configurable: true,
             value: () => createMockRect(200, 1),
         });
 
-        const oldObserver = MockIntersectionObserver.instances.find((observer) => observer.observedTargets.has(sentinel));
+        const oldObserver = MockIntersectionObserver.instances.findLast((observer) => observer.observedTargets.has(sentinel) && !observer.disconnect.mock.calls.length);
         expect(oldObserver).toBeTruthy();
         oldObserver?.trigger(sentinel, false);
-        if (direction === 'newer') {
-            container.scrollTop = 100;
-            await fireEvent.scroll(container);
-        }
         containerHeight = 400;
         for (const observer of MockResizeObserver.instances) {
             if (observer.observedTargets.has(container)) observer.trigger(container);
