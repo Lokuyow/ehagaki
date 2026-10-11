@@ -79,7 +79,7 @@ test("full scan: four workers keep relay rows independent through queued, AUTH a
     expect(await rows.locator(".scan-relay-count").allTextContents()).toEqual(["2", "1", "0", "2", "2"]);
     await page.screenshot({ path: testInfo.outputPath("relay-progress-final.png") });
 });
-test("full scan: ambiguous-only relays complete with an accessible explanation while real failures stay visible", async ({ page }) => {
+test("full scan: an ambiguous-only relay completes with an accessible explanation while real failures stay visible", async ({ page }) => {
     for (const [scenario, expected] of [["timeout", "時間切れ"], ["partial", "接続エラー"]]) {
         const { dialog } = await open(page, scenario);
         await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
@@ -95,6 +95,10 @@ test("full scan: ambiguous-only relays complete with an accessible explanation w
     await expect(dialog.getByRole("status")).toContainText("対象リレーの走査が終了しました");
     const rows = dialog.locator(".scan-relay-row");
     await expect(rows.locator(".scan-relay-state > .scan-relay-state-line > span")).toHaveText(["完了", "完了"]);
+    await expect(rows.nth(0).getByRole("button", { name: "取得結果の補足情報を表示" })).toBeVisible();
+    await expect(rows.nth(1).getByRole("button", { name: "取得結果の補足情報を表示" })).toHaveCount(0);
+    const rowHeights = await rows.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+    expect(Math.abs(rowHeights[0] - rowHeights[1])).toBeLessThanOrEqual(1);
     await expect(rows.locator(".scan-relay-reason")).toHaveCount(0);
     await expect(dialog).not.toContainText("取得境界を解消できない範囲");
     const totals = dialog.locator(".scan-results section").nth(1).locator("dl div");

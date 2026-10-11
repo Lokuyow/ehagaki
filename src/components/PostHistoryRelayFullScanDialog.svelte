@@ -167,7 +167,7 @@
     .scan-relays th:last-child, .scan-relays td:last-child { text-align: right; }
     .scan-relay-row { border-top: 1px solid var(--border-hr); }
     .scan-relay-host { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .scan-relay-state-line { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; min-width: 0; }
+    .scan-relay-state-line { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; min-width: 0; min-height: 44px; box-sizing: border-box; }
     .scan-relay-state-line > span { min-width: 0; overflow-wrap: anywhere; }
     .scan-relay-count { font-variant-numeric: tabular-nums; }
     .scan-relay-reason { display: block; margin-top: 4px; color: var(--text-muted); font-size: 0.75rem; }

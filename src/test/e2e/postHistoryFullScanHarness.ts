@@ -70,7 +70,7 @@ export function createPostHistoryFullScanHarness(secret: Uint8Array, scenario: s
                         subscriber.complete(); return;
                     }
                     const selected = from === relayUrls[2] ? [] : events.filter((event) => event.created_at >= filter.since! && event.created_at <= filter.until!);
-                    respond(selected, scenario === "hold" || scenario === "ambiguous" ? [] : ["finish"]);
+                    respond(selected, scenario === "hold" || (scenario === "ambiguous" && from === relayUrls[0]) ? [] : ["finish"]);
                 });
             });
             return () => { subscription.unsubscribe(); pendingReplies.delete(from); if (held) control.releasedHeld++; };
