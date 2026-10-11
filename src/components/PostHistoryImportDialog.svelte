@@ -35,6 +35,9 @@
     let processedBytes = $state(0);
     let totalBytes = $state(0);
     let elapsedMs = $state(0);
+    // Begin the rolling window after the first successful repository flush,
+    // so a fast prefix of other-account events cannot seed the estimate.
+    let throughputSamples = $state<Array<{ elapsedMs: number; bytes: number }>>([]);
     let dragDepth = $state(0);
     let abortController: AbortController | null = null;
     let elapsedTimer: ReturnType<typeof setInterval> | null = null;
@@ -54,13 +57,18 @@
         )));
     });
     let remainingTimeMs = $derived.by(() => {
-        if (displayedProcessedBytes <= 0
+        const first = throughputSamples[0];
+        const last = throughputSamples.at(-1);
+        if (!first || !last || throughputSamples.length < 3
+            || last.elapsedMs - first.elapsedMs < 2000
+            || elapsedMs - last.elapsedMs > 10_000
+            || displayedProcessedBytes <= 0
             || displayedTotalBytes <= 0
             || displayedProcessedBytes >= displayedTotalBytes
-            || elapsedMs < 1000) {
+            || elapsedMs <= first.elapsedMs) {
             return null;
         }
-        const speed = displayedProcessedBytes / elapsedMs;
+        const speed = (last.bytes - first.bytes) / (elapsedMs - first.elapsedMs);
         const remaining = (displayedTotalBytes - displayedProcessedBytes) / speed;
         return Number.isFinite(remaining) && remaining >= 0 ? remaining : null;
     });
@@ -116,6 +124,19 @@
         processedBytes = 0;
         totalBytes = 0;
         elapsedMs = 0;
+        throughputSamples = [];
+    }
+
+    function sampleThroughput(progress: Readonly<PostHistoryJsonlImportProgress>): void {
+        const saved = progress.result.insertedPostCount + progress.result.updatedPostCount
+            + progress.result.unchangedPostCount + progress.result.insertedDeletionRequestCount
+            + progress.result.updatedDeletionRequestCount + progress.result.unchangedDeletionRequestCount
+            + progress.result.savedPayloadCandidateCount;
+        if (saved === 0 || (throughputSamples.at(-1)?.elapsedMs ?? -1) >= elapsedMs) return;
+        const samples = [...throughputSamples, { elapsedMs, bytes: progress.processedBytes }];
+        // Keep one anchor just before the last ten seconds, plus recent samples.
+        while (samples.length > 1 && samples[1]!.elapsedMs <= elapsedMs - 10_000) samples.shift();
+        throughputSamples = samples;
     }
 
     function getProgressIndicatorStyle(value: number): string {
@@ -223,6 +244,7 @@
         importProgress = null;
         processedBytes = 0;
         totalBytes = Number.isFinite(file.size) && file.size > 0 ? file.size : 0;
+        throughputSamples = [];
         startElapsedTimer();
         try {
             const importResult = await postHistoryJsonlImportService.importFile({
@@ -241,6 +263,7 @@
                         totalBytes = progress.totalBytes;
                         result = { ...progress.result };
                         updateElapsedTime();
+                        sampleThroughput(progress);
                     }
                 },
             });

@@ -117,6 +117,10 @@ export async function reconcileSensitivePayloadDeletionForCandidate(
     db: EHagakiDB = ehagakiDb,
     now: () => number = Date.now,
 ): Promise<void> {
+    // Ordinary deletion targets are not payloads. A late payload is retried by
+    // putCandidate() after its record has been saved.
+    if (!await db.sensitivePayloads.get(payloadId)) return;
+
     const requests = await db.postHistoryDeletionRequests
         .where("targetEventId")
         .equals(payloadId)

@@ -1,6 +1,6 @@
 import { RelayConfigUtils } from "../relayConfigUtils";
-import { attestFullyVerifiedPostHistoryRawEvent, type PostHistoryRawEventAttestation, RAW_EVENT_VERIFICATION_RULE_VERSION } from "../postHistoryRawEventVerification";
-import { isFullyVerifiedEvent } from "../sensitiveEventUtils";
+import { attestFullyVerifiedPostHistoryRawEvent, isCurrentPostHistoryRawEventAttestation, type PostHistoryRawEventAttestation, RAW_EVENT_VERIFICATION_RULE_VERSION } from "../postHistoryRawEventVerification";
+import { createPlainNostrEventSnapshot } from "../postHistoryEventUtils";
 import { SENSITIVE_CONTENT_PAYLOAD_KIND, SENSITIVE_CONTENT_STRUCTURE_KINDS } from "../sensitiveContentPayload";
 import type { NostrEvent } from "../types";
 import { bumpPostHistorySearchRevision } from "../postHistoryLocalSearchRevision";
@@ -28,7 +28,7 @@ export interface SensitivePayloadRepository {
 }
 
 function isPayloadCandidate(event: NostrEvent): boolean {
-    if (!isFullyVerifiedEvent(event) || event.kind !== SENSITIVE_CONTENT_PAYLOAD_KIND) {
+    if (event.kind !== SENSITIVE_CONTENT_PAYLOAD_KIND) {
         return false;
     }
     const kindTags = event.tags.filter((tag) => tag[0] === "k");
@@ -43,12 +43,10 @@ export class DexieSensitivePayloadRepository implements SensitivePayloadReposito
     constructor(private db: EHagakiDB = ehagakiDb, private now: () => number = Date.now) {}
 
     async putCandidate(input: SaveSensitivePayloadInput): Promise<void> {
-        if (!isPayloadCandidate(input.event)) {
-            throw new Error("invalid_sensitive_payload_candidate");
-        }
-        const attested = attestFullyVerifiedPostHistoryRawEvent(input.event);
-        if (!attested) throw new Error("invalid_sensitive_payload_candidate");
-        const event = attested.event;
+        const event = isCurrentPostHistoryRawEventAttestation(input.event, input.attestation)
+            ? createPlainNostrEventSnapshot(input.event)
+            : attestFullyVerifiedPostHistoryRawEvent(input.event)?.event;
+        if (!event || !isPayloadCandidate(event)) throw new Error("invalid_sensitive_payload_candidate");
         const saved = await this.db.transaction("rw", [this.db.sensitivePayloads,
             ...(input.localWriteScope ? [this.db.meta] : [])], async () => {
             await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);

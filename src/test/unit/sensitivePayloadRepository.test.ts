@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
 import { DexiePostHistoryDeletionRequestsRepository } from "../../lib/storage/postHistoryDeletionRequestsRepository";
 import { DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
@@ -22,6 +22,31 @@ afterEach(async () => {
 });
 
 describe("DexieSensitivePayloadRepository", () => {
+    it("imported ordinary deletions never scan the author's history when no payload exists", async () => {
+        const db = createDb();
+        const key = generateSecretKey();
+        const events = Array.from({ length: 100 }, (_, index) => finalizeEvent({
+            kind: 1, content: `ordinary-${index}`, tags: [], created_at: 10 + index,
+        }, key));
+        const posts = new DexiePostHistoryRepository(db);
+        await posts.upsertFetchedEvents({ events: events.map(event => ({ event })) });
+        const deletions = events.slice(0, 20).map(event => finalizeEvent({
+            kind: 5, content: "", tags: [["e", event.id], ["k", "1"]], created_at: 200,
+        }, key));
+        const where = vi.spyOn(db.postHistory, "where");
+        const payloadGet = vi.spyOn(db.sensitivePayloads, "get");
+        try {
+            const result = await new DexiePostHistoryDeletionRequestsRepository(db).upsertImportedDeletionEvents({
+                ownerPubkeyHex: events[0]!.pubkey, deletionEvents: deletions.map(event => ({ event })),
+            });
+            expect(result).toMatchObject({ insertedCount: 20, appliedDeletionCount: 20 });
+            expect(where.mock.calls.filter(([index]) => typeof index === "string" && index === "pubkeyHex").length).toBe(0);
+            for (const event of events.slice(0, 20)) expect(payloadGet).toHaveBeenCalledWith(event.id);
+            await expect(db.sensitivePayloads.count()).resolves.toBe(0);
+            const records = await db.postHistory.bulkGet(events.map(event => event.id));
+            expect(records.filter(record => record?.deletedAt === 200_000)).toHaveLength(20);
+        } finally { where.mockRestore(); payloadGet.mockRestore(); db.close(); }
+    });
     it("atomically unions concurrent publish/fetch metadata across database connections", async () => {
         const db = createDb();
         const secondDb = new EHagakiDB(db.name);
@@ -44,7 +69,11 @@ describe("DexieSensitivePayloadRepository", () => {
         expect((await first.getByIds([payload.id]))[0]).toMatchObject({ deletedAt: 3000, acceptedRelays: record!.acceptedRelays });
         secondDb.close(); db.close();
     });
-    it.each(['pair-first', 'payload-first', 'deletion-first'])("reconciles payload-only deletion across %s import order without deleting its Structure", async (order) => {
+    it.each([
+        ['payload', 'structure', 'deletion'], ['payload', 'deletion', 'structure'],
+        ['deletion', 'structure', 'payload'], ['deletion', 'payload', 'structure'],
+        ['structure', 'payload', 'deletion'], ['structure', 'deletion', 'payload'],
+    ] as const)("reconciles payload-only deletion across %s → %s → %s without deleting its Structure", async (...order) => {
         const db = createDb();
         await db.open();
         const secretKey = generateSecretKey();
@@ -55,11 +84,25 @@ describe("DexieSensitivePayloadRepository", () => {
         const payloads = new DexieSensitivePayloadRepository(db);
         const deletions = new DexiePostHistoryDeletionRequestsRepository(db);
         const putPayload = () => payloads.putCandidate({ event: payload });
-        const putStructure = () => posts.upsertFetchedEvents({ events: [{ event: structure, relayUrls: [] }] });
-        const putDeletion = () => deletions.upsertImportedDeletionEvents({ ownerPubkeyHex: structure.pubkey, deletionEvents: [deletion] });
-        if (order === 'pair-first') { await putPayload(); await putStructure(); await putDeletion(); }
-        else if (order === 'payload-first') { await putPayload(); await putDeletion(); await putStructure(); }
-        else { await putDeletion(); await putStructure(); await putPayload(); }
+        const putStructure = async () => {
+            const get = vi.spyOn(db.postHistory, "get");
+            try {
+                await posts.upsertFetchedEvents({ events: [{ event: structure, relayUrls: [] }] });
+                expect(get).toHaveBeenCalledWith(structure.id);
+            } finally { get.mockRestore(); }
+        };
+        const putDeletion = () => deletions.upsertImportedDeletionEvents({ ownerPubkeyHex: structure.pubkey, deletionEvents: [{ event: deletion }] });
+        const where = vi.spyOn(db.postHistory, "where");
+        const save = { payload: putPayload, structure: putStructure, deletion: putDeletion };
+        try {
+            for (const step of order) {
+                where.mockClear();
+                await save[step]();
+                const scans = where.mock.calls.filter(([index]) => typeof index === "string" && index === "pubkeyHex").length;
+                if (step === 'deletion') expect(scans).toBe(order.indexOf('payload') < order.indexOf('deletion') ? 1 : 0);
+                if (step === 'payload') expect(scans).toBe(order.indexOf('deletion') < order.indexOf('payload') ? 1 : 0);
+            }
+        } finally { where.mockRestore(); }
         expect((await payloads.getByIds([payload.id]))[0]?.deletedAt).toBe(20_000);
         expect((await posts.getByEventId(structure.id))?.deletedAt).toBeUndefined();
         await putPayload();
@@ -114,7 +157,7 @@ describe("DexieSensitivePayloadRepository", () => {
         const payloads = new DexieSensitivePayloadRepository(db, () => 1000);
         const deletions = new DexiePostHistoryDeletionRequestsRepository(db, () => 1000);
 
-        await deletions.upsertImportedDeletionEvents({ ownerPubkeyHex: pubkey, deletionEvents: [deletion] });
+        await deletions.upsertImportedDeletionEvents({ ownerPubkeyHex: pubkey, deletionEvents: [{ event: deletion }] });
         await payloads.putCandidate({ event: payload });
         const candidate = await payloads.getByIds([payload.id]);
         expect(candidate[0]?.deletedAt).toBeUndefined();
@@ -156,7 +199,7 @@ describe("DexieSensitivePayloadRepository", () => {
 
         await deletions.upsertImportedDeletionEvents({
             ownerPubkeyHex: getPublicKey(secretKey),
-            deletionEvents: [deletion],
+            deletionEvents: [{ event: deletion }],
         });
         await payloads.putCandidate({ event: payload });
         await posts.upsertFetchedEvents({ events: [{ event: structure, relayUrls: [] }] });

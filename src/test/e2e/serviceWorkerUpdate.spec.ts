@@ -6,6 +6,8 @@ import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { build as buildBrowserProbe } from 'esbuild';
 import { HASHED_PRECACHE_ASSET_PATTERN } from '../../lib/swPrecacheInstall';
+import { finalizeEvent, generateSecretKey } from 'nostr-tools';
+import type { runJsonlImportWorkerProbe } from './jsonlImportWorkerProbe';
 
 const manifestPattern = /\[\{"revision":(?:null|"[^"]*"),"url":"[^"]+"\}(?:,\{"revision":(?:null|"[^"]*"),"url":"[^"]+"\})*\]/;
 interface Entry { url: string; revision: string | null }
@@ -182,6 +184,27 @@ test.beforeEach(async ({ context }) => {
 });
 
 for (const basePath of ['/ehagaki/', '/'] as const) {
+    test(`${basePath} loads the production JSONL verifier Worker online and offline`, async ({page}) => {
+        const fixture = await createFixture(basePath);
+        try {
+            await enterApp(page, fixture.url);
+            const entry = fixture.entries.find(entry=>/postHistoryJsonlVerificationWorker-bridge-.*\.js$/.test(entry.url));
+            expect(entry).toBeDefined();
+            expect(entry!.revision).toBeNull();
+            const {outputFiles}=await buildBrowserProbe({entryPoints:[resolve('src/test/e2e/jsonlImportWorkerProbe.ts')],bundle:true,format:'iife',platform:'browser',target:'es2022',write:false,define:{'import.meta.url':'location.href'}});
+            await page.addScriptTag({content:outputFiles[0].text});
+            const event=finalizeEvent({kind:1,content:'signed fixture',tags:[],created_at:123},generateSecretKey());
+            const input={workerURL:new URL(entry!.url,fixture.url).href,events:[event,{...event,id:'0'.repeat(64)},{...event,sig:'g'.repeat(128)},event]};
+            for(const offline of [false,true]) {
+                fixture.setOffline(offline);
+                const result=await page.evaluate(async input=>{
+                    const probe=Reflect.get(window,'__JSONL_WORKER_PROBE__') as typeof runJsonlImportWorkerProbe;
+                    return probe(input.workerURL,input.events);
+                },input);
+                expect(result).toEqual({workerCount:4,results:[true,false,false,true]});
+            }
+        } finally {await fixture.close();}
+    });
     test(`${basePath} migrates old keys, installs in parallel, applies only on user action, and restarts offline`, async ({ page, context }, testInfo) => {
         const fixture = await createFixture(basePath);
         try {

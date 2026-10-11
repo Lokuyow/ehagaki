@@ -12,6 +12,7 @@ import {
     isSignedNostrEvent,
 } from "./postHistoryEventUtils";
 import type { NostrEvent } from "./types";
+import { createPostHistoryJsonlWorkerVerification, type PostHistoryJsonlWorkerVerificationOptions } from "./postHistoryJsonlWorkerVerification";
 
 /**
  * Kept independently from record schema versions. A stored result produced by
@@ -35,6 +36,37 @@ export interface PostHistoryRawEventAttestation {
 export interface AttestedPostHistoryRawEvent {
     event: NostrEvent;
     attestation: PostHistoryRawEventAttestation;
+}
+
+export interface PostHistoryJsonlVerificationSession {
+    ready: Promise<void>;
+    verify(event: unknown): Promise<AttestedPostHistoryRawEvent | null>;
+    dispose(): void;
+}
+
+/** JSONL alone owns an async full-verification boundary and its Worker pool. */
+export function createPostHistoryJsonlVerificationSession(
+    options: PostHistoryJsonlWorkerVerificationOptions = {},
+): PostHistoryJsonlVerificationSession {
+    const transport = createPostHistoryJsonlWorkerVerification(options);
+    return {
+        ready: transport.ready,
+        async verify(event) {
+            // Clone before the first await; the caller cannot mutate the
+            // signing fields while readiness/verification is pending.
+            let snapshot: NostrEvent | null = null;
+            try {
+                if (isSignedNostrEvent(event)) snapshot = createPlainNostrEventSnapshot(event);
+            } catch { /* malformed external input */ }
+            await transport.ready;
+            transport.assertActive();
+            if (!snapshot) return null;
+            const ok = await transport.verify(snapshot);
+            transport.assertActive();
+            return ok ? createAttestation(snapshot, "full") : null;
+        },
+        dispose: transport.dispose,
+    };
 }
 
 export interface PostHistoryRelayEventPacket extends EventPacket {
@@ -153,7 +185,7 @@ function createAttestation(
 
 /**
  * Use this for signed events that did not arrive through rx-nostr: local
- * signers, JSONL import and the repository fallback.
+ * signers and the repository fallback. JSONL uses its async Worker session.
  */
 export function attestFullyVerifiedPostHistoryRawEvent(
     event: unknown,

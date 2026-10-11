@@ -1,3 +1,4 @@
+import { usePostHistoryJsonlVerificationWorkerMock } from "../mocks/postHistoryJsonlVerificationWorker";
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
@@ -215,7 +216,7 @@ describe("Citrine import restoration", () => {
         await h.repository.deleteLocalHistoryForPubkey(h.owner);
         expect(await h.repository.upsertFetchedEvents({ events: [{ event: h.post(100) }], localWriteScope: scope })).toMatchObject({ applied: false });
         const deletion = finalizeEvent({ kind: 5, created_at: 300, content: "", tags: [["e", h.post(100).id]] }, h.secret);
-        await expect(h.deletions.upsertImportedDeletionEvents({ ownerPubkeyHex: h.owner, deletionEvents: [deletion], localWriteScope: scope })).rejects.toBeInstanceOf(PostHistoryLocalWriteStaleError);
+        await expect(h.deletions.upsertImportedDeletionEvents({ ownerPubkeyHex: h.owner, deletionEvents: [{ event: deletion }], localWriteScope: scope })).rejects.toBeInstanceOf(PostHistoryLocalWriteStaleError);
         const payload = finalizeEvent({ kind: 36, created_at: 100, content: "payload", tags: [["k", "1"]] }, h.secret);
         await expect(h.payloads.putCandidate({ event: payload, localWriteScope: scope })).rejects.toBeInstanceOf(PostHistoryLocalWriteStaleError);
         expect(await h.db.postHistory.count()).toBe(0);
@@ -235,3 +236,5 @@ describe("Citrine import restoration", () => {
         expect(await h.db.meta.get(`postHistoryImportedRanges:${h.owner}:${kindsKey}`)).toBeUndefined();
     });
 });
+
+usePostHistoryJsonlVerificationWorkerMock();

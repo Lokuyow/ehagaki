@@ -1,3 +1,4 @@
+import { usePostHistoryJsonlVerificationWorkerMock } from "../mocks/postHistoryJsonlVerificationWorker";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -292,7 +293,7 @@ describe("PostHistoryJsonlExportService", () => {
             },
             deletionRequestsRepository: {
                 upsertImportedDeletionEvents: async ({ deletionEvents }) => {
-                    importedDeletions.push(...deletionEvents.map((event) => event.id));
+                    importedDeletions.push(...deletionEvents.map((item) => item.event.id));
                     return {
                         insertedCount: deletionEvents.length,
                         updatedCount: 0,
@@ -426,3 +427,5 @@ describe("PostHistoryJsonlExportService", () => {
         expect(terminate).toHaveBeenCalledOnce();
     });
 });
+
+usePostHistoryJsonlVerificationWorkerMock();
