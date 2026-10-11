@@ -140,8 +140,8 @@ describe("post-history attestation repository boundary", () => {
         const event = finalizeEvent({kind:1,content:"post",tags:[],created_at:123},key);
         const deletion = finalizeEvent({kind:5,content:"",tags:[["e",event.id]],created_at:124},key);
         const payload = finalizeEvent({kind:36,content:"payload",tags:[["k","1"]],created_at:125},key);
-        // Check the incoming deletion before its persisted clone is re-read by
-        // the existing sensitive-deletion reconciler (which remains crypto).
+        // Incoming attestations are reused; ordinary deletion targets also
+        // skip the persisted Sensitive payload reconciliation entirely.
         db.postHistoryDeletionRequests.hook("creating", () => {
             expect(verifyEventMock).not.toHaveBeenCalled();
         });
@@ -163,7 +163,7 @@ describe("post-history attestation repository boundary", () => {
         expect(result.insertedPostCount).toBe(1);
         expect(result.insertedDeletionRequestCount).toBe(1);
         expect(result.savedPayloadCandidateCount).toBe(1);
-        expect(verifyEventMock.mock.calls.map(([event]) => event.kind)).toEqual([5]);
+        expect(verifyEventMock).not.toHaveBeenCalled();
         expect(PostHistoryJsonlVerificationWorkerMock.instances[0].requests).toHaveLength(3);
         await expect(db.postHistory.count()).resolves.toBe(1);
         db.close();

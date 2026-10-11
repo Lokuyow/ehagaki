@@ -29,6 +29,21 @@ async function measure(file, owner) {
     let postHistoryGetCalls = 0;
     const getPost = db.postHistory.get.bind(db.postHistory);
     db.postHistory.get = (...args) => { postHistoryGetCalls++; return getPost(...args); };
+    let candidateAuthorScanCalls = 0;
+    const where = db.postHistory.where.bind(db.postHistory);
+    db.postHistory.where = (index, ...args) => {
+        const clause = where(index, ...args);
+        if (index === "pubkeyHex") {
+            const equals = clause.equals.bind(clause);
+            clause.equals = (...args) => {
+                const collection = equals(...args);
+                const toArray = collection.toArray.bind(collection);
+                collection.toArray = (...args) => { candidateAuthorScanCalls++; return toArray(...args); };
+                return collection;
+            };
+        }
+        return clause;
+    };
     const posts = new postsModule.DexiePostHistoryRepository(db);
     let repositoryMs = 0;
     const service = new serviceModule.PostHistoryJsonlImportService({
@@ -60,7 +75,7 @@ async function measure(file, owner) {
         const wallMs = performance.now() - started;
         await new Promise(resolve => setTimeout(resolve, 0));
         longTasks.push(...(observer?.takeRecords() ?? []).map(entry => entry.duration));
-        return { wallMs, repositoryMs, postHistoryGetCalls, heartbeatGapMs, frameGapMs,
+        return { wallMs, repositoryMs, postHistoryGetCalls, candidateAuthorScanCalls, heartbeatGapMs, frameGapMs,
             longTaskCount: supportsLongTasks ? longTasks.length : null,
             longestTaskMs: supportsLongTasks ? Math.max(0, ...longTasks) : null, result };
     } finally {

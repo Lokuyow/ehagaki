@@ -14,6 +14,12 @@ modules at `/ehagaki/`. Output includes the browser version, import counters,
 wall/repository time, longest heartbeat/frame gap, and Chromium long tasks.
 `postHistoryGetCalls` counts direct table `.get()` calls, excluding bulk reads;
 ordinary posts should require none for Sensitive Structure reconciliation.
+`candidateAuthorScanCalls` counts executions of
+`postHistory.where("pubkeyHex").equals(...).toArray()`, the author-history scan
+used by candidate reconciliation during import. The instrumentation is local to
+the disposable benchmark DB. Files with no Sensitive payload records should
+report zero even when they contain many ordinary kind 5 deletion targets. A
+present payload can still trigger this scan to find and verify its Structure.
 Close competing workloads and keep the browser in the foreground for meaningful
 comparisons. These measurements are not production-bundle or real-device results.
 
