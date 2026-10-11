@@ -1,4 +1,5 @@
 import { expect, test, type FrameLocator, type Page } from "@playwright/test";
+import { installPostHistoryWakeLockProbe, readPostHistoryWakeLockProbe, type PostHistoryWakeLockProbe } from "./postHistoryWakeLockHarness";
 
 type ScanWindow = Window & { __POST_HISTORY_HARNESS__?: { ready: boolean }; __POST_HISTORY_FULL_SCAN__?: {
     held: number; releasedHeld: number; relayUrls: string[]; closeParent: () => void; readCount: () => Promise<number>;
@@ -20,13 +21,16 @@ async function open(page: Page, scenario = "completed", extra = "") {
     return { before, dialog };
 }
 test("full scan: completes with actual summary and preserves the displayed window", async ({ page }) => {
+    await installPostHistoryWakeLockProbe(page);
     const { before, dialog } = await open(page);
+    expect(await readPostHistoryWakeLockProbe(page)).toEqual({ requests: 0, releases: 0, held: 0 });
     const ids = await page.locator(".post-history-item").evaluateAll((items) => items.map((item) => item.getAttribute("data-post-history-event-id")));
     const description = dialog.locator(".scan-heading p");
     await expect(description).toHaveText(/リレーから、自分の過去の投稿をできるだけ取得して保存します。\s+閉じると中止しますが、保存済みの投稿は残ります。/);
     await expect(description).toHaveCSS("white-space", "pre-line");
     await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
     await expect(dialog.getByRole("status")).toContainText("対象リレーの走査が終了しました");
+    await expect.poll(() => readPostHistoryWakeLockProbe(page)).toEqual({ requests: 1, releases: 1, held: 0 });
     await expect(dialog).toContainText("2 / 2"); await expect(dialog.getByRole("progressbar")).toHaveCount(0);
     await expect(dialog.locator(".scan-relay-row")).toHaveCount(2);
     for (const row of await dialog.locator(".scan-relay-row").all()) {
@@ -39,6 +43,29 @@ test("full scan: completes with actual summary and preserves the displayed windo
     await expect(dialog).not.toBeVisible();
     expect(await page.locator(".post-history-item").evaluateAll((items) => items.map((item) => item.getAttribute("data-post-history-event-id")))).toEqual(ids);
 });
+test("full scan: wake lock follows visibility and ends on cancel or dialog close", async ({ page }) => {
+    await installPostHistoryWakeLockProbe(page);
+    for (const operation of ["cancel", "close"]) {
+        const { dialog } = await open(page, "hold");
+        expect(await readPostHistoryWakeLockProbe(page)).toEqual({ requests: 0, releases: 0, held: 0 });
+        await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
+        await page.waitForFunction(() => (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!.held > 0);
+        await expect.poll(() => readPostHistoryWakeLockProbe(page)).toEqual({ requests: 1, releases: 0, held: 1 });
+        await page.evaluate(() => (Reflect.get(window, "__POST_HISTORY_WAKE_LOCK__") as PostHistoryWakeLockProbe).setVisibility("hidden"));
+        await expect.poll(() => readPostHistoryWakeLockProbe(page)).toEqual({ requests: 1, releases: 1, held: 0 });
+        await page.evaluate(() => (Reflect.get(window, "__POST_HISTORY_WAKE_LOCK__") as PostHistoryWakeLockProbe).setVisibility("visible"));
+        await expect.poll(() => readPostHistoryWakeLockProbe(page)).toEqual({ requests: 2, releases: 1, held: 1 });
+        if (operation === "cancel") await dialog.getByRole("button", { name: "取得を中止", exact: true }).click();
+        else await dialog.getByRole("button", { name: "閉じる", exact: true }).click();
+        await expect.poll(() => readPostHistoryWakeLockProbe(page)).toEqual({ requests: 2, releases: 2, held: 0 });
+        await page.evaluate(() => {
+            const probe = Reflect.get(window, "__POST_HISTORY_WAKE_LOCK__") as PostHistoryWakeLockProbe;
+            probe.setVisibility("hidden"); probe.setVisibility("visible");
+        });
+        expect(await readPostHistoryWakeLockProbe(page)).toEqual({ requests: 2, releases: 2, held: 0 });
+    }
+});
+
 test("full scan: four workers keep relay rows independent through queued, AUTH and final states", async ({ page }, testInfo) => {
     const { dialog } = await open(page, "relay-progress");
     await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
@@ -148,11 +175,10 @@ test("full scan: explicit cancel and Escape keep committed posts", async ({ page
         const { before, dialog } = await open(page, "hold");
         await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
         await page.waitForFunction(() => (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!.held > 0);
-        await expect(dialog.getByRole("button", { name: "取得開始", exact: true })).toBeDisabled();
-        const start = dialog.getByRole("button", { name: "取得開始", exact: true });
+        await expect(dialog.getByRole("button", { name: "取得開始", exact: true })).toHaveCount(0);
         const cancel = dialog.getByRole("button", { name: "取得を中止", exact: true });
         const close = dialog.getByRole("button", { name: "閉じる", exact: true });
-        for (const button of [start, cancel, close]) {
+        for (const button of [cancel, close]) {
             const geometry = await button.evaluate((element) => {
                 const bounds = element.getBoundingClientRect();
                 return { width: bounds.width, height: bounds.height, borderRadius: getComputedStyle(element).borderRadius };
@@ -246,7 +272,8 @@ test("full scan: 320px and 360px presentation contain essential actions", async 
         const { dialog } = await open(page, "relay-width");
         await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
         await expect(dialog.getByRole("status")).toContainText("対象リレーの走査が終了しました");
-        await expect(dialog.getByRole("button", { name: "取得開始", exact: true })).toBeVisible();
+        await expect(dialog.getByRole("button", { name: "取得開始", exact: true })).toHaveCount(0);
+        await expect(dialog.getByRole("button", { name: "閉じる", exact: true })).toBeVisible();
         const geometry = await dialog.evaluate((element) => ({ width: element.clientWidth, scrollWidth: element.scrollWidth, left: element.getBoundingClientRect().left, right: element.getBoundingClientRect().right }));
         expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.width); expect(geometry.left).toBeGreaterThanOrEqual(0); expect(geometry.right).toBeLessThanOrEqual(width);
         await expect(dialog.locator(".scan-relay-row")).toHaveCount(3);

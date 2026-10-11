@@ -6,6 +6,7 @@
     import DialogWrapper from "./DialogWrapper.svelte";
     import { ehagakiDb } from "../lib/storage/ehagakiDb";
     import { getPostHistoryLocalRevision } from "../lib/storage/postHistoryLocalWriteScope";
+    import { postHistoryOperationWakeLock } from "../lib/postHistoryOperationWakeLock";
     import {
         postHistoryJsonlImportService,
         type PostHistoryJsonlImportProgress,
@@ -45,6 +46,7 @@
     let requestId = 0;
     let runningOwner: string | null = null;
     let wasOpen = false;
+    let wakeLockLease: (() => void) | null = null;
 
     let displayedProcessedBytes = $derived(importProgress?.processedBytes ?? processedBytes);
     let displayedTotalBytes = $derived(importProgress?.totalBytes ?? totalBytes);
@@ -166,6 +168,8 @@
     }
 
     function cancelImport(): void {
+        wakeLockLease?.();
+        wakeLockLease = null;
         requestId += 1;
         abortController?.abort();
         abortController = null;
@@ -246,6 +250,8 @@
         totalBytes = Number.isFinite(file.size) && file.size > 0 ? file.size : 0;
         throughputSamples = [];
         startElapsedTimer();
+        const endWakeLock = postHistoryOperationWakeLock.acquire();
+        wakeLockLease = endWakeLock;
         try {
             const importResult = await postHistoryJsonlImportService.importFile({
                 file,
@@ -286,6 +292,8 @@
                 await onImported?.(importResult);
             }
         } finally {
+            endWakeLock();
+            if (wakeLockLease === endWakeLock) wakeLockLease = null;
             if (currentRequestId === requestId) {
                 running = false;
                 stopElapsedTimer();
@@ -317,6 +325,8 @@
     });
 
     onDestroy(() => {
+        wakeLockLease?.();
+        wakeLockLease = null;
         requestId += 1;
         abortController?.abort();
         stopElapsedTimer();
