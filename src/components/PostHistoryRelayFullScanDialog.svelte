@@ -52,7 +52,7 @@
         <p>{$_("postHistory.fullScanDescription")}</p>
     </div>
     <div class="scan-actions">
-        <Button variant="default" shape="square" className="scan-action" disabled={running || !canStart} onClick={onStart}>{$_("postHistory.fullScanStart")}</Button>
+        <Button variant="primary" shape="square" className="scan-action" disabled={running || !canStart} onClick={onStart}>{$_("postHistory.fullScanStart")}</Button>
         {#if running}<Button variant="default" shape="square" className="scan-action" onClick={onCancel}>{$_("postHistory.fullScanCancel")}</Button>{/if}
     </div>
     {#if statusKey}
