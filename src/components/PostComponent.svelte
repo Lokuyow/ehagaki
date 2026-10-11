@@ -365,7 +365,11 @@
               postHistoryRepositoryImpl: postHistoryRepository,
             }),
           notificationPort,
-          storeSignedEventFn: (input, isActive) => storeSignedEventFn?.(input, isActive),
+          storeSignedEventFn: (input, isActive, trace) => {
+            trace?.record("hook-forwarded", { hookWired: !!storeSignedEventFn });
+            if (!storeSignedEventFn) trace?.finish("skipped-session", { reason: "hook-unwired" });
+            return storeSignedEventFn?.(input, isActive, trace);
+          },
         });
       else postManager.setRxNostr(rxNostr as RxNostr);
     }

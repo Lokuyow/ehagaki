@@ -1,12 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
-import { finalizeEvent, generateSecretKey, getPublicKey, matchFilter, verifyEvent, type Filter, type EventTemplate } from "nostr-tools";
+import { finalizeEvent, generateSecretKey, getPublicKey, matchFilter, verifyEvent, nip19, type Filter, type EventTemplate } from "nostr-tools";
 import { WebSocketServer } from "ws";
 import type { AddressInfo } from "node:net";
 
 test.use({ trace: "off" });
 const externalUrl = "wss://external.example/";
 
-async function fixture(page: Page, options: { externalOk?: boolean; localMode?: "accept" | "reject" | "auth" | "silent" } = {}) {
+async function fixture(page: Page, options: { externalOk?: boolean; localMode?: "accept" | "reject" | "auth" | "silent";
+    diagnostic?: boolean; authType?: "nsec" | "nip07" } = {}) {
     const secret = generateSecretKey(), pubkey = getPublicKey(secret);
     const sign = (template: EventTemplate) => finalizeEvent(template, secret);
     const now = Math.floor(Date.now() / 1000) - 10;
@@ -67,20 +68,75 @@ async function fixture(page: Page, options: { externalOk?: boolean; localMode?: 
         else await route.fulfill({ contentType: "application/json", body: "{}" });
     });
     await page.exposeFunction("fixtureSignEvent", sign);
-    await page.addInitScript(({ pubkey, externalUrl }) => {
+    await page.addInitScript(({ pubkey, externalUrl, authType, syntheticNsec }) => {
         localStorage.setItem("firstVisit", "1");
         localStorage.setItem("locale", "ja");
-        localStorage.setItem("nostr-accounts", JSON.stringify([{ pubkeyHex: pubkey, type: "nip07", addedAt: 1 }]));
+        localStorage.setItem("nostr-accounts", JSON.stringify([{ pubkeyHex: pubkey, type: authType, addedAt: 1 }]));
         localStorage.setItem("nostr-active-account", pubkey);
         localStorage.setItem(`nostr-relays-${pubkey}`, JSON.stringify({ [externalUrl]: { read: true, write: true } }));
-        (window as any).nostr = { getPublicKey: async () => pubkey,
+        if (authType === "nsec") localStorage.setItem(`nostr-secret-key-${pubkey}`, syntheticNsec);
+        else (window as any).nostr = { getPublicKey: async () => pubkey,
             signEvent: (event: EventTemplate) => (window as any).fixtureSignEvent(event) };
-    }, { pubkey, externalUrl });
-    await page.goto("./");
+    }, { pubkey, externalUrl, authType: options.authType ?? "nip07", syntheticNsec: options.authType === "nsec" ? nip19.nsecEncode(secret) : "" });
+    await page.goto(options.diagnostic ? "./?localRelayDebug=1" : "./");
     await expect(page.locator(".post-history-btn")).toBeVisible();
     return { pubkey, sign, now, localUrl, localPost, externalPost, localCorpus, externalCorpus,
         localRequests, externalRequests, localWrites, externalWrites, stop };
 }
+
+for (const localMode of ["accept", "silent"] as const) {
+    test(`diagnostic secret-key post-direct ${localMode} is visible without history`, async ({ page }) => {
+        const f = await fixture(page, { localMode, diagnostic: true, authType: "nsec" });
+        try {
+            await setUrl(page, f.localUrl);
+            await page.locator(".settings-btn").click();
+            const panel = page.getByTestId("local-relay-diagnostics");
+            await expect(panel).toBeVisible();
+            await panel.getByRole("button", { name: "Clear", exact: true }).click();
+            await page.keyboard.press("Escape");
+            const content = "Private diagnostic browser fixture";
+            await page.locator(".tiptap-editor").fill(content);
+            await page.getByRole("button", { name: "投稿", exact: true }).click();
+            await expect.poll(() => f.localWrites.filter(event => event.content === content).length).toBe(1);
+            const event = f.localWrites.find(event => event.content === content)!;
+            await expect.poll(async () => (await posts(page)).some(post => post.eventId === event.id)).toBe(true);
+            await page.locator(".settings-btn").click();
+            const operation = panel.locator(`article[data-source="post-direct"]`).filter({ hasText: event.id.slice(0, 12) });
+            // The product deadline is 6s, longer than Playwright's default 5s assertion timeout.
+            await expect(operation).toHaveAttribute("data-terminal", localMode === "accept" ? "accepted" : "timeout", { timeout: localMode === "silent" ? 7000 : 5000 });
+            for (const stage of ["hook-invoked", "candidate-accepted", "transport-call", "websocket-state", "event-socket-send-boundary", "terminal"])
+                await expect(operation).toContainText(stage);
+            if (localMode === "silent") await expect(operation).toContainText("timeout-abort");
+            expect(await panel.innerText()).not.toContain(content);
+            expect(await panel.innerText()).not.toContain(event.sig);
+            expect(await panel.innerText()).not.toContain(event.pubkey);
+            await page.setViewportSize({ width: 360, height: 800 });
+            expect((await panel.boundingBox())!.width).toBeLessThanOrEqual(360);
+            await panel.screenshot({ path: test.info().outputPath(`diagnostics-${localMode}-360.png`) });
+        } finally { await f.stop(); }
+    });
+}
+
+test("diagnostic history archive shows adoption and accepted independently", async ({ page }) => {
+    const f = await fixture(page, { diagnostic: true, authType: "nsec" });
+    try {
+        await setUrl(page, f.localUrl);
+        await page.locator(".settings-btn").click();
+        const panel = page.getByTestId("local-relay-diagnostics");
+        await panel.getByRole("button", { name: "Clear", exact: true }).click();
+        await page.keyboard.press("Escape");
+        await page.locator(".post-history-btn").click();
+        await expect.poll(() => f.localWrites.some(event => event.id === f.externalPost.id)).toBe(true);
+        await page.keyboard.press("Escape");
+        await page.locator(".settings-btn").click();
+        const operation = panel.locator('article[data-source="history-archive"][data-terminal="accepted"]').filter({ hasText: f.externalPost.id.slice(0, 12) }).first();
+        await expect(operation).toContainText("archive-entered");
+        await expect(operation).toContainText("db-verification-passed");
+        await expect(operation).toContainText("archive-candidates");
+        await expect(operation).toContainText("event-socket-send-boundary");
+        await expect(panel.locator('article[data-source="post-direct"]')).toHaveCount(0);
+    } finally { await f.stop(); }
+});
 
 async function setUrl(page: Page, url: string) {
     await page.locator(".settings-btn").click();

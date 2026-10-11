@@ -1,6 +1,7 @@
 <script lang="ts">
   import { usePostRepostOperation } from "./lib/hooks/usePostRepostOperation.svelte";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
+  import { isLocalRelayDebugEnabled } from "./lib/localRelayDiagnostics";
   import "./i18n";
   import { _, locale, waitLocale } from "svelte-i18n";
   import { Tooltip } from "bits-ui";
@@ -738,7 +739,7 @@
   });
 
   function beginAuthTransition(): void {
-    postHistoryLocalRelayService.cancelSession();
+    postHistoryLocalRelayService.cancelSession("account-transition");
     authTransitionGeneration += 1;
     delayedNip07Recovery.markTransition();
   }
@@ -993,13 +994,21 @@
     const runtime = rxNostr;
     const generation = authTransitionGeneration;
     const canUseLocalRelay = !isSwitchingAccount && !isLoggingOut;
-    return postHistoryLocalRelayService.configureSession({
+    const url = settingsStore.localRelayUrl;
+    const dispose = postHistoryLocalRelayService.configureSession({
       ownerPubkeyHex: canUseLocalRelay && auth.isAuthenticated && runtime ? auth.pubkey : null,
-      url: settingsStore.localRelayUrl,
+      url,
       isActive: () => authState.value === auth && rxNostr === runtime
         && authTransitionGeneration === generation && auth.isAuthenticated
         && !isSwitchingAccount && !isLoggingOut,
     });
+    return () => dispose(isLocalRelayDebugEnabled() ? untrack(() =>
+      isSwitchingAccount || isLoggingOut || authTransitionGeneration !== generation ? "account-transition"
+        : settingsStore.localRelayUrl !== url ? "url-change"
+        : rxNostr !== runtime ? "runtime-change"
+        : authState.value !== auth ? "identity-change" : "app-session-cleanup",
+    ) : undefined,
+    );
   });
 
   usePostHistoryVisibilityResumeSync({
@@ -2137,7 +2146,7 @@
                     minEditorHeight={postEditorMinHeight}
                     onPostSuccess={handlePostSuccess}
                     storeSignedEventFn={appRuntimeEnvironment.runtimeKind === "standalone"
-                      ? (input, isActive) => postHistoryLocalRelayService.storeSignedEventBestEffort(input, isActive)
+                      ? (input, isActive, trace) => postHistoryLocalRelayService.storeSignedEventBestEffort(input, isActive, trace)
                       : undefined}
                     onCustomEmojiSelect={recordCustomEmojiUse}
                     {onEditorEmptyChange}

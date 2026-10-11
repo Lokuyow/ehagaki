@@ -14,6 +14,13 @@ import { PostHistoryLocalRelayService } from "../../lib/postHistoryLocalRelaySer
 import { attestFullyVerifiedPostHistoryRawEvent } from "../../lib/postHistoryRawEventVerification";
 import { buildSensitivePayloadEvent, buildSensitiveStructureEvent } from "../../lib/sensitiveContentPayload";
 import type { NostrEvent } from "../../lib/types";
+import { seckeySigner } from "@rx-nostr/crypto";
+import { of } from "rxjs";
+import { PostManager } from "../../lib/postManager";
+import { createMockRxNostr, MockKeyManager, createMockConsole } from "../helpers";
+import { beginLocalRelayDiagnostic, clearLocalRelayDiagnostics, getLocalRelayDiagnostics,
+    formatLocalRelayDiagnostics, diagnosticRelayReason, isLocalRelayDebugEnabled } from "../../lib/localRelayDiagnostics";
+import { configureAppRuntimeEnvironment, getAppRuntimeEnvironment } from "../../lib/appRuntimeEnvironment";
 
 // Synthetic fixtures; no user identity or data is used by this relay.
 const key = new Uint8Array(32).fill(7);
@@ -74,7 +81,7 @@ beforeEach(() => {
         payloads: new DexieSensitivePayloadRepository(db), deletions: new DexiePostHistoryDeletionRequestsRepository(db),
         getLocalRevision: (pubkey) => getPostHistoryLocalRevision(db, pubkey), runtimeKind: () => "standalone" });
 });
-afterEach(async () => { service.cancelSession(); vi.useRealTimers(); await db.delete(); });
+afterEach(async () => { service.cancelSession(); vi.useRealTimers(); await db.delete(); clearLocalRelayDiagnostics(); window.history.replaceState({}, "", "/"); });
 const configure = () => service.configureSession({ ownerPubkeyHex: owner, url, isActive: () => true });
 const read = (until = 200, limit = 150) => service.read({ pubkeyHex: owner, until, limit, isActive: () => true });
 
@@ -285,5 +292,162 @@ describe("local relay with real rx-nostr verification and IndexedDB", () => {
             (message[1] as NostrEvent).id === deletion.id)).toBe(true));
         expect(LocalSocket.sent.filter(([type]) => type === "EVENT").every(message =>
             [structure.id, payload.id, deletion.id].includes((message[1] as NostrEvent).id))).toBe(true);
+    });
+});
+
+describe("temporary local relay diagnostics", () => {
+    beforeEach(() => { window.history.replaceState({}, "", "/?localRelayDebug=1"); clearLocalRelayDiagnostics(); });
+    const trace = () => beginLocalRelayDiagnostic("post-direct")!;
+    const latest = () => getLocalRelayDiagnostics()[0];
+    const input = () => attestFullyVerifiedPostHistoryRawEvent(sign(1, 100, [["fixture", "PRIVATE_TAG"]], "PRIVATE_CONTENT"))!;
+
+    it("runs the real secret-key signer, hook, service, rx-nostr and socket through accepted", async () => {
+        configure();
+        const rx = createMockRxNostr();
+        rx.getDefaultRelays = () => ({ "wss://external.example/": { url: "wss://external.example/", read: true, write: true } });
+        rx.send = vi.fn<typeof rx.send>(event => of({ type: "OK", eventId: event.id!, from: "wss://external.example/",
+            ok: true, done: true, message: ["OK", event.id!, true, ""] }));
+        const manager = new PostManager(rx, {
+            console: createMockConsole(),
+            authStateStore: { value: { type: "nsec", isAuthenticated: true, pubkey: owner, npub: "fixture", nprofile: "fixture",
+                isValid: true, isInitialized: true, isExtensionLogin: false } },
+            keyManager: new MockKeyManager("07".repeat(32)), seckeySignerFn: seckeySigner,
+            hashtagStore: { hashtags: [], tags: [] }, contentWarningStore: { value: false, reset() {} },
+            contentWarningReasonStore: { value: "", reset() {} }, writeRelaysStore: { value: ["wss://external.example/"] },
+            settingsStore: { quoteNotificationEnabled: false }, replyQuoteState: { value: { reply: null, quotes: [] } } as never,
+            savePostHistoryFn: vi.fn(), storeSignedEventFn: (input, active, trace) => service.storeSignedEventBestEffort(input, active, trace),
+            resetEditorStateFn() {}, resetPostStatusFn() {}, saveHashtagsToHistoryFn() {}, clearReplyQuoteFn() {},
+            notificationPort: { notifyPostSuccess: () => true, notifyPostError: () => true },
+        });
+        expect((await manager.submitPost("PRIVATE_POST_BODY")).success).toBe(true);
+        await vi.waitFor(() => expect(latest().terminal).toBe("accepted"));
+        expect(latest().source).toBe("post-direct");
+        expect(latest().entries.map(entry => entry.stage)).toEqual(expect.arrayContaining([
+            "hook-invoked", "service-entered", "session-check", "candidate-accepted", "batch-microtask",
+            "transport-call", "transport-entered", "client-created", "websocket-state", "event-socket-send-boundary", "relay-response", "terminal",
+        ]));
+        expect(latest().entries.some(entry => entry.details.state === "connected")).toBe(true);
+        expect(LocalSocket.sent.filter(([type]) => type === "EVENT")).toHaveLength(1);
+        expect(formatLocalRelayDiagnostics()).not.toContain("PRIVATE_POST_BODY");
+    });
+
+    it("reports a missing session", () => {
+        service.storeSignedEventBestEffort(input(), () => true, trace());
+        expect(latest().terminal).toBe("skipped-session");
+        expect(latest().entries.some(entry => entry.details.reason === "no-configured-session")).toBe(true);
+        expect(createClient).not.toHaveBeenCalled();
+    });
+
+    it.each(["app", "caller"])("reports %s inactive without extra callback evaluations", which => {
+        const app = vi.fn(() => which !== "app"), caller = vi.fn(() => which !== "caller");
+        service.configureSession({ ownerPubkeyHex: owner, url, isActive: app });
+        service.storeSignedEventBestEffort(input(), caller, trace());
+        expect(latest().terminal).toBe(which === "app" ? "skipped-session" : "skipped-inactive");
+        expect(latest().entries.some(entry => entry.details.reason === `${which}-inactive`)).toBe(true);
+        expect(app).toHaveBeenCalledTimes(which === "app" ? 1 : 2);
+        expect(caller).toHaveBeenCalledTimes(which === "app" ? 0 : 1);
+        expect(createClient).not.toHaveBeenCalled();
+    });
+
+    it("reports caller invalidation in the original microtask", async () => {
+        configure(); let active = true;
+        service.storeSignedEventBestEffort(input(), () => active, trace()); active = false;
+        await Promise.resolve();
+        expect(latest().terminal).toBe("skipped-inactive");
+        expect(latest().entries.some(entry => entry.stage === "microtask-check" && entry.details.callerActive === false)).toBe(true);
+        expect(createClient).not.toHaveBeenCalled();
+    });
+
+    it.each(["unsupported-kind", "attestation-invalid", "in-flight-duplicate"])("reports candidate filtering: %s", async reason => {
+        configure(); const candidate = input();
+        if (reason === "unsupported-kind") candidate.event = sign(7);
+        if (reason === "attestation-invalid") candidate.event.content = "changed";
+        if (reason === "in-flight-duplicate") { LocalSocket.mode = "silent"; service.storeSignedEventBestEffort(candidate, () => true, trace()); }
+        service.storeSignedEventBestEffort(candidate, () => true, trace());
+        expect(latest().terminal).toBe("filtered");
+        expect(latest().entries.some(entry => entry.stage === "candidate-filtered" && entry.details.reason === reason)).toBe(true);
+    });
+
+    it("reports a transport deadline without retrying or altering its duration", async () => {
+        vi.useFakeTimers(); configure(); LocalSocket.mode = "silent";
+        service.storeSignedEventBestEffort(input(), () => true, trace());
+        await vi.advanceTimersByTimeAsync(5999);
+        expect(latest().terminal).toBeNull();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(latest().terminal).toBe("timeout");
+        expect(latest().entries.some(entry => entry.details.reason === "timeout-abort")).toBe(true);
+        expect(createClient).toHaveBeenCalledOnce();
+        expect(LocalSocket.instances).toHaveLength(1);
+    });
+
+    it("reports session AbortSignal and its cancellation cause", async () => {
+        configure(); LocalSocket.mode = "silent";
+        service.storeSignedEventBestEffort(input(), () => true, trace());
+        await vi.waitFor(() => expect(LocalSocket.sent.some(([type]) => type === "EVENT")).toBe(true));
+        service.cancelSession("url-change");
+        await vi.waitFor(() => expect(latest().terminal).toBe("aborted"));
+        expect(latest().entries.some(entry => entry.details.reason === "url-change")).toBe(true);
+        expect(LocalSocket.instances.every(socket => socket.readyState === 3)).toBe(true);
+    });
+
+    it("reports rejected and AUTH-required responses", async () => {
+        configure(); LocalSocket.mode = "auth";
+        service.storeSignedEventBestEffort(input(), () => true, trace());
+        await vi.waitFor(() => expect(latest().terminal).toBe("rejected"));
+        expect(latest().entries.some(entry => entry.details.ok === false && entry.details.reason === "auth-required")).toBe(true);
+        expect(LocalSocket.sent.some(([type]) => type === "AUTH")).toBe(false);
+    });
+
+    it("reports exceptions without retaining their message", async () => {
+        configure(); createClient.mockImplementation(() => { throw new Error("SECRET_ERROR_CONTENT"); });
+        service.storeSignedEventBestEffort(input(), () => true, trace());
+        await vi.waitFor(() => expect(latest().terminal).toBe("exception"));
+        expect(formatLocalRelayDiagnostics()).not.toContain("SECRET_ERROR_CONTENT");
+    });
+
+    it("correlates an adopted history archive separately through accepted", async () => {
+        configure(); const candidate = input();
+        await repository.upsertFetchedEvents({ events: [{ ...candidate, relayUrls: ["wss://external.example/"] }] });
+        await service.archiveAdoptedAuthored([candidate], { ownerPubkeyHex: owner, isActive: () => true });
+        await vi.waitFor(() => expect(latest().terminal).toBe("accepted"));
+        expect(latest().source).toBe("history-archive");
+        expect(latest().entries.map(entry => entry.stage)).toEqual(expect.arrayContaining([
+            "archive-entered", "db-verification-passed", "archive-adopted", "archive-candidates", "batch-entered", "transport-call", "event-socket-send-boundary",
+        ]));
+        const diagnostic = formatLocalRelayDiagnostics();
+        expect(diagnostic).not.toContain(candidate.event.content);
+        expect(diagnostic).not.toContain("PRIVATE_TAG");
+        expect(diagnostic).not.toContain(candidate.event.sig);
+        expect(diagnostic).not.toContain(candidate.event.pubkey);
+    });
+
+    it("drops unknown fields, full IDs, URL secrets and arbitrary relay notices", () => {
+        const candidate = input();
+        const operation = trace();
+        operation.record("hook-invoked", { eventId: candidate.event.id, content: "PRIVATE_CONTENT", tags: ["PRIVATE_TAG"],
+            reason: "SECRET_REASON", errorType: "SECRET_ERROR", target: "ws://user:SECRET_CREDENTIAL@localhost:4869/PRIVATE_PATH?token=PRIVATE_TOKEN" } as never);
+        operation.record("relay-response", { reason: diagnosticRelayReason("invalid: PRIVATE_CONTENT PRIVATE_TOKEN") });
+        operation.record("relay-response", { reason: diagnosticRelayReason("PRIVATE_CONTENT PRIVATE_TOKEN") });
+        operation.finish("accepted");
+        const diagnostic = formatLocalRelayDiagnostics();
+        for (const privateValue of ["PRIVATE_CONTENT", "PRIVATE_TAG", "SECRET_REASON", "SECRET_ERROR", "SECRET_CREDENTIAL", "PRIVATE_PATH", "PRIVATE_TOKEN", candidate.event.id])
+            expect(diagnostic).not.toContain(privateValue);
+        expect(diagnostic).toContain(candidate.event.id.slice(0, 12));
+        expect(diagnostic).toContain("ws://localhost:4869/");
+    });
+
+    it("does not record or enable diagnostics for normal queries or embed runtimes", () => {
+        window.history.replaceState({}, "", "/?localRelayDebug=0");
+        expect(beginLocalRelayDiagnostic("post-direct")).toBeUndefined();
+        window.history.replaceState({}, "", "/?localRelayDebug=1");
+        const runtime = getAppRuntimeEnvironment();
+        try {
+            for (const runtimeKind of ["iframe", "web-component"] as const) {
+                configureAppRuntimeEnvironment({ runtimeKind });
+                expect(isLocalRelayDebugEnabled()).toBe(false);
+                expect(beginLocalRelayDiagnostic("post-direct")).toBeUndefined();
+            }
+        } finally { configureAppRuntimeEnvironment(runtime); }
+        expect(getLocalRelayDiagnostics()).toEqual([]);
     });
 });

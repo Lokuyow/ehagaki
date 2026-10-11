@@ -1,5 +1,6 @@
 import type { RxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
+import { beginLocalRelayDiagnostic, diagnosticErrorType } from "./localRelayDiagnostics";
 import type { EventTemplate } from "nostr-tools";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { keyManager } from "./keyManager.svelte";
@@ -816,9 +817,14 @@ export class PostManager {
       const event = validateSignedEventResult(prepared.expectedTemplate, signed, params.sessionPubkey);
       const attested = attestFullyVerifiedPostHistoryRawEvent(event);
       if (!attested) throw new Error("post_error");
+      const trace = beginLocalRelayDiagnostic(params.splitSensitiveContent && params.event.tags.some(tag => tag[0] === "content-warning")
+        ? "sensitive-direct" : "post-direct");
+      trace?.record("hook-invoked", { kind: event.kind, eventId: event.id, callerActive: true, hookWired: !!this.deps.storeSignedEventFn });
+      if (!this.deps.storeSignedEventFn) trace?.finish("skipped-session", { reason: "hook-unwired" });
       try {
-        void Promise.resolve(this.deps.storeSignedEventFn?.(attested, isSessionActive)).catch(() => undefined);
-      } catch { /* Local archival never changes external delivery. */ }
+        void Promise.resolve(this.deps.storeSignedEventFn?.(attested, isSessionActive, trace))
+          .catch(error => { trace?.finish("exception", { errorType: diagnosticErrorType(error) }); });
+      } catch (error) { trace?.finish("exception", { errorType: diagnosticErrorType(error) }); }
       return attested;
     };
     const usePayload = params.splitSensitiveContent

@@ -14,6 +14,8 @@ import { postHistoryDeletionRequestsRepository } from "./storage/postHistoryDele
 import { getPostHistoryLocalRevision, type PostHistoryLocalWriteScope } from "./storage/postHistoryLocalWriteScope";
 import { ehagakiDb } from "./storage/ehagakiDb";
 import type { NostrEvent } from "./types";
+import { beginLocalRelayDiagnostic, diagnosticErrorType, noteLocalRelayDiagnosticAbort,
+    type LocalRelayDiagnosticTrace, type LocalRelayDiagnosticReason } from "./localRelayDiagnostics";
 
 interface LocalRelaySession {
     ownerPubkeyHex: string;
@@ -62,17 +64,18 @@ export class PostHistoryLocalRelayService {
         return this.transport ??= new LocalRelayTransport();
     }
 
-    configureSession(input: { ownerPubkeyHex: string | null; url: string | null; isActive(): boolean }): () => void {
-        this.cancelSession();
+    configureSession(input: { ownerPubkeyHex: string | null; url: string | null; isActive(): boolean }): (reason?: LocalRelayDiagnosticReason) => void {
+        this.cancelSession("session-reconfigure");
         const url = input.url && normalizeLocalRelayUrl(input.url);
         if (this.runtimeKind() !== "standalone" || !input.ownerPubkeyHex || !url) return () => undefined;
         const session: LocalRelaySession = { ownerPubkeyHex: input.ownerPubkeyHex, url,
             isActive: input.isActive, abort: new AbortController() };
         this.session = session;
-        return () => { if (this.session === session) this.cancelSession(); };
+        return (reason = "app-session-cleanup") => { if (this.session === session) this.cancelSession(reason); };
     }
 
-    cancelSession(): void {
+    cancelSession(reason: LocalRelayDiagnosticReason = "service-cancel"): void {
+        if (this.session) noteLocalRelayDiagnosticAbort(this.session.abort.signal, reason);
         this.session?.abort.abort();
         this.session = null;
         this.stores.clear();
@@ -80,37 +83,71 @@ export class PostHistoryLocalRelayService {
 
     isConfigured(owner: string | null | undefined): boolean { return !!this.currentSession(owner); }
 
-    private currentSession(owner: string | null | undefined): LocalRelaySession | null {
+    private currentSession(owner: string | null | undefined, trace?: LocalRelayDiagnosticTrace): LocalRelaySession | null {
         const session = this.session;
-        return session && this.runtimeKind() === "standalone" && session.ownerPubkeyHex === owner
-            && !session.abort.signal.aborted && session.isActive() ? session : null;
+        // Preserve the original short-circuit order and callback evaluation count.
+        const missing = (reason: LocalRelayDiagnosticReason) => {
+            trace?.record("session-check", { sessionFound: false, reason });
+            return null;
+        };
+        if (!session) return missing("no-configured-session");
+        if (this.runtimeKind() !== "standalone") return missing("runtime-not-standalone");
+        if (session.ownerPubkeyHex !== owner) return missing("owner-mismatch");
+        if (session.abort.signal.aborted) return missing("session-aborted");
+        if (!session.isActive()) return missing("app-inactive");
+        trace?.record("session-check", { sessionFound: true, ownerMatches: true, appActive: true, aborted: false });
+        return session;
     }
 
     private isCurrent(session: LocalRelaySession): boolean {
         return this.currentSession(session.ownerPubkeyHex) === session;
     }
 
-    storeSignedEventBestEffort(input: AttestedPostHistoryRawEvent, isActive: () => boolean = () => true): void {
-        const session = this.currentSession(input.event.pubkey);
-        if (session) this.storeBatch(session, [input], isActive);
+    storeSignedEventBestEffort(input: AttestedPostHistoryRawEvent, isActive: () => boolean = () => true, trace?: LocalRelayDiagnosticTrace): void {
+        trace?.record("service-entered", { kind: input.event.kind, eventId: input.event.id,
+            ownerMatches: this.session?.ownerPubkeyHex === input.event.pubkey });
+        const session = this.currentSession(input.event.pubkey, trace);
+        if (session) this.storeBatch(session, [input], isActive, trace);
+        else trace?.finish("skipped-session");
     }
 
-    private storeBatch(session: LocalRelaySession, inputs: AttestedPostHistoryRawEvent[], isActive: () => boolean): void {
-        if (!this.isCurrent(session) || !isActive()) return;
-        const candidates = [...new Map(inputs.filter(({ event, attestation }) =>
-            event.pubkey === session.ownerPubkeyHex
-            && (isPostHistoryAuthoredKind(event.kind) || event.kind === 5 || event.kind === 36)
-            && isCurrentPostHistoryRawEventAttestation(event, attestation)
-            && !this.stores.has(`${session.url}:${event.id}`)).map(item => [item.event.id, item])).values()];
-        if (!candidates.length) return;
+    private storeBatch(session: LocalRelaySession, inputs: AttestedPostHistoryRawEvent[], isActive: () => boolean, trace?: LocalRelayDiagnosticTrace): void {
+        trace?.record("batch-entered", { count: inputs.length });
+        const serviceCurrent = this.isCurrent(session);
+        const callerActive = serviceCurrent ? isActive() : undefined;
+        trace?.record("batch-check", { serviceCurrent, callerActive });
+        if (!serviceCurrent || !callerActive) {
+            trace?.finish(serviceCurrent ? "skipped-inactive" : "skipped-session", { reason: serviceCurrent ? "caller-inactive" : "session-stale" });
+            return;
+        }
+        const candidates = [...new Map(inputs.filter(({ event, attestation }) => {
+            const reason = event.pubkey !== session.ownerPubkeyHex ? "owner-mismatch"
+                : !(isPostHistoryAuthoredKind(event.kind) || event.kind === 5 || event.kind === 36) ? "unsupported-kind"
+                : !isCurrentPostHistoryRawEventAttestation(event, attestation) ? "attestation-invalid"
+                : this.stores.has(`${session.url}:${event.id}`) ? "in-flight-duplicate" : undefined;
+            trace?.record(reason ? "candidate-filtered" : "candidate-accepted", { kind: event.kind, eventId: event.id, reason });
+            return !reason;
+        }).map(item => [item.event.id, item])).values()];
+        if (!candidates.length) { trace?.finish("filtered", { reason: "no-candidates" }); return; }
         const keys = candidates.map(({ event }) => `${session.url}:${event.id}`);
         // Catch synchronous transport errors too; this hook cannot fail a post.
         const job = Promise.resolve().then(async () => {
-            if (!this.isCurrent(session) || !isActive()) return;
+            trace?.record("batch-microtask");
+            const serviceCurrent = this.isCurrent(session);
+            const callerActive = serviceCurrent ? isActive() : undefined;
+            trace?.record("microtask-check", { serviceCurrent, callerActive });
+            if (!serviceCurrent || !callerActive) {
+                trace?.finish(serviceCurrent ? "skipped-inactive" : "skipped-session", { reason: serviceCurrent ? "caller-inactive" : "session-stale" });
+                return;
+            }
             const events = candidates.filter(({ event, attestation }) => isCurrentPostHistoryRawEventAttestation(event, attestation))
                 .map(({ event }) => event);
-            if (events.length) await this.getTransport().storeSignedEvents(session.url, events, session.abort.signal).promise;
-        }).catch(() => undefined).finally(() => {
+            trace?.record("attestation-recheck", { count: events.length });
+            if (events.length) {
+                trace?.record("transport-call", { count: events.length });
+                await this.getTransport().storeSignedEvents(session.url, events, session.abort.signal, trace).promise;
+            } else trace?.finish("filtered", { reason: "attestation-changed" });
+        }).catch(error => { trace?.finish("exception", { errorType: diagnosticErrorType(error) }); }).finally(() => {
             for (const key of keys) if (this.stores.get(key) === job) this.stores.delete(key);
         });
         for (const key of keys) this.stores.set(key, job);
@@ -181,24 +218,41 @@ export class PostHistoryLocalRelayService {
     }
 
     archiveAdoptedAuthored(events: PostHistoryFetchedEventItem[], scope: { ownerPubkeyHex: string; expectedRevision?: number; isActive(): boolean }): Promise<void> {
-        const session = this.currentSession(scope.ownerPubkeyHex);
-        if (!session || !scope.isActive()) return Promise.resolve();
+        const trace = beginLocalRelayDiagnostic("history-archive");
+        trace?.record("archive-entered", { count: events.length });
+        const session = this.currentSession(scope.ownerPubkeyHex, trace);
+        if (!session) { trace?.finish("skipped-session"); return Promise.resolve(); }
+        if (!scope.isActive()) { trace?.finish("skipped-inactive", { reason: "caller-inactive" }); return Promise.resolve(); }
         return (async () => {
             const revision = scope.expectedRevision ?? await this.getLocalRevision(scope.ownerPubkeyHex);
-            const current = () => this.isCurrent(session) && scope.isActive();
+            const current = () => {
+                const serviceCurrent = this.isCurrent(session);
+                const callerActive = serviceCurrent ? scope.isActive() : undefined;
+                trace?.record("archive-scope", { serviceCurrent, callerActive });
+                if (!serviceCurrent || !callerActive) trace?.finish("aborted", { reason: serviceCurrent ? "caller-inactive" : "session-stale" });
+                return serviceCurrent && !!callerActive;
+            };
             const adopted = new Map<string, NostrEvent>();
             const archive = new Map<string, AttestedPostHistoryRawEvent>();
             const structuresByPayloadId = new Map<string, Array<{ event: NostrEvent; deleted: boolean }>>();
             for (const candidate of events) {
                 if (!current()) return;
-                if (adopted.has(candidate.event.id) || candidate.event.pubkey !== scope.ownerPubkeyHex || !isPostHistoryAuthoredKind(candidate.event.kind)) continue;
+                if (adopted.has(candidate.event.id) || candidate.event.pubkey !== scope.ownerPubkeyHex || !isPostHistoryAuthoredKind(candidate.event.kind)) {
+                    trace?.record("archive-filtered", { eventId: candidate.event.id, reason: adopted.has(candidate.event.id)
+                        ? "archive-duplicate" : candidate.event.pubkey !== scope.ownerPubkeyHex ? "owner-mismatch" : "unsupported-kind" });
+                    continue;
+                }
                 const record = await this.repository.getByEventId(candidate.event.id);
-                if (!current() || await this.getLocalRevision(scope.ownerPubkeyHex) !== revision) return;
-                if (!record || record.pubkeyHex !== scope.ownerPubkeyHex || !isSameSignedNostrEvent(record.rawEvent, candidate.event)) continue;
+                if (!current()) return;
+                if (await this.getLocalRevision(scope.ownerPubkeyHex) !== revision) { trace?.finish("aborted", { reason: "revision-changed" }); return; }
+                if (!record || record.pubkeyHex !== scope.ownerPubkeyHex || !isSameSignedNostrEvent(record.rawEvent, candidate.event)) {
+                    trace?.record("archive-filtered", { eventId: candidate.event.id, reason: "not-adopted" }); continue;
+                }
                 const verified = isCurrentPostHistoryRawEventAttestation(candidate.event, candidate.attestation)
                     ? { event: candidate.event, attestation: candidate.attestation! }
                     : attestFullyVerifiedPostHistoryRawEvent(record.rawEvent);
-                if (!verified) continue;
+                if (!verified) { trace?.record("archive-filtered", { eventId: candidate.event.id, reason: "attestation-invalid" }); continue; }
+                trace?.record("db-verification-passed", { kind: verified.event.kind, eventId: verified.event.id });
                 adopted.set(verified.event.id, verified.event);
                 if (record.deletedAt === undefined) archive.set(verified.event.id, verified);
                 const reference = getSensitivePayloadReference(verified.event);
@@ -208,9 +262,12 @@ export class PostHistoryLocalRelayService {
                     structuresByPayloadId.set(reference.eventId, structures);
                 }
             }
-            if (!adopted.size || !current()) return;
+            trace?.record("archive-adopted", { count: adopted.size });
+            if (!adopted.size) { trace?.finish("filtered", { reason: "no-adopted-events" }); return; }
+            if (!current()) return;
             const payloads = await this.payloads.getByIds([...structuresByPayloadId.keys()]);
-            if (!current() || await this.getLocalRevision(scope.ownerPubkeyHex) !== revision) return;
+            if (!current()) return;
+            if (await this.getLocalRevision(scope.ownerPubkeyHex) !== revision) { trace?.finish("aborted", { reason: "revision-changed" }); return; }
             for (const payload of payloads) {
                 const linked = structuresByPayloadId.get(payload.id)?.filter(({ event }) =>
                     verifySensitivePayloadLink(event, payload.rawEvent as NostrEvent)) ?? [];
@@ -220,7 +277,8 @@ export class PostHistoryLocalRelayService {
                 if (payload.deletedAt === undefined && linked.some(({ deleted }) => !deleted)) archive.set(verified.event.id, verified);
             }
             const deletions = await this.deletions.getAllForTargetAuthorPubkey(scope.ownerPubkeyHex);
-            if (!current() || await this.getLocalRevision(scope.ownerPubkeyHex) !== revision) return;
+            if (!current()) return;
+            if (await this.getLocalRevision(scope.ownerPubkeyHex) !== revision) { trace?.finish("aborted", { reason: "revision-changed" }); return; }
             for (const deletion of deletions) {
                 // The exact adopted Structure/linked Payload proves the target here,
                 // including a previously pending deletion reference for kind 36.
@@ -230,8 +288,9 @@ export class PostHistoryLocalRelayService {
             }
             // Selection and dedupe finish before opening one finite batch socket.
             // Callers still await neither this work nor local ACKs for external delivery.
-            this.storeBatch(session, [...archive.values()], current);
-        })().catch(() => undefined);
+            trace?.record("archive-candidates", { count: archive.size });
+            this.storeBatch(session, [...archive.values()], current, trace);
+        })().catch(error => { trace?.finish("exception", { errorType: diagnosticErrorType(error) }); });
     }
 }
 

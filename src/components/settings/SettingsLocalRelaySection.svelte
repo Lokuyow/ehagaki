@@ -3,6 +3,9 @@
     import Button from "../Button.svelte";
     import { settingsStore } from "../../stores/settingsStore.svelte";
     import { normalizeLocalRelayUrl } from "../../lib/localRelayUrl";
+    import { isLocalRelayDebugEnabled } from "../../lib/localRelayDiagnostics";
+    import LocalRelayDiagnosticPanel from "./LocalRelayDiagnosticPanel.svelte";
+    const diagnosticMode = isLocalRelayDebugEnabled();
 
     let input = $state(settingsStore.localRelayUrl ?? "");
     let error = $state<"invalid" | "storage" | null>(null);
@@ -38,6 +41,7 @@
         <Button variant="default" shape="rounded" onClick={() => save(input)}>{$_("settingsDialog.local_relay_save")}</Button>
         <Button variant="default" shape="rounded" onClick={() => save("")}>{$_("settingsDialog.local_relay_clear")}</Button>
     </div>
+    {#if diagnosticMode}<LocalRelayDiagnosticPanel />{/if}
 </section>
 
 <style>

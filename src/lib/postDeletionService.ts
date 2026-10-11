@@ -1,4 +1,5 @@
 import { seckeySigner } from "@rx-nostr/crypto";
+import { beginLocalRelayDiagnostic, diagnosticErrorType } from "./localRelayDiagnostics";
 import type { RxNostr } from "rx-nostr";
 import type { EventTemplate } from "nostr-tools";
 import { authState } from "../stores/authStore.svelte";
@@ -314,10 +315,13 @@ export class PostDeletionService {
         let result: PostResult;
         try {
             assertSession();
+            const trace = beginLocalRelayDiagnostic("deletion-direct");
+            trace?.record("hook-invoked", { kind: verifiedDeletionEvent.event.kind, eventId: verifiedDeletionEvent.event.id, callerActive: true });
             try {
                 void Promise.resolve(this.deps.storeSignedEventFn(verifiedDeletionEvent,
-                    () => this.deps.authStateStore.value === auth && auth.isAuthenticated)).catch(() => undefined);
-            } catch { /* Local archival never changes external delivery. */ }
+                    () => this.deps.authStateStore.value === auth && auth.isAuthenticated, trace))
+                    .catch(error => { trace?.finish("exception", { errorType: diagnosticErrorType(error) }); });
+            } catch (error) { trace?.finish("exception", { errorType: diagnosticErrorType(error) }); }
             result = await this.createEventSender(params.rxNostr).sendEvent(
                 verifiedDeletionEvent.event,
                 {
@@ -490,5 +494,5 @@ export class PostDeletionService {
 }
 
 export const postDeletionService = new PostDeletionService({
-    storeSignedEventFn: (input, isActive) => postHistoryLocalRelayService.storeSignedEventBestEffort(input, isActive),
+    storeSignedEventFn: (input, isActive, trace) => postHistoryLocalRelayService.storeSignedEventBestEffort(input, isActive, trace),
 });

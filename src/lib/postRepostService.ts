@@ -1,4 +1,5 @@
 import { seckeySigner } from "@rx-nostr/crypto";
+import { beginLocalRelayDiagnostic, diagnosticErrorType } from "./localRelayDiagnostics";
 import type { EventTemplate } from "nostr-tools";
 import type { RxNostr } from "rx-nostr";
 import { authState } from "../stores/authStore.svelte";
@@ -108,10 +109,14 @@ export class PostRepostService {
             const verified = attestFullyVerifiedPostHistoryRawEvent(signed);
             if (!verified) return { success: false, error: "post_error" };
             assertCurrent();
+            const trace = beginLocalRelayDiagnostic("repost-direct");
+            trace?.record("hook-invoked", { kind: verified.event.kind, eventId: verified.event.id, callerActive: true, hookWired: !!this.deps.storeSignedEventFn });
+            if (!this.deps.storeSignedEventFn) trace?.finish("skipped-session", { reason: "hook-unwired" });
             try {
                 void Promise.resolve(this.deps.storeSignedEventFn?.(verified,
-                    () => this.deps.authStateStore.value === auth && params.isCurrent?.() !== false)).catch(() => undefined);
-            } catch { /* Local archival never changes external delivery. */ }
+                    () => this.deps.authStateStore.value === auth && params.isCurrent?.() !== false, trace))
+                    .catch(error => { trace?.finish("exception", { errorType: diagnosticErrorType(error) }); });
+            } catch (error) { trace?.finish("exception", { errorType: diagnosticErrorType(error) }); }
             const published = await this.deps.createSender(params.rxNostr).sendEvent(verified.event, {
                 targetRelays: writeRelays, includeDefaultWriteRelays: false,
             });
@@ -137,5 +142,5 @@ export class PostRepostService {
 }
 
 export const postRepostService = new PostRepostService({
-    storeSignedEventFn: (input, isActive) => postHistoryLocalRelayService.storeSignedEventBestEffort(input, isActive),
+    storeSignedEventFn: (input, isActive, trace) => postHistoryLocalRelayService.storeSignedEventBestEffort(input, isActive, trace),
 });

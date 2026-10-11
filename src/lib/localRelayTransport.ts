@@ -6,6 +6,8 @@ import { postHistoryRelayFetchService, POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_
     type PostHistoryRelayFetchRequest } from "./postHistoryRelayFetchService";
 import { usePostHistoryRelayEvents, type AttestedPostHistoryRawEvent } from "./postHistoryRawEventVerification";
 import type { NostrEvent } from "./types";
+import { diagnosticErrorType, diagnosticRelayReason, getLocalRelayDiagnosticAbortReason,
+    type LocalRelayDiagnosticTrace, type LocalRelayDiagnosticReason } from "./localRelayDiagnostics";
 
 export interface LocalRelayTask<T> { promise: Promise<T | null>; cancel(): void }
 export interface LocalRelayPage {
@@ -19,36 +21,59 @@ export interface LocalRelayPage {
 export class LocalRelayTransport {
     constructor(private createClient: typeof createRxNostr = createRxNostr) {}
 
-    private run<T>(url: string, signal: AbortSignal, work: (rx: RxNostr, signal: AbortSignal) => Promise<T>): LocalRelayTask<T> {
+    private run<T>(url: string, signal: AbortSignal, work: (rx: RxNostr, signal: AbortSignal) => Promise<T>, trace?: LocalRelayDiagnosticTrace): LocalRelayTask<T> {
         const abort = new AbortController();
         const cancel = () => abort.abort();
+        let abortReason: LocalRelayDiagnosticReason | undefined;
+        const parentCancelled = () => { abortReason = getLocalRelayDiagnosticAbortReason(signal); cancel(); };
+        const diagnosticSubscriptions = new Subscription();
         let client: RxNostr | undefined;
         let messages: { unsubscribe(): void } | undefined;
         let timer: ReturnType<typeof setTimeout> | undefined;
         let resolveCancelled: (value: null) => void = () => undefined;
         const cancelled = new Promise<null>((resolve) => { resolveCancelled = resolve; });
         abort.signal.addEventListener("abort", () => resolveCancelled(null), { once: true });
-        signal.addEventListener("abort", cancel, { once: true });
-        if (signal.aborted) cancel();
+        signal.addEventListener("abort", parentCancelled, { once: true });
+        if (signal.aborted) parentCancelled();
         const promise = (async (): Promise<T | null> => {
-            if (abort.signal.aborted) return null;
+            if (abort.signal.aborted) { trace?.finish("aborted", { reason: abortReason }); return null; }
             try {
+                trace?.record("client-creation-started");
                 client = this.createClient({ verifier, signer: noopSigner(), skipVerify: false,
                     skipFetchNip11: true, retry: { strategy: "off" } });
+                trace?.record("client-created");
+                if (trace) {
+                    diagnosticSubscriptions.add(client.createConnectionStateObservable().subscribe(({ state }) => trace.record("websocket-state", { state })));
+                    diagnosticSubscriptions.add(client.createOutgoingMessageObservable().subscribe(({ message }) => {
+                        // rx-nostr emits this immediately before native socket.send().
+                        // It is a send boundary, not proof of relay receipt; OK is that proof.
+                        if (message[0] === "EVENT") trace.record("event-socket-send-boundary", { kind: message[1].kind, eventId: message[1].id });
+                    }));
+                    diagnosticSubscriptions.add(client.createAllErrorObservable().subscribe(({ reason }) => trace.record("websocket-error", { errorType: diagnosticErrorType(reason) })));
+                }
                 messages = client.createAllMessageObservable().subscribe(({ type, message }) => {
+                    if (type === "OK") trace?.record("relay-response", { eventId: message[1], ok: message[2], noticePresent: !!message[3], reason: diagnosticRelayReason(message[3]) });
                     if (type === "AUTH" || (Array.isArray(message) && message[0] === "CLOSED"
-                        && typeof message[2] === "string" && message[2].startsWith("auth-required:"))) cancel();
+                        && typeof message[2] === "string" && message[2].startsWith("auth-required:"))) {
+                        abortReason = "auth-required"; trace?.record("relay-response", { reason: abortReason }); cancel();
+                    }
                 });
-                timer = setTimeout(cancel, POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS);
-                return await Promise.race([work(client, abort.signal), cancelled]);
-            } catch {
+                timer = setTimeout(() => { abortReason = "timeout-abort"; cancel(); }, POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS);
+                const result = await Promise.race([work(client, abort.signal), cancelled]);
+                if (abort.signal.aborted) trace?.finish(abortReason === "timeout-abort" ? "timeout" : "aborted", { reason: abortReason ?? "transport-local-abort" });
+                else trace?.finish(result === true ? "accepted" : "rejected");
+                return result;
+            } catch (error) {
+                trace?.finish("exception", { errorType: diagnosticErrorType(error) });
                 return null;
             } finally {
                 cancel();
                 if (timer !== undefined) clearTimeout(timer);
-                signal.removeEventListener("abort", cancel);
+                signal.removeEventListener("abort", parentCancelled);
                 messages?.unsubscribe();
                 client?.dispose();
+                diagnosticSubscriptions.unsubscribe();
+                trace?.record("transport-disposed");
             }
         })();
         return { promise, cancel };
@@ -98,16 +123,21 @@ export class LocalRelayTransport {
     }
 
     /** One finite batch shares one client/relay connection until its ACKs settle. */
-    storeSignedEvents(url: string, events: NostrEvent[], signal: AbortSignal): LocalRelayTask<boolean> {
+    storeSignedEvents(url: string, events: NostrEvent[], signal: AbortSignal, trace?: LocalRelayDiagnosticTrace): LocalRelayTask<boolean> {
+        trace?.record("transport-entered", { count: events.length });
+        trace?.record("relay-target", { target: url });
         const uniqueEvents = [...new Map(events.map(event => [event.id, event])).values()];
-        if (!uniqueEvents.length) return { promise: Promise.resolve(signal.aborted ? null : true), cancel() {} };
+        if (!uniqueEvents.length) {
+            trace?.finish(signal.aborted ? "aborted" : "filtered", { reason: signal.aborted ? getLocalRelayDiagnosticAbortReason(signal) : "no-candidates" });
+            return { promise: Promise.resolve(signal.aborted ? null : true), cancel() {} };
+        }
         return this.run(url, signal, async (rx, operationSignal) => {
-            const results = await Promise.all(uniqueEvents.map(event => this.sendSignedEvent(rx, url, event, operationSignal)));
+            const results = await Promise.all(uniqueEvents.map(event => this.sendSignedEvent(rx, url, event, operationSignal, trace)));
             return results.every(accepted => accepted);
-        });
+        }, trace);
     }
 
-    private sendSignedEvent(rx: RxNostr, url: string, event: NostrEvent, operationSignal: AbortSignal): Promise<boolean> {
+    private sendSignedEvent(rx: RxNostr, url: string, event: NostrEvent, operationSignal: AbortSignal, trace?: LocalRelayDiagnosticTrace): Promise<boolean> {
         return new Promise<boolean>((resolve) => {
             const subscription = new Subscription();
             const finish = (accepted = false) => {
@@ -118,10 +148,12 @@ export class LocalRelayTransport {
             const cancel = () => finish();
             operationSignal.addEventListener("abort", cancel, { once: true });
             if (operationSignal.aborted) { cancel(); return; }
+            trace?.record("event-send-attempt", { kind: event.kind, eventId: event.id });
             subscription.add(rx.send(event, { signer: noopSigner(), on: { relays: [url] }, completeOn: "all-ok" }).subscribe({
                 next: (packet) => { if (packet.eventId === event.id) finish(packet.ok); },
-                error: cancel, complete: cancel,
+                error: error => { trace?.finish("exception", { errorType: diagnosticErrorType(error) }); cancel(); }, complete: cancel,
             }));
+            trace?.record("event-submitted-rx-nostr", { kind: event.kind, eventId: event.id });
         });
     }
 }
