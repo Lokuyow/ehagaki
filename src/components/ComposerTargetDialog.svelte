@@ -13,6 +13,8 @@
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
     import PostHistoryRelatedEventCard from "./PostHistoryRelatedEventCard.svelte";
+    import PostHistoryRepostPreview from "./PostHistoryRepostPreview.svelte";
+    import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
     import { useComposerTargetRelatedPreview } from "../lib/hooks/useComposerTargetRelatedPreview.svelte";
     import { buildComposerInteractionRenderModel } from "../lib/composerTargetRelatedPreview";
     import type { PostHistoryRelatedTargetResolver } from "../lib/postHistoryRelatedTargetResolver.svelte";
@@ -20,7 +22,7 @@
     import PostRepostFeedback from "./PostRepostFeedback.svelte";
     import type { RepostPostHandler } from "../lib/hooks/usePostRepostOperation.svelte";
     import type { PostRepostResult } from "../lib/postRepostService";
-    import { isRepostTargetKind } from "../lib/postRepostUtils";
+    import { isRepostTargetKind, repostTargetToPost } from "../lib/postRepostUtils";
     import { createPostHistoryRelatedTargetResolver } from "../lib/postHistoryRelatedTargetResolver.svelte";
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
     import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
@@ -214,6 +216,15 @@
         getRelayConfig: () => relayConfig, getPubkey: () => pubkeyHex, resolver: untrack(() => relatedResolver),
     });
     let relatedPreview = $derived(relatedPreviewController.getPreview());
+    let repostPreview = $derived(target && [6, 16].includes(target.event.kind) ? relatedPreview : null);
+    let relatedChannelPosts = $derived(repostPreview?.status === "resolved" && repostPreview.event?.kind === 42
+        ? [repostTargetToPost(repostPreview.event, repostPreview.relayHints)] : []);
+    const relatedChannelDisplay = usePostHistoryChannelDisplay({
+        getShow: () => show, getPosts: () => relatedChannelPosts,
+        getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig, getIsSearchMode: () => false,
+    });
+    let relatedChannelText = $derived(relatedChannelPosts[0]
+        ? relatedChannelDisplay.getChannelText(relatedChannelPosts[0], $_) : null);
     let relatedRenderModel = $derived(relatedPreview?.event
         ? [6, 7, 16].includes(relatedPreview.event.kind)
             ? buildComposerInteractionRenderModel(relatedPreview.event)
@@ -847,6 +858,88 @@
     });
 </script>
 
+{#snippet mainTargetMenu(post: PostHistoryRecord)}
+    {#if post.eventId === targetPost?.eventId}
+        {@const actionsLabel = $_("common.showActions")}
+        <PostHistoryActionMenu
+            open={postActionUi.isPostMenuOpen(
+                post.eventId,
+            )}
+            onOpenChange={(open) =>
+                setTargetMenuOpen(post.eventId, open)}
+            triggerAriaLabel={actionsLabel}
+            tooltipContent={actionsLabel}
+            enableTooltip={true}
+            timestamp={formatPostedAtExact(
+                post.postedAt,
+                $locale,
+            )}
+        >
+            {#snippet items()}
+                {#if onRepostPost && isRepostTargetKind(post.kind)}
+                    <PostRepostMenuItem pending={repostPending} onSelect={() => void handleRepost(post)} />
+                {/if}
+                <DropdownMenu.Item
+                    class="menu-action-button"
+                    onSelect={() =>
+                        openRawJson(post.rawEvent)}
+                >
+                    <div
+                        class="raw-json-icon svg-icon"
+                        aria-hidden="true"
+                    ></div>
+                    <span>{$_("postHistory.rawJson")}</span>
+                </DropdownMenu.Item>
+                {#if canBroadcastTargetPost}
+                    <DropdownMenu.Item
+                        class="menu-action-button"
+                        disabled={broadcastRequestState ===
+                            "sending"}
+                        onpointerdown={(event) =>
+                            captureBroadcastPointerPosition(
+                                post,
+                                event,
+                            )}
+                        onSelect={(event) =>
+                            void handleBroadcastPost(
+                                post,
+                                event,
+                            )}
+                    >
+                        <div
+                            class="broadcast-icon svg-icon"
+                            aria-hidden="true"
+                        ></div>
+                        <span>{$_("postHistory.broadcast")}</span>
+                    </DropdownMenu.Item>
+                {/if}
+                {#if canDeleteTargetPost}
+                    <DropdownMenu.Separator
+                        class="post-history-menu-separator"
+                    />
+                    <DropdownMenu.Item
+                        class="menu-action-button menu-action-button-danger"
+                        disabled={deleteRequestState ===
+                            "sending"}
+                        onSelect={() =>
+                            openDeleteConfirm(post)}
+                    >
+                        <div
+                            class="trash-icon svg-icon"
+                            aria-hidden="true"
+                        ></div>
+                        <span>
+                            {deleteRequestState === "sending"
+                                ? $_("postHistory.deleteSending")
+                                : $_("postHistory.delete")}
+                        </span>
+                    </DropdownMenu.Item>
+                {/if}
+            {/snippet}
+        </PostHistoryActionMenu>
+    {/if}
+{/snippet}
+
 <DialogWrapper
     open={show}
     onOpenChange={(open) => !open && handleClose()}
@@ -945,7 +1038,22 @@
             </div>
         {/snippet}
 
-        {#if previewEvent}
+        {#if repostPreview && targetPost}
+            <section class="composer-target-repost-preview" aria-label={$_("composerTarget.preview")}>
+                <PostHistoryRepostPreview post={targetPost} preview={repostPreview}
+                    menu={mainTargetMenu} channelText={relatedChannelText} model={relatedRenderModel ?? undefined}
+                    targetLabel={repostPreview.event && [6, 7, 16].includes(repostPreview.event.kind)
+                        ? $_(interactionLabelKey(repostPreview.event.kind)) : null}
+                    onRetry={relatedPreviewController.retry}
+                    onImageOpen={(params) => handleImageOpen({ ...params,
+                        focusOrigin: document.activeElement instanceof HTMLElement ? document.activeElement : null })}
+                    emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                    emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                    loadSensitiveBody={repostPreview.event ? createSensitivePayloadBodyLoader({ ownerPubkey: pubkeyHex,
+                        structure: repostPreview.event, relayHints: repostPreview.relayHints, rxNostr, relayConfig }) : undefined} />
+                {#if deleteRequestState === "failed"}<p class="delete-failed">{$_("postHistory.deleteFailed")}</p>{/if}
+            </section>
+        {:else if previewEvent}
             <section
                 bind:this={targetPreviewElement}
                 class="target-preview"
@@ -1079,86 +1187,7 @@
                         {/if}
                     {/snippet}
                     {#snippet trailing()}
-                        {#if targetPost}
-                            {@const post = targetPost}
-                            {@const actionsLabel = $_("common.showActions")}
-                            <PostHistoryActionMenu
-                                open={postActionUi.isPostMenuOpen(
-                                    post.eventId,
-                                )}
-                                onOpenChange={(open) =>
-                                    setTargetMenuOpen(post.eventId, open)}
-                                triggerAriaLabel={actionsLabel}
-                                tooltipContent={actionsLabel}
-                                enableTooltip={true}
-                                timestamp={formatPostedAtExact(
-                                    post.postedAt,
-                                    $locale,
-                                )}
-                            >
-                                {#snippet items()}
-                                    {#if onRepostPost && isRepostTargetKind(post.kind)}
-                                        <PostRepostMenuItem pending={repostPending} onSelect={() => void handleRepost(post)} />
-                                    {/if}
-                                    <DropdownMenu.Item
-                                        class="menu-action-button"
-                                        onSelect={() =>
-                                            openRawJson(post.rawEvent)}
-                                    >
-                                        <div
-                                            class="raw-json-icon svg-icon"
-                                            aria-hidden="true"
-                                        ></div>
-                                        <span>{$_("postHistory.rawJson")}</span>
-                                    </DropdownMenu.Item>
-                                    {#if canBroadcastTargetPost}
-                                        <DropdownMenu.Item
-                                            class="menu-action-button"
-                                            disabled={broadcastRequestState ===
-                                                "sending"}
-                                            onpointerdown={(event) =>
-                                                captureBroadcastPointerPosition(
-                                                    post,
-                                                    event,
-                                                )}
-                                            onSelect={(event) =>
-                                                void handleBroadcastPost(
-                                                    post,
-                                                    event,
-                                                )}
-                                        >
-                                            <div
-                                                class="broadcast-icon svg-icon"
-                                                aria-hidden="true"
-                                            ></div>
-                                            <span>{$_("postHistory.broadcast")}</span>
-                                        </DropdownMenu.Item>
-                                    {/if}
-                                    {#if canDeleteTargetPost}
-                                        <DropdownMenu.Separator
-                                            class="post-history-menu-separator"
-                                        />
-                                        <DropdownMenu.Item
-                                            class="menu-action-button menu-action-button-danger"
-                                            disabled={deleteRequestState ===
-                                                "sending"}
-                                            onSelect={() =>
-                                                openDeleteConfirm(post)}
-                                        >
-                                            <div
-                                                class="trash-icon svg-icon"
-                                                aria-hidden="true"
-                                            ></div>
-                                            <span>
-                                                {deleteRequestState === "sending"
-                                                    ? $_("postHistory.deleteSending")
-                                                    : $_("postHistory.delete")}
-                                            </span>
-                                        </DropdownMenu.Item>
-                                    {/if}
-                                {/snippet}
-                            </PostHistoryActionMenu>
-                        {/if}
+                        {#if targetPost}{@render mainTargetMenu(targetPost)}{/if}
                     {/snippet}
                 </PostHistoryPreviewFooter>
                 {#if targetReactionReadModel && targetReactionReadModel.totalCount > 0 && isTargetReactionsExpanded}
@@ -1171,7 +1200,7 @@
             </section>
         {/if}
 
-        {#if relatedPreview && target}
+        {#if relatedPreview && target?.event.kind === 7}
             <section class="composer-target-related-preview" aria-label={$_("composerTarget.relatedPreview")}>
                 <h3>{$_(target.event.kind === 7 ? "composerTarget.relatedReaction" : "composerTarget.relatedRepost")}</h3>
                 {#if relatedPreview.status === "resolved" && relatedPreview.event && relatedRenderModel}
@@ -1456,6 +1485,7 @@
         padding: 12px;
     }
 
+    .composer-target-repost-preview { min-width: 0; }
     .interaction-label { margin: 0; font-weight: 600; }
     .composer-target-related-preview { display: grid; gap: 8px; min-width: 0; }
     .composer-target-related-preview h3,

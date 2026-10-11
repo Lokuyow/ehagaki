@@ -20,6 +20,14 @@ const relatedReactionMock = vi.hoisted(() => ({
     records: [] as any[],
 }));
 
+vi.mock("../../lib/channelContextCoordinator", () => ({
+    channelContextCoordinator: { resolveInternal: vi.fn((query) => {
+        const snapshot = { context: { eventId: query.eventId, name: "Related channel" },
+            cache: { resolutionQuality: "verified-metadata", name: "Related channel" } };
+        return { cacheReady: Promise.resolve(snapshot), refresh: Promise.resolve({ snapshot }), release: vi.fn() };
+    }) },
+}));
+
 vi.mock("../../lib/postHistoryChildInteractionsAdapter", () => ({
     postHistoryReactionRecordsAdapter: {
         getReactionRecordsForParents: vi.fn(async (eventIds: string[]) =>
@@ -294,6 +302,32 @@ async function openActionMenu(): Promise<void> {
 }
 
 describe("ComposerTargetDialog", () => {
+    it("renders Reposts with the shared history label, channel row and source card", async () => {
+        const related = signInteraction(42, "Related channel body", [["e", "a".repeat(64), "", "root"]]);
+        const outer = signInteraction(16, JSON.stringify(related), [["e", related.id], ["p", related.pubkey], ["k", "42"]]);
+        const { onApply } = renderRelatedTarget(outer, related);
+        await enterNoteFor(outer.id);
+        await vi.advanceTimersByTimeAsync(0);
+        const preview = document.querySelector(".post-history-repost") as HTMLElement;
+        expect(preview.getAttribute("data-repost-event-id")).toBe(outer.id);
+        expect(preview.querySelector(".post-history-repost-label")?.textContent).toContain("repost.entry");
+        expect(within(preview.querySelector(".post-history-repost-label") as HTMLElement)
+            .getByRole("button", { name: "アクションを表示" })).toBeTruthy();
+        expect(preview.querySelector(".repost-channel-row")?.textContent).toContain("Related channel");
+        const card = preview.querySelector(".post-history-related-card")!;
+        expect(card.textContent).toContain("Related author");
+        expect(card.textContent).toContain("Related channel body");
+        expect(card.querySelector(".post-preview-date")?.textContent).toBeTruthy();
+        expect(document.querySelector(".target-preview, .composer-target-related-preview, .related-kind")).toBeNull();
+        expect(preview.textContent).not.toContain("Outer author");
+        expect(preview.textContent).not.toContain("kind 16");
+        expect(preview.textContent).not.toContain("kind 42");
+        expect(preview.querySelectorAll("button")).toHaveLength(1);
+        expect(onApply).not.toHaveBeenCalled();
+        await openActionMenu();
+        await fireEvent.click(screen.getByRole("menuitem", { name: "ブロードキャスト" }));
+        expect(postActionMocks.broadcast).toHaveBeenCalledWith(expect.objectContaining({ post: expect.objectContaining({ eventId: outer.id }) }));
+    });
     it("shows a retryable related error when cached resolution rejects", async () => {
         const related = signInteraction(1, "Recovered cached target");
         const outer = signInteraction(6, "", [["e", related.id]]);
@@ -302,7 +336,7 @@ describe("ComposerTargetDialog", () => {
         relatedResolver.ensureTarget = vi.fn(async () => { throw new Error("fixture cache failure"); });
         await enterNoteFor(outer.id);
         await vi.advanceTimersByTimeAsync(0);
-        expect(screen.getByText("composerTarget.relatedMissing")).toBeTruthy();
+        expect(screen.getByText("repost.targetMissing")).toBeTruthy();
         expect(screen.getByRole("button", { name: "アクションを表示" })).toBeTruthy();
         relatedResolver.ensureTarget = originalEnsure;
         await fireEvent.click(screen.getByRole("button", { name: "再試行" }));
@@ -347,7 +381,7 @@ describe("ComposerTargetDialog", () => {
         renderRelatedTarget(outer, related);
         await enterNoteFor(outer.id);
         await vi.advanceTimersByTimeAsync(0);
-        const card = document.querySelector(".composer-target-related-preview")!;
+        const card = document.querySelector(".post-history-repost .post-history-related-card")!;
         expect(card.textContent).toContain("Related warning");
         expect(card.textContent).not.toContain("CW related body");
         expect(card.querySelector('img[src="https://example.com/related.jpg"]')).toBeNull();
@@ -365,10 +399,11 @@ describe("ComposerTargetDialog", () => {
         const { fetchEventById, onApply } = renderRelatedTarget(outer, related);
         await enterNoteFor(outer.id);
         await vi.advanceTimersByTimeAsync(0);
-        const card = document.querySelector(".composer-target-related-preview")!;
+        const card = document.querySelector(".post-history-repost .post-history-related-card")!;
         expect(card.textContent).toContain(kind === 6 ? "repost.entry" : "composerTarget.genericRepost");
         expect(card.textContent).toContain("Related author");
-        expect(document.querySelector(".target-preview")!.textContent).toContain("Outer author");
+        expect(document.querySelector(".post-history-repost")?.getAttribute("data-repost-event-id")).toBe(outer.id);
+        expect(document.querySelector(".target-preview")).toBeNull();
         expect(card.textContent).not.toContain("hidden-json-body");
         expect(card.textContent).not.toContain(hidden.id);
         expect(card.querySelectorAll("a, .post-content-media, .post-history-related-content").length).toBe(0);

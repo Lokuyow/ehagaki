@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { onMount } from "svelte";
+    import { channelMetadataRepository } from "../../lib/storage/channelMetadataRepository";
     import { finalizeEvent, generateSecretKey, nip19 } from "nostr-tools";
     import { createPostHistoryRelatedTargetResolver } from "../../lib/postHistoryRelatedTargetResolver.svelte";
     import type { NostrEvent } from "../../lib/types";
@@ -35,7 +37,8 @@
     const nested6 = sign(6, JSON.stringify(nestedHidden), [["e", nestedHidden.id]]);
     const nested16 = sign(16, JSON.stringify(nestedHidden), [["e", nestedHidden.id], ["k", "1"]]);
     const relatedReaction = sign(7, "👀", [["e", nestedHidden.id]]);
-    const related42 = sign(42, "Related channel post", [["e", "f".repeat(64), "", "root"]]);
+    const relatedChannel = sign(40, JSON.stringify({ name: "Related fixture channel" }));
+    const related42 = sign(42, "Related channel post", [["e", relatedChannel.id, "", "root"]]);
     const missingSource = sign(1, "Recovered related fixture");
     const heldSource = sign(1, "Released related fixture");
     const refTags = (event: NostrEvent) => [["e", event.id, "wss://related.example/", event.pubkey], ["p", event.pubkey], ["k", String(event.kind)]];
@@ -379,7 +382,7 @@
     }
 
     const harness = {
-        ready: true,
+        ready: false,
         seedReactionFixtures,
         relatedFetchIds,
         relatedCancelledIds,
@@ -404,6 +407,10 @@
             __COMPOSER_TARGET_HARNESS__?: typeof harness;
         }
     ).__COMPOSER_TARGET_HARNESS__ = harness;
+    onMount(() => { void channelMetadataRepository.upsertResolvedChannel({
+        channelEventId: relatedChannel.id, creatorPubkey: relatedChannel.pubkey, createEventCreatedAt: relatedChannel.created_at,
+        quality: "verified-metadata", metadataLookup: "complete", name: "Related fixture channel", about: null, picture: null,
+    }).then(() => { harness.ready = true; }); });
 </script>
 
 <svelte:head>

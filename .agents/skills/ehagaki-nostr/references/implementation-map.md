@@ -71,6 +71,7 @@
 - 主な実装ファイル: `src/lib/utils/nostrUtils.ts`、`src/lib/eventPointerUtils.ts`、`src/lib/composerTargetUtils.ts`、`src/lib/composerTargetResolver.ts`
 - 主な関数または責務: `decodeEventPointerValue`はnote/neventを正規化し、`parseComposerTargetInput`はnote/neventだけをcomposer targetとして受理する。`createComposerTargetResolver`は取得eventをID、author hint、kind hint、署名で検証する。
 - Composer preview: mainは取得・検証したeventの汎用previewを維持し、`useComposerTargetRelatedPreview`がmain kind 6／7／16の直接参照先だけを既存related-target resolverで取得する。`requireFullVerification`を有効化し、署名なし履歴再構成eventを採用しない。`loadStoredRepostTarget`の検証済みsnapshot読取は共有するが、履歴行・Repost snapshotは保存しない。raw JSONと管理操作は常にmainへ適用し、relatedは読み取り専用とする。
+- Composerのkind 6／16の表示は`PostHistoryRepostPreview`を共有し、履歴と同じリポストラベル行・元投稿カード・チャンネル名行を使う。outerの管理menuをラベル行へ置き、別のouter本文カードや「リポスト元」見出しは作らない。表示modelを渡すことでrelatedのRepost JSON非描画を維持する。
 - Reaction参照: `parseReactionReference()`は既存`resolveKind7ReactionTargetEventId()`とraw末尾eのID一致を要求する。NIP-25のe[3]が64hexならauthor、既存marker形式ではe[4]をauthorとして扱い、末尾p・optional kとの矛盾を拒否する。投稿履歴の既存ID選択は変更しない。Reaction送信は追加しない。
 - 1段の表示境界: relatedのkind 6／16は非空embedded JSONも本文・media・emojiへ渡さず、Repost種別まで表示する。related kind 7は既存Reaction正規化と共通emoji rendererを使い、その先は取得しない。通常投稿のCW・Sensitive本文の明示revealは既存経路を維持する。
 - 関連テスト: `src/test/unit/nostrUtils.test.ts`、`src/test/unit/eventPointerUtils.test.ts`、`src/test/unit/composerTargetUtils.test.ts`、`src/test/unit/composerTargetResolver.test.ts`

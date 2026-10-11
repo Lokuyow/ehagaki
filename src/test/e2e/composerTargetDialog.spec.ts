@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { nip19 } from "nostr-tools";
 
 type HarnessState = {
     ready: boolean;
@@ -92,13 +93,20 @@ async function expectTooltip(
 
 test.describe("composer target dialog fixture", () => {
     test("Repost and Reaction preserve main identity and only show a direct related card", async ({ page }, testInfo) => {
+        await page.emulateMedia({ colorScheme: "dark" });
         const harness = await gotoHarness(page);
         await openDialog(page);
         for (const key of ["repost6", "repost16", "repostTo6", "repostTo16", "reaction7"] as const) {
             await page.getByLabel("イベントID").fill(harness.inputs[key]);
-            const main = page.locator(".target-preview");
-            const related = page.locator(".composer-target-related-preview");
-            await expect(main).toContainText("Outer fixture author");
+            const reaction = key === "reaction7";
+            const main = page.locator(reaction ? ".target-preview" : ".composer-target-repost-preview");
+            const related = page.locator(reaction ? ".composer-target-related-preview" : ".post-history-repost");
+            if (reaction) await expect(main).toContainText("Outer fixture author");
+            else {
+                await expect(page.locator(".target-preview, .composer-target-related-preview")).toHaveCount(0);
+                await expect(main.locator(".post-history-repost-label")).toContainText("リポスト");
+                await expect(main.locator(".related-kind")).toHaveCount(0);
+            }
             await expect(related).toContainText("Related fixture author");
             await expect(related.locator(".post-history-related-card")).toHaveCount(1);
             await expect(main).not.toContainText("Nested JSON must stay hidden");
@@ -106,17 +114,35 @@ test.describe("composer target dialog fixture", () => {
             await expect(related.locator("a, .post-preview-media-item")).toHaveCount(0);
             await expect(main.getByRole("button", { name: "リプライ", exact: true })).toHaveCount(0);
             await expect(main.getByRole("button", { name: "引用", exact: true })).toHaveCount(0);
-            const inputId = key === "reaction7" ? "👍" : key === "repost6" ? "リポスト" : "Generic Repost";
-            await expect(main).toContainText(inputId);
+            await expect(main).toContainText(reaction ? "👍" : "リポスト");
             if (key === "reaction7") await expect(related).toContainText("👀");
+            if (key === "repost16") await expect(main.locator(".repost-channel-row")).toContainText("Related fixture channel");
+            const menu = main.getByRole("button", { name: "アクションを表示" });
+            await menu.focus();
+            await expect(menu).toBeFocused();
+            await menu.press("Enter");
+            await page.getByRole("menuitem", { name: "イベントJSONを表示" }).click();
+            const decoded = nip19.decode(harness.inputs[key]);
+            const expectedId = decoded.type === "note" ? decoded.data : decoded.type === "nevent" ? decoded.data.id : "";
+            const raw = page.getByRole("dialog", { name: "イベントJSON" });
+            await expect(raw).toContainText(`"id": "${expectedId}"`);
+            await page.keyboard.press("Escape");
+            await expect(raw).toBeHidden();
+            await expect(page.getByRole("dialog", { name: "宛先を指定" })).toBeVisible();
         }
+        await page.getByLabel("イベントID").fill(harness.inputs.repost16);
+        await expect(page.locator(".repost-channel-row")).toContainText("Related fixture channel");
+        await page.screenshot({ path: testInfo.outputPath("composer-repost-history-style.png") });
         for (const width of [360, 320]) {
             await page.setViewportSize({ width, height: 720 });
             const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth
-                || Array.from(document.querySelectorAll(".target-preview, .composer-target-related-preview"))
+                || Array.from(document.querySelectorAll(".target-preview, .composer-target-related-preview, .post-history-repost, .post-history-related-card"))
                     .some(element => element.scrollWidth > element.clientWidth + 1));
             expect(overflow).toBe(false);
+            await page.screenshot({ path: testInfo.outputPath(`composer-repost-history-style-${width}.png`) });
         }
+        await page.getByLabel("イベントID").fill(harness.inputs.reaction7);
+        await expect(page.locator(".target-preview")).toContainText("👍");
         await page.screenshot({ path: testInfo.outputPath("composer-reaction-related-320.png") });
         await page.getByRole("button", { name: "アクションを表示" }).click();
         await page.getByRole("menuitem", { name: "イベントJSONを表示" }).click();
