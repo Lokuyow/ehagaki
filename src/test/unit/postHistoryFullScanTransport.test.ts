@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRxNostr, type RxNostr } from "rx-nostr";
 import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent } from "nostr-tools";
-import { PostHistoryRelayFullScanService } from "../../lib/postHistoryRelayFullScanService";
+import { PostHistoryRelayFullScanService, type PostHistoryFullScanProgress } from "../../lib/postHistoryRelayFullScanService";
 import { PostHistoryRelayFetchService } from "../../lib/postHistoryRelayFetchService";
 import { createNip42Authenticator, NostrAuthService } from "../../lib/nostrAuthService";
 import { createPostHistoryScanVerifier, registerPostHistoryScanVerifier } from "../../lib/postHistoryRawEventVerification";
@@ -102,9 +102,10 @@ function setup(mode: "eose" | "closed" | "early" | "reject" | "timeout" | "still
         },
     });
     const relayConfig = Object.fromEntries(relayUrls.map((url) => [url, { read: true, write: true }]));
+    const progress: PostHistoryFullScanProgress[] = [];
     const task = scan.start({ ownerPubkeyHex: owner, rxNostr: runtime, relayConfig,
-        getCurrentScope: () => ({ ownerPubkeyHex: owner, rxNostr: runtime, relayConfig }) });
-    return { task, saved, coverage, extra, pendingId: () => pendingAuthId };
+        getCurrentScope: () => ({ ownerPubkeyHex: owner, rxNostr: runtime, relayConfig }), onProgress: (snapshot) => progress.push(snapshot) });
+    return { task, saved, coverage, extra, progress, pendingId: () => pendingAuthId };
 }
 
 describe("full scan with installed rx-nostr and existing NIP-42 authenticator", () => {
@@ -118,6 +119,8 @@ describe("full scan with installed rx-nostr and existing NIP-42 authenticator", 
         else expect(requests[1]).not.toBe(requests[0]);
         expect(state.coverage).toEqual([{ since: 0, until: 100 }]);
         expect(result.relays[0].requestCount).toBe(2);
+        expect(result.relays[0].receivedCount).toBe(1);
+        if (mode !== "closed") expect(state.progress.some((snapshot) => snapshot.relays[0].phase === "auth" && snapshot.relays[0].status === "running")).toBe(true);
     });
     it("does not add a manual REQ when OK is observed before the automatic resend", async () => {
         const state = setup("closed-still-auth", 1, true);
@@ -142,6 +145,7 @@ describe("full scan with installed rx-nostr and existing NIP-42 authenticator", 
         vi.useFakeTimers();
         const state = setup("timeout");
         await vi.waitFor(() => expect(state.pendingId()).not.toBeNull());
+        expect(state.progress.at(-1)!.relays[0].phase).toBe("auth");
         state.task.cancel();
         const result = await state.task.promise;
         ScanSocket.instances[0].receive(["OK", state.pendingId(), true, ""]);

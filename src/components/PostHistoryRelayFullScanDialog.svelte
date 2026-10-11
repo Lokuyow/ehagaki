@@ -4,7 +4,7 @@
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
-    import type { PostHistoryFullScanProgress, PostHistoryFullScanResult } from "../lib/postHistoryRelayFullScanService";
+    import type { PostHistoryFullScanProgress, PostHistoryFullScanResult, PostHistoryFullScanRelayProgress } from "../lib/postHistoryRelayFullScanService";
     interface Props {
         open: boolean; running: boolean; canStart: boolean; elapsedMs: number;
         progress: PostHistoryFullScanProgress | null; result: PostHistoryFullScanResult | null;
@@ -24,6 +24,23 @@
     function duration(ms: number) {
         const seconds = Math.floor(ms / 1000);
         return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    }
+    function relayHost(relayUrl: string) {
+        try { return new URL(relayUrl).host; } catch { return relayUrl; }
+    }
+    function relayStatus(relay: PostHistoryFullScanRelayProgress) {
+        if (relay.status === "running") return relay.phase;
+        if (relay.status === "completed") return relay.receivedCount === 0 ? "empty" : "completed";
+        if (relay.status === "cancelled") return "cancelled";
+        const issues = Object.entries(relay.issueCounts).filter(([, count]) => (count ?? 0) > 0).map(([issue]) => issue);
+        if (issues.length && issues.every((issue) => issue === "timeout" || issue === "auth-timeout")) return "timeout";
+        if (issues.length === 1 && issues[0] === "error") return "error";
+        return "partial";
+    }
+    function relayReason(relay: PostHistoryFullScanRelayProgress) {
+        if (relay.status !== "partial" || relayStatus(relay) !== "partial") return null;
+        const issues = Object.entries(relay.issueCounts).filter(([, count]) => (count ?? 0) > 0);
+        return issues.length === 1 ? issues[0][0] : null;
     }
 </script>
 
@@ -69,6 +86,29 @@
                 </dl>
             </section>
         </div>
+        <section class="scan-relays">
+            <table>
+                <caption>{$_("postHistory.fullScanRelayProgress")}</caption>
+                <thead><tr>
+                    <th scope="col">{$_("postHistory.fullScanRelayHost")}</th>
+                    <th scope="col">{$_("postHistory.fullScanRelayState")}</th>
+                    <th scope="col">{$_("postHistory.fullScanReceived")}</th>
+                </tr></thead>
+                <tbody>
+                    {#each metrics.relays as relay (relay.relayUrl)}
+                        {@const reason = relayReason(relay)}
+                        <tr class="scan-relay-row" data-relay-url={relay.relayUrl}>
+                            <td><span class="scan-relay-host" title={relay.relayUrl}>{relayHost(relay.relayUrl)}</span></td>
+                            <td class="scan-relay-state">
+                                <span>{$_(`postHistory.fullScanRelayStatus.${relayStatus(relay)}`)}</span>
+                                {#if reason}<span class="scan-relay-reason">{$_(`postHistory.fullScanIssue.${reason}`)}</span>{/if}
+                            </td>
+                            <td class="scan-relay-count">{relay.receivedCount}</td>
+                        </tr>
+                    {/each}
+                </tbody>
+            </table>
+        </section>
     {/if}
     {#snippet footer()}
         <Dialog.Close>
@@ -99,6 +139,18 @@
     .scan-results dl div { display: flex; justify-content: space-between; gap: 8px; padding-block: 3px; font-size: 0.8rem; }
     .scan-results dt { min-width: 0; color: var(--text-muted); overflow-wrap: anywhere; }
     .scan-results dd { margin: 0; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+    .scan-relays { width: 100%; min-width: 0; box-sizing: border-box; margin-top: 12px; padding: 10px; border: 1px solid var(--border-hr); border-radius: 8px; }
+    .scan-relays table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.8rem; }
+    .scan-relays caption { margin-bottom: 8px; text-align: left; font-size: 0.9rem; font-weight: 600; }
+    .scan-relays th, .scan-relays td { padding: 6px 4px; text-align: left; overflow-wrap: anywhere; }
+    .scan-relays th { color: var(--text-muted); font-weight: 500; }
+    .scan-relays th:first-child { width: 45%; }
+    .scan-relays th:nth-child(2) { width: 28%; }
+    .scan-relays th:last-child, .scan-relays td:last-child { text-align: right; }
+    .scan-relay-row { border-top: 1px solid var(--border-hr); }
+    .scan-relay-host { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .scan-relay-count { font-variant-numeric: tabular-nums; }
+    .scan-relay-reason { display: block; margin-top: 4px; color: var(--text-muted); font-size: 0.75rem; }
     :global(.post-history-full-scan-dialog) { max-width: min(760px, calc(100% - 10px)); }
     @media (max-width: 680px) { .scan-results { grid-template-columns: 1fr; } }
 </style>

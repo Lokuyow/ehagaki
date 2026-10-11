@@ -152,7 +152,7 @@
   },
   "postHistory": {
     "fullScanTitle": "Fetch all from relays",
-    "fullScanDescription": "Fetch and save as many of your past posts as possible from relays. Closing cancels the scan, but posts already saved will remain.",
+    "fullScanDescription": "Fetch and save as many of your past posts as possible from relays. Closing cancels fetching, but posts already saved will remain.",
     "fullScanStart": "Start fetching",
     "fullScanCancel": "Cancel fetching",
     "fullScanRetrieval": "Retrieval",
@@ -162,6 +162,10 @@
     "fullScanUpdated": "Existing record updates",
     "fullScanCompletedRelays": "Completed relays",
     "fullScanIncompleteRelays": "Incomplete relays",
+    "fullScanRelayProgress": "Progress by relay",
+    "fullScanRelayHost": "Relay",
+    "fullScanRelayState": "State",
+    "fullScanRelayStatus": { "pending": "Waiting", "fetching": "Fetching…", "auth": "Authenticating…", "completed": "Completed", "empty": "No posts", "timeout": "Timed out", "error": "Connection error", "partial": "Incomplete", "cancelled": "Cancelled" },
     "fullScanPhase": { "fetching": "Fetching from relays…", "auth": "Waiting for relay authentication…" },
     "fullScanStatus": {
       "completed": "The target relay scans have finished",

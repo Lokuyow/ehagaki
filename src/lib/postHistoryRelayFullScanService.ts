@@ -10,11 +10,15 @@ import { derivePostHistoryRelayFetchCoverage, type PostHistoryCoverageRange, typ
 
 export type PostHistoryFullScanStatus = "completed" | "partial" | "cancelled" | "stale-cancelled" | "failed";
 export type PostHistoryFullScanIssue = "timeout" | "error" | "auth-rejected" | "auth-timeout" | "auth-unresolved" | "ambiguous" | "safety-limit" | "storage";
-export interface PostHistoryFullScanRelayResult {
+export interface PostHistoryFullScanRelayProgress {
     relayUrl: string;
     status: "running" | "completed" | "partial" | "cancelled";
-    requestCount: number;
+    phase: "pending" | "fetching" | "auth";
+    receivedCount: number;
     issueCounts: Partial<Record<PostHistoryFullScanIssue, number>>;
+}
+export interface PostHistoryFullScanRelayResult extends PostHistoryFullScanRelayProgress {
+    requestCount: number;
     rangeSamples: PostHistoryCoverageRange[];
 }
 export interface PostHistoryFullScanProgress {
@@ -25,6 +29,7 @@ export interface PostHistoryFullScanProgress {
     updatedCount: number;
     finishedRelayCount: number;
     targetRelayCount: number;
+    relays: PostHistoryFullScanRelayProgress[];
 }
 export interface PostHistoryFullScanResult extends PostHistoryFullScanProgress {
     status: PostHistoryFullScanStatus;
@@ -80,13 +85,17 @@ export class PostHistoryRelayFullScanService {
         let usableResponse = false;
         let localRevision = 0;
         const relays: PostHistoryFullScanRelayResult[] = relayUrls.map((relayUrl) => ({
-            relayUrl, status: "running", requestCount: 0, issueCounts: {}, rangeSamples: [],
+            relayUrl, status: "running", phase: "pending", receivedCount: 0, requestCount: 0, issueCounts: {}, rangeSamples: [],
         }));
         const progress: PostHistoryFullScanProgress = { phase: "fetching", elapsedMs: 0, receivedCount: 0,
-            insertedCount: 0, updatedCount: 0, finishedRelayCount: 0, targetRelayCount: relayUrls.length };
-        const notify = (phase = progress.phase) => {
-            progress.phase = phase; progress.elapsedMs = Math.max(0, now() - startedAt);
+            insertedCount: 0, updatedCount: 0, finishedRelayCount: 0, targetRelayCount: relayUrls.length, relays: [] };
+        const notify = () => {
+            progress.phase = relays.some((relay) => relay.status === "running" && relay.phase === "auth") ? "auth" : "fetching";
+            progress.elapsedMs = Math.max(0, now() - startedAt);
             progress.finishedRelayCount = relays.filter((relay) => relay.status !== "running").length;
+            progress.relays = relays.map(({ relayUrl, status, phase, receivedCount, issueCounts }) => ({
+                relayUrl, status, phase, receivedCount, issueCounts: { ...issueCounts },
+            }));
             input.onProgress?.({ ...progress });
         };
         const cancel = (stale = false) => {
@@ -109,6 +118,7 @@ export class PostHistoryRelayFullScanService {
             relay.issueCounts[reason] = (relay.issueCounts[reason] ?? 0) + 1;
             if (relay.rangeSamples.length < 16) relay.rangeSamples.push({ since: range.since, until: range.until });
         };
+        notify();
         const promise = (async (): Promise<PostHistoryFullScanResult> => {
             try {
                 releaseVerification = acquirePostHistoryScanVerification(input.rxNostr, input.ownerPubkeyHex, kinds);
@@ -133,7 +143,7 @@ export class PostHistoryRelayFullScanService {
                             if (remainingMs() <= 0 || relay.requestCount >= options.maxRequests) {
                                 issue(relay, "safety-limit", range); return null;
                             }
-                            relay.requestCount += 1; notify("fetching");
+                            relay.requestCount += 1; relay.phase = "fetching"; notify();
                             let page: PostHistoryRelayFetchResult;
                             try {
                                 const task = (this.deps.fetchRelayPage ?? postHistoryRelayFetchService.fetchRelayPage.bind(postHistoryRelayFetchService))(input.rxNostr, {
@@ -149,6 +159,8 @@ export class PostHistoryRelayFullScanService {
                             if (!isCurrent() || storageFailed) return null;
                             relay.requestCount += Math.max(0, (page.page?.requestCount ?? 1) - 1);
                             progress.receivedCount += page.rawCount;
+                            relay.receivedCount += page.rawCount;
+                            notify();
                             usableResponse ||= page.events.length > 0 || page.eoseRelayUrls.length > 0;
                             if (relay.requestCount > options.maxRequests) {
                                 await save(page, []); issue(relay, "safety-limit", range); return null;
@@ -174,7 +186,7 @@ export class PostHistoryRelayFullScanService {
                                 const boundaryIds = new Set<string>();
                                 while (isCurrent() && !storageFailed) {
                                     let page = await fetchPage(range);
-                                    if (!page) { relay.status = "partial"; return; }
+                                    if (!page) { relay.status = cancellation ? "cancelled" : "partial"; return; }
                                     if (page.page?.authAutoResent) range.authRetried = true;
                                     if (page.page?.hints.includes("auth")) {
                                         const authDeadline = Math.min(Math.min(now(), page.page.eoseReceivedAt ?? now()) + options.authTimeoutMs,
@@ -183,13 +195,13 @@ export class PostHistoryRelayFullScanService {
                                         if (!isCurrent()) return;
                                         if (range.authRetried) { issue(relay, "auth-unresolved", range); relay.status = "partial"; return; }
                                         page = null; // Release the committed page before waiting or holding its replacement.
-                                        notify("auth");
+                                        relay.phase = "auth"; notify();
                                         const outcome = await auth.wait(relay.relayUrl, options.authTimeoutMs, controller.signal, authDeadline);
                                         if (!isCurrent()) return;
                                         if (outcome !== "success") { issue(relay, outcome === "rejected" ? "auth-rejected" : "auth-timeout", range); relay.status = "partial"; return; }
                                         range.authRetried = true;
                                         page = await fetchPage(range);
-                                        if (!page) { relay.status = "partial"; return; }
+                                        if (!page) { relay.status = cancellation ? "cancelled" : "partial"; return; }
                                         if (page.page?.hints.includes("auth")) {
                                             await save(page, []); issue(relay, "auth-unresolved", range); relay.status = "partial"; return;
                                         }

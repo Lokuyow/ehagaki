@@ -152,7 +152,7 @@
   },
   "postHistory": {
     "fullScanTitle": "リレーから全件取得",
-    "fullScanDescription": "リレーから自分の過去の投稿をできるだけ取得して保存します。閉じると中止しますが保存済みの投稿は残ります。",
+    "fullScanDescription": "リレーから、自分の過去の投稿をできるだけ取得して保存します。閉じると中止しますが、保存済みの投稿は残ります。",
     "fullScanStart": "取得開始",
     "fullScanCancel": "取得を中止",
     "fullScanRetrieval": "取得状況",
@@ -162,6 +162,10 @@
     "fullScanUpdated": "既存の更新処理件数",
     "fullScanCompletedRelays": "正常終了したリレー",
     "fullScanIncompleteRelays": "未完了のリレー",
+    "fullScanRelayProgress": "リレーごとの取得状況",
+    "fullScanRelayHost": "リレー",
+    "fullScanRelayState": "状態",
+    "fullScanRelayStatus": { "pending": "待機", "fetching": "取得中…", "auth": "認証中…", "completed": "完了", "empty": "投稿なし", "timeout": "時間切れ", "error": "接続エラー", "partial": "一部未完了", "cancelled": "中止" },
     "fullScanPhase": { "fetching": "リレーから取得中…", "auth": "リレーの認証を待っています…" },
     "fullScanStatus": {
       "completed": "対象リレーの走査が終了しました",

@@ -56,6 +56,42 @@ function setup(fetch: (params: Parameters<NonNullable<PostHistoryFullScanDeps["f
 }
 
 describe("manual full relay scan", () => {
+    it("reports all pending relays before work, then fetching and completed/empty without mutating old snapshots", async () => {
+        const releases = new Map<string, (response: PostHistoryRelayFetchResult) => void>();
+        const snapshots: PostHistoryFullScanProgress[] = [];
+        const state = setup((params) => new Promise((resolve) => releases.set(params.relayUrl, resolve)),
+            { options: { concurrency: 1 } }, (progress) => snapshots.push(progress));
+        expect(snapshots[0].relays.map((relay) => relay.phase)).toEqual(["pending", "pending"]);
+        await vi.waitFor(() => expect(releases.has(urls[0])).toBe(true));
+        expect(snapshots.at(-1)!.relays.map((relay) => relay.phase)).toEqual(["fetching", "pending"]);
+        releases.get(urls[0])!(page([event(90)], ["finish"], { rawCount: 5 }));
+        await vi.waitFor(() => expect(releases.has(urls[1])).toBe(true));
+        expect(snapshots.at(-1)!.relays.map(({ status, phase, receivedCount }) => ({ status, phase, receivedCount }))).toEqual([
+            { status: "completed", phase: "fetching", receivedCount: 5 }, { status: "running", phase: "fetching", receivedCount: 0 },
+        ]);
+        releases.get(urls[1])!(page([], []));
+        const result = await state.task.promise;
+        expect(result.status).toBe("completed");
+        expect(result.relays.map((relay) => relay.receivedCount)).toEqual([5, 0]);
+        expect(result.receivedCount).toBe(5);
+        expect(snapshots[0].relays.every((relay) => relay.phase === "pending" && relay.status === "running" && relay.receivedCount === 0)).toBe(true);
+    });
+    it("keeps concurrent relay counts independent and includes duplicate raw events across pages", async () => {
+        const releases = new Map<string, (response: PostHistoryRelayFetchResult) => void>();
+        const snapshots: PostHistoryFullScanProgress[] = [];
+        const state = setup((params) => new Promise((resolve) => releases.set(params.relayUrl, resolve)), {}, (progress) => snapshots.push(progress));
+        await vi.waitFor(() => expect(releases.size).toBe(2));
+        expect(snapshots.at(-1)!.relays.every((relay) => relay.phase === "fetching")).toBe(true);
+        releases.get(urls[1])!(page([event(90)], ["finish"], { rawCount: 3 }));
+        await vi.waitFor(() => expect(snapshots.at(-1)!.relays[1].status).toBe("completed"));
+        expect(snapshots.at(-1)!.relays[0].receivedCount).toBe(0);
+        releases.get(urls[0])!(page([event(90)], [], { rawCount: 7 }));
+        await vi.waitFor(() => expect(state.requests).toHaveLength(3));
+        releases.get(urls[0])!(page([event(90)], ["finish"], { rawCount: 5 }));
+        const result = await state.task.promise;
+        expect(result.relays.map((relay) => relay.receivedCount)).toEqual([12, 3]);
+        expect(result.receivedCount).toBe(15); expect(state.saved.size).toBe(1);
+    });
     it("keeps the retrieval phase stable while saving page batches", async () => {
         const phases: string[] = [];
         const state = setup(() => page([event(90)], ["finish"]), {}, ({ phase }) => phases.push(phase));
@@ -109,6 +145,7 @@ describe("manual full relay scan", () => {
             ? page([event(30)], [], { status: "timeout", eoseRelayUrls: [], relayOutcomes: [], hasAnyRelayResponse: false }) : page([event(10)], ["finish"]));
         const result = await state.task.promise;
         expect(result.status).toBe("partial"); expect(result.relays[1].status).toBe("completed");
+        expect(result.relays.map((relay) => relay.receivedCount)).toEqual([2, 1]);
         expect(state.saved.size).toBe(2); expect(state.coverage.every((range) => range.relayUrl === urls[1])).toBe(true);
     });
     it("keeps saturated boundary coverage conservative even when finish ends the query", async () => {
@@ -131,7 +168,11 @@ describe("manual full relay scan", () => {
             { options: { concurrency: 1 } });
         await vi.waitFor(() => expect(release).toBeDefined());
         state.task.cancel(); release(page([event(80)], ["finish"]));
-        expect((await state.task.promise).status).toBe("cancelled"); expect(state.saved.size).toBe(1);
+        const result = await state.task.promise;
+        expect(result.status).toBe("cancelled"); expect(state.saved.size).toBe(1);
+        expect(result.relays.map(({ status, receivedCount }) => ({ status, receivedCount }))).toEqual([
+            { status: "cancelled", receivedCount: 1 }, { status: "cancelled", receivedCount: 0 },
+        ]);
     });
     it("does not fetch a new page until persistence commits", async () => {
         let commit!: () => void;
