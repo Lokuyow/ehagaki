@@ -37,6 +37,7 @@ export function createFetchEventListener({
     isUploadRequest,
     isProfileImageRequest,
     isChannelImageRequest,
+    isUploadMediaImageRequest,
     resolveServiceWorkerFetchRoute,
 }: {
     handleFetch: (event: ServiceWorkerFetchEventLike) => Promise<Response | undefined>;
@@ -44,6 +45,7 @@ export function createFetchEventListener({
     isUploadRequest: (request: Request, url: URL) => boolean;
     isProfileImageRequest: (request: Request) => boolean;
     isChannelImageRequest?: (request: Request, url: URL) => boolean;
+    isUploadMediaImageRequest?: (request: Request, url: URL) => boolean;
     resolveServiceWorkerFetchRoute: (params: {
         request: Request;
         url: URL;
@@ -51,6 +53,7 @@ export function createFetchEventListener({
         isUploadRequest: (request: Request, url: URL) => boolean;
         isProfileImageRequest: (request: Request) => boolean;
         isChannelImageRequest?: (request: Request, url: URL) => boolean;
+        isUploadMediaImageRequest?: (request: Request, url: URL) => boolean;
     }) => ServiceWorkerFetchRoute;
 }) {
     return (event: ServiceWorkerFetchEventLike) => {
@@ -62,6 +65,7 @@ export function createFetchEventListener({
             isUploadRequest,
             isProfileImageRequest,
             isChannelImageRequest,
+            isUploadMediaImageRequest,
         });
 
         if (route) {

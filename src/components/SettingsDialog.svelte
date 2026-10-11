@@ -57,6 +57,8 @@
         onRefreshRelaysAndProfile = () => {},
         hostRelayConfigActive = false,
         onOpenWelcomeDialog = undefined,
+        onOpenUploadedMedia = undefined,
+        uploadedMediaOpen = false,
         rxNostr = null,
     }: SettingsDialogProps = $props();
 
@@ -67,7 +69,7 @@
     }
 
     // ブラウザ履歴統合
-    useDialogHistory(() => show, handleClose, true);
+    useDialogHistory(() => show, () => { if (!uploadedMediaOpen) handleClose(); }, true);
 
     // 圧縮設定候補（$locale変更時にラベルも更新）
     let compressionLevels = $derived(getCompressionLevels($_));
@@ -464,7 +466,7 @@
                 (settingsStore.videoQualityLevel = value)}
         />
 
-        <SettingsUploadDestinationSection {rxNostr} />
+        <SettingsUploadDestinationSection {rxNostr} {onOpenUploadedMedia} />
 
         <!-- テーマ設定セクション -->
         <div class="setting-section">

@@ -30,6 +30,9 @@ import {
     registerServiceWorkerEventListeners,
 } from "../src/lib/swListenerUtils";
 import { resolveServiceWorkerFetchRoute } from "../src/lib/swRoutingUtils";
+import { UploadMediaImageCacheController } from "../src/lib/swUploadMediaImageCacheUtils";
+import { isUploadMediaImageProxyUrl } from "../src/lib/uploadMediaImageUrl";
+import { UPLOAD_MEDIA_IMAGE_CACHE_VERSION, UPLOAD_MEDIA_IMAGE_SUPPORT_MESSAGE, UPLOAD_MEDIA_IMAGE_EVICT_MESSAGE } from "../src/lib/uploadMediaImageCachePolicy";
 import {
     ChannelImageCacheController,
     isChannelImageProxyUrl,
@@ -77,7 +80,7 @@ import { registerRoute } from "workbox-routing";
 import { CacheFirst } from "workbox-strategies";
 
 // 定数定義
-const SW_VERSION = '1.30.0';
+const SW_VERSION = '1.31.0';
 const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images-v2';
 const LEGACY_PROFILE_CACHE_NAMES = ['ehagaki-profile-images'];
@@ -684,6 +687,12 @@ class ServiceWorkerCore {
             basePath: BASE_PATH,
             logger: ServiceWorkerDependencies.console,
         });
+        this.uploadMediaImageCacheController = new UploadMediaImageCacheController({
+            cacheStorage: ServiceWorkerDependencies.caches,
+            fetchRequest: (request) => ServiceWorkerDependencies.fetch(request),
+            currentOrigin: ServiceWorkerDependencies.location.origin,
+            basePath: BASE_PATH,
+        });
     }
 
     // インストールイベント処理
@@ -708,6 +717,11 @@ class ServiceWorkerCore {
                 await precacheController.activate(event);
                 await this.cacheManager.cleanupOldCaches();
                 try {
+                    await this.uploadMediaImageCacheController.reconcile();
+                } catch {
+                    // Cache failures must not prevent activation or network image display.
+                }
+                try {
                     await this.channelImageCacheController.reconcile();
                 } catch (error) {
                     ServiceWorkerDependencies.console.error(
@@ -729,6 +743,9 @@ class ServiceWorkerCore {
             currentOrigin: ServiceWorkerDependencies.location.origin,
             isUploadRequest: Utilities.isUploadRequest,
             isProfileImageRequest: Utilities.isProfileImageRequest,
+            isUploadMediaImageRequest: (request, requestUrl) =>
+                request.method === 'GET' && request.destination === 'image'
+                && isUploadMediaImageProxyUrl(requestUrl, ServiceWorkerDependencies.location.origin, BASE_PATH),
             isChannelImageRequest: (request, requestUrl) =>
                 request.method === 'GET'
                 && isChannelImageProxyUrl(
@@ -749,6 +766,7 @@ class ServiceWorkerCore {
         return await dispatchServiceWorkerFetchRoute({
             route,
             uploadHandler: () => this.requestHandler.handleUploadRequest(event.request),
+            uploadMediaImageHandler: () => this.uploadMediaImageCacheController.handle(event),
             profileImageHandler: () => this.requestHandler.handleProfileImageRequest(event.request),
             channelImageHandler: () => this.channelImageCacheController.handle(event),
             customEmojiImageHandler: () => this.cacheManager.handleCustomEmojiImageRequest(event.request),
@@ -757,6 +775,19 @@ class ServiceWorkerCore {
 
     // メッセージイベント処理
     async handleMessage(event) {
+        if ([UPLOAD_MEDIA_IMAGE_SUPPORT_MESSAGE, UPLOAD_MEDIA_IMAGE_EVICT_MESSAGE].includes(event.data?.type)) {
+            // These messages are available only to controlled, same-origin page clients.
+            let trusted = false;
+            try { trusted = new URL(event.source?.url).origin === ServiceWorkerDependencies.location.origin; } catch {}
+            if (!trusted || !event.ports?.[0]) return;
+            const success = event.data.type === UPLOAD_MEDIA_IMAGE_SUPPORT_MESSAGE
+                ? true
+                : Array.isArray(event.data.urls)
+                    && event.data.urls.every((url) => typeof url === 'string')
+                    && await this.uploadMediaImageCacheController.evict(event.data.urls);
+            event.ports[0].postMessage({ version: UPLOAD_MEDIA_IMAGE_CACHE_VERSION, supported: true, success });
+            return;
+        }
         await processServiceWorkerMessageEvent({
             event,
             version: SW_VERSION,
@@ -786,6 +817,9 @@ registerServiceWorkerEventListeners({
         handleFetch: (event) => serviceWorkerCore.handleFetch(event),
         currentOrigin: self.location.origin,
         isUploadRequest: Utilities.isUploadRequest,
+        isUploadMediaImageRequest: (request, url) =>
+            request.method === 'GET' && request.destination === 'image'
+            && isUploadMediaImageProxyUrl(url, ServiceWorkerDependencies.location.origin, BASE_PATH),
     isProfileImageRequest: Utilities.isProfileImageRequest,
     isChannelImageRequest: (request, url) =>
         request.method === 'GET'

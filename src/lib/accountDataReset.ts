@@ -2,6 +2,7 @@ import Dexie from "dexie";
 import { STORAGE_KEYS } from "./constants";
 import { EHAGAKI_DB_NAME, ehagakiDb } from "./storage/ehagakiDb";
 import { getAppStorage } from "./appStorage";
+import { UPLOAD_MEDIA_IMAGE_CACHE_NAMES, UPLOAD_MEDIA_IMAGE_LEGACY_CACHE_NAMES } from "./uploadMediaImageCachePolicy";
 
 const PROFILE_CACHE_NAMES = [
     "ehagaki-profile-images-v2",
@@ -69,6 +70,8 @@ export async function resetManagedAccountData(
             ...PROFILE_CACHE_NAMES,
             ...CUSTOM_EMOJI_CACHE_NAMES,
             ...CHANNEL_IMAGE_CACHE_NAMES,
+            ...UPLOAD_MEDIA_IMAGE_CACHE_NAMES,
+            ...UPLOAD_MEDIA_IMAGE_LEGACY_CACHE_NAMES,
         ].map((cacheName) =>
             cacheStorage.delete(cacheName),
         ),

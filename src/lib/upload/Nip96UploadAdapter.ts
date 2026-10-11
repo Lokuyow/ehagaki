@@ -6,7 +6,6 @@ import {
 import {
     Nip96UrlPolicyError,
     canonicalizeNip96UploadUrl,
-    validateNip96DiscoveryUrl,
     validateNip96MediaUrl,
     validateNip96ProcessingUrl,
 } from "./nip96UrlPolicy";
@@ -20,6 +19,8 @@ import type {
 } from "../types";
 import { AuthenticationRequiredError } from "../sessionLiveness";
 import { throwIfUploadAborted, waitForUploadDelay } from "./uploadOperation";
+import { fetchNip96DiscoveryConfig } from "./nip96Discovery";
+import { listNip96MediaPage, deleteNip96Media } from "./nip96MediaManagement";
 
 function toNip96UploadError(
     error: unknown,
@@ -161,8 +162,8 @@ function parseNip96Capabilities(config: unknown, now: number): UploadDestination
     return {
         maxUploadSize,
         supportedMimeTypes,
-        supportsDelete: false,
-        supportsList: false,
+        supportsDelete: true,
+        supportsList: true,
         supportsMirror: false,
         supportsMediaOptimization: false,
         authRequired: freePlan?.is_nip98_required !== false,
@@ -174,6 +175,8 @@ function parseNip96Capabilities(config: unknown, now: number): UploadDestination
 
 export class Nip96UploadAdapter implements UploadProtocolAdapter {
     readonly protocol = "nip96" as const;
+    readonly listMediaPage = listNip96MediaPage;
+    readonly deleteMedia = deleteNip96Media;
 
     async upload(params: UploadAdapterUploadParams): Promise<FileUploadResponse> {
         throwIfUploadAborted(params.signal);
@@ -319,66 +322,4 @@ export class Nip96UploadAdapter implements UploadProtocolAdapter {
             };
         }
     }
-}
-
-async function fetchNip96DiscoveryConfig(params: {
-    trustedUploadUrl: ReturnType<typeof canonicalizeNip96UploadUrl>;
-    fetch: typeof fetch;
-}): Promise<{ config: Record<string, unknown>; status: number }> {
-    const visitedConfigUrls = new Set<string>();
-    let discoveryServerUrl = params.trustedUploadUrl;
-
-    for (let depth = 0; depth <= 3; depth += 1) {
-        const configUrl = new URL("/.well-known/nostr/nip96.json", discoveryServerUrl.url).toString();
-        if (visitedConfigUrls.has(configUrl)) {
-            throw new Error("NIP-96 discovery delegation loop detected");
-        }
-        visitedConfigUrls.add(configUrl);
-
-        const response = await params.fetch(configUrl, {
-            method: "GET",
-            credentials: "omit",
-            referrerPolicy: "no-referrer",
-            redirect: "error",
-        });
-        if (!response.ok) {
-            throw new Error(`NIP-96 config request failed: ${response.status}`);
-        }
-
-        let config: unknown;
-        try {
-            config = await response.json();
-        } catch {
-            throw new Error("Could not parse NIP-96 config response");
-        }
-
-        if (!isRecord(config)) {
-            throw new Error("Invalid NIP-96 config response");
-        }
-
-        const delegatedToUrl = typeof config.delegated_to_url === "string"
-            ? config.delegated_to_url.trim()
-            : "";
-        if (delegatedToUrl) {
-            if (depth === 3) {
-                throw new Error("NIP-96 discovery delegation limit exceeded");
-            }
-            discoveryServerUrl = validateNip96DiscoveryUrl({
-                rawUrl: delegatedToUrl,
-                trustedUploadUrl: params.trustedUploadUrl,
-            });
-            continue;
-        }
-
-        if (typeof config.api_url !== "string" || !config.api_url.trim()) {
-            throw new Error("NIP-96 config is missing api_url");
-        }
-        validateNip96DiscoveryUrl({
-            rawUrl: config.api_url,
-            trustedUploadUrl: params.trustedUploadUrl,
-        });
-        return { config, status: response.status };
-    }
-
-    throw new Nip96UrlPolicyError("invalid-processing-url", "Invalid NIP-96 discovery response");
 }

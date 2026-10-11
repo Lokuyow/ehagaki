@@ -132,7 +132,7 @@ export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
         capabilities: {
             ...DEFAULT_UPLOAD_CAPABILITIES,
             supportsDelete: true,
-            supportsList: true,
+            supportsList: false,
         },
     },
     {

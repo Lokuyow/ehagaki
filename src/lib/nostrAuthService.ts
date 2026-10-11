@@ -20,6 +20,7 @@ import {
 } from "./signedEventResultValidator";
 import { encodeBlossomAuthorizationHeader } from "./upload/blossomAuthorization";
 import { awaitUploadOperation, throwIfUploadAborted } from "./upload/uploadOperation";
+import { normalizeBlossomManagementServer, normalizeMediaHash } from "./upload/mediaManagementUtils";
 
 type SessionEventSigner = {
     getPublicKey: () => Promise<string>;
@@ -28,10 +29,11 @@ type SessionEventSigner = {
 
 // --- NIP-98認証サービス ---
 export class NostrAuthService implements AuthService {
-    constructor(private readonly operation?: { signal?: AbortSignal }) {}
+    constructor(private readonly operation?: { signal?: AbortSignal; expectedPubkey?: string }) {}
 
     private assertOperationActive(): void {
         throwIfUploadAborted(this.operation?.signal);
+        if (this.operation?.expectedPubkey) assertCurrentSession(this.operation.expectedPubkey);
     }
 
     async getEventSigner(expectedPubkey?: string): Promise<Signer> {
@@ -190,6 +192,37 @@ export class NostrAuthService implements AuthService {
         this.assertOperationActive();
         const sessionPubkey = captureActiveSessionPubkey(authState);
         return await this.getEventSigner(sessionPubkey);
+    }
+
+    async createBlossomManagementAuthorization(params: {
+        serverUrl: string; action: "list" | "delete"; expectedPubkey: string;
+        sha256?: string; kind?: "image" | "video";
+    }): Promise<{ authorization: string; assertSession: () => void }> {
+        this.assertOperationActive();
+        const server = new URL(normalizeBlossomManagementServer(params.serverUrl));
+        const hash = normalizeMediaHash(params.sha256);
+        if (params.action === "delete" && !hash) throw new Error("Invalid management hash");
+        const assertSession = () => {
+            this.assertOperationActive();
+            assertCurrentSession(params.expectedPubkey);
+        };
+        assertSession();
+        const signer = await this.getEventSigner(params.expectedPubkey);
+        const now = Math.floor(Date.now() / 1000);
+        const expires = now + 60;
+        const tags = [["t", params.action], ["server", server.hostname.toLowerCase()], ["expiration", String(expires)]];
+        if (params.action === "delete") tags.push(["x", hash!]);
+        const event = await signer.signEvent({ kind: 24242, created_at: now, tags,
+            content: params.action === "list" ? `List uploaded media on ${server.origin}`
+                : `Delete uploaded ${params.kind ?? "media"} from ${server.origin}`,
+        });
+        assertSession();
+        const assertValid = () => {
+            assertSession();
+            if (Math.floor(Date.now() / 1000) >= expires) throw new Error("Authorization expired");
+        };
+        assertValid();
+        return { authorization: encodeBlossomAuthorizationHeader(JSON.stringify(event)), assertSession: assertValid };
     }
 
     async buildBlossomAuthorizationHeader(params: {

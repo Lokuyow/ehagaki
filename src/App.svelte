@@ -46,6 +46,7 @@
     showLoginDialogStore,
     showLogoutDialogStore,
     showSettingsDialogStore,
+    showUploadedMediaDialogStore,
     showWelcomeDialogStore,
     showPostHistoryDialogStore,
     showComposerTargetDialogStore,
@@ -288,6 +289,9 @@
   let LoginDialogComponent: LoginDialogComponent | null = $state(null);
   let ProfileComponent: ProfileComponent | null = $state(null);
   let SettingsDialogComponent: SettingsDialogComponent | null = $state(null);
+  let UploadedMediaDialogComponent: typeof import("./components/UploadedMediaDialog.svelte").default | null = $state(null);
+  let uploadedMediaDialogRef: { invalidateSession(): void } | null = $state(null);
+  let uploadedMediaReturnFocus: HTMLElement | null = $state(null);
   let WelcomeDialogComponent: WelcomeDialogComponent | null = $state(null);
   let DraftListDialogComponent: DraftListDialogComponent | null = $state(null);
   let PostHistoryDialogComponent: PostHistoryDialogComponent | null =
@@ -312,6 +316,9 @@
         break;
       case "settings":
         showSettingsDialogStore.set(false);
+        break;
+      case "uploaded-media":
+        showUploadedMediaDialogStore.set(false);
         break;
       case "welcome":
         showWelcomeDialogStore.set(false);
@@ -391,6 +398,7 @@
     loadLoginDialog,
     loadProfileDialog,
     loadSettingsDialog,
+    loadUploadedMediaDialog,
     loadWelcomeDialog,
     loadDraftListDialog,
     loadPostHistoryDialog,
@@ -412,6 +420,7 @@
     setSettingsDialogComponent: (component) => {
       SettingsDialogComponent = component;
     },
+    setUploadedMediaDialogComponent: (component) => { UploadedMediaDialogComponent = component; },
     setWelcomeDialogComponent: (component) => {
       WelcomeDialogComponent = component;
     },
@@ -747,6 +756,7 @@
     showSettingsDialogStore,
   );
   const welcomeDialog = createDialogVisibilityHandlers(showWelcomeDialogStore);
+  const uploadedMediaDialog = createDialogVisibilityHandlers(showUploadedMediaDialogStore);
   const draftListDialog = createDialogVisibilityHandlers(
     showDraftListDialogStore,
   );
@@ -786,11 +796,13 @@
     handlePostAuth,
     resetUploadDisplayState,
     invalidatePendingAccountScopedAsyncState: () => {
+      uploadedMediaDialogRef?.invalidateSession();
       customEmojiStore.invalidatePendingLoads();
       uploadDestinationStore.invalidatePendingOperations();
       invalidatePendingRelayConfigOperations();
     },
     clearAccountScopedAsyncState: () => {
+      uploadedMediaDialogRef?.invalidateSession();
       customEmojiStore.reset();
       uploadDestinationStore.reset();
       resetRelayConfigStore();
@@ -843,11 +855,13 @@
     },
     resetUploadDisplayState,
     invalidatePendingAccountScopedAsyncState: () => {
+      uploadedMediaDialogRef?.invalidateSession();
       customEmojiStore.invalidatePendingLoads();
       uploadDestinationStore.invalidatePendingOperations();
       invalidatePendingRelayConfigOperations();
     },
     clearAccountScopedAsyncState: () => {
+      uploadedMediaDialogRef?.invalidateSession();
       customEmojiStore.reset();
       uploadDestinationStore.reset();
       resetRelayConfigStore();
@@ -1062,6 +1076,12 @@
         )
       ) return;
       void loadSettingsDialog();
+    }
+  });
+  $effect(() => {
+    if (showUploadedMediaDialogStore.value) {
+      if (blockUnloadedComponentWhileStale(UploadedMediaDialogComponent, uploadedMediaDialog.close)) return;
+      void loadUploadedMediaDialog();
     }
   });
 
@@ -2414,8 +2434,14 @@
           onRefreshRelaysAndProfile={handleRefreshRelaysAndProfile}
           hostRelayConfigActive={relayConfigSourceStore.value === "host"}
           onOpenWelcomeDialog={welcomeDialog.open}
+          uploadedMediaOpen={showUploadedMediaDialogStore.value}
+          onOpenUploadedMedia={(trigger) => { uploadedMediaReturnFocus = trigger; uploadedMediaDialog.open(); }}
           {rxNostr}
         />
+      {/if}
+      {#if UploadedMediaDialogComponent}
+        <UploadedMediaDialogComponent bind:this={uploadedMediaDialogRef} show={showUploadedMediaDialogStore.value}
+          onClose={uploadedMediaDialog.close} returnFocus={uploadedMediaReturnFocus} />
       {/if}
       <ImageFullscreen
         bind:show={showReferenceImageFullscreen}
