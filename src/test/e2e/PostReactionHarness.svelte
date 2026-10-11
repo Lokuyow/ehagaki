@@ -7,6 +7,7 @@
     import PostComponent from '../../components/PostComponent.svelte';
     import KeyboardButtonBar from '../../components/KeyboardButtonBar.svelte';
     import ReactionTargetPreview from '../../components/ReactionTargetPreview.svelte';
+    import ReplyQuotePreview from '../../components/ReplyQuotePreview.svelte';
     import ComposerTargetDialog from '../../components/ComposerTargetDialog.svelte';
     import PostHistoryDialog from '../../components/PostHistoryDialog.svelte';
     import CustomEmojiPicker from '../../components/CustomEmojiPicker.svelte';
@@ -25,6 +26,8 @@
     import { focusEditor as focusEditorElement } from '../../lib/utils/appDomUtils';
     import { buildReactionEvent } from '../../lib/postReactionUtils';
     import { postHistoryContextFetchService } from '../../lib/postHistoryContextFetchService';
+    import { RelayProfileService } from '../../lib/relayProfileService';
+    import { RelayManager } from '../../lib/relayManager';
 
     const query = new URLSearchParams(location.search);
     const key = generateSecretKey(); const owner = getPublicKey(key);
@@ -37,6 +40,11 @@
         tags: kind === 6 || kind === 7 || kind === 16 ? [['e', original.id, relay, original.pubkey], ['p', original.pubkey], ['k', String(original.kind)]]
             : query.has('quote-kind42') ? [['q', original.id, relay, original.pubkey]] : [], created_at: 200 }, key);
     const next = finalizeEvent({ kind: 1, content: 'Next fixture', tags: [], created_at: 201 }, key);
+    const profileName = 'Reaction target profile with a long display name for truncation';
+    const profilePicture = new URL(`${import.meta.env.BASE_URL}ehagaki_icon_x192.png`, location.origin).href;
+    const profiles = [key, otherKey].map((secret, index) => finalizeEvent({ kind: 0,
+        content: JSON.stringify({ name: index === 0 ? 'main-author' : 'original-author', display_name: index === 0 ? profileName : 'Original target profile', picture: profilePicture }),
+        tags: [], created_at: Math.floor(Date.now() / 1000) }, secret));
     let targetOpen = $state(false); let historyOpen = $state(false); let ready = $state(false);
     let mounted = $state(true); let pickerOpen = $state(false);
     let revision = $state(0); let inbound = $state<{ revision: number; parentEventIds: string[] } | null>(null);
@@ -60,7 +68,9 @@
                 const filter = filters[0];
                 if (query.has('hold-reactions') && filter.kinds?.includes(7)) return;
                 queueMicrotask(() => {
-                    for (const event of [target, original, next]) if (filter.ids?.includes(event.id)) observer.next({ event, from: relay });
+                    for (const event of [target, original, next, ...profiles]) {
+                        if ((filter.ids?.includes(event.id) || (filter.kinds?.includes(0) && event.kind === 0 && filter.authors?.includes(event.pubkey)))) observer.next({ event, from: relay });
+                    }
                     observer.complete(); const subId = `${req.rxReqId}:0`;
                     messages.next({ type: 'EOSE', from: relay, subId, message: ['EOSE', subId] });
                 });
@@ -68,6 +78,10 @@
             return () => subscription.unsubscribe();
         }),
     } as unknown as RxNostr;
+    const profileService = new RelayProfileService(rx as never, new RelayManager(rx, { hostRelayConfig: relayConfig }));
+    const replyReference = { mode: 'reply' as const, eventId: target.id, relayHints: [relay], authorPubkey: owner,
+        authorDisplayName: profileName, authorPicture: profilePicture, quoteNotificationEnabled: false,
+        referencedEvent: target, rootEventId: null, rootRelayHint: null, rootPubkey: null, loading: false, error: null };
     const originalPublish = PostManager.prototype.publishSignedEvent;
     const originalSave = postHistoryChildInteractionsRepository.upsertChildInteractions.bind(postHistoryChildInteractionsRepository);
     const manager = new PostManager(rx, { authStateStore: authState,
@@ -106,15 +120,20 @@
         authorProfile: null, channelContext: null, channelCreatorPubkey: null, channelCreatorProfile: null, channelQuery: null, channelPictureCacheEligible: false });
     const resolver = { resolve: ({ pointer }: { pointer: { eventId: string } }) => ({ cancel() {},
         promise: Promise.resolve({ status: 'resolved' as const, target: resolved(pointer.eventId === next.id ? next : target) }) }) };
-    const emoji = { shortcode: 'blob', shortcodeLower: 'blob', src: new URL('/ehagaki_icon_x192.png', location.origin).href,
+    const emoji = { shortcode: 'blob', shortcodeLower: 'blob', src: profilePicture,
         identityKey: 'blob', setAddress: null, sortIndex: 0, sourceType: 'kind10030' as const, sourceAddress: null };
     onMount(async () => {
         window.nostr = { getPublicKey: async () => owner, signEvent: async (template: EventTemplate) => { signs++; return finalizeEvent(template, key); } } as typeof window.nostr;
         setNip07Auth(owner, nip19.npubEncode(owner), nip19.nprofileEncode({ pubkey: owner })); resetPostStatus();
         await postHistoryRepository.putPostedEvent({ event: target, ...(kind === 6 || kind === 16 ? { repostTarget: { event: original, relayHints: [relay] } } : {}) });
+        if (query.has('compare-reply')) {
+            const reply = finalizeEvent({ kind: 1, content: 'Reply fixture', created_at: 300,
+                tags: [['e', target.id, relay, 'reply'], ['p', target.pubkey]] }, otherKey);
+            await originalSave({ parentEventId: target.id, events: [{ event: reply }] });
+        }
         if (query.has('invalid')) currentEditorStore.value?.commands.setContent('<p>AB</p>');
         (window as unknown as { __REACTION__: unknown }).__REACTION__ = {
-            targetId: target.id, relatedId: original.id, nextId: next.id, targetInput: nip19.noteEncode(target.id),
+            targetId: target.id, relatedId: original.id, nextId: next.id, targetInput: nip19.noteEncode(target.id), profileName, profilePicture,
             read: async () => ({ signs, sends, saveEntered, result: lastResult ? { success: lastResult.success, cacheSaved: lastResult.cacheSaved } : null,
                 targetId: reactionComposerState.value?.eventId, canPost: editorState.canPost, status: { ...editorState.postStatus },
                 children: (await ehagakiDb.postHistoryChildInteractions.toArray()).map(row => ({ parent: row.parentEventId, eventId: row.eventId })),
@@ -137,10 +156,11 @@
         PostManager.prototype.publishSignedEvent = originalPublish; postHistoryChildInteractionsRepository.upsertChildInteractions = originalSave; });
 </script>
 <Tooltip.Provider>
-<main>
+<main class="ehagaki-app-root">
     <button data-testid="open-target" onclick={() => targetOpen = true}>Target</button>
     <button data-testid="open-history" onclick={() => historyOpen = true}>History</button>
-    {#if reactionComposerState.value}<ReactionTargetPreview target={reactionComposerState.value} onClear={() => { clearReactionTarget(); resetPostStatus(); }} />{/if}
+    {#if query.has('compare-reply')}<ReplyQuotePreview reference={replyReference} mode="reply" onClear={() => {}} />{/if}
+    {#if reactionComposerState.value}<ReactionTargetPreview target={reactionComposerState.value} {profileService} onClear={() => { clearReactionTarget(); resetPostStatus(); }} />{/if}
     {#if failure}<button data-testid="retry-save" onclick={retry}>Retry local save</button>{/if}
     {#if mounted}<PostComponent bind:this={post} rxNostr={rx} hasStoredKey onReactionResult={result} />{/if}
     <KeyboardButtonBar hasPostingCapability customEmojiPickerOpen={pickerOpen} mediaEnabled={!reactionComposerState.value} onCustomEmojiPickerOpenChange={open => pickerOpen = open} />
@@ -150,7 +170,7 @@
     <ComposerTargetDialog show={targetOpen} onClose={() => targetOpen = false} onApply={apply}
         pubkeyHex={owner} rxNostr={rx} {relayConfig} {resolver} inboundInteractionSave={inbound} />
     <PostHistoryDialog show={historyOpen} onClose={() => historyOpen = false} pubkeyHex={owner} rxNostr={rx} {relayConfig}
-        onReactionPost={react} inboundInteractionSave={inbound} />
+        onReplyPost={() => false} onQuotePost={() => {}} onReactionPost={react} inboundInteractionSave={inbound} />
 {/if}
 </Tooltip.Provider>
 <style>main { width: 100%; min-width: 0; max-width: 800px; margin: 0 auto; padding: 8px; box-sizing: border-box; }</style>

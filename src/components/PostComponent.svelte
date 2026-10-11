@@ -212,7 +212,7 @@
       : `--post-editor-min-height: ${minEditorHeight}px; --post-editor-target-height: ${editorTargetHeight}px;`,
   );
   let editorPlaceholderText = $derived(
-    reactionComposerState.value ? $_('reaction.input') : $_("postComponent.enter_your_text") || "テキストを入力してください",
+    $_("postComponent.enter_your_text") || "テキストを入力してください",
   );
 
   $effect(() => {

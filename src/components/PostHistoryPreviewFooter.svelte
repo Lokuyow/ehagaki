@@ -56,7 +56,7 @@
     }
 
     :global(.post-preview-action-buttons-group:has(.reaction-compose-button)) {
-        grid-template-columns: minmax(72px, 1fr) minmax(36px, 1fr) minmax(max-content, 1fr);
+        grid-template-columns: minmax(72px, 1fr) minmax(36px, 1fr) minmax(72px, 1fr);
     }
 
     .post-preview-footer-compact {
@@ -127,8 +127,8 @@
         display: flex;
         align-items: stretch;
         justify-content: center;
-        flex: 0 1 auto;
-        min-width: 0;
+        flex: 0 0 36px;
+        min-width: 36px;
         max-width: 100%;
     }
 
@@ -161,6 +161,12 @@
         justify-content: center;
     }
 
+    :global(.post-preview-reaction-action-cell:has(.reaction-compose-button)) {
+        display: grid;
+        grid-template-columns: 36px 36px;
+        justify-content: center;
+    }
+
     :global(.post-preview-quote-action-cell),
     :global(.post-preview-reaction-action-cell) {
         justify-content: center;
@@ -175,6 +181,8 @@
     }
 
     :global(.post-history-action-button) {
+        width: 36px;
+        min-width: 36px;
         color: var(--btn-post-preview-action);
     }
 
@@ -182,15 +190,16 @@
         --svg: currentColor;
     }
 
-    :global(.post-preview-footer .reply-icon.svg-icon) {
+    :global(.post-preview-footer :is(.reply-icon, .quote-icon, .reaction-compose-icon).svg-icon) {
         width: var(--post-history-preview-action-icon-size);
         height: var(--post-history-preview-action-icon-size);
+    }
+
+    :global(.post-preview-footer .reply-icon.svg-icon) {
         mask-image: url("/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.post-preview-footer .quote-icon.svg-icon) {
-        width: var(--post-history-preview-action-icon-size);
-        height: var(--post-history-preview-action-icon-size);
         mask-image: url("/icons/format_quote_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 </style>

@@ -166,9 +166,10 @@ test.beforeAll(async () => {
             try {
                 const message = JSON.parse(rawMessage.toString()) as unknown[];
                 if (message[0] === "REQ" && typeof message[1] === "string") {
-                    const filters = message.slice(2) as { ids?: string[] }[];
+                    const filters = message.slice(2) as { ids?: string[]; kinds?: number[]; authors?: string[] }[];
                     for (const event of reactionFixtureEvents) {
-                        if (filters.some(filter => filter.ids?.includes(event.id))) {
+                        if (filters.some(filter => filter.ids?.includes(event.id)
+                            || (filter.kinds?.includes(0) && event.kind === 0 && filter.authors?.includes(event.pubkey)))) {
                             socket.send(JSON.stringify(['EVENT', message[1], event]));
                         }
                     }
@@ -235,9 +236,14 @@ test.beforeAll(async () => {
     const componentPort = await listen(componentServer);
     componentOrigin = `http://127.0.0.1:${componentPort}`;
 
-    hostServer = createServer((request, response) => {
+    hostServer = createServer(async (request, response) => {
         const pathname = new URL(request.url ?? "/", hostOrigin).pathname;
         hostRequests.add(pathname);
+        if (pathname === '/reaction-profile.png') {
+            response.writeHead(200, { 'Content-Type': 'image/png', 'Access-Control-Allow-Origin': '*' });
+            response.end(await readFile(join(process.cwd(), 'public/ehagaki_icon_x192.png')));
+            return;
+        }
         if (pathname === "/host-sw.js") {
             response.writeHead(200, { "Content-Type": "text/javascript" });
             response.end(`let fetchCount = 0; self.addEventListener('install', () => self.skipWaiting()); self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim())); self.addEventListener('fetch', () => { fetchCount += 1; }); self.addEventListener('message', (event) => { if (event.data?.type === 'host-state') event.ports[0]?.postMessage({ controlled: true, fetchCount }); });`);
@@ -328,9 +334,13 @@ for (const authenticated of [true, false]) {
 test(`Full Reaction at 320px preserves outer identity (${authenticated ? 'authenticated' : 'guest'})`, async ({ page }) => {
     const signingSecret = generateSecretKey(); const owner = getPublicKey(signingSecret);
     const original = finalizeEvent({ kind: 1, content: 'OPAQUE-EMBEDDED-BODY https://hidden.example/image.png', tags: [], created_at: 100 }, generateSecretKey());
+    const targetSecret = generateSecretKey();
     const target = finalizeEvent({ kind: 6, content: JSON.stringify(original), created_at: 200,
-        tags: [['e', original.id], ['p', original.pubkey]] }, generateSecretKey());
-    reactionFixtureEvents = [target, original];
+        tags: [['e', original.id], ['p', original.pubkey]] }, targetSecret);
+    const profilePicture = `${hostOrigin}/reaction-profile.png`;
+    const profile = finalizeEvent({ kind: 0, content: JSON.stringify({ display_name: 'Reaction target author', picture: profilePicture }),
+        tags: [], created_at: Math.floor(Date.now() / 1000) }, targetSecret);
+    reactionFixtureEvents = [target, original, profile];
     await page.goto(hostOrigin);
     await page.exposeFunction('__signFullReactionFixture', (template: Record<string, unknown>) => finalizeEvent(template as never, signingSecret));
     await page.evaluate(async ({ componentOrigin, relayOrigin, owner, authenticated }) => {
@@ -356,7 +366,21 @@ test(`Full Reaction at 320px preserves outer identity (${authenticated ? 'authen
     await expect(hearts).toHaveCount(2); await hearts.last().click();
     await expect(composer.locator('[data-reaction-target-id]')).toHaveAttribute('data-reaction-target-id', target.id);
     await expect(composer.locator('.reaction-target-preview')).not.toContainText('OPAQUE-EMBEDDED-BODY');
-    expect(await composer.locator('.reaction-target-preview').evaluate(element => element.querySelectorAll('a,img,video').length)).toBe(0);
+    await expect(composer.locator('.reaction-target-preview .author-name')).toHaveText('Reaction target author');
+    await expect(composer.locator('.reaction-target-preview .author-profile img')).toHaveAttribute('src', `${profilePicture}?profile=true`);
+    await composer.locator('.reaction-target-preview .author-profile img').scrollIntoViewIfNeeded();
+    await expect.poll(() => composer.locator('.reaction-target-preview .author-profile img').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+    await expect(composer.locator('.reaction-input-help')).toHaveCount(0);
+    await expect(editor.locator('.is-editor-empty')).toHaveAttribute('data-placeholder', 'いまどうしてる？');
+    const previewBox = await composer.locator('.reaction-target-preview').boundingBox();
+    const postLayoutBox = await composer.locator('.composer-post-layout').boundingBox();
+    expect(previewBox!.width).toBe(postLayoutBox!.width);
+    expect(previewBox!.height).toBeCloseTo(50, 3);
+    await composer.getByRole('button', { name: 'リアクションの対象', exact: true }).click();
+    await expect(composer.locator('.reaction-target-preview .preview-content')).toContainText('リポスト');
+    expect(await composer.locator('.reaction-target-preview .preview-content').evaluate(element => element.querySelectorAll('a,img,video').length)).toBe(0);
+    await expect(composer.locator('.reaction-target-preview .preview-content')).not.toContainText('hidden.example');
+    await composer.getByRole('button', { name: 'リアクションの対象', exact: true }).click();
     const clearBox = await composer.getByRole('button', { name: 'リアクションを解除' }).boundingBox();
     const composerBox = await composer.boundingBox();
     expect(clearBox!.x + clearBox!.width - (composerBox!.x + composerBox!.width)).toBeLessThan(0.001);

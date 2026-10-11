@@ -3,14 +3,14 @@ import { expect, test, type Page } from '@playwright/test';
 type State = { signs: number; sends: { eventId: string; kind: number; relays: string[] }[]; saveEntered: boolean;
     result: { success: boolean; cacheSaved: boolean } | null; targetId?: string; canPost: boolean;
     status: { success: boolean; sending: boolean }; children: { parent: string; eventId: string }[]; authored: number };
-type Harness = { targetId: string; relatedId: string; nextId: string; targetInput: string; read(): Promise<State>;
+type Harness = { targetId: string; relatedId: string; nextId: string; targetInput: string; profileName: string; profilePicture: string; read(): Promise<State>;
     switchTarget(): void; switchAccount(): void; destroy(): void; releaseSave(): void; retryPublish(): void; saveIncomingReaction(toRelated?: boolean): Promise<void> };
 type HarnessWindow = Window & { __REACTION__: Harness };
 const read = (page: Page) => page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.read());
 async function open(page: Page, query = '') {
     await page.goto(`post-reaction-playwright.html${query}`);
     await page.waitForFunction(() => !!(window as unknown as HarnessWindow).__REACTION__);
-    return page.evaluate(() => { const h = (window as unknown as HarnessWindow).__REACTION__; return { targetId: h.targetId, relatedId: h.relatedId, nextId: h.nextId, targetInput: h.targetInput }; });
+    return page.evaluate(() => { const h = (window as unknown as HarnessWindow).__REACTION__; return { targetId: h.targetId, relatedId: h.relatedId, nextId: h.nextId, targetInput: h.targetInput, profileName: h.profileName, profilePicture: h.profilePicture }; });
 }
 async function chooseTarget(page: Page, input: string, card: 'main' | 'related' = 'main') {
     await page.getByTestId('open-target').click();
@@ -97,6 +97,55 @@ for (const count of [0, 1]) {
         await expect(page.locator('.tiptap-editor')).toBeFocused();
     });
 }
+
+test('Reaction shares Reply button, badge and composer profile geometry', async ({ page }) => {
+    const h = await open(page, '?compare-reply');
+    await page.evaluate(() => { document.documentElement.classList.add('dark'); document.documentElement.classList.remove('light'); document.documentElement.style.colorScheme = 'dark'; });
+    await page.getByTestId('open-history').click();
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.saveIncomingReaction());
+    const footer = page.locator('.post-history-item .post-preview-footer').last();
+    const count = page.getByRole('button', { name: 'リアクション 1件を表示', exact: true });
+    await expect(count).toBeVisible();
+    await expect(page.locator('.floating-message')).toHaveCount(0);
+    for (const width of [800, 360, 320]) {
+        await page.setViewportSize({ width, height: 900 });
+        const geometry = await footer.evaluate(element => {
+            const size = (selector: string) => {
+                const node = element.querySelector<HTMLElement>(selector)!;
+                const { width, height } = node.getBoundingClientRect();
+                return { width, height, fontSize: getComputedStyle(node).fontSize, borderRadius: getComputedStyle(node).borderRadius };
+            };
+            return { reply: size('.post-preview-reply-button-slot button'), heart: size('.reaction-compose-button'),
+                replyIcon: size('.reply-icon'), heartIcon: size('.reaction-compose-icon'),
+                replyCount: size('.post-preview-footer-replies-slot button'), reactionCount: size('.post-preview-reactions-button'),
+                replyBadge: size('.post-preview-footer-replies-slot .post-preview-replies-badge'), reactionBadge: size('.post-preview-reactions-button span') };
+        });
+        expect(geometry.heart).toEqual(geometry.reply);
+        expect(geometry.heartIcon).toEqual(geometry.replyIcon);
+        expect(geometry.reactionCount).toEqual(geometry.replyCount);
+        expect(geometry.reactionBadge).toEqual(geometry.replyBadge);
+        await footer.screenshot({ path: test.info().outputPath(`reaction-footer-${width}.png`) });
+    }
+    await page.getByRole('button', { name: 'リアクションする', exact: true }).last().click();
+    const preview = page.locator('.reaction-target-preview');
+    await expect(preview.locator('.author-name')).toHaveText(h.profileName);
+    await expect(preview.locator('.author-profile img')).toHaveAttribute('src', `${h.profilePicture}?profile=true`);
+    await expect.poll(() => preview.locator('.author-profile img').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+    await expect(page.locator('.tiptap-editor .is-editor-empty')).toHaveAttribute('data-placeholder', 'いまどうしてる？');
+    for (const width of [800, 360, 320]) {
+        await page.setViewportSize({ width, height: 900 });
+        const reply = await page.locator('.reply-quote-preview').boundingBox();
+        const reaction = await preview.boundingBox();
+        expect(reaction!.width).toBe(reply!.width);
+        expect(reaction!.height).toBe(reply!.height);
+        const avatars = await page.locator('.author-profile > .reply-quote-profile-avatar').evaluateAll(elements => elements.map(element => {
+            const { width, height } = element.getBoundingClientRect(); return { width, height };
+        }));
+        expect(avatars).toEqual([{ width: 36, height: 36 }, { width: 36, height: 36 }]);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.screenshot({ path: test.info().outputPath(`reaction-composer-${width}.png`) });
+    }
+});
 
 for (const change of ['switchTarget', 'switchAccount', 'destroy'] as const) {
     test(`ACK then ${change} saves old target without changing current UI`, async ({ page }) => {

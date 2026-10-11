@@ -19,8 +19,7 @@
 </PostPreviewFooterActionButton>
 {#if failed}<span class="reaction-action-error" role="alert">{$_('reaction.targetFailed')}</span>{/if}
 <style>
-    :global(.reaction-compose-button) { flex: 0 0 36px; min-width: 36px; }
-    .reaction-compose-icon { --svg: currentColor; width: 20px; height: 20px; mask-image: url('/icons/favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg'); }
+    .reaction-compose-icon { --svg: currentColor; mask-image: url('/icons/favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg'); }
     .failed { color: var(--danger); }
     .reaction-action-error { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
 </style>

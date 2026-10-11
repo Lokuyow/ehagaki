@@ -2155,10 +2155,10 @@
             {#if reactionComposerState.value}
               <div class="composer-block composer-reference-block">
                 <ReactionTargetPreview target={reactionComposerState.value}
+                  profileService={relayProfileService}
                   onClear={() => { clearReactionTarget(); resetPostStatus(); }}
                   emojiLoadStateByUrl={composerReferenceEmojiState.emojiLoadStateByUrl}
                   emojiImageMetaByUrl={composerReferenceEmojiState.emojiImageMetaByUrl} />
-                <p class="reaction-input-help" role="status">{$_(editorState.canPost ? 'reaction.input' : 'reaction.invalid')}</p>
               </div>
             {/if}
             {#if reactionSaveFailure}
