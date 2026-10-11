@@ -44,7 +44,7 @@ export interface PostHistoryJsonlVerificationSession {
     dispose(): void;
 }
 
-/** JSONL alone owns an async full-verification boundary and its Worker. */
+/** JSONL alone owns an async full-verification boundary and its Worker pool. */
 export function createPostHistoryJsonlVerificationSession(
     options: PostHistoryJsonlWorkerVerificationOptions = {},
 ): PostHistoryJsonlVerificationSession {

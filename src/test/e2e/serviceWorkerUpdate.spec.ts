@@ -201,7 +201,7 @@ for (const basePath of ['/ehagaki/', '/'] as const) {
                     const probe=Reflect.get(window,'__JSONL_WORKER_PROBE__') as typeof runJsonlImportWorkerProbe;
                     return probe(input.workerURL,input.events);
                 },input);
-                expect(result).toEqual({workerCount:1,results:[true,false,false,true]});
+                expect(result).toEqual({workerCount:4,results:[true,false,false,true]});
             }
         } finally {await fixture.close();}
     });

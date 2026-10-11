@@ -4,9 +4,10 @@ Run `node scripts/benchmarkPostHistoryJsonlImport.mjs` from the repository root.
 It generates 10,000 signed kind 1 events once in the ignored
 `node_modules/.cache/jsonl-benchmark-fixture.json` (no secret key is saved), then
 uses that same fixture for a warm-up and five recorded runs. Keep the fixture for
-before/after comparisons. Each run has a fresh disposable database and a new
-production verification Worker. Generation, module loading and database cleanup
-are outside the measured import wall time. Repository time includes database
+before/after comparisons. Each CLI run has a fresh browser page/context,
+disposable database and production verification pool (four Workers by default).
+Generation, module loading, page setup and database cleanup are outside the
+measured import wall time. Repository time includes database
 waits and overlaps Worker processing; do not add it to wall time.
 
 The default browser is headless Playwright Chromium, 1280×720, using Vite dev
@@ -23,6 +24,26 @@ present payload can still trigger this scan to find and verify its Structure.
 Close competing workloads and keep the browser in the foreground for meaningful
 comparisons. These measurements are not production-bundle or real-device results.
 
+Use `--workers 1`, `--workers 2`, or `--workers 4` to record a specific pool size,
+or `--compare-workers` for one warm-up and five recorded runs for each size using
+the shared fixture. This is benchmark configuration only; the product UI always
+uses four Workers. The pool shares the existing queue limit of 32 and batch size
+of 500. Worker count comparisons are records, not a default-selection gate.
+
+To measure an existing local JSONL with installed Windows Chrome:
+
+```powershell
+node scripts/benchmarkPostHistoryJsonlImport.mjs --jsonl '<absolute JSONL path>' --channel chrome --workers 4
+```
+
+This mode infers the primary account by authored-post count before timing,
+selects the local file in the browser, and prints only counts and timings.
+It expects a valid fixture with distinct post IDs and successful saves. Use the
+manual page below to select a different account or other input characteristics.
+The file is never copied into the repository or uploaded to the measurement
+server. Use the same browser channel for comparisons; the default bundled
+Chromium and installed Chrome can have different versions and performance.
+
 For manual measurement on the same computer:
 
 ```powershell
@@ -37,6 +58,7 @@ node scripts/benchmarkPostHistoryJsonlImport.mjs --serve --host 0.0.0.0
 
 Open `http://<computer LAN IP>:51561/ehagaki/jsonl-benchmark.html` on the device.
 Select the JSONL and enter its account's 64-character public key (never nsec).
+Select 1, 2, or 4 Workers (initially 4) on this benchmark page.
 File contents stay on that device and are never uploaded to the measurement
 server. Each click imports into a new isolated database, reports only timings and
 counts, then deletes that database. Record one warm-up and five further runs using

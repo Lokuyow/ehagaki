@@ -10,7 +10,7 @@ describe("JSONL verification session", () => {
     it("waits for pong before sending events, and attests its isolated snapshot", async () => {
         const worker = new MockWorker();
         vi.spyOn(worker, "postMessage").mockImplementationOnce(() => undefined);
-        const session = createPostHistoryJsonlVerificationSession({workerFactory:()=>worker});
+        const session = createPostHistoryJsonlVerificationSession({workerCount:1,workerFactory:()=>worker});
         const source = {...signed,tags:signed.tags.map(t=>[...t])};
         const result = session.verify(source);
         source.content = "changed during startup";
@@ -30,7 +30,7 @@ describe("JSONL verification session", () => {
 
     it("rejects cached invalid input without killing the Worker", async () => {
         const worker = new MockWorker();
-        const session = createPostHistoryJsonlVerificationSession({workerFactory:()=>worker});
+        const session = createPostHistoryJsonlVerificationSession({workerCount:1,workerFactory:()=>worker});
         expect(await session.verify({...signed,sig:"g".repeat(128)})).toBeNull();
         expect(await session.verify({...signed,sig:"0".repeat(128)})).toBeNull();
         expect(await session.verify({...signed})).not.toBeNull();
@@ -40,7 +40,7 @@ describe("JSONL verification session", () => {
     it.each(["error", "messageerror", "host error", "dispose", "abort"])("ends pending operations immediately on %s", async reason => {
         const worker = new MockWorker(); worker.hold = true;
         const controller = new AbortController();
-        const session = createPostHistoryJsonlVerificationSession({workerFactory:()=>worker,signal:controller.signal});
+        const session = createPostHistoryJsonlVerificationSession({workerCount:1,workerFactory:()=>worker,signal:controller.signal});
         await session.ready;
         const operations = [session.verify(signed), session.verify(signed)];
         const settled = Promise.allSettled(operations);
@@ -60,13 +60,13 @@ describe("JSONL verification session", () => {
         vi.useFakeTimers();
         const booting = new MockWorker();
         vi.spyOn(booting,"postMessage").mockImplementation(()=>undefined);
-        const first = createPostHistoryJsonlVerificationSession({workerFactory:()=>booting});
+        const first = createPostHistoryJsonlVerificationSession({workerCount:1,workerFactory:()=>booting});
         const readiness = expect(first.ready).rejects.toThrow("readiness_timeout");
         await vi.advanceTimersByTimeAsync(10000); await readiness;
         expect(booting.terminated).toBe(true);
 
         const worker = new MockWorker(); worker.hold = true;
-        const session = createPostHistoryJsonlVerificationSession({workerFactory:()=>worker});
+        const session = createPostHistoryJsonlVerificationSession({workerCount:1,workerFactory:()=>worker});
         worker.reply("pong"); await vi.advanceTimersByTimeAsync(0); await session.ready;
         const verification = expect(session.verify(signed)).rejects.toThrow("verification_timeout");
         await vi.advanceTimersByTimeAsync(10000); await verification;
@@ -76,7 +76,7 @@ describe("JSONL verification session", () => {
     it("fails startup without invoking a main-thread signature fallback", async () => {
         const worker = new MockWorker();
         vi.spyOn(worker,"postMessage").mockImplementation(()=>{throw new Error("startup failure");});
-        const session = createPostHistoryJsonlVerificationSession({workerFactory:()=>worker});
+        const session = createPostHistoryJsonlVerificationSession({workerCount:1,workerFactory:()=>worker});
         await expect(session.ready).rejects.toThrow("worker_failed");
         await expect(session.verify(signed)).rejects.toThrow("worker_failed");
         expect(worker.requests).toHaveLength(0);
@@ -86,7 +86,7 @@ describe("JSONL verification session", () => {
     it("treats a rejected client request as fatal and observes later responses", async () => {
         const worker = new MockWorker();
         const fatal = vi.fn();
-        const session = createPostHistoryJsonlVerificationSession({ workerFactory: () => worker, onFatal: fatal });
+        const session = createPostHistoryJsonlVerificationSession({ workerCount: 1, workerFactory: () => worker, onFatal: fatal });
         await session.ready;
         vi.spyOn(worker, "postMessage").mockImplementation(() => { throw new Error("transport failure"); });
         await expect(session.verify(signed)).rejects.toThrow("worker_verification_failed");

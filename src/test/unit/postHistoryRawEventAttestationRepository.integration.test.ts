@@ -164,7 +164,7 @@ describe("post-history attestation repository boundary", () => {
         expect(result.insertedDeletionRequestCount).toBe(1);
         expect(result.savedPayloadCandidateCount).toBe(1);
         expect(verifyEventMock).not.toHaveBeenCalled();
-        expect(PostHistoryJsonlVerificationWorkerMock.instances[0].requests).toHaveLength(3);
+        expect(PostHistoryJsonlVerificationWorkerMock.instances.flatMap(worker => worker.requests)).toHaveLength(3);
         await expect(db.postHistory.count()).resolves.toBe(1);
         db.close();
     });

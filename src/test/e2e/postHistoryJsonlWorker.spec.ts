@@ -96,10 +96,66 @@ test("JSONL dialog close terminates a pending real Worker and reopen imports nor
     await dialog.locator('input[type="file"]').setInputFiles({name:"fixture.jsonl",mimeType:"application/x-ndjson",buffer:Buffer.from(jsonl)});
     await expect.poll(()=>page.evaluate(()=>Reflect.get(window,"__JSONL_WORKERS__").held)).toBe(1);
     await dialog.getByRole("button",{name:"閉じる"}).click();
-    await expect.poll(()=>page.evaluate(()=>Reflect.get(window,"__JSONL_WORKERS__").terminated)).toBe(1);
+    await expect.poll(()=>page.evaluate(()=>Reflect.get(window,"__JSONL_WORKERS__").terminated)).toBe(4);
     await page.evaluate(()=>{Reflect.get(window,"__JSONL_WORKERS__").hold=false;});
     await open();
     await dialog.locator('input[type="file"]').setInputFiles({name:"fixture.jsonl",mimeType:"application/x-ndjson",buffer:Buffer.from(jsonl)});
     await expect(dialog.getByText("読み込みが完了しました")).toBeVisible();
-    expect(await page.evaluate(()=>Reflect.get(window,"__JSONL_WORKERS__"))).toMatchObject({created:2,terminated:2});
+    expect(await page.evaluate(()=>Reflect.get(window,"__JSONL_WORKERS__"))).toMatchObject({created:8,terminated:8});
+});
+
+test("JSONL real Worker pool handles child failure, abort, and atomic startup failure", async ({page}) => {
+    await page.route("**/post-history-dialog-playwright.html", route=>route.fulfill({contentType:"text/html",body:"<!doctype html><title>Worker failure probe</title>"}));
+    await page.goto("post-history-dialog-playwright.html");
+    const outcomes = await page.evaluate(async event => {
+        const {createPostHistoryJsonlVerificationSession} = await import(new URL("src/lib/postHistoryRawEventVerification.ts",document.baseURI).href) as typeof import("../../lib/postHistoryRawEventVerification");
+        const NativeWorker=Worker;
+        const outcomes=[];
+        for(const reason of ["error","messageerror","host error","abort","creation","start"]) {
+            const workers: TrackingWorker[]=[];
+            let attempts=0, fatalCount=0, cleanedAtFatal=false;
+            class TrackingWorker extends NativeWorker {
+                terminated=false;
+                requests=0;
+                constructor(url:string|URL,options?:WorkerOptions) {
+                    attempts++;
+                    if(reason==="creation"&&attempts===3)throw new Error("creation failed");
+                    super(url,options);workers.push(this);
+                }
+                override postMessage(message:unknown):void {
+                    if(message==="ping") {
+                        if(reason==="start"&&workers.length===3)throw new Error("start failed");
+                        super.postMessage(message);
+                    } else this.requests++;
+                }
+                override terminate():void{this.terminated=true;super.terminate();}
+            }
+            Reflect.set(window,"Worker",TrackingWorker);
+            const controller=new AbortController();
+            const session=createPostHistoryJsonlVerificationSession({signal:controller.signal,onFatal:()=>{fatalCount++;cleanedAtFatal=workers.every(worker=>worker.terminated);}});
+            if(reason==="creation"||reason==="start") {
+                const ready=await Promise.allSettled([session.ready]);
+                outcomes.push({reason,attempts,created:workers.length,ready:ready[0].status,fatalCount,cleanedAtFatal,terminated:workers.every(worker=>worker.terminated)});
+            } else {
+                await session.ready;
+                const pending=Promise.allSettled(Array.from({length:8},()=>session.verify(event)));
+                while(workers.some(worker=>worker.requests!==2))await new Promise(resolve=>setTimeout(resolve,0));
+                workers[0].dispatchEvent(new MessageEvent("message",{data:{reqId:1,ok:false}}));
+                if(reason==="abort")controller.abort();
+                else if(reason==="host error")workers[3].dispatchEvent(new MessageEvent("message",{data:{reqId:1,ok:false,error:"unexpected failure"}}));
+                else workers[3].dispatchEvent(new Event(reason));
+                const results=await pending;
+                outcomes.push({reason,attempts,created:workers.length,rejected:results.filter(result=>result.status==="rejected").length,fatalCount,cleanedAtFatal,terminated:workers.every(worker=>worker.terminated)});
+            }
+            session.dispose();
+        }
+        Reflect.set(window,"Worker",NativeWorker);
+        return outcomes;
+    },events[0]);
+    expect(outcomes).toEqual([
+        ...["error","messageerror","host error"].map(reason=>({reason,attempts:4,created:4,rejected:8,fatalCount:1,cleanedAtFatal:true,terminated:true})),
+        {reason:"abort",attempts:4,created:4,rejected:8,fatalCount:0,cleanedAtFatal:false,terminated:true},
+        {reason:"creation",attempts:3,created:2,ready:"rejected",fatalCount:1,cleanedAtFatal:true,terminated:true},
+        {reason:"start",attempts:3,created:3,ready:"rejected",fatalCount:1,cleanedAtFatal:true,terminated:true},
+    ]);
 });
