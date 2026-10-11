@@ -1,7 +1,8 @@
 import { onDestroy, untrack } from "svelte";
 import type { RxNostr } from "rx-nostr";
 import type { ComposerResolvedTarget } from "../composerTargetResolver";
-import { COMPOSER_RELATED_PREVIEW_KINDS, parseReactionReference } from "../composerTargetRelatedPreview";
+import { COMPOSER_RELATED_PREVIEW_KINDS } from "../composerTargetRelatedPreview";
+import { parseReactionReference } from "../reactionReference";
 import { createPostHistoryRelatedTargetResolver, type PostHistoryRelatedTargetResolver,
     type RelatedTargetDescriptor } from "../postHistoryRelatedTargetResolver.svelte";
 import { isRepostOuterKind, parseRepostReference, resolveRepostPreview } from "../postRepostUtils";

@@ -1,9 +1,9 @@
 import Dexie from "dexie";
-import { cloneNostrEvent, isSameSignedNostrEvent } from "../postHistoryEventUtils";
-import {
-    parsePostHistoryThreadReferences,
-    resolveKind7ReactionTargetEventId,
-} from "../postHistoryNip10Utils";
+import { cloneNostrEvent, isPostHistoryRawEventConsistent, isSameSignedNostrEvent } from "../postHistoryEventUtils";
+import { parsePostHistoryThreadReferences } from "../postHistoryNip10Utils";
+import { attestFullyVerifiedPostHistoryRawEvent } from "../postHistoryRawEventVerification";
+import { matchesReactionReferenceTarget, parseReactionReference, type ReactionReferenceTarget } from "../reactionReference";
+import type { RelatedEventReference } from "../relatedEventVerification";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import type { NostrEvent } from "../types";
 import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
@@ -24,6 +24,7 @@ export interface UpsertPostHistoryChildInteractionsInput {
     parentEventId: string;
     events: PostHistoryChildInteractionItem[];
     fetchedAt?: number | null;
+    reactionTarget?: ReactionReferenceTarget;
 }
 
 export interface UpsertPostHistoryChildInteractionsResult {
@@ -34,8 +35,8 @@ export interface UpsertPostHistoryChildInteractionsResult {
 }
 
 export interface PostHistoryChildInteractionsRepository {
-    getChildInteractions(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]>;
-    getChildInteractionsForParents(parentEventIds: string[]): Promise<PostHistoryChildInteractionRecord[]>;
+    getChildInteractions(parentEventId: string, reactionTarget?: ReactionReferenceTarget): Promise<PostHistoryChildInteractionRecord[]>;
+    getChildInteractionsForParents(parentEventIds: string[], reactionTargets?: ReactionReferenceTarget[]): Promise<PostHistoryChildInteractionRecord[]>;
     getDirectReplyInteractions(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]>;
     getReactionInteractions(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]>;
     upsertChildInteractions(input: UpsertPostHistoryChildInteractionsInput): Promise<UpsertPostHistoryChildInteractionsResult>;
@@ -77,7 +78,7 @@ function resolveRelatedEventParentId(event: NostrEvent): string | null {
     }
 
     if (event.kind === 7) {
-        return resolveKind7ReactionTargetEventId(event);
+        return parseReactionReference(event).reference?.eventId ?? null;
     }
 
     return null;
@@ -125,6 +126,8 @@ function hasMaterialChildInteractionChanges(
 
 export class DexiePostHistoryChildInteractionsRepository
     implements PostHistoryChildInteractionsRepository {
+    private reactionRepairPromise: Promise<void> | undefined;
+
     constructor(
         private db: EHagakiDB = ehagakiDb,
         private now: () => number = Date.now,
@@ -133,21 +136,97 @@ export class DexiePostHistoryChildInteractionsRepository
             : { log: () => undefined, warn: () => undefined, error: () => undefined } as Console,
     ) { }
 
-    async getChildInteractions(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]> {
+    private ensureSavedReactionsRepaired(): Promise<void> {
+        if (!this.reactionRepairPromise) {
+            this.reactionRepairPromise = this.repairSavedReactions().catch((error) => {
+                this.reactionRepairPromise = undefined;
+                throw error;
+            });
+        }
+        return this.reactionRepairPromise;
+    }
+
+    private async repairSavedReactions(): Promise<void> {
+        // Refetch cannot repair offline/unavailable reactions or remove invalid
+        // references. Reclassify the complete reaction cache before any reader
+        // can observe it, including readers that start at the corrected parent.
+        await this.db.transaction("rw", this.db.postHistoryChildInteractions, this.db.postHistory, async () => {
+            const records = await this.db.postHistoryChildInteractions.where("kind").equals(7).toArray();
+            const valid: Array<{ record: PostHistoryChildInteractionRecord; reference: RelatedEventReference }> = [];
+            const invalidIds: string[] = [];
+            for (const record of records) {
+                if (record.id !== record.eventId || !isPostHistoryRawEventConsistent(record.rawEvent, {
+                    ...record, pubkeyHex: record.authorPubkey,
+                })) {
+                    invalidIds.push(record.id);
+                    continue;
+                }
+                // Full verification clones away library verification caches and
+                // checks the hash and signature before raw tags select a parent.
+                const verified = attestFullyVerifiedPostHistoryRawEvent(record.rawEvent);
+                const reference = verified ? parseReactionReference(verified.event).reference : null;
+                if (!reference || reference.eventId === record.eventId) {
+                    invalidIds.push(record.id);
+                    continue;
+                }
+                valid.push({ record, reference });
+            }
+            const parentIds = Array.from(new Set(valid.map(({ reference }) => reference.eventId)));
+            const parents = await this.db.postHistory.bulkGet(parentIds);
+            const parentsById = new Map(parents.flatMap(parent => parent ? [[parent.eventId, parent] as const] : []));
+            const updated: PostHistoryChildInteractionRecord[] = [];
+            for (const { record, reference } of valid) {
+                const parent = parentsById.get(reference.eventId);
+                if (parent && !matchesReactionReferenceTarget(reference, {
+                    eventId: parent.eventId, targetAuthorPubkey: parent.pubkeyHex, targetKind: parent.kind,
+                })) {
+                    invalidIds.push(record.id);
+                } else if (record.parentEventId !== reference.eventId) {
+                    updated.push({ ...record, parentEventId: reference.eventId, updatedAt: this.now() });
+                }
+            }
+            if (invalidIds.length) await this.db.postHistoryChildInteractions.bulkDelete(invalidIds);
+            if (updated.length) await this.db.postHistoryChildInteractions.bulkPut(updated);
+        });
+    }
+
+    private async filterKnownReactionTargets(
+        records: PostHistoryChildInteractionRecord[],
+        targets: ReactionReferenceTarget[],
+    ): Promise<PostHistoryChildInteractionRecord[]> {
+        const targetsById = new Map(targets.map(target => [target.eventId, target]));
+        const invalidIds: string[] = [];
+        const visible = records.filter(record => {
+            const target = targetsById.get(record.parentEventId);
+            if (record.kind !== 7 || !target) return true;
+            const reference = parseReactionReference(record).reference;
+            if (reference && matchesReactionReferenceTarget(reference, target)) return true;
+            invalidIds.push(record.id);
+            return false;
+        });
+        if (invalidIds.length) await this.db.postHistoryChildInteractions.bulkDelete(invalidIds);
+        return visible;
+    }
+
+    async getChildInteractions(parentEventId: string, reactionTarget?: ReactionReferenceTarget): Promise<PostHistoryChildInteractionRecord[]> {
         if (!parentEventId) {
             return [];
         }
+
+        await this.ensureSavedReactionsRepaired();
 
         const records = await this.db.postHistoryChildInteractions
             .where("[parentEventId+createdAt]")
             .between([parentEventId, Dexie.minKey], [parentEventId, Dexie.maxKey])
             .toArray();
 
-        return sortRelatedEvents(records);
+        return sortRelatedEvents(reactionTarget
+            ? await this.filterKnownReactionTargets(records, [reactionTarget]) : records);
     }
 
     async getChildInteractionsForParents(
         parentEventIds: string[],
+        reactionTargets?: ReactionReferenceTarget[],
     ): Promise<PostHistoryChildInteractionRecord[]> {
         const uniqueParentEventIds = Array.from(
             new Set(parentEventIds.filter((eventId) => !!eventId)),
@@ -156,10 +235,13 @@ export class DexiePostHistoryChildInteractionsRepository
             return [];
         }
 
-        return this.db.postHistoryChildInteractions
+        await this.ensureSavedReactionsRepaired();
+
+        const records = await this.db.postHistoryChildInteractions
             .where("parentEventId")
             .anyOf(uniqueParentEventIds)
             .toArray();
+        return reactionTargets ? this.filterKnownReactionTargets(records, reactionTargets) : records;
     }
 
     async getDirectReplyInteractions(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]> {
@@ -179,6 +261,8 @@ export class DexiePostHistoryChildInteractionsRepository
                 ignoredCount: input.events.length,
             };
         }
+
+        await this.ensureSavedReactionsRepaired();
 
         const fetchedAt = input.fetchedAt === undefined ? this.now() : input.fetchedAt;
         let ignoredCount = 0;
@@ -225,12 +309,28 @@ export class DexiePostHistoryChildInteractionsRepository
             };
         }
 
-        const eventIds = items.map((item) => item.event.id);
         let insertedCount = 0;
         let updatedCount = 0;
         let unchangedCount = 0;
 
-        await this.db.transaction("rw", this.db.postHistoryChildInteractions, async () => {
+        await this.db.transaction("rw", this.db.postHistoryChildInteractions, this.db.postHistory, async () => {
+            const parent = items.some(item => item.event.kind === 7)
+                ? await this.db.postHistory.get(input.parentEventId) : undefined;
+            const reactionTargets: ReactionReferenceTarget[] = [
+                ...(input.reactionTarget ? [input.reactionTarget] : []),
+                ...(parent ? [{ eventId: parent.eventId, targetAuthorPubkey: parent.pubkeyHex, targetKind: parent.kind }] : []),
+            ];
+            const acceptedItems = items.filter(item => {
+                if (item.event.kind !== 7) return true;
+                const reference = parseReactionReference(item.event).reference;
+                if (!reference || reactionTargets.some(target => !matchesReactionReferenceTarget(reference, target))) {
+                    ignoredCount += 1;
+                    return false;
+                }
+                return true;
+            });
+            if (acceptedItems.length === 0) return;
+            const eventIds = acceptedItems.map(item => item.event.id);
             const existingRecords = await this.db.postHistoryChildInteractions.bulkGet(eventIds);
             const existingMap = new Map<string, PostHistoryChildInteractionRecord>();
             existingRecords.forEach((record) => {
@@ -239,7 +339,7 @@ export class DexiePostHistoryChildInteractionsRepository
                 }
             });
 
-            const nextRecords = items.map((item) => {
+            const nextRecords = acceptedItems.map((item) => {
                 const existingRecord = existingMap.get(item.event.id);
                 const relayUrls = normalizeRelayUrls([
                     ...(existingRecord?.relayUrls ?? []),

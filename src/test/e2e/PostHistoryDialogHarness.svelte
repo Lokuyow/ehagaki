@@ -243,33 +243,28 @@
     function buildReactionRecord(index: number, targetEventId = posts[index].eventId): PostHistoryChildInteractionRecord {
         const parentPost = posts[index];
         const createdAt = parentPost.createdAt + 60;
+        const targetAuthor = targetEventId === resolvedQuoteEventId ? quoteRecord.pubkeyHex
+            : targetEventId === replyEventId ? replyRecord.authorPubkey
+            : targetEventId === grandchildEventId ? grandchildRecord.authorPubkey : HARNESS_PUBKEY;
+        const targetKind = targetEventId === resolvedQuoteEventId ? quoteRecord.kind
+            : targetEventId === replyEventId ? replyRecord.kind
+            : targetEventId === grandchildEventId ? grandchildRecord.kind : parentPost.kind;
+        const event = finalizeEvent({ kind: 7, content: "+", created_at: createdAt, tags: [
+            ["p", targetAuthor], ["e", targetEventId], ["k", String(targetKind)],
+        ] }, generateSecretKey());
 
         return {
-            id: `playwright-reaction-${index}`,
-            eventId: buildHexId(index, "bb"),
+            id: event.id,
+            eventId: event.id,
             parentEventId: targetEventId,
-            authorPubkey: buildHexId(index, "cc"),
-            kind: 7,
-            content: "+",
-            tags: [
-                ["p", HARNESS_PUBKEY],
-                ["e", targetEventId],
-            ],
+            authorPubkey: event.pubkey,
+            kind: event.kind,
+            content: event.content,
+            tags: event.tags,
             createdAt,
             relayUrls: ["wss://relay.example.com/"],
             discoveredAs: ["reaction"],
-            rawEvent: {
-                id: buildHexId(index, "bb"),
-                pubkey: buildHexId(index, "cc"),
-                kind: 7,
-                content: "+",
-                tags: [
-                    ["p", HARNESS_PUBKEY],
-                    ["e", targetEventId],
-                ],
-                created_at: createdAt,
-                sig: "d".repeat(128),
-            },
+            rawEvent: event,
             fetchedAt: parentPost.updatedAt,
             updatedAt: parentPost.updatedAt,
             schemaVersion: 1,
@@ -726,6 +721,7 @@
             );
         postHistoryChildInteractionsRepository.getChildInteractionsForParents = async (
             parentEventIds,
+            reactionTargets,
         ) => {
             if (isLayoutStabilityScenario && !interactionLoadGate.entered) {
                 interactionLoadGate.entered = true;
@@ -734,7 +730,7 @@
                 });
                 interactionLoadGate.release = null;
             }
-            return originalGetChildInteractionsForParents(parentEventIds);
+            return originalGetChildInteractionsForParents(parentEventIds, reactionTargets);
         };
 
         ready = true;

@@ -3,6 +3,7 @@ import {
     classifyPostHistoryInboundInteraction,
     type PostHistoryInboundInteractionClassification,
 } from "./postHistoryInboundInteractionClassifier";
+import { matchesReactionReferenceTarget, parseReactionReference } from "./reactionReference";
 import type {
     PostHistoryInboundDirectReplyCandidate,
     PostHistoryInboundReplyReconciliationResult,
@@ -371,28 +372,29 @@ export class PostHistoryInboundInteractionsSyncService {
         if (!input.isActive()) {
             return this.buildCancelledResultFromFetchedEvents(input);
         }
-        const parentContextsById = new Map((await Promise.all(
-            Array.from(ownerPostEventIds).map(async (eventId) => {
-                const record = await this.postHistoryRepository.getByEventId(eventId);
-                if (!record) {
-                    return null;
-                }
-                const context = buildPostHistoryDirectReplyParentContext({
-                    event: {
-                        id: record.eventId,
-                        kind: record.kind,
-                        tags: record.tags,
-                        created_at: record.createdAt,
-                    },
-                    relayHints: [
-                        ...record.relayHints,
-                        ...record.acceptedRelays,
-                        ...(record.fetchedRelays ?? []),
-                    ],
-                });
-                return context ? [eventId, context] as const : null;
-            }),
-        )).filter((entry) => entry !== null));
+        const ownerPosts = (await Promise.all(Array.from(ownerPostEventIds)
+            .map(eventId => this.postHistoryRepository.getByEventId(eventId))))
+            .filter(record => record !== null && record !== undefined);
+        const reactionTargetsById = new Map(ownerPosts.map(record => [record.eventId, {
+            eventId: record.eventId, targetAuthorPubkey: input.ownerPubkeyHex, targetKind: record.kind,
+        }]));
+        const parentContextsById = new Map(ownerPosts.flatMap(record => {
+            const eventId = record.eventId;
+            const context = buildPostHistoryDirectReplyParentContext({
+                event: {
+                    id: record.eventId,
+                    kind: record.kind,
+                    tags: record.tags,
+                    created_at: record.createdAt,
+                },
+                relayHints: [
+                    ...record.relayHints,
+                    ...record.acceptedRelays,
+                    ...(record.fetchedRelays ?? []),
+                ],
+            });
+            return context ? [[eventId, context] as const] : [];
+        }));
         if (!input.isActive()) {
             return this.buildCancelledResultFromFetchedEvents(input);
         }
@@ -442,6 +444,10 @@ export class PostHistoryInboundInteractionsSyncService {
                 ) {
                     continue;
                 }
+
+                const reference = parseReactionReference(item.event).reference;
+                const target = reactionTargetsById.get(classification.targetEventId);
+                if (!reference || !target || !matchesReactionReferenceTarget(reference, target)) continue;
 
                 const reactions = reactionsByParentId.get(classification.targetEventId) ?? [];
                 reactions.push({

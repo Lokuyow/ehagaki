@@ -48,7 +48,7 @@
     import { usePostHistoryDialogViewport } from "../lib/hooks/usePostHistoryDialogViewport.svelte";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { usePostHistoryThreadGraph } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
-    import { usePostHistoryRelatedReactions } from "../lib/hooks/usePostHistoryRelatedReactions.svelte";
+    import { usePostHistoryRelatedReactions, type PostHistoryRelatedReactionCardTarget } from "../lib/hooks/usePostHistoryRelatedReactions.svelte";
     import { usePostHistoryInboundInteractionsSync } from "../lib/hooks/usePostHistoryInboundInteractionsSync.svelte";
     import type { PostHistoryThreadGraphNodeState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import type {
@@ -286,14 +286,16 @@
         profileSyncCoordinator,
     });
     function getRelatedReactionTargets() {
-        const targets = new Map<string, string[]>();
-        const addTarget = (eventId: string, relayHints: string[]) => {
+        const targets = new Map<string, PostHistoryRelatedReactionCardTarget>();
+        const addTarget = (event: NostrEvent, relayHints: string[]) => {
+            const eventId = event.id;
             if (!eventId || history.posts.some((post) => post.eventId === eventId)) return;
-            targets.set(eventId, Array.from(new Set([...(targets.get(eventId) ?? []), ...relayHints])));
+            targets.set(eventId, { eventId, targetAuthorPubkey: event.pubkey, targetKind: event.kind,
+                relayHints: Array.from(new Set([...(targets.get(eventId)?.relayHints ?? []), ...relayHints])) });
         };
         const visitNode = (nodeState: PostHistoryThreadGraphNodeState | null) => {
             if (!nodeState) return;
-            addTarget(nodeState.node.eventId, nodeState.node.relayUrls);
+            addTarget(nodeState.node.event, nodeState.node.relayUrls);
             visitNode(nodeState.parentNodeState);
             nodeState.replyNodeStates.forEach(visitNode);
         };
@@ -302,10 +304,10 @@
             visitNode(anchorState.parentNodeState);
             anchorState.replyNodeStates.forEach(visitNode);
             for (const quote of quotePreviews.getQuotePreviews(post)) {
-                if (quote.status === "resolved") addTarget(quote.event.id, quote.relayHints);
+                if (quote.status === "resolved") addTarget(quote.event, quote.relayHints);
             }
         }
-        return Array.from(targets, ([eventId, relayHints]) => ({ eventId, relayHints }));
+        return Array.from(targets.values());
     }
     let relatedReactionTargets = $derived.by(getRelatedReactionTargets);
     const relatedReactions = usePostHistoryRelatedReactions({

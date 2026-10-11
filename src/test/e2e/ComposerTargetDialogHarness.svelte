@@ -52,7 +52,8 @@
         emojiReaction: sign(7, ":party:", [...refTags(relatedSource), ["emoji", "party", "https://example.com/reaction-party.png"]]),
         missingReaction: sign(7, "+", refTags(missingSource)),
         heldReaction: sign(7, "👍", refTags(heldSource)),
-        invalidReaction: sign(7, "👍", [["e", relatedSource.id, "", "reply"], ["e", relatedReaction.id]]),
+        markerReaction: sign(7, "👍", [["e", relatedSource.id, "", "reply"], ...refTags(relatedReaction)]),
+        invalidReaction: sign(7, "👍", [["e", relatedSource.id, "", "reply"], ["e", "invalid"]]),
     };
     const interactionById = new Map(Object.values(interactionEvents).map(event => [event.id, event]));
     const relatedById = new Map([relatedSource, nested6, nested16, relatedReaction, related42, missingSource, heldSource]

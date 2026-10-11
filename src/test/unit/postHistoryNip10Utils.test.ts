@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
     parseKind1ThreadReferences,
     parseKind42ThreadReferences,
-    resolveKind7ReactionTargetEventId,
 } from "../../lib/postHistoryNip10Utils";
 import type { NostrEvent } from "../../lib/types";
 import { createEvent as createBaseEvent } from "../postHistoryEventTestUtils";
@@ -182,25 +181,5 @@ describe("parseKind42ThreadReferences", () => {
         ], 42));
         expect(result.parentId).toBeNull();
         expect(result.issues).toContain("reply-target-is-channel");
-    });
-});
-
-describe("resolveKind7ReactionTargetEventId", () => {
-    it("root付き reaction では末尾の legacy-like e tag を対象にする", () => {
-        expect(resolveKind7ReactionTargetEventId(createEvent([
-            ["e", ROOT_ID, "wss://root.example.com", "root", AUTHOR_HINT],
-            ["p", AUTHOR_HINT],
-            ["e", REPLY_ID, "wss://reply.example.com", AUTHOR_HINT],
-        ], 7))).toBe(REPLY_ID);
-    });
-
-    it("reply marker があれば優先し、kind:7 以外は無視する", () => {
-        expect(resolveKind7ReactionTargetEventId(createEvent([
-            ["e", ROOT_ID, "wss://root.example.com", "root", AUTHOR_HINT],
-            ["e", REPLY_ID, "wss://reply.example.com", "reply", AUTHOR_HINT],
-        ], 7))).toBe(REPLY_ID);
-        expect(resolveKind7ReactionTargetEventId(createEvent([
-            ["e", REPLY_ID],
-        ], 1))).toBeNull();
     });
 });

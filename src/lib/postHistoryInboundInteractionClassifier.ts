@@ -1,10 +1,9 @@
 import {
     parsePostHistoryThreadReferences,
-    resolveKind7ReactionTargetEventId,
     type PostHistoryThreadReferences,
 } from "./postHistoryNip10Utils";
 import type { NostrEvent } from "./types";
-import { isHex64 } from "./utils/nostrHexUtils";
+import { parseReactionReference } from "./reactionReference";
 
 export type PostHistoryInboundInteractionType =
     | "direct-reply"
@@ -32,16 +31,6 @@ function eventHasRootAuthorTag(event: NostrEvent, pubkeyHex: string): boolean {
     return event.tags.some((tag) => tag[0] === "P" && tag[1] === pubkeyHex);
 }
 
-function findFirstTagValue(event: NostrEvent, tagName: string): string | null {
-    for (const tag of event.tags) {
-        if (tag[0] === tagName && isHex64(tag[1])) {
-            return tag[1];
-        }
-    }
-
-    return null;
-}
-
 export function classifyPostHistoryInboundInteraction(input: {
     event: NostrEvent;
     ownerPubkeyHex: string;
@@ -50,19 +39,17 @@ export function classifyPostHistoryInboundInteraction(input: {
     const { event, ownerPubkeyHex, ownerPostEventIds } = input;
 
     if (event.kind === 7) {
-        // TODO(PR5): Store reactions in postHistoryReactionEvents with ownerPubkeyHex scope.
-        const targetEventId = resolveKind7ReactionTargetEventId(event);
-        const targetAuthorPubkey = findFirstTagValue(event, "p");
+        const parsed = parseReactionReference(event);
 
         return {
-            type: "reaction",
+            type: parsed.reference ? "reaction" : "unsupported",
             event,
             references: null,
             parentEventId: null,
             rootEventId: null,
-            targetEventId,
-            targetAuthorPubkey,
-            reason: "owner-post-reaction",
+            targetEventId: parsed.reference?.eventId ?? null,
+            targetAuthorPubkey: parsed.reference?.authorHint ?? null,
+            reason: parsed.reference ? "owner-post-reaction" : parsed.status,
         };
     }
 

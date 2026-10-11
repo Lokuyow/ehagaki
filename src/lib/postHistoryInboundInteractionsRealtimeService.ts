@@ -1,5 +1,6 @@
 import { createRxForwardReq, type RxNostr } from "rx-nostr";
 import { classifyPostHistoryInboundInteraction } from "./postHistoryInboundInteractionClassifier";
+import { matchesReactionReferenceTarget, parseReactionReference } from "./reactionReference";
 import { resolvePostHistoryRelayUrls } from "./postHistoryRelayResolver";
 import type {
     PostHistoryInboundDirectReplyCandidate,
@@ -178,6 +179,12 @@ export class PostHistoryInboundInteractionsRealtimeService {
             if (!isActive() || !ownerPostEventIds.has(preliminary.targetEventId)) {
                 return;
             }
+
+            const parent = await this.postHistoryRepository.getByEventId(preliminary.targetEventId);
+            const reference = parseReactionReference(event).reference;
+            if (!isActive() || !parent || !reference || !matchesReactionReferenceTarget(reference, {
+                eventId: parent.eventId, targetAuthorPubkey: params.ownerPubkeyHex, targetKind: parent.kind,
+            })) return;
 
             const relayUrl = RelayConfigUtils.sanitizeExternalRelayUrls(
                 typeof packet.from === "string" ? [packet.from] : [],

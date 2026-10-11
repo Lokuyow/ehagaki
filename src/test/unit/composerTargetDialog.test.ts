@@ -487,8 +487,22 @@ describe("ComposerTargetDialog", () => {
         expect(fetchEventById).toHaveBeenCalledTimes(2);
     });
 
-    it("rejects contradictory Reaction references without fetching or losing main content", async () => {
-        const outer = signInteraction(7, "👍", [["e", "a".repeat(64), "", "reply"], ["e", "b".repeat(64)]]);
+    it("selects the last e despite an earlier reply marker", async () => {
+        const related = signInteraction(1, "NIP-25 trailing target");
+        const outer = signInteraction(7, "👍", [["e", "a".repeat(64), "", "reply"], ["e", related.id]]);
+        const { fetchEventById } = renderRelatedTarget(outer, related);
+        await enterNoteFor(outer.id);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(screen.getByText("NIP-25 trailing target")).toBeTruthy();
+        expect(fetchEventById).toHaveBeenCalledOnce();
+        expect(fetchEventById).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ eventId: related.id }));
+    });
+
+    it.each([
+        [["e", "a".repeat(64), "", "reply"], ["e", "invalid"]],
+        [["e", "a".repeat(64), "", "b".repeat(64)], ["p", "c".repeat(64)]],
+    ].map(tags => ({ tags })))("rejects invalid Reaction references without fetching or losing main content", async ({ tags }) => {
+        const outer = signInteraction(7, "👍", tags);
         const { fetchEventById } = renderRelatedTarget(outer, null);
         await enterNoteFor(outer.id);
         expect(screen.getByText("composerTarget.relatedInvalid")).toBeTruthy();
