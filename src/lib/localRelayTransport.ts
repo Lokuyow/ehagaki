@@ -6,6 +6,7 @@ import { postHistoryRelayFetchService, POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_
     type PostHistoryRelayFetchRequest } from "./postHistoryRelayFetchService";
 import { usePostHistoryRelayEvents, type AttestedPostHistoryRawEvent } from "./postHistoryRawEventVerification";
 import type { NostrEvent } from "./types";
+import type { PostHistoryCoverageRange } from "./postHistoryRelayCoverage";
 
 export interface LocalRelayTask<T> { promise: Promise<T | null>; cancel(): void }
 export interface LocalRelayPage {
@@ -13,6 +14,7 @@ export interface LocalRelayPage {
     fetchedAt: number;
     nextUntil: number | null;
     hasMore: boolean;
+    browsingRanges: PostHistoryCoverageRange[];
 }
 
 /** An operation owns its socket. No external pool, NIP-42 handshake, retries or pending deliveries. */
@@ -65,9 +67,11 @@ export class LocalRelayTransport {
             if (operationSignal.aborted) cancel();
             const result = await task.promise.finally(() => operationSignal.removeEventListener("abort", cancel));
             if (result.status !== "success") throw new Error("local_relay_fetch_failed");
-            // Transport provenance and query coverage deliberately stop here.
+            // Only completed, verification-drained query bounds cross this seam.
+            // Local transport URLs never become external coverage/provenance.
             return { events: result.events.flatMap(({ event, attestation }) => attestation ? [{ event, attestation }] : []),
-                fetchedAt: result.fetchedAt, nextUntil: result.nextUntil, hasMore: result.hasMore };
+                fetchedAt: result.fetchedAt, nextUntil: result.nextUntil, hasMore: result.hasMore,
+                browsingRanges: result.relayFetchCoverage?.flatMap(({ ranges }) => ranges) ?? [] };
         });
     }
 

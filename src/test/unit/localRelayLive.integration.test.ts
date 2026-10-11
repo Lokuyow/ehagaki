@@ -29,6 +29,7 @@ class LocalSocket {
     static sent: unknown[][] = [];
     static initialAuth = false;
     static traffic: string[] = [];
+    static rejectRelated = false;
     readyState = 0;
     private challengeDelivered = false;
     private pending: string[] = [];
@@ -62,6 +63,9 @@ class LocalSocket {
         if (message[0] === "REQ") {
             if (LocalSocket.mode === "auth") { this.receive(["CLOSED", message[1], "auth-required: fixture"]); return; }
             const filter = message[2] as Filter;
+            if (LocalSocket.rejectRelated && (filter.kinds?.includes(5) || filter.kinds?.includes(36))) {
+                this.receive(["CLOSED", message[1], "auth-required: related fixture"]); return;
+            }
             const events = LocalSocket.corpus.filter((event) => matchFilter(filter, event)).sort((a, b) => b.created_at - a.created_at).slice(0, filter.limit);
             events.forEach((event) => this.receive(["EVENT", message[1], event]));
             this.receive(["EOSE", message[1]]);
@@ -81,7 +85,7 @@ let transport: LocalRelayTransport;
 let createClient: ReturnType<typeof vi.fn<typeof createRxNostr>>;
 beforeEach(() => {
     LocalSocket.instances = []; LocalSocket.sent = []; LocalSocket.corpus = []; LocalSocket.mode = "normal";
-    LocalSocket.initialAuth = false; LocalSocket.traffic = [];
+    LocalSocket.initialAuth = false; LocalSocket.traffic = []; LocalSocket.rejectRelated = false;
     db = new EHagakiDB(`local-relay-test-${crypto.randomUUID()}`);
     repository = new DexiePostHistoryRepository(db);
     createClient = vi.fn<typeof createRxNostr>((config) => createRxNostr({ ...config, websocketCtor: LocalSocket as never }));
@@ -128,11 +132,44 @@ describe("local relay with real rx-nostr verification and IndexedDB", () => {
     it("uses the existing inclusive pagination and limit without a density algorithm", async () => {
         configure(); LocalSocket.corpus = [100, 99, 98, 97].map((time) => sign(1, time));
         const first = await read(200, 2).promise;
-        expect(first).toMatchObject({ hasMore: true, nextUntil: 99 });
-        await read(first!.nextUntil!, 2).promise;
+        expect(first).toMatchObject({ hasMore: true, nextUntil: 99, browsingRanges: [{ since: 100, until: 200 }] });
+        const second = await read(first!.nextUntil!, 2).promise;
+        expect(second?.browsingRanges).toEqual([{ since: 99, until: 99 }]);
         expect(await repository.countForPubkey(owner)).toBe(3);
         const filters = LocalSocket.sent.filter(([type]) => type === "REQ").map((message) => message[2] as Filter);
         expect(filters.filter((filter) => filter.kinds?.includes(1)).map((filter) => filter.limit)).toEqual([2, 2]);
+    });
+
+    it("returns completed bounds even when adoption is unchanged, and certifies bounded empty seconds", async () => {
+        configure(); LocalSocket.corpus = [sign(1, 100)];
+        await read().promise;
+        expect(await read().promise).toMatchObject({ changed: false, browsingRanges: [{ since: 100, until: 200 }] });
+        const empty = await service.read({ pubkeyHex: owner, since: 10, until: 90, limit: 150, isActive: () => true }).promise;
+        expect(empty).toMatchObject({ changed: false, browsingRanges: [{ since: 10, until: 90 }] });
+    });
+
+    it("does not certify the oldest saturated second even when all raw events share that second", async () => {
+        configure(); LocalSocket.corpus = Array.from({ length: 4 }, (_, i) => sign(1, 100, [], `dense ${i}`));
+        expect(await read(200, 2).promise).toMatchObject({ hasMore: true, nextUntil: 100,
+            browsingRanges: [{ since: 101, until: 200 }] });
+        expect(await read(100, 2).promise).toMatchObject({ hasMore: true, nextUntil: 100, browsingRanges: [] });
+    });
+
+    it("retains authored query evidence when a related deletion read is rejected", async () => {
+        configure(); LocalSocket.corpus = [sign(1)]; LocalSocket.rejectRelated = true;
+        expect(await read().promise).toMatchObject({ changed: true, browsingRanges: [{ since: 100, until: 200 }] });
+        expect(await repository.countForPubkey(owner)).toBe(1);
+    });
+
+    it("invalidates same-owner same-URL evidence when the service session is recreated", async () => {
+        configure(); LocalSocket.corpus = [sign(1)];
+        const first = await read().promise;
+        const invalidated = vi.fn(); const unsubscribe = service.onSessionInvalidated(invalidated);
+        configure();
+        expect(invalidated).toHaveBeenCalledOnce();
+        expect(service.getSessionGeneration()).toBeGreaterThan(first!.sessionGeneration);
+        expect((await read().promise)?.sessionGeneration).toBe(service.getSessionGeneration());
+        unsubscribe(); service.cancelSession(); expect(invalidated).toHaveBeenCalledOnce();
     });
 
     it("reads only linked payloads and targeted deletions, including deletion of a saved row", async () => {

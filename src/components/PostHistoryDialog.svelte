@@ -3659,7 +3659,7 @@
                                 variant="primary"
                                 className="post-history-nav-button"
                                 contentLayout="iconText"
-                                disabled={history.isFetchingFromRelays ||
+                                disabled={!history.canFetchOlderFromRelays ||
                                     history.isRefetchingAroundCurrentView}
                                 onClick={() => void handleFetchOlderFromRelays()}
                             >
@@ -3738,7 +3738,7 @@
                             variant="primary"
                             className="post-history-nav-button"
                             contentLayout="iconText"
-                            disabled={history.isFetchingFromRelays ||
+                            disabled={!history.canFetchOlderFromRelays ||
                                 history.isRefetchingAroundCurrentView}
                             onClick={() => void handleFetchOlderFromRelays()}
                         >

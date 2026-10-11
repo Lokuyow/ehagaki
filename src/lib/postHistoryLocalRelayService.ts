@@ -16,6 +16,7 @@ import { ehagakiDb } from "./storage/ehagakiDb";
 import type { NostrEvent } from "./types";
 
 interface LocalRelaySession {
+    generation: number;
     ownerPubkeyHex: string;
     url: string;
     isActive(): boolean;
@@ -31,7 +32,8 @@ interface LocalRelayServiceDeps {
     runtimeKind?: () => string;
 }
 
-export interface LocalRelayHistoryReadResult extends Pick<LocalRelayPage, "nextUntil" | "hasMore"> {
+export interface LocalRelayHistoryReadResult extends Pick<LocalRelayPage, "nextUntil" | "hasMore" | "browsingRanges"> {
+    sessionGeneration: number;
     ownerPubkeyHex: string;
     localRevision: number;
     changed: boolean;
@@ -41,6 +43,8 @@ export interface LocalRelayHistoryReadResult extends Pick<LocalRelayPage, "nextU
 /** App-owned coordination; repositories stay free of network side effects. */
 export class PostHistoryLocalRelayService {
     private session: LocalRelaySession | null = null;
+    private sessionGeneration = 0;
+    private sessionListeners = new Set<() => void>();
     private stores = new Map<string, Promise<void>>();
     private transport: LocalRelayServiceDeps["transport"];
     private readonly repository;
@@ -66,7 +70,7 @@ export class PostHistoryLocalRelayService {
         this.cancelSession();
         const url = input.url && normalizeLocalRelayUrl(input.url);
         if (this.runtimeKind() !== "standalone" || !input.ownerPubkeyHex || !url) return () => undefined;
-        const session: LocalRelaySession = { ownerPubkeyHex: input.ownerPubkeyHex, url,
+        const session: LocalRelaySession = { generation: this.sessionGeneration, ownerPubkeyHex: input.ownerPubkeyHex, url,
             isActive: input.isActive, abort: new AbortController() };
         this.session = session;
         return () => { if (this.session === session) this.cancelSession(); };
@@ -76,6 +80,15 @@ export class PostHistoryLocalRelayService {
         this.session?.abort.abort();
         this.session = null;
         this.stores.clear();
+        this.sessionGeneration += 1;
+        for (const listener of this.sessionListeners) listener();
+    }
+
+    getSessionGeneration(): number { return this.sessionGeneration; }
+
+    onSessionInvalidated(listener: () => void): () => void {
+        this.sessionListeners.add(listener);
+        return () => { this.sessionListeners.delete(listener); };
     }
 
     isConfigured(owner: string | null | undefined): boolean { return !!this.currentSession(owner); }
@@ -176,7 +189,8 @@ export class PostHistoryLocalRelayService {
             // A related-read timeout does not discard the already committed authored page.
             if (cancelled || !this.isCurrent(session) || !request.isActive()
                 || await this.getLocalRevision(session.ownerPubkeyHex) !== localRevision) return null;
-            return { ownerPubkeyHex: session.ownerPubkeyHex, localRevision, changed,
+            return { ownerPubkeyHex: session.ownerPubkeyHex, sessionGeneration: session.generation,
+                localRevision, changed, browsingRanges: page.browsingRanges,
                 eventIds: page.events.map(({ event }) => event.id), nextUntil: page.nextUntil, hasMore: page.hasMore };
         })().catch(() => null).finally(() => {
             cancel(); clearTimeout(timer); session.abort.signal.removeEventListener("abort", cancel);

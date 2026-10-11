@@ -6,17 +6,21 @@ import type { AddressInfo } from "node:net";
 test.use({ trace: "off" });
 const externalUrl = "wss://external.example/";
 
-async function fixture(page: Page, options: { externalOk?: boolean; localMode?: "accept" | "reject" | "auth" | "silent" } = {}) {
+async function fixture(page: Page, options: { externalOk?: boolean; localMode?: "accept" | "reject" | "auth" | "silent";
+    localCount?: number; externalRead?: "accept" | "closed" | "silent" } = {}) {
     const secret = generateSecretKey(), pubkey = getPublicKey(secret);
     const sign = (template: EventTemplate) => finalizeEvent(template, secret);
     const now = Math.floor(Date.now() / 1000) - 10;
     const localPost = sign({ kind: 1, created_at: now, tags: [], content: "Citrine local fixture" });
     const externalPost = sign({ kind: 1, created_at: now - 1, tags: [], content: "External history fixture" });
     const relayList = sign({ kind: 10002, created_at: now, tags: [["r", externalUrl]], content: "" });
-    const localCorpus = [localPost];
+    const localCorpus = options.localCount ? Array.from({ length: options.localCount }, (_, i) =>
+        sign({ kind: 1, created_at: now - i, tags: [], content: `Local pagination ${i}` })) : [localPost];
     const externalCorpus = [externalPost, relayList];
     const localRequests: Filter[] = [], externalRequests: Filter[] = [];
     const localWrites: ReturnType<typeof sign>[] = [], externalWrites: ReturnType<typeof sign>[] = [];
+    let externalRead = options.externalRead ?? "accept";
+    const heldExternal: Array<() => void> = [];
     const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     await new Promise<void>((resolve) => server.once("listening", resolve));
     const localUrl = `ws://127.0.0.1:${(server.address() as AddressInfo).port}/`;
@@ -56,9 +60,17 @@ async function fixture(page: Page, options: { externalOk?: boolean; localMode?: 
         const message = JSON.parse(raw.toString());
         if (message[0] === "REQ") {
             externalRequests.push(...message.slice(2));
+            const respond = () => {
             for (const filter of message.slice(2) as Filter[]) externalCorpus.filter(event => matchFilter(filter, event))
+                .sort((a, b) => b.created_at - a.created_at).slice(0, filter.limit)
                 .forEach(event => socket.send(JSON.stringify(["EVENT", message[1], event])));
             socket.send(JSON.stringify(["EOSE", message[1]]));
+            };
+            if (message.slice(2).some((filter: Filter) => filter.kinds?.includes(1))) {
+                if (externalRead === "closed") { socket.send(JSON.stringify(["CLOSED", message[1], "error: fixture unavailable"])); return; }
+                if (externalRead === "silent") { heldExternal.push(respond); return; }
+            }
+            respond();
         }
         if (message[0] === "EVENT") {
             externalWrites.push(message[1]);
@@ -82,7 +94,9 @@ async function fixture(page: Page, options: { externalOk?: boolean; localMode?: 
     await page.goto("./");
     await expect(page.locator(".post-history-btn")).toBeVisible();
     return { pubkey, sign, now, localUrl, localPost, externalPost, localCorpus, externalCorpus,
-        localRequests, externalRequests, localWrites, externalWrites, stop };
+        localRequests, externalRequests, localWrites, externalWrites, stop,
+        setExternalRead: (mode: typeof externalRead) => { externalRead = mode; },
+        releaseExternal: () => { heldExternal.splice(0).forEach(respond => respond()); } };
 }
 
 async function setUrl(page: Page, url: string) {
@@ -143,9 +157,10 @@ test("HTTPS tab uses the real loopback socket, merges history, keeps external re
         const older = page.getByRole("button", { name: "リレーから続きを取得", exact: true });
         await expect(older).toBeEnabled();
         const authoredRequests = f.localRequests.filter(filter => filter.kinds?.includes(1)).length;
+        const externalBeforeOlder = f.externalRequests.filter(filter => filter.kinds?.includes(1)).length;
         await older.click();
-        await expect.poll(() => f.localRequests.filter(filter => filter.kinds?.includes(1)).length).toBeGreaterThan(authoredRequests);
-        expect(f.localRequests.filter(filter => filter.kinds?.includes(1)).at(-1)).toMatchObject({ limit: 150 });
+        await expect.poll(() => f.externalRequests.filter(filter => filter.kinds?.includes(1)).length).toBeGreaterThan(externalBeforeOlder);
+        expect(f.localRequests.filter(filter => filter.kinds?.includes(1))).toHaveLength(authoredRequests);
         await f.stop();
         const newPost = f.sign({ kind: 1, created_at: f.now - 2, tags: [], content: "External after Citrine stops" });
         f.externalCorpus.push(newPost);
@@ -197,3 +212,147 @@ for (const [externalOk, localMode] of [[true, "accept"], [true, "reject"], [true
         } finally { await f.stop(); }
     });
 }
+
+for (const externalRead of ["closed", "silent"] as const) {
+    test(`local-only pagination restores and browses 360 posts while external is ${externalRead}`, async ({ page }) => {
+        await page.setViewportSize({ width: 360, height: 844 });
+        const f = await fixture(page, { localCount: 360, externalRead });
+        try {
+            await setUrl(page, f.localUrl);
+            await page.locator(".post-history-btn").click();
+            await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible();
+            // Use the real clear action, including its DB revision, before restoring.
+            await page.getByRole("button", { name: "投稿履歴メニューを開く" }).click();
+            await page.getByRole("menuitem", { name: "保存済み投稿履歴をクリア" }).click();
+            await page.getByRole("button", { name: "クリアする", exact: true }).click();
+            await expect(page.getByRole("alertdialog", { name: "保存済み投稿履歴をクリア", exact: true })).toHaveCount(0);
+            await expect.poll(async () => (await posts(page)).length).toBe(0);
+            await page.keyboard.press("Escape");
+            await page.locator(".post-history-btn").click();
+            await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible();
+            const seen = new Set<string>();
+            const authored = () => f.localRequests.filter(filter => filter.kinds?.includes(1));
+            let oldest = -1;
+            for (let i = 0; i < 15 && oldest < 359; i++) {
+                const ids = await page.locator(".post-history-item").evaluateAll(nodes => nodes.map(node => node.getAttribute("data-post-history-event-id")!));
+                ids.forEach(id => seen.add(id));
+                expect(ids.length).toBeLessThanOrEqual(150); expect(new Set(ids).size).toBe(ids.length);
+                const texts = await page.locator(".post-history-item").allTextContents();
+                oldest = Math.max(...texts.flatMap(text => [...text.matchAll(/Local pagination (\d+)/g)].map(match => Number(match[1]))));
+                if (oldest === 359) break;
+                // Contiguous browsing uses the existing IntersectionObserver,
+                // rather than a manual "show older" button, in Chromium.
+                await page.locator(".post-history-container").evaluate(element => { element.scrollTop = element.scrollHeight; });
+                const localOlder = page.getByRole("button", { name: "さらに古い投稿を表示", exact: true });
+                const relayOlder = page.getByRole("button", { name: "リレーから続きを取得", exact: true });
+                await expect.poll(async () => (await page.getByText(`Local pagination ${oldest + 1}`, { exact: true }).count())
+                    || (await relayOlder.count()) || (await localOlder.count())).toBeGreaterThan(0);
+                if (!await page.getByText(`Local pagination ${oldest + 1}`, { exact: true }).count()) {
+                    const action = await localOlder.count() ? localOlder : relayOlder;
+                    await expect(action).toBeEnabled(); await action.click();
+                }
+                await expect(page.getByText(`Local pagination ${oldest + 1}`, { exact: true })).toBeVisible();
+            }
+            expect(oldest).toBe(359); expect(seen.size).toBe(360);
+            expect(await posts(page)).toHaveLength(360);
+            const untils = authored().flatMap(filter => filter.until === undefined ? [] : [filter.until]);
+            expect(untils).toHaveLength(2);
+            expect(untils[1]).toBeLessThan(untils[0]);
+            for (const post of await posts(page)) expect([...post.acceptedRelays, ...post.relayHints, ...(post.fetchedRelays ?? [])]).not.toContain(f.localUrl);
+            expect(f.externalRequests.some(filter => filter.kinds?.includes(1))).toBe(true);
+            const count = authored().length;
+            if (externalRead === "silent") {
+                // A late bootstrap peer may adopt rows but must retain the older window.
+                f.releaseExternal();
+                await expect.poll(async () => (await posts(page)).some(post => post.eventId === f.externalPost.id)).toBe(true);
+                await expect(page.getByText("Local pagination 359", { exact: true })).toBeVisible();
+            }
+            const relayOlder = page.getByRole("button", { name: "リレーから続きを取得", exact: true });
+            if (await relayOlder.count()) {
+                const before = f.externalRequests.filter(filter => filter.kinds?.includes(1)).length;
+                await expect(relayOlder).toBeEnabled(); await relayOlder.click();
+                await expect.poll(() => f.externalRequests.filter(filter => filter.kinds?.includes(1)).length).toBeGreaterThan(before);
+                expect(f.externalRequests.filter(filter => filter.kinds?.includes(1)).at(-1)?.until).toBe(f.now - 49);
+            }
+            expect(authored()).toHaveLength(count); // Exhausted local continuation never starts again.
+        } finally { await f.stop(); }
+    });
+}
+
+test("non-advancing saturated second stops local continuation without certifying that second", async ({ page }) => {
+    const f = await fixture(page, { localCount: 151, externalRead: "closed" });
+    try {
+        // Latest50 has a completed range; older boundary contains >limit at one second.
+        f.localCorpus.splice(50);
+        f.localCorpus.push(...Array.from({ length: 160 }, (_, i) => f.sign({ kind: 1,
+            created_at: f.now - 50, tags: [], content: `Dense unresolved ${i}` })));
+        await setUrl(page, f.localUrl); await page.locator(".post-history-btn").click();
+        await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible();
+        const button = page.getByRole("button", { name: "リレーから続きを取得", exact: true });
+        const authored = () => f.localRequests.filter(filter => filter.kinds?.includes(1));
+        await expect(button).toBeEnabled(); await button.click();
+        await expect.poll(() => authored().length).toBe(2);
+        await expect(button).toBeEnabled(); await button.click();
+        await expect.poll(() => f.externalRequests.filter(filter => filter.kinds?.includes(1)).length).toBeGreaterThan(1);
+        expect(authored()).toHaveLength(2);
+        expect(await page.locator(".post-history-item").allTextContents()).not.toEqual(expect.arrayContaining([expect.stringContaining("Dense unresolved")]));
+        expect(await page.locator(".post-history-item").count()).toBe(50);
+        await expect(button).toBeEnabled(); await button.click(); expect(authored()).toHaveLength(2);
+    } finally { await f.stop(); }
+});
+
+test("external pagination continues when the configured local relay rejects reads", async ({ page }) => {
+    const f = await fixture(page, { localCount: 360, localMode: "auth" });
+    try {
+        f.externalCorpus.push(...f.localCorpus);
+        await setUrl(page, f.localUrl); await page.locator(".post-history-btn").click();
+        await expect(page.getByText("Local pagination 0", { exact: true })).toBeVisible();
+        const button = page.getByRole("button", { name: "リレーから続きを取得", exact: true });
+        let oldest = 0;
+        for (let i = 0; i < 5; i++) {
+            const texts = await page.locator(".post-history-item").allTextContents();
+            oldest = Math.max(...texts.flatMap(text => [...text.matchAll(/Local pagination (\d+)/g)].map(match => Number(match[1]))));
+            await page.locator(".post-history-container").evaluate(element => { element.scrollTop = element.scrollHeight; });
+            const next = page.getByText(`Local pagination ${oldest + 1}`, { exact: true });
+            await expect.poll(async () => (await next.count()) || (await button.count())).toBeGreaterThan(0);
+            if (!await next.count()) break;
+        }
+        await expect(button).toBeEnabled(); await button.click();
+        await expect.poll(async () => (await posts(page)).length).toBeGreaterThan(150);
+        await expect(page.getByText(`Local pagination ${oldest + 1}`, { exact: true })).toBeVisible();
+        expect(f.externalRequests.some(filter => filter.kinds?.includes(1) && filter.since !== undefined)).toBe(true);
+    } finally { await f.stop(); }
+});
+
+test("a history clear in another tab invalidates live local continuity and cursor", async ({ page, context }) => {
+    const f = await fixture(page, { localCount: 360, externalRead: "closed" });
+    const other = await context.newPage();
+    try {
+        await other.routeWebSocket(/^wss:\/\//, socket => socket.onMessage(raw => {
+            const message = JSON.parse(raw.toString());
+            if (message[0] === "REQ") socket.send(JSON.stringify(["EOSE", message[1]]));
+        }));
+        await other.route("https://**/*", async route => {
+            if (route.request().url().startsWith("https://127.0.0.1:")) await route.continue();
+            else await route.fulfill({ contentType: "application/json", body: "{}" });
+        });
+        await setUrl(page, f.localUrl); await page.locator(".post-history-btn").click();
+        await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible();
+        await page.locator(".post-history-container").evaluate(element => { element.scrollTop = element.scrollHeight; });
+        await expect(page.getByText("Local pagination 99", { exact: true })).toBeVisible();
+        await other.goto(new URL("./", page.url()).href);
+        await other.evaluate(async owner => {
+            const moduleUrl = new URL("src/lib/storage/postHistoryRepository.ts", location.href).href;
+            const { postHistoryRepository } = await import(/* @vite-ignore */ moduleUrl);
+            await postHistoryRepository.deleteLocalHistoryForPubkey(owner);
+        }, f.pubkey);
+        await expect.poll(async () => (await posts(page)).length).toBe(0);
+        const button = page.getByRole("button", { name: "リレーから続きを取得", exact: true });
+        await expect(button).toBeEnabled();
+        const before = f.localRequests.filter(filter => filter.kinds?.includes(1)).length;
+        await button.click();
+        await expect.poll(() => f.localRequests.filter(filter => filter.kinds?.includes(1)).length).toBe(before + 1);
+        expect(f.localRequests.filter(filter => filter.kinds?.includes(1)).at(-1)?.until).toBeUndefined();
+        await expect.poll(async () => (await posts(page)).length).toBe(150);
+    } finally { await other.close(); await f.stop(); }
+});
