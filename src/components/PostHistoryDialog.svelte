@@ -198,6 +198,7 @@
         onSavedAuthoredPosts: async (eventIds) => {
             await notifySavedAuthoredPosts?.(eventIds);
         },
+        onLocalHistoryChanged: applyLocalHistoryChange,
         onChildInteractionBadgeRefreshRequested: (posts, parentEventIds) =>
             postHistoryThreadGraph.loadCachedChildInteractionStateForPosts(
                 posts,
@@ -2291,11 +2292,15 @@
     }
 
     async function handleImportedPostHistory(result: PostHistoryJsonlImportResult): Promise<void> {
+        await applyLocalHistoryChange(() => history.refreshAfterLocalImport(result));
+    }
+
+    async function applyLocalHistoryChange(apply: () => Promise<void>): Promise<void> {
         const owner = pubkeyHex;
         const requestId = surroundingPostsNavigationRequestId;
         const scrollAnchor = historyViewport.captureHistoryScrollAnchor();
         const previousScrollTop = historyContainer?.scrollTop ?? null;
-        await history.refreshAfterLocalImport(result);
+        await apply();
         if (!show || pubkeyHex !== owner || requestId !== surroundingPostsNavigationRequestId) return;
         if (!history.isSearchMode && historyContainer) {
             const restored = historyViewport.restoreHistoryScrollAnchor(scrollAnchor);

@@ -1,6 +1,8 @@
 import { locale as i18nLocale } from "svelte-i18n";
 import type { EmbedSettingsSetPayload } from "../lib/embedProtocol";
 import {
+    getLocalRelayUrlPreference,
+    setLocalRelayUrlPreference,
     getClientTagEnabledPreference,
     getEffectiveLocale,
     getExternalNostrClientPreference,
@@ -59,11 +61,12 @@ interface SettingsState {
     showFlavorText: boolean;
     externalNostrClient: ExternalNostrClient;
     externalNostrClientCustomUrl: string;
+    localRelayUrl: string | null;
 }
 
 type DirectSettingKey = Exclude<
     keyof SettingsState,
-    "locale" | "externalNostrClient" | "externalNostrClientCustomUrl"
+    "locale" | "externalNostrClient" | "externalNostrClientCustomUrl" | "localRelayUrl"
 >;
 
 interface DirectSettingDescriptor<K extends DirectSettingKey> {
@@ -92,6 +95,8 @@ function readSettingsState(): SettingsState {
         showFlavorText: getShowFlavorTextPreference(appStorage),
         externalNostrClient: externalNostrClient.client,
         externalNostrClientCustomUrl: externalNostrClient.customUrlTemplate,
+        localRelayUrl: getAppRuntimeEnvironment().runtimeKind === "standalone"
+            ? getLocalRelayUrlPreference(appStorage) : null,
     };
 }
 
@@ -230,6 +235,15 @@ function applyParentDirectSetting<K extends Extract<DirectSettingKey, keyof Embe
 }
 
 export const settingsStore = {
+    get localRelayUrl(): string | null {
+        return settingsState.localRelayUrl;
+    },
+
+    setLocalRelayUrl(value: string): void {
+        if (getAppRuntimeEnvironment().runtimeKind !== "standalone") return;
+        settingsState.localRelayUrl = setLocalRelayUrlPreference(appStorage, value);
+    },
+
     get value(): SettingsState {
         return settingsState;
     },

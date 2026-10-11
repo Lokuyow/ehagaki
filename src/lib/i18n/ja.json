@@ -353,6 +353,13 @@
     "collapse": "折りたたむ"
   },
   "settingsDialog": {
+    "local_relay_title": "ローカルリレー",
+    "local_relay_description": "この端末のCitrineなどから投稿履歴を取得し、投稿を保存します。外部リレーへの送信は従来どおり続きます。",
+    "local_relay_url": "ローカルリレーURL",
+    "local_relay_save": "設定を保存",
+    "local_relay_clear": "設定を解除",
+    "local_relay_invalid_error": "有効なws://またはwss://のURLを入力してください。",
+    "local_relay_storage_error": "設定を保存できませんでした。",
     "info_header_setting": "設定",
     "language": "言語",
     "footer_shortcuts": "フッターショートカット",

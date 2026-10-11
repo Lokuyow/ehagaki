@@ -1,4 +1,5 @@
 import type { RxNostr } from "rx-nostr";
+import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
 import {
     classifyPostHistoryInboundInteraction,
     type PostHistoryInboundInteractionClassification,
@@ -215,6 +216,10 @@ export class PostHistoryInboundReplyReconciliationSession {
                 }
 
                 await this.notifySelfPostsSaved([parentEventId]);
+                void postHistoryLocalRelayService.archiveAdoptedAuthored([{ event: result.event }], {
+                    ownerPubkeyHex: this.params.ownerPubkeyHex,
+                    isActive: () => this.active,
+                });
             })
             .catch((error) => {
                 this.deps.console.error("post_history_inbound_reply_parent_reconciliation_error", error);

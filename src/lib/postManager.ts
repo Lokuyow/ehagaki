@@ -816,6 +816,9 @@ export class PostManager {
       const event = validateSignedEventResult(prepared.expectedTemplate, signed, params.sessionPubkey);
       const attested = attestFullyVerifiedPostHistoryRawEvent(event);
       if (!attested) throw new Error("post_error");
+      try {
+        void Promise.resolve(this.deps.storeSignedEventFn?.(attested, isSessionActive)).catch(() => undefined);
+      } catch { /* Local archival never changes external delivery. */ }
       return attested;
     };
     const usePayload = params.splitSensitiveContent

@@ -206,6 +206,7 @@ export interface PostManagerDeps {
         relayHints?: string[];
     }) => void | Promise<void>;
     saveSensitivePayloadFn?: (input: import("../storage/sensitivePayloadRepository").SaveSensitivePayloadInput) => void | Promise<void>;
+    storeSignedEventFn?: (input: import("../postHistoryRawEventVerification").AttestedPostHistoryRawEvent, isActive: () => boolean) => void | Promise<void>;
     writeRelaysStore?: { value: string[] };
     extractContentWithImagesFn?: (editor: TipTapEditor) => string;
     extractContentWithEmojiTagsFn?: (editor: TipTapEditor) => {

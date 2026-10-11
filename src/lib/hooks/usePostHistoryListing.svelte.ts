@@ -1,4 +1,8 @@
 import { liveQuery } from "dexie";
+import { postHistoryLocalRelayService, type LocalRelayHistoryReadResult } from "../postHistoryLocalRelayService";
+import type { LocalRelayTask } from "../localRelayTransport";
+import { settingsStore } from "../../stores/settingsStore.svelte";
+import { isSignedNostrEvent } from "../postHistoryEventUtils";
 import { createPostHistoryAuthoredFetchScope, persistPostHistoryAuthoredFetch } from "../postHistoryAuthoredFetchPersistence";
 import { getPostHistoryAuthoredRelayScopeKey, resolvePostHistoryAuthoredRelayUrls } from "../postHistoryRelayResolver";
 import { getPostHistoryQuorumCoverage, getPostHistoryConnectedCoverageUntil, type PostHistoryCoverageRange } from "../postHistoryRelayCoverage";
@@ -112,6 +116,7 @@ interface UsePostHistoryListingParams {
     getSessionScrollState?: () => PostHistoryDialogScrollState | null;
     onSessionScrollStateInvalidated?: () => void;
     onSavedAuthoredPosts?: (eventIds: string[]) => void | Promise<void>;
+    onLocalHistoryChanged?: (apply: () => Promise<void>) => Promise<void>;
     onChildInteractionBadgeRefreshRequested?: (
         posts: PostHistoryRecord[],
         parentEventIds: string[],
@@ -647,6 +652,7 @@ export function usePostHistoryListing({
     getSessionScrollState = () => null,
     onSessionScrollStateInvalidated = () => { },
     onSavedAuthoredPosts = () => undefined,
+    onLocalHistoryChanged = (apply) => apply(),
     onChildInteractionBadgeRefreshRequested = () => undefined,
     onQuoteVisibleRangeRefreshRequested = () => undefined,
     quoteVisibleRangeRepairExecutor = undefined,
@@ -738,6 +744,10 @@ export function usePostHistoryListing({
     let stateOwnerPubkeyKey = $state<string | null>(activePubkeyKey);
     let forceLatestInitialLoadKey: string | null = null;
     let currentFetchTask: PostHistoryRelayFetchTask | PostHistoryLightweightAuthoredSyncTask | null = null;
+    let currentLocalFetchTask: LocalRelayTask<LocalRelayHistoryReadResult> | null = null;
+    let localFetchGeneration = 0;
+    let localNextUntil = $state<number | null>(null);
+    let localHasMore = $state(true);
     let fetchRequestId = 0;
     let currentViewRefetchTask: PostHistoryCurrentViewRefetchTask | null = null;
     let contiguousProgress: ContiguousProgressSnapshot | null = null;
@@ -838,7 +848,8 @@ export function usePostHistoryListing({
         !!getPubkeyHex() &&
         !!getRxNostr() &&
         !isRefetchingAroundCurrentView &&
-        !olderBackfillSearch.exhausted &&
+        (!olderBackfillSearch.exhausted || (!!settingsStore.localRelayUrl && localHasMore
+            && postHistoryLocalRelayService.isConfigured(getPubkeyHex()))) &&
         state.syncStatus !== "syncing" &&
         state.syncStatus !== "older-syncing",
     );
@@ -907,12 +918,66 @@ export function usePostHistoryListing({
     );
 
     function cancelCurrentSync(): void {
+        localFetchGeneration += 1;
+        currentLocalFetchTask?.cancel();
+        currentLocalFetchTask = null;
         openRefreshRequestId = null;
         openRefreshSince = undefined;
         fetchRequestId += 1;
         currentFetchTask?.cancel();
         currentFetchTask = null;
         if (state.syncStatus === "older-syncing") state.syncStatus = "idle";
+    }
+
+    function startLocalHistoryRead(
+        reason: "bootstrap" | "dialog-open-refresh" | "older-backfill" | "repair-visible-range",
+        bounds: { since?: number; until?: number } = {},
+        options: FetchOlderFromRelaysOptions = {},
+    ): LocalRelayTask<LocalRelayHistoryReadResult> | null {
+        const owner = getPubkeyHex();
+        if (!owner || !postHistoryLocalRelayService.isConfigured(owner)) return null;
+        currentLocalFetchTask?.cancel();
+        const generation = ++localFetchGeneration;
+        const runtime = getRxNostr();
+        const isActive = () => !isDestroyed && getShow() && getPubkeyHex() === owner
+            && getRxNostr() === runtime && generation === localFetchGeneration;
+        const task = postHistoryLocalRelayService.read({ pubkeyHex: owner, reason, ...bounds,
+            limit: reason === "dialog-open-refresh" ? POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT
+                : reason === "repair-visible-range" ? POST_HISTORY_REPAIR_FETCH_LIMIT : POST_HISTORY_OLDER_FETCH_LIMIT,
+            targets: state.loadedPosts.flatMap((post) => isSignedNostrEvent(post.rawEvent) ? [post.rawEvent] : []), isActive });
+        currentLocalFetchTask = task;
+        void task.promise.then(async (result) => {
+            if (!result || !isActive()) return;
+            if (reason !== "repair-visible-range") {
+                localHasMore = result.hasMore && (reason !== "older-backfill"
+                    || localNextUntil === null || result.nextUntil !== localNextUntil);
+                localNextUntil = result.nextUntil;
+            }
+            if (!result.changed) return;
+            await onLocalHistoryChanged(async () => {
+                if (!isActive()) return;
+                clearContiguousProgress();
+                if (reason === "older-backfill") {
+                    await loadOlderVisiblePosts({ anchorEventId: options.anchorEventId,
+                        relayFetchViewportCommit: options.viewportCommit, useContiguousProgress: false });
+                } else if (!state.loadedPosts.length || (state.loadedPosts.length <= pageSize
+                    && !state.hasNewerLocal && state.sparseSource === null)) {
+                    await loadLatestVisiblePosts({ forceTotalCount: true });
+                } else {
+                    const records = await Promise.all(state.loadedPosts.map((post) => postHistoryRepository.getByEventId(post.eventId)));
+                    if (!isActive()) return;
+                    state.loadedPosts = records.flatMap((record) => record?.pubkeyHex === owner ? [record] : []);
+                }
+                if (!isActive()) return;
+                refreshTotalCountFromRepository({ force: true });
+                await refreshTimelineAvailability(owner);
+                await refreshSavedPostsOutsideVisibleRange(owner, state.visibleUntil);
+            });
+            if (isActive() && result.eventIds.length) await onSavedAuthoredPosts(result.eventIds);
+        }).catch(() => undefined).finally(() => {
+            if (currentLocalFetchTask === task) currentLocalFetchTask = null;
+        });
+        return task;
     }
 
     function clearContiguousProgress(): void {
@@ -3350,6 +3415,7 @@ export function usePostHistoryListing({
 
         const authoredScope = await createAuthoredScope(pubkeyHex, rxNostr, requestId);
         if (!authoredScope.isActive()) return;
+        startLocalHistoryRead("bootstrap");
         const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
             pubkeyHex,
             relayConfig: getRelayConfig(),
@@ -3474,6 +3540,7 @@ export function usePostHistoryListing({
         const since = previousRange ? Math.min(previousRange.until, upperBound) + (restoredUpper ? 1 : 0) : undefined;
         openRefreshSince = since;
         if (!isActive()) return;
+        startLocalHistoryRead("dialog-open-refresh");
         if (since !== undefined && since > upperBound) {
             state.syncStatus = "idle";
             openRefreshRequestId = null;
@@ -3627,6 +3694,8 @@ export function usePostHistoryListing({
         if (forceDialogOpenRefreshAfterLocalPost || hasUncoveredLatest || shouldRunDialogOpenRefresh()) {
             forceDialogOpenRefreshAfterLocalPost = false;
             void refreshRecentFromRelaysOnDialogOpen();
+        } else {
+            startLocalHistoryRead("dialog-open-refresh");
         }
     }
 
@@ -3855,8 +3924,14 @@ export function usePostHistoryListing({
             && getPubkeyHex() === pubkeyHex && getRxNostr() === rxNostr
             && getPostHistoryAuthoredRelayScopeKey(getRelayConfig()) === relayScopeKey;
         state.syncStatus = "older-syncing";
+        const runExternal = !olderBackfillSearch.exhausted;
+        const localTask = startLocalHistoryRead("older-backfill", {
+            until: Math.min(localNextUntil ?? Infinity,
+                state.loadedPosts.at(-1)?.createdAt ?? Math.floor(Date.now() / 1000)),
+        }, options);
 
         try {
+            if (!runExternal) return (await localTask?.promise)?.changed ?? false;
             return await fetchOlderFromRelaysForRequest(pubkeyHex, rxNostr, requestId, isActive, options);
         } catch {
             if (isActive()) {
@@ -4343,6 +4418,10 @@ export function usePostHistoryListing({
             return;
         }
         currentViewRefetchTask = task;
+        startLocalHistoryRead("repair-visible-range", {
+            since: Math.min(...preferredRanges.map((range) => range.since)),
+            until: Math.max(...preferredRanges.map((range) => range.until)),
+        });
         let primaryRefetchReloadCompleted = false;
         let activePhaseStartedAt = primaryFetchStartedAt;
 
@@ -4876,6 +4955,8 @@ export function usePostHistoryListing({
         }
 
         activePubkeyKey = nextPubkeyKey;
+        localNextUntil = null;
+        localHasMore = true;
         resetFirstPostPaintState();
         stateOwnerPubkeyKey = null;
         forceLatestInitialLoadKey = nextPubkeyKey;
@@ -4919,6 +5000,21 @@ export function usePostHistoryListing({
         }
 
         resetState();
+    });
+
+    $effect(() => {
+        settingsStore.localRelayUrl;
+        getRxNostr();
+        if (!getShow()) {
+            localNextUntil = null;
+            localHasMore = true;
+        }
+        return () => {
+            currentLocalFetchTask?.cancel();
+            localFetchGeneration += 1;
+            localNextUntil = null;
+            localHasMore = true;
+        };
     });
 
     $effect(() => {

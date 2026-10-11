@@ -8,6 +8,7 @@ import { keyManager } from "./keyManager.svelte";
 import { nip46Service } from "./nip46Service";
 import { parentClientAuthService } from "./parentClientAuthService";
 import { PostEventSender } from "./postEventBuilder";
+import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
 import { buildClientTag } from "./tags/clientTag";
 import { buildRepostEvent, isRepostTargetKind, verifyRepostTarget } from "./postRepostUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
@@ -39,6 +40,7 @@ export interface PostRepostServiceDeps {
     getLocalRevision?: (pubkey: string) => Promise<number>;
     saveHistory?: (input: PostHistorySaveInput) => Promise<void>;
     createSender?: (rx: RxNostr) => Pick<PostEventSender, "sendEvent">;
+    storeSignedEventFn?: import("./types").PostManagerDeps["storeSignedEventFn"];
     now?: () => number;
 }
 
@@ -58,6 +60,7 @@ export class PostRepostService {
             getLocalRevision: deps.getLocalRevision ?? ((pubkey: string) => getPostHistoryLocalRevision(ehagakiDb, pubkey)),
             saveHistory: deps.saveHistory ?? ((input: PostHistorySaveInput) => postHistoryRepository.putPostedEvent(input)),
             createSender: deps.createSender ?? ((rx: RxNostr) => new PostEventSender(rx, console)),
+            storeSignedEventFn: deps.storeSignedEventFn,
             now: deps.now ?? Date.now,
         };
     }
@@ -105,6 +108,10 @@ export class PostRepostService {
             const verified = attestFullyVerifiedPostHistoryRawEvent(signed);
             if (!verified) return { success: false, error: "post_error" };
             assertCurrent();
+            try {
+                void Promise.resolve(this.deps.storeSignedEventFn?.(verified,
+                    () => this.deps.authStateStore.value === auth && params.isCurrent?.() !== false)).catch(() => undefined);
+            } catch { /* Local archival never changes external delivery. */ }
             const published = await this.deps.createSender(params.rxNostr).sendEvent(verified.event, {
                 targetRelays: writeRelays, includeDefaultWriteRelays: false,
             });
@@ -129,4 +136,6 @@ export class PostRepostService {
     }
 }
 
-export const postRepostService = new PostRepostService();
+export const postRepostService = new PostRepostService({
+    storeSignedEventFn: (input, isActive) => postHistoryLocalRelayService.storeSignedEventBestEffort(input, isActive),
+});
