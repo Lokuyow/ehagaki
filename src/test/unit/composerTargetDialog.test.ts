@@ -302,6 +302,36 @@ async function openActionMenu(): Promise<void> {
 }
 
 describe("ComposerTargetDialog", () => {
+    it.each(["", "+", "👍 extra text", "通常のリアクション"])("renders Reaction %s in a compact label above the channel target", async content => {
+        const related = signInteraction(42, "Related reaction channel body", [["e", "a".repeat(64), "", "root"]]);
+        const outer = signInteraction(7, content, [["e", related.id, "", related.pubkey], ["p", related.pubkey]]);
+        const { onApply } = renderRelatedTarget(outer, related);
+        await enterNoteFor(outer.id);
+        await vi.advanceTimersByTimeAsync(0);
+        const preview = document.querySelector(".composer-target-reaction-preview") as HTMLElement;
+        const label = preview.querySelector(".composer-target-reaction-label") as HTMLElement;
+        const card = preview.querySelector(".post-history-related-card")!;
+        expect(preview.getAttribute("data-reaction-event-id")).toBe(outer.id);
+        expect(label.textContent).toContain(content === "" || content === "+" ? "❤️" : content.startsWith("👍") ? "👍" : "通");
+        expect(label.textContent).toContain("composerTarget.reaction");
+        expect(within(label).getByRole("button", { name: "アクションを表示" })).toBeTruthy();
+        expect(preview.querySelector(".related-channel-row")?.textContent).toContain("Related channel");
+        expect(card.textContent).toContain("Related author");
+        expect(card.textContent).toContain("Related reaction channel body");
+        expect(card.querySelector(".post-preview-date")?.textContent).toBeTruthy();
+        expect(document.querySelector(".target-preview, .composer-target-related-preview, .related-kind")).toBeNull();
+        expect(preview.querySelector("h3")).toBeNull();
+        expect(preview.textContent).not.toContain("Outer author");
+        expect(preview.textContent).not.toContain("kind 7");
+        expect(preview.textContent).not.toContain("kind 42");
+        expect(preview.querySelectorAll("button")).toHaveLength(1);
+        expect(onApply).not.toHaveBeenCalled();
+        await openActionMenu();
+        await fireEvent.click(screen.getByRole("menuitem", { name: "イベントJSONを表示" }));
+        const raw = screen.getByRole("dialog", { name: "イベントJSON" });
+        expect(raw.textContent).toContain(outer.id);
+        expect(raw.textContent).toContain(outer.pubkey);
+    });
     it("renders Reposts with the shared history label, channel row and source card", async () => {
         const related = signInteraction(42, "Related channel body", [["e", "a".repeat(64), "", "root"]]);
         const outer = signInteraction(16, JSON.stringify(related), [["e", related.id], ["p", related.pubkey], ["k", "42"]]);
@@ -370,8 +400,8 @@ describe("ComposerTargetDialog", () => {
         renderRelatedTarget(outer, related);
         await enterNoteFor(outer.id);
         await vi.advanceTimersByTimeAsync(0);
-        expect(document.querySelector(".target-preview")!.textContent).toContain(":party:");
-        expect(document.querySelector('.target-preview img[src="https://example.com/failing-party.png"]')).toBeNull();
+        expect(document.querySelector(".composer-target-reaction-label")!.textContent).toContain(":party:");
+        expect(document.querySelector('.composer-target-reaction-label img[src="https://example.com/failing-party.png"]')).toBeNull();
         expect(screen.getByText("Related body")).toBeTruthy();
     });
     it("preserves the related post's CW gate and shared media/emoji rendering", async () => {
@@ -391,18 +421,22 @@ describe("ComposerTargetDialog", () => {
         expect(card.querySelector('img[src="https://example.com/related.jpg"]')).toBeTruthy();
         expect(card.querySelector('img[src="https://example.com/related-party.png"]')).toBeTruthy();
     });
-    it.each([6, 16])("16 -> %s hides nonempty embedded JSON and never fetches the next reference", async kind => {
+    it.each([[16, 6], [16, 16], [7, 6], [7, 16]])("%s -> %s hides nonempty embedded JSON and never fetches the next reference", async (outerKind, kind) => {
         const hidden = signInteraction(1, "hidden-json-body https://example.com/hidden.jpg :hidden:");
         const related = signInteraction(kind, JSON.stringify(hidden), [["e", hidden.id],
             ["emoji", "hidden", "https://example.com/hidden-emoji.png"]]);
-        const outer = signInteraction(16, JSON.stringify(related), [["e", related.id], ["p", related.pubkey], ["k", String(kind)]]);
+        const outer = signInteraction(outerKind, outerKind === 7 ? "👍" : JSON.stringify(related),
+            [["e", related.id], ["p", related.pubkey], ["k", String(kind)]]);
         const { fetchEventById, onApply } = renderRelatedTarget(outer, related);
         await enterNoteFor(outer.id);
         await vi.advanceTimersByTimeAsync(0);
-        const card = document.querySelector(".post-history-repost .post-history-related-card")!;
+        const card = document.querySelector(outerKind === 7 ? ".composer-target-reaction-preview .post-history-related-card"
+            : ".post-history-repost .post-history-related-card")!;
         expect(card.textContent).toContain(kind === 6 ? "repost.entry" : "composerTarget.genericRepost");
         expect(card.textContent).toContain("Related author");
-        expect(document.querySelector(".post-history-repost")?.getAttribute("data-repost-event-id")).toBe(outer.id);
+        expect(outerKind === 7
+            ? document.querySelector(".composer-target-reaction-preview")?.getAttribute("data-reaction-event-id")
+            : document.querySelector(".post-history-repost")?.getAttribute("data-repost-event-id")).toBe(outer.id);
         expect(document.querySelector(".target-preview")).toBeNull();
         expect(card.textContent).not.toContain("hidden-json-body");
         expect(card.textContent).not.toContain(hidden.id);
@@ -428,8 +462,8 @@ describe("ComposerTargetDialog", () => {
         const { fetchEventById } = renderRelatedTarget(outer, related);
         await enterNoteFor(outer.id);
         await vi.advanceTimersByTimeAsync(0);
-        expect(document.querySelector(".target-preview")!.textContent).toContain("👍");
-        expect(document.querySelector(".composer-target-related-preview")!.textContent).toContain("👀");
+        expect(document.querySelector(".composer-target-reaction-label")!.textContent).toContain("👍");
+        expect(document.querySelector(".composer-target-reaction-preview .post-history-related-card")!.textContent).toContain("👀");
         expect(fetchEventById).toHaveBeenCalledOnce();
         expect(screen.queryByText("next-level-hidden")).toBeNull();
     });
@@ -443,7 +477,7 @@ describe("ComposerTargetDialog", () => {
         }));
         await enterNoteFor(outer.id);
         await vi.advanceTimersByTimeAsync(0);
-        expect(document.querySelector(".target-preview")!.textContent).toContain("❤️");
+        expect(document.querySelector(".composer-target-reaction-label")!.textContent).toContain("❤️");
         expect(screen.getByRole("button", { name: "アクションを表示" })).toBeTruthy();
         expect(screen.getByText("composerTarget.relatedMissing")).toBeTruthy();
         fetchEventById.mockReturnValue({ promise: Promise.resolve({ event: related, relayUrl: "wss://related.example/" }), cancel: vi.fn() });
@@ -458,7 +492,7 @@ describe("ComposerTargetDialog", () => {
         const { fetchEventById } = renderRelatedTarget(outer, null);
         await enterNoteFor(outer.id);
         expect(screen.getByText("composerTarget.relatedInvalid")).toBeTruthy();
-        expect(document.querySelector(".target-preview")!.textContent).toContain("👍");
+        expect(document.querySelector(".composer-target-reaction-label")!.textContent).toContain("👍");
         expect(fetchEventById).not.toHaveBeenCalled();
     });
 
@@ -468,8 +502,8 @@ describe("ComposerTargetDialog", () => {
         renderRelatedTarget(outer, related);
         await enterNoteFor(outer.id);
         await vi.advanceTimersByTimeAsync(0);
-        expect(document.querySelector('.target-preview img[src="https://example.com/main-emoji.png"]')).toBeTruthy();
-        expect(document.querySelector('.composer-target-related-preview img[src="https://example.com/related-emoji.png"]')).toBeTruthy();
+        expect(document.querySelector('.composer-target-reaction-label img[src="https://example.com/main-emoji.png"]')).toBeTruthy();
+        expect(document.querySelector('.composer-target-reaction-preview .post-history-related-card img[src="https://example.com/related-emoji.png"]')).toBeTruthy();
     });
     it("verified channel pictureを共通proxy componentで表示する", async () => {
         const original = navigator.serviceWorker;

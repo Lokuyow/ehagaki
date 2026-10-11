@@ -20,7 +20,7 @@ type HarnessState = {
         | "longNameChannel"
         | "unsupported"
         | "nsec"
-        | "repost6" | "repost16" | "repostTo6" | "repostTo16" | "reaction7" | "emojiReaction"
+        | "repost6" | "repost16" | "repostTo6" | "repostTo16" | "reaction7" | "emojiReaction" | "channelReaction"
         | "missingReaction" | "heldReaction" | "invalidReaction",
         string
     >;
@@ -96,14 +96,17 @@ test.describe("composer target dialog fixture", () => {
         await page.emulateMedia({ colorScheme: "dark" });
         const harness = await gotoHarness(page);
         await openDialog(page);
-        for (const key of ["repost6", "repost16", "repostTo6", "repostTo16", "reaction7"] as const) {
+        for (const key of ["repost6", "repost16", "repostTo6", "repostTo16", "reaction7", "channelReaction"] as const) {
             await page.getByLabel("イベントID").fill(harness.inputs[key]);
-            const reaction = key === "reaction7";
-            const main = page.locator(reaction ? ".target-preview" : ".composer-target-repost-preview");
-            const related = page.locator(reaction ? ".composer-target-related-preview" : ".post-history-repost");
-            if (reaction) await expect(main).toContainText("Outer fixture author");
-            else {
-                await expect(page.locator(".target-preview, .composer-target-related-preview")).toHaveCount(0);
+            const reaction = key === "reaction7" || key === "channelReaction";
+            const main = page.locator(reaction ? ".composer-target-reaction-preview" : ".composer-target-repost-preview");
+            const related = page.locator(reaction ? ".composer-target-reaction-preview" : ".post-history-repost");
+            await expect(main).not.toContainText("Outer fixture author");
+            await expect(page.locator(".target-preview, .composer-target-related-preview")).toHaveCount(0);
+            if (reaction) {
+                await expect(main.locator(".composer-target-reaction-label")).toContainText("リアクション");
+                await expect(main.locator("h3, .related-kind")).toHaveCount(0);
+            } else {
                 await expect(main.locator(".post-history-repost-label")).toContainText("リポスト");
                 await expect(main.locator(".related-kind")).toHaveCount(0);
             }
@@ -116,7 +119,7 @@ test.describe("composer target dialog fixture", () => {
             await expect(main.getByRole("button", { name: "引用", exact: true })).toHaveCount(0);
             await expect(main).toContainText(reaction ? "👍" : "リポスト");
             if (key === "reaction7") await expect(related).toContainText("👀");
-            if (key === "repost16") await expect(main.locator(".repost-channel-row")).toContainText("Related fixture channel");
+            if (key === "repost16" || key === "channelReaction") await expect(main.locator(".repost-channel-row, .related-channel-row")).toContainText("Related fixture channel");
             const menu = main.getByRole("button", { name: "アクションを表示" });
             await menu.focus();
             await expect(menu).toBeFocused();
@@ -142,8 +145,14 @@ test.describe("composer target dialog fixture", () => {
             await page.screenshot({ path: testInfo.outputPath(`composer-repost-history-style-${width}.png`) });
         }
         await page.getByLabel("イベントID").fill(harness.inputs.reaction7);
-        await expect(page.locator(".target-preview")).toContainText("👍");
-        await page.screenshot({ path: testInfo.outputPath("composer-reaction-related-320.png") });
+        await expect(page.locator(".composer-target-reaction-label")).toContainText("👍");
+        for (const width of [360, 320]) {
+            await page.setViewportSize({ width, height: 720 });
+            const overflow = await page.locator(".composer-target-reaction-preview").evaluate(element =>
+                element.scrollWidth > element.clientWidth + 1 || document.documentElement.scrollWidth > window.innerWidth);
+            expect(overflow).toBe(false);
+            await page.getByRole("dialog", { name: "宛先を指定" }).screenshot({ path: testInfo.outputPath(`composer-reaction-history-style-${width}.png`) });
+        }
         await page.getByRole("button", { name: "アクションを表示" }).click();
         await page.getByRole("menuitem", { name: "イベントJSONを表示" }).click();
         const raw = page.getByRole("dialog", { name: "イベントJSON" });
@@ -158,31 +167,37 @@ test.describe("composer target dialog fixture", () => {
         const harness = await gotoHarness(page);
         await openDialog(page);
         await page.getByLabel("イベントID").fill(harness.inputs.heldReaction);
-        await expect(page.locator(".composer-target-related-preview")).toContainText("参照先を取得中");
-        await expect(page.locator(".target-preview")).toContainText("👍");
+        await expect(page.locator(".composer-target-reaction-preview")).toContainText("参照先を取得中");
+        await expect(page.locator(".composer-target-reaction-label")).toContainText("👍");
         await page.getByLabel("イベントID").fill(harness.inputs.invalidReaction);
-        await expect(page.locator(".composer-target-related-preview")).toContainText("検証できませんでした");
+        await expect(page.locator(".composer-target-reaction-preview")).toContainText("検証できませんでした");
         await page.evaluate(() => (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.releaseRelated());
         await expect(page.getByText("Released related fixture", { exact: true })).toHaveCount(0);
         expect(await page.evaluate(() => (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.relatedFetchIds.length)).toBe(1);
         expect(await page.evaluate(() => (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.relatedCancelledIds.length)).toBe(1);
         await page.getByLabel("イベントID").fill(harness.inputs.missingReaction);
-        await expect(page.locator(".target-preview")).toContainText("❤️");
-        await expect(page.locator(".composer-target-related-preview")).toContainText("取得できませんでした");
+        await expect(page.locator(".composer-target-reaction-label")).toContainText("❤️");
+        await expect(page.locator(".composer-target-reaction-preview")).toContainText("取得できませんでした");
         await page.evaluate(() => (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.recoverRelated());
         await page.getByRole("button", { name: "再試行", exact: true }).click();
-        await expect(page.locator(".composer-target-related-preview")).toContainText("Recovered related fixture");
+        await expect(page.locator(".composer-target-reaction-preview")).toContainText("Recovered related fixture");
     });
 
     test("custom emoji Reaction uses the existing image loader", async ({ page }) => {
         await page.route("https://example.com/reaction-party.png", route => route.fulfill({
-            contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="red"/></svg>',
+            contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="24"><rect width="512" height="24" fill="red"/></svg>',
         }));
         const harness = await gotoHarness(page);
         await openDialog(page);
         await page.getByLabel("イベントID").fill(harness.inputs.emojiReaction);
-        await expect(page.locator('.target-preview img[src="https://example.com/reaction-party.png"]')).toBeVisible();
-        await expect(page.locator(".composer-target-related-preview")).toContainText("Related fixture body");
+        await expect(page.locator('.composer-target-reaction-label img[src="https://example.com/reaction-party.png"]')).toBeVisible();
+        await expect(page.locator(".composer-target-reaction-preview")).toContainText("Related fixture body");
+        for (const width of [360, 320]) {
+            await page.setViewportSize({ width, height: 720 });
+            const overflow = await page.locator(".composer-target-reaction-preview").evaluate(element =>
+                element.scrollWidth > element.clientWidth + 1 || document.documentElement.scrollWidth > window.innerWidth);
+            expect(overflow).toBe(false);
+        }
     });
     test("解決済みkind 1/42のリアクション詳細を既存アクション列で表示する", async ({ page }) => {
         let emojiRequests = 0;

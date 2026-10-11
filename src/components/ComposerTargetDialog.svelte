@@ -217,8 +217,8 @@
     });
     let relatedPreview = $derived(relatedPreviewController.getPreview());
     let repostPreview = $derived(target && [6, 16].includes(target.event.kind) ? relatedPreview : null);
-    let relatedChannelPosts = $derived(repostPreview?.status === "resolved" && repostPreview.event?.kind === 42
-        ? [repostTargetToPost(repostPreview.event, repostPreview.relayHints)] : []);
+    let relatedChannelPosts = $derived(relatedPreview?.status === "resolved" && relatedPreview.event?.kind === 42
+        ? [repostTargetToPost(relatedPreview.event, relatedPreview.relayHints)] : []);
     const relatedChannelDisplay = usePostHistoryChannelDisplay({
         getShow: () => show, getPosts: () => relatedChannelPosts,
         getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig, getIsSearchMode: () => false,
@@ -1053,6 +1053,49 @@
                         structure: repostPreview.event, relayHints: repostPreview.relayHints, rxNostr, relayConfig }) : undefined} />
                 {#if deleteRequestState === "failed"}<p class="delete-failed">{$_("postHistory.deleteFailed")}</p>{/if}
             </section>
+        {:else if relatedPreview && target?.event.kind === 7 && targetPost}
+            <section class="composer-target-reaction-preview" aria-label={$_("composerTarget.preview")}
+                data-reaction-event-id={target.event.id}>
+                <div class="composer-target-reaction-label">
+                    <div class="composer-target-reaction-title">
+                        <div class="composer-target-reaction-symbol">
+                            <PostContentPreview model={sourcePreviewRenderModel} density="compact"
+                                contentWarningEventId={target.event.id} contentClass="composer-target-reaction-content"
+                                emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                                emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} />
+                        </div>
+                        <span>{$_("composerTarget.reaction")}</span>
+                    </div>
+                    {@render mainTargetMenu(targetPost)}
+                </div>
+                {#if relatedPreview.status === "resolved" && relatedPreview.event && relatedRenderModel}
+                    {@const relatedEvent = relatedPreview.event}
+                    <PostHistoryRelatedEventCard event={relatedEvent} profile={relatedPreview.profile}
+                        model={relatedRenderModel} onImageOpen={(params) => handleImageOpen({ ...params,
+                            focusOrigin: document.activeElement instanceof HTMLElement ? document.activeElement : null })}
+                        emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                        emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                        loadSensitiveBody={createSensitivePayloadBodyLoader({ ownerPubkey: pubkeyHex,
+                            structure: relatedEvent, relayHints: relatedPreview.relayHints, rxNostr, relayConfig })}>
+                        {#snippet topActions()}
+                            {#if relatedChannelText}
+                                <div class="related-channel-row">
+                                    <span>{$_("postHistory.channel")}</span>
+                                    <strong>{relatedChannelText}</strong>
+                                </div>
+                            {:else if [6, 7, 16].includes(relatedEvent.kind)}
+                                <p class="related-interaction-label">{$_(interactionLabelKey(relatedEvent.kind))}</p>
+                            {/if}
+                        {/snippet}
+                    </PostHistoryRelatedEventCard>
+                {:else}
+                    <p role="status">{$_(relatedStatusKey)}</p>
+                    {#if ["not-found", "error", "invalid-target"].includes(relatedPreview.status)}
+                        <Button onClick={relatedPreviewController.retry}>{$_("postHistory.contextRetry")}</Button>
+                    {/if}
+                {/if}
+                {#if deleteRequestState === "failed"}<p class="delete-failed">{$_("postHistory.deleteFailed")}</p>{/if}
+            </section>
         {:else if previewEvent}
             <section
                 bind:this={targetPreviewElement}
@@ -1196,36 +1239,6 @@
                         emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                         emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                     />
-                {/if}
-            </section>
-        {/if}
-
-        {#if relatedPreview && target?.event.kind === 7}
-            <section class="composer-target-related-preview" aria-label={$_("composerTarget.relatedPreview")}>
-                <h3>{$_(target.event.kind === 7 ? "composerTarget.relatedReaction" : "composerTarget.relatedRepost")}</h3>
-                {#if relatedPreview.status === "resolved" && relatedPreview.event && relatedRenderModel}
-                    {@const relatedEvent = relatedPreview.event}
-                    <PostHistoryRelatedEventCard event={relatedEvent} profile={relatedPreview.profile}
-                        model={relatedRenderModel} onImageOpen={(params) => handleImageOpen({ ...params,
-                            focusOrigin: document.activeElement instanceof HTMLElement ? document.activeElement : null })}
-                        emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
-                        emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
-                        loadSensitiveBody={createSensitivePayloadBodyLoader({ ownerPubkey: pubkeyHex,
-                            structure: relatedEvent, relayHints: relatedPreview.relayHints, rxNostr, relayConfig })}>
-                        {#snippet topActions()}
-                            <p class="related-kind">
-                                {#if [6, 7, 16].includes(relatedEvent.kind)}
-                                    {$_(interactionLabelKey(relatedEvent.kind))} ·
-                                {/if}
-                                kind {relatedEvent.kind}
-                            </p>
-                        {/snippet}
-                    </PostHistoryRelatedEventCard>
-                {:else}
-                    <p role="status">{$_(relatedStatusKey)}</p>
-                    {#if ["not-found", "error", "invalid-target"].includes(relatedPreview.status)}
-                        <Button onClick={relatedPreviewController.retry}>{$_("postHistory.contextRetry")}</Button>
-                    {/if}
                 {/if}
             </section>
         {/if}
@@ -1487,11 +1500,21 @@
 
     .composer-target-repost-preview { min-width: 0; }
     .interaction-label { margin: 0; font-weight: 600; }
-    .composer-target-related-preview { display: grid; gap: 8px; min-width: 0; }
-    .composer-target-related-preview h3,
-    .composer-target-related-preview p { margin: 0; }
-    .composer-target-related-preview h3 { font-size: 0.95rem; }
-    .related-kind { padding: 4px 8px; color: var(--text-muted); font-size: 0.85rem; }
+    .composer-target-reaction-preview { min-width: 0; }
+    .composer-target-reaction-preview p { margin: 0; }
+    .composer-target-reaction-label {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        color: var(--btn-post-preview-action);
+    }
+    .composer-target-reaction-title { display: flex; align-items: center; gap: 6px; min-width: 0; padding-left: 6px; }
+    .composer-target-reaction-title > span { overflow-wrap: anywhere; }
+    .composer-target-reaction-symbol { min-width: 0; color: var(--text); }
+    :global(.composer-target-reaction-content) { overflow-wrap: anywhere; }
+    :global(.composer-target-reaction-label .post-history-menu-trigger) {
+        inline-size: 28px; block-size: 28px; min-inline-size: 28px; min-block-size: 28px; flex: 0 0 28px; padding: 0;
+    }
+    .related-channel-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px; overflow-wrap: anywhere; }
+    .related-interaction-label { padding: 4px 6px; color: var(--text-muted); }
 
     .event-author {
         display: flex;

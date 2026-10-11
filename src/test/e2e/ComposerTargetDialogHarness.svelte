@@ -48,6 +48,7 @@
         repostTo6: sign(16, JSON.stringify(nested6), refTags(nested6)),
         repostTo16: sign(16, JSON.stringify(nested16), refTags(nested16)),
         reaction7: sign(7, "👍", refTags(relatedReaction)),
+        channelReaction: sign(7, "👍", refTags(related42)),
         emojiReaction: sign(7, ":party:", [...refTags(relatedSource), ["emoji", "party", "https://example.com/reaction-party.png"]]),
         missingReaction: sign(7, "+", refTags(missingSource)),
         heldReaction: sign(7, "👍", refTags(heldSource)),
