@@ -1,5 +1,7 @@
 <script lang="ts">
-    import { nip19 } from "nostr-tools";
+    import { finalizeEvent, generateSecretKey, nip19 } from "nostr-tools";
+    import { createPostHistoryRelatedTargetResolver } from "../../lib/postHistoryRelatedTargetResolver.svelte";
+    import type { NostrEvent } from "../../lib/types";
     import ComposerTargetDialog from "../../components/ComposerTargetDialog.svelte";
     import HeaderComponent from "../../components/HeaderComponent.svelte";
     import type {
@@ -26,7 +28,61 @@
         namelessChannel: "8".repeat(64),
         longNameChannel: "9".repeat(64),
     };
-    const inputs = {
+    const sign = (kind: number, content: string, tags: string[][] = []): NostrEvent =>
+        finalizeEvent({ kind, content, tags, created_at: 100 }, generateSecretKey());
+    const relatedSource = sign(1, "Related fixture body");
+    const nestedHidden = sign(1, "Nested JSON must stay hidden https://example.com/hidden.jpg");
+    const nested6 = sign(6, JSON.stringify(nestedHidden), [["e", nestedHidden.id]]);
+    const nested16 = sign(16, JSON.stringify(nestedHidden), [["e", nestedHidden.id], ["k", "1"]]);
+    const relatedReaction = sign(7, "👀", [["e", nestedHidden.id]]);
+    const related42 = sign(42, "Related channel post", [["e", "f".repeat(64), "", "root"]]);
+    const missingSource = sign(1, "Recovered related fixture");
+    const heldSource = sign(1, "Released related fixture");
+    const refTags = (event: NostrEvent) => [["e", event.id, "wss://related.example/", event.pubkey], ["p", event.pubkey], ["k", String(event.kind)]];
+    const interactionEvents = {
+        repost6: sign(6, JSON.stringify(relatedSource), [["e", relatedSource.id], ["p", relatedSource.pubkey]]),
+        repost16: sign(16, "", refTags(related42)),
+        repostTo6: sign(16, JSON.stringify(nested6), refTags(nested6)),
+        repostTo16: sign(16, JSON.stringify(nested16), refTags(nested16)),
+        reaction7: sign(7, "👍", refTags(relatedReaction)),
+        emojiReaction: sign(7, ":party:", [...refTags(relatedSource), ["emoji", "party", "https://example.com/reaction-party.png"]]),
+        missingReaction: sign(7, "+", refTags(missingSource)),
+        heldReaction: sign(7, "👍", refTags(heldSource)),
+        invalidReaction: sign(7, "👍", [["e", relatedSource.id, "", "reply"], ["e", relatedReaction.id]]),
+    };
+    const interactionById = new Map(Object.values(interactionEvents).map(event => [event.id, event]));
+    const relatedById = new Map([relatedSource, nested6, nested16, relatedReaction, related42, missingSource, heldSource]
+        .map(event => [event.id, event]));
+    let recoverMissing = false;
+    let releaseHeld: (() => void) | null = null;
+    const relatedFetchIds: string[] = [];
+    const relatedCancelledIds: string[] = [];
+    const relatedResolver = createPostHistoryRelatedTargetResolver({ requireFullVerification: true,
+        getShow: () => show, getRxNostr: () => fixtureRuntime, getRelayConfig: () => null,
+        postHistoryRepositoryImpl: { getByEventId: async () => null },
+        contextFetchService: { fetchEventById: (_runtime, params) => {
+            relatedFetchIds.push(params.eventId);
+            let cancelled = false;
+            const result = () => ({ event: cancelled || (params.eventId === missingSource.id && !recoverMissing)
+                ? null : relatedById.get(params.eventId) ?? null, relayUrl: "wss://related.example/" });
+            let finish: (() => void) | undefined;
+            const promise = params.eventId === heldSource.id ? new Promise<ReturnType<typeof result>>(resolve => {
+                finish = () => resolve(result()); releaseHeld = finish;
+            }) : Promise.resolve(result());
+            return { promise, cancel: () => { cancelled = true; relatedCancelledIds.push(params.eventId); finish?.(); } };
+        } },
+        deletionRequestsRepositoryImpl: { getDeletedTargets: async () => new Map(),
+            upsertValidDeletionRequests: async () => ({ insertedCount: 0, updatedCount: 0, unchangedCount: 0, ignoredCount: 0 }) },
+        deletionFetchService: { fetchDeletionRequests: () => ({ promise: Promise.resolve({ status: "success" as const,
+            events: [], fetchedAt: 0, relayUrls: [] }), cancel: () => undefined }) },
+        profileSyncCoordinator: { ensureProfile: () => ({ name: "Related fixture author", displayName: "", picture: "", npub: "", nprofile: "" }),
+            subscribe: () => () => undefined, reset: () => undefined, dispose: () => undefined },
+    });
+    const fixtureRuntime = {} as never;
+    const inputs: Record<string, string> = {
+        ...Object.fromEntries(Object.entries(interactionEvents).map(([key, event]) => [key,
+            event.kind === 16 ? nip19.neventEncode({ id: event.id, author: event.pubkey, kind: event.kind, relays: ["wss://input.example/"] })
+                : nip19.noteEncode(event.id)])),
         kind1: nip19.noteEncode(ids.kind1),
         sensitive: nip19.noteEncode(ids.sensitive),
         sensitivePayload: nip19.neventEncode({
@@ -196,6 +252,9 @@
     }
 
     function resolveForId(eventId: string): ComposerTargetResolveResult {
+        const interaction = interactionById.get(eventId);
+        if (interaction) return { status: "resolved", target: { ...makeTarget(1, eventId), event: interaction,
+            authorProfile: { name: "Outer fixture author", displayName: "", picture: "", npub: "", nprofile: "" } } };
         if (eventId === ids.sensitive) {
             return { status: "resolved", target: makeTarget(1, eventId, null, "") };
         }
@@ -322,6 +381,10 @@
     const harness = {
         ready: true,
         seedReactionFixtures,
+        relatedFetchIds,
+        relatedCancelledIds,
+        recoverRelated() { recoverMissing = true; },
+        releaseRelated() { releaseHeld?.(); },
         inputs,
         linkTargetUrl,
         oversizedPostContentLength: oversizedPostContent.length,
@@ -370,8 +433,9 @@
     {show}
     onClose={() => (show = false)}
     onApply={apply}
-    rxNostr={{} as never}
+    rxNostr={fixtureRuntime}
     {resolver}
+    {relatedResolver}
 />
 
 <style>

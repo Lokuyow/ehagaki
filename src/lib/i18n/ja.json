@@ -762,6 +762,16 @@
     }
   },
   "composerTarget": {
+    "genericRepost": "Generic Repost",
+    "reaction": "リアクション",
+    "relatedPreview": "関連イベントのプレビュー",
+    "relatedRepost": "リポスト元",
+    "relatedReaction": "リアクション対象",
+    "relatedLoading": "参照先を取得中…",
+    "relatedDeleted": "参照先は削除済みです",
+    "relatedUnsupported": "この参照先のプレビューには対応していません",
+    "relatedInvalid": "参照先の情報を検証できませんでした",
+    "relatedMissing": "参照先を取得できませんでした",
     "title": "宛先を指定",
     "description": "Nostrイベントを投稿先、返信先、または引用対象として指定します",
     "inputLabel": "イベントID",

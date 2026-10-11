@@ -67,6 +67,15 @@ function verifiedChannelSnapshot() {
 }
 
 describe("createComposerTargetResolver", () => {
+    it.each([6, 7, 16, 9876])("keeps fully verified kind %s as the main target for note and nevent", async kind => {
+        const signed = finalizeEvent({ kind, content: "main", tags: [], created_at: 1 }, generateSecretKey());
+        const resolver = createComposerTargetResolver({ replyQuoteService: { fetchReferencedEventTask: () => foundTask(signed) } });
+        for (const format of ["note", "nevent"] as const) {
+            expect(await resolver.resolve({ rxNostr: {} as never, pointer: {
+                format, eventId: signed.id, relayHints: [], authorHint: null, kindHint: format === "nevent" ? kind : null,
+            } }).promise).toMatchObject({ status: "resolved", target: { event: signed } });
+        }
+    });
     it("kind 1を取得・検証し、プロフィールを補完する", async () => {
         const fetchReferencedEventTask = vi.fn((_id: string, _relayHints: string[]) => foundTask(event()));
         const profile = {

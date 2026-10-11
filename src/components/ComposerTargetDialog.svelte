@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy } from "svelte";
+    import { onDestroy, untrack } from "svelte";
     import { _, locale } from "svelte-i18n";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
     import { nip19 } from "nostr-tools";
@@ -12,6 +12,10 @@
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
+    import PostHistoryRelatedEventCard from "./PostHistoryRelatedEventCard.svelte";
+    import { useComposerTargetRelatedPreview } from "../lib/hooks/useComposerTargetRelatedPreview.svelte";
+    import { buildComposerInteractionRenderModel } from "../lib/composerTargetRelatedPreview";
+    import type { PostHistoryRelatedTargetResolver } from "../lib/postHistoryRelatedTargetResolver.svelte";
     import PostRepostMenuItem from "./PostRepostMenuItem.svelte";
     import PostRepostFeedback from "./PostRepostFeedback.svelte";
     import type { RepostPostHandler } from "../lib/hooks/usePostRepostOperation.svelte";
@@ -109,6 +113,7 @@
         relayConfig?: RelayConfig | null;
         profileService?: Pick<RelayProfileService, "fetchProfileRealtime">;
         resolver?: ComposerTargetResolver;
+        relatedResolver?: PostHistoryRelatedTargetResolver;
         pubkeyHex?: string | null;
         onRepostPost?: RepostPostHandler;
         repostPending?: boolean;
@@ -124,6 +129,7 @@
         relayConfig = null,
         profileService = undefined,
         resolver = createComposerTargetResolver(),
+        relatedResolver = undefined,
         pubkeyHex = null,
         onRepostPost = undefined,
         repostPending = false,
@@ -203,6 +209,27 @@
             : [],
     );
     let previewEvent = $derived(target?.event ?? partialEvent);
+    const relatedPreviewController = useComposerTargetRelatedPreview({
+        getShow: () => show, getTarget: () => target, getRxNostr: () => rxNostr,
+        getRelayConfig: () => relayConfig, getPubkey: () => pubkeyHex, resolver: untrack(() => relatedResolver),
+    });
+    let relatedPreview = $derived(relatedPreviewController.getPreview());
+    let relatedRenderModel = $derived(relatedPreview?.event
+        ? [6, 7, 16].includes(relatedPreview.event.kind)
+            ? buildComposerInteractionRenderModel(relatedPreview.event)
+            : buildPostContentRenderModel({ kind: relatedPreview.event.kind,
+                sourceContent: relatedPreview.event.content, tags: relatedPreview.event.tags })
+        : null);
+    function interactionLabelKey(kind: number): string {
+        return kind === 6 ? "repost.entry" : kind === 16 ? "composerTarget.genericRepost" : "composerTarget.reaction";
+    }
+    let relatedStatusKey = $derived(relatedPreview?.status === "loading" ? "composerTarget.relatedLoading"
+        : relatedPreview?.status === "deleted" ? "composerTarget.relatedDeleted"
+        : relatedPreview?.status === "unsupported-reference" || relatedPreview?.status === "unsupported-target-kind"
+            ? "composerTarget.relatedUnsupported"
+        : relatedPreview?.status === "invalid-reference" || relatedPreview?.status === "invalid-target"
+            || relatedPreview?.status === "outer-target-kind-mismatch" ? "composerTarget.relatedInvalid"
+        : "composerTarget.relatedMissing");
     let previewPostedAt = $derived(
         previewEvent ? previewEvent.created_at * 1000 : 0,
     );
@@ -226,7 +253,7 @@
         );
     });
     let rawPreviewContent = $derived.by(() => {
-        if (!previewEvent || previewEvent.kind === 40) return "";
+        if (!previewEvent || [6, 7, 16, 40].includes(previewEvent.kind)) return "";
         return resolveEventContentBody(previewEvent.content, previewEvent.tags);
     });
     let collapsedContent = $derived(
@@ -312,7 +339,9 @@
             : collapsedContent.content,
     );
     let sourcePreviewRenderModel = $derived.by(() =>
-        previewEvent?.kind === 40
+        previewEvent && [6, 7, 16].includes(previewEvent.kind)
+            ? buildComposerInteractionRenderModel(previewEvent)
+            : previewEvent?.kind === 40
             ? buildPostContentRenderModel({
                   sourceContent: "",
                   displayContent: "",
@@ -343,6 +372,7 @@
     });
     let dialogEmojiUrls = $derived.by(() => {
         const urls = new Set(previewRenderModel.previewContent.emojiUrls);
+        for (const url of relatedRenderModel?.previewContent.emojiUrls ?? []) urls.add(url);
         if (isTargetReactionsExpanded) {
             for (const group of targetReactionReadModel?.groups ?? []) {
                 if (group.emojiUrl) urls.add(group.emojiUrl);
@@ -941,6 +971,9 @@
                     <span>{authorDisplay}</span>
                     <span class="event-kind">kind {previewEvent.kind}</span>
                     </div>
+                    {#if [6, 7, 16].includes(previewEvent.kind)}
+                        <p class="interaction-label">{$_(interactionLabelKey(previewEvent.kind))}</p>
+                    {/if}
                     <PostContentPreview
                     model={previewRenderModel}
                     loadSensitiveBody={createSensitivePayloadBodyLoader({
@@ -1138,7 +1171,37 @@
             </section>
         {/if}
 
-        {#if target && ![1, 40, 42, 1111].includes(target.event.kind)}
+        {#if relatedPreview && target}
+            <section class="composer-target-related-preview" aria-label={$_("composerTarget.relatedPreview")}>
+                <h3>{$_(target.event.kind === 7 ? "composerTarget.relatedReaction" : "composerTarget.relatedRepost")}</h3>
+                {#if relatedPreview.status === "resolved" && relatedPreview.event && relatedRenderModel}
+                    {@const relatedEvent = relatedPreview.event}
+                    <PostHistoryRelatedEventCard event={relatedEvent} profile={relatedPreview.profile}
+                        model={relatedRenderModel} onImageOpen={(params) => handleImageOpen({ ...params,
+                            focusOrigin: document.activeElement instanceof HTMLElement ? document.activeElement : null })}
+                        emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                        emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                        loadSensitiveBody={createSensitivePayloadBodyLoader({ ownerPubkey: pubkeyHex,
+                            structure: relatedEvent, relayHints: relatedPreview.relayHints, rxNostr, relayConfig })}>
+                        {#snippet topActions()}
+                            <p class="related-kind">
+                                {#if [6, 7, 16].includes(relatedEvent.kind)}
+                                    {$_(interactionLabelKey(relatedEvent.kind))} ·
+                                {/if}
+                                kind {relatedEvent.kind}
+                            </p>
+                        {/snippet}
+                    </PostHistoryRelatedEventCard>
+                {:else}
+                    <p role="status">{$_(relatedStatusKey)}</p>
+                    {#if ["not-found", "error", "invalid-target"].includes(relatedPreview.status)}
+                        <Button onClick={relatedPreviewController.retry}>{$_("postHistory.contextRetry")}</Button>
+                    {/if}
+                {/if}
+            </section>
+        {/if}
+
+        {#if target && targetActions.length === 0 && !relatedPreview}
             <p class="unsupported-kind">
                 {$_("composerTarget.unsupportedKind")}
             </p>
@@ -1371,6 +1434,7 @@
 
     .target-preview {
         display: grid;
+        min-width: 0;
         border: 1px solid var(--border-hr);
         background: var(--bg-input);
     }
@@ -1387,9 +1451,17 @@
 
     .target-preview-body {
         display: grid;
+        min-width: 0;
         gap: 10px;
         padding: 12px;
     }
+
+    .interaction-label { margin: 0; font-weight: 600; }
+    .composer-target-related-preview { display: grid; gap: 8px; min-width: 0; }
+    .composer-target-related-preview h3,
+    .composer-target-related-preview p { margin: 0; }
+    .composer-target-related-preview h3 { font-size: 0.95rem; }
+    .related-kind { padding: 4px 8px; color: var(--text-muted); font-size: 0.85rem; }
 
     .event-author {
         display: flex;

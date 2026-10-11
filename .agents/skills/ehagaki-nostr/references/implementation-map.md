@@ -55,6 +55,7 @@
 - 主な実装ファイル: `postRepostService.ts`、`postRepostUtils.ts`、`postHistoryRepository.ts`、`postHistoryRelatedTargetResolver.svelte.ts`、`usePostHistoryRepostPreviews.svelte.ts`、`PostHistoryRepostPreview.svelte`。
 - 主な関数または責務: serviceが署名・publishと同じouter/targetの再保存を所有する。repositoryがouter recordの`repostTarget`を保存し、既存related-target resolverが参照に基づく解決・検証・要求共有・retryを所有する。元投稿をauthored行として追加しない。
 - reference境界: `parseRepostReference()`がeの一意性、pの形式、kind 16のoptional kを検査する。kは0〜65535のcanonical decimal stringのみで、同値重複を許容し異値混在を拒否する。`verifyRepostTarget()`がfull verificationとID／p／k整合性を確認し、`classifyRepostTargetKind()`が6→1／16→42・1111をsupported、6→非1／16→1をouter-target-kind-mismatch、その他のreference-consistentな16→非1をunsupported-target-kindへ分ける。outerごとの判定を共有event-ID raw cacheのerrorにしない。snapshot保存・検索は`verifySupportedRepostTarget()`を通す。
+- Composerとの共有: `verifyRelatedEvent()`が署名・ID・author・kind hintの検証、`resolveRepostPreview()`がouterごとの表示状態を所有する。履歴の既定target集合とsnapshot保存は1／42／1111を維持し、Composerだけがrelated集合1／6／7／16／42／1111を指定する。
 - channel projection: kind 42 target自身からNIP-28 channel referenceを導出し、既存`usePostHistoryChannelDisplay`／`channelContextCoordinator`／channel metadata repositoryを使う。表示・検索の一時投影だけに使用し、kind 16 outerの`channelEventId`／`channelRelayHints`へ保存せずthread nodeにも扱わない。
 - 送信前の境界: 全Repost入口はresolverの`prepareRepostTarget()`で元投稿のfull verification、relay provenance、既知のローカル削除要求を確認する。検証済みtargetとhintがあればネットワーク削除確認を開始・待機せず署名・publishへ進む。hint欠損時のtarget取得は既存resolverが所有する。複数の有効な`p` tagは取得・検証後に元投稿authorが含まれるか判定する。
 - 削除要求の背景取得: 既存resolverのpreview解決がdeletion fetch/repositoryを所有し、Repost送信とは独立して動作する。Repostはそのpending taskを待機・昇格・複製せず、未取得・timeout・errorを送信拒否の理由にしない。後から検証・保存された有効な削除要求は以後の表示と操作へ適用する。
@@ -69,6 +70,9 @@
 - 主なtag: なし。pointer内にrelay hint、author hint、kind hintを含み得る。
 - 主な実装ファイル: `src/lib/utils/nostrUtils.ts`、`src/lib/eventPointerUtils.ts`、`src/lib/composerTargetUtils.ts`、`src/lib/composerTargetResolver.ts`
 - 主な関数または責務: `decodeEventPointerValue`はnote/neventを正規化し、`parseComposerTargetInput`はnote/neventだけをcomposer targetとして受理する。`createComposerTargetResolver`は取得eventをID、author hint、kind hint、署名で検証する。
+- Composer preview: mainは取得・検証したeventの汎用previewを維持し、`useComposerTargetRelatedPreview`がmain kind 6／7／16の直接参照先だけを既存related-target resolverで取得する。`requireFullVerification`を有効化し、署名なし履歴再構成eventを採用しない。`loadStoredRepostTarget`の検証済みsnapshot読取は共有するが、履歴行・Repost snapshotは保存しない。raw JSONと管理操作は常にmainへ適用し、relatedは読み取り専用とする。
+- Reaction参照: `parseReactionReference()`は既存`resolveKind7ReactionTargetEventId()`とraw末尾eのID一致を要求する。NIP-25のe[3]が64hexならauthor、既存marker形式ではe[4]をauthorとして扱い、末尾p・optional kとの矛盾を拒否する。投稿履歴の既存ID選択は変更しない。Reaction送信は追加しない。
+- 1段の表示境界: relatedのkind 6／16は非空embedded JSONも本文・media・emojiへ渡さず、Repost種別まで表示する。related kind 7は既存Reaction正規化と共通emoji rendererを使い、その先は取得しない。通常投稿のCW・Sensitive本文の明示revealは既存経路を維持する。
 - 関連テスト: `src/test/unit/nostrUtils.test.ts`、`src/test/unit/eventPointerUtils.test.ts`、`src/test/unit/composerTargetUtils.test.ts`、`src/test/unit/composerTargetResolver.test.ts`
 - 注意点: composer targetでは`npub`、`nprofile`、`naddr`を明示的にunsupportedとし、`nsec`をsecret-keyとして分離する。現在のコードに汎用naddr resolverは確認できない。
 

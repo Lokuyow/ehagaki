@@ -1,6 +1,6 @@
 import { onDestroy } from "svelte";
 import type { PostHistoryRelatedTargetResolver, RelatedTargetDescriptor } from "../postHistoryRelatedTargetResolver.svelte";
-import { classifyRepostTargetKind, getRepostReference, isRepostOuterKind, parseRepostReference, verifyRepostTarget, verifySupportedRepostTarget } from "../postRepostUtils";
+import { getRepostReference, isRepostOuterKind, resolveRepostPreview, verifyRepostTarget, verifySupportedRepostTarget } from "../postRepostUtils";
 import { postHistoryRepository } from "../storage/postHistoryRepository";
 import { ehagakiDb, type PostHistoryRecord } from "../storage/ehagakiDb";
 import { getPostHistoryLocalRevision } from "../storage/postHistoryLocalWriteScope";
@@ -34,19 +34,8 @@ export function usePostHistoryRepostPreviews(params: { getShow: () => boolean;
     }
     function getPreview(post: PostHistoryRecord) {
         params.resolver.getScopeRevision(scopeKey);
-        const parsed = parseRepostReference(post);
-        const ref = parsed.reference;
-        if (!ref) return { status: parsed.status, event: null, profile: null, relayHints: [] };
-        const snapshot = params.resolver.getTargetSnapshot(ref.eventId);
-        if (snapshot?.event && !verifyRepostTarget(snapshot.event, ref)) {
-            return { status: "invalid-target" as const, event: null, profile: null, relayHints: snapshot.relayHints };
-        }
-        if (snapshot?.event) {
-            const status = classifyRepostTargetKind(ref.outerKind, snapshot.event.kind);
-            if (status !== "supported") return { status, event: null, profile: null, relayHints: snapshot.relayHints };
-        }
-        return { status: snapshot?.status ?? "loading", event: snapshot?.event ?? null,
-            profile: snapshot?.profile ?? null, relayHints: snapshot?.relayHints ?? ref.relayHints,
+        const ref = getRepostReference(post);
+        return { ...resolveRepostPreview(post, ref ? params.resolver.getTargetSnapshot(ref.eventId) : null),
             saveFailed: saveErrors[post.eventId] ?? false };
     }
     async function ensure(post: PostHistoryRecord, force = false) {
