@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { finalizeEvent, generateSecretKey } from "nostr-tools";
+import { installPostHistoryWakeLockProbe, readPostHistoryWakeLockProbe } from "./postHistoryWakeLockHarness";
 
 const key = generateSecretKey();
 const events = [1,6,16,42,1111,5,36].map(kind=>finalizeEvent({kind,content:"fixture",tags:kind===36?[["k","1"]]:[],created_at:123},key));
@@ -70,6 +71,7 @@ test("JSONL real Worker fully verifies all import kinds and survives invalid cry
 });
 
 test("JSONL dialog close terminates a pending real Worker and reopen imports normally",async({page})=>{
+    await installPostHistoryWakeLockProbe(page);
     await page.addInitScript(()=>{
         const stats={created:0,terminated:0,held:0,hold:true};
         const NativeWorker=Worker;
@@ -92,15 +94,19 @@ test("JSONL dialog close terminates a pending real Worker and reopen imports nor
         await page.getByRole("menuitem",{name:"JSONLをインポート"}).click();
     };
     await open();
+    expect(await readPostHistoryWakeLockProbe(page)).toEqual({requests:0,releases:0,held:0});
     const dialog=page.locator(".post-history-import-dialog");
     await dialog.locator('input[type="file"]').setInputFiles({name:"fixture.jsonl",mimeType:"application/x-ndjson",buffer:Buffer.from(jsonl)});
     await expect.poll(()=>page.evaluate(()=>Reflect.get(window,"__JSONL_WORKERS__").held)).toBe(1);
+    await expect.poll(()=>readPostHistoryWakeLockProbe(page)).toEqual({requests:1,releases:0,held:1});
     await dialog.getByRole("button",{name:"閉じる"}).click();
     await expect.poll(()=>page.evaluate(()=>Reflect.get(window,"__JSONL_WORKERS__").terminated)).toBe(4);
+    await expect.poll(()=>readPostHistoryWakeLockProbe(page)).toEqual({requests:1,releases:1,held:0});
     await page.evaluate(()=>{Reflect.get(window,"__JSONL_WORKERS__").hold=false;});
     await open();
     await dialog.locator('input[type="file"]').setInputFiles({name:"fixture.jsonl",mimeType:"application/x-ndjson",buffer:Buffer.from(jsonl)});
     await expect(dialog.getByText("読み込みが完了しました")).toBeVisible();
+    await expect.poll(()=>readPostHistoryWakeLockProbe(page)).toEqual({requests:2,releases:2,held:0});
     expect(await page.evaluate(()=>Reflect.get(window,"__JSONL_WORKERS__"))).toMatchObject({created:8,terminated:8});
 });
 
