@@ -19,6 +19,7 @@ async function open(page: Page, scenario = "completed", extra = "") {
 test("full scan: completes with actual summary and preserves the displayed window", async ({ page }) => {
     const { before, dialog } = await open(page);
     const ids = await page.locator(".post-history-item").evaluateAll((items) => items.map((item) => item.getAttribute("data-post-history-event-id")));
+    await expect(dialog).toContainText("リレーから自分の過去の投稿をできるだけ取得して保存します。閉じると中止しますが保存済みの投稿は残ります。");
     await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
     await expect(dialog.getByRole("status")).toContainText("対象リレーの走査が終了しました");
     await expect(dialog).toContainText("2 / 2"); await expect(dialog.getByRole("progressbar")).toHaveCount(0);
@@ -41,6 +42,26 @@ test("full scan: explicit cancel and Escape keep committed posts", async ({ page
         await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
         await page.waitForFunction(() => (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!.held > 0);
         await expect(dialog.getByRole("button", { name: "取得開始", exact: true })).toBeDisabled();
+        const start = dialog.getByRole("button", { name: "取得開始", exact: true });
+        const cancel = dialog.getByRole("button", { name: "取得を中止", exact: true });
+        const close = dialog.getByRole("button", { name: "閉じる", exact: true });
+        for (const button of [start, cancel, close]) {
+            const geometry = await button.evaluate((element) => {
+                const bounds = element.getBoundingClientRect();
+                return { width: bounds.width, height: bounds.height, borderRadius: getComputedStyle(element).borderRadius };
+            });
+            expect(Math.min(geometry.width, geometry.height)).toBeGreaterThanOrEqual(50);
+            expect(geometry.borderRadius).toBe("0px");
+        }
+        const statusLayout = await dialog.locator(".scan-status").evaluate((element) => {
+            const loader = element.querySelector(".loading-placeholder")!;
+            const graphic = loader.querySelector(".loader-container")!;
+            const label = element.querySelector(":scope > span")!;
+            return { loaderWidth: loader.getBoundingClientRect().width, graphicRight: graphic.getBoundingClientRect().right,
+                labelLeft: label.getBoundingClientRect().left };
+        });
+        expect(statusLayout.loaderWidth).toBeLessThan(40);
+        expect(statusLayout.labelLeft).toBeGreaterThanOrEqual(statusLayout.graphicRight);
         if (operation === "cancel") {
             await dialog.getByRole("button", { name: "取得を中止", exact: true }).click();
             await expect(dialog.getByRole("status")).toContainText("取得を中止しました");

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RxNostr } from "rx-nostr";
-import { PostHistoryRelayFullScanService, type PostHistoryFullScanDeps } from "../../lib/postHistoryRelayFullScanService";
+import { PostHistoryRelayFullScanService, type PostHistoryFullScanDeps, type PostHistoryFullScanProgress } from "../../lib/postHistoryRelayFullScanService";
 import { createAuthoredFetchResult } from "../postHistorySyncResultTestUtils";
 import type { NostrEvent, RelayConfig } from "../../lib/types";
 import type { PostHistoryRelayFetchResult } from "../../lib/postHistoryRelayFetchService";
@@ -20,7 +20,7 @@ function page(events: NostrEvent[], hints: string[] = [], overrides: Partial<Pos
         eoseRelayUrls: urls, page: { subscriptionId: "page:0", hints, authRequired: false, authAutoResent: false, bufferLimited: false }, ...overrides,
     });
 }
-function setup(fetch: (params: Parameters<NonNullable<PostHistoryFullScanDeps["fetchRelayPage"]>>[1]) => PostHistoryRelayFetchResult | Promise<PostHistoryRelayFetchResult>, extra: PostHistoryFullScanDeps = {}) {
+function setup(fetch: (params: Parameters<NonNullable<PostHistoryFullScanDeps["fetchRelayPage"]>>[1]) => PostHistoryRelayFetchResult | Promise<PostHistoryRelayFetchResult>, extra: PostHistoryFullScanDeps = {}, onProgress?: (progress: PostHistoryFullScanProgress) => void) {
     const runtime = {} as RxNostr;
     let currentOwner = owner;
     let currentRuntime = runtime;
@@ -49,13 +49,20 @@ function setup(fetch: (params: Parameters<NonNullable<PostHistoryFullScanDeps["f
         }, ...extra,
     });
     const task = service.start({ ownerPubkeyHex: owner, rxNostr: runtime, relayConfig: config,
-        getCurrentScope: () => ({ ownerPubkeyHex: currentOwner, rxNostr: currentRuntime, relayConfig: config }) });
+        getCurrentScope: () => ({ ownerPubkeyHex: currentOwner, rxNostr: currentRuntime, relayConfig: config }), onProgress });
     return { task, requests, saved, coverage, persistBatch,
         changeOwner: () => { currentOwner = "b".repeat(64); }, changeRuntime: () => { currentRuntime = {} as RxNostr; },
         changeConfig: () => { config = { [urls[0]]: { read: true, write: false } }; } };
 }
 
 describe("manual full relay scan", () => {
+    it("keeps the retrieval phase stable while saving page batches", async () => {
+        const phases: string[] = [];
+        const state = setup(() => page([event(90)], ["finish"]), {}, ({ phase }) => phases.push(phase));
+        expect((await state.task.promise).status).toBe("completed");
+        expect(phases.length).toBeGreaterThan(0);
+        expect(new Set(phases)).toEqual(new Set(["fetching"]));
+    });
     it("keeps each relay's cursor, deduplicates A/B-only events and records safe coverage", async () => {
         const fixtures = { [urls[0]]: [event(90), event(40), event(20)], [urls[1]]: [event(90), event(65), event(5)] };
         const state = setup((params) => {

@@ -18,7 +18,7 @@ export interface PostHistoryFullScanRelayResult {
     rangeSamples: PostHistoryCoverageRange[];
 }
 export interface PostHistoryFullScanProgress {
-    phase: "fetching" | "saving" | "auth";
+    phase: "fetching" | "auth";
     elapsedMs: number;
     receivedCount: number;
     insertedCount: number;
@@ -119,7 +119,6 @@ export class PostHistoryRelayFullScanService {
                 localRevision = scope.expectedRevision;
                 const save = async (page: PostHistoryRelayFetchResult, coverage: PostHistoryRelayCoverage[]) => {
                     if (!isCurrent() || storageFailed) return;
-                    notify("saving");
                     const result = await (this.deps.persistBatch ?? persistPostHistoryAuthoredBatch)(page.events, page.fetchedAt, coverage, scope);
                     if (result.applied === false) { if (!cancellation && !storageFailed) cancel(true); return; }
                     committedResponse = true;

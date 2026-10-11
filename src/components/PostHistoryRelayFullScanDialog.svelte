@@ -35,8 +35,8 @@
         <p>{$_("postHistory.fullScanDescription")}</p>
     </div>
     <div class="scan-actions">
-        <Button variant="default" shape="pill" disabled={running || !canStart} onClick={onStart}>{$_("postHistory.fullScanStart")}</Button>
-        {#if running}<Button variant="default" shape="pill" onClick={onCancel}>{$_("postHistory.fullScanCancel")}</Button>{/if}
+        <Button variant="default" shape="square" className="scan-action" disabled={running || !canStart} onClick={onStart}>{$_("postHistory.fullScanStart")}</Button>
+        {#if running}<Button variant="default" shape="square" className="scan-action" onClick={onCancel}>{$_("postHistory.fullScanCancel")}</Button>{/if}
     </div>
     {#if statusKey}
         <div class="scan-status" role="status">
@@ -73,7 +73,7 @@
     {#snippet footer()}
         <Dialog.Close>
             {#snippet child({ props })}
-                <Button {...props} className="modal-close" shape="square" ariaLabel={$_("global.close")}>
+                <Button {...props} className="modal-close scan-close-action" shape="square" ariaLabel={$_("global.close")}>
                     <span class="close-icon svg-icon" aria-hidden="true"></span>
                 </Button>
             {/snippet}
@@ -84,10 +84,13 @@
 <style>
     .scan-heading, .scan-status, .scan-results { width: 100%; }
     .scan-heading h2, .scan-heading p { margin: 0; }
-    .scan-heading h2 { font-size: 1.1rem; }
-    .scan-heading p { margin-top: 6px; color: var(--text-muted); font-size: 0.88rem; line-height: 1.5; }
+    .scan-heading h2 { font-size: 1.25rem; }
+    .scan-heading p { margin-top: 16px; font-size: 0.88rem; line-height: 1.5; }
     .scan-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
     .scan-status { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 0.9rem; }
+    :global(.post-history-full-scan-dialog .scan-action) { box-sizing: border-box; min-width: 50px; min-height: 50px; padding: 8px 12px; }
+    :global(.post-history-full-scan-dialog .scan-close-action) { box-sizing: border-box; min-width: 50px; min-height: 50px; }
+    :global(.post-history-full-scan-dialog .scan-status .loading-placeholder) { width: auto; flex: 0 0 auto; justify-content: flex-start; }
     .close-icon { mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg"); }
     .scan-results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
     .scan-results section { min-width: 0; padding: 10px; border: 1px solid var(--border-hr); border-radius: 8px; }

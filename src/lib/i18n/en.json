@@ -152,7 +152,7 @@
   },
   "postHistory": {
     "fullScanTitle": "Fetch all from relays",
-    "fullScanDescription": "Scan your posts from the current post-history relays and save what can be retrieved. Finishing the target relay scans does not guarantee completeness across the network. Closing cancels the scan and keeps posts already saved.",
+    "fullScanDescription": "Fetch and save as many of your past posts as possible from relays. Closing cancels the scan, but posts already saved will remain.",
     "fullScanStart": "Start fetching",
     "fullScanCancel": "Cancel fetching",
     "fullScanRetrieval": "Retrieval",
@@ -162,7 +162,7 @@
     "fullScanUpdated": "Existing record updates",
     "fullScanCompletedRelays": "Completed relays",
     "fullScanIncompleteRelays": "Incomplete relays",
-    "fullScanPhase": { "fetching": "Fetching from relays…", "saving": "Saving posts…", "auth": "Waiting for relay authentication…" },
+    "fullScanPhase": { "fetching": "Fetching from relays…", "auth": "Waiting for relay authentication…" },
     "fullScanStatus": {
       "completed": "The target relay scans have finished",
       "partial": "Some relays or ranges remain incomplete. Posts already saved have been kept",
