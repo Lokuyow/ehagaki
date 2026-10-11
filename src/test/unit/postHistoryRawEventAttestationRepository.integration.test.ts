@@ -60,6 +60,30 @@ afterEach(async () => {
 });
 
 describe("post-history attestation repository boundary", () => {
+    it("bulk upserts ordinary authored kinds without per-event Sensitive Structure reads", async () => {
+        const name = `${EHAGAKI_DB_NAME}-ordinary-bulk-${crypto.randomUUID()}`;
+        databaseNames.add(name);
+        const db = new EHagakiDB(name);
+        const repository = new DexiePostHistoryRepository(db);
+        const key = generateSecretKey();
+        const events = Array.from({ length: 1000 }, (_, index) => {
+            const event = finalizeEvent({ kind: [1, 6, 16, 42, 1111][index % 5]!,
+                content: `ordinary-${index}`, tags: [], created_at: 1_700_000_000 + index }, key);
+            return attestFullyVerifiedPostHistoryRawEvent(event)!;
+        });
+        const get = vi.spyOn(db.postHistory, "get");
+        verifyEventMock.mockClear();
+        for (let offset = 0; offset < events.length; offset += 500) {
+            expect(await repository.upsertFetchedEvents({ events: events.slice(offset, offset + 500) }))
+                .toMatchObject({ insertedCount: 500 });
+        }
+        expect(await repository.upsertFetchedEvents({ events }))
+            .toMatchObject({ insertedCount: 0, unchangedCount: 1000 });
+        expect(get.mock.calls.length).toBe(0);
+        expect(verifyEventMock).not.toHaveBeenCalled();
+        await expect(db.postHistory.count()).resolves.toBe(1000);
+        db.close();
+    });
     it.each([5,36])("keeps kind %s fallback cryptographic for missing, forged and mutated proofs", async kind => {
         const key=generateSecretKey();
         const signed=finalizeEvent({kind,content:"fixture",tags:kind===5?[["e","0".repeat(64)]]:[["k","1"]],created_at:123},key);

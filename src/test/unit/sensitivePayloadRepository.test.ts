@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
 import { DexiePostHistoryDeletionRequestsRepository } from "../../lib/storage/postHistoryDeletionRequestsRepository";
 import { DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
@@ -55,7 +55,13 @@ describe("DexieSensitivePayloadRepository", () => {
         const payloads = new DexieSensitivePayloadRepository(db);
         const deletions = new DexiePostHistoryDeletionRequestsRepository(db);
         const putPayload = () => payloads.putCandidate({ event: payload });
-        const putStructure = () => posts.upsertFetchedEvents({ events: [{ event: structure, relayUrls: [] }] });
+        const putStructure = async () => {
+            const get = vi.spyOn(db.postHistory, "get");
+            try {
+                await posts.upsertFetchedEvents({ events: [{ event: structure, relayUrls: [] }] });
+                expect(get).toHaveBeenCalledWith(structure.id);
+            } finally { get.mockRestore(); }
+        };
         const putDeletion = () => deletions.upsertImportedDeletionEvents({ ownerPubkeyHex: structure.pubkey, deletionEvents: [{ event: deletion }] });
         if (order === 'pair-first') { await putPayload(); await putStructure(); await putDeletion(); }
         else if (order === 'payload-first') { await putPayload(); await putDeletion(); await putStructure(); }
