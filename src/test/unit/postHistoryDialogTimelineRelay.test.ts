@@ -209,6 +209,33 @@ describe('PostHistoryDialog timeline relay flows', () => {
         expect(cancel).toHaveBeenCalledOnce();
     });
 
+    it('空の投稿履歴では同期中表示を右上通知だけにする', async () => {
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: new Promise(() => undefined),
+            cancel: vi.fn(),
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled();
+            expect(document.querySelector('.floating-message.anchor-bottom-right')?.textContent)
+                .toContain('リレーと同期中...');
+        });
+
+        expect(screen.getAllByText('リレーと同期中...')).toHaveLength(1);
+        expect(document.querySelector('.post-history-sync-footer')).toBeNull();
+        view.unmount();
+    });
+
     it('前回表示 snapshot があっても open 時にローカル履歴を読み直して送信済み投稿を即表示する', async () => {
         const oldPost = createRecord({
             eventId: 'snapshot-old',

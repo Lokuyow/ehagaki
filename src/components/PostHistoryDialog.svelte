@@ -3732,7 +3732,10 @@
                 <div class="post-history-search-bottom-spacer" aria-hidden="true"></div>
             {/if}
         {/if}
-        {#if !history.isSearchMode && history.syncStatus === "syncing"}
+        {#if
+            !history.isSearchMode &&
+            history.syncStatus === "syncing" &&
+            (history.posts.length > 0 || exportRunning)}
             <div class="post-history-nav-row post-history-sync-footer" role="status">
                 <LoadingPlaceholder
                     text={$_("postHistory.syncing")}
