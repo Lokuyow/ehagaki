@@ -1342,6 +1342,7 @@ describe('PostManager統合テスト', () => {
 
         mockDeps = {
             authStateStore: { value: mockAuthState },
+            writeRelaysStore: { value: ['wss://relay1.example.com/'] },
             hashtagStore: mockHashtagStore,
             keyManager: mockKeyManager,
             nip65ReadRelayLookupFn: vi.fn().mockResolvedValue({ readRelays: [] }),
@@ -1831,6 +1832,7 @@ describe('PostManager統合テスト', () => {
     });
 
     it('channel context がある場合は kind 42 の channel message を送信する', async () => {
+        mockDeps.writeRelaysStore = { value: ['wss://relay1.example.com/', 'wss://relay2.example.com/'] };
         const mockObservable = {
             subscribe: vi.fn((observer) => {
                 process.nextTick(() => {
@@ -1877,8 +1879,7 @@ describe('PostManager統合テスト', () => {
         expect(sendOptions).toEqual(expect.objectContaining({
             completeOn: 'all-ok',
             on: {
-                defaultWriteRelays: true,
-                relays: ['wss://channel-relay.example.com/'],
+                relays: ['wss://relay1.example.com/', 'wss://relay2.example.com/', 'wss://channel-relay.example.com/'],
             },
         }));
         expect(sendOptions.signer).toEqual(expect.objectContaining({
@@ -3041,6 +3042,7 @@ describe("NIP-65 staged post delivery", () => {
         const authStateStore = { value: authState };
         const manager = new PostManager(rxNostr, {
             authStateStore,
+            writeRelaysStore: { value: [authorRelay] },
             console: createMockConsole(),
             ...(nip65ReadRelayLookupFn ? { nip65ReadRelayLookupFn } : {}),
         });
@@ -3064,6 +3066,7 @@ describe("NIP-65 staged post delivery", () => {
         const { manager, rxNostr, getDirectoryObserver } = createStagedPostHarness();
         let settled = false;
         const resultPromise = (manager as any).publishNip65Event({
+            authorWriteRelaySnapshot: Object.freeze(manager.getEventSender()!.getDefaultWriteRelays()),
             event: targetEvent(),
             sessionPubkey: "author-pubkey",
         }).then((result: unknown) => {
@@ -3109,6 +3112,7 @@ describe("NIP-65 staged post delivery", () => {
         const startedAt = Date.now();
         const { manager, rxNostr, getDirectoryObserver } = createStagedPostHarness();
         const pending = (manager as any).publishNip65Event({
+            authorWriteRelaySnapshot: Object.freeze(manager.getEventSender()!.getDefaultWriteRelays()),
             event: targetEvent(), sessionPubkey: "author-pubkey",
             discoveryRelaysByRecipient: { ["a".repeat(64)]: ["wss://context.example/"] },
         });
@@ -3148,6 +3152,7 @@ describe("NIP-65 staged post delivery", () => {
         } }));
         let settled = false;
         const pending = (manager as any).publishNip65Event({
+            authorWriteRelaySnapshot: Object.freeze(manager.getEventSender()!.getDefaultWriteRelays()),
             event: targetEvent(), sessionPubkey: "author-pubkey",
             ...(silentClass === "additional" ? { additionalWriteRelays: additional } : {}),
         }).then((result: any) => { settled = true; return result; });
@@ -3185,7 +3190,11 @@ describe("NIP-65 staged post delivery", () => {
         } }));
 
         let settled = false;
-        const pending = (manager as any).publishNip65Event({ event: targetEvent(), sessionPubkey: "author-pubkey" })
+        const pending = (manager as any).publishNip65Event({
+            authorWriteRelaySnapshot: Object.freeze(manager.getEventSender()!.getDefaultWriteRelays()),
+            event: targetEvent(),
+            sessionPubkey: "author-pubkey",
+        })
             .then((result: any) => { settled = true; return result; });
         await vi.advanceTimersByTimeAsync(1_499);
         expect(settled).toBe(false);
@@ -3210,7 +3219,11 @@ describe("NIP-65 staged post delivery", () => {
         vi.useFakeTimers();
         const { manager, rxNostr, getDirectoryObserver } = createStagedPostHarness();
         let settled = false;
-        const pending = (manager as any).publishNip65Event({ event: targetEvent(), sessionPubkey: "author-pubkey" })
+        const pending = (manager as any).publishNip65Event({
+            authorWriteRelaySnapshot: Object.freeze(manager.getEventSender()!.getDefaultWriteRelays()),
+            event: targetEvent(),
+            sessionPubkey: "author-pubkey",
+        })
             .then((result: any) => { settled = true; return result; });
         await vi.advanceTimersByTimeAsync(2_999);
         expect(settled).toBe(false);
@@ -3227,7 +3240,7 @@ describe("NIP-65 staged post delivery", () => {
         const observers: any[] = [];
         rxNostr.send = vi.fn((_event, options) => ({ subscribe: (observer: any) => {
             observers.push(observer);
-            if (options.on?.defaultWriteRelays) {
+            if (options.on?.relays?.includes("wss://author-write.example/")) {
                 observer.next({ from: "wss://author-write.example/", ok: true, done: true, eventId: "signed-event-id" });
             } else {
                 observer.next({ from: recipient, ok: false, done: false, notice: "auth-required: sign in" });
@@ -3235,7 +3248,11 @@ describe("NIP-65 staged post delivery", () => {
             return { unsubscribe: vi.fn() };
         } }));
         let settled = false;
-        const pending = (manager as any).publishNip65Event({ event: targetEvent(), sessionPubkey: "author-pubkey" })
+        const pending = (manager as any).publishNip65Event({
+            authorWriteRelaySnapshot: Object.freeze(manager.getEventSender()!.getDefaultWriteRelays()),
+            event: targetEvent(),
+            sessionPubkey: "author-pubkey",
+        })
             .then((result: any) => { settled = true; return result; });
         await vi.advanceTimersByTimeAsync(3_500);
         expect(settled).toBe(false);
@@ -3267,7 +3284,7 @@ describe("NIP-65 staged post delivery", () => {
         const sendObservers: any[] = [];
         rxNostr.send = vi.fn((_event, options) => ({ subscribe: (observer: any) => {
             sendObservers.push(observer);
-            if (options.on?.defaultWriteRelays) {
+            if (options.on?.relays?.includes(authorRelay)) {
                 observer.next({ from: authorRelay, ok: true, done: true, eventId: "signed-event-id" });
                 observer.next({ from: silentAuthor, ok: false, done: false, notice: "auth-required: sign in" });
             } else {
@@ -3310,7 +3327,11 @@ describe("NIP-65 staged post delivery", () => {
     it("does not publish a new candidate after the bounded discovery result is final", async () => {
         vi.useFakeTimers();
         const { manager, rxNostr, getDirectoryObserver } = createStagedPostHarness();
-        const pending = (manager as any).publishNip65Event({ event: targetEvent(), sessionPubkey: "author-pubkey" });
+        const pending = (manager as any).publishNip65Event({
+            authorWriteRelaySnapshot: Object.freeze(manager.getEventSender()!.getDefaultWriteRelays()),
+            event: targetEvent(),
+            sessionPubkey: "author-pubkey",
+        });
         await vi.advanceTimersByTimeAsync(3_000);
         const result = await pending;
         expect(result).toMatchObject({ success: true, fullyDelivered: false });
@@ -3328,6 +3349,7 @@ describe("NIP-65 staged post delivery", () => {
         vi.useFakeTimers();
         const { manager, rxNostr } = createStagedPostHarness();
         const resultPromise = (manager as any).publishNip65Event({
+            authorWriteRelaySnapshot: Object.freeze(manager.getEventSender()!.getDefaultWriteRelays()),
             event: { ...targetEvent(), tags: [] },
             sessionPubkey: "author-pubkey",
         });
@@ -3362,6 +3384,7 @@ describe("NIP-65 staged post delivery", () => {
         }));
         let settled = false;
         const resultPromise = (manager as any).publishNip65Event({
+            authorWriteRelaySnapshot: Object.freeze(manager.getEventSender()!.getDefaultWriteRelays()),
             event: { ...targetEvent(), tags: [] },
             sessionPubkey: "author-pubkey",
         }).then((result: unknown) => {
@@ -3405,6 +3428,7 @@ describe("NIP-65 staged post delivery", () => {
         }));
 
         const result = await (manager as any).publishNip65Event({
+            authorWriteRelaySnapshot: Object.freeze(manager.getEventSender()!.getDefaultWriteRelays()),
             event: targetEvent(),
             sessionPubkey: "author-pubkey",
         });
@@ -3434,6 +3458,7 @@ describe("NIP-65 staged post delivery", () => {
         vi.useFakeTimers();
         const { manager, rxNostr, getDirectoryObserver } = createStagedPostHarness();
         const resultPromise = (manager as any).publishNip65Event({
+            authorWriteRelaySnapshot: Object.freeze(manager.getEventSender()!.getDefaultWriteRelays()),
             event: targetEvent(),
             sessionPubkey: "author-pubkey",
         });
@@ -3470,6 +3495,7 @@ describe("NIP-65 staged post delivery", () => {
         vi.useFakeTimers();
         const { manager, rxNostr, getDirectoryObserver } = createStagedPostHarness();
         const resultPromise = (manager as any).publishNip65Event({
+            authorWriteRelaySnapshot: Object.freeze(manager.getEventSender()!.getDefaultWriteRelays()),
             event: targetEvent(),
             sessionPubkey: "author-pubkey",
         });
@@ -3504,6 +3530,7 @@ describe("NIP-65 staged post delivery", () => {
         vi.useFakeTimers();
         const { manager, rxNostr, authStateStore, getDirectoryObserver } = createStagedPostHarness();
         const resultPromise = (manager as any).publishNip65Event({
+            authorWriteRelaySnapshot: Object.freeze(manager.getEventSender()!.getDefaultWriteRelays()),
             event: targetEvent(),
             sessionPubkey: "author-pubkey",
         });
@@ -3552,6 +3579,7 @@ describe("NIP-65 staged post delivery", () => {
 
         try {
             const result = await (manager as any).publishNip65Event({
+                authorWriteRelaySnapshot: Object.freeze(manager.getEventSender()!.getDefaultWriteRelays()),
                 event: targetEvent(),
                 sessionPubkey: "author-pubkey",
             });
@@ -3658,6 +3686,7 @@ describe("NIP-65 staged post delivery", () => {
         const { manager, getDirectoryObserver } = createStagedPostHarness();
         const recipientPubkey = "a".repeat(64);
         const resultPromise = (manager as any).publishNip65Event({
+            authorWriteRelaySnapshot: Object.freeze(manager.getEventSender()!.getDefaultWriteRelays()),
             event: {
                 ...targetEvent(),
                 tags: [["p", recipientPubkey]],

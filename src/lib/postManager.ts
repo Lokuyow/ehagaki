@@ -69,7 +69,7 @@ function createRelayRoles(): Nip65RelayRoles {
 }
 
 function createDeliveryClassResult(
-  relays: string[],
+  relays: readonly string[],
   outcomes: Map<string, Nip65RelayOutcome>,
   unavailable = false,
   cancelled = false,
@@ -301,7 +301,7 @@ export class PostManager {
     event: NostrEvent;
     attestation: PostHistoryRawEventAttestation;
     result: PostResult;
-    additionalWriteRelays?: string[];
+    additionalWriteRelays?: readonly string[];
     writeRelayHintSnapshot: string[];
   }): Promise<void> {
     if (!params.result.success || !this.deps.savePostHistoryFn) return;
@@ -332,13 +332,14 @@ export class PostManager {
 
   private async publishNip65Event(params: {
     event: NostrEvent;
+    authorWriteRelaySnapshot: readonly string[];
     sensitive?: {
       structureTemplate: PostEventTemplate & { pubkey: string };
       payloadAttestation: PostHistoryRawEventAttestation;
       signStructure(hint: string): Promise<NostrEvent>;
     };
     sessionPubkey: string;
-    additionalWriteRelays?: string[];
+    additionalWriteRelays?: readonly string[];
     discoveryRelaysByRecipient?: Record<string, string[]>;
   }): Promise<PostResult> {
     const sender = this.eventSender;
@@ -352,8 +353,8 @@ export class PostManager {
     const discoveryDeadline = operationStartedAt + NIP65_DISCOVERY_BUDGET_MS;
     const deadlineAt = operationStartedAt + 12_000;
     const authDeadlineAt = operationStartedAt + NIP65_POST_OPERATION_DEADLINE_MS;
-    const defaultWriteRelays = sender.getDefaultWriteRelays();
-    if (isHostRelayConfigActive() && defaultWriteRelays.length === 0) {
+    const authorWriteRelays = params.authorWriteRelaySnapshot;
+    if (isHostRelayConfigActive() && authorWriteRelays.length === 0) {
       return {
         success: false,
         fullyDelivered: false,
@@ -367,7 +368,7 @@ export class PostManager {
       };
     }
     const additionalRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
-      params.additionalWriteRelays,
+      [...(params.additionalWriteRelays ?? [])],
     );
     const recipientPubkeys = Array.from(new Set<string>(
       (params.sensitive?.structureTemplate.tags ?? params.event.tags ?? []).flatMap((tag: unknown) => {
@@ -455,13 +456,13 @@ export class PostManager {
       return roles;
     };
 
-    defaultWriteRelays.forEach((relay) => { getRoles(relay).authorWrite = true; });
+    authorWriteRelays.forEach((relay) => { getRoles(relay).authorWrite = true; });
     additionalRelays.forEach((relay) => { getRoles(relay).additional = true; });
 
     const settleSuccessfulClasses = (): void => {
       const hasAck = (relays: Iterable<string>) => [...relays].some((relay) => outcomes.get(relay)?.accepted);
       const complete = (params.sensitive !== undefined || recipientPubkeys.length > 0)
-        && hasAck(defaultWriteRelays)
+        && hasAck(authorWriteRelays)
         && recipientPubkeys.every((pubkey) => hasAck(recipientRelays.get(pubkey) ?? []))
         && (additionalRelays.length === 0 || hasAck(additionalRelays));
       if (!complete || !isCurrent()) {
@@ -616,7 +617,7 @@ export class PostManager {
 
     try {
       const initialTargets = RelayConfigUtils.sanitizeExternalRelayUrls([
-        ...defaultWriteRelays,
+        ...authorWriteRelays,
         ...additionalRelays,
       ]);
       if (params.sensitive) {
@@ -625,8 +626,8 @@ export class PostManager {
       } else {
         initialTargets.forEach((relay) => launchedRelays.add(relay));
         const initialWave = sender.sendEvent(params.event, {
-          targetRelays: additionalRelays,
-          includeDefaultWriteRelays: true,
+          targetRelays: initialTargets,
+          includeDefaultWriteRelays: false,
           waitForAllRelays: recipientPubkeys.length > 0,
           deadlineAt,
           authDeadlineAt,
@@ -704,14 +705,14 @@ export class PostManager {
       await cacheWrites;
 
       const toClass = (
-        relays: string[],
+        relays: readonly string[],
         unavailable = false,
         wasCancelled = false,
       ) => createDeliveryClassResult(relays, outcomes, unavailable,
         wasCancelled || (params.sensitive !== undefined && cancelled));
       const authorWrite = toClass(
-        defaultWriteRelays,
-        defaultWriteRelays.length === 0,
+        authorWriteRelays,
+        authorWriteRelays.length === 0,
       );
       const taggedUserRead: Record<string, PostDeliveryClassResult> = Object.fromEntries(recipientPubkeys.map((pubkey) => {
         const relays = [...(recipientRelays.get(pubkey) ?? [])];
@@ -778,12 +779,12 @@ export class PostManager {
     hashtags: string[];
     rqNotifyOptions?: ReplyQuoteNotifyOptions;
     signer?: PostManagerSigner;
-    additionalWriteRelays?: string[];
+    additionalWriteRelays?: readonly string[];
     discoveryRelaysByRecipient?: Record<string, string[]>;
     signEvent?: (event: EventTemplate) => Promise<unknown>;
     logSignedEvent?: boolean;
     splitSensitiveContent: boolean;
-    writeRelaySnapshot: string[];
+    authorWriteRelaySnapshot: readonly string[];
     writeRelayHintSnapshot: string[];
     replyQuoteIdentity: string;
   }): Promise<PostResult> {
@@ -832,6 +833,7 @@ export class PostManager {
     if (!usePayload) published = signed;
     const result = await this.publishNip65Event({
       event: signed.event,
+      authorWriteRelaySnapshot: params.authorWriteRelaySnapshot,
       sessionPubkey: params.sessionPubkey,
       additionalWriteRelays: params.additionalWriteRelays,
       discoveryRelaysByRecipient: params.discoveryRelaysByRecipient,
@@ -925,15 +927,6 @@ export class PostManager {
       return this.notifyPostFailure("nostr_not_ready");
     }
 
-    if (
-      isHostRelayConfigActive()
-      && RelayConfigUtils.sanitizeExternalRelayUrls(
-        this.deps.writeRelaysStore?.value,
-      ).length === 0
-    ) {
-      return this.notifyPostFailure("no_write_relays");
-    }
-
     try {
       // 依存性から認証状態とストアを取得
       const authStateStore = this.deps.authStateStore!;
@@ -948,14 +941,21 @@ export class PostManager {
       const contentWarningReason = this.deps.contentWarningReasonStore!.value;
       const failClosedContentWarning = this.deps.settingsStore!.failClosedContentWarning === true;
       const channelContext = this.deps.channelContextState?.value ?? null;
-      const additionalWriteRelays = channelContext?.channelRelays;
-      const writeRelaySnapshot = RelayConfigUtils.sanitizeExternalRelayUrls([
-        ...Object.values(this.rxNostr!.getDefaultRelays())
-          .filter((relay) => relay.write)
-          .map((relay) => relay.url),
-        ...(this.deps.writeRelaysStore?.value ?? []),
-        ...(additionalWriteRelays ?? []),
-      ]);
+      // Capture each role before signing; relay settings may change while the signer waits.
+      const additionalWriteRelays = Object.freeze(
+        RelayConfigUtils.sanitizeExternalRelayUrls(channelContext?.channelRelays),
+      );
+      const authorWriteRelaySnapshot = Object.freeze(
+        RelayConfigUtils.sanitizeExternalRelayUrls([
+          ...Object.values(this.rxNostr!.getDefaultRelays())
+            .filter((relay) => relay.write)
+            .map((relay) => relay.url),
+          ...(this.deps.writeRelaysStore?.value ?? []),
+        ]),
+      );
+      if (isHostRelayConfigActive() && authorWriteRelaySnapshot.length === 0) {
+        return this.notifyPostFailure("no_write_relays");
+      }
       const writeRelayHintSnapshot = RelayConfigUtils.sanitizeExternalRelayUrls(
         this.deps.writeRelaysStore?.value ?? [],
       );
@@ -1162,7 +1162,7 @@ export class PostManager {
             additionalWriteRelays,
             discoveryRelaysByRecipient,
             splitSensitiveContent: failClosedContentWarning,
-            writeRelaySnapshot,
+            authorWriteRelaySnapshot,
             writeRelayHintSnapshot,
             replyQuoteIdentity: JSON.stringify({ reply: rqState.reply?.eventId ?? null, quotes: rqState.quotes.map((quote) => quote.eventId) }),
           });
@@ -1214,7 +1214,7 @@ export class PostManager {
             additionalWriteRelays,
             discoveryRelaysByRecipient,
             splitSensitiveContent: failClosedContentWarning,
-            writeRelaySnapshot,
+            authorWriteRelaySnapshot,
             writeRelayHintSnapshot,
             replyQuoteIdentity: JSON.stringify({ reply: rqState.reply?.eventId ?? null, quotes: rqState.quotes.map((quote) => quote.eventId) }),
           });
@@ -1260,7 +1260,7 @@ export class PostManager {
             additionalWriteRelays,
             discoveryRelaysByRecipient,
             splitSensitiveContent: failClosedContentWarning,
-            writeRelaySnapshot,
+            authorWriteRelaySnapshot,
             writeRelayHintSnapshot,
             replyQuoteIdentity: JSON.stringify({ reply: rqState.reply?.eventId ?? null, quotes: rqState.quotes.map((quote) => quote.eventId) }),
           });
@@ -1302,7 +1302,7 @@ export class PostManager {
         additionalWriteRelays,
         discoveryRelaysByRecipient,
         splitSensitiveContent: failClosedContentWarning,
-        writeRelaySnapshot,
+        authorWriteRelaySnapshot,
         writeRelayHintSnapshot,
         replyQuoteIdentity: JSON.stringify({ reply: rqState.reply?.eventId ?? null, quotes: rqState.quotes.map((quote) => quote.eventId) }),
       });
