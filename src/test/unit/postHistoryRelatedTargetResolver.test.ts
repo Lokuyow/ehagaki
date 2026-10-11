@@ -755,7 +755,7 @@ describe("createPostHistoryRelatedTargetResolver", () => {
         const event = createEvent();
         await deletionRepository.upsertImportedDeletionEvents({
             ownerPubkeyHex: event.pubkey,
-            deletionEvents: [{
+            deletionEvents: [{ event: {
                 id: "5".repeat(64),
                 pubkey: event.pubkey,
                 kind: 5,
@@ -763,7 +763,7 @@ describe("createPostHistoryRelatedTargetResolver", () => {
                 tags: [["e", event.id]],
                 created_at: 200,
                 sig: "c".repeat(128),
-            }],
+            } }],
         });
         const { resolver, contextFetchService } = createResolver({
             deletionRequestsRepositoryImpl: deletionRepository,

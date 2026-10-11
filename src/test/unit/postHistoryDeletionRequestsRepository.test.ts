@@ -155,7 +155,7 @@ describe("DexiePostHistoryDeletionRequestsRepository", () => {
 
         const result = await repository.upsertImportedDeletionEvents({
             ownerPubkeyHex: deletionEvent.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
             fetchedAt: 900,
         });
 
@@ -195,7 +195,7 @@ describe("DexiePostHistoryDeletionRequestsRepository", () => {
 
             const result = await repository.upsertImportedDeletionEvents({
                 ownerPubkeyHex: deletionEvent.pubkey,
-                deletionEvents: [deletionEvent],
+                deletionEvents: [{ event: deletionEvent }],
             });
 
             expect(result).toMatchObject({ insertedCount: 1, ignoredCount: 0 });
@@ -225,7 +225,7 @@ describe("DexiePostHistoryDeletionRequestsRepository", () => {
 
         const result = await repository.upsertImportedDeletionEvents({
             ownerPubkeyHex: deletionEvent.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
         });
 
         expect(result).toEqual({
@@ -253,7 +253,7 @@ describe("DexiePostHistoryDeletionRequestsRepository", () => {
 
         const result = await repository.upsertImportedDeletionEvents({
             ownerPubkeyHex: deletionEvent.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
         });
 
         expect(result).toMatchObject({ insertedCount: 1, ignoredCount: 0 });
@@ -288,7 +288,7 @@ describe("DexiePostHistoryDeletionRequestsRepository", () => {
 
         const result = await repository.upsertImportedDeletionEvents({
             ownerPubkeyHex: deletionEvent.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
         });
 
         expect(result).toMatchObject({ insertedCount: 1, ignoredCount: 0 });
@@ -311,7 +311,7 @@ describe("DexiePostHistoryDeletionRequestsRepository", () => {
 
         const result = await repository.upsertImportedDeletionEvents({
             ownerPubkeyHex: deletionEvent.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
         });
 
         expect(result).toMatchObject({
@@ -338,7 +338,7 @@ describe("DexiePostHistoryDeletionRequestsRepository", () => {
 
         const result = await repository.upsertImportedDeletionEvents({
             ownerPubkeyHex: deletionEvent.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
         });
 
         expect(result).toEqual({
@@ -367,7 +367,7 @@ describe("DexiePostHistoryDeletionRequestsRepository", () => {
 
         const result = await repository.upsertImportedDeletionEvents({
             ownerPubkeyHex: deletionEvent.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
         });
 
         expect(result.appliedDeletionCount).toBe(1);
@@ -392,7 +392,7 @@ describe("DexiePostHistoryDeletionRequestsRepository", () => {
 
         const result = await repository.upsertImportedDeletionEvents({
             ownerPubkeyHex: deletionEvent.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
         });
 
         expect(result.appliedDeletionCount).toBe(0);
@@ -445,7 +445,7 @@ describe("DexiePostHistoryDeletionRequestsRepository", () => {
         const deletionEvent = createDeletionEvent({ tags: [["e", targetEvent.id]] });
         await repository.upsertImportedDeletionEvents({
             ownerPubkeyHex: deletionEvent.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
         });
         const [pending] = await db.postHistoryDeletionRequests.toArray();
         await db.postHistoryDeletionRequests.update(pending.id, {
@@ -455,7 +455,7 @@ describe("DexiePostHistoryDeletionRequestsRepository", () => {
 
         const result = await repository.upsertImportedDeletionEvents({
             ownerPubkeyHex: deletionEvent.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
         });
 
         expect(result).toMatchObject({

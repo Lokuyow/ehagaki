@@ -64,6 +64,7 @@ export default defineConfig({
                 '**/postEditorSending.spec.ts',
                 '**/postHistoryDialog.spec.ts',
                 '**/postHistoryFullScan.spec.ts',
+                '**/postHistoryJsonlWorker.spec.ts',
                 '**/postRepost.spec.ts',
                 '**/sensitiveContentPayload.spec.ts',
             ],
@@ -74,7 +75,7 @@ export default defineConfig({
         },
         {
             name: 'desktop-firefox',
-            testMatch: ['**/webComponentEmbed.spec.ts', '**/postRepost.spec.ts'],
+            testMatch: ['**/webComponentEmbed.spec.ts', '**/postRepost.spec.ts', '**/postHistoryJsonlWorker.spec.ts'],
             use: {
                 ...devices['Desktop Firefox'],
             },
