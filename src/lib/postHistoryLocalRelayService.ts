@@ -91,8 +91,12 @@ export class PostHistoryLocalRelayService {
     }
 
     storeSignedEventBestEffort(input: AttestedPostHistoryRawEvent, isActive: () => boolean = () => true): void {
-        const session = this.currentSession(input.event.pubkey);
-        if (session) this.storeBatch(session, [input], isActive);
+        this.storeSignedEventsBestEffort([input], isActive);
+    }
+
+    storeSignedEventsBestEffort(inputs: AttestedPostHistoryRawEvent[], isActive: () => boolean = () => true): void {
+        const session = inputs.length ? this.currentSession(inputs[0].event.pubkey) : null;
+        if (session) this.storeBatch(session, inputs, isActive);
     }
 
     private storeBatch(session: LocalRelaySession, inputs: AttestedPostHistoryRawEvent[], isActive: () => boolean): void {

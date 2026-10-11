@@ -48,7 +48,7 @@ export interface DeletionSigner {
 }
 
 export interface PostDeletionServiceDeps {
-    storeSignedEventFn?: import("./types").PostManagerDeps["storeSignedEventFn"];
+    storeSignedEventsFn?: import("./types").PostManagerDeps["storeSignedEventsFn"];
     authStateStore?: {
         value: AuthState;
     };
@@ -196,7 +196,7 @@ export class PostDeletionService {
             fetchPayloadFn: deps.fetchPayloadFn ?? postHistoryContextFetchService.fetchEventById.bind(postHistoryContextFetchService),
             saveSensitivePayloadFn: deps.saveSensitivePayloadFn ?? sensitivePayloadRepository.putCandidate.bind(sensitivePayloadRepository),
             now: deps.now ?? Date.now,
-            storeSignedEventFn: deps.storeSignedEventFn ?? (() => undefined),
+            storeSignedEventsFn: deps.storeSignedEventsFn ?? (() => undefined),
         };
     }
 
@@ -314,10 +314,6 @@ export class PostDeletionService {
         let result: PostResult;
         try {
             assertSession();
-            try {
-                void Promise.resolve(this.deps.storeSignedEventFn(verifiedDeletionEvent,
-                    () => this.deps.authStateStore.value === auth && auth.isAuthenticated)).catch(() => undefined);
-            } catch { /* Local archival never changes external delivery. */ }
             result = await this.createEventSender(params.rxNostr).sendEvent(
                 verifiedDeletionEvent.event,
                 {
@@ -336,6 +332,11 @@ export class PostDeletionService {
         if (!result.success) {
             return result;
         }
+
+        try {
+            void Promise.resolve(this.deps.storeSignedEventsFn([verifiedDeletionEvent],
+                () => this.deps.authStateStore.value === auth && auth.isAuthenticated)).catch(() => undefined);
+        } catch { /* Local archival never changes external delivery. */ }
 
         const deletionEventId = verifiedDeletionEvent.event.id ?? result.eventId;
         if (!deletionEventId) {
@@ -490,5 +491,5 @@ export class PostDeletionService {
 }
 
 export const postDeletionService = new PostDeletionService({
-    storeSignedEventFn: (input, isActive) => postHistoryLocalRelayService.storeSignedEventBestEffort(input, isActive),
+    storeSignedEventsFn: (inputs, isActive) => postHistoryLocalRelayService.storeSignedEventsBestEffort(inputs, isActive),
 });

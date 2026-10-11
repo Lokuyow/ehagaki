@@ -27,11 +27,21 @@ class LocalSocket {
     static corpus: NostrEvent[] = [];
     static mode: "normal" | "reject" | "auth" | "silent" = "normal";
     static sent: unknown[][] = [];
+    static initialAuth = false;
+    static traffic: string[] = [];
     readyState = 0;
+    private challengeDelivered = false;
+    private pending: string[] = [];
     private listeners = new Map<string, Set<(event: SocketEvent) => void>>();
     constructor(readonly url: string) {
         LocalSocket.instances.push(this);
-        queueMicrotask(() => { this.readyState = 1; this.emit("open", {}); });
+        queueMicrotask(() => {
+            this.readyState = 1; this.emit("open", {});
+            if (LocalSocket.initialAuth) this.receive(["AUTH", "fixture-initial-challenge"]);
+            this.challengeDelivered = true;
+            // Model a server that sends AUTH at connection before handling incoming REQ/EVENT.
+            for (const data of this.pending.splice(0)) if (this.readyState === 1) this.send(data);
+        });
     }
     addEventListener(type: string, listener: (event: SocketEvent) => void) {
         const set = this.listeners.get(type) ?? new Set(); set.add(listener); this.listeners.set(type, set);
@@ -39,13 +49,18 @@ class LocalSocket {
     removeEventListener(type: string, listener: (event: SocketEvent) => void) { this.listeners.get(type)?.delete(listener); }
     close() { this.readyState = 3; this.emit("close", { code: 1000, reason: "" }); }
     private emit(type: string, event: SocketEvent) { for (const listener of this.listeners.get(type) ?? []) listener(event); }
-    receive(message: unknown[]) { this.emit("message", { data: JSON.stringify(message) }); }
+    receive(message: unknown[]) {
+        LocalSocket.traffic.push(`relay:${message[0]}`);
+        this.emit("message", { data: JSON.stringify(message) });
+    }
     send(data: string) {
+        if (LocalSocket.initialAuth && !this.challengeDelivered) { this.pending.push(data); return; }
         const message = JSON.parse(data) as unknown[];
+        LocalSocket.traffic.push(`client:${message[0]}`);
         LocalSocket.sent.push(message);
         if (LocalSocket.mode === "silent") return;
         if (message[0] === "REQ") {
-            if (LocalSocket.mode === "auth") { this.receive(["AUTH", "fixture-challenge"]); this.receive(["CLOSED", message[1], "auth-required: fixture"]); return; }
+            if (LocalSocket.mode === "auth") { this.receive(["CLOSED", message[1], "auth-required: fixture"]); return; }
             const filter = message[2] as Filter;
             const events = LocalSocket.corpus.filter((event) => matchFilter(filter, event)).sort((a, b) => b.created_at - a.created_at).slice(0, filter.limit);
             events.forEach((event) => this.receive(["EVENT", message[1], event]));
@@ -66,6 +81,7 @@ let transport: LocalRelayTransport;
 let createClient: ReturnType<typeof vi.fn<typeof createRxNostr>>;
 beforeEach(() => {
     LocalSocket.instances = []; LocalSocket.sent = []; LocalSocket.corpus = []; LocalSocket.mode = "normal";
+    LocalSocket.initialAuth = false; LocalSocket.traffic = [];
     db = new EHagakiDB(`local-relay-test-${crypto.randomUUID()}`);
     repository = new DexiePostHistoryRepository(db);
     createClient = vi.fn<typeof createRxNostr>((config) => createRxNostr({ ...config, websocketCtor: LocalSocket as never }));
@@ -136,13 +152,41 @@ describe("local relay with real rx-nostr verification and IndexedDB", () => {
         expect((await db.postHistoryDeletionRequests.toArray()).every((record) => !record.relayUrls.length)).toBe(true);
     });
 
-    it("ends AUTH-required reads and stores without signing AUTH or retrying", async () => {
-        configure(); LocalSocket.mode = "auth";
+    it("continues REQ/EVENT after Citrine's initial AUTH challenge without authenticating", async () => {
+        LocalSocket.initialAuth = true;
+        const event = sign(1); LocalSocket.corpus = [event];
+        const page = await transport.fetchAuthored(url, { pubkeyHex: owner, until: 200, limit: 150 }, new AbortController().signal).promise;
+        expect(page?.events.map(item => item.event.id)).toEqual([event.id]);
+        expect(LocalSocket.traffic.slice(0, 2)).toEqual(["relay:AUTH", "client:REQ"]);
+        expect(LocalSocket.instances).toHaveLength(1);
+        LocalSocket.traffic = [];
+        expect(await transport.storeSignedEvent(url, event, new AbortController().signal).promise).toBe(true);
+        expect(LocalSocket.traffic.slice(0, 2)).toEqual(["relay:AUTH", "client:EVENT"]);
+        expect(LocalSocket.sent.some(([type]) => type === "AUTH")).toBe(false);
+        expect(LocalSocket.instances).toHaveLength(2);
+        expect(LocalSocket.instances.every(socket => socket.readyState === 3)).toBe(true);
+    });
+
+    it("ends actual AUTH-required reads and stores without signing AUTH or retrying", async () => {
+        configure(); LocalSocket.initialAuth = true; LocalSocket.mode = "auth";
         expect(await read().promise).toBeNull();
         expect(await transport.storeSignedEvent(url, sign(1), new AbortController().signal).promise).toBe(false);
         expect(LocalSocket.sent.some(([type]) => type === "AUTH")).toBe(false);
         expect(LocalSocket.sent.filter(([type]) => type === "REQ")).toHaveLength(1);
+        expect(LocalSocket.sent.filter(([type]) => type === "EVENT")).toHaveLength(1);
+        expect(LocalSocket.instances).toHaveLength(2);
         expect(await repository.countForPubkey(owner)).toBe(0);
+    });
+
+    it("copies a deduped signed Sensitive batch with one client/socket and no AUTH handshake", async () => {
+        configure(); LocalSocket.initialAuth = true;
+        const payload = finalizeEvent(buildSensitivePayloadEvent(1, "fixture", owner, 100), key);
+        const structure = finalizeEvent(buildSensitiveStructureEvent({ kind: 1, created_at: 100,
+            pubkey: owner, content: "fixture", tags: [["content-warning"]] }, payload.id), key);
+        service.storeSignedEventsBestEffort([payload, structure, payload].map(event => attestFullyVerifiedPostHistoryRawEvent(event)!));
+        await vi.waitFor(() => expect(LocalSocket.sent.filter(([type]) => type === "EVENT")).toHaveLength(2));
+        expect(createClient).toHaveBeenCalledOnce(); expect(LocalSocket.instances).toHaveLength(1);
+        expect(LocalSocket.sent.some(([type]) => type === "AUTH")).toBe(false);
     });
 
     it("disposes a stalled request on cancellation and never adopts its late response", async () => {

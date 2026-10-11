@@ -6,7 +6,9 @@
 
 external refreshは引き続き動作します。local取得はexternal relay query coverageや`citrine-backup` imported rangeを作りません。既存JSONL import/exportと復元範囲の閲覧は継続できます。local URLをexternal relay集合、publish結果、relay hints、取得provenanceへ追加しません。
 
-eHagakiが生成・検証したsigned eventはlocalへbest-effortで保存します。external syncでauthored historyに採用したeventと、その採用済みの関連payload・有効な削除要求も保存対象です。投稿成功は従来のexternal deliveryだけで決定します。localだけ成功しても投稿成功にはしません。localの停止・拒否・timeout・ブラウザによる接続制限はexternal read/publishを妨げません。接続確認ボタン、local専用sync UI、AUTH署名、offline queue、自動再送、localからexternalへのrebroadcast、完全mirror、Negentropyはありません。
+eHagakiが生成・検証したsigned eventはexternal publish成功後だけlocalへbest-effortで保存します。通常投稿・Repost・削除がexternalで失敗した場合はlocal保存を試行しません。Sensitiveはoverall external operation成功後に、実際に署名・送信したpayloadとstructureを1 batchでコピーします。途中stageだけ成功した場合はコピーしません。local ACKはexternal成功レスポンス・履歴保存を遅延させず、structure生成や`c` tagのrelay hintにも使いません。external syncでauthored historyに採用したeventと、その採用済みの関連payload・有効な削除要求も保存対象です。投稿成功は従来のexternal deliveryだけで決定します。localの停止・拒否・timeout・ブラウザによる接続制限はexternal read/publishを妨げません。接続確認ボタン、local専用sync UI、AUTH署名、offline queue、自動再送、localからexternalへのrebroadcast、完全mirror、Negentropyはありません。
+
+Citrine v3.2.0の接続直後の`AUTH` challengeは単独では失敗にせず、REQ/EVENTを継続します。NIP-42認証handshakeは行わず、AUTH eventの生成・署名・送信や認証後retryはありません。実際の`CLOSED auth-required:`はlocal read失敗、対象EVENTへの`OK false`はlocal保存失敗として処理します。
 
 external採用batchのarchiveは、authored event・対応payload・deletionを選別してevent IDでdedupeした後、1つのlocal client/socketからまとめて送信します。in-flightの重複IDも再送せず、ACK完了・期限・session取消でclientを破棄します。external publish/persistenceはこのlocal ACKを待ちません。batchは一回のbest-effort送信で、永続queueやretry・delivery stateを作りません。
 
@@ -28,6 +30,7 @@ CodexからAndroid実機が利用できない場合は「実機未確認」と�
 1. URLを設定してreload／PWA再起動。設定が保持されることを確認し、解除で空に戻ることを確認して再設定する。
 2. Citrineに対象authorのfixtureを用意して、履歴open・表示範囲の再取得・既存「リレーから続きを取得」を操作。対象authored eventが表示され、external履歴更新も続くことを確認する。
 3. 同じ取得操作を繰り返す。event IDごとの投稿が重複せず、既存JSONL importの古い履歴も閲覧できることを確認する。
-4. eHagakiから投稿。external投稿が成功し、同じsigned event ID・kind・content・tags・pubkey・signatureがCitrineへ保存されることを確認する。Sensitive使用時はリンクしたkind 36も確認する。
+4. eHagakiから投稿し、投稿履歴を開く前にCitrineを確認。external投稿成功後、同じsigned event ID・kind・content・tags・pubkey・signatureが保存されることを確認する。Sensitive使用時はstructureとリンクしたkind 36も確認する。Repostと削除もexternal成功後に対応kind 6/16、kind 5が保存されることを確認する。
 5. Citrineを停止して履歴を開き直す／再取得する。IndexedDBの既存履歴とexternal取得が継続することを確認する。
 6. Citrine停止中に投稿。external delivery成功で投稿成功になることを確認する。Citrine再起動だけで未保存eventの自動再送やexternalへのrebroadcastが発生しないことを確認する。
+7. テストaccountのexternal write先をすべて接続不能にし、Citrineを起動した状態で投稿。投稿失敗となり、Citrineへその新規eventがコピーされないことを確認してexternal設定を戻す。

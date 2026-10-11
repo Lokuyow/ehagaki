@@ -130,7 +130,7 @@
     hostCustomEmojiItems?: CustomEmojiItem[];
     /** The full composition root supplies the normal authenticated uploader. */
     normalUploadFiles?: UploadFilesExecutor;
-    storeSignedEventFn?: import("../lib/types").PostManagerDeps["storeSignedEventFn"];
+    storeSignedEventsFn?: import("../lib/types").PostManagerDeps["storeSignedEventsFn"];
   }
 
   let {
@@ -147,7 +147,7 @@
     hostOwnedConfig,
     hostCustomEmojiItems = [],
     normalUploadFiles,
-    storeSignedEventFn,
+    storeSignedEventsFn,
   }: Props = $props();
   const isHostOwnedLiteBuild =
     typeof __EHAGAKI_COMPOSER_LITE__ !== "undefined" &&
@@ -365,7 +365,7 @@
               postHistoryRepositoryImpl: postHistoryRepository,
             }),
           notificationPort,
-          storeSignedEventFn: (input, isActive) => storeSignedEventFn?.(input, isActive),
+          storeSignedEventsFn: (inputs, isActive) => storeSignedEventsFn?.(inputs, isActive),
         });
       else postManager.setRxNostr(rxNostr as RxNostr);
     }

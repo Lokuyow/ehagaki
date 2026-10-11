@@ -21,13 +21,15 @@ async function fixture(page: Page, options: { externalOk?: boolean; localMode?: 
     await new Promise<void>((resolve) => server.once("listening", resolve));
     const localUrl = `ws://127.0.0.1:${(server.address() as AddressInfo).port}/`;
     let stopped = false;
-    server.on("connection", (socket) => socket.on("message", (raw) => {
+    server.on("connection", (socket) => {
+        // Citrine v3.2.0 announces AUTH immediately, even for localhost REQ/EVENT without authentication.
+        socket.send(JSON.stringify(["AUTH", "fixture-initial-challenge"]));
+        socket.on("message", (raw) => {
         const message = JSON.parse(raw.toString());
         if (message[0] === "AUTH") throw new Error("local AUTH is outside scope");
         if (message[0] === "REQ") {
             localRequests.push(...message.slice(2));
             if (options.localMode === "auth") {
-                socket.send(JSON.stringify(["AUTH", "fixture-challenge"]));
                 socket.send(JSON.stringify(["CLOSED", message[1], "auth-required: fixture"])); return;
             }
             for (const filter of message.slice(2) as Filter[]) {
@@ -43,7 +45,8 @@ async function fixture(page: Page, options: { externalOk?: boolean; localMode?: 
             if (ok && !localCorpus.some(item => item.id === event.id)) localCorpus.push(event);
             socket.send(JSON.stringify(["OK", event.id, ok, ok ? "" : `${options.localMode === "auth" ? "auth-required" : "restricted"}: fixture`]));
         }
-    }));
+        });
+    });
     const stop = async () => {
         if (stopped) return; stopped = true;
         server.clients.forEach(socket => socket.terminate());
@@ -161,24 +164,34 @@ test("HTTPS tab uses the real loopback socket, merges history, keeps external re
     } finally { await f.stop(); }
 });
 
-for (const [externalOk, localMode] of [[true, "accept"], [true, "auth"], [true, "silent"], [false, "accept"], [false, "reject"]] as const) {
+for (const [externalOk, localMode] of [[true, "accept"], [true, "reject"], [true, "auth"], [true, "silent"], [false, "accept"], [false, "reject"]] as const) {
     test(`external=${externalOk}, local=${localMode} preserves delivery success and exact signed event`, async ({ page }) => {
         const f = await fixture(page, { externalOk, localMode });
         try {
             await setUrl(page, f.localUrl);
+            if (externalOk && localMode === "auth") {
+                await page.locator(".post-history-btn").click();
+                await expect(page.getByText(f.externalPost.content, { exact: true })).toBeVisible();
+                expect((await posts(page)).some(post => post.eventId === f.localPost.id)).toBe(false);
+                expect(f.externalRequests.some(filter => filter.kinds?.includes(1))).toBe(true);
+                await page.keyboard.press("Escape");
+            }
             const content = "Signed browser fixture";
             await page.locator(".tiptap-editor").fill(content);
             await page.getByRole("button", { name: "投稿", exact: true }).click();
             await expect.poll(() => f.externalWrites.filter(event => event.content === content).length).toBe(1);
-            await expect.poll(() => f.localWrites.filter(event => event.content === content).length).toBe(1);
             const external = f.externalWrites.find(event => event.content === content)!;
             expect(verifyEvent(external)).toBe(true);
-            expect(f.localWrites.find(event => event.id === external.id)).toEqual(JSON.parse(JSON.stringify(external)));
-            if (externalOk) await expect.poll(async () => (await posts(page)).some(post => post.eventId === external.id)).toBe(true);
+            if (externalOk) {
+                await expect.poll(() => f.localWrites.filter(event => event.content === content).length).toBe(1);
+                expect(f.localWrites.find(event => event.id === external.id)).toEqual(JSON.parse(JSON.stringify(external)));
+                await expect.poll(async () => (await posts(page)).some(post => post.eventId === external.id)).toBe(true);
+            }
             else {
                 await expect(page.getByRole("button", { name: "投稿", exact: true })).toBeEnabled();
                 expect((await posts(page)).some(post => post.eventId === external.id)).toBe(false);
                 await expect(page.locator(".tiptap-editor")).toContainText(content);
+                expect(f.localWrites).toHaveLength(0);
             }
             expect(external.tags.flat().includes(f.localUrl)).toBe(false);
         } finally { await f.stop(); }

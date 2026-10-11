@@ -40,7 +40,7 @@ export interface PostRepostServiceDeps {
     getLocalRevision?: (pubkey: string) => Promise<number>;
     saveHistory?: (input: PostHistorySaveInput) => Promise<void>;
     createSender?: (rx: RxNostr) => Pick<PostEventSender, "sendEvent">;
-    storeSignedEventFn?: import("./types").PostManagerDeps["storeSignedEventFn"];
+    storeSignedEventsFn?: import("./types").PostManagerDeps["storeSignedEventsFn"];
     now?: () => number;
 }
 
@@ -60,7 +60,7 @@ export class PostRepostService {
             getLocalRevision: deps.getLocalRevision ?? ((pubkey: string) => getPostHistoryLocalRevision(ehagakiDb, pubkey)),
             saveHistory: deps.saveHistory ?? ((input: PostHistorySaveInput) => postHistoryRepository.putPostedEvent(input)),
             createSender: deps.createSender ?? ((rx: RxNostr) => new PostEventSender(rx, console)),
-            storeSignedEventFn: deps.storeSignedEventFn,
+            storeSignedEventsFn: deps.storeSignedEventsFn,
             now: deps.now ?? Date.now,
         };
     }
@@ -108,14 +108,14 @@ export class PostRepostService {
             const verified = attestFullyVerifiedPostHistoryRawEvent(signed);
             if (!verified) return { success: false, error: "post_error" };
             assertCurrent();
-            try {
-                void Promise.resolve(this.deps.storeSignedEventFn?.(verified,
-                    () => this.deps.authStateStore.value === auth && params.isCurrent?.() !== false)).catch(() => undefined);
-            } catch { /* Local archival never changes external delivery. */ }
             const published = await this.deps.createSender(params.rxNostr).sendEvent(verified.event, {
                 targetRelays: writeRelays, includeDefaultWriteRelays: false,
             });
             if (!published.success) return published;
+            try {
+                void Promise.resolve(this.deps.storeSignedEventsFn?.([verified],
+                    () => this.deps.authStateStore.value === auth && params.isCurrent?.() !== false)).catch(() => undefined);
+            } catch { /* Local archival never changes external delivery. */ }
             const input: PostHistorySaveInput = { event: verified.event, attestation: verified.attestation,
                 acceptedRelays: published.acceptedRelays, relayHints: [...(published.acceptedRelays ?? []), ...writeRelays],
                 repostTarget: { event: createPlainNostrEventSnapshot(target.event), relayHints: hints },
@@ -137,5 +137,5 @@ export class PostRepostService {
 }
 
 export const postRepostService = new PostRepostService({
-    storeSignedEventFn: (input, isActive) => postHistoryLocalRelayService.storeSignedEventBestEffort(input, isActive),
+    storeSignedEventsFn: (inputs, isActive) => postHistoryLocalRelayService.storeSignedEventsBestEffort(inputs, isActive),
 });

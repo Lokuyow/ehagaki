@@ -2136,8 +2136,8 @@
                     availableComposerHeight={postAvailableComposerHeight}
                     minEditorHeight={postEditorMinHeight}
                     onPostSuccess={handlePostSuccess}
-                    storeSignedEventFn={appRuntimeEnvironment.runtimeKind === "standalone"
-                      ? (input, isActive) => postHistoryLocalRelayService.storeSignedEventBestEffort(input, isActive)
+                    storeSignedEventsFn={appRuntimeEnvironment.runtimeKind === "standalone"
+                      ? (inputs, isActive) => postHistoryLocalRelayService.storeSignedEventsBestEffort(inputs, isActive)
                       : undefined}
                     onCustomEmojiSelect={recordCustomEmojiUse}
                     {onEditorEmptyChange}

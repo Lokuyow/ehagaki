@@ -15,7 +15,7 @@ export interface LocalRelayPage {
     hasMore: boolean;
 }
 
-/** An operation owns its socket. No external pool, AUTH, retries or pending deliveries. */
+/** An operation owns its socket. No external pool, NIP-42 handshake, retries or pending deliveries. */
 export class LocalRelayTransport {
     constructor(private createClient: typeof createRxNostr = createRxNostr) {}
 
@@ -35,9 +35,11 @@ export class LocalRelayTransport {
             try {
                 client = this.createClient({ verifier, signer: noopSigner(), skipVerify: false,
                     skipFetchNip11: true, retry: { strategy: "off" } });
-                messages = client.createAllMessageObservable().subscribe(({ type, message }) => {
-                    if (type === "AUTH" || (Array.isArray(message) && message[0] === "CLOSED"
-                        && typeof message[2] === "string" && message[2].startsWith("auth-required:"))) cancel();
+                messages = client.createAllMessageObservable().subscribe(({ message }) => {
+                    // Citrine sends an initial AUTH challenge even for unauthenticated localhost I/O.
+                    // Ignore challenges without authenticating; only an actual REQ rejection cancels.
+                    if (Array.isArray(message) && message[0] === "CLOSED"
+                        && typeof message[2] === "string" && message[2].startsWith("auth-required:")) cancel();
                 });
                 timer = setTimeout(cancel, POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS);
                 return await Promise.race([work(client, abort.signal), cancelled]);
