@@ -50,6 +50,15 @@
         padding-inline-start: 1rem;
     }
 
+    /* React and the count share one cell. Reserve their intrinsic width before shrinking the date. */
+    :global(.post-preview-footer:has(.reaction-compose-button)) {
+        grid-template-columns: minmax(0, 120px) minmax(min-content, 1fr) 36px;
+    }
+
+    :global(.post-preview-action-buttons-group:has(.reaction-compose-button)) {
+        grid-template-columns: minmax(72px, 1fr) minmax(36px, 1fr) minmax(max-content, 1fr);
+    }
+
     .post-preview-footer-compact {
         padding-inline-start: 1rem;
         --post-history-preview-footer-surface: var(

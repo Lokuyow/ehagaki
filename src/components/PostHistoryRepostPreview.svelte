@@ -8,6 +8,8 @@
     import { repostTargetToPost } from "../lib/postRepostUtils";
     import PostHistoryRelatedEventCard from "./PostHistoryRelatedEventCard.svelte";
     import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
+    import PostHistoryPreviewFooter from './PostHistoryPreviewFooter.svelte';
+    import { formatPostedAt } from '../lib/postHistoryDialogUtils';
     import Button from "./Button.svelte";
     interface Props {
         post: PostHistoryRecord; preview: Omit<RepostPreviewState, "saveFailed"> & { saveFailed?: boolean };
@@ -19,13 +21,16 @@
         onRetry: () => void;
         onReplyPost?: (post: PostHistoryRecord) => void | Promise<void>;
         onQuotePost?: (post: PostHistoryRecord) => void;
+        onReactionPost?: (post: PostHistoryRecord) => boolean | Promise<boolean>;
+        reactionExtras?: Snippet<[PostHistoryRecord]>;
+        reactionDetails?: Snippet<[PostHistoryRecord]>;
         loadSensitiveBody?: () => Promise<string | null>;
         scrollRoot?: HTMLElement | null;
         onImageOpen?: (params: { index: number; mediaList: FullscreenMediaItem[] }) => void;
         emojiLoadStateByUrl?: Record<string, import("../lib/postContentPreview").PostContentEmojiLoadState | undefined>;
         emojiImageMetaByUrl?: Record<string, import("../lib/postContentPreview").PostContentEmojiImageMeta | undefined>;
     }
-    let { post, preview, menu, author, channelText = null, model, targetLabel = null, onRetry, onReplyPost, onQuotePost, loadSensitiveBody,
+    let { post, preview, menu, author, channelText = null, model, targetLabel = null, onRetry, onReplyPost, onQuotePost, onReactionPost, reactionExtras: renderReactionExtras, reactionDetails: renderReactionDetails, loadSensitiveBody,
         scrollRoot = null, onImageOpen, emojiLoadStateByUrl = {}, emojiImageMetaByUrl = {} }: Props = $props();
     const target = $derived(preview.event ? repostTargetToPost(preview.event, preview.relayHints) : null);
     const message = $derived(preview.status === "deleted" ? "repost.targetDeleted"
@@ -58,8 +63,11 @@
                 {/if}
             {/snippet}
             {#snippet footerActions()}
-                <PostHistoryPostActions post={target} {onReplyPost} {onQuotePost} />
+                <PostHistoryPostActions post={target} {onReplyPost} {onQuotePost} {onReactionPost}>
+                    {#snippet reactionExtras()}{@render renderReactionExtras?.(target)}{/snippet}
+                </PostHistoryPostActions>
             {/snippet}
+            {#snippet footerDetails()}{@render renderReactionDetails?.(target)}{/snippet}
             {#snippet footerMenu()}{@render menu?.(target, `repost-target:${post.eventId}:${target.eventId}`)}{/snippet}
         </PostHistoryRelatedEventCard>
         {#if "saveFailed" in preview && preview.saveFailed}
@@ -71,6 +79,16 @@
         {#if preview.status === "not-found" || preview.status === "error" || preview.status === "invalid-target"}
             <Button onClick={onRetry}>{$_("postHistory.contextRetry")}</Button>
         {/if}
+    {/if}
+    {#if post.deletedAt === undefined && onReactionPost}
+        <PostHistoryPreviewFooter formattedDate={formatPostedAt(post.postedAt)}>
+            {#snippet actions()}
+                <PostHistoryPostActions {post} {onReactionPost}>
+                    {#snippet reactionExtras()}{@render renderReactionExtras?.(post)}{/snippet}
+                </PostHistoryPostActions>
+            {/snippet}
+        </PostHistoryPreviewFooter>
+        {@render renderReactionDetails?.(post)}
     {/if}
 </div>
 <style>

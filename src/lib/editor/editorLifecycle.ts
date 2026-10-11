@@ -38,6 +38,7 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
 
     // エディターストアの作成
     const editor = createTiptapEditorStore({
+        isReactionMode: params.isReactionMode,
         isInputBlocked: params.isInputBlocked,
         isCompositionInputAllowed: params.isCompositionInputAllowed,
         compositionController: params.compositionController,

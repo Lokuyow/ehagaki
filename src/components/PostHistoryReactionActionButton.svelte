@@ -13,7 +13,6 @@
     onClick={onToggle}
     tooltipContent={ariaLabel}
 >
-    <div class="favorite-icon svg-icon" aria-hidden="true"></div>
     <span>{count}</span>
 </PostPreviewFooterActionButton>
 
@@ -26,19 +25,9 @@
         padding-inline: 6px;
     }
 
-    :global(.post-preview-reactions-button .favorite-icon) {
-        mask-image: url("/icons/favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-    }
-
     :global(.post-preview-reactions-button span) {
         flex: 0 0 auto;
         line-height: 20px;
-    }
-
-    :global(.post-preview-reactions-button .svg-icon) {
-        width: var(--post-history-preview-action-icon-size, 20px);
-        height: var(--post-history-preview-action-icon-size, 20px);
-        --svg: currentColor;
     }
 
     :global(.post-preview-reactions-button.selected) {

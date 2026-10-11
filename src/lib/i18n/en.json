@@ -1,4 +1,16 @@
 {
+  "reaction": {
+    "action": "React",
+    "entry": "Reaction",
+    "target": "Reaction target",
+    "clear": "Cancel reaction",
+    "input": "Enter one character, emoji, or custom emoji. Use + for Like.",
+    "invalid": "A reaction must contain one character or one custom emoji, without media or line breaks.",
+    "failed": "Could not send reaction. Your input has been kept.",
+    "targetFailed": "Could not verify the reaction target. Try again.",
+    "saveFailed": "Reaction sent, but the local copy could not be saved.",
+    "retrySave": "Save again"
+  },
   "repost": {
     "action": "Repost",
     "sending": "Reposting…",

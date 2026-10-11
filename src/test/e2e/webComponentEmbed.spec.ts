@@ -26,6 +26,7 @@ let relayServer: WebSocketServer;
 let relayOrigin = "";
 let relayConnectionCount = 0;
 let relayPublishedEvents: Array<{ event: Record<string, unknown> }> = [];
+let reactionFixtureEvents: ReturnType<typeof finalizeEvent>[] = [];
 let relayEventsPaused = false;
 let pendingEventAcks: Array<() => void> = [];
 let relayRequestsPaused = false;
@@ -165,6 +166,12 @@ test.beforeAll(async () => {
             try {
                 const message = JSON.parse(rawMessage.toString()) as unknown[];
                 if (message[0] === "REQ" && typeof message[1] === "string") {
+                    const filters = message.slice(2) as { ids?: string[] }[];
+                    for (const event of reactionFixtureEvents) {
+                        if (filters.some(filter => filter.ids?.includes(event.id))) {
+                            socket.send(JSON.stringify(['EVENT', message[1], event]));
+                        }
+                    }
                     const sendEose = () => {
                         try {
                             socket.send(JSON.stringify(["EOSE", message[1]]));
@@ -254,6 +261,7 @@ test.beforeEach(() => {
     hostRequests.clear();
     relayConnectionCount = 0;
     relayPublishedEvents = [];
+    reactionFixtureEvents = [];
     relayEventsPaused = false;
     pendingEventAcks = [];
     relayRequestsPaused = false;
@@ -315,6 +323,70 @@ test("keeps startup NIP-07 opt-in and preserves the existing ready path when abs
         hasAccountStorage: false,
     });
 });
+
+for (const authenticated of [true, false]) {
+test(`Full Reaction at 320px preserves outer identity (${authenticated ? 'authenticated' : 'guest'})`, async ({ page }) => {
+    const signingSecret = generateSecretKey(); const owner = getPublicKey(signingSecret);
+    const original = finalizeEvent({ kind: 1, content: 'OPAQUE-EMBEDDED-BODY https://hidden.example/image.png', tags: [], created_at: 100 }, generateSecretKey());
+    const target = finalizeEvent({ kind: 6, content: JSON.stringify(original), created_at: 200,
+        tags: [['e', original.id], ['p', original.pubkey]] }, generateSecretKey());
+    reactionFixtureEvents = [target, original];
+    await page.goto(hostOrigin);
+    await page.exposeFunction('__signFullReactionFixture', (template: Record<string, unknown>) => finalizeEvent(template as never, signingSecret));
+    await page.evaluate(async ({ componentOrigin, relayOrigin, owner, authenticated }) => {
+        const NativeSocket = window.WebSocket;
+        window.WebSocket = new Proxy(NativeSocket, { construct(target, args, newTarget) {
+            return Reflect.construct(target, [relayOrigin, ...args.slice(1)], newTarget);
+        } });
+        window.nostr = { getPublicKey: async () => owner,
+            signEvent: (template: unknown) => (window as any).__signFullReactionFixture(template) } as any;
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const element = document.createElement('ehagaki-composer') as HTMLElement & {
+            autoLogin: boolean; relays: { url: string; read: boolean; write: boolean }[]; whenReady(): Promise<void>;
+        };
+        element.autoLogin = authenticated; element.relays = [{ url: 'wss://reaction-fixture.example/', read: true, write: true }];
+        element.setAttribute('asset-base', `${componentOrigin}/`);
+        element.style.width = '320px'; document.body.append(element); await element.whenReady();
+    }, { componentOrigin, relayOrigin, owner, authenticated });
+    const composer = page.locator('ehagaki-composer');
+    const editor = composer.locator('.tiptap-editor'); await expect(editor).toBeVisible();
+    await composer.getByRole('button', { name: '宛先を指定', exact: true }).click();
+    await composer.getByPlaceholder('note または nevent を入力').fill(nip19.noteEncode(target.id));
+    const hearts = composer.getByRole('button', { name: 'リアクションする', exact: true });
+    await expect(hearts).toHaveCount(2); await hearts.last().click();
+    await expect(composer.locator('[data-reaction-target-id]')).toHaveAttribute('data-reaction-target-id', target.id);
+    await expect(composer.locator('.reaction-target-preview')).not.toContainText('OPAQUE-EMBEDDED-BODY');
+    expect(await composer.locator('.reaction-target-preview').evaluate(element => element.querySelectorAll('a,img,video').length)).toBe(0);
+    const clearBox = await composer.getByRole('button', { name: 'リアクションを解除' }).boundingBox();
+    const composerBox = await composer.boundingBox();
+    expect(clearBox!.x + clearBox!.width - (composerBox!.x + composerBox!.width)).toBeLessThan(0.001);
+    expect(await composer.evaluate(element => {
+        const root = element.shadowRoot!.querySelector<HTMLElement>('.app-container') ?? element.shadowRoot!.querySelector<HTMLElement>('main');
+        return !root || root.scrollWidth <= 320;
+    })).toBe(true);
+    await composer.screenshot({ path: test.info().outputPath('full-reaction-320.png') });
+    if (!authenticated) {
+        await expect(composer.locator('button.post-button')).toBeDisabled();
+        await composer.getByRole('button', { name: 'リアクションを解除' }).click();
+        await expect(composer.locator('[data-reaction-target-id]')).toHaveCount(0);
+        expect(relayPublishedEvents.filter(item => item.event.kind === 7)).toHaveLength(0);
+        return;
+    }
+    await editor.click(); await editor.pressSequentially('👍');
+    await expect(editor).toHaveText('👍');
+    await expect(composer.locator('button.post-button')).toBeEnabled();
+    await composer.locator('button.post-button').click();
+    await expect.poll(() => relayPublishedEvents.filter(item => item.event.kind === 7).length).toBe(1);
+    await expect(composer.locator('[data-reaction-target-id]')).toHaveCount(0); await expect(editor).toBeEmpty();
+    const sent = relayPublishedEvents.find(item => item.event.kind === 7)!.event;
+    expect(sent.tags).toEqual(expect.arrayContaining([['e', target.id, 'wss://reaction-fixture.example/', target.pubkey],
+        ['p', target.pubkey, 'wss://reaction-fixture.example/'], ['k', '6']]));
+    await composer.getByRole('button', { name: '宛先を指定', exact: true }).click();
+    await composer.getByPlaceholder('note または nevent を入力').fill(nip19.noteEncode(target.id));
+    const count = composer.getByRole('button', { name: 'リアクション 1件を表示', exact: true });
+    await expect(count).toBeVisible(); await expect(count).toHaveText('1');
+});
+}
 
 test("Full Web Component does not expose the Lite preferred-height API", async ({ page }) => {
     await page.goto(hostOrigin);

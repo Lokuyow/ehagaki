@@ -4,7 +4,7 @@ import { normalize, relative } from "node:path";
 const forbiddenPatterns = [
     /[\\/]node_modules[\\/]rx-nostr[\\/]/,
     /[\\/]src[\\/]App\.svelte$/,
-    /[\\/]src[\\/]lib[\\/](authService|accountManager|nip46Service|parentClientAuthService|postManager|postHistoryMediaPersistence)[\\/\.]/,
+    /[\\/]src[\\/]lib[\\/](authService|accountManager|nip46Service|parentClientAuthService|postManager|postReactionService|postHistoryMediaPersistence)[\\/\.]/,
     /[\\/]src[\\/]lib[\\/]storage[\\/](postHistoryRepository|draftsRepository)[\\/\.]/,
     /[\\/]src[\\/]lib[\\/](draftManager|draftComposerController|iframeMessageService|parentClient)[\\/\.]/,
     /[\\/]src[\\/]lib[\\/](normalUploadHelper|fileUploadManager|nostrAuthService)[\\/\.]/,

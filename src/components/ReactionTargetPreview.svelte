@@ -1,0 +1,44 @@
+<script lang="ts">
+    import { _ } from 'svelte-i18n';
+    import type { ReactionComposerState } from '../stores/reactionComposerStore.svelte';
+    import { buildComposerInteractionRenderModel } from '../lib/composerTargetRelatedPreview';
+    import { buildPostContentRenderModel } from '../lib/postContentPreview';
+    import { formatPostedAt } from '../lib/postHistoryDialogUtils';
+    import { shortenMiddle } from '../lib/utils/textDisplayUtils';
+    import ComposerContextPreviewShell from './ComposerContextPreviewShell.svelte';
+    import PostContentPreview from './PostContentPreview.svelte';
+    import type { PostContentEmojiLoadState, PostContentEmojiImageMeta } from '../lib/postContentPreview';
+    interface Props { target: ReactionComposerState; onClear: () => void;
+        emojiLoadStateByUrl?: Record<string, PostContentEmojiLoadState | undefined>;
+        emojiImageMetaByUrl?: Record<string, PostContentEmojiImageMeta | undefined>; }
+    let { target, onClear, emojiLoadStateByUrl = {}, emojiImageMetaByUrl = {} }: Props = $props();
+    let expanded = $state(false);
+    let model = $derived([6, 7, 16].includes(target.kind) ? buildComposerInteractionRenderModel(target.event)
+        : buildPostContentRenderModel({ kind: target.kind, sourceContent: target.event.content, tags: target.event.tags }));
+    let canExpand = $derived(model.hasRenderableText || model.hasRenderableMedia || !!model.contentWarning);
+    $effect(() => { target.ownerToken; expanded = false; });
+</script>
+
+<div data-reaction-target-id={target.eventId}>
+    <ComposerContextPreviewShell previewClass="reaction-target-preview" modeIconClass="reaction-target-icon"
+        modeLabel={$_('reaction.entry')} {expanded} canToggleExpand={canExpand}
+        toggleAriaLabel={$_('reaction.target')} clearAriaLabel={$_('reaction.clear')}
+        onToggle={() => expanded = !expanded} {onClear}>
+        {#snippet meta()}
+            <div class="target-meta">
+                <span>{shortenMiddle(target.authorPubkey, 12, 4)}</span>
+                <span>{target.kind === 6 ? $_('repost.entry') : target.kind === 16 ? $_('composerTarget.genericRepost')
+                    : target.kind === 7 ? $_('composerTarget.reaction') : `kind ${target.kind}`}</span>
+                <span>{formatPostedAt(target.event.created_at * 1000)}</span>
+            </div>
+        {/snippet}
+        {#snippet content()}
+            <PostContentPreview {model} contentWarningEventId={target.eventId} density="compact"
+                {emojiLoadStateByUrl} {emojiImageMetaByUrl} />
+        {/snippet}
+    </ComposerContextPreviewShell>
+</div>
+<style>
+    .target-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; min-width: 0; overflow-wrap: anywhere; font-size: .85rem; }
+    :global(.reaction-target-preview .reaction-target-icon) { mask-image: url('/icons/favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg'); }
+</style>

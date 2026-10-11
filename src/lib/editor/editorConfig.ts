@@ -17,6 +17,7 @@ import type { CustomEmojiItem } from '../customEmoji';
 import type { EHagakiHostSubmitShortcut, EHagakiHostSubmitShortcutModifier } from '../../web-component/types';
 import type { EditorSubmitTrigger } from '../types/editor';
 import { EditorInputGuard } from './editorInputGuard';
+import { ReactionInput } from './reactionInput';
 import type { SubmittedCompositionController } from './submittedComposition';
 
 const MEDIA_NODE_TYPES = new Set(['image', 'video', 'customEmoji']);
@@ -164,6 +165,7 @@ const GapCursorFocusReset = Extension.create({
 });
 
 export interface EditorConfigOptions {
+    isReactionMode?: () => boolean;
     isInputBlocked?: () => boolean;
     isCompositionInputAllowed?: () => boolean;
     compositionController?: SubmittedCompositionController;
@@ -199,6 +201,7 @@ export function createEditorStore(options: EditorConfigOptions) {
 
     const editorStore = createEditor({
         extensions: [
+            ...(options.isReactionMode ? [ReactionInput.configure({ isActive: options.isReactionMode })] : []),
             ...(!hostOwnedLite && options.isInputBlocked
                 ? [EditorInputGuard.configure({
                     isInputBlocked: options.isInputBlocked,

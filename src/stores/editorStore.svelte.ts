@@ -61,8 +61,8 @@ export function updateEditorContent(content: string, hasMedia: boolean = false):
     editorState.hasImage = hasMedia;
 }
 
-export function updateEditorPostEligibility(editor: TipTapEditor | null, hasGalleryMedia: boolean): void {
-    editorState.canPost = resolveLivePostEligibility(editor, hasGalleryMedia);
+export function updateEditorPostEligibility(editor: TipTapEditor | null, hasGalleryMedia: boolean, eligibility?: boolean): void {
+    editorState.canPost = eligibility ?? resolveLivePostEligibility(editor, hasGalleryMedia);
 }
 
 export function updatePostStatus(postStatus: PostStatus): void {

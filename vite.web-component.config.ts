@@ -37,6 +37,7 @@ function resolveHostOwnedLiteFullOnlyImports() {
     const normalUploadStub = resolve(root, "src/host-owned-composer-lite/normalUploadLiteStub.ts");
     const fullOnlyImports = new Set([
         "../lib/postManager",
+        "../lib/postReactionService",
         "../lib/nip46Service",
         "../lib/parentClientAuthService",
         "../lib/postHistoryMediaPersistence",
@@ -47,6 +48,10 @@ function resolveHostOwnedLiteFullOnlyImports() {
         name: "ehagaki-host-owned-lite-full-only-imports",
         enforce: "pre" as const,
         resolveId(source: string, importer?: string) {
+            if (source.endsWith('/reactionValue') || source.endsWith('/reactionInput')
+                || source.includes('/reactionComposerStore.svelte')) {
+                return resolve(root, 'src/host-owned-composer-lite/reactionRuntimeLite.ts');
+            }
             if (source.endsWith("/customEmoji") || source === "../customEmoji") {
                 return resolve(root, "src/host-owned-composer-lite/customEmojiLite.ts");
             }
