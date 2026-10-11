@@ -1,6 +1,7 @@
 import { createRxBackwardReq, createRxNostr, noopSigner, type RxNostr } from "rx-nostr";
 import { verifier } from "@rx-nostr/crypto";
 import { matchFilter, type Filter } from "nostr-tools";
+import { Subscription } from "rxjs";
 import { postHistoryRelayFetchService, POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS,
     type PostHistoryRelayFetchRequest } from "./postHistoryRelayFetchService";
 import { usePostHistoryRelayEvents, type AttestedPostHistoryRawEvent } from "./postHistoryRawEventVerification";
@@ -93,20 +94,34 @@ export class LocalRelayTransport {
     }
 
     storeSignedEvent(url: string, event: NostrEvent, signal: AbortSignal): LocalRelayTask<boolean> {
-        return this.run(url, signal, async (rx, operationSignal) => new Promise<boolean>((resolve) => {
-            let subscription: { unsubscribe(): void } | undefined;
+        return this.storeSignedEvents(url, [event], signal);
+    }
+
+    /** One finite batch shares one client/relay connection until its ACKs settle. */
+    storeSignedEvents(url: string, events: NostrEvent[], signal: AbortSignal): LocalRelayTask<boolean> {
+        const uniqueEvents = [...new Map(events.map(event => [event.id, event])).values()];
+        if (!uniqueEvents.length) return { promise: Promise.resolve(signal.aborted ? null : true), cancel() {} };
+        return this.run(url, signal, async (rx, operationSignal) => {
+            const results = await Promise.all(uniqueEvents.map(event => this.sendSignedEvent(rx, url, event, operationSignal)));
+            return results.every(accepted => accepted);
+        });
+    }
+
+    private sendSignedEvent(rx: RxNostr, url: string, event: NostrEvent, operationSignal: AbortSignal): Promise<boolean> {
+        return new Promise<boolean>((resolve) => {
+            const subscription = new Subscription();
             const finish = (accepted = false) => {
-                subscription?.unsubscribe();
+                subscription.unsubscribe();
                 operationSignal.removeEventListener("abort", cancel);
                 resolve(accepted);
             };
             const cancel = () => finish();
             operationSignal.addEventListener("abort", cancel, { once: true });
-            subscription = rx.send(event, { signer: noopSigner(), on: { relays: [url] }, completeOn: "all-ok" }).subscribe({
+            if (operationSignal.aborted) { cancel(); return; }
+            subscription.add(rx.send(event, { signer: noopSigner(), on: { relays: [url] }, completeOn: "all-ok" }).subscribe({
                 next: (packet) => { if (packet.eventId === event.id) finish(packet.ok); },
                 error: cancel, complete: cancel,
-            });
-            if (operationSignal.aborted) cancel();
-        }));
+            }));
+        });
     }
 }

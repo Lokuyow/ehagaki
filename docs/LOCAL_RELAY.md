@@ -8,6 +8,8 @@ external refreshは引き続き動作します。local取得はexternal relay qu
 
 eHagakiが生成・検証したsigned eventはlocalへbest-effortで保存します。external syncでauthored historyに採用したeventと、その採用済みの関連payload・有効な削除要求も保存対象です。投稿成功は従来のexternal deliveryだけで決定します。localだけ成功しても投稿成功にはしません。localの停止・拒否・timeout・ブラウザによる接続制限はexternal read/publishを妨げません。接続確認ボタン、local専用sync UI、AUTH署名、offline queue、自動再送、localからexternalへのrebroadcast、完全mirror、Negentropyはありません。
 
+external採用batchのarchiveは、authored event・対応payload・deletionを選別してevent IDでdedupeした後、1つのlocal client/socketからまとめて送信します。in-flightの重複IDも再送せず、ACK完了・期限・session取消でclientを破棄します。external publish/persistenceはこのlocal ACKを待ちません。batchは一回のbest-effort送信で、永続queueやretry・delivery stateを作りません。
+
 ## 自動検証
 
 `npm test`、`npm run check`、`npm run build`に加えて、次でHTTPS通常tabと制御可能なfake WebSocket relayのChromium E2Eを実行します。

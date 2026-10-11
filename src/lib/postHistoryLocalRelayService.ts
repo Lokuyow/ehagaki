@@ -23,7 +23,7 @@ interface LocalRelaySession {
 }
 
 interface LocalRelayServiceDeps {
-    transport?: Pick<LocalRelayTransport, "fetchAuthored" | "fetchRelated" | "storeSignedEvent">;
+    transport?: Pick<LocalRelayTransport, "fetchAuthored" | "fetchRelated" | "storeSignedEvents">;
     repository?: Pick<typeof postHistoryRepository, "upsertFetchedEvents" | "getByEventId">;
     payloads?: Pick<typeof sensitivePayloadRepository, "putCandidate" | "getByIds">;
     deletions?: Pick<typeof postHistoryDeletionRequestsRepository, "upsertImportedDeletionEvents" | "getAllForTargetAuthorPubkey">;
@@ -92,24 +92,28 @@ export class PostHistoryLocalRelayService {
 
     storeSignedEventBestEffort(input: AttestedPostHistoryRawEvent, isActive: () => boolean = () => true): void {
         const session = this.currentSession(input.event.pubkey);
-        if (session) this.store(session, input, isActive);
+        if (session) this.storeBatch(session, [input], isActive);
     }
 
-    private store(session: LocalRelaySession, input: AttestedPostHistoryRawEvent, isActive: () => boolean): void {
-        const { event, attestation } = input;
-        if (!this.isCurrent(session) || !isActive() || event.pubkey !== session.ownerPubkeyHex
-            || (!isPostHistoryAuthoredKind(event.kind) && event.kind !== 5 && event.kind !== 36)
-            || !isCurrentPostHistoryRawEventAttestation(event, attestation)) return;
-        const key = `${session.url}:${event.id}`;
-        if (this.stores.has(key)) return;
+    private storeBatch(session: LocalRelaySession, inputs: AttestedPostHistoryRawEvent[], isActive: () => boolean): void {
+        if (!this.isCurrent(session) || !isActive()) return;
+        const candidates = [...new Map(inputs.filter(({ event, attestation }) =>
+            event.pubkey === session.ownerPubkeyHex
+            && (isPostHistoryAuthoredKind(event.kind) || event.kind === 5 || event.kind === 36)
+            && isCurrentPostHistoryRawEventAttestation(event, attestation)
+            && !this.stores.has(`${session.url}:${event.id}`)).map(item => [item.event.id, item])).values()];
+        if (!candidates.length) return;
+        const keys = candidates.map(({ event }) => `${session.url}:${event.id}`);
         // Catch synchronous transport errors too; this hook cannot fail a post.
         const job = Promise.resolve().then(async () => {
-            if (!this.isCurrent(session) || !isActive() || !isCurrentPostHistoryRawEventAttestation(event, attestation)) return;
-            await this.getTransport().storeSignedEvent(session.url, event, session.abort.signal).promise;
+            if (!this.isCurrent(session) || !isActive()) return;
+            const events = candidates.filter(({ event, attestation }) => isCurrentPostHistoryRawEventAttestation(event, attestation))
+                .map(({ event }) => event);
+            if (events.length) await this.getTransport().storeSignedEvents(session.url, events, session.abort.signal).promise;
         }).catch(() => undefined).finally(() => {
-            if (this.stores.get(key) === job) this.stores.delete(key);
+            for (const key of keys) if (this.stores.get(key) === job) this.stores.delete(key);
         });
-        this.stores.set(key, job);
+        for (const key of keys) this.stores.set(key, job);
     }
 
     read(request: PostHistoryRelayFetchRequest & { targets?: NostrEvent[]; isActive(): boolean }): LocalRelayTask<LocalRelayHistoryReadResult> {
@@ -182,10 +186,12 @@ export class PostHistoryLocalRelayService {
         return (async () => {
             const revision = scope.expectedRevision ?? await this.getLocalRevision(scope.ownerPubkeyHex);
             const current = () => this.isCurrent(session) && scope.isActive();
-            const adopted: NostrEvent[] = [];
+            const adopted = new Map<string, NostrEvent>();
+            const archive = new Map<string, AttestedPostHistoryRawEvent>();
+            const structuresByPayloadId = new Map<string, Array<{ event: NostrEvent; deleted: boolean }>>();
             for (const candidate of events) {
                 if (!current()) return;
-                if (candidate.event.pubkey !== scope.ownerPubkeyHex || !isPostHistoryAuthoredKind(candidate.event.kind)) continue;
+                if (adopted.has(candidate.event.id) || candidate.event.pubkey !== scope.ownerPubkeyHex || !isPostHistoryAuthoredKind(candidate.event.kind)) continue;
                 const record = await this.repository.getByEventId(candidate.event.id);
                 if (!current() || await this.getLocalRevision(scope.ownerPubkeyHex) !== revision) return;
                 if (!record || record.pubkeyHex !== scope.ownerPubkeyHex || !isSameSignedNostrEvent(record.rawEvent, candidate.event)) continue;
@@ -193,30 +199,38 @@ export class PostHistoryLocalRelayService {
                     ? { event: candidate.event, attestation: candidate.attestation! }
                     : attestFullyVerifiedPostHistoryRawEvent(record.rawEvent);
                 if (!verified) continue;
-                adopted.push(verified.event);
-                if (record.deletedAt === undefined) this.store(session, verified, current);
+                adopted.set(verified.event.id, verified.event);
+                if (record.deletedAt === undefined) archive.set(verified.event.id, verified);
                 const reference = getSensitivePayloadReference(verified.event);
                 if (reference) {
-                    const [payload] = await this.payloads.getByIds([reference.eventId]);
-                    if (payload && verifySensitivePayloadLink(verified.event, payload.rawEvent as NostrEvent)) {
-                        const attested = attestFullyVerifiedPostHistoryRawEvent(payload.rawEvent);
-                        if (attested && current()) {
-                            adopted.push(attested.event);
-                            if (record.deletedAt === undefined && payload.deletedAt === undefined) this.store(session, attested, current);
-                        }
-                    }
+                    const structures = structuresByPayloadId.get(reference.eventId) ?? [];
+                    structures.push({ event: verified.event, deleted: record.deletedAt !== undefined });
+                    structuresByPayloadId.set(reference.eventId, structures);
                 }
             }
-            if (!adopted.length || !current()) return;
+            if (!adopted.size || !current()) return;
+            const payloads = await this.payloads.getByIds([...structuresByPayloadId.keys()]);
+            if (!current() || await this.getLocalRevision(scope.ownerPubkeyHex) !== revision) return;
+            for (const payload of payloads) {
+                const linked = structuresByPayloadId.get(payload.id)?.filter(({ event }) =>
+                    verifySensitivePayloadLink(event, payload.rawEvent as NostrEvent)) ?? [];
+                const verified = linked.length ? attestFullyVerifiedPostHistoryRawEvent(payload.rawEvent) : null;
+                if (!verified) continue;
+                adopted.set(verified.event.id, verified.event);
+                if (payload.deletedAt === undefined && linked.some(({ deleted }) => !deleted)) archive.set(verified.event.id, verified);
+            }
             const deletions = await this.deletions.getAllForTargetAuthorPubkey(scope.ownerPubkeyHex);
             if (!current() || await this.getLocalRevision(scope.ownerPubkeyHex) !== revision) return;
             for (const deletion of deletions) {
                 // The exact adopted Structure/linked Payload proves the target here,
                 // including a previously pending deletion reference for kind 36.
-                if (!adopted.some((event) => isValidDeletionRequestForTarget(deletion.rawEvent as NostrEvent, event))) continue;
+                if (![...adopted.values()].some(event => isValidDeletionRequestForTarget(deletion.rawEvent as NostrEvent, event))) continue;
                 const verified = attestFullyVerifiedPostHistoryRawEvent(deletion.rawEvent);
-                if (verified) this.store(session, verified, current);
+                if (verified) archive.set(verified.event.id, verified);
             }
+            // Selection and dedupe finish before opening one finite batch socket.
+            // Callers still await neither this work nor local ACKs for external delivery.
+            this.storeBatch(session, [...archive.values()], current);
         })().catch(() => undefined);
     }
 }

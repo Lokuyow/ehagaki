@@ -63,11 +63,13 @@ let db: EHagakiDB;
 let repository: DexiePostHistoryRepository;
 let service: PostHistoryLocalRelayService;
 let transport: LocalRelayTransport;
+let createClient: ReturnType<typeof vi.fn<typeof createRxNostr>>;
 beforeEach(() => {
     LocalSocket.instances = []; LocalSocket.sent = []; LocalSocket.corpus = []; LocalSocket.mode = "normal";
     db = new EHagakiDB(`local-relay-test-${crypto.randomUUID()}`);
     repository = new DexiePostHistoryRepository(db);
-    transport = new LocalRelayTransport((config) => createRxNostr({ ...config, websocketCtor: LocalSocket as never }));
+    createClient = vi.fn<typeof createRxNostr>((config) => createRxNostr({ ...config, websocketCtor: LocalSocket as never }));
+    transport = new LocalRelayTransport(createClient);
     service = new PostHistoryLocalRelayService({ transport, repository,
         payloads: new DexieSensitivePayloadRepository(db), deletions: new DexiePostHistoryDeletionRequestsRepository(db),
         getLocalRevision: (pubkey) => getPostHistoryLocalRevision(db, pubkey), runtimeKind: () => "standalone" });
@@ -209,6 +211,61 @@ describe("local relay with real rx-nostr verification and IndexedDB", () => {
         await vi.waitFor(() => expect(LocalSocket.sent.filter(([type]) => type === "EVENT")).toHaveLength(1));
         expect(LocalSocket.sent.find(([type]) => type === "EVENT")?.[1]).toEqual(JSON.parse(JSON.stringify(event)));
         expect((await repository.getByEventId(event.id))?.fetchedRelays).toEqual(["wss://external.example/"]);
+    });
+
+    it.each([150, 250])("archives %s unique events on one client/socket without awaiting ACKs", async (size) => {
+        const payload = finalizeEvent(buildSensitivePayloadEvent(1, "shared batch payload", owner, 100), key);
+        const structures = ["first", "second"].map(label => finalizeEvent(buildSensitiveStructureEvent({ kind: 1,
+            created_at: 100, pubkey: owner, content: "shared batch payload", tags: [["content-warning", label]] }, payload.id), key));
+        const authored = [...structures, ...Array.from({ length: size - 4 }, (_, index) => sign(1, 200 + index))];
+        const deletion = sign(5, 600, [["e", authored[2].id], ["e", authored[3].id], ["k", "1"]], "");
+        const attested = authored.map(event => attestFullyVerifiedPostHistoryRawEvent(event)!);
+        await repository.upsertFetchedEvents({ events: attested });
+        await new DexieSensitivePayloadRepository(db).putCandidate({ event: payload });
+        await new DexiePostHistoryDeletionRequestsRepository(db).upsertValidDeletionRequests({
+            targetEvents: authored.slice(2, 4), deletionEvents: [{ event: deletion }], fetchedAt: 100_000,
+        });
+        configure(); LocalSocket.mode = "silent";
+        // Includes duplicate authored rows, a shared Payload, and two deletion
+        // reference rows for the same signed kind 5 event.
+        await service.archiveAdoptedAuthored([...attested, ...attested], { ownerPubkeyHex: owner, isActive: () => true });
+        await vi.waitFor(() => expect(LocalSocket.sent.filter(([type]) => type === "EVENT")).toHaveLength(size));
+        const actual = LocalSocket.sent.map(message => (message[1] as NostrEvent).id);
+        expect(new Set(actual)).toEqual(new Set([...authored, payload, deletion].map(event => event.id)));
+        expect(createClient).toHaveBeenCalledOnce();
+        expect(LocalSocket.instances).toHaveLength(1);
+        expect(LocalSocket.instances[0].readyState).toBe(1); // All ACKs are still withheld.
+        await service.archiveAdoptedAuthored(attested, { ownerPubkeyHex: owner, isActive: () => true });
+        expect(createClient).toHaveBeenCalledOnce(); // Overlapping in-flight IDs are not resent.
+        service.cancelSession();
+        await vi.waitFor(() => expect(LocalSocket.instances[0].readyState).toBe(3));
+    });
+
+    it("settles mixed batch ACKs on the shared socket, including rejection and duplicate IDs", async () => {
+        LocalSocket.mode = "silent";
+        const events = [sign(1, 100), sign(1, 101), sign(1, 102)];
+        const task = transport.storeSignedEvents(url, [...events, events[0]], new AbortController().signal);
+        await vi.waitFor(() => expect(LocalSocket.sent.filter(([type]) => type === "EVENT")).toHaveLength(3));
+        const socket = LocalSocket.instances[0];
+        let finished = false; void task.promise.then(() => { finished = true; });
+        socket.receive(["OK", events[1].id, false, "restricted: fixture"]);
+        socket.receive(["OK", events[0].id, true, ""]);
+        await Promise.resolve(); expect(finished).toBe(false);
+        socket.receive(["OK", events[2].id, true, ""]);
+        expect(await task.promise).toBe(false);
+        expect(createClient).toHaveBeenCalledOnce(); expect(LocalSocket.instances).toHaveLength(1);
+        expect(socket.readyState).toBe(3);
+    });
+
+    it("times out one silent batch and never reconnects or retries its events", async () => {
+        vi.useFakeTimers(); LocalSocket.mode = "silent";
+        const task = transport.storeSignedEvents(url, [sign(1, 100), sign(1, 101)], new AbortController().signal);
+        await vi.advanceTimersByTimeAsync(6000);
+        expect(await task.promise).toBeNull();
+        await vi.advanceTimersByTimeAsync(12_000);
+        expect(createClient).toHaveBeenCalledOnce(); expect(LocalSocket.instances).toHaveLength(1);
+        expect(LocalSocket.sent.filter(([type]) => type === "EVENT")).toHaveLength(2);
+        expect(LocalSocket.instances[0].readyState).toBe(3);
     });
 
     it("retains a linked kind 36 deletion and archives only the adopted pair's auxiliary events", async () => {

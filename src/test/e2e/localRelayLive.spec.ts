@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 test.use({ trace: "off" });
 const externalUrl = "wss://external.example/";
 
-async function fixture(page: Page, options: { externalOk?: boolean; localMode?: "accept" | "reject" | "auth" } = {}) {
+async function fixture(page: Page, options: { externalOk?: boolean; localMode?: "accept" | "reject" | "auth" | "silent" } = {}) {
     const secret = generateSecretKey(), pubkey = getPublicKey(secret);
     const sign = (template: EventTemplate) => finalizeEvent(template, secret);
     const now = Math.floor(Date.now() / 1000) - 10;
@@ -38,6 +38,7 @@ async function fixture(page: Page, options: { externalOk?: boolean; localMode?: 
         }
         if (message[0] === "EVENT") {
             const event = message[1]; localWrites.push(event);
+            if (options.localMode === "silent") return;
             const ok = (options.localMode ?? "accept") === "accept";
             if (ok && !localCorpus.some(item => item.id === event.id)) localCorpus.push(event);
             socket.send(JSON.stringify(["OK", event.id, ok, ok ? "" : `${options.localMode === "auth" ? "auth-required" : "restricted"}: fixture`]));
@@ -160,7 +161,7 @@ test("HTTPS tab uses the real loopback socket, merges history, keeps external re
     } finally { await f.stop(); }
 });
 
-for (const [externalOk, localMode] of [[true, "accept"], [true, "auth"], [false, "accept"], [false, "reject"]] as const) {
+for (const [externalOk, localMode] of [[true, "accept"], [true, "auth"], [true, "silent"], [false, "accept"], [false, "reject"]] as const) {
     test(`external=${externalOk}, local=${localMode} preserves delivery success and exact signed event`, async ({ page }) => {
         const f = await fixture(page, { externalOk, localMode });
         try {
