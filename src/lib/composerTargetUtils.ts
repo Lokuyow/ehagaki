@@ -26,7 +26,7 @@ export type ComposerTargetParseResult =
     | { status: "secret-key" }
     | { status: "invalid"; reason: "too-long" | "invalid-format" };
 
-export type ComposerTargetAction = "reply" | "quote" | "channel";
+export type ComposerTargetAction = "reply" | "quote" | "channel" | "reaction";
 
 export function parseComposerTargetInput(rawInput: string): ComposerTargetParseResult {
     if (rawInput.length > COMPOSER_TARGET_INPUT_MAX_LENGTH) {
@@ -101,11 +101,12 @@ export function getComposerTargetActions(
     kind: number,
     hasResolvedChannel: boolean,
 ): ComposerTargetAction[] {
-    if (kind === 1 || kind === 1111) return ["reply", "quote"];
+    if (kind === 1 || kind === 1111) return ["reply", "quote", "reaction"];
     if (kind === 40) return hasResolvedChannel ? ["channel"] : [];
     if (kind === 42) {
-        return hasResolvedChannel ? ["reply", "quote"] : [];
+        return hasResolvedChannel ? ["reply", "quote", "reaction"] : ["reaction"];
     }
+    if ([6, 7, 16].includes(kind)) return ['reaction'];
     return [];
 }
 

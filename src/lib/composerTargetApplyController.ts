@@ -3,6 +3,9 @@ import type {
     HydrateReplyQuoteReferencesParams,
 } from "./bootstrap/externalInputBootstrap";
 import type { ChannelContextApplyHandle } from "./channelContextApplyController";
+import { verifyRelatedEvent } from './relatedEventVerification';
+import { isReactionTargetKind } from './postReactionUtils';
+import { clearReactionTarget, setReactionTarget } from '../stores/reactionComposerStore.svelte';
 import type {
     ChannelContextQueryTarget,
     NostrEvent,
@@ -17,6 +20,7 @@ export interface ComposerEventTarget {
     authorPubkey: string | null;
     event?: NostrEvent;
     channelQuery: ChannelContextQueryTarget | null;
+    isCurrent?: () => boolean;
 }
 
 export interface ComposerTargetApplyControllerDependencies {
@@ -44,6 +48,8 @@ export interface ComposerTargetApplyControllerDependencies {
         reference: ReplyQuoteQueryTarget,
     ): HydrateReplyQuoteReferencesParams["references"][number] | null;
     focusEditor(): void;
+    prepareReactionTarget?: (target: ComposerEventTarget) => Promise<{ event: NostrEvent; relayHints: string[] } | null>;
+    captureReactionOwnership?: () => () => boolean;
     logger?: Pick<Console, "error">;
 }
 
@@ -51,6 +57,7 @@ export interface ComposerTargetApplyController {
     applyReply(target: ComposerEventTarget): boolean;
     applyQuote(target: ComposerEventTarget): boolean;
     applyChannel(target: ComposerEventTarget): boolean;
+    applyReaction(target: ComposerEventTarget): Promise<boolean>;
     dispose(): void;
 }
 
@@ -89,6 +96,7 @@ export function createComposerTargetApplyController(
 ): ComposerTargetApplyController {
     const logger = deps.logger ?? FALLBACK_LOGGER;
     let currentChannelApplyHandle: ChannelContextApplyHandle | null = null;
+    let reactionRequest = 0;
 
     function applyChannelContext(target: ComposerEventTarget): boolean {
         currentChannelApplyHandle?.release();
@@ -112,10 +120,12 @@ export function createComposerTargetApplyController(
     }
 
     function applyReply(target: ComposerEventTarget): boolean {
+        reactionRequest++;
         if (!applyChannelContext(target)) {
             return false;
         }
 
+        clearReactionTarget();
         const preloadedEvents = buildPreloadedEvents(target);
         void deps.applyReplyQuoteQuery({
             replyQuoteQuery: {
@@ -133,11 +143,13 @@ export function createComposerTargetApplyController(
     }
 
     function applyQuote(target: ComposerEventTarget): boolean {
+        reactionRequest++;
         const channelApplied = applyChannelContext(target);
         if (!channelApplied && target.source === "manual") {
             return false;
         }
 
+        clearReactionTarget();
         if (deps.hasReplyOrQuotes()) {
             deps.clearReplyQuote();
         }
@@ -164,19 +176,44 @@ export function createComposerTargetApplyController(
     }
 
     function applyChannel(target: ComposerEventTarget): boolean {
+        reactionRequest++;
         if (target.kind !== 40 || !applyChannelContext(target)) {
             return false;
         }
+        clearReactionTarget();
         deps.clearReplyReference();
         deps.focusEditor();
         return true;
+    }
+
+    async function applyReaction(target: ComposerEventTarget): Promise<boolean> {
+        const request = ++reactionRequest;
+        const isOwned = deps.captureReactionOwnership?.() ?? (() => true);
+        if (!isReactionTargetKind(target.kind)) return false;
+        try {
+            const prepared = target.event ? { event: target.event, relayHints: target.relayHints }
+                : await deps.prepareReactionTarget?.(target);
+            const verified = prepared && verifyRelatedEvent(prepared.event, { eventId: target.eventId,
+                authorHint: target.authorPubkey, targetKindHint: target.kind, relayHints: target.relayHints });
+            if (!verified || request !== reactionRequest || !isOwned() || target.isCurrent?.() === false) return false;
+            // Commit synchronously only after preparation: failed requests leave every existing context untouched.
+            currentChannelApplyHandle?.release();
+            currentChannelApplyHandle = null;
+            deps.clearReplyQuote();
+            deps.clearChannelContext();
+            setReactionTarget(verified.event, prepared!.relayHints);
+            deps.focusEditor();
+            return true;
+        } catch { return false; }
     }
 
     return {
         applyReply,
         applyQuote,
         applyChannel,
+        applyReaction,
         dispose() {
+            reactionRequest++;
             currentChannelApplyHandle?.release();
             currentChannelApplyHandle = null;
         },

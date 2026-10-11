@@ -3,9 +3,12 @@
     import type { Snippet } from "svelte";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import PostPreviewFooterActionButton from "./PostPreviewFooterActionButton.svelte";
+    import PostReactionActionButton from './PostReactionActionButton.svelte';
+    import { isReactionTargetKind } from '../lib/postReactionUtils';
 
     interface Props {
         post: PostHistoryRecord;
+        onReactionPost?: (post: PostHistoryRecord) => boolean | Promise<boolean>;
         onReplyPost?: (
             post: PostHistoryRecord,
         ) => boolean | void | Promise<boolean | void>;
@@ -16,6 +19,7 @@
 
     let {
         post,
+        onReactionPost = undefined,
         onReplyPost = undefined,
         onQuotePost = undefined,
         replyExtras = undefined,
@@ -60,6 +64,9 @@
         {/if}
     </div>
     <div class="post-preview-action-cell post-preview-reaction-action-cell">
+        {#if onReactionPost && post.deletedAt === undefined && isReactionTargetKind(post.kind)}
+            <PostReactionActionButton onReact={() => onReactionPost!(post)} />
+        {/if}
         <div class="post-preview-footer-reaction-slot">
             {@render reactionExtras?.()}
         </div>

@@ -876,9 +876,6 @@ async function expectReactionContentsVerticallyCentered(
     const button = container.locator('.post-preview-reactions-button').first();
     const geometry = await button.evaluate((element) => {
         const buttonRect = element.getBoundingClientRect();
-        const heartRect = element
-            .querySelector('.favorite-icon')!
-            .getBoundingClientRect();
         const count = element.querySelector('span')!;
         const countRect = count.getBoundingClientRect();
         const lineHeight = Number.parseFloat(getComputedStyle(count).lineHeight);
@@ -893,7 +890,6 @@ async function expectReactionContentsVerticallyCentered(
             buttonHeight: buttonRect.height,
             alignItems: getComputedStyle(element).alignItems,
             buttonCenterY: buttonRect.top + buttonRect.height / 2,
-            heartCenterY: heartRect.top + heartRect.height / 2,
             countLineCenterY: countRect.top + lineHeight / 2,
             replyCenterY: replyRect.top + replyRect.height / 2,
             quoteCenterY: quoteRect.top + quoteRect.height / 2,
@@ -905,16 +901,13 @@ async function expectReactionContentsVerticallyCentered(
     expect(geometry.buttonHeight).toBeLessThanOrEqual(37);
     expect(geometry.alignItems).toBe('center');
     expect(
-        Math.abs(geometry.heartCenterY - geometry.buttonCenterY),
-    ).toBeLessThanOrEqual(1);
-    expect(
         Math.abs(geometry.countLineCenterY - geometry.buttonCenterY),
     ).toBeLessThanOrEqual(1);
     expect(
-        Math.abs(geometry.heartCenterY - geometry.replyCenterY),
+        Math.abs(geometry.countLineCenterY - geometry.replyCenterY),
     ).toBeLessThanOrEqual(1);
     expect(
-        Math.abs(geometry.heartCenterY - geometry.quoteCenterY),
+        Math.abs(geometry.countLineCenterY - geometry.quoteCenterY),
     ).toBeLessThanOrEqual(1);
     expect(geometry.selected).toBe(selected);
 }

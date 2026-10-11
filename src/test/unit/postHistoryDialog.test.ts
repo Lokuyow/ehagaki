@@ -200,6 +200,7 @@ function createQuoteContextRecords(
         postContent?: string;
         quoteId?: string;
         quoteContent?: string;
+        quoteKind?: number;
         quoteAuthorPubkey?: string;
         quoteRelayHint?: string;
         includeAuthorHint?: boolean;
@@ -218,12 +219,13 @@ function createQuoteContextRecords(
     const quotedRecord = createRecord({
         eventId: quoteId,
         pubkeyHex: quoteAuthorPubkey,
+        kind: overrides.quoteKind ?? 1,
         content: quoteContent,
         tags: [],
         rawEvent: {
             id: quoteId,
             pubkey: quoteAuthorPubkey,
-            kind: 1,
+            kind: overrides.quoteKind ?? 1,
             content: quoteContent,
             tags: [],
             created_at: 1_699_999_500,
@@ -1412,6 +1414,69 @@ describe('PostHistoryDialog', () => {
         expect(historyText.indexOf('前文')).toBeLessThan(historyText.indexOf(quotedContent.textContent ?? ''));
         expect(contextFetchServiceMock.fetchEventById).not.toHaveBeenCalled();
         expect(repositoryMock.getByEventId).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([0, 1])('[quote-preview-kind42-reaction] kind 42 quote with %i reactions keeps the heart independent of the count', async (count) => {
+        const { quotedRecord, post, quoteId } = createQuoteContextRecords({ quoteKind: 42 });
+        quotedRecord.createdAt = 1_699_999_500;
+        quotedRecord.postedAt = quotedRecord.createdAt * 1000;
+        quotedRecord.media = [];
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) =>
+            eventId === quoteId ? quotedRecord : null,
+        );
+        const reaction = createDirectReplyEventRecord({
+            parentEventId: quoteId,
+            kind: 7,
+            discoveredAs: ['reaction'],
+            rawEvent: {
+                id: '4'.repeat(64), pubkey: 'd'.repeat(64), kind: 7, content: '+',
+                tags: [['e', quoteId], ['p', quotedRecord.pubkeyHex], ['k', '42']],
+                created_at: 1_700_000_010, sig: 'f'.repeat(128),
+            },
+        });
+        replyEventsRepositoryMock.getChildInteractions.mockImplementation(async (parentEventId: string) =>
+            parentEventId === quoteId && count > 0 ? [reaction] : [],
+        );
+        setPostHistoryDialogTranslationOverrides({ 'reaction.action': 'リアクションする' });
+        const onReactionPost = vi.fn(() => true);
+        const onClose = vi.fn();
+        render(PostHistoryDialog, {
+            props: {
+                show: true, onClose, pubkeyHex: 'a'.repeat(64),
+                onReplyPost: vi.fn(), onQuotePost: vi.fn(), onReactionPost,
+            },
+        });
+        const historyItem = await findHistoryItem(post.eventId);
+        const quoteCard = (await within(historyItem).findByText('引用元の投稿'))
+            .closest<HTMLElement>('.post-history-related-card')!;
+        const actions = within(quoteCard);
+        const heart = await actions.findByRole('button', { name: 'リアクションする' });
+        expect(actions.queryByRole('button', { name: 'リプライ' })).toBeNull();
+        expect(actions.queryByRole('button', { name: '引用' })).toBeNull();
+        expect(quoteCard.querySelector('.post-preview-reaction-chip')).toBeNull();
+        if (count === 0) {
+            await waitFor(() => expect(replyEventsRepositoryMock.getChildInteractions)
+                .toHaveBeenCalledWith(quoteId, expect.objectContaining({ targetKind: 42 })));
+            expect(quoteCard.querySelector('.post-preview-reactions-button')).toBeNull();
+        } else {
+            const countButton = await actions.findByRole('button', { name: 'リアクション 1件を表示' });
+            expect(countButton.textContent?.trim()).toBe('1');
+            expect(countButton).not.toBe(heart);
+            await fireEvent.click(countButton);
+            await waitFor(() => expect(quoteCard.querySelectorAll('.post-preview-reaction-chip')).toHaveLength(1));
+            expect(onReactionPost).not.toHaveBeenCalled();
+            expect(onClose).not.toHaveBeenCalled();
+            await fireEvent.click(actions.getByRole('button', { name: 'リアクションを隠す' }));
+            expect(quoteCard.querySelector('.post-preview-reaction-chip')).toBeNull();
+        }
+        await fireEvent.click(heart);
+        await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+        expect(onReactionPost).toHaveBeenCalledOnce();
+        expect(onReactionPost).toHaveBeenCalledWith(expect.objectContaining({
+            eventId: quoteId, pubkeyHex: quotedRecord.pubkeyHex, kind: 42, rawEvent: quotedRecord.rawEvent,
+        }));
     });
 
     it('[quote-preview-menu] 引用プレビューにメニューを表示し、他人の投稿では削除を出さない', async () => {

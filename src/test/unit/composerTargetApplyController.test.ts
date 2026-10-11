@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { createComposerTargetApplyController } from "../../lib/composerTargetApplyController";
+import { finalizeEvent, generateSecretKey } from 'nostr-tools';
+import { reactionComposerState, setReactionTarget, clearReactionTarget } from '../../stores/reactionComposerStore.svelte';
+import { createDeferred } from '../deferredTestUtils';
 
 function target(overrides: Record<string, unknown> = {}) {
     return {
@@ -50,6 +53,35 @@ function dependencies(overrides: Record<string, unknown> = {}) {
 }
 
 describe("createComposerTargetApplyController", () => {
+    it.each(['fetch', 'signature', 'identity', 'ownership', 'cancel'])('Reaction %s failure preserves document, media, Reply/Quote/channel and existing Reaction', async failure => {
+        const event = finalizeEvent({ kind: 6, content: '{"content":"opaque"}', tags: [], created_at: 100 }, generateSecretKey());
+        setReactionTarget(event, []); const previousReaction = reactionComposerState.value;
+        const context = { document: 'AB', media: ['existing.png'], reply: { id: 'reply' }, quotes: ['quote'], channel: { id: 'channel' } };
+        const before = structuredClone(context); const deferred = createDeferred<{ event: typeof event; relayHints: string[] } | null>();
+        let active = true;
+        const deps = dependencies({ prepareReactionTarget: () => deferred.promise, captureReactionOwnership: () => () => active,
+            clearReplyQuote: vi.fn(() => { context.reply = null as never; context.quotes = []; }),
+            clearChannelContext: vi.fn(() => { context.channel = null as never; }) });
+        const controller = createComposerTargetApplyController(deps as never);
+        const pending = controller.applyReaction(target({ event: undefined, eventId: event.id, authorPubkey: event.pubkey, kind: 6 }) as never);
+        expect(context).toEqual(before); expect(reactionComposerState.value).toBe(previousReaction);
+        if (failure === 'ownership') active = false;
+        if (failure === 'cancel') controller.dispose();
+        deferred.resolve(failure === 'fetch' ? null : { event: failure === 'signature' ? { ...event, sig: '0'.repeat(128) }
+            : failure === 'identity' ? finalizeEvent({ kind: 6, content: '', tags: [], created_at: 1 }, generateSecretKey()) : event, relayHints: [] });
+        expect(await pending).toBe(false); expect(context).toEqual(before);
+        expect(reactionComposerState.value).toBe(previousReaction); expect(deps.focusEditor).not.toHaveBeenCalled();
+        clearReactionTarget();
+    });
+    it('commits verified Reaction and reference release synchronously, before focus', async () => {
+        clearReactionTarget();
+        const event = finalizeEvent({ kind: 7, content: '+', tags: [], created_at: 100 }, generateSecretKey());
+        let cleared = 0;
+        const deps = dependencies({ clearReplyQuote: () => cleared++, clearChannelContext: () => cleared++,
+            focusEditor: vi.fn(() => { expect(cleared).toBe(2); expect(reactionComposerState.value?.eventId).toBe(event.id); }) });
+        expect(await createComposerTargetApplyController(deps as never).applyReaction(target({ event, eventId: event.id, authorPubkey: event.pubkey, kind: 7 }) as never)).toBe(true);
+        expect(deps.focusEditor).toHaveBeenCalledOnce(); clearReactionTarget();
+    });
     it("kind 1返信でchannelを解除し、取得済みイベントをhydrateへ渡す", () => {
         const deps = dependencies();
         const controller = createComposerTargetApplyController(deps as never);

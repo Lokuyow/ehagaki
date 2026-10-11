@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { buildPostHistoryComposerEventTarget } from "../lib/postHistoryReplyUtils";
     import { onDestroy, untrack } from "svelte";
     import { _, locale } from "svelte-i18n";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
@@ -29,6 +30,7 @@
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
     import PostHistoryReactionActionButton from "./PostHistoryReactionActionButton.svelte";
     import PostHistoryReactionDetails from "./PostHistoryReactionDetails.svelte";
+    import { isReactionTargetKind } from '../lib/postReactionUtils';
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostPreviewFooterActionButton from "./PostPreviewFooterActionButton.svelte";
     import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
@@ -110,7 +112,8 @@
         onApply: (
             action: ComposerTargetAction,
             target: ComposerEventTarget,
-        ) => boolean;
+        ) => boolean | Promise<boolean>;
+        inboundInteractionSave?: { revision: number; parentEventIds: string[] } | null;
         rxNostr?: RxNostr;
         relayConfig?: RelayConfig | null;
         profileService?: Pick<RelayProfileService, "fetchProfileRealtime">;
@@ -127,6 +130,7 @@
         show,
         onClose,
         onApply,
+        inboundInteractionSave = null,
         rxNostr = undefined,
         relayConfig = null,
         profileService = undefined,
@@ -291,12 +295,16 @@
         getShow: () => show,
         getRxNostr: () => rxNostr,
     });
-    let reactionTargets = $derived.by(() =>
-        target && [1, 42, 1111].includes(target.event.kind)
+    let reactionTargets = $derived.by(() => {
+        const targets = target && isReactionTargetKind(target.event.kind)
             ? [{ eventId: target.event.id, relayHints: [...target.relayHints],
-                  targetAuthorPubkey: target.event.pubkey, targetKind: target.event.kind }]
-            : [],
-    );
+                targetAuthorPubkey: target.event.pubkey, targetKind: target.event.kind }] : [];
+        if (relatedPreview?.status === 'resolved' && relatedPreview.event && isReactionTargetKind(relatedPreview.event.kind)) {
+            targets.push({ eventId: relatedPreview.event.id, relayHints: [...relatedPreview.relayHints],
+                targetAuthorPubkey: relatedPreview.event.pubkey, targetKind: relatedPreview.event.kind });
+        }
+        return targets;
+    });
     const relatedReactions = usePostHistoryRelatedReactions({
         getShow: () => show,
         getPubkeyHex: () => pubkeyHex,
@@ -307,7 +315,7 @@
         source: "composer-target-display",
     });
     let targetReactionReadModel = $derived.by(() =>
-        target && [1, 42, 1111].includes(target.event.kind)
+        target && isReactionTargetKind(target.event.kind)
             ? relatedReactions.getReadModel(target.event.id)
             : null,
     );
@@ -317,7 +325,7 @@
     let previousReactionTargetId: string | null = null;
     $effect(() => {
         const eventId = show && target
-            && [1, 42, 1111].includes(target.event.kind)
+            && isReactionTargetKind(target.event.kind)
             ? target.event.id
             : null;
         if (eventId === previousReactionTargetId) return;
@@ -385,8 +393,8 @@
     let dialogEmojiUrls = $derived.by(() => {
         const urls = new Set(previewRenderModel.previewContent.emojiUrls);
         for (const url of relatedRenderModel?.previewContent.emojiUrls ?? []) urls.add(url);
-        if (isTargetReactionsExpanded) {
-            for (const group of targetReactionReadModel?.groups ?? []) {
+        if (expandedReactionEventId) {
+            for (const group of relatedReactions.getReadModel(expandedReactionEventId)?.groups ?? []) {
                 if (group.emojiUrl) urls.add(group.emojiUrl);
             }
         }
@@ -570,19 +578,40 @@
         retryRevision += 1;
     }
 
-    function handleApply(action: ComposerTargetAction): void {
-        if (!target) return;
-        const applied = onApply(action, {
+    async function handleApply(action: ComposerTargetAction): Promise<boolean> {
+        if (!target) return false;
+        const startedTarget = target;
+        const startedGeneration = generation;
+        const applied = await onApply(action, {
             source: "manual",
             kind: target.event.kind,
             eventId: target.event.id,
-            relayHints: [...target.relayHints],
+            relayHints: [...(target.fetchedRelayUrl ? [target.fetchedRelayUrl] : []), ...target.relayHints],
             authorPubkey: target.event.pubkey,
             event: target.event,
             channelQuery: target.channelQuery,
+            isCurrent: () => show && generation === startedGeneration && target === startedTarget,
         });
-        if (applied) handleClose();
+        if (applied && show && target === startedTarget && generation === startedGeneration) handleClose();
+        return applied;
     }
+
+    async function handleRelatedReaction(post: PostHistoryRecord): Promise<boolean> {
+        const startedGeneration = generation;
+        const startedTarget = target;
+        const applied = await onApply('reaction', {
+            ...buildPostHistoryComposerEventTarget(post), source: 'manual',
+            relayHints: [...(post.fetchedRelays ?? []), ...post.acceptedRelays, ...post.relayHints],
+            isCurrent: () => show && generation === startedGeneration && target === startedTarget,
+        });
+        if (applied && show && generation === startedGeneration && target === startedTarget) handleClose();
+        return applied;
+    }
+
+    $effect(() => {
+        const saved = inboundInteractionSave;
+        if (show && saved?.revision) void relatedReactions.refreshCachedReactions(saved.parentEventIds).catch(() => undefined);
+    });
 
     function buildTargetPostHistoryRecord(
         resolvedTarget: ComposerResolvedTarget,
@@ -941,6 +970,34 @@
     {/if}
 {/snippet}
 
+{#snippet reactionCount(post: PostHistoryRecord)}
+    {@const model = relatedReactions.getReadModel(post.eventId)}
+    {#if model && model.totalCount > 0}
+        <PostHistoryReactionActionButton count={model.totalCount} expanded={expandedReactionEventId === post.eventId}
+            ariaLabel={expandedReactionEventId === post.eventId ? $_('postHistory.hideReactions') : $_('postHistory.showReactionsWithCount', { values: { count: model.totalCount } })}
+            onToggle={() => expandedReactionEventId = expandedReactionEventId === post.eventId ? null : post.eventId} />
+    {/if}
+{/snippet}
+{#snippet reactionDetails(post: PostHistoryRecord)}
+    {@const model = relatedReactions.getReadModel(post.eventId)}
+    {#if model && model.totalCount > 0 && expandedReactionEventId === post.eventId}
+        <PostHistoryReactionDetails readModel={model} emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+            emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} />
+    {/if}
+{/snippet}
+{#snippet interactionFooter()}
+    {#if targetPost}
+        <PostHistoryPreviewFooter formattedDate={formatPostedAt(targetPost.postedAt)}>
+            {#snippet actions()}
+                <PostHistoryPostActions post={targetPost} onReactionPost={() => handleApply('reaction')}>
+                    {#snippet reactionExtras()}{@render reactionCount(targetPost)}{/snippet}
+                </PostHistoryPostActions>
+            {/snippet}
+        </PostHistoryPreviewFooter>
+        {@render reactionDetails(targetPost)}
+    {/if}
+{/snippet}
+
 <DialogWrapper
     open={show}
     onOpenChange={(open) => !open && handleClose()}
@@ -1055,7 +1112,9 @@
 
         {#if repostPreview && targetPost}
             <section class="composer-target-repost-preview" aria-label={$_("composerTarget.preview")}>
-                <PostHistoryRepostPreview post={targetPost} preview={repostPreview}
+                <PostHistoryRepostPreview post={targetPost}
+                    onReactionPost={post => post.eventId === targetPost?.eventId ? handleApply('reaction') : handleRelatedReaction(post)}
+                    reactionExtras={reactionCount} reactionDetails={reactionDetails} preview={repostPreview}
                     author={interactionAuthor}
                     menu={mainTargetMenu} channelText={relatedChannelText} model={relatedRenderModel ?? undefined}
                     targetLabel={repostPreview.event && [6, 7, 16].includes(repostPreview.event.kind)
@@ -1099,6 +1158,12 @@
                                 <p class="related-interaction-label">{$_(interactionLabelKey(relatedEvent.kind))}</p>
                             {/if}
                         {/snippet}
+                        {#snippet footerActions()}
+                            <PostHistoryPostActions post={repostTargetToPost(relatedEvent, relatedPreview.relayHints)} onReactionPost={handleRelatedReaction}>
+                                {#snippet reactionExtras()}{@render reactionCount(repostTargetToPost(relatedEvent, relatedPreview.relayHints))}{/snippet}
+                            </PostHistoryPostActions>
+                        {/snippet}
+                        {#snippet footerDetails()}{@render reactionDetails(repostTargetToPost(relatedEvent, relatedPreview.relayHints))}{/snippet}
                     </PostHistoryRelatedEventCard>
                 {:else}
                     <p role="status">{$_(relatedStatusKey)}</p>
@@ -1108,6 +1173,7 @@
                 {/if}
                 {#if deleteRequestState === "failed"}<p class="delete-failed">{$_("postHistory.deleteFailed")}</p>{/if}
             </section>
+                {@render interactionFooter()}
         {:else if previewEvent}
             <section
                 bind:this={targetPreviewElement}
@@ -1200,7 +1266,7 @@
                         {#if target}
                             {#if targetActions.includes("reply") || targetActions.includes("quote")}
                                 {#if targetPost}
-                                    <PostHistoryPostActions
+                                    <PostHistoryPostActions onReactionPost={() => handleApply("reaction")}
                                         post={targetPost}
                                         onReplyPost={targetActions.includes("reply")
                                             ? () => handleApply("reply")
@@ -1221,6 +1287,10 @@
                                         {/snippet}
                                     </PostHistoryPostActions>
                                 {/if}
+                            {:else if targetActions.includes('reaction') && targetPost}
+                                <PostHistoryPostActions post={targetPost} onReactionPost={() => handleApply('reaction')}>
+                                    {#snippet reactionExtras()}{@render reactionCount(targetPost)}{/snippet}
+                                </PostHistoryPostActions>
                             {:else if targetActions.includes("channel")}
                                 <div class="composer-target-channel-action">
                                     <PostPreviewFooterActionButton

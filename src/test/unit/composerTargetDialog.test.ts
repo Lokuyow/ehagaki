@@ -325,7 +325,7 @@ describe("ComposerTargetDialog", () => {
         expect(preview.querySelector(".interaction-author .composer-target-avatar")).toBeTruthy();
         expect(preview.textContent).not.toContain("kind 7");
         expect(preview.textContent).not.toContain("kind 42");
-        expect(preview.querySelectorAll("button")).toHaveLength(1);
+        expect(within(preview).getAllByRole('button', { name: 'reaction.action' })).toHaveLength(1);
         expect(onApply).not.toHaveBeenCalled();
         await openActionMenu();
         await fireEvent.click(screen.getByRole("menuitem", { name: "イベントJSONを表示" }));
@@ -354,7 +354,7 @@ describe("ComposerTargetDialog", () => {
         expect(preview.querySelector(".interaction-author .composer-target-avatar")).toBeTruthy();
         expect(preview.textContent).not.toContain("kind 16");
         expect(preview.textContent).not.toContain("kind 42");
-        expect(preview.querySelectorAll("button")).toHaveLength(1);
+        expect(within(preview).getAllByRole('button', { name: 'reaction.action' })).toHaveLength(2);
         expect(onApply).not.toHaveBeenCalled();
         await openActionMenu();
         await fireEvent.click(screen.getByRole("menuitem", { name: "ブロードキャスト" }));

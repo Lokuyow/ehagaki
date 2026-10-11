@@ -295,5 +295,21 @@ export function usePostHistoryRelatedReactions(params: {
         };
     });
 
-    return { getReadModel, isLoaded };
+    async function refreshCachedReactions(parentIds: string[]): Promise<void> {
+        const current = generation;
+        const owner = params.getPubkeyHex();
+        const runtime = params.getRxNostr();
+        const targets = params.getTargets().filter(target => parentIds.includes(target.eventId));
+        const records = await Promise.all(targets.map(target => postHistoryReactionRecordsAdapter.getReactionRecords(target.eventId, target)));
+        if (current !== generation || !params.getShow() || params.getPubkeyHex() !== owner || params.getRxNostr() !== runtime) return;
+        targets.forEach((target, index) => {
+            recordsByEventId = { ...recordsByEventId, [target.eventId]: records[index] };
+            loadedEventIds = { ...loadedEventIds, [target.eventId]: true };
+            for (const record of records[index]) {
+                const profile = params.profileSync.ensureProfile(record.authorPubkey, record.relayUrls);
+                if (profile) profilesByPubkey = { ...profilesByPubkey, [record.authorPubkey]: profile };
+            }
+        });
+    }
+    return { getReadModel, isLoaded, refreshCachedReactions };
 }

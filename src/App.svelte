@@ -1,6 +1,7 @@
 <script lang="ts">
   import { usePostRepostOperation } from "./lib/hooks/usePostRepostOperation.svelte";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
+  import Button from './components/Button.svelte';
   import "./i18n";
   import { _, locale, waitLocale } from "svelte-i18n";
   import { Tooltip } from "bits-ui";
@@ -106,7 +107,13 @@
   } from "./lib/types";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
-  import { editorState } from "./stores/editorStore.svelte";
+  import { editorState, currentEditorStore, resetPostStatus } from "./stores/editorStore.svelte";
+  import { reactionComposerState, clearReactionTarget } from './stores/reactionComposerStore.svelte';
+  import ReactionTargetPreview from './components/ReactionTargetPreview.svelte';
+  import { postReactionService, type PostReactionResult } from './lib/postReactionService';
+  import { postHistoryContextFetchService } from './lib/postHistoryContextFetchService';
+  import { buildPostHistoryComposerEventTarget } from './lib/postHistoryReplyUtils';
+  import { buildComposerInteractionRenderModel } from './lib/composerTargetRelatedPreview';
   import { mediaGalleryStore } from "./stores/mediaGalleryStore.svelte";
   import {
     addQuoteReference,
@@ -479,6 +486,12 @@
     eventIds: string[];
   } | null>(null);
   let latestPostedEvent: NostrEvent | null = $state(null);
+  let reactionSaveFailure = $state.raw<PostReactionResult | null>(null);
+  $effect(() => { authState.value; rxNostr; untrack(() => { clearReactionTarget(); reactionSaveFailure = null; }); });
+  $effect(() => {
+    const target = reactionComposerState.value;
+    if (target && authState.value.pubkey) reactionSaveFailure = postReactionService.getFailedSave(authState.value.pubkey, target.eventId);
+  });
   let composerScrollRegionEl: HTMLDivElement | null = $state(null);
   let composerScrollContentEl: HTMLDivElement | null = $state(null);
   let customEmojiPickerRegionEl: HTMLDivElement | null = $state(null);
@@ -514,6 +527,12 @@
   });
   let composerReferenceEmojiUrls = $derived.by(() => {
     const urls = new Set<string>();
+    const reaction = reactionComposerState.value;
+    if (reaction) {
+      const model = [6, 7, 16].includes(reaction.kind) ? buildComposerInteractionRenderModel(reaction.event)
+        : buildPostContentRenderModel({ kind: reaction.kind, sourceContent: reaction.event.content, tags: reaction.event.tags });
+      for (const url of model.previewContent.emojiUrls) urls.add(url);
+    }
     for (const model of Object.values(composerReferencePreviewModels)) {
       for (const url of model.previewContent.emojiUrls) {
         urls.add(url);
@@ -1236,6 +1255,28 @@
   });
 
   const composerTargetApplyController = createComposerTargetApplyController({
+    captureReactionOwnership: () => {
+      const auth = authState.value;
+      const runtime = rxNostr;
+      const instance = currentEditorStore.value;
+      const reaction = reactionComposerState.value;
+      const reply = replyQuoteState.value.reply;
+      const quotes = replyQuoteState.value.quotes;
+      const channel = channelContextState.value;
+      const manualOpen = showComposerTargetDialogStore.value;
+      const historyOpen = showPostHistoryDialogStore.value;
+      return () => authState.value === auth && rxNostr === runtime
+        && currentEditorStore.value === instance && !!instance && !editorState.postStatus.sending
+        && reactionComposerState.value === reaction && replyQuoteState.value.reply === reply
+        && replyQuoteState.value.quotes === quotes && channelContextState.value === channel
+        && showComposerTargetDialogStore.value === manualOpen && showPostHistoryDialogStore.value === historyOpen;
+    },
+    prepareReactionTarget: async target => {
+      if (!rxNostr) return null;
+      const result = await postHistoryContextFetchService.fetchEventById(rxNostr, { eventId: target.eventId,
+        authorHint: target.authorPubkey, relayHints: target.relayHints, relayConfig: relayConfigStore.value }).promise;
+      return result.event ? { event: result.event, relayHints: [...(result.relayUrl ? [result.relayUrl] : []), ...target.relayHints] } : null;
+    },
     startChannelContextQuery: (query) =>
       channelContextApplyController.applyExternal({
         query,
@@ -1907,6 +1948,7 @@
   }
 
   function handleResetPostContent() {
+    clearReactionTarget();
     postComponentRef?.resetPostContent();
     clearReplyQuote();
     channelContextApplyController.clear();
@@ -1914,6 +1956,7 @@
 
   // --- 下書き機能ハンドラ---
   async function handleSaveDraft() {
+    if (reactionComposerState.value) return { status: 'not-saveable' as const };
     return draftComposerController.saveDraftFromComposer();
   }
 
@@ -1931,6 +1974,7 @@
   }
 
   function handleApplyDraft(draft: Draft) {
+    clearReactionTarget();
     draftComposerController.applyDraftToComposer(draft);
   }
 
@@ -1942,10 +1986,41 @@
     postHistoryDialogApplyController.applyQuote(post);
   }
 
+  async function handlePostHistoryReaction(post: PostHistoryRecord): Promise<boolean> {
+    if (post.deletedAt !== undefined) return false;
+    const target = buildPostHistoryComposerEventTarget(post);
+    target.relayHints = [...(post.fetchedRelays ?? []), ...post.acceptedRelays, ...post.relayHints];
+    const applied = await composerTargetApplyController.applyReaction(target);
+    if (applied) resetPostStatus();
+    return applied;
+  }
+
+  function handleReactionResult(result: PostReactionResult): void {
+    resetUploadDisplayState();
+    if (result.cacheSaved && result.targetEventId) notifyInboundInteractionsSaved([result.targetEventId]);
+    reactionSaveFailure = result.retryInput ? result : null;
+  }
+
+  async function retryReactionSave(): Promise<void> {
+    const result = reactionSaveFailure;
+    if (!result) return;
+    const auth = authState.value;
+    const saved = await postReactionService.retrySave(result);
+    if (authState.value !== auth || reactionSaveFailure !== result) return;
+    if (saved) {
+      reactionSaveFailure = null;
+      if (result.targetEventId) notifyInboundInteractionsSaved([result.targetEventId]);
+    }
+  }
+
   function handleComposerTargetApply(
     action: ComposerTargetAction,
     target: ComposerEventTarget,
-  ): boolean {
+  ): boolean | Promise<boolean> {
+    if (action === 'reaction') return composerTargetApplyController.applyReaction(target).then(applied => {
+      if (applied) resetPostStatus();
+      return applied;
+    });
     if (action === "reply") {
       return composerTargetApplyController.applyReply(target);
     }
@@ -2028,13 +2103,13 @@
       return;
     }
 
-    postComponentRef?.insertCustomEmoji?.({
+    const inserted = postComponentRef?.insertCustomEmoji?.({
       identityKey: emoji.identityKey,
       shortcode: emoji.shortcode,
       src: emoji.src,
       setAddress: emoji.setAddress,
     });
-    recordCustomEmojiUse(emoji);
+    if (inserted) recordCustomEmojiUse(emoji);
   }
 </script>
 
@@ -2075,6 +2150,21 @@
                   )}
                   onClear={() => channelContextApplyController.clear()}
                 />
+              </div>
+            {/if}
+            {#if reactionComposerState.value}
+              <div class="composer-block composer-reference-block">
+                <ReactionTargetPreview target={reactionComposerState.value}
+                  profileService={relayProfileService}
+                  onClear={() => { clearReactionTarget(); resetPostStatus(); }}
+                  emojiLoadStateByUrl={composerReferenceEmojiState.emojiLoadStateByUrl}
+                  emojiImageMetaByUrl={composerReferenceEmojiState.emojiImageMetaByUrl} />
+              </div>
+            {/if}
+            {#if reactionSaveFailure}
+              <div class="composer-block" role="status">
+                <p>{$_('reaction.saveFailed')}</p>
+                <Button onClick={retryReactionSave}>{$_('reaction.retrySave')}</Button>
               </div>
             {/if}
             {#if replyQuoteState.value.reply}
@@ -2120,6 +2210,7 @@
                     availableComposerHeight={postAvailableComposerHeight}
                     minEditorHeight={postEditorMinHeight}
                     onPostSuccess={handlePostSuccess}
+                    onReactionResult={handleReactionResult}
                     onCustomEmojiSelect={recordCustomEmojiUse}
                     {onEditorEmptyChange}
                     {notificationPort}
@@ -2183,7 +2274,7 @@
         onPostButtonTap={() => balloon.showTips()}
         {customEmojiPickerOpen}
         hasPostingCapability={hasPostingCapability}
-        mediaEnabled={true}
+        mediaEnabled={!reactionComposerState.value}
         customEmojiEnabled={isAuthenticated}
         onCustomEmojiPickerOpenChange={(open) => (customEmojiPickerOpen = open)}
       />
@@ -2345,7 +2436,7 @@
           onApplyDraft={handleApplyDraft}
           onSaveDraft={handleSaveDraft}
           subscribeToDraftSaveCompleted={draftComposerController.subscribeToDraftSaveCompleted}
-          canSaveDraft={editorState.canPost || hasDraftComposerContext}
+          canSaveDraft={!reactionComposerState.value && (editorState.canPost || hasDraftComposerContext)}
           pubkeyHex={authState.value?.pubkey ?? null}
         />
       {/if}
@@ -2357,6 +2448,7 @@
           show={showPostHistoryDialogStore.value}
           onClose={postHistoryDialog.close}
           onReplyPost={handlePostHistoryReply}
+          onReactionPost={handlePostHistoryReaction}
           onQuotePost={handlePostHistoryQuote}
           pubkeyHex={authState.value?.pubkey ?? null}
           {rxNostr}
@@ -2376,6 +2468,7 @@
           show={showComposerTargetDialogStore.value}
           onClose={composerTargetDialog.close}
           onApply={handleComposerTargetApply}
+          inboundInteractionSave={latestInboundInteractionSave}
           {rxNostr}
           relayConfig={relayConfigStore.value}
           profileService={relayProfileService}

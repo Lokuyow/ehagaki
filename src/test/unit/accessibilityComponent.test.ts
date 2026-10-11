@@ -38,6 +38,7 @@ vi.mock('../../lib/utils/mediaNodeUtils', async () => {
 });
 
 vi.mock('../../lib/keyManager.svelte', () => ({
+    keyManager: { getFromStore: vi.fn(), loadFromStorage: vi.fn() },
     PublicKeyState: class MockPublicKeyState {
         private valid = false;
         private npubValue = '';

@@ -106,6 +106,7 @@ export const CustomEmojiSuggestion = Extension.create<CustomEmojiSuggestionOptio
                 }),
 
                 command: ({ editor, range, props }) => {
+                    const before = editor.state.doc;
                     const inserted = editor
                         .chain()
                         .focus()
@@ -120,7 +121,7 @@ export const CustomEmojiSuggestion = Extension.create<CustomEmojiSuggestionOptio
                             },
                         })
                         .run();
-                    if (inserted) {
+                    if (inserted && !before.eq(editor.state.doc)) {
                         this.options.onSelectEmoji?.(props);
                     }
                 },

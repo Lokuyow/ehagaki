@@ -42,6 +42,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
             post: PostHistoryRecord,
         ) => boolean | void | Promise<boolean | void>;
         onQuotePost?: (post: PostHistoryRecord) => void;
+        onReactionPost?: (post: PostHistoryRecord) => boolean | Promise<boolean>;
         getReactionReadModel?: (eventId: string) => PostHistoryReactionReadModel | null;
         isReactionExpanded?: (eventId: string) => boolean;
         getReactionLabel?: (eventId: string) => string;
@@ -96,6 +97,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
         buildPostRecordForNode = undefined,
         onReplyPost = undefined,
         onQuotePost = undefined,
+        onReactionPost = undefined,
         getReactionReadModel = undefined,
         isReactionExpanded = undefined,
         getReactionLabel = undefined,
@@ -182,6 +184,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
                 {buildPostRecordForNode}
                 {onReplyPost}
                 {onQuotePost}
+                    {onReactionPost}
                 {getReactionReadModel}
                 {isReactionExpanded}
                 {getReactionLabel}
@@ -215,6 +218,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
                 {buildPostRecordForNode}
                 {onReplyPost}
                 {onQuotePost}
+                    {onReactionPost}
                 {getReactionReadModel}
                 {isReactionExpanded}
                 {getReactionLabel}
@@ -295,6 +299,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
                     {buildPostRecordForNode}
                     {onReplyPost}
                     {onQuotePost}
+                    {onReactionPost}
                     {getReactionReadModel}
                     {isReactionExpanded}
                     {getReactionLabel}
