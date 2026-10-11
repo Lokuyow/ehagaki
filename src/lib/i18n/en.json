@@ -151,6 +151,41 @@
     "retrySensitivePayload": "Retry"
   },
   "postHistory": {
+    "fullScanTitle": "Fetch all from relays",
+    "fullScanDescription": "Fetch and save as many of your past posts as possible from relays.\nClosing cancels fetching, but posts already saved will remain.",
+    "fullScanStart": "Start fetching",
+    "fullScanCancel": "Cancel fetching",
+    "fullScanRetrieval": "Retrieval",
+    "fullScanSaved": "Saved results",
+    "fullScanRelays": "Finished relays",
+    "fullScanReceived": "Received events (including duplicates)",
+    "fullScanUpdated": "Existing record updates",
+    "fullScanCompletedRelays": "Completed relays",
+    "fullScanIncompleteRelays": "Incomplete relays",
+    "fullScanRelayProgress": "Progress by relay",
+    "fullScanRelayHost": "Relay",
+    "fullScanRelayState": "State",
+    "fullScanRelayStatus": { "pending": "Queued", "fetching": "Fetching…", "auth": "Authenticating…", "completed": "Completed", "empty": "No posts", "timeout": "Timed out", "error": "Connection error", "partial": "Incomplete", "cancelled": "Cancelled" },
+    "fullScanPhase": { "fetching": "Fetching from relays…", "auth": "Waiting for relay authentication…" },
+    "fullScanStatus": {
+      "completed": "The target relay scans have finished",
+      "partial": "Some relays or ranges remain incomplete. Posts already saved have been kept",
+      "cancelled": "Fetching was cancelled. Posts already saved have been kept",
+      "stale-cancelled": "Fetching stopped because the account or scan scope changed",
+      "failed": "Could not fetch from the relays"
+    },
+    "fullScanIssue": {
+      "timeout": "Fetch timeouts", "error": "Relay errors", "auth-rejected": "Authentication rejected",
+      "auth-timeout": "Authentication timeouts", "auth-unresolved": "Incomplete after authentication",
+      "ambiguous": "Unresolved timestamp boundaries", "safety-limit": "Stopped at a safety limit", "storage": "Storage errors"
+    },
+    "fullScanAmbiguityInfo": {
+      "label": "Show additional details about the result",
+      "title": "About this result",
+      "bodyCompletion": "Fetching from this relay completed.",
+      "bodyEose": "However, we could not strictly confirm that all posts were retrieved in some time ranges.",
+      "bodyStatus": "This was not a communication error, so eHagaki shows the relay as Completed."
+    },
     "sensitivePayloadDeletionOmitted": "Deletion was requested for the post, but its body payload could not be verified and was not included in the deletion request.",
     "open": "Open post history",
     "title": "Post History",

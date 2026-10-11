@@ -956,7 +956,7 @@ describe('PostHistoryDialog', () => {
         );
     });
 
-    it('[menu-separators] importと履歴クリアの間に区切りを表示する', async () => {
+    it('[menu-separators] importの隣に全件取得を置き、履歴クリアの前に区切りを表示する', async () => {
         render(PostHistoryDialog, {
             props: {
                 show: true,
@@ -978,13 +978,14 @@ describe('PostHistoryDialog', () => {
         const deleteIndex = menuItems.findIndex(
             (item) => item.textContent?.trim() === '保存済み投稿履歴をクリア',
         );
-
-        expect(deleteIndex).toBe(importIndex + 1);
+        const scanIndex = menuItems.findIndex((item) => item.textContent?.trim() === 'postHistory.fullScanTitle');
+        expect(scanIndex).toBe(importIndex + 1);
+        expect(deleteIndex).toBe(scanIndex + 1);
         expect(
             separators.some(
                 (separator) =>
                     Boolean(separator.compareDocumentPosition(menuItems[deleteIndex]) & Node.DOCUMENT_POSITION_FOLLOWING) &&
-                    Boolean(menuItems[importIndex].compareDocumentPosition(separator) & Node.DOCUMENT_POSITION_FOLLOWING),
+                    Boolean(menuItems[scanIndex].compareDocumentPosition(separator) & Node.DOCUMENT_POSITION_FOLLOWING),
             ),
         ).toBe(true);
     });

@@ -7,7 +7,7 @@ import type { AccountManager } from "../accountManager";
 import type { ProfileData, RelayConfig } from "../types";
 import { profilesRepository } from "../storage/profilesRepository";
 import { createNip42Authenticator } from "../nostrAuthService";
-import { registerPostHistoryRelayEventSource } from "../postHistoryRawEventVerification";
+import { createPostHistoryScanVerifier, registerPostHistoryScanVerifier, registerPostHistoryRelayEventSource } from "../postHistoryRawEventVerification";
 
 export interface NostrSessionBootstrap {
     rxNostr: ReturnType<typeof createRxNostr>;
@@ -91,14 +91,16 @@ export async function initializeNostrSession({
     hostRelayConfig,
     isCurrent = () => true,
 }: InitializeNostrSessionParams): Promise<NostrSessionBootstrap> {
+    const scanVerifier = createPostHistoryScanVerifier(verifier);
     const rxNostr = createRxNostr({
-        verifier,
+        verifier: scanVerifier.verify,
         // The post-history relay source relies on this documented rx-nostr
         // boundary. Keep it explicit rather than depending on the default.
         skipVerify: false,
         ...(pubkeyHex ? { authenticator: createNip42Authenticator(pubkeyHex) } : {}),
     });
     registerPostHistoryRelayEventSource(rxNostr);
+    registerPostHistoryScanVerifier(rxNostr, scanVerifier);
     const relayManager = new RelayManager(rxNostr, {
         relayListUpdatedStore: {
             value: relayListUpdatedStore.value,

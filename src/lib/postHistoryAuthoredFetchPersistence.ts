@@ -1,6 +1,8 @@
 import type { RxNostr } from "rx-nostr";
 import type { RelayConfig } from "./types";
 import type { PostHistoryRelayFetchResult } from "./postHistoryRelayFetchService";
+import type { PostHistoryRelayCoverage } from "./postHistoryRelayCoverage";
+import type { PostHistoryFetchedEventItem } from "./storage/postHistoryRepository";
 import { getPostHistoryAuthoredRelayScopeKey } from "./postHistoryRelayResolver";
 import { buildPostHistoryVisibleKindsKey } from "./storage/postHistoryVisibleRangeRepository";
 import { postHistoryRelayCoverageRepository, type PostHistoryCoverageWrite } from "./storage/postHistoryRelayCoverageRepository";
@@ -34,10 +36,19 @@ export async function persistPostHistoryAuthoredFetch(
     repository: Pick<PostHistoryRepository, "upsertFetchedEvents"> = postHistoryRepository,
 ): Promise<PostHistoryUpsertFetchedEventsResult> {
     if (!scope.isActive() || result.status === "cancelled") return EMPTY_POST_HISTORY_FETCH_SAVE;
-    if (!result.events.length && !result.relayFetchCoverage?.length) {
+    return persistPostHistoryAuthoredBatch(result.events, result.fetchedAt, result.relayFetchCoverage ?? [], scope, repository);
+}
+
+export async function persistPostHistoryAuthoredBatch(
+    events: PostHistoryFetchedEventItem[], fetchedAt: number, coverage: PostHistoryRelayCoverage[],
+    scope: Omit<PostHistoryCoverageWrite, "relays">,
+    repository: Pick<PostHistoryRepository, "upsertFetchedEvents"> = postHistoryRepository,
+): Promise<PostHistoryUpsertFetchedEventsResult> {
+    if (!scope.isActive()) return EMPTY_POST_HISTORY_FETCH_SAVE;
+    if (!events.length && !coverage.length) {
         const revision = await postHistoryRelayCoverageRepository.getLocalRevision(scope.ownerPubkeyHex);
         return { ...EMPTY_POST_HISTORY_FETCH_SAVE, applied: scope.isActive() && revision === scope.expectedRevision };
     }
-    return repository.upsertFetchedEvents({ events: result.events, fetchedAt: result.fetchedAt,
-        relayFetchCoverage: { ...scope, relays: result.relayFetchCoverage ?? [] } });
+    return repository.upsertFetchedEvents({ events, fetchedAt,
+        relayFetchCoverage: { ...scope, relays: coverage } });
 }

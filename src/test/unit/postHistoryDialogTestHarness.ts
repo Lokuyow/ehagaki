@@ -497,6 +497,7 @@ vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     POST_HISTORY_OLDER_FETCH_TIMEOUT_MS: 25_000,
     POST_HISTORY_PAGE_SIZE: 50,
     POST_HISTORY_REPAIR_FETCH_LIMIT: 250,
+    POST_HISTORY_REPAIR_FETCH_TIMEOUT_MS: 35_000,
     postHistoryRelayFetchService: {
         fetchLatest: (rxNostr: unknown, input: Record<string, any>) => {
             const task = hoisted.relayFetchServiceMock.fetchLatest(rxNostr, input);

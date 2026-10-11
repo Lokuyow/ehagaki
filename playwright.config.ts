@@ -63,6 +63,7 @@ export default defineConfig({
                 '**/footerSettingShortcuts.spec.ts',
                 '**/postEditorSending.spec.ts',
                 '**/postHistoryDialog.spec.ts',
+                '**/postHistoryFullScan.spec.ts',
                 '**/postRepost.spec.ts',
                 '**/sensitiveContentPayload.spec.ts',
             ],
