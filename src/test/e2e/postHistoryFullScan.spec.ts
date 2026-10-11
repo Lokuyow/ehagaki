@@ -44,6 +44,7 @@ test("full scan: four workers keep relay rows independent through queued, AUTH a
     await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
     const rows = dialog.locator(".scan-relay-row");
     await expect(rows).toHaveCount(5);
+    const runningActionHeight = await dialog.locator(".scan-actions").evaluate((element) => element.getBoundingClientRect().height);
     await expect(rows.nth(0).locator(".scan-relay-state")).toHaveText("取得中…");
     await expect(rows.nth(1).locator(".scan-relay-state")).toHaveText("取得中…");
     await expect(rows.nth(2).locator(".scan-relay-state")).toHaveText("取得中…");
@@ -76,6 +77,9 @@ test("full scan: four workers keep relay rows independent through queued, AUTH a
     await expect(rows.nth(1).locator(".scan-relay-count")).toHaveText("1");
     await expect(dialog.getByRole("status")).toContainText("対象リレーの走査が終了しました");
     await expect(dialog).toContainText("5 / 5");
+    await expect(dialog.getByRole("button", { name: "取得開始", exact: true })).toHaveCount(0);
+    const completedActionHeight = await dialog.locator(".scan-actions").evaluate((element) => element.getBoundingClientRect().height);
+    expect(completedActionHeight).toBe(runningActionHeight);
     expect(await rows.locator(".scan-relay-count").allTextContents()).toEqual(["2", "1", "0", "2", "2"]);
     await page.screenshot({ path: testInfo.outputPath("relay-progress-final.png") });
 });

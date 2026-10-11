@@ -97,6 +97,7 @@ describe("full relay scan dialog", () => {
         expect(within(dialog).queryByRole("progressbar")).toBeNull();
         expect(dialog.textContent).not.toMatch(/%|RemainingTime|ETA/);
         if (status === "partial") expect(dialog.textContent).toContain("postHistory.fullScanIssue.timeout");
+        expect(within(dialog).queryByRole("button", { name: "postHistory.fullScanStart" })).toBeNull();
     });
     it("exposes start, disables duplicate start and lets users cancel or close", async () => {
         const start = vi.fn(); const cancel = vi.fn(); const close = vi.fn();

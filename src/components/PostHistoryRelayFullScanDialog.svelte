@@ -56,8 +56,10 @@
         <p>{$_("postHistory.fullScanDescription")}</p>
     </div>
     <div class="scan-actions">
+        {#if !result}
         <Button variant="primary" shape="square" className="scan-action" disabled={running || !canStart} onClick={onStart}>{$_("postHistory.fullScanStart")}</Button>
         {#if running}<Button variant="default" shape="square" className="scan-action" onClick={onCancel}>{$_("postHistory.fullScanCancel")}</Button>{/if}
+        {/if}
     </div>
     {#if statusKey}
         <div class="scan-status" role="status">
@@ -144,7 +146,7 @@
     .scan-heading h2, .scan-heading p { margin: 0; }
     .scan-heading h2 { font-size: 1.25rem; }
     .scan-heading p { margin-top: 16px; font-size: 0.88rem; line-height: 1.5; white-space: pre-line; }
-    .scan-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .scan-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; min-height: 50px; }
     .scan-status { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; font-size: 0.9rem; }
     :global(.post-history-full-scan-dialog .scan-action) { box-sizing: border-box; min-width: 50px; min-height: 50px; padding: 8px 12px; }
     :global(.post-history-full-scan-dialog .scan-close-action) { box-sizing: border-box; min-width: 50px; min-height: 50px; }
