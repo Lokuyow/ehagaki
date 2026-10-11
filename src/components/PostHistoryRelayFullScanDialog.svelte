@@ -160,7 +160,7 @@
     .scan-relays { width: 100%; min-width: 0; box-sizing: border-box; margin-top: 12px; padding: 10px; border: 1px solid var(--border-hr); border-radius: 8px; }
     .scan-relays table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.8rem; }
     .scan-relays caption { margin-bottom: 8px; text-align: left; font-size: 0.9rem; font-weight: 600; }
-    .scan-relays th, .scan-relays td { padding: 6px 4px; text-align: left; overflow-wrap: anywhere; }
+    .scan-relays th, .scan-relays td { padding: 0 4px; text-align: left; overflow-wrap: anywhere; }
     .scan-relays th { color: var(--text-muted); font-weight: 500; }
     .scan-relays th:first-child { width: 45%; }
     .scan-relays th:nth-child(2) { width: 28%; }
