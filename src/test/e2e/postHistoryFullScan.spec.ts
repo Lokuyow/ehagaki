@@ -160,11 +160,16 @@ test("full scan: explicit cancel and Escape keep committed posts", async ({ page
             const loader = element.querySelector(".loading-placeholder")!;
             const graphic = loader.querySelector(".loader-container")!;
             const label = element.querySelector(":scope > span")!;
+            const statusBounds = element.getBoundingClientRect();
+            const groupLeft = loader.getBoundingClientRect().left;
+            const groupRight = label.getBoundingClientRect().right;
             return { loaderWidth: loader.getBoundingClientRect().width, graphicRight: graphic.getBoundingClientRect().right,
-                labelLeft: label.getBoundingClientRect().left };
+                labelLeft: label.getBoundingClientRect().left,
+                centerOffset: Math.abs((groupLeft + groupRight) / 2 - (statusBounds.left + statusBounds.right) / 2) };
         });
         expect(statusLayout.loaderWidth).toBeLessThan(40);
         expect(statusLayout.labelLeft).toBeGreaterThanOrEqual(statusLayout.graphicRight);
+        expect(statusLayout.centerOffset).toBeLessThanOrEqual(1);
         if (operation === "cancel") {
             await dialog.getByRole("button", { name: "取得を中止", exact: true }).click();
             await expect(dialog.getByRole("status")).toContainText("取得を中止しました");

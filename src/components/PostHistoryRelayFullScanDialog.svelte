@@ -145,7 +145,7 @@
     .scan-heading h2 { font-size: 1.25rem; }
     .scan-heading p { margin-top: 16px; font-size: 0.88rem; line-height: 1.5; white-space: pre-line; }
     .scan-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-    .scan-status { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 0.9rem; }
+    .scan-status { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; font-size: 0.9rem; }
     :global(.post-history-full-scan-dialog .scan-action) { box-sizing: border-box; min-width: 50px; min-height: 50px; padding: 8px 12px; }
     :global(.post-history-full-scan-dialog .scan-close-action) { box-sizing: border-box; min-width: 50px; min-height: 50px; }
     :global(.post-history-full-scan-dialog .scan-status .loading-placeholder) { width: auto; flex: 0 0 auto; justify-content: flex-start; }
