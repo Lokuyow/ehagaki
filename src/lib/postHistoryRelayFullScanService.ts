@@ -49,7 +49,7 @@ export interface PostHistoryFullScanRequest {
 }
 export interface PostHistoryFullScanTask { promise: Promise<PostHistoryFullScanResult>; cancel: (stale?: boolean) => void }
 export const POST_HISTORY_FULL_SCAN_DEFAULTS = {
-    windowSeconds: 30 * 24 * 60 * 60, limit: 250, concurrency: 2,
+    windowSeconds: 30 * 24 * 60 * 60, limit: 250, concurrency: 4,
     pageTimeoutMs: POST_HISTORY_REPAIR_FETCH_TIMEOUT_MS, authTimeoutMs: 30_000,
     relayTimeoutMs: 30 * 60 * 1000, operationTimeoutMs: 2 * 60 * 60 * 1000,
     maxRequests: 10_000, maxBoundaryIds: 1000,

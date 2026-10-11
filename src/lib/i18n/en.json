@@ -165,7 +165,7 @@
     "fullScanRelayProgress": "Progress by relay",
     "fullScanRelayHost": "Relay",
     "fullScanRelayState": "State",
-    "fullScanRelayStatus": { "pending": "Waiting", "fetching": "Fetching…", "auth": "Authenticating…", "completed": "Completed", "empty": "No posts", "timeout": "Timed out", "error": "Connection error", "partial": "Incomplete", "cancelled": "Cancelled" },
+    "fullScanRelayStatus": { "pending": "Queued", "fetching": "Fetching…", "auth": "Authenticating…", "completed": "Completed", "empty": "No posts", "timeout": "Timed out", "error": "Connection error", "partial": "Incomplete", "cancelled": "Cancelled" },
     "fullScanPhase": { "fetching": "Fetching from relays…", "auth": "Waiting for relay authentication…" },
     "fullScanStatus": {
       "completed": "The target relay scans have finished",

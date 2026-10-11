@@ -8,6 +8,7 @@ export function createPostHistoryFullScanHarness(secret: Uint8Array, scenario: s
     const owner = getPublicKey(secret);
     const relayUrls = ["wss://full-scan-a.example/", "wss://full-scan-b.example/"];
     if (scenario.startsWith("relay-")) relayUrls.push("wss://a-very-long-relay-host-name-for-narrow-frame-progress.example/relay-path");
+    if (scenario === "relay-progress") relayUrls.push("wss://full-scan-d.example/", "wss://full-scan-e.example/");
     const messages = new Subject<MessagePacket>();
     const outgoing = new Subject<OutgoingMessagePacket>();
     const pendingReplies = new Map<string, () => void>();

@@ -45,7 +45,7 @@ describe("full relay scan dialog", () => {
         expect(row.querySelector(".scan-relay-count")?.textContent).toBe(String(summary.relays[0].receivedCount));
         expect(row.textContent).not.toMatch(/unique/i);
     });
-    it("keeps every target visible through concurrent updates and the final result", async () => {
+    it("keeps every queued target visible through concurrent updates and the final result", async () => {
         const summary = result("completed");
         const pending = { ...summary, relays: summary.relays.map((relay) => ({ ...relay, status: "running" as const, phase: "pending" as const, receivedCount: 0 })) };
         const view = render(PostHistoryRelayFullScanDialog, { open: true, running: true, canStart: true, elapsedMs: 0,

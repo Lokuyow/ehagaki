@@ -20,11 +20,15 @@ function page(events: NostrEvent[], hints: string[] = [], overrides: Partial<Pos
         eoseRelayUrls: urls, page: { subscriptionId: "page:0", hints, authRequired: false, authAutoResent: false, bufferLimited: false }, ...overrides,
     });
 }
-function setup(fetch: (params: Parameters<NonNullable<PostHistoryFullScanDeps["fetchRelayPage"]>>[1]) => PostHistoryRelayFetchResult | Promise<PostHistoryRelayFetchResult>, extra: PostHistoryFullScanDeps = {}, onProgress?: (progress: PostHistoryFullScanProgress) => void) {
+function terminalPageForRelay(relayUrl: string): PostHistoryRelayFetchResult {
+    const response = page([], ["finish"]);
+    return { ...response, eoseRelayUrls: [relayUrl], relayOutcomes: (response.relayOutcomes ?? []).map((outcome) => ({ ...outcome, relayUrl })) };
+}
+function setup(fetch: (params: Parameters<NonNullable<PostHistoryFullScanDeps["fetchRelayPage"]>>[1]) => PostHistoryRelayFetchResult | Promise<PostHistoryRelayFetchResult>, extra: PostHistoryFullScanDeps = {}, onProgress?: (progress: PostHistoryFullScanProgress) => void, relayTargets = urls) {
     const runtime = {} as RxNostr;
     let currentOwner = owner;
     let currentRuntime = runtime;
-    let config: RelayConfig = Object.fromEntries(urls.map((url) => [url, { read: true, write: true }]));
+    let config: RelayConfig = Object.fromEntries(relayTargets.map((url) => [url, { read: true, write: true }]));
     const saved = new Map<string, { event: NostrEvent; relays: Set<string> }>();
     const coverage: { relayUrl: string; since: number; until: number }[] = [];
     const requests: Parameters<NonNullable<PostHistoryFullScanDeps["fetchRelayPage"]>>[1][] = [];
@@ -91,6 +95,30 @@ describe("manual full relay scan", () => {
         const result = await state.task.promise;
         expect(result.relays.map((relay) => relay.receivedCount)).toEqual([12, 3]);
         expect(result.receivedCount).toBe(15); expect(state.saved.size).toBe(1);
+    });
+    it("starts four relays by default and queues the fifth until a worker is free", async () => {
+        const relayTargets = Array.from({ length: 5 }, (_, index) => `wss://scan-${index}.example/`);
+        const releases = new Map<string, (response: PostHistoryRelayFetchResult) => void>();
+        const snapshots: PostHistoryFullScanProgress[] = [];
+        const state = setup((params) => new Promise((resolve) => releases.set(params.relayUrl, resolve)), {},
+            (progress) => snapshots.push(progress), relayTargets);
+        await vi.waitFor(() => expect(releases.size).toBe(4));
+        expect(state.requests.map(({ relayUrl }) => relayUrl)).toEqual(relayTargets.slice(0, 4));
+        expect(snapshots.at(-1)!.relays.map((relay) => relay.phase)).toEqual([
+            "fetching", "fetching", "fetching", "fetching", "pending",
+        ]);
+        releases.get(relayTargets[0])!(terminalPageForRelay(relayTargets[0]));
+        await vi.waitFor(() => expect(releases.has(relayTargets[4])).toBe(true));
+        expect(state.requests.map(({ relayUrl }) => relayUrl)).toEqual(relayTargets);
+        expect(snapshots.at(-1)!.relays.map(({ status, phase }) => ({ status, phase }))).toEqual([
+            { status: "completed", phase: "fetching" },
+            { status: "running", phase: "fetching" },
+            { status: "running", phase: "fetching" },
+            { status: "running", phase: "fetching" },
+            { status: "running", phase: "fetching" },
+        ]);
+        for (const relayUrl of relayTargets.slice(1)) releases.get(relayUrl)!(terminalPageForRelay(relayUrl));
+        expect((await state.task.promise).status).toBe("completed");
     });
     it("keeps the retrieval phase stable while saving page batches", async () => {
         const phases: string[] = [];

@@ -37,19 +37,21 @@ test("full scan: completes with actual summary and preserves the displayed windo
     await expect(dialog).not.toBeVisible();
     expect(await page.locator(".post-history-item").evaluateAll((items) => items.map((item) => item.getAttribute("data-post-history-event-id")))).toEqual(ids);
 });
-test("full scan: independent relay rows show pending, concurrent fetching, AUTH and retained completed/empty counts", async ({ page }, testInfo) => {
+test("full scan: four workers keep relay rows independent through queued, AUTH and final states", async ({ page }, testInfo) => {
     const { dialog } = await open(page, "relay-progress");
     await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
     const rows = dialog.locator(".scan-relay-row");
-    await expect(rows).toHaveCount(3);
+    await expect(rows).toHaveCount(5);
     await expect(rows.nth(0).locator(".scan-relay-state")).toHaveText("取得中…");
     await expect(rows.nth(1).locator(".scan-relay-state")).toHaveText("取得中…");
-    await expect(rows.nth(2).locator(".scan-relay-state")).toHaveText("待機");
-    await expect(dialog).toContainText("0 / 3");
+    await expect(rows.nth(2).locator(".scan-relay-state")).toHaveText("取得中…");
+    await expect(rows.nth(3).locator(".scan-relay-state")).toHaveText("取得中…");
+    await expect(rows.nth(4).locator(".scan-relay-state")).toHaveText("順番待ち");
+    await expect(dialog).toContainText("0 / 5");
     await page.evaluate(() => { const scan = (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!; scan.releaseRelay(scan.relayUrls[0]); });
     await expect(rows.nth(0).locator(".scan-relay-state")).toHaveText("完了");
     await expect(rows.nth(0).locator(".scan-relay-count")).toHaveText("2");
-    await expect(rows.nth(2).locator(".scan-relay-state")).toHaveText("取得中…");
+    await expect(rows.nth(4).locator(".scan-relay-state")).toHaveText("取得中…");
     await page.evaluate(() => { const scan = (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!; scan.releaseRelay(scan.relayUrls[1]); });
     await expect(rows.nth(1).locator(".scan-relay-state")).toHaveText("認証中…");
     await expect(rows.nth(1).locator(".scan-relay-count")).toHaveText("0");
@@ -60,14 +62,19 @@ test("full scan: independent relay rows show pending, concurrent fetching, AUTH 
     await page.evaluate(() => { const scan = (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!; scan.releaseRelay(scan.relayUrls[2]); });
     await expect(rows.nth(2).locator(".scan-relay-state")).toHaveText("投稿なし");
     await expect(rows.nth(2).locator(".scan-relay-count")).toHaveText("0");
+    for (const index of [3, 4]) {
+        await page.evaluate((relayIndex) => { const scan = (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!; scan.releaseRelay(scan.relayUrls[relayIndex]); }, index);
+        await expect(rows.nth(index).locator(".scan-relay-state")).toHaveText("完了");
+        await expect(rows.nth(index).locator(".scan-relay-count")).toHaveText("2");
+    }
     await expect(rows.nth(1).locator(".scan-relay-state")).toHaveText("認証中…");
     await expect(dialog.getByRole("status")).toHaveText("リレーの認証を待っています…");
     await page.evaluate(() => { const scan = (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!; scan.authenticateRelay(scan.relayUrls[1]); });
     await expect(rows.nth(1).locator(".scan-relay-state")).toHaveText("完了");
     await expect(rows.nth(1).locator(".scan-relay-count")).toHaveText("1");
     await expect(dialog.getByRole("status")).toContainText("対象リレーの走査が終了しました");
-    await expect(dialog).toContainText("3 / 3");
-    expect(await rows.locator(".scan-relay-count").allTextContents()).toEqual(["2", "1", "0"]);
+    await expect(dialog).toContainText("5 / 5");
+    expect(await rows.locator(".scan-relay-count").allTextContents()).toEqual(["2", "1", "0", "2", "2"]);
     await page.screenshot({ path: testInfo.outputPath("relay-progress-final.png") });
 });
 test("full scan: relay timeout, connection error and ambiguity remain distinct from empty", async ({ page }) => {

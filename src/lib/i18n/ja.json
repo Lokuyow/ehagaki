@@ -165,7 +165,7 @@
     "fullScanRelayProgress": "リレーごとの取得状況",
     "fullScanRelayHost": "リレー",
     "fullScanRelayState": "状態",
-    "fullScanRelayStatus": { "pending": "待機", "fetching": "取得中…", "auth": "認証中…", "completed": "完了", "empty": "投稿なし", "timeout": "時間切れ", "error": "接続エラー", "partial": "一部未完了", "cancelled": "中止" },
+    "fullScanRelayStatus": { "pending": "順番待ち", "fetching": "取得中…", "auth": "認証中…", "completed": "完了", "empty": "投稿なし", "timeout": "時間切れ", "error": "接続エラー", "partial": "一部未完了", "cancelled": "中止" },
     "fullScanPhase": { "fetching": "リレーから取得中…", "auth": "リレーの認証を待っています…" },
     "fullScanStatus": {
       "completed": "対象リレーの走査が終了しました",
