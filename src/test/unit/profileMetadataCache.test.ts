@@ -438,6 +438,44 @@ describe("profileMetadataCache", () => {
         );
     });
 
+
+    it("cancels a queued history-only batch without negative caching", async () => {
+        const abort = new AbortController(), rxNostr = createRxNostrReturningProfile({ content: { name: "Late" }, createdAt: 20 });
+        const pending = profileMetadataCache.getProfile(pubkey, { rxNostr: rxNostr as never, forceRefresh: true, signal: abort.signal });
+        await Promise.resolve(); await Promise.resolve();
+        abort.abort();
+        await flushProfileBatch();
+        expect(await pending).toBeNull();
+        expect(rxNostr.use).not.toHaveBeenCalled();
+        expect(profileMetadataCache.getReactiveEntry(pubkey)).toBeNull();
+    });
+    it("releases only the aborted consumer while another consumer shares the relay request", async () => {
+        const abort = new AbortController(), unsubscribe = vi.fn();
+        let observer: { next?: (packet: unknown) => void; complete?: () => void } = {};
+        const rxNostr = { use: vi.fn(() => ({ subscribe: (value: typeof observer) => { observer = value; return { unsubscribe }; } })) };
+        const history = profileMetadataCache.getProfile(pubkey, { rxNostr: rxNostr as never, forceRefresh: true, signal: abort.signal });
+        const other = profileMetadataCache.getProfile(pubkey, { rxNostr: rxNostr as never, forceRefresh: true });
+        await flushProfileBatch();
+        abort.abort();
+        expect(await history).toBeNull();
+        expect(unsubscribe).not.toHaveBeenCalled();
+        observer.next?.({ event: { id: eventId, kind: 0, pubkey, content: JSON.stringify({ name: "Other" }), created_at: 20 }, from: BOOTSTRAP_RELAYS[0] });
+        observer.complete?.();
+        expect(await other).toMatchObject({ name: "Other" });
+        expect(rxNostr.use).toHaveBeenCalledTimes(1);
+    });
+    it("stops the last consumer's relay and follow-up requests without storing a negative result", async () => {
+        const abort = new AbortController(), unsubscribe = vi.fn();
+        const rxNostr = { use: vi.fn(() => ({ subscribe: () => ({ unsubscribe }) })) };
+        const pending = profileMetadataCache.getProfile(pubkey, { rxNostr: rxNostr as never, forceRefresh: true, signal: abort.signal, additionalRelays: ["wss://hint.example.com"] });
+        await flushProfileBatch();
+        abort.abort();
+        expect(await pending).toBeNull();
+        await flushProfileBatch();
+        expect(unsubscribe).toHaveBeenCalledTimes(1);
+        expect(rxNostr.use).toHaveBeenCalledTimes(1);
+        expect(profileMetadataCache.getReactiveEntry(pubkey)).toBeNull();
+    });
     it("revalidates stale Dexie profiles after reload using the persisted fetchedAt", async () => {
         const staleFetchedAt = Date.now() - profileMetadataCacheInternals.PROFILE_CACHE_STALE_MS - 1;
         repositoryMock.get.mockResolvedValue(createProfile({

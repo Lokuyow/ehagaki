@@ -42,7 +42,7 @@ export function usePostHistoryRepostPreviews(params: { getShow: () => boolean;
         const desc = descriptor(post);
         const owner = params.getPubkey();
         const current = generation;
-        if (!desc || !owner) return;
+        if (!params.getShow() || !desc || !owner) return;
         const expectedRevision = await getPostHistoryLocalRevision(ehagakiDb, owner);
         const isActive = () => generation === current && params.getShow() && params.getPubkey() === owner
             && params.getPosts().some((item) => item.eventId === post.eventId && item.deletedAt === undefined);
@@ -71,6 +71,6 @@ export function usePostHistoryRepostPreviews(params: { getShow: () => boolean;
         return () => { generation++; params.resolver.invalidateScope(scopeKey); };
     });
     onDestroy(() => { generation++; params.resolver.invalidateScope(scopeKey); });
-    return { getPreview, retry: (post: PostHistoryRecord) => { void ensure(post, !saveErrors[post.eventId]).catch(() => undefined); } };
+    return { suspend: () => { generation++; params.resolver.invalidateScope(scopeKey); }, getPreview, retry: (post: PostHistoryRecord) => { void ensure(post, !saveErrors[post.eventId]).catch(() => undefined); } };
 }
 export type RepostPreviewState = ReturnType<ReturnType<typeof usePostHistoryRepostPreviews>["getPreview"]>;

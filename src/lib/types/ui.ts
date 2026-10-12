@@ -8,8 +8,6 @@ export interface SettingsDialogProps {
     onRefreshRelaysAndProfile?: () => void;
     hostRelayConfigActive?: boolean;
     onOpenWelcomeDialog?: () => void;
-    onOpenUploadedMedia?: (trigger: HTMLElement) => void;
-    uploadedMediaOpen?: boolean;
     rxNostr?: RxNostr | null;
 }
 

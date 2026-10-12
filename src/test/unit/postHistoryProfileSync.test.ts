@@ -57,6 +57,7 @@ describe("postHistoryProfileSync", () => {
             ],
             forceRefresh: true,
             allowBackgroundRefresh: true,
+            signal: expect.any(AbortSignal),
         });
     });
 
@@ -113,8 +114,9 @@ describe("postHistoryProfileSync", () => {
         const unsubscribe = vi.fn();
         let cacheListener: (profile: ProfileData | null) => void = () => undefined;
         const listener = vi.fn();
+        let active = true;
         const coordinator = createPostHistoryProfileSyncCoordinator({
-            getShow: () => false,
+            getShow: () => active,
             getRxNostr: () => undefined,
             profileCache: {
                 getProfile: vi.fn(() => deferred.promise),
@@ -127,6 +129,7 @@ describe("postHistoryProfileSync", () => {
         coordinator.subscribe(listener);
         coordinator.ensureProfile("pubkey-a");
 
+        active = false;
         coordinator.reset();
         cacheListener(createProfile("After close"));
         deferred.resolve(createProfile("Late request"));

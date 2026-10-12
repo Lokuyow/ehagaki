@@ -152,6 +152,7 @@ describe('PostHistoryDialog', () => {
             expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledTimes(1);
             expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
                 'https://example.com/blobcat.webp',
+                { signal: expect.any(AbortSignal) },
             );
         });
 
@@ -200,6 +201,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
                 'https://example.com/blobcat.webp',
+                { signal: expect.any(AbortSignal) },
             );
             expect(customEmojiImageMetaRepositoryMock.getMany).toHaveBeenCalledWith([
                 'https://example.com/blobcat.webp',
@@ -247,6 +249,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
                 'https://example.com/blobcat.webp',
+                { signal: expect.any(AbortSignal) },
             );
         });
 

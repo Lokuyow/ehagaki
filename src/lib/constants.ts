@@ -68,6 +68,7 @@ export const DEFAULT_REPLY_NOTIFICATION_ENABLED = false;
 export const DEFAULT_FAIL_CLOSED_CONTENT_WARNING = false;
 
 export const STORAGE_KEYS = {
+    HISTORY_ACTIVE_TAB: "historyActiveTab",
     LOCALE: "locale",
     UPLOAD_ENDPOINT: "uploadEndpoint",
     CLIENT_TAG_ENABLED: "clientTagEnabled",

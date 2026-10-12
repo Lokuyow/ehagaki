@@ -8,7 +8,6 @@ type PostComponent = typeof import("../components/PostComponent.svelte").default
 type LoginDialogComponent = typeof import("../components/LoginDialog.svelte").default;
 type ProfileComponent = typeof import("../components/ProfileComponent.svelte").default;
 type SettingsDialogComponent = typeof import("../components/SettingsDialog.svelte").default;
-type UploadedMediaDialogComponent = typeof import("../components/UploadedMediaDialog.svelte").default;
 type WelcomeDialogComponent = typeof import("../components/WelcomeDialog.svelte").default;
 type DraftListDialogComponent = typeof import("../components/DraftListDialog.svelte").default;
 type PostHistoryDialogComponent = typeof import("../components/PostHistoryDialog.svelte").default;
@@ -20,10 +19,11 @@ export type AppComponentKey =
     | "login"
     | "profile"
     | "settings"
-    | "uploaded-media"
     | "welcome"
     | "draft-list"
     | "post-history"
+    | "post-history-posts"
+    | "post-history-media"
     | "composer-target"
     | "custom-emoji-picker";
 
@@ -38,7 +38,6 @@ export interface AppComponentLoaders {
     loadLoginDialog(): Promise<void>;
     loadProfileDialog(): Promise<void>;
     loadSettingsDialog(): Promise<void>;
-    loadUploadedMediaDialog(): Promise<void>;
     loadWelcomeDialog(): Promise<void>;
     loadDraftListDialog(): Promise<void>;
     loadPostHistoryDialog(): Promise<void>;
@@ -54,7 +53,6 @@ export interface AppComponentLoaderTargets {
     setLoginDialogComponent(component: LoginDialogComponent): void;
     setProfileComponent(component: ProfileComponent): void;
     setSettingsDialogComponent(component: SettingsDialogComponent): void;
-    setUploadedMediaDialogComponent(component: UploadedMediaDialogComponent): void;
     setWelcomeDialogComponent(component: WelcomeDialogComponent): void;
     setDraftListDialogComponent(component: DraftListDialogComponent): void;
     setPostHistoryDialogComponent(component: PostHistoryDialogComponent): void;
@@ -104,9 +102,6 @@ export function createAppComponentLoaders(
         "welcome",
         () => import("../components/WelcomeDialog.svelte"),
         commonOptions,
-    );
-    const loadUploadedMediaDialogModule = createComponentLoader(
-        "uploaded-media", () => import("../components/UploadedMediaDialog.svelte"), commonOptions,
     );
     const loadDraftListDialogModule = createComponentLoader(
         "draft-list",
@@ -164,9 +159,6 @@ export function createAppComponentLoaders(
                 targets.setWelcomeDialogComponent,
                 targets.onLoadFailure,
             );
-        },
-        async loadUploadedMediaDialog() {
-            applyLoadResult(await loadUploadedMediaDialogModule(), targets.setUploadedMediaDialogComponent, targets.onLoadFailure);
         },
         async loadDraftListDialog() {
             applyLoadResult(

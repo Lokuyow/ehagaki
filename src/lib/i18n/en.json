@@ -202,6 +202,8 @@
     "retrySensitivePayload": "Retry"
   },
   "postHistory": {
+    "postsTab": "Posts",
+    "mediaTab": "Media",
     "fullScanTitle": "Fetch all from relays",
     "fullScanDescription": "Fetch and save as many of your past posts as possible from relays.\nClosing cancels fetching, but posts already saved will remain.",
     "fullScanStart": "Start fetching",
@@ -238,9 +240,9 @@
       "bodyStatus": "This was not a communication error, so eHagaki shows the relay as Completed."
     },
     "sensitivePayloadDeletionOmitted": "Deletion was requested for the post, but its body payload could not be verified and was not included in the deletion request.",
-    "open": "Open post history",
-    "title": "Post History",
-    "description": "Local history of events successfully posted from eHagaki.",
+    "open": "History",
+    "title": "History",
+    "description": "View post history and uploaded images and videos.",
     "search": "Search",
     "openMenu": "Open post history menu",
     "showSearch": "Search",
@@ -281,7 +283,7 @@
     "repairChildInteractionsAdded": "{count} child interactions repaired",
     "repairNoChanges": "No additions",
     "repairFetchFailed": "Fetch failed",
-    "export": "Export JSONL",
+    "export": "Export posts as JSONL",
     "exportLoading": "Loading JSONL data...",
     "exportVerifying": "Verifying unverified data... {processed}/{total}",
     "exportCreating": "Creating JSONL file...",

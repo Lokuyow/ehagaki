@@ -20,7 +20,7 @@
         swNeedRefresh: boolean;
         onShowLoginDialog: () => void;
         onPreloadPostHistoryDialog?: () => void;
-        onOpenPostHistoryDialog: () => void;
+        onOpenPostHistoryDialog: (trigger?: HTMLElement) => void;
         onOpenSettingsDialog: () => void;
         onOpenLogoutDialog: () => void;
     }
@@ -173,7 +173,7 @@
                         onmouseenter={handlePostHistoryIntent}
                         onfocus={handlePostHistoryIntent}
                         onpointerdown={handlePostHistoryIntent}
-                        onClick={onOpenPostHistoryDialog}
+                        onClick={(event) => onOpenPostHistoryDialog(event.currentTarget as HTMLElement)}
                         ariaLabel={$_("postHistory.open")}
                     >
                         <div class="post-history-icon svg-icon" aria-hidden="true"></div>

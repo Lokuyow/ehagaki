@@ -10,7 +10,6 @@ function createBooleanStore(getValue: () => boolean, setValue: (value: boolean) 
 let showLogin = $state(false);
 let showLogout = $state(false);
 let showSettings = $state(false);
-let showUploadedMedia = $state(false);
 let showWelcome = $state(false);
 let showAddAccount = $state(false);
 let showPostHistory = $state(false);
@@ -21,7 +20,6 @@ export const showLoginDialogStore = createBooleanStore(() => showLogin, (value) 
 export const showLogoutDialogStore = createBooleanStore(() => showLogout, (value) => { showLogout = value; });
 
 export const showSettingsDialogStore = createBooleanStore(() => showSettings, (value) => { showSettings = value; });
-export const showUploadedMediaDialogStore = createBooleanStore(() => showUploadedMedia, (value) => { showUploadedMedia = value; });
 
 export const showWelcomeDialogStore = createBooleanStore(() => showWelcome, (value) => { showWelcome = value; });
 
@@ -42,7 +40,6 @@ export function isAnyDialogOpen(): boolean {
     return showLogin ||
         showLogout ||
         showSettings ||
-        showUploadedMedia ||
         showWelcome ||
         showAddAccount ||
         showPostHistory ||

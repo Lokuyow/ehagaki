@@ -110,7 +110,7 @@ describe('FooterComponent', () => {
 
         renderFooter();
 
-        expect(screen.queryByRole('button', { name: '投稿履歴を開く' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '履歴' })).toBeNull();
         expect(screen.getByText('共有メディアエラー')).toBeTruthy();
     });
 
@@ -149,7 +149,7 @@ describe('FooterComponent', () => {
 
         renderFooter({ onOpenPostHistoryDialog });
 
-        const button = screen.getByRole('button', { name: '投稿履歴を開く' });
+        const button = screen.getByRole('button', { name: '履歴' });
         expect(button.className).toContain('post-history-btn');
         expect(button.querySelector('.post-history-icon')).toBeTruthy();
 
@@ -166,7 +166,7 @@ describe('FooterComponent', () => {
             button.classList.contains('footer-setting-shortcut-button'),
         );
         expect(shortcuts).toHaveLength(2);
-        const history = screen.getByRole('button', { name: '投稿履歴を開く' });
+        const history = screen.getByRole('button', { name: '履歴' });
         expect(shortcuts[0].getAttribute('aria-label')).toBe('言語: 日本語');
         expect(shortcuts[1].getAttribute('aria-label')).toBe('画像品質: 中');
         expect(shortcuts[0].compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -223,7 +223,7 @@ describe('FooterComponent', () => {
 
         renderFooter({ onPreloadPostHistoryDialog });
 
-        const button = screen.getByRole('button', { name: '投稿履歴を開く' });
+        const button = screen.getByRole('button', { name: '履歴' });
 
         await fireEvent.mouseEnter(button);
         await fireEvent.focus(button);
@@ -235,7 +235,7 @@ describe('FooterComponent', () => {
     it('未認証なら情報表示なしでも投稿履歴ボタンを表示しない', () => {
         renderFooter({ isAuthenticated: false });
 
-        expect(screen.queryByRole('button', { name: '投稿履歴を開く' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '履歴' })).toBeNull();
     });
 
     it('プロフィールボタンは初期化中・読込中・読込済みでローカライズされた名前を持つ', async () => {

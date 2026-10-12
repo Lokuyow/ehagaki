@@ -2753,9 +2753,11 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
                 grandParentEmojiUrl,
+                { signal: expect.any(AbortSignal) },
             );
             expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
                 parentReplyEmojiUrl,
+                { signal: expect.any(AbortSignal) },
             );
             expect(screen.getByRole('img', { name: ':grand:' })).toBeTruthy();
             expect(screen.getByRole('img', { name: ':child:' })).toBeTruthy();
@@ -3689,6 +3691,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
                 emojiUrl,
+                { signal: expect.any(AbortSignal) },
             );
             expect(document.querySelector('.post-preview-reaction-emoji-placeholder')).toBeTruthy();
             expect(screen.queryByRole('img', { name: ':blobcat:' })).toBeNull();
@@ -3777,6 +3780,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
                 emojiUrl,
+                { signal: expect.any(AbortSignal) },
             );
             expect(screen.getByRole('img', { name: ':party:' })).toBeTruthy();
             const failedEmoji = document.querySelector('.post-preview-reaction-emoji-failed');

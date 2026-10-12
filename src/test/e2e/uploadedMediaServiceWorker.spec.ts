@@ -15,6 +15,7 @@ async function fixture(base: "/" | "/ehagaki/") {
     const directory = resolve("node_modules/.cache/sw-update", base === "/" ? "root" : "pages");
     const counts = new Map<string, number>();
     let offline = false, deleted = false, workerVersion = 0, legacy = false;
+    let holdDelete = false, deleteRelease: (() => void) | null = null;
     let video = Buffer.from([]), videoMime = "video/webm", videoExtension = "webm";
     const held = new Map<string, () => void>();
     const media = createServer((request, response) => {
@@ -36,7 +37,11 @@ async function fixture(base: "/" | "/ehagaki/") {
             response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
             response.end(JSON.stringify(url.searchParams.has("cursor") ? [] : descriptors)); return;
         }
-        if (request.method === "DELETE") { deleted = true; response.writeHead(204).end(); return; }
+        if (request.method === "DELETE") {
+            const finish = () => { deleted = true; response.writeHead(204).end(); deleteRelease = null; };
+            if (holdDelete) deleteRelease = finish; else finish();
+            return;
+        }
         const finish = () => {
             if (url.pathname.includes(videoHash) || url.pathname.includes(secondVideoHash)) {
                 const match = request.headers.range?.match(/bytes=(\d+)-(\d*)/);
@@ -78,7 +83,9 @@ async function fixture(base: "/" | "/ehagaki/") {
         setOffline(value: boolean) { offline = value; }, setLegacy(value: boolean) { legacy = value; workerVersion++; },
         setVideo(bytes: number[], mime: string) { video = Buffer.from(bytes); videoMime = mime; videoExtension = mime.includes("mp4") ? "mp4" : "webm"; },
         release() { [...held.values()].forEach((finish) => finish()); },
-        async close() { this.release(); for (const server of [app, media]) { server.closeAllConnections(); await new Promise<void>((done) => server.close(() => done())); } },
+        holdDelete() { holdDelete = true; },
+        releaseDelete() { holdDelete = false; deleteRelease?.(); },
+        async close() { this.releaseDelete(); this.release(); for (const server of [app, media]) { server.closeAllConnections(); await new Promise<void>((done) => server.close(() => done())); } },
     };
 }
 async function control(page: Page, f: Awaited<ReturnType<typeof fixture>>) {
@@ -188,7 +195,7 @@ for (const base of ["/", "/ehagaki/"] as const) {
             expect(await showImage(page, f.proxy())).toBe(true);
         } finally { await f.close(); }
     });
-    test(`${base} settings media UI: lazy video, confirmation, responsive layout, focus and back`, async ({ page, context }, testInfo) => {
+    test(`${base} history media UI: lazy video, confirmation, responsive layout, focus and back`, async ({ page, context }, testInfo) => {
         const f = await fixture(base), key = generateSecretKey(), pubkey = getPublicKey(key);
         try {
             await page.exposeFunction("signFixtureEvent", (event: EventTemplate) => finalizeEvent(event, key));
@@ -218,12 +225,11 @@ for (const base of ["/", "/ehagaki/"] as const) {
                     capabilities: { maxUploadSize: null, supportedMimeTypes: [], supportsDelete: false, supportsList: false, supportsMirror: false, supportsMediaOptimization: false, authRequired: true, source: "preset" } });
                 await new Promise<void>((done, reject) => { transaction.oncomplete = () => done(); transaction.onerror = () => reject(transaction.error); }); database.close();
             }, { server: f.mediaOrigin, pubkey });
-            await page.locator(".settings-btn").click();
-            await expect(page.locator(".upload-panel")).toHaveCount(0);
-            const entry = page.getByRole("button", { name: "メディア", exact: true });
-            expect(await entry.evaluate((node) => node.closest(".upload-destination-section"))).toBeNull();
+            await page.reload();
+            const entry = page.getByRole("button", { name: "履歴", exact: true });
             await entry.focus(); await page.keyboard.press("Enter");
-            const dialog = page.getByRole("dialog", { name: "メディア", exact: true });
+            const dialog = page.getByRole("dialog", { name: "履歴", exact: true });
+            await dialog.getByRole("tab", { name: "メディア", exact: true }).click();
             const footerClose = dialog.getByRole("button", { name: "閉じる", exact: true });
             await expect(footerClose).toHaveText("");
             await expect(footerClose.locator(".svg-icon")).toBeVisible();
@@ -242,8 +248,8 @@ for (const base of ["/", "/ehagaki/"] as const) {
                 await page.emulateMedia({ colorScheme });
                 await expect.poll(() => page.locator("html").evaluate((node) => getComputedStyle(node).colorScheme)).toBe(colorScheme);
                 const colors = await dialog.evaluate((node) => ({
-                    media: getComputedStyle(node).backgroundColor,
-                    settings: getComputedStyle(document.querySelector(".settings-dialog")!).backgroundColor,
+                    media: getComputedStyle(node.querySelector(".uploaded-media-content")!).backgroundColor,
+                    settings: getComputedStyle(node).backgroundColor,
                 }));
                 expect(colors.media).not.toBe(colors.settings);
                 expect(colors.media).not.toBe("rgba(0, 0, 0, 0)");
@@ -301,13 +307,27 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await video.scrollIntoViewIfNeeded();
             await page.screenshot({ path: testInfo.outputPath("uploaded-media-video-360.png") });
             const released = await video.elementHandle();
-            await dialog.getByRole("button", { name: "動画を開く" }).click();
+            await expect(video).toHaveAttribute("src", new RegExp(videoHash));
+            await dialog.locator('article[data-media-kind="video"]').nth(1).getByRole("button", { name: "動画を開く" }).click();
             await expect(video).toHaveCount(1);
             expect(await released!.evaluate((node: HTMLVideoElement) => node.paused && !node.hasAttribute("src"))).toBe(true);
             await expect(video).toHaveAttribute("src", new RegExp(secondVideoHash));
             await dialog.getByRole("button", { name: "動画を閉じる" }).click({ timeout: 5000 });
             await expect(video).toHaveCount(0);
             expect((await keys(page)).some((url) => url.includes(videoHash))).toBe(false);
+            await dialog.getByRole("button", { name: "動画を開く" }).first().click();
+            const suspendedVideo = await video.elementHandle();
+            const listRequests = () => [...f.counts].filter(([url]) => url.startsWith("GET /list/" + pubkey))
+                .reduce((total, [, count]) => total + count, 0);
+            const listsBeforeSuspend = listRequests();
+            expect(listsBeforeSuspend).toBeGreaterThan(0);
+            await dialog.getByRole("tab", { name: "投稿", exact: true }).click();
+            await expect(dialog.locator(".media-management")).toHaveCount(0);
+            expect(await suspendedVideo!.evaluate((node: HTMLVideoElement) => node.paused && !node.hasAttribute("src"))).toBe(true);
+            await dialog.getByRole("tab", { name: "メディア", exact: true }).click();
+            await expect(dialog.locator("article")).toHaveCount(3);
+            await expect(video).toHaveCount(0);
+            expect(listRequests()).toBe(listsBeforeSuspend);
             const remove = dialog.locator('article[data-media-kind="image"]').getByRole("button", { name: "このサーバーから削除する" });
             await expect(remove).toHaveText("");
             const iconUrl = await remove.locator(".media-delete-icon").evaluate((node) => getComputedStyle(node).maskImage);
@@ -319,14 +339,22 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await expect(confirm).toContainText(f.mediaOrigin);
             await confirm.getByRole("button", { name: "キャンセル" }).click();
             await expect(remove).toBeFocused(); expect(f.counts.get("DELETE /" + imageHash)).toBeUndefined();
+            f.holdDelete();
             await remove.click(); await confirm.getByRole("button", { name: "このサーバーから削除する" }).click();
+            await expect.poll(() => f.counts.get("DELETE /" + imageHash)).toBe(1);
+            await expect(dialog.getByRole("tab", { name: "投稿", exact: true })).toBeDisabled();
+            await expect(footerClose).toBeDisabled();
+            await expect(dialog.getByRole("combobox")).toBeDisabled();
+            await page.keyboard.press("Escape"); await expect(confirm).toBeVisible();
+            await page.goBack(); await expect(confirm).toBeVisible(); await expect(dialog).toBeVisible();
+            f.releaseDelete();
             await expect(dialog.locator("article")).toHaveCount(2);
             await expect.poll(() => keys(page)).not.toContain(f.remote());
             expect(f.counts.get("DELETE /" + imageHash)).toBe(1);
             await page.screenshot({ path: testInfo.outputPath("uploaded-media-360.png") });
             await page.evaluate(() => history.back());
             await expect(dialog).toBeHidden(); await expect(entry).toBeFocused();
-            await expect(page.locator(".settings-dialog")).toBeVisible();
+            await expect(page.locator(".settings-dialog")).toHaveCount(0);
             await context.setOffline(true);
             await entry.click(); await expect(dialog).toBeVisible(); await context.setOffline(false);
             await footerClose.click(); await expect(dialog).toBeHidden(); await expect(entry).toBeFocused();
@@ -341,9 +369,9 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await expect(frame.locator(".settings-btn")).toBeVisible();
             const frameStart = frame.getByRole("button", { name: "はじめる" });
             if (await frameStart.isVisible()) await frameStart.click();
-            await frame.locator(".settings-btn").click();
-            await frame.getByRole("button", { name: "メディア", exact: true }).click();
-            const embeddedDialog = frame.getByRole("dialog", { name: "メディア", exact: true });
+            await frame.getByRole("button", { name: "履歴", exact: true }).click();
+            const embeddedDialog = frame.getByRole("dialog", { name: "履歴", exact: true });
+            await embeddedDialog.getByRole("tab", { name: "メディア", exact: true }).click();
             await embeddedDialog.getByRole("combobox").selectOption("fixture");
             await expect(embeddedDialog.locator("article")).toHaveCount(2);
             expect(await embeddedDialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);

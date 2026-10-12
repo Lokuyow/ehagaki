@@ -11,6 +11,8 @@ type CopyPointerPosition = {
 };
 
 export function usePostHistoryCopyNevent() {
+    let generation = 0;
+    const failureTimers = new Set<ReturnType<typeof setTimeout>>();
     let copyState = $state<Record<string, "failed" | undefined>>({});
     let showCopyFloatingMessage = $state(false);
     let copyFloatingMessageX = $state(0);
@@ -85,12 +87,14 @@ export function usePostHistoryCopyNevent() {
         post: PostHistoryRecord,
         event: Event,
     ): Promise<void> {
+        const epoch = generation;
         const messagePosition = getFloatingMessagePosition(post, event);
         const nevent = buildNevent(post);
         const copied = nevent
             ? await tryCopyToClipboard(nevent, "nevent", navigator, window)
             : false;
 
+        if (epoch !== generation) return;
         if (copied) {
             copyState = {
                 ...copyState,
@@ -105,15 +109,20 @@ export function usePostHistoryCopyNevent() {
             [post.eventId]: "failed",
         };
 
-        setTimeout(() => {
+        const timer = setTimeout(() => {
+            failureTimers.delete(timer);
+            if (epoch !== generation) return;
             copyState = {
                 ...copyState,
                 [post.eventId]: undefined,
             };
         }, 1800);
+        failureTimers.add(timer);
     }
 
     function resetState(): void {
+        generation++;
+        failureTimers.forEach(clearTimeout); failureTimers.clear();
         copyState = {};
         hideCopyFloatingMessage();
     }

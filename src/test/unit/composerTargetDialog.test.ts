@@ -1165,11 +1165,12 @@ describe("ComposerTargetDialog", () => {
 
         expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
             emojiUrl,
+            { signal: expect.any(AbortSignal) },
         );
         expect(screen.getByRole("img", { name: ":party:" })).toBeTruthy();
     });
 
-    it("投稿履歴形式のフッターへ日時・返信・引用・限定メニューだけを表示する", async () => {
+    it("投稿履歴形式のフッターに日時・返信・引用・リアクション・限定メニューを表示する", async () => {
         render(ComposerTargetDialog, {
             show: true,
             onClose: vi.fn(),
@@ -1189,6 +1190,7 @@ describe("ComposerTargetDialog", () => {
         expect(document.querySelector(".post-preview-date")?.textContent).toBeTruthy();
         const replyButton = screen.getByRole("button", { name: "リプライ" });
         const quoteButton = screen.getByRole("button", { name: "引用" });
+        const reactionButton = screen.getByRole("button", { name: "reaction.action" });
         const footerActions = document.querySelector(
             ".post-preview-footer-actions",
         );
@@ -1207,6 +1209,7 @@ describe("ComposerTargetDialog", () => {
 
         expect(replyGroup?.contains(replyButton)).toBe(true);
         expect(replyGroup?.contains(quoteButton)).toBe(true);
+        expect(replyGroup?.contains(reactionButton)).toBe(true);
         expect(actionCells).toHaveLength(3);
         expect(actionCells?.[0].classList.contains("post-preview-reply-action-cell"))
             .toBe(true);
@@ -1214,6 +1217,7 @@ describe("ComposerTargetDialog", () => {
             .toBe(true);
         expect(actionCells?.[2].classList.contains("post-preview-reaction-action-cell"))
             .toBe(true);
+        expect(actionCells?.[2].contains(reactionButton)).toBe(true);
         expect(repliesSlot?.childElementCount).toBe(0);
         expect(reactionSlot?.parentElement).toBe(actionCells?.[2]);
         expect(reactionSlot?.childElementCount).toBe(0);
@@ -1352,7 +1356,7 @@ describe("ComposerTargetDialog", () => {
         ).toHaveLength(2));
         expect(document.querySelectorAll(".post-preview-reaction-actor")).toHaveLength(2);
         expect(screen.getByRole("img", { name: ":party:" })).toBeTruthy();
-        expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(emojiUrl);
+        expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(emojiUrl, { signal: expect.any(AbortSignal) });
         expect(screen.getByRole("button", { name: "リプライ" })).toBeTruthy();
         expect(screen.getByRole("button", { name: "引用" })).toBeTruthy();
 

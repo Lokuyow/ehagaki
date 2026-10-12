@@ -106,6 +106,7 @@ type PostHistoryCurrentViewRefetchMessageValues = Record<
 
 interface UsePostHistoryListingParams {
     getShow: () => boolean;
+    getSessionOpen?: () => boolean;
     getPubkeyHex: () => string | null | undefined;
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
@@ -641,6 +642,7 @@ export function clearPersistedPostHistoryListingSnapshotForPubkey(
 
 export function usePostHistoryListing({
     getShow,
+    getSessionOpen = getShow,
     getPubkeyHex,
     getRxNostr,
     getRelayConfig,
@@ -1218,6 +1220,22 @@ export function usePostHistoryListing({
         searchResultStatus = "idle";
     }
 
+    function suspend(): void {
+        coverageGeneration++;
+        cancelCurrentSync();
+        cancelCurrentViewRefetch();
+        invalidatePendingLoadRequests();
+        invalidateTotalCountRequest();
+        initialLocalLoadGeneration++;
+        if (initialLocalLoadStatus === "loading") {
+            initialLocalLoadStatus = "idle";
+            hasAttemptedInitialLocalLoad = false;
+        }
+        state.syncStatus = "idle";
+        clearCurrentViewRefetchFeedback();
+        clearSyncStatusMessageClearTimeout();
+        relationRepairCoordinator.resetOlderRevealRepairContext();
+    }
     function prepareForClose(): boolean {
         coverageGeneration += 1;
         const shouldClearAllSessionScrollState = discardSparseListingRestoreState();
@@ -4914,11 +4932,8 @@ export function usePostHistoryListing({
     });
 
     $effect(() => {
-        if (getShow()) {
-            return;
-        }
-
-        resetState();
+        if (getSessionOpen()) return;
+        untrack(resetState);
     });
 
     $effect(() => {
@@ -5273,6 +5288,7 @@ export function usePostHistoryListing({
             return currentViewRefetchStatusMessageValues;
         },
         prepareForClose,
+        suspend,
         cancelCurrentSync,
         cancelCurrentViewRefetch,
         loadOlder,

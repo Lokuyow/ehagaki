@@ -1,3 +1,4 @@
+import { onDestroy, untrack } from "svelte";
 import {
     preloadCustomEmojiImageWithMeta,
     type PreloadedCustomEmojiImageResult,
@@ -12,12 +13,14 @@ type EmojiImageMetaSnapshot = Pick<
 
 interface UsePostHistoryEmojiStateParams {
     getShow: () => boolean;
+    getSessionOpen?: () => boolean;
     getEmojiUrls: () => string[];
     onStateChanged?: () => void | Promise<void>;
 }
 
 export function usePostHistoryEmojiState({
     getShow,
+    getSessionOpen = getShow,
     getEmojiUrls,
     onStateChanged = () => undefined,
 }: UsePostHistoryEmojiStateParams) {
@@ -27,6 +30,8 @@ export function usePostHistoryEmojiState({
     let emojiImageMetaByUrl = $state<
         Record<string, EmojiImageMetaSnapshot | undefined>
     >({});
+    let generation = 0;
+    let abort = new AbortController();
     const loadingEmojiUrls = new Set<string>();
 
     function syncEmojiLoadState(urls: string[]): string[] {
@@ -123,8 +128,10 @@ export function usePostHistoryEmojiState({
             return;
         }
 
+        const epoch = generation;
         try {
             const records = await customEmojiImageMetaRepository.getMany(urls);
+            if (!getShow() || epoch !== generation) return;
             const foundUrls = Object.keys(records);
             if (foundUrls.length === 0) {
                 return;
@@ -157,7 +164,9 @@ export function usePostHistoryEmojiState({
     }
 
     async function loadPostHistoryEmoji(url: string): Promise<void> {
-        const result = await preloadCustomEmojiImageWithMeta(url);
+        const epoch = generation;
+        const result = await preloadCustomEmojiImageWithMeta(url, { signal: abort.signal });
+        if (!getShow() || epoch !== generation) return;
         loadingEmojiUrls.delete(url);
 
         if (!getEmojiUrls().includes(url)) {
@@ -204,7 +213,13 @@ export function usePostHistoryEmojiState({
         return leftKeys.every((key) => left[key] === right[key]);
     }
 
+    function suspend(): void {
+        generation++; abort.abort(); abort = new AbortController();
+        loadingEmojiUrls.clear();
+        emojiLoadStateByUrl = Object.fromEntries(Object.entries(emojiLoadStateByUrl).filter(([, state]) => state !== "loading"));
+    }
     function resetState(): void {
+        generation++; abort.abort(); abort = new AbortController();
         emojiLoadStateByUrl = {};
         loadingEmojiUrls.clear();
     }
@@ -238,7 +253,10 @@ export function usePostHistoryEmojiState({
         void onStateChanged();
     });
 
+    $effect(() => { if (!getSessionOpen()) untrack(resetState); });
+    onDestroy(() => abort.abort());
     return {
+        suspend,
         get emojiLoadStateByUrl() {
             return emojiLoadStateByUrl;
         },

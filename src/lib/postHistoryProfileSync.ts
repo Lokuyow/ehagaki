@@ -12,6 +12,7 @@ interface PostHistoryProfileCache {
             additionalRelays?: string[];
             forceRefresh?: boolean;
             allowBackgroundRefresh?: boolean;
+            signal?: AbortSignal;
         },
     ): Promise<ProfileData | null>;
     subscribe(
@@ -28,6 +29,7 @@ interface ActivePostHistoryProfileSync {
     pending: Promise<void> | null;
     refreshQueued: boolean;
     disposed: boolean;
+    abort: AbortController;
 }
 
 export interface PostHistoryProfileSyncCoordinator {
@@ -86,7 +88,7 @@ export function createPostHistoryProfileSyncCoordinator({
         active: ActivePostHistoryProfileSync,
         forceRefresh: boolean,
     ): void => {
-        if (active.pending || active.disposed || disposed) {
+        if (!getShow() || active.pending || active.disposed || disposed) {
             return;
         }
 
@@ -96,10 +98,11 @@ export function createPostHistoryProfileSyncCoordinator({
             additionalRelays: requestedRelayHints,
             forceRefresh,
             allowBackgroundRefresh: true,
+            signal: active.abort.signal,
         }).then((profile) => {
             publish(active, profile);
         }).catch((error) => {
-            logger.error("投稿履歴プロフィールの取得に失敗:", error);
+            if (!active.abort.signal.aborted) logger.error("投稿履歴プロフィールの取得に失敗:", error);
         }).finally(() => {
             if (activeByPubkey.get(active.pubkey) !== active) {
                 return;
@@ -117,7 +120,7 @@ export function createPostHistoryProfileSyncCoordinator({
         pubkey: string,
         relayHints: string[] = [],
     ): ProfileData | null => {
-        if (!pubkey || disposed) {
+        if (!getShow() || !pubkey || disposed) {
             return null;
         }
 
@@ -149,6 +152,7 @@ export function createPostHistoryProfileSyncCoordinator({
             pending: null,
             refreshQueued: false,
             disposed: false,
+            abort: new AbortController(),
         };
         activeByPubkey.set(pubkey, active);
         active.unsubscribe = profileCache.subscribe(pubkey, (profile) => {
@@ -177,6 +181,7 @@ export function createPostHistoryProfileSyncCoordinator({
     const reset = (): void => {
         for (const active of activeByPubkey.values()) {
             active.disposed = true;
+            active.abort.abort();
             active.unsubscribe();
         }
         activeByPubkey.clear();

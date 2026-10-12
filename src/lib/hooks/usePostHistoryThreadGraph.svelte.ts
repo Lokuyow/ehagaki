@@ -1,4 +1,4 @@
-import { onDestroy } from "svelte";
+import { onDestroy, untrack } from "svelte";
 import type { RxNostr } from "rx-nostr";
 import {
     createPostHistoryRelatedTargetResolver,
@@ -156,6 +156,7 @@ export interface PostHistoryThreadGraphAnchorState {
 
 interface UsePostHistoryThreadGraphParams {
     getShow: () => boolean;
+    getSessionOpen?: () => boolean;
     getPubkeyHex: () => string | null | undefined;
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
@@ -297,6 +298,7 @@ export function resolveValidPostHistoryParentNode(input: {
 
 export function usePostHistoryThreadGraph({
     getShow,
+    getSessionOpen = getShow,
     getPubkeyHex,
     getRxNostr,
     getRelayConfig,
@@ -2986,6 +2988,8 @@ export function usePostHistoryThreadGraph({
     });
 
     function cancelCurrentGraphFetches(): void {
+        taskTracker.incrementRequestId();
+        resolver.invalidateScope(parentResolverScopeKey);
         taskTracker.cancelAndClearFetchTasks();
         taskTracker.clearChildRequestTokens();
         childPrefetchReservationKeys.clear();
@@ -2994,6 +2998,7 @@ export function usePostHistoryThreadGraph({
             profileSync.reset();
         }
         parentLoadingIndicator.clearAll();
+        expansionByAnchorNodeKey = Object.fromEntries(Object.entries(expansionByAnchorNodeKey).map(([key, expansion]) => [key, { ...expansion, loadingParent: false, loadingChildren: false, revalidatingParent: false, revalidatingChildren: false, showParentLoadingIndicator: false }]));
     }
 
     function resetState(): void {
@@ -3015,8 +3020,8 @@ export function usePostHistoryThreadGraph({
     }
 
     $effect(() => {
-        if (!getShow()) {
-            resetState();
+        if (!getSessionOpen()) {
+            untrack(resetState);
         }
     });
 

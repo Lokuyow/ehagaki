@@ -31,6 +31,8 @@ export interface UploadMediaManagementView {
     destinations: UploadDestination[];
     selectedId: string | null;
     current: UploadMediaDestinationView | null;
+    configuring?: boolean;
+    configurationError?: UploadMediaError | null;
 }
 export const emptyUploadMediaManagementView = (): UploadMediaManagementView => ({ destinations: [], selectedId: null, current: null });
 
@@ -41,6 +43,7 @@ interface DestinationState extends UploadMediaDestinationView {
     deleteDispatched: boolean;
 }
 interface Dependencies {
+    loadDestinations?: (pubkey: string) => Promise<UploadDestination[]>;
     auth?: AuthStateSource;
     fetch?: typeof fetch;
     getAdapter?: (protocol: UploadDestination["protocol"]) => UploadProtocolAdapter;
@@ -58,6 +61,25 @@ export class UploadMediaManagementController {
     private pubkey: string | null = null;
     private epoch = 0;
     private selectedId: string | null = null;
+    private configuring = false;
+    private configurationError: UploadMediaError | null = null;
+    private configurationGeneration = 0;
+    private savedDestinationsRead = false;
+    private active = true;
+    get busy(): boolean { return [...this.states.values()].some(state => !!state.deletingId); }
+    activate(): void { this.active = true; }
+    suspend(): void {
+        this.active = false;
+        this.epoch++;
+        this.configuring = false;
+        for (const state of this.states.values()) {
+            state.abort?.abort();
+            state.generation++;
+            if (state.deletingId && state.deleteDispatched) { state.error = new UploadMediaError("unknownDelete"); state.needsRefresh = true; state.nextPage = null; }
+            state.loading = false; state.deletingId = null; state.deleteDispatched = false;
+        }
+        this.emit();
+    }
     constructor(private readonly deps: Dependencies) {}
 
     private emit(): void {
@@ -70,10 +92,15 @@ export class UploadMediaManagementController {
             nextPage: current.nextPage, context: current.context, needsRefresh: current.needsRefresh,
             deletingId: current.deletingId, notice: current.notice,
         } : null;
-        this.deps.onChange({ destinations: [...this.destinations], selectedId: this.selectedId, current: view });
+        this.deps.onChange({ destinations: [...this.destinations], selectedId: this.selectedId, current: view,
+            configuring: this.configuring, configurationError: this.configurationError });
     }
     invalidate(): void {
         this.epoch++;
+        this.configurationGeneration++;
+        this.configuring = false;
+        this.configurationError = null;
+        this.savedDestinationsRead = false;
         for (const state of this.states.values()) state.abort?.abort();
         this.states.clear();
         this.destinations = [];
@@ -81,9 +108,38 @@ export class UploadMediaManagementController {
         this.pubkey = null;
         this.emit();
     }
+    async configureSaved(pubkey: string | null): Promise<void> {
+        if (!this.active) return;
+        const auth = (this.deps.auth ?? authState).value;
+        if (pubkey && (!auth.isAuthenticated || auth.pubkey !== pubkey)) return;
+        if (pubkey !== this.pubkey) { this.invalidate(); this.pubkey = pubkey; }
+        if (!pubkey) { this.emit(); return; }
+        if (this.savedDestinationsRead) {
+            if (this.selectedId && !this.states.get(this.selectedId)?.loaded) void this.load();
+            return;
+        }
+        if (this.configuring) return;
+        const epoch = this.epoch, generation = ++this.configurationGeneration;
+        const current = () => this.active && epoch === this.epoch && generation === this.configurationGeneration
+            && this.pubkey === pubkey && (this.deps.auth ?? authState).value.isAuthenticated
+            && (this.deps.auth ?? authState).value.pubkey === pubkey;
+        this.configuring = true; this.configurationError = null; this.emit();
+        try {
+            const destinations = await this.deps.loadDestinations?.(pubkey) ?? [];
+            if (current()) this.configure(pubkey, destinations);
+        } catch {
+            if (current()) this.configurationError = new UploadMediaError("invalidDestination");
+        } finally {
+            if (current()) { this.configuring = false; this.emit(); }
+        }
+    }
     configure(pubkey: string | null, destinations: UploadDestination[]): void {
         if (pubkey !== this.pubkey) this.invalidate();
         this.pubkey = pubkey;
+        this.configurationGeneration++;
+        this.configuring = false;
+        this.configurationError = null;
+        this.savedDestinationsRead = true;
         if (!pubkey) { this.emit(); return; }
         this.destinations = destinations.filter((item) => item.protocol !== "custom-http")
             .map((destination) => resolveUploadDestinationForUse(destination, {
@@ -115,7 +171,7 @@ export class UploadMediaManagementController {
         if (this.selectedId && !this.states.get(this.selectedId)?.loaded && !this.states.get(this.selectedId)?.loading) void this.load();
     }
     select(id: string): void {
-        if (!this.states.has(id) || id === this.selectedId) return;
+        if (this.busy || !this.states.has(id) || id === this.selectedId) return;
         if (this.selectedId) {
             const old = this.states.get(this.selectedId);
             old?.abort?.abort();
@@ -141,7 +197,7 @@ export class UploadMediaManagementController {
         const pubkey = this.pubkey!;
         // Snapshot the destination before any signer/discovery wait.
         const destination = { ...state.destination };
-        const current = () => (this.deps.auth ?? authState).value.isAuthenticated
+        const current = () => this.active && (this.deps.auth ?? authState).value.isAuthenticated
             && (this.deps.auth ?? authState).value.pubkey === pubkey
             && this.epoch === epoch && this.pubkey === pubkey
             && this.states.get(destination.id) === state && state.generation === generation
@@ -162,7 +218,7 @@ export class UploadMediaManagementController {
     }
     async load(append = false): Promise<void> {
         const state = this.selectedId ? this.states.get(this.selectedId) : undefined;
-        if (!state || !this.pubkey || state.loading || state.deletingId) return;
+        if (!this.active || !state || !this.pubkey || state.loading || state.deletingId) return;
         if (state.error?.retryAt && Date.now() < state.error.retryAt) return;
         append = append && !state.needsRefresh && Boolean(state.nextPage);
         const operation = this.begin(state);
@@ -206,7 +262,7 @@ export class UploadMediaManagementController {
     async delete(itemId: string): Promise<boolean> {
         const state = this.selectedId ? this.states.get(this.selectedId) : undefined;
         const item = state?.items.find((entry) => entry.id === itemId);
-        if (!state || !item?.deleteId || !state.context || state.loading || state.deletingId || !this.pubkey) return false;
+        if (!this.active || !state || !item?.deleteId || !state.context || state.loading || state.deletingId || !this.pubkey) return false;
         const operation = this.begin(state);
         const hash = item.deleteId.sha256;
         const urls = item.kind === "image" ? [...new Set(state.items.filter((entry) =>

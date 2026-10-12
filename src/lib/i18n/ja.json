@@ -202,6 +202,8 @@
     "retrySensitivePayload": "再試行"
   },
   "postHistory": {
+    "postsTab": "投稿",
+    "mediaTab": "メディア",
     "fullScanTitle": "リレーから全件取得",
     "fullScanDescription": "リレーから、自分の過去の投稿をできるだけ取得して保存します。\n閉じると中止しますが、保存済みの投稿は残ります。",
     "fullScanStart": "取得開始",
@@ -238,9 +240,9 @@
       "bodyStatus": "通信エラーではないため、eHagaki では「完了」と表示しています。"
     },
     "sensitivePayloadDeletionOmitted": "投稿の削除をリクエストしましたが、本文payloadを確認できなかったため、本文の削除はリクエストできませんでした。",
-    "open": "投稿履歴を開く",
-    "title": "投稿履歴",
-    "description": "eHagaki で投稿に成功したイベントのローカル履歴です。",
+    "open": "履歴",
+    "title": "履歴",
+    "description": "投稿の履歴とアップロード済みの画像・動画を確認します。",
     "search": "検索",
     "openMenu": "投稿履歴メニューを開く",
     "showSearch": "検索",
@@ -281,7 +283,7 @@
     "repairChildInteractionsAdded": "子インタラクションを{count}件補完",
     "repairNoChanges": "追加なし",
     "repairFetchFailed": "取得失敗",
-    "export": "JSONLをエクスポート",
+    "export": "投稿をJSONLでエクスポート",
     "exportLoading": "JSONLを読み込み中...",
     "exportVerifying": "未検証データを検証中... {processed}/{total}",
     "exportCreating": "JSONLファイルを作成中...",

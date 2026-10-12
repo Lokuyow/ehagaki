@@ -1,13 +1,10 @@
 <script lang="ts">
     import { onDestroy, tick, untrack } from "svelte";
-    import { Dialog } from "bits-ui";
     import { _ } from "svelte-i18n";
-    import DialogWrapper from "./DialogWrapper.svelte";
     import ConfirmDialog from "./ConfirmDialog.svelte";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import UploadedMediaPreview from "./UploadedMediaPreview.svelte";
-    import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import { useUploadMediaManagement } from "../lib/hooks/useUploadMediaManagement.svelte";
     import { supportsUploadMediaImageCache } from "../lib/uploadMediaImageCacheClient";
     import { authState } from "../stores/authStore.svelte";
@@ -15,8 +12,13 @@
     import type { UploadedMediaItem } from "../lib/upload/mediaManagementTypes";
     import { resolveAppAssetUrl } from "../lib/appAssetUrl";
 
-    interface Props { show: boolean; onClose: () => void; returnFocus?: HTMLElement | null }
-    let { show, onClose, returnFocus = null }: Props = $props();
+    interface Props { show: boolean; onBusyChange?: (busy: boolean) => void }
+    let { show: active, onBusyChange = () => undefined }: Props = $props();
+    let suspended = $state(false);
+    let show = $derived(active && !suspended);
+    export function activate() { suspended = false; management.controller.activate(); }
+    export function suspend() { suspended = true; supportGeneration++; uiEpoch++; pending = null; activeVideo = null; management.controller.suspend(); }
+    export function isBusy() { return management.controller.busy; }
     const management = useUploadMediaManagement();
     const deleteIconUrl = resolveAppAssetUrl("icons/delete_forever_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     const refreshIconUrl = resolveAppAssetUrl("icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
@@ -31,6 +33,7 @@
     let uiEpoch = $state(0);
     let previousOwner: string | null = null;
 
+    $effect(() => { const enabled = active; untrack(() => enabled ? activate() : suspend()); });
     function formatSize(bytes: number) {
         const units = ["B", "KB", "MB", "GB", "TB"];
         let value = bytes, unit = 0;
@@ -51,23 +54,20 @@
         activeVideo = null;
         management.controller.invalidate();
     }
-    function close() {
-        invalidateSession();
-        onClose();
-        void tick().then(() => returnFocus?.focus({ preventScroll: true }));
-    }
-    useDialogHistory(() => show, () => { if (!pending) close(); });
     $effect(() => {
         const open = show;
         const account = authState.value;
         const destinations = uploadDestinationStore.value.destinations;
         untrack(() => {
-            if (!open) { supportGeneration++; invalidateSession(); cacheSupported = null; return; }
-            management.controller.configure(account.isAuthenticated ? account.pubkey : null, destinations);
+            if (!open) return;
+            management.controller.activate();
+            const pubkey = account.isAuthenticated ? account.pubkey : null;
+            if (destinations.length) management.controller.configure(pubkey, destinations);
+            else void management.controller.configureSaved(pubkey);
         });
     });
     $effect(() => {
-        if (!show) return;
+        if (!show || cacheSupported !== null) return;
         const generation = ++supportGeneration;
         void supportsUploadMediaImageCache().then((supported) => {
             if (generation === supportGeneration) cacheSupported = supported;
@@ -95,6 +95,7 @@
             if (activeVideo && !view?.items.some((item) => item.id === activeVideo)) activeVideo = null;
         });
     });
+    $effect(() => { onBusyChange(!!current?.deletingId); });
     onDestroy(() => { supportGeneration++; invalidateSession(); });
     function cancelConfirm() {
         const epoch = uiEpoch, trigger = deleteTrigger;
@@ -118,16 +119,21 @@
     }
 </script>
 
-<DialogWrapper open={show} onOpenChange={(open) => { if (!open) close(); }}
-    title={$_("uploadedMedia.title")} description={$_("uploadedMedia.description")} contentClass="uploaded-media-dialog" footerVariant="close-button">
+{#if show}
+<div class="uploaded-media-dialog uploaded-media-content">
     <div class="media-management">
         {#if !authState.value.isAuthenticated}
             <p class="media-status" role="status">{$_("uploadedMedia.errors.authentication")}</p>
+        {:else if management.value.configuring}
+            <LoadingPlaceholder showLoader text={true} />
+        {:else if management.value.configurationError}
+            <p class="media-status" role="alert">{$_("uploadedMedia.errors.invalidDestination")}</p>
+            <Button onClick={() => management.controller.configureSaved(authState.value.pubkey)}>{$_("uploadedMedia.refresh")}</Button>
         {:else if management.value.destinations.length === 0}
             <p class="media-status" role="status">{$_("uploadedMedia.noServers")}</p>
         {:else}
             <div class="media-toolbar">
-                <select aria-label={$_("uploadedMedia.server")} value={management.value.selectedId ?? ""}
+                <select aria-label={$_("uploadedMedia.server")} disabled={!!current?.deletingId} value={management.value.selectedId ?? ""}
                     onchange={(event) => management.controller.select(event.currentTarget.value)}>
                     {#each management.value.destinations as destination (destination.id)}
                         <option value={destination.id}>{destination.name}</option>
@@ -182,16 +188,8 @@
             {/if}
         {/if}
     </div>
-    {#snippet footer()}
-        <Dialog.Close>
-            {#snippet child({ props })}
-                <Button {...props} className="modal-close" shape="square" ariaLabel={$_("global.close")}>
-                    <span class="xmark-icon svg-icon" aria-hidden="true"></span>
-                </Button>
-            {/snippet}
-        </Dialog.Close>
-    {/snippet}
-</DialogWrapper>
+</div>
+
 {#key uiEpoch}
 <ConfirmDialog open={!!pending} onOpenChange={(open) => { if (!open) cancelConfirm(); }}
     title={$_("uploadedMedia.delete")} description={$_("uploadedMedia.confirmDescription")}
@@ -205,11 +203,10 @@
     {/if}
 </ConfirmDialog>
 {/key}
+{/if}
 
 <style>
-    :global(.dialog.uploaded-media-dialog) { background: var(--dialog-bg2); }
-    :global(.uploaded-media-dialog .dialog-content) { padding: 0; }
-    .xmark-icon { mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg"); }
+    .uploaded-media-content { background: var(--dialog-bg2); flex: 1; min-height: 0; overflow: auto; width: 100%; }
     .media-management { flex: none; width: 100%; min-width: 0; display: flex; flex-direction: column; }
     :global(.uploaded-media-dialog button), select { height: auto; min-height: 44px; max-width: 100%; padding: 8px 12px; }
     p { margin: 0; }

@@ -63,6 +63,7 @@ export default defineConfig({
                 '**/footerSettingShortcuts.spec.ts',
                 '**/postEditorSending.spec.ts',
                 '**/postHistoryDialog.spec.ts',
+                '**/historyTabs.spec.ts',
                 '**/postHistoryFullScan.spec.ts',
                 '**/postHistoryJsonlWorker.spec.ts',
                 '**/postRepost.spec.ts',
@@ -76,7 +77,7 @@ export default defineConfig({
         },
         {
             name: 'desktop-firefox',
-            testMatch: ['**/webComponentEmbed.spec.ts', '**/postRepost.spec.ts', '**/postHistoryJsonlWorker.spec.ts'],
+            testMatch: ['**/historyTabs.spec.ts', '**/webComponentEmbed.spec.ts', '**/postRepost.spec.ts', '**/postHistoryJsonlWorker.spec.ts'],
             use: {
                 ...devices['Desktop Firefox'],
             },

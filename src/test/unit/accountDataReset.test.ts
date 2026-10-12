@@ -24,6 +24,7 @@ describe("resetManagedAccountData", () => {
         const caches = createCachesMock();
 
         storage.setItem(STORAGE_KEYS.LOCALE, "ja");
+        storage.setItem(STORAGE_KEYS.HISTORY_ACTIVE_TAB, "media");
         storage.setItem(STORAGE_KEYS.NOSTR_ACCOUNTS, "[]");
         storage.setItem(STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX + "pubkey1", "nsec");
         storage.setItem(STORAGE_KEYS.NOSTR_NIP46_SESSION_PREFIX + "pubkey1", "{}");
@@ -39,6 +40,7 @@ describe("resetManagedAccountData", () => {
         });
 
         expect(storage.getItem(STORAGE_KEYS.LOCALE)).toBeNull();
+        expect(storage.getItem(STORAGE_KEYS.HISTORY_ACTIVE_TAB)).toBeNull();
         expect(storage.getItem(STORAGE_KEYS.NOSTR_ACCOUNTS)).toBeNull();
         expect(storage.getItem(STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX + "pubkey1")).toBeNull();
         expect(storage.getItem(STORAGE_KEYS.NOSTR_NIP46_SESSION_PREFIX + "pubkey1")).toBeNull();

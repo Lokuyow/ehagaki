@@ -569,6 +569,9 @@ vi.mock('../../lib/utils/nostrUtils', async () => {
 });
 
 import PostHistoryDialogComponent from '../../components/PostHistoryDialog.svelte';
+import PostHistoryTabContentComponent from '../../components/PostHistoryTabContent.svelte';
+// Transform the extracted content before timed component assertions; production still imports it lazily.
+export const PostHistoryTabContent = PostHistoryTabContentComponent;
 
 export const PostHistoryDialog = PostHistoryDialogComponent;
 

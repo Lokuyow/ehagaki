@@ -27,6 +27,12 @@
     import { createPostHistoryCoverageHarness } from "./postHistoryCoverageHarness";
     import { createPostHistoryFullScanHarness } from "./postHistoryFullScanHarness";
 
+    const isHistoryTabsScenario = new URLSearchParams(location.search).has("history-tabs");
+    let historyTrigger: HTMLButtonElement | null = $state(null);
+    const tabCounters = { localReads: 0, relayRequests: 0 };
+    const tabRuntime = { use: () => { tabCounters.relayRequests++; return { subscribe: () => ({ unsubscribe: () => undefined }) }; } } as unknown as RxNostr;
+    const defaultRuntime = { use: () => ({ subscribe: () => ({ unsubscribe: () => undefined }) }) } as unknown as RxNostr;
+    if (isHistoryTabsScenario) Reflect.set(window, "__HISTORY_TAB_COUNTERS__", tabCounters);
     const isRelayCoverageScenario = new URLSearchParams(window.location.search).has("relay-coverage");
     const HARNESS_SECRET_KEY = generateSecretKey();
     const fullScanScenario = new URLSearchParams(window.location.search).get("full-scan");
@@ -733,6 +739,10 @@
             return originalGetChildInteractionsForParents(parentEventIds, reactionTargets);
         };
 
+        if (isHistoryTabsScenario) {
+            const originalRead = postHistoryRepository.getLatestVisibleChunk.bind(postHistoryRepository);
+            postHistoryRepository.getLatestVisibleChunk = async (options) => { tabCounters.localReads++; return originalRead(options); };
+        }
         ready = true;
         (window as HarnessWindow).__POST_HISTORY_HARNESS__ = {
             ready: true,
@@ -785,18 +795,18 @@
 </svelte:head>
 
 <div class="post-history-playwright-harness">
+    {#if isHistoryTabsScenario}
+        <button bind:this={historyTrigger} data-testid="history-launch" onclick={() => showDialog = true}>履歴</button>
+    {/if}
     {#if ready && showDialog}
         <div data-testid="post-history-mounted">
             <PostHistoryDialog
                 show={showDialog}
+                returnFocus={historyTrigger}
                 onClose={() => (showDialog = false)}
                 pubkeyHex={HARNESS_PUBKEY}
                 relayConfig={fullScanHarness?.relayConfig ?? coverageHarness?.relayConfig}
-                rxNostr={fullScanHarness?.runtime ?? coverageHarness?.rxNostr ?? {
-                    use: () => ({
-                        subscribe: () => ({ unsubscribe: () => undefined }),
-                    }),
-                } as unknown as RxNostr}
+                rxNostr={isHistoryTabsScenario ? tabRuntime : fullScanHarness?.runtime ?? coverageHarness?.rxNostr ?? defaultRuntime}
                 onReplyPost={(post) => {
                     (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__!.replyEventId =
                         post.eventId;

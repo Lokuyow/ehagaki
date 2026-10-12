@@ -223,6 +223,7 @@ export function usePostHistoryQuotePreviews({
     }
 
     function retryQuotePreview(eventId: string): void {
+        if (!getShow()) return;
         const context = getCurrentQuoteIndex().contextsByEventId[eventId];
         if (!context) {
             return;
@@ -234,6 +235,7 @@ export function usePostHistoryQuotePreviews({
     }
 
     async function refreshQuotePreviews(posts: PostHistoryRecord[]): Promise<void> {
+        if (!getShow()) return;
         const index = postHistoryQuoteTargetDiscoveryAdapter.buildIndex(posts);
         const contexts = Object.values(index.contextsByEventId);
         if (contexts.length === 0) {
@@ -286,5 +288,6 @@ export function usePostHistoryQuotePreviews({
         getQuotePreviews,
         retryQuotePreview,
         refreshQuotePreviews,
+        suspend: () => resolver.invalidateScope(scopeKey),
     };
 }

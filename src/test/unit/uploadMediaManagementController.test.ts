@@ -5,14 +5,14 @@ import type { UploadProtocolAdapter } from "../../lib/types/upload";
 import { mediaAuth, mediaDestination, mediaHash, mediaItem, mediaPage, mediaPubkey } from "../uploadMediaManagementTestUtils";
 import { createDeferred } from "../deferredTestUtils";
 
-function setup() {
+function setup(loadDestinations?: (pubkey: string) => Promise<ReturnType<typeof mediaDestination>[]>) {
     let view = emptyUploadMediaManagementView();
     const auth = { value: { isAuthenticated: true, pubkey: mediaPubkey } };
     const list = vi.fn(async (_params: UploadMediaListParams) => mediaPage());
     const remove = vi.fn(async (_params: UploadMediaDeleteParams): Promise<void> => undefined);
     const evict = vi.fn(async () => true);
     const adapter = { listMediaPage: list, deleteMedia: remove } as unknown as UploadProtocolAdapter;
-    const controller = new UploadMediaManagementController({ auth, getAdapter: () => adapter, createAuth: () => mediaAuth(),
+    const controller = new UploadMediaManagementController({ loadDestinations, auth, getAdapter: () => adapter, createAuth: () => mediaAuth(),
         evictImages: evict, onChange: (next) => { view = next; } });
     return { controller, auth, list, remove, evict, get view() { return view; } };
 }
@@ -21,6 +21,53 @@ async function loaded(s: ReturnType<typeof setup>) {
     await vi.waitFor(() => expect(s.view.current?.loaded).toBe(true));
 }
 describe("uploaded-media operation ownership", () => {
+    it("loads saved destinations only on activation and rejects an old local configuration read", async () => {
+        const gate = createDeferred<ReturnType<typeof mediaDestination>[]>();
+        const read = vi.fn().mockReturnValueOnce(gate.promise).mockResolvedValue([mediaDestination()]);
+        const s = setup(read);
+        s.controller.suspend(); await s.controller.configureSaved(mediaPubkey);
+        expect(read).not.toHaveBeenCalled();
+        s.controller.activate(); const old = s.controller.configureSaved(mediaPubkey);
+        expect(s.view.configuring).toBe(true);
+        s.controller.suspend(); s.controller.activate();
+        await s.controller.configureSaved(mediaPubkey);
+        await vi.waitFor(() => expect(s.view.current?.loaded).toBe(true));
+        gate.resolve([mediaDestination("nip96", "old")]); await old;
+        expect(s.view.selectedId).toBe("blossom");
+        s.controller.suspend(); s.controller.activate(); await s.controller.configureSaved(mediaPubkey);
+        expect(read).toHaveBeenCalledTimes(2);
+        expect(s.list).toHaveBeenCalledTimes(1);
+    });
+    it("does no inactive work and drops an old page after a tab roundtrip", async () => {
+        const s = setup(), gate = createDeferred<UploadMediaPage>();
+        s.controller.suspend();
+        s.controller.configure(mediaPubkey, [mediaDestination()]);
+        await s.controller.load();
+        expect(s.list).not.toHaveBeenCalled();
+        s.controller.activate();
+        s.list.mockReturnValueOnce(gate.promise);
+        const first = s.controller.load();
+        const signal = s.list.mock.calls[0][0].signal!;
+        s.controller.suspend();
+        expect(signal.aborted).toBe(true);
+        expect(s.view.current?.loading).toBe(false);
+        s.controller.activate();
+        await s.controller.load();
+        gate.resolve(mediaPage(mediaDestination(), [mediaItem(mediaDestination(), "video")]));
+        await first;
+        expect(s.view.current?.items[0].kind).toBe("image");
+        expect(s.list).toHaveBeenCalledTimes(2);
+    });
+    it("retains loaded items and pagination during suspension without fetching again", async () => {
+        const s = setup(); await loaded(s);
+        const page = s.view.current?.nextPage;
+        s.controller.suspend(); s.controller.configure(mediaPubkey, [mediaDestination()]);
+        s.controller.activate(); s.controller.configure(mediaPubkey, [mediaDestination()]);
+        expect(s.view.current?.items).toHaveLength(1);
+        expect(s.view.current?.nextPage).toEqual(page);
+        expect(s.list).toHaveBeenCalledTimes(1);
+    });
+
     it("retains confirmed remote success when selection changes during local cleanup", async () => {
         const s = setup(), cleanup = createDeferred<boolean>(), a = mediaDestination(), b = mediaDestination("blossom", "other");
         b.isDefault = false;
@@ -35,7 +82,7 @@ describe("uploaded-media operation ownership", () => {
         expect(s.view.current).toMatchObject({ items: [], error: null, notice: "deleted", needsRefresh: true });
         cleanup.resolve(true); await pending;
     });
-    it.each([true, false])("preserves deletion uncertainty across server selection only after HTTP dispatch (%s)", async (dispatched) => {
+    it.each([true, false])("preserves deletion uncertainty after forced suspension only after HTTP dispatch (%s)", async (dispatched) => {
         const s = setup(), deferred = createDeferred<void>(), a = mediaDestination(), b = mediaDestination("blossom", "other");
         b.isDefault = false;
         s.list.mockImplementation(async (params) => mediaPage(params.destination));
@@ -43,7 +90,10 @@ describe("uploaded-media operation ownership", () => {
         await vi.waitFor(() => expect(s.view.current?.loaded).toBe(true));
         s.remove.mockImplementation((params) => { if (dispatched) params.onDeleteDispatched?.(); return deferred.promise; });
         const pending = s.controller.delete(s.view.current!.items[0].id);
-        s.controller.select(b.id); s.controller.select(a.id);
+        s.controller.select(b.id);
+        expect(s.view.selectedId).toBe(a.id);
+        s.controller.suspend();
+        s.controller.activate();
         expect(s.view.current?.items).toHaveLength(1);
         expect(s.view.current?.error?.code ?? null).toBe(dispatched ? "unknownDelete" : null);
         expect(s.view.current?.needsRefresh).toBe(dispatched);
