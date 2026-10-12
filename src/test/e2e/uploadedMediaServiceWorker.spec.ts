@@ -219,10 +219,11 @@ for (const base of ["/", "/ehagaki/"] as const) {
                 await new Promise<void>((done, reject) => { transaction.oncomplete = () => done(); transaction.onerror = () => reject(transaction.error); }); database.close();
             }, { server: f.mediaOrigin, pubkey });
             await page.locator(".settings-btn").click();
-            await page.locator(".upload-destination-manage-btn").click();
-            const entry = page.getByRole("button", { name: "アップロード済みメディア", exact: true });
+            await expect(page.locator(".upload-panel")).toHaveCount(0);
+            const entry = page.getByRole("button", { name: "メディア", exact: true });
+            expect(await entry.evaluate((node) => node.closest(".upload-destination-section"))).toBeNull();
             await entry.focus(); await page.keyboard.press("Enter");
-            const dialog = page.getByRole("dialog", { name: "アップロード済みメディア", exact: true });
+            const dialog = page.getByRole("dialog", { name: "メディア", exact: true });
             await dialog.getByRole("combobox").selectOption("fixture");
             await expect(dialog.locator("article")).toHaveCount(3);
             await expect(dialog.locator("img")).toBeVisible();
@@ -232,6 +233,16 @@ for (const base of ["/", "/ehagaki/"] as const) {
                 await page.setViewportSize({ width, height: 850 });
                 expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
                 await expect(dialog.getByRole("button", { name: "一覧を更新" })).toBeVisible();
+                const deletionTargets = await dialog.locator("article .media-delete-button").evaluateAll((nodes) =>
+                    nodes.map((node) => { const rect = node.getBoundingClientRect(); return { width: rect.width, height: rect.height }; }));
+                expect(deletionTargets).toEqual(Array(3).fill({ width: 44, height: 44 }));
+                const more = dialog.getByRole("button", { name: "さらに読み込む", exact: true });
+                await more.scrollIntoViewIfNeeded();
+                await expect(more).toBeVisible();
+                expect(await dialog.evaluate((node) => {
+                    const list = node.querySelector(".media-list")!, tail = node.querySelector(".list-end-actions")!;
+                    return tail.getBoundingClientRect().top >= list.getBoundingClientRect().bottom;
+                })).toBe(true);
             }
             await page.setViewportSize({ width: 360, height: 800 });
             await dialog.getByRole("button", { name: "動画を開く" }).first().click();
@@ -253,6 +264,11 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await expect(video).toHaveCount(0);
             expect((await keys(page)).some((url) => url.includes(videoHash))).toBe(false);
             const remove = dialog.locator('article[data-media-kind="image"]').getByRole("button", { name: "このサーバーから削除する" });
+            await expect(remove).toHaveText("");
+            const iconUrl = await remove.locator(".media-delete-icon").evaluate((node) => getComputedStyle(node).maskImage);
+            expect(iconUrl).toContain(base + "icons/delete_forever_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+            const iconResponse = await page.request.get(f.url + "icons/delete_forever_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+            expect(iconResponse.ok()).toBe(true);
             await remove.click();
             const confirm = page.getByRole("alertdialog");
             await expect(confirm).toContainText(f.mediaOrigin);
@@ -280,9 +296,8 @@ for (const base of ["/", "/ehagaki/"] as const) {
             const frameStart = frame.getByRole("button", { name: "はじめる" });
             if (await frameStart.isVisible()) await frameStart.click();
             await frame.locator(".settings-btn").click();
-            await frame.locator(".upload-destination-manage-btn").click();
-            await frame.getByRole("button", { name: "アップロード済みメディア", exact: true }).click();
-            const embeddedDialog = frame.getByRole("dialog", { name: "アップロード済みメディア", exact: true });
+            await frame.getByRole("button", { name: "メディア", exact: true }).click();
+            const embeddedDialog = frame.getByRole("dialog", { name: "メディア", exact: true });
             await embeddedDialog.getByRole("combobox").selectOption("fixture");
             await expect(embeddedDialog.locator("article")).toHaveCount(2);
             expect(await embeddedDialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);

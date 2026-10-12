@@ -466,7 +466,16 @@
                 (settingsStore.videoQualityLevel = value)}
         />
 
-        <SettingsUploadDestinationSection {rxNostr} {onOpenUploadedMedia} />
+        <SettingsUploadDestinationSection {rxNostr} />
+        {#if onOpenUploadedMedia}
+            <div class="setting-section">
+                <Button variant="default" shape="rounded" contentLayout="text"
+                    className="uploaded-media-entry-btn"
+                    onClick={(event) => onOpenUploadedMedia?.(event.currentTarget as HTMLElement)}>
+                    {$_("uploadedMedia.title")}
+                </Button>
+            </div>
+        {/if}
 
         <!-- テーマ設定セクション -->
         <div class="setting-section">
@@ -1153,6 +1162,11 @@
         gap: 20px;
         width: 100%;
         overflow-y: auto;
+    }
+    :global(.settings-dialog .uploaded-media-entry-btn) {
+        width: 100%;
+        height: auto;
+        min-height: 44px;
     }
     .footer-shortcut-slots {
         display: flex;

@@ -1,6 +1,6 @@
 {
   "uploadedMedia": {
-    "title": "アップロード済みメディア",
+    "title": "メディア",
     "description": "選択したサーバーへ自分がアップロードした画像・動画を確認します。",
     "server": "サーバー",
     "noServers": "NIP-96またはBlossomのアップロード先を設定してください。",

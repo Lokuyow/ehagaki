@@ -1,6 +1,6 @@
 {
   "uploadedMedia": {
-    "title": "Uploaded media",
+    "title": "Media",
     "description": "View images and videos you uploaded to the selected server.",
     "server": "Server",
     "noServers": "Configure a NIP-96 or Blossom server to manage uploaded media.",

@@ -12,10 +12,12 @@
     import { authState } from "../stores/authStore.svelte";
     import { uploadDestinationStore } from "../stores/uploadDestinationStore.svelte";
     import type { UploadedMediaItem } from "../lib/upload/mediaManagementTypes";
+    import { resolveAppAssetUrl } from "../lib/appAssetUrl";
 
     interface Props { show: boolean; onClose: () => void; returnFocus?: HTMLElement | null }
     let { show, onClose, returnFocus = null }: Props = $props();
     const management = useUploadMediaManagement();
+    const deleteIconUrl = resolveAppAssetUrl("icons/delete_forever_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     let current = $derived(management.value.current);
     let cacheSupported = $state<boolean | null>(null);
     let pending = $state<UploadedMediaItem | null>(null);
@@ -126,9 +128,6 @@
                     <Button onClick={() => { activeVideo = null; void management.controller.load(); }} disabled={current.loading || !!current.deletingId}>
                         {$_("uploadedMedia.refresh")}
                     </Button>
-                    {#if current.nextPage && !current.needsRefresh}
-                        <Button onClick={() => management.controller.load(true)} disabled={current.loading || !!current.deletingId}>{$_("uploadedMedia.loadMore")}</Button>
-                    {/if}
                 </div>
                 {#if current.loading}<LoadingPlaceholder showLoader text={true} />{/if}
                 {#if current.error}
@@ -150,15 +149,23 @@
                             <p class="server-url">{current.context?.endpoint ?? item.serverUrl}</p>
                             <p>{$_("uploadedMedia.date")}: {item.uploadedAt === undefined ? $_("uploadedMedia.unknown") : new Date(item.uploadedAt * 1000).toLocaleString()}</p>
                             <p>{$_("uploadedMedia.size")}: {item.size === undefined ? $_("uploadedMedia.unknown") : `${item.size.toLocaleString()} B`}</p>
-                            <Button variant="danger" disabled={!item.deleteId || current.loading || !!current.deletingId}
+                            <Button variant="danger" shape="rounded" contentLayout="icon" className="media-delete-button"
+                                ariaLabel={current.deletingId === item.id ? $_("uploadedMedia.deleting") : $_("uploadedMedia.delete")}
+                                title={current.deletingId === item.id ? $_("uploadedMedia.deleting") : $_("uploadedMedia.delete")}
+                                disabled={!item.deleteId || current.loading || !!current.deletingId}
                                 onClick={(event) => { deleteTrigger = event.currentTarget as HTMLElement; pendingEndpoint = current?.context?.endpoint ?? null; pending = item; }}>
-                                {current.deletingId === item.id ? $_("uploadedMedia.deleting") : $_("uploadedMedia.delete")}
+                                <span class="svg-icon media-delete-icon" aria-hidden="true" style:mask-image={`url("${deleteIconUrl}")`}></span>
                             </Button>
                         </article>
                     {/each}
                 </div>
                 {#if current.excludedCount || current.invalidCount}
                     <p>{$_("uploadedMedia.skipped", { values: { excluded: current.excludedCount, invalid: current.invalidCount } })}</p>
+                {/if}
+                {#if current.nextPage && !current.needsRefresh}
+                    <div class="actions list-end-actions">
+                        <Button onClick={() => management.controller.load(true)} disabled={current.loading || !!current.deletingId}>{$_("uploadedMedia.loadMore")}</Button>
+                    </div>
                 {/if}
             {/if}
         {/if}
@@ -186,6 +193,13 @@
     .server-picker { display: flex; flex-direction: column; gap: 6px; }
     select { width: 100%; min-width: 0; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .list-end-actions { justify-content: center; }
+    :global(.uploaded-media-dialog button.media-delete-button) {
+        flex: none; align-self: flex-end; padding: 0;
+        width: 44px; min-width: 44px; max-width: 44px;
+        height: 44px; min-height: 44px; max-height: 44px;
+    }
+    .media-delete-icon { width: 24px; height: 24px; --svg: currentColor; }
     .server-url, .diagnostic { overflow-wrap: anywhere; font-size: .875rem; }
     .media-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 16px; }
     article { min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }

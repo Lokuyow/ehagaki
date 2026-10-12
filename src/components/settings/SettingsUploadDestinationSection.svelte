@@ -24,10 +24,9 @@
 
     interface Props {
         rxNostr?: RxNostr | null;
-        onOpenUploadedMedia?: (trigger: HTMLElement) => void;
     }
 
-    let { rxNostr = null, onOpenUploadedMedia }: Props = $props();
+    let { rxNostr = null }: Props = $props();
 
     const emptyForm = {
         id: "",
@@ -449,11 +448,6 @@
 
     {#if expanded}
         <div class="upload-panel">
-            {#if onOpenUploadedMedia}
-                <Button onClick={(event) => onOpenUploadedMedia?.(event.currentTarget as HTMLElement)}>
-                    {$_("uploadedMedia.title")}
-                </Button>
-            {/if}
             {#each destinationState.destinations as destination}
                 <div class="destination-row">
                     <div class="destination-main">

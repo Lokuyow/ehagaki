@@ -27,11 +27,11 @@ describe("uploaded-media dialog", () => {
         const deferred = createDeferred<boolean>();
         mocked.controller.delete.mockImplementationOnce(() => deferred.promise);
         const onClose = vi.fn(), { rerender } = render(UploadedMediaDialog, { show: true, onClose });
-        await fireEvent.click(screen.getAllByText("uploadedMedia.delete")[0]);
+        await fireEvent.click(screen.getAllByRole("button", { name: "uploadedMedia.delete" })[0]);
         await fireEvent.click(screen.getByRole("alertdialog").querySelector(".danger") as HTMLButtonElement);
         await rerender({ show: false, onClose });
         await rerender({ show: true, onClose });
-        await fireEvent.click(screen.getAllByText("uploadedMedia.delete")[0]);
+        await fireEvent.click(screen.getAllByRole("button", { name: "uploadedMedia.delete" })[0]);
         deferred.resolve(true); await Promise.resolve(); await tick();
         expect(screen.getByRole("alertdialog")).toBeTruthy();
         expect(mocked.controller.delete).toHaveBeenCalledTimes(1);
@@ -39,7 +39,7 @@ describe("uploaded-media dialog", () => {
     it("confirms the discovered endpoint rather than assuming the configured server is the delete endpoint", async () => {
         mocked.view.current!.context!.endpoint = "https://api.example/nip96";
         render(UploadedMediaDialog, { show: true, onClose: vi.fn() });
-        await fireEvent.click(screen.getAllByText("uploadedMedia.delete")[0]);
+        await fireEvent.click(screen.getAllByRole("button", { name: "uploadedMedia.delete" })[0]);
         expect(screen.getByRole("alertdialog").textContent).toContain("https://api.example/nip96");
         expect(screen.getByRole("alertdialog").textContent).toContain(mediaItem().deleteId!.sha256);
     });
@@ -66,7 +66,7 @@ describe("uploaded-media dialog", () => {
     });
     it("cancels confirmation without deleting and confirms the actual server before deletion", async () => {
         render(UploadedMediaDialog, { show: true, onClose: vi.fn() });
-        const buttons = screen.getAllByText("uploadedMedia.delete");
+        const buttons = screen.getAllByRole("button", { name: "uploadedMedia.delete" });
         await fireEvent.click(buttons[0]);
         const alert = screen.getByRole("alertdialog");
         expect(alert.textContent).toContain("https://media.example");
