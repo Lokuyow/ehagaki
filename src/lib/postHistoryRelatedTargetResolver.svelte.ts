@@ -1,4 +1,5 @@
 import type { RxNostr } from "rx-nostr";
+import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
 import { isRepostTargetKind, verifyRepostTarget } from "./postRepostUtils";
 import { attestFullyVerifiedPostHistoryRawEvent } from "./postHistoryRawEventVerification";
 import { verifyRelatedEvent } from "./relatedEventVerification";
@@ -371,6 +372,10 @@ export function createPostHistoryRelatedTargetResolver({
                         targetEvents: [targetEvent],
                         deletionEvents: result.events,
                         fetchedAt: result.fetchedAt,
+                    });
+                    void postHistoryLocalRelayService.archiveAdoptedAuthored([{ event: targetEvent }], {
+                        ownerPubkeyHex: targetEvent.pubkey,
+                        isActive: () => getShow() && getRxNostr() === rxNostr,
                     });
                 }
 

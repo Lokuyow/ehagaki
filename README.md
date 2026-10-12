@@ -29,6 +29,7 @@ eHagaki（えはがき）は、画像・動画圧縮機能付きの投稿専用N
 - 埋め込み・統合ガイド: [docs/EMBEDDING.md](docs/EMBEDDING.md)
 - iframe詳細仕様: [docs/IFRAME_EMBEDDING.md](docs/IFRAME_EMBEDDING.md)
 - Web Component API詳細: [docs/WEB_COMPONENT.md](docs/WEB_COMPONENT.md)
+- Citrine local relay live syncと実機確認: [docs/LOCAL_RELAY.md](docs/LOCAL_RELAY.md)
 
 ## URLクエリ
 

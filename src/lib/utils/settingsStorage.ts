@@ -1,4 +1,5 @@
 import type { NavigatorAdapter, StorageAdapter } from "../types";
+import { normalizeLocalRelayUrl } from "../localRelayUrl";
 import {
     DEFAULT_CLIENT_TAG_ENABLED,
     DEFAULT_COMPRESSION_LEVEL,
@@ -47,6 +48,26 @@ export type ManagedPreferenceKey =
 
 type ReadWriteStorage = Pick<Storage, "getItem" | "setItem">;
 type MutableStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+export function getLocalRelayUrlPreference(storage: Pick<Storage, "getItem">): string | null {
+    try {
+        const value = storage.getItem(STORAGE_KEYS.LOCAL_RELAY_URL);
+        return value ? normalizeLocalRelayUrl(value) : null;
+    } catch {
+        return null;
+    }
+}
+
+export function setLocalRelayUrlPreference(storage: MutableStorage, value: string): string | null {
+    if (!value.trim()) {
+        storage.removeItem(STORAGE_KEYS.LOCAL_RELAY_URL);
+        return null;
+    }
+    const normalized = normalizeLocalRelayUrl(value);
+    if (!normalized) throw new Error("invalid_local_relay_url");
+    storage.setItem(STORAGE_KEYS.LOCAL_RELAY_URL, normalized);
+    return normalized;
+}
 
 interface PreferenceMetadata {
     embedBootstrapApplied?: boolean;

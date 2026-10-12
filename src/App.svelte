@@ -236,6 +236,7 @@
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
   import { uploadDestinationStore } from "./stores/uploadDestinationStore.svelte";
+  import { postHistoryLocalRelayService } from "./lib/postHistoryLocalRelayService";
   import { uploadFiles as normalUploadFiles } from "./lib/normalUploadHelper";
   import { uploadFileForHost as uploadHeadlessFile } from "./lib/upload/headlessUpload";
   import type { EHagakiUploadResult } from "./web-component/types";
@@ -475,7 +476,7 @@
   let lastAccountLogoutError = $state("");
   let showTransitionOverlay = $state(false); // ダイアログ切替時のちらつき防止用
   let isBootstrappingApp = true;
-  let authTransitionGeneration = 0;
+  let authTransitionGeneration = $state(0);
   let startupAuthResult: AuthInitializationResult | null = null;
   let latestInboundInteractionSave = $state<{
     revision: number;
@@ -756,6 +757,7 @@
   });
 
   function beginAuthTransition(): void {
+    postHistoryLocalRelayService.cancelSession();
     authTransitionGeneration += 1;
     delayedNip07Recovery.markTransition();
   }
@@ -1003,6 +1005,20 @@
     getRxNostr: () => rxNostr,
     getRelayConfig: () => relayConfigStore.value,
     onSavedSelfPosts: handleSavedSelfPosts,
+  });
+
+  $effect(() => {
+    const auth = authState.value;
+    const runtime = rxNostr;
+    const generation = authTransitionGeneration;
+    const canUseLocalRelay = !isSwitchingAccount && !isLoggingOut;
+    return postHistoryLocalRelayService.configureSession({
+      ownerPubkeyHex: canUseLocalRelay && auth.isAuthenticated && runtime ? auth.pubkey : null,
+      url: settingsStore.localRelayUrl,
+      isActive: () => authState.value === auth && rxNostr === runtime
+        && authTransitionGeneration === generation && auth.isAuthenticated
+        && !isSwitchingAccount && !isLoggingOut,
+    });
   });
 
   usePostHistoryVisibilityResumeSync({
@@ -2210,6 +2226,9 @@
                     availableComposerHeight={postAvailableComposerHeight}
                     minEditorHeight={postEditorMinHeight}
                     onPostSuccess={handlePostSuccess}
+                    storeSignedEventsFn={appRuntimeEnvironment.runtimeKind === "standalone"
+                      ? (inputs, isActive) => postHistoryLocalRelayService.storeSignedEventsBestEffort(inputs, isActive)
+                      : undefined}
                     onReactionResult={handleReactionResult}
                     onCustomEmojiSelect={recordCustomEmojiUse}
                     {onEditorEmptyChange}

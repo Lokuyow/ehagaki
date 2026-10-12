@@ -1,4 +1,5 @@
 import type { RxNostr } from "rx-nostr";
+import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
 import type { RelayConfig } from "./types";
 import type { PostHistoryRelayFetchResult } from "./postHistoryRelayFetchService";
 import type { PostHistoryRelayCoverage } from "./postHistoryRelayCoverage";
@@ -49,6 +50,8 @@ export async function persistPostHistoryAuthoredBatch(
         const revision = await postHistoryRelayCoverageRepository.getLocalRevision(scope.ownerPubkeyHex);
         return { ...EMPTY_POST_HISTORY_FETCH_SAVE, applied: scope.isActive() && revision === scope.expectedRevision };
     }
-    return repository.upsertFetchedEvents({ events, fetchedAt,
+    const result = await repository.upsertFetchedEvents({ events, fetchedAt,
         relayFetchCoverage: { ...scope, relays: coverage } });
+    if (result.applied !== false && scope.isActive()) void postHistoryLocalRelayService.archiveAdoptedAuthored(events, scope);
+    return result;
 }

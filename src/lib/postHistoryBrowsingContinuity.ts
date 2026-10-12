@@ -1,7 +1,7 @@
 import { mergePostHistoryCoverageRanges, type PostHistoryCoverageRange } from "./postHistoryRelayCoverage";
 
-export function getPostHistoryBrowsingContinuity(quorum: PostHistoryCoverageRange[], restored: PostHistoryCoverageRange[]): PostHistoryCoverageRange[] {
-    return mergePostHistoryCoverageRanges([...quorum, ...restored]);
+export function getPostHistoryBrowsingContinuity(quorum: PostHistoryCoverageRange[], restored: PostHistoryCoverageRange[], local: PostHistoryCoverageRange[] = []): PostHistoryCoverageRange[] {
+    return mergePostHistoryCoverageRanges([...quorum, ...restored, ...local]);
 }
 
 /** Bounds a normal backfill to the next hole, without crossing a saved component. */

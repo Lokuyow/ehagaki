@@ -3,6 +3,7 @@ import { mergePostHistoryCoverageRanges, type PostHistoryRelayCoverage } from ".
 import { ehagakiDb, type EHagakiDB } from "./ehagakiDb";
 import { advancePostHistoryLocalRevision, getPostHistoryLocalRevision, isPostHistoryLocalWriteCurrent, PostHistoryLocalWriteStaleError, type PostHistoryLocalWriteScope } from "./postHistoryLocalWriteScope";
 import { POST_HISTORY_IMPORTED_RANGES_PREFIX } from "./postHistoryImportedRangesRepository";
+import { POST_HISTORY_LOCAL_BROWSING_RANGES_PREFIX } from "./postHistoryLocalBrowsingRangesRepository";
 
 export const POST_HISTORY_RELAY_COVERAGE_PREFIX = "postHistoryRelayCoverage:";
 
@@ -62,7 +63,7 @@ export class DexiePostHistoryRelayCoverageRepository {
 
     /** Also runs for an empty history. The revision prevents a pre-delete fetch from repopulating it. */
     async clearForPubkey(ownerPubkeyHex: string): Promise<void> {
-        const prefixes = [POST_HISTORY_RELAY_COVERAGE_PREFIX, POST_HISTORY_IMPORTED_RANGES_PREFIX, "postHistoryVisibleRange:", "postHistoryJumpCacheAnchors:"]
+        const prefixes = [POST_HISTORY_RELAY_COVERAGE_PREFIX, POST_HISTORY_IMPORTED_RANGES_PREFIX, POST_HISTORY_LOCAL_BROWSING_RANGES_PREFIX, "postHistoryVisibleRange:", "postHistoryJumpCacheAnchors:"]
             .map((prefix) => `${prefix}${ownerPubkeyHex}`);
         const keys = await this.db.meta.filter(({ key }) => prefixes.some((prefix) =>
             key === prefix || key.startsWith(`${prefix}:`),

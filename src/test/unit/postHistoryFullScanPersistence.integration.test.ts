@@ -8,6 +8,7 @@ import { DexiePostHistoryRepository } from "../../lib/storage/postHistoryReposit
 import { DexiePostHistoryRelayCoverageRepository } from "../../lib/storage/postHistoryRelayCoverageRepository";
 import { PostHistoryRelayFullScanService } from "../../lib/postHistoryRelayFullScanService";
 import { persistPostHistoryAuthoredBatch } from "../../lib/postHistoryAuthoredFetchPersistence";
+import { postHistoryLocalRelayService } from "../../lib/postHistoryLocalRelayService";
 import { createAuthoredFetchResult } from "../postHistorySyncResultTestUtils";
 
 const databases = new Set<EHagakiDB>();
@@ -38,6 +39,15 @@ function setup() {
     return { db, repository, coverage, event, relayUrl, task, release: () => release(), ready: () => !!release };
 }
 describe("full scan persistence in IndexedDB", () => {
+    it("completes external persistence without awaiting a pending local archive", async () => {
+        const archive = vi.spyOn(postHistoryLocalRelayService, "archiveAdoptedAuthored")
+            .mockReturnValue(new Promise<void>(() => undefined));
+        const h = setup(); await vi.waitFor(() => expect(h.ready()).toBe(true));
+        h.release();
+        expect((await h.task.promise).status).toBe("completed");
+        expect(await h.db.postHistory.count()).toBe(1);
+        expect(archive).toHaveBeenCalledOnce();
+    });
     it("shares upsert with ordinary synchronization and keeps provenance", async () => {
         const h = setup(); await vi.waitFor(() => expect(h.ready()).toBe(true));
         const ordinary = h.repository.upsertFetchedEvents({ events: [{ event: h.event, relayUrls: ["wss://ordinary.example/"] }] });

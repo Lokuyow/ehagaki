@@ -1,4 +1,5 @@
 import { onDestroy } from "svelte";
+import { postHistoryLocalRelayService } from "../postHistoryLocalRelayService";
 import type { RxNostr } from "rx-nostr";
 import {
     createPostHistoryRelatedTargetResolver,
@@ -1030,6 +1031,7 @@ export function usePostHistoryThreadGraph({
         }
 
         const key = `${anchorEventId}:deletions:${taskKeySuffix}`;
+        const owner = getPubkeyHex();
         const task = deletionFetchService.fetchDeletionRequests(rxNostr, {
             targets: visibleEvents.map((event) => ({
                 event,
@@ -1051,6 +1053,10 @@ export function usePostHistoryThreadGraph({
                 deletionEvents: result.events,
                 fetchedAt: result.fetchedAt,
             });
+            if (owner && result.events.length) void postHistoryLocalRelayService.archiveAdoptedAuthored(
+                visibleEvents.map((event) => ({ event })),
+                { ownerPubkeyHex: owner, isActive: () => getShow() && getPubkeyHex() === owner && getRxNostr() === rxNostr },
+            );
         } catch {
             return;
         } finally {

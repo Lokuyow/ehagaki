@@ -82,6 +82,7 @@ export const STORAGE_KEYS = {
     SHOW_FLAVOR_TEXT: "showFlavorText",
     EXTERNAL_NOSTR_CLIENT: "externalNostrClient",
     EXTERNAL_NOSTR_CLIENT_CUSTOM_URL: "externalNostrClientCustomUrl",
+    LOCAL_RELAY_URL: "localRelayUrl",
     SETTINGS_PREFERENCE_METADATA: "settingsPreferenceMetadata",
     FIRST_VISIT: "firstVisit",
     SHARED_MEDIA_PROCESSED: "sharedMediaProcessed",

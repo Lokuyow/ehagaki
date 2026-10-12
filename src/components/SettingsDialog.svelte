@@ -41,6 +41,8 @@
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import SettingsRelaySection from "./settings/SettingsRelaySection.svelte";
+    import SettingsLocalRelaySection from "./settings/SettingsLocalRelaySection.svelte";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
     import SettingsCompressionSection from "./settings/SettingsCompressionSection.svelte";
     import SettingsUploadDestinationSection from "./settings/SettingsUploadDestinationSection.svelte";
     import RadioButton from "./RadioButton.svelte";
@@ -996,6 +998,9 @@
         </div>
 
         <!-- リレー・プロフィール再取得セクション -->
+        {#if getAppRuntimeEnvironment().runtimeKind === "standalone"}
+            <SettingsLocalRelaySection />
+        {/if}
         <SettingsRelaySection
             {relayConfig}
             {showRelays}

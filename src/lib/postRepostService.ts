@@ -8,6 +8,7 @@ import { keyManager } from "./keyManager.svelte";
 import { nip46Service } from "./nip46Service";
 import { parentClientAuthService } from "./parentClientAuthService";
 import { PostEventSender } from "./postEventBuilder";
+import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
 import { buildClientTag } from "./tags/clientTag";
 import { buildRepostEvent, isRepostTargetKind, verifyRepostTarget } from "./postRepostUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
@@ -39,6 +40,7 @@ export interface PostRepostServiceDeps {
     getLocalRevision?: (pubkey: string) => Promise<number>;
     saveHistory?: (input: PostHistorySaveInput) => Promise<void>;
     createSender?: (rx: RxNostr) => Pick<PostEventSender, "sendEvent">;
+    storeSignedEventsFn?: import("./types").PostManagerDeps["storeSignedEventsFn"];
     now?: () => number;
 }
 
@@ -58,6 +60,7 @@ export class PostRepostService {
             getLocalRevision: deps.getLocalRevision ?? ((pubkey: string) => getPostHistoryLocalRevision(ehagakiDb, pubkey)),
             saveHistory: deps.saveHistory ?? ((input: PostHistorySaveInput) => postHistoryRepository.putPostedEvent(input)),
             createSender: deps.createSender ?? ((rx: RxNostr) => new PostEventSender(rx, console)),
+            storeSignedEventsFn: deps.storeSignedEventsFn,
             now: deps.now ?? Date.now,
         };
     }
@@ -109,6 +112,10 @@ export class PostRepostService {
                 targetRelays: writeRelays, includeDefaultWriteRelays: false,
             });
             if (!published.success) return published;
+            try {
+                void Promise.resolve(this.deps.storeSignedEventsFn?.([verified],
+                    () => this.deps.authStateStore.value === auth && params.isCurrent?.() !== false)).catch(() => undefined);
+            } catch { /* Local archival never changes external delivery. */ }
             const input: PostHistorySaveInput = { event: verified.event, attestation: verified.attestation,
                 acceptedRelays: published.acceptedRelays, relayHints: [...(published.acceptedRelays ?? []), ...writeRelays],
                 repostTarget: { event: createPlainNostrEventSnapshot(target.event), relayHints: hints },
@@ -129,4 +136,6 @@ export class PostRepostService {
     }
 }
 
-export const postRepostService = new PostRepostService();
+export const postRepostService = new PostRepostService({
+    storeSignedEventsFn: (inputs, isActive) => postHistoryLocalRelayService.storeSignedEventsBestEffort(inputs, isActive),
+});

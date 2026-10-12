@@ -8,6 +8,7 @@ import { keyManager } from "./keyManager.svelte";
 import { nip46Service } from "./nip46Service";
 import { parentClientAuthService } from "./parentClientAuthService";
 import { PostEventSender } from "./postEventBuilder";
+import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import {
     attestFullyVerifiedPostHistoryRawEvent,
@@ -47,6 +48,7 @@ export interface DeletionSigner {
 }
 
 export interface PostDeletionServiceDeps {
+    storeSignedEventsFn?: import("./types").PostManagerDeps["storeSignedEventsFn"];
     authStateStore?: {
         value: AuthState;
     };
@@ -194,6 +196,7 @@ export class PostDeletionService {
             fetchPayloadFn: deps.fetchPayloadFn ?? postHistoryContextFetchService.fetchEventById.bind(postHistoryContextFetchService),
             saveSensitivePayloadFn: deps.saveSensitivePayloadFn ?? sensitivePayloadRepository.putCandidate.bind(sensitivePayloadRepository),
             now: deps.now ?? Date.now,
+            storeSignedEventsFn: deps.storeSignedEventsFn ?? (() => undefined),
         };
     }
 
@@ -329,6 +332,11 @@ export class PostDeletionService {
         if (!result.success) {
             return result;
         }
+
+        try {
+            void Promise.resolve(this.deps.storeSignedEventsFn([verifiedDeletionEvent],
+                () => this.deps.authStateStore.value === auth && auth.isAuthenticated)).catch(() => undefined);
+        } catch { /* Local archival never changes external delivery. */ }
 
         const deletionEventId = verifiedDeletionEvent.event.id ?? result.eventId;
         if (!deletionEventId) {
@@ -482,4 +490,6 @@ export class PostDeletionService {
     }
 }
 
-export const postDeletionService = new PostDeletionService();
+export const postDeletionService = new PostDeletionService({
+    storeSignedEventsFn: (inputs, isActive) => postHistoryLocalRelayService.storeSignedEventsBestEffort(inputs, isActive),
+});
