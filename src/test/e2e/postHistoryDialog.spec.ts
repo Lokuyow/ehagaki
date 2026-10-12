@@ -601,6 +601,7 @@ function startPostPositionFrameSampling(
                 clientHeight: number;
                 scrollTop: number;
                 scrollHeight: number;
+                syncFooterHeight: number;
                 headingHeight: number;
                 monthLabel: string | null;
                 topSlotHeight: number;
@@ -635,6 +636,9 @@ function startPostPositionFrameSampling(
                     clientHeight: container.clientHeight,
                     scrollTop: container.scrollTop,
                     scrollHeight: container.scrollHeight,
+                    syncFooterHeight: container.querySelector<HTMLElement>(
+                        '.post-history-sync-footer',
+                    )?.getBoundingClientRect().height ?? 0,
                     headingHeight: headingRect?.height ?? 0,
                     monthLabel: document.querySelector(
                         '.post-history-current-month',
@@ -2265,6 +2269,9 @@ test.describe('PostHistoryDialog Playwright', () => {
                     return { x: box.x, y: box.y, width: box.width, height: box.height };
                 };
                 const containerRect = container.getBoundingClientRect();
+                const syncFooterHeight = container.querySelector<HTMLElement>(
+                    '.post-history-sync-footer',
+                )?.getBoundingClientRect().height ?? 0;
                 const visiblePosts = Array.from(
                     container.querySelectorAll<HTMLElement>('.post-history-item'),
                 ).filter((post) => {
@@ -2295,7 +2302,7 @@ test.describe('PostHistoryDialog Playwright', () => {
                 const heading = document.querySelector('.post-history-heading')?.getBoundingClientRect();
                 return {
                     scrollTop: container.scrollTop,
-                    scrollHeight: container.scrollHeight,
+                    contentScrollHeight: container.scrollHeight - syncFooterHeight,
                     clientHeight: container.clientHeight,
                     containerTop: containerRect.top,
                     headingTop: heading?.top ?? 0,
@@ -2374,7 +2381,10 @@ test.describe('PostHistoryDialog Playwright', () => {
         );
         for (const sample of frameSamples) {
             expect(Math.abs(sample.scrollTop - frameSamples[0].scrollTop)).toBeLessThanOrEqual(1);
-            expect(Math.abs(sample.scrollHeight - frameSamples[0].scrollHeight)).toBeLessThanOrEqual(1);
+            expect(Math.abs(
+                (sample.scrollHeight - sample.syncFooterHeight)
+                - (frameSamples[0].scrollHeight - frameSamples[0].syncFooterHeight),
+            )).toBeLessThanOrEqual(1);
             expect(Math.abs(sample.containerTop - frameSamples[0].containerTop)).toBeLessThanOrEqual(1);
             expect(sample.clientHeight).toBe(frameSamples[0].clientHeight);
             expect(Math.abs(sample.headingHeight - frameSamples[0].headingHeight)).toBeLessThanOrEqual(1);
@@ -2395,10 +2405,16 @@ test.describe('PostHistoryDialog Playwright', () => {
                 : [];
         });
         expect(
-            Math.abs(after.scrollHeight - before.scrollHeight),
+            Math.abs(after.contentScrollHeight - before.contentScrollHeight),
             JSON.stringify({
-                before: { scrollHeight: before.scrollHeight, clientHeight: before.clientHeight },
-                after: { scrollHeight: after.scrollHeight, clientHeight: after.clientHeight },
+                before: {
+                    contentScrollHeight: before.contentScrollHeight,
+                    clientHeight: before.clientHeight,
+                },
+                after: {
+                    contentScrollHeight: after.contentScrollHeight,
+                    clientHeight: after.clientHeight,
+                },
                 beforeChildren: before.directChildren,
                 afterChildren: after.directChildren,
                 postHeightChanges,
@@ -3375,7 +3391,24 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(menuButton).not.toHaveAttribute('title');
 
         await menuButton.click();
-        await expect(page.getByRole('menuitem', { name: 'イベントJSONを表示' })).toBeVisible();
+        const menuItem = page.getByRole('menuitem', { name: 'イベントJSONを表示' });
+        await expect(menuItem).toBeVisible();
+        await menuItem.hover();
+        await menuButton.hover();
+        await expect(menuItem).toBeVisible();
+        await menuItem.focus();
+        await expect(menuItem).toBeFocused();
+        await menuButton.focus();
+        await expect(menuButton).toBeFocused();
+        await expect(menuItem).toBeVisible();
+        await expect(page.locator('.tooltip-content:visible')).toHaveCount(0);
+
+        await page.keyboard.press('Escape');
+        await expect(menuItem).toHaveCount(0);
+        await expectTooltip(page, menuButton, 'アクションを表示');
+
+        await menuButton.press('ArrowDown');
+        await expect(menuItem).toBeVisible();
         await expect(page.locator('.tooltip-content:visible')).toHaveCount(0);
     });
 

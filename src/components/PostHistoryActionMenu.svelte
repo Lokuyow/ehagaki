@@ -33,6 +33,7 @@
     const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
     let menuInitialized = $state(false);
     let menuOpen = $state(false);
+    let tooltipOpen = $state(false);
     let triggerElement = $state<HTMLElement | null>(null);
     let shouldRenderMenu = $derived(!lazy || menuInitialized || open);
     let previousOpenProp = false;
@@ -44,11 +45,25 @@
 
         previousOpenProp = open;
         menuOpen = open;
+        if (open) {
+            tooltipOpen = false;
+        }
     });
 
     function handleOpenChange(nextOpen: boolean): void {
         menuOpen = nextOpen;
+        if (nextOpen) {
+            tooltipOpen = false;
+        }
         onOpenChange?.(nextOpen);
+    }
+
+    function getTooltipOpen(): boolean {
+        return tooltipOpen && !menuOpen;
+    }
+
+    function setTooltipOpen(nextOpen: boolean): void {
+        tooltipOpen = nextOpen && !menuOpen;
     }
 
     async function initializeAndOpenMenu(
@@ -60,11 +75,13 @@
         }
 
         const controlled = typeof onOpenChange === "function";
+        tooltipOpen = false;
         menuInitialized = true;
         await tick();
 
         if (controlled) {
             menuOpen = true;
+            tooltipOpen = false;
             onOpenChange(true);
         }
 
@@ -92,7 +109,11 @@
     <DropdownMenu.Root open={menuOpen} onOpenChange={handleOpenChange}>
         {#if enableTooltip && tooltipContent}
             <Tooltip.Provider>
-                <Tooltip.Root delayDuration={500}>
+                <Tooltip.Root
+                    bind:open={getTooltipOpen, setTooltipOpen}
+                    delayDuration={500}
+                    disabled={menuOpen}
+                >
                     <Tooltip.Trigger>
                         {#snippet child({ props })}
                             {@const { onclick: tooltipOnclick, ...restProps } = props}
@@ -157,7 +178,11 @@
     </DropdownMenu.Root>
 {:else if enableTooltip && tooltipContent}
     <Tooltip.Provider>
-        <Tooltip.Root delayDuration={500}>
+        <Tooltip.Root
+            bind:open={getTooltipOpen, setTooltipOpen}
+            delayDuration={500}
+            disabled={menuOpen}
+        >
             <Tooltip.Trigger>
                 {#snippet child({ props })}
                     {@const { onclick: tooltipOnclick, ...restProps } = props}
