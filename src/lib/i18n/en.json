@@ -1,4 +1,16 @@
 {
+  "reaction": {
+    "action": "React",
+    "entry": "Reaction",
+    "target": "Reaction target",
+    "clear": "Cancel reaction",
+    "input": "Enter one character, emoji, or custom emoji. Use + for Like.",
+    "invalid": "A reaction must contain one character or one custom emoji, without media or line breaks.",
+    "failed": "Could not send reaction. Your input has been kept.",
+    "targetFailed": "Could not verify the reaction target. Try again.",
+    "saveFailed": "Reaction sent, but the local copy could not be saved.",
+    "retrySave": "Save again"
+  },
   "repost": {
     "action": "Repost",
     "sending": "Reposting…",
@@ -769,6 +781,16 @@
     }
   },
   "composerTarget": {
+    "genericRepost": "Generic Repost",
+    "reaction": "Reaction",
+    "relatedPreview": "Related event preview",
+    "relatedRepost": "Reposted event",
+    "relatedReaction": "Reaction target",
+    "relatedLoading": "Loading referenced event…",
+    "relatedDeleted": "Referenced event was deleted",
+    "relatedUnsupported": "This referenced event preview is not supported",
+    "relatedInvalid": "Could not verify the referenced event",
+    "relatedMissing": "Could not retrieve the referenced event",
     "title": "Choose target",
     "description": "Choose a Nostr event as the post destination, reply target, or quote target",
     "inputLabel": "Event ID",

@@ -2,6 +2,7 @@ import type { RxNostr } from "rx-nostr";
 import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
 import { isRepostTargetKind, verifyRepostTarget } from "./postRepostUtils";
 import { attestFullyVerifiedPostHistoryRawEvent } from "./postHistoryRawEventVerification";
+import { verifyRelatedEvent } from "./relatedEventVerification";
 import {
     postHistoryContextFetchService,
     type PostHistoryContextFetchService,
@@ -41,6 +42,7 @@ export type PostHistoryRelatedTargetStatus =
 export type PostHistoryRelatedTargetErrorCode =
     | "fetch_failed"
     | "nostr_not_ready"
+    | "invalid_event"
     | null;
 
 export interface RelatedTargetDescriptor {
@@ -64,6 +66,7 @@ export interface PostHistoryRelatedTargetSnapshot {
 }
 
 interface CreatePostHistoryRelatedTargetResolverParams {
+    requireFullVerification?: boolean;
     loadRepostTarget?: (descriptor: RelatedTargetDescriptor) => Promise<{ event: NostrEvent; relayHints: string[] } | null>;
     getShow: () => boolean;
     getRxNostr: () => RxNostr | undefined;
@@ -140,6 +143,7 @@ export function createPostHistoryRelatedTargetResolver({
     deletionFetchService = postHistoryDeletionFetchService,
     profileSyncCoordinator = undefined,
     loadRepostTarget = undefined,
+    requireFullVerification = false,
 }: CreatePostHistoryRelatedTargetResolverParams) {
     const profileSync = profileSyncCoordinator
         ?? createPostHistoryProfileSyncCoordinator({ getShow, getRxNostr });
@@ -326,7 +330,13 @@ export function createPostHistoryRelatedTargetResolver({
             return false;
         }
 
-        if (await isDeletedTarget(targetEvent.pubkey, targetEvent.id)) {
+        const scopes = scopeKeysByTargetId.get(targetEvent.id);
+        const runtime = getRxNostr();
+        const isActive = () => !requireFullVerification || (getShow() && getRxNostr() === runtime
+            && scopes === scopeKeysByTargetId.get(targetEvent.id) && !!scopes?.size);
+        const locallyDeleted = await isDeletedTarget(targetEvent.pubkey, targetEvent.id);
+        if (!isActive()) return false;
+        if (locallyDeleted) {
             applySnapshotUpdate(targetEvent.id, {
                 status: "deleted",
                 event: null,
@@ -347,6 +357,7 @@ export function createPostHistoryRelatedTargetResolver({
         const deletionKey = `${targetEvent.pubkey}:${targetEvent.id}`;
         const taskPromise: Promise<boolean> = pendingDeletionChecksByTarget.get(deletionKey) ?? Promise.resolve().then(async () => {
             try {
+                if (!isActive()) return false;
                 const task = deletionFetchService.fetchDeletionRequests(rxNostr, {
                     targets: [{ event: targetEvent, relayUrls: relayHints }],
                     relayHints,
@@ -355,6 +366,7 @@ export function createPostHistoryRelatedTargetResolver({
                 deletionTasksByTarget.set(deletionKey, task);
 
                 const result = await task.promise;
+                if (!isActive()) return false;
                 if (result.events.length > 0) {
                     await deletionRequestsRepositoryImpl.upsertValidDeletionRequests({
                         targetEvents: [targetEvent],
@@ -368,6 +380,7 @@ export function createPostHistoryRelatedTargetResolver({
                 }
 
                 const deleted = await isDeletedTarget(targetEvent.pubkey, targetEvent.id);
+                if (!isActive()) return false;
                 if (deleted) {
                     applySnapshotUpdate(targetEvent.id, {
                         status: "deleted",
@@ -413,9 +426,14 @@ export function createPostHistoryRelatedTargetResolver({
         const mergedSnapshot = snapshotsByTargetId[descriptor.targetEventId]
             ?? createInitialSnapshot(descriptor);
         const preserveResolvedState = !!options.background && existingBeforeMerge?.status === "resolved";
+        if (requireFullVerification && existingBeforeMerge?.status === "resolved"
+            && !verifyRelatedEvent(existingBeforeMerge.event, { eventId: descriptor.targetEventId,
+                authorHint: null, relayHints: [] })) {
+            options = { ...options, force: true };
+        }
         // A signed event of another kind can still be valid for a quote/thread.
         // Let the Repost projection reject it without poisoning the shared ID cache.
-        if (descriptor.relationKind === "repost" && existingBeforeMerge?.status === "resolved") {
+        if ((descriptor.relationKind === "repost" || requireFullVerification) && existingBeforeMerge?.status === "resolved") {
             const cached = attestFullyVerifiedPostHistoryRawEvent(existingBeforeMerge.event)?.event;
             if (cached?.id === descriptor.targetEventId) {
                 const generation = scopeGenerationByKey[descriptor.scopeKey];
@@ -510,7 +528,11 @@ export function createPostHistoryRelatedTargetResolver({
                     return snapshotsByTargetId[descriptor.targetEventId] ?? null;
                 }
 
-                if (existingRecord && (!options.requireRelayHint || [...existingRecord.relayHints, ...existingRecord.acceptedRelays, ...(existingRecord.fetchedRelays ?? [])].length > 0)
+                const verifiedRecord = requireFullVerification && existingRecord
+                    ? verifyRelatedEvent(existingRecord.rawEvent, { eventId: descriptor.targetEventId,
+                        authorHint: null, relayHints: [] }) : null;
+                if (existingRecord && (!requireFullVerification || verifiedRecord)
+                    && (!options.requireRelayHint || [...existingRecord.relayHints, ...existingRecord.acceptedRelays, ...(existingRecord.fetchedRelays ?? [])].length > 0)
                     && (descriptor.relationKind !== "repost" || verifyRepostTarget(existingRecord.rawEvent, {
                     eventId: descriptor.targetEventId, authorHint: null, relayHints: [],
                 }))) {
@@ -524,16 +546,16 @@ export function createPostHistoryRelatedTargetResolver({
                         return applySnapshotUpdate(descriptor.targetEventId, {
                             status: "deleted",
                             event: null,
-                            authorPubkey: existingRecord.pubkeyHex,
+                            authorPubkey: verifiedRecord?.event.pubkey ?? existingRecord.pubkeyHex,
                             relayHints: recordRelayHints,
                             errorCode: null,
                             updatedAt: Date.now(),
                         });
                     }
 
-                    const storedEvent = descriptor.relationKind === "repost"
+                    const storedEvent = verifiedRecord?.event ?? (descriptor.relationKind === "repost"
                         ? verifyRepostTarget(existingRecord.rawEvent)!.event
-                        : toEventFromPostHistoryRecord(existingRecord);
+                        : toEventFromPostHistoryRecord(existingRecord));
                     const event = storedEvent;
                     const targetRelayHints = recordRelayHints;
                     const snapshot = applySnapshotUpdate(descriptor.targetEventId, {
@@ -549,7 +571,7 @@ export function createPostHistoryRelatedTargetResolver({
                     return snapshotsByTargetId[descriptor.targetEventId] ?? snapshot;
                 }
 
-                if (descriptor.authorHint && descriptor.relationKind !== "repost") {
+                if (!requireFullVerification && descriptor.authorHint && descriptor.relationKind !== "repost") {
                     const deletedByAuthorHint = await runDeletionCheck(
                         createSyntheticTargetEvent(
                             descriptor.targetEventId,
@@ -600,7 +622,7 @@ export function createPostHistoryRelatedTargetResolver({
                 loadTasksByTargetId.delete(descriptor.targetEventId);
 
                 if (!result.event) {
-                    if (descriptor.authorHint && descriptor.relationKind !== "repost") {
+                    if (!requireFullVerification && descriptor.authorHint && descriptor.relationKind !== "repost") {
                         const deletedAfterFetch = await runDeletionCheck(
                             createSyntheticTargetEvent(
                                 descriptor.targetEventId,
@@ -635,7 +657,14 @@ export function createPostHistoryRelatedTargetResolver({
                     ...(result.relayUrl ? [result.relayUrl] : []),
                     ...mergedSnapshot.relayHints,
                 ]);
-                const resolvedEvent = result.event;
+                const verifiedResult = requireFullVerification ? verifyRelatedEvent(result.event, {
+                    eventId: descriptor.targetEventId, authorHint: null, relayHints: [],
+                }) : null;
+                if (requireFullVerification && !verifiedResult) {
+                    return applySnapshotUpdate(descriptor.targetEventId, { status: "error", event: null,
+                        errorCode: "invalid_event", updatedAt: Date.now() });
+                }
+                const resolvedEvent = verifiedResult?.event ?? result.event;
                 if (descriptor.relationKind === "repost" && !verifyRepostTarget(resolvedEvent, {
                     eventId: descriptor.targetEventId, authorHint: null, relayHints: [],
                 })) throw new Error("invalid_repost_target");

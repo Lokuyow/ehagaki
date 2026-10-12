@@ -150,7 +150,9 @@ describe('Playwright config connection values', () => {
                 '**/postEditorSending.spec.ts',
                 '**/postHistoryDialog.spec.ts',
                 '**/postHistoryFullScan.spec.ts',
+                '**/postHistoryJsonlWorker.spec.ts',
                 '**/postRepost.spec.ts',
+                '**/postReaction.spec.ts',
                 '**/sensitiveContentPayload.spec.ts',
             ]);
         } finally {

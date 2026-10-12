@@ -17,6 +17,7 @@ import {
 import { markPostHistoryShouldReturnToLatestAfterLocalPost } from "../postHistoryLatestRequest";
 import { bumpPostHistorySearchRevision } from "../postHistoryLocalSearchRevision";
 import { extractPostHistoryMedia } from "../postHistoryMediaUtils";
+import { getSensitivePayloadReference } from "../sensitiveContentPayload";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import {
     attestFullyVerifiedPostHistoryRawEvent,
@@ -1147,6 +1148,9 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         changedPubkeys.forEach(bumpPostHistorySearchRevision);
 
         for (const item of normalizedItems) {
+            // These incoming events are already fully verified. Only candidate
+            // Structures need the reconciler's persisted-pair consistency checks.
+            if (!getSensitivePayloadReference(item.event)) continue;
             try {
                 await reconcileSensitivePayloadDeletionForStructure(
                     item.event.id,

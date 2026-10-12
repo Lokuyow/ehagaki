@@ -1,3 +1,4 @@
+import { usePostHistoryJsonlVerificationWorkerMock } from "../mocks/postHistoryJsonlVerificationWorker";
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -20,6 +21,10 @@ import {
 import { PostHistoryJsonlImportService } from "../../lib/postHistoryJsonlImportService";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
+import { DexiePostHistoryDeletionRequestsRepository } from "../../lib/storage/postHistoryDeletionRequestsRepository";
+import { DexieSensitivePayloadRepository } from "../../lib/storage/sensitivePayloadRepository";
+import { PostHistoryJsonlVerificationWorkerMock } from "../mocks/postHistoryJsonlVerificationWorker";
+import { getPostHistoryLocalRevision } from "../../lib/storage/postHistoryLocalWriteScope";
 import type { NostrEvent } from "../../lib/types";
 
 const databaseNames = new Set<string>();
@@ -55,6 +60,55 @@ afterEach(async () => {
 });
 
 describe("post-history attestation repository boundary", () => {
+    it("bulk upserts ordinary authored kinds without per-event Sensitive Structure reads", async () => {
+        const name = `${EHAGAKI_DB_NAME}-ordinary-bulk-${crypto.randomUUID()}`;
+        databaseNames.add(name);
+        const db = new EHagakiDB(name);
+        const repository = new DexiePostHistoryRepository(db);
+        const key = generateSecretKey();
+        const events = Array.from({ length: 1000 }, (_, index) => {
+            const event = finalizeEvent({ kind: [1, 6, 16, 42, 1111][index % 5]!,
+                content: `ordinary-${index}`, tags: [], created_at: 1_700_000_000 + index }, key);
+            return attestFullyVerifiedPostHistoryRawEvent(event)!;
+        });
+        const get = vi.spyOn(db.postHistory, "get");
+        verifyEventMock.mockClear();
+        for (let offset = 0; offset < events.length; offset += 500) {
+            expect(await repository.upsertFetchedEvents({ events: events.slice(offset, offset + 500) }))
+                .toMatchObject({ insertedCount: 500 });
+        }
+        expect(await repository.upsertFetchedEvents({ events }))
+            .toMatchObject({ insertedCount: 0, unchangedCount: 1000 });
+        expect(get.mock.calls.length).toBe(0);
+        expect(verifyEventMock).not.toHaveBeenCalled();
+        await expect(db.postHistory.count()).resolves.toBe(1000);
+        db.close();
+    });
+    it.each([5,36])("keeps kind %s fallback cryptographic for missing, forged and mutated proofs", async kind => {
+        const key=generateSecretKey();
+        const signed=finalizeEvent({kind,content:"fixture",tags:kind===5?[["e","0".repeat(64)]]:[["k","1"]],created_at:123},key);
+        const attested=attestFullyVerifiedPostHistoryRawEvent(signed)!;
+        for(const mode of ["missing","forged","mutated"] as const) {
+            const name=`${EHAGAKI_DB_NAME}-fallback-${kind}-${mode}-${crypto.randomUUID()}`;
+            databaseNames.add(name);const db=new EHagakiDB(name);
+            const event={...attested.event,tags:attested.event.tags.map(t=>[...t]),...(mode==="mutated"?{sig:"0".repeat(128)}:{})};
+            const token=mode==="missing"?undefined:mode==="forged"?{}:attested.attestation;
+            verifyEventMock.mockClear();
+            const countsAtWrite:number[]=[];
+            db.postHistoryDeletionRequests.hook("creating",()=>{countsAtWrite.push(verifyEventMock.mock.calls.length);});
+            db.sensitivePayloads.hook("creating",()=>{countsAtWrite.push(verifyEventMock.mock.calls.length);});
+            if(kind===5) {
+                const result=await new DexiePostHistoryDeletionRequestsRepository(db).upsertImportedDeletionEvents({ownerPubkeyHex:event.pubkey,deletionEvents:[{event,attestation:token}]});
+                expect(result.insertedCount).toBe(mode==="mutated"?0:1);
+            } else {
+                const save=new DexieSensitivePayloadRepository(db).putCandidate({event,attestation:token});
+                if(mode==="mutated")await expect(save).rejects.toThrow("invalid_sensitive_payload_candidate");else await save;
+            }
+            expect(verifyEventMock).toHaveBeenCalled();
+            expect(countsAtWrite).toEqual(mode==="mutated"?[]:[1]);
+            db.close();
+        }
+    });
     it("reuses a full attestation without a second Schnorr verification and keeps fallback cryptographic", async () => {
         const databaseName = `${EHAGAKI_DB_NAME}-attestation-${Date.now()}`;
         databaseNames.add(databaseName);
@@ -82,31 +136,38 @@ describe("post-history attestation repository boundary", () => {
         databaseNames.add(databaseName);
         const db = new EHagakiDB(databaseName);
         const repository = new DexiePostHistoryRepository(db);
-        const event = createEvent();
+        const key = generateSecretKey();
+        const event = finalizeEvent({kind:1,content:"post",tags:[],created_at:123},key);
+        const deletion = finalizeEvent({kind:5,content:"",tags:[["e",event.id]],created_at:124},key);
+        const payload = finalizeEvent({kind:36,content:"payload",tags:[["k","1"]],created_at:125},key);
+        // Incoming attestations are reused; ordinary deletion targets also
+        // skip the persisted Sensitive payload reconciliation entirely.
+        db.postHistoryDeletionRequests.hook("creating", () => {
+            expect(verifyEventMock).not.toHaveBeenCalled();
+        });
         const importService = new PostHistoryJsonlImportService({
+            getLocalRevision: owner => getPostHistoryLocalRevision(db,owner),
             postHistoryRepository: repository,
-            deletionRequestsRepository: {
-                upsertImportedDeletionEvents: async () => ({
-                    insertedCount: 0,
-                    updatedCount: 0,
-                    unchangedCount: 0,
-                    ignoredCount: 0,
-                    appliedDeletionCount: 0,
-                }),
-            },
+            deletionRequestsRepository: new DexiePostHistoryDeletionRequestsRepository(db),
+            sensitivePayloadRepository: new DexieSensitivePayloadRepository(db),
         });
         verifyEventMock.mockClear();
 
         const result = await importService.importFile({
-            file: createFile(`${JSON.stringify(event)}\n`),
+            file: createFile([event,deletion,payload].map(e=>JSON.stringify(e)).join("\n")),
             ownerPubkeyHex: event.pubkey,
             getCurrentPubkeyHex: () => event.pubkey,
         });
 
         expect(result.status).toBe("completed");
         expect(result.insertedPostCount).toBe(1);
-        expect(verifyEventMock).toHaveBeenCalledTimes(1);
+        expect(result.insertedDeletionRequestCount).toBe(1);
+        expect(result.savedPayloadCandidateCount).toBe(1);
+        expect(verifyEventMock).not.toHaveBeenCalled();
+        expect(PostHistoryJsonlVerificationWorkerMock.instances.flatMap(worker => worker.requests)).toHaveLength(3);
         await expect(db.postHistory.count()).resolves.toBe(1);
         db.close();
     });
 });
+
+usePostHistoryJsonlVerificationWorkerMock();

@@ -108,6 +108,31 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         rxNostrMock.emittedFilters = [];
     });
 
+    it("sync saves the trailing target only and rejects invalid or mismatched Reaction references", async () => {
+        const tags = [
+            [["e", OTHER_PARENT_ID, "", "reply"], ["p", "b".repeat(64)], ["e", PARENT_ID, "", OWNER_PUBKEY], ["p", OWNER_PUBKEY], ["k", "1"]],
+            [["e", PARENT_ID, "", "reply"], ["e", OTHER_PARENT_ID], ["p", OWNER_PUBKEY]],
+            [["e", PARENT_ID], ["e", "invalid"], ["p", OWNER_PUBKEY]],
+            [["e", PARENT_ID], ["p", OWNER_PUBKEY], ["p", "invalid"]],
+            [["e", PARENT_ID], ["p", OWNER_PUBKEY], ["k", "42"]],
+            [["e", PARENT_ID], ["p", OWNER_PUBKEY], ["p", "b".repeat(64)]],
+        ];
+        const events = tags.map((tags, index) => createEvent({ kind: 7, id: String(index + 3).repeat(64), tags }));
+        rxNostrMock.use.mockReturnValue({ subscribe: ({ next, complete }: Record<string, any>) => {
+            events.forEach(event => next(createPacket(event))); complete(); return { unsubscribe: vi.fn() };
+        } });
+        const { service, postHistoryChildInteractionsRepository } = createService();
+        const result = await service.syncRecent(rxNostrMock as any, {
+            ownerPubkeyHex: OWNER_PUBKEY, reason: "dialog-open-refresh", relayConfig: null,
+        }).promise;
+        expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledOnce();
+        expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledWith({
+            parentEventId: PARENT_ID, events: [{ event: events[0], relayUrls: ["wss://relay.example.com/"] }],
+            fetchedAt: 1_700_000_000_000,
+        });
+        expect(result.changedParentEventIds).toEqual([PARENT_ID]);
+    });
+
     it("#pでkind:1を取得し、owner-scoped parentがあるdirect replyだけ保存する", async () => {
         const directReply = createEvent({ id: "3".repeat(64), created_at: 1_700_000_100 });
         const mentionLike = createEvent({

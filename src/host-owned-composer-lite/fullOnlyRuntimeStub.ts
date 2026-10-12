@@ -18,6 +18,7 @@ export const parentClientAuthService = {
 };
 
 export const postHistoryRepository = {};
+export const postReactionService = {};
 
 export class ReplyQuoteService {
     constructor() {

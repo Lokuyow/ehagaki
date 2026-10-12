@@ -16,6 +16,12 @@
   import type { MediaGalleryItem } from "../lib/types";
   import { mediaFreePlacementStore } from "../stores/uploadStore.svelte";
   import { PostManager } from "../lib/postManager";
+  import { postReactionService, type PostReactionResult } from '../lib/postReactionService';
+  import { authState } from '../stores/authStore.svelte';
+  import { reactionComposerState, clearReactionTarget } from '../stores/reactionComposerStore.svelte';
+  import { inspectReactionDocument } from '../lib/reactionValue';
+  import { isReactionComposing } from '../lib/editor/reactionInput';
+  import { resetPostStatus } from '../stores/editorStore.svelte';
   import { nip46Service } from "../lib/nip46Service";
   import { parentClientAuthService } from "../lib/parentClientAuthService";
   import { sanitizeDraftHtml } from "../lib/draftHtmlSanitizer";
@@ -121,6 +127,7 @@
     hasPostingCapability?: boolean;
     isSwitchingAccount?: boolean;
     onPostSuccess?: (result?: PostResult) => void;
+    onReactionResult?: (result: PostReactionResult) => void;
     availableComposerHeight?: number;
     minEditorHeight?: number;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
@@ -139,6 +146,7 @@
     hasPostingCapability = hasStoredKey,
     isSwitchingAccount = false,
     onPostSuccess,
+    onReactionResult,
     availableComposerHeight = POST_EDITOR_MIN_HEIGHT,
     minEditorHeight = POST_EDITOR_MIN_HEIGHT,
     onCustomEmojiSelect,
@@ -157,7 +165,7 @@
   // its dedicated output/upload modules from the full graph.
   const isHostOwned =
     isHostOwnedLiteBuild && (() => Boolean(hostOwnedConfig))();
-  let mediaEnabled = $derived(!isHostOwned || !!hostOwnedConfig?.uploadMedia);
+  let mediaEnabled = $derived((!isHostOwned || !!hostOwnedConfig?.uploadMedia) && !reactionComposerState.value);
   let isUploading = $derived(editorState.isUploading);
   let canPost = $derived(editorState.canPost);
   let showEditorSubmitButton = $derived(
@@ -208,6 +216,30 @@
   let editorPlaceholderText = $derived(
     $_("postComponent.enter_your_text") || "テキストを入力してください",
   );
+
+  $effect(() => {
+    const target = reactionComposerState.value;
+    const instance = currentEditor;
+    const gallery = mediaGalleryStore.hasNonPlaceholderItems();
+    if (!instance) return;
+    updateEditorPostEligibility(instance, gallery, target ?
+      Boolean(inspectReactionDocument(instance.state.doc, gallery).value) && !isReactionComposing(instance) : undefined);
+  });
+
+  let reactionSubmit = $state.raw<{ editor: TipTapEditor; isCurrent: () => boolean } | null>(null);
+  $effect(() => {
+    const operation = reactionSubmit;
+    if (!operation || operation.isCurrent()) return;
+    // Ownership transitions release the old UI immediately. A stale completion cannot change the new UI.
+    reactionSubmit = null;
+    untrack(() => {
+      postManager?.cancelActiveNip65Operations();
+      if (currentEditorStore.value === operation.editor) {
+        editorState.isSubmitPending = false;
+        if (editorState.postStatus.sending) resetPostStatus();
+      }
+    });
+  });
 
   function isEditorMutationBlocked(): boolean {
     return postStatus.sending || submittedCompositionReadOnly;
@@ -395,6 +427,7 @@
         return null;
       }
       if (!isHostOwned) {
+        if (reactionComposerState.value) return null;
         if (normalUploadFiles) return await normalUploadFiles(params);
         if (isHostOwnedLiteBuild) return null;
         const { uploadFiles } = await import("../lib/normalUploadHelper");
@@ -478,11 +511,15 @@
   const postStatusHandlers = createPostStatusHandlers({
     updatePostStatus,
     clearContentAfterSuccess: clearContentAfterSubmissionSuccess,
-    onPostSuccess: (result) => onPostSuccess?.(result),
+    onPostSuccess: (result) => {
+      if (result?.event?.kind === 7) onReactionResult?.(result as PostReactionResult);
+      else onPostSuccess?.(result);
+    },
   });
 
   onDestroy(() => {
     componentDestroyed = true;
+    if (!isHostOwned) clearReactionTarget();
     postManager?.cancelActiveNip65Operations();
   });
 
@@ -567,6 +604,7 @@
           submittedCompositionReadOnly = phase === 'stale';
         });
     editorResources = initializeEditor({
+      isReactionMode: isHostOwned ? undefined : () => reactionComposerState.value !== null,
       isInputBlocked: isHostOwned ? undefined : isEditorMutationBlocked,
       isCompositionInputAllowed: isHostOwned
         ? undefined
@@ -589,7 +627,7 @@
         : undefined,
       uploadFiles: mediaEnabled
         ? (files: File[] | FileList) => {
-            if (isEditorMutationBlocked()) return;
+            if (isEditorMutationBlocked() || reactionComposerState.value) return;
             void uploadHandlers.performUpload(files);
           }
         : undefined,
@@ -624,6 +662,8 @@
       updateEditorPostEligibility(
         editorInstance,
         mediaGalleryStore.hasNonPlaceholderItems(),
+        reactionComposerState.value ? Boolean(inspectReactionDocument(editorInstance.state.doc,
+          mediaGalleryStore.hasNonPlaceholderItems()).value) && !isReactionComposing(editorInstance) : undefined,
       );
     };
     const handleEditorTransaction = ({
@@ -729,7 +769,7 @@
   export async function uploadFiles(
     files: File[] | FileList,
   ): Promise<UploadHelperResult | null> {
-    if (isEditorMutationBlocked()) return null;
+    if (isEditorMutationBlocked() || reactionComposerState.value) return null;
     return await uploadHandlers.performUpload(files);
   }
 
@@ -844,9 +884,11 @@
     currentEditor.commands.focus("end");
   }
 
-  export function insertCustomEmoji(emoji: CustomEmojiAttrs): void {
-    if (!currentEditor || isEditorMutationBlocked()) return;
+  export function insertCustomEmoji(emoji: CustomEmojiAttrs): boolean {
+    if (!currentEditor || isEditorMutationBlocked()) return false;
+    const before = currentEditor.state.doc;
     insertCustomEmojiWithoutUnwantedKeyboard(currentEditor, emoji);
+    return !before.eq(currentEditor.state.doc);
   }
 
   function revealToolbarCaret(): void {
@@ -935,10 +977,12 @@
   function canStartSubmit(): boolean {
     return (
       canSendNormalPost() &&
-      resolveLivePostEligibility(
+      (reactionComposerState.value && currentEditor ?
+        Boolean(inspectReactionDocument(currentEditor.state.doc, mediaGalleryStore.hasNonPlaceholderItems()).value)
+          && !isReactionComposing(currentEditor) && !currentEditor.view.composing : resolveLivePostEligibility(
         currentEditor,
         mediaGalleryStore.hasNonPlaceholderItems(),
-      ) &&
+      )) &&
       !editorState.isSubmitPending &&
       !showSecretKeyDialog
     );
@@ -1091,6 +1135,36 @@
     if (isHostOwnedLiteBuild) return;
     if (!postManager) return;
     const editorInstance = currentEditor;
+    const reactionTarget = reactionComposerState.value;
+    if (reactionTarget) {
+      const value = inspectReactionDocument(editorInstance.state.doc, mediaGalleryStore.hasNonPlaceholderItems()).value;
+      if (!value) return;
+      const runtime = rxNostr;
+      const auth = authState.value;
+      const isCurrent = () => !componentDestroyed && currentEditorStore.value === editorInstance
+        && rxNostr === runtime && authState.value === auth && reactionComposerState.value === reactionTarget;
+      const operation = { editor: editorInstance, isCurrent };
+      reactionSubmit = operation;
+      let appliedResult = false;
+      editorState.isSubmitPending = true;
+      postStatusHandlers.markSending();
+      try {
+        const result = await postReactionService.react({ target: reactionTarget.event, relayHints: reactionTarget.relayHints,
+          value, publisher: postManager, isCurrent });
+        if (!isCurrent()) return;
+        appliedResult = true;
+        if (result.success) {
+          clearReactionTarget();
+          postStatusHandlers.markSuccess(result);
+        } else markPostFailure('reaction.failed');
+      } finally {
+        if (reactionSubmit === operation && (appliedResult || isCurrent())) {
+          reactionSubmit = null;
+          if (!componentDestroyed && currentEditorStore.value === editorInstance) editorState.isSubmitPending = false;
+        }
+      }
+      return;
+    }
     editorState.isSubmitPending = true;
     try {
       if (
@@ -1137,6 +1211,7 @@
   }
 
   export function resetPostContent() {
+    if (!isHostOwned) clearReactionTarget();
     if (!currentEditor) return;
     if (!isHostOwnedLiteBuild && postManager) {
       postManager.resetPostContent(currentEditor);
@@ -1146,6 +1221,7 @@
   }
 
   export function clearContentAfterSuccess() {
+    if (!isHostOwned) clearReactionTarget();
     if (!isHostOwnedLiteBuild && postManager && currentEditor) {
       postManager.clearContentAfterSuccess(currentEditor);
       return;
@@ -1255,6 +1331,8 @@
     updateEditorPostEligibility(
       currentEditor,
       hasGalleryMedia,
+      reactionComposerState.value ? Boolean(currentEditor && inspectReactionDocument(currentEditor.state.doc, hasGalleryMedia).value)
+        && Boolean(currentEditor && !isReactionComposing(currentEditor)) : undefined,
     );
   });
 

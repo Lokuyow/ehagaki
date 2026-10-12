@@ -1,4 +1,16 @@
 {
+  "reaction": {
+    "action": "リアクションする",
+    "entry": "リアクション",
+    "target": "リアクションの対象",
+    "clear": "リアクションを解除",
+    "input": "文字・絵文字・カスタム絵文字を1つ入力してください。いいねは + です。",
+    "invalid": "リアクションは1文字またはカスタム絵文字1つにしてください。メディアや改行は送信できません。",
+    "failed": "リアクションを送信できませんでした。入力は保持されています。",
+    "targetFailed": "リアクション対象を検証できませんでした。再試行してください。",
+    "saveFailed": "リアクションは送信されましたが、端末への保存に失敗しました。",
+    "retrySave": "保存を再試行"
+  },
   "repost": {
     "action": "リポスト",
     "sending": "リポスト送信中…",
@@ -769,6 +781,16 @@
     }
   },
   "composerTarget": {
+    "genericRepost": "Generic Repost",
+    "reaction": "リアクション",
+    "relatedPreview": "関連イベントのプレビュー",
+    "relatedRepost": "リポスト元",
+    "relatedReaction": "リアクション対象",
+    "relatedLoading": "参照先を取得中…",
+    "relatedDeleted": "参照先は削除済みです",
+    "relatedUnsupported": "この参照先のプレビューには対応していません",
+    "relatedInvalid": "参照先の情報を検証できませんでした",
+    "relatedMissing": "参照先を取得できませんでした",
     "title": "宛先を指定",
     "description": "Nostrイベントを投稿先、返信先、または引用対象として指定します",
     "inputLabel": "イベントID",

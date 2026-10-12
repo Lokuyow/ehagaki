@@ -19,8 +19,8 @@ import {
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
 import {
     parsePostHistoryThreadReferences,
-    resolveKind7ReactionTargetEventId,
 } from "./postHistoryNip10Utils";
+import { matchesReactionReferenceTarget, parseReactionReference, type ReactionReferenceTarget } from "./reactionReference";
 import {
     buildPostHistoryDirectReplyParentContext,
     validatePostHistoryDirectReplyRelation,
@@ -121,10 +121,10 @@ type CandidateTarget = {
     relayHints?: string[];
     acceptedRelays?: string[];
     fetchedRelays?: string[];
+    reactionTarget?: ReactionReferenceTarget;
 };
 
-export interface PostHistoryRelatedReactionTarget {
-    eventId: string;
+export interface PostHistoryRelatedReactionTarget extends ReactionReferenceTarget {
     relayHints: string[];
 }
 
@@ -180,6 +180,7 @@ type PostHistoryVisibleRangeChildInteractionItem = {
     parentEventId: string;
     event: NostrEvent;
     relayUrls: string[];
+    reactionTarget?: ReactionReferenceTarget;
 };
 
 type VisibleRangeRepairInclusionOptions = {
@@ -323,6 +324,8 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
             const current = targetsById.get(target.eventId);
             targetsById.set(target.eventId, {
                 eventId: target.eventId,
+                targetAuthorPubkey: target.targetAuthorPubkey ?? current?.targetAuthorPubkey,
+                targetKind: target.targetKind ?? current?.targetKind,
                 relayHints: RelayConfigUtils.sanitizeExternalRelayUrls([
                     ...(current?.relayHints ?? []),
                     ...target.relayHints,
@@ -346,6 +349,8 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                         eventId: target.eventId,
                         kind: 1,
                         relayHints: target.relayHints,
+                        reactionTarget: { eventId: target.eventId,
+                            targetAuthorPubkey: target.targetAuthorPubkey, targetKind: target.targetKind },
                     })));
             }
             let nextIndex = 0;
@@ -361,7 +366,9 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                 if (!isActive() || result.status === "cancelled") return;
                 const fallbackDefersCompleteness = depth === 0 && result.requiresFallback;
                 if (result.status !== "success" && !fallbackDefersCompleteness) partial = true;
-                const reactionItems = this.toReactionItems(chunk, result.items);
+                const reactionItems = this.toReactionItems(
+                    chunk.map(target => target.reactionTarget ?? { eventId: target.eventId }), result.items,
+                );
                 if (reactionItems.length > 0) {
                     await this.saveReactionInteractions(reactionItems, result.fetchedAt, isActive);
                 }
@@ -530,7 +537,8 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                             : [];
                         const reactionItems = options.includeReactions
                             ? this.toReactionItems(
-                                chunk.posts,
+                                chunk.posts.map(post => ({ eventId: post.eventId,
+                                    targetAuthorPubkey: post.pubkeyHex, targetKind: post.kind })),
                                 candidateResult.items,
                             )
                             : [];
@@ -677,24 +685,27 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
     }
 
     private toReactionItems(
-        posts: CandidateTarget[],
+        targets: ReactionReferenceTarget[],
         items: Array<{ event: NostrEvent; relayUrls: string[] }>,
     ): PostHistoryVisibleRangeChildInteractionItem[] {
-        const parentEventIds = new Set(posts.map((post) => post.eventId));
+        const targetsById = new Map(targets.map(target => [target.eventId, target]));
         return items.flatMap((item) => {
             if (item.event.kind !== 7) {
                 return [];
             }
 
-            const parentEventId = resolveKind7ReactionTargetEventId(item.event);
-            if (!parentEventId || !parentEventIds.has(parentEventId) || item.event.id === parentEventId) {
+            const reference = parseReactionReference(item.event).reference;
+            const target = reference ? targetsById.get(reference.eventId) : undefined;
+            if (!reference || !target || !matchesReactionReferenceTarget(reference, target)
+                || item.event.id === reference.eventId) {
                 return [];
             }
 
             return [{
-                parentEventId,
+                parentEventId: reference.eventId,
                 event: item.event,
                 relayUrls: item.relayUrls,
+                reactionTarget: target,
             }];
         });
     }
@@ -705,6 +716,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         isActive: () => boolean,
     ): Promise<{ savedParentEventIds: string[] }> {
         const itemsByParentId = new Map<string, PostHistoryChildInteractionItem[]>();
+        const targetsByParentId = new Map<string, ReactionReferenceTarget>();
         for (const item of items) {
             const parentItems = itemsByParentId.get(item.parentEventId) ?? [];
             parentItems.push({
@@ -712,6 +724,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                 relayUrls: item.relayUrls,
             });
             itemsByParentId.set(item.parentEventId, parentItems);
+            if (item.reactionTarget) targetsByParentId.set(item.parentEventId, item.reactionTarget);
         }
 
         const savedParentEventIds: string[] = [];
@@ -720,10 +733,13 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                 break;
             }
 
+            const target = targetsByParentId.get(parentEventId);
             const result = await this.childInteractionsRepository.upsertChildInteractions({
                 parentEventId,
                 events,
                 fetchedAt,
+                ...(target && (target.targetKind != null || target.targetAuthorPubkey != null)
+                    ? { reactionTarget: target } : {}),
             });
             const savedCount = result.insertedCount + result.updatedCount;
             if (savedCount > 0) {

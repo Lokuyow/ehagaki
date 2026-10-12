@@ -6,6 +6,7 @@ import {
     type ChannelContextRuntimeState,
 } from '../lib/channelContextRuntime';
 import { decodeDraftChannelContext } from '../lib/draftChannelContext';
+import { clearReactionTarget } from './reactionComposerStore.svelte';
 
 let channelContext = $state<ChannelContextState | null>(null);
 let channelContextProvenance = $state<ChannelContextProvenance | null>(null);
@@ -72,6 +73,7 @@ export function onChannelContextChanged(
 }
 
 export function setChannelContext(value: ChannelContextState): void {
+    clearReactionTarget();
     channelContext = cloneChannelContext(value);
     channelContextProvenance = null;
     channelContextRuntime = {
@@ -88,6 +90,7 @@ export function setChannelContextWithProvenance(
     provenance: ChannelContextProvenance | null,
     ownerToken: symbol,
 ): void {
+    clearReactionTarget();
     channelContext = cloneChannelContext(value);
     channelContextProvenance = cloneChannelContextProvenance(provenance);
     channelContextOwnerToken = ownerToken;
@@ -95,6 +98,7 @@ export function setChannelContextWithProvenance(
 }
 
 export function restoreChannelContext(value: DraftChannelData): void {
+    clearReactionTarget();
     const { query, provenance } = decodeDraftChannelContext(value);
     channelContext = cloneChannelContext({
         eventId: query.eventId,

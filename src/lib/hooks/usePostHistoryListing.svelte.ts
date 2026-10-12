@@ -1638,7 +1638,13 @@ export function usePostHistoryListing({
 
     function restoreLocalBrowsingRecord(record: PostHistoryLocalBrowsingRanges | null): void {
         if (!record || record.localRelayUrl !== getLocalBrowsingUrl() || record.localRevision !== observedLocalRevision) return;
-        localBrowsingRanges = record.browsingRanges;
+        // A liveQuery callback can finish its revision read after a newer page
+        // commits. Evidence only grows within this URL/revision; an older
+        // snapshot must not retract continuity already adopted by the listing.
+        localBrowsingRanges = getPostHistoryBrowsingContinuity(
+            localBrowsingRevision === record.localRevision ? localBrowsingRanges : [],
+            record.browsingRanges,
+        );
         localBrowsingRevision = record.localRevision;
         // Never restore a hasMore/exhausted decision. A new session can recheck the relay.
         if (record.resumeHint) localNextUntil = localNextUntil === null ? record.resumeHint.nextUntil

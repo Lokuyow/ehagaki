@@ -71,3 +71,9 @@
 - Integration: `editor-history.integration.test.ts`、`editor-clipboard.integration.test.ts`、`editor-media.integration.test.ts`、`editor-link-detection.integration.test.ts`、`editor-url-paste.integration.test.ts`、`multi-image-upload-uniqueid.integration.test.ts`。
 - Playwright: `postEditorSending.spec.ts` proves live contenteditable sending / placeholder behavior; `customEmojiPicker.spec.ts` covers picker runtime behavior rather than generic editor transaction semantics. Add E2E only when editor unit/integration tests cannot prove native selection, composition, clipboard, focus, contenteditable, touch drag, or geometry behavior.
 - Android/iOS IME, native selection, browser clipboard, focus, touch caret, actual geometry, PWA / WebView behavior require `ehagaki-browser-debug`; device emulation is not real-device evidence.
+
+## Reaction mode document validation
+
+- `reactionValue.ts`は隣接textを結合してIntl.Segmenterで書記素を数え、customEmojiをstructured tokenとして検証する。既存のinvalid documentやmediaはmode開始時に保持する。
+- `reactionInput.ts`のtransaction filterは通常入力・paste・dropで2値目を拒否し、削除／選択置換の修正と`isHistoryTransaction`によるinvalid documentへのundo/redo復元を許可する。IME preeditは一時的に許可し、超過commitをcomposition開始前のdocument／selectionへ戻す。既存sending guardは別途適用される。
+- PostComponentはbutton／shortcut／直接submitすべてでlive documentを再検証し、composition中はReactionを送らない。Pickerは既存node挿入を使用し、documentが変化した挿入でだけusageを記録する。

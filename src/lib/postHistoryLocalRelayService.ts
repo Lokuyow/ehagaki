@@ -189,7 +189,7 @@ export class PostHistoryLocalRelayService {
                 const deletions = related[1].status === "fulfilled" ? related[1].value ?? [] : [];
                 if (active() && deletions.length) {
                     const result = await this.deletions.upsertImportedDeletionEvents({ ownerPubkeyHex: session.ownerPubkeyHex,
-                        deletionEvents: deletions.map(({ event }) => event), fetchedAt: page.fetchedAt, localWriteScope: scope });
+                        deletionEvents: deletions, fetchedAt: page.fetchedAt, localWriteScope: scope });
                     changed ||= result.appliedDeletionCount > 0;
                 }
             }

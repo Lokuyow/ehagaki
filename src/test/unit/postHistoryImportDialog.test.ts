@@ -477,9 +477,55 @@ describe("PostHistoryImportDialog", () => {
         expect(screen.getByText("進捗").parentElement?.textContent).toContain("50%");
         expect(screen.getByText("経過時間").parentElement?.textContent).toContain("0:12");
         expect(screen.getByText("推定残り時間").parentElement?.textContent)
-            .toContain("0:12");
+            .toContain("計算中...");
+        for (const [time, bytes] of [[13_000, 65], [14_000, 80]]) {
+            now = time!;
+            emitProgress({ result: createResult(), processedBytes: bytes!, totalBytes: 100 });
+        }
+        await waitFor(() => expect(screen.getByText("推定残り時間").parentElement?.textContent)
+            .toContain("0:01"));
         expect(screen.getByText("推定残り時間").parentElement?.textContent)
             .not.toContain("約");
+    });
+
+    it("早い別account prefixではETAを出さず、保存後は古いsampleを外した直近速度を使う", async () => {
+        vi.useFakeTimers();
+        let now = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => now);
+        let emitProgress!: (progress: Readonly<PostHistoryJsonlImportProgress>) => void;
+        importFileMock.mockImplementation(({ onProgress }) => {
+            emitProgress = onProgress;
+            return new Promise<PostHistoryJsonlImportResult>(() => undefined);
+        });
+        render(PostHistoryImportDialog, { props: { open: true, ownerPubkeyHex: "a".repeat(64),
+            getCurrentPubkeyHex: () => "a".repeat(64) } });
+        const input = screen.getByRole("dialog", { name: "JSONLをインポート" })
+            .querySelector('input[type="file"]') as HTMLInputElement;
+        await fireEvent.change(input, { target: { files: [new File(["fixture"], "history.jsonl")] } });
+        const eta = () => screen.getByText("推定残り時間").parentElement?.textContent;
+        const progress = async (time: number, bytes: number, saved: number) => {
+            now = time;
+            emitProgress({ result: createResult({ insertedPostCount: saved, otherAccountCount: 2000 }),
+                processedBytes: bytes, totalBytes: 1000 });
+            await waitFor(() => expect(screen.getByRole("progressbar").getAttribute("aria-valuenow"))
+                .toBe(String(Math.round(bytes / 10))));
+        };
+        await progress(1000, 710, 0);
+        await progress(2000, 720, 0);
+        await progress(3000, 730, 0);
+        expect(eta()).toContain("計算中...");
+        await progress(4000, 740, 500);
+        await progress(5000, 745, 500);
+        expect(eta()).toContain("計算中...");
+        await progress(6000, 750, 500);
+        expect(eta()).toContain("0:50");
+        await progress(14_000, 766, 1000);
+        await progress(15_000, 768, 1000);
+        await progress(16_000, 770, 1000);
+        expect(eta()).toContain("1:55");
+        now = 27_000;
+        vi.advanceTimersByTime(1000);
+        await waitFor(() => expect(eta()).toContain("計算中..."));
     });
 
     it("1時間以上の経過時間をh:mm:ssで表示する", async () => {

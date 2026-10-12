@@ -1713,26 +1713,26 @@ describe("DexiePostHistoryRepository", () => {
         await deletionRepository.upsertImportedDeletionEvents({
             ownerPubkeyHex: pubkey,
             deletionEvents: [
-                createDeletionEvent(unchangedEvent.id, {
+                { event: createDeletionEvent(unchangedEvent.id, {
                     id: "a".repeat(64),
                     pubkey,
                     created_at: 700,
-                }),
-                createDeletionEvent(updatedEvent.id, {
+                }) },
+                { event: createDeletionEvent(updatedEvent.id, {
                     id: "b".repeat(64),
                     pubkey,
                     created_at: 900,
-                }),
-                createDeletionEvent(updatedEvent.id, {
+                }) },
+                { event: createDeletionEvent(updatedEvent.id, {
                     id: "c".repeat(64),
                     pubkey,
                     created_at: 800,
-                }),
-                createDeletionEvent(unmatchedEvent.id, {
+                }) },
+                { event: createDeletionEvent(unmatchedEvent.id, {
                     id: "f".repeat(64),
                     pubkey,
                     created_at: 600,
-                }),
+                }) },
             ],
         });
         await repository.putPostedEvent({ event: unchangedEvent });
@@ -1855,7 +1855,7 @@ describe("DexiePostHistoryRepository", () => {
         };
         await deletionRepository.upsertImportedDeletionEvents({
             ownerPubkeyHex: event.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
         });
 
         const result = await repository.upsertFetchedEvents({
@@ -1895,7 +1895,7 @@ describe("DexiePostHistoryRepository", () => {
         };
         await deletionRepository.upsertImportedDeletionEvents({
             ownerPubkeyHex: deletionEvent.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
         });
 
         const result = await repository.upsertFetchedEvents({
@@ -1930,7 +1930,7 @@ describe("DexiePostHistoryRepository", () => {
         };
         await deletionRepository.upsertImportedDeletionEvents({
             ownerPubkeyHex: event.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
         });
         await repository.putPostedEvent({ event });
 
@@ -1964,7 +1964,7 @@ describe("DexiePostHistoryRepository", () => {
         };
         await deletionRepository.upsertImportedDeletionEvents({
             ownerPubkeyHex: event.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
         });
         await repository.putPostedEvent({ event });
 
@@ -2023,7 +2023,7 @@ describe("DexiePostHistoryRepository", () => {
         };
         await deletionRepository.upsertImportedDeletionEvents({
             ownerPubkeyHex: deletionEvent.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
         });
 
         const result = await repository.upsertFetchedEvents({
@@ -2055,7 +2055,7 @@ describe("DexiePostHistoryRepository", () => {
         };
         await deletionRepository.upsertImportedDeletionEvents({
             ownerPubkeyHex: deletionEvent.pubkey,
-            deletionEvents: [deletionEvent],
+            deletionEvents: [{ event: deletionEvent }],
         });
 
         const result = await repository.upsertFetchedEvents({
@@ -2078,11 +2078,11 @@ describe("DexiePostHistoryRepository", () => {
         const event = createSignedEvent({ id: "7".repeat(64) });
         await deletionRepository.upsertImportedDeletionEvents({
             ownerPubkeyHex: event.pubkey,
-            deletionEvents: [createDeletionEvent(event.id, {
+            deletionEvents: [{ event: createDeletionEvent(event.id, {
                 id: "8".repeat(64),
                 pubkey: event.pubkey,
                 created_at: 300,
-            })],
+            }) }],
         });
 
         const bulkPutSpy = vi.spyOn(db.postHistory, "bulkPut")

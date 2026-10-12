@@ -140,6 +140,7 @@ export interface SetupEventListenersParams {
 }
 
 export interface InitializeEditorParams {
+    isReactionMode?: () => boolean;
     isInputBlocked?: () => boolean;
     isCompositionInputAllowed?: () => boolean;
     compositionController?: import('../editor/submittedComposition').SubmittedCompositionController;

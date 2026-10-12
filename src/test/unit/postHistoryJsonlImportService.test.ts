@@ -1,3 +1,4 @@
+import { usePostHistoryJsonlVerificationWorkerMock } from "../mocks/postHistoryJsonlVerificationWorker";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -111,10 +112,10 @@ function createRepositoryMocks() {
         },
         deletionRequestsRepository: {
             upsertImportedDeletionEvents: vi.fn(async (input: {
-                deletionEvents: Array<{ tags: string[][] }>;
+                deletionEvents: Array<{ event: { tags: string[][] } }>;
             }) => {
                 const recordIds = new Set<string>();
-                for (const event of input.deletionEvents) {
+                for (const { event } of input.deletionEvents) {
                     for (const tag of event.tags) {
                         if (tag[0] === "e" && /^[0-9a-f]{64}$/.test(tag[1] ?? "")) {
                             recordIds.add(tag[1]);
@@ -793,7 +794,7 @@ describe("PostHistoryJsonlImportService", () => {
         const onProgress = vi.fn();
         const service = new PostHistoryJsonlImportService(createRepositoryMocks());
         const pubkey = getPublicKey(generateSecretKey());
-        const file = createChunkedFile("a\nb\nc\n", [2, 2, 2], () => {
+        const file = createChunkedFile("a\n".repeat(128), [64, 64, 64, 64], () => {
             now += 100;
         });
 
@@ -810,7 +811,7 @@ describe("PostHistoryJsonlImportService", () => {
         onProgress.mockClear();
         const secondPubkey = getPublicKey(generateSecretKey());
         await service.importFile({
-            file: createChunkedFile("a\nb\nc\n", [2, 2, 2], () => {
+            file: createChunkedFile("a\n".repeat(128), [64, 64, 64, 64], () => {
                 now += 250;
             }),
             ownerPubkeyHex: secondPubkey,
@@ -898,3 +899,5 @@ describe("PostHistoryJsonlImportService", () => {
         }));
     });
 });
+
+usePostHistoryJsonlVerificationWorkerMock();

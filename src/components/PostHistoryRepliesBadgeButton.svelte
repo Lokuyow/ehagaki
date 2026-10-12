@@ -9,9 +9,10 @@
         ariaLabel: string;
         onClick: () => void;
         tooltipContent?: string;
+        className?: string;
     }
 
-    let { count, selected, ariaLabel, onClick, tooltipContent = ariaLabel }: Props = $props();
+    let { count, selected, ariaLabel, onClick, tooltipContent = ariaLabel, className = "" }: Props = $props();
     const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
 </script>
 
@@ -22,7 +23,7 @@
                 {@const { onclick: tooltipOnclick, ...restProps } = props}
                 <Button
                     type="button"
-                    class="post-preview-replies-badge-button"
+                    class={`post-preview-replies-badge-button ${className}`}
                     {ariaLabel}
                     contentLayout="icon"
                     shape="circle"

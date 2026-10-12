@@ -17,6 +17,13 @@ function createDb() {
     return db;
 }
 
+// main skips ordinary posts; exercise the post-commit reconciliation boundary
+// with a real candidate Structure instead of relying on an ordinary-event scan.
+function createStructureFixture() {
+    return finalizeEvent({ kind: 1, created_at: 100, content: "",
+        tags: [["content-warning"], ["c", "f".repeat(64)]] }, generateSecretKey());
+}
+
 beforeEach(resetPostHistoryLocalSearchRevisionsForTesting);
 afterEach(async () => {
     vi.restoreAllMocks();
@@ -26,7 +33,7 @@ afterEach(async () => {
 describe("fetched history transaction revision", () => {
     it("publishes the committed owner revision while reconciliation is still pending", async () => {
         const db = createDb(), repository = new DexiePostHistoryRepository(db);
-        const event = finalizeEvent({ kind: 1, created_at: 100, tags: [], content: "revision fixture" }, generateSecretKey());
+        const event = createStructureFixture();
         let release!: () => void, started!: () => void;
         const pending = new Promise<void>(resolve => { release = resolve; });
         const entered = new Promise<void>(resolve => { started = resolve; });
@@ -49,7 +56,7 @@ describe("fetched history transaction revision", () => {
 
     it("does not notify or reconcile a transaction that rolls back after writing rows", async () => {
         const db = createDb(), repository = new DexiePostHistoryRepository(db);
-        const event = finalizeEvent({ kind: 1, created_at: 100, tags: [], content: "rollback fixture" }, generateSecretKey());
+        const event = createStructureFixture();
         const bulkPut = db.postHistory.bulkPut.bind(db.postHistory);
         vi.spyOn(db.postHistory, "bulkPut").mockImplementationOnce((...args) =>
             bulkPut(...args).then(() => { throw new Error("rollback after write"); }),
@@ -70,7 +77,7 @@ describe("fetched history transaction revision", () => {
         const payloads = new DexieSensitivePayloadRepository(db);
         await payloads.putCandidate({ event: payload });
         await new DexiePostHistoryDeletionRequestsRepository(db).upsertImportedDeletionEvents({
-            ownerPubkeyHex: structure.pubkey, deletionEvents: [deletion],
+            ownerPubkeyHex: structure.pubkey, deletionEvents: [{ event: deletion }],
         });
         resetPostHistoryLocalSearchRevisionsForTesting();
         const reconcile = reconciliation.reconcileSensitivePayloadDeletionForStructure;
@@ -91,7 +98,7 @@ describe("fetched history transaction revision", () => {
     it("keeps a committed write and its revision when reconciliation fails", async () => {
         const db = createDb(), logger = createMockConsole();
         const repository = new DexiePostHistoryRepository(db, Date.now, logger);
-        const event = finalizeEvent({ kind: 1, created_at: 100, tags: [], content: "best effort fixture" }, generateSecretKey());
+        const event = createStructureFixture();
         vi.spyOn(reconciliation, "reconcileSensitivePayloadDeletionForStructure").mockRejectedValueOnce(new Error("reconciliation failed"));
         await expect(repository.upsertFetchedEvents({ events: [{ event }] })).resolves.toMatchObject({ insertedCount: 1 });
         expect(await db.postHistory.count()).toBe(1);

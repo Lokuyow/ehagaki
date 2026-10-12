@@ -50,6 +50,7 @@
             post: PostHistoryRecord,
         ) => boolean | void | Promise<boolean | void>;
         onQuotePost?: (post: PostHistoryRecord) => void;
+        onReactionPost?: (post: PostHistoryRecord) => boolean | Promise<boolean>;
         getReactionReadModel?: (eventId: string) => PostHistoryReactionReadModel | null;
         isReactionExpanded?: (eventId: string) => boolean;
         getReactionLabel?: (eventId: string) => string;
@@ -101,6 +102,7 @@
         buildPostRecordForNode = undefined,
         onReplyPost = undefined,
         onQuotePost = undefined,
+        onReactionPost = undefined,
         getReactionReadModel = undefined,
         isReactionExpanded = undefined,
         getReactionLabel = undefined,
@@ -222,6 +224,7 @@
                     {buildPostRecordForNode}
                     {onReplyPost}
                     {onQuotePost}
+                    {onReactionPost}
                     {getReactionReadModel}
                     {isReactionExpanded}
                     {getReactionLabel}
@@ -310,7 +313,7 @@
 
             {#snippet footerActions()}
                 {#if buildPostRecordForNode}
-                    <PostHistoryPostActions
+                    <PostHistoryPostActions {onReactionPost}
                         post={buildPostRecordForNode(state)}
                         onReplyPost={state.node.event.kind !== 42
                             ? onReplyPost
@@ -427,6 +430,7 @@
                     {buildPostRecordForNode}
                     {onReplyPost}
                     {onQuotePost}
+                    {onReactionPost}
                     {getReactionReadModel}
                     {isReactionExpanded}
                     {getReactionLabel}

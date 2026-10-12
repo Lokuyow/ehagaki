@@ -57,7 +57,7 @@ export interface UpsertPostHistoryDeletionRequestsResult {
 
 export interface UpsertImportedPostHistoryDeletionEventsInput {
     ownerPubkeyHex: string;
-    deletionEvents: NostrEvent[];
+    deletionEvents: Pick<PostHistoryDeletionRequestItem, "event" | "attestation">[];
     fetchedAt?: number;
     localWriteScope?: PostHistoryLocalWriteScope;
 }
@@ -510,8 +510,8 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
         const candidateDeletionEventIds = new Set<string>();
         let ignoredCount = 0;
 
-        for (const deletionEvent of input.deletionEvents) {
-            const verified = ensureAttestedDeletionEvent(deletionEvent, undefined);
+        for (const item of input.deletionEvents) {
+            const verified = ensureAttestedDeletionEvent(item.event, item.attestation);
             if (!verified) {
                 ignoredCount += 1;
                 continue;

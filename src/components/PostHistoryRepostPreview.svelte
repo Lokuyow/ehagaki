@@ -4,24 +4,33 @@
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import type { RepostPreviewState } from "../lib/hooks/usePostHistoryRepostPreviews.svelte";
     import type { FullscreenMediaItem } from "../lib/types";
+    import type { PostContentRenderModel } from "../lib/postContentPreview";
     import { repostTargetToPost } from "../lib/postRepostUtils";
     import PostHistoryRelatedEventCard from "./PostHistoryRelatedEventCard.svelte";
     import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
+    import PostHistoryPreviewFooter from './PostHistoryPreviewFooter.svelte';
+    import { formatPostedAt } from '../lib/postHistoryDialogUtils';
     import Button from "./Button.svelte";
     interface Props {
-        post: PostHistoryRecord; preview: RepostPreviewState;
+        post: PostHistoryRecord; preview: Omit<RepostPreviewState, "saveFailed"> & { saveFailed?: boolean };
         menu?: Snippet<[PostHistoryRecord, string]>;
+        author?: Snippet;
         channelText?: string | null;
+        model?: PostContentRenderModel;
+        targetLabel?: string | null;
         onRetry: () => void;
         onReplyPost?: (post: PostHistoryRecord) => void | Promise<void>;
         onQuotePost?: (post: PostHistoryRecord) => void;
+        onReactionPost?: (post: PostHistoryRecord) => boolean | Promise<boolean>;
+        reactionExtras?: Snippet<[PostHistoryRecord]>;
+        reactionDetails?: Snippet<[PostHistoryRecord]>;
         loadSensitiveBody?: () => Promise<string | null>;
         scrollRoot?: HTMLElement | null;
         onImageOpen?: (params: { index: number; mediaList: FullscreenMediaItem[] }) => void;
         emojiLoadStateByUrl?: Record<string, import("../lib/postContentPreview").PostContentEmojiLoadState | undefined>;
         emojiImageMetaByUrl?: Record<string, import("../lib/postContentPreview").PostContentEmojiImageMeta | undefined>;
     }
-    let { post, preview, menu, channelText = null, onRetry, onReplyPost, onQuotePost, loadSensitiveBody,
+    let { post, preview, menu, author, channelText = null, model, targetLabel = null, onRetry, onReplyPost, onQuotePost, onReactionPost, reactionExtras: renderReactionExtras, reactionDetails: renderReactionDetails, loadSensitiveBody,
         scrollRoot = null, onImageOpen, emojiLoadStateByUrl = {}, emojiImageMetaByUrl = {} }: Props = $props();
     const target = $derived(preview.event ? repostTargetToPost(preview.event, preview.relayHints) : null);
     const message = $derived(preview.status === "deleted" ? "repost.targetDeleted"
@@ -33,6 +42,7 @@
 <div class="post-history-repost" data-repost-event-id={post.eventId}>
     <div class="post-history-repost-label">
         <span class="post-history-repost-title">
+            {@render author?.()}
             <span class="post-history-repost-icon svg-icon" aria-hidden="true"></span>
             <span>{$_("repost.entry")}</span>
         </span>
@@ -41,9 +51,10 @@
     {#if post.deletedAt !== undefined}
         <p>{$_("postHistory.deleted")}</p>
     {:else if preview.status === "resolved" && preview.event && target}
-        <PostHistoryRelatedEventCard event={preview.event} profile={preview.profile} {loadSensitiveBody}
+        <PostHistoryRelatedEventCard event={preview.event} profile={preview.profile} {model} {loadSensitiveBody}
             {scrollRoot} {onImageOpen} {emojiLoadStateByUrl} {emojiImageMetaByUrl}>
             {#snippet topActions()}
+                {#if targetLabel}<div class="repost-target-label">{targetLabel}</div>{/if}
                 {#if channelText}
                     <div class="repost-channel-row">
                         <span>{$_("postHistory.channel")}</span>
@@ -52,8 +63,11 @@
                 {/if}
             {/snippet}
             {#snippet footerActions()}
-                <PostHistoryPostActions post={target} {onReplyPost} {onQuotePost} />
+                <PostHistoryPostActions post={target} {onReplyPost} {onQuotePost} {onReactionPost}>
+                    {#snippet reactionExtras()}{@render renderReactionExtras?.(target)}{/snippet}
+                </PostHistoryPostActions>
             {/snippet}
+            {#snippet footerDetails()}{@render renderReactionDetails?.(target)}{/snippet}
             {#snippet footerMenu()}{@render menu?.(target, `repost-target:${post.eventId}:${target.eventId}`)}{/snippet}
         </PostHistoryRelatedEventCard>
         {#if "saveFailed" in preview && preview.saveFailed}
@@ -66,9 +80,20 @@
             <Button onClick={onRetry}>{$_("postHistory.contextRetry")}</Button>
         {/if}
     {/if}
+    {#if post.deletedAt === undefined && onReactionPost}
+        <PostHistoryPreviewFooter formattedDate={formatPostedAt(post.postedAt)}>
+            {#snippet actions()}
+                <PostHistoryPostActions {post} {onReactionPost}>
+                    {#snippet reactionExtras()}{@render renderReactionExtras?.(post)}{/snippet}
+                </PostHistoryPostActions>
+            {/snippet}
+        </PostHistoryPreviewFooter>
+        {@render renderReactionDetails?.(post)}
+    {/if}
 </div>
 <style>
     .post-history-repost { min-width: 0; }
+    .repost-target-label { padding: 4px 6px; color: var(--text-muted); }
     .repost-channel-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px; overflow-wrap: anywhere; }
     .post-history-repost-label {
         display: flex;

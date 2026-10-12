@@ -31,6 +31,7 @@
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostHistoryRepliesBadgeButton from "./PostHistoryRepliesBadgeButton.svelte";
     import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
+    import { verifyRelatedEvent } from '../lib/relatedEventVerification';
     import PostHistoryReactionDetails from "./PostHistoryReactionDetails.svelte";
     import PostHistoryReactionActionButton from "./PostHistoryReactionActionButton.svelte";
     import PostPreviewFooterActionButton from "./PostPreviewFooterActionButton.svelte";
@@ -48,7 +49,7 @@
     import { usePostHistoryDialogViewport } from "../lib/hooks/usePostHistoryDialogViewport.svelte";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { usePostHistoryThreadGraph } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
-    import { usePostHistoryRelatedReactions } from "../lib/hooks/usePostHistoryRelatedReactions.svelte";
+    import { usePostHistoryRelatedReactions, type PostHistoryRelatedReactionCardTarget } from "../lib/hooks/usePostHistoryRelatedReactions.svelte";
     import { usePostHistoryInboundInteractionsSync } from "../lib/hooks/usePostHistoryInboundInteractionsSync.svelte";
     import type { PostHistoryThreadGraphNodeState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import type {
@@ -132,6 +133,7 @@
             post: PostHistoryRecord,
         ) => void | boolean | Promise<boolean>;
         onQuotePost?: (post: PostHistoryRecord) => void;
+        onReactionPost?: (post: PostHistoryRecord) => boolean | Promise<boolean>;
         onRepostPost?: RepostPostHandler;
         repostPending?: boolean;
         onRetryRepostSave?: (result: PostRepostResult) => Promise<boolean>;
@@ -161,6 +163,7 @@
         onClose,
         onReplyPost = undefined,
         onQuotePost = undefined,
+        onReactionPost = undefined,
         onRepostPost = undefined,
         repostPending = false,
         onRetryRepostSave = undefined,
@@ -287,26 +290,32 @@
         profileSyncCoordinator,
     });
     function getRelatedReactionTargets() {
-        const targets = new Map<string, string[]>();
-        const addTarget = (eventId: string, relayHints: string[]) => {
-            if (!eventId || history.posts.some((post) => post.eventId === eventId)) return;
-            targets.set(eventId, Array.from(new Set([...(targets.get(eventId) ?? []), ...relayHints])));
+        const targets = new Map<string, PostHistoryRelatedReactionCardTarget>();
+        const addTarget = (event: NostrEvent, relayHints: string[]) => {
+            const eventId = event.id;
+            if (!eventId || history.posts.some((post) => post.eventId === eventId && ![6, 16].includes(post.kind))) return;
+            targets.set(eventId, { eventId, targetAuthorPubkey: event.pubkey, targetKind: event.kind,
+                relayHints: Array.from(new Set([...(targets.get(eventId)?.relayHints ?? []), ...relayHints])) });
         };
         const visitNode = (nodeState: PostHistoryThreadGraphNodeState | null) => {
             if (!nodeState) return;
-            addTarget(nodeState.node.eventId, nodeState.node.relayUrls);
+            addTarget(nodeState.node.event, nodeState.node.relayUrls);
             visitNode(nodeState.parentNodeState);
             nodeState.replyNodeStates.forEach(visitNode);
         };
         for (const post of history.posts) {
+            const outer = [6, 16].includes(post.kind) ? verifyRelatedEvent(post.rawEvent) : null;
+            if (outer) addTarget(outer.event, [...(post.fetchedRelays ?? []), ...post.acceptedRelays, ...post.relayHints]);
+            const repost = repostPreviews.getPreview(post);
+            if (repost.status === 'resolved' && repost.event) addTarget(repost.event, repost.relayHints);
             const anchorState = postHistoryThreadGraph.getAnchorState(post);
             visitNode(anchorState.parentNodeState);
             anchorState.replyNodeStates.forEach(visitNode);
             for (const quote of quotePreviews.getQuotePreviews(post)) {
-                if (quote.status === "resolved") addTarget(quote.event.id, quote.relayHints);
+                if (quote.status === "resolved") addTarget(quote.event, quote.relayHints);
             }
         }
-        return Array.from(targets, ([eventId, relayHints]) => ({ eventId, relayHints }));
+        return Array.from(targets.values());
     }
     let relatedReactionTargets = $derived.by(getRelatedReactionTargets);
     const relatedReactions = usePostHistoryRelatedReactions({
@@ -1301,6 +1310,8 @@
             return;
         }
 
+        void untrack(() => relatedReactions.refreshCachedReactions(parentEventIds)).catch(() => undefined);
+
         void untrack(() =>
             postHistoryThreadGraph.loadCachedChildInteractionStateForPosts(
                 posts,
@@ -1703,7 +1714,7 @@
 
     function getRelatedReactionReadModel(eventId: string) {
         const ownerPost = history.posts.find((post) => post.eventId === eventId);
-        if (ownerPost) {
+        if (ownerPost && ![6, 16].includes(ownerPost.kind)) {
             return postHistoryThreadGraph.getAnchorState(ownerPost).reactionReadModel;
         }
 
@@ -2082,6 +2093,12 @@
         postActionUi.openDeleteConfirm(post);
     }
 
+    async function handleReactionPost(post: PostHistoryRecord): Promise<boolean> {
+        const applied = await onReactionPost?.(post) ?? false;
+        if (applied) handleClose();
+        return applied;
+    }
+
     async function handleReplyPost(post: PostHistoryRecord): Promise<void> {
         if (!onReplyPost) {
             return;
@@ -2422,6 +2439,21 @@
         }
     }
 </script>
+
+{#snippet repostReactionCount(post: PostHistoryRecord)}
+    {@const model = getRelatedReactionReadModel(post.eventId)}
+    {#if model && model.totalCount > 0}
+        <PostHistoryReactionActionButton count={model.totalCount} expanded={isReactionExpandedByEventId(post.eventId)}
+            ariaLabel={getRelatedReactionLabel(post.eventId)} onToggle={() => toggleReactionsByEventId(post.eventId)} />
+    {/if}
+{/snippet}
+{#snippet repostReactionDetails(post: PostHistoryRecord)}
+    {@const model = getRelatedReactionReadModel(post.eventId)}
+    {#if model && model.totalCount > 0 && isReactionExpandedByEventId(post.eventId)}
+        <PostHistoryReactionDetails readModel={model} emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+            emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} />
+    {/if}
+{/snippet}
 
 <DialogWrapper
     bind:open={show}
@@ -2902,7 +2934,7 @@
                         <div class="post-history-main">
                             <div class="post-preview">
                                 {#if isRepostOuterKind(post.kind)}
-                                    <PostHistoryRepostPreview {post} preview={repostPreviews.getPreview(post)}
+                                    <PostHistoryRepostPreview onReactionPost={onReactionPost ? handleReactionPost : undefined} reactionExtras={repostReactionCount} reactionDetails={repostReactionDetails} {post} preview={repostPreviews.getPreview(post)}
                                         channelText={getRepostChannelText(post)} menu={repostRecordMenu} onRetry={() => repostPreviews.retry(post)}
                                         onReplyPost={onReplyPost ? handleReplyPost : undefined}
                                         onQuotePost={onQuotePost ? handleQuotePost : undefined}
@@ -3090,7 +3122,7 @@
                                         </div>
                                     </div>
                                 {/if}
-                                <PostHistoryThreadGraphPanel
+                                <PostHistoryThreadGraphPanel onReactionPost={onReactionPost ? handleReactionPost : undefined}
                                     state={graphState}
                                     section="parent"
                                     previewModelByEventId={relatedPreviewModelByEventId}
@@ -3230,11 +3262,12 @@
                                                             {#snippet footerActions()}
                                                                 {#if quotePreview.status === "resolved" &&
                                                                     (quotePreview.event.kind !== 42 ||
+                                                                        onReactionPost ||
                                                                         (getRelatedReactionReadModel(quotePreview.event.id)?.totalCount ?? 0) > 0)}
                                                                     {@const quoteActionPost = buildPostRecordFromQuoteEvent(
                                                                         quotePreview.event,
                                                                     )}
-                                                                    <PostHistoryPostActions
+                                                                    <PostHistoryPostActions onReactionPost={onReactionPost ? handleReactionPost : undefined}
                                                                         post={quoteActionPost}
                                                                         onReplyPost={
                                                                             quotePreview.event.kind !== 42 && onReplyPost
@@ -3379,7 +3412,7 @@
                                             dimmed={!!post.deletedAt}
                                         >
                                             {#snippet actions()}
-                                                <PostHistoryPostActions
+                                                <PostHistoryPostActions onReactionPost={onReactionPost ? handleReactionPost : undefined}
                                                     {post}
                                                     onReplyPost={onReplyPost
                                                         ? handleReplyPost
@@ -3557,7 +3590,7 @@
                                                 emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                             />
                                         {/if}
-                                    <PostHistoryThreadGraphPanel
+                                    <PostHistoryThreadGraphPanel onReactionPost={onReactionPost ? handleReactionPost : undefined}
                                         state={graphState}
                                         section="children"
                                         previewModelByEventId={relatedPreviewModelByEventId}

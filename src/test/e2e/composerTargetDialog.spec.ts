@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { nip19 } from "nostr-tools";
 
 type HarnessState = {
     ready: boolean;
@@ -18,13 +19,17 @@ type HarnessState = {
         | "namelessChannel"
         | "longNameChannel"
         | "unsupported"
-        | "nsec",
+        | "nsec"
+        | "repost6" | "repost16" | "repostTo6" | "repostTo16" | "reaction7" | "emojiReaction" | "channelReaction"
+        | "missingReaction" | "heldReaction" | "invalidReaction" | "markerReaction",
         string
     >;
     oversizedPostContentLength: number;
     linkTargetUrl: string;
     resolverEventIds: string[];
     cancelledResolverEventIds: string[];
+    relatedFetchIds: string[];
+    relatedCancelledIds: string[];
     applications: Array<{ action: string; kind: number; eventId: string }>;
 };
 
@@ -32,6 +37,8 @@ type HarnessWindow = Window & typeof globalThis & {
     __COMPOSER_TARGET_HARNESS__?: HarnessState & {
         seedReactionFixtures: () => Promise<void>;
         releaseStaleResolver: () => void;
+        recoverRelated: () => void;
+        releaseRelated: () => void;
     };
 };
 
@@ -49,6 +56,8 @@ async function gotoHarness(page: Page): Promise<HarnessState> {
             linkTargetUrl: harness.linkTargetUrl,
             resolverEventIds: harness.resolverEventIds,
             cancelledResolverEventIds: harness.cancelledResolverEventIds,
+            relatedFetchIds: harness.relatedFetchIds,
+            relatedCancelledIds: harness.relatedCancelledIds,
             applications: harness.applications,
         };
     });
@@ -83,6 +92,132 @@ async function expectTooltip(
 }
 
 test.describe("composer target dialog fixture", () => {
+    test("Repost and Reaction preserve main identity and only show a direct related card", async ({ page }, testInfo) => {
+        await page.emulateMedia({ colorScheme: "dark" });
+        const harness = await gotoHarness(page);
+        await openDialog(page);
+        for (const key of ["repost6", "repost16", "repostTo6", "repostTo16", "reaction7", "markerReaction", "channelReaction"] as const) {
+            await page.getByLabel("イベントID").fill(harness.inputs[key]);
+            const reaction = key === "reaction7" || key === "markerReaction" || key === "channelReaction";
+            const main = page.locator(reaction ? ".composer-target-reaction-preview" : ".composer-target-repost-preview");
+            const related = page.locator(reaction ? ".composer-target-reaction-preview" : ".post-history-repost");
+            await expect(main.locator(".interaction-author")).toContainText("Outer fixture author");
+            await expect(main.locator(".interaction-author .composer-target-avatar")).toBeVisible();
+            await expect(page.locator(".target-preview, .composer-target-related-preview")).toHaveCount(0);
+            if (reaction) {
+                await expect(main.locator(".composer-target-reaction-label")).toContainText("リアクション");
+                await expect(main.locator("h3, .related-kind")).toHaveCount(0);
+            } else {
+                await expect(main.locator(".post-history-repost-label")).toContainText("リポスト");
+                await expect(main.locator(".related-kind")).toHaveCount(0);
+            }
+            await expect(related).toContainText("Related fixture author");
+            await expect(related.locator(".post-history-related-card")).toHaveCount(1);
+            await expect(main).not.toContainText("Nested JSON must stay hidden");
+            await expect(related).not.toContainText("Nested JSON must stay hidden");
+            await expect(related.locator("a, .post-preview-media-item")).toHaveCount(0);
+            await expect(main.getByRole("button", { name: "リプライ", exact: true })).toHaveCount(0);
+            await expect(main.getByRole("button", { name: "引用", exact: true })).toHaveCount(0);
+            if (reaction) await expect(main.locator(".composer-target-reaction-label .favorite-icon")).toHaveCount(1);
+            else await expect(main).toContainText("リポスト");
+            if (key === "reaction7" || key === "markerReaction") await expect(related).toContainText("👀");
+            if (key === "repost16" || key === "channelReaction") await expect(main.locator(".repost-channel-row, .related-channel-row")).toContainText("Related fixture channel");
+            const menu = main.getByRole("button", { name: "アクションを表示" });
+            await menu.focus();
+            await expect(menu).toBeFocused();
+            await menu.press("Enter");
+            await page.getByRole("menuitem", { name: "イベントJSONを表示" }).click();
+            const decoded = nip19.decode(harness.inputs[key]);
+            const expectedId = decoded.type === "note" ? decoded.data : decoded.type === "nevent" ? decoded.data.id : "";
+            const raw = page.getByRole("dialog", { name: "イベントJSON" });
+            await expect(raw).toContainText(`"id": "${expectedId}"`);
+            await page.keyboard.press("Escape");
+            await expect(raw).toBeHidden();
+            await expect(page.getByRole("dialog", { name: "宛先を指定" })).toBeVisible();
+        }
+        await page.getByLabel("イベントID").fill(harness.inputs.repost16);
+        await expect(page.locator(".repost-channel-row")).toContainText("Related fixture channel");
+        await page.screenshot({ path: testInfo.outputPath("composer-repost-history-style.png") });
+        for (const width of [360, 320]) {
+            await page.setViewportSize({ width, height: 720 });
+            const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth
+                || Array.from(document.querySelectorAll(".target-preview, .composer-target-related-preview, .post-history-repost, .post-history-related-card"))
+                    .some(element => element.scrollWidth > element.clientWidth + 1));
+            expect(overflow).toBe(false);
+            await page.screenshot({ path: testInfo.outputPath(`composer-repost-history-style-${width}.png`) });
+        }
+        await page.getByLabel("イベントID").fill(harness.inputs.reaction7);
+        await expect(page.locator(".composer-target-reaction-label .favorite-icon")).toHaveCount(1);
+        for (const width of [360, 320]) {
+            await page.setViewportSize({ width, height: 720 });
+            const overflow = await page.locator(".composer-target-reaction-preview").evaluate(element =>
+                element.scrollWidth > element.clientWidth + 1 || document.documentElement.scrollWidth > window.innerWidth);
+            expect(overflow).toBe(false);
+            await page.getByRole("dialog", { name: "宛先を指定" }).screenshot({ path: testInfo.outputPath(`composer-reaction-history-style-${width}.png`) });
+        }
+        await page.getByRole("button", { name: "アクションを表示" }).click();
+        await page.getByRole("menuitem", { name: "イベントJSONを表示" }).click();
+        const raw = page.getByRole("dialog", { name: "イベントJSON" });
+        await expect(raw).toContainText('"kind": 7');
+        await expect(raw).toContainText('"content": "👍"');
+        await page.keyboard.press("Escape");
+        await expect(raw).toBeHidden();
+        await expect(page.getByRole("dialog", { name: "宛先を指定" })).toBeVisible();
+    });
+
+    test("related loading, cancellation, invalid references and retry leave the main target intact", async ({ page }) => {
+        const harness = await gotoHarness(page);
+        await openDialog(page);
+        await page.getByLabel("イベントID").fill(harness.inputs.heldReaction);
+        await expect(page.locator(".composer-target-reaction-preview")).toContainText("参照先を取得中");
+        await expect(page.locator(".composer-target-reaction-label .favorite-icon")).toHaveCount(1);
+        await page.getByLabel("イベントID").fill(harness.inputs.invalidReaction);
+        await expect(page.locator(".composer-target-reaction-preview")).toContainText("検証できませんでした");
+        await page.evaluate(() => (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.releaseRelated());
+        await expect(page.getByText("Released related fixture", { exact: true })).toHaveCount(0);
+        expect(await page.evaluate(() => (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.relatedFetchIds.length)).toBe(1);
+        expect(await page.evaluate(() => (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.relatedCancelledIds.length)).toBe(1);
+        await page.getByLabel("イベントID").fill(harness.inputs.missingReaction);
+        await expect(page.locator(".composer-target-reaction-label .favorite-icon")).toHaveCount(1);
+        await expect(page.locator(".composer-target-reaction-preview")).toContainText("取得できませんでした");
+        await page.evaluate(() => (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.recoverRelated());
+        const retryButton = page.getByRole("button", { name: "再試行", exact: true });
+        for (const width of [360, 320]) {
+            await page.setViewportSize({ width, height: 720 });
+            const overlapsFooter = await retryButton.evaluate((button) => {
+                const footer = document.querySelector<HTMLElement>(
+                    ".composer-target-content > .post-preview-footer",
+                );
+                if (!footer) throw new Error("main target footer is missing");
+                const retry = button.getBoundingClientRect();
+                const footerRect = footer.getBoundingClientRect();
+                return retry.left < footerRect.right
+                    && retry.right > footerRect.left
+                    && retry.top < footerRect.bottom
+                    && retry.bottom > footerRect.top;
+            });
+            expect(overlapsFooter, `Retry overlaps footer at ${width}px`).toBe(false);
+        }
+        await retryButton.click();
+        await expect(page.locator(".composer-target-reaction-preview")).toContainText("Recovered related fixture");
+    });
+
+    test("custom emoji Reaction uses the existing image loader", async ({ page }) => {
+        await page.route("https://example.com/reaction-party.png", route => route.fulfill({
+            contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="24"><rect width="512" height="24" fill="red"/></svg>',
+        }));
+        const harness = await gotoHarness(page);
+        await openDialog(page);
+        await page.getByLabel("イベントID").fill(harness.inputs.emojiReaction);
+        await expect(page.locator(".composer-target-reaction-label .favorite-icon")).toHaveCount(1);
+        await expect(page.locator(".composer-target-reaction-preview")).toContainText("Related fixture body");
+        for (const width of [360, 320]) {
+            await page.setViewportSize({ width, height: 720 });
+            const overflow = await page.locator(".composer-target-reaction-preview").evaluate(element =>
+                element.scrollWidth > element.clientWidth + 1 || document.documentElement.scrollWidth > window.innerWidth);
+            expect(overflow).toBe(false);
+        }
+    });
     test("解決済みkind 1/42のリアクション詳細を既存アクション列で表示する", async ({ page }) => {
         let emojiRequests = 0;
         await page.route("https://example.com/reaction-party.png", async (route) => {
@@ -368,6 +503,9 @@ test.describe("composer target dialog fixture", () => {
                 const quote = quoteCell.querySelector<HTMLElement>(
                     "button[aria-label='引用']",
                 )!;
+                const reaction = reactionCell.querySelector<HTMLElement>(
+                    ".reaction-compose-button",
+                )!;
                 const reactionSlot = reactionCell.querySelector<HTMLElement>(
                     ".post-preview-footer-reaction-slot",
                 )!;
@@ -393,6 +531,7 @@ test.describe("composer target dialog fixture", () => {
                     actions: toRect(actions),
                     reply: toRect(reply),
                     quote: toRect(quote),
+                    reaction: toRect(reaction),
                     replyCell: toRect(replyCell),
                     quoteCell: toRect(quoteCell),
                     reactionCell: toRect(reactionCell),
@@ -410,7 +549,9 @@ test.describe("composer target dialog fixture", () => {
                         replyGroupContainsQuote: replyGroup.contains(quote),
                         repliesSlotIsEmpty: repliesSlot.childElementCount === 0,
                         reactionSlotIsEmpty: reactionSlot.childElementCount === 0,
-                        reactionCellHasNoButton: !reactionCell.querySelector("button"),
+                        reactionActionCount: reactionCell.querySelectorAll(
+                            ".reaction-compose-button",
+                        ).length,
                     },
                     backgrounds: {
                         card: getComputedStyle(card).backgroundColor,
@@ -432,7 +573,7 @@ test.describe("composer target dialog fixture", () => {
             expect(geometry.structure.replyGroupContainsQuote).toBe(true);
             expect(geometry.structure.repliesSlotIsEmpty).toBe(true);
             expect(geometry.structure.reactionSlotIsEmpty).toBe(true);
-            expect(geometry.structure.reactionCellHasNoButton).toBe(true);
+            expect(geometry.structure.reactionActionCount).toBe(1);
             expect(geometry.footer.left).toBeGreaterThanOrEqual(geometry.card.left);
             expect(geometry.footer.right).toBeLessThanOrEqual(geometry.card.right);
             expect(geometry.footer.bottom - geometry.footer.top).toBe(36);
@@ -440,7 +581,7 @@ test.describe("composer target dialog fixture", () => {
             expect(geometry.previewOverflow).toBeLessThanOrEqual(1);
             expect(geometry.date.right).toBeLessThanOrEqual(geometry.actions.left);
             expect(geometry.actions.right).toBeLessThanOrEqual(geometry.menu.left);
-            for (const button of [geometry.reply, geometry.quote]) {
+            for (const button of [geometry.reply, geometry.quote, geometry.reaction]) {
                 expect(button.width).toBeGreaterThanOrEqual(35);
                 expect(button.width).toBeLessThanOrEqual(37);
                 expect(button.height).toBeGreaterThanOrEqual(35);
@@ -455,6 +596,8 @@ test.describe("composer target dialog fixture", () => {
             expect(geometry.quoteCell.left).toBeLessThan(geometry.reactionCell.left);
             expect(geometry.reply.right).toBeLessThanOrEqual(geometry.quote.left);
             expect(geometry.quote.right).toBeLessThanOrEqual(geometry.reactionCell.right);
+            expect(geometry.quote.right).toBeLessThanOrEqual(geometry.reaction.left);
+            expect(geometry.reaction.right).toBeLessThanOrEqual(geometry.reactionCell.right);
             expect(geometry.actions.left).toBeGreaterThanOrEqual(0);
             expect(geometry.menu.right).toBeLessThanOrEqual(geometry.viewportWidth);
             expect(geometry.dialog.top).toBeGreaterThanOrEqual(0);

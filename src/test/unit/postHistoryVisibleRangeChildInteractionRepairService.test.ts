@@ -240,6 +240,42 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
 
     afterEach(() => deactivateHostRelayConfig());
 
+    it.each(["visible", "related"])("%s repair saves only the trailing target and rejects invalid or mismatched hints", async mode => {
+        const targetId = "1".repeat(64), otherId = "2".repeat(64);
+        const kind = mode === "related" ? 42 : 1;
+        const harness = createRxNostrHarness();
+        const upsertChildInteractions = vi.fn(async () => ({ insertedCount: 1, updatedCount: 0, unchangedCount: 0, ignoredCount: 0 }));
+        const service = new PostHistoryVisibleRangeChildInteractionRepairService({
+            childInteractionsRepository: { upsertChildInteractions },
+            setTimeoutFn: (() => 1) as any, clearTimeoutFn: vi.fn(), now: () => 700,
+        });
+        const reactionTarget = { eventId: targetId, targetAuthorPubkey: OWNER, targetKind: kind };
+        const task = mode === "related" ? service.repairRelatedCardReactions(harness.rxNostr as any, {
+            targets: [{ ...reactionTarget, relayHints: [] }],
+            relayConfig: { "wss://relay.example.com": { read: true, write: false } },
+        }) : service.repairVisibleRangeRelations(harness.rxNostr as any, {
+            ownerPubkeyHex: OWNER, visiblePosts: [createPost(targetId)], relationKinds: ["reaction"],
+            relayConfig: { "wss://relay.example.com": { read: true, write: false } },
+        });
+        const cases = [
+            [["e", otherId, "", "reply"], ["e", targetId, "", OWNER], ["k", String(kind)]],
+            [["e", targetId, "", "reply"], ["e", otherId]],
+            [["e", targetId], ["e", "invalid"]],
+            [["e", targetId, "", "b".repeat(64)]],
+            [["e", targetId], ["k", mode === "related" ? "1" : "42"]],
+            [["e", targetId], ["p", OWNER], ["p", "invalid"]],
+            [["e", targetId], ["k", "01"]],
+        ];
+        const events = cases.map((tags, index) => createReaction({ id: String(index + 3).repeat(64), tags }));
+        for (const event of events) harness.emitEvent({ event, from: "wss://relay.example.com" });
+        harness.emitEose("wss://relay.example.com");
+        harness.complete();
+        await task.promise;
+        expect(upsertChildInteractions).toHaveBeenCalledOnce();
+        expect(upsertChildInteractions).toHaveBeenCalledWith({ parentEventId: targetId,
+            events: [{ event: events[0], relayUrls: ["wss://relay.example.com/"] }], fetchedAt: 700, reactionTarget });
+    });
+
     it("visible kind:1 parentを#e filterで取得し、direct replyとreactionを保存へ渡す", async () => {
         const kind1Parent = "1".repeat(64);
         const harness = createRxNostrHarness();
@@ -317,6 +353,7 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
         expect(upsertChildInteractions).toHaveBeenCalledTimes(1);
         expect(upsertChildInteractions).toHaveBeenCalledWith({
             parentEventId: kind1Parent,
+            reactionTarget: { eventId: kind1Parent, targetAuthorPubkey: OWNER, targetKind: 1 },
             events: [{
                 event: expect.objectContaining({ id: "6".repeat(64), kind: 7 }),
                 relayUrls: ["wss://relay.example.com/"],

@@ -355,6 +355,10 @@ declare global {
 test("local-only first older scroll advances while committed reconciliation is pending", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 844 });
     const f = await fixture(page, { localCount: 150, externalRead: "closed" });
+    // main no longer reconciles ordinary posts. Keep a candidate Structure in
+    // the committed page so the existing gate still exercises reconciliation.
+    f.localCorpus[100] = f.sign({ kind: 1, created_at: f.localCorpus[100].created_at,
+        tags: [["content-warning"], ["c", "f".repeat(64)]], content: "" });
     try {
         await setUrl(page, f.localUrl);
         await page.locator(".post-history-btn").click();
@@ -434,6 +438,94 @@ test("local-only first older scroll advances while committed reconciliation is p
         expect(f.localRequests.filter(filter => filter.kinds?.includes(1))).toHaveLength(2);
     } finally {
         await page.evaluate(() => window.__historyRevisionRace?.restore());
+        await f.stop();
+    }
+});
+
+interface HistoryBrowsingSnapshotRaceProbe {
+    snapshotHeld: boolean;
+    validationCountHeld: boolean;
+    releaseSnapshot(): void;
+    releaseValidationCount(): void;
+    restore(): void;
+}
+declare global {
+    interface Window { __historyBrowsingSnapshotRace?: HistoryBrowsingSnapshotRaceProbe }
+}
+
+test("local-only first older scroll retains evidence when a stale browsing snapshot arrives", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 844 });
+    const f = await fixture(page, { localCount: 360, externalRead: "closed" });
+    try {
+        await setUrl(page, f.localUrl);
+        await page.locator(".post-history-btn").click();
+        await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible();
+        await page.getByRole("button", { name: "投稿履歴メニューを開く" }).click();
+        await page.getByRole("menuitem", { name: "保存済み投稿履歴をクリア" }).click();
+        await page.getByRole("button", { name: "クリアする", exact: true }).click();
+        await expect(page.getByRole("alertdialog", { name: "保存済み投稿履歴をクリア", exact: true })).toHaveCount(0);
+        await expect.poll(async () => (await posts(page)).length).toBe(0);
+        await page.keyboard.press("Escape");
+
+        await page.evaluate(async () => {
+            const moduleUrl = (path: string) => new URL(`src/lib/${path}.ts`, location.href).href;
+            const { postHistoryRelayCoverageRepository: coverage } = await import(/* @vite-ignore */ moduleUrl("storage/postHistoryRelayCoverageRepository"));
+            const { postHistoryRepository: repository } = await import(/* @vite-ignore */ moduleUrl("storage/postHistoryRepository"));
+            const revision = coverage.getLocalRevision.bind(coverage);
+            const count = repository.countVisibleForPubkey.bind(repository);
+            let releaseSnapshot!: () => void, releaseValidationCount!: () => void;
+            const snapshotGate = new Promise<void>(resolve => { releaseSnapshot = resolve; });
+            const countGate = new Promise<void>(resolve => { releaseValidationCount = resolve; });
+            const probe: HistoryBrowsingSnapshotRaceProbe = {
+                snapshotHeld: false, validationCountHeld: false, releaseSnapshot, releaseValidationCount,
+                restore() {
+                    releaseSnapshot(); releaseValidationCount();
+                    coverage.getLocalRevision = revision;
+                    repository.countVisibleForPubkey = count;
+                },
+            };
+            // The real liveQuery has already read a same-revision empty record.
+            // Hold only its async revision check while the newer page commits.
+            coverage.getLocalRevision = (...args: unknown[]) => {
+                const result = revision(...args);
+                if (!probe.snapshotHeld && new Error().stack?.includes("next")) return result.then(async (value: number) => {
+                    probe.snapshotHeld = true; await snapshotGate; return value;
+                });
+                return result;
+            };
+            // Capture the first reveal's valid progress count before delivering
+            // that older snapshot. Native DB reads and the observer remain real.
+            repository.countVisibleForPubkey = (...args: unknown[]) => {
+                const result = count(...args);
+                if (!probe.validationCountHeld && new Error().stack?.includes("validateContiguousProgress")) return result.then(async (value: number) => {
+                    probe.validationCountHeld = true; await countGate; return value;
+                });
+                return result;
+            };
+            window.__historyBrowsingSnapshotRace = probe;
+        });
+
+        await page.locator(".post-history-btn").click();
+        await expect.poll(() => page.evaluate(() => window.__historyBrowsingSnapshotRace!.snapshotHeld)).toBe(true);
+        await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible();
+        await expect(page.getByText("リレーと同期中...", { exact: true })).toHaveCount(0);
+        await expect.poll(async () => (await posts(page)).length).toBe(150);
+        await expect(page.locator(".post-history-item")).toHaveCount(50);
+        // One approach only; no exit/reentry or manual retry after the rebase.
+        await page.locator(".post-history-container").evaluate(el => { el.scrollTop = el.scrollHeight; });
+        await expect.poll(() => page.evaluate(() => window.__historyBrowsingSnapshotRace!.validationCountHeld)).toBe(true);
+        await page.evaluate(() => {
+            const probe = window.__historyBrowsingSnapshotRace!;
+            probe.releaseSnapshot();
+            // Drain the gated revision result and subscriber continuation before
+            // validation resumes, while native availability reads stay pending.
+            queueMicrotask(() => queueMicrotask(() => queueMicrotask(probe.releaseValidationCount)));
+        });
+        await expect(page.getByText("Local pagination 50", { exact: true })).toBeVisible();
+        await expect(page.getByText("Local pagination 99", { exact: true })).toBeVisible();
+        expect(f.localRequests.filter(filter => filter.kinds?.includes(1))).toHaveLength(2);
+    } finally {
+        await page.evaluate(() => window.__historyBrowsingSnapshotRace?.restore());
         await f.stop();
     }
 });

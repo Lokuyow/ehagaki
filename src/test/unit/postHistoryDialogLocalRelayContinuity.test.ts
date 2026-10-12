@@ -80,6 +80,21 @@ beforeEach(() => {
 afterEach(() => { cleanupPostHistoryDialogHarness(); postHistoryLocalRelayService.cancelSession(); settingsStore.setLocalRelayUrl(""); vi.restoreAllMocks(); });
 
 describe("live local query continuity in the listing", () => {
+    it("retains committed evidence when an older same-scope snapshot arrives during reveal", async () => {
+        const view = render(ListingHarness, { props });
+        await screen.findByText("live row 49");
+        await waitFor(() => expect(screen.queryByText("リレーと同期中...")).toBeNull());
+        const committed = durable.record!;
+        // A liveQuery callback can finish its revision check after the page's
+        // commit. Its earlier snapshot is valid for this URL/revision, but may
+        // not retract positive browsing evidence already adopted by the listing.
+        durable.get.mockResolvedValueOnce({ ...committed, browsingRanges: [], resumeHint: null });
+        await reveal(99);
+        expect(durable.record!.browsingRanges).toEqual(committed.browsingRanges);
+        expect(localOlderRequests()).toHaveLength(0);
+        view.unmount();
+    });
+
     it("restores positive browsing evidence and rechecks a previously drained continuation after reopen", async () => {
         available = corpus.slice(0, 60);
         const view = render(ListingHarness, { props });
