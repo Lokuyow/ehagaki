@@ -142,7 +142,6 @@
                 {/if}
             </div>
             {#if current}
-                {#if cacheSupported === false}<p class="media-status" role="status">{$_("uploadedMedia.cacheUnavailable")}</p>{/if}
                 {#if current.loading}<LoadingPlaceholder showLoader text={true} />{/if}
                 {#if current.error}
                     <p class="media-status" role="alert">{$_(`uploadedMedia.errors.${current.error.code}`)}</p>
