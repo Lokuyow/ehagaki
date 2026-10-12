@@ -486,11 +486,61 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
+    it.each([true, false])('older rebase retains only an approach received while loading (pending: %s)', async (pending) => {
+        MockIntersectionObserver.reset();
+        vi.stubGlobal('IntersectionObserver', MockIntersectionObserver as unknown as typeof IntersectionObserver);
+        vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
+            return this.classList.contains('post-history-container') ? 320 : 0;
+        });
+        const posts = Array.from({ length: 150 }, (_, index) => createRecord({
+            eventId: index.toString(16).padStart(64, '0'),
+            id: index.toString(16).padStart(64, '0'),
+            content: `rebase approach ${index}`,
+            createdAt: 1_700_000_000 - index,
+        }));
+        const firstChunk = createDeferred<ReturnType<typeof createRecord>[]>();
+        let chunkRequests = 0;
+        repositoryMock.countForPubkey.mockResolvedValue(posts.length);
+        repositoryMock.countVisibleForPubkey.mockResolvedValue(posts.length);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue(posts.slice(0, 50));
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ limit }: { limit: number }) => {
+            if (limit === 1) return [posts[50]];
+            chunkRequests += 1;
+            return chunkRequests === 1 ? firstChunk.promise : posts.slice(50, 100);
+        });
+        const view = render(PostHistoryDialog, { props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX } });
+        await screen.findByText('rebase approach 49');
+        const container = getHistoryContainer();
+        mockHistoryItemLayout(container);
+        await waitFor(() => expect(document.querySelector('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)')).toBeInstanceOf(HTMLElement));
+        const sentinel = document.querySelector('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)')!;
+        Object.defineProperty(sentinel, 'getBoundingClientRect', { configurable: true, value: () => createMockRect(200, 1) });
+        const observer = MockIntersectionObserver.instances.find(item => item.observedTargets.has(sentinel))!;
+        observer.trigger(sentinel, true);
+        await waitFor(() => expect(chunkRequests).toBe(1));
+        // A background adoption invalidates the snapshot after the bounded read
+        // starts. Rebase remains mandatory; no exit/reentry is manufactured.
+        bumpPostHistorySearchRevision(PUBKEY_HEX);
+        if (pending) observer.trigger(sentinel, true);
+        firstChunk.resolve(posts.slice(50, 100));
+        await waitFor(() => expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(2));
+        if (pending) {
+            await screen.findByText('rebase approach 99');
+            expect(chunkRequests).toBe(2);
+        } else {
+            await waitFor(() => expect(container.getAttribute('aria-busy')).toBe('false'));
+            expect(screen.queryByText('rebase approach 50')).toBeNull();
+            expect(chunkRequests).toBe(1);
+        }
+        view.unmount();
+    });
+
     it.each([
         { direction: 'older', delta: 1 },
         { direction: 'newer', delta: -1 },
     ].flatMap(({ direction, delta }) =>
-        (['batchIdle', 'batchLoading', 'scrollAfterCommit', 'pendingExit', 'pendingOutside', 'pendingResize', 'pendingClose'] as const).map((scenario) => ({ direction, delta, scenario })),
+        (['batchIdle', 'batchLoading', 'loadingSameApproach', 'scrollAfterCommit', 'pendingExit', 'pendingOutside', 'pendingResize', 'pendingClose'] as const).map((scenario) => ({ direction, delta, scenario })),
     ))('$direction向きの高速再進入を回収する: $scenario', async ({ direction, delta, scenario }) => {
         MockIntersectionObserver.reset();
         MockResizeObserver.reset();
@@ -543,6 +593,11 @@ describe('PostHistoryDialog timeline navigation', () => {
         observer.trigger(sentinel, true);
         await waitFor(() => expect(chunkRequests).toBe(1));
 
+        if (scenario === 'loadingSameApproach') {
+            // A duplicate notification while loading is not a new approach
+            // after a successful append and must not consume another chunk.
+            observer.trigger(sentinel, true);
+        }
         if (scenario.startsWith('pending') || scenario === 'batchLoading') {
             observer.triggerSequence(sentinel, [false, true]);
             await Promise.resolve();
@@ -582,7 +637,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             container.scrollTop += delta;
             await fireEvent.scroll(container);
         }
-        if (scenario.startsWith('pending')) {
+        if (scenario.startsWith('pending') || scenario === 'loadingSameApproach') {
             expect(chunkRequests).toBe(1);
         } else {
             await waitFor(() => expect(chunkRequests).toBe(2));

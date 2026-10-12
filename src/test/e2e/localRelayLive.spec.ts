@@ -4,6 +4,7 @@ import { WebSocketServer } from "ws";
 import type { AddressInfo } from "node:net";
 
 test.use({ trace: "off" });
+
 const externalUrl = "wss://external.example/";
 
 async function fixture(page: Page, options: { externalOk?: boolean; localMode?: "accept" | "reject" | "auth" | "silent";
@@ -169,6 +170,96 @@ async function browseSavedThrough(page: Page, corpus: Array<{ id: string }>, end
     }
     throw new Error("Saved history did not reach its established frontier");
 }
+
+
+for (const source of ["local", "external"] as const) {
+    test(`fresh empty ${source} history reveals saved chunks with one scroll each`, async ({ page }) => {
+        await page.setViewportSize({ width: 360, height: 844 });
+        const f = await fixture(page, source === "local" ? { localCount: 360, externalRead: "closed" } : { externalCount: 650 });
+        try {
+            if (source === "local") await setUrl(page, f.localUrl);
+            expect(await posts(page)).toHaveLength(0);
+            await page.locator(".post-history-btn").click();
+            const prefix = source === "local" ? "Local" : "External";
+            await expect(page.getByText(`${prefix} pagination 49`, { exact: true })).toBeVisible();
+            for (const end of [99, 148]) {
+                await page.locator(".post-history-container").evaluate(element => { element.scrollTop = element.scrollHeight; });
+                await expect(page.getByText(`${prefix} pagination ${end}`, { exact: true })).toBeVisible();
+            }
+        } finally { await f.stop(); }
+    });
+}
+
+interface HistoryFreshHeadRaceProbe {
+    started: boolean;
+    olderReads: number;
+    latestReadsAfterApproach: number;
+    release(): void;
+    restore(): void;
+}
+declare global {
+    interface Window { __historyFreshHeadRace?: HistoryFreshHeadRaceProbe }
+}
+
+test("fresh local-first history retains the first scroll when external adoption rebases the window", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 844 });
+    const f = await fixture(page, { localCount: 360, externalRead: "silent" });
+    try {
+        await setUrl(page, f.localUrl);
+        expect(await posts(page)).toHaveLength(0);
+        await page.evaluate(async () => {
+            const { postHistoryRepository: repository } = await import(/* @vite-ignore */ new URL("src/lib/storage/postHistoryRepository.ts", location.href).href);
+            const older = repository.getOlderVisibleChunk.bind(repository);
+            const latest = repository.getLatestVisibleChunk.bind(repository);
+            let release!: () => void;
+            const gate = new Promise<void>(resolve => { release = resolve; });
+            const probe: HistoryFreshHeadRaceProbe = {
+                started: false, olderReads: 0, latestReadsAfterApproach: 0, release,
+                restore() { release(); repository.getOlderVisibleChunk = older; repository.getLatestVisibleChunk = latest; },
+            };
+            window.__historyFreshHeadRace = probe;
+            repository.getLatestVisibleChunk = (...args: unknown[]) => {
+                if (probe.started) probe.latestReadsAfterApproach += 1;
+                return latest(...args);
+            };
+            repository.getOlderVisibleChunk = (query: { limit: number }) => {
+                const result = older(query);
+                if (query.limit === 50) {
+                    probe.olderReads += 1;
+                    if (!probe.started) {
+                        probe.started = true;
+                        // Commit a late external peer while the first native DB
+                        // read is pending. The real observer receives one scroll.
+                        return result.then(async (rows: unknown) => { await gate; return rows; });
+                    }
+                }
+                return result;
+            };
+        });
+        await page.locator(".post-history-btn").click();
+        await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible();
+        await page.locator(".post-history-container").evaluate(element => { element.scrollTop = element.scrollHeight; });
+        await expect.poll(() => page.evaluate(() => window.__historyFreshHeadRace!.started)).toBe(true);
+        f.setExternalRead("accept"); f.releaseExternal();
+        await expect.poll(async () => (await posts(page)).some(post => post.eventId === f.externalPost.id)).toBe(true);
+        await page.evaluate(() => window.__historyFreshHeadRace!.release());
+        // The adopted external post occupies one row in the new latest window.
+        // No exit/reentry, repeated scroll, or manual action may be needed.
+        await expect(page.getByText("Local pagination 98", { exact: true })).toBeVisible();
+        await expect(page.locator(".post-history-item")).toHaveCount(100);
+        expect(await posts(page)).toHaveLength(151);
+        expect(f.localRequests.filter(filter => filter.kinds?.includes(1))).toHaveLength(1);
+        const observed = await page.evaluate(() => ({
+            olderReads: window.__historyFreshHeadRace!.olderReads,
+            latestReadsAfterApproach: window.__historyFreshHeadRace!.latestReadsAfterApproach,
+        }));
+        expect(observed.olderReads).toBe(2);
+        expect(observed.latestReadsAfterApproach).toBeGreaterThan(0);
+    } finally {
+        await page.evaluate(() => window.__historyFreshHeadRace?.restore());
+        await f.stop();
+    }
+});
 
 test("external-only saved coverage survives reload and the next older REQ advances", async ({ page }) => {
     const f = await fixture(page, { externalCount: 650 });

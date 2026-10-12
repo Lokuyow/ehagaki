@@ -945,13 +945,15 @@
             if (
                 !isObserverActive
                 || awaitingResizeApproach
-                || autoLoadOlderAwaitingExit
                 || !canAutoLoadOlderPosts()
             ) {
                 return;
             }
             if (isAutoLoadingOlder) {
                 hasPendingApproach = true;
+                return;
+            }
+            if (autoLoadOlderAwaitingExit) {
                 return;
             }
             hasPendingApproach = false;
@@ -1487,7 +1489,12 @@
         autoLoadOlderAwaitingExit = true;
 
         try {
-            await history.loadOlder(createAutoLoadViewportCommit());
+            const changed = await history.loadOlder(createAutoLoadViewportCommit());
+            if (!changed) {
+                // Rebasing a stale window has not consumed an older page. Keep
+                // an observer approach received during that load available.
+                autoLoadOlderAwaitingExit = false;
+            }
         } finally {
             isAutoLoadingOlder = false;
             if (!autoLoadOlderSentinelIsIntersecting) {
