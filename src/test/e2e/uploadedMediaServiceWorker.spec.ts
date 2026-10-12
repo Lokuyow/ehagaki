@@ -230,6 +230,12 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await dialog.getByRole("combobox").selectOption("fixture");
             await expect(dialog.locator("article")).toHaveCount(3);
             await expect(dialog.locator("img")).toBeVisible();
+            await expect(dialog.locator("time")).toHaveAttribute("datetime", "1970-01-01T00:02:03.000Z");
+            await expect(dialog.locator("article").first()).toContainText(`${svg.length} B`);
+            await expect(dialog.locator(".server-url")).toHaveCount(0);
+            await expect(dialog.locator("article").first()).not.toContainText("アップロード日時");
+            await expect(dialog.locator("article").first()).not.toContainText("blossom");
+            await expect(dialog.locator("article").first()).not.toContainText(f.mediaOrigin);
             await expect.poll(() => keys(page)).toContain(f.remote());
             expect([...f.counts.keys()].some((url) => url.startsWith("GET /" + videoHash))).toBe(false);
             for (const colorScheme of ["light", "dark"] as const) {
@@ -248,6 +254,24 @@ for (const base of ["/", "/ehagaki/"] as const) {
                 await page.setViewportSize({ width, height: 850 });
                 expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
                 await expect(dialog.getByRole("button", { name: "一覧を更新" })).toBeVisible();
+                const layout = await dialog.evaluate((node) => {
+                    const tiles = [...node.querySelectorAll("article")].map((tile) => tile.getBoundingClientRect());
+                    const image = node.querySelector("img")!.getBoundingClientRect();
+                    const metadata = node.querySelector(".media-metadata")!.getBoundingClientRect();
+                    const remove = node.querySelector(".media-delete-button")!.getBoundingClientRect();
+                    return {
+                        tileWidth: tiles[0].width, contentWidth: node.querySelector(".dialog-content")!.clientWidth,
+                        sameRow: Math.abs(tiles[0].top - tiles[1].top) < 1,
+                        adjacentColumns: Math.abs(tiles[0].right - tiles[1].left) < 1,
+                        adjacentRows: Math.abs(tiles[0].bottom - tiles[2].top) < 1,
+                        imageFillsTile: Math.abs(image.width - tiles[0].width) < 1 && Math.abs(image.height - tiles[0].height) < 1,
+                        metadataOverImage: metadata.top >= image.top && metadata.bottom <= image.bottom && metadata.right <= remove.left,
+                        deleteOverBottomRight: remove.top >= image.top && Math.abs(remove.bottom - image.bottom) <= 4.5 && Math.abs(remove.right - image.right) <= 4.5,
+                    };
+                });
+                expect(layout.tileWidth).toBeCloseTo(layout.contentWidth / 2, 0);
+                expect(layout).toMatchObject({ sameRow: true, adjacentColumns: true, adjacentRows: true,
+                    imageFillsTile: true, metadataOverImage: true, deleteOverBottomRight: true });
                 const deletionTargets = await dialog.locator("article .media-delete-button").evaluateAll((nodes) =>
                     nodes.map((node) => { const rect = node.getBoundingClientRect(); return { width: rect.width, height: rect.height }; }));
                 expect(deletionTargets).toEqual(Array(3).fill({ width: 44, height: 44 }));
@@ -268,6 +292,12 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await video.evaluate(async (node: HTMLVideoElement) => { await node.play(); });
             await expect.poll(() => video.evaluate((node: HTMLVideoElement) => node.currentTime)).toBeGreaterThan(0);
             await video.evaluate((node: HTMLVideoElement) => node.pause());
+            expect(await video.evaluate((node) => {
+                const tile = node.closest("article")!, playback = node.getBoundingClientRect();
+                const remove = tile.querySelector(".media-delete-button")!.getBoundingClientRect();
+                const close = tile.querySelector(".video-close")!.getBoundingClientRect();
+                return remove.bottom <= playback.bottom - 50 && remove.top >= close.bottom;
+            })).toBe(true);
             await video.scrollIntoViewIfNeeded();
             await page.screenshot({ path: testInfo.outputPath("uploaded-media-video-360.png") });
             const released = await video.elementHandle();
@@ -317,6 +347,10 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await embeddedDialog.getByRole("combobox").selectOption("fixture");
             await expect(embeddedDialog.locator("article")).toHaveCount(2);
             expect(await embeddedDialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+            expect(await embeddedDialog.locator("article").evaluateAll((nodes) => {
+                const first = nodes[0].getBoundingClientRect(), second = nodes[1].getBoundingClientRect();
+                return Math.abs(first.top - second.top) < 1 && Math.abs(first.right - second.left) < 1;
+            })).toBe(true);
             await expect(embeddedDialog.getByRole("button", { name: "動画を開く" }).first()).toBeVisible();
             await page.screenshot({ path: testInfo.outputPath("uploaded-media-iframe-320.png") });
         } finally { await f.close(); }

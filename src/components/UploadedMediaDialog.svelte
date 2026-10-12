@@ -19,6 +19,7 @@
     let { show, onClose, returnFocus = null }: Props = $props();
     const management = useUploadMediaManagement();
     const deleteIconUrl = resolveAppAssetUrl("icons/delete_forever_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    const refreshIconUrl = resolveAppAssetUrl("icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     let current = $derived(management.value.current);
     let cacheSupported = $state<boolean | null>(null);
     let pending = $state<UploadedMediaItem | null>(null);
@@ -29,6 +30,19 @@
     let supportGeneration = 0;
     let uiEpoch = $state(0);
     let previousOwner: string | null = null;
+
+    function formatSize(bytes: number) {
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let value = bytes, unit = 0;
+        while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+        return `${value.toLocaleString(undefined, { maximumFractionDigits: unit === 0 ? 0 : 1 })} ${units[unit]}`;
+    }
+
+    function formatDate(uploadedAt: number) {
+        return new Date(uploadedAt * 1000).toLocaleString(undefined, {
+            year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+        });
+    }
 
     export function invalidateSession() {
         uiEpoch++;
@@ -107,64 +121,62 @@
 <DialogWrapper open={show} onOpenChange={(open) => { if (!open) close(); }}
     title={$_("uploadedMedia.title")} description={$_("uploadedMedia.description")} contentClass="uploaded-media-dialog" footerVariant="close-button">
     <div class="media-management">
-        <h2>{$_("uploadedMedia.title")}</h2>
-        <p>{$_("uploadedMedia.description")}</p>
         {#if !authState.value.isAuthenticated}
-            <p role="status">{$_("uploadedMedia.errors.authentication")}</p>
+            <p class="media-status" role="status">{$_("uploadedMedia.errors.authentication")}</p>
         {:else if management.value.destinations.length === 0}
-            <p role="status">{$_("uploadedMedia.noServers")}</p>
+            <p class="media-status" role="status">{$_("uploadedMedia.noServers")}</p>
         {:else}
-            <label class="server-picker">
-                <span>{$_("uploadedMedia.server")}</span>
-                <select value={management.value.selectedId ?? ""} onchange={(event) => management.controller.select(event.currentTarget.value)}>
+            <div class="media-toolbar">
+                <select aria-label={$_("uploadedMedia.server")} value={management.value.selectedId ?? ""}
+                    onchange={(event) => management.controller.select(event.currentTarget.value)}>
                     {#each management.value.destinations as destination (destination.id)}
-                        <option value={destination.id}>{destination.name} — {destination.protocol}</option>
+                        <option value={destination.id}>{destination.name}</option>
                     {/each}
                 </select>
-            </label>
-            {#if current}
-                <p class="server-url">{current.context?.endpoint ?? current.destination.serverUrl}</p>
-                {#if cacheSupported === false}<p role="status">{$_("uploadedMedia.cacheUnavailable")}</p>{/if}
-                <div class="actions">
-                    <Button onClick={() => { activeVideo = null; void management.controller.load(); }} disabled={current.loading || !!current.deletingId}>
-                        {$_("uploadedMedia.refresh")}
+                {#if current}
+                    <Button shape="square" contentLayout="icon" className="media-refresh-button"
+                        ariaLabel={$_("uploadedMedia.refresh")} title={$_("uploadedMedia.refresh")}
+                        onClick={() => { activeVideo = null; void management.controller.load(); }} disabled={current.loading || !!current.deletingId}>
+                        <span class="svg-icon" aria-hidden="true" style:mask-image={`url("${refreshIconUrl}")`}></span>
                     </Button>
-                </div>
+                {/if}
+            </div>
+            {#if current}
+                {#if cacheSupported === false}<p class="media-status" role="status">{$_("uploadedMedia.cacheUnavailable")}</p>{/if}
                 {#if current.loading}<LoadingPlaceholder showLoader text={true} />{/if}
                 {#if current.error}
-                    <p role="alert">{$_(`uploadedMedia.errors.${current.error.code}`)}</p>
-                    {#if current.error.retryAt}<p>{$_("uploadedMedia.retryAfter", { values: { time: new Date(current.error.retryAt).toLocaleTimeString() } })}</p>{/if}
-                    {#if current.error.diagnostic}<p class="diagnostic">{current.error.diagnostic}</p>{/if}
+                    <p class="media-status" role="alert">{$_(`uploadedMedia.errors.${current.error.code}`)}</p>
+                    {#if current.error.retryAt}<p class="media-status">{$_("uploadedMedia.retryAfter", { values: { time: new Date(current.error.retryAt).toLocaleTimeString() } })}</p>{/if}
+                    {#if current.error.diagnostic}<p class="media-status diagnostic">{current.error.diagnostic}</p>{/if}
                 {/if}
-                {#if current.notice}<p role="status">{$_(`uploadedMedia.${current.notice}`)}</p>{/if}
+                {#if current.notice}<p class="media-status" role="status">{$_(`uploadedMedia.${current.notice}`)}</p>{/if}
                 {#if current.loaded && current.items.length === 0}
-                    <p>{$_("uploadedMedia.empty")}</p>
-                    {#if current.nextPage}<p>{$_("uploadedMedia.moreUnseen")}</p>{/if}
+                    <p class="media-status">{$_("uploadedMedia.empty")}</p>
+                    {#if current.nextPage}<p class="media-status">{$_("uploadedMedia.moreUnseen")}</p>{/if}
                 {/if}
                 <div class="media-list" bind:this={listElement} tabindex="-1">
                     {#each current.items as item (item.id)}
-                        <article data-media-kind={item.kind}>
+                        <article data-media-kind={item.kind} class:video-active={item.kind === "video" && activeVideo === item.id}>
                             <UploadedMediaPreview {item} {cacheSupported} active={activeVideo === item.id}
                                 onOpenVideo={() => { activeVideo = item.id; }} onCloseVideo={() => { activeVideo = null; }} />
-                            <p>{$_(`uploadedMedia.${item.kind}`)} · {current.destination.name} · {item.protocol}</p>
-                            <p class="server-url">{current.context?.endpoint ?? item.serverUrl}</p>
-                            <p>{$_("uploadedMedia.date")}: {item.uploadedAt === undefined ? $_("uploadedMedia.unknown") : new Date(item.uploadedAt * 1000).toLocaleString()}</p>
-                            <p>{$_("uploadedMedia.size")}: {item.size === undefined ? $_("uploadedMedia.unknown") : `${item.size.toLocaleString()} B`}</p>
-                            <Button variant="danger" shape="rounded" contentLayout="icon" className="media-delete-button"
-                                ariaLabel={current.deletingId === item.id ? $_("uploadedMedia.deleting") : $_("uploadedMedia.delete")}
-                                title={current.deletingId === item.id ? $_("uploadedMedia.deleting") : $_("uploadedMedia.delete")}
-                                disabled={!item.deleteId || current.loading || !!current.deletingId}
-                                onClick={(event) => { deleteTrigger = event.currentTarget as HTMLElement; pendingEndpoint = current?.context?.endpoint ?? null; pending = item; }}>
-                                <span class="svg-icon media-delete-icon" aria-hidden="true" style:mask-image={`url("${deleteIconUrl}")`}></span>
-                            </Button>
+                            <div class="media-overlay">
+                                <div class="media-metadata">
+                                    <span>{#if item.uploadedAt !== undefined}<time datetime={new Date(item.uploadedAt * 1000).toISOString()}>{formatDate(item.uploadedAt)}</time>{:else}{$_("uploadedMedia.unknown")}{/if}</span>
+                                    <span>{item.size === undefined ? $_("uploadedMedia.unknown") : formatSize(item.size)}</span>
+                                </div>
+                                <Button shape="square" contentLayout="icon" className="media-delete-button"
+                                    ariaLabel={current.deletingId === item.id ? $_("uploadedMedia.deleting") : $_("uploadedMedia.delete")}
+                                    title={current.deletingId === item.id ? $_("uploadedMedia.deleting") : $_("uploadedMedia.delete")}
+                                    disabled={!item.deleteId || current.loading || !!current.deletingId}
+                                    onClick={(event) => { deleteTrigger = event.currentTarget as HTMLElement; pendingEndpoint = current?.context?.endpoint ?? null; pending = item; }}>
+                                    <span class="svg-icon media-delete-icon" aria-hidden="true" style:mask-image={`url("${deleteIconUrl}")`}></span>
+                                </Button>
+                            </div>
                         </article>
                     {/each}
                 </div>
-                {#if current.excludedCount || current.invalidCount}
-                    <p>{$_("uploadedMedia.skipped", { values: { excluded: current.excludedCount, invalid: current.invalidCount } })}</p>
-                {/if}
                 {#if current.nextPage && !current.needsRefresh}
-                    <div class="actions list-end-actions">
+                    <div class="list-end-actions">
                         <Button onClick={() => management.controller.load(true)} disabled={current.loading || !!current.deletingId}>{$_("uploadedMedia.loadMore")}</Button>
                     </div>
                 {/if}
@@ -197,21 +209,31 @@
 
 <style>
     :global(.dialog.uploaded-media-dialog) { background: var(--dialog-bg2); }
+    :global(.uploaded-media-dialog .dialog-content) { padding: 0; }
     .xmark-icon { mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg"); }
-    .media-management { flex: none; width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+    .media-management { flex: none; width: 100%; min-width: 0; display: flex; flex-direction: column; }
     :global(.uploaded-media-dialog button), select { height: auto; min-height: 44px; max-width: 100%; padding: 8px 12px; }
-    h2, p { margin: 0; }
-    .server-picker { display: flex; flex-direction: column; gap: 6px; }
+    p { margin: 0; }
+    .media-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 4px; padding: 8px; }
+    .media-status { margin: 8px 12px; }
     select { width: 100%; min-width: 0; }
-    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .list-end-actions { justify-content: center; }
+    .list-end-actions { display: flex; justify-content: center; padding: 12px; }
+    :global(.uploaded-media-dialog button.media-refresh-button) { width: 44px; height: 44px; padding: 0; background: transparent; border: none; }
     :global(.uploaded-media-dialog button.media-delete-button) {
-        flex: none; align-self: flex-end; padding: 0;
+        flex: none; padding: 0; background: transparent; border: none; color: white; --text: white;
         width: 44px; min-width: 44px; max-width: 44px;
         height: 44px; min-height: 44px; max-height: 44px;
     }
+    :global(.uploaded-media-dialog button.media-delete-button:hover:not(:disabled)) { background: rgb(255 255 255 / 15%); color: white; }
+    :global(.uploaded-media-dialog button.media-delete-button:hover:not(:disabled) .svg-icon) { background-color: white; }
+    :global(.uploaded-media-dialog button.media-delete-button:focus-visible) { outline: 2px solid white; outline-offset: -2px; }
     .media-delete-icon { width: 24px; height: 24px; --svg: currentColor; }
     .server-url, .diagnostic { overflow-wrap: anywhere; font-size: .875rem; }
-    .media-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 16px; }
-    article { min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+    .media-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    article { position: relative; min-width: 0; }
+    .media-overlay { position: absolute; inset: auto 0 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 4px; padding: 16px 4px 4px 8px; color: white; background: linear-gradient(transparent, rgb(0 0 0 / 70%)); pointer-events: none; }
+    .media-metadata { min-width: 0; align-self: center; display: flex; flex-direction: column; font-size: .6875rem; line-height: 1.5; overflow-wrap: anywhere; text-shadow: 0 1px 2px rgb(0 0 0 / 70%); }
+    .media-overlay :global(button) { pointer-events: auto; }
+    /* Keep native video playback controls available beneath the overlay. */
+    .video-active .media-overlay { bottom: 56px; }
 </style>

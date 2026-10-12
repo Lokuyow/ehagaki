@@ -54,23 +54,40 @@ describe("uploaded-media dialog", () => {
         expect(screen.getByRole("alertdialog").textContent).toContain("https://api.example/nip96");
         expect(screen.getByRole("alertdialog").textContent).toContain(mediaItem().deleteId!.sha256);
     });
-    it("shows media metadata as unknown and falls back to direct images with a cache notice", async () => {
+    it("shows unknown values without metadata labels and falls back to direct images with a cache notice", async () => {
         render(UploadedMediaDialog, { show: true, onClose: vi.fn() });
         expect(screen.getAllByText(/uploadedMedia.unknown/).length).toBeGreaterThan(0);
+        const article = document.querySelector("article")!;
+        expect(article.textContent).not.toContain("uploadedMedia.date");
+        expect(article.textContent).not.toContain("uploadedMedia.size");
+        expect(article.textContent).not.toContain("media.example");
+        expect(article.textContent).not.toContain("blossom");
         await waitFor(() => expect(document.querySelector("img")?.src).toBe(mediaItem().url));
         expect(screen.getByText("uploadedMedia.cacheUnavailable")).toBeTruthy();
         expect(document.querySelector("img")?.hasAttribute("crossorigin")).toBe(false);
         expect(document.querySelector("video")).toBeNull();
     });
+    it.each([[0, "0 B"], [111, "111 B"], [1536, "1.5 KB"], [1572864, "1.5 MB"], [1610612736, "1.5 GB"]])("displays the timestamp and a compact size for %s bytes", (bytes, expected) => {
+        mocked.view.current!.items[0].uploadedAt = 1_700_000_000;
+        mocked.view.current!.items[0].size = bytes as number;
+        render(UploadedMediaDialog, { show: true, onClose: vi.fn() });
+        const article = document.querySelector("article")!;
+        expect(article.querySelector("time")?.textContent).toBe(new Date(1_700_000_000_000).toLocaleString(undefined,
+            { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }));
+        expect(article.querySelector("time")?.dateTime).toBe("2023-11-14T22:13:20.000Z");
+        expect(article.textContent).toContain(expected);
+        expect(article.textContent).not.toContain("uploadedMedia.date");
+        expect(article.textContent).not.toContain("uploadedMedia.size");
+    });
     it("creates just one video on user action and releases it on close", async () => {
         const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
         const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
         render(UploadedMediaDialog, { show: true, onClose: vi.fn() });
-        await fireEvent.click(screen.getByText("uploadedMedia.openVideo"));
+        await fireEvent.click(screen.getByRole("button", { name: "uploadedMedia.openVideo" }));
         const video = document.querySelector("video")!;
         expect(video.autoplay).toBe(false); expect(video.preload).toBe("metadata");
         expect(video.getAttribute("src")).toContain(".mp4");
-        await fireEvent.click(screen.getByText("uploadedMedia.closeVideo"));
+        await fireEvent.click(screen.getByRole("button", { name: "uploadedMedia.closeVideo" }));
         expect(document.querySelector("video")).toBeNull(); expect(video.hasAttribute("src")).toBe(false);
         expect(pause).toHaveBeenCalled(); expect(load).toHaveBeenCalled();
         pause.mockRestore(); load.mockRestore();
