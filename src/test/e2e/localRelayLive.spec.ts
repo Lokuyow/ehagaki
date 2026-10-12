@@ -339,6 +339,105 @@ for (const [externalOk, localMode] of [[true, "accept"], [true, "reject"], [true
     });
 }
 
+interface HistoryRevisionRaceProbe {
+    reconciliationStarted: boolean;
+    progressCounted: boolean;
+    olderQueryStarted: boolean;
+    getRevision(): number;
+    releaseReconciliation(): void;
+    releaseOlderQuery(): void;
+    restore(): void;
+}
+declare global {
+    interface Window { __historyRevisionRace?: HistoryRevisionRaceProbe }
+}
+
+test("local-only first older scroll advances while committed reconciliation is pending", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 844 });
+    const f = await fixture(page, { localCount: 150, externalRead: "closed" });
+    try {
+        await setUrl(page, f.localUrl);
+        await page.locator(".post-history-btn").click();
+        await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible();
+        await page.getByRole("button", { name: "投稿履歴メニューを開く" }).click();
+        await page.getByRole("menuitem", { name: "保存済み投稿履歴をクリア" }).click();
+        await page.getByRole("button", { name: "クリアする", exact: true }).click();
+        await expect(page.getByRole("alertdialog", { name: "保存済み投稿履歴をクリア", exact: true })).toHaveCount(0);
+        await expect.poll(async () => (await posts(page)).length).toBe(0);
+        await page.keyboard.press("Escape");
+
+        const revisionBeforeRead = await page.evaluate(async owner => {
+            const moduleUrl = (path: string) => new URL(`src/lib/${path}.ts`, location.href).href;
+            const { ehagakiDb } = await import(/* @vite-ignore */ moduleUrl("storage/ehagakiDb"));
+            const { postHistoryRepository: repository } = await import(/* @vite-ignore */ moduleUrl("storage/postHistoryRepository"));
+            const { getPostHistorySearchRevision } = await import(/* @vite-ignore */ moduleUrl("postHistoryLocalSearchRevision"));
+            const get = ehagakiDb.postHistory.get.bind(ehagakiDb.postHistory);
+            const count = repository.countVisibleForPubkey.bind(repository);
+            const older = repository.getOlderVisibleChunk.bind(repository);
+            let releaseReconciliation!: () => void, releaseOlderQuery!: () => void;
+            const reconciliationGate = new Promise<void>(resolve => { releaseReconciliation = resolve; });
+            const olderGate = new Promise<void>(resolve => { releaseOlderQuery = resolve; });
+            const probe: HistoryRevisionRaceProbe = {
+                reconciliationStarted: false, progressCounted: false, olderQueryStarted: false,
+                getRevision: () => getPostHistorySearchRevision(owner), releaseReconciliation, releaseOlderQuery,
+                restore() {
+                    releaseReconciliation(); releaseOlderQuery();
+                    ehagakiDb.postHistory.get = get;
+                    repository.countVisibleForPubkey = count;
+                    repository.getOlderVisibleChunk = older;
+                },
+            };
+            // Only the post-transaction reconciler read is held. Native IndexedDB
+            // commit/observation and the real listing/observer code remain active.
+            ehagakiDb.postHistory.get = (...args: unknown[]) => {
+                const record = get(...args);
+                if (!probe.reconciliationStarted && new Error().stack?.includes("reconcileSensitivePayloadDeletionForStructure")) {
+                    probe.reconciliationStarted = true;
+                    return record.then(async (row: unknown) => { await reconciliationGate; return row; });
+                }
+                return record;
+            };
+            repository.countVisibleForPubkey = (...args: unknown[]) => {
+                const result = count(...args);
+                if (new Error().stack?.includes("establishContiguousProgress")) return result.then((total: number) => {
+                    probe.progressCounted = true; return total;
+                });
+                return result;
+            };
+            repository.getOlderVisibleChunk = (query: { limit: number }) => {
+                const result = older(query);
+                if (query.limit === 50 && !probe.olderQueryStarted) {
+                    probe.olderQueryStarted = true;
+                    return result.then(async (rows: unknown) => { await olderGate; return rows; });
+                }
+                return result;
+            };
+            window.__historyRevisionRace = probe;
+            return probe.getRevision();
+        }, f.pubkey);
+
+        await page.locator(".post-history-btn").click();
+        await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible();
+        await expect.poll(() => page.evaluate(() => {
+            const probe = window.__historyRevisionRace!;
+            return probe.reconciliationStarted && probe.progressCounted;
+        })).toBe(true);
+        await expect.poll(async () => (await posts(page)).length).toBe(150);
+        // Exactly one approach. No exit/reentry, manual fetch, or retry gesture.
+        await page.locator(".post-history-container").evaluate(element => { element.scrollTop = element.scrollHeight; });
+        await expect.poll(() => page.evaluate(() => window.__historyRevisionRace!.olderQueryStarted)).toBe(true);
+        await page.evaluate(() => window.__historyRevisionRace!.releaseReconciliation());
+        await expect.poll(() => page.evaluate(() => window.__historyRevisionRace!.getRevision())).toBe(revisionBeforeRead + 1);
+        await page.evaluate(() => window.__historyRevisionRace!.releaseOlderQuery());
+        await expect(page.getByText("Local pagination 50", { exact: true })).toBeVisible();
+        await expect(page.getByText("Local pagination 99", { exact: true })).toBeVisible();
+        expect(f.localRequests.filter(filter => filter.kinds?.includes(1))).toHaveLength(2);
+    } finally {
+        await page.evaluate(() => window.__historyRevisionRace?.restore());
+        await f.stop();
+    }
+});
+
 for (const externalRead of ["closed", "silent"] as const) {
     test(`local-only pagination restores and browses 360 posts while external is ${externalRead}`, async ({ page }) => {
         await page.setViewportSize({ width: 360, height: 844 });
@@ -360,11 +459,16 @@ for (const externalRead of ["closed", "silent"] as const) {
             const authored = () => f.localRequests.filter(filter => filter.kinds?.includes(1));
             let oldest = -1;
             for (let i = 0; i < 15 && oldest < 359; i++) {
-                const ids = await page.locator(".post-history-item").evaluateAll(nodes => nodes.map(node => node.getAttribute("data-post-history-event-id")!));
+                // IDs and sequence numbers describe one bounded window, even if
+                // another peer commits the following window immediately after it.
+                const rows = await page.locator(".post-history-item").evaluateAll(nodes => nodes.map(node => ({
+                    id: node.getAttribute("data-post-history-event-id")!,
+                    numbers: [...(node.textContent ?? "").matchAll(/Local pagination (\d+)/g)].map(match => Number(match[1])),
+                })));
+                const ids = rows.map(row => row.id);
                 ids.forEach(id => seen.add(id));
                 expect(ids.length).toBeLessThanOrEqual(150); expect(new Set(ids).size).toBe(ids.length);
-                const texts = await page.locator(".post-history-item").allTextContents();
-                oldest = Math.max(...texts.flatMap(text => [...text.matchAll(/Local pagination (\d+)/g)].map(match => Number(match[1]))));
+                oldest = Math.max(...rows.flatMap(row => row.numbers));
                 if (oldest === 359) break;
                 // Contiguous browsing uses the existing IntersectionObserver,
                 // rather than a manual "show older" button, in Chromium.

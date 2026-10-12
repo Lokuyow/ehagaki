@@ -1142,6 +1142,10 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             throw error;
         }
 
+        // Committed rows are already observable. Notify before asynchronous
+        // reconciliation lets a listing cache them with the previous revision.
+        changedPubkeys.forEach(bumpPostHistorySearchRevision);
+
         for (const item of normalizedItems) {
             try {
                 await reconcileSensitivePayloadDeletionForStructure(
@@ -1156,8 +1160,6 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                 );
             }
         }
-
-        changedPubkeys.forEach(bumpPostHistorySearchRevision);
 
         return {
             insertedCount,
