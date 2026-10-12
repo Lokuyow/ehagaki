@@ -2,14 +2,14 @@ import { Extension, type Editor } from '@tiptap/core';
 import { Plugin, PluginKey, Selection } from '@tiptap/pm/state';
 import { isHistoryTransaction } from '@tiptap/pm/history';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { inspectReactionDocument } from '../reactionValue';
+import { canApplyReactionEdit, type ReactionInputMode } from '../reactionValue';
 
 const reactionInputKey = new PluginKey<boolean>('reactionInput');
 export function isReactionComposing(editor: Editor): boolean { return reactionInputKey.getState(editor.state) === true; }
 
-export const ReactionInput = Extension.create<{ isActive: () => boolean }>({
+export const ReactionInput = Extension.create<{ isActive: () => boolean; getInputMode: () => ReactionInputMode }>({
     name: 'reactionInput',
-    addOptions: () => ({ isActive: () => false }),
+    addOptions: () => ({ isActive: () => false, getInputMode: () => 'singleValue' }),
     addProseMirrorPlugins() {
         let baseline: { doc: PMNode; selection: Selection } | null = null;
         let frame: number | undefined;
@@ -19,11 +19,7 @@ export const ReactionInput = Extension.create<{ isActive: () => boolean }>({
             filterTransaction: (tr, state) => {
                 if (!tr.docChanged || !this.options.isActive() || tr.getMeta(reactionInputKey)?.rollback || isHistoryTransaction(tr)) return true;
                 if (reactionInputKey.getState(state)) return true;
-                const before = inspectReactionDocument(state.doc);
-                const after = inspectReactionDocument(tr.doc);
-                if (after.forbidden === 0 && after.count <= 1) return true;
-                return (before.count > 1 || before.forbidden > 0)
-                    && after.count <= before.count && after.forbidden <= before.forbidden;
+                return canApplyReactionEdit(state.doc, tr.doc, this.options.getInputMode());
             },
             view: view => {
                 const win = view.dom.ownerDocument.defaultView!;
@@ -40,12 +36,9 @@ export const ReactionInput = Extension.create<{ isActive: () => boolean }>({
                         frame = undefined;
                         const original = baseline;
                         baseline = null;
-                        const current = inspectReactionDocument(view.state.doc);
-                        const before = original && inspectReactionDocument(original.doc);
                         const tr = view.state.tr.setMeta(reactionInputKey, { composing: false, rollback: true }).setMeta('addToHistory', false);
-                        if (original && before && this.options.isActive()
-                            && !(current.forbidden === 0 && current.count <= 1)
-                            && !(before.count > 1 || before.forbidden > 0 ? current.count <= before.count && current.forbidden <= before.forbidden : false)) {
+                        if (original && this.options.isActive()
+                            && !canApplyReactionEdit(original.doc, view.state.doc, this.options.getInputMode())) {
                             tr.replaceWith(0, tr.doc.content.size, original.doc.content);
                             tr.setSelection(Selection.fromJSON(tr.doc, original.selection.toJSON()));
                         }

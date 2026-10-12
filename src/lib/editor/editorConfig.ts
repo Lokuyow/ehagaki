@@ -18,6 +18,7 @@ import type { EHagakiHostSubmitShortcut, EHagakiHostSubmitShortcutModifier } fro
 import type { EditorSubmitTrigger } from '../types/editor';
 import { EditorInputGuard } from './editorInputGuard';
 import { ReactionInput } from './reactionInput';
+import type { ReactionInputMode } from '../reactionValue';
 import type { SubmittedCompositionController } from './submittedComposition';
 
 const MEDIA_NODE_TYPES = new Set(['image', 'video', 'customEmoji']);
@@ -166,6 +167,7 @@ const GapCursorFocusReset = Extension.create({
 
 export interface EditorConfigOptions {
     isReactionMode?: () => boolean;
+    getReactionInputMode?: () => ReactionInputMode;
     isInputBlocked?: () => boolean;
     isCompositionInputAllowed?: () => boolean;
     compositionController?: SubmittedCompositionController;
@@ -198,10 +200,13 @@ export function createEditorStore(options: EditorConfigOptions) {
         onDestroy,
     } = options;
     const placeholderState: PlaceholderState = { text: placeholderText };
+    const getInputEmojiItems = () => options.getReactionInputMode?.() === 'uploadedShortcode'
+        ? [] : (getCustomEmojiItems ?? CustomEmoji.options.getItems)();
 
     const editorStore = createEditor({
         extensions: [
-            ...(options.isReactionMode ? [ReactionInput.configure({ isActive: options.isReactionMode })] : []),
+            ...(options.isReactionMode ? [ReactionInput.configure({ isActive: options.isReactionMode,
+                ...(options.getReactionInputMode ? { getInputMode: options.getReactionInputMode } : {}) })] : []),
             ...(!hostOwnedLite && options.isInputBlocked
                 ? [EditorInputGuard.configure({
                     isInputBlocked: options.isInputBlocked,
@@ -344,19 +349,19 @@ export function createEditorStore(options: EditorConfigOptions) {
             }),
             GapCursorFocusReset,
             ShiftEnterToParagraph,
-            ContentTrackingExtension,
+            ContentTrackingExtension.configure({ isMediaConversionDisabled: options.isReactionMode }),
             HashtagSuggestion,
             Video,
             CustomEmoji.configure({
-                ...(getCustomEmojiItems ? { getItems: getCustomEmojiItems } : {}),
+                getItems: getInputEmojiItems,
             }),
             CustomEmojiSuggestion.configure({
                 onSelectEmoji: onCustomEmojiSelect,
-                ...(getCustomEmojiItems ? { getItems: getCustomEmojiItems } : {}),
+                getItems: getInputEmojiItems,
             }),
             ToolbarCaretExtension,
             ClipboardExtension, // ← クリップボード処理を追加（MediaPasteExtensionの前に配置）
-            MediaPasteExtension,
+            MediaPasteExtension.configure({ isMediaConversionDisabled: options.isReactionMode }),
             ImageDragDropExtension,
             CustomEmojiDragDropExtension,
             SmartBackspaceExtension,

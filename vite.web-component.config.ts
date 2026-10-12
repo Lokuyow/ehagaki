@@ -38,6 +38,7 @@ function resolveHostOwnedLiteFullOnlyImports() {
     const fullOnlyImports = new Set([
         "../lib/postManager",
         "../lib/postReactionService",
+        "../lib/reactionMediaController",
         "../lib/nip46Service",
         "../lib/parentClientAuthService",
         "../lib/postHistoryMediaPersistence",

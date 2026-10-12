@@ -1,5 +1,6 @@
 {
   "reaction": {
+    "shortcode_hint": "画像のshortcodeを入力してください（例: cat / :cat:）。英数字・-・_のみ使えます。",
     "action": "リアクションする",
     "entry": "リアクション",
     "target": "リアクションの対象",
@@ -507,6 +508,8 @@
     "author_name": "ロクヨウ"
   },
   "postComponent": {
+    "reactionUnsupportedImage": "リアクションには静止PNG・JPEG・WebP画像を1枚ずつアップロードしてください。アニメーション画像は使用できません。",
+    "reactionImageTransformFailed": "リアクション画像を変換できませんでした。画像はアップロードされていません。",
     "enter_your_text": "いまどうしてる？",
     "editor_label": "投稿エディター",
     "post": "投稿",

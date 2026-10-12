@@ -76,7 +76,7 @@ export default defineConfig({
         },
         {
             name: 'desktop-firefox',
-            testMatch: ['**/webComponentEmbed.spec.ts', '**/postRepost.spec.ts', '**/postHistoryJsonlWorker.spec.ts'],
+            testMatch: ['**/webComponentEmbed.spec.ts', '**/postRepost.spec.ts', '**/postHistoryJsonlWorker.spec.ts', '**/postReaction.spec.ts'],
             use: {
                 ...devices['Desktop Firefox'],
             },

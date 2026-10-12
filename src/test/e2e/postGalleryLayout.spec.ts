@@ -58,12 +58,13 @@ test.describe('post gallery layout', () => {
         await page.setViewportSize({ width: 900, height: 1600 });
         await page.emulateMedia({ colorScheme: 'light' });
         await page.goto('/ehagaki/');
-        await expect(page.getByRole('textbox', { name: '投稿エディター' })).toBeVisible();
+        await expect(page.locator('.tiptap-editor')).toBeVisible();
 
         const welcomeDialog = page.locator('.welcome-dialog');
         if (await welcomeDialog.isVisible().catch(() => false)) {
             await welcomeDialog.getByRole('button', { name: 'はじめる' }).click();
         }
+        await expect(page.getByRole('textbox', { name: '投稿エディター' })).toBeVisible();
 
         const result = await page.evaluate(() => {
             document.documentElement.style.setProperty('--base-color-user', '#d9e8f2');
@@ -103,12 +104,13 @@ test.describe('post gallery layout', () => {
 
         const editor = page.getByRole('textbox', { name: '投稿エディター' });
         const editorContent = editor.locator('.tiptap-editor');
-        await expect(editorContent).toBeVisible();
+        await expect(page.locator('.tiptap-editor')).toBeVisible();
 
         const welcomeDialog = page.locator('.welcome-dialog');
         if (await welcomeDialog.isVisible().catch(() => false)) {
             await welcomeDialog.getByRole('button', { name: 'はじめる' }).click();
         }
+        await expect(editorContent).toBeVisible();
 
         await editor.click();
         await page.keyboard.type('gallery layout regression');

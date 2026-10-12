@@ -14,12 +14,14 @@
     EditorSubmitTrigger,
   } from "../lib/types";
   import type { MediaGalleryItem } from "../lib/types";
-  import { mediaFreePlacementStore } from "../stores/uploadStore.svelte";
+  import { mediaFreePlacementStore, uploadAbortFlagStore } from "../stores/uploadStore.svelte";
   import { PostManager } from "../lib/postManager";
   import { postReactionService, type PostReactionResult } from '../lib/postReactionService';
   import { authState } from '../stores/authStore.svelte';
   import { reactionComposerState, clearReactionTarget } from '../stores/reactionComposerStore.svelte';
   import { inspectReactionDocument } from '../lib/reactionValue';
+  import { createReactionMediaController } from '../lib/reactionMediaController';
+  import { getAppRuntimeEnvironment } from '../lib/appRuntimeEnvironment';
   import { isReactionComposing } from '../lib/editor/reactionInput';
   import { resetPostStatus } from '../stores/editorStore.svelte';
   import { nip46Service } from "../lib/nip46Service";
@@ -119,6 +121,7 @@
     contentWarningReasonStore,
     getHashtagDataSnapshot,
     hashtagPinStore,
+    imageSizeMapStore,
   } from "../stores/tagsStore.svelte";
 
   interface Props {
@@ -165,7 +168,7 @@
   // its dedicated output/upload modules from the full graph.
   const isHostOwned =
     isHostOwnedLiteBuild && (() => Boolean(hostOwnedConfig))();
-  let mediaEnabled = $derived((!isHostOwned || !!hostOwnedConfig?.uploadMedia) && !reactionComposerState.value);
+  let mediaEnabled = $derived(!isHostOwned || !!hostOwnedConfig?.uploadMedia);
   let isUploading = $derived(editorState.isUploading);
   let canPost = $derived(editorState.canPost);
   let showEditorSubmitButton = $derived(
@@ -183,6 +186,50 @@
   let imageOxMap: Record<string, string> = $state({});
   let imageXMap: Record<string, string> = $state({});
   let mediaFreePlacement = $derived(mediaFreePlacementStore.value);
+  let galleryVisible = $derived(!mediaFreePlacement || !!reactionComposerState.value);
+  let reactionMediaRevision = $state(0);
+  let reactionInputMode = $derived.by(() => {
+    reactionMediaRevision;
+    return reactionMedia?.getInputMode() ?? 'singleValue';
+  });
+  const reactionMedia = isHostOwnedLiteBuild ? null : createReactionMediaController({
+    getEditor: () => currentEditorStore.value,
+    getAuth: () => authState.value,
+    getRuntime: () => rxNostr,
+    getEnvironment: getAppRuntimeEnvironment,
+    isFreePlacement: () => mediaFreePlacementStore.value,
+    getItems: () => mediaGalleryStore.getItems(),
+    removeItem: id => mediaGalleryStore.removeItem(id),
+    removePlaceholderSize: id => imageSizeMapStore.update(map => {
+      const next = { ...map }; delete next[id]; return next;
+    }),
+    restoreItems: (instance, items) => {
+      // Release this retired Reaction's document guard before restoring normal media.
+      if (reactionSubmit?.editor === instance && !reactionSubmit.isCurrent()) {
+        reactionSubmit = null;
+        postManager?.cancelActiveNip65Operations();
+        editorState.isSubmitPending = false;
+        if (editorState.postStatus.sending) resetPostStatus();
+      }
+      const result = moveGalleryMediaToEditor({ currentEditor: instance, items });
+      Object.assign(imageOxMap, result.imageOxMap);
+      Object.assign(imageXMap, result.imageXMap);
+      return result.movedItemIds;
+    },
+    onChange: () => { reactionMediaRevision += 1; },
+    onUploadEnd: () => updateEditorUploadState(editorState, false, ''),
+  });
+  function inspectCurrentReaction(instance: TipTapEditor) {
+    reactionMediaRevision;
+    return inspectReactionDocument(instance.state.doc, reactionMedia?.getContext() ?? false);
+  }
+  $effect(() => {
+    authState.value; rxNostr; currentEditorStore.value; reactionComposerState.value;
+    untrack(() => reactionMedia?.sync());
+  });
+  $effect(() => {
+    if (uploadAbortFlagStore.value) untrack(() => reactionMedia?.abortUpload());
+  });
   let postStatus = $derived(editorState.postStatus);
   let uploadErrorMessage = $derived(editorState.uploadErrorMessage);
   let profileData = $derived(profileDataStore.value);
@@ -214,7 +261,8 @@
       : `--post-editor-min-height: ${minEditorHeight}px; --post-editor-target-height: ${editorTargetHeight}px;`,
   );
   let editorPlaceholderText = $derived(
-    $_("postComponent.enter_your_text") || "テキストを入力してください",
+    reactionComposerState.value && reactionInputMode === 'uploadedShortcode'
+      ? $_('reaction.shortcode_hint') : $_("postComponent.enter_your_text") || "テキストを入力してください",
   );
 
   $effect(() => {
@@ -223,7 +271,7 @@
     const gallery = mediaGalleryStore.hasNonPlaceholderItems();
     if (!instance) return;
     updateEditorPostEligibility(instance, gallery, target ?
-      Boolean(inspectReactionDocument(instance.state.doc, gallery).value) && !isReactionComposing(instance) : undefined);
+      Boolean(inspectCurrentReaction(instance).value) && !isReactionComposing(instance) : undefined);
   });
 
   let reactionSubmit = $state.raw<{ editor: TipTapEditor; isCurrent: () => boolean } | null>(null);
@@ -427,11 +475,27 @@
         return null;
       }
       if (!isHostOwned) {
-        if (reactionComposerState.value) return null;
-        if (normalUploadFiles) return await normalUploadFiles(params);
         if (isHostOwnedLiteBuild) return null;
-        const { uploadFiles } = await import("../lib/normalUploadHelper");
-        return await uploadFiles(params);
+        const reaction = reactionComposerState.value;
+        if (reaction && (params.files.length !== 1 || !params.files[0].type.startsWith('image/'))) {
+          editorState.uploadErrorMessage = $_('postComponent.reactionUnsupportedImage');
+          return null;
+        }
+        const operation = reaction ? reactionMedia?.beginUpload() : undefined;
+        if (reaction && !operation) return null;
+        if (operation) uploadAbortFlagStore.reset();
+        // Reserve the UI before an async module/destination lookup permits a second upload.
+        updateEditorUploadState(editorState, true, '');
+        try {
+          const executor = normalUploadFiles ?? (await import('../lib/normalUploadHelper')).uploadFiles;
+          if (operation && (!operation.isCurrent() || operation.signal.aborted)) return null;
+          return await executor({ ...params, ...(operation ? { reactionUpload: operation } : {}) });
+        } finally {
+          if (operation) {
+            if (operation.isCurrent()) updateEditorUploadState(editorState, false);
+            reactionMedia?.endUpload(operation);
+          } else updateEditorUploadState(editorState, false);
+        }
       }
       if (!hostOwnedConfig?.uploadMedia) {
         updateEditorUploadState(
@@ -518,8 +582,9 @@
   });
 
   onDestroy(() => {
+    reactionMedia?.dispose();
     componentDestroyed = true;
-    if (!isHostOwned) clearReactionTarget();
+    if (!isHostOwned) clearReactionTarget('ownership');
     postManager?.cancelActiveNip65Operations();
   });
 
@@ -533,10 +598,10 @@
 
     availableComposerHeight;
     minEditorHeight;
-    mediaFreePlacement;
+    galleryVisible;
     uploadErrorMessage;
     currentEditor;
-    if (!mediaFreePlacement) {
+    if (galleryVisible) {
       mediaGalleryStore.items.length;
     }
 
@@ -560,7 +625,7 @@
     availableComposerHeight;
     minEditorHeight;
     currentEditor;
-    mediaFreePlacement;
+    galleryVisible;
     uploadErrorMessage;
 
     if (!postContainerEl || typeof ResizeObserver === "undefined") {
@@ -605,6 +670,7 @@
         });
     editorResources = initializeEditor({
       isReactionMode: isHostOwned ? undefined : () => reactionComposerState.value !== null,
+      getReactionInputMode: isHostOwned ? undefined : () => reactionMedia?.getInputMode() ?? 'singleValue',
       isInputBlocked: isHostOwned ? undefined : isEditorMutationBlocked,
       isCompositionInputAllowed: isHostOwned
         ? undefined
@@ -627,7 +693,7 @@
         : undefined,
       uploadFiles: mediaEnabled
         ? (files: File[] | FileList) => {
-            if (isEditorMutationBlocked() || reactionComposerState.value) return;
+            if (isEditorMutationBlocked()) return;
             void uploadHandlers.performUpload(files);
           }
         : undefined,
@@ -662,8 +728,7 @@
       updateEditorPostEligibility(
         editorInstance,
         mediaGalleryStore.hasNonPlaceholderItems(),
-        reactionComposerState.value ? Boolean(inspectReactionDocument(editorInstance.state.doc,
-          mediaGalleryStore.hasNonPlaceholderItems()).value) && !isReactionComposing(editorInstance) : undefined,
+        reactionComposerState.value ? Boolean(inspectCurrentReaction(editorInstance).value) && !isReactionComposing(editorInstance) : undefined,
       );
     };
     const handleEditorTransaction = ({
@@ -724,6 +789,7 @@
     );
 
     return () => {
+      reactionMedia?.dispose();
       submittedCompositionController?.destroy();
       submittedCompositionController = null;
       submittedCompositionReadOnly = false;
@@ -769,7 +835,7 @@
   export async function uploadFiles(
     files: File[] | FileList,
   ): Promise<UploadHelperResult | null> {
-    if (isEditorMutationBlocked() || reactionComposerState.value) return null;
+    if (isEditorMutationBlocked()) return null;
     return await uploadHandlers.performUpload(files);
   }
 
@@ -978,7 +1044,7 @@
     return (
       canSendNormalPost() &&
       (reactionComposerState.value && currentEditor ?
-        Boolean(inspectReactionDocument(currentEditor.state.doc, mediaGalleryStore.hasNonPlaceholderItems()).value)
+        Boolean(inspectCurrentReaction(currentEditor).value)
           && !isReactionComposing(currentEditor) && !currentEditor.view.composing : resolveLivePostEligibility(
         currentEditor,
         mediaGalleryStore.hasNonPlaceholderItems(),
@@ -1137,7 +1203,7 @@
     const editorInstance = currentEditor;
     const reactionTarget = reactionComposerState.value;
     if (reactionTarget) {
-      const value = inspectReactionDocument(editorInstance.state.doc, mediaGalleryStore.hasNonPlaceholderItems()).value;
+      const value = inspectCurrentReaction(editorInstance).value;
       if (!value) return;
       const runtime = rxNostr;
       const auth = authState.value;
@@ -1154,7 +1220,7 @@
         if (!isCurrent()) return;
         appliedResult = true;
         if (result.success) {
-          clearReactionTarget();
+          clearReactionTarget('success');
           postStatusHandlers.markSuccess(result);
         } else markPostFailure('reaction.failed');
       } finally {
@@ -1211,7 +1277,7 @@
   }
 
   export function resetPostContent() {
-    if (!isHostOwned) clearReactionTarget();
+    if (!isHostOwned) clearReactionTarget('reset');
     if (!currentEditor) return;
     if (!isHostOwnedLiteBuild && postManager) {
       postManager.resetPostContent(currentEditor);
@@ -1221,7 +1287,7 @@
   }
 
   export function clearContentAfterSuccess() {
-    if (!isHostOwned) clearReactionTarget();
+    if (!isHostOwned) clearReactionTarget('success');
     if (!isHostOwnedLiteBuild && postManager && currentEditor) {
       postManager.clearContentAfterSuccess(currentEditor);
       return;
@@ -1283,6 +1349,7 @@
   let fullscreenMediaList = $derived.by<FullscreenMediaItem[]>(() => {
     return collectFullscreenMediaItems({
       mediaFreePlacement,
+      includeTemporaryGallery: mediaFreePlacement && !!reactionComposerState.value,
       galleryItems: mediaGalleryStore.items,
       currentEditor,
     });
@@ -1331,22 +1398,27 @@
     updateEditorPostEligibility(
       currentEditor,
       hasGalleryMedia,
-      reactionComposerState.value ? Boolean(currentEditor && inspectReactionDocument(currentEditor.state.doc, hasGalleryMedia).value)
+      reactionComposerState.value ? Boolean(currentEditor && inspectCurrentReaction(currentEditor).value)
         && Boolean(currentEditor && !isReactionComposing(currentEditor)) : undefined,
     );
   });
 
   // --- モード切替時の自動整理 ---
   let isFirstModeRender = true;
+  let previousGalleryMode = !mediaFreePlacementStore.value;
 
   $effect(() => {
     const isGalleryMode = !mediaFreePlacementStore.value;
+    if (reactionComposerState.value) return;
 
     if (isFirstModeRender) {
       isFirstModeRender = false;
+      previousGalleryMode = isGalleryMode;
       return;
     }
     if (!currentEditor) return;
+    if (previousGalleryMode === isGalleryMode) return;
+    previousGalleryMode = isGalleryMode;
     const editorInstance = currentEditor;
 
     if (isGalleryMode) {
@@ -1396,7 +1468,7 @@
   <div
     class="editor-container"
     class:drag-over={dragOver}
-    class:gallery-mode={!mediaFreePlacement}
+    class:gallery-mode={galleryVisible}
     class:sending={postStatus.sending || submittedCompositionReadOnly}
     class:editor-submit-enabled={showEditorSubmitButton}
     class:account-avatar-placeholder={showAccountPlaceholder}
@@ -1472,15 +1544,15 @@
     {/if}
   </div>
 
-  {#if !mediaFreePlacement}
+  {#if galleryVisible}
     <MediaGallery />
   {/if}
 
   {#if mediaEnabled}
     <input
       type="file"
-      accept="image/*,video/*"
-      multiple
+      accept={reactionComposerState.value ? 'image/png,image/jpeg,image/webp' : 'image/*,video/*'}
+      multiple={!reactionComposerState.value}
       onchange={handleFileSelect}
       bind:this={fileInput}
       style="display: none;"

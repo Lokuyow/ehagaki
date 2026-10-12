@@ -488,7 +488,7 @@
   } | null>(null);
   let latestPostedEvent: NostrEvent | null = $state(null);
   let reactionSaveFailure = $state.raw<PostReactionResult | null>(null);
-  $effect(() => { authState.value; rxNostr; untrack(() => { clearReactionTarget(); reactionSaveFailure = null; }); });
+  $effect(() => { authState.value; rxNostr; untrack(() => { clearReactionTarget('ownership'); reactionSaveFailure = null; }); });
   $effect(() => {
     const target = reactionComposerState.value;
     if (target && authState.value.pubkey) reactionSaveFailure = postReactionService.getFailedSave(authState.value.pubkey, target.eventId);
@@ -1964,7 +1964,7 @@
   }
 
   function handleResetPostContent() {
-    clearReactionTarget();
+    clearReactionTarget('reset');
     postComponentRef?.resetPostContent();
     clearReplyQuote();
     channelContextApplyController.clear();
@@ -1990,7 +1990,7 @@
   }
 
   function handleApplyDraft(draft: Draft) {
-    clearReactionTarget();
+    clearReactionTarget('reset');
     draftComposerController.applyDraftToComposer(draft);
   }
 
@@ -2293,7 +2293,7 @@
         onPostButtonTap={() => balloon.showTips()}
         {customEmojiPickerOpen}
         hasPostingCapability={hasPostingCapability}
-        mediaEnabled={!reactionComposerState.value}
+        mediaEnabled={true}
         customEmojiEnabled={isAuthenticated}
         onCustomEmojiPickerOpenChange={(open) => (customEmojiPickerOpen = open)}
       />
