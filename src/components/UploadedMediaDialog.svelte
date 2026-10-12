@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onDestroy, tick, untrack } from "svelte";
+    import { Dialog } from "bits-ui";
     import { _ } from "svelte-i18n";
     import DialogWrapper from "./DialogWrapper.svelte";
     import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -104,7 +105,7 @@
 </script>
 
 <DialogWrapper open={show} onOpenChange={(open) => { if (!open) close(); }}
-    title={$_("uploadedMedia.title")} description={$_("uploadedMedia.description")} contentClass="uploaded-media-dialog">
+    title={$_("uploadedMedia.title")} description={$_("uploadedMedia.description")} contentClass="uploaded-media-dialog" footerVariant="close-button">
     <div class="media-management">
         <h2>{$_("uploadedMedia.title")}</h2>
         <p>{$_("uploadedMedia.description")}</p>
@@ -170,7 +171,15 @@
             {/if}
         {/if}
     </div>
-    {#snippet footer()}<Button onClick={close}>{$_("global.close")}</Button>{/snippet}
+    {#snippet footer()}
+        <Dialog.Close>
+            {#snippet child({ props })}
+                <Button {...props} className="modal-close" shape="square" ariaLabel={$_("global.close")}>
+                    <span class="xmark-icon svg-icon" aria-hidden="true"></span>
+                </Button>
+            {/snippet}
+        </Dialog.Close>
+    {/snippet}
 </DialogWrapper>
 {#key uiEpoch}
 <ConfirmDialog open={!!pending} onOpenChange={(open) => { if (!open) cancelConfirm(); }}
@@ -187,6 +196,8 @@
 {/key}
 
 <style>
+    :global(.dialog.uploaded-media-dialog) { background: var(--dialog-bg2); }
+    .xmark-icon { mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg"); }
     .media-management { flex: none; width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
     :global(.uploaded-media-dialog button), select { height: auto; min-height: 44px; max-width: 100%; padding: 8px 12px; }
     h2, p { margin: 0; }

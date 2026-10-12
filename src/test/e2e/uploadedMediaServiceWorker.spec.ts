@@ -224,11 +224,26 @@ for (const base of ["/", "/ehagaki/"] as const) {
             expect(await entry.evaluate((node) => node.closest(".upload-destination-section"))).toBeNull();
             await entry.focus(); await page.keyboard.press("Enter");
             const dialog = page.getByRole("dialog", { name: "メディア", exact: true });
+            const footerClose = dialog.getByRole("button", { name: "閉じる", exact: true });
+            await expect(footerClose).toHaveText("");
+            await expect(footerClose.locator(".svg-icon")).toBeVisible();
             await dialog.getByRole("combobox").selectOption("fixture");
             await expect(dialog.locator("article")).toHaveCount(3);
             await expect(dialog.locator("img")).toBeVisible();
             await expect.poll(() => keys(page)).toContain(f.remote());
             expect([...f.counts.keys()].some((url) => url.startsWith("GET /" + videoHash))).toBe(false);
+            for (const colorScheme of ["light", "dark"] as const) {
+                await page.emulateMedia({ colorScheme });
+                await expect.poll(() => page.locator("html").evaluate((node) => getComputedStyle(node).colorScheme)).toBe(colorScheme);
+                const colors = await dialog.evaluate((node) => ({
+                    media: getComputedStyle(node).backgroundColor,
+                    settings: getComputedStyle(document.querySelector(".settings-dialog")!).backgroundColor,
+                }));
+                expect(colors.media).not.toBe(colors.settings);
+                expect(colors.media).not.toBe("rgba(0, 0, 0, 0)");
+                await page.screenshot({ path: testInfo.outputPath(`media-background-${colorScheme}-360.png`) });
+            }
+            await page.emulateMedia({ colorScheme: "light" });
             for (const width of [360, 320, 1100]) {
                 await page.setViewportSize({ width, height: 850 });
                 expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
@@ -284,6 +299,7 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await expect(page.locator(".settings-dialog")).toBeVisible();
             await context.setOffline(true);
             await entry.click(); await expect(dialog).toBeVisible(); await context.setOffline(false);
+            await footerClose.click(); await expect(dialog).toBeHidden(); await expect(entry).toBeFocused();
             // The same full application runtime inside a 320px host iframe.
             await page.goto(f.url + "monitor.html");
             await page.evaluate((url) => {

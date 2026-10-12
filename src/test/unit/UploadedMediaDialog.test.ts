@@ -23,6 +23,17 @@ beforeEach(() => {
         loaded: true, loading: false, error: null, support: "supported", needsRefresh: false, deletingId: null, notice: null } };
 });
 describe("uploaded-media dialog", () => {
+    it("closes through the shared footer and restores focus to the settings entry", async () => {
+        const trigger = document.createElement("button"); document.body.append(trigger);
+        const onClose = vi.fn();
+        render(UploadedMediaDialog, { show: true, onClose, returnFocus: trigger });
+        const invalidations = mocked.controller.invalidate.mock.calls.length;
+        await fireEvent.click(screen.getByRole("button", { name: "global.close" }));
+        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+        expect(mocked.controller.invalidate.mock.calls.length).toBeGreaterThan(invalidations);
+        await waitFor(() => expect(document.activeElement).toBe(trigger));
+        trigger.remove();
+    });
     it("does not let a previous session's completed deletion close a new confirmation", async () => {
         const deferred = createDeferred<boolean>();
         mocked.controller.delete.mockImplementationOnce(() => deferred.promise);
