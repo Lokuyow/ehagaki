@@ -1,10 +1,11 @@
 import type { Editor as TipTapEditor } from '@tiptap/core';
 
-import type { UploadHelperResult } from './types';
+import type { ReactionUploadOperation, UploadHelperResult } from './types';
 
 type UploadableFiles = File[] | FileList | null | undefined;
 
 export interface UploadFilesParams {
+    reactionUpload?: ReactionUploadOperation;
     files: File[] | FileList;
     currentEditor: TipTapEditor | null;
     fileInput?: HTMLInputElement;

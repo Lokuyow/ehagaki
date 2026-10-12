@@ -3,6 +3,7 @@
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import type { Readable } from "svelte/store";
 import type { MediaGalleryItem } from "./media";
+import type { ReactionInputMode } from '../reactionValue';
 import type { ChannelContextState } from "./nostr";
 import type { CustomEmojiSelection } from "../customEmojiUsage";
 import type { CustomEmojiItem } from "../customEmoji";
@@ -97,6 +98,7 @@ export interface CleanUrlResult {
 
 // ContentTracking Extension types
 export interface ContentTrackingOptions {
+    isMediaConversionDisabled?: () => boolean;
     debounceDelay?: number;
     enableHashtags?: boolean;
     enableAutoLink?: boolean;
@@ -141,6 +143,7 @@ export interface SetupEventListenersParams {
 
 export interface InitializeEditorParams {
     isReactionMode?: () => boolean;
+    getReactionInputMode?: () => ReactionInputMode;
     isInputBlocked?: () => boolean;
     isCompositionInputAllowed?: () => boolean;
     compositionController?: import('../editor/submittedComposition').SubmittedCompositionController;

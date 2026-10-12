@@ -1,5 +1,17 @@
 <script lang="ts">
-    import { onMount, onDestroy } from 'svelte';
+    import { onMount, onDestroy, tick } from 'svelte';
+    import { uploadFiles as normalUploadFiles } from '../../lib/normalUploadHelper';
+    import { FileUploadManager } from '../../lib/fileUploadManager';
+    import { getImageDimensions } from '../../lib/utils/fileUtils';
+    import { extractImageBlurhashMap, getMimeTypeFromUrl, createImetaTag } from '../../lib/tags/imetaTag';
+    import { imageSizeMapStore } from '../../stores/tagsStore.svelte';
+    import { settingsStore } from '../../stores/settingsStore.svelte';
+    import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
+    import { customEmojiStore } from '../../stores/customEmojiStore.svelte';
+    import { writeCachedCustomEmojiItems } from '../../lib/customEmoji';
+    import { createLegacyUploadDestination } from '../../lib/upload/uploadDestinationPresets';
+    import type { UploadFilesParams } from '../../lib/postUploadUtils';
+    import encodeWebp from '@jsquash/webp/encode';
     import { Tooltip } from 'bits-ui';
     import { finalizeEvent, generateSecretKey, getPublicKey, nip19, type EventTemplate } from 'nostr-tools';
     import { Observable, Subject, of } from 'rxjs';
@@ -54,6 +66,40 @@
     let reject = query.has('reject'); let holdSave = query.has('hold-save'); let saveEntered = false;
     let failSave = query.has('fail-save'); let releaseSave: (() => void) | undefined;
     let lastResult: PostReactionResult | null = null;
+    const uploads: { width: number; height: number; type: string; size: number; lossless: boolean; alpha: number }[] = [];
+    const uploadEndpoint = new URL('reaction-fixture-upload', location.href).href;
+    const originalFetch = window.fetch;
+    if (query.has('uploaded')) window.fetch = async (input, init) => {
+        if (String(input) === uploadEndpoint && init?.body instanceof FormData) {
+            const file = init.body.get('file') as File;
+            const bitmap = await createImageBitmap(file);
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            // Lossless WebP contains a VP8L image chunk (optionally after VP8X).
+            let lossless = false;
+            if (file.type === 'image/webp') {
+                const view = new DataView(bytes.buffer);
+                for (let offset = 12; offset + 8 <= bytes.length;) {
+                    const name = String.fromCharCode(...bytes.slice(offset, offset + 4));
+                    if (name === 'VP8L') lossless = true;
+                    const size = view.getUint32(offset + 4, true); offset += 8 + size + size % 2;
+                }
+            }
+            const canvas = document.createElement('canvas'); canvas.width = bitmap.width; canvas.height = bitmap.height;
+            const context = canvas.getContext('2d')!; context.drawImage(bitmap, 0, 0);
+            const alpha = context.getImageData(bitmap.width - 1, 0, 1, 1).data[3];
+            uploads.push({ width: bitmap.width, height: bitmap.height, type: file.type, size: file.size, lossless, alpha }); bitmap.close();
+        }
+        return await originalFetch.call(window, input, init);
+    };
+    function upload(params: UploadFilesParams) {
+        return normalUploadFiles({ ...params, dependencies: {
+            localStorage, crypto: crypto.subtle, tick, FileUploadManager, getImageDimensions,
+            extractImageBlurhashMap, getMimeTypeFromUrl, createImetaTag, imageSizeMapStore,
+            calculateImageHash: async () => null,
+            resolveUploadDestination: async () => ({ ...createLegacyUploadDestination({ endpoint: uploadEndpoint }), protocol: 'custom-http',
+                serverUrl: uploadEndpoint, auth: { type: 'none' } }),
+        } });
+    }
     const messages = new Subject();
     const rx = {
         getDefaultRelays: () => ({ [relay]: { url: relay, read: true, write: true } }),
@@ -125,6 +171,11 @@
     onMount(async () => {
         window.nostr = { getPublicKey: async () => owner, signEvent: async (template: EventTemplate) => { signs++; return finalizeEvent(template, key); } } as typeof window.nostr;
         setNip07Auth(owner, nip19.npubEncode(owner), nip19.nprofileEncode({ pubkey: owner })); resetPostStatus();
+        if (query.has('uploaded')) {
+            settingsStore.mediaFreePlacement = query.has('free');
+            await writeCachedCustomEmojiItems(owner, [emoji]);
+            await customEmojiStore.prefetchCache({ pubkey: owner });
+        }
         await postHistoryRepository.putPostedEvent({ event: target, ...(kind === 6 || kind === 16 ? { repostTarget: { event: original, relayHints: [relay] } } : {}) });
         if (query.has('compare-reply')) {
             const reply = finalizeEvent({ kind: 1, content: 'Reply fixture', created_at: 300,
@@ -135,10 +186,24 @@
         (window as unknown as { __REACTION__: unknown }).__REACTION__ = {
             targetId: target.id, relatedId: original.id, nextId: next.id, targetInput: nip19.noteEncode(target.id), profileName, profilePicture,
             read: async () => ({ signs, sends, saveEntered, result: lastResult ? { success: lastResult.success, cacheSaved: lastResult.cacheSaved } : null,
+                uploads, gallery: mediaGalleryStore.items.map(item => ({ ...item })), isUploading: editorState.isUploading,
+                freePlacement: settingsStore.mediaFreePlacement,
+                wire: lastResult?.event ? { content: lastResult.event.content, emoji: lastResult.event.tags.filter(tag => tag[0] === 'emoji') } : null,
                 targetId: reactionComposerState.value?.eventId, canPost: editorState.canPost, status: { ...editorState.postStatus },
                 children: (await ehagakiDb.postHistoryChildInteractions.toArray()).map(row => ({ parent: row.parentEventId, eventId: row.eventId })),
                 authored: await ehagakiDb.postHistory.count() }),
             switchTarget: () => { setReactionTarget(next, [relay]); resetPostStatus(); },
+            startReaction: () => { setReactionTarget(target, [relay]); resetPostStatus(); },
+            createImage: async (type: string, width: number, height: number) => {
+                const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+                const context = canvas.getContext('2d')!; context.fillStyle = '#ff8000'; context.fillRect(0, 0, width / 2, height);
+                const blob = type === 'image/webp' ? new Blob([await encodeWebp(context.getImageData(0, 0, width, height), { lossless: 1 })], { type })
+                    : await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), type, 1));
+                return Array.from(new Uint8Array(await blob.arrayBuffer()));
+            },
+            cancelReaction: () => { clearReactionTarget(); resetPostStatus(); },
+            removeImages: () => mediaGalleryStore.clearAll(),
+            addExistingImage: () => mediaGalleryStore.addItem({ id: 'existing', src: profilePicture, type: 'image', isPlaceholder: false }),
             switchAccount: () => { setNip07Auth(getPublicKey(otherKey), nip19.npubEncode(getPublicKey(otherKey)), nip19.nprofileEncode({ pubkey: getPublicKey(otherKey) })); clearReactionTarget(); resetPostStatus(); },
             destroy: () => { mounted = false; resetPostStatus(); },
             releaseSave: () => { holdSave = false; releaseSave?.(); },
@@ -152,7 +217,7 @@
         };
         ready = true;
     });
-    onDestroy(() => { controller.dispose(); manager.cancelActiveNip65Operations(); clearReactionTarget();
+    onDestroy(() => { window.fetch = originalFetch; controller.dispose(); manager.cancelActiveNip65Operations(); clearReactionTarget('ownership');
         PostManager.prototype.publishSignedEvent = originalPublish; postHistoryChildInteractionsRepository.upsertChildInteractions = originalSave; });
 </script>
 <Tooltip.Provider>
@@ -162,8 +227,8 @@
     {#if query.has('compare-reply')}<ReplyQuotePreview reference={replyReference} mode="reply" onClear={() => {}} />{/if}
     {#if reactionComposerState.value}<ReactionTargetPreview target={reactionComposerState.value} {profileService} onClear={() => { clearReactionTarget(); resetPostStatus(); }} />{/if}
     {#if failure}<button data-testid="retry-save" onclick={retry}>Retry local save</button>{/if}
-    {#if mounted}<PostComponent bind:this={post} rxNostr={rx} hasStoredKey onReactionResult={result} />{/if}
-    <KeyboardButtonBar hasPostingCapability customEmojiPickerOpen={pickerOpen} mediaEnabled={!reactionComposerState.value} onCustomEmojiPickerOpenChange={open => pickerOpen = open} />
+    {#if mounted}<PostComponent bind:this={post} rxNostr={rx} hasStoredKey onReactionResult={result} normalUploadFiles={query.has('uploaded') ? upload : undefined} />{/if}
+    <KeyboardButtonBar hasPostingCapability customEmojiPickerOpen={pickerOpen} mediaEnabled onUploadImage={() => post?.openFileDialog()} onCustomEmojiPickerOpenChange={open => pickerOpen = open} />
     {#if pickerOpen}<CustomEmojiPicker open={pickerOpen} hostCustomEmojiItems={[emoji]} onSelect={selection => { post?.insertCustomEmoji(selection); pickerOpen = false; }} />{/if}
 </main>
 {#if ready}

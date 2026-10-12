@@ -400,6 +400,7 @@ describe('moveGalleryMediaToEditor', () => {
             state: {
                 doc: {
                     content: { size: 10 },
+                    eq: () => false,
                 },
                 tr: {
                     insert: insertMock,
@@ -455,6 +456,7 @@ describe('moveGalleryMediaToEditor', () => {
             imageOxMap: { 'https://example.com/a.jpg': 'ox-a' },
             imageXMap: { 'https://example.com/a.jpg': 'x-a' },
             hadItems: true,
+            movedItemIds: ['item-1', 'item-2'],
         });
         expect(insertMock).toHaveBeenCalledTimes(2);
         expect((currentEditor.state.schema.nodes.image.create as any).mock.calls[0][0]).toEqual(expect.objectContaining({

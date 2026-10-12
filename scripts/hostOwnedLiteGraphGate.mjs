@@ -2,6 +2,8 @@
 import { normalize, relative } from "node:path";
 
 const forbiddenPatterns = [
+    /[\\/]src[\\/]lib[\\/]reactionMediaController\.ts$/,
+    /[\\/]src[\\/]lib[\\/]upload[\\/]reactionImageCompression\.ts$/,
     /[\\/]node_modules[\\/]rx-nostr[\\/]/,
     /[\\/]src[\\/]App\.svelte$/,
     /[\\/]src[\\/]lib[\\/](authService|accountManager|nip46Service|parentClientAuthService|postManager|postReactionService|postHistoryMediaPersistence)[\\/\.]/,

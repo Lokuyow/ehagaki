@@ -53,14 +53,15 @@ async function uploadWithManager(
     destination: UploadDestination | undefined,
     callbacks: UploadInfoCallbacks | undefined,
     devMode: boolean,
+    signal?: AbortSignal,
 ): Promise<FileUploadResponse[] | null> {
     if (files.length === 0) return null;
     const endpoint = getDestinationUploadEndpoint(destination);
     const metadataList = prepareMetadataList(files);
     if (files.length === 1) {
-        return [await manager.uploadFileWithCallbacks(
-            files[0], endpoint, callbacks, devMode, metadataList[0], destination,
-        )];
+        return [await (signal ? manager.uploadFileWithCallbacks(
+            files[0], endpoint, callbacks, devMode, metadataList[0], destination, { signal },
+        ) : manager.uploadFileWithCallbacks(files[0], endpoint, callbacks, devMode, metadataList[0], destination))];
     }
     return await manager.uploadMultipleFilesWithCallbacks(
         files, endpoint, callbacks, metadataList, destination,
@@ -84,6 +85,8 @@ async function replaceUploadedPlaceholders(params: {
     calculateImageHash: UploadHelperDependencies["calculateImageHash"];
     getMimeTypeFromUrl: UploadHelperDependencies["getMimeTypeFromUrl"];
     devMode: boolean;
+    isCurrent?: () => boolean;
+    useFileMimeType?: boolean;
 }): Promise<PlaceholderReplacementOutcome> {
     const {
         results,
@@ -116,6 +119,7 @@ async function replaceUploadedPlaceholders(params: {
             calculateImageHash,
             getMimeTypeFromUrl,
             devMode,
+            ...(params.isCurrent ? [{ isCurrent: params.isCurrent, useFileMimeType: params.useFileMimeType }] as const : [] as const),
         );
 
         return {
@@ -158,6 +162,10 @@ export async function uploadHelper({
     fileUploadManagerInstance,
     deferUploadStateClear = false,
     isUploadAborted: operationAbortChecker,
+    galleryMode: galleryModeOverride,
+    signal,
+    isCurrent = () => true,
+    onPlaceholdersCreated,
 }: UploadHelperParams): Promise<UploadHelperResult> {
     if (!dependencies) {
         throw new Error("Upload helper requires explicit runtime dependencies.");
@@ -165,13 +173,14 @@ export async function uploadHelper({
     const effectiveDependencies = operationAbortChecker
         ? { ...dependencies, isUploadAborted: operationAbortChecker }
         : dependencies;
-    const isUploadAborted = operationAbortChecker
+    const checkOperationAbort = operationAbortChecker
         ?? dependencies.isUploadAborted
         ?? isDefaultUploadAborted;
+    const isUploadAborted = () => !!signal?.aborted || !isCurrent() || checkOperationAbort();
     const fileArray = Array.from(files);
     const FileUploadManagerConstructor = fileUploadManagerOverride
         ?? effectiveDependencies.FileUploadManager;
-    const managedUploadCallbacks = createManagedUploadCallbacks(uploadCallbacks);
+    const managedUploadCallbacks = createManagedUploadCallbacks(uploadCallbacks, isCurrent);
     // Host-owned transport deliberately has no eHagaki upload-destination,
     // authentication, or relay resolution path.
     const uploadDestination = uploadPreparedFiles
@@ -189,7 +198,7 @@ export async function uploadHelper({
     );
 
     // 中止フラグをリセット
-    resetDefaultUploadAbort();
+    if (!signal && isCurrent()) resetDefaultUploadAbort();
 
     // ファイル処理
     let fileProcessingResults;
@@ -227,7 +236,7 @@ export async function uploadHelper({
     }
 
     // プレースホルダー挿入（モードに応じてエディタまたはギャラリーへ）
-    const galleryMode = !mediaFreePlacementStore.value;
+    const galleryMode = galleryModeOverride ?? !mediaFreePlacementStore.value;
     const galleryCleanup = createGalleryCleanupContext(
         galleryMode,
         effectiveDependencies.imageSizeMapStore,
@@ -277,6 +286,8 @@ export async function uploadHelper({
             FileUploadManagerConstructor,
             devMode
         );
+
+    onPlaceholdersCreated?.(placeholderMap);
 
     // 有効ファイルがない場合は早期リターン
     if (placeholderMap.length === 0) {
@@ -337,6 +348,7 @@ export async function uploadHelper({
                 uploadDestination,
                 managedUploadCallbacks,
                 devMode,
+                signal,
             );
     } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -353,11 +365,13 @@ export async function uploadHelper({
         cleanupPlaceholders: true,
     });
     if (abortAfterUpload) {
-        if (fileInput) fileInput.value = "";
+        if (fileInput && isCurrent()) fileInput.value = "";
         return abortAfterUpload;
     }
 
     await effectiveDependencies.tick();
+    const abortAfterTick = checkAbort({ placeholderMap, cleanupPlaceholders: true });
+    if (abortAfterTick) return abortAfterTick;
 
     // プレースホルダー置換・失敗時削除
     const replacementOutcome = await replaceUploadedPlaceholders({
@@ -371,6 +385,8 @@ export async function uploadHelper({
         calculateImageHash: effectiveDependencies.calculateImageHash,
         getMimeTypeFromUrl: effectiveDependencies.getMimeTypeFromUrl,
         devMode,
+        ...(signal ? { isCurrent: () => isCurrent() && !signal.aborted,
+            useFileMimeType: galleryModeOverride === true } : {}),
     });
     const failedResults = [...replacementOutcome.failedResults];
     const errorMessage = replacementOutcome.errorMessage;
@@ -382,7 +398,7 @@ export async function uploadHelper({
     }
 
     // dev: imetaタグ出力
-    if (devMode && currentEditor) {
+    if (devMode && currentEditor && isCurrent() && !signal) {
         try {
             await generateDevImetaTags({
                 editor: currentEditor,
@@ -399,7 +415,7 @@ export async function uploadHelper({
         }
     }
 
-    if (fileInput) fileInput.value = "";
+    if (fileInput && isCurrent()) fileInput.value = "";
 
     if (!deferUploadStateClear) {
         updateUploadState(false);

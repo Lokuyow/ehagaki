@@ -693,7 +693,8 @@ export async function replacePlaceholdersInGallery(
     imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void },
     calculateImageHash: (url: string) => Promise<string | null>,
     getMimeTypeFromUrl: (url: string) => string,
-    devMode: boolean = false
+    devMode: boolean = false,
+    operation?: { isCurrent?: () => boolean; useFileMimeType?: boolean },
 ): Promise<{ failedResults: FileUploadResponse[]; errorMessage: string }> {
     return processReplacementResults(
         results,
@@ -704,6 +705,7 @@ export async function replacePlaceholdersInGallery(
             },
             createMediaReplacementSuccessHandler({
                 onVideoSuccess: ({ url, matched, result }) => {
+                    if (operation?.isCurrent && !operation.isCurrent()) return;
                     const hostMetadata = result.hostOwnedMedia === true
                         ? extractNip94Metadata(result.nip94 || {})
                         : null;
@@ -721,7 +723,8 @@ export async function replacePlaceholdersInGallery(
                     });
                 },
                 onImageSuccess: async ({ url, matched, imageMetadata }) => {
-                    const mimeType = imageMetadata.mimeType ?? getMimeTypeFromUrl(url);
+                    if (operation?.isCurrent && !operation.isCurrent()) return;
+                    const mimeType = imageMetadata.mimeType ?? (operation?.useFileMimeType ? matched.file.type : getMimeTypeFromUrl(url));
 
                     mediaGalleryStore.updateItem(matched.placeholderId, {
                         src: url,
@@ -746,7 +749,7 @@ export async function replacePlaceholdersInGallery(
                         calculateImageHash,
                         devMode,
                     );
-                    if (x) {
+                    if (x && (!operation?.isCurrent || operation.isCurrent())) {
                         mediaGalleryStore.updateItem(matched.placeholderId, { x });
                     }
 
