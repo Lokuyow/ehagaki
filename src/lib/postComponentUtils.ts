@@ -163,6 +163,7 @@ export function collectFullscreenMediaItems(params: {
     mediaFreePlacement: boolean;
     galleryItems: MediaGalleryItem[];
     currentEditor: TipTapEditor | null;
+    includeTemporaryGallery?: boolean;
 }): FullscreenMediaItem[] {
     if (!params.mediaFreePlacement) {
         return params.galleryItems
@@ -185,13 +186,9 @@ export function collectFullscreenMediaItems(params: {
             });
     }
 
-    if (!params.currentEditor) {
-        return [];
-    }
-
     const items: FullscreenMediaItem[] = [];
 
-    params.currentEditor.state.doc.descendants((node) => {
+    params.currentEditor?.state.doc.descendants((node) => {
         if (
             (node.type.name === 'image' || node.type.name === 'video') &&
             !node.attrs.isPlaceholder
@@ -212,7 +209,10 @@ export function collectFullscreenMediaItems(params: {
         }
     });
 
-    return items;
+    // Temporary Gallery augments free placement; it does not replace inline media.
+    return params.includeTemporaryGallery
+        ? [...items, ...collectFullscreenMediaItems({ ...params, mediaFreePlacement: false })]
+        : items;
 }
 
 export function findFullscreenMediaIndex(

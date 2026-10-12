@@ -25,6 +25,7 @@
     import CustomEmojiPicker from '../../components/CustomEmojiPicker.svelte';
     import { authState, setNip07Auth } from '../../stores/authStore.svelte';
     import { currentEditorStore, editorState, resetPostStatus } from '../../stores/editorStore.svelte';
+    import { postComponentUIStore } from '../../stores/postUIStore.svelte';
     import { reactionComposerState, clearReactionTarget, setReactionTarget } from '../../stores/reactionComposerStore.svelte';
     import { createComposerTargetApplyController, type ComposerEventTarget } from '../../lib/composerTargetApplyController';
     import { buildPostHistoryComposerEventTarget } from '../../lib/postHistoryReplyUtils';
@@ -188,6 +189,14 @@
             read: async () => ({ signs, sends, saveEntered, result: lastResult ? { success: lastResult.success, cacheSaved: lastResult.cacheSaved } : null,
                 uploads, gallery: mediaGalleryStore.items.map(item => ({ ...item })), isUploading: editorState.isUploading,
                 freePlacement: settingsStore.mediaFreePlacement,
+                fullscreen: { id: postComponentUIStore.value.fullscreenMediaId, src: postComponentUIStore.value.fullscreenImageSrc },
+                inlineMedia: (() => {
+                    const items: { id: string; src: string }[] = [];
+                    currentEditorStore.value?.state.doc.descendants(node => {
+                        if (node.type.name === 'image' || node.type.name === 'video') items.push({ id: node.attrs.id, src: node.attrs.src });
+                    });
+                    return items;
+                })(),
                 wire: lastResult?.event ? { content: lastResult.event.content, emoji: lastResult.event.tags.filter(tag => tag[0] === 'emoji') } : null,
                 targetId: reactionComposerState.value?.eventId, canPost: editorState.canPost, status: { ...editorState.postStatus },
                 children: (await ehagakiDb.postHistoryChildInteractions.toArray()).map(row => ({ parent: row.parentEventId, eventId: row.eventId })),
@@ -204,6 +213,13 @@
             cancelReaction: () => { clearReactionTarget(); resetPostStatus(); },
             removeImages: () => mediaGalleryStore.clearAll(),
             addExistingImage: () => mediaGalleryStore.addItem({ id: 'existing', src: profilePicture, type: 'image', isPlaceholder: false }),
+            selectInlineImage: () => {
+                let position: number | undefined;
+                currentEditorStore.value?.state.doc.descendants((node, pos) => {
+                    if (position === undefined && node.type.name === 'image') position = pos;
+                });
+                if (position !== undefined) currentEditorStore.value?.commands.setNodeSelection(position);
+            },
             switchAccount: () => { setNip07Auth(getPublicKey(otherKey), nip19.npubEncode(getPublicKey(otherKey)), nip19.nprofileEncode({ pubkey: getPublicKey(otherKey) })); clearReactionTarget(); resetPostStatus(); },
             destroy: () => { mounted = false; resetPostStatus(); },
             releaseSave: () => { holdSave = false; releaseSave?.(); },

@@ -259,7 +259,7 @@ describe('collectFullscreenMediaItems', () => {
 
         expect(collectFullscreenMediaItems({
             mediaFreePlacement: true,
-            galleryItems: [],
+            galleryItems: [{ id: 'hidden-gallery', src: 'https://example.com/hidden.jpg', type: 'image', isPlaceholder: false }],
             currentEditor,
         })).toEqual([
             {
@@ -281,6 +281,30 @@ describe('collectFullscreenMediaItems', () => {
                 height: undefined,
             },
         ]);
+    });
+
+    it('free placement with temporary Gallery retains inline image/video and each item identity', () => {
+        const currentEditor = { state: { doc: { descendants: (callback: (node: any) => void) => {
+            callback({ type: { name: 'image' }, attrs: { id: 'inline-image', src: 'https://example.com/inline.png', dim: '640x480' } });
+            callback({ type: { name: 'video' }, attrs: { id: 'inline-video', src: 'https://example.com/inline.mp4', dim: '320x240' } });
+            callback({ type: { name: 'image' }, attrs: { id: 'inline-placeholder', src: 'placeholder', isPlaceholder: true } });
+        } } } } as any;
+        const galleryItems = [
+            { id: 'reaction-image', src: 'https://example.com/reaction.png', type: 'image' as const, isPlaceholder: false, dim: '128x128' },
+            { id: 'gallery-placeholder', src: 'placeholder', type: 'image' as const, isPlaceholder: true },
+        ];
+        const items = collectFullscreenMediaItems({ mediaFreePlacement: true, includeTemporaryGallery: true, currentEditor, galleryItems });
+        expect(items.map(({ id, src, type }) => ({ id, src, type }))).toEqual([
+            { id: 'inline-image', src: 'https://example.com/inline.png', type: 'image' },
+            { id: 'inline-video', src: 'https://example.com/inline.mp4', type: 'video' },
+            { id: 'reaction-image', src: 'https://example.com/reaction.png', type: 'image' },
+        ]);
+        expect(findFullscreenMediaIndex(items, 'inline-image', galleryItems[0].src)).toBe(0);
+        expect(findFullscreenMediaIndex(items, 'reaction-image', items[0].src)).toBe(2);
+        expect(getFullscreenMediaItemAt(items, 1)?.id).toBe('inline-video');
+        expect(getFullscreenMediaItemAt(items, 2)).toMatchObject({ width: 128, height: 128 });
+        expect(collectFullscreenMediaItems({ mediaFreePlacement: false, includeTemporaryGallery: true, currentEditor, galleryItems })
+            .map(item => item.id)).toEqual(['reaction-image']);
     });
 });
 

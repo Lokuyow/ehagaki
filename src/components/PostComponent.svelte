@@ -1345,7 +1345,8 @@
   // --- フルスクリーンメディアリスト ---
   let fullscreenMediaList = $derived.by<FullscreenMediaItem[]>(() => {
     return collectFullscreenMediaItems({
-      mediaFreePlacement: !galleryVisible,
+      mediaFreePlacement,
+      includeTemporaryGallery: mediaFreePlacement && !!reactionComposerState.value,
       galleryItems: mediaGalleryStore.items,
       currentEditor,
     });

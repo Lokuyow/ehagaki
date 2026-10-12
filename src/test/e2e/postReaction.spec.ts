@@ -4,11 +4,13 @@ type State = { signs: number; sends: { eventId: string; kind: number; relays: st
     uploads: { width: number; height: number; type: string; size: number; lossless: boolean; alpha: number }[];
     gallery: { id: string; src: string; isPlaceholder: boolean; mimeType?: string; dim?: string }[];
     isUploading: boolean; freePlacement: boolean; wire: { content: string; emoji: string[][] } | null;
+    fullscreen: { id: string; src: string }; inlineMedia: { id: string; src: string }[];
     result: { success: boolean; cacheSaved: boolean } | null; targetId?: string; canPost: boolean;
     status: { success: boolean; sending: boolean }; children: { parent: string; eventId: string }[]; authored: number };
 type Harness = { targetId: string; relatedId: string; nextId: string; targetInput: string; profileName: string; profilePicture: string; read(): Promise<State>;
     switchTarget(): void; switchAccount(): void; destroy(): void; releaseSave(): void; retryPublish(): void; saveIncomingReaction(toRelated?: boolean): Promise<void>;
     startReaction(): void; cancelReaction(): void; removeImages(): void; addExistingImage(): void;
+    selectInlineImage(): void;
     createImage(type: string, width: number, height: number): Promise<number[]> };
 type HarnessWindow = Window & { __REACTION__: Harness };
 const read = (page: Page) => page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.read());
@@ -145,6 +147,49 @@ test('old upload cannot reenter a new Reaction session after cancel', async ({ p
     await expect.poll(async () => (await read(page)).isUploading).toBe(false); release();
     await page.locator('.tiptap-editor').fill('c'); await page.locator('.tiptap-editor').pressSequentially('a');
     await expect(page.locator('.tiptap-editor')).toHaveText('c'); expect((await read(page)).gallery).toEqual([]);
+});
+
+test('free-placement Reaction fullscreen keeps inline and temporary Gallery identities through navigation', async ({ page }) => {
+    const h = await uploadedReaction(page, true);
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.cancelReaction());
+    await page.locator('input[type=file]').setInputFiles(await imagePayload(page, 'image/png', 64, 64));
+    await expect.poll(async () => (await read(page)).isUploading).toBe(false);
+    const inline = (await read(page)).inlineMedia[0];
+    expect(inline.id).toBeTruthy(); expect(inline.src).toBe(h.profilePicture);
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.startReaction());
+    const gallerySrc = `${h.profilePicture}?reaction-emoji=1`;
+    await page.route('**/reaction-fixture-upload', route => route.fulfill({ json: { url: gallerySrc } }));
+    await page.locator('input[type=file]').setInputFiles(await imagePayload(page));
+    await expect.poll(async () => (await read(page)).isUploading).toBe(false);
+    const gallery = (await read(page)).gallery[0];
+    expect(gallery.id).not.toBe(inline.id); expect(gallery.src).toBe(gallerySrc);
+    await expect(page.locator('.tiptap-editor img')).toBeVisible();
+    await expect(page.locator('.media-gallery img')).toBeVisible();
+    expect((await read(page)).freePlacement).toBe(true);
+
+    const viewer = page.locator('.ehagaki-pswp');
+    async function expectActiveImage(item: { id: string; src: string }, counter: string) {
+        await expect(viewer).toBeVisible();
+        await expect(viewer.locator('.pswp__counter')).toHaveText(counter);
+        await expect.poll(() => viewer.locator('img.pswp__img:not(.pswp__img--placeholder)').evaluateAll(images => images
+            .filter(image => { const rect = image.getBoundingClientRect(); return rect.left < innerWidth / 2 && rect.right > innerWidth / 2; })
+            .map(image => (image as HTMLImageElement).src))).toEqual([item.src]);
+        expect((await read(page)).fullscreen).toEqual(item);
+    }
+    // Node selection and the image button's fullscreen click are distinct existing gestures.
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.selectInlineImage());
+    await page.locator('.tiptap-editor .editor-image-button').click();
+    await expectActiveImage(inline, '1 / 2');
+    await viewer.getByRole('button', { name: '次のメディア', exact: true }).click();
+    await expectActiveImage({ id: gallery.id, src: gallery.src }, '2 / 2');
+    await viewer.getByRole('button', { name: '前のメディア', exact: true }).click();
+    await expectActiveImage(inline, '1 / 2');
+    await page.keyboard.press('Escape'); await expect(viewer).toBeHidden();
+    await page.locator('.media-gallery').getByRole('button', { name: gallery.src, exact: true }).click();
+    await expectActiveImage({ id: gallery.id, src: gallery.src }, '2 / 2');
+    await page.keyboard.press('Escape'); await expect(viewer).toBeHidden();
+    expect((await read(page)).freePlacement).toBe(true);
+    expect((await read(page)).inlineMedia).toEqual([inline]);
 });
 test('main target commits mode, preserves invalid input, supports undo/redo and sends one Unicode value', async ({ page }) => {
     const h = await open(page, '?invalid');
