@@ -1,4 +1,5 @@
 import type { RxNostr } from "rx-nostr";
+import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
 import { isRepostTargetKind, verifyRepostTarget } from "./postRepostUtils";
 import { attestFullyVerifiedPostHistoryRawEvent } from "./postHistoryRawEventVerification";
 import { verifyRelatedEvent } from "./relatedEventVerification";
@@ -331,8 +332,8 @@ export function createPostHistoryRelatedTargetResolver({
 
         const scopes = scopeKeysByTargetId.get(targetEvent.id);
         const runtime = getRxNostr();
-        const isActive = () => !requireFullVerification || (getShow() && getRxNostr() === runtime
-            && scopes === scopeKeysByTargetId.get(targetEvent.id) && !!scopes?.size);
+        const isActive = () => getShow() && getRxNostr() === runtime
+            && scopes === scopeKeysByTargetId.get(targetEvent.id) && !!scopes?.size;
         const locallyDeleted = await isDeletedTarget(targetEvent.pubkey, targetEvent.id);
         if (!isActive()) return false;
         if (locallyDeleted) {
@@ -371,6 +372,11 @@ export function createPostHistoryRelatedTargetResolver({
                         targetEvents: [targetEvent],
                         deletionEvents: result.events,
                         fetchedAt: result.fetchedAt,
+                    });
+                    if (!isActive()) return false;
+                    void postHistoryLocalRelayService.archiveAdoptedAuthored([{ event: targetEvent }], {
+                        ownerPubkeyHex: targetEvent.pubkey,
+                        isActive,
                     });
                 }
 

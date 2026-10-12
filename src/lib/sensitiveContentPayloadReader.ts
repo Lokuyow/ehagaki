@@ -10,6 +10,7 @@ import { postHistoryContextFetchService } from "./postHistoryContextFetchService
 import { RelayConfigUtils } from "./relayConfigUtils";
 import { sensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
 import type { NostrEvent, RelayConfig } from "./types";
+import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
 
 async function isPairDeleted(structure: NostrEvent, payloadId: string): Promise<boolean> {
     const local = await ehagakiDb.postHistory.get(structure.id);
@@ -78,6 +79,9 @@ export async function loadVerifiedSensitivePayloadEvent(params: {
             event: result.event,
             fetchedRelays,
             relayHints: fetchedRelays,
+        });
+        void postHistoryLocalRelayService.archiveAdoptedAuthored([{ event: structure }], {
+            ownerPubkeyHex: structure.pubkey, isActive: () => !params.signal?.aborted,
         });
     } catch {
         // The verified in-memory payload can still be revealed if caching fails.

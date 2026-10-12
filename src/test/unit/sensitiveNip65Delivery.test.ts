@@ -5,12 +5,13 @@ import type { Observer } from "rxjs";
 import { PostManager } from "../../lib/postManager";
 import type { AuthState, NostrEvent } from "../../lib/types";
 import type { SaveSensitivePayloadInput } from "../../lib/storage/sensitivePayloadRepository";
+import type { PostManagerDeps } from "../../lib/types";
 
 const author = "wss://author.example/", recipient = "wss://recipient.example/", extra = "wss://extra.example/";
 const recipientPubkey = "a".repeat(64);
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 
-function harness(options: { extra?: string[]; authorRelays?: string[]; save?: (input: SaveSensitivePayloadInput) => Promise<void>; signStructure?: () => Promise<void> } = {}) {
+function harness(options: { extra?: string[]; authorRelays?: string[]; save?: (input: SaveSensitivePayloadInput) => Promise<void>; signStructure?: () => Promise<void>; localStore?: PostManagerDeps["storeSignedEventsFn"] } = {}) {
     const secret = generateSecretKey(), pubkey = getPublicKey(secret);
     const auth = { value: { type: "parentClient", isAuthenticated: true, pubkey, npub: "", nprofile: "",
         isValid: true, isInitialized: true } as AuthState };
@@ -31,6 +32,7 @@ function harness(options: { extra?: string[]; authorRelays?: string[]; save?: (i
         return finalizeEvent(template, secret);
     });
     const notifyPostError = vi.fn(), clearReplyQuoteFn = vi.fn();
+    const localStore = vi.fn(options.localStore ?? (() => undefined));
     const manager = new PostManager(rx, {
         authStateStore: auth, console: { log() {}, warn() {}, error() {} } as Console,
         replyQuoteState: { value: { reply: null, quotes: [] } },
@@ -44,6 +46,7 @@ function harness(options: { extra?: string[]; authorRelays?: string[]; save?: (i
         notificationPort: { notifyPostSuccess: vi.fn(), notifyPostError },
         saveSensitivePayloadFn: async input => { cached.push(input); await options.save?.(input); },
         savePostHistoryFn: async input => { history.push(input.event); },
+        storeSignedEventsFn: localStore,
     });
     const pending = manager.submitPost("sensitive fixture");
     const send = (relay: string, kind: number) => sends.find(item => item.relay === relay && item.event.kind === kind)!;
@@ -53,7 +56,7 @@ function harness(options: { extra?: string[]; authorRelays?: string[]; save?: (i
             type: "OK", notice: ok ? "" : done ? "restricted: fixture" : "auth-required: fixture",
             message: ["OK", item.event.id, ok, ""] });
     };
-    return { manager, rx, auth, routes, sends, send, ack, cached, history, sign, pending, notifyPostError, clearReplyQuoteFn };
+    return { manager, rx, auth, routes, sends, send, ack, cached, history, sign, pending, notifyPostError, clearReplyQuoteFn, localStore };
 }
 const flush = () => vi.advanceTimersByTimeAsync(0);
 beforeEach(() => vi.useFakeTimers());
@@ -75,6 +78,7 @@ describe("Sensitive NIP-65 per-relay Payload -> ACK -> Structure", () => {
         expect(h.send(second, 1).event).toEqual(structure);
         expect(h.sign).toHaveBeenCalledTimes(2); expect(verifyEvent(structure)).toBe(true);
         h.ack(recipient, 1); await flush();
+        expect(h.localStore).not.toHaveBeenCalled();
         let settled = false; void h.pending.then(() => { settled = true; }); await flush(); expect(settled).toBe(false);
         h.ack(author, 1); await flush();
         const result = await h.pending;
@@ -83,6 +87,8 @@ describe("Sensitive NIP-65 per-relay Payload -> ACK -> Structure", () => {
         expect(new Set(result.acceptedRelays)).toEqual(new Set([author, recipient]));
         expect(new Set(h.cached.at(-1)!.acceptedRelays)).toEqual(new Set([author, recipient]));
         expect(h.history).toEqual([structure]);
+        expect(h.localStore).toHaveBeenCalledOnce();
+        expect(h.localStore.mock.calls[0][0].map(input => input.event)).toEqual([h.send(first, 36).event, structure]);
     });
 
     it.each(["reject", "timeout", "auth-timeout"])("never sends Structure to a Payload %s relay", async failure => {
@@ -119,12 +125,14 @@ describe("Sensitive NIP-65 per-relay Payload -> ACK -> Structure", () => {
         expect(h.cached.at(-1)!.acceptedRelays).toEqual([author]); expect(h.history).toEqual([]);
         expect(h.notifyPostError).toHaveBeenCalledExactlyOnceWith({ code: "sensitive_partial_publish" });
         expect(h.clearReplyQuoteFn).not.toHaveBeenCalled();
+        expect(h.localStore).not.toHaveBeenCalled();
     });
 
     it("no accepted Payload retains ordinary failure semantics", async () => {
         const h = harness(); await flush(); h.routes.resolve({ readRelays: [] }); h.ack(author, 36, false); await flush();
         expect(await h.pending).toMatchObject({ success: false, error: "post_rejected", acceptedRelays: [] });
         expect(h.sign).toHaveBeenCalledOnce(); expect(h.cached).toEqual([]);
+        expect(h.localStore).not.toHaveBeenCalled();
     });
 
     it.each(["cancel", "logout", "session", "runtime", "same-runtime"])("preserves Payload ACKs but blocks Structure during cache wait (%s)", async change => {
@@ -139,6 +147,7 @@ describe("Sensitive NIP-65 per-relay Payload -> ACK -> Structure", () => {
         expect(await h.pending).toMatchObject({ success: false, error: "postComponent.error.sensitive_partial_publish" });
         expect(h.sends.map(item => item.event.kind)).toEqual([36]);
         expect(h.cached.at(-1)!.acceptedRelays).toEqual([author]);
+        expect(h.localStore).not.toHaveBeenCalled();
     });
 
     it.each(["logout", "runtime", "deadline"])("blocks a late Structure signature (%s)", async change => {
@@ -150,6 +159,7 @@ describe("Sensitive NIP-65 per-relay Payload -> ACK -> Structure", () => {
         signing.resolve(); await flush();
         expect(await h.pending).toMatchObject({ success: false, error: "postComponent.error.sensitive_partial_publish" });
         expect(h.sends).toHaveLength(1);
+        expect(h.localStore).not.toHaveBeenCalled();
     });
 
     it("late AUTH Payload ACK gives Structure its own 12s, capped at the shared 30s", async () => {
@@ -221,5 +231,23 @@ describe("Sensitive NIP-65 per-relay Payload -> ACK -> Structure", () => {
         const h = harness({ save: async () => { throw Error("storage fixture"); } });
         await flush(); h.routes.resolve({ readRelays: [author] }); h.ack(author, 36); await flush(); h.ack(author, 1); await flush();
         expect(await h.pending).toMatchObject({ success: true, fullyDelivered: true, acceptedRelays: [author] });
+    });
+
+    it.each(["reject", "pending", "throw"])("local %s cannot gate Structure, c hints, external success or persistence", async mode => {
+        const h = harness({ localStore: () => {
+            if (mode === "throw") throw Error("local fixture");
+            return mode === "reject" ? Promise.reject(Error("local fixture")) : new Promise<void>(() => undefined);
+        } });
+        await flush(); h.routes.resolve({ readRelays: [author] });
+        expect(h.localStore).not.toHaveBeenCalled();
+        h.ack(author, 36); await flush();
+        const payload = h.send(author, 36).event, structure = h.send(author, 1).event;
+        expect(h.localStore).not.toHaveBeenCalled();
+        expect(structure.tags).toContainEqual(["c", payload.id, author]);
+        h.ack(author, 1); await flush();
+        expect(await h.pending).toMatchObject({ success: true, fullyDelivered: true, acceptedRelays: [author] });
+        expect(h.history).toEqual([structure]); expect(h.sign).toHaveBeenCalledTimes(2);
+        expect(h.localStore).toHaveBeenCalledOnce();
+        expect(h.localStore.mock.calls[0][0].map(input => input.event)).toEqual([payload, structure]);
     });
 });

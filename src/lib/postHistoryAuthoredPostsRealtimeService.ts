@@ -8,6 +8,7 @@ import {
 } from "./storage/postHistoryRepository";
 import type { NostrEvent, RelayConfig } from "./types";
 import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
+import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
 
 export const POST_HISTORY_AUTHORED_POSTS_REALTIME_RELAY_LIMIT = 6;
 export const POST_HISTORY_AUTHORED_POSTS_REALTIME_SINCE_OVERLAP_SECONDS = 60;
@@ -152,6 +153,9 @@ export class PostHistoryAuthoredPostsRealtimeService {
         }
 
         try {
+            void postHistoryLocalRelayService.archiveAdoptedAuthored([{ event }], {
+                ownerPubkeyHex: params.ownerPubkeyHex, isActive,
+            });
             await params.onSavedSelfPosts?.([event.id]);
         } catch (error) {
             this.console.warn("post_history_authored_posts_realtime_saved_callback_error", error);

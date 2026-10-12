@@ -874,6 +874,15 @@ export class PostManager {
     const structure = published as ReturnType<typeof attestFullyVerifiedPostHistoryRawEvent>;
     const resultWithEvent: PostResult = result.success && structure
       ? { ...result, eventId: structure.event.id, event: structure.event } : result;
+    if (result.success && structure) {
+      try {
+        // Copy the exact externally published events only after overall success.
+        // Sensitive reconstruction shares one finite batch; local ACKs are never awaited here.
+        void Promise.resolve(this.deps.storeSignedEventsFn?.(
+          usePayload ? [signed, structure] : [signed], isSessionActive,
+        )).catch(() => undefined);
+      } catch { /* Local archival never changes external delivery. */ }
+    }
     if (structure) await this.saveSubmittedPostHistory({
       event: structure.event, attestation: structure.attestation, result: resultWithEvent,
       additionalWriteRelays: params.additionalWriteRelays,

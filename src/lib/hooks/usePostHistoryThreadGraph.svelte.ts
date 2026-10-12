@@ -1,4 +1,5 @@
 import { onDestroy, untrack } from "svelte";
+import { postHistoryLocalRelayService } from "../postHistoryLocalRelayService";
 import type { RxNostr } from "rx-nostr";
 import {
     createPostHistoryRelatedTargetResolver,
@@ -1032,6 +1033,10 @@ export function usePostHistoryThreadGraph({
         }
 
         const key = `${anchorEventId}:deletions:${taskKeySuffix}`;
+        const owner = getPubkeyHex();
+        const requestId = taskTracker.getRequestId();
+        const isActive = () => getShow() && taskTracker.getRequestId() === requestId
+            && getPubkeyHex() === owner && getRxNostr() === rxNostr;
         const task = deletionFetchService.fetchDeletionRequests(rxNostr, {
             targets: visibleEvents.map((event) => ({
                 event,
@@ -1044,7 +1049,7 @@ export function usePostHistoryThreadGraph({
 
         try {
             const result = await task.promise;
-            if (!getShow()) {
+            if (!isActive()) {
                 return;
             }
 
@@ -1053,13 +1058,18 @@ export function usePostHistoryThreadGraph({
                 deletionEvents: result.events,
                 fetchedAt: result.fetchedAt,
             });
+            if (!isActive()) return;
+            if (owner && result.events.length) void postHistoryLocalRelayService.archiveAdoptedAuthored(
+                visibleEvents.map((event) => ({ event })),
+                { ownerPubkeyHex: owner, isActive },
+            );
         } catch {
             return;
         } finally {
-            taskTracker.deleteDeletionFetchTask(key);
+            if (isActive()) taskTracker.deleteDeletionFetchTask(key);
         }
 
-        if (!getShow()) {
+        if (!isActive()) {
             return;
         }
 

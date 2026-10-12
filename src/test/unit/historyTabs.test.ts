@@ -5,6 +5,8 @@ import { createDeferred } from "../deferredTestUtils";
 import { mediaDestination, mediaPage, mediaPubkey } from "../uploadMediaManagementTestUtils";
 import { mockAuthStoreModule } from "../mocks/storeModules";
 import { getAppStorage } from "../../lib/appStorage";
+import { postHistoryLocalRelayService } from "../../lib/postHistoryLocalRelayService";
+import { settingsStore } from "../../stores/settingsStore.svelte";
 import { resetPostHistoryDialogHarness, cleanupPostHistoryDialogHarness,
     repositoryMock, relayFetchServiceMock, profilesRepositoryMock, profileFetchDataMock,
     contextFetchServiceMock, replyFetchServiceMock, createRecord } from "./postHistoryDialogTestHarness";
@@ -65,18 +67,28 @@ describe("history tabs", () => {
     });
     it("opens saved media without constructing or running any post consumer", async () => {
         getAppStorage().setItem("historyActiveTab", "media");
-        open();
-        await waitFor(() => expect(counters.list).toHaveBeenCalledTimes(1));
-        expect(counters.posts).toBe(0);
-        expect(counters.live).toBe(0);
-        for (const fn of [repositoryMock.getPage, repositoryMock.getLatestVisibleChunk, repositoryMock.countForPubkey,
-            relayFetchServiceMock.fetchLatest, profilesRepositoryMock.get, profileFetchDataMock,
-            contextFetchServiceMock.fetchEventById, replyFetchServiceMock.fetchDirectReplies]) expect(fn).not.toHaveBeenCalled();
-        await fireEvent.click(tab("posts"));
-        await waitFor(() => expect(counters.posts).toBe(1));
-        await waitFor(() => expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalled());
-        expect(counters.live).toBeGreaterThan(0);
-        expect(document.querySelector(".media-management")).toBeNull();
+        settingsStore.setLocalRelayUrl("ws://127.0.0.1:4869/");
+        postHistoryLocalRelayService.configureSession({ ownerPubkeyHex: mediaPubkey, url: settingsStore.localRelayUrl, isActive: () => true });
+        const localRead = vi.spyOn(postHistoryLocalRelayService, "read").mockReturnValue({ cancel: vi.fn(), promise: Promise.resolve(null) });
+        const view = render(PostHistoryDialog, { show: true, onClose: vi.fn(), pubkeyHex: mediaPubkey, rxNostr: {} as import("rx-nostr").RxNostr });
+        try {
+            await waitFor(() => expect(counters.list).toHaveBeenCalledTimes(1));
+            expect(counters.posts).toBe(0);
+            expect(counters.live).toBe(0);
+            for (const fn of [repositoryMock.getPage, repositoryMock.getLatestVisibleChunk, repositoryMock.countForPubkey,
+                relayFetchServiceMock.fetchLatest, profilesRepositoryMock.get, profileFetchDataMock,
+                contextFetchServiceMock.fetchEventById, replyFetchServiceMock.fetchDirectReplies]) expect(fn).not.toHaveBeenCalled();
+            expect(localRead).not.toHaveBeenCalled();
+            await fireEvent.click(tab("posts"));
+            await waitFor(() => expect(counters.posts).toBe(1));
+            await waitFor(() => expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalled());
+            expect(counters.live).toBeGreaterThan(0);
+            await waitFor(() => expect(localRead).toHaveBeenCalled());
+            expect(document.querySelector(".media-management")).toBeNull();
+        } finally {
+            view.unmount(); localRead.mockRestore();
+            postHistoryLocalRelayService.cancelSession(); settingsStore.setLocalRelayUrl("");
+        }
     });
     it("persists media selection and retains visited owners without inactive DOM or repeated list/support requests", async () => {
         const { unmount } = open();
