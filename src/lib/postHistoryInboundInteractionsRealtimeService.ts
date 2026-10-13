@@ -111,8 +111,17 @@ export class PostHistoryInboundInteractionsRealtimeService {
                     : { defaultReadRelays: true },
             }).subscribe({
                 next: (packet: { event?: NostrEvent; from?: string }) => {
+                    // Start the generation read before this packet waits on workQueue.
+                    // A history clear that commits after receipt must not become the
+                    // generation used to accept this packet.
+                    const expectedChildGeneration = this.getChildWriteGeneration();
                     workQueue = workQueue
-                        .then(() => this.processPacket(packet, params, () => active))
+                        .then(() => this.processPacket(
+                            packet,
+                            params,
+                            () => active,
+                            expectedChildGeneration,
+                        ))
                         .catch((error) => {
                             this.console.error("post_history_inbound_interactions_realtime_packet_error", error);
                         });
@@ -153,8 +162,9 @@ export class PostHistoryInboundInteractionsRealtimeService {
         packet: { event?: NostrEvent; from?: string },
         params: PostHistoryInboundInteractionsRealtimeSubscribeRequest,
         isActive: () => boolean,
+        expectedChildGenerationReady: Promise<number>,
     ): Promise<void> {
-        const expectedChildGeneration = await this.getChildWriteGeneration();
+        const expectedChildGeneration = await expectedChildGenerationReady;
         const event = packet.event;
         if (!isActive() || !event?.id) {
             return;
@@ -230,6 +240,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
                 classification: preliminary,
                 event,
                 ...(packet.from ? { relayUrls: [packet.from] } : {}),
+                expectedChildGeneration,
             }]);
             return;
         }

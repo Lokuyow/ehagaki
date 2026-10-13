@@ -31,6 +31,8 @@ import type { RelayConfig } from "./types";
 
 export interface PostHistoryInboundDirectReplyCandidate extends PostHistoryChildInteractionItem {
     classification: PostHistoryInboundInteractionClassification;
+    /** Generation observed when the candidate was received, before later awaits. */
+    expectedChildGeneration?: number;
 }
 
 export interface PostHistoryInboundReplyReconciliationResult {
@@ -251,7 +253,12 @@ export class PostHistoryInboundReplyReconciliationSession {
         if (!this.active || candidates.length === 0) {
             return emptyResult();
         }
-        const expectedChildGeneration = await getPostHistoryChildWriteGeneration(ehagakiDb);
+        const capturedGenerations = candidates.flatMap((candidate) =>
+            typeof candidate.expectedChildGeneration === "number" ? [candidate.expectedChildGeneration] : [],
+        );
+        const expectedChildGeneration = capturedGenerations.length === candidates.length
+            ? Math.min(...capturedGenerations)
+            : await getPostHistoryChildWriteGeneration(ehagakiDb);
 
         const directRepliesByParentId = new Map<string, PostHistoryChildInteractionItem[]>();
         const parentContextsById = new Map((await Promise.all(
