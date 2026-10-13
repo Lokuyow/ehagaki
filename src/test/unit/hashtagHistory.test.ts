@@ -66,11 +66,11 @@ describe("hashtagHistory", () => {
             });
         });
 
-        it("旧履歴の不正な JSON は空履歴として移行済みにする", async () => {
+        it("旧履歴の不正な JSON は移行済みにせず文字列を残す", async () => {
             storage.setItem(STORAGE_KEYS.HASHTAG_HISTORY, "invalid-json");
 
             await expect(repository.getAll()).resolves.toEqual([]);
-            expect(storage.getItem(STORAGE_KEYS.HASHTAG_HISTORY)).toBeNull();
+            expect(storage.getItem(STORAGE_KEYS.HASHTAG_HISTORY)).toBe("invalid-json");
         });
     });
 

@@ -23,18 +23,18 @@ afterEach(async () => {
 });
 
 describe("DexiePostHistoryVisibleRangeRepository", () => {
-    it("meta store に visibleUntil を保存して取得できる", async () => {
+    it("visible range は保存せず取得は常に空", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryVisibleRangeRepository(db, () => 9000);
         const kindsKey = buildPostHistoryVisibleKindsKey([42, 1, 1]);
 
-        const saved = await repository.save({
+        await repository.save({
             pubkeyHex: "a".repeat(64),
             kindsKey,
             visibleUntil: 1000,
         });
 
-        await expect(repository.get("a".repeat(64), kindsKey)).resolves.toEqual(saved);
+        await expect(repository.get("a".repeat(64), kindsKey)).resolves.toBeNull();
 
         db.close();
     });
@@ -77,10 +77,7 @@ describe("DexiePostHistoryVisibleRangeRepository", () => {
         await repository.clearForPubkey(pubkey);
 
         await expect(repository.get(pubkey, kindsKey)).resolves.toBeNull();
-        await expect(repository.get(otherPubkey, kindsKey)).resolves.toMatchObject({
-            pubkeyHex: otherPubkey,
-            visibleUntil: 900,
-        });
+        await expect(repository.get(otherPubkey, kindsKey)).resolves.toBeNull();
 
         db.close();
     });

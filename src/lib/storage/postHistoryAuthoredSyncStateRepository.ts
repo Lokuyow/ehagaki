@@ -112,7 +112,7 @@ implements PostHistoryAuthoredSyncStateRepository {
             return null;
         }
 
-        const record = await this.db.meta.get(buildStateKey(ownerPubkeyHex));
+        const record = await this.db.postHistoryAuthoredSyncCursor.get(ownerPubkeyHex);
         if (!record || !isValidStateValue(record.value)) {
             return null;
         }
@@ -151,8 +151,8 @@ implements PostHistoryAuthoredSyncStateRepository {
             schemaVersion: POST_HISTORY_AUTHORED_SYNC_STATE_SCHEMA_VERSION,
         };
 
-        await this.db.meta.put({
-            key: buildStateKey(ownerPubkeyHex),
+        await this.db.postHistoryAuthoredSyncCursor.put({
+            id: ownerPubkeyHex,
             value: nextValue,
             updatedAt,
         });
@@ -187,8 +187,7 @@ implements PostHistoryAuthoredSyncStateRepository {
             return;
         }
 
-        const prefix = `${POST_HISTORY_AUTHORED_SYNC_STATE_KEY_PREFIX}${ownerPubkeyHex}`;
-        await this.db.meta.filter((record) => record.key === prefix || record.key.startsWith(`${prefix}:`)).delete();
+        await this.db.postHistoryAuthoredSyncCursor.delete(ownerPubkeyHex);
     }
 }
 

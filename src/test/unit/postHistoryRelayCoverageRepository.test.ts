@@ -46,17 +46,18 @@ describe("persisted authored relay query coverage", () => {
     it("never synthesizes evidence from legacy posts, visible boundaries or jump anchors", async () => {
         const h = setup();
         await h.repository.upsertFetchedEvents({ events: [{ event }] });
-        await h.db.meta.bulkPut([
-            { key: `postHistoryVisibleRange:${event.pubkey}:1,42,1111`, value: { visibleUntil: 0 }, updatedAt: 1 },
-            { key: `postHistoryJumpCacheAnchors:${event.pubkey}`, value: { anchors: [{ centerCreatedAt: 100, radiusSec: 200 }] }, updatedAt: 1 },
-        ]);
+        await h.db.postHistoryJumpAnchors.put({
+            id: event.pubkey,
+            value: { anchors: [{ centerCreatedAt: 100, radiusSec: 200 }] },
+            updatedAt: 1,
+        });
         expect((await h.coverage.get(event.pubkey, h.write.kindsKey)).relays).toEqual([]);
     });
     it.each(["event", "coverage"])("rolls back both data and post-commit search revision after %s persistence failure", async (failure) => {
         const h = setup();
         const revision = getPostHistorySearchRevision(event.pubkey);
         if (failure === "event") vi.spyOn(h.db.postHistory, "bulkPut").mockRejectedValueOnce(new Error("synthetic storage failure"));
-        else vi.spyOn(h.db.meta, "put").mockRejectedValueOnce(new Error("synthetic storage failure"));
+        else vi.spyOn(h.db.postHistoryExternalCoverage, "put").mockRejectedValueOnce(new Error("synthetic storage failure"));
         await expect(h.save()).rejects.toThrow("synthetic storage failure");
         expect(await h.db.postHistory.count()).toBe(0);
         expect((await h.coverage.get(event.pubkey, h.write.kindsKey)).relays).toEqual([]);
@@ -75,17 +76,18 @@ describe("persisted authored relay query coverage", () => {
     it("deletion removes all owner coverage and legacy metadata, even when posts are empty", async () => {
         const h = setup();
         await h.repository.upsertFetchedEvents({ events: [], relayFetchCoverage: h.write });
-        await h.db.meta.bulkPut([
-            { key: `postHistoryVisibleRange:${event.pubkey}:1`, value: {}, updatedAt: 1 },
-            { key: `postHistoryJumpCacheAnchors:${event.pubkey}`, value: {}, updatedAt: 1 },
-            { key: "postHistoryRelayCoverage:other-owner:1", value: {}, updatedAt: 1 },
-        ]);
+        await h.db.postHistoryJumpAnchors.put({ id: event.pubkey, value: {}, updatedAt: 1 });
+        await h.db.postHistoryExternalCoverage.put({
+            id: "postHistoryRelayCoverage:other-owner:1",
+            ownerPubkeyHex: "other-owner",
+            value: { schemaVersion: 1, ownerPubkeyHex: "other-owner", kindsKey: "1", relays: [] },
+            updatedAt: 1,
+        });
         await h.repository.deleteLocalHistoryForPubkey(event.pubkey);
         expect((await h.coverage.get(event.pubkey, h.write.kindsKey)).relays).toEqual([]);
         expect(await h.coverage.getLocalRevision(event.pubkey)).toBe(1);
-        expect(await h.db.meta.get(`postHistoryVisibleRange:${event.pubkey}:1`)).toBeUndefined();
-        expect(await h.db.meta.get(`postHistoryJumpCacheAnchors:${event.pubkey}`)).toBeUndefined();
-        expect(await h.db.meta.get("postHistoryRelayCoverage:other-owner:1")).toBeDefined();
+        expect(await h.db.postHistoryJumpAnchors.get(event.pubkey)).toBeUndefined();
+        expect(await h.db.postHistoryExternalCoverage.get("postHistoryRelayCoverage:other-owner:1")).toBeDefined();
         expect((await h.save()).applied).toBe(false);
         expect(await h.db.postHistory.count()).toBe(0);
     });

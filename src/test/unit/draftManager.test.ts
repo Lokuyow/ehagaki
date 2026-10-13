@@ -100,9 +100,9 @@ describe("draftManager", () => {
             writable: true,
         });
         await ehagakiDb.open();
-        await ehagakiDb.transaction("rw", ehagakiDb.drafts, ehagakiDb.meta, async () => {
+        await ehagakiDb.transaction("rw", ehagakiDb.drafts, ehagakiDb.legacyImportState, async () => {
             await ehagakiDb.drafts.clear();
-            await ehagakiDb.meta.clear();
+            await ehagakiDb.legacyImportState.clear();
         });
         draftsRepository.resetBackendSelectionForTesting();
         vi.clearAllMocks();
@@ -111,9 +111,9 @@ describe("draftManager", () => {
     afterEach(async () => {
         vi.useRealTimers();
         vi.restoreAllMocks();
-        await ehagakiDb.transaction("rw", ehagakiDb.drafts, ehagakiDb.meta, async () => {
+        await ehagakiDb.transaction("rw", ehagakiDb.drafts, ehagakiDb.legacyImportState, async () => {
             await ehagakiDb.drafts.clear();
-            await ehagakiDb.meta.clear();
+            await ehagakiDb.legacyImportState.clear();
         });
         storage.clear();
     });
@@ -145,7 +145,7 @@ describe("draftManager", () => {
             storage.setItem(STORAGE_KEYS.DRAFTS, "invalid json");
 
             await expect(loadDrafts()).resolves.toEqual([]);
-            await expect(ehagakiDb.meta.get("migrated.localStorage.drafts.v1")).resolves.toBeUndefined();
+            await expect(ehagakiDb.legacyImportState.get("migrated.localStorage.drafts.v1")).resolves.toBeUndefined();
         });
 
         it("ログイン中は現在アカウントと旧 unscoped 下書きだけを返す", async () => {

@@ -60,7 +60,12 @@ import {
     EHAGAKI_DB_NAME,
     EHAGAKI_DB_NATIVE_VERSION,
 } from "../src/lib/storage/ehagakiDbConstants";
-import { ensureCurrentEHagakiDbSchema } from "../src/lib/swIndexedDbSchema";
+import { migrateEhagakiIndexedDb } from "../src/lib/storage/ehagakiDbMigration";
+import {
+    EHAGAKI_DB_CAPABILITY_REPORT,
+    EHAGAKI_DB_UPGRADE_REQUEST,
+    createEhagakiDbUpgradeController,
+} from "../src/lib/storage/ehagakiDbUpgradeController";
 import {
     createClearSharedMediaDbOperation,
     createPutSharedMediaDbOperation,
@@ -285,13 +290,9 @@ class IndexedDBManager {
         return await executeServiceWorkerIndexedDbOperation({
             indexedDb: this.indexedDB,
             dbName: INDEXEDDB_NAME,
-            dbVersion: INDEXEDDB_VERSION,
-            onUpgradeNeeded: (db, transaction) => {
-                ensureCurrentEHagakiDbSchema(
-                    db,
-                    SHARED_MEDIA_STORE_NAME,
-                    transaction,
-                );
+            dbVersion: null,
+            onUpgradeNeeded: (db, transaction, oldVersion) => {
+                migrateEhagakiIndexedDb(db, transaction, oldVersion ?? 0);
             },
             onBlocked: () => this.notifyUpgradeBlocked(),
             onBlockedResolved: () => this.notifyUpgradeUnblocked(),
@@ -660,6 +661,12 @@ class ServiceWorkerCore {
     constructor() {
         this.cacheManager = new CacheManager();
         this.indexedDBManager = new IndexedDBManager();
+        this.databaseUpgradeController = createEhagakiDbUpgradeController({
+            indexedDb: ServiceWorkerDependencies.indexedDB,
+            clients: ServiceWorkerDependencies.clients,
+            onBlocked: () => this.indexedDBManager.notifyUpgradeBlocked(),
+            onBlockedResolved: () => this.indexedDBManager.notifyUpgradeUnblocked(),
+        });
         this.clientManager = new ClientManager();
         this.messageHandler = new MessageHandler(this.indexedDBManager);
         this.requestHandler = new RequestHandler(
@@ -670,11 +677,11 @@ class ServiceWorkerCore {
         this.channelImageMetaRepository = new ServiceWorkerChannelImageMetaRepository(
             ServiceWorkerDependencies.indexedDB,
             INDEXEDDB_NAME,
-            INDEXEDDB_VERSION,
-            (db, transaction) => ensureCurrentEHagakiDbSchema(
+            null,
+            (db, transaction, oldVersion) => migrateEhagakiIndexedDb(
                 db,
-                SHARED_MEDIA_STORE_NAME,
                 transaction,
+                oldVersion ?? 0,
             ),
             () => this.indexedDBManager.notifyUpgradeBlocked(),
             () => this.indexedDBManager.notifyUpgradeUnblocked(),
@@ -732,6 +739,7 @@ class ServiceWorkerCore {
             },
             claimClients: () => ServiceWorkerDependencies.clients.claim(),
         });
+        await this.databaseUpgradeController.requestUpgrade();
     }
 
     // フェッチイベント処理を修正
@@ -775,6 +783,10 @@ class ServiceWorkerCore {
 
     // メッセージイベント処理
     async handleMessage(event) {
+        if (event.data?.type === EHAGAKI_DB_CAPABILITY_REPORT || event.data?.type === EHAGAKI_DB_UPGRADE_REQUEST) {
+            this.databaseUpgradeController.handleClientMessage(event);
+            return;
+        }
         if ([UPLOAD_MEDIA_IMAGE_SUPPORT_MESSAGE, UPLOAD_MEDIA_IMAGE_EVICT_MESSAGE].includes(event.data?.type)) {
             // These messages are available only to controlled, same-origin page clients.
             let trusted = false;

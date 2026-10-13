@@ -55,7 +55,16 @@ describe("resetManagedAccountData", () => {
         const caches = createCachesMock();
 
         await ehagakiDb.open();
-        await ehagakiDb.meta.put({ key: "test", value: true, updatedAt: 1 });
+        await ehagakiDb.drafts.put({
+            id: "draft",
+            scopeKey: "owner",
+            pubkeyHex: null,
+            content: "keep",
+            preview: "keep",
+            timestamp: 1,
+            updatedAt: 1,
+            schemaVersion: 1,
+        } as never);
         await ehagakiDb.sharedMedia.put({
             id: "latest",
             images: [],

@@ -82,7 +82,7 @@ implements PostHistoryInboundInteractionsSyncStateRepository {
             return null;
         }
 
-        const record = await this.db.meta.get(buildStateKey(ownerPubkeyHex));
+        const record = await this.db.postHistoryInboundSyncCursor.get(ownerPubkeyHex);
         if (!record || !isValidStateValue(record.value)) {
             return null;
         }
@@ -120,8 +120,8 @@ implements PostHistoryInboundInteractionsSyncStateRepository {
             schemaVersion: POST_HISTORY_INBOUND_INTERACTIONS_SYNC_STATE_SCHEMA_VERSION,
         };
 
-        await this.db.meta.put({
-            key: buildStateKey(ownerPubkeyHex),
+        await this.db.postHistoryInboundSyncCursor.put({
+            id: ownerPubkeyHex,
             value: nextValue,
             updatedAt,
         });
@@ -137,7 +137,7 @@ implements PostHistoryInboundInteractionsSyncStateRepository {
             return;
         }
 
-        await this.db.meta.delete(buildStateKey(ownerPubkeyHex));
+        await this.db.postHistoryInboundSyncCursor.delete(ownerPubkeyHex);
     }
 }
 

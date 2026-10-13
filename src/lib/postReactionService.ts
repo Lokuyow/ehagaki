@@ -12,6 +12,8 @@ import { prepareSignedEventTemplate, validateSignedEventResult } from './signedE
 import { verifyRelatedEvent } from './relatedEventVerification';
 import { RelayConfigUtils } from './relayConfigUtils';
 import { postHistoryChildInteractionsRepository, type UpsertPostHistoryChildInteractionsInput } from './storage/postHistoryChildInteractionsRepository';
+import { ehagakiDb } from './storage/ehagakiDb';
+import { getPostHistoryChildWriteGeneration } from './storage/postHistoryLocalWriteScope';
 import type { AuthState, KeyManagerInterface, NostrEvent, PostResult } from './types';
 import type { PostManager } from './postManager';
 
@@ -51,6 +53,7 @@ export class PostReactionService {
         if (this.pending) return { success: false, error: 'reaction_busy' };
         const operation = Symbol('reaction-submit');
         this.pending = operation;
+        const generationReady = getPostHistoryChildWriteGeneration(ehagakiDb);
         try {
             const auth = this.deps.authStateStore.value;
             const pubkey = auth.pubkey;
@@ -87,6 +90,7 @@ export class PostReactionService {
             // ACK commits delivery. Persistence belongs to this immutable event, independent of UI/session liveness.
             const input: UpsertPostHistoryChildInteractionsInput = { parentEventId: target.event.id,
                 reactionTarget: { eventId: target.event.id, targetAuthorPubkey: target.event.pubkey, targetKind: target.event.kind },
+                expectedChildGeneration: await generationReady,
                 events: [{ event, relayUrls: published.acceptedRelays ?? [] }] };
             const result: PostReactionResult = { ...published, eventId: event.id, event, targetEventId: target.event.id };
             try { await this.deps.saveCache(input); result.cacheSaved = true; }

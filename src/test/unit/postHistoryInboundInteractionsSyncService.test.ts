@@ -128,6 +128,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledOnce();
         expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledWith({
             parentEventId: PARENT_ID, events: [{ event: events[0], relayUrls: ["wss://relay.example.com/"] }],
+            expectedChildGeneration: 0,
             fetchedAt: 1_700_000_000_000,
         });
         expect(result.changedParentEventIds).toEqual([PARENT_ID]);
@@ -179,6 +180,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         expect(postHistoryChildInteractionsRepository.upsertDirectReplies).toHaveBeenCalledWith({
             parentEventId: PARENT_ID,
             events: [{ event: directReply, relayUrls: ["wss://relay.example.com/"] }],
+            expectedChildGeneration: 0,
             fetchedAt: 1_700_000_000_000,
         });
         expect(result.classifications).toMatchObject({
@@ -354,6 +356,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
                 { event: selfReaction, relayUrls: ["wss://relay.example.com/"] },
                 { event: externalReaction, relayUrls: ["wss://relay.example.com/"] },
             ],
+            expectedChildGeneration: 0,
             fetchedAt: 1_700_000_000_000,
         });
         expect(result.classifications).toMatchObject({
@@ -395,6 +398,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
             events: [
                 { event: threadedReaction, relayUrls: ["wss://relay.example.com/"] },
             ],
+            expectedChildGeneration: 0,
             fetchedAt: 1_700_000_000_000,
         });
         expect(result.classifications).toMatchObject({

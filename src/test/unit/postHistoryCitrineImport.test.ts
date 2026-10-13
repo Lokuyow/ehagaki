@@ -139,7 +139,7 @@ describe("Citrine import restoration", () => {
     });
     it("reports metadata failure separately without claiming any post failed", async () => {
         const h = setup();
-        vi.spyOn(h.db.meta, "put").mockRejectedValueOnce(new Error("metadata save failed"));
+        vi.spyOn(h.db.postHistoryCitrineRanges, "put").mockRejectedValueOnce(new Error("metadata save failed"));
         expect(await h.run(h.jsonl([h.post(100), h.post(200)]))).toMatchObject({ status: "partial",
             insertedPostCount: 2, failedPostEventCount: 0, restoredRangeSaveFailed: true });
         expect(await h.db.postHistory.count()).toBe(2);
@@ -174,8 +174,8 @@ describe("Citrine import restoration", () => {
     });
     it("rolls back metadata invalidated during its commit", async () => {
         const h = setup(); let active = true;
-        const original = h.db.meta.put.bind(h.db.meta);
-        vi.spyOn(h.db.meta, "put").mockImplementation(((...args: any[]) => {
+        const original = h.db.postHistoryCitrineRanges.put.bind(h.db.postHistoryCitrineRanges);
+        vi.spyOn(h.db.postHistoryCitrineRanges, "put").mockImplementation(((...args: any[]) => {
             active = false;
             return original(...args as [any]);
         }) as any);
@@ -230,10 +230,10 @@ describe("Citrine import restoration", () => {
         expect((await h.ranges.get(h.owner, kindsKey)).ranges).toEqual([{ since: 10, until: 30 }]);
         expect((await h.ranges.get("other", kindsKey)).ranges).toEqual([]);
         expect((await h.ranges.get(h.owner, "1")).ranges).toEqual([]);
-        await h.db.meta.put({ key: `postHistoryLocalRevision:${h.owner}`, value: 1, updatedAt: Date.now() });
+        await h.db.postHistoryWriteGeneration.put({ id: h.owner, value: 1, updatedAt: Date.now() });
         expect((await h.ranges.get(h.owner, kindsKey)).ranges).toEqual([]);
         await h.repository.deleteLocalHistoryForPubkey(h.owner);
-        expect(await h.db.meta.get(`postHistoryImportedRanges:${h.owner}:${kindsKey}`)).toBeUndefined();
+        expect(await h.db.postHistoryCitrineRanges.get(`postHistoryImportedRanges:${h.owner}:${kindsKey}`)).toBeUndefined();
     });
 });
 

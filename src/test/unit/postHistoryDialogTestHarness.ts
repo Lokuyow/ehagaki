@@ -736,7 +736,7 @@ export function resetPostHistoryDialogHarness(options: {
     // Repository snapshots are mocked in component tests. Real transaction
     // atomicity and liveQuery notifications belong to the DB/browser tests.
     vi.spyOn(ehagakiDb, 'transaction').mockImplementation(((mode: string, ...args: unknown[]) => {
-        if (mode === 'r' && args[0] === ehagakiDb.meta) {
+        if (mode === 'r' && Array.isArray(args[0]) && args[0].includes(ehagakiDb.postHistoryExternalCoverage)) {
             return Promise.resolve((args.at(-1) as () => unknown)());
         }
         return Reflect.apply(originalDbTransaction, ehagakiDb, [mode, ...args]);

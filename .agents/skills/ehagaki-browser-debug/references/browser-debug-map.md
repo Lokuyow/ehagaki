@@ -160,11 +160,11 @@
 - **主な実装ファイル:** `src/lib/storage/ehagakiDb.ts`、`src/lib/storage/ehagakiDbConstants.ts`、各`src/lib/storage/*Repository.ts`、`src/lib/swIndexedDbSchema.ts`、`src/lib/swIndexedDbOperationUtils.ts`、`public/sw.js`、`src/lib/embedIndexedDbService.ts`。
 - **主な関数、store、hook、controller:** `EHagakiDB`、`ehagakiDb`、`EHAGAKI_DB_NAME`、`EHAGAKI_DB_VERSION`、`POST_HISTORY_TIMELINE_INDEX`、repository methods、`ensureCurrentEHagakiDbSchema()`、SW IndexedDB manager、`EmbedIndexedDbService`。
 - **Event source:** Dexie query/transaction/`versionchange`/`blocked`、raw IndexedDB `open/upgradeneeded/blocked/success/error`、SW fetch/message、iframe request/response、account reset。
-- **StateまたはCSS変数:** DB name `eHagakiDB`、logical version `15`／native version `150`、postHistory timeline index `[pubkeyHex+postedAt+createdAt+eventId]`、object stores/indexes、fixed shared media record `latest`、repository caches/pending requests、Dexie `ready`とraw open successで解除されるDB upgrade blocked表示。
+- **StateまたはCSS変数:** DB name `eHagakiDB`、logical version `17`／native version `170`。ページは Service Worker の upgrade 完了通知まで Dexie を開かない。外部ホストの Web Component だけが同じ migration を自分で一度実行する。v14/v16 の表示用 `postHistory`、`sensitivePayloads`、`postHistoryChildInteractions` は空になり、`postHistoryDeletionRequests` と draft などの利用者データは残る。`meta` は削除し、localStorage migration marker だけを `legacyImportState` へ移す。versionless open が作る version 1 は最終 schema で、続く open(170) は version だけを上げる。postHistory timeline index `[pubkeyHex+postedAt+createdAt+eventId]`、fixed shared media record `latest`、Dexie `ready` と raw open success で解除される DB upgrade blocked 表示。
 - **Cleanup所有者:** repository testsとaccount resetはDBをcloseする。SW raw IndexedDB helperはoperation完了時にcloseする。iframe request timeoutはserviceがclearする。
 - **関連テスト:** `src/test/unit/ehagakiDb.test.ts`、各repository test、`src/test/unit/swIndexedDbSchema.test.ts`、`src/test/unit/swIndexedDbOperationUtils.test.ts`、`src/test/unit/sw.test.ts`、`src/test/unit/embedIndexedDbService.test.ts`。
 - **Playwrightまたは実端末確認が必要になる条件:** upgrade中の複数tab、stale worker、versionchange/blocked、storage partitioning、iframe delegation、reload後の永続化はbrowser integrationが必要。
-- **注意点:** schema/versionを重複追加しない。DexieとSW raw IndexedDBの全open caller、既存installed worker、stale tabを同じ契約として確認する。データ削除をmigration代替にしない。
+- **注意点:** schema/versionを重複追加しない。Dexie は version 17 の最終 schema だけを宣言し、`.upgrade()` では移行しない。app origin では Service Worker だけが `open(170)` し、window client が native 170 を返すまで上げない。表示用履歴の消去は upgrade の契約で、draft と deletion request は消さない。`blocked` では open 要求を中断しない。
 
 ## 画像、動画、gallery、preview
 

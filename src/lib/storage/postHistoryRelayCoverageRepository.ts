@@ -2,8 +2,6 @@ import { RelayConfigUtils } from "../relayConfigUtils";
 import { mergePostHistoryCoverageRanges, type PostHistoryRelayCoverage } from "../postHistoryRelayCoverage";
 import { ehagakiDb, type EHagakiDB } from "./ehagakiDb";
 import { advancePostHistoryLocalRevision, getPostHistoryLocalRevision, isPostHistoryLocalWriteCurrent, PostHistoryLocalWriteStaleError, type PostHistoryLocalWriteScope } from "./postHistoryLocalWriteScope";
-import { POST_HISTORY_IMPORTED_RANGES_PREFIX } from "./postHistoryImportedRangesRepository";
-import { POST_HISTORY_LOCAL_BROWSING_RANGES_PREFIX } from "./postHistoryLocalBrowsingRangesRepository";
 
 export const POST_HISTORY_RELAY_COVERAGE_PREFIX = "postHistoryRelayCoverage:";
 
@@ -23,7 +21,7 @@ export class DexiePostHistoryRelayCoverageRepository {
     constructor(private db: EHagakiDB = ehagakiDb, private now = Date.now) {}
 
     async get(ownerPubkeyHex: string, kindsKey: string): Promise<PostHistoryRelayFetchCoverage> {
-        const value = (await this.db.meta.get(`${POST_HISTORY_RELAY_COVERAGE_PREFIX}${ownerPubkeyHex}:${kindsKey}`))?.value;
+        const value = (await this.db.postHistoryExternalCoverage.get(coverageId(ownerPubkeyHex, kindsKey)))?.value;
         const record = value as Partial<PostHistoryRelayFetchCoverage> | undefined;
         const relays = record?.schemaVersion === 1 && record.ownerPubkeyHex === ownerPubkeyHex
             && record.kindsKey === kindsKey && Array.isArray(record.relays) ? record.relays : [];
@@ -55,22 +53,27 @@ export class DexiePostHistoryRelayCoverageRepository {
             .map(([relayUrl, ranges]) => ({ relayUrl, ranges: mergePostHistoryCoverageRanges(ranges) }))
             .sort((a, b) => a.relayUrl.localeCompare(b.relayUrl)) };
         if (!write.isActive()) throw new PostHistoryCoverageStaleError();
-        if (JSON.stringify(current) !== JSON.stringify(next)) await this.db.meta.put({
-            key: `${POST_HISTORY_RELAY_COVERAGE_PREFIX}${write.ownerPubkeyHex}:${write.kindsKey}`,
-            value: next, updatedAt: this.now(),
+        if (JSON.stringify(current) !== JSON.stringify(next)) await this.db.postHistoryExternalCoverage.put({
+            id: coverageId(write.ownerPubkeyHex, write.kindsKey),
+            ownerPubkeyHex: write.ownerPubkeyHex,
+            value: next,
+            updatedAt: this.now(),
         });
     }
 
     /** Also runs for an empty history. The revision prevents a pre-delete fetch from repopulating it. */
     async clearForPubkey(ownerPubkeyHex: string): Promise<void> {
-        const prefixes = [POST_HISTORY_RELAY_COVERAGE_PREFIX, POST_HISTORY_IMPORTED_RANGES_PREFIX, POST_HISTORY_LOCAL_BROWSING_RANGES_PREFIX, "postHistoryVisibleRange:", "postHistoryJumpCacheAnchors:"]
-            .map((prefix) => `${prefix}${ownerPubkeyHex}`);
-        const keys = await this.db.meta.filter(({ key }) => prefixes.some((prefix) =>
-            key === prefix || key.startsWith(`${prefix}:`),
-        )).primaryKeys();
-        await this.db.meta.bulkDelete(keys);
+        await this.db.postHistoryExternalCoverage.where("ownerPubkeyHex").equals(ownerPubkeyHex).delete();
+        await this.db.postHistoryCitrineRanges.where("ownerPubkeyHex").equals(ownerPubkeyHex).delete();
+        await this.db.postHistoryLocalBrowsingRanges.where("ownerPubkeyHex").equals(ownerPubkeyHex).delete();
+        await this.db.postHistoryLocalResumeCursor.where("ownerPubkeyHex").equals(ownerPubkeyHex).delete();
+        await this.db.postHistoryJumpAnchors.delete(ownerPubkeyHex);
         await advancePostHistoryLocalRevision(this.db, ownerPubkeyHex, this.now());
     }
+}
+
+function coverageId(ownerPubkeyHex: string, kindsKey: string): string {
+    return `${POST_HISTORY_RELAY_COVERAGE_PREFIX}${ownerPubkeyHex}:${kindsKey}`;
 }
 
 export class PostHistoryCoverageStaleError extends PostHistoryLocalWriteStaleError {}

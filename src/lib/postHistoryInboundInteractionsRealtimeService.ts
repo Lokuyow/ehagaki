@@ -21,6 +21,8 @@ import {
 } from "./storage/postHistoryChildInteractionsRepository";
 import type { NostrEvent, RelayConfig } from "./types";
 import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
+import { ehagakiDb } from "./storage/ehagakiDb";
+import { getPostHistoryChildWriteGeneration } from "./storage/postHistoryLocalWriteScope";
 
 export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_RELAY_LIMIT = 6;
 export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_SINCE_OVERLAP_SECONDS = 60;
@@ -80,6 +82,10 @@ export class PostHistoryInboundInteractionsRealtimeService {
         let active = true;
         let subscription: SubscriptionLike | undefined;
         let workQueue: Promise<void> = Promise.resolve();
+        let expectedChildGeneration = 0;
+        const generationReady = getPostHistoryChildWriteGeneration(ehagakiDb).then((generation) => {
+            expectedChildGeneration = generation;
+        });
         const relayUrls = resolvePostHistoryRelayUrls(
             params.relayConfig,
             normalizeRelayLimit(params.relayLimit),
@@ -106,7 +112,10 @@ export class PostHistoryInboundInteractionsRealtimeService {
             }).subscribe({
                 next: (packet: { event?: NostrEvent; from?: string }) => {
                     workQueue = workQueue
-                        .then(() => this.processPacket(packet, params, () => active))
+                        .then(async () => {
+                            await generationReady;
+                            await this.processPacket(packet, params, () => active, expectedChildGeneration);
+                        })
                         .catch((error) => {
                             this.console.error("post_history_inbound_interactions_realtime_packet_error", error);
                         });
@@ -147,6 +156,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
         packet: { event?: NostrEvent; from?: string },
         params: PostHistoryInboundInteractionsRealtimeSubscribeRequest,
         isActive: () => boolean,
+        expectedChildGeneration: number,
     ): Promise<void> {
         const event = packet.event;
         if (!isActive() || !event?.id) {
@@ -197,6 +207,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
                     ...(relayUrl ? { relayUrls: [relayUrl] } : {}),
                 }],
                 fetchedAt: this.now(),
+                expectedChildGeneration,
             });
             if (
                 !isActive()
@@ -281,6 +292,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
                 ...(relayUrl ? { relayUrls: [relayUrl] } : {}),
             }],
             fetchedAt: this.now(),
+            expectedChildGeneration,
         });
         if (
             !isActive()

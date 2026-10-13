@@ -129,6 +129,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledOnce();
         expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledWith({
             parentEventId: PARENT_ID, events: [{ event: events[0], relayUrls: ["wss://relay.example.com/"] }],
+            expectedChildGeneration: 0,
             fetchedAt: 1_700_000_000_000,
         });
         expect(onSavedInboundInteractions).toHaveBeenCalledOnce();
@@ -173,6 +174,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
                 event: directReply,
                 relayUrls: ["wss://relay.example.com/"],
             }],
+            expectedChildGeneration: 0,
             fetchedAt: 1_700_000_000_000,
         });
         expect(onSavedInboundInteractions).toHaveBeenCalledWith([PARENT_ID]);
@@ -231,6 +233,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
                 event: selfReaction,
                 relayUrls: ["wss://relay.example.com/"],
             }],
+            expectedChildGeneration: 0,
             fetchedAt: 1_700_000_000_000,
         });
         expect(onSavedInboundInteractions).toHaveBeenCalledWith([PARENT_ID]);

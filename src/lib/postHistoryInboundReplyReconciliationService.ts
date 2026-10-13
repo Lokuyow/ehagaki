@@ -1,4 +1,9 @@
 import type { RxNostr } from "rx-nostr";
+import { ehagakiDb } from "./storage/ehagakiDb";
+import {
+    getPostHistoryChildWriteGeneration,
+    getPostHistoryLocalRevision,
+} from "./storage/postHistoryLocalWriteScope";
 import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
 import {
     classifyPostHistoryInboundInteraction,
@@ -191,6 +196,11 @@ export class PostHistoryInboundReplyReconciliationSession {
             return;
         }
 
+        let expectedRevision = 0;
+        const generationsReady = getPostHistoryLocalRevision(ehagakiDb, this.params.ownerPubkeyHex)
+            .then((revision) => {
+                expectedRevision = revision;
+            });
         const task = this.deps.selfParentFetchService.fetchSelfParent(this.rxNostr, {
             parentEventId,
             ownerPubkeyHex: this.params.ownerPubkeyHex,
@@ -200,9 +210,15 @@ export class PostHistoryInboundReplyReconciliationSession {
 
         void task.promise
             .then(async (result) => {
+                await generationsReady;
                 if (!this.active || this.parentFetches.get(parentEventId) !== task || !result.event) {
                     return;
                 }
+                const localWriteScope = {
+                    ownerPubkeyHex: this.params.ownerPubkeyHex,
+                    expectedRevision,
+                    isActive: () => this.active,
+                };
 
                 await this.deps.postHistoryRepository.upsertFetchedEvents({
                     events: [{
@@ -210,16 +226,14 @@ export class PostHistoryInboundReplyReconciliationSession {
                         ...(result.relayUrl ? { relayUrls: [result.relayUrl] } : {}),
                     }],
                     fetchedAt: this.deps.now(),
+                    localWriteScope,
                 });
                 if (!this.active || this.parentFetches.get(parentEventId) !== task) {
                     return;
                 }
 
                 await this.notifySelfPostsSaved([parentEventId]);
-                void postHistoryLocalRelayService.archiveAdoptedAuthored([{ event: result.event }], {
-                    ownerPubkeyHex: this.params.ownerPubkeyHex,
-                    isActive: () => this.active,
-                });
+                void postHistoryLocalRelayService.archiveAdoptedAuthored([{ event: result.event }], localWriteScope);
             })
             .catch((error) => {
                 this.deps.console.error("post_history_inbound_reply_parent_reconciliation_error", error);
@@ -237,6 +251,7 @@ export class PostHistoryInboundReplyReconciliationSession {
         if (!this.active || candidates.length === 0) {
             return emptyResult();
         }
+        const expectedChildGeneration = await getPostHistoryChildWriteGeneration(ehagakiDb);
 
         const directRepliesByParentId = new Map<string, PostHistoryChildInteractionItem[]>();
         const parentContextsById = new Map((await Promise.all(
@@ -308,6 +323,7 @@ export class PostHistoryInboundReplyReconciliationSession {
                 parentEventId,
                 events,
                 fetchedAt: this.deps.now(),
+                expectedChildGeneration,
             });
             if (!this.active) {
                 return emptyResult();

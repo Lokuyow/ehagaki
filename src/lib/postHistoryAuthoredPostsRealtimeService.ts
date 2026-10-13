@@ -9,6 +9,8 @@ import {
 import type { NostrEvent, RelayConfig } from "./types";
 import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
 import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
+import { ehagakiDb } from "./storage/ehagakiDb";
+import { getPostHistoryLocalRevision } from "./storage/postHistoryLocalWriteScope";
 
 export const POST_HISTORY_AUTHORED_POSTS_REALTIME_RELAY_LIMIT = 6;
 export const POST_HISTORY_AUTHORED_POSTS_REALTIME_SINCE_OVERLAP_SECONDS = 60;
@@ -61,6 +63,10 @@ export class PostHistoryAuthoredPostsRealtimeService {
         let active = true;
         let subscription: SubscriptionLike | undefined;
         let workQueue: Promise<void> = Promise.resolve();
+        let expectedRevision = 0;
+        const revisionReady = getPostHistoryLocalRevision(ehagakiDb, params.ownerPubkeyHex).then((revision) => {
+            expectedRevision = revision;
+        });
         const relayUrls = resolvePostHistoryRelayUrls(
             params.relayConfig,
             normalizeRelayLimit(params.relayLimit),
@@ -87,7 +93,10 @@ export class PostHistoryAuthoredPostsRealtimeService {
             }).subscribe({
                 next: (packet: { event?: NostrEvent; from?: string }) => {
                     workQueue = workQueue
-                        .then(() => this.processPacket(packet, params, () => active))
+                        .then(async () => {
+                            await revisionReady;
+                            await this.processPacket(packet, params, () => active, expectedRevision);
+                        })
                         .catch((error) => {
                             this.console.error("post_history_authored_posts_realtime_packet_error", error);
                         });
@@ -123,6 +132,7 @@ export class PostHistoryAuthoredPostsRealtimeService {
         packet: { event?: NostrEvent; from?: string },
         params: PostHistoryAuthoredPostsRealtimeSubscribeRequest,
         isActive: () => boolean,
+        expectedRevision: number,
     ): Promise<void> {
         const event = packet.event;
         if (
@@ -138,12 +148,18 @@ export class PostHistoryAuthoredPostsRealtimeService {
             typeof packet.from === "string" ? [packet.from] : [],
             { limit: 1 },
         )[0];
+        const localWriteScope = {
+            ownerPubkeyHex: params.ownerPubkeyHex,
+            expectedRevision,
+            isActive,
+        };
         const result = await this.postHistoryRepository.upsertFetchedEvents({
             events: [{
                 event,
                 ...(relayUrl ? { relayUrls: [relayUrl] } : {}),
             }],
             fetchedAt: this.now(),
+            localWriteScope,
         });
         if (
             !isActive()
@@ -153,9 +169,7 @@ export class PostHistoryAuthoredPostsRealtimeService {
         }
 
         try {
-            void postHistoryLocalRelayService.archiveAdoptedAuthored([{ event }], {
-                ownerPubkeyHex: params.ownerPubkeyHex, isActive,
-            });
+            void postHistoryLocalRelayService.archiveAdoptedAuthored([{ event }], localWriteScope);
             await params.onSavedSelfPosts?.([event.id]);
         } catch (error) {
             this.console.warn("post_history_authored_posts_realtime_saved_callback_error", error);

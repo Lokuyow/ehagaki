@@ -291,7 +291,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
 
             return await executeServiceWorkerIndexedDbOperation({
                 indexedDb: {
-                    open: (dbName: string, dbVersion: number) => {
+                    open: (dbName: string, dbVersion?: number) => {
                         this.dependencies.indexedDB.open(dbName, dbVersion);
                         return mockRequest;
                     },
@@ -757,7 +757,7 @@ describe('Service Worker Tests', () => {
 
     describe('IndexedDBManager', () => {
         it('uses the shared native IndexedDB version', () => {
-            expect(swModule.INDEXEDDB_VERSION).toBe(160);
+            expect(swModule.INDEXEDDB_VERSION).toBe(170);
         });
 
         it('should save shared media in the app database', async () => {

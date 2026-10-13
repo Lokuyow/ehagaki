@@ -6,6 +6,7 @@ import {
     EHAGAKI_DB_VERSION,
     POST_HISTORY_TIMELINE_INDEX,
 } from "./ehagakiDbConstants";
+import { waitForEhagakiDbOpenGate } from "./ehagakiDbOpenGate";
 
 export {
     EHAGAKI_DB_NAME,
@@ -46,9 +47,17 @@ export function subscribeEHagakiDbUpgradeState(
     return () => ehagakiDbUpgradeStateListeners.delete(listener);
 }
 
-export interface MetaRecord {
-    key: string;
+export interface EhagakiScopedRecord {
+    id: string;
+    ownerPubkeyHex?: string;
+    parentEventId?: string;
     value: unknown;
+    updatedAt: number;
+}
+
+export interface LegacyImportStateRecord {
+    id: string;
+    done: true;
     updatedAt: number;
 }
 
@@ -333,7 +342,6 @@ export interface ChannelImageCacheMetaRecord {
 }
 
 export class EHagakiDB extends Dexie {
-    meta!: Table<MetaRecord, string>;
     emojiItems!: Table<EmojiItemRecord, string>;
     emojiCacheMeta!: Table<EmojiCacheMetaRecord, string>;
     drafts!: Table<DraftRecord, string>;
@@ -351,6 +359,19 @@ export class EHagakiDB extends Dexie {
     postMediaCache!: Table<PostMediaCacheEntryRecord, string>;
     channelMetadata!: Table<ChannelMetadataRecord, string>;
     channelImageCacheMeta!: Table<ChannelImageCacheMetaRecord, string>;
+    postHistoryExternalCoverage!: Table<EhagakiScopedRecord, string>;
+    postHistoryCitrineRanges!: Table<EhagakiScopedRecord, string>;
+    postHistoryLocalBrowsingRanges!: Table<EhagakiScopedRecord, string>;
+    postHistoryLocalResumeCursor!: Table<EhagakiScopedRecord, string>;
+    postHistoryJumpAnchors!: Table<EhagakiScopedRecord, string>;
+    postHistoryAuthoredSyncCursor!: Table<EhagakiScopedRecord, string>;
+    postHistoryInboundSyncCursor!: Table<EhagakiScopedRecord, string>;
+    postHistoryDirectReplyFetchMeta!: Table<EhagakiScopedRecord, string>;
+    postHistoryWriteGeneration!: Table<EhagakiScopedRecord, string>;
+    postHistoryChildWriteGeneration!: Table<EhagakiScopedRecord, string>;
+    postHistoryReactionDeletionAttempts!: Table<EhagakiScopedRecord, string>;
+    postHistoryReplyDeletionAttempts!: Table<EhagakiScopedRecord, string>;
+    legacyImportState!: Table<LegacyImportStateRecord, string>;
 
     constructor(databaseName = EHAGAKI_DB_NAME) {
         super(databaseName);
@@ -361,7 +382,6 @@ export class EHagakiDB extends Dexie {
         this.on("ready", () => setEHagakiDbUpgradeBlocked(false));
 
         this.version(EHAGAKI_DB_VERSION).stores({
-            meta: "key, updatedAt",
             emojiItems: "id, pubkeyHex, identityKey, shortcodeLower, sortIndex, sourceType, sourceAddress, fetchedAt, updatedAt, [pubkeyHex+sortIndex], [pubkeyHex+identityKey]",
             emojiCacheMeta: "pubkeyHex, fetchedAt, updatedAt, schemaVersion",
             drafts: "id, scopeKey, pubkeyHex, updatedAt, timestamp, [scopeKey+updatedAt]",
@@ -379,7 +399,24 @@ export class EHagakiDB extends Dexie {
             postMediaCache: "cacheKey, url, normalizedUrl, size, createdAt, lastAccessedAt, updatedAt, source, schemaVersion",
             channelMetadata: "channelEventId, fetchedAt, metadataCreatedAt, creatorPubkey, updatedAt, schemaVersion",
             channelImageCacheMeta: "url, responseType, fetchedAt, lastAttemptAt, lastAccessedAt, schemaVersion",
+            postHistoryExternalCoverage: "id, ownerPubkeyHex, updatedAt",
+            postHistoryCitrineRanges: "id, ownerPubkeyHex, updatedAt",
+            postHistoryLocalBrowsingRanges: "id, ownerPubkeyHex, updatedAt",
+            postHistoryLocalResumeCursor: "id, ownerPubkeyHex, updatedAt",
+            postHistoryJumpAnchors: "id, updatedAt",
+            postHistoryAuthoredSyncCursor: "id, updatedAt",
+            postHistoryInboundSyncCursor: "id, updatedAt",
+            postHistoryDirectReplyFetchMeta: "id, updatedAt",
+            postHistoryWriteGeneration: "id, updatedAt",
+            postHistoryChildWriteGeneration: "id, updatedAt",
+            postHistoryReactionDeletionAttempts: "id, parentEventId, updatedAt",
+            postHistoryReplyDeletionAttempts: "id, parentEventId, updatedAt",
+            legacyImportState: "id, updatedAt",
         });
+    }
+
+    override open(): ReturnType<Dexie["open"]> {
+        return Dexie.Promise.resolve(waitForEhagakiDbOpenGate()).then(() => super.open());
     }
 }
 

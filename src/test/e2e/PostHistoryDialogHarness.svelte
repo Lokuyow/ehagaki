@@ -682,7 +682,7 @@
         // The saved-history scenarios explicitly represent previously queried ranges.
         const canonical = resolvePostHistoryAuthoredRelayUrls(fullScanHarness?.relayConfig);
         const revision = await postHistoryRelayCoverageRepository.getLocalRevision(HARNESS_PUBKEY);
-        await ehagakiDb.transaction("rw", ehagakiDb.meta, async () => { await postHistoryRelayCoverageRepository.record({
+        await ehagakiDb.transaction("rw", ehagakiDb.postHistoryExternalCoverage, ehagakiDb.postHistoryWriteGeneration, async () => { await postHistoryRelayCoverageRepository.record({
             ownerPubkeyHex: HARNESS_PUBKEY, kindsKey: buildPostHistoryVisibleKindsKey([...POST_HISTORY_FETCH_KINDS]), expectedRevision: revision, isActive: () => true,
             relays: canonical.map((relayUrl) => ({ relayUrl, ranges: [{
                 since: isSparseScenario ? sparseVisiblePost.createdAt : 0, until: Math.floor(Date.now() / 1000),

@@ -14,7 +14,8 @@ import {
     attestFullyVerifiedPostHistoryRawEvent,
     type PostHistoryRawEventAttestation,
 } from "./postHistoryRawEventVerification";
-import type { PostHistoryRecord } from "./storage/ehagakiDb";
+import { ehagakiDb, type PostHistoryRecord } from "./storage/ehagakiDb";
+import { getPostHistoryLocalRevision } from "./storage/postHistoryLocalWriteScope";
 import type { SensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
 import type { WindowNostr } from "nostr-tools/nip07";
 import { sensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
@@ -399,6 +400,7 @@ export class PostDeletionService {
         }
         if (record?.deletedAt !== undefined) return undefined;
         if (!record) {
+            const expectedRevision = await getPostHistoryLocalRevision(ehagakiDb, post.pubkeyHex);
             const task = this.deps.fetchPayloadFn(rxNostr, {
                 eventId: reference.eventId,
                 relayHints: RelayConfigUtils.sanitizeExternalRelayUrls([
@@ -412,7 +414,15 @@ export class PostDeletionService {
                 if (!fetched.event || !verifySensitivePayloadLink(structure, fetched.event, reference.eventId)) return undefined;
                 const fetchedRelays = RelayConfigUtils.sanitizeExternalRelayUrls(fetched.relayUrl ? [fetched.relayUrl] : []);
                 try {
-                    await this.deps.saveSensitivePayloadFn({ event: fetched.event, fetchedRelays });
+                    await this.deps.saveSensitivePayloadFn({
+                        event: fetched.event,
+                        fetchedRelays,
+                        localWriteScope: {
+                            ownerPubkeyHex: post.pubkeyHex,
+                            expectedRevision,
+                            isActive: () => true,
+                        },
+                    });
                 } catch {
                     this.deps.console.warn("sensitive_payload_cache_save_failed", { stage: "deletion", reason: "storage" });
                 }

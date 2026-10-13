@@ -39,6 +39,7 @@ import { POST_HISTORY_TIMELINE_INDEX } from "./ehagakiDbConstants";
 import { DexiePostHistoryRelayCoverageRepository, PostHistoryCoverageStaleError, type PostHistoryCoverageWrite } from "./postHistoryRelayCoverageRepository";
 import { reconcileSensitivePayloadDeletionForStructure } from "./sensitivePayloadDeletionReconciler";
 import { assertPostHistoryLocalWriteCurrent, PostHistoryLocalWriteStaleError, type PostHistoryLocalWriteScope } from "./postHistoryLocalWriteScope";
+import { clearPostHistoryDisplayForPubkey, postHistoryEvidenceTables } from "./postHistoryPersistenceCoordinator";
 import { DexiePostHistoryLocalBrowsingRangesRepository, type PostHistoryLocalBrowsingWrite } from "./postHistoryLocalBrowsingRangesRepository";
 
 export const POST_HISTORY_SCHEMA_VERSION = 2;
@@ -900,7 +901,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         if (input.localWriteScope && input.localWriteScope.ownerPubkeyHex !== verified.event.pubkey) {
             throw new Error("invalid_post_history_owner");
         }
-        await this.db.transaction("rw", this.db.postHistory, this.db.meta, async () => {
+        await this.db.transaction("rw", this.db.postHistory, this.db.postHistoryWriteGeneration, async () => {
             await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
             const existing = await this.db.postHistory.get(verified.event.id);
             await this.db.postHistory.put({ ...toRecord({ ...input, event: verified.event }, this.now),
@@ -922,7 +923,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
     async attachRepostTarget(input: { outerEventId: string; target: NostrEvent; relayHints?: string[]; localWriteScope: PostHistoryLocalWriteScope }): Promise<boolean> {
         let changed = false;
-        await this.db.transaction("rw", this.db.postHistory, this.db.meta, async () => {
+        await this.db.transaction("rw", this.db.postHistory, this.db.postHistoryWriteGeneration, async () => {
             await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
             const outer = await this.db.postHistory.get(input.outerEventId);
             if (!outer || outer.pubkeyHex !== input.localWriteScope.ownerPubkeyHex || outer.deletedAt !== undefined) return;
@@ -974,7 +975,8 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             await this.db.transaction(
                 "rw",
                 [this.db.postHistory, this.db.postHistoryDeletionRequests, this.db.sensitivePayloads,
-                    ...(input.relayFetchCoverage || input.localWriteScope || input.localBrowsingWrite ? [this.db.meta] : [])],
+                    ...(input.relayFetchCoverage || input.localWriteScope || input.localBrowsingWrite
+                        ? postHistoryEvidenceTables(this.db) : [])],
                 async () => {
                     await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
                     await assertPostHistoryLocalWriteCurrent(this.db, input.localBrowsingWrite);
@@ -1216,7 +1218,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     async deleteForPubkey(pubkeyHex: string | null | undefined): Promise<void> {
         if (!pubkeyHex) return;
 
-        const deletedCount = await this.db.transaction("rw", this.db.postHistory, this.db.meta, async () => {
+        const deletedCount = await this.db.transaction("rw", [this.db.postHistory, ...postHistoryEvidenceTables(this.db)], async () => {
             await new DexiePostHistoryRelayCoverageRepository(this.db, this.now).clearForPubkey(pubkeyHex);
             return this.db.postHistory.where("pubkeyHex").equals(pubkeyHex).delete();
         });
@@ -1230,59 +1232,10 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     ): Promise<void> {
         if (!pubkeyHex) return;
 
-        let deletedPostHistoryCount = 0;
-        let deletedPayloadCount = 0;
-        await this.db.transaction(
-            "rw",
-            this.db.postHistory,
-            this.db.postHistoryChildInteractions,
-            this.db.sensitivePayloads,
-            this.db.meta,
-            async () => {
-                await new DexiePostHistoryRelayCoverageRepository(this.db, this.now).clearForPubkey(pubkeyHex);
-                deletedPayloadCount = await this.db.sensitivePayloads
-                    .where("pubkeyHex")
-                    .equals(pubkeyHex)
-                    .delete();
-                const firstPostHistoryRecord = await this.db.postHistory
-                    .orderBy("pubkeyHex")
-                    .first();
-                if (!firstPostHistoryRecord) {
-                    return;
-                }
-
-                const lastPostHistoryRecord = await this.db.postHistory
-                    .orderBy("pubkeyHex")
-                    .last();
-                const canClearEntirePostHistory =
-                    firstPostHistoryRecord.pubkeyHex === pubkeyHex
-                    && lastPostHistoryRecord?.pubkeyHex === pubkeyHex;
-
-                if (canClearEntirePostHistory) {
-                    await this.db.postHistoryChildInteractions.clear();
-                    await this.db.postHistory.clear();
-                    // The first record proved that at least one record existed.
-                    deletedPostHistoryCount = 1;
-                    return;
-                }
-
-                const parentEventIds = (await this.db.postHistory
-                    .where("pubkeyHex")
-                    .equals(pubkeyHex)
-                    .primaryKeys()).map(String);
-
-                if (parentEventIds.length > 0) {
-                    await this.db.postHistoryChildInteractions
-                        .where("parentEventId")
-                        .anyOf(parentEventIds)
-                        .delete();
-                }
-
-                deletedPostHistoryCount = await this.db.postHistory
-                    .where("pubkeyHex")
-                    .equals(pubkeyHex)
-                    .delete();
-            },
+        const { deletedPostHistoryCount, deletedPayloadCount } = await clearPostHistoryDisplayForPubkey(
+            this.db,
+            pubkeyHex,
+            this.now,
         );
 
         // Keep the search revision outside the transaction so it only advances

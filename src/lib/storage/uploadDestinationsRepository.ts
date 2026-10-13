@@ -17,7 +17,7 @@ import {
 import { getEffectiveLocale } from "../utils/settingsStorage";
 import { getAppStorage } from "../appStorage";
 
-const LEGACY_UPLOAD_DESTINATION_MIGRATION_KEY = "migrated.localStorage.uploadEndpoint.v1";
+import { legacyUploadEndpointImportId } from "./legacyImportMarkers";
 
 export interface UploadDestinationsRepository {
     getAll(pubkeyHex?: string | null): Promise<UploadDestination[]>;
@@ -478,8 +478,8 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
 
     private async ensureLegacyUploadEndpointMigrated(pubkeyHex: string | null): Promise<void> {
         const scopeKey = getScopeKey(pubkeyHex);
-        const migrated = await this.db.meta.get(this.getLegacyUploadEndpointMigrationKey(scopeKey));
-        if (migrated?.value === true) return;
+        const migrated = await this.db.legacyImportState.get(this.getLegacyUploadEndpointMigrationKey(scopeKey));
+        if (migrated?.done === true) return;
 
         const existing = await this.db.uploadDestinations
             .where("scopeKey")
@@ -498,11 +498,13 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
             now: this.now(),
         });
 
-        await this.db.transaction("rw", this.db.uploadDestinations, this.db.meta, async () => {
-            await this.db.uploadDestinations.put(toRecord(destination));
-            await this.db.meta.put({
-                key: this.getLegacyUploadEndpointMigrationKey(scopeKey),
-                value: true,
+        await this.db.transaction("rw", this.db.uploadDestinations, this.db.legacyImportState, async () => {
+            if ((await this.db.legacyImportState.get(this.getLegacyUploadEndpointMigrationKey(scopeKey)))?.done === true) return;
+            const current = await this.db.uploadDestinations.where("scopeKey").equals(scopeKey).count();
+            if (current === 0) await this.db.uploadDestinations.put(toRecord(destination));
+            await this.db.legacyImportState.put({
+                id: this.getLegacyUploadEndpointMigrationKey(scopeKey),
+                done: true,
                 updatedAt: this.now(),
             });
         });
@@ -540,11 +542,12 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
                 updatedAt: timestamp,
             }));
 
-        await this.db.transaction("rw", this.db.uploadDestinations, this.db.meta, async () => {
+        await this.db.transaction("rw", this.db.uploadDestinations, this.db.legacyImportState, async () => {
+            if ((await this.db.legacyImportState.get(this.getLegacyUploadEndpointMigrationKey(scopeKey)))?.done === true) return;
             await this.db.uploadDestinations.bulkPut(scopedRecords);
-            await this.db.meta.put({
-                key: this.getLegacyUploadEndpointMigrationKey(scopeKey),
-                value: true,
+            await this.db.legacyImportState.put({
+                id: this.getLegacyUploadEndpointMigrationKey(scopeKey),
+                done: true,
                 updatedAt: timestamp,
             });
         });
@@ -599,7 +602,7 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
     }
 
     private getLegacyUploadEndpointMigrationKey(scopeKey: string): string {
-        return `${LEGACY_UPLOAD_DESTINATION_MIGRATION_KEY}.${scopeKey}`;
+        return legacyUploadEndpointImportId(scopeKey);
     }
 
     private getLocale(): string {
@@ -607,9 +610,9 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
     }
 
     private async markLegacyUploadEndpointMigrated(scopeKey: string): Promise<void> {
-        await this.db.meta.put({
-            key: this.getLegacyUploadEndpointMigrationKey(scopeKey),
-            value: true,
+        await this.db.legacyImportState.put({
+            id: this.getLegacyUploadEndpointMigrationKey(scopeKey),
+            done: true,
             updatedAt: this.now(),
         });
     }

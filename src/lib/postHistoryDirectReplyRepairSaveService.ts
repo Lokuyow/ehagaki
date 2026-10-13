@@ -1,4 +1,6 @@
 import type { RxNostr } from "rx-nostr";
+import { ehagakiDb } from "./storage/ehagakiDb";
+import { getPostHistoryChildWriteGeneration } from "./storage/postHistoryLocalWriteScope";
 import {
     postHistoryDeletionFetchService,
     type PostHistoryDeletionFetchTask,
@@ -137,6 +139,7 @@ export class PostHistoryDirectReplyRepairSaveService {
         let deletionTask: PostHistoryDeletionFetchTask | null = null;
         const isActive = () => active && params.isActive?.() !== false;
 
+        const generationReady = getPostHistoryChildWriteGeneration(ehagakiDb);
         const promise = (async (): Promise<PostHistoryDirectReplyRepairSaveResult> => {
             const candidates = compactItems(params.items);
             if (candidates.length === 0) {
@@ -210,6 +213,7 @@ export class PostHistoryDirectReplyRepairSaveService {
                 visibleItems,
                 params.fetchedAt ?? this.now(),
                 isActive,
+                await generationReady,
             );
 
             return isActive()
@@ -264,6 +268,7 @@ export class PostHistoryDirectReplyRepairSaveService {
         items: PostHistoryDirectReplyRepairItem[],
         fetchedAt: number,
         isActive: () => boolean,
+        expectedChildGeneration: number,
     ): Promise<Omit<PostHistoryDirectReplyRepairSaveResult, "deletedEventIds" | "deletionConfirmationIncomplete">> {
         const itemsByParentId = new Map<string, PostHistoryChildInteractionItem[]>();
         for (const item of items) {
@@ -286,6 +291,7 @@ export class PostHistoryDirectReplyRepairSaveService {
                 parentEventId,
                 events,
                 fetchedAt,
+                expectedChildGeneration,
             });
             const savedCount = result.insertedCount + result.updatedCount;
             if (savedCount > 0) {

@@ -48,10 +48,10 @@ describe("draft save flow integration", () => {
         await ehagakiDb.transaction(
             "rw",
             ehagakiDb.drafts,
-            ehagakiDb.meta,
+            ehagakiDb.legacyImportState,
             async () => {
                 await ehagakiDb.drafts.clear();
-                await ehagakiDb.meta.clear();
+                await ehagakiDb.legacyImportState.clear();
             },
         );
         draftsRepository.resetBackendSelectionForTesting();
@@ -61,10 +61,10 @@ describe("draft save flow integration", () => {
         await ehagakiDb.transaction(
             "rw",
             ehagakiDb.drafts,
-            ehagakiDb.meta,
+            ehagakiDb.legacyImportState,
             async () => {
                 await ehagakiDb.drafts.clear();
-                await ehagakiDb.meta.clear();
+                await ehagakiDb.legacyImportState.clear();
             },
         );
     });

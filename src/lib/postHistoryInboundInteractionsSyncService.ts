@@ -30,6 +30,8 @@ import {
 } from "./storage/postHistoryInboundInteractionsSyncStateRepository";
 import type { NostrEvent, RelayConfig } from "./types";
 import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
+import { ehagakiDb } from "./storage/ehagakiDb";
+import { getPostHistoryChildWriteGeneration } from "./storage/postHistoryLocalWriteScope";
 
 export const POST_HISTORY_INBOUND_INTERACTIONS_INITIAL_LOOKBACK_SECONDS =
     7 * 24 * 60 * 60;
@@ -200,6 +202,7 @@ export class PostHistoryInboundInteractionsSyncService {
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let resolveTask: ((status: PostHistoryInboundInteractionsSyncStatus) => void) | undefined;
 
+        const generationReady = getPostHistoryChildWriteGeneration(ehagakiDb);
         const promise = (async (): Promise<PostHistoryInboundInteractionsSyncResult> => {
             const state = await this.syncStateRepository.get(params.ownerPubkeyHex);
             const limit = resolveLimit(params.reason, params.limit);
@@ -303,6 +306,7 @@ export class PostHistoryInboundInteractionsSyncService {
                 rawCount,
                 events: toResultEvents(eventsById),
                 reconcileDirectReplyCandidates: params.reconcileDirectReplyCandidates,
+                expectedChildGeneration: await generationReady,
                 isActive: () => !cancelled && params.isActive?.() !== false,
             });
         })();
@@ -329,6 +333,7 @@ export class PostHistoryInboundInteractionsSyncService {
         reconcileDirectReplyCandidates?: (
             candidates: PostHistoryInboundDirectReplyCandidate[],
         ) => Promise<PostHistoryInboundReplyReconciliationResult>;
+        expectedChildGeneration: number;
         isActive: () => boolean;
     }): Promise<PostHistoryInboundInteractionsSyncResult> {
         if (!input.isActive()) {
@@ -481,6 +486,7 @@ export class PostHistoryInboundInteractionsSyncService {
                     parentEventId,
                     events,
                     fetchedAt: input.fetchedAt,
+                    expectedChildGeneration: input.expectedChildGeneration,
                 });
                 if (!input.isActive()) {
                     return this.buildCancelledResultFromFetchedEvents(input);
@@ -498,6 +504,7 @@ export class PostHistoryInboundInteractionsSyncService {
                 parentEventId,
                 events,
                 fetchedAt: input.fetchedAt,
+                expectedChildGeneration: input.expectedChildGeneration,
             });
             if (!input.isActive()) {
                 return this.buildCancelledResultFromFetchedEvents(input);

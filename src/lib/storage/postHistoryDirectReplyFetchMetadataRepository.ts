@@ -92,7 +92,7 @@ implements PostHistoryDirectReplyFetchMetadataRepository {
             return null;
         }
 
-        const record = await this.db.meta.get(buildMetadataKey(parentEventId));
+        const record = await this.db.postHistoryDirectReplyFetchMeta.get(parentEventId);
         if (!record || !isValidMetadataValue(record.value)) {
             return null;
         }
@@ -113,10 +113,8 @@ implements PostHistoryDirectReplyFetchMetadataRepository {
             return [];
         }
 
-        const records = await this.db.meta.bulkGet(
-            uniqueParentEventIds.map((parentEventId) =>
-                buildMetadataKey(parentEventId),
-            ),
+        const records = await this.db.postHistoryDirectReplyFetchMeta.bulkGet(
+            uniqueParentEventIds,
         );
         return records.flatMap((record) => {
             if (!record || !isValidMetadataValue(record.value)) {
@@ -140,7 +138,7 @@ implements PostHistoryDirectReplyFetchMetadataRepository {
             return null;
         }
 
-        return this.db.transaction("rw", this.db.meta, async () => {
+        return this.db.transaction("rw", this.db.postHistoryDirectReplyFetchMeta, async () => {
             const current = await this.get(input.parentEventId);
             if (shouldKeepCurrentMetadata(current, input)) {
                 return current;
@@ -155,8 +153,8 @@ implements PostHistoryDirectReplyFetchMetadataRepository {
                 schemaVersion:
                     POST_HISTORY_DIRECT_REPLY_FETCH_METADATA_SCHEMA_VERSION,
             };
-            await this.db.meta.put({
-                key: buildMetadataKey(input.parentEventId),
+            await this.db.postHistoryDirectReplyFetchMeta.put({
+                id: input.parentEventId,
                 value,
                 updatedAt,
             });
@@ -171,7 +169,7 @@ implements PostHistoryDirectReplyFetchMetadataRepository {
         if (!parentEventId) {
             return;
         }
-        await this.db.meta.delete(buildMetadataKey(parentEventId));
+        await this.db.postHistoryDirectReplyFetchMeta.delete(parentEventId);
     }
 }
 

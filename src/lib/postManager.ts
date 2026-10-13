@@ -41,6 +41,8 @@ import {
   type SensitiveContentStructureKind,
 } from "./sensitiveContentPayload";
 import { sensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
+import { ehagakiDb } from "./storage/ehagakiDb";
+import { getPostHistoryLocalRevision } from "./storage/postHistoryLocalWriteScope";
 import { getNip65RelayDirectory, type Nip65RelayDirectoryEntry } from "./nip65RelayDirectory";
 
 const NIP65_DISCOVERY_BUDGET_MS = 3_000;
@@ -404,6 +406,12 @@ export class PostManager {
     const structureLaunched = new Set<string>();
     const payloadCached = new Set<string>();
     let cacheWrites = Promise.resolve();
+    let expectedPayloadRevision: number | undefined;
+    if (params.event?.pubkey) {
+      void getPostHistoryLocalRevision(ehagakiDb, params.event.pubkey).then((revision) => {
+        expectedPayloadRevision = revision;
+      });
+    }
     let structurePromise: Promise<NostrEvent | null> | undefined;
     let structureHint: string | undefined;
     let structureEvent: NostrEvent | undefined;
@@ -557,6 +565,13 @@ export class PostManager {
           await this.deps.saveSensitivePayloadFn?.({
             event: params.event, attestation: sensitive.payloadAttestation,
             acceptedRelays, relayHints: [...rolesByRelay.keys()],
+            ...(typeof expectedPayloadRevision === "number" ? {
+              localWriteScope: {
+                ownerPubkeyHex: params.event.pubkey,
+                expectedRevision: expectedPayloadRevision,
+                isActive: () => isCurrent(),
+              },
+            } : {}),
           });
         } catch {
           this.deps.console?.warn?.("sensitive_payload_cache_save_failed", { stage: "payload-publish", reason: "storage" });

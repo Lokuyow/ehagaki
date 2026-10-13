@@ -2,13 +2,13 @@ import { STORAGE_KEYS } from "../constants";
 import type { HashtagHistoryEntry } from "../types";
 import { ehagakiDb, type EHagakiDB, type HashtagHistoryRecord } from "./ehagakiDb";
 import { getAppStorage } from "../appStorage";
+import { LEGACY_HASHTAG_HISTORY_IMPORT_ID } from "./legacyImportMarkers";
 
 export const MAX_HASHTAG_HISTORY = 100;
 export const MAX_HASHTAG_SUGGESTIONS = 5;
 export const MAX_HASHTAG_LENGTH = 100;
 
 const HASHTAG_HISTORY_SCHEMA_VERSION = 1;
-const LEGACY_HASHTAG_HISTORY_MIGRATION_KEY = "migrated.localStorage.hashtagHistory.v1";
 
 export interface HashtagHistoryRepository {
     getAll(): Promise<HashtagHistoryEntry[]>;
@@ -25,18 +25,14 @@ function isLegacyEntry(value: unknown): value is HashtagHistoryEntry {
         && typeof (value as HashtagHistoryEntry | null)?.lastUsed === "number";
 }
 
-function readLegacyHistory(
-    storage: Pick<Storage, "getItem"> = getAppStorage(),
-): HashtagHistoryEntry[] {
-    const raw = storage.getItem(STORAGE_KEYS.HASHTAG_HISTORY);
+function readLegacyHistory(raw: string | null): HashtagHistoryEntry[] | null {
     if (!raw) return [];
-
     try {
         const parsed = JSON.parse(raw) as unknown;
-        if (!Array.isArray(parsed)) return [];
-        return parsed.filter(isLegacyEntry);
+        if (!Array.isArray(parsed) || !parsed.every(isLegacyEntry)) return null;
+        return parsed;
     } catch {
-        return [];
+        return null;
     }
 }
 
@@ -183,11 +179,11 @@ export class DexieHashtagHistoryRepository implements HashtagHistoryRepository {
     }
 
     private async ensureLegacyHistoryMigrated(): Promise<void> {
-        const migrated = await this.db.meta.get(LEGACY_HASHTAG_HISTORY_MIGRATION_KEY);
-        if (migrated?.value === true) return;
+        if ((await this.db.legacyImportState.get(LEGACY_HASHTAG_HISTORY_IMPORT_ID))?.done === true) return;
 
         const storage = this.getStorage();
-        const legacyHistory = readLegacyHistory(storage);
+        const legacyHistory = readLegacyHistory(storage.getItem(STORAGE_KEYS.HASHTAG_HISTORY));
+        if (legacyHistory === null) return;
         const recordsByTagLower = new Map<string, HashtagHistoryRecord>();
 
         for (const entry of legacyHistory) {
@@ -201,19 +197,26 @@ export class DexieHashtagHistoryRepository implements HashtagHistoryRepository {
             }
         }
 
-        await this.db.transaction("rw", this.db.hashtagHistory, this.db.meta, async () => {
+        let completed = false;
+        await this.db.transaction("rw", this.db.hashtagHistory, this.db.legacyImportState, async () => {
+            if ((await this.db.legacyImportState.get(LEGACY_HASHTAG_HISTORY_IMPORT_ID))?.done === true) {
+                completed = true;
+                return;
+            }
             const records = [...recordsByTagLower.values()]
                 .sort(sortHistoryRecords)
                 .slice(0, MAX_HASHTAG_HISTORY);
             if (records.length > 0) {
                 await this.db.hashtagHistory.bulkPut(records);
             }
-            await this.db.meta.put({
-                key: LEGACY_HASHTAG_HISTORY_MIGRATION_KEY,
-                value: true,
+            await this.db.legacyImportState.put({
+                id: LEGACY_HASHTAG_HISTORY_IMPORT_ID,
+                done: true,
                 updatedAt: this.now(),
             });
+            completed = true;
         });
+        if (!completed) return;
 
         try {
             storage.removeItem(STORAGE_KEYS.HASHTAG_HISTORY);

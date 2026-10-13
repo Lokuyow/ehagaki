@@ -106,20 +106,24 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
             relayUrl: "wss://parent.example.com",
         });
         await parentFetch.promise;
-        await Promise.resolve();
-        await Promise.resolve();
-
-        expect(postHistoryRepository.upsertFetchedEvents).toHaveBeenCalledWith({
-            events: [{
-                event: expect.objectContaining({ id: PARENT_ID, pubkey: OWNER_PUBKEY }),
-                relayUrls: ["wss://parent.example.com"],
-            }],
-            fetchedAt: 1_700_000_000_000,
+        await vi.waitFor(() => {
+            expect(postHistoryRepository.upsertFetchedEvents).toHaveBeenCalledWith(expect.objectContaining({
+                events: [{
+                    event: expect.objectContaining({ id: PARENT_ID, pubkey: OWNER_PUBKEY }),
+                    relayUrls: ["wss://parent.example.com"],
+                }],
+                fetchedAt: 1_700_000_000_000,
+                localWriteScope: expect.objectContaining({
+                    ownerPubkeyHex: OWNER_PUBKEY,
+                    expectedRevision: 0,
+                }),
+            }));
         });
         await vi.waitFor(() => {
             expect(postHistoryChildInteractionsRepository.upsertDirectReplies).toHaveBeenCalledWith({
                 parentEventId: PARENT_ID,
                 events: [{ event: candidate.event, relayUrls: candidate.relayUrls }],
+                expectedChildGeneration: 0,
                 fetchedAt: 1_700_000_000_000,
             });
         });
@@ -246,6 +250,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
         expect(postHistoryChildInteractionsRepository.upsertDirectReplies).toHaveBeenCalledWith({
             parentEventId: PARENT_ID,
             events: [{ event: candidate.event, relayUrls: candidate.relayUrls }],
+            expectedChildGeneration: 0,
             fetchedAt: expect.any(Number),
         });
     });

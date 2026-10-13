@@ -43,7 +43,7 @@ describe("DexiePostHistoryReactionDeletionStateRepository", () => {
             },
         ]);
 
-        const whereSpy = vi.spyOn(db.meta, "where");
+        const whereSpy = vi.spyOn(db.postHistoryReactionDeletionAttempts, "where");
         await expect(repository.getForParentEventIds([
             firstParentEventId,
             secondParentEventId,
