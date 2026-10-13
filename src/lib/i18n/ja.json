@@ -203,7 +203,7 @@
     "retrySensitivePayload": "再試行"
   },
   "postHistory": {
-    "postsTab": "投稿",
+    "postsTab": "ポスト",
     "mediaTab": "メディア",
     "fullScanTitle": "リレーから全件取得",
     "fullScanDescription": "リレーから、自分の過去の投稿をできるだけ取得して保存します。\n閉じると中止しますが、保存済みの投稿は残ります。",

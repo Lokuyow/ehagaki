@@ -160,8 +160,33 @@
     :global(.post-history-dialog .dialog-content) { position: relative; display: flex; flex: 1; min-height: 0; max-height: none; overflow: hidden; padding: 0; }
     :global(.post-history-dialog .dialog-footer) { flex: none; }
     :global(.history-tabs) { display: flex; flex-direction: column; width: 100%; min-width: 0; min-height: 0; flex: 1; }
-    :global(.history-tab-list) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); flex: none; }
-    :global(.history-tab-list button) { min-height: 44px; width: 100%; margin: 0; border-radius: 0; }
-    :global(.history-tab-list button[data-state="active"]) { box-shadow: inset 0 -3px var(--text); }
+    :global(.history-tab-list) {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        flex: none;
+    }
+    :global(.history-tab-list button) {
+        position: relative;
+        min-height: 44px;
+        width: 100%;
+        margin: 0;
+        border-radius: 0;
+        background-color: var(--dialog-bg2);
+        --btn-bg: var(--dialog-bg2);
+    }
+    :global(.history-tab-list button[data-state="active"]) {
+        background-color: var(--dialog-bg);
+        --btn-bg: var(--dialog-bg);
+    }
+    :global(.history-tab-list button[data-state="active"]::after) {
+        content: "";
+        position: absolute;
+        inset: auto 0 0;
+        margin-inline: auto;
+        width: min(4.5rem, 55%);
+        height: 4px;
+        border-radius: 999px;
+        background-color: var(--theme);
+    }
     :global(.history-tab-panel:not([hidden])) { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 </style>
