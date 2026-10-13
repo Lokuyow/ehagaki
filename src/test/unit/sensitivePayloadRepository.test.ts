@@ -103,12 +103,12 @@ describe("DexieSensitivePayloadRepository", () => {
                 if (step === 'deletion') expect(scans).toBe(order.indexOf('payload') < order.indexOf('deletion') ? 1 : 0);
                 if (step === 'payload') expect(scans).toBe(order.indexOf('deletion') < order.indexOf('payload') ? 1 : 0);
             }
+            expect((await payloads.getByIds([payload.id]))[0]?.deletedAt).toBe(20_000);
+            expect((await posts.getByEventId(structure.id))?.deletedAt).toBeUndefined();
+            where.mockClear();
+            await reconcileSensitivePayloadDeletionForCandidate(payload.id, db);
+            expect(where.mock.calls.filter(([index]) => String(index) === "pubkeyHex")).toHaveLength(0);
         } finally { where.mockRestore(); }
-        expect((await payloads.getByIds([payload.id]))[0]?.deletedAt).toBe(20_000);
-        expect((await posts.getByEventId(structure.id))?.deletedAt).toBeUndefined();
-        where.mockClear();
-        await reconcileSensitivePayloadDeletionForCandidate(payload.id, db);
-        expect(where.mock.calls.filter(([index]) => String(index) === "pubkeyHex")).toHaveLength(0);
         await putPayload();
         expect((await payloads.getByIds([payload.id]))[0]?.deletedAt).toBe(20_000);
         db.close();
