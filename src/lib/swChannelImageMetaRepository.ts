@@ -26,10 +26,11 @@ implements ChannelImageMetaRepository {
     constructor(
         private readonly indexedDb: IDBFactory,
         private readonly dbName: string,
-        private readonly dbVersion: number,
+        private readonly dbVersion: number | null,
         private readonly ensureSchema: (
             db: IDBDatabase,
             transaction: IDBTransaction | null,
+            oldVersion: number,
         ) => void,
         private readonly onBlocked: () => void = () => undefined,
         private readonly onBlockedResolved: () => void = () => undefined,
@@ -37,11 +38,14 @@ implements ChannelImageMetaRepository {
 
     private open(): Promise<IDBDatabase> {
         return new Promise((resolve, reject) => {
-            const request = this.indexedDb.open(this.dbName, this.dbVersion);
+            const request = this.dbVersion == null
+                ? this.indexedDb.open(this.dbName)
+                : this.indexedDb.open(this.dbName, this.dbVersion);
             let wasBlocked = false;
-            request.onupgradeneeded = () => this.ensureSchema(
+            request.onupgradeneeded = (event) => this.ensureSchema(
                 request.result,
                 request.transaction,
+                event.oldVersion,
             );
             request.onblocked = () => {
                 wasBlocked = true;

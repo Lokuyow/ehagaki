@@ -37,7 +37,7 @@ describe('swIndexedDbOperationUtils', () => {
         });
 
         expect(operation).toHaveBeenCalledTimes(1);
-        expect(onUpgradeNeeded).toHaveBeenCalledWith(db, transaction);
+        expect(onUpgradeNeeded).toHaveBeenCalledWith(db, transaction, 0);
     });
 
     it('blocked を通知した後も同じ open request の成功を待つ', async () => {

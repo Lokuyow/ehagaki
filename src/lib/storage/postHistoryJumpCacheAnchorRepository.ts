@@ -1,7 +1,6 @@
 import type { EHagakiDB } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
-
-const POST_HISTORY_JUMP_CACHE_ANCHORS_KEY_PREFIX = "postHistoryJumpCacheAnchors:";
+import { assertPostHistoryLocalWriteCurrent, type PostHistoryLocalWriteScope } from "./postHistoryLocalWriteScope";
 
 export const POST_HISTORY_JUMP_CACHE_ANCHORS_DEFAULT_MAX_COUNT = 200;
 export const POST_HISTORY_JUMP_CACHE_ANCHORS_DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -27,6 +26,7 @@ export interface PostHistoryJumpCacheAnchorRepository {
         fetchedAt?: number;
         ttlMs?: number;
         maxCount?: number;
+        localWriteScope?: PostHistoryLocalWriteScope;
     }): Promise<PostHistoryJumpCacheAnchor[]>;
     hasNearbyAnchorForPubkey(input: {
         pubkeyHex: string;
@@ -52,10 +52,6 @@ type PostHistoryJumpCacheAnchorsValue = {
     pubkeyHex: string;
     anchors: PostHistoryJumpCacheAnchor[];
 };
-
-function buildJumpCacheAnchorsKey(pubkeyHex: string): string {
-    return `${POST_HISTORY_JUMP_CACHE_ANCHORS_KEY_PREFIX}${pubkeyHex}`;
-}
 
 function isValidAnchor(value: unknown): value is PostHistoryJumpCacheAnchor {
     if (!value || typeof value !== "object") {
@@ -126,7 +122,7 @@ export class DexiePostHistoryJumpCacheAnchorRepository implements PostHistoryJum
     ): Promise<PostHistoryJumpCacheAnchor[]> {
         const ttlMs = options.ttlMs ?? POST_HISTORY_JUMP_CACHE_ANCHORS_DEFAULT_TTL_MS;
         const maxCount = options.maxCount ?? POST_HISTORY_JUMP_CACHE_ANCHORS_DEFAULT_MAX_COUNT;
-        const record = await this.db.meta.get(buildJumpCacheAnchorsKey(pubkeyHex));
+        const record = await this.db.postHistoryJumpAnchors.get(pubkeyHex);
         if (!record || !isValidAnchorsValue(record.value)) {
             return [];
         }
@@ -141,6 +137,7 @@ export class DexiePostHistoryJumpCacheAnchorRepository implements PostHistoryJum
         fetchedAt?: number;
         ttlMs?: number;
         maxCount?: number;
+        localWriteScope?: PostHistoryLocalWriteScope;
     }): Promise<PostHistoryJumpCacheAnchor[]> {
         const ttlMs = input.ttlMs ?? POST_HISTORY_JUMP_CACHE_ANCHORS_DEFAULT_TTL_MS;
         const maxCount = input.maxCount ?? POST_HISTORY_JUMP_CACHE_ANCHORS_DEFAULT_MAX_COUNT;
@@ -186,13 +183,16 @@ export class DexiePostHistoryJumpCacheAnchorRepository implements PostHistoryJum
             ttlMs,
             maxCount,
         );
-        await this.db.meta.put({
-            key: buildJumpCacheAnchorsKey(input.pubkeyHex),
-            value: {
-                pubkeyHex: input.pubkeyHex,
-                anchors: sanitizedAnchors,
-            },
-            updatedAt: this.now(),
+        await this.db.transaction("rw", this.db.postHistoryJumpAnchors, this.db.postHistoryWriteGeneration, async () => {
+            await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
+            await this.db.postHistoryJumpAnchors.put({
+                id: input.pubkeyHex,
+                value: {
+                    pubkeyHex: input.pubkeyHex,
+                    anchors: sanitizedAnchors,
+                },
+                updatedAt: this.now(),
+            });
         });
 
         return sanitizedAnchors;
@@ -255,8 +255,8 @@ export class DexiePostHistoryJumpCacheAnchorRepository implements PostHistoryJum
             : frontierVisibleUntil;
 
         if (connectedAnchors.length > 0) {
-            await this.db.meta.put({
-                key: buildJumpCacheAnchorsKey(input.pubkeyHex),
+            await this.db.postHistoryJumpAnchors.put({
+                id: input.pubkeyHex,
                 value: {
                     pubkeyHex: input.pubkeyHex,
                     anchors: remainingAnchors,
@@ -277,7 +277,7 @@ export class DexiePostHistoryJumpCacheAnchorRepository implements PostHistoryJum
             return;
         }
 
-        await this.db.meta.delete(buildJumpCacheAnchorsKey(pubkeyHex));
+        await this.db.postHistoryJumpAnchors.delete(pubkeyHex);
     }
 }
 

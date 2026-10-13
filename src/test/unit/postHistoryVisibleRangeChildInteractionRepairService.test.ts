@@ -273,7 +273,8 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
         await task.promise;
         expect(upsertChildInteractions).toHaveBeenCalledOnce();
         expect(upsertChildInteractions).toHaveBeenCalledWith({ parentEventId: targetId,
-            events: [{ event: events[0], relayUrls: ["wss://relay.example.com/"] }], fetchedAt: 700, reactionTarget });
+            events: [{ event: events[0], relayUrls: ["wss://relay.example.com/"] }],
+            expectedChildGeneration: 0, fetchedAt: 700, reactionTarget });
     });
 
     it("visible kind:1 parentを#e filterで取得し、direct replyとreactionを保存へ渡す", async () => {
@@ -358,6 +359,7 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
                 event: expect.objectContaining({ id: "6".repeat(64), kind: 7 }),
                 relayUrls: ["wss://relay.example.com/"],
             }],
+            expectedChildGeneration: 0,
             fetchedAt: 500,
         });
         expect({
@@ -438,6 +440,7 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
                 event: expect.objectContaining({ kind: 7 }),
                 relayUrls: ["wss://relay.example.com/"],
             }],
+            expectedChildGeneration: 0,
             fetchedAt: 700,
         });
     });

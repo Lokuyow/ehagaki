@@ -5,6 +5,7 @@ import type { NostrEvent } from "../../lib/types";
 import { postHistoryRepository, DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
 import { ehagakiDb, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { postHistoryRelayCoverageRepository } from "../../lib/storage/postHistoryRelayCoverageRepository";
+import { postHistoryEvidenceTables } from "../../lib/storage/postHistoryPersistenceCoordinator";
 import { buildPostHistoryVisibleKindsKey } from "../../lib/storage/postHistoryVisibleRangeRepository";
 import { POST_HISTORY_FETCH_KINDS } from "../../lib/postHistoryRelayFetchService";
 import { postHistoryImportedRangesRepository, DexiePostHistoryImportedRangesRepository } from "../../lib/storage/postHistoryImportedRangesRepository";
@@ -70,7 +71,7 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
         preparation,
         coverGap: async () => {
             const expectedRevision = await postHistoryRelayCoverageRepository.getLocalRevision(fixture.owner);
-            await ehagakiDb.transaction("rw", ehagakiDb.meta, async () => postHistoryRelayCoverageRepository.record({
+            await ehagakiDb.transaction("rw", postHistoryEvidenceTables(ehagakiDb), async () => postHistoryRelayCoverageRepository.record({
                 ownerPubkeyHex: fixture.owner, kindsKey, expectedRevision, isActive: () => true,
                 relays: relayUrls.map((relayUrl) => ({ relayUrl, ranges: [{
                     since: fixture.events[gapEnd].created_at, until: fixture.events[gapStart - 1].created_at,
@@ -166,7 +167,7 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
                 relayHints: [], acceptedRelays: [], media: [], rawEvent: event, updatedAt: Date.now(), schemaVersion: 2,
             })));
             const expectedRevision = await postHistoryRelayCoverageRepository.getLocalRevision(fixture.owner);
-            await ehagakiDb.transaction("rw", ehagakiDb.meta, async () => { await postHistoryRelayCoverageRepository.record({
+            await ehagakiDb.transaction("rw", postHistoryEvidenceTables(ehagakiDb), async () => { await postHistoryRelayCoverageRepository.record({
                 ownerPubkeyHex: fixture.owner, kindsKey, expectedRevision, isActive: () => true,
                 relays: relayUrls.map((relayUrl) => ({ relayUrl, ranges: isCitrine
                     ? (isHeadScenario ? [{ since: fixture.farOlder.created_at, until: fixture.farOlder.created_at }]

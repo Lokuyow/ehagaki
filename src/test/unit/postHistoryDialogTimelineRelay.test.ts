@@ -156,6 +156,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(replyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
                 parentEventId,
                 events: [{ event: replyEvent }],
+                expectedChildGeneration: 0,
                 fetchedAt: expect.any(Number),
             });
         });

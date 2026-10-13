@@ -12,6 +12,7 @@ import {
     type EHagakiDB,
     type PostHistoryChildInteractionRecord,
 } from "./ehagakiDb";
+import { getPostHistoryChildWriteGeneration } from "./postHistoryLocalWriteScope";
 
 export const POST_HISTORY_REPLY_EVENT_SCHEMA_VERSION = 1;
 
@@ -25,6 +26,7 @@ export interface UpsertPostHistoryChildInteractionsInput {
     events: PostHistoryChildInteractionItem[];
     fetchedAt?: number | null;
     reactionTarget?: ReactionReferenceTarget;
+    expectedChildGeneration?: number;
 }
 
 export interface UpsertPostHistoryChildInteractionsResult {
@@ -313,7 +315,18 @@ export class DexiePostHistoryChildInteractionsRepository
         let updatedCount = 0;
         let unchangedCount = 0;
 
-        await this.db.transaction("rw", this.db.postHistoryChildInteractions, this.db.postHistory, async () => {
+        await this.db.transaction(
+            "rw",
+            this.db.postHistoryChildInteractions,
+            this.db.postHistory,
+            this.db.postHistoryChildWriteGeneration,
+            async () => {
+            if (
+                typeof input.expectedChildGeneration === "number"
+                && await getPostHistoryChildWriteGeneration(this.db) !== input.expectedChildGeneration
+            ) {
+                return;
+            }
             const parent = items.some(item => item.event.kind === 7)
                 ? await this.db.postHistory.get(input.parentEventId) : undefined;
             const reactionTargets: ReactionReferenceTarget[] = [

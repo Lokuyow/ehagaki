@@ -30,6 +30,8 @@ import {
 } from "./storage/postHistoryInboundInteractionsSyncStateRepository";
 import type { NostrEvent, RelayConfig } from "./types";
 import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
+import { ehagakiDb } from "./storage/ehagakiDb";
+import { getPostHistoryChildWriteGeneration } from "./storage/postHistoryLocalWriteScope";
 
 export const POST_HISTORY_INBOUND_INTERACTIONS_INITIAL_LOOKBACK_SECONDS =
     7 * 24 * 60 * 60;
@@ -96,6 +98,7 @@ export interface PostHistoryInboundInteractionsSyncServiceDeps {
     postHistoryRepository?: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     postHistoryChildInteractionsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     syncStateRepository?: Pick<PostHistoryInboundInteractionsSyncStateRepository, "get" | "save">;
+    getChildWriteGeneration?: () => Promise<number>;
     console?: Pick<Console, "warn" | "error">;
     setTimeoutFn?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
     clearTimeoutFn?: (id: ReturnType<typeof setTimeout>) => void;
@@ -172,6 +175,7 @@ export class PostHistoryInboundInteractionsSyncService {
     private postHistoryRepository: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     private postHistoryChildInteractionsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     private syncStateRepository: Pick<PostHistoryInboundInteractionsSyncStateRepository, "get" | "save">;
+    private getChildWriteGeneration: () => Promise<number>;
     private console: Pick<Console, "warn" | "error">;
     private setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
     private clearTimeoutFn: (id: ReturnType<typeof setTimeout>) => void;
@@ -183,6 +187,8 @@ export class PostHistoryInboundInteractionsSyncService {
             deps.postHistoryChildInteractionsRepository ?? postHistoryChildInteractionsRepository;
         this.syncStateRepository =
             deps.syncStateRepository ?? postHistoryInboundInteractionsSyncStateRepository;
+        this.getChildWriteGeneration = deps.getChildWriteGeneration
+            ?? (() => getPostHistoryChildWriteGeneration(ehagakiDb));
         this.console = deps.console ?? (typeof globalThis.console !== "undefined"
             ? globalThis.console
             : { warn: () => undefined, error: () => undefined });
@@ -200,6 +206,7 @@ export class PostHistoryInboundInteractionsSyncService {
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let resolveTask: ((status: PostHistoryInboundInteractionsSyncStatus) => void) | undefined;
 
+        const generationReady = this.getChildWriteGeneration();
         const promise = (async (): Promise<PostHistoryInboundInteractionsSyncResult> => {
             const state = await this.syncStateRepository.get(params.ownerPubkeyHex);
             const limit = resolveLimit(params.reason, params.limit);
@@ -303,6 +310,7 @@ export class PostHistoryInboundInteractionsSyncService {
                 rawCount,
                 events: toResultEvents(eventsById),
                 reconcileDirectReplyCandidates: params.reconcileDirectReplyCandidates,
+                expectedChildGeneration: await generationReady,
                 isActive: () => !cancelled && params.isActive?.() !== false,
             });
         })();
@@ -329,6 +337,7 @@ export class PostHistoryInboundInteractionsSyncService {
         reconcileDirectReplyCandidates?: (
             candidates: PostHistoryInboundDirectReplyCandidate[],
         ) => Promise<PostHistoryInboundReplyReconciliationResult>;
+        expectedChildGeneration: number;
         isActive: () => boolean;
     }): Promise<PostHistoryInboundInteractionsSyncResult> {
         if (!input.isActive()) {
@@ -433,6 +442,7 @@ export class PostHistoryInboundInteractionsSyncService {
                     classification,
                     event: item.event,
                     relayUrls: item.relayUrls,
+                    expectedChildGeneration: input.expectedChildGeneration,
                 });
             }
 
@@ -481,6 +491,7 @@ export class PostHistoryInboundInteractionsSyncService {
                     parentEventId,
                     events,
                     fetchedAt: input.fetchedAt,
+                    expectedChildGeneration: input.expectedChildGeneration,
                 });
                 if (!input.isActive()) {
                     return this.buildCancelledResultFromFetchedEvents(input);
@@ -498,6 +509,7 @@ export class PostHistoryInboundInteractionsSyncService {
                 parentEventId,
                 events,
                 fetchedAt: input.fetchedAt,
+                expectedChildGeneration: input.expectedChildGeneration,
             });
             if (!input.isActive()) {
                 return this.buildCancelledResultFromFetchedEvents(input);

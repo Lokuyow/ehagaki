@@ -207,9 +207,9 @@ export class PostHistoryLocalRelayService {
 
     archiveAdoptedAuthored(events: PostHistoryFetchedEventItem[], scope: { ownerPubkeyHex: string; expectedRevision?: number; isActive(): boolean }): Promise<void> {
         const session = this.currentSession(scope.ownerPubkeyHex);
-        if (!session || !scope.isActive()) return Promise.resolve();
+        if (!session || !scope.isActive() || scope.expectedRevision === undefined) return Promise.resolve();
         return (async () => {
-            const revision = scope.expectedRevision ?? await this.getLocalRevision(scope.ownerPubkeyHex);
+            const revision = scope.expectedRevision;
             const current = () => this.isCurrent(session) && scope.isActive();
             const adopted = new Map<string, NostrEvent>();
             const archive = new Map<string, AttestedPostHistoryRawEvent>();

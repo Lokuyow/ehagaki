@@ -1,4 +1,4 @@
-import type { EHagakiDB, MetaRecord } from "./ehagakiDb";
+import type { EHagakiDB, EhagakiScopedRecord } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
 import {
     POST_HISTORY_REACTION_LIFECYCLE_KIND,
@@ -101,7 +101,7 @@ function buildDefaultStateValue(
     };
 }
 
-function toStateRecord(record: MetaRecord | null | undefined): PostHistoryReactionLifecycleStateRecord | null {
+function toStateRecord(record: EhagakiScopedRecord | null | undefined): PostHistoryReactionLifecycleStateRecord | null {
     if (!record || !isValidStateValue(record.value)) {
         return null;
     }
@@ -145,9 +145,7 @@ implements PostHistoryReactionDeletionStateRepository {
             return [];
         }
 
-        const records = await this.db.meta.bulkGet(
-            uniqueRequestKeys.map((requestKey) => buildStateMetaKey(requestKey)),
-        );
+        const records = await this.db.postHistoryReactionDeletionAttempts.bulkGet(uniqueRequestKeys);
 
         return dedupeStateRecords(
             records
@@ -162,13 +160,9 @@ implements PostHistoryReactionDeletionStateRepository {
             return [];
         }
 
-        const records = await this.db.meta
-            .where("key")
-            .startsWithAnyOf(
-                uniqueParentEventIds.map((parentEventId) =>
-                    buildParentPrefix(parentEventId),
-                ),
-            )
+        const records = await this.db.postHistoryReactionDeletionAttempts
+            .where("parentEventId")
+            .anyOf(uniqueParentEventIds)
             .toArray();
 
         return dedupeStateRecords(
@@ -184,9 +178,7 @@ implements PostHistoryReactionDeletionStateRepository {
             return;
         }
 
-        await this.db.meta.bulkDelete(
-            uniqueRequestKeys.map((requestKey) => buildStateMetaKey(requestKey)),
-        );
+        await this.db.postHistoryReactionDeletionAttempts.bulkDelete(uniqueRequestKeys);
     }
 
     async saveMany(
@@ -202,8 +194,8 @@ implements PostHistoryReactionDeletionStateRepository {
         }
 
         const updatedAt = this.now();
-        const existingRecords = await this.db.meta.bulkGet(
-            uniqueInputs.map((input) => buildStateMetaKey(input.requestKey)),
+        const existingRecords = await this.db.postHistoryReactionDeletionAttempts.bulkGet(
+            uniqueInputs.map((input) => input.requestKey),
         );
         const existingStateByRequestKey = new Map<string, PostHistoryReactionLifecycleStateRecord>();
         existingRecords.forEach((record) => {
@@ -244,14 +236,15 @@ implements PostHistoryReactionDeletionStateRepository {
             };
 
             return {
-                key: buildStateMetaKey(input.requestKey),
+                id: input.requestKey,
+                parentEventId: input.parentEventId,
                 value: nextValue,
                 updatedAt,
-            } satisfies MetaRecord;
+            } satisfies EhagakiScopedRecord;
         });
 
-        await this.db.transaction("rw", this.db.meta, async () => {
-            await this.db.meta.bulkPut(nextRecords);
+        await this.db.transaction("rw", this.db.postHistoryReactionDeletionAttempts, async () => {
+            await this.db.postHistoryReactionDeletionAttempts.bulkPut(nextRecords);
         });
 
         return nextRecords.map((record) => ({

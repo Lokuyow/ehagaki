@@ -1,8 +1,5 @@
 import type { EHagakiDB } from "./ehagakiDb";
-import { POST_HISTORY_AUTHORED_KINDS_KEY, POST_HISTORY_PREVIOUS_KINDS_KEYS } from "../postHistoryKinds";
 import { ehagakiDb } from "./ehagakiDb";
-
-const POST_HISTORY_VISIBLE_RANGE_KEY_PREFIX = "postHistoryVisibleRange:";
 
 export interface PostHistoryVisibleRange {
     pubkeyHex: string;
@@ -16,23 +13,6 @@ export interface PostHistoryVisibleRangeRepository {
     save(range: Omit<PostHistoryVisibleRange, "updatedAt">): Promise<PostHistoryVisibleRange>;
     clear(pubkeyHex: string, kindsKey: string): Promise<void>;
     clearForPubkey(pubkeyHex: string | null | undefined): Promise<void>;
-}
-
-type PostHistoryVisibleRangeValue = Omit<PostHistoryVisibleRange, "updatedAt">;
-
-function buildVisibleRangeKey(pubkeyHex: string, kindsKey: string): string {
-    return `${POST_HISTORY_VISIBLE_RANGE_KEY_PREFIX}${pubkeyHex}:${kindsKey}`;
-}
-
-function isValidVisibleRangeValue(value: unknown): value is PostHistoryVisibleRangeValue {
-    if (!value || typeof value !== "object") {
-        return false;
-    }
-
-    const range = value as Partial<PostHistoryVisibleRangeValue>;
-    return typeof range.pubkeyHex === "string"
-        && typeof range.kindsKey === "string"
-        && (typeof range.visibleUntil === "number" || range.visibleUntil === null);
 }
 
 export function buildPostHistoryVisibleKindsKey(kinds: number[]): string {
@@ -53,49 +33,20 @@ export class DexiePostHistoryVisibleRangeRepository implements PostHistoryVisibl
         private now: () => number = Date.now,
     ) { }
 
-    async get(pubkeyHex: string, kindsKey: string): Promise<PostHistoryVisibleRange | null> {
-        const keys = [kindsKey, ...(kindsKey === POST_HISTORY_AUTHORED_KINDS_KEY ? POST_HISTORY_PREVIOUS_KINDS_KEYS : [])];
-        for (const key of keys) {
-            const record = await this.db.meta.get(buildVisibleRangeKey(pubkeyHex, key));
-            if (!record || !isValidVisibleRangeValue(record.value) || record.value.pubkeyHex !== pubkeyHex || record.value.kindsKey !== key) continue;
-            return { ...record.value, kindsKey, updatedAt: record.updatedAt };
-        }
+    async get(_pubkeyHex: string, _kindsKey: string): Promise<PostHistoryVisibleRange | null> {
         return null;
     }
 
     async save(range: Omit<PostHistoryVisibleRange, "updatedAt">): Promise<PostHistoryVisibleRange> {
-        const updatedAt = this.now();
-        const nextRange: PostHistoryVisibleRange = {
-            ...range,
-            updatedAt,
-        };
-
-        await this.db.meta.put({
-            key: buildVisibleRangeKey(range.pubkeyHex, range.kindsKey),
-            value: {
-                pubkeyHex: range.pubkeyHex,
-                kindsKey: range.kindsKey,
-                visibleUntil: range.visibleUntil,
-            },
-            updatedAt,
-        });
-
-        return nextRange;
+        return { ...range, updatedAt: this.now() };
     }
 
-    async clear(pubkeyHex: string, kindsKey: string): Promise<void> {
-        await this.db.meta.delete(buildVisibleRangeKey(pubkeyHex, kindsKey));
+    async clear(_pubkeyHex: string, _kindsKey: string): Promise<void> {
+        return;
     }
 
-    async clearForPubkey(pubkeyHex: string | null | undefined): Promise<void> {
-        if (!pubkeyHex) return;
-
-        const keyPrefix = `${POST_HISTORY_VISIBLE_RANGE_KEY_PREFIX}${pubkeyHex}:`;
-        const records = await this.db.meta
-            .filter((record) => record.key.startsWith(keyPrefix))
-            .primaryKeys();
-
-        await this.db.meta.bulkDelete(records);
+    async clearForPubkey(_pubkeyHex: string | null | undefined): Promise<void> {
+        return;
     }
 }
 

@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import Dexie from "dexie";
+import { EHagakiDB } from "../../lib/storage/ehagakiDb";
+import { getPostHistoryChildWriteGeneration } from "../../lib/storage/postHistoryLocalWriteScope";
+import { clearPostHistoryDisplayForPubkey } from "../../lib/storage/postHistoryPersistenceCoordinator";
+import { DexiePostHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryChildInteractionsRepository";
 
 const rxNostrMock = vi.hoisted(() => ({
     emittedFilters: [] as any[],
@@ -129,6 +134,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledOnce();
         expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledWith({
             parentEventId: PARENT_ID, events: [{ event: events[0], relayUrls: ["wss://relay.example.com/"] }],
+            expectedChildGeneration: 0,
             fetchedAt: 1_700_000_000_000,
         });
         expect(onSavedInboundInteractions).toHaveBeenCalledOnce();
@@ -173,6 +179,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
                 event: directReply,
                 relayUrls: ["wss://relay.example.com/"],
             }],
+            expectedChildGeneration: 0,
             fetchedAt: 1_700_000_000_000,
         });
         expect(onSavedInboundInteractions).toHaveBeenCalledWith([PARENT_ID]);
@@ -231,6 +238,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
                 event: selfReaction,
                 relayUrls: ["wss://relay.example.com/"],
             }],
+            expectedChildGeneration: 0,
             fetchedAt: 1_700_000_000_000,
         });
         expect(onSavedInboundInteractions).toHaveBeenCalledWith([PARENT_ID]);
@@ -248,5 +256,148 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
 
         expect(unsubscribe).toHaveBeenCalledTimes(1);
         expect(postHistoryChildInteractionsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+    });
+
+    it("reads a fresh generation after history clear so a later packet can be saved", async () => {
+        const name = `realtime-generation-${crypto.randomUUID()}`;
+        const dbA = new EHagakiDB(name);
+        const dbB = new EHagakiDB(name);
+        await dbA.open();
+        await dbB.open();
+        const repository = new DexiePostHistoryChildInteractionsRepository(dbA);
+        let releaseFirstRead: () => void = () => undefined;
+        const firstRead = new Promise<void>((resolve) => {
+            releaseFirstRead = resolve;
+        });
+        let reads = 0;
+        const postHistoryRepository = {
+            getExistingEventIdsForPubkey: vi.fn(async () => {
+                reads += 1;
+                if (reads === 1) await firstRead;
+                return [PARENT_ID];
+            }),
+            getByEventId: vi.fn(async () => ({
+                eventId: PARENT_ID,
+                kind: 1,
+                pubkeyHex: OWNER_PUBKEY,
+                tags: [] as string[][],
+                createdAt: 90,
+                relayHints: [] as string[],
+                acceptedRelays: [] as string[],
+                fetchedRelays: [] as string[],
+            }) as any),
+        };
+        const service = new PostHistoryInboundInteractionsRealtimeService({
+            postHistoryRepository,
+            postHistoryChildInteractionsRepository: repository,
+            getChildWriteGeneration: () => getPostHistoryChildWriteGeneration(dbA),
+            now: () => 1_700_000_000_000,
+            console: { warn: vi.fn(), error: vi.fn() },
+        });
+        let observerRef: { next?: (packet: unknown) => void } | undefined;
+        rxNostrMock.use.mockReturnValue({
+            subscribe: vi.fn((observer: { next?: (packet: unknown) => void }) => {
+                observerRef = observer;
+                return { unsubscribe: vi.fn() };
+            }),
+        });
+        const subscription = service.subscribe(rxNostrMock as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+            relayConfig: { "wss://read.example.com/": { read: true, write: false } },
+        });
+        observerRef?.next?.({
+            event: createEvent({ id: "3".repeat(64) }),
+            from: "wss://relay.example.com",
+        });
+        await vi.waitFor(() => {
+            expect(postHistoryRepository.getExistingEventIdsForPubkey).toHaveBeenCalled();
+        });
+        await clearPostHistoryDisplayForPubkey(dbB, OWNER_PUBKEY, () => 60);
+        releaseFirstRead();
+        await subscription.waitForIdle();
+        await expect(dbA.postHistoryChildInteractions.count()).resolves.toBe(0);
+
+        observerRef?.next?.({
+            event: createEvent({ id: "4".repeat(64) }),
+            from: "wss://relay.example.com",
+        });
+        await subscription.waitForIdle();
+        await expect(dbA.postHistoryChildInteractions.count()).resolves.toBe(1);
+        subscription.stop();
+        dbA.close();
+        dbB.close();
+        await Dexie.delete(name);
+    });
+
+    it("rejects a packet received before history clear while an earlier packet is still queued", async () => {
+        const name = `realtime-queued-generation-${crypto.randomUUID()}`;
+        const dbA = new EHagakiDB(name);
+        const dbB = new EHagakiDB(name);
+        await dbA.open();
+        await dbB.open();
+        const repository = new DexiePostHistoryChildInteractionsRepository(dbA);
+        let releaseFirstRead: () => void = () => undefined;
+        const firstRead = new Promise<void>((resolve) => {
+            releaseFirstRead = resolve;
+        });
+        let reads = 0;
+        const postHistoryRepository = {
+            getExistingEventIdsForPubkey: vi.fn(async () => {
+                reads += 1;
+                if (reads === 1) await firstRead;
+                return [PARENT_ID];
+            }),
+            getByEventId: vi.fn(async () => ({
+                eventId: PARENT_ID,
+                kind: 1,
+                pubkeyHex: OWNER_PUBKEY,
+                tags: [] as string[][],
+                createdAt: 90,
+                relayHints: [] as string[],
+                acceptedRelays: [] as string[],
+                fetchedRelays: [] as string[],
+            }) as any),
+        };
+        const service = new PostHistoryInboundInteractionsRealtimeService({
+            postHistoryRepository,
+            postHistoryChildInteractionsRepository: repository,
+            getChildWriteGeneration: () => getPostHistoryChildWriteGeneration(dbA),
+            now: () => 1_700_000_000_000,
+            console: { warn: vi.fn(), error: vi.fn() },
+        });
+        let observerRef: { next?: (packet: unknown) => void } | undefined;
+        rxNostrMock.use.mockReturnValue({
+            subscribe: vi.fn((observer: { next?: (packet: unknown) => void }) => {
+                observerRef = observer;
+                return { unsubscribe: vi.fn() };
+            }),
+        });
+        const subscription = service.subscribe(rxNostrMock as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+            relayConfig: { "wss://read.example.com/": { read: true, write: false } },
+        });
+        const packetA = createEvent({ id: "3".repeat(64) });
+        const packetB = createEvent({ id: "5".repeat(64) });
+        const packetC = createEvent({ id: "6".repeat(64) });
+        observerRef?.next?.({ event: packetA, from: "wss://relay.example.com" });
+        await vi.waitFor(() => {
+            expect(postHistoryRepository.getExistingEventIdsForPubkey).toHaveBeenCalledTimes(1);
+        });
+        observerRef?.next?.({ event: packetB, from: "wss://relay.example.com" });
+        await clearPostHistoryDisplayForPubkey(dbB, OWNER_PUBKEY, () => 60);
+        expect(reads).toBe(1);
+        releaseFirstRead();
+        await subscription.waitForIdle();
+        await expect(dbA.postHistoryChildInteractions.toArray()).resolves.toEqual([]);
+
+        observerRef?.next?.({ event: packetC, from: "wss://relay.example.com" });
+        await subscription.waitForIdle();
+        await expect(dbA.postHistoryChildInteractions.toArray()).resolves.toEqual([
+            expect.objectContaining({ eventId: packetC.id }),
+        ]);
+        subscription.stop();
+        dbA.close();
+        dbB.close();
+        await Dexie.delete(name);
     });
 });

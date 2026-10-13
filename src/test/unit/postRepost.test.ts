@@ -171,7 +171,7 @@ describe("repost persistence and interoperability", () => {
     it("does not recreate local history after its revision changed", async () => {
         const { db, repo } = repository(); const target = sign(); const event = outer(target);
         await repo.upsertFetchedEvents({ events: [{ event }] });
-        await db.transaction("rw", db.meta, () => advancePostHistoryLocalRevision(db, event.pubkey, 200));
+        await db.transaction("rw", db.postHistoryWriteGeneration, () => advancePostHistoryLocalRevision(db, event.pubkey, 200));
         await expect(repo.attachRepostTarget({ outerEventId: event.id, target,
             localWriteScope: { ownerPubkeyHex: event.pubkey, expectedRevision: 0, isActive: () => true } })).rejects.toThrow();
         expect((await repo.getByEventId(event.id))?.repostTarget).toBeUndefined();
@@ -207,13 +207,11 @@ describe("repost persistence and interoperability", () => {
     });
     it("does not reuse pre-Repost sync completion metadata", async () => {
         const { db } = repository(); const owner = sign().pubkey;
-        await db.meta.put({ key: `postHistoryAuthoredSyncState:${owner}`, updatedAt: 1, value: { completedThroughTimestamp: 999 } });
-        await db.meta.put({ key: `postHistoryAuthoredSyncState:${owner}:1,6,42,1111`, updatedAt: 1,
-            value: { completedThroughTimestamp: 999, pendingCatchupSinceTimestamp: 900, cooldownUntil: 999999 } });
+        await db.postHistoryAuthoredSyncCursor.put({ id: owner, updatedAt: 1, value: { completedThroughTimestamp: 999 } });
         const state = new DexiePostHistoryAuthoredSyncStateRepository(db);
         expect(await state.get(owner)).toBeNull();
         await state.save(owner, { completedThroughTimestamp: 200 });
-        expect(await db.meta.get(`postHistoryAuthoredSyncState:${owner}:1,6,16,42,1111`)).toBeDefined();
+        expect(await db.postHistoryAuthoredSyncCursor.get(owner)).toBeDefined();
     });
     it.each(["1,42,1111", "1,6,42,1111"])("preserves %s browsing ranges without claiming kind 16 relay coverage", async (oldKey) => {
         const { db } = repository(); const owner = sign().pubkey;
@@ -224,8 +222,8 @@ describe("repost persistence and interoperability", () => {
         const coverage = new DexiePostHistoryRelayCoverageRepository(db);
         await coverage.record({ ownerPubkeyHex: owner, expectedRevision: 0, isActive: () => true,
             kindsKey: oldKey, relays: [{ relayUrl: relay, ranges: [{ since: 1, until: 200 }] }] });
-        expect(await visible.get(owner, "1,6,16,42,1111")).toMatchObject({ kindsKey: "1,6,16,42,1111", visibleUntil: 200 });
-        expect((await new DexiePostHistoryImportedRangesRepository(db).get(owner, "1,6,16,42,1111")).ranges).toEqual([{ since: 1, until: 200 }]);
+        expect(await visible.get(owner, "1,6,16,42,1111")).toBeNull();
+        expect((await new DexiePostHistoryImportedRangesRepository(db).get(owner, "1,6,16,42,1111")).ranges).toEqual([]);
         expect((await new DexiePostHistoryRelayCoverageRepository(db).get(owner, "1,6,16,42,1111")).relays).toEqual([]);
     });
     it("prefers current visible range, merges valid old imported ranges and rejects stale old ranges", async () => {
@@ -234,15 +232,15 @@ describe("repost persistence and interoperability", () => {
         for (const [key, until] of [["1,42,1111", 100], ["1,6,42,1111", 200], ["1,6,16,42,1111", 300]] as const) {
             await visible.save({ pubkeyHex: owner, kindsKey: key, visibleUntil: until });
         }
-        expect((await visible.get(owner, "1,6,16,42,1111"))?.visibleUntil).toBe(300);
+        expect(await visible.get(owner, "1,6,16,42,1111")).toBeNull();
         await visible.clear(owner, "1,6,16,42,1111");
-        expect((await visible.get(owner, "1,6,16,42,1111"))?.visibleUntil).toBe(200);
+        expect(await visible.get(owner, "1,6,16,42,1111")).toBeNull();
         const imported = new DexiePostHistoryImportedRangesRepository(db);
         for (const [key, range] of [["1,42,1111", { since: 1, until: 100 }], ["1,6,42,1111", { since: 101, until: 200 }]] as const) {
             await imported.record({ ownerPubkeyHex: owner, expectedRevision: 0, isActive: () => true, kindsKey: key, range });
         }
-        expect((await imported.get(owner, "1,6,16,42,1111")).ranges).toEqual([{ since: 1, until: 200 }]);
-        await db.transaction("rw", db.meta, () => advancePostHistoryLocalRevision(db, owner, 300));
+        expect((await imported.get(owner, "1,6,16,42,1111")).ranges).toEqual([]);
+        await db.transaction("rw", db.postHistoryWriteGeneration, () => advancePostHistoryLocalRevision(db, owner, 300));
         expect((await imported.get(owner, "1,6,16,42,1111")).ranges).toEqual([]);
     });
     it("can persist a valid self-target deletion without inserting its target into history", async () => {

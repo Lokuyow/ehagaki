@@ -312,11 +312,11 @@ describe("local relay with real rx-nostr verification and IndexedDB", () => {
     it("archives only exact adopted authored events and never adds local hints", async () => {
         configure(); const event = sign(1);
         const attested = attestFullyVerifiedPostHistoryRawEvent(event)!;
-        await service.archiveAdoptedAuthored([attested], { ownerPubkeyHex: owner, isActive: () => true });
+        await service.archiveAdoptedAuthored([attested], { ownerPubkeyHex: owner, expectedRevision: 0, isActive: () => true });
         expect(LocalSocket.sent).toHaveLength(0);
         await repository.upsertFetchedEvents({ events: [{ ...attested, relayUrls: ["wss://external.example/"] }] });
         await service.archiveAdoptedAuthored([attested, { event: { ...event, content: "conflict" } }, { event: sign(7) }],
-            { ownerPubkeyHex: owner, isActive: () => true });
+            { ownerPubkeyHex: owner, expectedRevision: 0, isActive: () => true });
         await vi.waitFor(() => expect(LocalSocket.sent.filter(([type]) => type === "EVENT")).toHaveLength(1));
         expect(LocalSocket.sent.find(([type]) => type === "EVENT")?.[1]).toEqual(JSON.parse(JSON.stringify(event)));
         expect((await repository.getByEventId(event.id))?.fetchedRelays).toEqual(["wss://external.example/"]);
@@ -337,14 +337,14 @@ describe("local relay with real rx-nostr verification and IndexedDB", () => {
         configure(); LocalSocket.mode = "silent";
         // Includes duplicate authored rows, a shared Payload, and two deletion
         // reference rows for the same signed kind 5 event.
-        await service.archiveAdoptedAuthored([...attested, ...attested], { ownerPubkeyHex: owner, isActive: () => true });
+        await service.archiveAdoptedAuthored([...attested, ...attested], { ownerPubkeyHex: owner, expectedRevision: 0, isActive: () => true });
         await vi.waitFor(() => expect(LocalSocket.sent.filter(([type]) => type === "EVENT")).toHaveLength(size));
         const actual = LocalSocket.sent.map(message => (message[1] as NostrEvent).id);
         expect(new Set(actual)).toEqual(new Set([...authored, payload, deletion].map(event => event.id)));
         expect(createClient).toHaveBeenCalledOnce();
         expect(LocalSocket.instances).toHaveLength(1);
         expect(LocalSocket.instances[0].readyState).toBe(1); // All ACKs are still withheld.
-        await service.archiveAdoptedAuthored(attested, { ownerPubkeyHex: owner, isActive: () => true });
+        await service.archiveAdoptedAuthored(attested, { ownerPubkeyHex: owner, expectedRevision: 0, isActive: () => true });
         expect(createClient).toHaveBeenCalledOnce(); // Overlapping in-flight IDs are not resent.
         service.cancelSession();
         await vi.waitFor(() => expect(LocalSocket.instances[0].readyState).toBe(3));
@@ -389,7 +389,7 @@ describe("local relay with real rx-nostr verification and IndexedDB", () => {
         expect(LocalSocket.sent.filter(([type]) => type === "EVENT")).toHaveLength(0);
         const attested = attestFullyVerifiedPostHistoryRawEvent(structure)!;
         await repository.upsertFetchedEvents({ events: [{ ...attested, relayUrls: ["wss://external.example/"] }] });
-        await service.archiveAdoptedAuthored([attested], { ownerPubkeyHex: owner, isActive: () => true });
+        await service.archiveAdoptedAuthored([attested], { ownerPubkeyHex: owner, expectedRevision: 0, isActive: () => true });
         await vi.waitFor(() => expect(LocalSocket.sent.filter(([type]) => type === "EVENT").some(message =>
             (message[1] as NostrEvent).id === deletion.id)).toBe(true));
         expect(LocalSocket.sent.filter(([type]) => type === "EVENT").every(message =>

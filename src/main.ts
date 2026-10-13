@@ -6,6 +6,7 @@ import { applyUploadDestinationBootstrap } from './lib/bootstrap/uploadDestinati
 import { handleStaleAssetPreloadError } from './lib/staleAssetPreloadError'
 import { configureAppRuntimeEnvironment } from './lib/appRuntimeEnvironment'
 import { startServiceWorkerRegistration } from './lib/bootstrap/serviceWorkerBootstrap'
+import { installAppOriginEhagakiDatabaseGate } from './lib/storage/ehagakiDbPageGate'
 import { bootstrapIframeHostRelayConfig } from './lib/iframeHostRelayConfigBootstrap'
 
 configureAppRuntimeEnvironment({
@@ -38,6 +39,9 @@ function renderTerminalHostRelayBootstrapFailure(code: string): void {
   target.append(alert)
 }
 
+installAppOriginEhagakiDatabaseGate(window, {
+  serviceWorkerUpgrade: !import.meta.env.DEV,
+})
 startServiceWorkerRegistration()
 
 window.addEventListener('vite:preloadError', (event) => {

@@ -12,6 +12,7 @@ import { postHistoryLocalBrowsingRangesRepository, type PostHistoryLocalBrowsing
 import { normalizeLocalRelayUrl } from "../localRelayUrl";
 import { getAppRuntimeEnvironment } from "../appRuntimeEnvironment";
 import { getPostHistoryLocalRevision } from "../storage/postHistoryLocalWriteScope";
+import { postHistoryContinuityTables } from "../storage/postHistoryPersistenceCoordinator";
 import { getPostHistoryBrowsingContinuity, getPostHistoryOlderUncoveredRange } from "../postHistoryBrowsingContinuity";
 import type { PostHistoryJsonlImportResult } from "../postHistoryJsonlImportService";
 import type { PostHistoryFullScanResult } from "../postHistoryRelayFullScanService";
@@ -1644,7 +1645,7 @@ export function usePostHistoryListing({
     async function readContinuityRecords(pubkeyHex: string) {
         // One snapshot also keeps every source observable by liveQuery.
         const url = getLocalBrowsingUrl();
-        return ehagakiDb.transaction("r", ehagakiDb.meta, async () => {
+        return ehagakiDb.transaction("r", postHistoryContinuityTables(ehagakiDb), async () => {
             const revision = await getPostHistoryLocalRevision(ehagakiDb, pubkeyHex);
             const coverage = await postHistoryRelayCoverageRepository.get(pubkeyHex, POST_HISTORY_VISIBLE_KINDS_KEY);
             const restored = await postHistoryImportedRangesRepository.get(pubkeyHex, POST_HISTORY_VISIBLE_KINDS_KEY);
@@ -3199,6 +3200,7 @@ export function usePostHistoryListing({
         );
         const repairUntil = createdAt;
 
+        const expectedJumpRevision = await getPostHistoryLocalRevision(ehagakiDb, pubkeyHex);
         const authoredScope = await createAuthoredScope(pubkeyHex, rxNostr, syncRequestId);
         if (!authoredScope.isActive()) return false;
         const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
@@ -3229,6 +3231,11 @@ export function usePostHistoryListing({
                 centerCreatedAt: createdAt,
                 radiusSec: POST_HISTORY_JUMP_FETCH_RADIUS_SECONDS,
                 fetchedAt: relayResult.fetchedAt,
+                localWriteScope: {
+                    ownerPubkeyHex: pubkeyHex,
+                    expectedRevision: expectedJumpRevision,
+                    isActive: () => authoredScope.isActive(),
+                },
             });
             state.hasJumpCacheAnchors = true;
         }

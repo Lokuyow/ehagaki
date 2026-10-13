@@ -48,7 +48,7 @@ export class DexieSensitivePayloadRepository implements SensitivePayloadReposito
             : attestFullyVerifiedPostHistoryRawEvent(input.event)?.event;
         if (!event || !isPayloadCandidate(event)) throw new Error("invalid_sensitive_payload_candidate");
         const saved = await this.db.transaction("rw", [this.db.sensitivePayloads,
-            ...(input.localWriteScope ? [this.db.meta] : [])], async () => {
+            ...(input.localWriteScope ? [this.db.postHistoryWriteGeneration] : [])], async () => {
             await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
             const existing = await this.db.sensitivePayloads.get(event.id);
             if (existing?.deletedAt !== undefined) return false;

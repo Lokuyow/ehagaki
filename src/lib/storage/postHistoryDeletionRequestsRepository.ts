@@ -580,7 +580,7 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
         await this.db.transaction(
             "rw",
             [this.db.postHistoryDeletionRequests, this.db.postHistory,
-                ...(input.localWriteScope ? [this.db.meta] : [])],
+                ...(input.localWriteScope ? [this.db.postHistoryWriteGeneration] : [])],
             async () => {
                 await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
                 const existingRecords = await this.db.postHistoryDeletionRequests.bulkGet(

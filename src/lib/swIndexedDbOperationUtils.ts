@@ -1,6 +1,7 @@
 export interface IndexedDbOpenRequest<TDb> {
     error?: Error | DOMException | null;
     onupgradeneeded: ((event: {
+        oldVersion: number;
         target: {
             result: TDb;
             transaction?: unknown;
@@ -12,7 +13,7 @@ export interface IndexedDbOpenRequest<TDb> {
 }
 
 export interface IndexedDbOpenLike<TDb> {
-    open: (dbName: string, dbVersion: number) => IndexedDbOpenRequest<TDb>;
+    open: (dbName: string, dbVersion?: number) => IndexedDbOpenRequest<TDb>;
 }
 
 export interface SharedMediaStoreOperationDbLike {
@@ -46,19 +47,21 @@ export function executeServiceWorkerIndexedDbOperation<TDb>({
 }: {
     indexedDb: IndexedDbOpenLike<TDb>;
     dbName: string;
-    dbVersion: number;
-    onUpgradeNeeded?: (db: TDb, transaction?: unknown) => void;
+    dbVersion: number | null;
+    onUpgradeNeeded?: (db: TDb, transaction?: unknown, oldVersion?: number) => void;
     onBlocked?: () => void;
     onBlockedResolved?: () => void;
     operation: IndexedDbOperation<TDb>;
 }): Promise<void> {
     return new Promise((resolve, reject) => {
         try {
-            const request = indexedDb.open(dbName, dbVersion);
+            const request = dbVersion == null
+                ? indexedDb.open(dbName)
+                : indexedDb.open(dbName, dbVersion);
             let wasBlocked = false;
 
             request.onupgradeneeded = (event) => {
-                onUpgradeNeeded?.(event.target.result, event.target.transaction);
+                onUpgradeNeeded?.(event.target.result, event.target.transaction, event.oldVersion ?? 0);
             };
 
             request.onblocked = () => {

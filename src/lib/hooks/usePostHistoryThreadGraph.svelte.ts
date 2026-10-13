@@ -28,7 +28,8 @@ import { RelayConfigUtils } from "../relayConfigUtils";
 import { postHistoryReplyParentTargetDiscoveryAdapter } from "../postHistoryRelatedTargetDiscoveryAdapter";
 import type { NostrEvent, ProfileData, RelayConfig } from "../types";
 import type { PostHistoryRawEventAttestation } from "../postHistoryRawEventVerification";
-import type { PostHistoryRecord, PostHistoryChildInteractionRecord } from "../storage/ehagakiDb";
+import { ehagakiDb, type PostHistoryRecord, type PostHistoryChildInteractionRecord } from "../storage/ehagakiDb";
+import { getPostHistoryChildWriteGeneration } from "../storage/postHistoryLocalWriteScope";
 import {
     postHistoryRepository,
     type PostHistoryRepository,
@@ -1653,6 +1654,7 @@ export function usePostHistoryThreadGraph({
                     return;
                 }
 
+                const generationReady = getPostHistoryChildWriteGeneration(ehagakiDb);
                 const task = replyFetchService.fetchDirectReplies(rxNostr, {
                     eventId: nodeEventId,
                     createdAt: currentNode.event.created_at,
@@ -1686,6 +1688,7 @@ export function usePostHistoryThreadGraph({
                         parentEventId: nodeEventId,
                         events: fetchedEvents,
                         fetchedAt: result.status === "partial" ? null : result.fetchedAt,
+                        expectedChildGeneration: await generationReady,
                     });
                 }
                 const effectiveMetadata = await directReplyFetchMetadataRepositoryImpl.save({
@@ -2615,6 +2618,7 @@ export function usePostHistoryThreadGraph({
                     return;
                 }
 
+                const generationReady = getPostHistoryChildWriteGeneration(ehagakiDb);
                 const relayHints = getChildrenPrefetchRelayHints(post, batchNodes);
                 const task = replyFetchService.fetchDirectReplies(rxNostr, {
                     eventId: batchEventIds[0] ?? "",
@@ -2692,6 +2696,7 @@ export function usePostHistoryThreadGraph({
                             parentEventId: eventId,
                             events: items,
                             fetchedAt: result.status === "partial" ? null : result.fetchedAt,
+                            expectedChildGeneration: await generationReady,
                         });
                     }
                     if (!ensureActive()) {
@@ -2871,12 +2876,14 @@ export function usePostHistoryThreadGraph({
             return false;
         }
 
+        const expectedChildGeneration = await getPostHistoryChildWriteGeneration(ehagakiDb);
         if ((await filterVisibleReplyEvents([event])).length === 0) {
             return false;
         }
 
         await childInteractionsRepositoryImpl.upsertChildInteractions({
             parentEventId,
+            expectedChildGeneration,
             events: [
                 {
                     event,

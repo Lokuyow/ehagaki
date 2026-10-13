@@ -3,10 +3,10 @@ import { compareDraftsByDisplayOrder } from "../draftSortUtils";
 import type { Draft, DraftChannelData, DraftReplyQuoteData, MediaGalleryItem } from "../types";
 import { ehagakiDb, type DraftRecord, type EHagakiDB } from "./ehagakiDb";
 import { getAppStorage } from "../appStorage";
+import { LEGACY_DRAFTS_IMPORT_ID } from "./legacyImportMarkers";
 
 const DRAFT_SCHEMA_VERSION = 1;
 const LOCAL_DRAFT_BACKEND_VERSION = 1;
-const LEGACY_DRAFTS_MIGRATION_KEY = "migrated.localStorage.drafts.v1";
 const UNSCOPED_DRAFT_SCOPE_KEY = "__ehagaki_unscoped__";
 
 type DraftInput = {
@@ -68,16 +68,18 @@ function isRecordVisible(
 
 function readLegacyDraftsFromLocalStorage(storage: Pick<Storage, "getItem"> = getAppStorage()): Draft[] {
     const draftsJson = storage.getItem(STORAGE_KEYS.DRAFTS);
-    if (!draftsJson) return [];
+    return parseLegacyDraftPayload(draftsJson) ?? [];
+}
 
+function parseLegacyDraftPayload(draftsJson: string | null): Draft[] | null {
+    if (!draftsJson) return [];
     try {
-        const drafts = JSON.parse(draftsJson) as Draft[];
-        if (!Array.isArray(drafts)) return [];
-        return drafts
-            .filter((draft): draft is Draft => typeof draft?.id === "string")
-            .sort(compareDraftsByDisplayOrder);
+        const drafts = JSON.parse(draftsJson) as unknown;
+        if (!Array.isArray(drafts)) return null;
+        if (!drafts.every((draft) => typeof (draft as Draft | null)?.id === "string")) return null;
+        return [...drafts].sort(compareDraftsByDisplayOrder);
     } catch {
-        return [];
+        return null;
     }
 }
 
@@ -239,29 +241,34 @@ export class DexieDraftsRepository implements DraftsRepository {
     }
 
     private async ensureLegacyDraftsMigrated(): Promise<void> {
-        const migrated = await this.db.meta.get(LEGACY_DRAFTS_MIGRATION_KEY);
-        if (migrated?.value === true) return;
+        if ((await this.db.legacyImportState.get(LEGACY_DRAFTS_IMPORT_ID))?.done === true) return;
 
         const storage = this.getStorage();
-        const legacyDrafts = readLegacyDraftsFromLocalStorage(storage);
-        if (legacyDrafts.length === 0 && storage.getItem(STORAGE_KEYS.DRAFTS) !== null) return;
+        const raw = storage.getItem(STORAGE_KEYS.DRAFTS);
+        const legacyDrafts = parseLegacyDraftPayload(raw);
+        if (legacyDrafts === null) return;
 
-        await this.db.transaction("rw", this.db.drafts, this.db.meta, async () => {
-            if (legacyDrafts.length > 0) {
-                await this.db.drafts.bulkPut(
-                    legacyDrafts.map((draft) => toRecord({
-                        ...draft,
-                        pubkeyHex: null,
-                    }, this.now)),
-                );
+        let completed = false;
+        await this.db.transaction("rw", this.db.drafts, this.db.legacyImportState, async () => {
+            if ((await this.db.legacyImportState.get(LEGACY_DRAFTS_IMPORT_ID))?.done === true) {
+                completed = true;
+                return;
             }
-
-            await this.db.meta.put({
-                key: LEGACY_DRAFTS_MIGRATION_KEY,
-                value: true,
+            for (const draft of legacyDrafts) {
+                const record = toRecord({ ...draft, pubkeyHex: null }, this.now);
+                const current = await this.db.drafts.get(record.id);
+                if (!current || current.updatedAt <= record.updatedAt) {
+                    await this.db.drafts.put(record);
+                }
+            }
+            await this.db.legacyImportState.put({
+                id: LEGACY_DRAFTS_IMPORT_ID,
+                done: true,
                 updatedAt: this.now(),
             });
+            completed = true;
         });
+        if (!completed) return;
 
         try {
             storage.removeItem(STORAGE_KEYS.DRAFTS);

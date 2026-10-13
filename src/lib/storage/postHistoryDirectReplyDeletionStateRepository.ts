@@ -1,4 +1,4 @@
-import type { EHagakiDB, MetaRecord } from "./ehagakiDb";
+import type { EHagakiDB, EhagakiScopedRecord } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
 import {
     POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND,
@@ -102,7 +102,7 @@ function buildDefaultStateValue(
     };
 }
 
-function toStateRecord(record: MetaRecord | null | undefined): PostHistoryDirectReplyLifecycleStateRecord | null {
+function toStateRecord(record: EhagakiScopedRecord | null | undefined): PostHistoryDirectReplyLifecycleStateRecord | null {
     if (!record || !isValidStateValue(record.value)) {
         return null;
     }
@@ -146,9 +146,7 @@ implements PostHistoryDirectReplyDeletionStateRepository {
             return [];
         }
 
-        const records = await this.db.meta.bulkGet(
-            uniqueRequestKeys.map((requestKey) => buildStateMetaKey(requestKey)),
-        );
+        const records = await this.db.postHistoryReplyDeletionAttempts.bulkGet(uniqueRequestKeys);
 
         return dedupeStateRecords(
             records
@@ -163,13 +161,9 @@ implements PostHistoryDirectReplyDeletionStateRepository {
             return [];
         }
 
-        const records = await this.db.meta
-            .where("key")
-            .startsWithAnyOf(
-                uniqueParentEventIds.map((parentEventId) =>
-                    buildParentPrefix(parentEventId),
-                ),
-            )
+        const records = await this.db.postHistoryReplyDeletionAttempts
+            .where("parentEventId")
+            .anyOf(uniqueParentEventIds)
             .toArray();
 
         return dedupeStateRecords(
@@ -185,9 +179,7 @@ implements PostHistoryDirectReplyDeletionStateRepository {
             return;
         }
 
-        await this.db.meta.bulkDelete(
-            uniqueRequestKeys.map((requestKey) => buildStateMetaKey(requestKey)),
-        );
+        await this.db.postHistoryReplyDeletionAttempts.bulkDelete(uniqueRequestKeys);
     }
 
     async saveMany(
@@ -243,9 +235,10 @@ implements PostHistoryDirectReplyDeletionStateRepository {
             return [];
         }
 
-        await this.db.meta.bulkPut(
+        await this.db.postHistoryReplyDeletionAttempts.bulkPut(
             savedValues.map((value) => ({
-                key: buildStateMetaKey(value.requestKey),
+                id: value.requestKey,
+                parentEventId: value.parentEventId,
                 value,
                 updatedAt: now,
             })),

@@ -148,7 +148,7 @@ describe("DexiePostHistoryDirectReplyFetchMetadataRepository", () => {
             requestStartedAt: 1000,
         });
 
-        const bulkGetSpy = vi.spyOn(db.meta, "bulkGet");
+        const bulkGetSpy = vi.spyOn(db.postHistoryDirectReplyFetchMeta, "bulkGet");
         await expect(repository.getForParentEventIds([
             firstParentEventId,
             secondParentEventId,

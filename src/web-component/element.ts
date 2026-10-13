@@ -344,6 +344,7 @@ export abstract class EHagakiComposerElement extends HTMLElement {
                 childList: true,
                 subtree: true,
             });
+            const { installEhagakiDatabaseGateForRuntime } = await import("../lib/storage/ehagakiDbPageGate");
             configureAppRuntimeEnvironment({
                 storage: createWebComponentStorage(window.localStorage),
                 window,
@@ -362,6 +363,7 @@ export abstract class EHagakiComposerElement extends HTMLElement {
                 localNsecAuthEnabled: false,
                 autoLoginNip07Enabled: this.isAutoLoginNip07Enabled(),
             });
+            await installEhagakiDatabaseGateForRuntime(assetBase);
 
             const { default: App } = await this.loadApp();
             if (!this.isConnected || generation !== this.#connectionGeneration) return;

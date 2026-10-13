@@ -9,6 +9,7 @@ import type { ProfileData } from "../types";
 import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
 import { ehagakiDb, type EHagakiDB, type ProfileRecord } from "./ehagakiDb";
 import { getAppStorage } from "../appStorage";
+import { legacyProfileImportId } from "./legacyImportMarkers";
 
 const PROFILE_SCHEMA_VERSION = 2;
 
@@ -182,24 +183,47 @@ export class DexieProfilesRepository implements ProfilesRepository {
 
     async get(pubkeyHex: string): Promise<ProfileData | null> {
         if (!pubkeyHex) return null;
+        const markerId = legacyProfileImportId(pubkeyHex);
 
         try {
             const record = await this.db.profiles.get(pubkeyHex);
-            if (record) return profileRecordToProfileData(record);
+            if (record) {
+                await this.markLegacyProfileImported(markerId);
+                return profileRecordToProfileData(record);
+            }
         } catch {
             return readLegacyProfile(pubkeyHex, this.getStorage());
         }
 
-        const legacyProfile = readLegacyProfile(pubkeyHex, this.getStorage());
+        if ((await this.db.legacyImportState.get(markerId))?.done === true) return null;
+        const storage = this.getStorage();
+        const raw = storage.getItem(STORAGE_KEYS.NOSTR_PROFILE + pubkeyHex);
+        if (raw === null) {
+            await this.markLegacyProfileImported(markerId);
+            return null;
+        }
+        const legacyProfile = readLegacyProfile(pubkeyHex, storage);
         if (!legacyProfile) return null;
 
         try {
-            await this.put(pubkeyHex, legacyProfile);
+            await this.db.transaction("rw", this.db.profiles, this.db.legacyImportState, async () => {
+                if ((await this.db.legacyImportState.get(markerId))?.done === true) return;
+                if (!await this.db.profiles.get(pubkeyHex)) {
+                    await this.db.profiles.put(toRecord(pubkeyHex, legacyProfile, this.now));
+                }
+                await this.db.legacyImportState.put({ id: markerId, done: true, updatedAt: this.now() });
+            });
+            try { storage.removeItem(STORAGE_KEYS.NOSTR_PROFILE + pubkeyHex); } catch { /* keep the source until a later success */ }
         } catch {
-            // Legacy data remains available as a compatibility fallback.
+            return legacyProfile;
         }
 
         return legacyProfile;
+    }
+
+    private async markLegacyProfileImported(markerId: string): Promise<void> {
+        if ((await this.db.legacyImportState.get(markerId))?.done === true) return;
+        await this.db.legacyImportState.put({ id: markerId, done: true, updatedAt: this.now() });
     }
 
     async getRecord(pubkeyHex: string): Promise<ProfileRecord | null> {

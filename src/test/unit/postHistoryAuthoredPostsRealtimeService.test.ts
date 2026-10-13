@@ -92,6 +92,10 @@ describe("PostHistoryAuthoredPostsRealtimeService", () => {
         expect(postHistoryRepository.upsertFetchedEvents).toHaveBeenCalledWith({
             events: [{ event, relayUrls: ["wss://relay.example.com/"] }],
             fetchedAt: 1_700_000_000_000,
+            localWriteScope: expect.objectContaining({
+                ownerPubkeyHex: OWNER_PUBKEY,
+                expectedRevision: 0,
+            }),
         });
         expect(onSavedSelfPosts).toHaveBeenCalledWith([event.id]);
     });
@@ -197,6 +201,7 @@ describe("PostHistoryAuthoredPostsRealtimeService", () => {
         expect(replyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
             parentEventId,
             events: [{ event: replyEvent, relayUrls: ["wss://reply.example.com"] }],
+            expectedChildGeneration: 0,
             fetchedAt: 1_700_000_000_000,
         });
     });

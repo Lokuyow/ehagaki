@@ -11,6 +11,7 @@ import { RelayConfigUtils } from "./relayConfigUtils";
 import { sensitivePayloadRepository } from "./storage/sensitivePayloadRepository";
 import type { NostrEvent, RelayConfig } from "./types";
 import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
+import { getPostHistoryLocalRevision } from "./storage/postHistoryLocalWriteScope";
 
 async function isPairDeleted(structure: NostrEvent, payloadId: string): Promise<boolean> {
     const local = await ehagakiDb.postHistory.get(structure.id);
@@ -52,6 +53,12 @@ export async function loadVerifiedSensitivePayloadEvent(params: {
     }
 
     if (!params.rxNostr || params.signal?.aborted) return null;
+    const expectedRevision = await getPostHistoryLocalRevision(ehagakiDb, structure.pubkey);
+    const localWriteScope = {
+        ownerPubkeyHex: structure.pubkey,
+        expectedRevision,
+        isActive: () => !params.signal?.aborted,
+    };
     const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls([
         ...(reference.relayHint ? [reference.relayHint] : []),
         ...(params.relayHints ?? []),
@@ -79,10 +86,9 @@ export async function loadVerifiedSensitivePayloadEvent(params: {
             event: result.event,
             fetchedRelays,
             relayHints: fetchedRelays,
+            localWriteScope,
         });
-        void postHistoryLocalRelayService.archiveAdoptedAuthored([{ event: structure }], {
-            ownerPubkeyHex: structure.pubkey, isActive: () => !params.signal?.aborted,
-        });
+        void postHistoryLocalRelayService.archiveAdoptedAuthored([{ event: structure }], localWriteScope);
     } catch {
         // The verified in-memory payload can still be revealed if caching fails.
     }

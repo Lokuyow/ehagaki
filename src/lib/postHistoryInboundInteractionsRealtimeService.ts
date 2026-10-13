@@ -21,6 +21,8 @@ import {
 } from "./storage/postHistoryChildInteractionsRepository";
 import type { NostrEvent, RelayConfig } from "./types";
 import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
+import { ehagakiDb } from "./storage/ehagakiDb";
+import { getPostHistoryChildWriteGeneration } from "./storage/postHistoryLocalWriteScope";
 
 export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_RELAY_LIMIT = 6;
 export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_SINCE_OVERLAP_SECONDS = 60;
@@ -43,6 +45,7 @@ export interface PostHistoryInboundInteractionsRealtimeSubscription {
 export interface PostHistoryInboundInteractionsRealtimeServiceDeps {
     postHistoryRepository?: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     postHistoryChildInteractionsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
+    getChildWriteGeneration?: () => Promise<number>;
     console?: Pick<Console, "warn" | "error">;
     now?: () => number;
 }
@@ -60,6 +63,7 @@ function normalizeRelayLimit(relayLimit: number | undefined): number {
 export class PostHistoryInboundInteractionsRealtimeService {
     private postHistoryRepository: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     private postHistoryChildInteractionsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
+    private getChildWriteGeneration: () => Promise<number>;
     private console: Pick<Console, "warn" | "error">;
     private now: () => number;
 
@@ -67,6 +71,8 @@ export class PostHistoryInboundInteractionsRealtimeService {
         this.postHistoryRepository = deps.postHistoryRepository ?? postHistoryRepository;
         this.postHistoryChildInteractionsRepository =
             deps.postHistoryChildInteractionsRepository ?? postHistoryChildInteractionsRepository;
+        this.getChildWriteGeneration = deps.getChildWriteGeneration
+            ?? (() => getPostHistoryChildWriteGeneration(ehagakiDb));
         this.console = deps.console ?? (typeof globalThis.console !== "undefined"
             ? globalThis.console
             : { warn: () => undefined, error: () => undefined });
@@ -105,8 +111,17 @@ export class PostHistoryInboundInteractionsRealtimeService {
                     : { defaultReadRelays: true },
             }).subscribe({
                 next: (packet: { event?: NostrEvent; from?: string }) => {
+                    // Start the generation read before this packet waits on workQueue.
+                    // A history clear that commits after receipt must not become the
+                    // generation used to accept this packet.
+                    const expectedChildGeneration = this.getChildWriteGeneration();
                     workQueue = workQueue
-                        .then(() => this.processPacket(packet, params, () => active))
+                        .then(() => this.processPacket(
+                            packet,
+                            params,
+                            () => active,
+                            expectedChildGeneration,
+                        ))
                         .catch((error) => {
                             this.console.error("post_history_inbound_interactions_realtime_packet_error", error);
                         });
@@ -147,7 +162,9 @@ export class PostHistoryInboundInteractionsRealtimeService {
         packet: { event?: NostrEvent; from?: string },
         params: PostHistoryInboundInteractionsRealtimeSubscribeRequest,
         isActive: () => boolean,
+        expectedChildGenerationReady: Promise<number>,
     ): Promise<void> {
+        const expectedChildGeneration = await expectedChildGenerationReady;
         const event = packet.event;
         if (!isActive() || !event?.id) {
             return;
@@ -197,6 +214,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
                     ...(relayUrl ? { relayUrls: [relayUrl] } : {}),
                 }],
                 fetchedAt: this.now(),
+                expectedChildGeneration,
             });
             if (
                 !isActive()
@@ -222,6 +240,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
                 classification: preliminary,
                 event,
                 ...(packet.from ? { relayUrls: [packet.from] } : {}),
+                expectedChildGeneration,
             }]);
             return;
         }
@@ -281,6 +300,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
                 ...(relayUrl ? { relayUrls: [relayUrl] } : {}),
             }],
             fetchedAt: this.now(),
+            expectedChildGeneration,
         });
         if (
             !isActive()

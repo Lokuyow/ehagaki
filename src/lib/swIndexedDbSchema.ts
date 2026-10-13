@@ -51,9 +51,6 @@ export function ensureCurrentEHagakiDbSchema(
     upgradeTransaction?: IndexedDbUpgradeTransactionLike | null,
 ): void {
     const postHistoryAlreadyExists = db.objectStoreNames.contains('postHistory');
-    createObjectStoreIfMissing(db, 'meta', 'key', [
-        { name: 'updatedAt', keyPath: 'updatedAt' },
-    ]);
     createObjectStoreIfMissing(db, 'emojiItems', 'id', [
         { name: 'pubkeyHex', keyPath: 'pubkeyHex' },
         { name: 'identityKey', keyPath: 'identityKey' },
@@ -205,5 +202,31 @@ export function ensureCurrentEHagakiDbSchema(
         { name: 'lastAttemptAt', keyPath: 'lastAttemptAt' },
         { name: 'lastAccessedAt', keyPath: 'lastAccessedAt' },
         { name: 'schemaVersion', keyPath: 'schemaVersion' },
+    ]);
+    createScopedStore(db, 'postHistoryExternalCoverage');
+    createScopedStore(db, 'postHistoryCitrineRanges');
+    createScopedStore(db, 'postHistoryLocalBrowsingRanges');
+    createScopedStore(db, 'postHistoryLocalResumeCursor');
+    createScopedStore(db, 'postHistoryJumpAnchors', false);
+    createScopedStore(db, 'postHistoryAuthoredSyncCursor', false);
+    createScopedStore(db, 'postHistoryInboundSyncCursor', false);
+    createScopedStore(db, 'postHistoryDirectReplyFetchMeta', false);
+    createScopedStore(db, 'postHistoryWriteGeneration', false);
+    createScopedStore(db, 'postHistoryChildWriteGeneration', false);
+    createObjectStoreIfMissing(db, 'postHistoryReactionDeletionAttempts', 'id', [
+        { name: 'parentEventId', keyPath: 'parentEventId' },
+        { name: 'updatedAt', keyPath: 'updatedAt' },
+    ]);
+    createObjectStoreIfMissing(db, 'postHistoryReplyDeletionAttempts', 'id', [
+        { name: 'parentEventId', keyPath: 'parentEventId' },
+        { name: 'updatedAt', keyPath: 'updatedAt' },
+    ]);
+    createScopedStore(db, 'legacyImportState', false);
+}
+
+function createScopedStore(db: IndexedDbLike, name: string, withOwner = true): void {
+    createObjectStoreIfMissing(db, name, 'id', [
+        ...(withOwner ? [{ name: 'ownerPubkeyHex', keyPath: 'ownerPubkeyHex' }] : []),
+        { name: 'updatedAt', keyPath: 'updatedAt' },
     ]);
 }

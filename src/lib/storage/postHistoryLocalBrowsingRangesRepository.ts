@@ -37,8 +37,15 @@ export class DexiePostHistoryLocalBrowsingRangesRepository {
         const empty: PostHistoryLocalBrowsingRanges = { schemaVersion: 1, source: "local-relay", ownerPubkeyHex,
             kindsKey, localRelayUrl, localRevision, browsingRanges: [], resumeHint: null };
         if (!localRelayUrl) return empty;
-        const value = (await this.db.meta.get(this.key(ownerPubkeyHex, kindsKey, localRelayUrl)))?.value;
-        const record = value as Partial<PostHistoryLocalBrowsingRanges> | undefined;
+        const id = this.key(ownerPubkeyHex, kindsKey, localRelayUrl);
+        const value = (await this.db.postHistoryLocalBrowsingRanges.get(id))?.value;
+        const resume = (await this.db.postHistoryLocalResumeCursor.get(id))?.value as
+            | Partial<PostHistoryLocalResumeHint>
+            | undefined;
+        const record = {
+            ...(value as Partial<PostHistoryLocalBrowsingRanges> | undefined),
+            resumeHint: resume,
+        };
         if (record?.schemaVersion !== 1 || record.source !== "local-relay" || record.ownerPubkeyHex !== ownerPubkeyHex
             || record.kindsKey !== kindsKey || record.localRelayUrl !== localRelayUrl || record.localRevision !== localRevision) return empty;
         const nextUntil = record.resumeHint?.nextUntil;
@@ -60,9 +67,26 @@ export class DexiePostHistoryLocalBrowsingRangesRepository {
         }
         const next: PostHistoryLocalBrowsingRanges = { ...current,
             browsingRanges: mergePostHistoryCoverageRanges([...current.browsingRanges, ...write.browsingRanges]), resumeHint };
-        if (JSON.stringify(next) !== JSON.stringify(current)) await this.db.meta.put({
-            key: this.key(write.ownerPubkeyHex, write.kindsKey, localRelayUrl), value: next, updatedAt: this.now(),
-        });
+        if (JSON.stringify(next) !== JSON.stringify(current)) {
+            const id = this.key(write.ownerPubkeyHex, write.kindsKey, localRelayUrl);
+            const { resumeHint, ...evidence } = next;
+            await this.db.postHistoryLocalBrowsingRanges.put({
+                id,
+                ownerPubkeyHex: write.ownerPubkeyHex,
+                value: evidence,
+                updatedAt: this.now(),
+            });
+            if (resumeHint) {
+                await this.db.postHistoryLocalResumeCursor.put({
+                    id,
+                    ownerPubkeyHex: write.ownerPubkeyHex,
+                    value: resumeHint,
+                    updatedAt: this.now(),
+                });
+            } else {
+                await this.db.postHistoryLocalResumeCursor.delete(id);
+            }
+        }
         await assertPostHistoryLocalWriteCurrent(this.db, write);
     }
 

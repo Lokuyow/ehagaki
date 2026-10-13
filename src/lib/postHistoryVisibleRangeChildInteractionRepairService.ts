@@ -1,3 +1,5 @@
+import { ehagakiDb } from "./storage/ehagakiDb";
+import { getPostHistoryChildWriteGeneration } from "./storage/postHistoryLocalWriteScope";
 import {
     createRxBackwardReq,
     type ConnectionStatePacket,
@@ -337,6 +339,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
             POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_PARENT_LIMIT,
         );
         const targetEventIds = targets.map((target) => target.eventId);
+        const generationReady = getPostHistoryChildWriteGeneration(ehagakiDb);
         const promise = (async () => {
             if (targets.length === 0) {
                 return { status: "success" as const, targetEventIds };
@@ -370,7 +373,12 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                     chunk.map(target => target.reactionTarget ?? { eventId: target.eventId }), result.items,
                 );
                 if (reactionItems.length > 0) {
-                    await this.saveReactionInteractions(reactionItems, result.fetchedAt, isActive);
+                    await this.saveReactionInteractions(
+                        reactionItems,
+                        result.fetchedAt,
+                        isActive,
+                        await generationReady,
+                    );
                 }
                 if (result.requiresFallback) {
                     if (depth === 0) {
@@ -463,6 +471,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         const targetPosts = toUniqueDirectReplyOwnerPosts(params.ownerPubkeyHex, params.visiblePosts);
         const targetParentEventIds = targetPosts.map((post) => post.eventId);
 
+        const generationReady = getPostHistoryChildWriteGeneration(ehagakiDb);
         const promise = (async (): Promise<PostHistoryVisibleRangeChildInteractionRepairResult> => {
             if (targetPosts.length === 0) {
                 return {
@@ -584,6 +593,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                                 reactionItems,
                                 candidateResult.fetchedAt,
                                 isActive,
+                                await generationReady,
                             );
                             if (!isActive()) {
                                 return;
@@ -714,6 +724,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         items: PostHistoryVisibleRangeChildInteractionItem[],
         fetchedAt: number,
         isActive: () => boolean,
+        expectedChildGeneration: number,
     ): Promise<{ savedParentEventIds: string[] }> {
         const itemsByParentId = new Map<string, PostHistoryChildInteractionItem[]>();
         const targetsByParentId = new Map<string, ReactionReferenceTarget>();
@@ -736,6 +747,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
             const target = targetsByParentId.get(parentEventId);
             const result = await this.childInteractionsRepository.upsertChildInteractions({
                 parentEventId,
+                expectedChildGeneration,
                 events,
                 fetchedAt,
                 ...(target && (target.targetKind != null || target.targetAuthorPubkey != null)

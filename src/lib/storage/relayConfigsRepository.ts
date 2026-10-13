@@ -3,6 +3,7 @@ import { RelayConfigParser, RelayConfigUtils } from "../relayConfigUtils";
 import type { RelayConfig } from "../types";
 import { ehagakiDb, type EHagakiDB, type RelayConfigRecord } from "./ehagakiDb";
 import { getAppStorage } from "../appStorage";
+import { legacyRelayConfigImportId } from "./legacyImportMarkers";
 
 const RELAY_CONFIG_SCHEMA_VERSION = 1;
 
@@ -90,10 +91,14 @@ export class DexieRelayConfigsRepository implements RelayConfigsRepository {
 
     async get(pubkeyHex: string): Promise<RelayConfigCache | null> {
         if (!pubkeyHex) return null;
+        const markerId = legacyRelayConfigImportId(pubkeyHex);
 
         try {
             const record = await this.db.relayConfigs.get(pubkeyHex);
-            if (record) return toCache(record);
+            if (record) {
+                await this.markLegacyRelayImported(markerId);
+                return toCache(record);
+            }
         } catch {
             const legacyConfig = readLegacyRelayConfig(pubkeyHex, this.getStorage());
             return legacyConfig ? toCache(toRecord(pubkeyHex, legacyConfig, this.now, {
@@ -101,7 +106,14 @@ export class DexieRelayConfigsRepository implements RelayConfigsRepository {
             })) : null;
         }
 
-        const legacyConfig = readLegacyRelayConfig(pubkeyHex, this.getStorage());
+        if ((await this.db.legacyImportState.get(markerId))?.done === true) return null;
+        const storage = this.getStorage();
+        const raw = storage.getItem(STORAGE_KEYS.NOSTR_RELAYS + pubkeyHex);
+        if (raw === null) {
+            await this.markLegacyRelayImported(markerId);
+            return null;
+        }
+        const legacyConfig = readLegacyRelayConfig(pubkeyHex, storage);
         if (!legacyConfig) return null;
         const legacyCache = toCache(toRecord(pubkeyHex, legacyConfig, this.now, {
             source: "localStorage",
@@ -109,12 +121,26 @@ export class DexieRelayConfigsRepository implements RelayConfigsRepository {
         if (!legacyCache) return null;
 
         try {
-            await this.put(pubkeyHex, legacyConfig, { source: "localStorage" });
+            await this.db.transaction("rw", this.db.relayConfigs, this.db.legacyImportState, async () => {
+                if ((await this.db.legacyImportState.get(markerId))?.done === true) return;
+                if (!await this.db.relayConfigs.get(pubkeyHex)) {
+                    await this.db.relayConfigs.put(toRecord(pubkeyHex, legacyConfig, this.now, {
+                        source: "localStorage",
+                    }));
+                }
+                await this.db.legacyImportState.put({ id: markerId, done: true, updatedAt: this.now() });
+            });
+            try { storage.removeItem(STORAGE_KEYS.NOSTR_RELAYS + pubkeyHex); } catch { /* keep the source until a later success */ }
         } catch {
-            // Legacy data remains available as a compatibility fallback.
+            return legacyCache;
         }
 
         return legacyCache;
+    }
+
+    private async markLegacyRelayImported(markerId: string): Promise<void> {
+        if ((await this.db.legacyImportState.get(markerId))?.done === true) return;
+        await this.db.legacyImportState.put({ id: markerId, done: true, updatedAt: this.now() });
     }
 
     async put(

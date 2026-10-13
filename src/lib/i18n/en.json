@@ -875,5 +875,11 @@
     "disable_reply_notification": "Disable reply notification",
     "collapse": "Collapse",
     "expand": "Expand"
+  },
+  "databaseGate": {
+    "blocked": "Another eHagaki tab has this database open. Closing that tab lets the update continue. The database will not be deleted.",
+    "retry": "The database update did not finish. You can try again.",
+    "retryButton": "Try again",
+    "versionError": "This database is newer than this page. Reload the page. The database will not be deleted."
   }
 }

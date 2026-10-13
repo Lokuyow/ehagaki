@@ -31,8 +31,10 @@ describe("persistent local browsing evidence", () => {
         expect((await new DexiePostHistoryImportedRangesRepository(h.db).get(event.pubkey, h.write.kindsKey)).ranges).toEqual([]);
         const row = await h.repository.getByEventId(event.id);
         expect([...(row?.acceptedRelays ?? []), ...(row?.fetchedRelays ?? []), ...(row?.relayHints ?? [])]).not.toContain(url);
-        const record = (await h.db.meta.toArray()).find(item => item.key.startsWith("postHistoryLocalBrowsingRanges:"))!.value;
-        expect(Object.keys(record as object).sort()).toEqual(["schemaVersion", "source", "ownerPubkeyHex", "kindsKey", "localRelayUrl", "localRevision", "browsingRanges", "resumeHint"].sort());
+        const evidence = (await h.db.postHistoryLocalBrowsingRanges.toArray())[0]?.value as Record<string, unknown>;
+        const cursor = (await h.db.postHistoryLocalResumeCursor.toArray())[0]?.value;
+        expect(Object.keys(evidence).sort()).toEqual(["schemaVersion", "source", "ownerPubkeyHex", "kindsKey", "localRelayUrl", "localRevision", "browsingRanges"].sort());
+        expect(cursor).toEqual({ nextUntil: 100 });
     });
     it("updates duplicate-only and bounded empty page evidence", async () => {
         const h = setup(); await h.save();
@@ -57,14 +59,14 @@ describe("persistent local browsing evidence", () => {
         for (const [owner, kinds, target] of [["other", h.write.kindsKey, url], [event.pubkey, "1", url], [event.pubkey, h.write.kindsKey, "ws://127.0.0.1:4870/"]]) {
             expect((await h.local.get(owner, kinds, target)).browsingRanges).toEqual([]);
         }
-        await h.db.meta.put({ key: `postHistoryLocalRevision:${event.pubkey}`, value: 1, updatedAt: 1 });
+        await h.db.postHistoryWriteGeneration.put({ id: event.pubkey, value: 1, updatedAt: 1 });
         expect((await h.get()).browsingRanges).toEqual([]);
         expect((await h.save()).applied).toBe(false);
     });
     it.each(["event", "evidence"])("rolls back event and evidence after %s persistence failure", async failure => {
         const h = setup();
         if (failure === "event") vi.spyOn(h.db.postHistory, "bulkPut").mockRejectedValueOnce(new Error("synthetic failure"));
-        else vi.spyOn(h.db.meta, "put").mockRejectedValueOnce(new Error("synthetic failure"));
+        else vi.spyOn(h.db.postHistoryLocalBrowsingRanges, "put").mockRejectedValueOnce(new Error("synthetic failure"));
         await expect(h.save()).rejects.toThrow("synthetic failure");
         expect(await h.db.postHistory.count()).toBe(0); expect((await h.get()).browsingRanges).toEqual([]);
     });
@@ -88,7 +90,9 @@ describe("persistent local browsing evidence", () => {
     });
     it("rolls back history deletion if evidence removal fails", async () => {
         const h = setup(); await h.save();
-        vi.spyOn(h.db.meta, "bulkDelete").mockRejectedValueOnce(new Error("synthetic clear failure"));
+        vi.spyOn(h.db.postHistoryLocalBrowsingRanges, "where").mockImplementation(() => {
+            throw new Error("synthetic clear failure");
+        });
         await expect(h.repository.deleteLocalHistoryForPubkey(event.pubkey)).rejects.toThrow("synthetic clear failure");
         expect(await h.db.postHistory.count()).toBe(1); expect((await h.get()).browsingRanges).toEqual(h.write.browsingRanges);
     });
