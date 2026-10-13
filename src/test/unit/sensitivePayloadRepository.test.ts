@@ -5,6 +5,7 @@ import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
 import { DexiePostHistoryDeletionRequestsRepository } from "../../lib/storage/postHistoryDeletionRequestsRepository";
 import { DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
 import { DexieSensitivePayloadRepository } from "../../lib/storage/sensitivePayloadRepository";
+import { reconcileSensitivePayloadDeletionForCandidate } from "../../lib/storage/sensitivePayloadDeletionReconciler";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import type { NostrEvent } from "../../lib/types";
 
@@ -102,9 +103,12 @@ describe("DexieSensitivePayloadRepository", () => {
                 if (step === 'deletion') expect(scans).toBe(order.indexOf('payload') < order.indexOf('deletion') ? 1 : 0);
                 if (step === 'payload') expect(scans).toBe(order.indexOf('deletion') < order.indexOf('payload') ? 1 : 0);
             }
+            expect((await payloads.getByIds([payload.id]))[0]?.deletedAt).toBe(20_000);
+            expect((await posts.getByEventId(structure.id))?.deletedAt).toBeUndefined();
+            where.mockClear();
+            await reconcileSensitivePayloadDeletionForCandidate(payload.id, db);
+            expect(where.mock.calls.filter(([index]) => String(index) === "pubkeyHex")).toHaveLength(0);
         } finally { where.mockRestore(); }
-        expect((await payloads.getByIds([payload.id]))[0]?.deletedAt).toBe(20_000);
-        expect((await posts.getByEventId(structure.id))?.deletedAt).toBeUndefined();
         await putPayload();
         expect((await payloads.getByIds([payload.id]))[0]?.deletedAt).toBe(20_000);
         db.close();

@@ -8,7 +8,8 @@ test.use({ trace: "off" });
 const externalUrl = "wss://external.example/";
 
 async function fixture(page: Page, options: { externalOk?: boolean; localMode?: "accept" | "reject" | "auth" | "silent";
-    localCount?: number; externalCount?: number; externalRead?: "accept" | "closed" | "silent" | "hold-older" } = {}) {
+    localCount?: number; externalCount?: number; externalRead?: "accept" | "closed" | "silent" | "hold-older";
+    holdLocalKinds?: number[] } = {}) {
     const secret = generateSecretKey(), pubkey = getPublicKey(secret);
     const sign = (template: EventTemplate) => finalizeEvent(template, secret);
     // Keep the multi-page regression corpus outside the app's live forward subscription.
@@ -24,9 +25,12 @@ async function fixture(page: Page, options: { externalOk?: boolean; localMode?: 
             sign({ kind: 1, created_at: now - i * historyStep, tags: [], content: `External pagination ${i}` }))), relayList,
     ] : [externalPost, relayList];
     const localRequests: Filter[] = [], externalRequests: Filter[] = [];
+    const localResponses: ReturnType<typeof sign>[] = [];
     const localWrites: ReturnType<typeof sign>[] = [], externalWrites: ReturnType<typeof sign>[] = [];
     let externalRead = options.externalRead ?? "accept";
     const heldExternal: Array<() => void> = [];
+    let heldLocalKinds = [...(options.holdLocalKinds ?? [])];
+    const heldLocal: Array<() => void> = [];
     const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     await new Promise<void>((resolve) => server.once("listening", resolve));
     const localUrl = `ws://127.0.0.1:${(server.address() as AddressInfo).port}/`;
@@ -39,14 +43,24 @@ async function fixture(page: Page, options: { externalOk?: boolean; localMode?: 
         if (message[0] === "AUTH") throw new Error("local AUTH is outside scope");
         if (message[0] === "REQ") {
             localRequests.push(...message.slice(2));
-            if (options.localMode === "auth") {
-                socket.send(JSON.stringify(["CLOSED", message[1], "auth-required: fixture"])); return;
+            const respond = () => {
+                if (options.localMode === "auth") {
+                    socket.send(JSON.stringify(["CLOSED", message[1], "auth-required: fixture"])); return;
+                }
+                for (const filter of message.slice(2) as Filter[]) {
+                    localCorpus.filter(event => matchFilter(filter, event)).sort((a, b) => b.created_at - a.created_at)
+                        .slice(0, filter.limit).forEach(event => {
+                            localResponses.push(event);
+                            socket.send(JSON.stringify(["EVENT", message[1], event]));
+                        });
+                }
+                socket.send(JSON.stringify(["EOSE", message[1]]));
+            };
+            if ((message.slice(2) as Filter[]).some(filter =>
+                filter.kinds?.some(kind => heldLocalKinds.includes(kind)))) {
+                heldLocal.push(respond); return;
             }
-            for (const filter of message.slice(2) as Filter[]) {
-                localCorpus.filter(event => matchFilter(filter, event)).sort((a, b) => b.created_at - a.created_at)
-                    .slice(0, filter.limit).forEach(event => socket.send(JSON.stringify(["EVENT", message[1], event])));
-            }
-            socket.send(JSON.stringify(["EOSE", message[1]]));
+            respond();
         }
         if (message[0] === "EVENT") {
             const event = message[1]; localWrites.push(event);
@@ -103,7 +117,9 @@ async function fixture(page: Page, options: { externalOk?: boolean; localMode?: 
     await page.goto("./");
     await expect(page.locator(".post-history-btn")).toBeVisible();
     return { pubkey, sign, now, localUrl, localPost, externalPost, localCorpus, externalCorpus,
-        localRequests, externalRequests, localWrites, externalWrites, stop,
+        localRequests, localResponses, externalRequests, localWrites, externalWrites, stop,
+        releaseLocal: () => { heldLocal.splice(0).forEach(respond => respond()); },
+        setHeldLocalKinds: (kinds: number[]) => { heldLocalKinds = [...kinds]; },
         setExternalRead: (mode: typeof externalRead) => { externalRead = mode; },
         releaseExternal: () => { heldExternal.splice(0).forEach(respond => respond()); } };
 }
@@ -748,6 +764,254 @@ test("external pagination continues when the configured local relay rejects read
         await expect(page.getByText(`Local pagination ${oldest + 1}`, { exact: true })).toBeVisible();
         expect(f.externalRequests.some(filter => filter.kinds?.includes(1) && filter.since !== undefined)).toBe(true);
     } finally { await f.stop(); }
+});
+
+test("repeat local deletion refresh preserves discovery and skips settled ordinary writes", async ({ page }) => {
+    const f = await fixture(page, { localCount: 50, holdLocalKinds: [5] });
+    try {
+        await page.evaluate(async ({ events }) => {
+            const moduleUrl = new URL("src/lib/storage/postHistoryRepository.ts", location.href).href;
+            const { postHistoryRepository } = await import(/* @vite-ignore */ moduleUrl);
+            await postHistoryRepository.upsertFetchedEvents({
+                events: events.map(event => ({ event, relayUrls: [] })),
+            });
+        }, { events: f.localCorpus });
+        await page.locator(".post-history-btn").click();
+        await expect(page.locator(".post-history-item")).toHaveCount(50);
+        await page.keyboard.press("Escape");
+        await expect(page.locator(".post-history-dialog")).toBeHidden();
+        await setUrl(page, f.localUrl);
+
+        const deletionEvents = f.localCorpus.slice(0, 20).map(targetEvent => ({
+            targetEvent,
+            event: f.sign({
+                kind: 5,
+                created_at: f.now + 1,
+                tags: [["e", targetEvent.id], ["k", "1"]],
+                content: "",
+            }),
+        }));
+        f.localCorpus.push(...deletionEvents.map(item => item.event));
+        await page.evaluate(async ({ deletionEvents }) => {
+            const importModule = (path: string) => import(/* @vite-ignore */ new URL(path, location.href).href);
+            const { postHistoryDeletionRequestsRepository } = await importModule("src/lib/storage/postHistoryDeletionRequestsRepository.ts");
+            await Promise.all(deletionEvents.map(({ targetEvent, event }) =>
+                postHistoryDeletionRequestsRepository.saveLocalDeletion({
+                    targetEventId: targetEvent.id,
+                    targetEvent,
+                    deletionEvent: event,
+                    deletedAt: event.created_at * 1000,
+                }),
+            ));
+        }, { deletionEvents });
+        await page.evaluate(async () => {
+            const importModule = (path: string) => import(/* @vite-ignore */ new URL(path, location.href).href);
+            const [{ ehagakiDb }, { postHistoryDeletionRequestsRepository }, { postHistoryLocalRelayService }] = await Promise.all([
+                importModule("src/lib/storage/ehagakiDb.ts"),
+                importModule("src/lib/storage/postHistoryDeletionRequestsRepository.ts"),
+                importModule("src/lib/postHistoryLocalRelayService.ts"),
+            ]);
+            const metrics = { imports: [] as Array<{ elapsedMs: number; unchangedCount: number }>, bulkPutCalls: 0,
+                bulkPutRecords: 0, sensitivePayloadGets: 0,
+                localReads: [] as Array<{ elapsedMs: number; settledAt: number; completed: boolean }> };
+            const originalImport = postHistoryDeletionRequestsRepository.upsertImportedDeletionEvents.bind(
+                postHistoryDeletionRequestsRepository,
+            );
+            const originalBulkPut = ehagakiDb.postHistoryDeletionRequests.bulkPut;
+            const originalPayloadGet = ehagakiDb.sensitivePayloads.get;
+            const originalRead = postHistoryLocalRelayService.read.bind(postHistoryLocalRelayService);
+            ehagakiDb.postHistoryDeletionRequests.bulkPut = function (this: any, records: any, ...args: any[]) {
+                metrics.bulkPutCalls += 1;
+                metrics.bulkPutRecords += records.length;
+                return originalBulkPut.call(this, records, ...args);
+            } as typeof ehagakiDb.postHistoryDeletionRequests.bulkPut;
+            ehagakiDb.sensitivePayloads.get = function (this: any, ...args: any[]) {
+                metrics.sensitivePayloadGets += 1;
+                return originalPayloadGet.apply(this, args as [string]);
+            } as typeof ehagakiDb.sensitivePayloads.get;
+            postHistoryDeletionRequestsRepository.upsertImportedDeletionEvents = async function (input: any) {
+                const startedAt = performance.now();
+                const result = await originalImport(input);
+                metrics.imports.push({ elapsedMs: performance.now() - startedAt, unchangedCount: result.unchangedCount });
+                return result;
+            };
+            postHistoryLocalRelayService.read = function (input: any) {
+                const startedAt = performance.now();
+                const task = originalRead(input);
+                return {
+                    ...task,
+                    promise: task.promise.then((result: any) => {
+                        metrics.localReads.push({ elapsedMs: performance.now() - startedAt,
+                            settledAt: performance.now(), completed: result !== null });
+                        return result;
+                    }),
+                };
+            };
+            (window as any).__postHistoryDeletionPerf = {
+                metrics,
+                restore() {
+                    ehagakiDb.postHistoryDeletionRequests.bulkPut = originalBulkPut;
+                    ehagakiDb.sensitivePayloads.get = originalPayloadGet;
+                    postHistoryDeletionRequestsRepository.upsertImportedDeletionEvents = originalImport;
+                    postHistoryLocalRelayService.read = originalRead;
+                },
+            };
+        });
+
+        const firstOpenAt = Date.now();
+        await page.locator(".post-history-btn").click();
+        await expect(page.getByText("Local pagination 0", { exact: true })).toBeVisible();
+        const firstPaintMs = Date.now() - firstOpenAt;
+        await expect.poll(() => f.localRequests.filter(filter => filter.kinds?.includes(5)).length).toBeGreaterThan(0);
+        const closeStartedAt = performance.now();
+        await page.keyboard.press("Escape");
+        await expect(page.locator(".post-history-dialog")).toBeHidden();
+        const closeResponseMs = performance.now() - closeStartedAt;
+        f.releaseLocal();
+        await expect.poll(() => page.evaluate(() => (window as any).__postHistoryDeletionPerf.metrics.localReads.length))
+            .toBe(1);
+        await expect.poll(() => page.evaluate(() => (window as any).__postHistoryDeletionPerf.metrics.imports.length), {
+            timeout: 500,
+        }).toBe(0);
+
+        f.setHeldLocalKinds([]);
+        const openRead = async (expectedImports: number, expectedLocalReads: number) => {
+            const startedAt = Date.now();
+            await page.evaluate(() => {
+                (window as any).__postHistoryDeletionPerf.paintMark = performance.now();
+            });
+            await page.locator(".post-history-btn").click();
+            await expect(page.locator(".post-history-item")).toHaveCount(50);
+            const firstPaintMs = Date.now() - startedAt;
+            const paintedAt = await page.evaluate(() => performance.now());
+            await expect.poll(() => page.evaluate(() => (window as any).__postHistoryDeletionPerf.metrics.imports.length))
+                .toBe(expectedImports);
+            await expect.poll(() => page.evaluate(() => (window as any).__postHistoryDeletionPerf.metrics.localReads.length))
+                .toBe(expectedLocalReads);
+            return {
+                firstPaintMs,
+                postPaintToReadSettleMs: await page.evaluate(({ paintedAt }) =>
+                    (window as any).__postHistoryDeletionPerf.metrics.localReads.at(-1).settledAt - paintedAt,
+                { paintedAt }),
+                deletionImportMs: await page.evaluate(() => (window as any).__postHistoryDeletionPerf.metrics.imports.at(-1).elapsedMs),
+            };
+        };
+        const firstRead = await openRead(1, 2);
+        await page.keyboard.press("Escape");
+        await expect(page.locator(".post-history-dialog")).toBeHidden();
+        const repeatRead = await openRead(2, 3);
+        await expect.poll(() => f.localResponses.filter(event => event.kind === 5).length).toBe(60);
+
+        const result = await page.evaluate(() => (window as any).__postHistoryDeletionPerf.metrics);
+        expect(result.imports.map((item: any) => item.unchangedCount)).toEqual([20, 20]);
+        expect(result.bulkPutCalls).toBe(0);
+        expect(result.sensitivePayloadGets).toBe(0);
+        expect(f.localRequests.filter(filter => filter.kinds?.includes(5)).length).toBeGreaterThanOrEqual(2);
+        console.log("POST_HISTORY_DELETION_OPEN_PERF", JSON.stringify({
+            fixture: "50 visible posts / 20 known ordinary deletions",
+            firstPaintMs,
+            closeResponseMs,
+            firstRead,
+            repeatRead,
+            returnedKind5: 60,
+            bulkPutCalls: result.bulkPutCalls,
+            bulkPutRecords: result.bulkPutRecords,
+            sensitivePayloadGets: result.sensitivePayloadGets,
+            localReadSettles: result.localReads.map((read: any) => ({ elapsedMs: read.elapsedMs, completed: read.completed })),
+        }));
+    } finally {
+        await page.evaluate(() => (window as any).__postHistoryDeletionPerf?.restore()).catch(() => undefined);
+        await f.stop();
+    }
+});
+
+test("reimporting deletion for an already-deleted payload does not scan 2,000 author rows", async ({ page }) => {
+    const f = await fixture(page);
+    try {
+        const payloadEvents = Array.from({ length: 20 }, (_, index) => f.sign({
+            kind: 36,
+            created_at: f.now - index - 1,
+            tags: [["k", "1"]],
+            content: `payload ${index}`,
+        }));
+        const deletionEvents = payloadEvents.map((payload, index) => f.sign({
+            kind: 5,
+            created_at: f.now + 10 + index,
+            tags: [["e", payload.id], ["k", "36"]],
+            content: "",
+        }));
+        await page.evaluate(async ({ pubkey, payloadEvents, deletionEvents }) => {
+            const importModule = (path: string) => import(/* @vite-ignore */ new URL(path, location.href).href);
+            const { ehagakiDb } = await importModule("src/lib/storage/ehagakiDb.ts");
+            const postRows = Array.from({ length: 2000 }, (_, index) => {
+                const id = index.toString(16).padStart(64, "0");
+                const rawEvent = { id, pubkey, kind: 1, content: `scan fixture ${index}`, tags: [],
+                    created_at: index, sig: "a".repeat(128) };
+                return { id, eventId: id, pubkeyHex: pubkey, kind: 1, content: rawEvent.content, tags: [],
+                    createdAt: index, postedAt: index, relayHints: [], acceptedRelays: [], fetchedRelays: [],
+                    media: [], rawEvent, rawEventVerification: { status: "valid", ruleVersion: 1 },
+                    updatedAt: index, schemaVersion: 2 };
+            });
+            await ehagakiDb.postHistory.bulkPut(postRows);
+            await ehagakiDb.sensitivePayloads.bulkPut(payloadEvents.map((event, index) => ({
+                id: event.id, pubkeyHex: pubkey, structureKind: 1, rawEvent: event,
+                rawEventVerification: { status: "valid", ruleVersion: 1 }, acceptedRelays: [], fetchedRelays: [],
+                relayHints: [], deletedAt: (event.created_at + 1) * 1000, deletionEventId: deletionEvents[index].id,
+                createdAt: event.created_at * 1000, updatedAt: event.created_at * 1000, schemaVersion: 1,
+            })));
+            const { postHistoryDeletionRequestsRepository } = await importModule("src/lib/storage/postHistoryDeletionRequestsRepository.ts");
+            await postHistoryDeletionRequestsRepository.upsertImportedDeletionEvents({
+                ownerPubkeyHex: pubkey,
+                deletionEvents: deletionEvents.map(event => ({ event })),
+                fetchedAt: 1000,
+            });
+            const metrics = { authorScans: 0, bulkPutCalls: 0, bulkPutRecords: 0 };
+            const originalWhere = ehagakiDb.postHistory.where;
+            const originalBulkPut = ehagakiDb.postHistoryDeletionRequests.bulkPut;
+            ehagakiDb.postHistory.where = function (this: any, index: any, ...args: any[]) {
+                if (index === "pubkeyHex") metrics.authorScans += 1;
+                return originalWhere.call(this, index, ...args);
+            } as typeof ehagakiDb.postHistory.where;
+            ehagakiDb.postHistoryDeletionRequests.bulkPut = function (this: any, records: any, ...args: any[]) {
+                metrics.bulkPutCalls += 1;
+                metrics.bulkPutRecords += records.length;
+                return originalBulkPut.call(this, records, ...args);
+            } as typeof ehagakiDb.postHistoryDeletionRequests.bulkPut;
+            (window as any).__sensitiveDeletionPerf = {
+                metrics,
+                restore() {
+                    ehagakiDb.postHistory.where = originalWhere;
+                    ehagakiDb.postHistoryDeletionRequests.bulkPut = originalBulkPut;
+                },
+            };
+        }, { pubkey: f.pubkey, payloadEvents, deletionEvents });
+
+        const result = await page.evaluate(async ({ pubkey, deletionEvents }) => {
+            const moduleUrl = new URL("src/lib/storage/postHistoryDeletionRequestsRepository.ts", location.href).href;
+            const { postHistoryDeletionRequestsRepository } = await import(/* @vite-ignore */ moduleUrl);
+            const startedAt = performance.now();
+            const value = await postHistoryDeletionRequestsRepository.upsertImportedDeletionEvents({
+                ownerPubkeyHex: pubkey,
+                deletionEvents: deletionEvents.map(event => ({ event })),
+                fetchedAt: 1000,
+            });
+            return { value, elapsedMs: performance.now() - startedAt };
+        }, { pubkey: f.pubkey, deletionEvents });
+        const metrics = await page.evaluate(() => (window as any).__sensitiveDeletionPerf.metrics);
+        expect(result.value).toMatchObject({ updatedCount: 0, unchangedCount: 20 });
+        expect(metrics.authorScans).toBe(0);
+        expect(metrics.bulkPutCalls).toBe(0);
+        console.log("POST_HISTORY_SENSITIVE_DELETION_PERF", JSON.stringify({
+            fixture: "2,000 author rows / 20 already-deleted payloads",
+            elapsedMs: result.elapsedMs,
+            authorScans: metrics.authorScans,
+            bulkPutCalls: metrics.bulkPutCalls,
+            bulkPutRecords: metrics.bulkPutRecords,
+        }));
+    } finally {
+        await page.evaluate(() => (window as any).__sensitiveDeletionPerf?.restore()).catch(() => undefined);
+        await f.stop();
+    }
 });
 
 test("a history clear in another tab invalidates live local continuity and cursor", async ({ page, context }) => {
