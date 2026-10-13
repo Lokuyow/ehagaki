@@ -476,6 +476,9 @@ vi.mock('../../lib/storage/postHistoryImportedRangesRepository', async () => ({
 vi.mock('../../lib/storage/postHistoryLocalWriteScope', async () => ({
     ...await vi.importActual('../../lib/storage/postHistoryLocalWriteScope'),
     getPostHistoryLocalRevision: (_db: unknown, owner: string) => hoisted.relayCoverageRepositoryMock.getLocalRevision(owner),
+    // Reply badges in this UI suite must not wait on the singleton IndexedDB queue.
+    // Child-generation persistence is covered by postHistoryChildWriteGeneration.test.ts.
+    getPostHistoryChildWriteGeneration: () => Promise.resolve(0),
 }));
 
 vi.mock('../../lib/storage/postHistoryJumpCacheAnchorRepository', async () => {

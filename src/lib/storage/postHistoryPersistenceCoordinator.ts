@@ -42,6 +42,9 @@ export async function clearPostHistoryDisplayForPubkey(
         ],
         async () => {
             await new DexiePostHistoryRelayCoverageRepository(db, now).clearForPubkey(pubkeyHex);
+            // Snapshot parents are not rows in postHistory. Advance even when this
+            // owner has no saved posts so in-flight child writes are still rejected.
+            await advancePostHistoryChildWriteGeneration(db, now());
             deletedPayloadCount = await db.sensitivePayloads
                 .where("pubkeyHex")
                 .equals(pubkeyHex)
@@ -54,7 +57,6 @@ export async function clearPostHistoryDisplayForPubkey(
                 && lastPostHistoryRecord?.pubkeyHex === pubkeyHex;
             if (canClearEntirePostHistory) {
                 await db.postHistoryChildInteractions.clear();
-                await advancePostHistoryChildWriteGeneration(db, now());
                 await db.postHistory.clear();
                 deletedPostHistoryCount = 1;
                 return;
@@ -69,7 +71,6 @@ export async function clearPostHistoryDisplayForPubkey(
                     .where("parentEventId")
                     .anyOf(parentEventIds)
                     .delete();
-                await advancePostHistoryChildWriteGeneration(db, now());
             }
             deletedPostHistoryCount = await db.postHistory
                 .where("pubkeyHex")

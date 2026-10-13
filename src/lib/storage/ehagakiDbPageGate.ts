@@ -1,5 +1,8 @@
 import { getAppRuntimeEnvironment } from "../appRuntimeEnvironment";
-import { EHAGAKI_DB_NATIVE_VERSION } from "./ehagakiDbConstants";
+import en from "../i18n/en.json";
+import ja from "../i18n/ja.json";
+import { setEHagakiDbUpgradeBlocked } from "./ehagakiDb";
+import { EHAGAKI_DB_NAME, EHAGAKI_DB_NATIVE_VERSION } from "./ehagakiDbConstants";
 import { upgradeEhagakiDatabase } from "./ehagakiDbMigration";
 import { installEhagakiDbOpenGate } from "./ehagakiDbOpenGate";
 import {
@@ -9,12 +12,27 @@ import {
     EHAGAKI_DB_UPGRADE_REQUEST,
 } from "./ehagakiDbUpgradeController";
 
-export function installAppOriginEhagakiDatabaseGate(target: Window = window): void {
-    installEhagakiDbOpenGate(() => waitForServiceWorkerDatabaseUpgrade(target));
+export const EHAGAKI_DB_GATE_CONTROLLER_WAIT_MS = 8_000;
+const NOTICE_ID = "ehagaki-db-gate-notice";
+
+export interface EhagakiDatabaseGateOptions {
+    databaseName?: string;
+    indexedDb?: IDBFactory;
+    controllerWaitMs?: number;
 }
 
-export function installExternalHostEhagakiDatabaseGate(indexedDb: IDBFactory = indexedDB): void {
-    installEhagakiDbOpenGate(() => upgradeEhagakiDatabase(indexedDb));
+export function installAppOriginEhagakiDatabaseGate(
+    target: Window = window,
+    options: EhagakiDatabaseGateOptions = {},
+): void {
+    installEhagakiDbOpenGate(() => runAppOriginDatabaseGate(target, options));
+}
+
+export function installExternalHostEhagakiDatabaseGate(
+    indexedDb: IDBFactory = indexedDB,
+    databaseName = EHAGAKI_DB_NAME,
+): void {
+    installEhagakiDbOpenGate(() => upgradeEhagakiDatabase(indexedDb, { databaseName }));
 }
 
 export async function installEhagakiDatabaseGateForRuntime(assetBase: URL): Promise<void> {
@@ -38,33 +56,126 @@ async function pageHasEhagakiServiceWorker(assetBase: URL): Promise<boolean> {
     });
 }
 
-function waitForServiceWorkerDatabaseUpgrade(target: Window): Promise<void> {
-    const serviceWorker = target.navigator.serviceWorker;
-    if (!serviceWorker) return Promise.resolve();
+function runAppOriginDatabaseGate(
+    target: Window,
+    options: EhagakiDatabaseGateOptions,
+): Promise<void> {
+    const databaseName = options.databaseName ?? EHAGAKI_DB_NAME;
+    const indexedDb = options.indexedDb ?? target.indexedDB;
+    const controllerWaitMs = options.controllerWaitMs ?? EHAGAKI_DB_GATE_CONTROLLER_WAIT_MS;
     return new Promise((resolve) => {
-        let timer = 0;
-        const requestUpgrade = () => {
-            serviceWorker.controller?.postMessage({ type: EHAGAKI_DB_UPGRADE_REQUEST });
+        let settled = false;
+        let attempt: Promise<void> | null = null;
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            hideEhagakiDatabaseGateNotice(target.document);
+            setEHagakiDbUpgradeBlocked(false);
+            resolve();
         };
+        const serviceWorker = target.navigator.serviceWorker;
+
+        const migrateFromPage = () => {
+            if (settled) return;
+            if (attempt) return;
+            attempt = upgradeEhagakiDatabase(indexedDb, {
+                databaseName,
+                onBlocked: () => {
+                    showEhagakiDatabaseGateNotice(target, "blocked");
+                    setEHagakiDbUpgradeBlocked(true);
+                },
+                onBlockedResolved: () => setEHagakiDbUpgradeBlocked(false),
+            }).then(() => {
+                attempt = null;
+                finish();
+            }).catch((error: unknown) => {
+                attempt = null;
+                if (settled) return;
+                if (isVersionError(error)) {
+                    showEhagakiDatabaseGateNotice(target, "versionError");
+                    return;
+                }
+                showEhagakiDatabaseGateNotice(target, "retry", () => migrateFromPage());
+            });
+        };
+
+        if (!serviceWorker) {
+            migrateFromPage();
+            return;
+        }
+
         const onMessage = (event: Event) => {
-            const data = (event as MessageEvent).data as { type?: string } | undefined;
+            const message = event as MessageEvent;
+            const data = message.data as { type?: string } | undefined;
             if (data?.type === EHAGAKI_DB_CAPABILITY_PROBE) {
-                const source = (event as MessageEvent).source as { postMessage?: (message: unknown) => void } | null;
+                const source = message.source as { postMessage?: (payload: unknown) => void } | null;
                 source?.postMessage?.({
                     type: EHAGAKI_DB_CAPABILITY_REPORT,
                     supportedNativeVersion: EHAGAKI_DB_NATIVE_VERSION,
                 });
             }
-            if (data?.type === EHAGAKI_DB_UPGRADE_COMPLETE) {
-                serviceWorker.removeEventListener("message", onMessage);
-                serviceWorker.removeEventListener("controllerchange", requestUpgrade);
-                target.clearInterval(timer);
-                resolve();
-            }
+            if (data?.type === EHAGAKI_DB_UPGRADE_COMPLETE) finish();
+        };
+        const requestUpgrade = () => {
+            serviceWorker.controller?.postMessage({ type: EHAGAKI_DB_UPGRADE_REQUEST });
         };
         serviceWorker.addEventListener("message", onMessage);
         serviceWorker.addEventListener("controllerchange", requestUpgrade);
-        timer = target.setInterval(requestUpgrade, 2000);
         requestUpgrade();
+
+        void serviceWorker.getRegistration()
+            .then(() => undefined)
+            .catch(() => {
+                if (!settled) showEhagakiDatabaseGateNotice(target, "retry", () => migrateFromPage());
+            });
+
+        target.setTimeout(() => {
+            if (!settled) showEhagakiDatabaseGateNotice(target, "retry", () => migrateFromPage());
+        }, controllerWaitMs);
     });
+}
+
+function isVersionError(error: unknown): boolean {
+    return typeof error === "object"
+        && error !== null
+        && "name" in error
+        && (error as { name?: string }).name === "VersionError";
+}
+
+function gateCopy(storage: Storage | undefined) {
+    const locale = storage?.getItem("locale") ?? "";
+    return locale.toLowerCase().startsWith("en") ? en.databaseGate : ja.databaseGate;
+}
+
+function showEhagakiDatabaseGateNotice(
+    target: Window,
+    kind: "blocked" | "retry" | "versionError",
+    retry?: () => void,
+): void {
+    const copy = gateCopy(target.localStorage);
+    const notice = target.document.getElementById(NOTICE_ID) ?? target.document.createElement("div");
+    notice.id = NOTICE_ID;
+    notice.setAttribute("role", "alert");
+    notice.dataset.ehagakiDbGate = kind;
+    const message = kind === "blocked"
+        ? copy.blocked
+        : kind === "versionError"
+            ? copy.versionError
+            : copy.retry;
+    notice.replaceChildren();
+    const paragraph = target.document.createElement("p");
+    paragraph.textContent = message;
+    notice.append(paragraph);
+    if (retry && kind !== "blocked") {
+        const button = target.document.createElement("button");
+        button.type = "button";
+        button.textContent = copy.retryButton;
+        button.addEventListener("click", retry);
+        notice.append(button);
+    }
+    if (!notice.isConnected) target.document.body.append(notice);
+}
+
+function hideEhagakiDatabaseGateNotice(documentRef: Document): void {
+    documentRef.getElementById(NOTICE_ID)?.remove();
 }

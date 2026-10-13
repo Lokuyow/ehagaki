@@ -45,6 +45,7 @@ export interface PostHistoryInboundInteractionsRealtimeSubscription {
 export interface PostHistoryInboundInteractionsRealtimeServiceDeps {
     postHistoryRepository?: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     postHistoryChildInteractionsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
+    getChildWriteGeneration?: () => Promise<number>;
     console?: Pick<Console, "warn" | "error">;
     now?: () => number;
 }
@@ -62,6 +63,7 @@ function normalizeRelayLimit(relayLimit: number | undefined): number {
 export class PostHistoryInboundInteractionsRealtimeService {
     private postHistoryRepository: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     private postHistoryChildInteractionsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
+    private getChildWriteGeneration: () => Promise<number>;
     private console: Pick<Console, "warn" | "error">;
     private now: () => number;
 
@@ -69,6 +71,8 @@ export class PostHistoryInboundInteractionsRealtimeService {
         this.postHistoryRepository = deps.postHistoryRepository ?? postHistoryRepository;
         this.postHistoryChildInteractionsRepository =
             deps.postHistoryChildInteractionsRepository ?? postHistoryChildInteractionsRepository;
+        this.getChildWriteGeneration = deps.getChildWriteGeneration
+            ?? (() => getPostHistoryChildWriteGeneration(ehagakiDb));
         this.console = deps.console ?? (typeof globalThis.console !== "undefined"
             ? globalThis.console
             : { warn: () => undefined, error: () => undefined });
@@ -82,10 +86,6 @@ export class PostHistoryInboundInteractionsRealtimeService {
         let active = true;
         let subscription: SubscriptionLike | undefined;
         let workQueue: Promise<void> = Promise.resolve();
-        let expectedChildGeneration = 0;
-        const generationReady = getPostHistoryChildWriteGeneration(ehagakiDb).then((generation) => {
-            expectedChildGeneration = generation;
-        });
         const relayUrls = resolvePostHistoryRelayUrls(
             params.relayConfig,
             normalizeRelayLimit(params.relayLimit),
@@ -112,10 +112,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
             }).subscribe({
                 next: (packet: { event?: NostrEvent; from?: string }) => {
                     workQueue = workQueue
-                        .then(async () => {
-                            await generationReady;
-                            await this.processPacket(packet, params, () => active, expectedChildGeneration);
-                        })
+                        .then(() => this.processPacket(packet, params, () => active))
                         .catch((error) => {
                             this.console.error("post_history_inbound_interactions_realtime_packet_error", error);
                         });
@@ -156,8 +153,8 @@ export class PostHistoryInboundInteractionsRealtimeService {
         packet: { event?: NostrEvent; from?: string },
         params: PostHistoryInboundInteractionsRealtimeSubscribeRequest,
         isActive: () => boolean,
-        expectedChildGeneration: number,
     ): Promise<void> {
+        const expectedChildGeneration = await this.getChildWriteGeneration();
         const event = packet.event;
         if (!isActive() || !event?.id) {
             return;

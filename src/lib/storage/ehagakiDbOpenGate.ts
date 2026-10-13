@@ -2,10 +2,9 @@ let ready: Promise<void> | null = null;
 
 export function installEhagakiDbOpenGate(wait: () => Promise<void>): void {
     if (ready) return;
-    ready = wait().catch((error) => {
-        ready = null;
-        throw error;
-    });
+    // A failed or unfinished wait must keep later opens waiting. Clearing it
+    // would let Dexie open before the shared migration finishes.
+    ready = wait();
 }
 
 export function waitForEhagakiDbOpenGate(): Promise<void> {

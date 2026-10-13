@@ -54,18 +54,20 @@ export function migrateEhagakiIndexedDb(
 export function openEhagakiIndexedDb({
     indexedDb,
     version,
+    databaseName = EHAGAKI_DB_NAME,
     onBlocked,
     onBlockedResolved,
 }: {
     indexedDb: IDBFactory;
     version: number | null;
+    databaseName?: string;
     onBlocked?: () => void;
     onBlockedResolved?: () => void;
 }): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
         const request = version == null
-            ? indexedDb.open(EHAGAKI_DB_NAME)
-            : indexedDb.open(EHAGAKI_DB_NAME, version);
+            ? indexedDb.open(databaseName)
+            : indexedDb.open(databaseName, version);
         let wasBlocked = false;
         request.onupgradeneeded = (event) => {
             migrateEhagakiIndexedDb(request.result, request.transaction, event.oldVersion);
@@ -86,7 +88,11 @@ export function openEhagakiIndexedDb({
 
 export async function upgradeEhagakiDatabase(
     indexedDb: IDBFactory,
-    hooks: { onBlocked?: () => void; onBlockedResolved?: () => void } = {},
+    hooks: {
+        databaseName?: string;
+        onBlocked?: () => void;
+        onBlockedResolved?: () => void;
+    } = {},
 ): Promise<void> {
     const db = await openEhagakiIndexedDb({
         indexedDb,

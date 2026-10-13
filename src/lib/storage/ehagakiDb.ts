@@ -20,7 +20,7 @@ type EHagakiDbUpgradeStateListener = (blocked: boolean) => void;
 const ehagakiDbUpgradeStateListeners = new Set<EHagakiDbUpgradeStateListener>();
 let ehagakiDbUpgradeBlocked = false;
 
-function setEHagakiDbUpgradeBlocked(blocked: boolean) {
+export function setEHagakiDbUpgradeBlocked(blocked: boolean) {
     if (ehagakiDbUpgradeBlocked === blocked) {
         return;
     }
