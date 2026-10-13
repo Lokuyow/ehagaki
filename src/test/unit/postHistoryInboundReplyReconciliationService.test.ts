@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import Dexie from "dexie";
 import { classifyPostHistoryInboundInteraction } from "../../lib/postHistoryInboundInteractionClassifier";
 import { PostHistoryInboundReplyReconciliationService } from "../../lib/postHistoryInboundReplyReconciliationService";
+import { EHagakiDB } from "../../lib/storage/ehagakiDb";
+import { DexiePostHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryChildInteractionsRepository";
+import { clearPostHistoryDisplayForPubkey } from "../../lib/storage/postHistoryPersistenceCoordinator";
+import { getPostHistoryChildWriteGeneration } from "../../lib/storage/postHistoryLocalWriteScope";
 import type { NostrEvent } from "../../lib/types";
 
 const OWNER_PUBKEY = "a".repeat(64);
@@ -22,7 +27,7 @@ function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
     };
 }
 
-function createCandidate(event = createEvent()) {
+function createCandidate(event = createEvent(), expectedChildGeneration?: number) {
     return {
         event,
         classification: classifyPostHistoryInboundInteraction({
@@ -31,6 +36,7 @@ function createCandidate(event = createEvent()) {
             ownerPostEventIds: new Set(),
         }),
         relayUrls: ["wss://relay.example.com"],
+        ...(typeof expectedChildGeneration === "number" ? { expectedChildGeneration } : {}),
     };
 }
 
@@ -253,5 +259,74 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
             expectedChildGeneration: 0,
             fetchedAt: expect.any(Number),
         });
+    });
+
+    it("saves a post-clear candidate when an older pending candidate shares the same batch", async () => {
+        const name = `reconciliation-generation-${crypto.randomUUID()}`;
+        const dbA = new EHagakiDB(name);
+        const dbB = new EHagakiDB(name);
+        await dbA.open();
+        await dbB.open();
+        const repository = new DexiePostHistoryChildInteractionsRepository(dbA);
+        const parentFetch = createDeferred<{ event: NostrEvent | null; relayUrl: string | null }>();
+        const onSavedInboundInteractions = vi.fn();
+        const oldReply = createEvent({ id: "2".repeat(64) });
+        const newReply = createEvent({ id: "4".repeat(64), created_at: 110 });
+        const session = new PostHistoryInboundReplyReconciliationService({
+            postHistoryRepository: {
+                getExistingEventIdsForPubkey: vi.fn(async () => []),
+                getByEventId: vi.fn(async (eventId: string) => eventId === PARENT_ID ? ({
+                    eventId,
+                    kind: 1,
+                    tags: [],
+                    createdAt: 90,
+                    relayHints: [],
+                    acceptedRelays: [],
+                } as any) : null),
+                upsertFetchedEvents: vi.fn(async () => ({
+                    insertedCount: 1,
+                    updatedCount: 0,
+                    unchangedCount: 0,
+                    appliedDeletionCount: 0,
+                })),
+            },
+            postHistoryChildInteractionsRepository: repository,
+            selfParentFetchService: {
+                fetchSelfParent: vi.fn(() => ({
+                    promise: parentFetch.promise,
+                    cancel: vi.fn(),
+                })),
+            },
+            now: () => 1_700_000_000_000,
+            console: { warn: vi.fn(), error: vi.fn() },
+        }).createSession({} as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+            onSavedInboundInteractions,
+        });
+
+        await session.reconcile([createCandidate(oldReply, 0)]);
+        await clearPostHistoryDisplayForPubkey(dbB, OWNER_PUBKEY, () => 60);
+        await expect(getPostHistoryChildWriteGeneration(dbA)).resolves.toBe(1);
+        await session.reconcile([createCandidate(newReply, 1)]);
+        parentFetch.resolve({
+            event: createEvent({
+                id: PARENT_ID,
+                pubkey: OWNER_PUBKEY,
+                content: "parent",
+                tags: [],
+            }),
+            relayUrl: "wss://parent.example.com",
+        });
+
+        await vi.waitFor(() => {
+            expect(onSavedInboundInteractions).toHaveBeenCalledWith([PARENT_ID]);
+        });
+        await expect(dbA.postHistoryChildInteractions.toArray()).resolves.toEqual([
+            expect.objectContaining({ eventId: newReply.id }),
+        ]);
+        session.stop();
+        dbA.close();
+        dbB.close();
+        await Dexie.delete(name);
     });
 });

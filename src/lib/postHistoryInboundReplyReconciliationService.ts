@@ -253,14 +253,6 @@ export class PostHistoryInboundReplyReconciliationSession {
         if (!this.active || candidates.length === 0) {
             return emptyResult();
         }
-        const capturedGenerations = candidates.flatMap((candidate) =>
-            typeof candidate.expectedChildGeneration === "number" ? [candidate.expectedChildGeneration] : [],
-        );
-        const expectedChildGeneration = capturedGenerations.length === candidates.length
-            ? Math.min(...capturedGenerations)
-            : await getPostHistoryChildWriteGeneration(ehagakiDb);
-
-        const directRepliesByParentId = new Map<string, PostHistoryChildInteractionItem[]>();
         const parentContextsById = new Map((await Promise.all(
             Array.from(new Set(candidates.flatMap((candidate) =>
                 candidate.classification.parentEventId
@@ -290,6 +282,12 @@ export class PostHistoryInboundReplyReconciliationSession {
         if (!this.active) {
             return emptyResult();
         }
+
+        const groups = new Map<string, {
+            parentEventId: string;
+            expectedChildGeneration?: number;
+            events: PostHistoryChildInteractionItem[];
+        }>();
         for (const candidate of candidates) {
             const parentEventId = candidate.classification.parentEventId;
             if (!parentEventId) {
@@ -315,22 +313,33 @@ export class PostHistoryInboundReplyReconciliationSession {
                 continue;
             }
 
-            const replies = directRepliesByParentId.get(parentEventId) ?? [];
-            replies.push({
+            const capturedGeneration = typeof candidate.expectedChildGeneration === "number"
+                ? candidate.expectedChildGeneration
+                : undefined;
+            const groupKey = `${parentEventId}\0${capturedGeneration ?? "current"}`;
+            const group = groups.get(groupKey) ?? {
+                parentEventId,
+                ...(capturedGeneration === undefined ? {} : { expectedChildGeneration: capturedGeneration }),
+                events: [],
+            };
+            group.events.push({
                 event: candidate.event,
                 ...(candidate.relayUrls ? { relayUrls: candidate.relayUrls } : {}),
             });
-            directRepliesByParentId.set(parentEventId, replies);
+            groups.set(groupKey, group);
         }
 
+        const currentGeneration = [...groups.values()].some((group) => group.expectedChildGeneration === undefined)
+            ? await getPostHistoryChildWriteGeneration(ehagakiDb)
+            : undefined;
         let savedDirectReplyCount = 0;
         const changedParentEventIds: string[] = [];
-        for (const [parentEventId, events] of directRepliesByParentId.entries()) {
+        for (const group of groups.values()) {
             const result = await this.deps.postHistoryChildInteractionsRepository.upsertChildInteractions({
-                parentEventId,
-                events,
+                parentEventId: group.parentEventId,
+                events: group.events,
                 fetchedAt: this.deps.now(),
-                expectedChildGeneration,
+                expectedChildGeneration: group.expectedChildGeneration ?? currentGeneration,
             });
             if (!this.active) {
                 return emptyResult();
@@ -338,7 +347,9 @@ export class PostHistoryInboundReplyReconciliationSession {
 
             const savedCount = result.insertedCount + result.updatedCount + result.unchangedCount;
             if (savedCount > 0) {
-                changedParentEventIds.push(parentEventId);
+                if (!changedParentEventIds.includes(group.parentEventId)) {
+                    changedParentEventIds.push(group.parentEventId);
+                }
                 savedDirectReplyCount += savedCount;
             }
         }
