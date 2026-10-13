@@ -10,7 +10,7 @@ const endpoints = buildPlaywrightEndpoints(resolvedPort);
 
 export default defineConfig({
     testDir: './src/test/e2e',
-    testIgnore: '**/serviceWorkerUpdate.spec.ts',
+    testIgnore: ['**/serviceWorkerUpdate.spec.ts', '**/uploadedMediaServiceWorker.spec.ts'],
     timeout: 30_000,
     expect: {
         timeout: 5_000,
@@ -31,14 +31,14 @@ export default defineConfig({
     projects: [
         {
             name: 'desktop-chromium',
-            testIgnore: ['**/webComponentDevServer.spec.ts', '**/serviceWorkerUpdate.spec.ts'],
+            testIgnore: ['**/webComponentDevServer.spec.ts', '**/serviceWorkerUpdate.spec.ts', '**/uploadedMediaServiceWorker.spec.ts'],
             use: {
                 ...devices['Desktop Chrome'],
             },
         },
         {
             name: 'mobile-chromium',
-            testIgnore: ['**/webComponentDevServer.spec.ts', '**/serviceWorkerUpdate.spec.ts'],
+            testIgnore: ['**/webComponentDevServer.spec.ts', '**/serviceWorkerUpdate.spec.ts', '**/uploadedMediaServiceWorker.spec.ts'],
             use: {
                 ...devices['iPhone 13'],
                 browserName: 'chromium',
@@ -63,6 +63,7 @@ export default defineConfig({
                 '**/footerSettingShortcuts.spec.ts',
                 '**/postEditorSending.spec.ts',
                 '**/postHistoryDialog.spec.ts',
+                '**/historyTabs.spec.ts',
                 '**/postHistoryFullScan.spec.ts',
                 '**/postHistoryJsonlWorker.spec.ts',
                 '**/postRepost.spec.ts',
@@ -76,7 +77,7 @@ export default defineConfig({
         },
         {
             name: 'desktop-firefox',
-            testMatch: ['**/webComponentEmbed.spec.ts', '**/postRepost.spec.ts', '**/postHistoryJsonlWorker.spec.ts', '**/postReaction.spec.ts'],
+            testMatch: ['**/historyTabs.spec.ts', '**/webComponentEmbed.spec.ts', '**/postRepost.spec.ts', '**/postHistoryJsonlWorker.spec.ts', '**/postReaction.spec.ts'],
             use: {
                 ...devices['Desktop Firefox'],
             },

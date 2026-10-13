@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import { tick } from "svelte";
 import { PUBKEY_HEX, cleanupPostHistoryDialogHarness, createDeferred,
     createRecord, createRelayFetchResult, relayFetchServiceMock, repositoryMock,
     resetPostHistoryDialogHarness, seedPostHistoryCoverage, completedRelayCoverage } from "./postHistoryDialogTestHarness";
@@ -80,6 +81,45 @@ beforeEach(() => {
 afterEach(() => { cleanupPostHistoryDialogHarness(); postHistoryLocalRelayService.cancelSession(); settingsStore.setLocalRelayUrl(""); vi.restoreAllMocks(); });
 
 describe("live local query continuity in the listing", () => {
+    it("cancels a tab-owned local peer and drops its late result without additional reads", async () => {
+        saved = corpus.slice(0, 150); seedPostHistoryCoverage(base - 49, base + 100);
+        const pending = createDeferred<LocalRelayHistoryReadResult | null>(); const cancel = vi.fn();
+        read.mockReturnValue({ cancel, promise: pending.promise });
+        const view = render(ListingHarness, { props: { ...props, sessionOpen: true } });
+        await screen.findByText("live row 49");
+        await waitFor(() => expect(read).toHaveBeenCalledOnce());
+        const old = read.mock.calls[0][0];
+        view.component.suspend();
+        await view.rerender({ ...props, show: false, sessionOpen: true });
+        expect(cancel).toHaveBeenCalled(); expect(old.isActive()).toBe(false);
+        const requests = repositoryMock.getLatestVisibleChunk.mock.calls.length;
+        pending.resolve({ ownerPubkeyHex: PUBKEY_HEX, sessionGeneration: postHistoryLocalRelayService.getSessionGeneration(),
+            localRevision: 0, changed: true, eventIds: [], nextUntil: base - 149, hasMore: true,
+            browsingRanges: [{ since: base - 149, until: base + 100 }] });
+        await pending.promise; await tick(); await tick();
+        expect(read).toHaveBeenCalledOnce();
+        expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(requests);
+        read.mockReturnValue({ cancel: vi.fn(), promise: Promise.resolve(null) });
+        await view.rerender({ ...props, sessionOpen: true });
+        await screen.findByText("live row 49");
+        expect(screen.queryByText("live row 149")).toBeNull();
+        view.unmount();
+    });
+
+    it("retains completed local continuity and rows across a tab suspension", async () => {
+        const view = render(ListingHarness, { props: { ...props, sessionOpen: true } });
+        await screen.findByText("live row 49"); await reveal(99); await reveal(148);
+        await fetchOlder(); await screen.findByText("live row 149"); await reveal(199);
+        const requests = read.mock.calls.length;
+        view.component.suspend(); await view.rerender({ ...props, show: false, sessionOpen: true });
+        await view.rerender({ ...props, sessionOpen: true });
+        await screen.findByText("live row 199");
+        expect(read).toHaveBeenCalledTimes(requests);
+        await reveal(249);
+        expect(read).toHaveBeenCalledTimes(requests);
+        view.unmount();
+    });
+
     it("retains committed evidence when an older same-scope snapshot arrives during reveal", async () => {
         const view = render(ListingHarness, { props });
         await screen.findByText("live row 49");

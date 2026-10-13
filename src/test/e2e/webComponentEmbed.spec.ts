@@ -2289,6 +2289,7 @@ test("keeps authenticated profile and post history dialogs inside the component"
         const composer = document.createElement("ehagaki-composer") as HTMLElement & {
             whenReady(): Promise<void>;
         };
+        composer.setAttribute("asset-base", `${window.__componentOrigin}/`);
         composer.style.width = "360px";
         composer.style.height = "520px";
         document.body.append(composer);
@@ -2386,6 +2387,28 @@ test("keeps authenticated profile and post history dialogs inside the component"
     expect(result.history.footer!.bottom).toBeCloseTo(component.bottom, 0);
     expect(result.history.list!.bottom).toBeCloseTo(result.history.footer!.top, 0);
     expect(result.history.listScrollHeight).toBeLessThanOrEqual(result.history.listClientHeight + 1);
+    // The History preference is runtime-local and stays inside the component Storage namespace.
+    await historyButton.click();
+    await expect(historyDialog).toBeVisible();
+    await historyDialog.getByRole("tab", { name: /^(メディア|Media)$/ }).click();
+    await expect(historyDialog.getByRole("tab", { name: /^(メディア|Media)$/ })).toHaveAttribute("aria-selected", "true");
+    await expect(historyDialog.locator(".post-history-container")).toHaveCount(0);
+    expect(await page.evaluate(prefix => localStorage.getItem(prefix + "historyActiveTab"), componentStoragePrefix)).toBe("media");
+    expect(await page.evaluate(() => localStorage.getItem("historyActiveTab"))).toBeNull();
+    await composer.evaluate(element => { (element as HTMLElement).style.width = "320px"; });
+    expect(await historyDialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    const closeMask = await historyDialog.locator(".dialog-footer .xmark-icon").evaluate(node => getComputedStyle(node).maskImage);
+    const closeAsset = closeMask.match(/url\(["']?([^"')]+)["']?\)/)?.[1];
+    expect(closeAsset).toBeTruthy();
+    expect(new URL(closeAsset!).origin).toBe(componentOrigin);
+    expect((await page.request.get(closeAsset!)).ok(), closeAsset).toBe(true);
+    await expect(historyDialog.locator(".media-management .loading-placeholder")).toHaveCount(0);
+    await page.screenshot({ path: test.info().outputPath("history-media-full-320.png") });
+    await historyDialog.getByRole("button", { name: /^(閉じる|Close)$/ }).click();
+    await composer.locator(".post-history-btn").click();
+    await expect(composer.locator(".post-history-dialog").getByRole("tab", { name: /^(メディア|Media)$/ })).toHaveAttribute("aria-selected", "true");
+    await expect(composer.locator(".post-history-container")).toHaveCount(0);
+
 });
 
 test("restores Web Component image focus without using browser history", async ({ page }) => {

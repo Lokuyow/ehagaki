@@ -162,6 +162,7 @@ test("Lite minimal configuration exposes only text composition and preserves suc
     }, { componentOrigin });
 
     const composer = page.locator("ehagaki-composer");
+    await expect(composer.locator(".post-history-btn, .post-history-dialog, .media-management")).toHaveCount(0);
     await expect(composer.locator(".image-button")).toHaveCount(0);
     await expect(composer.locator(".custom-emoji-button")).toHaveCount(0);
     await expect(composer.locator(".footer-button-bar")).toHaveCount(1);

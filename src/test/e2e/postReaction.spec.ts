@@ -229,7 +229,8 @@ test('Post History outer and original actions preserve identity; Custom Emoji se
     await expect(page.locator('[data-reaction-target-id]')).toHaveAttribute('data-reaction-target-id', h.targetId);
     await page.getByRole('button', { name: 'リアクションを解除', exact: true }).click();
     await page.getByTestId('open-history').click();
-    await page.getByRole('button', { name: 'リアクションする', exact: true }).first().click();
+    await page.locator('.post-history-repost .post-history-related-card')
+        .getByRole('button', { name: 'リアクションする', exact: true }).click();
     await expect(page.locator('[data-reaction-target-id]')).toHaveAttribute('data-reaction-target-id', h.relatedId);
     await page.getByRole('button', { name: 'カスタム絵文字', exact: true }).click();
     await page.getByRole('option', { name: ':blob:', exact: true }).click();

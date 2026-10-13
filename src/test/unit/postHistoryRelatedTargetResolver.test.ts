@@ -16,6 +16,7 @@ import {
     type PostHistoryProfileSyncCoordinator,
 } from "../../lib/postHistoryProfileSync";
 import type { NostrEvent, ProfileData } from "../../lib/types";
+import { postHistoryLocalRelayService } from "../../lib/postHistoryLocalRelayService";
 import { createMockRxNostr } from "../helpers";
 
 const getProfileMock = vi.hoisted(() => vi.fn());
@@ -225,6 +226,30 @@ describe("createPostHistoryRelatedTargetResolver", () => {
         const wrong = finalizeEvent({ kind: 7, content: "other", tags: [], created_at: 1 }, generateSecretKey());
         contextFetchService.fetchEventById.mockReturnValue({ promise: Promise.resolve({ event: wrong, relayUrl: null }), cancel: vi.fn() });
         expect(await resolver.retryTarget(desc)).toMatchObject({ status: "error", event: null, errorCode: "invalid_event" });
+    });
+
+    it.each([false, true])("drops archival and follow-up after tab scope invalidation during deletion persistence (%s)", async (requireFullVerification) => {
+        const key = generateSecretKey();
+        const target = finalizeEvent({ kind: 7, content: "+", tags: [], created_at: 1 }, key);
+        const deletion = finalizeEvent({ kind: 5, content: "", tags: [["e", target.id]], created_at: 2 }, key);
+        const stored = createDeferred<{ insertedCount: number; updatedCount: number; unchangedCount: number; ignoredCount: number }>();
+        const getDeletedTargets = vi.fn().mockResolvedValue(new Map());
+        const upsertValidDeletionRequests = vi.fn(() => stored.promise);
+        const { resolver, contextFetchService, deletionFetchService } = createResolver({ requireFullVerification,
+            deletionRequestsRepositoryImpl: { getDeletedTargets, upsertValidDeletionRequests } });
+        const archive = vi.spyOn(postHistoryLocalRelayService, "archiveAdoptedAuthored").mockResolvedValue(undefined);
+        try {
+            contextFetchService.fetchEventById.mockReturnValue({ promise: Promise.resolve({ event: target, relayUrl: null }), cancel: vi.fn() });
+            deletionFetchService.fetchDeletionRequests.mockReturnValue({ promise: Promise.resolve({ events: [deletion], fetchedAt: 0, relayUrls: [] }), cancel: vi.fn() });
+            const task = resolver.ensureTarget(createDescriptor({ targetEventId: target.id, relationKind: "reaction", authorHint: target.pubkey }));
+            await flushMicrotasks(); expect(upsertValidDeletionRequests).toHaveBeenCalledOnce();
+            resolver.invalidateScope("scope-a");
+            const lookups = getDeletedTargets.mock.calls.length;
+            stored.resolve({ insertedCount: 1, updatedCount: 0, unchangedCount: 0, ignoredCount: 0 });
+            await task;
+            expect(archive).not.toHaveBeenCalled();
+            expect(getDeletedTargets).toHaveBeenCalledTimes(lookups);
+        } finally { resolver.reset(); archive.mockRestore(); }
     });
 
     it("full verification ignores deletion completion after reset", async () => {

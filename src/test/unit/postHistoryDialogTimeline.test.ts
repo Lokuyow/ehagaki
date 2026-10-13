@@ -3274,7 +3274,8 @@ describe('PostHistoryDialog timeline navigation', () => {
             },
         });
 
-        expect(screen.getByText('古い投稿')).toBeTruthy();
+        // The shell imports Posts lazily; the restored rows still precede any latest-page read.
+        await waitFor(() => expect(screen.getByText('古い投稿')).toBeTruthy());
         expect(screen.getByText('最古投稿')).toBeTruthy();
         expect(repositoryMock.getLatestVisibleChunk).not.toHaveBeenCalled();
 
@@ -3334,16 +3335,6 @@ describe('PostHistoryDialog timeline navigation', () => {
         firstView.unmount();
         repositoryMock.getLatestVisibleChunk.mockClear();
 
-        const secondView = render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: PUBKEY_HEX,
-            },
-        });
-
-        const historyContainer = getHistoryContainer();
-        historyContainer.scrollTop = 0;
         const rect = (top: number, height: number) => ({
             x: 0,
             y: top,
@@ -3363,11 +3354,21 @@ describe('PostHistoryDialog timeline navigation', () => {
                 }
 
                 if (this.dataset.postHistoryEventId === 'anchor-older') {
-                    return rect(168 - historyContainer.scrollTop, 72) as DOMRect;
+                    return rect(168 - getHistoryContainer().scrollTop, 72) as DOMRect;
                 }
 
                 return rect(0, 72) as DOMRect;
             });
+
+        const secondView = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        const historyContainer = await waitFor(() => getHistoryContainer());
 
         await waitFor(() => {
             expect(historyContainer.scrollTop).toBe(120);

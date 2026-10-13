@@ -1165,6 +1165,7 @@ describe("ComposerTargetDialog", () => {
 
         expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
             emojiUrl,
+            { signal: expect.any(AbortSignal) },
         );
         expect(screen.getByRole("img", { name: ":party:" })).toBeTruthy();
     });
@@ -1355,7 +1356,7 @@ describe("ComposerTargetDialog", () => {
         ).toHaveLength(2));
         expect(document.querySelectorAll(".post-preview-reaction-actor")).toHaveLength(2);
         expect(screen.getByRole("img", { name: ":party:" })).toBeTruthy();
-        expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(emojiUrl);
+        expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(emojiUrl, { signal: expect.any(AbortSignal) });
         expect(screen.getByRole("button", { name: "リプライ" })).toBeTruthy();
         expect(screen.getByRole("button", { name: "引用" })).toBeTruthy();
 

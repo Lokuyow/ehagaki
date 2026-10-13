@@ -1521,7 +1521,7 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
         const downloadPromise = page.waitForEvent('download');
-        await page.getByRole('menuitem', { name: 'JSONLをエクスポート' }).click();
+        await page.getByRole('menuitem', { name: '投稿をJSONLでエクスポート' }).click();
         const download = await downloadPromise;
         expect(download.suggestedFilename()).toMatch(/^ehagaki-post-history-\d{4}-\d{2}-\d{2}\.jsonl$/);
 
@@ -3582,16 +3582,11 @@ test.describe('PostHistoryDialog Playwright', () => {
             .locator('.post-preview-footer-right')
             .getByRole('button', { name: 'アクションを表示' });
 
-        await actionTrigger.scrollIntoViewIfNeeded();
+        await actionTrigger.evaluate(node => node.scrollIntoView({ block: 'center', inline: 'nearest' }));
         const triggerBeforeOpen = await actionTrigger.boundingBox();
         expect(triggerBeforeOpen).not.toBeNull();
         if (isMobile) {
-            const triggerBox = await actionTrigger.boundingBox();
-            expect(triggerBox).not.toBeNull();
-            await page.touchscreen.tap(
-                triggerBox!.x + triggerBox!.width / 2,
-                triggerBox!.y + triggerBox!.height / 2,
-            );
+            await actionTrigger.tap();
         } else {
             await actionTrigger.click();
         }
@@ -3794,7 +3789,7 @@ test('shared reply and quote actions use the event on each card', async ({ page 
             .toBe(expectedEventId);
         await expect(page.getByTestId('post-history-reopen')).toBeVisible();
         await page.getByTestId('post-history-reopen').click();
-        await expect(page.getByRole('dialog', { name: '投稿履歴' })).toBeVisible();
+        await expect(page.getByRole('dialog', { name: '履歴', exact: true })).toBeVisible();
     };
 
     const plainItem = page.locator(
@@ -3804,7 +3799,7 @@ test('shared reply and quote actions use the event on each card', async ({ page 
     await plainItem.getByRole('button', { name: 'リプライ' }).click();
     await expect.poll(async () => (await readActionTargets())?.replyEventId)
         .toBe(harness.plainPostEventId);
-    await expect(page.getByRole('dialog', { name: '投稿履歴' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '履歴', exact: true })).toBeVisible();
     await setReplyShouldReturnFalse(false);
     await plainItem.getByRole('button', { name: '引用' }).click();
     await expect.poll(async () => (await readActionTargets())?.quoteEventId)

@@ -22,6 +22,8 @@ export type AppComponentKey =
     | "welcome"
     | "draft-list"
     | "post-history"
+    | "post-history-posts"
+    | "post-history-media"
     | "composer-target"
     | "custom-emoji-picker";
 

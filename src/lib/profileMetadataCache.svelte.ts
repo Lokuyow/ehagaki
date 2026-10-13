@@ -61,6 +61,7 @@ export interface ProfileMetadataCacheEntry {
 }
 
 interface GetProfileOptions {
+    signal?: AbortSignal;
     rxNostr?: RxNostr;
     additionalRelays?: string[];
     fallbackRelays?: string[];
@@ -80,6 +81,7 @@ interface GetProfilesOptions extends GetProfileOptions {
 }
 
 interface PendingBatchRequest {
+    signal?: AbortSignal;
     rxNostr: RxNostr;
     pubkey: string;
     relays: string[];
@@ -111,6 +113,42 @@ const pendingRelayFollowupsByPubkey = new Map<string, GetProfileOptions>();
 const subscribersByPubkey = new Map<string, Set<(profile: ProfileData | null) => void>>();
 let pendingBatchRequests: PendingBatchRequest[] = [];
 let pendingBatchTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Each consumer leases a shared per-pubkey request. Releasing history never cancels another consumer.
+interface ProfileRequestOwner { abort: AbortController; consumers: Set<object>; followup?: Promise<ProfileData | null> }
+const requestOwners = new Map<string, ProfileRequestOwner>();
+function requestAlive(request: PendingBatchRequest): boolean { return !request.signal?.aborted; }
+async function ensureFreshProfile(pubkey: string, options: GetProfileOptions, knownPersistedProfile?: ProfileData | null): Promise<ProfileData | null> {
+    if (options.signal?.aborted) return null;
+    let owner = requestOwners.get(pubkey);
+    if (!owner || owner.abort.signal.aborted) {
+        owner = { abort: new AbortController(), consumers: new Set() };
+        requestOwners.set(pubkey, owner);
+    }
+    const lease = {}, requestOwner = owner;
+    owner.consumers.add(lease);
+    const release = () => {
+        requestOwner.consumers.delete(lease);
+        if (!requestOwner.consumers.size) requestOwner.abort.abort();
+    };
+    options.signal?.addEventListener("abort", release, { once: true });
+    try {
+        const task = ensureFreshProfileRequest(pubkey, { ...options, signal: owner.abort.signal }, knownPersistedProfile);
+        if (!options.signal) return await task;
+        return await new Promise<ProfileData | null>((resolve, reject) => {
+            const cancel = () => resolve(null);
+            options.signal!.addEventListener("abort", cancel, { once: true });
+            task.then(value => { options.signal!.removeEventListener("abort", cancel); resolve(options.signal?.aborted ? null : value); }, error => { options.signal!.removeEventListener("abort", cancel); reject(error); });
+        });
+    } finally {
+        const finish = () => {
+            options.signal?.removeEventListener("abort", release);
+            release();
+            if (!requestOwner.consumers.size && requestOwners.get(pubkey) === requestOwner) requestOwners.delete(pubkey);
+        };
+        if (requestOwner.followup) void requestOwner.followup.then(finish, finish); else finish();
+    }
+}
 
 function nowMs(): number {
     return Date.now();
@@ -531,6 +569,7 @@ async function fetchBatchFromNetwork(
     writeRelaysByPubkey: Record<string, string[]>,
     timeoutMs: number,
     onRequestStarted?: (authors: string[]) => void,
+    signals: AbortSignal[] = [],
 ): Promise<Record<string, BatchNetworkResult>> {
     const authors = Array.from(new Set(pubkeys.filter((pubkey) => !!pubkey)));
     const results: Record<string, BatchNetworkResult> = {};
@@ -550,7 +589,7 @@ async function fetchBatchFromNetwork(
         };
     }
 
-    if (authors.length === 0) {
+    if (authors.length === 0 || (signals.length > 0 && signals.every(signal => signal.aborted))) {
         return results;
     }
 
@@ -565,6 +604,8 @@ async function fetchBatchFromNetwork(
                 return;
             }
             settled = true;
+            clearTimeout(timeoutId);
+            signals.forEach(signal => signal.removeEventListener("abort", cancel));
             subscription?.unsubscribe();
             connectionStateSubscription?.unsubscribe();
             resolve();
@@ -580,6 +621,8 @@ async function fetchBatchFromNetwork(
             done();
         }, Math.max(1, timeoutMs));
 
+        const cancel = () => { if (signals.every(signal => signal.aborted)) done(); };
+        signals.forEach(signal => signal.addEventListener("abort", cancel));
         const markNetworkError = () => {
             for (const pubkey of authors) {
                 results[pubkey] = {
@@ -780,6 +823,7 @@ async function applyTierNetworkResult(
                 observedRelays: result.observedRelays,
                 fetchedAt: resolveProfileFetchedAtMs(result.profile, nowMs()),
             });
+            if (!requests.some(requestAlive)) return { profile: null, stopReason: "persistence-unavailable", parseError: false, rejectedFutureTimestamp: false, networkError: false, transientFailure: true };
             const acceptedProfile = applyAcceptedProfile(pubkey, upsertResult, result);
             return {
                 profile: acceptedProfile,
@@ -817,7 +861,7 @@ async function applyTierNetworkResult(
 }
 
 async function flushPendingBatch(): Promise<void> {
-    const batch = pendingBatchRequests;
+    const batch = pendingBatchRequests.filter(request => { if (requestAlive(request)) return true; request.resolve(null); return false; });
     pendingBatchRequests = [];
     pendingBatchTimer = null;
 
@@ -859,6 +903,7 @@ async function flushPendingBatch(): Promise<void> {
             writeRelaysByPubkey[request.pubkey] = Array.from(mergedWriteRelays);
         }
 
+        const alive = (pubkey: string) => (groupedByPubkey.get(pubkey) ?? []).some(requestAlive);
         const pubkeys = Array.from(groupedByPubkey.keys());
         const tiersByPubkey = Object.fromEntries(pubkeys.map((pubkey) => {
             const tiers = buildProfileRelayTiers({
@@ -910,14 +955,14 @@ async function flushPendingBatch(): Promise<void> {
 
         try {
             for (const tierName of tierNames) {
-                const targets = Array.from(unresolvedPubkeys);
+                const targets = Array.from(unresolvedPubkeys).filter(alive);
                 const groups = chunkProfileRelayGroups(getRelayGroups(tierName, targets));
 
                 const fetchedGroups = await mapWithConcurrency(
                     groups,
                     PROFILE_CACHE_NETWORK_CONCURRENCY,
                     async (group) => {
-                        const activeTargets = group.pubkeys.filter((pubkey) => unresolvedPubkeys.has(pubkey));
+                        const activeTargets = group.pubkeys.filter((pubkey) => alive(pubkey) && unresolvedPubkeys.has(pubkey));
                         if (activeTargets.length === 0) {
                             return null;
                         }
@@ -932,6 +977,7 @@ async function flushPendingBatch(): Promise<void> {
                                     queriedPubkeys.add(pubkey);
                                 }
                             },
+                            activeTargets.flatMap(pubkey => (groupedByPubkey.get(pubkey) ?? []).flatMap(request => request.signal ? [request.signal] : [])),
                         );
                         return { activeTargets, results };
                     },
@@ -942,6 +988,7 @@ async function flushPendingBatch(): Promise<void> {
                         continue;
                     }
                     for (const pubkey of fetchedGroup.activeTargets) {
+                        if (!alive(pubkey)) { unresolvedPubkeys.delete(pubkey); continue; }
                         const requests = groupedByPubkey.get(pubkey) ?? [];
                         const resolution = await applyTierNetworkResult(
                             pubkey,
@@ -966,6 +1013,7 @@ async function flushPendingBatch(): Promise<void> {
             }
 
             for (const pubkey of unresolvedPubkeys) {
+                if (!alive(pubkey)) continue;
                 const requests = groupedByPubkey.get(pubkey) ?? [];
                 const snapshot = resolveExistingSnapshot(pubkey, requests);
                 if (parseErrors.has(pubkey)) {
@@ -986,14 +1034,14 @@ async function flushPendingBatch(): Promise<void> {
 
             for (const [pubkey, requests] of groupedByPubkey.entries()) {
                 for (const request of requests) {
-                    request.resolve(resolvedProfiles[pubkey] ?? null);
+                    request.resolve(requestAlive(request) ? resolvedProfiles[pubkey] ?? null : null);
                 }
             }
         } catch {
             for (const [pubkey, requests] of groupedByPubkey.entries()) {
                 const snapshot = resolveExistingSnapshot(pubkey, requests);
                 for (const request of requests) {
-                    request.resolve(snapshot ? restoreSnapshotEntry(pubkey, snapshot) : null);
+                    request.resolve(requestAlive(request) && snapshot ? restoreSnapshotEntry(pubkey, snapshot) : null);
                 }
             }
         }
@@ -1007,16 +1055,25 @@ function enqueueBatchRequest(
     fallbackRelays: string[],
     writeRelays: string[],
     existingSnapshot: ProfileData | null,
+    signal?: AbortSignal,
 ): Promise<ProfileData | null> {
+    if (signal?.aborted) return Promise.resolve(null);
     return new Promise<ProfileData | null>((resolve, reject) => {
+        const cancel = () => {
+            pendingBatchRequests = pendingBatchRequests.filter(request => request.signal !== signal);
+            if (!pendingBatchRequests.length && pendingBatchTimer) { clearTimeout(pendingBatchTimer); pendingBatchTimer = null; }
+            resolve(null);
+        };
+        signal?.addEventListener("abort", cancel, { once: true });
         pendingBatchRequests.push({
+            signal,
             rxNostr,
             pubkey,
             relays: [...relays],
             fallbackRelays: [...fallbackRelays],
             writeRelays: [...writeRelays],
             existingSnapshot,
-            resolve,
+            resolve: (value) => { signal?.removeEventListener("abort", cancel); resolve(value); },
             reject,
         });
 
@@ -1030,16 +1087,18 @@ function enqueueBatchRequest(
     });
 }
 
-async function ensureFreshProfile(
+async function ensureFreshProfileRequest(
     pubkey: string,
     options: GetProfileOptions,
     knownPersistedProfile: ProfileData | null | undefined = undefined,
 ): Promise<ProfileData | null> {
-    if (!pubkey || !options.rxNostr) {
+    if (options.signal?.aborted || !pubkey || !options.rxNostr) {
         return null;
     }
 
-    const pending = pendingByPubkey.get(pubkey);
+    const abandoned = pendingOptionsByPubkey.get(pubkey)?.signal?.aborted;
+    if (abandoned) pendingRelayFollowupsByPubkey.delete(pubkey);
+    const pending = abandoned ? undefined : pendingByPubkey.get(pubkey);
     if (pending) {
         const activeOptions = pendingOptionsByPubkey.get(pubkey);
         if (activeOptions && options.rxNostr === activeOptions.rxNostr) {
@@ -1081,7 +1140,9 @@ async function ensureFreshProfile(
             }
         }
 
+        if (options.signal?.aborted) return null;
         const temporaryPersistence = await persistTemporaryEntryIfPossible(pubkey);
+        if (options.signal?.aborted) return null;
         const existingSnapshot = temporaryPersistence.profile
             ?? entriesByPubkey[pubkey]?.profile
             ?? persistedProfile;
@@ -1096,15 +1157,19 @@ async function ensureFreshProfile(
             sanitizeRelays(options.fallbackRelays ?? []),
             sanitizeRelays(options.writeRelays ?? []),
             existingSnapshot,
+            options.signal,
         );
     })().finally(() => {
+        if (pendingByPubkey.get(pubkey) !== task) return;
         pendingByPubkey.delete(pubkey);
         pendingOptionsByPubkey.delete(pubkey);
         const followup = pendingRelayFollowupsByPubkey.get(pubkey);
         pendingRelayFollowupsByPubkey.delete(pubkey);
         gcExpiredEntries();
-        if (followup?.rxNostr && (followup.writeRelays?.length ?? 0) > 0) {
-            void ensureFreshProfile(pubkey, followup);
+        if (!options.signal?.aborted && followup?.rxNostr && (followup.writeRelays?.length ?? 0) > 0) {
+            const next = ensureFreshProfileRequest(pubkey, { ...followup, signal: options.signal });
+            const owner = requestOwners.get(pubkey);
+            if (owner && owner.abort.signal === options.signal) owner.followup = next;
         }
     });
 
@@ -1118,6 +1183,7 @@ async function getProfileInternal(
     options: GetProfileOptions,
     repositoryLookupCompleted: boolean,
 ): Promise<ProfileData | null> {
+    if (options.signal?.aborted) return null;
     const now = nowMs();
     const entry = entriesByPubkey[pubkey];
 
@@ -1157,6 +1223,7 @@ async function getProfileInternal(
 
     if (!options.forceRefresh && !repositoryLookupCompleted) {
         const cachedProfile = await profilesRepository.get(pubkey);
+        if (options.signal?.aborted) return null;
         if (cachedProfile) {
             const cachedFetchedAtMs = resolveProfileFetchedAtMs(cachedProfile, now);
 
@@ -1207,6 +1274,7 @@ async function getProfiles(
     pubkeys: string[],
     options: GetProfilesOptions = {},
 ): Promise<Record<string, ProfileData | null>> {
+    if (options.signal?.aborted) return {};
     const uniquePubkeys = Array.from(new Set(pubkeys.filter((pubkey) => !!pubkey)));
     if (uniquePubkeys.length === 0) {
         return {};
@@ -1221,6 +1289,7 @@ async function getProfiles(
         if (repositoryPubkeys.length > 0) {
             try {
                 const records = await profilesRepository.bulkGetRecords(repositoryPubkeys);
+                if (options.signal?.aborted) return {};
                 records.forEach((record, index) => {
                     if (!record) {
                         return;
@@ -1321,6 +1390,8 @@ function resetForTests(): void {
         pendingBatchTimer = null;
     }
 
+    for (const owner of requestOwners.values()) owner.abort.abort();
+    requestOwners.clear();
     entriesByPubkey = {};
     pendingByPubkey.clear();
     pendingOptionsByPubkey.clear();

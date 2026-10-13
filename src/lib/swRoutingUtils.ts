@@ -2,6 +2,7 @@ export type ServiceWorkerFetchRoute =
     | 'upload'
     | 'profile-image'
     | 'channel-image'
+    | 'upload-media-image'
     | 'custom-emoji-image'
     | null;
 
@@ -12,6 +13,7 @@ export interface ResolveServiceWorkerFetchRouteParams {
     isUploadRequest: (request: Request, url: URL) => boolean;
     isProfileImageRequest: (request: Request) => boolean;
     isChannelImageRequest?: (request: Request, url: URL) => boolean;
+    isUploadMediaImageRequest?: (request: Request, url: URL) => boolean;
 }
 
 export function resolveServiceWorkerFetchRoute({
@@ -21,9 +23,14 @@ export function resolveServiceWorkerFetchRoute({
     isUploadRequest,
     isProfileImageRequest,
     isChannelImageRequest,
+    isUploadMediaImageRequest,
 }: ResolveServiceWorkerFetchRouteParams): ServiceWorkerFetchRoute {
     if (url.origin === currentOrigin && isUploadRequest(request as Request, url as URL)) {
         return 'upload';
+    }
+
+    if (isUploadMediaImageRequest?.(request as Request, url as URL)) {
+        return 'upload-media-image';
     }
 
     if (isProfileImageRequest(request as Request)) {

@@ -1,4 +1,4 @@
-import { onDestroy, tick } from "svelte";
+import { onDestroy, tick, untrack } from "svelte";
 
 interface PreviewCollapseItem {
     eventId: string;
@@ -10,6 +10,7 @@ interface UsePostHistoryPreviewCollapseParams<
     T extends PreviewCollapseItem,
 > {
     getShow: () => boolean;
+    getSessionOpen?: () => boolean;
     getPosts: () => T[];
     getContainer: () => HTMLElement | null;
     maxLines?: number;
@@ -19,6 +20,7 @@ export function usePostHistoryPreviewCollapse<
     T extends PreviewCollapseItem,
 >({
     getShow,
+    getSessionOpen = getShow,
     getPosts,
     getContainer,
     maxLines = 5,
@@ -174,7 +176,13 @@ export function usePostHistoryPreviewCollapse<
         resizeObserver = null;
     }
 
+    function suspend(): void {
+        scheduledMeasurementRevision++; scheduledMeasurement = null;
+        disposeResizeObserver();
+        postPreviewElements = {};
+    }
     function resetState(): void {
+        suspend();
         replaceCollapsiblePosts({});
         expandedPosts = {};
         postPreviewElements = {};
@@ -201,11 +209,8 @@ export function usePostHistoryPreviewCollapse<
     }
 
     $effect(() => {
-        if (getShow()) {
-            return;
-        }
-
-        resetState();
+        if (getSessionOpen()) return;
+        untrack(resetState);
     });
 
     $effect(() => {
@@ -253,6 +258,7 @@ export function usePostHistoryPreviewCollapse<
     });
 
     return {
+        suspend,
         previewRef,
         isPostExpanded,
         remeasure: () => requestMeasurement(),

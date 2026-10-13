@@ -22,6 +22,7 @@ import type {
 } from "../types";
 import { AuthenticationRequiredError } from "../sessionLiveness";
 import { throwIfUploadAborted } from "./uploadOperation";
+import { listBlossomMediaPage, deleteBlossomMedia } from "./blossomMediaManagement";
 
 function normalizeBlossomServerUrl(destination: UploadDestination): string {
     return destination.serverUrl.replace(/\/$/, "");
@@ -236,7 +237,7 @@ function buildBlossomCapabilities(
         maxUploadSize: inferredCapabilities?.maxUploadSize ?? maxUploadSize,
         supportedMimeTypes,
         supportsDelete: true,
-        supportsList: true,
+        supportsList: false,
         authRequired: true,
         lastCheckedAt: Date.now(),
         source: "test",
@@ -245,6 +246,8 @@ function buildBlossomCapabilities(
 
 export class BlossomUploadAdapter implements UploadProtocolAdapter {
     readonly protocol = "blossom" as const;
+    readonly listMediaPage = listBlossomMediaPage;
+    readonly deleteMedia = deleteBlossomMedia;
 
     async upload(params: UploadAdapterUploadParams): Promise<FileUploadResponse> {
         throwIfUploadAborted(params.signal);

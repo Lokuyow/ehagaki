@@ -1,10 +1,11 @@
 <script lang="ts">
     import { usePostHistoryListing } from "../../lib/hooks/usePostHistoryListing.svelte";
     import type { RxNostr } from "rx-nostr";
-    interface Props { show: boolean; pubkeyHex: string; rxNostr: RxNostr; onClose(): void }
-    let { show, pubkeyHex, rxNostr }: Props = $props();
-    const history = usePostHistoryListing({ getShow: () => show, getPubkeyHex: () => pubkeyHex,
+    interface Props { show: boolean; sessionOpen?: boolean; pubkeyHex: string; rxNostr: RxNostr; onClose(): void }
+    let { show, sessionOpen, pubkeyHex, rxNostr }: Props = $props();
+    const history = usePostHistoryListing({ getShow: () => show, getSessionOpen: () => sessionOpen ?? show, getPubkeyHex: () => pubkeyHex,
         getRxNostr: () => rxNostr, getRelayConfig: () => undefined });
+    export function suspend() { history.suspend(); }
 </script>
 
 {#each history.posts as post (post.eventId)}

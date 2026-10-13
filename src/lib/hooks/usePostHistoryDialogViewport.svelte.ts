@@ -1,4 +1,4 @@
-import { flushSync, tick } from "svelte";
+import { flushSync, onDestroy, tick } from "svelte";
 import { formatPostHistoryMonthLabel } from "../postHistoryDialogUtils";
 import type {
     PostHistoryDialogScrollAnchor,
@@ -62,6 +62,10 @@ export function usePostHistoryDialogViewport({
     getIsSearchMode,
     getSearchQuery,
 }: UsePostHistoryDialogViewportParams) {
+    let generation = 0;
+    const capture = () => { const epoch = generation; return () => getShow() && epoch === generation; };
+    function suspend() { generation++; cancelCurrentMonthLabelFrame(); }
+    onDestroy(suspend);
     let currentMonthLabel = $state<string | null>(null);
     let isHistoryScrolledToTop = $state(true);
     let isHistoryScrolledToBottom = $state(true);
@@ -297,8 +301,9 @@ export function usePostHistoryDialogViewport({
     }
 
     function resetHistoryScrollSoon(): void {
+        const owned = capture();
         void tick().then(() => {
-            if (!getShow()) {
+            if (!owned()) {
                 return;
             }
 
@@ -307,8 +312,9 @@ export function usePostHistoryDialogViewport({
     }
 
     function resetHistoryScrollToBottomSoon(): void {
+        const owned = capture();
         void tick().then(() => {
-            if (!getShow()) {
+            if (!owned()) {
                 return;
             }
 
@@ -317,8 +323,9 @@ export function usePostHistoryDialogViewport({
     }
 
     function scrollHistoryEventToTopSoon(eventId: string): void {
+        const owned = capture();
         void tick().then(() => {
-            if (!getShow()) {
+            if (!owned()) {
                 return;
             }
 
@@ -557,14 +564,17 @@ export function usePostHistoryDialogViewport({
         eventId: string,
         action: () => void | Promise<void>,
     ): Promise<void> {
+        const owned = capture();
         const anchor = captureThreadScrollPositionAnchor(scopeEventId, eventId);
         const actionResult = action();
 
         await tick();
+        if (!owned()) return;
         restoreThreadScrollPositionAnchor(anchor);
 
         await actionResult;
         await tick();
+        if (!owned()) return;
         restoreThreadScrollPositionAnchor(anchor);
     }
 
@@ -598,8 +608,9 @@ export function usePostHistoryDialogViewport({
             return;
         }
 
+        const owned = capture();
         void tick().then(() => {
-            if (!getShow() || pendingSessionScrollRestore !== scrollState) {
+            if (!owned() || pendingSessionScrollRestore !== scrollState) {
                 return;
             }
 
@@ -620,8 +631,9 @@ export function usePostHistoryDialogViewport({
         getPosts();
         getLocale();
 
+        const owned = capture();
         void tick().then(() => {
-            if (!getShow()) {
+            if (!owned()) {
                 return;
             }
 
@@ -636,6 +648,7 @@ export function usePostHistoryDialogViewport({
     });
 
     return {
+        suspend,
         get currentMonthLabel() {
             return currentMonthLabel;
         },

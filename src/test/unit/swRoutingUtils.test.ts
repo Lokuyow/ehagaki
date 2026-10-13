@@ -6,6 +6,14 @@ import {
 } from '../../lib/swRoutingUtils';
 
 describe('swRoutingUtils', () => {
+    it('dispatches uploaded media images before the generic image route', () => {
+        expect(resolveServiceWorkerFetchRoute({
+            request: { method: 'GET', destination: 'image' } as Request,
+            url: new URL('https://example.com/__ehagaki-image/upload-media'),
+            currentOrigin: 'https://example.com', isUploadRequest: () => false,
+            isProfileImageRequest: () => false, isUploadMediaImageRequest: () => true,
+        })).toBe('upload-media-image');
+    });
     it('resolveServiceWorkerFetchRoute は upload を優先する', () => {
         const result = resolveServiceWorkerFetchRoute({
             request: { method: 'POST', destination: '' } as Request,

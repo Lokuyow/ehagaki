@@ -11,6 +11,7 @@ import type { AuthState, UploadDestination } from "../../lib/types";
 import type { PostHistoryRecord } from "../../lib/storage/ehagakiDb";
 import { createDeferred } from "../deferredTestUtils";
 import { createMockRxNostr, MockKeyManager } from "../helpers";
+import { mediaDestination, mediaContext, mediaItem } from "../uploadMediaManagementTestUtils";
 
 const secretKeyA = generateSecretKey();
 const pubkeyA = getPublicKey(secretKeyA);
@@ -363,6 +364,22 @@ describe("signed-event contract at post-history boundaries", () => {
 });
 
 describe("active session liveness at authorization and protocol boundaries", () => {
+    it.each(["nip96", "blossom"] as const)("prevents pending %s management signatures from crossing account cleanup", async (protocol) => {
+        (authState as any).value = createAuthState();
+        const signer = installDeferredNip07Signer(), fetchMock = vi.fn();
+        const destination = mediaDestination(protocol);
+        const context = mediaContext(destination);
+        const params = { destination, context, expectedPubkey: pubkeyA, assertSession: () => {
+            if (!authState.value.isAuthenticated || authState.value.pubkey !== pubkeyA) throw new Error("Authentication required");
+        }, authService: new NostrAuthService({ expectedPubkey: pubkeyA }), fetch: fetchMock as typeof fetch };
+        const adapter = protocol === "nip96" ? new Nip96UploadAdapter() : new BlossomUploadAdapter();
+        const operation = adapter.deleteMedia({ ...params, item: mediaItem(destination) });
+        await vi.waitFor(() => expect(signer.signEvent).toHaveBeenCalledOnce());
+        (authState as any).value = { ...authState.value, pubkey: pubkeyB };
+        signer.resolveValid();
+        await expect(operation).rejects.toMatchObject({ code: "authentication" });
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
     it("rejects an external signer that mutates the session-bound template in place", async () => {
         (authState as any).value = createAuthState();
         (window as any).nostr = {

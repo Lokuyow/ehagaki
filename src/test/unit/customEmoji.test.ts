@@ -601,6 +601,21 @@ describe('customEmoji', () => {
         expect(cacheAfterLoad).toHaveBeenCalledTimes(1);
     });
 
+    it('aborts the owned Image request and never starts cache or metadata work', async () => {
+        const abort = new AbortController(), cacheAfterLoad = vi.fn();
+        const image = document.createElement('img');
+        const pending = preloadCustomEmojiImageWithMeta('https://example.com/owned.webp', {
+            createImage: () => image, cacheAfterLoad, signal: abort.signal,
+        });
+        const lateLoad = image.onload;
+        abort.abort();
+        expect(await pending).toEqual({ ready: false });
+        expect(image.getAttribute('src')).toBe('');
+        expect(image.onload).toBeNull(); expect(image.onerror).toBeNull();
+        lateLoad?.call(image, new Event('load'));
+        expect(cacheAfterLoad).not.toHaveBeenCalled();
+    });
+
     it('preloadCustomEmojiImageWithMeta preserves dimensions and caches after loading', async () => {
         const controlledImage = createControlledTestImage({ width: 120, height: 60 });
         const cacheAfterLoad = vi.fn();

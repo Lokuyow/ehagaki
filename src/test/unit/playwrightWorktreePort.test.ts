@@ -123,6 +123,17 @@ describe('Playwright config connection values', () => {
             expect(webServer.command).toContain(`--port ${baseUrl.port}`);
             expect(webServer.command).toContain('--strictPort');
             expect(webServer.reuseExistingServer).toBe(false);
+            const productionSwSpecs = [
+                '**/serviceWorkerUpdate.spec.ts',
+                '**/uploadedMediaServiceWorker.spec.ts',
+            ];
+            expect(config.testIgnore).toEqual(productionSwSpecs);
+            for (const project of config.projects?.slice(0, 2) ?? []) {
+                expect(project.testIgnore).toEqual([
+                    '**/webComponentDevServer.spec.ts',
+                    ...productionSwSpecs,
+                ]);
+            }
             expect(config.projects?.map((project) => project.name)).toEqual([
                 'desktop-chromium',
                 'mobile-chromium',
@@ -149,6 +160,7 @@ describe('Playwright config connection values', () => {
                 '**/footerSettingShortcuts.spec.ts',
                 '**/postEditorSending.spec.ts',
                 '**/postHistoryDialog.spec.ts',
+                '**/historyTabs.spec.ts',
                 '**/postHistoryFullScan.spec.ts',
                 '**/postHistoryJsonlWorker.spec.ts',
                 '**/postRepost.spec.ts',

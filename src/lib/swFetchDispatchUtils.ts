@@ -5,16 +5,21 @@ export async function dispatchServiceWorkerFetchRoute({
     uploadHandler,
     profileImageHandler,
     channelImageHandler,
+    uploadMediaImageHandler,
     customEmojiImageHandler,
 }: {
     route: ServiceWorkerFetchRoute;
     uploadHandler: () => Promise<Response | undefined>;
     profileImageHandler: () => Promise<Response | undefined>;
     channelImageHandler?: () => Promise<Response | undefined>;
+    uploadMediaImageHandler?: () => Promise<Response | undefined>;
     customEmojiImageHandler: () => Promise<Response | undefined>;
 }): Promise<Response | undefined> {
     if (route === 'upload') {
         return await uploadHandler();
+    }
+    if (route === 'upload-media-image') {
+        return await uploadMediaImageHandler?.();
     }
 
     if (route === 'profile-image') {

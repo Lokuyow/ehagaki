@@ -4,6 +4,7 @@ import type { Editor as TipTapEditor } from "@tiptap/core";
 import type { Signer } from "nostr-tools/signer";
 export type { VideoCompressionLevel } from '../videoCompression/videoCompressionConfig';
 import type { ImetaField, ImageDimensions } from './media';
+import type { UploadMediaListParams, UploadMediaDeleteParams, UploadMediaPage } from '../upload/mediaManagementTypes';
 
 // Upload-related types
 export interface UploadProgress {
@@ -135,6 +136,8 @@ export interface UploadAdapterUploadParams {
 
 export interface UploadProtocolAdapter {
     protocol: UploadProtocol;
+    listMediaPage?(params: UploadMediaListParams): Promise<UploadMediaPage>;
+    deleteMedia?(params: UploadMediaDeleteParams): Promise<void>;
     upload(params: UploadAdapterUploadParams): Promise<FileUploadResponse>;
     testConnection(params: {
         destination: UploadDestination;
@@ -203,6 +206,13 @@ export interface VideoCompressionResult {
 
 export interface AuthService {
     buildAuthHeader(url: string, method: string): Promise<string>;
+    createBlossomManagementAuthorization?(params: {
+        serverUrl: string;
+        action: "list" | "delete";
+        expectedPubkey: string;
+        sha256?: string;
+        kind?: "image" | "video";
+    }): Promise<{ authorization: string; assertSession: () => void }>;
     getBlossomSigner?(): Promise<Signer>;
     buildBlossomAuthorizationHeader?(params: {
         serverUrl: string;

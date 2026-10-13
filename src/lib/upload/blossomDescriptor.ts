@@ -93,7 +93,7 @@ function parseAbsoluteHttpUrl(rawUrl: string, field: string): URL {
     return parsed;
 }
 
-function validateDescriptorUrl(params: {
+export function validateDescriptorUrl(params: {
     rawUrl: string;
     expectedSha256: string;
     trustedServerUrl: string;

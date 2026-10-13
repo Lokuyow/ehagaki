@@ -15,6 +15,14 @@ export function usePostHistoryRelayFullScan(input: {
     let owner: PostHistoryFullScanScope | null = null;
     let relayKey = "";
     let destroyed = false;
+    let generation = 0;
+    let elapsedTimer: ReturnType<typeof setInterval> | undefined;
+    function suspend() {
+        generation++;
+        cancel();
+        clearInterval(elapsedTimer);
+        task = null; owner = null; state.running = false; state.open = false;
+    }
     let wakeLockLease: (() => void) | null = null;
     function cancel(stale?: boolean) {
         wakeLockLease?.(); wakeLockLease = null;
@@ -33,28 +41,30 @@ export function usePostHistoryRelayFullScan(input: {
     async function start() {
         const current = input.getScope();
         if (destroyed || task || !current.ownerPubkeyHex || !current.rxNostr || !input.getShow()) return;
+        const epoch = generation;
         owner = current; relayKey = getPostHistoryAuthoredRelayScopeKey(current.relayConfig);
         state.running = true; state.result = null; state.progress = null; state.elapsedMs = 0;
         const startedAt = performance.now();
-        const timer = setInterval(() => { state.elapsedMs = performance.now() - startedAt; }, 1000);
+        const timer = setInterval(() => { if (epoch === generation && input.getShow()) state.elapsedMs = performance.now() - startedAt; }, 1000);
+        elapsedTimer = timer;
         const endWakeLock = postHistoryOperationWakeLock.acquire();
         wakeLockLease = endWakeLock;
         try {
             const operation = postHistoryRelayFullScanService.start({
                 ownerPubkeyHex: current.ownerPubkeyHex, rxNostr: current.rxNostr, relayConfig: current.relayConfig,
                 getCurrentScope: input.getScope,
-                onProgress: (progress) => { if (!destroyed) state.progress = progress; },
+                onProgress: (progress) => { if (!destroyed && epoch === generation && input.getShow()) state.progress = progress; },
             });
             task = operation;
             const result = await operation.promise;
-            if (destroyed) return;
+            if (destroyed || epoch !== generation || !input.getShow()) return;
             state.result = result; state.elapsedMs = performance.now() - startedAt;
             if (sameOwner() && input.getShow() && result.status !== "stale-cancelled") await input.onSettled(result);
         } finally {
             endWakeLock();
             if (wakeLockLease === endWakeLock) wakeLockLease = null;
-            clearInterval(timer); task = null;
-            if (!destroyed) state.running = false;
+            clearInterval(timer);
+            if (epoch === generation) { task = null; if (!destroyed) state.running = false; }
         }
     }
     $effect(() => {
@@ -63,9 +73,10 @@ export function usePostHistoryRelayFullScan(input: {
         const key = getPostHistoryAuthoredRelayScopeKey(current.relayConfig);
         untrack(() => {
             if (task && owner && (current.ownerPubkeyHex !== owner.ownerPubkeyHex || current.rxNostr !== owner.rxNostr || key !== relayKey)) cancel(true);
-            if (!show) setOpen(false);
+            if (!show && task) suspend();
+            else if (!show) state.open = false;
         });
     });
     onDestroy(() => { destroyed = true; cancel(); });
-    return { state, setOpen, start, cancel: () => cancel() };
+    return { state, setOpen, start, suspend, cancel: () => cancel() };
 }

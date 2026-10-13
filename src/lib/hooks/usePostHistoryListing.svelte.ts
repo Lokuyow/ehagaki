@@ -113,6 +113,7 @@ type PostHistoryCurrentViewRefetchMessageValues = Record<
 
 interface UsePostHistoryListingParams {
     getShow: () => boolean;
+    getSessionOpen?: () => boolean;
     getPubkeyHex: () => string | null | undefined;
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
@@ -649,6 +650,7 @@ export function clearPersistedPostHistoryListingSnapshotForPubkey(
 
 export function usePostHistoryListing({
     getShow,
+    getSessionOpen = getShow,
     getPubkeyHex,
     getRxNostr,
     getRelayConfig,
@@ -758,6 +760,9 @@ export function usePostHistoryListing({
     let localNextUntil = $state<number | null>(null);
     let localHasMore = $state(true);
     let localReadBusy = $state(false);
+    let previousLocalRelayUrl = settingsStore.localRelayUrl;
+    let previousLocalRelayRuntime = getRxNostr();
+    let previousLocalRelaySession = postHistoryLocalRelayService.getSessionGeneration();
     let externalReadBusy = $state(false);
     let externalOperation = 0;
     let viewportCommitChain = Promise.resolve();
@@ -995,7 +1000,7 @@ export function usePostHistoryListing({
         options: FetchOlderFromRelaysOptions = {},
     ): LocalRelayTask<LocalRelayHistoryReadResult> | null {
         const owner = getPubkeyHex();
-        if (!owner || !postHistoryLocalRelayService.isConfigured(owner)) return null;
+        if (isDestroyed || !getShow() || !owner || !postHistoryLocalRelayService.isConfigured(owner)) return null;
         if (currentLocalFetchTask) return currentLocalFetchTask;
         if (reason === "older-backfill" && !localHasMore) return null;
         const generation = ++localFetchGeneration;
@@ -1026,7 +1031,7 @@ export function usePostHistoryListing({
                 if (result.nextUntil !== null) localNextUntil = Math.min(localNextUntil ?? result.nextUntil, result.nextUntil);
             }
             let browsingChanged = false;
-            await commitHistoryViewport(() => onLocalHistoryChanged(async () => {
+            await commitHistoryViewport(() => isActive() ? onLocalHistoryChanged(async () => {
                 if (!isActive()) return;
                 if (await postHistoryRelayCoverageRepository.getLocalRevision(owner) !== result.localRevision || !isActive()) return;
                 localBrowsingRevision = result.localRevision;
@@ -1055,8 +1060,9 @@ export function usePostHistoryListing({
                 if (!isActive()) return;
                 refreshTotalCountFromRepository({ force: true });
                 await refreshTimelineAvailability(owner);
+                if (!isActive()) return;
                 await refreshSavedPostsOutsideVisibleRange(owner, state.visibleUntil);
-            }));
+            }) : Promise.resolve());
             if (!isActive() || await postHistoryRelayCoverageRepository.getLocalRevision(owner) !== result.localRevision) return null;
             if (isActive() && result.eventIds.length) await onSavedAuthoredPosts(result.eventIds);
             return { ...result, changed: result.changed || browsingChanged };
@@ -1371,6 +1377,22 @@ export function usePostHistoryListing({
         searchResultStatus = "idle";
     }
 
+    function suspend(): void {
+        coverageGeneration++;
+        cancelCurrentSync();
+        cancelCurrentViewRefetch();
+        invalidatePendingLoadRequests();
+        invalidateTotalCountRequest();
+        initialLocalLoadGeneration++;
+        if (initialLocalLoadStatus === "loading") {
+            initialLocalLoadStatus = "idle";
+            hasAttemptedInitialLocalLoad = false;
+        }
+        state.syncStatus = "idle";
+        clearCurrentViewRefetchFeedback();
+        clearSyncStatusMessageClearTimeout();
+        relationRepairCoordinator.resetOlderRevealRepairContext();
+    }
     function prepareForClose(): boolean {
         resetLocalContinuity();
         coverageGeneration += 1;
@@ -5182,28 +5204,43 @@ export function usePostHistoryListing({
     });
 
     $effect(() => {
-        if (getShow()) {
-            return;
-        }
-
-        resetState();
+        if (getSessionOpen()) return;
+        untrack(resetState);
     });
 
     $effect(() => {
-        settingsStore.localRelayUrl;
-        getRxNostr();
-        getShow();
+        const url = settingsStore.localRelayUrl;
+        const runtime = getRxNostr();
+        if (!getShow()) return;
+        untrack(() => {
+            const session = postHistoryLocalRelayService.getSessionGeneration();
+            if (url !== previousLocalRelayUrl || runtime !== previousLocalRelayRuntime || session !== previousLocalRelaySession) resetLocalContinuity();
+            previousLocalRelayUrl = url;
+            previousLocalRelayRuntime = runtime;
+            previousLocalRelaySession = session;
+            localSessionGeneration = session;
+        });
         const unsubscribe = postHistoryLocalRelayService.onSessionInvalidated(() => {
             const hadLocalRead = localBrowsingRevision !== null || currentLocalFetchTask !== null;
             resetLocalContinuity();
             localSessionGeneration = postHistoryLocalRelayService.getSessionGeneration();
+            previousLocalRelaySession = localSessionGeneration;
             const owner = getPubkeyHex();
-            if (hadLocalRead && getShow() && owner) void refreshVisibleUntil(owner)
-                .then(() => refreshTimelineAvailability(owner)).catch(() => undefined);
+            const generation = coverageGeneration;
+            const isActive = () => !isDestroyed && getShow() && coverageGeneration === generation
+                && getPubkeyHex() === owner && getRxNostr() === runtime && settingsStore.localRelayUrl === url;
+            if (hadLocalRead && isActive() && owner) void refreshVisibleUntil(owner)
+                .then(() => { if (isActive()) return refreshTimelineAvailability(owner); }).catch(() => undefined);
         });
         return () => {
             unsubscribe();
-            resetLocalContinuity();
+            untrack(() => {
+                localFetchGeneration++;
+                currentLocalFetchTask?.cancel();
+                currentLocalFetchTask = null;
+                localReadBusy = false;
+                if (!getSessionOpen()) resetLocalContinuity();
+            });
         };
     });
 
@@ -5560,6 +5597,7 @@ export function usePostHistoryListing({
             return currentViewRefetchStatusMessageValues;
         },
         prepareForClose,
+        suspend,
         cancelCurrentSync,
         cancelCurrentViewRefetch,
         loadOlder,

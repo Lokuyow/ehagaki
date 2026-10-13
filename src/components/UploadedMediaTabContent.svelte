@@ -1,0 +1,235 @@
+<script lang="ts">
+    import { onDestroy, tick, untrack } from "svelte";
+    import { _ } from "svelte-i18n";
+    import ConfirmDialog from "./ConfirmDialog.svelte";
+    import Button from "./Button.svelte";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import UploadedMediaPreview from "./UploadedMediaPreview.svelte";
+    import { useUploadMediaManagement } from "../lib/hooks/useUploadMediaManagement.svelte";
+    import { supportsUploadMediaImageCache } from "../lib/uploadMediaImageCacheClient";
+    import { authState } from "../stores/authStore.svelte";
+    import { uploadDestinationStore } from "../stores/uploadDestinationStore.svelte";
+    import type { UploadedMediaItem } from "../lib/upload/mediaManagementTypes";
+    import { resolveAppAssetUrl } from "../lib/appAssetUrl";
+
+    interface Props { show: boolean; onBusyChange?: (busy: boolean) => void }
+    let { show: active, onBusyChange = () => undefined }: Props = $props();
+    let suspended = $state(false);
+    let show = $derived(active && !suspended);
+    export function activate() { suspended = false; management.controller.activate(); }
+    export function suspend() { suspended = true; supportGeneration++; uiEpoch++; pending = null; activeVideo = null; management.controller.suspend(); }
+    export function isBusy() { return management.controller.busy; }
+    const management = useUploadMediaManagement();
+    const deleteIconUrl = resolveAppAssetUrl("icons/delete_forever_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    const refreshIconUrl = resolveAppAssetUrl("icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    let current = $derived(management.value.current);
+    let cacheSupported = $state<boolean | null>(null);
+    let pending = $state<UploadedMediaItem | null>(null);
+    let pendingEndpoint = $state<string | null>(null);
+    let deleteTrigger: HTMLElement | null = null;
+    let activeVideo = $state<string | null>(null);
+    let listElement: HTMLElement | undefined = $state();
+    let supportGeneration = 0;
+    let uiEpoch = $state(0);
+    let previousOwner: string | null = null;
+
+    $effect(() => { const enabled = active; untrack(() => enabled ? activate() : suspend()); });
+    function formatSize(bytes: number) {
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let value = bytes, unit = 0;
+        while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+        return `${value.toLocaleString(undefined, { maximumFractionDigits: unit === 0 ? 0 : 1 })} ${units[unit]}`;
+    }
+
+    function formatDate(uploadedAt: number) {
+        return new Date(uploadedAt * 1000).toLocaleString(undefined, {
+            year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+        });
+    }
+
+    export function invalidateSession() {
+        uiEpoch++;
+        previousOwner = null;
+        pending = null;
+        activeVideo = null;
+        management.controller.invalidate();
+    }
+    $effect(() => {
+        const open = show;
+        const account = authState.value;
+        const destinations = uploadDestinationStore.value.destinations;
+        untrack(() => {
+            if (!open) return;
+            management.controller.activate();
+            const pubkey = account.isAuthenticated ? account.pubkey : null;
+            if (destinations.length) management.controller.configure(pubkey, destinations);
+            else void management.controller.configureSaved(pubkey);
+        });
+    });
+    $effect(() => {
+        if (!show || cacheSupported !== null) return;
+        const generation = ++supportGeneration;
+        void supportsUploadMediaImageCache().then((supported) => {
+            if (generation === supportGeneration) cacheSupported = supported;
+        });
+    });
+    $effect(() => {
+        const selected = management.value.selectedId;
+        const pubkey = authState.value.pubkey;
+        const owner = `${pubkey}\n${selected}\n${current?.destination.protocol}\n${current?.destination.serverUrl}\n${current?.context?.endpoint}`;
+        untrack(() => {
+            if (owner === previousOwner) return;
+            previousOwner = owner;
+            uiEpoch++;
+            pending = null; activeVideo = null;
+        });
+        // Selection/account changes release the previous video and confirmation.
+        void selected; void pubkey;
+    });
+    $effect(() => {
+        const view = current;
+        untrack(() => {
+            if (pending && (view?.destination.serverUrl !== pending.serverUrl
+                || view?.context?.endpoint !== pendingEndpoint
+                || (!view.deletingId && !view.items.some((item) => item.id === pending?.id)))) pending = null;
+            if (activeVideo && !view?.items.some((item) => item.id === activeVideo)) activeVideo = null;
+        });
+    });
+    $effect(() => { onBusyChange(!!current?.deletingId); });
+    onDestroy(() => { supportGeneration++; invalidateSession(); });
+    function cancelConfirm() {
+        const epoch = uiEpoch, trigger = deleteTrigger;
+        pending = null;
+        void tick().then(() => epoch === uiEpoch && trigger?.isConnected && trigger.focus({ preventScroll: true }));
+    }
+    async function confirmDelete() {
+        const item = pending;
+        const epoch = uiEpoch, trigger = deleteTrigger;
+        if (!item || current?.destination.serverUrl !== item.serverUrl || current.context?.endpoint !== pendingEndpoint
+            || !current.items.some((entry) => entry.id === item.id && entry.deleteId?.sha256 === item.deleteId?.sha256)) {
+            cancelConfirm(); return;
+        }
+        await management.controller.delete(item.id);
+        if (epoch !== uiEpoch) return;
+        pending = null;
+        await tick();
+        if (epoch !== uiEpoch) return;
+        if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+        else listElement?.focus({ preventScroll: true });
+    }
+</script>
+
+{#if show}
+<div class="uploaded-media-dialog uploaded-media-content">
+    <div class="media-management">
+        {#if !authState.value.isAuthenticated}
+            <p class="media-status" role="status">{$_("uploadedMedia.errors.authentication")}</p>
+        {:else if management.value.configuring}
+            <LoadingPlaceholder showLoader text={true} />
+        {:else if management.value.configurationError}
+            <p class="media-status" role="alert">{$_("uploadedMedia.errors.invalidDestination")}</p>
+            <Button onClick={() => management.controller.configureSaved(authState.value.pubkey)}>{$_("uploadedMedia.refresh")}</Button>
+        {:else if management.value.destinations.length === 0}
+            <p class="media-status" role="status">{$_("uploadedMedia.noServers")}</p>
+        {:else}
+            <div class="media-toolbar">
+                <select aria-label={$_("uploadedMedia.server")} disabled={!!current?.deletingId} value={management.value.selectedId ?? ""}
+                    onchange={(event) => management.controller.select(event.currentTarget.value)}>
+                    {#each management.value.destinations as destination (destination.id)}
+                        <option value={destination.id}>{destination.name}</option>
+                    {/each}
+                </select>
+                {#if current}
+                    <Button shape="square" contentLayout="icon" className="media-refresh-button"
+                        ariaLabel={$_("uploadedMedia.refresh")} title={$_("uploadedMedia.refresh")}
+                        onClick={() => { activeVideo = null; void management.controller.load(); }} disabled={current.loading || !!current.deletingId}>
+                        <span class="svg-icon" aria-hidden="true" style:mask-image={`url("${refreshIconUrl}")`}></span>
+                    </Button>
+                {/if}
+            </div>
+            {#if current}
+                {#if current.loading}<LoadingPlaceholder showLoader text={true} />{/if}
+                {#if current.error}
+                    <p class="media-status" role="alert">{$_(`uploadedMedia.errors.${current.error.code}`)}</p>
+                    {#if current.error.retryAt}<p class="media-status">{$_("uploadedMedia.retryAfter", { values: { time: new Date(current.error.retryAt).toLocaleTimeString() } })}</p>{/if}
+                    {#if current.error.diagnostic}<p class="media-status diagnostic">{current.error.diagnostic}</p>{/if}
+                {/if}
+                {#if current.notice}<p class="media-status" role="status">{$_(`uploadedMedia.${current.notice}`)}</p>{/if}
+                {#if current.loaded && current.items.length === 0}
+                    <p class="media-status">{$_("uploadedMedia.empty")}</p>
+                    {#if current.nextPage}<p class="media-status">{$_("uploadedMedia.moreUnseen")}</p>{/if}
+                {/if}
+                <div class="media-list" bind:this={listElement} tabindex="-1">
+                    {#each current.items as item (item.id)}
+                        <article data-media-kind={item.kind} class:video-active={item.kind === "video" && activeVideo === item.id}>
+                            <UploadedMediaPreview {item} {cacheSupported} active={activeVideo === item.id}
+                                onOpenVideo={() => { activeVideo = item.id; }} onCloseVideo={() => { activeVideo = null; }} />
+                            <div class="media-overlay">
+                                <div class="media-metadata">
+                                    <span>{#if item.uploadedAt !== undefined}<time datetime={new Date(item.uploadedAt * 1000).toISOString()}>{formatDate(item.uploadedAt)}</time>{:else}{$_("uploadedMedia.unknown")}{/if}</span>
+                                    <span>{item.size === undefined ? $_("uploadedMedia.unknown") : formatSize(item.size)}</span>
+                                </div>
+                                <Button shape="square" contentLayout="icon" className="media-delete-button"
+                                    ariaLabel={current.deletingId === item.id ? $_("uploadedMedia.deleting") : $_("uploadedMedia.delete")}
+                                    title={current.deletingId === item.id ? $_("uploadedMedia.deleting") : $_("uploadedMedia.delete")}
+                                    disabled={!item.deleteId || current.loading || !!current.deletingId}
+                                    onClick={(event) => { deleteTrigger = event.currentTarget as HTMLElement; pendingEndpoint = current?.context?.endpoint ?? null; pending = item; }}>
+                                    <span class="svg-icon media-delete-icon" aria-hidden="true" style:mask-image={`url("${deleteIconUrl}")`}></span>
+                                </Button>
+                            </div>
+                        </article>
+                    {/each}
+                </div>
+                {#if current.nextPage && !current.needsRefresh}
+                    <div class="list-end-actions">
+                        <Button onClick={() => management.controller.load(true)} disabled={current.loading || !!current.deletingId}>{$_("uploadedMedia.loadMore")}</Button>
+                    </div>
+                {/if}
+            {/if}
+        {/if}
+    </div>
+</div>
+
+{#key uiEpoch}
+<ConfirmDialog open={!!pending} onOpenChange={(open) => { if (!open) cancelConfirm(); }}
+    title={$_("uploadedMedia.delete")} description={$_("uploadedMedia.confirmDescription")}
+    confirmLabel={$_("uploadedMedia.delete")} onConfirm={confirmDelete} onCancel={cancelConfirm}
+    preventCloseWhileConfirming showConfirmSpinner closeOnConfirm={false}>
+    {#if pending}
+        <p>{$_(`uploadedMedia.${pending.kind}`)}</p>
+        <p class="server-url">{pendingEndpoint ?? pending.serverUrl}</p>
+        {#if pending.deleteId}<p class="server-url">{pending.deleteId.sha256}</p>{/if}
+        <p class="server-url">{pending.url ?? $_("uploadedMedia.previewUnavailable")}</p>
+    {/if}
+</ConfirmDialog>
+{/key}
+{/if}
+
+<style>
+    .uploaded-media-content { background: var(--dialog-bg2); flex: 1; min-height: 0; overflow: auto; width: 100%; }
+    .media-management { flex: none; width: 100%; min-width: 0; display: flex; flex-direction: column; }
+    :global(.uploaded-media-dialog button), select { height: auto; min-height: 44px; max-width: 100%; padding: 8px 12px; }
+    p { margin: 0; }
+    .media-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 4px; padding: 8px; }
+    .media-status { margin: 8px 12px; }
+    select { width: 100%; min-width: 0; }
+    .list-end-actions { display: flex; justify-content: center; padding: 12px; }
+    :global(.uploaded-media-dialog button.media-refresh-button) { width: 44px; height: 44px; padding: 0; background: transparent; border: none; }
+    :global(.uploaded-media-dialog button.media-delete-button) {
+        flex: none; padding: 0; background: transparent; border: none; color: white; --text: white;
+        width: 44px; min-width: 44px; max-width: 44px;
+        height: 44px; min-height: 44px; max-height: 44px;
+    }
+    :global(.uploaded-media-dialog button.media-delete-button:hover:not(:disabled)) { background: rgb(255 255 255 / 15%); color: white; }
+    :global(.uploaded-media-dialog button.media-delete-button:hover:not(:disabled) .svg-icon) { background-color: white; }
+    :global(.uploaded-media-dialog button.media-delete-button:focus-visible) { outline: 2px solid white; outline-offset: -2px; }
+    .media-delete-icon { width: 24px; height: 24px; --svg: currentColor; }
+    .server-url, .diagnostic { overflow-wrap: anywhere; font-size: .875rem; }
+    .media-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    article { position: relative; min-width: 0; }
+    .media-overlay { position: absolute; inset: auto 0 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 4px; padding: 16px 4px 4px 8px; color: white; background: linear-gradient(transparent, rgb(0 0 0 / 70%)); pointer-events: none; }
+    .media-metadata { min-width: 0; align-self: center; display: flex; flex-direction: column; font-size: .6875rem; line-height: 1.5; overflow-wrap: anywhere; text-shadow: 0 1px 2px rgb(0 0 0 / 70%); }
+    .media-overlay :global(button) { pointer-events: auto; }
+    /* Keep native video playback controls available beneath the overlay. */
+    .video-active .media-overlay { bottom: 56px; }
+</style>

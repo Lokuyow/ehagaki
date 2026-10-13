@@ -81,6 +81,7 @@ interface RequestCustomEmojiImagesCacheRuntime {
 }
 
 interface PreloadCustomEmojiImageRuntime {
+    signal?: AbortSignal;
     cacheAfterLoad?: (urls: string[]) => void | Promise<unknown>;
     createImage?: () => HTMLImageElement;
 }
@@ -664,16 +665,7 @@ export async function preloadCustomEmojiImage(
     url: string,
     runtime: PreloadCustomEmojiImageRuntime = {},
 ): Promise<boolean> {
-    if (!isValidCustomEmojiUrl(url)) {
-        return false;
-    }
-
-    const ready = await loadCustomEmojiImage(url, runtime.createImage);
-    if (ready) {
-        cacheCustomEmojiImageAfterLoad(url, runtime.cacheAfterLoad);
-    }
-
-    return ready;
+    return (await preloadCustomEmojiImageWithMeta(url, runtime)).ready;
 }
 
 export async function preloadCustomEmojiImageWithMeta(
@@ -684,8 +676,8 @@ export async function preloadCustomEmojiImageWithMeta(
         return { ready: false };
     }
 
-    const result = await loadCustomEmojiImageWithMeta(url, runtime.createImage);
-    if (result.ready) {
+    const result = await loadCustomEmojiImageWithMeta(url, runtime.createImage, runtime.signal);
+    if (result.ready && !runtime.signal?.aborted) {
         cacheCustomEmojiImageAfterLoad(url, runtime.cacheAfterLoad);
     }
 
@@ -790,42 +782,12 @@ function createDefaultMessageChannel(): CustomEmojiCacheMessageChannelLike | nul
     return new MessageChannel();
 }
 
-async function loadCustomEmojiImage(
-    url: string,
-    createImage: (() => HTMLImageElement) | undefined,
-): Promise<boolean> {
-    const imageFactory = createImage ??
-        (typeof Image !== "undefined" ? () => new Image() : undefined);
-    if (!imageFactory) {
-        return false;
-    }
-
-    return await new Promise((resolve) => {
-        const image = imageFactory();
-        let settled = false;
-
-        const finish = (ready: boolean) => {
-            if (settled) {
-                return;
-            }
-
-            settled = true;
-            image.onload = null;
-            image.onerror = null;
-            resolve(ready);
-        };
-
-        image.decoding = "async";
-        image.onload = () => finish(true);
-        image.onerror = () => finish(false);
-        image.src = url;
-    });
-}
-
 async function loadCustomEmojiImageWithMeta(
     url: string,
     createImage: (() => HTMLImageElement) | undefined,
+    signal?: AbortSignal,
 ): Promise<PreloadedCustomEmojiImageResult> {
+    if (signal?.aborted) return { ready: false };
     const imageFactory = createImage ??
         (typeof Image !== "undefined" ? () => new Image() : undefined);
     if (!imageFactory) {
@@ -842,11 +804,14 @@ async function loadCustomEmojiImageWithMeta(
             }
 
             settled = true;
+            signal?.removeEventListener("abort", cancel);
             image.onload = null;
             image.onerror = null;
             resolve(result);
         };
 
+        const cancel = () => { finish({ ready: false }); image.src = ""; };
+        signal?.addEventListener("abort", cancel, { once: true });
         image.decoding = "async";
         image.onload = () => {
             const dimensions = normalizeLoadedCustomEmojiImageDimensions(image);

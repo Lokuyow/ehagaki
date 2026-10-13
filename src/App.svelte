@@ -296,6 +296,8 @@
   let LoginDialogComponent: LoginDialogComponent | null = $state(null);
   let ProfileComponent: ProfileComponent | null = $state(null);
   let SettingsDialogComponent: SettingsDialogComponent | null = $state(null);
+  let historyReturnFocus: HTMLElement | null = $state(null);
+  let postHistoryDialogRef: { invalidateSession(): void } | null = $state(null);
   let WelcomeDialogComponent: WelcomeDialogComponent | null = $state(null);
   let DraftListDialogComponent: DraftListDialogComponent | null = $state(null);
   let PostHistoryDialogComponent: PostHistoryDialogComponent | null =
@@ -327,6 +329,8 @@
       case "draft-list":
         showDraftListDialogStore.set(false);
         break;
+      case "post-history-posts":
+      case "post-history-media":
       case "post-history":
         showPostHistoryDialogStore.set(false);
         break;
@@ -807,11 +811,13 @@
     handlePostAuth,
     resetUploadDisplayState,
     invalidatePendingAccountScopedAsyncState: () => {
+      postHistoryDialogRef?.invalidateSession();
       customEmojiStore.invalidatePendingLoads();
       uploadDestinationStore.invalidatePendingOperations();
       invalidatePendingRelayConfigOperations();
     },
     clearAccountScopedAsyncState: () => {
+      postHistoryDialogRef?.invalidateSession();
       customEmojiStore.reset();
       uploadDestinationStore.reset();
       resetRelayConfigStore();
@@ -864,11 +870,13 @@
     },
     resetUploadDisplayState,
     invalidatePendingAccountScopedAsyncState: () => {
+      postHistoryDialogRef?.invalidateSession();
       customEmojiStore.invalidatePendingLoads();
       uploadDestinationStore.invalidatePendingOperations();
       invalidatePendingRelayConfigOperations();
     },
     clearAccountScopedAsyncState: () => {
+      postHistoryDialogRef?.invalidateSession();
       customEmojiStore.reset();
       uploadDestinationStore.reset();
       resetRelayConfigStore();
@@ -2305,7 +2313,7 @@
           ($swNeedRefresh || staleAssetReloadRequired)}
         onShowLoginDialog={loginDialog.open}
         onPreloadPostHistoryDialog={handlePreloadPostHistoryDialog}
-        onOpenPostHistoryDialog={postHistoryDialog.open}
+        onOpenPostHistoryDialog={(trigger) => { historyReturnFocus = trigger ?? null; postHistoryDialog.open(); }}
         onOpenSettingsDialog={handleOpenSettingsFromFooter}
         onOpenLogoutDialog={logoutDialog.open}
       />
@@ -2460,7 +2468,8 @@
         />
       {/if}
       {#if showPostHistoryDialogStore.value && PostHistoryDialogComponent}
-        <PostHistoryDialogComponent
+        <PostHistoryDialogComponent bind:this={postHistoryDialogRef}
+          returnFocus={historyReturnFocus} onLoadFailure={handleAppComponentLoadFailure} isStaleAssetReloadRequired={() => staleAssetReloadRequired}
           onRepostPost={repostOperation.execute} repostPending={repostOperation.pending}
           repostSaveFailure={repostOperation.saveFailure}
           onRetryRepostSave={repostOperation.retrySave}

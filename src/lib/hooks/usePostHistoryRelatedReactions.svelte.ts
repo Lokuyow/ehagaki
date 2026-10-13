@@ -19,6 +19,7 @@ export interface PostHistoryRelatedReactionCardTarget extends PostHistoryRelated
 
 export function usePostHistoryRelatedReactions(params: {
     getShow: () => boolean;
+    getSessionOpen?: () => boolean;
     getPubkeyHex: () => string | null | undefined;
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
@@ -43,7 +44,7 @@ export function usePostHistoryRelatedReactions(params: {
     const lifecycleSource = params.source ?? "related-card-display";
 
     const unsubscribeProfiles = params.profileSync.subscribe((pubkey, profile) => {
-        profilesByPubkey = { ...profilesByPubkey, [pubkey]: profile };
+        if (params.getShow()) profilesByPubkey = { ...profilesByPubkey, [pubkey]: profile };
     });
     const retryWhenOnline = () => {
         retryRevision += 1;
@@ -51,10 +52,12 @@ export function usePostHistoryRelatedReactions(params: {
     const retryWhenVisible = () => {
         if (document.visibilityState === "visible") retryRevision += 1;
     };
-    if (typeof window !== "undefined") {
+    $effect(() => {
+        if (!params.getShow() || typeof window === "undefined") return;
         window.addEventListener("online", retryWhenOnline);
         document.addEventListener("visibilitychange", retryWhenVisible);
-    }
+        return () => { window.removeEventListener("online", retryWhenOnline); document.removeEventListener("visibilitychange", retryWhenVisible); };
+    });
     onDestroy(() => {
         generation += 1;
         repairTask?.cancel();
@@ -91,10 +94,10 @@ export function usePostHistoryRelatedReactions(params: {
             generation += 1;
             repairTask?.cancel();
             repairTask = null;
-            completedFetchKeys.clear();
-            latestAttemptKeys.clear();
-            recordsByEventId = {};
-            loadedEventIds = {};
+            inFlightEventIds.clear();
+            if (!(params.getSessionOpen ?? params.getShow)()) {
+                completedFetchKeys.clear(); latestAttemptKeys.clear(); recordsByEventId = {}; loadedEventIds = {};
+            }
             return;
         }
         const currentGeneration = ++generation;
@@ -311,5 +314,6 @@ export function usePostHistoryRelatedReactions(params: {
             }
         });
     }
-    return { getReadModel, isLoaded, refreshCachedReactions };
+    function suspend() { generation++; repairTask?.cancel(); repairTask = null; inFlightEventIds.clear(); }
+    return { getReadModel, isLoaded, refreshCachedReactions, suspend };
 }

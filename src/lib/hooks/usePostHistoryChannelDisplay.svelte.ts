@@ -16,6 +16,7 @@ import type { RelayConfig } from "../types";
 
 interface UsePostHistoryChannelDisplayParams {
     getShow: () => boolean;
+    getSessionOpen?: () => boolean;
     getPosts: () => PostHistoryRecord[];
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
@@ -24,6 +25,7 @@ interface UsePostHistoryChannelDisplayParams {
 
 export function usePostHistoryChannelDisplay({
     getShow,
+    getSessionOpen = getShow,
     getPosts,
     getRxNostr,
     getRelayConfig,
@@ -40,6 +42,7 @@ export function usePostHistoryChannelDisplay({
     }
 
     function cancelCurrentChannelResolution(): void {
+        channelResolutionRequestId++;
         currentHandles.forEach((handle) => handle.release());
         clearCurrentChannelResolution();
     }
@@ -74,11 +77,8 @@ export function usePostHistoryChannelDisplay({
     }
 
     $effect(() => {
-        if (getShow()) {
-            return;
-        }
-
-        resetState();
+        if (getSessionOpen()) return;
+        untrack(resetState);
     });
 
     $effect(() => {
@@ -93,6 +93,7 @@ export function usePostHistoryChannelDisplay({
 
     $effect(() => {
         if (!getShow()) {
+            cancelCurrentChannelResolution();
             return;
         }
 

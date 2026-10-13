@@ -332,8 +332,8 @@ export function createPostHistoryRelatedTargetResolver({
 
         const scopes = scopeKeysByTargetId.get(targetEvent.id);
         const runtime = getRxNostr();
-        const isActive = () => !requireFullVerification || (getShow() && getRxNostr() === runtime
-            && scopes === scopeKeysByTargetId.get(targetEvent.id) && !!scopes?.size);
+        const isActive = () => getShow() && getRxNostr() === runtime
+            && scopes === scopeKeysByTargetId.get(targetEvent.id) && !!scopes?.size;
         const locallyDeleted = await isDeletedTarget(targetEvent.pubkey, targetEvent.id);
         if (!isActive()) return false;
         if (locallyDeleted) {
@@ -373,9 +373,10 @@ export function createPostHistoryRelatedTargetResolver({
                         deletionEvents: result.events,
                         fetchedAt: result.fetchedAt,
                     });
+                    if (!isActive()) return false;
                     void postHistoryLocalRelayService.archiveAdoptedAuthored([{ event: targetEvent }], {
                         ownerPubkeyHex: targetEvent.pubkey,
-                        isActive: () => getShow() && getRxNostr() === rxNostr,
+                        isActive,
                     });
                 }
 

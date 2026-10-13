@@ -60,6 +60,8 @@ export function usePostHistoryInboundInteractionsSync({
     async function runSync(reason: "initial-dialog-bootstrap" | "dialog-open-refresh"): Promise<void> {
         const ownerPubkeyHex = getPubkeyHex();
         const rxNostr = getRxNostr();
+        const generation = requestId;
+        const owned = () => getShow() && generation === requestId && getPubkeyHex() === ownerPubkeyHex && getRxNostr() === rxNostr;
         if (!getShow() || !ownerPubkeyHex || !canUseRxNostr(rxNostr) || getPosts().length === 0) {
             return;
         }
@@ -74,6 +76,7 @@ export function usePostHistoryInboundInteractionsSync({
             }
         }
 
+        if (!owned()) return;
         cancelCurrentSync();
         const activeRequestId = ++requestId;
         state.status = "syncing";
@@ -116,6 +119,7 @@ export function usePostHistoryInboundInteractionsSync({
         }
 
         await onSavedInboundInteractions(result.changedParentEventIds);
+        if (activeRequestId !== requestId || !getShow() || getPubkeyHex() !== ownerPubkeyHex || getRxNostr() !== rxNostr) return;
 
         void triggerPostHistoryChildInteractionDeletionLifecycle({
             source: "dialog-inbound-sync",
@@ -124,6 +128,7 @@ export function usePostHistoryInboundInteractionsSync({
             relayConfig: getRelayConfig(),
             isActive: () => (
                 getShow()
+                && activeRequestId === requestId
                 && getPubkeyHex() === ownerPubkeyHex
                 && getRxNostr() === rxNostr
             ),
@@ -134,6 +139,7 @@ export function usePostHistoryInboundInteractionsSync({
                     lifecycleResult.deletedReactionEventIds.length === 0
                     && lifecycleResult.deletedReplyEventIds.length === 0
                 )
+                || activeRequestId !== requestId
                 || !getShow()
                 || getPubkeyHex() !== ownerPubkeyHex
                 || getRxNostr() !== rxNostr
@@ -154,7 +160,9 @@ export function usePostHistoryInboundInteractionsSync({
             return;
         }
 
+        const generation = requestId, runtime = getRxNostr();
         const syncState = await postHistoryInboundInteractionsSyncStateRepository.get(ownerPubkeyHex);
+        if (generation !== requestId || !getShow() || getPubkeyHex() !== ownerPubkeyHex || getRxNostr() !== runtime) return;
         await runSync(syncState?.lastSyncedAt ? "dialog-open-refresh" : "initial-dialog-bootstrap");
     }
 
