@@ -133,7 +133,7 @@
             <p class="media-status" role="status">{$_("uploadedMedia.noServers")}</p>
         {:else}
             <div class="media-toolbar">
-                <select aria-label={$_("uploadedMedia.server")} disabled={!!current?.deletingId} value={management.value.selectedId ?? ""}
+                <select class="media-server-select" aria-label={$_("uploadedMedia.server")} disabled={!!current?.deletingId} value={management.value.selectedId ?? ""}
                     onchange={(event) => management.controller.select(event.currentTarget.value)}>
                     {#each management.value.destinations as destination (destination.id)}
                         <option value={destination.id}>{destination.name}</option>
@@ -166,8 +166,8 @@
                                 onOpenVideo={() => { activeVideo = item.id; }} onCloseVideo={() => { activeVideo = null; }} />
                             <div class="media-overlay">
                                 <div class="media-metadata">
-                                    <span>{#if item.uploadedAt !== undefined}<time datetime={new Date(item.uploadedAt * 1000).toISOString()}>{formatDate(item.uploadedAt)}</time>{:else}{$_("uploadedMedia.unknown")}{/if}</span>
                                     <span>{item.size === undefined ? $_("uploadedMedia.unknown") : formatSize(item.size)}</span>
+                                    <span>{#if item.uploadedAt !== undefined}<time datetime={new Date(item.uploadedAt * 1000).toISOString()}>{formatDate(item.uploadedAt)}</time>{:else}{$_("uploadedMedia.unknown")}{/if}</span>
                                 </div>
                                 <Button shape="square" contentLayout="icon" className="media-delete-button"
                                     ariaLabel={current.deletingId === item.id ? $_("uploadedMedia.deleting") : $_("uploadedMedia.delete")}
@@ -182,7 +182,7 @@
                 </div>
                 {#if current.nextPage && !current.needsRefresh}
                     <div class="list-end-actions">
-                        <Button onClick={() => management.controller.load(true)} disabled={current.loading || !!current.deletingId}>{$_("uploadedMedia.loadMore")}</Button>
+                        <Button className="media-load-more-button" onClick={() => management.controller.load(true)} disabled={current.loading || !!current.deletingId}>{$_("uploadedMedia.loadMore")}</Button>
                     </div>
                 {/if}
             {/if}
@@ -206,14 +206,30 @@
 {/if}
 
 <style>
-    .uploaded-media-content { background: var(--dialog-bg2); flex: 1; min-height: 0; overflow: auto; width: 100%; }
+    .uploaded-media-content { background: var(--dialog-bg); flex: 1; min-height: 0; overflow: auto; width: 100%; }
     .media-management { flex: none; width: 100%; min-width: 0; display: flex; flex-direction: column; }
-    :global(.uploaded-media-dialog button), select { height: auto; min-height: 44px; max-width: 100%; padding: 8px 12px; }
+    :global(.uploaded-media-dialog button) { height: auto; min-height: 44px; max-width: 100%; padding: 8px 12px; }
     p { margin: 0; }
     .media-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 4px; padding: 8px; }
     .media-status { margin: 8px 12px; }
-    select { width: 100%; min-width: 0; }
-    .list-end-actions { display: flex; justify-content: center; padding: 12px; }
+    .media-server-select {
+        width: 100%;
+        min-width: 0;
+        min-height: 44px;
+        max-width: 100%;
+        padding: 8px 32px 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--dialog-bg);
+        color: var(--text);
+        font: inherit;
+    }
+    .media-server-select option {
+        background: var(--dialog-bg);
+        color: var(--text);
+    }
+    .list-end-actions { display: flex; width: 100%; padding: 10px; box-sizing: border-box; }
+    :global(.uploaded-media-dialog button.media-load-more-button) { width: 100%; }
     :global(.uploaded-media-dialog button.media-refresh-button) { width: 44px; height: 44px; padding: 0; background: transparent; border: none; }
     :global(.uploaded-media-dialog button.media-delete-button) {
         flex: none; padding: 0; background: transparent; border: none; color: white; --text: white;
@@ -225,9 +241,9 @@
     :global(.uploaded-media-dialog button.media-delete-button:focus-visible) { outline: 2px solid white; outline-offset: -2px; }
     .media-delete-icon { width: 24px; height: 24px; --svg: currentColor; }
     .server-url, .diagnostic { overflow-wrap: anywhere; font-size: .875rem; }
-    .media-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .media-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; }
     article { position: relative; min-width: 0; }
-    .media-overlay { position: absolute; inset: auto 0 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 4px; padding: 16px 4px 4px 8px; color: white; background: linear-gradient(transparent, rgb(0 0 0 / 70%)); pointer-events: none; }
+    .media-overlay { position: absolute; inset: auto 0 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 4px; padding: 16px 4px 4px 8px; color: var(--text); background: linear-gradient(transparent, rgb(0 0 0 / 70%)); pointer-events: none; }
     .media-metadata { min-width: 0; align-self: center; display: flex; flex-direction: column; font-size: .6875rem; line-height: 1.5; overflow-wrap: anywhere; text-shadow: 0 1px 2px rgb(0 0 0 / 70%); }
     .media-overlay :global(button) { pointer-events: auto; }
     /* Keep native video playback controls available beneath the overlay. */

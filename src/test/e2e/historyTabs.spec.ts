@@ -12,7 +12,7 @@ test("saved Media survives refresh and activates Posts only after explicit selec
     await page.addInitScript(() => localStorage.setItem("historyActiveTab", "media"));
     await page.goto("post-history-dialog-playwright.html?history-tabs=1");
     const dialog = page.getByRole("dialog", { name: "履歴", exact: true });
-    const posts = dialog.getByRole("tab", { name: "投稿", exact: true });
+    const posts = dialog.getByRole("tab", { name: "ポスト", exact: true });
     const media = dialog.getByRole("tab", { name: "メディア", exact: true });
     await expect(media).toHaveAttribute("aria-selected", "true");
     await expect(dialog.locator(".media-management")).toBeVisible();
@@ -56,7 +56,7 @@ test("saved Media survives refresh and activates Posts only after explicit selec
 test("tab roundtrip retains post search and page; close keeps existing search reset", async ({ page }) => {
     await page.goto("post-history-dialog-playwright.html?history-tabs=1");
     const dialog = page.getByRole("dialog", { name: "履歴", exact: true });
-    const posts = dialog.getByRole("tab", { name: "投稿", exact: true });
+    const posts = dialog.getByRole("tab", { name: "ポスト", exact: true });
     const media = dialog.getByRole("tab", { name: "メディア", exact: true });
     await expect(dialog.locator(".post-history-item").first()).toBeVisible();
     await dialog.getByRole("button", { name: "検索", exact: true }).click();
@@ -82,7 +82,7 @@ test("tab roundtrip retains post search and page; close keeps existing search re
 test("tab roundtrip preserves expanded text, date window and the visible scroll anchor", async ({ page }) => {
     await page.goto("post-history-dialog-playwright.html?history-tabs=1&long-preview=1");
     const dialog = page.getByRole("dialog", { name: "履歴", exact: true });
-    const posts = dialog.getByRole("tab", { name: "投稿", exact: true });
+    const posts = dialog.getByRole("tab", { name: "ポスト", exact: true });
     const media = dialog.getByRole("tab", { name: "メディア", exact: true });
     const expand = dialog.getByRole("button", { name: "もっと見る", exact: true }).first();
     const expandedId = await expand.locator("xpath=ancestor::li").getAttribute("data-post-history-event-id");

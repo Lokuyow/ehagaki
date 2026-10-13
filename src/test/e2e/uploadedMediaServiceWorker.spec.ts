@@ -251,7 +251,7 @@ for (const base of ["/", "/ehagaki/"] as const) {
                     media: getComputedStyle(node.querySelector(".uploaded-media-content")!).backgroundColor,
                     settings: getComputedStyle(node).backgroundColor,
                 }));
-                expect(colors.media).not.toBe(colors.settings);
+                expect(colors.media).toBe(colors.settings);
                 expect(colors.media).not.toBe("rgba(0, 0, 0, 0)");
                 await page.screenshot({ path: testInfo.outputPath(`media-background-${colorScheme}-360.png`) });
             }
@@ -268,15 +268,17 @@ for (const base of ["/", "/ehagaki/"] as const) {
                     return {
                         tileWidth: tiles[0].width, contentWidth: node.querySelector(".dialog-content")!.clientWidth,
                         sameRow: Math.abs(tiles[0].top - tiles[1].top) < 1,
-                        adjacentColumns: Math.abs(tiles[0].right - tiles[1].left) < 1,
-                        adjacentRows: Math.abs(tiles[0].bottom - tiles[2].top) < 1,
+                        columnGap: tiles[1].left - tiles[0].right,
+                        rowGap: tiles[2].top - tiles[0].bottom,
                         imageFillsTile: Math.abs(image.width - tiles[0].width) < 1 && Math.abs(image.height - tiles[0].height) < 1,
                         metadataOverImage: metadata.top >= image.top && metadata.bottom <= image.bottom && metadata.right <= remove.left,
                         deleteOverBottomRight: remove.top >= image.top && Math.abs(remove.bottom - image.bottom) <= 4.5 && Math.abs(remove.right - image.right) <= 4.5,
                     };
                 });
-                expect(layout.tileWidth).toBeCloseTo(layout.contentWidth / 2, 0);
-                expect(layout).toMatchObject({ sameRow: true, adjacentColumns: true, adjacentRows: true,
+                expect(layout.tileWidth).toBeCloseTo((layout.contentWidth - 2) / 2, 0);
+                expect(layout.columnGap).toBeCloseTo(2, 0);
+                expect(layout.rowGap).toBeCloseTo(2, 0);
+                expect(layout).toMatchObject({ sameRow: true,
                     imageFillsTile: true, metadataOverImage: true, deleteOverBottomRight: true });
                 const deletionTargets = await dialog.locator("article .media-delete-button").evaluateAll((nodes) =>
                     nodes.map((node) => { const rect = node.getBoundingClientRect(); return { width: rect.width, height: rect.height }; }));
@@ -321,7 +323,7 @@ for (const base of ["/", "/ehagaki/"] as const) {
                 .reduce((total, [, count]) => total + count, 0);
             const listsBeforeSuspend = listRequests();
             expect(listsBeforeSuspend).toBeGreaterThan(0);
-            await dialog.getByRole("tab", { name: "投稿", exact: true }).click();
+            await dialog.getByRole("tab", { name: "ポスト", exact: true }).click();
             await expect(dialog.locator(".media-management")).toHaveCount(0);
             expect(await suspendedVideo!.evaluate((node: HTMLVideoElement) => node.paused && !node.hasAttribute("src"))).toBe(true);
             await dialog.getByRole("tab", { name: "メディア", exact: true }).click();
@@ -342,7 +344,7 @@ for (const base of ["/", "/ehagaki/"] as const) {
             f.holdDelete();
             await remove.click(); await confirm.getByRole("button", { name: "このサーバーから削除する" }).click();
             await expect.poll(() => f.counts.get("DELETE /" + imageHash)).toBe(1);
-            await expect(dialog.getByRole("tab", { name: "投稿", exact: true })).toBeDisabled();
+            await expect(dialog.getByRole("tab", { name: "ポスト", exact: true })).toBeDisabled();
             await expect(footerClose).toBeDisabled();
             await expect(dialog.getByRole("combobox")).toBeDisabled();
             await page.keyboard.press("Escape"); await expect(confirm).toBeVisible();
@@ -377,7 +379,7 @@ for (const base of ["/", "/ehagaki/"] as const) {
             expect(await embeddedDialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
             expect(await embeddedDialog.locator("article").evaluateAll((nodes) => {
                 const first = nodes[0].getBoundingClientRect(), second = nodes[1].getBoundingClientRect();
-                return Math.abs(first.top - second.top) < 1 && Math.abs(first.right - second.left) < 1;
+                return Math.abs(first.top - second.top) < 1 && Math.abs(second.left - first.right - 2) < 0.5;
             })).toBe(true);
             await expect(embeddedDialog.getByRole("button", { name: "動画を開く" }).first()).toBeVisible();
             await page.screenshot({ path: testInfo.outputPath("uploaded-media-iframe-320.png") });
