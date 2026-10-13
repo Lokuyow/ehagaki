@@ -882,13 +882,14 @@ test("repeat local deletion refresh preserves discovery and skips settled ordina
             });
             await page.locator(".post-history-btn").click();
             await expect(page.locator(".post-history-item")).toHaveCount(50);
+            const firstPaintMs = Date.now() - startedAt;
             const paintedAt = await page.evaluate(() => performance.now());
             await expect.poll(() => page.evaluate(() => (window as any).__postHistoryDeletionPerf.metrics.imports.length))
                 .toBe(expectedImports);
             await expect.poll(() => page.evaluate(() => (window as any).__postHistoryDeletionPerf.metrics.localReads.length))
                 .toBe(expectedLocalReads);
             return {
-                firstPaintMs: Date.now() - startedAt,
+                firstPaintMs,
                 postPaintToReadSettleMs: await page.evaluate(({ paintedAt }) =>
                     (window as any).__postHistoryDeletionPerf.metrics.localReads.at(-1).settledAt - paintedAt,
                 { paintedAt }),
