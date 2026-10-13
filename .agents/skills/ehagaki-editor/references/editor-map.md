@@ -75,5 +75,5 @@
 ## Reaction mode document validation
 
 - `reactionValue.ts`は隣接textを結合してIntl.Segmenterで書記素を数え、customEmojiをstructured tokenとして検証する。既存のinvalid documentやmediaはmode開始時に保持する。
-- `reactionInput.ts`のtransaction filterは通常入力・paste・dropで2値目を拒否し、削除／選択置換の修正と`isHistoryTransaction`によるinvalid documentへのundo/redo復元を許可する。IME preeditは一時的に許可し、超過commitをcomposition開始前のdocument／selectionへ戻す。既存sending guardは別途適用される。
+- `reactionInput.ts`は`getInputMode()`で通常の`singleValue`と`uploadedShortcode`を動的に切り替える。現在Reaction session所有の唯一のGallery画像はplaceholder中からshortcode編集対象になる。shortcode modeでは単一paragraphのtextを文字数・regex制限なしで編集でき、rich node／改行を拒否する。通常modeの1書記素制限、invalid内容の修正、history例外を維持し、画像削除時に本文をtruncateしない。transaction filterとIME終了時reconciliationは同じ編集判定と最新modeを使う。shortcode送信判定はraw textの空白拒否後に外側colonを正規化する。既存sending guardは別途適用される。
 - PostComponentはbutton／shortcut／直接submitすべてでlive documentを再検証し、composition中はReactionを送らない。Pickerは既存node挿入を使用し、documentが変化した挿入でだけusageを記録する。

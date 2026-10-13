@@ -57,6 +57,8 @@ export interface FileUploadResponse {
 }
 
 export type UploadErrorCode =
+    | "reactionUnsupportedImage"
+    | "reactionImageTransformFailed"
     | "nip96InvalidDestinationUrl"
     | "nip96UploadRequestBlocked"
     | "nip96InvalidProcessingUrl"
@@ -159,6 +161,14 @@ export interface PlaceholderEntry {
     dimensions?: ImageDimensions;
 }
 
+/** Internal Composer operation; unrelated to the Full headless upload API. */
+export interface ReactionUploadOperation {
+    signal: AbortSignal;
+    abort: () => void;
+    isCurrent: () => boolean;
+    onPlaceholdersCreated: (entries: readonly PlaceholderEntry[]) => void;
+}
+
 export interface UploadHelperResult {
     placeholderMap: PlaceholderEntry[];
     results: FileUploadResponse[] | null;
@@ -238,7 +248,8 @@ export interface FileUploadManagerInterface {
         callbacks?: UploadInfoCallbacks,
         devMode?: boolean,
         metadata?: Record<string, string | number | undefined>,
-        destination?: UploadDestination
+        destination?: UploadDestination,
+        operation?: { signal?: AbortSignal }
     ) => Promise<FileUploadResponse>;
     uploadMultipleFilesWithCallbacks: (
         files: File[],
@@ -292,6 +303,10 @@ export interface UploadHelperParams {
     dependencies?: UploadHelperDependencies;
     /** Optional operation-local abort/ownership predicate. */
     isUploadAborted?: () => boolean;
+    galleryMode?: boolean;
+    signal?: AbortSignal;
+    isCurrent?: () => boolean;
+    onPlaceholdersCreated?: (entries: readonly PlaceholderEntry[]) => void;
     /** Local Host-owned seam: preprocessing remains in eHagaki while transport is supplied by the host. */
     prepareFiles?: (
         files: File[],

@@ -27,6 +27,7 @@ let relayOrigin = "";
 let relayConnectionCount = 0;
 let relayPublishedEvents: Array<{ event: Record<string, unknown> }> = [];
 let reactionFixtureEvents: ReturnType<typeof finalizeEvent>[] = [];
+let reactionUploadedImage: Buffer = Buffer.alloc(0);
 let relayEventsPaused = false;
 let pendingEventAcks: Array<() => void> = [];
 let relayRequestsPaused = false;
@@ -239,6 +240,26 @@ test.beforeAll(async () => {
     hostServer = createServer(async (request, response) => {
         const pathname = new URL(request.url ?? "/", hostOrigin).pathname;
         hostRequests.add(pathname);
+        if (pathname === '/reaction-upload') {
+            const chunks: Buffer[] = [];
+            for await (const chunk of request) chunks.push(Buffer.from(chunk));
+            const body = Buffer.concat(chunks);
+            const boundary = request.headers['content-type']?.match(/boundary="?([^";]+)"?/)?.[1];
+            const start = body.indexOf('\r\n\r\n') + 4;
+            const end = boundary ? body.indexOf(`\r\n--${boundary}`, start) : -1;
+            if (start < 4 || end <= start) { response.writeHead(400).end(); return; }
+            reactionUploadedImage = body.subarray(start, end);
+            response.writeHead(200, { 'Content-Type': 'application/json' });
+            response.end(JSON.stringify({ status: 'success', nip94_event: {
+                tags: [['url', `${hostOrigin}/reaction-uploaded.png`], ['m', 'image/png']],
+            } }));
+            return;
+        }
+        if (pathname === '/reaction-uploaded.png') {
+            response.writeHead(200, { 'Content-Type': 'image/png', 'Access-Control-Allow-Origin': '*' });
+            response.end(reactionUploadedImage);
+            return;
+        }
         if (pathname === '/reaction-profile.png') {
             response.writeHead(200, { 'Content-Type': 'image/png', 'Access-Control-Allow-Origin': '*' });
             response.end(await readFile(join(process.cwd(), 'public/ehagaki_icon_x192.png')));
@@ -268,6 +289,7 @@ test.beforeEach(() => {
     relayConnectionCount = 0;
     relayPublishedEvents = [];
     reactionFixtureEvents = [];
+    reactionUploadedImage = Buffer.alloc(0);
     relayEventsPaused = false;
     pendingEventAcks = [];
     relayRequestsPaused = false;
@@ -330,20 +352,22 @@ test("keeps startup NIP-07 opt-in and preserves the existing ready path when abs
     });
 });
 
-for (const authenticated of [true, false]) {
-test(`Full Reaction at 320px preserves outer identity (${authenticated ? 'authenticated' : 'guest'})`, async ({ page }) => {
+for (const { authenticated, uploaded } of [{ authenticated: true, uploaded: false }, { authenticated: false, uploaded: false }, { authenticated: true, uploaded: true }]) {
+test(`Full Reaction at 320px preserves outer identity (${uploaded ? 'uploaded PNG' : authenticated ? 'authenticated' : 'guest'})`, async ({ page }) => {
     const signingSecret = generateSecretKey(); const owner = getPublicKey(signingSecret);
     const original = finalizeEvent({ kind: 1, content: 'OPAQUE-EMBEDDED-BODY https://hidden.example/image.png', tags: [], created_at: 100 }, generateSecretKey());
     const targetSecret = generateSecretKey();
     const target = finalizeEvent({ kind: 6, content: JSON.stringify(original), created_at: 200,
         tags: [['e', original.id], ['p', original.pubkey]] }, targetSecret);
     const profilePicture = `${hostOrigin}/reaction-profile.png`;
+    const uploadedImageUrl = `${hostOrigin}/reaction-uploaded.png`;
     const profile = finalizeEvent({ kind: 0, content: JSON.stringify({ display_name: 'Reaction target author', picture: profilePicture }),
         tags: [], created_at: Math.floor(Date.now() / 1000) }, targetSecret);
     reactionFixtureEvents = [target, original, profile];
     await page.goto(hostOrigin);
     await page.exposeFunction('__signFullReactionFixture', (template: Record<string, unknown>) => finalizeEvent(template as never, signingSecret));
-    await page.evaluate(async ({ componentOrigin, relayOrigin, owner, authenticated }) => {
+    await page.evaluate(async ({ componentOrigin, relayOrigin, owner, authenticated, uploaded, hostOrigin }) => {
+        if (uploaded) localStorage.setItem('ehagaki.web-component.v1:uploadEndpoint', `${hostOrigin}/reaction-upload`);
         const NativeSocket = window.WebSocket;
         window.WebSocket = new Proxy(NativeSocket, { construct(target, args, newTarget) {
             return Reflect.construct(target, [relayOrigin, ...args.slice(1)], newTarget);
@@ -357,7 +381,7 @@ test(`Full Reaction at 320px preserves outer identity (${authenticated ? 'authen
         element.autoLogin = authenticated; element.relays = [{ url: 'wss://reaction-fixture.example/', read: true, write: true }];
         element.setAttribute('asset-base', `${componentOrigin}/`);
         element.style.width = '320px'; document.body.append(element); await element.whenReady();
-    }, { componentOrigin, relayOrigin, owner, authenticated });
+    }, { componentOrigin, relayOrigin, owner, authenticated, uploaded, hostOrigin });
     const composer = page.locator('ehagaki-composer');
     const editor = composer.locator('.tiptap-editor'); await expect(editor).toBeVisible();
     await composer.getByRole('button', { name: '宛先を指定', exact: true }).click();
@@ -396,13 +420,35 @@ test(`Full Reaction at 320px preserves outer identity (${authenticated ? 'authen
         expect(relayPublishedEvents.filter(item => item.event.kind === 7)).toHaveLength(0);
         return;
     }
-    await editor.click(); await editor.pressSequentially('👍');
-    await expect(editor).toHaveText('👍');
+    if (uploaded) {
+        await expect(composer.locator('input[type=file]')).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp');
+        const base64 = await page.evaluate(() => {
+            const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 256;
+            const context = canvas.getContext('2d')!; context.fillStyle = '#ff8000'; context.fillRect(0, 0, 256, 256);
+            return canvas.toDataURL('image/png').split(',')[1];
+        });
+        await composer.locator('input[type=file]').setInputFiles({ name: 'cat.png', mimeType: 'image/png', buffer: Buffer.from(base64, 'base64') });
+        await expect(composer.locator('.media-gallery img')).toBeVisible();
+        await expect.poll(() => composer.locator('.media-gallery img').evaluate((image: HTMLImageElement) => [image.naturalWidth, image.naturalHeight])).toEqual([256, 128]);
+        await expect(editor.locator('.is-editor-empty')).toHaveAttribute('data-placeholder', /shortcode/);
+        await editor.click(); await editor.pressSequentially('::cat::');
+        await expect(editor).toHaveText('::cat::');
+        await composer.screenshot({ path: test.info().outputPath('full-uploaded-reaction-320.png') });
+    } else {
+        await editor.click(); await editor.pressSequentially('👍');
+        await expect(editor).toHaveText('👍');
+    }
     await expect(composer.locator('button.post-button')).toBeEnabled();
     await composer.locator('button.post-button').click();
     await expect.poll(() => relayPublishedEvents.filter(item => item.event.kind === 7).length).toBe(1);
     await expect(composer.locator('[data-reaction-target-id]')).toHaveCount(0); await expect(editor).toBeEmpty();
     const sent = relayPublishedEvents.find(item => item.event.kind === 7)!.event;
+    if (uploaded) {
+        expect(sent.content).toBe(':cat:');
+        expect((sent.tags as string[][]).filter(tag => tag[0] === 'emoji')).toEqual([['emoji', 'cat', uploadedImageUrl]]);
+        expect((sent.tags as string[][]).some(tag => tag[0] === 'imeta')).toBe(false);
+        await expect(composer.locator('.media-gallery')).toHaveCount(0);
+    }
     expect(sent.tags).toEqual(expect.arrayContaining([['e', target.id, 'wss://reaction-fixture.example/', target.pubkey],
         ['p', target.pubkey, 'wss://reaction-fixture.example/'], ['k', '6']]));
     await composer.getByRole('button', { name: '宛先を指定', exact: true }).click();

@@ -13,7 +13,7 @@ describe('Reaction target main presentation', () => {
         const embedded = finalizeEvent({ kind: 1, content: 'NEVER-EXPOSE https://private.example/body https://private.example/image.png https://private.example/video.mp4',
             tags: [['imeta', 'url https://private.example/hidden.png']], created_at: 42 }, generateSecretKey());
         const event = finalizeEvent({ kind, content: JSON.stringify(embedded), tags: [['e', embedded.id], ['p', embedded.pubkey]], created_at: 100 }, generateSecretKey());
-        const { container } = render(ReactionTargetPreview, { props: { target: { event, eventId: event.id, authorPubkey: event.pubkey, kind, relayHints: [], ownerToken: Symbol() }, onClear: vi.fn() } });
+        const { container } = render(ReactionTargetPreview, { props: { target: { event, eventId: event.id, authorPubkey: event.pubkey, kind, relayHints: [], ownerToken: Symbol(), sessionToken: Symbol() }, onClear: vi.fn() } });
         expect(container.querySelector('[data-reaction-target-id]')?.getAttribute('data-reaction-target-id')).toBe(event.id);
         expect(container.querySelector('.author-name')?.textContent).toMatch(/^npub1/);
         await fireEvent.click(screen.getByRole('button', { name: 'reaction.target' }));
@@ -26,7 +26,7 @@ describe('Reaction target main presentation', () => {
     it.each(['+', '👍🏽', ':blob:'])('kind 7 shares established Reaction interpretation for %s', async content => {
         const event = finalizeEvent({ kind: 7, content, tags: content === ':blob:' ? [['emoji', 'blob', 'https://emoji.example/blob.png']] : [], created_at: 100 }, generateSecretKey());
         const model = buildComposerInteractionRenderModel(event);
-        const { container } = render(ReactionTargetPreview, { props: { target: { event, eventId: event.id, authorPubkey: event.pubkey, kind: 7, relayHints: [], ownerToken: Symbol() }, onClear: vi.fn(),
+        const { container } = render(ReactionTargetPreview, { props: { target: { event, eventId: event.id, authorPubkey: event.pubkey, kind: 7, relayHints: [], ownerToken: Symbol(), sessionToken: Symbol() }, onClear: vi.fn(),
             emojiLoadStateByUrl: { 'https://emoji.example/blob.png': 'ready' } } });
         await fireEvent.click(screen.getByRole('button', { name: 'reaction.target' }));
         expect(container.querySelector('.preview-content')).not.toBeNull();
@@ -39,7 +39,7 @@ describe('Reaction target main presentation', () => {
     it('uses the shared profile row and synchronizes kind 0 presentation without changing target identity', async () => {
         const event = finalizeEvent({ kind: 1, content: 'Target body', tags: [], created_at: 100 }, generateSecretKey());
         const target: ReactionComposerState = { event, eventId: event.id, authorPubkey: event.pubkey,
-            kind: 1, relayHints: ['wss://target.example/'], ownerToken: Symbol() };
+            kind: 1, relayHints: ['wss://target.example/'], ownerToken: Symbol(), sessionToken: Symbol() };
         let publishProfile: (profile: ProfileData | null) => void = () => {};
         const unsubscribe = vi.fn();
         const profile = { name: 'alice', displayName: 'Alice', picture: 'https://profile.example/alice.png', npub: '', nprofile: '' };
@@ -67,7 +67,7 @@ describe('Reaction target main presentation', () => {
     it('ignores old profile requests and subscriptions after target or runtime changes', async () => {
         const event = finalizeEvent({ kind: 1, content: '', tags: [], created_at: 100 }, generateSecretKey());
         const target: ReactionComposerState = { event, eventId: event.id, authorPubkey: event.pubkey,
-            kind: 1, relayHints: [], ownerToken: Symbol() };
+            kind: 1, relayHints: [], ownerToken: Symbol(), sessionToken: Symbol() };
         const profile = { name: '', displayName: 'Old author', picture: '', npub: '', nprofile: '' };
         const completions: ((profile: ProfileData | null) => void)[] = [];
         const updates: ((profile: ProfileData | null) => void)[] = [];

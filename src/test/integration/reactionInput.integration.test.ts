@@ -3,7 +3,7 @@ import { Editor, Node } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { closeHistory } from '@tiptap/pm/history';
 import { ReactionInput, isReactionComposing } from '../../lib/editor/reactionInput';
-import { inspectReactionDocument } from '../../lib/reactionValue';
+import { inspectReactionDocument, type ReactionInputMode } from '../../lib/reactionValue';
 
 const editors: Editor[] = [];
 afterEach(() => { editors.splice(0).forEach(editor => editor.destroy()); vi.restoreAllMocks(); });
@@ -12,12 +12,48 @@ const customEmoji = Node.create({ name: 'customEmoji', group: 'inline', inline: 
     renderHTML: () => ['span', { 'data-emoji': 'blob' }] });
 function fixture(content = '') {
     let active = false;
-    const editor = new Editor({ element: document.createElement('div'), extensions: [StarterKit, customEmoji, ReactionInput.configure({ isActive: () => active })], content: `<p>${content}</p>` });
+    let mode: ReactionInputMode = 'singleValue';
+    const editor = new Editor({ element: document.createElement('div'), extensions: [StarterKit, customEmoji, ReactionInput.configure({ isActive: () => active, getInputMode: () => mode })], content: `<p>${content}</p>` });
     editors.push(editor);
     const insert = (text: string, meta?: string) => editor.view.dispatch(editor.state.tr.insertText(text, editor.state.doc.content.size - 1).setMeta(meta ?? 'input', true));
-    return { editor, insert, activate: () => active = true };
+    return { editor, insert, activate: () => active = true, setMode: (value: ReactionInputMode) => { mode = value; } };
 }
 describe('Reaction document transactions', () => {
+    it.each(['cat', ':cat:', '::cat::', ':', 'cat ', '猫'])('allows incremental shortcode editing even before regex validity: %s', text => {
+        const f = fixture(); f.activate(); f.setMode('uploadedShortcode');
+        for (const character of text) f.insert(character);
+        expect(f.editor.getText()).toBe(text);
+    });
+    it('rejects rich nodes and line breaks in shortcode mode', () => {
+        const f = fixture('cat'); f.activate(); f.setMode('uploadedShortcode');
+        for (const content of [{ type: 'customEmoji' }, { type: 'hardBreak' }, { type: 'paragraph', content: [{ type: 'text', text: 'B' }] }]) {
+            f.editor.commands.insertContent(content);
+            expect(f.editor.getText()).toBe('cat');
+        }
+        f.insert('\n'); expect(f.editor.getText()).toBe('cat');
+        f.editor.commands.setTextSelection({ from: 1, to: 4 });
+        f.editor.commands.toggleBold();
+        expect(f.editor.getHTML()).toBe('<p>cat</p>');
+    });
+    it('keeps long text when the image is deleted and allows repair, undo and redo', () => {
+        const f = fixture(); f.activate(); f.setMode('uploadedShortcode'); f.insert('cat');
+        f.setMode('singleValue');
+        expect(f.editor.getText()).toBe('cat'); expect(inspectReactionDocument(f.editor.state.doc).value).toBeNull();
+        f.insert('s'); expect(f.editor.getText()).toBe('cat');
+        f.editor.view.dispatch(closeHistory(f.editor.state.tr.delete(2, 4)));
+        expect(f.editor.getText()).toBe('c'); expect(inspectReactionDocument(f.editor.state.doc).value).not.toBeNull();
+        f.editor.commands.undo(); expect(f.editor.getText()).toBe('cat');
+        f.editor.commands.redo(); expect(f.editor.getText()).toBe('c');
+    });
+    it.each([false, true])('composition reconciles with the current shortcode mode, changed during composition=%s', change => {
+        const f = fixture(); f.activate(); if (!change) f.setMode('uploadedShortcode');
+        let reconcile: FrameRequestCallback | undefined;
+        vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { reconcile = callback; return 1; });
+        f.editor.view.dom.dispatchEvent(new Event('compositionstart')); f.insert('cat');
+        if (change) f.setMode('uploadedShortcode');
+        f.editor.view.dom.dispatchEvent(new Event('compositionend')); reconcile!(0);
+        expect(f.editor.getText()).toBe('cat'); expect(isReactionComposing(f.editor)).toBe(false);
+    });
     it.each(['A', 'あ', '👍', '👍🏽', '👨‍👩‍👧‍👦', 'e\u0301'])('accepts one grapheme %s and blocks input/paste/drop adding a second', text => {
         const f = fixture(); f.activate(); f.insert(text);
         expect(inspectReactionDocument(f.editor.state.doc).value).toEqual({ type: 'text', text });

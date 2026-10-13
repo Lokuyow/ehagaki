@@ -1,9 +1,40 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { normalizeCustomEmojiSelection, type CustomEmojiSelection } from './customEmojiUsage';
-import { parseEmojiSetAddress } from './customEmoji';
+import { normalizeEmojiShortcode, parseEmojiSetAddress } from './customEmoji';
+import type { MediaGalleryItem } from './types/media';
 
 export type ReactionValue = { type: 'text'; text: string } | { type: 'customEmoji'; emoji: CustomEmojiSelection };
+export type ReactionInputMode = 'singleValue' | 'uploadedShortcode';
+export interface ReactionMediaContext { items: readonly MediaGalleryItem[]; ownedItemIds: ReadonlySet<string> }
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+export function getReactionInputMode(context: ReactionMediaContext): ReactionInputMode {
+    const item = context.items[0];
+    return context.items.length === 1 && item.type === 'image' && context.ownedItemIds.has(item.id)
+        ? 'uploadedShortcode' : 'singleValue';
+}
+
+export function inspectShortcodeDocument(doc: PMNode) {
+    let text = '';
+    let forbidden = doc.childCount === 1 && doc.firstChild?.type.name === 'paragraph' ? 0 : 1;
+    doc.descendants(node => {
+        if (node.isText) {
+            text += node.text ?? '';
+            if (node.marks.length || /[\r\n\u2028\u2029]/u.test(node.text ?? '')) forbidden++;
+        }
+        else if (node.type.name !== 'paragraph') forbidden++;
+    });
+    return { text, forbidden, count: [...segmenter.segment(text)].length };
+}
+
+/** Editing permits incomplete/invalid text; wire validation is a separate boundary. */
+export function canApplyReactionEdit(before: PMNode, after: PMNode, mode: ReactionInputMode): boolean {
+    const previous = mode === 'uploadedShortcode' ? inspectShortcodeDocument(before) : inspectReactionDocument(before);
+    const next = mode === 'uploadedShortcode' ? inspectShortcodeDocument(after) : inspectReactionDocument(after);
+    if (next.forbidden === 0 && (mode === 'uploadedShortcode' || next.count <= 1)) return true;
+    return (previous.count > 1 || previous.forbidden > 0)
+        && next.count <= previous.count && next.forbidden <= previous.forbidden;
+}
 
 export function normalizeReactionValue(value: ReactionValue): { content: string; emojiTag?: string[] } {
     if (value.type === 'text') {
@@ -21,7 +52,22 @@ export function normalizeReactionValue(value: ReactionValue): { content: string;
 }
 
 /** Count rich tokens before serialization: a customEmoji is one value, never its shortcode text. */
-export function inspectReactionDocument(doc: PMNode, hasGalleryMedia = false) {
+export function inspectReactionDocument(doc: PMNode, media: boolean | ReactionMediaContext = false) {
+    if (typeof media !== 'boolean' && media.items.length > 0) {
+        const inspection = inspectShortcodeDocument(doc);
+        const item = media.items[0];
+        let value: ReactionValue | null = null;
+        if (getReactionInputMode(media) === 'uploadedShortcode' && !item.isPlaceholder && !inspection.forbidden
+            && !/\s/u.test(inspection.text)) {
+            const shortcode = normalizeEmojiShortcode(inspection.text);
+            if (/^[A-Za-z0-9_-]+$/.test(shortcode)) {
+                const candidate: ReactionValue = { type: 'customEmoji', emoji: { shortcode, src: item.src } };
+                try { normalizeReactionValue(candidate); value = candidate; } catch { /* Invalid upload URL. */ }
+            }
+        }
+        return { ...inspection, value };
+    }
+    const hasGalleryMedia = typeof media === 'boolean' ? media : false;
     let text = '';
     const emojis: CustomEmojiSelection[] = [];
     let forbidden = hasGalleryMedia ? 1 : 0;

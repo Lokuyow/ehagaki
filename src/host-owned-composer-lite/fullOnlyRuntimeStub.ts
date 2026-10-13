@@ -19,6 +19,9 @@ export const parentClientAuthService = {
 
 export const postHistoryRepository = {};
 export const postReactionService = {};
+export function createReactionMediaController(): never {
+    throw new Error('Reaction media is unavailable in Host-owned Composer Lite.');
+}
 
 export class ReplyQuoteService {
     constructor() {

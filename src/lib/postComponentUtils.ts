@@ -163,6 +163,7 @@ export function collectFullscreenMediaItems(params: {
     mediaFreePlacement: boolean;
     galleryItems: MediaGalleryItem[];
     currentEditor: TipTapEditor | null;
+    includeTemporaryGallery?: boolean;
 }): FullscreenMediaItem[] {
     if (!params.mediaFreePlacement) {
         return params.galleryItems
@@ -185,13 +186,9 @@ export function collectFullscreenMediaItems(params: {
             });
     }
 
-    if (!params.currentEditor) {
-        return [];
-    }
-
     const items: FullscreenMediaItem[] = [];
 
-    params.currentEditor.state.doc.descendants((node) => {
+    params.currentEditor?.state.doc.descendants((node) => {
         if (
             (node.type.name === 'image' || node.type.name === 'video') &&
             !node.attrs.isPlaceholder
@@ -212,7 +209,10 @@ export function collectFullscreenMediaItems(params: {
         }
     });
 
-    return items;
+    // Temporary Gallery augments free placement; it does not replace inline media.
+    return params.includeTemporaryGallery
+        ? [...items, ...collectFullscreenMediaItems({ ...params, mediaFreePlacement: false })]
+        : items;
 }
 
 export function findFullscreenMediaIndex(
@@ -314,12 +314,14 @@ export function moveGalleryMediaToEditor(params: {
     imageOxMap: Record<string, string>;
     imageXMap: Record<string, string>;
     hadItems: boolean;
+    movedItemIds: string[];
 } {
     if (params.items.length === 0) {
         return {
             imageOxMap: {},
             imageXMap: {},
             hadItems: false,
+            movedItemIds: [],
         };
     }
 
@@ -328,6 +330,7 @@ export function moveGalleryMediaToEditor(params: {
     let insertPos = params.currentEditor.state.doc.content.size;
     const newOxMap: Record<string, string> = {};
     const newXMap: Record<string, string> = {};
+    const movedItemIds: string[] = [];
 
     params.items.forEach((item) => {
         if (item.isPlaceholder) {
@@ -343,13 +346,20 @@ export function moveGalleryMediaToEditor(params: {
                 dim: item.dim ?? null,
                 size: item.size ?? null,
                 uploadProtocol: item.uploadProtocol ?? null,
+                m: item.mimeType ?? null,
+                ox: item.ox ?? null,
+                x: item.x ?? null,
             });
             transaction = transaction.insert(insertPos, imageNode);
             insertPos += imageNode.nodeSize;
+            movedItemIds.push(item.id);
         } else if (item.type === 'video' && schema.nodes.video) {
             const videoNode = schema.nodes.video.create({ src });
             transaction = transaction.insert(insertPos, videoNode);
             insertPos += videoNode.nodeSize;
+            movedItemIds.push(item.id);
+        } else {
+            return;
         }
 
         if (item.ox) newOxMap[src] = item.ox;
@@ -357,10 +367,12 @@ export function moveGalleryMediaToEditor(params: {
     });
 
     params.currentEditor.view.dispatch(transaction);
+    const applied = !params.currentEditor.state.doc.eq(transaction.before);
 
     return {
-        imageOxMap: newOxMap,
-        imageXMap: newXMap,
+        imageOxMap: applied ? newOxMap : {},
+        imageXMap: applied ? newXMap : {},
         hadItems: true,
+        movedItemIds: applied ? movedItemIds : [],
     };
 }

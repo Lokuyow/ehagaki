@@ -39,6 +39,7 @@
     }
   },
   "reaction": {
+    "shortcode_hint": "Enter the image shortcode, e.g. cat or :cat:. Use letters, numbers, - and _ only.",
     "action": "React",
     "entry": "Reaction",
     "target": "Reaction target",
@@ -548,6 +549,8 @@
     "author_name": "Lokuyow"
   },
   "postComponent": {
+    "reactionUnsupportedImage": "Upload one static PNG, JPEG or WebP image at a time for a reaction. Animated images are not supported.",
+    "reactionImageTransformFailed": "The reaction image could not be transformed. It has not been uploaded.",
     "enter_your_text": "What's happening?",
     "editor_label": "Post editor",
     "post": "Post",

@@ -28,17 +28,21 @@ export function notifyUploadProgress(
 
 export function createManagedUploadCallbacks(
     uploadCallbacks?: UploadInfoCallbacks,
+    isCurrent: () => boolean = () => true,
 ): UploadInfoCallbacks {
     return {
         onProgress: (progress: UploadProgress) => {
+            if (!isCurrent()) return;
             setUploadProgress(progress);
             uploadCallbacks?.onProgress?.(progress);
         },
         onVideoCompressionProgress: (progress: number) => {
+            if (!isCurrent()) return;
             videoCompressionProgressStore.set(progress);
             uploadCallbacks?.onVideoCompressionProgress?.(progress);
         },
         onImageCompressionProgress: (progress: number) => {
+            if (!isCurrent()) return;
             imageCompressionProgressStore.set(progress);
             uploadCallbacks?.onImageCompressionProgress?.(progress);
         },

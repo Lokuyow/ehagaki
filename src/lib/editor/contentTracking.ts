@@ -517,7 +517,7 @@ export const ContentTrackingExtension = Extension.create<ContentTrackingOptions>
                         const resultTr = processUrlsAndImages(
                             newState,
                             options.enableAutoLink ?? true,
-                            enableImageConversionForThisTr && (options.enableImageConversion ?? true),
+                            enableImageConversionForThisTr && !options.isMediaConversionDisabled?.() && (options.enableImageConversion ?? true),
                             affectedBlocks
                         );
 

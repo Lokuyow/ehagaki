@@ -186,17 +186,16 @@ export class FileUploadManager implements FileUploadManagerInterface {
         (this.imageCompressionService as ImageCompressionService).setProgressCallback(callbacks.onImageCompressionProgress);
       }
 
-      const compressionResult = operation?.signal
-        ? await compressionService.compress(file, { signal: operation.signal })
-        : await compressionService.compress(file);
-      const { file: uploadFile, wasCompressed, wasSkipped, aborted } = compressionResult;
-
-      // 圧縮完了後はコールバックをクリア
-      if (isVideo) {
-        (this.videoCompressionService as VideoCompressionService).setProgressCallback(undefined);
-      } else {
-        (this.imageCompressionService as ImageCompressionService).setProgressCallback(undefined);
+      let compressionResult;
+      try {
+        compressionResult = operation?.signal
+          ? await compressionService.compress(file, { signal: operation.signal })
+          : await compressionService.compress(file);
+      } finally {
+        if (isVideo) (this.videoCompressionService as VideoCompressionService).setProgressCallback(undefined);
+        else (this.imageCompressionService as ImageCompressionService).setProgressCallback(undefined);
       }
+      const { file: uploadFile, wasCompressed, wasSkipped, aborted } = compressionResult;
 
       // 中止された場合はアップロードを中止
       if (aborted) {
@@ -333,7 +332,9 @@ export class FileUploadManager implements FileUploadManagerInterface {
       const enhancedError = errorMessage.includes('Failed to fetch')
         ? `${errorMessage} (Service Workerが画像アップロードをブロックしている可能性があります)`
         : errorMessage;
-      return { success: false, error: enhancedError };
+      return { success: false, error: enhancedError,
+        ...(['reactionUnsupportedImage', 'reactionImageTransformFailed'].includes(errorMessage)
+          ? { errorCode: errorMessage as 'reactionUnsupportedImage' | 'reactionImageTransformFailed' } : {}) };
     }
   }
 
@@ -413,11 +414,12 @@ export class FileUploadManager implements FileUploadManagerInterface {
     callbacks?: UploadInfoCallbacks,
     devMode: boolean = false,
     metadata?: Record<string, string | number | undefined>,
-    destination?: UploadDestination
+    destination?: UploadDestination,
+    operation?: { signal?: AbortSignal }
   ): Promise<FileUploadResponse> {
     callbacks?.onProgress?.({ completed: 0, failed: 0, aborted: 0, total: 1, inProgress: true });
     try {
-      const result = await this.uploadFile(file, apiUrl, devMode, metadata, callbacks, destination);
+      const result = await this.uploadFile(file, apiUrl, devMode, metadata, callbacks, destination, operation);
       callbacks?.onProgress?.({
         completed: result.success ? 1 : 0,
         failed: (!result.success && !result.aborted) ? 1 : 0,

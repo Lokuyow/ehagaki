@@ -7,6 +7,15 @@ import {
 } from "../../../scripts/hostOwnedLiteGraphGate.mjs";
 
 describe("Host-owned Lite graph gate", () => {
+    it.each(['src/lib/reactionMediaController.ts', 'src/lib/upload/reactionImageCompression.ts'])('rejects app-owned Reaction module %s', path => {
+        const entry = resolve(process.cwd(), 'src/web-component/host-owned-entry.ts');
+        const module = resolve(process.cwd(), path);
+        const plugin = createHostOwnedLiteGraphGate(process.cwd());
+        expect(() => plugin.generateBundle.call({ getModuleIds: () => [entry, module],
+            getModuleInfo: (id: string) => ({ importedIds: id === entry ? [module] : [], dynamicallyImportedIds: [] }),
+            error: (message: string) => { throw new Error(message); },
+        })).toThrow(path.split('/').at(-1));
+    });
     it("walks both static and dynamic module edges from the Lite entry", () => {
         const graph = new Map([
             ["entry", { importedIds: ["static"], dynamicallyImportedIds: ["dynamic"] }],

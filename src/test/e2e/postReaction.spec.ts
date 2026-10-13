@@ -1,10 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
 
 type State = { signs: number; sends: { eventId: string; kind: number; relays: string[] }[]; saveEntered: boolean;
+    uploads: { width: number; height: number; type: string; size: number; lossless: boolean; alpha: number }[];
+    gallery: { id: string; src: string; isPlaceholder: boolean; mimeType?: string; dim?: string }[];
+    isUploading: boolean; freePlacement: boolean; wire: { content: string; emoji: string[][] } | null;
+    fullscreen: { id: string; src: string }; inlineMedia: { id: string; src: string }[];
     result: { success: boolean; cacheSaved: boolean } | null; targetId?: string; canPost: boolean;
     status: { success: boolean; sending: boolean }; children: { parent: string; eventId: string }[]; authored: number };
 type Harness = { targetId: string; relatedId: string; nextId: string; targetInput: string; profileName: string; profilePicture: string; read(): Promise<State>;
-    switchTarget(): void; switchAccount(): void; destroy(): void; releaseSave(): void; retryPublish(): void; saveIncomingReaction(toRelated?: boolean): Promise<void> };
+    switchTarget(): void; switchAccount(): void; destroy(): void; releaseSave(): void; retryPublish(): void; saveIncomingReaction(toRelated?: boolean): Promise<void>;
+    startReaction(): void; cancelReaction(): void; removeImages(): void; addExistingImage(): void;
+    selectInlineImage(): void;
+    createImage(type: string, width: number, height: number): Promise<number[]> };
 type HarnessWindow = Window & { __REACTION__: Harness };
 const read = (page: Page) => page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.read());
 async function open(page: Page, query = '') {
@@ -21,6 +28,169 @@ async function chooseTarget(page: Page, input: string, card: 'main' | 'related' 
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.locator('.tiptap-editor')).toBeFocused();
 }
+
+async function imagePayload(page: Page, type = 'image/png', width = 512, height = 512) {
+    const bytes = await page.evaluate(async ({ type, width, height }) => (window as unknown as HarnessWindow).__REACTION__.createImage(type, width, height), { type, width, height });
+    return { name: `reaction.${type.split('/')[1]}`, mimeType: type, buffer: Buffer.from(bytes) };
+}
+async function uploadedReaction(page: Page, free = false) {
+    const h = await open(page, `?uploaded${free ? '&free' : ''}`);
+    const url = h.profilePicture;
+    await page.route('**/reaction-fixture-upload', route => route.fulfill({ status: 200, json: { url } }));
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.startReaction());
+    await expect(page.locator('[data-reaction-target-id]')).toHaveCount(1);
+    return h;
+}
+
+test('uploaded shortcode uses canonical wire, rejects whitespace and clears owned media after success', async ({ page }, testInfo) => {
+    const h = await uploadedReaction(page, true);
+    const editor = page.locator('.tiptap-editor');
+    await expect(page.locator('input[type=file]')).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp');
+    await expect(page.locator('input[type=file]')).not.toHaveAttribute('multiple');
+    await page.locator('input[type=file]').setInputFiles(await imagePayload(page));
+    await expect.poll(async () => (await read(page)).isUploading).toBe(false);
+    await editor.click(); await editor.pressSequentially('cat'); await expect(editor).toHaveText('cat');
+    for (const text of [':blob:', '::blob::']) {
+        await editor.fill(''); await editor.pressSequentially(text); await expect(editor).toHaveText(text);
+        await expect(editor.locator('[data-custom-emoji]')).toHaveCount(0);
+    }
+    for (const text of ['cat', ':cat', 'cat:', ':cat:', '::cat::']) {
+        await editor.fill(text); await expect.poll(async () => (await read(page)).canPost).toBe(true);
+    }
+    for (const text of ['cat ', ' cat', ' :cat: ', 'cat\u00a0', ':']) {
+        await editor.fill(text); await expect(editor).toHaveText(text, { useInnerText: false });
+        await expect.poll(async () => (await read(page)).canPost).toBe(false);
+        expect((await read(page)).gallery).toHaveLength(1);
+    }
+    await editor.fill('');
+    await editor.pressSequentially('https://invalid-shortcode.example/cat.png');
+    await expect(editor).toHaveText('https://invalid-shortcode.example/cat.png');
+    await expect.poll(async () => (await read(page)).canPost).toBe(false);
+    expect((await read(page)).gallery).toHaveLength(1);
+    await editor.fill('::cat::');
+    expect((await read(page)).uploads[0]).toMatchObject({ width: 128, height: 128, type: 'image/png', alpha: 0 });
+    expect((await read(page)).freePlacement).toBe(true);
+    await page.setViewportSize({ width: 360, height: 800 });
+    await expect(page.locator('.media-gallery')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('reaction-upload-360.png') });
+    await page.getByRole('button', { name: '投稿', exact: true }).click();
+    await expect.poll(async () => (await read(page)).wire?.content).toBe(':cat:');
+    expect((await read(page)).wire?.emoji).toEqual([['emoji', 'cat', h.profilePicture]]);
+    await expect(editor).toBeEmpty(); expect((await read(page)).gallery).toEqual([]);
+});
+
+test('placeholder permits shortcode editing, target change preserves upload, and image removal preserves long text', async ({ page }) => {
+    const h = await open(page, '?uploaded');
+    let release!: () => void;
+    const wait = new Promise<void>(resolve => release = resolve);
+    await page.route('**/reaction-fixture-upload', async route => { await wait; await route.fulfill({ json: { url: h.profilePicture } }).catch(() => {}); });
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.startReaction());
+    await page.locator('input[type=file]').setInputFiles(await imagePayload(page));
+    await expect.poll(async () => (await read(page)).uploads.length).toBe(1);
+    const editor = page.locator('.tiptap-editor'); await editor.fill('cat'); await expect(editor).toHaveText('cat');
+    expect((await read(page)).canPost).toBe(false); expect((await read(page)).isUploading).toBe(true);
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.switchTarget());
+    release(); await expect.poll(async () => (await read(page)).canPost).toBe(true);
+    expect((await read(page)).targetId).toBe(h.nextId);
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.removeImages());
+    await expect(editor).toHaveText('cat'); await expect.poll(async () => (await read(page)).canPost).toBe(false);
+    await editor.fill('c'); await expect.poll(async () => (await read(page)).canPost).toBe(true);
+    await editor.press('End'); await editor.pressSequentially('a'); await expect(editor).toHaveText('c');
+});
+
+for (const type of ['image/jpeg', 'image/webp']) test(`actual ${type} encoder retains aspect ratio and lossless WebP`, async ({ page }) => {
+    await uploadedReaction(page);
+    await page.locator('input[type=file]').setInputFiles(await imagePayload(page, type, 256, 512));
+    await expect.poll(async () => (await read(page)).isUploading).toBe(false);
+    const result = (await read(page)).uploads[0]; expect(result).toMatchObject({ type, width: 128, height: 256 });
+    if (type === 'image/webp') { expect(result.lossless).toBe(true); expect(result.alpha).toBe(0); }
+});
+
+test('JPEG EXIF orientation is retained when resizing from oriented dimensions', async ({ page }) => {
+    await uploadedReaction(page);
+    const payload = await imagePayload(page, 'image/jpeg', 512, 256);
+    // APP1: Exif, little-endian TIFF, one SHORT Orientation entry = 6 (90 degrees).
+    const orientation = Buffer.from([255, 225, 0, 34, 69, 120, 105, 102, 0, 0, 73, 73, 42, 0, 8, 0, 0, 0,
+        1, 0, 18, 1, 3, 0, 1, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0]);
+    payload.buffer = Buffer.concat([payload.buffer.subarray(0, 2), orientation, payload.buffer.subarray(2)]);
+    await page.locator('input[type=file]').setInputFiles(payload);
+    await expect.poll(async () => (await read(page)).isUploading).toBe(false);
+    expect((await read(page)).uploads[0]).toMatchObject({ type: 'image/jpeg', width: 128, height: 256 });
+});
+
+test('cancel in free placement preserves original inline media and restores the uploaded image as normal media', async ({ page }) => {
+    await uploadedReaction(page, true);
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.cancelReaction());
+    await page.locator('input[type=file]').setInputFiles(await imagePayload(page, 'image/png', 64, 64));
+    await expect.poll(async () => (await read(page)).isUploading).toBe(false);
+    const originalImage = page.locator('.tiptap-editor img').first(); await expect(originalImage).toBeVisible();
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.startReaction());
+    await expect(originalImage).toBeVisible(); expect((await read(page)).gallery).toEqual([]);
+    const h = await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.profilePicture);
+    await page.route('**/reaction-fixture-upload', route => route.fulfill({ json: { url: h } }));
+    await page.locator('input[type=file]').setInputFiles(await imagePayload(page));
+    await expect.poll(async () => (await read(page)).gallery.filter(item => !item.isPlaceholder).length).toBe(1);
+    expect((await read(page)).canPost).toBe(false);
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.cancelReaction());
+    await expect(page.locator('.tiptap-editor img')).toHaveCount(2); expect((await read(page)).gallery).toEqual([]);
+    expect((await read(page)).freePlacement).toBe(true);
+});
+
+test('old upload cannot reenter a new Reaction session after cancel', async ({ page }) => {
+    const h = await open(page, '?uploaded&free');
+    let release!: () => void; const wait = new Promise<void>(resolve => release = resolve);
+    await page.route('**/reaction-fixture-upload', async route => { await wait; await route.fulfill({ json: { url: h.profilePicture } }).catch(() => {}); });
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.startReaction());
+    await page.locator('input[type=file]').setInputFiles(await imagePayload(page));
+    await expect.poll(async () => (await read(page)).uploads.length).toBe(1);
+    await page.evaluate(() => { const h = (window as unknown as HarnessWindow).__REACTION__; h.cancelReaction(); h.startReaction(); });
+    await expect.poll(async () => (await read(page)).isUploading).toBe(false); release();
+    await page.locator('.tiptap-editor').fill('c'); await page.locator('.tiptap-editor').pressSequentially('a');
+    await expect(page.locator('.tiptap-editor')).toHaveText('c'); expect((await read(page)).gallery).toEqual([]);
+});
+
+test('free-placement Reaction fullscreen keeps inline and temporary Gallery identities through navigation', async ({ page }) => {
+    const h = await uploadedReaction(page, true);
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.cancelReaction());
+    await page.locator('input[type=file]').setInputFiles(await imagePayload(page, 'image/png', 64, 64));
+    await expect.poll(async () => (await read(page)).isUploading).toBe(false);
+    const inline = (await read(page)).inlineMedia[0];
+    expect(inline.id).toBeTruthy(); expect(inline.src).toBe(h.profilePicture);
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.startReaction());
+    const gallerySrc = `${h.profilePicture}?reaction-emoji=1`;
+    await page.route('**/reaction-fixture-upload', route => route.fulfill({ json: { url: gallerySrc } }));
+    await page.locator('input[type=file]').setInputFiles(await imagePayload(page));
+    await expect.poll(async () => (await read(page)).isUploading).toBe(false);
+    const gallery = (await read(page)).gallery[0];
+    expect(gallery.id).not.toBe(inline.id); expect(gallery.src).toBe(gallerySrc);
+    await expect(page.locator('.tiptap-editor img')).toBeVisible();
+    await expect(page.locator('.media-gallery img')).toBeVisible();
+    expect((await read(page)).freePlacement).toBe(true);
+
+    const viewer = page.locator('.ehagaki-pswp');
+    async function expectActiveImage(item: { id: string; src: string }, counter: string) {
+        await expect(viewer).toBeVisible();
+        await expect(viewer.locator('.pswp__counter')).toHaveText(counter);
+        await expect.poll(() => viewer.locator('img.pswp__img:not(.pswp__img--placeholder)').evaluateAll(images => images
+            .filter(image => { const rect = image.getBoundingClientRect(); return rect.left < innerWidth / 2 && rect.right > innerWidth / 2; })
+            .map(image => (image as HTMLImageElement).src))).toEqual([item.src]);
+        expect((await read(page)).fullscreen).toEqual(item);
+    }
+    // Node selection and the image button's fullscreen click are distinct existing gestures.
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.selectInlineImage());
+    await page.locator('.tiptap-editor .editor-image-button').click();
+    await expectActiveImage(inline, '1 / 2');
+    await viewer.getByRole('button', { name: '次のメディア', exact: true }).click();
+    await expectActiveImage({ id: gallery.id, src: gallery.src }, '2 / 2');
+    await viewer.getByRole('button', { name: '前のメディア', exact: true }).click();
+    await expectActiveImage(inline, '1 / 2');
+    await page.keyboard.press('Escape'); await expect(viewer).toBeHidden();
+    await page.locator('.media-gallery').getByRole('button', { name: gallery.src, exact: true }).click();
+    await expectActiveImage({ id: gallery.id, src: gallery.src }, '2 / 2');
+    await page.keyboard.press('Escape'); await expect(viewer).toBeHidden();
+    expect((await read(page)).freePlacement).toBe(true);
+    expect((await read(page)).inlineMedia).toEqual([inline]);
+});
 test('main target commits mode, preserves invalid input, supports undo/redo and sends one Unicode value', async ({ page }) => {
     const h = await open(page, '?invalid');
     await chooseTarget(page, h.targetInput);

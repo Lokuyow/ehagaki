@@ -115,8 +115,9 @@ function removeEmptyParagraphs(tx: Transaction): Transaction {
     return tx;
 }
 
-export const MediaPasteExtension = Extension.create({
+export const MediaPasteExtension = Extension.create<{ isMediaConversionDisabled?: () => boolean }>({
     name: 'mediaPaste',
+    addOptions: () => ({ isMediaConversionDisabled: () => false }),
 
     addProseMirrorPlugins() {
         return [
@@ -124,6 +125,7 @@ export const MediaPasteExtension = Extension.create({
                 key: new PluginKey('image-paste'),
                 props: {
                     handlePaste: (view, event) => {
+                        if (this.options.isMediaConversionDisabled?.()) return false;
                         if (view.editable === false) {
                             event.preventDefault();
                             return true;
@@ -193,6 +195,7 @@ export const MediaPasteExtension = Extension.create({
 
                     // スマートフォン対応: inputイベントも処理
                     handleTextInput: (view, from, to, text) => {
+                        if (this.options.isMediaConversionDisabled?.()) return false;
                         if (view.editable === false) {
                             return true;
                         }
