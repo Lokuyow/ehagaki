@@ -473,6 +473,74 @@ describe("DexiePostHistoryDeletionRequestsRepository", () => {
         db.close();
     });
 
+    it("schemaVersionだけが古いimported deletion recordを更新する", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryDeletionRequestsRepository(db, () => 2000);
+        const deletionEvent = createDeletionEvent({ created_at: 250 });
+        await repository.upsertImportedDeletionEvents({
+            ownerPubkeyHex: deletionEvent.pubkey,
+            deletionEvents: [{ event: deletionEvent }],
+            fetchedAt: 900,
+        });
+        const [saved] = await db.postHistoryDeletionRequests.toArray();
+        await db.postHistoryDeletionRequests.update(saved!.id, {
+            schemaVersion: 1,
+            updatedAt: 1234,
+        });
+
+        const result = await repository.upsertImportedDeletionEvents({
+            ownerPubkeyHex: deletionEvent.pubkey,
+            deletionEvents: [{ event: deletionEvent }],
+            fetchedAt: 900,
+        });
+
+        expect(result).toMatchObject({ updatedCount: 1, unchangedCount: 0 });
+        await expect(db.postHistoryDeletionRequests.get(saved!.id)).resolves.toMatchObject({
+            schemaVersion: 2,
+            updatedAt: 2000,
+        });
+        db.close();
+    });
+
+    it("already-deleted ordinary targetのidentical importではrecordを書き直さずreconcileしない", async () => {
+        const db = createTestDb();
+        const now = 2000;
+        const postRepository = new DexiePostHistoryRepository(db, () => now);
+        const repository = new DexiePostHistoryDeletionRequestsRepository(db, () => now);
+        const targetEvent = createSignedEvent();
+        const deletionEvent = createDeletionEvent({ tags: [["e", targetEvent.id]] });
+        await postRepository.putPostedEvent({ event: targetEvent });
+        await repository.upsertImportedDeletionEvents({
+            ownerPubkeyHex: deletionEvent.pubkey,
+            deletionEvents: [{ event: deletionEvent }],
+            fetchedAt: 900,
+        });
+        const [saved] = await db.postHistoryDeletionRequests.toArray();
+        await db.postHistoryDeletionRequests.update(saved!.id, { updatedAt: 1234 });
+
+        const bulkPut = vi.spyOn(db.postHistoryDeletionRequests, "bulkPut");
+        const where = vi.spyOn(db.postHistory, "where");
+        try {
+            const result = await repository.upsertImportedDeletionEvents({
+                ownerPubkeyHex: deletionEvent.pubkey,
+                deletionEvents: [{ event: deletionEvent }],
+                fetchedAt: 901,
+            });
+
+            expect(result).toMatchObject({ updatedCount: 0, unchangedCount: 1 });
+            expect(bulkPut).not.toHaveBeenCalled();
+            expect(where).not.toHaveBeenCalled();
+            await expect(db.postHistoryDeletionRequests.get(saved!.id)).resolves.toMatchObject({
+                fetchedAt: 900,
+                updatedAt: 1234,
+            });
+        } finally {
+            bulkPut.mockRestore();
+            where.mockRestore();
+            db.close();
+        }
+    });
+
     it("local kind:5保存ではrequestの秒と投稿の送信成功時刻msを分離しrevisionを更新する", async () => {
         const db = createTestDb();
         resetPostHistoryLocalSearchRevisionsForTesting();

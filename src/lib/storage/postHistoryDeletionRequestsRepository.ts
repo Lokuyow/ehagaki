@@ -9,7 +9,7 @@ import {
     toPostHistoryDeletionRequestRecord,
     toPostHistoryDeletionState,
 } from "../postHistoryDeletionUtils";
-import { isSameSignedNostrEvent } from "../postHistoryEventUtils";
+import { isPostHistoryRawEventConsistent, isSameSignedNostrEvent } from "../postHistoryEventUtils";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import {
     attestFullyVerifiedPostHistoryRawEvent,
@@ -172,6 +172,7 @@ function hasMaterialDeletionRequestChanges(
 ): boolean {
     return existingRecord.targetAuthorPubkey !== nextRecord.targetAuthorPubkey
         || existingRecord.targetEventId !== nextRecord.targetEventId
+        || existingRecord.schemaVersion !== nextRecord.schemaVersion
         || existingRecord.deletionEventId !== nextRecord.deletionEventId
         || existingRecord.deletionEventPubkey !== nextRecord.deletionEventPubkey
         || isPostHistoryDeletionTargetVerified(existingRecord)
@@ -572,6 +573,9 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
         let updatedCount = 0;
         let unchangedCount = 0;
         let appliedDeletionCount = 0;
+        const acceptedTargetIds = new Set<string>();
+        const changedTargetIds = new Set<string>();
+        const settledOrdinaryDeletionTargetIds = new Set<string>();
 
         await this.db.transaction(
             "rw",
@@ -604,6 +608,16 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                     ) {
                         return;
                     }
+                    if (
+                        targetRecord
+                        && targetRecord.deletedAt !== undefined
+                        && targetRecord.rawEventVerification?.status === "valid"
+                        && targetRecord.rawEventVerification.ruleVersion === RAW_EVENT_VERIFICATION_RULE_VERSION
+                        && isPostHistoryRawEventConsistent(targetRecord.rawEvent, targetRecord)
+                        && !getSensitivePayloadReference(targetRecord.rawEvent as NostrEvent)
+                    ) {
+                        settledOrdinaryDeletionTargetIds.add(record.targetEventId);
+                    }
 
                     const targetMatches = !!targetRecord
                         && isSupportedPostHistoryDeletionTargetKind(targetRecord.kind)
@@ -613,10 +627,12 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                         ...record,
                         targetVerified: targetMatches,
                     };
+                    acceptedTargetIds.add(record.targetEventId);
                     storedDeletionEventIds.add(record.deletionEventId);
                     const existingRecord = existingRecords[index];
                     if (!existingRecord) {
                         insertedCount += 1;
+                        changedTargetIds.add(record.targetEventId);
                         mergedRecords.push(nextRecord);
                         return;
                     }
@@ -628,10 +644,11 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                     );
                     if (hasMaterialDeletionRequestChanges(existingRecord, mergedRecord)) {
                         updatedCount += 1;
+                        changedTargetIds.add(record.targetEventId);
+                        mergedRecords.push(mergedRecord);
                     } else {
                         unchangedCount += 1;
                     }
-                    mergedRecords.push(mergedRecord);
                 });
 
                 for (const deletionEventId of candidateDeletionEventIds) {
@@ -682,6 +699,13 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
             candidates.map((candidate) => candidate.record.targetEventId),
         ));
         for (const targetEventId of importedTargetIds) {
+            if (
+                acceptedTargetIds.has(targetEventId)
+                && !changedTargetIds.has(targetEventId)
+                && settledOrdinaryDeletionTargetIds.has(targetEventId)
+            ) {
+                continue;
+            }
             await reconcileSensitivePayloadDeletionForCandidate(targetEventId, this.db, this.now);
             await reconcileSensitivePayloadDeletionForStructure(
                 targetEventId,

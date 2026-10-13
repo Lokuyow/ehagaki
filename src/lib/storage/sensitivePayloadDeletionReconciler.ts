@@ -119,7 +119,8 @@ export async function reconcileSensitivePayloadDeletionForCandidate(
 ): Promise<void> {
     // Ordinary deletion targets are not payloads. A late payload is retried by
     // putCandidate() after its record has been saved.
-    if (!await db.sensitivePayloads.get(payloadId)) return;
+    const payloadRecord = await db.sensitivePayloads.get(payloadId);
+    if (!payloadRecord || payloadRecord.deletedAt !== undefined) return;
 
     const requests = await db.postHistoryDeletionRequests
         .where("targetEventId")
