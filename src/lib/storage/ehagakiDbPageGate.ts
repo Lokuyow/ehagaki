@@ -19,6 +19,11 @@ export interface EhagakiDatabaseGateOptions {
     databaseName?: string;
     indexedDb?: IDBFactory;
     controllerWaitMs?: number;
+    /**
+     * Production and preview register a service worker that performs the upgrade.
+     * Vite dev does not, so the page must run the shared migration itself.
+     */
+    serviceWorkerUpgrade?: boolean;
 }
 
 export function installAppOriginEhagakiDatabaseGate(
@@ -99,7 +104,7 @@ function runAppOriginDatabaseGate(
             });
         };
 
-        if (!serviceWorker) {
+        if (!serviceWorker || options.serviceWorkerUpgrade === false) {
             migrateFromPage();
             return;
         }
@@ -157,6 +162,16 @@ function showEhagakiDatabaseGateNotice(
     notice.id = NOTICE_ID;
     notice.setAttribute("role", "alert");
     notice.dataset.ehagakiDbGate = kind;
+    notice.style.position = "fixed";
+    notice.style.zIndex = "11000";
+    notice.style.left = "16px";
+    notice.style.right = "16px";
+    notice.style.bottom = "16px";
+    notice.style.padding = "12px 16px";
+    notice.style.borderRadius = "12px";
+    notice.style.background = "var(--dialog-bg, #fff)";
+    notice.style.color = "var(--text, #111)";
+    notice.style.boxShadow = "0 8px 24px rgba(0, 0, 0, 0.28)";
     const message = kind === "blocked"
         ? copy.blocked
         : kind === "versionError"

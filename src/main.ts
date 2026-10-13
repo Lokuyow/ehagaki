@@ -39,7 +39,9 @@ function renderTerminalHostRelayBootstrapFailure(code: string): void {
   target.append(alert)
 }
 
-installAppOriginEhagakiDatabaseGate()
+installAppOriginEhagakiDatabaseGate(window, {
+  serviceWorkerUpgrade: !import.meta.env.DEV,
+})
 startServiceWorkerRegistration()
 
 window.addEventListener('vite:preloadError', (event) => {

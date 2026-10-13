@@ -90,6 +90,27 @@ async function readVersion(name: string): Promise<number> {
 }
 
 describe("eHagaki database open gate", () => {
+    it("runs the shared migration in dev even when the Service Worker API exists", async () => {
+        const name = databaseName();
+        await seedVersion160(name);
+        installAppOriginEhagakiDatabaseGate(host({
+            controller: null,
+            addEventListener: () => undefined,
+            removeEventListener: () => undefined,
+            getRegistration: () => Promise.resolve(undefined),
+        }), {
+            databaseName: name,
+            indexedDb: indexedDB,
+            controllerWaitMs: 60_000,
+            serviceWorkerUpgrade: false,
+        });
+        const db = new EHagakiDB(name);
+        await db.open();
+        expect(db.backendDB().version).toBe(EHAGAKI_DB_NATIVE_VERSION);
+        await expect(db.postHistory.count()).resolves.toBe(0);
+        await expect(db.drafts.get("draft")).resolves.toMatchObject({ id: "draft" });
+        db.close();
+    });
     it("runs the shared migration without a Service Worker before Dexie opens", async () => {
         const name = databaseName();
         await seedVersion160(name);
