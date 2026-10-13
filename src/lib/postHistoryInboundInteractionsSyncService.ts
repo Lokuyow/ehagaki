@@ -98,6 +98,7 @@ export interface PostHistoryInboundInteractionsSyncServiceDeps {
     postHistoryRepository?: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     postHistoryChildInteractionsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     syncStateRepository?: Pick<PostHistoryInboundInteractionsSyncStateRepository, "get" | "save">;
+    getChildWriteGeneration?: () => Promise<number>;
     console?: Pick<Console, "warn" | "error">;
     setTimeoutFn?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
     clearTimeoutFn?: (id: ReturnType<typeof setTimeout>) => void;
@@ -174,6 +175,7 @@ export class PostHistoryInboundInteractionsSyncService {
     private postHistoryRepository: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     private postHistoryChildInteractionsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     private syncStateRepository: Pick<PostHistoryInboundInteractionsSyncStateRepository, "get" | "save">;
+    private getChildWriteGeneration: () => Promise<number>;
     private console: Pick<Console, "warn" | "error">;
     private setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
     private clearTimeoutFn: (id: ReturnType<typeof setTimeout>) => void;
@@ -185,6 +187,8 @@ export class PostHistoryInboundInteractionsSyncService {
             deps.postHistoryChildInteractionsRepository ?? postHistoryChildInteractionsRepository;
         this.syncStateRepository =
             deps.syncStateRepository ?? postHistoryInboundInteractionsSyncStateRepository;
+        this.getChildWriteGeneration = deps.getChildWriteGeneration
+            ?? (() => getPostHistoryChildWriteGeneration(ehagakiDb));
         this.console = deps.console ?? (typeof globalThis.console !== "undefined"
             ? globalThis.console
             : { warn: () => undefined, error: () => undefined });
@@ -202,7 +206,7 @@ export class PostHistoryInboundInteractionsSyncService {
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let resolveTask: ((status: PostHistoryInboundInteractionsSyncStatus) => void) | undefined;
 
-        const generationReady = getPostHistoryChildWriteGeneration(ehagakiDb);
+        const generationReady = this.getChildWriteGeneration();
         const promise = (async (): Promise<PostHistoryInboundInteractionsSyncResult> => {
             const state = await this.syncStateRepository.get(params.ownerPubkeyHex);
             const limit = resolveLimit(params.reason, params.limit);
@@ -438,6 +442,7 @@ export class PostHistoryInboundInteractionsSyncService {
                     classification,
                     event: item.event,
                     relayUrls: item.relayUrls,
+                    expectedChildGeneration: input.expectedChildGeneration,
                 });
             }
 
