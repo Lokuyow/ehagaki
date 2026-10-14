@@ -52,6 +52,9 @@ implements ChannelImageMetaRepository {
                 this.onBlocked();
             };
             request.onsuccess = () => {
+                request.result.onversionchange = () => {
+                    request.result.close();
+                };
                 if (wasBlocked) {
                     this.onBlockedResolved();
                 }
