@@ -14,11 +14,21 @@ export function migrateEhagakiIndexedDb(
     oldVersion: number,
 ): void {
     const hadMeta = db.objectStoreNames.contains("meta");
+    const wipeDisplayHistory = oldVersion !== 0 && hadMeta && !!transaction;
+    // Drop the old history stores before creating indexes. Clearing every row
+    // and indexing that data freezes the upgrade for a large profile.
+    if (wipeDisplayHistory) {
+        for (const name of DISPLAY_HISTORY_STORES) {
+            if (db.objectStoreNames.contains(name)) {
+                db.deleteObjectStore(name);
+            }
+        }
+    }
     ensureCurrentEHagakiDbSchema(db, "sharedMedia", transaction);
     // Version 0 creates the final schema. Version 1 already has that schema and
     // only needs the later open(170) to bump the version. Neither path wipes
     // display history or copies markers.
-    if (oldVersion === 0 || !hadMeta) {
+    if (!wipeDisplayHistory) {
         return;
     }
     if (!transaction) {
@@ -41,11 +51,6 @@ export function migrateEhagakiIndexedDb(
                 done: true,
                 updatedAt: typeof record.updatedAt === "number" ? record.updatedAt : now,
             });
-        }
-        for (const name of DISPLAY_HISTORY_STORES) {
-            if (db.objectStoreNames.contains(name)) {
-                transaction.objectStore(name).clear();
-            }
         }
         db.deleteObjectStore("meta");
     };

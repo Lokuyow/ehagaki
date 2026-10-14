@@ -75,6 +75,10 @@ export function executeServiceWorkerIndexedDbOperation<TDb>({
 
             request.onsuccess = (event) => {
                 const db = event.target.result;
+                const connection = db as { close?: () => void; onversionchange?: (() => void) | null };
+                connection.onversionchange = () => {
+                    connection.close?.();
+                };
                 if (wasBlocked) {
                     onBlockedResolved?.();
                 }
