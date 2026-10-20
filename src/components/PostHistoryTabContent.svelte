@@ -4858,7 +4858,7 @@
         mask-image: url("/icons/search_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
-    .xmark-icon {
+    :global(.post-history-search-close) .xmark-icon {
         mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
