@@ -87,3 +87,10 @@ Test public behavior and meaningful regressions, not private implementation mirr
 Once relevant checks pass, repeat or broaden only for new changes, failures, or unresolved concerns. Bug fixes need an evidenced cause and regression coverage at the lowest sufficient level; do not mask symptoms with arbitrary delays, duplicate state, broad invalidation, or catch-all fallbacks.
 
 Remove temporary investigation files and instrumentation. Do not commit `test-results/`, `playwright-report/`, `blob-report/`, or `playwright/.cache/`. Report the change rationale, relevant risks, and executed/unexecuted checks truthfully; browser evidence should identify project, viewport, operation, result, and real-device status.
+
+## Cursor Cloud specific instructions
+
+- CI uses Node 22. Install with `npm ci` (the `postinstall` script applies `patches/rx-nostr+3.7.8.patch` and verifies it). No secrets or external accounts are required to boot the composer.
+- `npm run dev` is `vite --host` on port 5173. The app `base` is `/ehagaki/` unless `VERCEL` is set, so open `http://127.0.0.1:5173/ehagaki/`. The site root `/` is not the app.
+- Playwright e2e needs browser binaries (`npx playwright install chromium`). They are not part of `npm ci`.
+- `npm run build` runs `npx rimraf dist` before Vite. In a non-interactive shell, set `CI=true` so npx does not wait for a confirmation prompt.
