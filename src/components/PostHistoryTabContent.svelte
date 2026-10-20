@@ -4858,6 +4858,10 @@
         mask-image: url("/icons/search_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
+    .xmark-icon {
+        mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
     .repair-icon {
         mask-image: url("/icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
