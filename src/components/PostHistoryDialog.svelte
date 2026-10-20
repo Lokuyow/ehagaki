@@ -10,6 +10,7 @@
     import type { AppComponentLoadFailure } from "../lib/appComponentLoaders";
     import type { PostHistoryDialogProps } from "../lib/postHistoryDialogTypes";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
+    import { usePostHistoryTabSwipe } from "../lib/hooks/usePostHistoryTabSwipe.svelte";
     import { historyTabStore, type HistoryTab } from "../stores/historyTabStore.svelte";
 
     interface Props extends PostHistoryDialogProps {
@@ -117,6 +118,12 @@
         return () => { loadGeneration++; };
     });
     onDestroy(() => { destroyed = true; loadGeneration++; });
+    const tabSwipe = usePostHistoryTabSwipe({
+        getOpen: () => show,
+        getTab: () => activeTab,
+        getGestureBlocked: () => invalidated || busy() || !!postsRef?.isFullscreen() || !!mediaRef?.isFullscreen(),
+        onCommit: (tab) => selectTab(tab),
+    });
     function escape(event: KeyboardEvent) {
         if (busy() || postsRef?.isFullscreen() || mediaRef?.isFullscreen()) event.preventDefault();
     }
@@ -130,22 +137,32 @@
     contentClass="post-history-dialog" footerVariant="close-button" initialFocus="content" trapFocus={false}
     onEscapeKeydown={escape} onInteractOutside={outside}>
     <Tabs.Root value={activeTab} onValueChange={selectTab} activationMode="manual" class="history-tabs">
-        <Tabs.List class="history-tab-list" aria-label={$_("postHistory.title")}>
-            <Tabs.Trigger value="posts" disabled={mediaBusy}>{$_("postHistory.postsTab")}</Tabs.Trigger>
-            <Tabs.Trigger value="media" disabled={mediaBusy}>{$_("postHistory.mediaTab")}</Tabs.Trigger>
-        </Tabs.List>
-        {#key accountEpoch}
-            <Tabs.Content value="posts" class="history-tab-panel">
-            {#if Posts && postsVisited}<Posts {...postProps} bind:this={postsRef} show={show && !invalidated && activeTab === "posts"} sessionOpen={show} onClose={() => close(false)} />{/if}
-            </Tabs.Content>
-            <Tabs.Content value="media" class="history-tab-panel">
-            {#if Media && mediaVisited}<Media bind:this={mediaRef} show={show && !invalidated && activeTab === "media"} onBusyChange={(value) => mediaBusy = value} />{/if}
-            </Tabs.Content>
-        {/key}
-        {#if (activeTab === "posts" && !Posts) || (activeTab === "media" && !Media)}
-            {#if loadFailed}<Button onClick={() => accountEpoch++}>{$_("uploadedMedia.refresh")}</Button>
-            {:else}<LoadingPlaceholder showLoader text={true} />{/if}
-        {/if}
+        <div class={["history-tab-gesture", { "is-swiping": tabSwipe.dragging, "is-offset": tabSwipe.dragPx !== 0 }]}
+            {@attach tabSwipe.attachment} style:--history-tab-drag="{tabSwipe.dragPx}px">
+            <div class="history-tab-switcher">
+                <Tabs.List class="history-tab-list" aria-label={$_("postHistory.title")}>
+                    <Tabs.Trigger value="posts" disabled={mediaBusy}>{$_("postHistory.postsTab")}</Tabs.Trigger>
+                    <Tabs.Trigger value="media" disabled={mediaBusy}>{$_("postHistory.mediaTab")}</Tabs.Trigger>
+                </Tabs.List>
+                <span class="history-tab-indicator" style:transform="translateX({tabSwipe.indicatorProgress * 100}%)" aria-hidden="true"></span>
+            </div>
+            <div class="history-tab-viewport">
+                <div class="history-tab-panels">
+                    {#key accountEpoch}
+                        <Tabs.Content value="posts" class="history-tab-panel">
+                        {#if Posts && postsVisited}<Posts {...postProps} bind:this={postsRef} show={show && !invalidated && activeTab === "posts"} sessionOpen={show} onClose={() => close(false)} />{/if}
+                        </Tabs.Content>
+                        <Tabs.Content value="media" class="history-tab-panel">
+                        {#if Media && mediaVisited}<Media bind:this={mediaRef} show={show && !invalidated && activeTab === "media"} onBusyChange={(value) => mediaBusy = value} />{/if}
+                        </Tabs.Content>
+                    {/key}
+                    {#if (activeTab === "posts" && !Posts) || (activeTab === "media" && !Media)}
+                        {#if loadFailed}<Button onClick={() => accountEpoch++}>{$_("uploadedMedia.refresh")}</Button>
+                        {:else}<LoadingPlaceholder showLoader text={true} />{/if}
+                    {/if}
+                </div>
+            </div>
+        </div>
     </Tabs.Root>
     {#snippet footer()}
         <Button className="modal-close" shape="square" ariaLabel={$_("global.close")} disabled={mediaBusy} onClick={() => close()}>
@@ -178,15 +195,59 @@
         background-color: var(--dialog-bg);
         --btn-bg: var(--dialog-bg);
     }
-    :global(.history-tab-list button[data-state="active"]::after) {
-        content: "";
+    .history-tab-gesture {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        background: var(--dialog-bg);
+        touch-action: pan-y;
+    }
+    .history-tab-gesture.is-swiping { user-select: none; -webkit-user-select: none; }
+    .history-tab-gesture :global(.post-history-container),
+    .history-tab-gesture :global(.uploaded-media-content) {
+        touch-action: pan-y;
+        overscroll-behavior: none;
+    }
+    .history-tab-switcher { position: relative; flex: none; }
+    .history-tab-indicator {
         position: absolute;
-        inset: auto 0 0;
-        margin-inline: auto;
+        left: 0;
+        bottom: 0;
+        width: 50%;
+        height: 4px;
+        display: flex;
+        justify-content: center;
+        pointer-events: none;
+        transition: transform 200ms cubic-bezier(0.2, 0, 0, 1);
+    }
+    .history-tab-gesture.is-swiping .history-tab-indicator,
+    .history-tab-gesture.is-offset .history-tab-indicator { transition: none; }
+    .history-tab-indicator::before {
+        content: "";
         width: min(4.5rem, 55%);
         height: 4px;
         border-radius: 999px;
         background-color: var(--theme);
+    }
+    .history-tab-viewport {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+        background: var(--dialog-bg);
+    }
+    .history-tab-panels {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-width: 0;
+        min-height: 0;
+    }
+    .history-tab-gesture.is-offset .history-tab-panels { transform: translate3d(var(--history-tab-drag), 0, 0); }
+    @media (prefers-reduced-motion: reduce) {
+        .history-tab-indicator { transition: none; }
     }
     :global(.history-tab-panel:not([hidden])) { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 </style>
