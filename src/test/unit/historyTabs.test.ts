@@ -199,4 +199,32 @@ describe("history tabs", () => {
         await waitFor(() => expect(close.hasAttribute("disabled")).toBe(false));
         expect(counters.remove).toHaveBeenCalledTimes(1);
     });
+    it("keeps the history dialog open when Escape is pressed during media fullscreen", async () => {
+        class ImmediateIntersectionObserver {
+            readonly root = null;
+            readonly rootMargin = "";
+            readonly thresholds = [0];
+            constructor(private callback: IntersectionObserverCallback) {}
+            observe() {
+                this.callback([{ isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver);
+            }
+            unobserve() {}
+            disconnect() {}
+            takeRecords() { return []; }
+        }
+        const original = globalThis.IntersectionObserver;
+        vi.stubGlobal("IntersectionObserver", ImmediateIntersectionObserver);
+        getAppStorage().setItem("historyActiveTab", "media");
+        const onClose = vi.fn();
+        try {
+            render(PostHistoryDialog, { show: true, onClose, pubkeyHex: mediaPubkey });
+            await fireEvent.click(await screen.findByRole("button", { name: "uploadedMedia.openImage" }));
+            await waitFor(() => expect(document.querySelector(".ehagaki-pswp")).toBeTruthy());
+            await fireEvent.keyDown(document, { key: "Escape" });
+            expect(onClose).not.toHaveBeenCalled();
+            expect(screen.getByRole("dialog", { name: "投稿履歴" })).toBeTruthy();
+        } finally {
+            vi.stubGlobal("IntersectionObserver", original);
+        }
+    });
 });
