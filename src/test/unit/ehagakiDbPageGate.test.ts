@@ -134,7 +134,7 @@ describe("eHagaki database open gate", () => {
         db.close();
     });
 
-    it("does not open Dexie when registration fails and the controller is missing", async () => {
+    it("migrates immediately when registration fails instead of waiting for a retry click", async () => {
         const name = databaseName();
         await seedVersion160(name);
         installAppOriginEhagakiDatabaseGate(host({
@@ -147,21 +147,12 @@ describe("eHagaki database open gate", () => {
             indexedDb: indexedDB,
             controllerWaitMs: 20,
         });
-        let opened = false;
-        const opening = new EHagakiDB(name).open().then(() => {
-            opened = true;
-        });
-        await new Promise((resolve) => setTimeout(resolve, 40));
-        expect(opened).toBe(false);
-        expect(document.querySelector("[data-ehagaki-db-gate='retry']")).toBeTruthy();
-        expect(await readVersion(name)).toBe(160);
-        document.querySelector<HTMLButtonElement>("#ehagaki-db-gate-notice button")?.click();
-        await opening;
-        expect(opened).toBe(true);
-        expect(await readVersion(name)).toBe(EHAGAKI_DB_NATIVE_VERSION);
         const db = new EHagakiDB(name);
+        await db.open();
+        expect(db.backendDB().version).toBe(EHAGAKI_DB_NATIVE_VERSION);
         await expect(db.postHistory.count()).resolves.toBe(0);
         await expect(db.drafts.get("draft")).resolves.toMatchObject({ id: "draft" });
+        expect(document.querySelector("[data-ehagaki-db-gate='retry']")).toBeNull();
         db.close();
     });
 
@@ -229,6 +220,35 @@ describe("eHagaki database open gate", () => {
         expect(document.querySelector("[data-ehagaki-db-gate='versionError']")).toBeTruthy();
         expect(document.querySelector("#ehagaki-db-gate-notice button")).toBeNull();
         expect(await readVersion(name)).toBe(180);
+    });
+
+    it("opens Dexie when the native version is already a Dexie patch above 170", async () => {
+        const name = databaseName();
+        const patched = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open(name, 171);
+            request.onupgradeneeded = () => {
+                request.result.createObjectStore("drafts", { keyPath: "id" });
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        await new Promise<void>((resolve, reject) => {
+            const tx = patched.transaction("drafts", "readwrite");
+            tx.objectStore("drafts").put({ id: "draft", scopeKey: "owner", updatedAt: 1 });
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+        patched.close();
+        installAppOriginEhagakiDatabaseGate(host(), {
+            databaseName: name,
+            indexedDb: indexedDB,
+        });
+        const db = new EHagakiDB(name);
+        await db.open();
+        expect(document.querySelector("[data-ehagaki-db-gate='versionError']")).toBeNull();
+        expect(db.backendDB().version).toBeGreaterThanOrEqual(171);
+        await expect(db.drafts.get("draft")).resolves.toMatchObject({ id: "draft" });
+        db.close();
     });
 
     it("shows a retry notice and does not open Dexie when page migration fails", async () => {

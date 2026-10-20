@@ -67,7 +67,6 @@ function runAppOriginDatabaseGate(
 ): Promise<void> {
     const databaseName = options.databaseName ?? EHAGAKI_DB_NAME;
     const indexedDb = options.indexedDb ?? target.indexedDB;
-    const controllerWaitMs = options.controllerWaitMs ?? EHAGAKI_DB_GATE_CONTROLLER_WAIT_MS;
     return new Promise((resolve) => {
         let settled = false;
         let attempt: Promise<void> | null = null;
@@ -104,8 +103,8 @@ function runAppOriginDatabaseGate(
             });
         };
 
+        migrateFromPage();
         if (!serviceWorker || options.serviceWorkerUpgrade === false) {
-            migrateFromPage();
             return;
         }
 
@@ -127,16 +126,6 @@ function runAppOriginDatabaseGate(
         serviceWorker.addEventListener("message", onMessage);
         serviceWorker.addEventListener("controllerchange", requestUpgrade);
         requestUpgrade();
-
-        void serviceWorker.getRegistration()
-            .then(() => undefined)
-            .catch(() => {
-                if (!settled) showEhagakiDatabaseGateNotice(target, "retry", () => migrateFromPage());
-            });
-
-        target.setTimeout(() => {
-            if (!settled) showEhagakiDatabaseGateNotice(target, "retry", () => migrateFromPage());
-        }, controllerWaitMs);
     });
 }
 
