@@ -8,6 +8,7 @@
     "moreUnseen": "More records are available. Load the next page to check for images and videos.",
     "cacheUnavailable": "Image caching is unavailable. Images are displayed directly from the server.",
     "image": "Image",
+    "openImage": "Open image",
     "video": "Video",
     "openVideo": "Open video",
     "closeVideo": "Close video",

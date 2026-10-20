@@ -23,3 +23,20 @@ export function buildUploadMediaImageProxyUrl(params: {
     proxy.searchParams.set("server", params.serverUrl);
     return proxy.toString();
 }
+
+export function resolveUploadedMediaImageSrc(params: {
+    url: string | null;
+    serverUrl: string;
+    cacheSupported: boolean | null;
+    basePath: string;
+    currentOrigin: string;
+}): string | null {
+    if (!params.url || params.cacheSupported === null) return null;
+    if (!params.cacheSupported) return params.url;
+    return buildUploadMediaImageProxyUrl({
+        url: params.url,
+        serverUrl: params.serverUrl,
+        basePath: params.basePath,
+        currentOrigin: params.currentOrigin,
+    });
+}

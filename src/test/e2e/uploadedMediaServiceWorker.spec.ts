@@ -236,6 +236,14 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await dialog.getByRole("combobox").selectOption("fixture");
             await expect(dialog.locator("article")).toHaveCount(3);
             await expect(dialog.locator("img")).toBeVisible();
+            const openImage = dialog.getByRole("button", { name: "画像を開く", exact: true });
+            await openImage.click();
+            const viewer = page.locator(".ehagaki-pswp");
+            await expect(viewer).toBeVisible();
+            await page.keyboard.press("Escape");
+            await expect(viewer).toHaveCount(0);
+            await expect(dialog).toBeVisible();
+            await expect(openImage).toBeFocused();
             await expect(dialog.locator("time")).toHaveAttribute("datetime", "1970-01-01T00:02:03.000Z");
             await expect(dialog.locator("article").first()).toContainText(`${svg.length} B`);
             await expect(dialog.locator(".server-url")).toHaveCount(0);

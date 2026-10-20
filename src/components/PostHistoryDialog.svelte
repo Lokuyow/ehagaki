@@ -24,7 +24,7 @@
     let Posts = $state<typeof import("./PostHistoryTabContent.svelte").default | null>(null);
     let Media = $state<typeof import("./UploadedMediaTabContent.svelte").default | null>(null);
     let postsRef: { activate(): void; suspend(): void; invalidateSession(): void; prepareClose(): void; isFullscreen(): boolean } | null = $state(null);
-    let mediaRef: { activate(): void; suspend(): void; invalidateSession(): void; isBusy(): boolean } | null = $state(null);
+    let mediaRef: { activate(): void; suspend(): void; invalidateSession(): void; isBusy(): boolean; isFullscreen(): boolean } | null = $state(null);
     let postsVisited = $state(false);
     let mediaVisited = $state(false);
     let mediaBusy = $state(false);
@@ -118,7 +118,7 @@
     });
     onDestroy(() => { destroyed = true; loadGeneration++; });
     function escape(event: KeyboardEvent) {
-        if (busy() || postsRef?.isFullscreen()) event.preventDefault();
+        if (busy() || postsRef?.isFullscreen() || mediaRef?.isFullscreen()) event.preventDefault();
     }
     function outside(event: PointerEvent) {
         if (busy() || (event.target instanceof Element && event.target.closest(".ehagaki-pswp"))) event.preventDefault();

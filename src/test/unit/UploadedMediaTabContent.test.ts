@@ -7,16 +7,44 @@ import { mediaDestination, mediaItem, mediaPage, mediaPubkey } from "../uploadMe
 import { mockAuthStoreModule } from "../mocks/storeModules";
 import type { UploadMediaManagementView } from "../../lib/upload/uploadMediaManagementController";
 const mocked = vi.hoisted(() => ({ view: null as unknown as UploadMediaManagementView,
-    controller: { activate: vi.fn(), suspend: vi.fn(), busy: false, configure: vi.fn(), configureSaved: vi.fn(async () => undefined), invalidate: vi.fn(), select: vi.fn(), load: vi.fn(), delete: vi.fn(async () => true) } }));
+    controller: { activate: vi.fn(), suspend: vi.fn(), busy: false, configure: vi.fn(), configureSaved: vi.fn(async () => undefined), invalidate: vi.fn(), select: vi.fn(), load: vi.fn(), delete: vi.fn(async () => true) },
+    viewers: [] as Array<{ options: { index?: number; dataSource?: Array<{ id?: string; src?: string; type?: string }> }; closed: boolean }> }));
 vi.mock("svelte-i18n", () => ({ _: readable((key: string) => key) }));
 vi.mock("../../lib/hooks/useDialogHistory.svelte", () => ({ useDialogHistory: vi.fn() }));
 vi.mock("../../lib/hooks/useUploadMediaManagement.svelte", () => ({ useUploadMediaManagement: () => ({ get value() { return mocked.view; }, controller: mocked.controller }) }));
 vi.mock("../../lib/uploadMediaImageCacheClient", () => ({ supportsUploadMediaImageCache: vi.fn(async () => false), evictUploadMediaImages: vi.fn(async () => true) }));
 vi.mock("../../lib/hooks/inViewportAction.svelte", () => ({ inViewportAction: (_node: unknown, params: { onEnterView: () => void }) => { queueMicrotask(params.onEnterView); return {}; } }));
+vi.mock("photoswipe", () => ({
+    default: class MockPhotoSwipe {
+        closed = false;
+        currIndex: number;
+        element: HTMLElement | null = null;
+        constructor(public options: { index?: number; mainClass?: string; dataSource?: Array<{ id?: string; src?: string; type?: string }> }) {
+            this.currIndex = options.index ?? 0;
+            mocked.viewers.push(this);
+        }
+        on() {}
+        init() {
+            const root = document.createElement("div");
+            root.className = `pswp ${this.options.mainClass ?? ""}`.trim();
+            document.body.appendChild(root);
+            this.element = root;
+        }
+        close() { this.closed = true; }
+        destroy() { this.element?.remove(); }
+        goTo(index: number) { this.currIndex = index; }
+    },
+}));
+vi.mock("../../lib/utils/fullscreenViewerUtils", () => ({
+    buildFullscreenViewerDataSource: vi.fn(async (items: unknown[]) => items),
+    createFullscreenVideoSlideElement: vi.fn(() => document.createElement("div")),
+    pauseFullscreenVideoContent: vi.fn(),
+}));
 import UploadedMediaTabContent from "../../components/UploadedMediaTabContent.svelte";
 
 beforeEach(() => {
     vi.clearAllMocks();
+    mocked.viewers.length = 0;
     mockAuthStoreModule.authState.value = { ...mockAuthStoreModule.authState.value, isAuthenticated: true, pubkey: mediaPubkey };
     const destination = mediaDestination();
     mocked.view = { destinations: [destination], selectedId: destination.id, current: { destination, ...mediaPage(destination, [mediaItem(), mediaItem(destination, "video", "c".repeat(64))]),
@@ -93,5 +121,31 @@ describe("uploaded-media content", () => {
         const confirm = screen.getByRole("alertdialog").querySelector(".danger") as HTMLButtonElement;
         await fireEvent.click(confirm);
         expect(mocked.controller.delete).toHaveBeenCalledWith(mediaItem().id);
+    });
+    it("opens loaded images in the fullscreen viewer at the selected image", async () => {
+        const second = mediaItem(mediaDestination(), "image", "d".repeat(64));
+        mocked.view.current!.items = [mediaItem(), second, mediaItem(mediaDestination(), "video", "c".repeat(64))];
+        render(UploadedMediaTabContent, { show: true });
+        const openButtons = await screen.findAllByRole("button", { name: "uploadedMedia.openImage" });
+        expect(openButtons).toHaveLength(2);
+        await fireEvent.click(openButtons[1]);
+        await waitFor(() => expect(document.querySelector(".ehagaki-pswp")).toBeTruthy());
+        expect(mocked.viewers[0]?.options.index).toBe(1);
+        expect(mocked.viewers[0]?.options.dataSource).toEqual([
+            expect.objectContaining({ id: mediaItem().id, src: mediaItem().url, type: "image" }),
+            expect.objectContaining({ id: second.id, src: second.url, type: "image" }),
+        ]);
+        await fireEvent.click(screen.getByRole("button", { name: "uploadedMedia.refresh" }));
+        await waitFor(() => expect(mocked.viewers[0]?.closed).toBe(true));
+    });
+    it("does not open fullscreen from video playback or deletion", async () => {
+        const missing = { ...mediaItem(mediaDestination(), "image", "e".repeat(64)), url: null };
+        mocked.view.current!.items = [mediaItem(), missing, mediaItem(mediaDestination(), "video", "c".repeat(64))];
+        render(UploadedMediaTabContent, { show: true });
+        expect(await screen.findAllByRole("button", { name: "uploadedMedia.openImage" })).toHaveLength(1);
+        await fireEvent.click(screen.getByRole("button", { name: "uploadedMedia.openVideo" }));
+        await fireEvent.click(screen.getAllByRole("button", { name: "uploadedMedia.delete" })[0]);
+        expect(document.querySelector(".ehagaki-pswp")).toBeNull();
+        expect(mocked.viewers).toHaveLength(0);
     });
 });

@@ -8,6 +8,7 @@
     "moreUnseen": "続きのrecordがあります。さらに読み込むと画像・動画を確認できます。",
     "cacheUnavailable": "画像キャッシュを利用できません。サーバーのURLから直接表示しています。",
     "image": "画像",
+    "openImage": "画像を開く",
     "video": "動画",
     "openVideo": "動画を開く",
     "closeVideo": "動画を閉じる",

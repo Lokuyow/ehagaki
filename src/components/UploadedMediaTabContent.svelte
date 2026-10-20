@@ -4,12 +4,15 @@
     import ConfirmDialog from "./ConfirmDialog.svelte";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import ImageFullscreen from "./ImageFullscreen.svelte";
     import UploadedMediaPreview from "./UploadedMediaPreview.svelte";
     import { useUploadMediaManagement } from "../lib/hooks/useUploadMediaManagement.svelte";
     import { supportsUploadMediaImageCache } from "../lib/uploadMediaImageCacheClient";
+    import { resolveUploadedMediaImageSrc } from "../lib/uploadMediaImageUrl";
     import { authState } from "../stores/authStore.svelte";
     import { uploadDestinationStore } from "../stores/uploadDestinationStore.svelte";
     import type { UploadedMediaItem } from "../lib/upload/mediaManagementTypes";
+    import type { FullscreenMediaItem } from "../lib/types";
     import { resolveAppAssetUrl } from "../lib/appAssetUrl";
 
     interface Props { show: boolean; onBusyChange?: (busy: boolean) => void }
@@ -17,8 +20,13 @@
     let suspended = $state(false);
     let show = $derived(active && !suspended);
     export function activate() { suspended = false; management.controller.activate(); }
-    export function suspend() { suspended = true; supportGeneration++; uiEpoch++; pending = null; activeVideo = null; management.controller.suspend(); }
+    export function suspend() {
+        suspended = true; supportGeneration++; uiEpoch++; pending = null; activeVideo = null;
+        closeFullscreen();
+        management.controller.suspend();
+    }
     export function isBusy() { return management.controller.busy; }
+    export function isFullscreen() { return showImageFullscreen; }
     const management = useUploadMediaManagement();
     const deleteIconUrl = resolveAppAssetUrl("icons/delete_forever_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     const refreshIconUrl = resolveAppAssetUrl("icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
@@ -28,6 +36,10 @@
     let pendingEndpoint = $state<string | null>(null);
     let deleteTrigger: HTMLElement | null = null;
     let activeVideo = $state<string | null>(null);
+    let fullscreenMediaItems = $state<FullscreenMediaItem[]>([]);
+    let fullscreenIndex = $state(-1);
+    let showImageFullscreen = $state(false);
+    let fullscreenFocusOrigin = $state<HTMLElement | null>(null);
     let listElement: HTMLElement | undefined = $state();
     let supportGeneration = 0;
     let uiEpoch = $state(0);
@@ -52,6 +64,7 @@
         previousOwner = null;
         pending = null;
         activeVideo = null;
+        closeFullscreen();
         management.controller.invalidate();
     }
     $effect(() => {
@@ -81,7 +94,7 @@
             if (owner === previousOwner) return;
             previousOwner = owner;
             uiEpoch++;
-            pending = null; activeVideo = null;
+            pending = null; activeVideo = null; closeFullscreen();
         });
         // Selection/account changes release the previous video and confirmation.
         void selected; void pubkey;
@@ -93,6 +106,8 @@
                 || view?.context?.endpoint !== pendingEndpoint
                 || (!view.deletingId && !view.items.some((item) => item.id === pending?.id)))) pending = null;
             if (activeVideo && !view?.items.some((item) => item.id === activeVideo)) activeVideo = null;
+            const openId = fullscreenMediaItems[fullscreenIndex]?.id;
+            if (showImageFullscreen && openId && !view?.items.some((item) => item.id === openId && item.kind === "image")) closeFullscreen();
         });
     });
     $effect(() => { onBusyChange(!!current?.deletingId); });
@@ -116,6 +131,35 @@
         if (epoch !== uiEpoch) return;
         if (trigger?.isConnected) trigger.focus({ preventScroll: true });
         else listElement?.focus({ preventScroll: true });
+    }
+    function closeFullscreen() {
+        showImageFullscreen = false;
+        fullscreenMediaItems = [];
+        fullscreenIndex = -1;
+        fullscreenFocusOrigin = null;
+    }
+    function imageSrcFor(item: UploadedMediaItem): string | null {
+        return resolveUploadedMediaImageSrc({
+            url: item.url,
+            serverUrl: item.serverUrl,
+            cacheSupported,
+            basePath: import.meta.env.BASE_URL,
+            currentOrigin: window.location.origin,
+        });
+    }
+    function handleImageOpen(item: UploadedMediaItem, focusOrigin: HTMLElement) {
+        const mediaList = (current?.items ?? []).flatMap((entry): FullscreenMediaItem[] => {
+            if (entry.kind !== "image") return [];
+            const src = imageSrcFor(entry);
+            if (!src) return [];
+            return [{ id: entry.id, src, alt: $_("uploadedMedia.image"), type: "image" }];
+        });
+        const index = mediaList.findIndex((entry) => entry.id === item.id);
+        if (index < 0) return;
+        fullscreenMediaItems = mediaList;
+        fullscreenIndex = index;
+        fullscreenFocusOrigin = focusOrigin;
+        showImageFullscreen = true;
     }
 </script>
 
@@ -142,7 +186,7 @@
                 {#if current}
                     <Button shape="square" contentLayout="icon" className="media-refresh-button"
                         ariaLabel={$_("uploadedMedia.refresh")} title={$_("uploadedMedia.refresh")}
-                        onClick={() => { activeVideo = null; void management.controller.load(); }} disabled={current.loading || !!current.deletingId}>
+                        onClick={() => { activeVideo = null; closeFullscreen(); void management.controller.load(); }} disabled={current.loading || !!current.deletingId}>
                         <span class="svg-icon" aria-hidden="true" style:mask-image={`url("${refreshIconUrl}")`}></span>
                     </Button>
                 {/if}
@@ -163,6 +207,7 @@
                     {#each current.items as item (item.id)}
                         <article data-media-kind={item.kind} class:video-active={item.kind === "video" && activeVideo === item.id}>
                             <UploadedMediaPreview {item} {cacheSupported} active={activeVideo === item.id}
+                                onOpenImage={(focusOrigin) => handleImageOpen(item, focusOrigin)}
                                 onOpenVideo={() => { activeVideo = item.id; }} onCloseVideo={() => { activeVideo = null; }} />
                             <div class="media-overlay">
                                 <div class="media-metadata">
@@ -203,12 +248,26 @@
     {/if}
 </ConfirmDialog>
 {/key}
+<ImageFullscreen
+    bind:show={showImageFullscreen}
+    src={fullscreenMediaItems[fullscreenIndex]?.src ?? ""}
+    alt={fullscreenMediaItems[fullscreenIndex]?.alt ?? ""}
+    onClose={closeFullscreen}
+    mediaList={fullscreenMediaItems}
+    currentIndex={fullscreenIndex}
+    onNavigate={(index) => { fullscreenIndex = index; }}
+    openingFocusOrigin={fullscreenFocusOrigin}
+/>
 {/if}
 
 <style>
     .uploaded-media-content { background: var(--dialog-bg); flex: 1; min-height: 0; overflow: auto; width: 100%; }
     .media-management { flex: none; width: 100%; min-width: 0; display: flex; flex-direction: column; }
     :global(.uploaded-media-dialog button) { height: auto; min-height: 44px; max-width: 100%; padding: 8px 12px; }
+    :global(.uploaded-media-dialog button.image-open) {
+        display: block; width: 100%; height: 100%; min-height: 0; max-width: none;
+        margin: 0; padding: 0; border: none; background: transparent; cursor: pointer;
+    }
     p { margin: 0; }
     .media-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 4px; padding: 8px; }
     .media-status { margin: 8px 12px; }
