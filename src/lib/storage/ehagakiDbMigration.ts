@@ -7,6 +7,7 @@ const DISPLAY_HISTORY_STORES = [
     "sensitivePayloads",
     "postHistoryChildInteractions",
 ] as const;
+const NEXT_EHAGAKI_DB_NATIVE_VERSION = EHAGAKI_DB_NATIVE_VERSION + 10;
 
 export function migrateEhagakiIndexedDb(
     db: IDBDatabase,
@@ -99,10 +100,37 @@ export async function upgradeEhagakiDatabase(
         onBlockedResolved?: () => void;
     } = {},
 ): Promise<void> {
+    const databaseName = hooks.databaseName ?? EHAGAKI_DB_NAME;
+    const current = await readNativeVersion(indexedDb, databaseName);
+    // Dexie keeps schema patches at 171, 172, … inside logical version 17.
+    // Opening those databases again at exactly 170 raises VersionError.
+    if (current >= EHAGAKI_DB_NATIVE_VERSION) {
+        if (current >= NEXT_EHAGAKI_DB_NATIVE_VERSION) {
+            throw new DOMException("The database is newer than this page.", "VersionError");
+        }
+        return;
+    }
     const db = await openEhagakiIndexedDb({
         indexedDb,
         version: EHAGAKI_DB_NATIVE_VERSION,
         ...hooks,
     });
     db.close();
+}
+
+async function readNativeVersion(indexedDb: IDBFactory, databaseName: string): Promise<number> {
+    if (typeof indexedDb.databases === "function") {
+        const entries = await indexedDb.databases();
+        const entry = entries.find((item) => item.name === databaseName);
+        if (!entry) return 0;
+        if (typeof entry.version === "number") return entry.version;
+    }
+    const db = await openEhagakiIndexedDb({
+        indexedDb,
+        version: null,
+        databaseName,
+    });
+    const version = db.version;
+    db.close();
+    return version;
 }
