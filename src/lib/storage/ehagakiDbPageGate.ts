@@ -69,9 +69,10 @@ function runAppOriginDatabaseGate(
     const indexedDb = options.indexedDb ?? target.indexedDB;
     return new Promise((resolve) => {
         let settled = false;
+        let newerDatabase = false;
         let attempt: Promise<void> | null = null;
         const finish = () => {
-            if (settled) return;
+            if (settled || newerDatabase) return;
             settled = true;
             hideEhagakiDatabaseGateNotice(target.document);
             setEHagakiDbUpgradeBlocked(false);
@@ -80,7 +81,7 @@ function runAppOriginDatabaseGate(
         const serviceWorker = target.navigator.serviceWorker;
 
         const migrateFromPage = () => {
-            if (settled) return;
+            if (settled || newerDatabase) return;
             if (attempt) return;
             attempt = upgradeEhagakiDatabase(indexedDb, {
                 databaseName,
@@ -96,6 +97,7 @@ function runAppOriginDatabaseGate(
                 attempt = null;
                 if (settled) return;
                 if (isVersionError(error)) {
+                    newerDatabase = true;
                     showEhagakiDatabaseGateNotice(target, "versionError");
                     return;
                 }
@@ -118,7 +120,9 @@ function runAppOriginDatabaseGate(
                     supportedNativeVersion: EHAGAKI_DB_NATIVE_VERSION,
                 });
             }
-            if (data?.type === EHAGAKI_DB_UPGRADE_COMPLETE) finish();
+            // The worker's completion message is not proof this page can open
+            // the database. A newer native version still has to stay closed.
+            if (data?.type === EHAGAKI_DB_UPGRADE_COMPLETE) migrateFromPage();
         };
         const requestUpgrade = () => {
             serviceWorker.controller?.postMessage({ type: EHAGAKI_DB_UPGRADE_REQUEST });

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { EHAGAKI_DB_NATIVE_VERSION } from "../../lib/storage/ehagakiDbConstants";
 import { installAppOriginEhagakiDatabaseGate } from "../../lib/storage/ehagakiDbPageGate";
+import { EHAGAKI_DB_UPGRADE_COMPLETE } from "../../lib/storage/ehagakiDbUpgradeController";
 import { resetEhagakiDbOpenGateForTests } from "../../lib/storage/ehagakiDbOpenGate";
 import { LEGACY_DRAFTS_IMPORT_ID } from "../../lib/storage/legacyImportMarkers";
 
@@ -219,6 +220,47 @@ describe("eHagaki database open gate", () => {
         expect(opened).toBe(false);
         expect(document.querySelector("[data-ehagaki-db-gate='versionError']")).toBeTruthy();
         expect(document.querySelector("#ehagaki-db-gate-notice button")).toBeNull();
+        expect(await readVersion(name)).toBe(180);
+    });
+
+    it("does not open Dexie when a service worker reports completion for a newer database", async () => {
+        const name = databaseName();
+        const newer = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open(name, 180);
+            request.onupgradeneeded = () => {
+                request.result.createObjectStore("drafts", { keyPath: "id" });
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        newer.close();
+        const listeners = new Set<(event: Event) => void>();
+        const postComplete = () => {
+            listeners.forEach((listener) => listener({
+                data: { type: EHAGAKI_DB_UPGRADE_COMPLETE },
+            } as MessageEvent));
+        };
+        installAppOriginEhagakiDatabaseGate(host({
+            controller: { postMessage: postComplete },
+            addEventListener: (type, listener) => {
+                if (type === "message") listeners.add(listener);
+            },
+            removeEventListener: () => undefined,
+            getRegistration: () => Promise.resolve(undefined),
+        }), {
+            databaseName: name,
+            indexedDb: indexedDB,
+            serviceWorkerUpgrade: true,
+        });
+        let opened = false;
+        void new EHagakiDB(name).open().then(() => {
+            opened = true;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        postComplete();
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        expect(opened).toBe(false);
+        expect(document.querySelector("[data-ehagaki-db-gate='versionError']")).toBeTruthy();
         expect(await readVersion(name)).toBe(180);
     });
 
