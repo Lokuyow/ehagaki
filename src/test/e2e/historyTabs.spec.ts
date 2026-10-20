@@ -60,6 +60,11 @@ test("tab roundtrip retains post search and page; close keeps existing search re
     const media = dialog.getByRole("tab", { name: "メディア", exact: true });
     await expect(dialog.locator(".post-history-item").first()).toBeVisible();
     await dialog.getByRole("button", { name: "検索", exact: true }).click();
+    const closeIcon = dialog.locator(".post-history-search-close .xmark-icon");
+    await expect(closeIcon).toBeVisible();
+    await expect.poll(() => closeIcon.evaluate((node) => getComputedStyle(node).maskImage)).toContain(
+        "close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg",
+    );
     const search = dialog.getByRole("searchbox", { name: "検索", exact: true });
     await search.fill("alpha");
     await expect(dialog.getByRole("button", { name: "さらに古い検索結果を表示" })).toBeVisible();
