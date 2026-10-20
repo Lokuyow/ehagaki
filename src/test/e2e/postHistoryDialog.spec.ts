@@ -385,6 +385,9 @@ async function jumpToDate(page: Page, date: string) {
     const [year, month, day] = date.split('-');
     await page.locator('.post-history-heading-calendar-button').click();
     await expect(page.locator('.post-history-date-picker-input')).toBeVisible();
+    await expect.poll(() => page.locator('.post-history-utility-close-button .xmark-icon').evaluate((node) => getComputedStyle(node).maskImage)).toContain(
+        'close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg',
+    );
     const yearSegment = page.locator('.post-history-date-picker-segment[data-segment="year"]');
     const monthSegment = page.locator('.post-history-date-picker-segment[data-segment="month"]');
     const daySegment = page.locator('.post-history-date-picker-segment[data-segment="day"]');

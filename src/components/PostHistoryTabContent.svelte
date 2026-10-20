@@ -4926,4 +4926,8 @@
     .jump-icon {
         mask-image: url("/icons/keyboard_tab_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
+
+    :global(.post-history-utility-close-button) .xmark-icon {
+        mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
 </style>
