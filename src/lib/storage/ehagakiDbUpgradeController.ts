@@ -1,4 +1,8 @@
-import { EHAGAKI_DB_NAME, EHAGAKI_DB_NATIVE_VERSION } from "./ehagakiDbConstants";
+import {
+    EHAGAKI_DB_NAME,
+    EHAGAKI_DB_NATIVE_VERSION,
+    NEXT_EHAGAKI_DB_NATIVE_VERSION,
+} from "./ehagakiDbConstants";
 import { migrateEhagakiIndexedDb, upgradeEhagakiDatabase } from "./ehagakiDbMigration";
 
 export const EHAGAKI_DB_CAPABILITY_PROBE = "EHAGAKI_DB_CAPABILITY_PROBE";
@@ -77,6 +81,9 @@ export function createEhagakiDbUpgradeController(deps: {
 
     async function run(): Promise<boolean> {
         const version = await currentNativeVersion();
+        // 170–179 is this build's schema slot. A later slot must not be reported
+        // as ready, or the page will open it with Dexie and hit VersionError.
+        if (version >= NEXT_EHAGAKI_DB_NATIVE_VERSION) return false;
         if (version >= EHAGAKI_DB_NATIVE_VERSION) {
             await notify(EHAGAKI_DB_UPGRADE_COMPLETE);
             return true;

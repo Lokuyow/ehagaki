@@ -1,5 +1,9 @@
 import { ensureCurrentEHagakiDbSchema } from "../swIndexedDbSchema";
-import { EHAGAKI_DB_NAME, EHAGAKI_DB_NATIVE_VERSION } from "./ehagakiDbConstants";
+import {
+    EHAGAKI_DB_NAME,
+    EHAGAKI_DB_NATIVE_VERSION,
+    NEXT_EHAGAKI_DB_NATIVE_VERSION,
+} from "./ehagakiDbConstants";
 import { isCopiedLegacyImportMarker } from "./legacyImportMarkers";
 
 const DISPLAY_HISTORY_STORES = [
@@ -7,7 +11,6 @@ const DISPLAY_HISTORY_STORES = [
     "sensitivePayloads",
     "postHistoryChildInteractions",
 ] as const;
-const NEXT_EHAGAKI_DB_NATIVE_VERSION = EHAGAKI_DB_NATIVE_VERSION + 10;
 
 export function migrateEhagakiIndexedDb(
     db: IDBDatabase,
