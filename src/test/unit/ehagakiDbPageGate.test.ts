@@ -323,10 +323,58 @@ describe("eHagaki database open gate", () => {
         await new Promise((resolve) => setTimeout(resolve, 30));
         expect(opened).toBe(false);
         expect(document.querySelector("[data-ehagaki-db-gate='retry']")).toBeTruthy();
+        const retryButton = document.querySelector<HTMLButtonElement>("#ehagaki-db-gate-notice button");
+        expect(retryButton?.style.height).toBe("auto");
+        expect(retryButton?.style.minHeight).toBe("44px");
         expect(await readVersion(name)).toBe(160);
-        document.querySelector<HTMLButtonElement>("#ehagaki-db-gate-notice button")?.click();
+        retryButton?.click();
         await new Promise((resolve) => setTimeout(resolve, 20));
         expect(opened).toBe(false);
         expect(await readVersion(name)).toBe(160);
+    });
+
+    it("clears the retry notice and opens Dexie when a later upgrade succeeds", async () => {
+        const name = databaseName();
+        await seedVersion160(name);
+        let failedUpgrade = false;
+        const realOpen = indexedDB.open.bind(indexedDB);
+        const indexedDb = {
+            databases: indexedDB.databases.bind(indexedDB),
+            open: (dbName: string, version?: number) => {
+                if (!failedUpgrade && version === EHAGAKI_DB_NATIVE_VERSION) {
+                    failedUpgrade = true;
+                    const request = {
+                        error: new DOMException("upgrade failed", "UnknownError"),
+                        result: null,
+                        transaction: null,
+                        onupgradeneeded: null as ((event: IDBVersionChangeEvent) => void) | null,
+                        onblocked: null as (() => void) | null,
+                        onerror: null as (() => void) | null,
+                        onsuccess: null as (() => void) | null,
+                    };
+                    queueMicrotask(() => request.onerror?.());
+                    return request;
+                }
+                return version == null ? realOpen(dbName) : realOpen(dbName, version);
+            },
+        } as unknown as IDBFactory;
+        installAppOriginEhagakiDatabaseGate(host(), {
+            databaseName: name,
+            indexedDb,
+            controllerWaitMs: 20,
+        });
+        const db = new EHagakiDB(name);
+        const opening = db.open();
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        expect(db.isOpen()).toBe(false);
+        expect(document.querySelector("[data-ehagaki-db-gate='retry']")).toBeTruthy();
+        document.querySelector<HTMLButtonElement>("#ehagaki-db-gate-notice button")?.click();
+        await opening;
+        expect(document.querySelector("#ehagaki-db-gate-notice")).toBeNull();
+        expect(db.backendDB().version).toBe(EHAGAKI_DB_NATIVE_VERSION);
+        await expect(db.drafts.get("draft")).resolves.toMatchObject({ id: "draft" });
+        await expect(db.legacyImportState.get(LEGACY_DRAFTS_IMPORT_ID)).resolves.toMatchObject({ done: true });
+        await expect(db.postHistory.count()).resolves.toBe(0);
+        db.close();
     });
 });

@@ -178,6 +178,12 @@ function showEhagakiDatabaseGateNotice(
         const button = target.document.createElement("button");
         button.type = "button";
         button.textContent = copy.retryButton;
+        // Global button rules use height: 100%. This notice has no explicit
+        // height, and WebKit can give that button no hit target.
+        button.style.height = "auto";
+        button.style.minHeight = "44px";
+        button.style.padding = "8px 0";
+        button.style.justifyContent = "flex-start";
         button.addEventListener("click", retry);
         notice.append(button);
     }
