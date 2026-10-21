@@ -16,7 +16,7 @@ import { DexieProfilesRepository } from "../../lib/storage/profilesRepository";
 import { DexieRelayConfigsRepository } from "../../lib/storage/relayConfigsRepository";
 import { createCustomEmojiItem, EMOJIS_CACHE_SCHEMA_VERSION } from "../../lib/customEmoji";
 import { ensureCurrentEHagakiDbSchema } from "../../lib/swIndexedDbSchema";
-import { migrateEhagakiIndexedDb } from "../../lib/storage/ehagakiDbMigration";
+import { migrateEhagakiIndexedDb, upgradeEhagakiDatabase } from "../../lib/storage/ehagakiDbMigration";
 import { LEGACY_DRAFTS_IMPORT_ID } from "../../lib/storage/legacyImportMarkers";
 
 const testDbNames = new Set<string>();
@@ -54,17 +54,79 @@ function createV14Db(name: string): Dexie {
 }
 
 function upgradeWithSharedMigrator(name: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(name, EHAGAKI_DB_NATIVE_VERSION);
-        request.onupgradeneeded = (event) => {
-            migrateEhagakiIndexedDb(request.result, request.transaction, event.oldVersion);
-        };
-        request.onsuccess = () => {
-            request.result.close();
-            resolve();
-        };
-        request.onerror = () => reject(request.error);
+    return upgradeEhagakiDatabase(indexedDB, { databaseName: name });
+}
+
+function indexedDbWithReportedDatabases(
+    databases: () => Promise<Array<{ name?: string; version?: number }>>,
+): IDBFactory {
+    return {
+        cmp: indexedDB.cmp.bind(indexedDB),
+        databases,
+        deleteDatabase: indexedDB.deleteDatabase.bind(indexedDB),
+        open: indexedDB.open.bind(indexedDB),
+    } as unknown as IDBFactory;
+}
+
+async function withWebKitSchemaChangeGuard(run: () => Promise<void>): Promise<void> {
+    let upgradeDepth = 0;
+    const originalOpen = indexedDB.open.bind(indexedDB);
+    const openSpy = vi.spyOn(indexedDB, "open").mockImplementation((name: string, version?: number) => {
+        const request = originalOpen(name, version);
+        let handler: ((this: IDBOpenDBRequest, event: IDBVersionChangeEvent) => void) | null = null;
+        Object.defineProperty(request, "onupgradeneeded", {
+            configurable: true,
+            enumerable: true,
+            get: () => handler,
+            set: (value: typeof handler) => {
+                handler = value == null
+                    ? null
+                    : function (this: IDBOpenDBRequest, event: IDBVersionChangeEvent) {
+                        upgradeDepth += 1;
+                        try {
+                            value.call(this, event);
+                        } finally {
+                            upgradeDepth -= 1;
+                        }
+                    };
+            },
+        });
+        return request;
     });
+    const patches: Array<{
+        prototype: { deleteObjectStore?: (name: string) => void; createObjectStore?: (...args: never[]) => unknown; createIndex?: (...args: never[]) => unknown };
+        name: "deleteObjectStore" | "createObjectStore" | "createIndex";
+        original: (...args: never[]) => unknown;
+    }> = [];
+    const guard = (original: (...args: never[]) => unknown) => function (this: unknown, ...args: never[]) {
+        if (upgradeDepth === 0) {
+            throw new DOMException(
+                "The database is not running a version change transaction",
+                "InvalidStateError",
+            );
+        }
+        return original.apply(this, args);
+    };
+    const install = (
+        prototype: IDBDatabase | IDBObjectStore,
+        name: "deleteObjectStore" | "createObjectStore" | "createIndex",
+    ) => {
+        const target = prototype as unknown as Record<string, (...args: never[]) => unknown>;
+        const original = target[name];
+        target[name] = guard(original);
+        patches.push({ prototype: target, name, original });
+    };
+    install(IDBDatabase.prototype, "deleteObjectStore");
+    install(IDBDatabase.prototype, "createObjectStore");
+    install(IDBObjectStore.prototype, "createIndex");
+    try {
+        await run();
+    } finally {
+        openSpy.mockRestore();
+        for (const patch of patches) {
+            (patch.prototype as Record<string, unknown>)[patch.name] = patch.original;
+        }
+    }
 }
 
 const V14_FIXTURES: Record<string, Record<string, unknown>> = {
@@ -187,6 +249,68 @@ describe("EHagakiDB", () => {
             updatedAt: 4,
         });
         await expect(upgraded.postHistoryWriteGeneration.count()).resolves.toBe(0);
+        upgraded.close();
+    });
+
+    it.each([
+        ["空の一覧", () => Promise.resolve([])],
+        ["version 0", (name: string) => Promise.resolve([{ name, version: 0 }])],
+        ["例外", () => Promise.reject(new DOMException("databases failed", "UnknownError"))],
+    ] as const)("databases() が%sでも v14 の marker を残して 170 にする", async (_label, databasesFor) => {
+        const name = `${EHAGAKI_DB_NAME}-unreported-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        testDbNames.add(name);
+        const v14 = createV14Db(name);
+        await v14.open();
+        await v14.table("meta").put({
+            key: LEGACY_DRAFTS_IMPORT_ID,
+            value: true,
+            updatedAt: 4,
+        });
+        await v14.table("drafts").put(V14_FIXTURES.drafts);
+        await v14.table("postHistory").put(V14_FIXTURES.postHistory);
+        v14.close();
+
+        await upgradeEhagakiDatabase(indexedDbWithReportedDatabases(() => databasesFor(name)), {
+            databaseName: name,
+        });
+        const upgraded = new EHagakiDB(name);
+        await upgraded.open();
+        expect(upgraded.backendDB().version).toBe(170);
+        expect(upgraded.backendDB().objectStoreNames.contains("meta")).toBe(false);
+        await expect(upgraded.postHistory.count()).resolves.toBe(0);
+        await expect(upgraded.drafts.get("draft")).resolves.toMatchObject({ id: "draft" });
+        await expect(upgraded.legacyImportState.get(LEGACY_DRAFTS_IMPORT_ID)).resolves.toMatchObject({
+            done: true,
+            updatedAt: 4,
+        });
+        upgraded.close();
+    });
+
+    it("WebKit が upgradeneeded の外の schema 変更を拒否しても v14 から 170 になる", async () => {
+        const name = `${EHAGAKI_DB_NAME}-webkit-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        testDbNames.add(name);
+        const v14 = createV14Db(name);
+        await v14.open();
+        await v14.table("meta").put({
+            key: LEGACY_DRAFTS_IMPORT_ID,
+            value: true,
+            updatedAt: 4,
+        });
+        await v14.table("drafts").put(V14_FIXTURES.drafts);
+        await v14.table("postHistory").put(V14_FIXTURES.postHistory);
+        v14.close();
+
+        await withWebKitSchemaChangeGuard(() => upgradeWithSharedMigrator(name));
+        const upgraded = new EHagakiDB(name);
+        await upgraded.open();
+        expect(upgraded.backendDB().version).toBe(170);
+        expect(upgraded.backendDB().objectStoreNames.contains("meta")).toBe(false);
+        await expect(upgraded.postHistory.count()).resolves.toBe(0);
+        await expect(upgraded.drafts.get("draft")).resolves.toMatchObject({ id: "draft" });
+        await expect(upgraded.legacyImportState.get(LEGACY_DRAFTS_IMPORT_ID)).resolves.toMatchObject({
+            done: true,
+            updatedAt: 4,
+        });
         upgraded.close();
     });
 
