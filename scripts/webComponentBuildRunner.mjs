@@ -1,5 +1,14 @@
 import { spawn } from "node:child_process";
-import { resolve } from "node:path";
+import { resolve, win32 } from "node:path";
+
+/** @param {string} workingDirectory @param {...string} segments */
+function resolveWithinWorkingDirectory(workingDirectory, ...segments) {
+    if (/^[a-zA-Z]:[\\/]/.test(workingDirectory)) {
+        return win32.join(workingDirectory, ...segments);
+    }
+
+    return resolve(workingDirectory, ...segments);
+}
 
 /**
  * @typedef {object} NodeCommand
@@ -26,7 +35,7 @@ import { resolve } from "node:path";
 
 /** @param {string} workingDirectory @param {WebComponentBuildOptions} [options] @returns {NodeCommand} */
 export function createWebComponentBuildCommand(workingDirectory, { watch = false } = {}) {
-    const viteCli = resolve(workingDirectory, "node_modules", "vite", "bin", "vite.js");
+    const viteCli = resolveWithinWorkingDirectory(workingDirectory, "node_modules", "vite", "bin", "vite.js");
     return {
         command: process.execPath,
         args: [viteCli, "build", "--config", "vite.web-component.config.ts", ...(watch ? ["--mode", "web-component-watch", "--watch"] : [])],
@@ -36,7 +45,7 @@ export function createWebComponentBuildCommand(workingDirectory, { watch = false
 
 /** @param {string} workingDirectory @returns {NodeCommand} */
 export function createHostOwnedLiteWebComponentBuildCommand(workingDirectory, { watch = false } = {}) {
-    const viteCli = resolve(workingDirectory, "node_modules", "vite", "bin", "vite.js");
+    const viteCli = resolveWithinWorkingDirectory(workingDirectory, "node_modules", "vite", "bin", "vite.js");
     return {
         command: process.execPath,
         args: [viteCli, "build", "--config", "vite.web-component.config.ts", "--mode", "host-owned-lite", ...(watch ? ["--watch"] : [])],
@@ -54,7 +63,7 @@ export function createPhysicalViteDevServerCommand(physicalRepositoryRoot, {
     return {
         command: process.execPath,
         args: [
-            resolve(physicalRepositoryRoot, "node_modules", "vite", "bin", "vite.js"),
+            resolveWithinWorkingDirectory(physicalRepositoryRoot, "node_modules", "vite", "bin", "vite.js"),
             "--host",
             host,
             "--port",
@@ -74,7 +83,7 @@ export function createPhysicalViteDevServerCommand(physicalRepositoryRoot, {
 function createWebComponentBuildVerificationCommand(workingDirectory) {
     return {
         command: process.execPath,
-        args: [resolve(workingDirectory, "scripts", "verifyWebComponentBuild.mjs")],
+        args: [resolveWithinWorkingDirectory(workingDirectory, "scripts", "verifyWebComponentBuild.mjs")],
         cwd: workingDirectory,
     };
 }

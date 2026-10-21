@@ -63,6 +63,15 @@ function parseBlossomUploadError(error: unknown): string {
     return message ? `Blossom upload failed: ${message}` : "Blossom upload failed";
 }
 
+function readBlobArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as ArrayBuffer);
+        reader.onerror = () => reject(reader.error ?? new Error("Failed to read upload blob"));
+        reader.readAsArrayBuffer(blob);
+    });
+}
+
 function normalizeUploadBlob(file: File): File | Blob {
     if (typeof file.arrayBuffer === "function") {
         return file;
@@ -75,7 +84,7 @@ function normalizeUploadBlob(file: File): File | Blob {
     };
 
     if (typeof blob.arrayBuffer !== "function") {
-        blob.arrayBuffer = async () => await new Response(blob).arrayBuffer();
+        blob.arrayBuffer = () => readBlobArrayBuffer(blob);
     }
 
     return blob;
