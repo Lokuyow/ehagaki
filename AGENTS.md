@@ -92,5 +92,5 @@ Remove temporary investigation files and instrumentation. Do not commit `test-re
 
 - CI uses Node 22. Install with `npm ci` (the `postinstall` script applies `patches/rx-nostr+3.7.8.patch` and verifies it). No secrets or external accounts are required to boot the composer.
 - `npm run dev` is `vite --host` on port 5173. The app `base` is `/ehagaki/` unless `VERCEL` is set, so open `http://127.0.0.1:5173/ehagaki/`. The site root `/` is not the app.
-- Playwright e2e needs browser binaries (`npx playwright install chromium`). They are not part of `npm ci`.
+- Playwright e2e needs browser binaries (`npx playwright install chromium`). They are not part of `npm ci`. When `CI=true`, Playwright configs run chromium-only projects so agent VMs without Firefox/WebKit still pass; set `EHAGAKI_E2E_ALL_BROWSERS=1` after installing those browsers to run the full matrix.
 - `npm run build` runs `npx rimraf dist` before Vite. In a non-interactive shell, set `CI=true` so npx does not wait for a confirmation prompt.
