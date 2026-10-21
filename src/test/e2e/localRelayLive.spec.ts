@@ -126,8 +126,9 @@ async function fixture(page: Page, options: { externalOk?: boolean; localMode?: 
 
 async function setUrl(page: Page, url: string) {
     await page.locator(".settings-btn").click();
+    await page.getByRole("button", { name: "Nostr", exact: true }).click();
     await page.getByLabel("ローカルリレーURL", { exact: true }).fill(url);
-    await page.getByRole("button", { name: "設定を保存", exact: true }).click();
+    await page.getByRole("button", { name: "適用", exact: true }).click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("localRelayUrl"))).toBe(url);
     await page.keyboard.press("Escape");
 }
@@ -360,9 +361,10 @@ test("HTTPS tab uses the real loopback socket, merges history, keeps external re
         await setUrl(page, f.localUrl);
         expect(f.localRequests).toHaveLength(0); // Saving is syntax-only, not a connection check.
         await page.locator(".settings-btn").click();
+        await page.getByRole("button", { name: "Nostr", exact: true }).click();
         const input = page.getByLabel("ローカルリレーURL", { exact: true });
         await input.fill("https://localhost/invalid");
-        await page.getByRole("button", { name: "設定を保存", exact: true }).click();
+        await page.getByRole("button", { name: "適用", exact: true }).click();
         await expect(input).toHaveAttribute("aria-invalid", "true");
         expect(await page.evaluate(() => localStorage.getItem("localRelayUrl"))).toBe(f.localUrl);
         await input.scrollIntoViewIfNeeded();
@@ -407,7 +409,8 @@ test("HTTPS tab uses the real loopback socket, merges history, keeps external re
         const event = f.externalWrites.find(event => event.content === "Post while Citrine is stopped")!;
         await expect.poll(async () => (await posts(page)).some(post => post.eventId === event.id)).toBe(true);
         await page.locator(".settings-btn").click();
-        await page.getByRole("button", { name: "設定を解除", exact: true }).click();
+        await page.getByRole("button", { name: "Nostr", exact: true }).click();
+        await page.getByRole("button", { name: "解除", exact: true }).click();
         expect(await page.evaluate(() => localStorage.getItem("localRelayUrl"))).toBeNull();
     } finally { await f.stop(); }
 });

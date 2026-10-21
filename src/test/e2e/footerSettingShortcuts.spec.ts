@@ -58,10 +58,15 @@ async function expectPopoverPaddingBalanced(popover: import("@playwright/test").
     expect(geometry.rightGap).toBeLessThanOrEqual(8);
 }
 
+async function openSettingsCategory(page: import("@playwright/test").Page, name: string) {
+    await page.getByRole("button", { name, exact: true }).click();
+}
+
 async function chooseShortcut(page: import("@playwright/test").Page, slot: "left" | "right", id: string) {
     await page.locator(".settings-btn").click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
+    await openSettingsCategory(page, "表示");
     await page.locator(`#footer-shortcut-${slot}`).selectOption(id);
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
@@ -539,6 +544,7 @@ test("keeps direct Footer theme changes and SettingsDialog changes on the same c
     await theme.click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("themeMode"))).toBe("light");
     await page.locator(".settings-btn").click();
+    await openSettingsCategory(page, "表示");
     const group = page.getByRole("radiogroup", { name: "モード" });
     await expect(group.getByRole("radio", { name: "ライト" })).toHaveAttribute("aria-checked", "true");
     await group.getByRole("radio", { name: "ダーク" }).click();
@@ -564,6 +570,7 @@ test("Sensitive CW Footer shortcut and SettingsDialog share the canonical settin
     await expect(shortcut.locator(".content-warning-hidden-icon")).toBeVisible();
 
     await page.locator(".settings-btn").click();
+    await openSettingsCategory(page, "投稿");
     const setting = page.getByRole("switch", { name: "対応クライアントでのみCW本文を表示" });
     await expect(setting).toHaveAttribute("aria-checked", "true");
     const infoButton = page.getByRole("button", { name: "CW設定の詳細" });
@@ -851,6 +858,7 @@ test("keeps full mascot transparent and verifies the frame-only SVG has a transp
     await expect(page.locator(".footer-setting-shortcut-button")).toHaveAttribute("aria-pressed", "false");
 
     await page.getByRole("button", { name: "設定" }).click();
+    await openSettingsCategory(page, "表示");
     await expect(page.locator(".footer-shortcut-settings img.mascot-icon")).toHaveCount(0);
     await expect(page.locator(".mascot-setting-icon")).toBeVisible();
     await expect(page.locator(".mascot-setting-icon")).toHaveCSS("filter", "grayscale(1)");
@@ -860,8 +868,9 @@ test("SettingsDialog edits both slots, disables only a duplicate in the opposite
     await page.addInitScript(() => localStorage.setItem("footerSettingShortcuts", JSON.stringify(emptySlots)));
     await enterApp(page);
     await page.getByRole("button", { name: "設定" }).click();
-    const left = page.getByRole("combobox", { name: "左側" });
-    const right = page.getByRole("combobox", { name: "右側" });
+    await openSettingsCategory(page, "表示");
+    const left = page.getByRole("combobox", { name: "左" });
+    const right = page.getByRole("combobox", { name: "右" });
     await left.selectOption("language");
     await expect(right.locator('option[value="language"]')).toHaveAttribute("disabled", "");
     await right.selectOption("image-quality");
@@ -879,6 +888,7 @@ test("aligns Footer shortcut slots with its icon heading without narrow dialog o
     for (const width of [360, 320]) {
         await page.setViewportSize({ width, height: 844 });
         await page.getByRole("button", { name: "設定", exact: true }).click();
+        await openSettingsCategory(page, "表示");
         const dialog = page.getByRole("dialog");
         const headingLabel = dialog.locator(".footer-shortcuts-setting-heading .setting-label");
         const headingIcon = dialog.locator(".footer-shortcuts-setting-icon");
@@ -887,8 +897,8 @@ test("aligns Footer shortcut slots with its icon heading without narrow dialog o
         await expect(headingLabel).toHaveText("フッターショートカット");
         await expect(headingIcon).toBeVisible();
         await expect(dialog.locator("select.footer-shortcut-select")).toHaveCount(2);
-        await expect(left).toHaveAccessibleName("左側");
-        await expect(right).toHaveAccessibleName("右側");
+        await expect(left).toHaveAccessibleName("左");
+        await expect(right).toHaveAccessibleName("右");
 
         const geometry = await dialog.evaluate((dialogElement) => {
             const getRect = (selector: string) => {
@@ -896,7 +906,7 @@ test("aligns Footer shortcut slots with its icon heading without narrow dialog o
                 return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
             };
             const headingIcon = dialogElement.querySelector<HTMLElement>(".footer-shortcuts-setting-icon")!;
-            const referenceIcon = dialogElement.querySelector<HTMLElement>(".client-tag-setting-icon")!;
+            const referenceIcon = dialogElement.querySelector<HTMLElement>(".theme-setting-icon")!;
             const leftSlot = dialogElement.querySelector<HTMLElement>("#footer-shortcut-left")!.closest<HTMLElement>(".footer-shortcut-slot")!;
             const rightSlot = dialogElement.querySelector<HTMLElement>("#footer-shortcut-right")!.closest<HTMLElement>(".footer-shortcut-slot")!;
             const leftLabel = leftSlot.querySelector<HTMLElement>("span")!;
@@ -951,6 +961,7 @@ test("aligns Footer shortcut slots with its icon heading without narrow dialog o
         await expect(page.locator(".footer-setting-shortcut-button")).toHaveCount(1);
         await expect(page.locator(".footer-setting-shortcut-button")).toHaveAttribute("aria-label", "言語: 日本語");
         await page.getByRole("button", { name: "設定", exact: true }).click();
+        await openSettingsCategory(page, "表示");
         await page.locator("#footer-shortcut-left").selectOption("");
         await page.getByRole("button", { name: "閉じる" }).click();
         await expect(page.locator(".footer-setting-shortcut-button")).toHaveCount(0);
