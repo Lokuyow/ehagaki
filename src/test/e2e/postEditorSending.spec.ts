@@ -9,6 +9,7 @@ async function beginLongPress(page: Page, button: Locator, nativeTouch: boolean)
             type: 'touchStart', touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }],
         });
         return async () => {
+            await expect.poll(async () => await page.evaluate(() => (window as any).__postSubmitHarness.submissions.length), { timeout: 3_000 }).toBeGreaterThanOrEqual(1);
             await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
             await session.detach();
         };
@@ -17,8 +18,8 @@ async function beginLongPress(page: Page, button: Locator, nativeTouch: boolean)
     // synthetic touch pointer, separately from Chromium's native touch input.
     await button.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 1, bubbles: true });
     return async () => {
+        await expect.poll(async () => await page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(1);
         await button.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 1, bubbles: true });
-        await button.dispatchEvent('click');
     };
 }
 
