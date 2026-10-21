@@ -13,16 +13,12 @@
 
     interface Props {
         relayConfig: RelayConfig | null;
-        showRelays: boolean;
-        onToggleShowRelays: () => void;
         onRefreshRelaysAndProfile?: () => void;
         hostRelayConfigActive?: boolean;
     }
 
     let {
         relayConfig,
-        showRelays,
-        onToggleShowRelays,
         onRefreshRelaysAndProfile,
         hostRelayConfigActive = false,
     }: Props = $props();
@@ -103,26 +99,7 @@
                 {$_('settingsDialog.host_relay_config') || 'ホストから一時的に指定されています'}
             </span>
         {/if}
-        <Button
-            variant="default"
-            shape="rounded"
-            className="relay-toggle-label"
-            onClick={onToggleShowRelays}
-            aria-pressed={showRelays}
-            ariaLabel={$_("settingsDialog.toggle_relay_list") ||
-                "リレーリストの表示切替"}
-        >
-            <span class="relay-toggle-icon" aria-label="toggle">
-                {#if showRelays}
-                    ▼
-                {:else}
-                    ▶
-                {/if}
-            </span>
-            {$_("settingsDialog.relay_list") || "リレーリスト"}
-        </Button>
-        {#if showRelays}
-            <div class="relay-list">
+        <div class="relay-list">
                 {#if relayListItems.length > 0}
                     <div class="relay-list-header" aria-hidden="true">
                         <span>{$_("settingsDialog.relay") || "リレー"}</span>
@@ -133,7 +110,7 @@
                        <span class="relay-copy-column" aria-hidden="true"></span>
                     </div>
                     <ul>
-                        {#each relayListItems as relay}
+                        {#each relayListItems as relay (relay.url)}
                             <li>
                                 <span class="relay-url">{relay.url}</span>
                                 <span
@@ -178,8 +155,8 @@
                                 </span>
                                 <div class="relay-copy-cell">
                                     <Button
-                                        variant="copy"
-                                        shape="circle"
+                                        shape="square"
+                                        variant="default"
                                         className="relay-copy-btn"
                                         ariaLabel={`${$_("settingsDialog.copy_relay_url") || "リレーURLをコピー"}: ${relay.url}`}
                                         onClick={(event) =>
@@ -201,12 +178,15 @@
                         {$_("settingsDialog.no_relay_info") || "リレー情報なし"}
                     </span>
                 {/if}
-            </div>
-        {/if}
+        </div>
     </div>
 </div>
 
 <style>
+    .setting-section {
+        gap: 20px;
+    }
+
     .setting-label-with-icon {
         flex: 1 1 auto;
     }
@@ -215,13 +195,8 @@
     }
     .setting-info {
         margin-inline-start: 10px;
-
-        :global(.relay-toggle-label) {
-            min-height: 44px;
-            padding: 10px;
-            --btn-bg: transparent;
-        }
     }
+
     .host-relay-note {
         display: block;
         margin: 0 10px 4px;
@@ -238,12 +213,13 @@
         li {
             display: grid;
             grid-template-columns: minmax(0, 1fr) 48px 52px 44px;
-            align-items: center;
+            align-items: stretch;
             column-gap: 8px;
         }
 
         .relay-list-header {
-            margin-top: 6px;
+            align-items: center;
+            margin-top: 0;
             padding-bottom: 4px;
             border-bottom: 1px solid var(--border-hr);
             color: var(--text-light);
@@ -260,12 +236,21 @@
 
         li {
             color: var(--text-light);
-            padding: 6px 0;
+            padding: 0;
             border-bottom: 1px solid var(--border-hr);
+        }
+
+        li > :not(.relay-copy-cell) {
+            padding-block: 6px;
         }
 
         li:last-child {
             border-bottom: none;
+        }
+
+        .relay-url,
+        .relay-capability {
+            align-self: center;
         }
 
         .relay-url {
@@ -275,21 +260,42 @@
 
         .relay-copy-cell {
             display: flex;
+            align-items: stretch;
             justify-content: flex-end;
             min-width: 0;
+            min-height: 44px;
         }
 
-        :global(button.relay-copy-btn.copy) {
+        :global(button.relay-copy-btn) {
             width: 44px;
-            height: 44px;
             min-width: 44px;
+            height: 100%;
             min-height: 44px;
             padding: 0;
+            border: none;
+            border-radius: 0;
+            opacity: 1;
+            backdrop-filter: none;
+            --btn-bg: var(--dialog-bg);
+            background-color: transparent;
+            background-image: none;
+        }
+
+        @media (hover: hover) and (pointer: fine) {
+            :global(button.relay-copy-btn:hover:not(:disabled)) {
+                background-color: var(--button-hover-bg);
+                color: var(--button-hover-color);
+            }
+
+            :global(button.relay-copy-btn:hover:not(:disabled) .relay-copy-icon) {
+                background-color: var(--icon-hover-color);
+            }
         }
 
         .relay-copy-icon {
             width: 20px;
             height: 20px;
+            mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         }
 
         .relay-capability {
@@ -309,9 +315,5 @@
             vertical-align: middle;
             mask-image: url("/icons/check_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         }
-    }
-    .relay-toggle-icon {
-        font-size: 1.2rem;
-        color: gray;
     }
 </style>

@@ -408,15 +408,20 @@
     "collapse": "Show less"
   },
   "settingsDialog": {
-    "local_relay_title": "Local relay",
-    "local_relay_description": "Read your post history from Citrine or another relay on this device and save your posts there. Publishing to external relays continues as usual.",
+    "back": "Back",
+    "category_display": "Display",
+    "category_post": "Posting",
+    "category_media": "Media",
+    "category_nostr": "Nostr",
+    "category_about": "About",
     "local_relay_url": "Local relay URL",
-    "local_relay_save": "Save setting",
-    "local_relay_clear": "Clear setting",
+    "local_relay_save": "Apply",
+    "local_relay_clear": "Clear",
     "local_relay_invalid_error": "Enter a valid ws:// or wss:// URL.",
     "local_relay_storage_error": "Could not save the setting.",
     "info_header_setting": "Setting",
     "language": "Language",
+    "language_setting_label": "言語/Language",
     "footer_shortcuts": "Footer shortcuts",
     "footer_shortcuts_left": "Left",
     "footer_shortcuts_right": "Right",
@@ -547,7 +552,10 @@
     "update_app": "Update app",
     "updating": "Updating...",
     "author_info": "Author by:",
-    "author_name": "Lokuyow"
+    "author_name": "Lokuyow",
+    "about_author_label": "Author",
+    "about_source_code_label": "Source code",
+    "about_bitcoin_tip_label": "Tip with Bitcoin"
   },
   "postComponent": {
     "reactionUnsupportedImage": "Upload one static PNG, JPEG or WebP image at a time for a reaction. Animated images are not supported.",

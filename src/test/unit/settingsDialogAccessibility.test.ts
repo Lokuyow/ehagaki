@@ -66,7 +66,54 @@ import { footerSettingShortcutsStore } from '../../stores/footerSettingShortcuts
 import { themeModeStore } from '../../stores/themeStore.svelte';
 import { themeColorStore } from '../../stores/themeColorStore.svelte';
 
+async function openSettingsCategory(name: string) {
+    await fireEvent.click(screen.getByRole('button', { name, exact: true }));
+    await tick();
+}
+
+async function backToSettingsTop(name: '戻る' | 'Back' = '戻る') {
+    await fireEvent.click(screen.getByRole('button', { name, exact: true }));
+    await tick();
+}
+
+async function goBackAndWaitForPopState(): Promise<void> {
+    const popped = new Promise<void>((resolve) => {
+        window.addEventListener('popstate', () => resolve(), { once: true });
+    });
+    history.back();
+    await popped;
+}
+
 describe('SettingsDialog accessibility', () => {
+    it('端末の戻る操作ではカテゴリから設定トップへ戻り、ダイアログは開いたままにする', async () => {
+        history.replaceState({ settingsDialogTestBase: true }, '', window.location.href);
+        settingsStore.locale = 'ja';
+        const onClose = vi.fn();
+        render(SettingsDialog, {
+            props: { show: true, onClose },
+        });
+        await tick();
+        const dialogModalId = history.state?.modalId;
+        expect(typeof dialogModalId).toBe('string');
+
+        await openSettingsCategory('表示');
+        expect(history.state?.settingsCategoryDepth).toEqual(expect.any(String));
+        expect(screen.getByRole('heading', { name: '表示' })).toBeTruthy();
+
+        await goBackAndWaitForPopState();
+        await tick();
+
+        expect(screen.queryByRole('heading', { name: '表示' })).toBeNull();
+        expect(screen.getByRole('button', { name: '表示', exact: true })).toBeTruthy();
+        expect(history.state?.modalId).toBe(dialogModalId);
+        expect(onClose).not.toHaveBeenCalled();
+
+        await goBackAndWaitForPopState();
+        await tick();
+
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
     beforeEach(async () => {
         staleAssetState.required = false;
         staleAssetState.promptRevision = 0;
@@ -92,9 +139,10 @@ describe('SettingsDialog accessibility', () => {
             props: { show: true, onClose: () => {} },
         });
         await tick();
+        await openSettingsCategory('表示');
 
-        const left = screen.getByRole('combobox', { name: '左側' }) as HTMLSelectElement;
-        const right = screen.getByRole('combobox', { name: '右側' }) as HTMLSelectElement;
+        const left = screen.getByRole('combobox', { name: '左' }) as HTMLSelectElement;
+        const right = screen.getByRole('combobox', { name: '右' }) as HTMLSelectElement;
         expect(Array.from(left.options).map((option) => option.value)).toEqual([
             '', 'language', 'image-quality', 'video-quality', 'theme-mode',
             'media-free-placement', 'hide-mascot', 'hide-flavor-text',
@@ -127,6 +175,7 @@ describe('SettingsDialog accessibility', () => {
             props: { show: true, onClose: () => {} },
         });
         await tick();
+        await openSettingsCategory('投稿');
 
         const label = '対応クライアントでのみCW本文を表示';
         expect(screen.getByText(label)).toBeTruthy();
@@ -159,33 +208,22 @@ describe('SettingsDialog accessibility', () => {
 
         await tick();
 
-        const iconClasses = [
-            'language-setting-icon',
-            'image-quality-icon',
-            'video-quality-icon',
+        const languageIcon = document.querySelector('.lang-btn .language-setting-icon');
+        expect(languageIcon?.getAttribute('aria-hidden')).toBe('true');
+        expect(languageIcon?.classList.contains('svg-icon')).toBe(true);
+
+        await openSettingsCategory('Display');
+        for (const className of [
             'theme-setting-icon',
-            'media-placement-setting-icon',
             'mascot-setting-icon',
             'flavor-setting-icon',
-            'quote-setting-icon',
-            'reply-setting-icon',
-            'client-tag-setting-icon',
-            'fail-closed-content-warning-setting-icon',
-            'footer-shortcuts-setting-icon',
-            'relay-refresh-setting-icon',
-            'upload-destination-setting-icon',
             'color-settings-icon',
-            'external-nostr-client-setting-icon',
-        ];
-        for (const className of iconClasses) {
+            'footer-shortcuts-setting-icon',
+        ]) {
             const icon = document.querySelector(`.${className}`);
             expect(icon, className).toBeTruthy();
             expect(icon?.getAttribute('aria-hidden')).toBe('true');
         }
-        expect(document.querySelectorAll('.setting-menu-icon')).toHaveLength(16);
-        expect(
-            document.querySelectorAll('.setting-menu-mask-icon'),
-        ).toHaveLength(15);
         expect(
             document
                 .querySelector('.mascot-setting-icon')
@@ -202,6 +240,10 @@ describe('SettingsDialog accessibility', () => {
         expect(
             screen.getByRole('button', { name: '左上マスコットの説明' }),
         ).toBeTruthy();
+        expect(
+            document.querySelector('.color-settings-heading .setting-label')
+                ?.textContent,
+        ).toContain('カラー');
 
         locale.set('en');
         await waitLocale('en');
@@ -212,25 +254,53 @@ describe('SettingsDialog accessibility', () => {
             screen.getByRole('button', { name: 'Top-left mascot description' }),
         ).toBeTruthy();
         expect(
-            document.querySelector(
-                '.refresh-relays-profile-btn .setting-menu-icon',
-            ),
-        ).toBeNull();
-        expect(
-            document.querySelector('.relay-toggle-label .setting-menu-icon'),
-        ).toBeNull();
-        expect(
-            document.querySelector('.lang-btn .svg-icon'),
-        ).toBeNull();
+            document.querySelector('.color-settings-heading .setting-label')
+                ?.textContent,
+        ).toContain('Color');
+        await backToSettingsTop('Back');
         expect(screen.getByRole('button', { name: 'Change' })).toBeTruthy();
+
+        await openSettingsCategory('Media');
+        for (const className of [
+            'image-quality-icon',
+            'video-quality-icon',
+            'upload-destination-setting-icon',
+            'media-placement-setting-icon',
+        ]) {
+            const icon = document.querySelector(`.${className}`);
+            expect(icon, className).toBeTruthy();
+            expect(icon?.getAttribute('aria-hidden')).toBe('true');
+        }
         expect(
             document.querySelector('.upload-destination-manage-btn .svg-icon'),
         ).toBeNull();
         expect(screen.getByRole('button', { name: 'Manage' })).toBeTruthy();
+        await backToSettingsTop('Back');
+
+        await openSettingsCategory('Posting');
+        for (const className of [
+            'quote-setting-icon',
+            'reply-setting-icon',
+            'client-tag-setting-icon',
+            'fail-closed-content-warning-setting-icon',
+        ]) {
+            const icon = document.querySelector(`.${className}`);
+            expect(icon, className).toBeTruthy();
+            expect(icon?.getAttribute('aria-hidden')).toBe('true');
+        }
+        await backToSettingsTop('Back');
+
+        await openSettingsCategory('Nostr');
+        const relayIcon = document.querySelector('.relay-refresh-setting-icon');
+        expect(relayIcon?.getAttribute('aria-hidden')).toBe('true');
         expect(
-            document.querySelector('.color-settings-heading .setting-label')
-                ?.textContent,
-        ).toContain('Color');
+            document.querySelector(
+                '.refresh-relays-profile-btn .setting-menu-icon',
+            ),
+        ).toBeNull();
+        expect(document.querySelector('.relay-toggle-label')).toBeNull();
+        const externalIcon = document.querySelector('.external-nostr-client-setting-icon');
+        expect(externalIcon?.getAttribute('aria-hidden')).toBe('true');
         expect(
             document.querySelector('#external-nostr-client-label')?.textContent,
         ).toContain('Client for opening posts');
@@ -317,6 +387,7 @@ describe('SettingsDialog accessibility', () => {
         });
 
         await tick();
+        await openSettingsCategory('Posting');
 
         const quoteButton = screen.getByRole('button', {
             name: 'Quote notification settings description',
@@ -342,6 +413,7 @@ describe('SettingsDialog accessibility', () => {
         });
 
         await tick();
+        await openSettingsCategory('Nostr');
 
         const clientSelect = screen.getByRole('combobox', {
             name: '投稿を開くクライアント',
@@ -384,40 +456,36 @@ describe('SettingsDialog accessibility', () => {
         });
 
         await tick();
+        expect(
+            document.body.querySelector('.help-icon')?.getAttribute('aria-hidden'),
+        ).toBe('true');
 
+        await openSettingsCategory('Media');
         const mediaFreePlacementLabel = document.body.querySelector(
             '#media-free-placement-label',
         )?.textContent?.trim();
+        expect(mediaFreePlacementLabel).toBeTruthy();
+        expect(
+            screen.getByRole('switch', {
+                name: mediaFreePlacementLabel,
+            }),
+        ).toBeTruthy();
+
+        await backToSettingsTop('Back');
+        await openSettingsCategory('Display');
         const hideMascotLabel = document.body.querySelector('#hide-mascot-label')
             ?.textContent?.trim();
         const hideFlavorTextLabel = document.body.querySelector(
             '#hide-flavor-text-label',
         )?.textContent?.trim();
-        const quoteNotificationLabel = document.body.querySelector(
-            '#quote-notification-label',
-        )?.textContent?.trim();
-        const replyNotificationLabel = document.body.querySelector(
-            '#reply-notification-label',
-        )?.textContent?.trim();
-
-        expect(mediaFreePlacementLabel).toBeTruthy();
-        expect(hideMascotLabel).toBeTruthy();
-        expect(hideFlavorTextLabel).toBeTruthy();
-        expect(quoteNotificationLabel).toBeTruthy();
-        expect(replyNotificationLabel).toBeTruthy();
-
         const themeModeLabel = document.body.querySelector('#theme-mode-label')
             ?.textContent?.trim();
-
+        expect(hideMascotLabel).toBeTruthy();
+        expect(hideFlavorTextLabel).toBeTruthy();
         expect(themeModeLabel).toBeTruthy();
         expect(
             screen.getByRole('radiogroup', {
                 name: themeModeLabel,
-            }),
-        ).toBeTruthy();
-        expect(
-            screen.getByRole('switch', {
-                name: mediaFreePlacementLabel,
             }),
         ).toBeTruthy();
         expect(
@@ -430,6 +498,17 @@ describe('SettingsDialog accessibility', () => {
                 name: hideFlavorTextLabel,
             }),
         ).toBeTruthy();
+
+        await backToSettingsTop('Back');
+        await openSettingsCategory('Posting');
+        const quoteNotificationLabel = document.body.querySelector(
+            '#quote-notification-label',
+        )?.textContent?.trim();
+        const replyNotificationLabel = document.body.querySelector(
+            '#reply-notification-label',
+        )?.textContent?.trim();
+        expect(quoteNotificationLabel).toBeTruthy();
+        expect(replyNotificationLabel).toBeTruthy();
         expect(
             screen.getByRole('switch', {
                 name: quoteNotificationLabel,
@@ -446,9 +525,8 @@ describe('SettingsDialog accessibility', () => {
             }),
         ).toBeTruthy();
 
-        expect(
-            document.body.querySelector('.help-icon')?.getAttribute('aria-hidden'),
-        ).toBe('true');
+        await backToSettingsTop('Back');
+        await openSettingsCategory('About');
         expect(
             document.body.querySelector('.github-icon')?.getAttribute('aria-hidden'),
         ).toBe('true');
@@ -476,6 +554,7 @@ describe('SettingsDialog accessibility', () => {
         });
 
         await tick();
+        await openSettingsCategory('Display');
 
         expect(
             screen.getByRole('radiogroup', {
@@ -492,6 +571,7 @@ describe('SettingsDialog accessibility', () => {
             },
         });
         await tick();
+        await openSettingsCategory('Display');
 
         const accentHex = document.querySelector('#accent-color-input') as HTMLInputElement;
         const accentPicker = accentHex.parentElement?.querySelector(
@@ -558,6 +638,7 @@ describe('SettingsDialog accessibility', () => {
         });
 
         await tick();
+        await openSettingsCategory('About');
 
         const authorLink = document.body.querySelector(
             'a[href="https://lokuyow.github.io/"]',

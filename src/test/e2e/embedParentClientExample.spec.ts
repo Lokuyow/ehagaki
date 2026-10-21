@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { openSettingsToCategory } from "./settingsNavigation";
 import { finalizeEvent, generateSecretKey, nip19 } from "nostr-tools";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -748,7 +749,7 @@ test("applies iframe color defaults, persists user colors, and releases runtime 
     expect(defaultUi.footerPixel).toEqual([214, 226, 203, 255]);
     expect(defaultUi.buttonbarPixel).toEqual([240, 246, 234, 255]);
 
-    await frame.locator("button.settings-btn").evaluate((button) => (button as HTMLButtonElement).click());
+    await openSettingsToCategory(frame, "display");
     await expect(frame.locator("#accent-color-input")).toBeAttached();
     await page.evaluate(() => {
         localStorage.setItem("ehagaki.embed.storage.v1:accentColor", "#112233");
@@ -899,7 +900,7 @@ test("new host saves and restores fail-closed content warning through delegated 
     await page.getByLabel("eHagaki URL").fill(appUrl.toString());
     const frame = page.frameLocator("#ehagaki-iframe");
     await expect(frame.locator(".tiptap-editor")).toBeVisible();
-    await frame.locator("button.settings-btn").evaluate((button) => (button as HTMLButtonElement).click());
+    await openSettingsToCategory(frame, "post");
     const warningSwitch = frame.locator('[aria-labelledby="fail-closed-content-warning-label"]');
     await expect(warningSwitch).toHaveAttribute("aria-checked", "false");
     await warningSwitch.evaluate((button) => (button as HTMLButtonElement).click());
@@ -914,7 +915,7 @@ test("new host saves and restores fail-closed content warning through delegated 
     });
     await page.getByRole("button", { name: "iframe を再読み込み" }).click();
     await expect(frame.locator(".tiptap-editor")).toBeVisible();
-    await frame.locator("button.settings-btn").evaluate((button) => (button as HTMLButtonElement).click());
+    await openSettingsToCategory(frame, "post");
     const restoredSwitch = frame.locator('[aria-labelledby="fail-closed-content-warning-label"]');
     await expect(restoredSwitch).toHaveAttribute("aria-checked", "true");
 });

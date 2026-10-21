@@ -23,19 +23,20 @@ describe('SettingsRelaySection', () => {
         cleanup();
     });
 
-    it('showRelays=falseでは一覧とコピーボタンが表示されない', () => {
+    it('リレー一覧とコピーボタンを常に表示する', () => {
         render(SettingsRelaySection, {
             props: {
                 relayConfig: ['wss://relay.example.com'],
-                showRelays: false,
-                onToggleShowRelays: vi.fn(),
                 onRefreshRelaysAndProfile: vi.fn(),
             },
         });
 
-        expect(screen.queryByText('wss://relay.example.com/')).toBeNull();
+        expect(screen.getByText('wss://relay.example.com/')).toBeTruthy();
         expect(
-            screen.queryByRole('button', { name: /リレーURLをコピー/ }),
+            screen.getByRole('button', { name: /リレーURLをコピー/ }),
+        ).toBeTruthy();
+        expect(
+            screen.queryByRole('button', { name: 'リレーリストの表示切替' }),
         ).toBeNull();
     });
 
@@ -43,8 +44,6 @@ describe('SettingsRelaySection', () => {
         render(SettingsRelaySection, {
             props: {
                 relayConfig: ['wss://relay.example.com', 'wss://relay2.example.com'],
-                showRelays: true,
-                onToggleShowRelays: vi.fn(),
                 onRefreshRelaysAndProfile: vi.fn(),
             },
         });
@@ -60,8 +59,6 @@ describe('SettingsRelaySection', () => {
                     'wss://relay.example.com': { read: true, write: false },
                     'wss://relay2.example.com': { read: false, write: true },
                 },
-                showRelays: true,
-                onToggleShowRelays: vi.fn(),
                 onRefreshRelaysAndProfile: vi.fn(),
             },
         });
@@ -78,8 +75,6 @@ describe('SettingsRelaySection', () => {
         render(SettingsRelaySection, {
             props: {
                 relayConfig: ['wss://relay.example.com', 'wss://relay2.example.com'],
-                showRelays: true,
-                onToggleShowRelays: vi.fn(),
                 onRefreshRelaysAndProfile: vi.fn(),
             },
         });
@@ -93,8 +88,6 @@ describe('SettingsRelaySection', () => {
         render(SettingsRelaySection, {
             props: {
                 relayConfig: ['wss://relay.example.com'],
-                showRelays: true,
-                onToggleShowRelays: vi.fn(),
                 onRefreshRelaysAndProfile: vi.fn(),
             },
         });
@@ -110,8 +103,6 @@ describe('SettingsRelaySection', () => {
         render(SettingsRelaySection, {
             props: {
                 relayConfig: ['wss://relay.example.com'],
-                showRelays: true,
-                onToggleShowRelays: vi.fn(),
                 onRefreshRelaysAndProfile: vi.fn(),
             },
         });
@@ -134,8 +125,6 @@ describe('SettingsRelaySection', () => {
         render(SettingsRelaySection, {
             props: {
                 relayConfig: ['wss://relay.example.com'],
-                showRelays: true,
-                onToggleShowRelays: vi.fn(),
                 onRefreshRelaysAndProfile: vi.fn(),
             },
         });
@@ -155,8 +144,6 @@ describe('SettingsRelaySection', () => {
         render(SettingsRelaySection, {
             props: {
                 relayConfig: ['wss://relay.example.com'],
-                showRelays: true,
-                onToggleShowRelays: vi.fn(),
                 onRefreshRelaysAndProfile: vi.fn(),
             },
         });
@@ -170,33 +157,12 @@ describe('SettingsRelaySection', () => {
         expect(screen.queryByText('コピーしました')).toBeNull();
     });
 
-    it('一覧開閉ボタンがonToggleShowRelaysを呼ぶ', async () => {
-        const onToggleShowRelays = vi.fn();
-
-        render(SettingsRelaySection, {
-            props: {
-                relayConfig: ['wss://relay.example.com'],
-                showRelays: false,
-                onToggleShowRelays,
-                onRefreshRelaysAndProfile: vi.fn(),
-            },
-        });
-
-        await fireEvent.click(
-            screen.getByRole('button', { name: 'リレーリストの表示切替' }),
-        );
-
-        expect(onToggleShowRelays).toHaveBeenCalledTimes(1);
-    });
-
     it('再取得ボタンがonRefreshRelaysAndProfileを呼ぶ', async () => {
         const onRefreshRelaysAndProfile = vi.fn();
 
         render(SettingsRelaySection, {
             props: {
                 relayConfig: ['wss://relay.example.com'],
-                showRelays: true,
-                onToggleShowRelays: vi.fn(),
                 onRefreshRelaysAndProfile,
             },
         });
@@ -212,8 +178,6 @@ describe('SettingsRelaySection', () => {
         render(SettingsRelaySection, {
             props: {
                 relayConfig: null,
-                showRelays: true,
-                onToggleShowRelays: vi.fn(),
                 onRefreshRelaysAndProfile: vi.fn(),
             },
         });

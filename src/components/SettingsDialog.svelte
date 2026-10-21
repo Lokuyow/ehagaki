@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, tick } from "svelte";
+    import { onDestroy, onMount, tick } from "svelte";
     import { locale, _ } from "svelte-i18n";
     import { Dialog, RadioGroup, Switch } from "bits-ui";
     import Button from "./Button.svelte";
@@ -20,7 +20,6 @@
     } from "../stores/staleAssetReloadStore.svelte";
     import {
         relayConfigStore,
-        showRelaysStore,
         isSwUpdatingStore,
         loadRelayConfigFromStorage,
     } from "../stores/relayStore.svelte";
@@ -33,6 +32,7 @@
     import {
         handleServiceWorkerRefresh,
         chunkArray,
+        generateSimpleUUID,
     } from "../lib/utils/appUtils";
     import type { SettingsDialogProps } from "../lib/types";
     import { resolveAppAssetUrl } from "../lib/appAssetUrl";
@@ -62,14 +62,81 @@
         rxNostr = null,
     }: SettingsDialogProps = $props();
 
+    type SettingsCategory = "display" | "post" | "media" | "nostr" | "about";
+
+    const settingsCategories = [
+        { id: "display", labelKey: "settingsDialog.category_display" },
+        { id: "post", labelKey: "settingsDialog.category_post" },
+        { id: "media", labelKey: "settingsDialog.category_media" },
+        { id: "nostr", labelKey: "settingsDialog.category_nostr" },
+        { id: "about", labelKey: "settingsDialog.category_about" },
+    ] as const satisfies readonly { id: SettingsCategory; labelKey: string }[];
+
+    let category = $state<SettingsCategory | null>(null);
+    let categoryLabelKey = $derived(
+        settingsCategories.find((item) => item.id === category)?.labelKey ?? "",
+    );
+    let categoryHistoryToken: string | null = null;
+
+    function settingsHistoryEnabled() {
+        return getAppRuntimeEnvironment().historyEnabled;
+    }
+
+    function openCategory(next: SettingsCategory) {
+        category = next;
+        if (!settingsHistoryEnabled() || categoryHistoryToken !== null) return;
+        const token = generateSimpleUUID();
+        history.pushState(
+            { settingsCategoryDepth: token },
+            "",
+            window.location.href,
+        );
+        categoryHistoryToken = token;
+    }
+
+    function leaveCategoryFromUi() {
+        if (category === null) return;
+        const shouldPopHistory = categoryHistoryToken !== null;
+        categoryHistoryToken = null;
+        category = null;
+        if (shouldPopHistory) history.back();
+    }
+
+    function handleCategoryPopState() {
+        if (!show || categoryHistoryToken === null) return;
+        if (history.state?.settingsCategoryDepth === categoryHistoryToken) return;
+        categoryHistoryToken = null;
+        category = null;
+    }
+
     // ダイアログを閉じるハンドラ
     function handleClose() {
+        const hadCategoryHistory = categoryHistoryToken !== null;
+        if (hadCategoryHistory) {
+            categoryHistoryToken = null;
+            category = null;
+        }
         show = false;
         onClose?.();
+        if (hadCategoryHistory && settingsHistoryEnabled()) {
+            history.go(-2);
+        }
     }
 
     // ブラウザ履歴統合
     useDialogHistory(() => show, handleClose, true);
+
+    onMount(() => {
+        window.addEventListener("popstate", handleCategoryPopState);
+    });
+
+    onDestroy(() => {
+        window.removeEventListener("popstate", handleCategoryPopState);
+        if (categoryHistoryToken !== null && settingsHistoryEnabled()) {
+            categoryHistoryToken = null;
+            history.go(-2);
+        }
+    });
 
     // 圧縮設定候補（$locale変更時にラベルも更新）
     let compressionLevels = $derived(getCompressionLevels($_));
@@ -106,7 +173,6 @@
     // Store派生値
     let swVersion = $derived(swVersionStore.value);
     let relayConfig = $derived(relayConfigStore.value);
-    let showRelays = $derived(showRelaysStore.value);
     let isUpdating = $derived(isSwUpdatingStore.value);
     let isSwInstalling = $derived($swUpdateStatus === "installing");
     let isDbUpgradeBlocked = $derived($dbUpgradeBlocked);
@@ -202,14 +268,18 @@
     // showがtrueのたびにリレーリストを再取得、nostr-zap-view初期化
     $effect(() => {
         if (!show) {
-            showRelaysStore.set(false);
+            categoryHistoryToken = null;
+            category = null;
             return;
         }
         // 認証済みの場合のみリレーリスト再取得
         if (authState.value?.pubkey && authState.value?.isAuthenticated) {
             loadRelayConfigFromStorage(authState.value.pubkey);
         }
-        // nostr-zap-view初期化
+    });
+
+    $effect(() => {
+        if (!show || category !== "about") return;
         (async () => {
             await tick();
             nostrZapView();
@@ -312,72 +382,48 @@
     contentClass="settings-dialog"
     footerVariant="close-button"
 >
-    <div class="settings-header">
-        <div class="first-row">
-            <div class="site-title">
-                <span class="site-name">eHagaki</span>
-                <span class="cache-version"
-                    >{swVersion ? `v${swVersion}` : ""}</span
-                >
-            </div>
-            <div class="author-info">
-                <span>{$_("settingsDialog.author_info") || "制作："}</span><a
-                    href="https://lokuyow.github.io/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    >{$_("settingsDialog.author_name") || " Lokuyow"}</a
-                >
-            </div>
-        </div>
-        <div class="second-row">
-            <Button
-                shape="circle"
-                variant="default"
-                className="help-btn"
-                onClick={() => {
-                    handleClose();
-                    onOpenWelcomeDialog?.();
-                }}
-                ariaLabel="Help"
-            >
-                <div class="help-icon svg-icon" aria-hidden="true"></div>
-            </Button>
-            <Button
-                shape="circle"
-                variant="default"
-                className="github-link-btn"
-                onClick={() =>
-                    window.open("https://github.com/Lokuyow/ehagaki", "_blank", "noopener")}
-                ariaLabel="GitHub Repository"
-            >
-                <div class="github-icon svg-icon" aria-hidden="true"></div>
-            </Button>
-            <div>
-                <div class="zap-view-btn-group">
-                    <button
-                        class="zap-btn"
-                        data-npub="npub1a3pvwe2p3v7mnjz6hle63r628wl9w567aw7u23fzqs062v5vqcqqu3sgh3"
-                        data-note-id="naddr1qqxnzde4xsunzwpnxymrgwpsqgswcsk8v4qck0deepdtluag3a9rh0jh2d0wh0w9g53qg8a9x2xqvqqrqsqqql8kt67m30"
-                        data-relays="wss://nos.lol,wss://nostr.bitcoiner.social,wss://relay.nostr.wirednet.jp,wss://yabu.me"
+    {#if category === null}
+        <div class="settings-header">
+            <div class="first-row">
+                <div class="site-title">
+                    <span class="site-name">eHagaki</span>
+                    <span class="cache-version"
+                        >{swVersion ? `v${swVersion}` : ""}</span
                     >
-                        Support
-                    </button>
-                    <span class="divider"></span>
-                    <button
-                        class="view-btn"
-                        data-title="Thanks for the Support!"
-                        data-nzv-id="naddr1qqxnzde4xsunzwpnxymrgwpsqgswcsk8v4qck0deepdtluag3a9rh0jh2d0wh0w9g53qg8a9x2xqvqqrqsqqql8kt67m30"
-                        data-zap-color-mode="true"
-                        data-relay-urls="wss://nos.lol,wss://nostr.bitcoiner.social,wss://relay.nostr.wirednet.jp,wss://yabu.me"
-                    >
-                        View
-                    </button>
                 </div>
+                <Button
+                    shape="circle"
+                    variant="default"
+                    className="help-btn"
+                    onClick={() => {
+                        handleClose();
+                        onOpenWelcomeDialog?.();
+                    }}
+                    ariaLabel="Help"
+                >
+                    <div class="help-icon svg-icon" aria-hidden="true"></div>
+                </Button>
             </div>
         </div>
-    </div>
+    {/if}
 
     <div class="modal-body">
+        {#if category}
+            <div class="settings-category-back">
+                <Button
+                    variant="default"
+                    shape="square"
+                    contentLayout="icon"
+                    className="settings-back-button"
+                    ariaLabel={$_("settingsDialog.back")}
+                    onClick={leaveCategoryFromUi}
+                >
+                    <span class="settings-back-icon svg-icon" aria-hidden="true"></span>
+                </Button>
+                <h2 class="settings-category-title">{$_(categoryLabelKey)}</h2>
+            </div>
+        {/if}
+        {#if category === null}
         <!-- SW更新セクション -->
         {#if $swNeedRefresh || isStaleAssetReloadRequired}
             <div class="setting-section">
@@ -430,22 +476,22 @@
 
         <!-- 言語設定セクション -->
         <div class="setting-section">
-            <div class="setting-row">
+            <div class="setting-row language-setting-row">
                 <div class="setting-label-with-icon">
-                    <span
-                        class="setting-menu-icon setting-menu-mask-icon language-setting-icon"
-                        aria-hidden="true"
-                    ></span>
-                    <span class="setting-label">{$_("settingsDialog.language")}</span>
+                    <span class="setting-label">{$_("settingsDialog.language_setting_label")}</span>
                 </div>
                 <div class="setting-control">
                     <Button
                         variant="default"
                         shape="rounded"
-                        contentLayout="text"
+                        contentLayout="iconText"
                         className="lang-btn"
                         onClick={toggleLanguage}
                     >
+                        <div
+                            class="language-setting-icon setting-menu-icon setting-menu-mask-icon svg-icon"
+                            aria-hidden="true"
+                        ></div>
                         <span class="btn-text"
                             >{$_("settingsDialog.change") || "変更"}</span
                         >
@@ -454,6 +500,22 @@
             </div>
         </div>
 
+        <nav class="settings-category-list" aria-label={$_("settings") || "設定"}>
+            {#each settingsCategories as item (item.id)}
+                <Button
+                    variant="default"
+                    shape="square"
+                    className="settings-category-button"
+                    onClick={() => openCategory(item.id)}
+                >
+                    <span class="settings-category-label">{$_(item.labelKey)}</span>
+                    <span class="settings-category-chevron svg-icon" aria-hidden="true"></span>
+                </Button>
+            {/each}
+        </nav>
+        {/if}
+
+        {#if category === "media"}
         <!-- 画像・動画圧縮設定セクション -->
         <SettingsCompressionSection
             {compressionPairs}
@@ -467,7 +529,9 @@
         />
 
         <SettingsUploadDestinationSection {rxNostr} />
+        {/if}
 
+        {#if category === "display"}
         <!-- テーマ設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
@@ -524,10 +588,20 @@
                     aria-hidden="true"
                 ></span>
                 <div class="color-settings-content">
-                    <div class="setting-label-with-icon color-settings-heading">
-                        <span class="setting-label">
-                            {$_("settingsDialog.color")}
-                        </span>
+                    <div class="color-settings-heading-row">
+                        <div class="setting-label-with-icon color-settings-heading">
+                            <span class="setting-label">
+                                {$_("settingsDialog.color")}
+                            </span>
+                        </div>
+                        <Button
+                            variant="default"
+                            shape="rounded"
+                            className="reset-theme-colors-btn"
+                            onClick={resetThemeColors}
+                        >
+                            {$_("settingsDialog.reset_colors")}
+                        </Button>
                     </div>
                     <div class="color-setting-row">
                         <div class="setting-label-group">
@@ -596,18 +670,12 @@
                     {#if baseColorError}
                         <span class="form-error" role="alert">{baseColorError}</span>
                     {/if}
-                    <Button
-                        variant="default"
-                        shape="rounded"
-                        className="reset-theme-colors-btn"
-                        onClick={resetThemeColors}
-                    >
-                        {$_("settingsDialog.reset_colors")}
-                    </Button>
                 </div>
             </div>
         {/if}
+        {/if}
 
+        {#if category === "media"}
         <!-- メディア自由配置モード設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
@@ -630,6 +698,184 @@
                         <Switch.Thumb class="bui-switch-thumb" />
                     </Switch.Root>
                 </div>
+            </div>
+        </div>
+        {/if}
+
+        {#if category === "post"}
+        <!-- client tag オプトアウト設定セクション -->
+        <div class="setting-section">
+            <div class="setting-row">
+                <div class="setting-label-with-icon">
+                    <span
+                        class="setting-menu-icon setting-menu-mask-icon client-tag-setting-icon"
+                        aria-hidden="true"
+                    ></span>
+                    <span id="client-tag-label" class="setting-label"
+                        >{$_("settingsDialog.client_tag_label") ||
+                            "投稿詳細にクライアント名をつける（Client tag）"}</span
+                    >
+                </div>
+                <div class="setting-control">
+                    <Switch.Root
+                        class="bui-switch"
+                        bind:checked={clientTagEnabled}
+                        aria-labelledby="client-tag-label"
+                    >
+                        <Switch.Thumb class="bui-switch-thumb" />
+                    </Switch.Root>
+                </div>
+            </div>
+        </div>
+
+        <div class="notification-group">
+            <!-- 引用通知設定セクション -->
+            <div class="setting-section">
+                <div class="setting-row setting-row-with-note">
+                    <div class="setting-label-group">
+                        <div class="setting-label-row">
+                            <div class="setting-label-with-icon">
+                                <span
+                                    class="setting-menu-icon setting-menu-mask-icon quote-setting-icon"
+                                    aria-hidden="true"
+                                ></span>
+                                <span id="quote-notification-label" class="setting-label"
+                                    >{$_(
+                                        "settingsDialog.quote_notification_label",
+                                    ) || "引用元の投稿者に通知"}</span
+                                >
+                            </div>
+                            <InfoPopoverButton
+                                side="top"
+                                sideOffset={8}
+                                ariaLabel={$_(
+                                    "settingsDialog.quote_notification_description",
+                                )}
+                            >
+                                {$_("settingsDialog.quote_notification_note") ||
+                                    "引用投稿時、引用元の投稿者への通知をデフォルトで有効にします"}
+                            </InfoPopoverButton>
+                        </div>
+                    </div>
+                    <div class="setting-control">
+                        <Switch.Root
+                            class="bui-switch"
+                            bind:checked={quoteNotificationEnabled}
+                            aria-labelledby="quote-notification-label"
+                        >
+                            <Switch.Thumb class="bui-switch-thumb" />
+                        </Switch.Root>
+                    </div>
+                </div>
+            </div>
+
+            <div class="setting-section">
+                <div class="setting-row setting-row-with-note">
+                    <div class="setting-label-group">
+                        <div class="setting-label-row">
+                            <div class="setting-label-with-icon">
+                                <span
+                                    class="setting-menu-icon setting-menu-mask-icon reply-setting-icon"
+                                    aria-hidden="true"
+                                ></span>
+                                <span id="reply-notification-label" class="setting-label"
+                                    >{$_(
+                                        "settingsDialog.reply_notification_label",
+                                    ) || "返信先以外にも通知"}</span
+                                >
+                            </div>
+                            <InfoPopoverButton
+                                side="top"
+                                sideOffset={8}
+                                ariaLabel={$_(
+                                    "settingsDialog.reply_notification_description",
+                                )}
+                            >
+                                {$_("settingsDialog.reply_notification_note") ||
+                                    "リプライ時にリプライツリー内のほかの参加者をデフォルトで通知対象に含めます"}
+                            </InfoPopoverButton>
+                        </div>
+                    </div>
+                    <div class="setting-control">
+                        <Switch.Root
+                            class="bui-switch"
+                            bind:checked={replyNotificationEnabled}
+                            aria-labelledby="reply-notification-label"
+                        >
+                            <Switch.Thumb class="bui-switch-thumb" />
+                        </Switch.Root>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="setting-section">
+            <div class="setting-row">
+                <div class="setting-label-group">
+                    <div class="setting-label-row">
+                        <div class="setting-label-with-icon">
+                            <span
+                                class="setting-menu-icon setting-menu-mask-icon fail-closed-content-warning-setting-icon"
+                                aria-hidden="true"
+                            ></span>
+                            <span id="fail-closed-content-warning-label" class="setting-label">
+                                {$_("settingsDialog.fail_closed_content_warning_label")}
+                            </span>
+                        </div>
+                        <InfoPopoverButton
+                            side="top"
+                            sideOffset={8}
+                            ariaLabel={$_("settingsDialog.fail_closed_content_warning_info_label")}
+                        >
+                            {$_("settingsDialog.fail_closed_content_warning_info")}
+                        </InfoPopoverButton>
+                    </div>
+                </div>
+                <div class="setting-control">
+                    <Switch.Root
+                        class="bui-switch"
+                        checked={settingsStore.failClosedContentWarning}
+                        onCheckedChange={(checked) => (settingsStore.failClosedContentWarning = checked)}
+                        aria-labelledby="fail-closed-content-warning-label"
+                    >
+                        <Switch.Thumb class="bui-switch-thumb" />
+                    </Switch.Root>
+                </div>
+            </div>
+        </div>
+        {/if}
+
+        {#if category === "display"}
+        <!-- Footer shortcut slots -->
+        <div class="setting-section footer-shortcut-settings">
+            <div class="setting-label-with-icon footer-shortcuts-setting-heading">
+                <span
+                    class="setting-menu-icon setting-menu-mask-icon footer-shortcuts-setting-icon"
+                    aria-hidden="true"
+                ></span>
+                <span class="setting-label">{$_("settingsDialog.footer_shortcuts")}</span>
+            </div>
+            <div class="footer-shortcut-slots">
+                {#each ["left", "right"] as slot (slot)}
+                    {@const side = slot as "left" | "right"}
+                    <label class="footer-shortcut-slot" for={`footer-shortcut-${side}`}>
+                        <span>{$_(`settingsDialog.footer_shortcuts_${side}`)}</span>
+                        <select
+                            id={`footer-shortcut-${side}`}
+                            class="footer-shortcut-select"
+                            value={footerSettingShortcutsStore.value[side] ?? ""}
+                            onchange={(event) => handleFooterShortcutChange(side, event)}
+                        >
+                            <option value="">{$_("settingsDialog.footer_shortcuts_none")}</option>
+                            {#each FOOTER_SETTING_SHORTCUTS as shortcut (shortcut.id)}
+                                <option
+                                    value={shortcut.id}
+                                    disabled={shortcut.id === footerSettingShortcutsStore.value[side === "left" ? "right" : "left"]}
+                                >{$_(shortcut.labelKey)}</option>
+                            {/each}
+                        </select>
+                    </label>
+                {/each}
             </div>
         </div>
 
@@ -732,182 +978,17 @@
                 </div>
             </div>
         </div>
+        {/if}
 
-        <div class="notification-group">
-            <!-- 引用通知設定セクション -->
-            <div class="setting-section">
-                <div class="setting-row setting-row-with-note">
-                    <div class="setting-label-group">
-                        <div class="setting-label-row">
-                            <div class="setting-label-with-icon">
-                                <span
-                                    class="setting-menu-icon setting-menu-mask-icon quote-setting-icon"
-                                    aria-hidden="true"
-                                ></span>
-                                <span id="quote-notification-label" class="setting-label"
-                                    >{$_(
-                                        "settingsDialog.quote_notification_label",
-                                    ) || "引用元の投稿者に通知"}</span
-                                >
-                            </div>
-                            <InfoPopoverButton
-                                side="top"
-                                sideOffset={8}
-                                ariaLabel={$_(
-                                    "settingsDialog.quote_notification_description",
-                                )}
-                            >
-                                {$_("settingsDialog.quote_notification_note") ||
-                                    "引用投稿時、引用元の投稿者への通知をデフォルトで有効にします"}
-                            </InfoPopoverButton>
-                        </div>
-                    </div>
-                    <div class="setting-control">
-                        <Switch.Root
-                            class="bui-switch"
-                            bind:checked={quoteNotificationEnabled}
-                            aria-labelledby="quote-notification-label"
-                        >
-                            <Switch.Thumb class="bui-switch-thumb" />
-                        </Switch.Root>
-                    </div>
-                </div>
-            </div>
-
-            <div class="setting-section">
-                <div class="setting-row setting-row-with-note">
-                    <div class="setting-label-group">
-                        <div class="setting-label-row">
-                            <div class="setting-label-with-icon">
-                                <span
-                                    class="setting-menu-icon setting-menu-mask-icon reply-setting-icon"
-                                    aria-hidden="true"
-                                ></span>
-                                <span id="reply-notification-label" class="setting-label"
-                                    >{$_(
-                                        "settingsDialog.reply_notification_label",
-                                    ) || "返信先以外にも通知"}</span
-                                >
-                            </div>
-                            <InfoPopoverButton
-                                side="top"
-                                sideOffset={8}
-                                ariaLabel={$_(
-                                    "settingsDialog.reply_notification_description",
-                                )}
-                            >
-                                {$_("settingsDialog.reply_notification_note") ||
-                                    "リプライ時にリプライツリー内のほかの参加者をデフォルトで通知対象に含めます"}
-                            </InfoPopoverButton>
-                        </div>
-                    </div>
-                    <div class="setting-control">
-                        <Switch.Root
-                            class="bui-switch"
-                            bind:checked={replyNotificationEnabled}
-                            aria-labelledby="reply-notification-label"
-                        >
-                            <Switch.Thumb class="bui-switch-thumb" />
-                        </Switch.Root>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- client tag オプトアウト設定セクション -->
-        <div class="setting-section">
-            <div class="setting-row">
-                <div class="setting-label-with-icon">
-                    <span
-                        class="setting-menu-icon setting-menu-mask-icon client-tag-setting-icon"
-                        aria-hidden="true"
-                    ></span>
-                    <span id="client-tag-label" class="setting-label"
-                        >{$_("settingsDialog.client_tag_label") ||
-                            "投稿詳細にクライアント名をつける（Client tag）"}</span
-                    >
-                </div>
-                <div class="setting-control">
-                    <Switch.Root
-                        class="bui-switch"
-                        bind:checked={clientTagEnabled}
-                        aria-labelledby="client-tag-label"
-                    >
-                        <Switch.Thumb class="bui-switch-thumb" />
-                    </Switch.Root>
-                </div>
-            </div>
-        </div>
-
-        <div class="setting-section">
-            <div class="setting-row">
-                <div class="setting-label-group">
-                    <div class="setting-label-row">
-                        <div class="setting-label-with-icon">
-                            <span
-                                class="setting-menu-icon setting-menu-mask-icon fail-closed-content-warning-setting-icon"
-                                aria-hidden="true"
-                            ></span>
-                            <span id="fail-closed-content-warning-label" class="setting-label">
-                                {$_("settingsDialog.fail_closed_content_warning_label")}
-                            </span>
-                        </div>
-                        <InfoPopoverButton
-                            side="top"
-                            sideOffset={8}
-                            ariaLabel={$_("settingsDialog.fail_closed_content_warning_info_label")}
-                        >
-                            {$_("settingsDialog.fail_closed_content_warning_info")}
-                        </InfoPopoverButton>
-                    </div>
-                </div>
-                <div class="setting-control">
-                    <Switch.Root
-                        class="bui-switch"
-                        checked={settingsStore.failClosedContentWarning}
-                        onCheckedChange={(checked) => (settingsStore.failClosedContentWarning = checked)}
-                        aria-labelledby="fail-closed-content-warning-label"
-                    >
-                        <Switch.Thumb class="bui-switch-thumb" />
-                    </Switch.Root>
-                </div>
-            </div>
-        </div>
-
-        <!-- Footer shortcut slots -->
-        <div class="setting-section footer-shortcut-settings">
-            <div class="setting-label-with-icon footer-shortcuts-setting-heading">
-                <span
-                    class="setting-menu-icon setting-menu-mask-icon footer-shortcuts-setting-icon"
-                    aria-hidden="true"
-                ></span>
-                <span class="setting-label">{$_("settingsDialog.footer_shortcuts")}</span>
-            </div>
-            <div class="footer-shortcut-slots">
-                {#each ["left", "right"] as slot}
-                    {@const side = slot as "left" | "right"}
-                    <label class="footer-shortcut-slot" for={`footer-shortcut-${side}`}>
-                        <span>{$_(`settingsDialog.footer_shortcuts_${side}`)}</span>
-                        <select
-                            id={`footer-shortcut-${side}`}
-                            class="footer-shortcut-select"
-                            value={footerSettingShortcutsStore.value[side] ?? ""}
-                            onchange={(event) => handleFooterShortcutChange(side, event)}
-                        >
-                            <option value="">{$_("settingsDialog.footer_shortcuts_none")}</option>
-                            {#each FOOTER_SETTING_SHORTCUTS as shortcut (shortcut.id)}
-                                <option
-                                    value={shortcut.id}
-                                    disabled={shortcut.id === footerSettingShortcutsStore.value[side === "left" ? "right" : "left"]}
-                                >{$_(shortcut.labelKey)}</option>
-                            {/each}
-                        </select>
-                    </label>
-                {/each}
-            </div>
-        </div>
-
-        <!-- 投稿履歴の外部クライアント設定 -->
+        {#if category === "nostr"}
+        <SettingsRelaySection
+            {relayConfig}
+            {onRefreshRelaysAndProfile}
+            {hostRelayConfigActive}
+        />
+        {#if getAppRuntimeEnvironment().runtimeKind === "standalone"}
+            <SettingsLocalRelaySection />
+        {/if}
         <div class="setting-section">
             <div class="setting-row setting-row-with-note">
                 <div class="setting-label-group">
@@ -945,7 +1026,7 @@
                         externalNostrClientCustomUrlError = null;
                     }}
                 >
-                    {#each EXTERNAL_NOSTR_CLIENTS as client}
+                    {#each EXTERNAL_NOSTR_CLIENTS as client (client)}
                         <option value={client}>
                             {client === "custom"
                                 ? $_("settingsDialog.external_nostr_client_custom")
@@ -996,18 +1077,62 @@
                 </div>
             {/if}
         </div>
-
-        <!-- リレー・プロフィール再取得セクション -->
-        {#if getAppRuntimeEnvironment().runtimeKind === "standalone"}
-            <SettingsLocalRelaySection />
+        {:else if category === "about"}
+        <div class="setting-section settings-about">
+            <div class="setting-row">
+                <span class="setting-label">{$_("settingsDialog.about_author_label")}</span>
+                <div class="setting-control">
+                    <a
+                        class="settings-about-author-link"
+                        href="https://lokuyow.github.io/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >{$_("settingsDialog.author_name")}</a
+                    >
+                </div>
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">{$_("settingsDialog.about_source_code_label")}</span>
+                <div class="setting-control">
+                    <Button
+                        shape="circle"
+                        variant="default"
+                        className="github-link-btn"
+                        onClick={() =>
+                            window.open("https://github.com/Lokuyow/ehagaki", "_blank", "noopener")}
+                        ariaLabel="GitHub Repository"
+                    >
+                        <div class="github-icon svg-icon" aria-hidden="true"></div>
+                    </Button>
+                </div>
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">{$_("settingsDialog.about_bitcoin_tip_label")}</span>
+                <div class="setting-control">
+                    <div class="zap-view-btn-group">
+                        <button
+                            class="zap-btn"
+                            data-npub="npub1a3pvwe2p3v7mnjz6hle63r628wl9w567aw7u23fzqs062v5vqcqqu3sgh3"
+                            data-note-id="naddr1qqxnzde4xsunzwpnxymrgwpsqgswcsk8v4qck0deepdtluag3a9rh0jh2d0wh0w9g53qg8a9x2xqvqqrqsqqql8kt67m30"
+                            data-relays="wss://nos.lol,wss://nostr.bitcoiner.social,wss://relay.nostr.wirednet.jp,wss://yabu.me"
+                        >
+                            Support
+                        </button>
+                        <span class="divider"></span>
+                        <button
+                            class="view-btn"
+                            data-title="Thanks for the Support!"
+                            data-nzv-id="naddr1qqxnzde4xsunzwpnxymrgwpsqgswcsk8v4qck0deepdtluag3a9rh0jh2d0wh0w9g53qg8a9x2xqvqqrqsqqql8kt67m30"
+                            data-zap-color-mode="true"
+                            data-relay-urls="wss://nos.lol,wss://nostr.bitcoiner.social,wss://relay.nostr.wirednet.jp,wss://yabu.me"
+                        >
+                            View
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
         {/if}
-        <SettingsRelaySection
-            {relayConfig}
-            {showRelays}
-            onToggleShowRelays={() => showRelaysStore.set(!showRelays)}
-            {onRefreshRelaysAndProfile}
-            {hostRelayConfigActive}
-        />
     </div>
 
     {#snippet footer()}
@@ -1037,6 +1162,10 @@
         padding: 0;
     }
 
+    :global(.settings-dialog .setting-label) {
+        font-weight: normal;
+    }
+
     .xmark-icon {
         mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
@@ -1053,21 +1182,12 @@
         gap: 2px;
         border-bottom: 1px solid var(--border-hr);
     }
-    .first-row,
-    .second-row {
+    .first-row {
         display: flex;
         align-items: center;
-    }
-
-    .first-row {
         justify-content: space-between;
         width: 100%;
         gap: 10px;
-    }
-    .second-row {
-        justify-content: flex-end;
-        width: 100%;
-        gap: 4px;
     }
     .site-title {
         display: flex;
@@ -1137,14 +1257,128 @@
         }
     }
 
-    .author-info {
+    .language-setting-row .setting-label-with-icon {
+        padding-inline-start: 12px;
+    }
+
+    .settings-category-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+    }
+
+    :global(.settings-dialog button.settings-category-button) {
+        width: 100%;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 50px;
+        height: 50px;
+        padding-inline: 12px;
+        border-radius: 0;
+        border: none;
+        font-weight: normal;
+        --btn-bg: var(--dialog-bg);
+        background-color: transparent;
+        background-image: none;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+        :global(.settings-dialog button.settings-category-button:hover:not(:disabled)) {
+            background-color: var(--button-hover-bg);
+            color: var(--button-hover-color);
+        }
+
+        :global(
+                .settings-dialog
+                    button.settings-category-button:hover:not(:disabled)
+                    .settings-category-chevron
+            ) {
+            color: inherit;
+            background-color: currentColor;
+        }
+    }
+
+    .settings-category-label {
+        min-width: 0;
+        text-align: start;
+        font-weight: normal;
+    }
+
+    .settings-category-chevron,
+    .settings-back-icon {
+        width: 24px;
+        height: 24px;
+        flex: 0 0 24px;
+        background-color: currentColor;
+    }
+
+    .settings-category-chevron {
+        color: var(--text-muted);
+        --svg: var(--text-muted);
+        mask-image: url("/icons/keyboard_arrow_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    .settings-back-icon {
+        mask-image: url("/icons/arrow_back_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    :global(.ehagaki-app-root .settings-dialog button.settings-back-button) {
+        position: relative;
+        display: inline-flex;
+        width: 50px;
+        height: 50px;
+        min-width: 50px;
+        min-height: 50px;
+        flex: 0 0 50px;
+        justify-content: flex-start;
+        align-items: center;
+        padding: 0;
+        border: none;
+        border-radius: 0;
+        --btn-bg: transparent;
+        background-color: transparent;
+        background-image: none;
+    }
+
+    :global(.settings-category-back button.settings-back-button) .settings-back-icon {
+        position: absolute;
+        inset-inline-start: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 24px;
+        height: 24px;
+        inline-size: 24px;
+        block-size: 24px;
+        margin: 0;
+        flex: none;
+    }
+
+    :global(.ehagaki-app-root .settings-dialog button.settings-back-button:hover:not(:disabled)),
+    :global(.ehagaki-app-root .settings-dialog button.settings-back-button:active:not(:disabled)),
+    :global(.ehagaki-app-root .settings-dialog button.settings-back-button:focus-visible) {
+        --btn-bg: transparent;
+        background-color: transparent;
+        background-image: none;
+        border: none;
+    }
+
+    .settings-category-back {
         display: flex;
         align-items: center;
-        font-size: 0.9375rem;
-        color: var(--text-light);
-        gap: 4px;
+        min-width: 0;
+        min-height: 50px;
     }
-    .author-info a {
+
+    .settings-category-title {
+        margin: 0;
+        min-width: 0;
+        font-size: 1.125rem;
+        font-weight: 600;
+        line-height: 1.3;
+    }
+
+    .settings-about-author-link {
+        font-size: 1rem;
         color: var(--text-light);
         text-decoration: underline;
     }
@@ -1153,7 +1387,7 @@
         padding: 16px;
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 30px;
         width: 100%;
         overflow-y: auto;
     }
@@ -1401,8 +1635,18 @@
         min-width: 0;
     }
 
+    .color-settings-heading-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        min-width: 0;
+    }
+
     .color-settings-heading {
         min-height: 24px;
+        flex: 1 1 auto;
+        min-width: 0;
     }
 
     .color-setting-row,
@@ -1447,7 +1691,7 @@
     }
 
     :global(.reset-theme-colors-btn.rounded) {
-        align-self: flex-end;
+        flex-shrink: 0;
         min-height: 44px;
     }
 
@@ -1460,5 +1704,9 @@
         .color-setting-controls {
             align-self: flex-end;
         }
+    }
+
+    .footer-shortcut-settings {
+        gap: 10px;
     }
 </style>
