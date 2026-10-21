@@ -34,9 +34,15 @@
 
 <div class="setting-section">
     <div class="setting-row local-relay-row">
-        <label id="local-relay-url-label" class="setting-label local-relay-label" for="local-relay-url">
-            {$_("settingsDialog.local_relay_url")}
-        </label>
+        <div class="setting-label-with-icon local-relay-label-group">
+            <span
+                class="setting-menu-icon setting-menu-mask-icon local-relay-setting-icon"
+                aria-hidden="true"
+            ></span>
+            <label id="local-relay-url-label" class="setting-label local-relay-label" for="local-relay-url">
+                {$_("settingsDialog.local_relay_url")}
+            </label>
+        </div>
         <div class="setting-control local-relay-control">
             <div class="local-relay-url-input-shell">
                 <input
@@ -90,12 +96,22 @@
         gap: 12px;
     }
 
+    .local-relay-label-group {
+        flex: 1 1 auto;
+        min-width: 0;
+        align-items: flex-start;
+        padding-block-start: 10px;
+    }
+
+    .local-relay-setting-icon {
+        mask-image: url("/icons/devices_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
     .local-relay-label {
         flex: 1 1 auto;
         min-width: 0;
         margin-block: 0;
         align-items: flex-start;
-        padding-block-start: 10px;
     }
 
     .local-relay-control {
