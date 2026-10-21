@@ -76,7 +76,44 @@ async function backToSettingsTop(name: '戻る' | 'Back' = '戻る') {
     await tick();
 }
 
+async function goBackAndWaitForPopState(): Promise<void> {
+    const popped = new Promise<void>((resolve) => {
+        window.addEventListener('popstate', () => resolve(), { once: true });
+    });
+    history.back();
+    await popped;
+}
+
 describe('SettingsDialog accessibility', () => {
+    it('端末の戻る操作ではカテゴリから設定トップへ戻り、ダイアログは開いたままにする', async () => {
+        history.replaceState({ settingsDialogTestBase: true }, '', window.location.href);
+        settingsStore.locale = 'ja';
+        const onClose = vi.fn();
+        render(SettingsDialog, {
+            props: { show: true, onClose },
+        });
+        await tick();
+        const dialogModalId = history.state?.modalId;
+        expect(typeof dialogModalId).toBe('string');
+
+        await openSettingsCategory('表示');
+        expect(history.state?.settingsCategoryDepth).toEqual(expect.any(String));
+        expect(screen.getByRole('heading', { name: '表示' })).toBeTruthy();
+
+        await goBackAndWaitForPopState();
+        await tick();
+
+        expect(screen.queryByRole('heading', { name: '表示' })).toBeNull();
+        expect(screen.getByRole('button', { name: '表示', exact: true })).toBeTruthy();
+        expect(history.state?.modalId).toBe(dialogModalId);
+        expect(onClose).not.toHaveBeenCalled();
+
+        await goBackAndWaitForPopState();
+        await tick();
+
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
     beforeEach(async () => {
         staleAssetState.required = false;
         staleAssetState.promptRevision = 0;

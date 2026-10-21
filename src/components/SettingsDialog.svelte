@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, tick } from "svelte";
+    import { onDestroy, onMount, tick } from "svelte";
     import { locale, _ } from "svelte-i18n";
     import { Dialog, RadioGroup, Switch } from "bits-ui";
     import Button from "./Button.svelte";
@@ -32,6 +32,7 @@
     import {
         handleServiceWorkerRefresh,
         chunkArray,
+        generateSimpleUUID,
     } from "../lib/utils/appUtils";
     import type { SettingsDialogProps } from "../lib/types";
     import { resolveAppAssetUrl } from "../lib/appAssetUrl";
@@ -75,16 +76,66 @@
     let categoryLabelKey = $derived(
         settingsCategories.find((item) => item.id === category)?.labelKey ?? "",
     );
+    let categoryHistoryToken: string | null = null;
+
+    function settingsHistoryEnabled() {
+        return getAppRuntimeEnvironment().historyEnabled;
+    }
+
+    function openCategory(next: SettingsCategory) {
+        category = next;
+        if (!settingsHistoryEnabled() || categoryHistoryToken !== null) return;
+        const token = generateSimpleUUID();
+        history.pushState(
+            { settingsCategoryDepth: token },
+            "",
+            window.location.href,
+        );
+        categoryHistoryToken = token;
+    }
+
+    function leaveCategoryFromUi() {
+        if (category === null) return;
+        const shouldPopHistory = categoryHistoryToken !== null;
+        categoryHistoryToken = null;
+        category = null;
+        if (shouldPopHistory) history.back();
+    }
+
+    function handleCategoryPopState() {
+        if (!show || categoryHistoryToken === null) return;
+        if (history.state?.settingsCategoryDepth === categoryHistoryToken) return;
+        categoryHistoryToken = null;
+        category = null;
+    }
+
+    function popCategoryAndDialogHistory() {
+        if (categoryHistoryToken === null) return;
+        categoryHistoryToken = null;
+        category = null;
+        if (settingsHistoryEnabled()) history.go(-2);
+    }
 
     // ダイアログを閉じるハンドラ
     function handleClose() {
-        category = null;
         show = false;
         onClose?.();
     }
 
     // ブラウザ履歴統合
     useDialogHistory(() => show, handleClose, true);
+
+    onMount(() => {
+        window.addEventListener("popstate", handleCategoryPopState);
+    });
+
+    onDestroy(() => {
+        window.removeEventListener("popstate", handleCategoryPopState);
+        if (categoryHistoryToken !== null && settingsHistoryEnabled()) {
+            categoryHistoryToken = null;
+            history.go(-2);
+        }
+    });
 
     // 圧縮設定候補（$locale変更時にラベルも更新）
     let compressionLevels = $derived(getCompressionLevels($_));
@@ -216,7 +267,11 @@
     // showがtrueのたびにリレーリストを再取得、nostr-zap-view初期化
     $effect(() => {
         if (!show) {
-            category = null;
+            if (categoryHistoryToken !== null) {
+                popCategoryAndDialogHistory();
+            } else {
+                category = null;
+            }
             return;
         }
         // 認証済みの場合のみリレーリスト再取得
@@ -363,7 +418,7 @@
                     contentLayout="icon"
                     className="settings-back-button"
                     ariaLabel={$_("settingsDialog.back")}
-                    onClick={() => (category = null)}
+                    onClick={leaveCategoryFromUi}
                 >
                     <span class="settings-back-icon svg-icon" aria-hidden="true"></span>
                 </Button>
@@ -453,7 +508,7 @@
                     variant="default"
                     shape="square"
                     className="settings-category-button"
-                    onClick={() => (category = item.id)}
+                    onClick={() => openCategory(item.id)}
                 >
                     <span class="settings-category-label">{$_(item.labelKey)}</span>
                     <span class="settings-category-chevron svg-icon" aria-hidden="true"></span>
