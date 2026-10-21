@@ -1510,10 +1510,34 @@ test("layers Web Component user, default, and forced colors across updates and r
 
         const settingsButton = first.shadowRoot!.querySelector<HTMLButtonElement>("button.settings-btn")!;
         settingsButton.click();
-        await new Promise<void>((resolve) => {
+        await new Promise<void>((resolve, reject) => {
+            const deadline = Date.now() + 5_000;
+            const openDisplayCategory = () => {
+                const displayCategory = first.shadowRoot!.querySelector<HTMLButtonElement>(
+                    ".settings-category-list .settings-category-button",
+                );
+                if (displayCategory) {
+                    displayCategory.click();
+                    resolve();
+                    return;
+                }
+                if (Date.now() > deadline) {
+                    reject(new Error("settings display category button not found"));
+                    return;
+                }
+                setTimeout(openDisplayCategory, 10);
+            };
+            openDisplayCategory();
+        });
+        await new Promise<void>((resolve, reject) => {
+            const deadline = Date.now() + 5_000;
             const waitForSettings = () => {
                 if (first.shadowRoot!.querySelector("#accent-color-input")) {
                     resolve();
+                    return;
+                }
+                if (Date.now() > deadline) {
+                    reject(new Error("accent color settings did not open"));
                     return;
                 }
                 setTimeout(waitForSettings, 10);

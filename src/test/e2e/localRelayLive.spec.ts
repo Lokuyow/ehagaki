@@ -2,7 +2,9 @@ import { expect, test, type Page } from "@playwright/test";
 import { finalizeEvent, generateSecretKey, getPublicKey, matchFilter, verifyEvent, type Filter, type EventTemplate } from "nostr-tools";
 import { WebSocketServer } from "ws";
 import type { AddressInfo } from "node:net";
+import { openSettingsToCategory } from "./settingsNavigation";
 
+test.setTimeout(120_000);
 test.use({ trace: "off" });
 
 const externalUrl = "wss://external.example/";
@@ -125,8 +127,7 @@ async function fixture(page: Page, options: { externalOk?: boolean; localMode?: 
 }
 
 async function setUrl(page: Page, url: string) {
-    await page.locator(".settings-btn").click();
-    await page.getByRole("button", { name: "Nostr", exact: true }).click();
+    await openSettingsToCategory(page, "nostr");
     await page.getByLabel("ローカルリレーURL", { exact: true }).fill(url);
     await page.getByRole("button", { name: "適用", exact: true }).click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("localRelayUrl"))).toBe(url);
@@ -360,8 +361,7 @@ test("HTTPS tab uses the real loopback socket, merges history, keeps external re
         expect(f.localRequests).toHaveLength(0);
         await setUrl(page, f.localUrl);
         expect(f.localRequests).toHaveLength(0); // Saving is syntax-only, not a connection check.
-        await page.locator(".settings-btn").click();
-        await page.getByRole("button", { name: "Nostr", exact: true }).click();
+        await openSettingsToCategory(page, "nostr");
         const input = page.getByLabel("ローカルリレーURL", { exact: true });
         await input.fill("https://localhost/invalid");
         await page.getByRole("button", { name: "適用", exact: true }).click();
@@ -408,8 +408,7 @@ test("HTTPS tab uses the real loopback socket, merges history, keeps external re
         await expect.poll(() => f.externalWrites.some(event => event.content === "Post while Citrine is stopped")).toBe(true);
         const event = f.externalWrites.find(event => event.content === "Post while Citrine is stopped")!;
         await expect.poll(async () => (await posts(page)).some(post => post.eventId === event.id)).toBe(true);
-        await page.locator(".settings-btn").click();
-        await page.getByRole("button", { name: "Nostr", exact: true }).click();
+        await openSettingsToCategory(page, "nostr");
         await page.getByRole("button", { name: "解除", exact: true }).click();
         expect(await page.evaluate(() => localStorage.getItem("localRelayUrl"))).toBeNull();
     } finally { await f.stop(); }

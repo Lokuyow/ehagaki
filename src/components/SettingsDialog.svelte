@@ -109,17 +109,18 @@
         category = null;
     }
 
-    function popCategoryAndDialogHistory() {
-        if (categoryHistoryToken === null) return;
-        categoryHistoryToken = null;
-        category = null;
-        if (settingsHistoryEnabled()) history.go(-2);
-    }
-
     // ダイアログを閉じるハンドラ
     function handleClose() {
+        const hadCategoryHistory = categoryHistoryToken !== null;
+        if (hadCategoryHistory) {
+            categoryHistoryToken = null;
+            category = null;
+        }
         show = false;
         onClose?.();
+        if (hadCategoryHistory && settingsHistoryEnabled()) {
+            history.go(-2);
+        }
     }
 
     // ブラウザ履歴統合
@@ -267,11 +268,8 @@
     // showがtrueのたびにリレーリストを再取得、nostr-zap-view初期化
     $effect(() => {
         if (!show) {
-            if (categoryHistoryToken !== null) {
-                popCategoryAndDialogHistory();
-            } else {
-                category = null;
-            }
+            categoryHistoryToken = null;
+            category = null;
             return;
         }
         // 認証済みの場合のみリレーリスト再取得
