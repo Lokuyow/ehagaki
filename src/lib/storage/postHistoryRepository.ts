@@ -1153,18 +1153,16 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             // These incoming events are already fully verified. Only candidate
             // Structures need the reconciler's persisted-pair consistency checks.
             if (!getSensitivePayloadReference(item.event)) continue;
-            try {
-                await reconcileSensitivePayloadDeletionForStructure(
-                    item.event.id,
-                    this.db,
-                    this.now,
-                );
-            } catch {
+            void reconcileSensitivePayloadDeletionForStructure(
+                item.event.id,
+                this.db,
+                this.now,
+            ).catch(() => {
                 this.console.warn(
                     "post_history_sensitive_payload_deletion_reconcile_failed",
                     item.event.id,
                 );
-            }
+            });
         }
 
         return {

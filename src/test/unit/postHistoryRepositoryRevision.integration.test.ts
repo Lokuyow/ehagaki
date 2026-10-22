@@ -46,7 +46,7 @@ describe("fetched history transaction revision", () => {
         try {
             await entered;
             expect(await db.postHistory.get(event.id)).toMatchObject({ eventId: event.id });
-            expect(finished).toBe(false);
+            expect(finished).toBe(true);
             expect(getPostHistorySearchRevision(event.pubkey)).toBe(1);
         } finally { release(); await write; }
         expect(getPostHistorySearchRevision(event.pubkey)).toBe(1);
@@ -88,7 +88,7 @@ describe("fetched history transaction revision", () => {
         });
         await repository.upsertFetchedEvents({ events: [{ event: structure }] });
         expect(revisionBeforeReconciliation).toBe(1);
-        expect(getPostHistorySearchRevision(structure.pubkey)).toBe(2);
+        await vi.waitUntil(() => getPostHistorySearchRevision(structure.pubkey) === 2);
         expect((await payloads.getByIds([payload.id]))[0]).toMatchObject({ deletedAt: 200_000, deletionEventId: deletion.id });
         expect((await repository.getByEventId(structure.id))?.deletedAt).toBeUndefined();
         await repository.upsertFetchedEvents({ events: [{ event: structure }] });

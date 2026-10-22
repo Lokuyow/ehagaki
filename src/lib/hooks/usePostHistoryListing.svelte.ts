@@ -1703,13 +1703,38 @@ export function usePostHistoryListing({
         return getPostHistoryConnectedCoverageUntil(await readExternalContinuity(pubkeyHex), coverageAnchorCreatedAt);
     }
 
+    async function readCertifiedVisibleUntil(pubkeyHex: string): Promise<number | null> {
+        return (await postHistoryVisibleRangeRepository.get(pubkeyHex, POST_HISTORY_VISIBLE_KINDS_KEY))?.visibleUntil ?? null;
+    }
+
     async function readVisibleUntil(pubkeyHex: string): Promise<number | null> {
         if (coverageAnchorCreatedAt === null) {
             // Legacy state may limit the entry window, but never certifies its continuation.
-            return (await postHistoryVisibleRangeRepository.get(pubkeyHex, POST_HISTORY_VISIBLE_KINDS_KEY))?.visibleUntil ?? null;
+            return readCertifiedVisibleUntil(pubkeyHex);
         }
         const anchor = coverageAnchorCreatedAt;
         return getPostHistoryConnectedCoverageUntil(await readBrowsingContinuity(pubkeyHex), anchor);
+    }
+
+    async function resolveVisibleUntilForSavedOlderPosts(
+        pubkeyHex: string,
+    ): Promise<number | null> {
+        const headCreatedAt = state.loadedPosts[0]?.createdAt;
+        const external = quorumCoverage.length > 0
+            ? quorumCoverage
+            : await readExternalContinuity(pubkeyHex);
+        if (typeof headCreatedAt === "number" && external.length > 0) {
+            return getPostHistoryConnectedCoverageUntil(external, headCreatedAt);
+        }
+
+        if (
+            contiguousProgress?.pubkeyHex === pubkeyHex
+            && typeof contiguousProgress.visibleUntil === "number"
+        ) {
+            return contiguousProgress.visibleUntil;
+        }
+
+        return refreshVisibleUntil(pubkeyHex);
     }
 
     async function createAuthoredScope(pubkeyHex: string, rxNostr: RxNostr, requestId: number, kinds = [...POST_HISTORY_FETCH_KINDS] as number[]) {
@@ -3996,7 +4021,7 @@ export function usePostHistoryListing({
         if (!pubkeyHex) {
             return false;
         }
-        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
+        const visibleUntil = await resolveVisibleUntilForSavedOlderPosts(pubkeyHex);
         if (typeof visibleUntil !== "number") return false;
 
         const requestId = ++loadRequestId;
