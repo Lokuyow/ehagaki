@@ -1624,7 +1624,10 @@ test("Lite keeps an explicit auto-grow range while the emoji picker makes the Co
     expect(afterPicker.minHeight).toBe(beforePicker.minHeight);
     expect(afterPicker.maxHeight).toBe(beforePicker.maxHeight);
     expect(afterPicker.preferredHeight).toBeGreaterThan(beforePicker.preferredHeight!);
-    expect(afterPicker.outerScrollHeight).toBeLessThanOrEqual(afterPicker.outerClientHeight + 1);
+    await expect.poll(() => composer.evaluate((element) => {
+        const outer = element.shadowRoot!.querySelector<HTMLElement>(".composer-scroll-region")!;
+        return outer.scrollHeight - outer.clientHeight;
+    })).toBeLessThanOrEqual(1);
 
     await composer.evaluate((element) => element.style.height = "132px");
     await expect.poll(() => composer.evaluate((element) => {

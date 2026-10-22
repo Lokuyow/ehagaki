@@ -267,6 +267,24 @@ async function installInitialHistoryResizeScroll(page: Page): Promise<void> {
     });
 }
 
+test.afterEach(async ({ page }, info) => {
+    if (info.status === info.expectedStatus) return;
+    const metrics = await page.evaluate(() => {
+        const root = document.querySelector<HTMLElement>('.post-history-container');
+        const ids = (window as HarnessWindow).__POST_HISTORY_HARNESS__?.infiniteScrollEventIds ?? [];
+        const rows = [...document.querySelectorAll<HTMLElement>('.post-history-item')];
+        return {
+            scrollTop: root?.scrollTop, clientHeight: root?.clientHeight, scrollHeight: root?.scrollHeight,
+            rootTop: root?.getBoundingClientRect().top, rootBottom: root?.getBoundingClientRect().bottom,
+            newerTop: document.querySelector('.post-history-auto-load-newer-sentinel')?.getBoundingClientRect().top,
+            olderTop: document.querySelector('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)')?.getBoundingClientRect().top,
+            count: rows.length, firstIndex: ids.indexOf(rows[0]?.dataset.postHistoryEventId ?? ''), lastIndex: ids.indexOf(rows.at(-1)?.dataset.postHistoryEventId ?? ''),
+            ...Object.fromEntries(['year', 'month', 'day'].map(part => [part, Number(document.querySelector(`[data-segment="${part}"]`)?.getAttribute('aria-valuenow'))])),
+        };
+    }).catch(() => ({}));
+    console.log('CI_METRICS ' + JSON.stringify({testLine: info.line, ...metrics}));
+});
+
 async function armScrollLoadGate(page: Page, direction: 'older' | 'newer') {
     await page.evaluate((loadDirection) => {
         const gate = (window as HarnessWindow).__POST_HISTORY_SCROLL_LOAD_GATE__;

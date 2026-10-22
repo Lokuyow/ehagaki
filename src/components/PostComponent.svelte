@@ -1632,6 +1632,7 @@
     --post-editor-block-padding: 10px;
     --post-editor-line-height: 30px;
     --post-editor-submit-button-size: 40px;
+    --post-editor-submit-button-inline-inset: 14px;
   }
 
   .upload-error {
@@ -1746,15 +1747,14 @@
   }
 
   .editor-container.editor-submit-enabled :global(.tiptap-editor) {
-    padding-inline-end: calc(var(--post-editor-block-padding) + 40px);
+    padding-inline-end: calc(var(--post-editor-submit-button-inline-inset) + var(--post-editor-submit-button-size));
   }
 
   .editor-submit-button-container {
     position: absolute;
-    inset-inline-end: var(--post-editor-block-padding);
+    inset-inline-end: var(--post-editor-submit-button-inline-inset);
     bottom: var(--post-editor-block-padding);
     z-index: 4;
-    inset-inline-end: 14px;
   }
 
   .post-container.editor-auto-grow .editor-submit-button-container {

@@ -2105,7 +2105,7 @@ test("applies the common desktop hover colors inside the Shadow DOM", async ({ p
         };
     });
     await settingsButton.hover();
-    const after = await settingsButton.evaluate((button) => {
+    const readHoverColors = () => settingsButton.evaluate((button) => {
         const icon = button.querySelector<HTMLElement>(".svg-icon")!;
         const buttonStyle = getComputedStyle(button);
         return {
@@ -2114,9 +2114,10 @@ test("applies the common desktop hover colors inside the Shadow DOM", async ({ p
             iconBackground: getComputedStyle(icon).backgroundColor,
         };
     });
-    expect(after.background).not.toBe(before.background);
-    expect(after.color).not.toBe(before.color);
-    expect(after.iconBackground).not.toBe(before.iconBackground);
+    await expect.poll(async () => {
+        const after = await readHoverColors();
+        return [after.background !== before.background, after.color !== before.color, after.iconBackground !== before.iconBackground];
+    }).toEqual([true, true, true]);
 });
 
 test("applies Button styles inside a Portal dialog in the Shadow DOM", async ({ page }) => {

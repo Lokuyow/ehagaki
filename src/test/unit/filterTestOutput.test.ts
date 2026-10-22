@@ -15,6 +15,8 @@ describe('CI test output filtering', () => {
                 'AssertionError: expected private payload to equal private key',
                 'stdout | authentication token and signing request body',
                 'Error: private post body',
+                '1) [mobile-webkit] › src/test/e2e/historyTabs.spec.ts:87:1 › private title',
+                'Error: expect(received).toEqual(expected) // private values',
             ].join('\n'),
         });
         expect(result.status).toBe(0);
@@ -26,6 +28,9 @@ describe('CI test output filtering', () => {
             'Test location: src/test/unit/playwrightWorktreePort.test.ts',
             'Test location: src/test/unit/playwrightWorktreePort.test.ts:180:21',
             'Error category: AssertionError',
+            'Failure: mobile-webkit src/test/e2e/historyTabs.spec.ts:87:1',
+            'Test location: src/test/e2e/historyTabs.spec.ts:87:1',
+            'Assertion: toEqual',
             '',
         ].join('\n'));
     });
