@@ -5,7 +5,7 @@ import { settingsStore } from "../../stores/settingsStore.svelte";
 import { isSignedNostrEvent } from "../postHistoryEventUtils";
 import { createPostHistoryAuthoredFetchScope, persistPostHistoryAuthoredFetch } from "../postHistoryAuthoredFetchPersistence";
 import { getPostHistoryAuthoredRelayScopeKey, resolvePostHistoryAuthoredRelayUrls } from "../postHistoryRelayResolver";
-import { getPostHistoryQuorumCoverage, getPostHistoryConnectedCoverageUntil, type PostHistoryCoverageRange } from "../postHistoryRelayCoverage";
+import { getPostHistoryQuorumCoverage, getPostHistoryConnectedCoverageUntil, mergePostHistoryCoverageRanges, type PostHistoryCoverageRange } from "../postHistoryRelayCoverage";
 import { postHistoryRelayCoverageRepository } from "../storage/postHistoryRelayCoverageRepository";
 import { postHistoryImportedRangesRepository } from "../storage/postHistoryImportedRangesRepository";
 import { postHistoryLocalBrowsingRangesRepository, type PostHistoryLocalBrowsingRanges } from "../storage/postHistoryLocalBrowsingRangesRepository";
@@ -1720,11 +1720,11 @@ export function usePostHistoryListing({
         pubkeyHex: string,
     ): Promise<number | null> {
         const headCreatedAt = state.loadedPosts[0]?.createdAt;
-        const external = quorumCoverage.length > 0
-            ? quorumCoverage
-            : await readExternalContinuity(pubkeyHex);
-        if (typeof headCreatedAt === "number" && external.length > 0) {
-            return getPostHistoryConnectedCoverageUntil(external, headCreatedAt);
+        if (typeof headCreatedAt === "number") {
+            const coveredSince = mergePostHistoryCoverageRanges(await readExternalContinuity(pubkeyHex))
+                .find((range) => range.since <= headCreatedAt && range.until >= headCreatedAt)
+                ?.since;
+            if (typeof coveredSince === "number") return coveredSince;
         }
 
         if (

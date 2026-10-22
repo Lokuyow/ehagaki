@@ -2373,11 +2373,14 @@
             return;
         }
         const onCoverageImport = (event: Event) => {
-            const detail = (event as CustomEvent<{
-                result: PostHistoryJsonlImportResult;
-                resolve: () => void;
-            }>).detail;
-            void handleImportedPostHistory(detail.result).finally(detail.resolve);
+            if (!(event instanceof CustomEvent)) return;
+            const detail = event.detail as {
+                result?: PostHistoryJsonlImportResult;
+                resolve?: () => void;
+            } | undefined;
+            if (!detail?.result || typeof detail.resolve !== "function") return;
+            const resolve = detail.resolve;
+            void handleImportedPostHistory(detail.result).finally(resolve);
         };
         window.addEventListener(postHistoryCoverageImportEvent, onCoverageImport);
         return () => {
