@@ -1,9 +1,11 @@
 ---
 name: ehagaki-editor
-description: "eHagaki の Tiptap/ProseMirror document・transaction・editor lifecycle を調査・変更・レビューする。周辺 UI のみの変更や Nostr protocol の解釈は対象外。"
+description: "eHagaki の Tiptap/ProseMirror document・transaction・editor lifecycle を調査・変更・レビューする。"
 ---
 
 # eHagaki Editor
+
+document の内容、transaction、入力処理、editor instance の生存期間を扱うときに使う。周辺の投稿 UI だけの変更や、抽出後の Nostr protocol 解釈は対象外。
 
 ## Document と owner
 
@@ -22,10 +24,6 @@ description: "eHagaki の Tiptap/ProseMirror document・transaction・editor lif
 
 ## 必要な詳細への入口
 
-owner や既存実装/test が不明な場合だけ [editor map](references/editor-map.md) の該当節を読む。map 全体の事前読了は不要であり、現在の checkout が優先される。
-
-- schema/serialization: `Creation, configuration, and document schema` と `Editor-to-application flow and reverse inputs`。
-- plugin 順や undo/redo: `Extension order and interaction boundaries` と `Transactions, normalization, decorations, and history`。
-- remount、placeholder、paste/drag、NodeView: それぞれの lifecycle/localization/input/rendering 節。
+owner や既存実装/test が不明な場合だけ [editor 索引](references/editor-map.md#変更する挙動から探す) の該当行を使う。入力経路・undo/composition・Reaction の固有条件は [注意点](references/editor-map.md#入力とtransactionの注意点) を参照する。一般的な検証量は [開発ガイド](../../guides/development.md) が所有する。
 
 native composition/selection/clipboard/focus/geometry の再現・計測が必要なら [browser debug](../ehagaki-browser-debug/SKILL.md) を併用する。embed input の public contract は [embed runtime](../ehagaki-embed-runtime/SKILL.md)、抽出後の event/tag/signing/relay semantics は [Nostr](../ehagaki-nostr/SKILL.md) が所有する。

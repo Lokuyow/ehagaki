@@ -1,9 +1,11 @@
 ---
 name: ehagaki-embed-runtime
-description: "eHagaki の runtime ownership と iframe/Web Component の公開契約を調査・変更・レビューする。通常の standalone UI や browser 固有現象の計測だけは対象外。"
+description: "eHagaki の runtime 責務と iframe/Web Component の公開契約を調査・変更・レビューする。"
 ---
 
 # eHagaki Embed Runtime
+
+app/host/delegation の責務、公開 API/message、runtime ごとの初期化・配信を扱うときに使う。通常の standalone UI や browser 固有現象の計測だけには適用しない。
 
 ## Runtime と ownership
 
@@ -30,10 +32,6 @@ Shadow DOM、`:host`、container、overlay target、公開済み CSS custom prop
 
 ## 必要な詳細への入口
 
-入口/owner/test が不明な場合、または変更する公開契約の詳細が必要な場合だけ [embed runtime map](references/embed-runtime-map.md) の関連節を読む。現在の checkout を優先し、map 全体を起動時に読まない。
-
-- iframe: detection/protocol、auth delegation、settings/composer、storage のうち対象 message の節。
-- Web Component: public API、lifecycle、storage/auth/navigation のうち対象契約の節。Full/Lite の違いは public API 節で確認する。
-- asset/base/build/sample: asset/style と build/delivery の節。
+入口/owner/test が不明な場合だけ [runtime 索引](references/embed-runtime-map.md#契約からownerを探す) を使う。詳細な API/message は索引から公開 docs・型・test へ進み、契約の写しを索引へ増やさない。初期化・権限・ready の固有条件は [注意点](references/embed-runtime-map.md#初期化とownershipの注意点)、asset/build は [配信の入口](references/embed-runtime-map.md#assetと配信の入口) を参照する。一般的なコマンド・検証量は [開発ガイド](../../guides/development.md) が所有する。
 
 signer delegation の transport/owner は本 Skill、署名内容や NIP/event/tag/relay semantics は [Nostr](../ehagaki-nostr/SKILL.md)、受領後の document 適用は [editor](../ehagaki-editor/SKILL.md) が扱う。該当する境界を変更するときだけ併用する。
