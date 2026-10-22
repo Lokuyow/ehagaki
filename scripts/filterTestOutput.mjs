@@ -1,27 +1,36 @@
-const passedWithDuration = /^\s*(\d+) passed(?:, (\d+) skipped)?(?:, (\d+) failed)?(?: \(([\d.]+(?:ms|s|m|h))\))?\s*$/;
+import { existsSync } from 'node:fs';
+
+const passedWithDuration = /^\s*(\d+) (passed|failed|skipped)(?: \(([\d.]+(?:ms|s|m|h))\))?\s*$/;
 const skippedWithDuration = /^\s*(\d+) skipped(?: \(([\d.]+(?:ms|s|m|h))\))?\s*$/;
-const vitestSummary = /^\s*(Test Files|Tests)\s+(\d+)\s+(passed|failed|skipped)(?:\s+\|\s+(\d+)\s+(passed|failed|skipped))?\s+\((\d+)\)\s*$/;
+const vitestSummary = /^\s*(Test Files|Tests)\s+\d+\s+(?:passed|failed|skipped)(?:\s+\|\s+\d+\s+(?:passed|failed|skipped)){0,2}\s+\(\d+\)\s*$/;
+const reported = new Set();
 
 function printSummary(line) {
+    line = line.replace(/\x1b\[[0-9;]*m/g, '');
+    // Emit only existing repository test paths and numeric locations, never titles,
+    // assertion values, source excerpts, console output, or arbitrary error text.
+    for (const match of line.replaceAll('\\', '/').matchAll(/(?:src\/test\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+\.(?:test|spec)\.[jt]s|scripts\/[A-Za-z0-9_-]+\.[mjt]?[js]+)(?::\d+(?::\d+)?)?/g)) {
+        const location = match[0];
+        if (existsSync(location.split(':')[0]) && !reported.has(location)) {
+            reported.add(location);
+            process.stdout.write(`Test location: ${location}\n`);
+        }
+    }
+    for (const kind of ['TimeoutError', 'AssertionError', 'EACCES', 'EADDRINUSE', 'ENOENT', 'EINVAL', 'ERR_MODULE_NOT_FOUND', 'ERR_NO_BUFFER_SPACE', 'Cannot find module', 'Could not resolve', 'Executable doesn\'t exist', 'Failed to launch']) {
+        if (line.includes(kind) && !reported.has(kind)) {
+            reported.add(kind);
+            process.stdout.write(`Error category: ${kind}\n`);
+        }
+    }
     const vitest = vitestSummary.exec(line);
     if (vitest) {
-        const [, suite, firstCount, firstStatus, secondCount, secondStatus, total] = vitest;
-        const details = secondCount && secondStatus
-            ? ` | ${secondCount} ${secondStatus}`
-            : "";
-        process.stdout.write(`${suite} ${firstCount} ${firstStatus}${details} (${total})\n`);
+        process.stdout.write(`${vitest[0].trim()}\n`);
         return;
     }
 
     const passed = passedWithDuration.exec(line);
     if (passed) {
-        const [, passedCount, skippedCount, failedCount, duration] = passed;
-        const details = [
-            skippedCount ? `${skippedCount} skipped` : undefined,
-            failedCount ? `${failedCount} failed` : undefined,
-        ].filter(Boolean).join(", ");
-        const counts = details ? `${passedCount} passed, ${details}` : `${passedCount} passed`;
-        process.stdout.write(`${counts}${duration ? ` (${duration})` : ""}\n`);
+        process.stdout.write(`${passed[1]} ${passed[2]}${passed[3] ? ` (${passed[3]})` : ''}\n`);
         return;
     }
 
