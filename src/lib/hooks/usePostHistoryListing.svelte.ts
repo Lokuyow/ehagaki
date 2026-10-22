@@ -5,7 +5,7 @@ import { settingsStore } from "../../stores/settingsStore.svelte";
 import { isSignedNostrEvent } from "../postHistoryEventUtils";
 import { createPostHistoryAuthoredFetchScope, persistPostHistoryAuthoredFetch } from "../postHistoryAuthoredFetchPersistence";
 import { getPostHistoryAuthoredRelayScopeKey, resolvePostHistoryAuthoredRelayUrls } from "../postHistoryRelayResolver";
-import { getPostHistoryQuorumCoverage, getPostHistoryConnectedCoverageUntil, type PostHistoryCoverageRange } from "../postHistoryRelayCoverage";
+import { getPostHistoryQuorumCoverage, getPostHistoryConnectedCoverageUntil, mergePostHistoryCoverageRanges, type PostHistoryCoverageRange } from "../postHistoryRelayCoverage";
 import { postHistoryRelayCoverageRepository } from "../storage/postHistoryRelayCoverageRepository";
 import { postHistoryImportedRangesRepository } from "../storage/postHistoryImportedRangesRepository";
 import { postHistoryLocalBrowsingRangesRepository, type PostHistoryLocalBrowsingRanges } from "../storage/postHistoryLocalBrowsingRangesRepository";
@@ -1703,13 +1703,38 @@ export function usePostHistoryListing({
         return getPostHistoryConnectedCoverageUntil(await readExternalContinuity(pubkeyHex), coverageAnchorCreatedAt);
     }
 
+    async function readCertifiedVisibleUntil(pubkeyHex: string): Promise<number | null> {
+        return (await postHistoryVisibleRangeRepository.get(pubkeyHex, POST_HISTORY_VISIBLE_KINDS_KEY))?.visibleUntil ?? null;
+    }
+
     async function readVisibleUntil(pubkeyHex: string): Promise<number | null> {
         if (coverageAnchorCreatedAt === null) {
             // Legacy state may limit the entry window, but never certifies its continuation.
-            return (await postHistoryVisibleRangeRepository.get(pubkeyHex, POST_HISTORY_VISIBLE_KINDS_KEY))?.visibleUntil ?? null;
+            return readCertifiedVisibleUntil(pubkeyHex);
         }
         const anchor = coverageAnchorCreatedAt;
         return getPostHistoryConnectedCoverageUntil(await readBrowsingContinuity(pubkeyHex), anchor);
+    }
+
+    async function resolveVisibleUntilForSavedOlderPosts(
+        pubkeyHex: string,
+    ): Promise<number | null> {
+        const headCreatedAt = state.loadedPosts[0]?.createdAt;
+        if (typeof headCreatedAt === "number") {
+            const coveredSince = mergePostHistoryCoverageRanges(await readExternalContinuity(pubkeyHex))
+                .find((range) => range.since <= headCreatedAt && range.until >= headCreatedAt)
+                ?.since;
+            if (typeof coveredSince === "number") return coveredSince;
+        }
+
+        if (
+            contiguousProgress?.pubkeyHex === pubkeyHex
+            && typeof contiguousProgress.visibleUntil === "number"
+        ) {
+            return contiguousProgress.visibleUntil;
+        }
+
+        return refreshVisibleUntil(pubkeyHex);
     }
 
     async function createAuthoredScope(pubkeyHex: string, rxNostr: RxNostr, requestId: number, kinds = [...POST_HISTORY_FETCH_KINDS] as number[]) {
@@ -3996,7 +4021,7 @@ export function usePostHistoryListing({
         if (!pubkeyHex) {
             return false;
         }
-        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
+        const visibleUntil = await resolveVisibleUntilForSavedOlderPosts(pubkeyHex);
         if (typeof visibleUntil !== "number") return false;
 
         const requestId = ++loadRequestId;

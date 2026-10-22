@@ -2367,6 +2367,27 @@
         await applyLocalHistoryChange(() => history.refreshAfterLocalImport(result));
     }
 
+    const postHistoryCoverageImportEvent = "ehagaki-post-history-coverage-import";
+    $effect(() => {
+        if (!(globalThis as typeof globalThis & { __POST_HISTORY_COVERAGE__?: unknown }).__POST_HISTORY_COVERAGE__) {
+            return;
+        }
+        const onCoverageImport = (event: Event) => {
+            if (!(event instanceof CustomEvent)) return;
+            const detail = event.detail as {
+                result?: PostHistoryJsonlImportResult;
+                resolve?: () => void;
+            } | undefined;
+            if (!detail?.result || typeof detail.resolve !== "function") return;
+            const resolve = detail.resolve;
+            void handleImportedPostHistory(detail.result).finally(resolve);
+        };
+        window.addEventListener(postHistoryCoverageImportEvent, onCoverageImport);
+        return () => {
+            window.removeEventListener(postHistoryCoverageImportEvent, onCoverageImport);
+        };
+    });
+
     async function applyLocalHistoryChange(apply: () => Promise<void>): Promise<void> {
         const owned = captureOperation();
         if (!owned()) return;

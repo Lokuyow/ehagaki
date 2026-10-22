@@ -66,13 +66,17 @@ import { footerSettingShortcutsStore } from '../../stores/footerSettingShortcuts
 import { themeModeStore } from '../../stores/themeStore.svelte';
 import { themeColorStore } from '../../stores/themeColorStore.svelte';
 
+function exactAccessibleName(name: string): RegExp {
+    return new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+}
+
 async function openSettingsCategory(name: string) {
-    await fireEvent.click(screen.getByRole('button', { name, exact: true }));
+    await fireEvent.click(screen.getByRole('button', { name: exactAccessibleName(name) }));
     await tick();
 }
 
 async function backToSettingsTop(name: '戻る' | 'Back' = '戻る') {
-    await fireEvent.click(screen.getByRole('button', { name, exact: true }));
+    await fireEvent.click(screen.getByRole('button', { name: exactAccessibleName(name) }));
     await tick();
 }
 
@@ -104,7 +108,7 @@ describe('SettingsDialog accessibility', () => {
         await tick();
 
         expect(screen.queryByRole('heading', { name: '表示' })).toBeNull();
-        expect(screen.getByRole('button', { name: '表示', exact: true })).toBeTruthy();
+        expect(screen.getByRole('button', { name: exactAccessibleName('表示') })).toBeTruthy();
         expect(history.state?.modalId).toBe(dialogModalId);
         expect(onClose).not.toHaveBeenCalled();
 
