@@ -87,7 +87,17 @@ test('history header controls and anchored status coexist with Repost sending an
     await expect(page.locator('.repost-message')).toBeVisible();
     await expect(repostToast).toBeVisible();
     await expect(page.locator('.post-history-repost')).toContainText('original searchable post');
-    await expect(status).toContainText('リレーと同期中...');
+    try {
+        await expect(status).toContainText('リレーと同期中...');
+    } catch (error) {
+        const metrics = {
+            statusVisible: Number(await status.isVisible().catch(() => false)),
+            statusHasSyncText: Number((await status.textContent().catch(() => ''))?.includes('リレーと同期中...') ?? false),
+            statusPlaceholderCount: await status.locator('.post-history-heading-status-placeholder').count().catch(() => 0),
+        };
+        console.log('CI_METRICS ' + JSON.stringify({ testLine: 56, ...metrics }));
+        throw error;
+    }
     const headingBox = await heading.boundingBox();
     const statusBox = await repostToast.boundingBox();
     expect(statusBox!.y).toBeCloseTo(headingBox!.y + headingBox!.height + 8, 0);

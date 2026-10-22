@@ -82,6 +82,37 @@ type HarnessWindow = Window & typeof globalThis & {
     };
 };
 
+test.afterEach(async ({ page }, info) => {
+    if (info.status === info.expectedStatus) return;
+    const metrics = await page.evaluate(() => {
+        const root = document.querySelector<HTMLElement>('.post-history-container');
+        const coverage = (window as HarnessWindow).__POST_HISTORY_COVERAGE__;
+        const harness = (window as HarnessWindow).__POST_HISTORY_HARNESS__;
+        const ids = harness?.infiniteScrollEventIds ?? [];
+        const rows = [...document.querySelectorAll<HTMLElement>('.post-history-item')];
+        return {
+            scrollTop: root?.scrollTop,
+            clientHeight: root?.clientHeight,
+            scrollHeight: root?.scrollHeight,
+            rootTop: root?.getBoundingClientRect().top,
+            rootBottom: root?.getBoundingClientRect().bottom,
+            newerTop: document.querySelector('.post-history-auto-load-newer-sentinel')?.getBoundingClientRect().top,
+            olderTop: document.querySelector('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)')?.getBoundingClientRect().top,
+            count: rows.length,
+            firstIndex: ids.indexOf(rows[0]?.dataset.postHistoryEventId ?? ''),
+            lastIndex: ids.indexOf(rows.at(-1)?.dataset.postHistoryEventId ?? ''),
+            coveragePresent: Number(Boolean(coverage)),
+            savedCountFunction: Number(typeof coverage?.readSavedCount === 'function'),
+            historyReady: Number(harness?.ready === true),
+            ...Object.fromEntries(['year', 'month', 'day'].map(part => [
+                part,
+                Number(document.querySelector(`[data-segment="${part}"]`)?.getAttribute('aria-valuenow')),
+            ])),
+        };
+    }).catch(() => ({}));
+    console.log('CI_METRICS ' + JSON.stringify({ testLine: info.line, ...metrics }));
+});
+
 async function gotoHarness(page: Page) {
     await page.goto('post-history-dialog-playwright.html');
     await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
@@ -385,6 +416,9 @@ async function scrollPostIntoViewByEventId(page: Page, eventId: string) {
 
 async function jumpToDate(page: Page, date: string) {
     const [year, month, day] = date.split('-');
+    const selectAllKey = await page.evaluate(() =>
+        /Mac|iP(hone|[oa]d)/.test(navigator.platform) ? 'Meta+a' : 'Control+a',
+    );
     await page.locator('.post-history-heading-calendar-button').click();
     await expect(page.locator('.post-history-date-picker-input')).toBeVisible();
     await expect.poll(() => page.locator('.post-history-utility-close-button .xmark-icon').evaluate((node) => getComputedStyle(node).maskImage)).toContain(
@@ -395,13 +429,13 @@ async function jumpToDate(page: Page, date: string) {
     const daySegment = page.locator('.post-history-date-picker-segment[data-segment="day"]');
 
     await yearSegment.click();
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press(selectAllKey);
     await page.keyboard.type(String(Number(year)));
     await monthSegment.click();
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press(selectAllKey);
     await page.keyboard.type(String(Number(month)));
     await daySegment.click();
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press(selectAllKey);
     await page.keyboard.type(String(Number(day)));
     await page.getByRole('button', { name: 'この日付付近を表示' }).click();
 }

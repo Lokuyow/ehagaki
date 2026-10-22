@@ -7,14 +7,32 @@ const reported = new Set();
 
 function printSummary(line) {
     line = line.replace(/\x1b\[[0-9;]*m/g, '');
+    if (line.startsWith('CI_METRICS ')) {
+        try {
+            const metrics = JSON.parse(line.slice(11));
+            const allowed = new Set([
+                'testLine', 'scrollTop', 'clientHeight', 'scrollHeight', 'count',
+                'firstIndex', 'lastIndex', 'year', 'month', 'day', 'newerTop',
+                'olderTop', 'rootTop', 'rootBottom', 'coveragePresent',
+                'savedCountFunction', 'historyReady', 'preferredBefore',
+                'preferredAfter', 'editorHeightBefore', 'editorHeightAfter',
+                'outerClientHeight', 'outerScrollHeight', 'pickerOpen',
+                'backgroundChanged', 'colorChanged', 'iconBackgroundChanged',
+                'statusVisible', 'statusHasSyncText', 'statusPlaceholderCount',
+            ]);
+            const safe = Object.fromEntries(Object.entries(metrics).filter(([key, value]) =>
+                allowed.has(key) && typeof value === 'number' && Number.isFinite(value)));
+            process.stdout.write(`CI metrics: ${JSON.stringify(safe)}\n`);
+        } catch { /* Drop malformed diagnostic data. */ }
+    }
     const failure = line.replaceAll('\\', '/').match(/\[(desktop-chromium|mobile-chromium|android-chromium|mobile-webkit|desktop-firefox|desktop-firefox-editor-paste)\].*?(src\/test\/e2e\/[A-Za-z0-9_-]+\.spec\.ts:\d+:\d+)/);
     if (failure && existsSync(failure[2].split(':')[0])) {
         process.stdout.write(`Failure: ${failure[1]} ${failure[2]}\n`);
     }
     const assertion = line.match(/^\s*(?:Error: )?expect\((?:received|locator)\)\.(?:not\.)?(to[A-Za-z]+)\(/);
     if (assertion) process.stdout.write(`Assertion: ${assertion[1]}\n`);
-    // Emit only existing repository test paths and numeric locations, never titles,
-    // assertion values, source excerpts, console output, or arbitrary error text.
+    // Emit only allowlisted numeric metrics, existing repository test paths, and
+    // numeric locations, never titles, assertion values, excerpts, or arbitrary text.
     for (const match of line.replaceAll('\\', '/').matchAll(/(?:src\/test\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+\.(?:test|spec)\.[jt]s|scripts\/[A-Za-z0-9_-]+\.(?:mjs|js|ts)|node_modules\/(?:[@A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+\.(?:mjs|cjs|js))(?::\d+(?::\d+)?)?/g)) {
         const location = match[0];
         if (existsSync(location.split(':')[0]) && !reported.has(location)) {

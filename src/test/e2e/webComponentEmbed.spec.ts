@@ -2114,10 +2114,21 @@ test("applies the common desktop hover colors inside the Shadow DOM", async ({ p
             iconBackground: getComputedStyle(icon).backgroundColor,
         };
     });
-    await expect.poll(async () => {
+    try {
+        await expect.poll(async () => {
+            const after = await readHoverColors();
+            return [after.background !== before.background, after.color !== before.color, after.iconBackground !== before.iconBackground];
+        }).toEqual([true, true, true]);
+    } catch (error) {
         const after = await readHoverColors();
-        return [after.background !== before.background, after.color !== before.color, after.iconBackground !== before.iconBackground];
-    }).toEqual([true, true, true]);
+        console.log('CI_METRICS ' + JSON.stringify({
+            testLine: 2082,
+            backgroundChanged: Number(after.background !== before.background),
+            colorChanged: Number(after.color !== before.color),
+            iconBackgroundChanged: Number(after.iconBackground !== before.iconBackground),
+        }));
+        throw error;
+    }
 });
 
 test("applies Button styles inside a Portal dialog in the Shadow DOM", async ({ page }) => {

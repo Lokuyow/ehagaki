@@ -17,6 +17,8 @@ describe('CI test output filtering', () => {
                 'Error: private post body',
                 '1) [mobile-webkit] › src/test/e2e/historyTabs.spec.ts:87:1 › private title',
                 'Error: expect(received).toEqual(expected) // private values',
+                'CI_METRICS {"testLine":87,"year":2026,"month":10,"day":22,"scrollTop":12.5,"secret":"private post body","count":"private"}',
+                'CI_METRICS {"testLine":"private title","token":123456,"rows":["private"]}',
             ].join('\n'),
         });
         expect(result.status).toBe(0);
@@ -31,6 +33,8 @@ describe('CI test output filtering', () => {
             'Failure: mobile-webkit src/test/e2e/historyTabs.spec.ts:87:1',
             'Test location: src/test/e2e/historyTabs.spec.ts:87:1',
             'Assertion: toEqual',
+            'CI metrics: {"testLine":87,"year":2026,"month":10,"day":22,"scrollTop":12.5}',
+            'CI metrics: {}',
             '',
         ].join('\n'));
     });

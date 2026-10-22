@@ -1637,9 +1637,32 @@ test("Lite keeps an explicit auto-grow range while the emoji picker makes the Co
 
     await composer.locator(".custom-emoji-button").click();
     await expect(composer.locator(".custom-emoji-picker-region")).toHaveCount(0);
-    await expect.poll(() => composer.evaluate((element) => (
-        element as HTMLElement & { preferredHeight: number | null }
-    ).preferredHeight)).toBe(beforePicker.preferredHeight);
+    try {
+        await expect.poll(() => composer.evaluate((element) => (
+            element as HTMLElement & { preferredHeight: number | null }
+        ).preferredHeight)).toBe(beforePicker.preferredHeight);
+    } catch (error) {
+        const after = await composer.evaluate((element) => {
+            const shadow = element.shadowRoot!;
+            const editor = shadow.querySelector<HTMLElement>(".tiptap-editor")!;
+            const outer = shadow.querySelector<HTMLElement>(".composer-scroll-region")!;
+            const height = (element as HTMLElement & { preferredHeight: number | null }).preferredHeight;
+            return {
+                preferredAfter: height === null ? 0 : height,
+                editorHeightAfter: editor.getBoundingClientRect().height,
+                outerClientHeight: outer.clientHeight,
+                outerScrollHeight: outer.scrollHeight,
+                pickerOpen: Number(Boolean(shadow.querySelector(".custom-emoji-picker-region"))),
+            };
+        });
+        console.log('CI_METRICS ' + JSON.stringify({
+            testLine: 1560,
+            preferredBefore: beforePicker.preferredHeight,
+            editorHeightBefore: beforePicker.height,
+            ...after,
+        }));
+        throw error;
+    }
     const withoutPicker = await composer.evaluate((element) => (
         element as HTMLElement & { preferredHeight: number | null }
     ).preferredHeight);
