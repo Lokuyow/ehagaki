@@ -1,5 +1,7 @@
 import { expect, test, type Download, type Locator, type Page, type Route } from '@playwright/test';
 
+test.describe.configure({ mode: 'parallel' });
+
 type HarnessState = {
     ready: boolean;
     totalPosts: number;

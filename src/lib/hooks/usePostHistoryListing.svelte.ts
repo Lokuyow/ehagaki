@@ -2223,6 +2223,7 @@ export function usePostHistoryListing({
         options: {
             skipOlderCheck?: boolean;
             deferDuringOlderRelayFetch?: boolean;
+            retried?: boolean;
         } = {},
     ): Promise<void> {
         const generation = coverageGeneration;
@@ -2300,8 +2301,28 @@ export function usePostHistoryListing({
             olderPostsPromise,
         ]);
 
+        const measuredNewestEventId = currentPosts[0]?.eventId ?? null;
+        const measuredOldestEventId = currentPosts[currentPosts.length - 1]?.eventId ?? null;
+        const shownPosts = state.loadedPosts;
+        const showsMeasuredWindow = shownPosts.length === currentPosts.length
+            && (shownPosts[0]?.eventId ?? null) === measuredNewestEventId
+            && (shownPosts[shownPosts.length - 1]?.eventId ?? null) === measuredOldestEventId;
+        if (!showsMeasuredWindow) {
+            return;
+        }
+
+        if (visibleUntil !== state.visibleUntil) {
+            if (options.retried || (expectedRequestId !== null && expectedRequestId !== loadRequestId)) {
+                return;
+            }
+            return refreshTimelineAvailability(pubkeyHex, shownPosts, expectedRequestId, {
+                ...options,
+                retried: true,
+            });
+        }
+
         if (
-            isDestroyed || generation !== coverageGeneration || visibleUntil !== state.visibleUntil ||
+            isDestroyed || generation !== coverageGeneration ||
             (options.deferDuringOlderRelayFetch
                 && (isFetchingOlderFromRelays || syncRequestId !== fetchRequestId)) ||
             !getShow() ||

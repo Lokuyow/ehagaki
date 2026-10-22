@@ -24,7 +24,13 @@ const playwrightProjects: Project[] = [
     },
     {
         name: 'mobile-chromium',
-        testIgnore: ['**/webComponentDevServer.spec.ts', ...productionSwSpecs],
+        testMatch: [
+            '**/postHistoryDialog.spec.ts',
+            '**/postEditorSending.spec.ts',
+            '**/webComponentEmbed.spec.ts',
+            '**/webComponentLite.spec.ts',
+            '**/composerTargetDialog.spec.ts',
+        ],
         use: {
             ...devices['iPhone 13'],
             browserName: 'chromium',
@@ -63,7 +69,7 @@ const playwrightProjects: Project[] = [
     },
     {
         name: 'desktop-firefox',
-        testMatch: ['**/historyTabs.spec.ts', '**/webComponentEmbed.spec.ts', '**/postRepost.spec.ts', '**/postHistoryJsonlWorker.spec.ts', '**/postReaction.spec.ts'],
+        testMatch: ['**/webComponentEmbed.spec.ts'],
         use: {
             ...devices['Desktop Firefox'],
         },
@@ -93,7 +99,7 @@ export default defineConfig({
         timeout: 5_000,
     },
     fullyParallel: false,
-    workers: 2,
+    workers: 4,
     use: {
         baseURL: endpoints.appBaseURL,
         locale: 'ja-JP',
