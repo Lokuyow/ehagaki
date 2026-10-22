@@ -1,22 +1,15 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
 import { DexiePostHistoryDeletionRequestsRepository } from "../../lib/storage/postHistoryDeletionRequestsRepository";
 import { DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
 import { DexieSensitivePayloadRepository } from "../../lib/storage/sensitivePayloadRepository";
-import * as reconciliation from "../../lib/storage/sensitivePayloadDeletionReconciler";
+import { reconcileSensitivePayloadDeletionForCandidate } from "../../lib/storage/sensitivePayloadDeletionReconciler";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import type { NostrEvent } from "../../lib/types";
 
 const dbNames = new Set<string>();
-const structureReconciliations: Promise<unknown>[] = [];
-
-async function settleStructureReconciliation(): Promise<void> {
-    while (structureReconciliations.length > 0) {
-        await Promise.allSettled(structureReconciliations.splice(0));
-    }
-}
 
 function createDb(): EHagakiDB {
     const db = new EHagakiDB(`${EHAGAKI_DB_NAME}-sensitive-payload-${Date.now()}-${Math.random()}`);
@@ -24,18 +17,7 @@ function createDb(): EHagakiDB {
     return db;
 }
 
-beforeEach(() => {
-    const reconcile = reconciliation.reconcileSensitivePayloadDeletionForStructure;
-    vi.spyOn(reconciliation, "reconcileSensitivePayloadDeletionForStructure").mockImplementation((...args) => {
-        const promise = reconcile(...args);
-        structureReconciliations.push(promise);
-        return promise;
-    });
-});
-
 afterEach(async () => {
-    await settleStructureReconciliation();
-    vi.restoreAllMocks();
     for (const name of dbNames) await Dexie.delete(name);
     dbNames.clear();
 });
@@ -108,7 +90,6 @@ describe("DexieSensitivePayloadRepository", () => {
             try {
                 await posts.upsertFetchedEvents({ events: [{ event: structure, relayUrls: [] }] });
                 expect(get).toHaveBeenCalledWith(structure.id);
-                await settleStructureReconciliation();
             } finally { get.mockRestore(); }
         };
         const putDeletion = () => deletions.upsertImportedDeletionEvents({ ownerPubkeyHex: structure.pubkey, deletionEvents: [{ event: deletion }] });
@@ -125,7 +106,7 @@ describe("DexieSensitivePayloadRepository", () => {
             expect((await payloads.getByIds([payload.id]))[0]?.deletedAt).toBe(20_000);
             expect((await posts.getByEventId(structure.id))?.deletedAt).toBeUndefined();
             where.mockClear();
-            await reconciliation.reconcileSensitivePayloadDeletionForCandidate(payload.id, db);
+            await reconcileSensitivePayloadDeletionForCandidate(payload.id, db);
             expect(where.mock.calls.filter(([index]) => String(index) === "pubkeyHex")).toHaveLength(0);
         } finally { where.mockRestore(); }
         await putPayload();
@@ -186,7 +167,6 @@ describe("DexieSensitivePayloadRepository", () => {
         expect(candidate[0]?.deletedAt).toBeUndefined();
 
         await posts.upsertFetchedEvents({ events: [{ event: structure, relayUrls: [] }] });
-        await settleStructureReconciliation();
 
         await expect(payloads.getByIds([payload.id])).resolves.toMatchObject([
             { id: payload.id, deletedAt: 20_000, deletionEventId: deletion.id },
@@ -227,7 +207,6 @@ describe("DexieSensitivePayloadRepository", () => {
         });
         await payloads.putCandidate({ event: payload });
         await posts.upsertFetchedEvents({ events: [{ event: structure, relayUrls: [] }] });
-        await settleStructureReconciliation();
 
         const cached = await payloads.getByIds([payload.id]);
         expect(cached[0]?.deletedAt).toBeUndefined();

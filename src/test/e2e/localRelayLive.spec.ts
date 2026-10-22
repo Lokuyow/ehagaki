@@ -526,13 +526,9 @@ test("local-only first older scroll advances while committed reconciliation is p
             };
             repository.countVisibleForPubkey = (...args: unknown[]) => {
                 const result = count(...args);
-                const stack = new Error().stack ?? "";
-                if (stack.includes("establishContiguousProgress") || stack.includes("validateContiguousProgress")) {
-                    return result.then((total: number) => {
-                        probe.progressCounted = true;
-                        return total;
-                    });
-                }
+                if (new Error().stack?.includes("establishContiguousProgress")) return result.then((total: number) => {
+                    probe.progressCounted = true; return total;
+                });
                 return result;
             };
             repository.getOlderVisibleChunk = (query: { limit: number }) => {
@@ -548,12 +544,11 @@ test("local-only first older scroll advances while committed reconciliation is p
         }, f.pubkey);
 
         await page.locator(".post-history-btn").click();
-        await expect.poll(async () => page.locator(".post-history-item").count(), { timeout: 30_000 }).toBeGreaterThanOrEqual(50);
-        await expect(page.getByText("Local pagination 49", { exact: true })).toBeVisible();
+        await expect.poll(async () => await page.getByText("Local pagination 49", { exact: true }).isVisible()).toBe(true);
         await expect.poll(() => page.evaluate(() => {
             const probe = window.__historyRevisionRace!;
             return probe.reconciliationStarted && probe.progressCounted;
-        }), { timeout: 15_000 }).toBe(true);
+        })).toBe(true);
         await expect.poll(async () => (await posts(page)).length).toBe(150);
         // Exactly one approach. No exit/reentry, manual fetch, or retry gesture.
         await page.locator(".post-history-container").evaluate(element => { element.scrollTop = element.scrollHeight; });

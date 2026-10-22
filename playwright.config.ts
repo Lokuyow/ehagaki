@@ -79,10 +79,7 @@ const playwrightProjects: Project[] = [
 ];
 
 const projects = isChromiumOnlyPlaywrightRun()
-    ? playwrightProjects.filter((project) => {
-          const name = project.name ?? '';
-          return !name.includes('firefox') && !name.includes('webkit');
-      })
+    ? playwrightProjects.filter((project) => !project.name.includes('firefox') && !project.name.includes('webkit'))
     : playwrightProjects;
 
 export default defineConfig({

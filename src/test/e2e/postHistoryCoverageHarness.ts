@@ -45,46 +45,22 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
     const pending: (() => void)[] = [];
     const preparation = { hold: false, entered: false, checks: 0, coveredGapReads: 0, release: null as (() => void) | null };
     let localPosted = false;
-    const postHistoryCoverageImportEvent = "ehagaki-post-history-coverage-import";
-    const notifyCoverageImport = (result: Awaited<ReturnType<PostHistoryJsonlImportService["importFile"]>>) =>
-        new Promise<void>((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error("post-history coverage import refresh timed out")), 15_000);
-            window.dispatchEvent(new CustomEvent(postHistoryCoverageImportEvent, {
-                detail: {
-                    result,
-                    resolve: () => {
-                        clearTimeout(timeout);
-                        resolve();
-                    },
-                },
-            }));
-        });
     const control = { owner: fixture.owner, eventIds: fixture.events.map((event) => event.id), headRequests: 0,
         backupJsonl: fixture.events.slice(scenario === "citrine-gap" ? 110 : 60).map((event) => JSON.stringify(event)).join("\n") + "\n",
         backupRange: { since: fixture.events[309].created_at, until: fixture.events[scenario === "citrine-gap" ? 110 : 60].created_at },
         futurePostJsonl: JSON.stringify(fixture.futurePost) + "\n",
         readFuturePost: () => ehagakiDb.postHistory.get(fixture.futurePost.id),
         importFromSecondConnection: async () => {
-            const lockedRevision = await getPostHistoryLocalRevision(ehagakiDb, fixture.owner);
             const second = new EHagakiDB(ehagakiDb.name);
             try {
-                const result = await new PostHistoryJsonlImportService({
+                return await new PostHistoryJsonlImportService({
                     postHistoryRepository: new DexiePostHistoryRepository(second),
                     importedRangesRepository: new DexiePostHistoryImportedRangesRepository(second),
-                    getLocalRevision: async () => lockedRevision,
+                    getLocalRevision: (owner) => getPostHistoryLocalRevision(second, owner),
                 }).importFile({ ownerPubkeyHex: fixture.owner, getCurrentPubkeyHex: () => fixture.owner,
                     // Keep this test about publication during an active query;
                     // a large signature batch can outlast its normal 6s timeout.
                     file: new File([fixture.events[60], fixture.events[309]].map((event) => JSON.stringify(event) + "\n"), `citrine-${Date.now()}.jsonl`) });
-                if (result.status !== "completed") {
-                    return result;
-                }
-                const notified = {
-                    ...result,
-                    localRevision: await getPostHistoryLocalRevision(ehagakiDb, fixture.owner),
-                };
-                await notifyCoverageImport(notified);
-                return notified;
             } finally { second.close(); }
         },
         readRestoredRanges: async () => (await postHistoryImportedRangesRepository.get(fixture.owner, kindsKey)).ranges,

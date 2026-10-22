@@ -365,7 +365,7 @@ export abstract class EHagakiComposerElement extends HTMLElement {
             });
             await installEhagakiDatabaseGateForRuntime(assetBase);
 
-            const { default: App } = await this.loadApp().catch(() => this.loadApp());
+            const { default: App } = await this.loadApp();
             if (!this.isConnected || generation !== this.#connectionGeneration) return;
             this.#mountedApp = mount(App, {
                 target: mountTarget,
@@ -383,11 +383,9 @@ export abstract class EHagakiComposerElement extends HTMLElement {
             applyWebComponentIconAssetUrls(shadowRoot, shell, assetBase);
             this.#app = this.#mountedApp as AppInstance;
             if (!this.isConnected || generation !== this.#connectionGeneration) return;
-        } catch (error) {
+        } catch {
             if (!this.isConnected || generation !== this.#connectionGeneration) return;
-            const reason = createError("initialization_failed", "eHagaki Composer could not be initialized.");
-            reason.cause = error;
-            this.fail("initialization_failed", "eHagaki Composer could not be initialized.", reason);
+            this.fail("initialization_failed", "eHagaki Composer could not be initialized.");
         }
     }
 

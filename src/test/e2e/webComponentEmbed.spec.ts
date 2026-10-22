@@ -375,26 +375,12 @@ test(`Full Reaction at 320px preserves outer identity (${uploaded ? 'uploaded PN
         window.nostr = { getPublicKey: async () => owner,
             signEvent: (template: unknown) => (window as any).__signFullReactionFixture(template) } as any;
         await import(`${componentOrigin}/ehagaki-composer.js`);
-        const mount = async () => {
-            const element = document.createElement('ehagaki-composer') as HTMLElement & {
-                autoLogin: boolean; relays: { url: string; read: boolean; write: boolean }[]; whenReady(): Promise<void>;
-            };
-            element.autoLogin = authenticated; element.relays = [{ url: 'wss://reaction-fixture.example/', read: true, write: true }];
-            element.setAttribute('asset-base', `${componentOrigin}/`);
-            element.style.width = '320px'; document.body.append(element);
-            try {
-                await element.whenReady();
-            } catch (error) {
-                element.remove();
-                throw error;
-            }
-            return element;
+        const element = document.createElement('ehagaki-composer') as HTMLElement & {
+            autoLogin: boolean; relays: { url: string; read: boolean; write: boolean }[]; whenReady(): Promise<void>;
         };
-        try {
-            await mount();
-        } catch {
-            await mount();
-        }
+        element.autoLogin = authenticated; element.relays = [{ url: 'wss://reaction-fixture.example/', read: true, write: true }];
+        element.setAttribute('asset-base', `${componentOrigin}/`);
+        element.style.width = '320px'; document.body.append(element); await element.whenReady();
     }, { componentOrigin, relayOrigin, owner, authenticated, uploaded, hostOrigin });
     const composer = page.locator('ehagaki-composer');
     const editor = composer.locator('.tiptap-editor'); await expect(editor).toBeVisible();
