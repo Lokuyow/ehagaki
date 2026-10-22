@@ -1,5 +1,7 @@
 import type { RxNostr } from "rx-nostr";
 import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
+import { ehagakiDb } from "./storage/ehagakiDb";
+import { getPostHistoryLocalRevision } from "./storage/postHistoryLocalWriteScope";
 import { isRepostTargetKind, verifyRepostTarget } from "./postRepostUtils";
 import { attestFullyVerifiedPostHistoryRawEvent } from "./postHistoryRawEventVerification";
 import { verifyRelatedEvent } from "./relatedEventVerification";
@@ -358,6 +360,7 @@ export function createPostHistoryRelatedTargetResolver({
         const taskPromise: Promise<boolean> = pendingDeletionChecksByTarget.get(deletionKey) ?? Promise.resolve().then(async () => {
             try {
                 if (!isActive()) return false;
+                const revisionReady = getPostHistoryLocalRevision(ehagakiDb, targetEvent.pubkey);
                 const task = deletionFetchService.fetchDeletionRequests(rxNostr, {
                     targets: [{ event: targetEvent, relayUrls: relayHints }],
                     relayHints,
@@ -376,6 +379,7 @@ export function createPostHistoryRelatedTargetResolver({
                     if (!isActive()) return false;
                     void postHistoryLocalRelayService.archiveAdoptedAuthored([{ event: targetEvent }], {
                         ownerPubkeyHex: targetEvent.pubkey,
+                        expectedRevision: await revisionReady,
                         isActive,
                     });
                 }

@@ -63,10 +63,6 @@ export class PostHistoryAuthoredPostsRealtimeService {
         let active = true;
         let subscription: SubscriptionLike | undefined;
         let workQueue: Promise<void> = Promise.resolve();
-        let expectedRevision = 0;
-        const revisionReady = getPostHistoryLocalRevision(ehagakiDb, params.ownerPubkeyHex).then((revision) => {
-            expectedRevision = revision;
-        });
         const relayUrls = resolvePostHistoryRelayUrls(
             params.relayConfig,
             normalizeRelayLimit(params.relayLimit),
@@ -92,10 +88,12 @@ export class PostHistoryAuthoredPostsRealtimeService {
                     : { defaultReadRelays: true },
             }).subscribe({
                 next: (packet: { event?: NostrEvent; from?: string }) => {
+                    // Capture receipt before waiting on earlier packets. A clear
+                    // invalidates queued packets, while later packets use its new revision.
+                    const revisionReady = getPostHistoryLocalRevision(ehagakiDb, params.ownerPubkeyHex);
                     workQueue = workQueue
                         .then(async () => {
-                            await revisionReady;
-                            await this.processPacket(packet, params, () => active, expectedRevision);
+                            await this.processPacket(packet, params, () => active, await revisionReady);
                         })
                         .catch((error) => {
                             this.console.error("post_history_authored_posts_realtime_packet_error", error);

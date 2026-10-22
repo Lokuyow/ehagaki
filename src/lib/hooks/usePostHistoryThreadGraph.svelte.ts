@@ -29,7 +29,7 @@ import { postHistoryReplyParentTargetDiscoveryAdapter } from "../postHistoryRela
 import type { NostrEvent, ProfileData, RelayConfig } from "../types";
 import type { PostHistoryRawEventAttestation } from "../postHistoryRawEventVerification";
 import { ehagakiDb, type PostHistoryRecord, type PostHistoryChildInteractionRecord } from "../storage/ehagakiDb";
-import { getPostHistoryChildWriteGeneration } from "../storage/postHistoryLocalWriteScope";
+import { getPostHistoryChildWriteGeneration, getPostHistoryLocalRevision } from "../storage/postHistoryLocalWriteScope";
 import {
     postHistoryRepository,
     type PostHistoryRepository,
@@ -1038,6 +1038,7 @@ export function usePostHistoryThreadGraph({
         const requestId = taskTracker.getRequestId();
         const isActive = () => getShow() && taskTracker.getRequestId() === requestId
             && getPubkeyHex() === owner && getRxNostr() === rxNostr;
+        const revisionReady = owner ? getPostHistoryLocalRevision(ehagakiDb, owner) : Promise.resolve(0);
         const task = deletionFetchService.fetchDeletionRequests(rxNostr, {
             targets: visibleEvents.map((event) => ({
                 event,
@@ -1062,7 +1063,7 @@ export function usePostHistoryThreadGraph({
             if (!isActive()) return;
             if (owner && result.events.length) void postHistoryLocalRelayService.archiveAdoptedAuthored(
                 visibleEvents.map((event) => ({ event })),
-                { ownerPubkeyHex: owner, isActive },
+                { ownerPubkeyHex: owner, expectedRevision: await revisionReady, isActive },
             );
         } catch {
             return;
