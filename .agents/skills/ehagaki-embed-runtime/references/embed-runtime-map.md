@@ -1,99 +1,45 @@
 # eHagaki embed runtime map
 
-この map は調査時点の checkout を索引化したものです。記載と異なる場合は現在の code を優先します。
+公開契約は [iframe docs](../../../../docs/IFRAME_EMBEDDING.md) と [Web Component docs](../../../../docs/WEB_COMPONENT.md)、現在の実装は code/types/tests で確認する。この索引には method/message/attribute の全一覧や既定値を複製しない。パスは repository root 基準。
 
-必要な owner/contract/test の節だけを参照する。全体の読了は前提ではない。
+## 契約からownerを探す
 
-## Runtime environment と document entry
+| 契約・変更する境界 | 主な owner / 入口 | 代表 test / sample |
+| --- | --- | --- |
+| Document entry / runtime switches | `src/main.ts`, `src/lib/appRuntimeEnvironment.ts`, `src/lib/bootstrap/appInitializationBootstrap.ts`, `src/lib/appRuntimeBindings.ts` | `src/test/unit/appRuntimeBindings.test.ts`, `src/test/unit/appAssetUrl.test.ts` |
+| iframe envelope / parent trust / 一時 Relay Config | `src/lib/embedProtocol.ts`, `src/lib/embedMessageTrustGate.ts`, `src/lib/iframeMessageService.ts` と `src/main.ts` の bootstrap | `src/test/unit/embedMessageTrustGate.test.ts`, `src/test/e2e/iframeMessageGate.spec.ts`, `public/embed-parent-client-example.js` |
+| Parent Client auth / signer delegation | `src/lib/parentClientAuthService.ts`, `src/lib/parentClientAuthCoordinator.ts`, `src/lib/appParentClientSyncController.ts` | `src/test/unit/parentClientAuthService.test.ts`, `src/test/integration/app-parent-client.integration.test.ts` |
+| Settings / composer context / preload | `src/lib/embedSettingsService.ts`, `src/lib/embedComposerContextService.ts`, `src/lib/embedComposerContextValidation.ts`, `src/lib/embedComposerContextApply.ts`, `src/lib/appEmbedController.ts` | `src/test/unit/embedComposerContextValidation.test.ts`, `src/test/unit/embedComposerContextApply.test.ts`, `src/test/unit/appEmbedController.test.ts` |
+| Storage / IndexedDB delegation | `src/lib/embedStorageService.ts`, `src/lib/embedStorageKeys.ts`, `src/lib/embedIndexedDbService.ts`, `src/lib/bootstrap/uploadDestinationBootstrap.ts` | `src/test/unit/embedStorageService.test.ts`, `src/test/unit/embedIndexedDbService.test.ts` |
+| Startup query / external input | `src/lib/urlQueryHandler.ts`, `src/lib/bootstrap/externalInputBootstrap.ts`, `src/lib/bootstrap/embedSettingsBootstrap.ts` | `src/test/unit/urlQueryHandler.test.ts`, `src/test/unit/externalInputBootstrap.test.ts`, `src/test/e2e/embedParentClientExample.spec.ts` |
+| Full / Lite registration / public methods/events | `src/web-component/entry.ts`, `src/web-component/host-owned-entry.ts`, `src/web-component/element.ts`, `src/web-component/distributionRegistration.ts`, `src/web-component/types.ts`, `src/web-component/notificationPort.ts` | `src/test/unit/webComponentNotificationPort.test.ts`, `src/test/integration/webComponentSubst.integration.test.ts`, `src/test/e2e/webComponentEmbed.spec.ts` |
+| Ready / disconnect / instance ownership | `src/web-component/element.ts`, `src/host-owned-composer-lite/HostOwnedComposerLiteApp.svelte`, `src/components/PostComponent.svelte` | `src/test/e2e/webComponentLite.spec.ts`, `src/test/e2e/webComponentParentClientExample.spec.ts` |
+| Storage namespace / auth / navigation isolation | `src/lib/appStorage.ts`, `src/lib/appRuntimeEnvironment.ts`, `src/lib/bootstrap/nip07AutoLoginBootstrap.ts` と各 entry | `src/test/e2e/webComponentEmbed.spec.ts`, `src/test/unit/nip07AutoLoginBootstrap.test.ts` |
 
-- **責務:** `src/main.ts` は document entry で `configureAppRuntimeEnvironment()` を行ってから `App.svelte` を dynamic import/mount する。`runtimeKind` は `window.top === window` なら `standalone`、それ以外は `iframe`。viewport layout、document/body targets、`import.meta.env.BASE_URL` からの `appHomeHref` / `assetBase`、service worker、external input、history、local nsec auth を有効にする。
-- **flow:** `main.ts` は `configureAppRuntimeEnvironment()` の後に service worker 登録、`applyEmbedSettingsBootstrap()`、`applyUploadDestinationBootstrap()`、theme 初期化を行い、その後 iframe の `hostRelayConfig=1` の場合だけ `bootstrapIframeHostRelayConfig()` を実行する。成功または marker なしだけが `App.svelte` → `runAppInitializationBootstrap()` へ進む。marker bootstrap が失敗した document は terminal/inert error view を描画して App を import/mount しない。iframe は別 entrypoint ではなく、この document entry と URL を使う。
-- **ownership:** document と service worker は app-owned。iframe host は `parentOrigin` と Parent Client message の consumer であり、child document を直接操作する contract ではない。
-- **注意点:** `AppRuntimeEnvironment` は process/module-level configuration。Web Component は `App.svelte` を import する前にこれを明示的に置き換えるため、entrypoint の import順が contract になる。
-- **関連 test:** `src/test/unit/appAssetUrl.test.ts`、`src/test/unit/appRuntimeBindings.test.ts`、`src/test/unit/headerComponent.test.ts`、`src/test/unit/uiStore.test.ts`。
+## 初期化とownershipの注意点
 
-## iframe detection と Parent Client protocol
+- Runtime configuration は module-level。document / Full / Lite の各 entry が App import より先に設定し、host-owned と app-owned の graph を分ける。iframe は document entry を使い、Direct Web Component は同じ Window realm の DOM method/event を使う。
+- iframe の `hostRelayConfig=1` は App import 前の fail-close bootstrap。trust、payload、request ID、timeout の失敗は document lifetime の terminal state で、保存済み relay・auth/account/guest・通常 fallback graph を起動しない。marker なしの経路へ広げない。
+- Parent signer と認証 UI/state は parent-owned。capability、pubkey、request kind/result を既存 service で照合する。共通 trust gate は envelope/source/origin に留め、各 service の payload/pending/timeout を統合しない。
+- Composer context は全体検証後に patch/apply し、bootstrap/parent auth 中は controller の queue/flush に従う。一時 `preloadedEvents` は verified snapshot、`preloadedProfiles` は author identity と owner token に結び付く表示 snapshot。URL・永続化・context notification へ流さない。Web Component の profile snapshot は operation queue へ入れる前に detach し、caller mutation を持ち込まない。
+- Child の local persistence と parent の optional delegated mirror は別責務。storage allowlist を保ち、新しい key の request を既存 strict Host 用 batch に混ぜない。IndexedDB delegation は upload destination の公開契約に限定し、credential/draft/profile/relay cache や host 全 storage へ広げない。
+- Full は self-publish、Lite は host submit/media handoff を所有する。Lite の immutable configuration は接続前に確定し、未指定 optional feature を UI/出力で有効化しない。Full の headless `uploadFile()` は ready 後だけ実行し、operation queue や Composer state を経由させない。両 distribution は同一 tag を使い、cross-distribution import を許可しない。
+- Ready は App 初期化と最初の editor 状態通知に従い、Full の opt-in auto-login 完了、Lite auto-grow の有効な初回計測も待つ。hidden host の invalid/zero size に fallback ready を出さない。disconnect は generation、pending promise/queue、observer、mount、instance slot を既存 owner で解放する。hidden/redisplay と remove/recreate を区別する。
+- Lite preferred height は intrinsic content/reservation の通知であり、最終 definite height は Host が採用・clamp・無視を決める。editor 自身の scroll と Composer 全体の overflow を混同しない。具体的な input validation と default は Web Component docs と test を確認する。
+- Full の auth restore は既存順序を保ち、後続候補が成功すれば途中の基盤異常だけで止めない。全候補の正常失敗時だけ opt-in NIP-07 fallback を行い、基盤異常を含む全失敗では行わない。取得済み identity は再利用する。Lite は auth を起動しない。Web Component の namespaced storage、SW/external input/history/local nsec の無効化を他 runtime と混ぜない。
 
-- **主な実装:** `src/lib/embedProtocol.ts` は `ehagaki.embed` / version `1` の envelope、message type、`embedMessageRequiresRequestId()`、`getParentOriginFromSearch()` を定義する。`src/lib/embedMessageTrustGate.ts` は受信 envelope、`event.source === window.parent`、指定された parent origin の照合を行う。
-- **public input:** iframe URL の `parentOrigin`。`hostRelayConfig=1` は trusted parent の一時 Relay Config を要求する明示 opt-in で、URL に relay 値は置かない。message envelope は `{ namespace, version, type, requestId?, payload? }`。`auth.*`、`rpc.*`、`settings.*`、`relays.*`、`storage.*`、`idb.*`、`composer.*` の request/response 系で non-empty `requestId` が必要。
-- **relay bootstrap:** marker iframe は App import 前に `relays.request` を送り、同じ requestId の厳密な entry array を持つ `relays.set` だけを受理し、成功は `relays.applied`、失敗は `relays.error` を返す。source/origin/envelope/request ID/payload/timeout のどれかが失敗すれば fail-close かつ terminal で、App/auth/account/guest graph を開始せず、保存済み relay、kind:10002/kind:3、bootstrap relay、built-in fallback を開始しない。marker なしの iframe は従来 bootstrap を維持する。
-- **flow:** parent sample → iframe window の `postMessage(..., childOrigin)`、または child service → `window.parent.postMessage(..., parentOrigin)`。`IframeMessageService` は `ready`、post result、settings/composer acknowledgement を child から送信する adapter。
-- **trust/lifecycle:** `src/lib/iframeMessageService.ts` の `isInIframe()` は cross-origin top access 失敗時も iframe とみなす。`parentOrigin` がない、許可されない、または iframe 外なら送信しない。受信側の各 service は trust gate、payload shape、request ID、timeout/pending map を個別に保持する。
-- **関連資料/検証:** `docs/IFRAME_EMBEDDING.md`、`public/embed-parent-client-example.html` / `.js`、`src/test/unit/iframeMessageService.test.ts`、`src/test/unit/embedMessageTrustGate.test.ts`、`src/test/e2e/iframeMessageGate.spec.ts`、`src/test/e2e/embedParentClientExample.spec.ts`。
+## assetと配信の入口
 
-## Parent Client auth delegation
+| 境界 | 参照先 |
+| --- | --- |
+| Runtime asset base / icon rewrite / Shadow DOM style | `src/lib/appAssetUrl.ts`, `src/web-component/iconAssets.ts`, `src/web-component/element.ts`, `src/test/unit/webComponentIconAssets.test.ts` |
+| Full/Lite build / working directory / output validation | `scripts/runWebComponentBuild.mjs`, `scripts/webComponentBuildRunner.mjs`, `scripts/webComponentBuildWorkingDirectory.mjs`, `scripts/verifyWebComponentBuild.mjs` |
+| Lite forbidden graph | `scripts/hostOwnedLiteGraphGate.mjs` |
+| Dev proxy / site assembly | `scripts/devWebComponentSample.mjs`, `scripts/webComponentDevServerConfig.mjs`, `scripts/assembleWebComponentSite.mjs`, `src/test/e2e/webComponentDevServer.spec.ts` |
+| Host samples | `public/web-component-parent-client-example.html`, `public/host-owned-composer-lite-example.html` と対応 JS |
 
-- **主な実装:** `src/lib/parentClientAuthService.ts` の `ParentClientAuthService` と `ParentClientSignerAdapter`、`src/lib/parentClientAuthCoordinator.ts`、`src/lib/appParentClientSyncController.ts`。`App.svelte` は runtime binding で remote login/logout を controller へ渡す。
-- **contract:** child は `ready` を通知し、`auth.request` に対する `auth.result` / `auth.error`、署名等の `rpc.request` に対する `rpc.result` / `rpc.error` を request ID で対応付ける。現在の capability allowlist は `signEvent`、`nip44.encrypt`、`nip44.decrypt` で、既定 request は `signEvent`。
-- **ownership/trust:** signer と認証 UI/state は parent-owned、child は validated capability と session を使う。service は parent origin、source、envelope、request kind、pubkey/capability/payload shape を照合し、timeout と pending request を cleanup する。秘密鍵や signing payload を host/child 間 contract に追加しない。
-- **関連 test:** `src/test/unit/parentClientAuthService.test.ts`、`src/test/unit/parentClientAuthCoordinator.test.ts`、`src/test/unit/appParentClientSyncController.test.ts`、`src/test/integration/app-parent-client.integration.test.ts`。NIP や署名の内容を変える作業は `ehagaki-nostr` も読む。
+Document Vite base と component distribution の `asset-base` を同一視せず、active runtime の `resolveAppAssetUrl()` を使う。Full の未指定時 base 解決と、sample の connection 前の明示指定を区別する。FFmpeg worker/core/WASM、icons、dynamic chunks も同じ distribution の配信境界で確認する。
 
-## Settings と composer context delegation
+公開 CSS custom properties は Web Component docs を参照する。open ShadowRoot、container/overlay containment、host size を明示して計測し、未公開 `::part()`、複数同時接続 instance、Web Component 向け Parent Client `postMessage` を既存契約とみなさない。
 
-- **settings:** `src/lib/embedSettingsService.ts` は trusted parent の `settings.set` を validation して listener へ届ける。`App.svelte` → `createAppEmbedController()` → `settingsStore.applyParentSettings()` が app state と persistence を適用し、`settings.applied` / `settings.error` を同じ request ID で通知する。first-paint URL handling は `src/lib/bootstrap/embedSettingsBootstrap.ts` と `index.html`、runtime update は message service であり、混同しない。
-- **composer:** `src/lib/embedComposerContextService.ts` は `composer.setContext` を受信し、`src/lib/embedComposerContextValidation.ts`、`embedComposerContextPatch.ts`、`embedComposerContextApply.ts` が payload を全体検証してから patch/apply する。`AppEmbedController` は bootstrap / parent auth 中の action を保留し、flush 後に `composer.contextApplied` / `composer.contextError` を返す。local user change は `embedComposerContextNotification.ts` 経由で `composer.contextUpdated` を通知する。
-- **public input:** composer context は `reply`、`quotes`、`content`、`channel`、任意の一時 `preloadedEvents` と `preloadedProfiles` を持つ patch payload。URL startup input は `src/lib/urlQueryHandler.ts` と `src/lib/bootstrap/externalInputBootstrap.ts`、runtime change は `composer.setContext`。`preloadedEvents` は最終 hydration targetに対応する署名済みeventだけをplain snapshot化して既存hydrationへ渡す。`preloadedProfiles` はpubkey-keyed display name/picture snapshotで、author identity確定後に同じ owner-token targetへだけ適用する。両方とも保存・URL query・`composer.contextUpdated` には使わない。`undefined` と明示的な `null` / empty array の意味は `docs/IFRAME_EMBEDDING.md` と validation/apply test で確認する。
-- **関連 test:** `src/test/unit/embedSettingsService.test.ts`、`embedSettingsBootstrap.test.ts`、`embedComposerContextService.test.ts`、`embedComposerContextApply.test.ts`、`embedComposerContextPatch.test.ts`、`embedComposerContextNotification.test.ts`、`embedComposerContextValidation.test.ts`、`externalInputBootstrap.test.ts`、`urlQueryHandler.test.ts`、`appEmbedController.test.ts`、`appRuntimeBindings.test.ts`、`embedParentClientExample.spec.ts`。
-
-## localStorage と IndexedDB delegation
-
-- **storage:** `src/lib/embedStorageService.ts` は iframe 内でのみ `storage.get` / `storage.set` / `storage.remove` を parent に request する。`src/lib/embedStorageKeys.ts` の allowlist 以外は delegation しない。追加された storage key は従来キーの v1 batch から分離して個別 request にするため、未対応の strict Host でも既存キーの処理を続けられる。`AppEmbedController.initializeEmbedStorageSync()` は snapshot を local storage に反映し、stored settings を再適用してから allowed keys を mirror する。
-- **IndexedDB:** `src/lib/embedIndexedDbService.ts` は `idb.getSnapshot` / `idb.setSnapshot` と `idb.result` / `idb.error` を扱う。現在の `EmbedIndexedDbStoreName` は `uploadDestinations` のみ。`src/lib/bootstrap/uploadDestinationBootstrap.ts` と upload destination repository の caller も確認する。
-- **ownership/trust:** child local persistence は app-owned。parent persistence は optional delegated mirror で、host の storage 全体、account、credential、draft、profile/relay cache を渡す contract ではない。双方とも trusted parent、validated payload、request ID、timeout、pending request cleanup を守る。
-- **関連資料/検証:** `docs/IFRAME_EMBEDDING.md`、`public/embed-parent-client-example.js`、`src/test/unit/embedStorageService.test.ts`、`src/test/unit/embedIndexedDbService.test.ts`。
-
-## URL query と external input
-
-- **主な実装:** `src/lib/urlQueryHandler.ts` が query を parse/clean up し、`src/lib/bootstrap/externalInputBootstrap.ts` が shared content、composer context、URL input を bootstrap へ適用する。`src/lib/bootstrap/appInitializationBootstrap.ts` は `externalInputEnabled` が true のときだけこれを呼ぶ。
-- **runtime差:** standalone/iframe document entry では external input が有効。Web Component は `externalInputEnabled: false` のため URL / share-target input を consumer にしない。Web Component host は `setContext()` / `setSettings()` を使用する。
-- **関連 test:** `src/test/unit/urlQueryHandler.test.ts`、`src/test/unit/externalInputBootstrap.test.ts`、iframe parent sample E2E。
-
-## Web Component entrypoint と public API
-
-- **entry/build input:** full entry は `src/web-component/entry.ts`、Host-owned Lite entry は `src/web-component/host-owned-entry.ts`。それぞれ `/web-component/ehagaki-composer.js` と `/web-component/host-owned/ehagaki-composer.js` として同じ `EHAGAKI_COMPOSER_TAG_NAME` (`ehagaki-composer`) を登録する。`src/web-component/distributionRegistration.ts` は document ごとに一方だけを許可し、cross-distribution import を決定論的に reject する。型と API version は `src/web-component/types.ts`。
-- **public surface:** `src/web-component/element.ts` の observed attribute は `asset-base` と `auto-login`、対応 property は `assetBase` と `autoLogin`。Full element だけは connection 前に `relays: ReadonlyArray<{ url, read, write }>` と headless `uploadFile(file, { signal? })` を公開する。upload は `whenReady()` 後だけ開始し、既存 operation queue には積まない。URL と、transport が最終 resource と結び付けて確認できる metadata を返し、Composer UI/state は変更しない。Lite は `relays` / `uploadFile` API を公開しない。HTML attribute / `setSettings()` 項目ではなく、接続後の `relays` 変更は次の recreated mount から有効。公開 method は `whenReady(): Promise<void>`、`setContext(context)`、`setSettings(settings)`、`focusEditor(): Promise<void>`、`blurEditor(): Promise<void>`。`setContext` は operation queue へ入れる前に `preloadedProfiles` だけを同期的に validation・sanitize した detached snapshot に置換するため、ready 前の caller mutation は後続 apply に入らない。`setContext` / `setSettings` / editor focus control は connect 前や ready 前の呼び出しを operation queue に入れる。
-- **Host-owned modes:** full は self-publish 専用で、`configureHostOwned()` / `setCustomEmojis()` を公開しない。Lite は `configureHostOwned()` を connection 前に一度だけ必要とし、auth/account/session、relay/NIP-46、event signing/send、history/draft、iframe Parent Client、通常 uploader transport を composition graph に含めない。Lite の `uploadMedia`、non-empty custom emoji catalog、`contentWarningEnabled: true`、`hashtagPinEnabled: true` は host が選択的に有効化する optional feature で、未指定の機能は UI と出力後処理から除外する。Lite固有の immutable mount configuration として `keyboardButtonBarEnabled`（既定 `true`）、`editorSubmitButtonEnabled`（既定 `false`）、`enterKeyBehavior`（既定 `"newline"`）、`submitShortcuts`（省略時は Ctrl/Meta+Enter、明示時は default を置換）も受ける。`submitShortcuts` は `Enter` / `NumpadEnter` の exact modifier matching、`ctrlOrMeta` の排他的展開、non-overlap validation、Host-defined submit 時だけの opaque `shortcutId` callback option を持つ。`[]` は modified Enter submit を無効化し、plain Enter は `enterKeyBehavior` が所有する。前者2つはそれぞれ KeyboardButtonBar 全体とバー内投稿surface／Editor右下の投稿surfaceを独立して制御し、後者は plain Enter の submit を制御する。`editorSubmitButtonEnabled: true` ではバー内投稿ボタンだけが非表示になり、他の有効な操作と既存の PostComponent submit 経路は維持される。これらは通常の click/tap で利用し、Editor内投稿ボタンに KeyboardButtonBar の長押しUXは持ち込まない。`editorMinLines` と `editorMaxLines` は両方を正の safe integer として指定した場合だけ editor の intrinsic auto-grow range を有効にし、`min <= max` を要求する。両方未指定は legacy sizing を維持し、片方だけまたは不正な値は `TypeError`。有効な auto-grow Lite は `preferredHeight: number | null` と composed/bubbling `ehagaki-preferred-height-change` を公開し、root が intrinsic `.composer-scroll-content` と component-owned reservation から計測する。Host は通知値を採用・clamp・無視でき、最終 definite height を所有する。上限超過の本文は Tiptap editor 自身が scroll し、Composer 全体の overflow は既存 `.composer-scroll-region` が所有する。これらは HTML attribute / `setSettings()` には含めない。shared composer UI は `PostComponent.svelte`、Lite root は `src/host-owned-composer-lite/HostOwnedComposerLiteApp.svelte`。
-- **events:** `ehagaki-ready`（`apiVersion`）、`ehagaki-initialization-error`（`initialization_failed` / `multiple_instances_unsupported` / `disconnected`）、`ehagaki-post-success`、`ehagaki-post-error`、`ehagaki-composer-context-updated`、共通 editor 状態の `ehagaki-editor-empty-change`（`{ isEmpty }`）、および Lite auto-grow の `ehagaki-preferred-height-change`（`{ height }`）。`src/web-component/notificationPort.ts` が App notification を composed/bubbling CustomEvent に adapter する。
-- **app seam:** `App.svelte` が export する `setEmbedContext()` / `setEmbedSettings()` / `focusEditor()` / `blurEditor()` を element が in-process に使用する。Web Component は Parent Client `postMessage` を使わない。
-- **関連資料/検証:** `docs/WEB_COMPONENT.md`、`public/web-component-parent-client-example.html` / `.js`、`src/test/unit/webComponentNotificationPort.test.ts`、`src/test/integration/webComponentSubst.integration.test.ts`、`src/test/e2e/webComponentEmbed.spec.ts`、`webComponentParentClientExample.spec.ts`。
-
-## Web Component lifecycle と instance ownership
-
-- **責務:** `EHagakiComposerElement.connectedCallback()` は one connected instance を許可し、2 個目は `multiple_instances_unsupported` で ready promise を reject する。`disconnectedCallback()` は connection generation を進め、MutationObserver を disconnect、Svelte app を unmount、active slot を release する。
-- **ready/error:** mount 後の App `onInitialized` と child PostComponent の初回 TipTap `Editor.isEmpty` 通知が揃った時に ready promise を resolve して `ehagaki-ready` を dispatch する。Full で `auto-login` が有効な場合だけ startup auth または guest fallback bootstrap の完了も待つ。Lite auto-grow は child Tiptap mount 後の one-frame layout boundary で初回 preferred height を確定してから ready になる。初回measurementが0/invalid（hidden hostを含む）ならResizeObserverで最初の有効なintrinsic sizeを待ち、fallbackなしでreadyを保留する。mount failure、ready 前 disconnect、同時 primary instanceは initialization error を dispatch し promise を reject する。remove 後に replacement を connect するのは既存 contract。
-- **host/component boundary:** host は element の creation/removal、size、attribute/property/method/event consumer。component は shadow root、mount target、overlay root、stateful App instance、operation queue、asset observer を所有する。hidden/redisplay と remove/recreate は同じものではない。
-- **関連 E2E:** `webComponentEmbed.spec.ts` は second instance rejection、disconnect/recreate、hidden redisplay、ready 前 `setContext`、host/storage/service-worker isolation を確認する。`webComponentParentClientExample.spec.ts` は sample の auto/manual mount と lifecycle control を確認する。
-
-## Web Component storage、auth、navigation の差
-
-- **storage:** `src/lib/appStorage.ts` の `createWebComponentStorage()` は host `localStorage` を versioned `ehagaki.web-component.v1:` namespace に限定する。raw host storage を App に渡さない。
-- **auth/navigation/runtime switches:** Full element は runtime を `web-component`、container layout、ShadowRoot/host targets、`serviceWorkerEnabled: false`、`externalInputEnabled: false`、`historyEnabled: false`、`localNsecAuthEnabled: false`、`auto-login` 属性に従う `autoLoginNip07Enabled` に設定する。既定は `false`。有効時は managed restore を既存順序で最後まで評価し、途中の基盤異常より後続候補の成功を優先する。全候補が正常失敗した場合だけ `resolveNip07AutoLoginSession` が NIP-07 fallback を行い、全候補失敗までに基盤異常を観測した場合は fallback しない。保存済み NIP-07 mismatch で既に得た identity は再問い合わせせず再利用する。Host-owned Lite は属性を許容するが認証を開始せず無視する。NIP-07/NIP-46 の contract 自体は Nostr/auth implementation を確認する。
-- **確認対象:** component-only change では、host storage namespace、service worker registration、history behavior、local nsec UI/legacy cleanup を Web Component E2E の該当 case と照合する。
-
-## asset base、Shadow DOM、style surface
-
-- **asset flow:** document app は `import.meta.env.BASE_URL` から `assetBase` を設定する。`src/lib/appAssetUrl.ts` の `resolveAppAssetUrl()` と asset-consuming caller は active runtime base を使う。Web Component は `asset-base` または entry module URL に相対な base を `new URL(..., import.meta.url)` で解決する。full の未指定 fallback semantics は維持する。公式 Full self-publish sample と Lite Host-owned sample/E2E は connection 前に、それぞれの distribution directory を明示する。
-- **icons/build transform:** `src/web-component/element.ts` は app CSS を open ShadowRoot に inline し、document-root selector を `:host` / shell 用に transform する。`src/web-component/iconAssets.ts` は build-only icon CSS variable を component `assetBase` の `icons/*.svg` URL に置換する。FFmpeg worker/core/WASM も active asset base の caller を確認する。
-- **style API:** host に提供されている theme surface は `getWebComponentThemeCss()` の `--ehagaki-accent-color`、`--ehagaki-base-color`、`--ehagaki-background`、`--ehagaki-text`、`--ehagaki-border`、`--ehagaki-link`、`--ehagaki-input-background`、`--ehagaki-footer-background`、`--ehagaki-dialog-background`、`--ehagaki-font-family`。Shadow root は open。公開 `::part()` API は checkout で確認できない。
-- **layout:** component shell は `container-type: inline-size`。container behavior、overlay containment、host width/height、computed styles は `webComponentEmbed.spec.ts` の DOM/geometry assertions を基準に確認する。browser-specific geometry は `ehagaki-browser-debug` の領域。
-- **関連 test:** `src/test/unit/appAssetUrl.test.ts`、`webComponentIconAssets.test.ts`、`src/test/e2e/webComponentEmbed.spec.ts`。
-
-## Web Component build、delivery、sample
-
-- **scripts:** `package.json` の `build:web-component` は `scripts/runWebComponentBuild.mjs`、`dev:web-component` は `scripts/devWebComponentSample.mjs` を入口にする。`scripts/webComponentBuildRunner.mjs` は full と Lite output を順に作り、`scripts/hostOwnedLiteGraphGate.mjs` は Lite entry から static/dynamic graph を走査して forbidden dependency を build failure にする。build execution/working directory は `scripts/webComponentBuildWorkingDirectory.mjs`、dev host/proxy config は `scripts/webComponentDevServerConfig.mjs`、output validation は `scripts/verifyWebComponentBuild.mjs`、site assembly は `scripts/assembleWebComponentSite.mjs` を確認する。
-- **contract-relevant output:** full は `dist-web-component/ehagaki-composer.js` と `dist-web-component/assets/`、Lite は `dist-web-component/host-owned/ehagaki-composer.js` と `dist-web-component/host-owned/assets/` および `icons/`。host page からの module import、`asset-base`、production/dev sample の URL は distribution 単位でまとめて扱う。
-- **sample:** `public/host-owned-composer-lite-example.html` が唯一の Host-owned manual sample で、Lite の `asset-base`、mount/destroy/recreate、Host handoff を示す。Full self-publish と iframe の parent sample はこれと別に管理する。
-- **関連 test/config:** `src/test/unit/webComponentDevServerConfig.test.ts`、`webComponentBuildWorkingDirectory.test.ts`、`src/test/e2e/webComponentDevServer.spec.ts`、`playwright.web-component-dev.config.ts`。通常 E2E project は `playwright.config.ts` の desktop Chromium/mobile Chromium/mobile WebKit/desktop Firefox の実際の `testMatch` / `testIgnore` を確認する。
-
-## 検証選択
-
-- message schema、origin/source、request ID、timeout、validation、controller state は unit/integration test を先に選ぶ。
-- public iframe contract、real iframe message gate、Web Component registration/public API/Shadow DOM/lifecycle/asset origin は Playwright を使う。project 名だけから browser engine や実端末対応を推測しない。
-- `src/test/e2e/webComponentEmbed.spec.ts` は production-style bundle、cross-origin asset base、storage/SW isolation、style/theme, lifecycle、pre-ready API、FFmpeg asset load を横断的に扱う。`src/test/e2e/webComponentParentClientExample.spec.ts` は host sample と responsive/lifecycle contract を扱う。
-- Vite entry、Web Component output、asset path、worker/WASM、sample delivery、PWA/service worker に触れた変更は `npm run build` を実行する。document-only map/skill update には application test、Playwright、build は不要。
-
-## 現 checkout で確認できなかった public surface
-
-- Web Component の公開 `::part()` style API。
-- Web Component の複数同時接続インスタンスを許可する contract（現実装は one active connected instance）。
-- Web Component と parent iframe client 間の `postMessage` contract（Direct Web Component は DOM method/event adapter）。
+Origin/message の純粋検証は unit/integration、実 iframe gate、registration、Shadow DOM、lifecycle、cross-origin assets は対応 E2E が入口。検証コマンド・build の条件は [開発ガイド](../../../guides/development.md)、geometry/focus の実測は [browser 索引](../../ehagaki-browser-debug/references/browser-debug-map.md) を使う。

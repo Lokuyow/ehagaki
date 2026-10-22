@@ -1,6 +1,6 @@
 ---
 name: ehagaki-nostr
-description: "eHagaki の Nostr protocol と event・relay・signing のデータフローを調査・変更・レビューする。protocol と無関係な UI/CSS/文言変更は対象外。"
+description: "eHagaki の Nostr event・tag・署名・relay 取得/配送を調査・変更・レビューする。表示だけの変更は対象外。"
 ---
 
 # eHagaki Nostr
@@ -28,6 +28,6 @@ description: "eHagaki の Nostr protocol と event・relay・signing のデー�
 
 ## 必要な詳細への入口
 
-機能の owner/既存 test を探す場合や、既存の protocol・互換契約の詳細が必要な場合だけ [implementation map](references/implementation-map.md) の該当機能の節を読む。投稿/reply/quote、NIP-46、profile/history、relay、upload 認証等を個別に参照し、現在の checkout を map より優先する。
+機能の owner/既存 test が不明な場合だけ [機能別索引](references/implementation-map.md#機能からownerを探す) を使う。投稿/Reaction、認証、履歴/coverage、upload の固有条件は同じ索引の該当節から確認する。NIP と製品 docs が仕様の入口、code/types/tests が実装の確認先であり、索引は仕様の代替ではない。一般的な検証量は [開発ガイド](../../guides/development.md) が所有する。
 
 iframe/Direct Web Component の public API・delegation ownership は [embed runtime](../ehagaki-embed-runtime/SKILL.md)、browser realm/interception/geometry の実測は [browser debug](../ehagaki-browser-debug/SKILL.md)、editor representation/extraction は [editor](../ehagaki-editor/SKILL.md) の領域。該当部分を扱う場合だけ併用し、protocol-only 変更に browser 検証を追加しない。

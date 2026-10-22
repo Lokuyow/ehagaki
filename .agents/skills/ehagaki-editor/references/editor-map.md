@@ -1,79 +1,29 @@
 # eHagaki editor map
 
-この map は調査時点の checkout を索引化したものである。実装が移動または変更されている場合は、現在の code、caller / callee、test を優先する。
+必要な挙動から現行 owner と代表 test を探す索引。パスは repository root 基準。schema の属性一覧、extension の全登録順、設定値は現在の実装で確認する。
 
-必要な owner/contract/test の節だけを参照する。全体の読了は前提ではない。
+## 変更する挙動から探す
 
-## Entry point, lifecycle, and ownership
+| 挙動 | 主な owner / 入口 | 代表 test |
+| --- | --- | --- |
+| Mount / remount / submitter / cleanup | `src/components/PostComponent.svelte`, `src/lib/editor/editorLifecycle.ts`, `src/stores/editorStore.svelte.ts` | `src/test/unit/editorLifecycle.test.ts`, `src/test/unit/editorDomActions.test.ts` |
+| Schema / node parse-render / extension 順 | `src/lib/editor/editorConfig.ts`, `src/lib/editor/customEmojiExtension.ts`, `src/lib/editor/videoExtension.ts`, `src/lib/editor/uniqueIdExtension.ts` | `src/test/unit/editorConfig.test.ts`, `src/test/unit/customEmoji.test.ts` |
+| Normalization / decorations / undo-redo | `src/lib/editor/contentTracking.ts`, `src/lib/utils/editorNodeActions.ts` | `src/test/integration/editor-history.integration.test.ts`, `src/test/integration/editor-url-paste.integration.test.ts`, `src/test/unit/editorNodeActions.test.ts` |
+| Document → UI / 投稿本文 / 外部からの挿入 | `src/components/PostComponent.svelte`, `src/lib/editor/editorDomActions.svelte.ts`, `src/lib/utils/editorDocumentUtils.ts`, `src/lib/postManager.ts` | `src/test/unit/editorDocumentUtils.test.ts`, `src/test/unit/insertTextContent.test.ts` |
+| Placeholder / 翻訳更新 | `src/lib/editor/editorConfig.ts`, `src/stores/editorStore.svelte.ts`, `src/components/PostComponent.svelte` | `src/test/unit/editorConfig.test.ts`, `src/test/e2e/postEditorSending.spec.ts` |
+| Text / HTML / file / media URL paste | `src/lib/editor/clipboardExtension.ts`, `src/lib/editor/clipboardTextCleanup.ts`, `src/lib/editor/mediaPaste.ts`, `src/lib/editor/editorDomActions.svelte.ts` | `src/test/unit/clipboardTextCleanup.test.ts`, `src/test/integration/editor-clipboard.integration.test.ts`, `src/test/integration/editor-url-paste.integration.test.ts`, `src/test/integration/editor-media.integration.test.ts` |
+| Internal drag / NodeView / selection | `src/lib/editor/imageDragDrop.ts`, `src/lib/editor/customEmojiDragDrop.ts`, `src/lib/utils/editorNodeActions.ts`, `src/lib/hooks/useImageDrag.svelte.ts`, `src/lib/hooks/useCustomEmojiDrag.svelte.ts` | `src/test/unit/editorNodeActions.test.ts`, `src/test/unit/mediaNodeUtils.test.ts`, `src/test/unit/customEmojiInsertion.test.ts` |
+| Suggestion / overlay / caret | `src/lib/editor/suggestionRenderer.ts`, `src/lib/editor/toolbarCaretExtension.ts` と関連 extension/NodeView | `src/test/e2e/customEmojiPicker.spec.ts`; native geometry は [browser 索引](../../ehagaki-browser-debug/references/browser-debug-map.md) |
+| Composition / submit 中の入力 | `src/lib/editor/editorInputGuard.ts`, `src/lib/editor/androidCompositionFix.ts`, `src/components/PostComponent.svelte` | `src/test/e2e/postEditorSending.spec.ts` と対応 integration test |
+| Reaction の document / input mode | `src/lib/reactionValue.ts`, `src/lib/editor/reactionInput.ts`, `src/lib/reactionMediaController.ts`, `src/components/PostComponent.svelte` | `src/test/integration/reactionInput.integration.test.ts`, `src/test/unit/reactionUploadedValue.test.ts`, `src/test/e2e/postReaction.spec.ts` |
 
-- `src/components/PostComponent.svelte` が Svelte の composer owner である。`onMount` で `initializeEditor()` を呼び、`EditorContent` に store を渡す。editor store の subscription で `currentEditor`、`editorIsEmpty`、`currentEditorStore` を更新し、`transaction` listener で空状態を追跡する。Web Component の場合は同じ TipTap `Editor.isEmpty` の追跡結果を optional callback へ通知する。cleanup では listener を外して `cleanupEditor()` を呼ぶ。
-- `src/lib/editor/editorLifecycle.ts` は editor store 作成、DOM action の listener setup、submitter 登録、container への `__uploadFiles`、`__currentEditor`、`__hasStoredKey`、`__postStatus`、`__submitPost` の配線を担当する。`cleanupEditor()` は event listener と両 subscription を解放し、現在の instance だけを `currentEditorStore` から除去して destroy し、container property と submitter を解放する。これにより remount が destroyed view を更新しない。`PostComponent` は現在の Editor instance の `focus()` / `blur()` を各 Direct Web Component root と element の Promise APIへ渡す。
-- `src/stores/editorStore.svelte.ts` は module-scoped `currentEditorStore`、`editorState`、placeholder text と post submitter を保持する。editor document の owner ではなく、`editorState.content` は UI の即時状態である。
-- `src/test/unit/editorLifecycle.test.ts` は current instance / submitter を release する cleanup と、古い cleanup が新しい instance を消さないことを検証する。
+## 入力とtransactionの注意点
 
-## Creation, configuration, and document schema
+- `PostComponent` は editor の subscription と transaction listener を所有する。`editorState.content` は debounce された UI projection であり、投稿本文は live document から再抽出する。`canPost` の同期再計算を debounced update で上書きしない。外部入力は既存の replace/append/draft/media/emoji command を使う。
+- ContentTracking の URL normalization は own metadata と no-op を除外し、変更を収集して position を保って適用する。paste 時の link conversion と image URL conversion の違いを保つ。`addToHistory: false` や paste metadata だけで独立した undo group を保証したとみなさず、user edit と normalization の undo/redo を integration test で確認する。UniqueID の own transaction/no-step guard と表示用 caret/placeholder transaction の非履歴化も保つ。
+- Clipboard の投稿本文 source は `text/plain`。HTML 付き通常 paste の限定的な marker cleanup と、plain-only/explicit plain の改行正規化を分ける。HTML-only/file は既存 owner へ委譲する。DOM action の file paste/drop、MediaPaste の URL、internal node drag を一つの handler にしない。extension 登録順だけから ProseMirror handler の実行順を推測しない。
+- Composition の generation/ID と stale transaction の扱いは `EditorInputGuard` の plugin state / submitted composition controller が所有する。Android の listener/keepalive は `AndroidCompositionFix` が解放し、controller から private state を変更しない。iPhone Safari の success 時 blur/clear/retire は順序を保持する。実 IME の結果は [browser Skill](../../ehagaki-browser-debug/SKILL.md) の証拠境界に従う。
+- Reaction は隣接 text を結合した書記素数と customEmoji token で検証し、開始時の invalid document/media を破壊しない。session 所有画像の shortcode mode と通常 single-value mode は同じ最新 mode 判定を transaction filter / IME reconciliation / submit で使う。shortcode の編集は単一 paragraph の text とし、rich node/改行を拒否するが文字数・regex 制限は加えない。送信時の raw 空白拒否と外側 colon 正規化を編集制限と混同しない。画像削除で本文を truncate せず、composition 中は送信しない。送信時は live document を再検証し、Picker usage は実際に挿入できた場合だけ記録する。
+- Cleanup は古い instance が新しい current editor を消さないように行う。NodeView、plugin view、suggestion の Svelte mount、DOM action の listener/timer と container property は作成した owner が解放する。placeholder の翻訳更新は live instance へ同値 no-op・非履歴 transaction で反映する。
 
-- `src/lib/editor/editorConfig.ts:createEditorStore()` は `svelte-tiptap` の `createEditor()` で初期 document を JSON の空 paragraph として作成する。`onCreate` は placeholder state と `window.__currentEditor` を設定し、`onDestroy` は後者を消す。
-- StarterKit は paragraph class、UndoRedo (`depth: 100`, `newGroupDelay: 500`) と Dropcursor を設定し、heading、blockquote、style marks、list、horizontal rule、hard break、既定 Link を無効にする。`ShiftEnterToParagraph` は Shift+Enter を `splitBlock()` にする。Host-owned Lite の Enter 処理は `editorProps.handleKeyDown` の単一 resolver が担当し、`submitShortcuts` の exact modifier matching、plain Enter の `enterKeyBehavior`、IME composition guard を既存の PostComponent submit 経路へ委譲する。Lite では parent `keydownAction` の重複 shortcut 経路を無効化し、未設定 Shift は `ShiftEnterToParagraph` に委譲する。Full/standalone の既存 Ctrl/Cmd+Enter 経路と投稿 content の Markdown / rich-text semantics は変更しない。
-- Link は独自に登録され、`autolink` と `linkOnPaste` は無効である。HTTP(S) validation と rendering はここ、動的な link conversion は ContentTracking が担当する。
-- Image は block node view (`SvelteImageNode.svelte`) で、`src`、`blurhash`、`isPlaceholder`、`dim`、`size`、`uploadProtocol`、`alt` attrs を持つ。custom emoji に該当する HTML は Image parser から除外される。`Video` (`videoExtension.ts`) は block node、`src` と `isPlaceholder` attrs、`SvelteVideoNode.svelte` node view を持つ。
-- `CustomEmoji` (`customEmojiExtension.ts`) は `inline` / `atom` / `selectable` / `draggable` node で、`identityKey`、`shortcode`、`src`、`setAddress` attrs を持つ。modern `img[data-custom-emoji]` と legacy `img.custom-emoji-inline[alt]` を parse し、`SvelteCustomEmojiNode.svelte` が node view を描画する。input rule と paste rule は known shortcode だけを atom に変換する。
-- `UniqueID` (`uniqueIdExtension.ts`) は priority `10000` で image / video の `data-id` を parse/render し、create と document changes 後に欠損・重複 ID を補う。own metadata `__uniqueIDTransaction`、no-step guard、`addToHistory: false` が loop と history pollution を防ぐ。
-
-## Extension order and interaction boundaries
-
-`editorConfig.ts` の registration 順は実際の ordering dependency である。submit-on-Enter時のみ `SubmitOnPlainEnter` を先頭に追加し、StarterKit、Link、Image、UniqueID、Focus、`GapCursorFocusReset`、`ShiftEnterToParagraph`、`ContentTrackingExtension`、`HashtagSuggestion`、Video、CustomEmoji、`CustomEmojiSuggestion`、`ToolbarCaretExtension`、`ClipboardExtension`、`MediaPasteExtension`、`ImageDragDropExtension`、`CustomEmojiDragDropExtension`、`SmartBackspaceExtension`、`AndroidCompositionFix`、Placeholder の順へ続く。
-
-- `ClipboardExtension` は MediaPaste より先に extension 登録されるが、現在の ProseMirror paste handler の実行順では MediaPaste が先に処理する。`enablePasteRules` は `clipboardExtension` と `customEmoji` のみである。順序を変更する前に text / file / URL / emoji paste の consumer を確認する。
-- `GapCursorFocusReset` は media NodeSelection の visual focus と editor 外クリック / touch の selection reset を管理する。document listener を `onDestroy` で外す。
-- `ToolbarCaretExtension` は plugin metadata keyed by its `PluginKey` と widget decoration を用いる。`showToolbarCaret()` と focus handler の transaction は `addToHistory: false` である。
-- `SmartBackspaceExtension` は先頭の空 paragraph と後続 image の限定された Backspace case を処理する。
-
-## Transactions, normalization, decorations, and history
-
-- `src/lib/editor/contentTracking.ts:ContentTrackingExtension` は三つの plugin を作る。hashtag decoration、URL / image conversion の `appendTransaction`、debounced content update tracker である。
-- hashtag decoration は `getChangedRange()` と `getChangedTextBlocks()` で affected textblock だけを再計算し、`DecorationSet.map()` で既存 decoration を mapping する。
-- URL normalization は changed document transaction だけを扱い、`content-tracking-normalized` metadata を持つ自身の transaction を再処理しない。変更範囲を先に収集し、`collectBlockChanges()` の remove mark / add mark / image replacement を position 降順で適用する。`processUrlsAndImages()` が document を変えない場合は `null` を返す。
-- paste transaction (`paste` metadata) は link conversion を行うが image URL conversion を skip する。返却する normalization transaction は `addToHistory: false` と content-tracking metadata を設定する。paste metadata 自体は独立した undo group を保証しないため、grouping は `UndoRedo` の隣接 transaction / `newGroupDelay` 規則に従う。undo / redo を変えるときは `src/test/integration/editor-history.integration.test.ts` と URL paste coverage を確認する。
-- content update tracker は doc change ごとに以前の timeout を clear し、`CONTENT_TRACKING_CONFIG.DEBOUNCE_DELAY`（現在 300ms）後に hashtag data を更新して `window` の `editor-content-changed` event に extracted plain text を載せる。extension destroy は timeout を clear する。
-
-## Editor-to-application flow and reverse inputs
-
-- document -> application: ContentTracking の `editor-content-changed` -> `editorDomActions.svelte.ts:setupEventListeners()` -> `PostComponent` の `onContentUpdate: updateEditorContent` -> debounced `editorState.content` / `hasImage` projection。canonical `editorState.canPost` は `resolveLivePostEligibility()` を editor transaction、mount/current instance、gallery change、reset/unmount の各 trigger から同期再計算し、debounced path は上書きしない。
-- document -> post: `PostComponent:submitPost()` -> `PostManager:preparePostPayload()` -> `extractPostContentWithEmojiTags()` / `extractPostContentFromDoc()`。投稿時は document から再抽出する。gallery mode では gallery URL をこの content に加える。
-- `src/lib/utils/editorDocumentUtils.ts` は paragraph / text / customEmoji / image / video を投稿用 `content` に直列化する。blocks は newline で結合され、media は `src`、custom emoji は `:shortcode:` と deduplicated `emoji` tags になる。shortcode collision は alias で回避する。変更には `src/test/unit/editorDocumentUtils.test.ts` と `src/test/unit/customEmoji.test.ts` を確認する。
-- application -> document: `PostComponent` の `insertTextContent()`（replace）、`appendSharedTextContent()`（append）、`loadDraftContent()`（sanitize した draft HTML）、`appendMediaToEditor()`、`insertCustomEmoji()` が command / transaction を dispatch する。`App.svelte` は draft、share、URL query、embed composer context の入口からこれらを呼ぶ。embed public input contract は embed runtime skill が主である。
-
-## Placeholder and localization
-
-- `PostComponent` の Svelte effect は translated `editorPlaceholderText` を `updatePlaceholderText()` に渡す。store は live current editor があると `updateEditorPlaceholder()` を呼ぶ。
-- `editorConfig.ts:updateEditorPlaceholder()` は `__placeholderState`、Placeholder extension option、既存 `[data-placeholder]` を更新する。同じ state / DOM value なら no-op、再描画 transaction は `addToHistory: false`。`src/test/unit/editorConfig.test.ts` が dispatch と no-op を検証する。
-
-## Clipboard, paste, drag, and composition
-
-- `ClipboardExtension` は `text/plain` を投稿本文のsourceとする。HTML付き通常pasteだけは、このtextへ限定的なheading/emphasis/code marker cleanupを行う。plain-onlyとexplicit plainは改行正規化以外のcleanupを行わず、HTML-onlyとfile pasteは既定のownerへ委譲する。自Editor HTML clipboardでは既存の空行正規化を保つ。plain linesはparagraph Sliceとして `paste`、`uiEvent: paste`、`addToHistory: true` を set してdispatchする。`src/lib/editor/clipboardTextCleanup.ts` が外部rich paste用cleanupを担い、`src/test/unit/clipboardTextCleanup.test.ts` と `src/test/integration/editor-url-paste.integration.test.ts` がcleanup、clipboard source、history behaviorを扱う。copyはparagraph / image / videoをplain textへserialiseする。
-- `editorDomActions.svelte.ts:pasteAction()` は image file clipboard を upload handler へ渡し、text paste を ClipboardExtension へ残す。`fileDropAction()` は external file drop を upload handler へ、internal `application/x-tiptap-node` drag を ProseMirror plugin へ残す。
-- `MediaPasteExtension` は pasted / typed media URL を image or video node（free placement）または media gallery（gallery mode）に移す。text URL の link / image conversion は ContentTracking の別経路である。`src/test/integration/editor-media.integration.test.ts`、`src/test/unit/imagePaste.test.ts`、`src/test/integration/editor-url-paste.integration.test.ts` を参照する。
-- `ImageDragDropExtension` と `CustomEmojiDragDropExtension` は plugin state、widget decorations、internal MIME、touch custom events、plugin-view listener cleanup を担当する。position-changing moves は `src/lib/utils/editorNodeActions.ts` の `moveImageNode()` / `moveCustomEmojiNode()` が dispatch する。custom emoji move は node selection を設定する。native/touch contenteditable drag の再現や geometry は browser debug skill を併用する。
-- `EditorInputGuard` の ProseMirror plugin state は、適用済み transaction の `composition` metadata を DOM composition generation と対応付ける。`SubmittedCompositionController` は generation、optional ID、`continuing`/`stale` lifecycle を所有し、transaction filter は `PluginKey.getState()` の bind 済み ID を同一 transaction chain 内で同期参照する。success cleanup は stale 遷移前に完了し、その後の旧 composition mutation を拒否する。iPhone Safariでnative compositionが残るsuccess時は公開blur後にclearしてsessionをretireし、次のtapで編集へ復帰させる。
-- `AndroidCompositionFix` は Android のみで composition start/end listener と 4秒 keepalive interval を管理し、destroy 時に interval / listeners を解除する。submitted composition controller はこの keepalive state を所有・変更せず、IME / caret browser difference の証明は実ブラウザまたは実端末で行う。
-
-## Suggestions and NodeView rendering
-
-- `HashtagSuggestion` は `#` と IndexedDB-backed `getSuggestions()` を使い、選択時に range を `#value ` へ置換する。
-- `CustomEmojiSuggestion` は `:` trigger と URL-like segment exclusion を使い、candidate を customEmoji atom へ置換して選択 callback を呼ぶ。
-- `suggestionRenderer.ts:createSuggestionRenderer()` は Svelte component を runtime overlay target へ mount / unmount し、start / update / key command / exit を所有する。位置は client rect と viewport を使う。overlay / geometry の問題は browser skill に切り出す。
-- Svelte image / video / custom emoji NodeView の interaction、drag cleanup、selection interaction を変える場合は、対応 node extension と `src/lib/hooks/useImageDrag.svelte.ts` / `useCustomEmojiDrag.svelte.ts`、`src/lib/utils/mediaNodeUtils.ts` まで caller / callee を追う。
-
-## Test map and escalation
-
-- Unit: `editorConfig.test.ts`、`editorLifecycle.test.ts`、`editorDocumentUtils.test.ts`、`editorNodeActions.test.ts`、`editorDomActions.test.ts`、`editorUrlUtils.test.ts`、`imagePaste.test.ts`、`insertTextContent.test.ts`、`customEmoji.test.ts`、`customEmojiInsertion.test.ts`。
-- Integration: `editor-history.integration.test.ts`、`editor-clipboard.integration.test.ts`、`editor-media.integration.test.ts`、`editor-link-detection.integration.test.ts`、`editor-url-paste.integration.test.ts`、`multi-image-upload-uniqueid.integration.test.ts`。
-- Playwright: `postEditorSending.spec.ts` proves live contenteditable sending / placeholder behavior; `customEmojiPicker.spec.ts` covers picker runtime behavior rather than generic editor transaction semantics. Add E2E only when editor unit/integration tests cannot prove native selection, composition, clipboard, focus, contenteditable, touch drag, or geometry behavior.
-- Android/iOS IME, native selection, browser clipboard, focus, touch caret, actual geometry, PWA / WebView behavior require `ehagaki-browser-debug`; device emulation is not real-device evidence.
-
-## Reaction mode document validation
-
-- `reactionValue.ts`は隣接textを結合してIntl.Segmenterで書記素を数え、customEmojiをstructured tokenとして検証する。既存のinvalid documentやmediaはmode開始時に保持する。
-- `reactionInput.ts`は`getInputMode()`で通常の`singleValue`と`uploadedShortcode`を動的に切り替える。現在Reaction session所有の唯一のGallery画像はplaceholder中からshortcode編集対象になる。shortcode modeでは単一paragraphのtextを文字数・regex制限なしで編集でき、rich node／改行を拒否する。通常modeの1書記素制限、invalid内容の修正、history例外を維持し、画像削除時に本文をtruncateしない。transaction filterとIME終了時reconciliationは同じ編集判定と最新modeを使う。shortcode送信判定はraw textの空白拒否後に外側colonを正規化する。既存sending guardは別途適用される。
-- PostComponentはbutton／shortcut／直接submitすべてでlive documentを再検証し、composition中はReactionを送らない。Pickerは既存node挿入を使用し、documentが変化した挿入でだけusageを記録する。
+公開 embed input は [runtime 索引](../../ehagaki-embed-runtime/references/embed-runtime-map.md)、抽出後の event/tag/signing は [Nostr 索引](../../ehagaki-nostr/references/implementation-map.md) を必要な場合に参照する。入力や editor 内部を変更しない周辺 UI にはこの索引を一律適用しない。

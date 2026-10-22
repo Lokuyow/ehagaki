@@ -1,11 +1,11 @@
 ---
 name: ehagaki-browser-debug
-description: "eHagaki のブラウザ固有・実ブラウザ統合の不具合を再現・計測・修正・レビューする。通常の UI/CSS/文言変更や protocol-only 変更は対象外。"
+description: "eHagaki のブラウザ固有・実ブラウザ統合不具合を再現・計測・修正する。通常の見た目・文言変更は対象外。"
 ---
 
 # eHagaki Browser Debug
 
-ブラウザ/OS の制約と eHagaki の不具合を切り分け、値や event が最初に不正になる owner を特定する。jsdom の結果や screenshot だけで native input や geometry の原因を確定しない。
+調査・修正・レビューでブラウザ/OS の制約と eHagaki の不具合を切り分け、値や event が最初に不正になる owner を特定する。通常の UI/CSS 変更、ブラウザテストの実行だけ、protocol-only 変更には適用しない。jsdom の結果や screenshot だけで native input や geometry の原因を確定しない。
 
 ## 証拠と責務の境界
 
@@ -18,6 +18,6 @@ description: "eHagaki のブラウザ固有・実ブラウザ統合の不具合�
 
 ## 必要な詳細への入口
 
-- owner、event source、cleanup、既存 harness/test の場所が不明なときは [browser debug map](references/browser-debug-map.md) の該当症状の節を読む。map は索引であり現在の checkout を優先する。
+- owner、cleanup、既存 harness/test が不明なときは [症状別索引](references/browser-debug-map.md#症状からownerを探す) から選ぶ。browser project/server は [検証環境の入口](references/browser-debug-map.md#検証環境の入口) を使い、一般的なコマンド・検証量は [開発ガイド](../../guides/development.md) に従う。
 - viewport/keyboard、focus/composition、portal/Shadow DOM の時系列や座標の比較が必要なときだけ [計測メモ](references/measurement.md) の対応する節を読む。すべての値を収集する checklist ではない。
 - document/transaction に原因が及ぶときは [editor](../ehagaki-editor/SKILL.md)、runtime public contract/ownership を扱うときは [embed runtime](../ehagaki-embed-runtime/SKILL.md)、event/relay/signing の意味論を扱うときは [Nostr](../ehagaki-nostr/SKILL.md) を併用する。browser で動くという理由だけで全 Skill を読まない。
