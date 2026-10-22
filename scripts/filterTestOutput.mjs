@@ -16,7 +16,7 @@ function printSummary(line) {
             process.stdout.write(`Test location: ${location}\n`);
         }
     }
-    for (const kind of ['TimeoutError', 'AssertionError', 'TypeError', 'ReferenceError', 'SyntaxError', 'RangeError', 'EACCES', 'EADDRINUSE', 'ENOENT', 'EINVAL', 'ERR_MODULE_NOT_FOUND', 'ERR_NO_BUFFER_SPACE', 'Cannot find module', 'Could not resolve', 'Executable doesn\'t exist', 'Failed to launch']) {
+    for (const kind of ['TimeoutError', 'AssertionError', 'TypeError', 'ReferenceError', 'SyntaxError', 'RangeError', 'EACCES', 'EADDRINUSE', 'ENOENT', 'EINVAL', 'ERR_MODULE_NOT_FOUND', 'ERR_NO_BUFFER_SPACE', 'Cannot find module', 'Could not resolve', 'Executable doesn\'t exist', 'Failed to launch', 'Execution context was destroyed', 'Test timeout of', 'Target page, context or browser has been closed']) {
         if (line.includes(kind) && !reported.has(kind)) {
             reported.add(kind);
             process.stdout.write(`Error category: ${kind}\n`);

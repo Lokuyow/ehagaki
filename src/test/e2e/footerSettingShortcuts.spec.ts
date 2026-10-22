@@ -321,7 +321,7 @@ test("keeps both quality pills and their popovers contained around history at 36
             signEvent: async (event: any) => ({ ...event, id: "22".repeat(32), sig: "33".repeat(64) }),
         };
     }, "22".repeat(32));
-    await enterApp(page);
+    await page.goto("/");
     await page.getByRole("button", { name: "はじめる" }).click();
 
     const footer = page.locator(".footer-bar");
