@@ -2333,13 +2333,27 @@ export function usePostHistoryListing({
             });
         }
 
+        const requestIsCurrent = expectedRequestId === null
+            || expectedRequestId === loadRequestId;
+        const viewIsCurrent = !isDestroyed
+            && getShow()
+            && getPubkeyHex() === pubkeyHex
+            && requestIsCurrent;
+        const deferredFetchChanged = options.deferDuringOlderRelayFetch
+            && (isFetchingOlderFromRelays || syncRequestId !== fetchRequestId);
+        if (generation !== coverageGeneration && !options.retried && viewIsCurrent && !deferredFetchChanged) {
+            // Coverage can be invalidated while the IndexedDB reads are in
+            // flight (for example, by a completed import). Recheck once using
+            // the latest visible window so the navigation flags reflect the
+            // current coverage generation.
+            return refreshTimelineAvailability(pubkeyHex, state.loadedPosts, expectedRequestId, {
+                ...options,
+                retried: true,
+            });
+        }
+
         if (
-            isDestroyed || generation !== coverageGeneration ||
-            (options.deferDuringOlderRelayFetch
-                && (isFetchingOlderFromRelays || syncRequestId !== fetchRequestId)) ||
-            !getShow() ||
-            getPubkeyHex() !== pubkeyHex ||
-            (expectedRequestId !== null && expectedRequestId !== loadRequestId)
+            !viewIsCurrent || generation !== coverageGeneration || deferredFetchChanged
         ) {
             return;
         }

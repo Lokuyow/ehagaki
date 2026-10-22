@@ -123,7 +123,12 @@
 
   function measurePreferredHeight(): boolean {
     if (!preferredHeightMountActive || !preferredHeightEnabled || !onPreferredHeightChange) return false;
-    const surfaceHeight = composerScrollContentEl?.getBoundingClientRect().height;
+    const surface = composerScrollContentEl;
+    // WebKit can let an auto-grow flex child overflow the surface's box while
+    // its intrinsic layout settles; include that overflow in the host height.
+    const surfaceHeight = surface
+      ? Math.max(surface.getBoundingClientRect().height, surface.scrollHeight)
+      : 0;
     if (!surfaceHeight || !Number.isFinite(surfaceHeight) || surfaceHeight <= 0) return false;
     const reservedHeight = (hostOwnedConfig.keyboardButtonBarEnabled !== false
       ? KEYBOARD_BUTTON_BAR_HEIGHT

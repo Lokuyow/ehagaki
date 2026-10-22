@@ -15,7 +15,7 @@ function printSummary(line) {
                 'testLine', 'scrollTop', 'clientHeight', 'scrollHeight', 'count',
                 'firstIndex', 'lastIndex', 'year', 'month', 'day', 'newerTop',
                 'olderTop', 'rootTop', 'rootBottom', 'coveragePresent',
-                'savedCountFunction', 'historyReady', 'preferredBefore',
+                'savedCountFunction', 'savedCountAfterFailure', 'historyReady', 'preferredBefore',
                 'preferredAfter', 'editorHeightBefore', 'editorHeightAfter',
                 'outerClientHeight', 'outerScrollHeight', 'pickerOpen',
                 'backgroundChanged', 'colorChanged', 'iconBackgroundChanged',
