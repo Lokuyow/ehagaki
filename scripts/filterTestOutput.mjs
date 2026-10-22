@@ -9,14 +9,14 @@ function printSummary(line) {
     line = line.replace(/\x1b\[[0-9;]*m/g, '');
     // Emit only existing repository test paths and numeric locations, never titles,
     // assertion values, source excerpts, console output, or arbitrary error text.
-    for (const match of line.replaceAll('\\', '/').matchAll(/(?:src\/test\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+\.(?:test|spec)\.[jt]s|scripts\/[A-Za-z0-9_-]+\.[mjt]?[js]+)(?::\d+(?::\d+)?)?/g)) {
+    for (const match of line.replaceAll('\\', '/').matchAll(/(?:src\/test\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+\.(?:test|spec)\.[jt]s|scripts\/[A-Za-z0-9_-]+\.(?:mjs|js|ts)|node_modules\/(?:[@A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+\.(?:mjs|cjs|js))(?::\d+(?::\d+)?)?/g)) {
         const location = match[0];
         if (existsSync(location.split(':')[0]) && !reported.has(location)) {
             reported.add(location);
             process.stdout.write(`Test location: ${location}\n`);
         }
     }
-    for (const kind of ['TimeoutError', 'AssertionError', 'EACCES', 'EADDRINUSE', 'ENOENT', 'EINVAL', 'ERR_MODULE_NOT_FOUND', 'ERR_NO_BUFFER_SPACE', 'Cannot find module', 'Could not resolve', 'Executable doesn\'t exist', 'Failed to launch']) {
+    for (const kind of ['TimeoutError', 'AssertionError', 'TypeError', 'ReferenceError', 'SyntaxError', 'RangeError', 'EACCES', 'EADDRINUSE', 'ENOENT', 'EINVAL', 'ERR_MODULE_NOT_FOUND', 'ERR_NO_BUFFER_SPACE', 'Cannot find module', 'Could not resolve', 'Executable doesn\'t exist', 'Failed to launch']) {
         if (line.includes(kind) && !reported.has(kind)) {
             reported.add(kind);
             process.stdout.write(`Error category: ${kind}\n`);
