@@ -7,9 +7,10 @@ const reported = new Set();
 
 function printSummary(line) {
     line = line.replace(/\x1b\[[0-9;]*m/g, '');
-    if (line.startsWith('CI_METRICS ')) {
+    const metricMatch = line.match(/CI_METRICS\s+(\{[^{}]*\})/);
+    if (metricMatch) {
         try {
-            const metrics = JSON.parse(line.slice(11));
+            const metrics = JSON.parse(metricMatch[1]);
             const allowed = new Set([
                 'testLine', 'scrollTop', 'clientHeight', 'scrollHeight', 'count',
                 'firstIndex', 'lastIndex', 'year', 'month', 'day', 'newerTop',

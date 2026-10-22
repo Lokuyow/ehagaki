@@ -19,6 +19,7 @@ describe('CI test output filtering', () => {
                 'Error: expect(received).toEqual(expected) // private values',
                 'CI_METRICS {"testLine":87,"year":2026,"month":10,"day":22,"scrollTop":12.5,"secret":"private post body","count":"private"}',
                 'CI_METRICS {"testLine":"private title","token":123456,"rows":["private"]}',
+                '\x1b[1A runner progress CI_METRICS {"testLine":123,"count":8,"token":"private"}',
             ].join('\n'),
         });
         expect(result.status).toBe(0);
@@ -35,6 +36,7 @@ describe('CI test output filtering', () => {
             'Assertion: toEqual',
             'CI metrics: {"testLine":87,"year":2026,"month":10,"day":22,"scrollTop":12.5}',
             'CI metrics: {}',
+            'CI metrics: {"testLine":123,"count":8}',
             '',
         ].join('\n'));
     });
