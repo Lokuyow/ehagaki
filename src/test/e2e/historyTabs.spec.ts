@@ -2,6 +2,12 @@ import { test, expect, type Page } from "@playwright/test";
 
 const counters = (page: Page) => page.evaluate(() => Reflect.get(window, "__HISTORY_TAB_COUNTERS__") as { localReads: number; relayRequests: number });
 
+let dateJumpMetrics: Record<string, number> = {};
+
+test.beforeEach(() => {
+    dateJumpMetrics = {};
+});
+
 test.afterEach(async ({ page }, info) => {
     if (info.status === info.expectedStatus) return;
     const metrics = await page.evaluate(() => Object.fromEntries(
@@ -10,7 +16,7 @@ test.afterEach(async ({ page }, info) => {
             Number(document.querySelector(`[data-segment="${part}"]`)?.getAttribute('aria-valuenow')),
         ]),
     )).catch(() => ({}));
-    console.log('CI_METRICS ' + JSON.stringify({ testLine: info.line, ...metrics }));
+    console.log('CI_METRICS ' + JSON.stringify({ testLine: info.line, ...metrics, ...dateJumpMetrics }));
 });
 
 async function dismissAndWaitForHistory(page: Page, action: () => Promise<unknown>) {
@@ -117,6 +123,19 @@ test("tab roundtrip preserves expanded text, date window and the visible scroll 
         await dialog.locator(`.post-history-date-picker-segment[data-segment="${segment}"]`).click();
         await page.keyboard.press(selectAllKey); await page.keyboard.type(String(Number(value)));
     }
+    const [requestedYear, requestedMonth, requestedDay] = date.split('-').map(Number);
+    const enteredSegments = await dialog.locator('.post-history-date-picker-segment').evaluateAll(segments => {
+        const values = Object.fromEntries(segments.map(segment => [
+            (segment as HTMLElement).dataset.segment ?? '',
+            Number(segment.getAttribute('aria-valuenow')),
+        ]));
+        return {
+            enteredYear: values.year ?? 0,
+            enteredMonth: values.month ?? 0,
+            enteredDay: values.day ?? 0,
+        };
+    });
+    dateJumpMetrics = { requestedYear, requestedMonth, requestedDay, ...enteredSegments };
     await dialog.getByRole("button", { name: "この日付付近を表示" }).click();
     await expect(dialog.getByRole("button", { name: "新しい投稿を表示" })).toBeVisible();
     const ids = await dialog.locator(".post-history-item").evaluateAll(nodes => nodes.map(node => node.getAttribute("data-post-history-event-id")));

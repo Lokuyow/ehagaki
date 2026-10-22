@@ -160,6 +160,8 @@
         sparseStoredPostEventId: string;
         absoluteOldestPostContent: string;
         infiniteScrollEventIds: string[];
+        newerVisibleChunkResultCounts: number[];
+        newerVisibleChunkVisibleUntils: number[];
         infiniteScrollOldestPostContent: string;
         layoutStabilityPostEventId: string;
         layoutImageUrl: string;
@@ -519,6 +521,8 @@
         },
     };
     const jumpDate = new Date(posts[56].postedAt).toISOString().slice(0, 10);
+    const newerVisibleChunkResultCounts: number[] = [];
+    const newerVisibleChunkVisibleUntils: number[] = [];
     const scrollTargetPost = posts[60];
     const sparseVisiblePost = posts[29];
     const sparseStoredPost = posts[31];
@@ -564,6 +568,8 @@
         sparseStoredPostEventId: sparseStoredPost.eventId,
         absoluteOldestPostContent: absoluteOldestPost.content,
         infiniteScrollEventIds: posts.map((post) => post.eventId),
+        newerVisibleChunkResultCounts,
+        newerVisibleChunkVisibleUntils,
         infiniteScrollOldestPostContent: absoluteOldestPost.content,
         layoutStabilityPostEventId: posts[0].eventId,
         layoutImageUrl,
@@ -639,7 +645,10 @@
                 gate.direction = null;
                 gate.release = null;
             }
-            return originalGetNewerVisibleChunk(options);
+            const records = await originalGetNewerVisibleChunk(options);
+            newerVisibleChunkResultCounts.push(records.length);
+            newerVisibleChunkVisibleUntils.push(Number(options.visibleUntil ?? 0));
+            return records;
         };
 
         clearPersistedPostHistoryListingSnapshots();
@@ -776,6 +785,8 @@
             sparseStoredPostEventId: sparseStoredPost.eventId,
             absoluteOldestPostContent: absoluteOldestPost.content,
             infiniteScrollEventIds: posts.map((post) => post.eventId),
+            newerVisibleChunkResultCounts,
+            newerVisibleChunkVisibleUntils,
             infiniteScrollOldestPostContent: absoluteOldestPost.content,
             layoutStabilityPostEventId: posts[0].eventId,
             layoutImageUrl,

@@ -155,6 +155,7 @@
   }
 
   $effect(() => {
+    customEmojiPickerOpen;
     reasonInputVisibleStore.value;
     if (!preferredHeightEnabled || !preferredHeightInitialMeasurementComplete) return;
     schedulePreferredHeightMeasurement();

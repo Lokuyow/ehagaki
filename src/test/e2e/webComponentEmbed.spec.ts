@@ -2121,11 +2121,22 @@ test("applies the common desktop hover colors inside the Shadow DOM", async ({ p
         }).toEqual([true, true, true]);
     } catch (error) {
         const after = await readHoverColors();
+        const hoverState = await settingsButton.evaluate((button) => {
+            const root = button.getRootNode();
+            return {
+                hoverMatches: Number(button.matches(':hover')),
+                hoverMedia: Number(window.matchMedia('(hover: hover)').matches),
+                pointerFine: Number(window.matchMedia('(pointer: fine)').matches),
+                settingsButtonDisabled: Number((button as HTMLButtonElement).disabled),
+                hostLightClass: Number(root instanceof ShadowRoot && root.host.classList.contains('light')),
+            };
+        });
         console.log('CI_METRICS ' + JSON.stringify({
             testLine: 2082,
             backgroundChanged: Number(after.background !== before.background),
             colorChanged: Number(after.color !== before.color),
             iconBackgroundChanged: Number(after.iconBackground !== before.iconBackground),
+            ...hoverState,
         }));
         throw error;
     }

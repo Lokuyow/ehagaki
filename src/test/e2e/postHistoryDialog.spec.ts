@@ -33,6 +33,8 @@ type HarnessState = {
     sparseStoredPostEventId: string;
     absoluteOldestPostContent: string;
     infiniteScrollEventIds: string[];
+    newerVisibleChunkResultCounts: number[];
+    newerVisibleChunkVisibleUntils: number[];
     infiniteScrollOldestPostContent: string;
     layoutStabilityPostEventId: string;
     layoutImageUrl: string;
@@ -82,6 +84,12 @@ type HarnessWindow = Window & typeof globalThis & {
     };
 };
 
+let enteredJumpDate: { year: number; month: number; day: number } | null = null;
+
+test.beforeEach(() => {
+    enteredJumpDate = null;
+});
+
 test.afterEach(async ({ page }, info) => {
     if (info.status === info.expectedStatus) return;
     const metrics = await page.evaluate(() => {
@@ -89,6 +97,7 @@ test.afterEach(async ({ page }, info) => {
         const coverage = (window as HarnessWindow).__POST_HISTORY_COVERAGE__;
         const harness = (window as HarnessWindow).__POST_HISTORY_HARNESS__;
         const ids = harness?.infiniteScrollEventIds ?? [];
+        const requestedDate = harness?.jumpDate.split('-').map(Number) ?? [];
         const rows = [...document.querySelectorAll<HTMLElement>('.post-history-item')];
         return {
             scrollTop: root?.scrollTop,
@@ -104,13 +113,26 @@ test.afterEach(async ({ page }, info) => {
             coveragePresent: Number(Boolean(coverage)),
             savedCountFunction: Number(typeof coverage?.readSavedCount === 'function'),
             historyReady: Number(harness?.ready === true),
+            newerVisibleChunkCalls: harness?.newerVisibleChunkResultCounts.length,
+            lastNewerVisibleChunkCount: harness?.newerVisibleChunkResultCounts.at(-1),
+            lastNewerVisibleChunkVisibleUntil: harness?.newerVisibleChunkVisibleUntils.at(-1),
+            newerButtonCount: document.querySelectorAll('.post-history-nav-row-top button').length,
+            latestButtonCount: document.querySelectorAll('.post-history-latest-button').length,
+            requestedYear: requestedDate[0],
+            requestedMonth: requestedDate[1],
+            requestedDay: requestedDate[2],
+            documentReadyState: document.readyState === 'complete' ? 2 : document.readyState === 'interactive' ? 1 : 0,
             ...Object.fromEntries(['year', 'month', 'day'].map(part => [
                 part,
                 Number(document.querySelector(`[data-segment="${part}"]`)?.getAttribute('aria-valuenow')),
             ])),
         };
     }).catch(() => ({}));
-    console.log('CI_METRICS ' + JSON.stringify({ testLine: info.line, ...metrics }));
+    console.log('CI_METRICS ' + JSON.stringify({ testLine: info.line, ...metrics, ...(enteredJumpDate ? {
+        enteredYear: enteredJumpDate.year,
+        enteredMonth: enteredJumpDate.month,
+        enteredDay: enteredJumpDate.day,
+    } : {}) }));
 });
 
 async function gotoHarness(page: Page) {
@@ -437,6 +459,13 @@ async function jumpToDate(page: Page, date: string) {
     await daySegment.click();
     await page.keyboard.press(selectAllKey);
     await page.keyboard.type(String(Number(day)));
+    enteredJumpDate = await page.locator('.post-history-date-picker-segment').evaluateAll((segments) => {
+        const values = Object.fromEntries(segments.map((segment) => [
+            (segment as HTMLElement).dataset.segment ?? '',
+            Number(segment.getAttribute('aria-valuenow')),
+        ]));
+        return { year: values.year ?? 0, month: values.month ?? 0, day: values.day ?? 0 };
+    });
     await page.getByRole('button', { name: 'この日付付近を表示' }).click();
 }
 
@@ -1055,6 +1084,7 @@ test.describe('PostHistoryDialog Playwright', () => {
             await page.getByRole('menuitem', { name: '保存済み投稿履歴をクリア' }).click();
             await page.getByRole('button', { name: 'クリアする', exact: true }).click();
             await expect(page.getByRole('alertdialog', { name: '保存済み投稿履歴をクリア', exact: true })).toHaveCount(0, { timeout: 30_000 });
+            await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
             await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.readSavedCount())).toBe(0);
             expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.readOtherAccountSavedCount())).toBe(retainOtherAccount ? 1 : 0);
             await expect(page.locator('.post-history-list .post-history-item')).toHaveCount(0);
@@ -1819,6 +1849,14 @@ test.describe('PostHistoryDialog Playwright', () => {
             (element as HTMLElement).style.removeProperty('display');
         });
         expect(anchorBeforeLoad).not.toBeNull();
+        await page.locator('.post-history-container').evaluate((element) => {
+            const container = element as HTMLDivElement;
+            const bottom = container.scrollHeight - container.clientHeight;
+            container.scrollTop = Math.max(0, bottom - 1);
+            container.dispatchEvent(new Event('scroll', { bubbles: true }));
+            container.scrollTop = bottom;
+            container.dispatchEvent(new Event('scroll', { bubbles: true }));
+        });
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(50, 200));
         await expect(page.locator('.post-history-auto-load-newer-slot'))
             .toHaveCSS('height', '24px');

@@ -20,6 +20,12 @@ function printSummary(line) {
                 'outerClientHeight', 'outerScrollHeight', 'pickerOpen',
                 'backgroundChanged', 'colorChanged', 'iconBackgroundChanged',
                 'statusVisible', 'statusHasSyncText', 'statusPlaceholderCount',
+                'enteredYear', 'enteredMonth', 'enteredDay', 'newerVisibleChunkCalls',
+                'lastNewerVisibleChunkCount', 'lastNewerVisibleChunkVisibleUntil',
+                'newerButtonCount', 'latestButtonCount',
+                'hoverMatches', 'hoverMedia', 'pointerFine', 'settingsButtonDisabled',
+                'hostLightClass', 'requestedYear', 'requestedMonth', 'requestedDay',
+                'documentReadyState',
             ]);
             const safe = Object.fromEntries(Object.entries(metrics).filter(([key, value]) =>
                 allowed.has(key) && typeof value === 'number' && Number.isFinite(value)));
