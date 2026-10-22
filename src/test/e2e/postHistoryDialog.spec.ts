@@ -1842,21 +1842,30 @@ test.describe('PostHistoryDialog Playwright', () => {
         });
         await scrollHistoryAwayFromBottom(page);
         await waitForIntersectionObserverSettle(page);
-        await scrollHistoryToBottom(page);
-        await waitForHistoryContainerHeightToSettle(page);
-        const anchorBeforeLoad = await getFirstVisiblePostSnapshot(page);
         await olderSentinel.evaluate((element) => {
             (element as HTMLElement).style.removeProperty('display');
         });
-        expect(anchorBeforeLoad).not.toBeNull();
-        await page.locator('.post-history-container').evaluate((element) => {
+        const anchorBeforeLoad = await page.locator('.post-history-container').evaluate((element) => {
             const container = element as HTMLDivElement;
-            const bottom = container.scrollHeight - container.clientHeight;
-            container.scrollTop = Math.max(0, bottom - 1);
+            container.scrollTop = container.scrollHeight;
             container.dispatchEvent(new Event('scroll', { bubbles: true }));
-            container.scrollTop = bottom;
-            container.dispatchEvent(new Event('scroll', { bubbles: true }));
+
+            const containerRect = container.getBoundingClientRect();
+            const item = Array.from(
+                container.querySelectorAll<HTMLElement>('.post-history-item'),
+            ).find((candidate) => {
+                const rect = candidate.getBoundingClientRect();
+                return rect.bottom > containerRect.top + 4 && rect.top < containerRect.bottom - 4;
+            });
+
+            return item
+                ? {
+                      eventId: item.dataset.postHistoryEventId ?? '',
+                      offsetTop: item.getBoundingClientRect().top - containerRect.top,
+                  }
+                : null;
         });
+        expect(anchorBeforeLoad).not.toBeNull();
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(50, 200));
         await expect(page.locator('.post-history-auto-load-newer-slot'))
             .toHaveCSS('height', '24px');
