@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+test.describe.configure({ mode: 'parallel' });
+
 type State = { signs: number; sends: { eventId: string; kind: number; relays: string[] }[]; saveEntered: boolean;
     uploads: { width: number; height: number; type: string; size: number; lossless: boolean; alpha: number }[];
     gallery: { id: string; src: string; isPlaceholder: boolean; mimeType?: string; dim?: string }[];

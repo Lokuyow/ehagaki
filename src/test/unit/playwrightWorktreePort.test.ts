@@ -128,12 +128,18 @@ describe('Playwright config connection values', () => {
                 '**/uploadedMediaServiceWorker.spec.ts',
             ];
             expect(config.testIgnore).toEqual(productionSwSpecs);
-            for (const project of config.projects?.slice(0, 2) ?? []) {
-                expect(project.testIgnore).toEqual([
-                    '**/webComponentDevServer.spec.ts',
-                    ...productionSwSpecs,
-                ]);
-            }
+            expect(config.workers).toBe(4);
+            expect(config.projects?.[0]?.testIgnore).toEqual([
+                '**/webComponentDevServer.spec.ts',
+                ...productionSwSpecs,
+            ]);
+            expect(config.projects?.[1]?.testMatch).toEqual([
+                '**/postHistoryDialog.spec.ts',
+                '**/postEditorSending.spec.ts',
+                '**/webComponentEmbed.spec.ts',
+                '**/webComponentLite.spec.ts',
+                '**/composerTargetDialog.spec.ts',
+            ]);
             expect(config.projects?.map((project) => project.name)).toEqual([
                 'desktop-chromium',
                 'mobile-chromium',
@@ -152,6 +158,9 @@ describe('Playwright config connection values', () => {
                 isMobile: true,
                 userAgent: expect.stringMatching(/Android.+Chrome\//),
             });
+            expect(config.projects?.[4]?.testMatch).toEqual([
+                '**/webComponentEmbed.spec.ts',
+            ]);
             expect(config.projects?.[3]?.testMatch).toEqual([
                 '**/composerTargetDialog.spec.ts',
                 '**/webComponentEmbed.spec.ts',
