@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      e2e_grep:
+        description: Temporary focused CI diagnosis
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -47,6 +52,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       EHAGAKI_E2E_ALL_BROWSERS: ${{ matrix.all_browsers }}
+      E2E_GREP: ${{ inputs.e2e_grep }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -67,7 +73,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npm run test:e2e:parallel -- --reporter=dot --retries=0 2>&1 | node scripts/filterTestOutput.mjs
+          npm run test:e2e:parallel -- --reporter=dot --retries=0 --grep "${E2E_GREP:-.*}" 2>&1 | node scripts/filterTestOutput.mjs
       - name: Run local relay Playwright with sanitized output
         shell: bash
         run: |
