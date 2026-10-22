@@ -1,11 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
 
-test.afterEach(async ({ page }, info) => {
-    if (info.status === info.expectedStatus) return;
-    const metrics = await page.evaluate(() => Object.fromEntries(['year', 'month', 'day'].map(part => [part, Number(document.querySelector(`[data-segment="${part}"]`)?.getAttribute('aria-valuenow'))]))).catch(() => ({}));
-    console.log('CI_METRICS ' + JSON.stringify({testLine: info.line, ...metrics}));
-});
-
 const counters = (page: Page) => page.evaluate(() => Reflect.get(window, "__HISTORY_TAB_COUNTERS__") as { localReads: number; relayRequests: number });
 async function dismissAndWaitForHistory(page: Page, action: () => Promise<unknown>) {
     const entry = await page.evaluate(() => history.state?.modalId as string | undefined);
