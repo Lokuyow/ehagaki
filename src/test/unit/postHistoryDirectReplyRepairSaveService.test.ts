@@ -75,6 +75,7 @@ describe("PostHistoryDirectReplyRepairSaveService", () => {
         );
 
         const result = await service.saveRepairDirectReplies({} as any, {
+            expectedChildGeneration: 0,
             items: [{ parentEventId: PARENT_ID, event: createReply() }],
         }).promise;
 
@@ -95,6 +96,7 @@ describe("PostHistoryDirectReplyRepairSaveService", () => {
             .mockResolvedValueOnce(new Map([[REPLY_AUTHOR, new Set([REPLY_ID])]]));
 
         const result = await service.saveRepairDirectReplies({} as any, {
+            expectedChildGeneration: 0,
             items: [{ parentEventId: PARENT_ID, event: createReply() }],
         }).promise;
 
@@ -120,6 +122,7 @@ describe("PostHistoryDirectReplyRepairSaveService", () => {
         });
 
         const result = await service.saveRepairDirectReplies({} as any, {
+            expectedChildGeneration: 0,
             items: [{ parentEventId: PARENT_ID, event: createReply() }],
         }).promise;
 
@@ -149,6 +152,7 @@ describe("PostHistoryDirectReplyRepairSaveService", () => {
         });
 
         const result = await service.saveRepairDirectReplies({} as any, {
+            expectedChildGeneration: 0,
             items: [{ parentEventId: PARENT_ID, event: createReply() }],
         }).promise;
 

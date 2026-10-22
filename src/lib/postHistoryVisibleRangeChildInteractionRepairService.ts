@@ -565,6 +565,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                         if (repairItems.length > 0) {
                             const saveTask = this.directReplySaveService.saveRepairDirectReplies(rxNostr, {
                                 items: repairItems,
+                                expectedChildGeneration: await generationReady,
                                 relayHints: [
                                     ...this.collectParentRelayHints(chunk.posts),
                                     ...candidateResult.relayUrls,

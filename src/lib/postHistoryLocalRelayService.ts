@@ -205,7 +205,7 @@ export class PostHistoryLocalRelayService {
         return { promise, cancel };
     }
 
-    archiveAdoptedAuthored(events: PostHistoryFetchedEventItem[], scope: { ownerPubkeyHex: string; expectedRevision?: number; isActive(): boolean }): Promise<void> {
+    archiveAdoptedAuthored(events: PostHistoryFetchedEventItem[], scope: PostHistoryLocalWriteScope): Promise<void> {
         const session = this.currentSession(scope.ownerPubkeyHex);
         if (!session || !scope.isActive() || scope.expectedRevision === undefined) return Promise.resolve();
         return (async () => {

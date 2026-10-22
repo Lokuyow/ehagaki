@@ -1,6 +1,4 @@
 import type { RxNostr } from "rx-nostr";
-import { ehagakiDb } from "./storage/ehagakiDb";
-import { getPostHistoryChildWriteGeneration } from "./storage/postHistoryLocalWriteScope";
 import {
     postHistoryDeletionFetchService,
     type PostHistoryDeletionFetchTask,
@@ -26,7 +24,9 @@ export interface PostHistoryDirectReplyRepairItem extends PostHistoryChildIntera
 }
 
 export interface PostHistoryDirectReplyRepairSaveRequest
-    extends PostHistoryDeletionAwareSaveRequest<PostHistoryDirectReplyRepairItem> {}
+    extends PostHistoryDeletionAwareSaveRequest<PostHistoryDirectReplyRepairItem> {
+    expectedChildGeneration: number;
+}
 
 export interface PostHistoryDirectReplyRepairSaveResult
     extends PostHistoryDeletionAwareSaveResult {
@@ -139,7 +139,6 @@ export class PostHistoryDirectReplyRepairSaveService {
         let deletionTask: PostHistoryDeletionFetchTask | null = null;
         const isActive = () => active && params.isActive?.() !== false;
 
-        const generationReady = getPostHistoryChildWriteGeneration(ehagakiDb);
         const promise = (async (): Promise<PostHistoryDirectReplyRepairSaveResult> => {
             const candidates = compactItems(params.items);
             if (candidates.length === 0) {
@@ -213,7 +212,7 @@ export class PostHistoryDirectReplyRepairSaveService {
                 visibleItems,
                 params.fetchedAt ?? this.now(),
                 isActive,
-                await generationReady,
+                params.expectedChildGeneration,
             );
 
             return isActive()
