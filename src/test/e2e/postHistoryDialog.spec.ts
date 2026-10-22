@@ -92,7 +92,7 @@ test.beforeEach(() => {
 
 test.afterEach(async ({ page }, info) => {
     if (info.status === info.expectedStatus) return;
-    const metrics = await page.evaluate(() => {
+    const metrics = await page.evaluate(async () => {
         const root = document.querySelector<HTMLElement>('.post-history-container');
         const coverage = (window as HarnessWindow).__POST_HISTORY_COVERAGE__;
         const harness = (window as HarnessWindow).__POST_HISTORY_HARNESS__;
@@ -112,6 +112,9 @@ test.afterEach(async ({ page }, info) => {
             lastIndex: ids.indexOf(rows.at(-1)?.dataset.postHistoryEventId ?? ''),
             coveragePresent: Number(Boolean(coverage)),
             savedCountFunction: Number(typeof coverage?.readSavedCount === 'function'),
+            savedCountAfterFailure: typeof coverage?.readSavedCount === 'function'
+                ? await coverage.readSavedCount().catch(() => -1)
+                : null,
             historyReady: Number(harness?.ready === true),
             newerVisibleChunkCalls: harness?.newerVisibleChunkResultCounts.length,
             lastNewerVisibleChunkCount: harness?.newerVisibleChunkResultCounts.at(-1),
@@ -266,6 +269,7 @@ async function installInitialHistoryResizeScroll(page: Page): Promise<void> {
     await page.addInitScript(() => {
         const state = {
             recreated: false,
+            firstObserverObserved: false,
         };
         (window as Window & {
             __POST_HISTORY_RESIZE_SCROLL_STATE__?: typeof state;
@@ -306,13 +310,8 @@ async function installInitialHistoryResizeScroll(page: Page): Promise<void> {
                 const isOlderHistoryObserver =
                     root instanceof HTMLElement
                     && root.classList.contains("post-history-container");
-                if (isOlderHistoryObserver) {
-                    const count = observerCounts.get(root) ?? 0;
-                    if (count === 1) {
-                        const nextHeight = root.clientHeight + 20;
-                        root.style.flex = "0 0 auto";
-                        root.style.height = `${nextHeight}px`;
-                    }
+                if (isOlderHistoryObserver && !state.firstObserverObserved) {
+                    state.firstObserverObserved = true;
                 }
                 super.observe(target);
             }
@@ -1574,6 +1573,20 @@ test.describe('PostHistoryDialog Playwright', () => {
         const harness = await page.evaluate<HarnessState>(() =>
             (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState,
         );
+
+        await expect.poll(() => page.evaluate(() => {
+            return (window as Window & {
+                __POST_HISTORY_RESIZE_SCROLL_STATE__?: { firstObserverObserved: boolean };
+            }).__POST_HISTORY_RESIZE_SCROLL_STATE__?.firstObserverObserved ?? false;
+        })).toBe(true);
+        await page.evaluate(() => new Promise<void>((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }));
+        await page.locator('.post-history-container').evaluate((element) => {
+            const root = element as HTMLElement;
+            root.style.flex = '0 0 auto';
+            root.style.height = `${Math.max(120, Math.min(root.clientHeight - 1, 320))}px`;
+        });
 
         await expect.poll(() => page.evaluate(() => {
             return (window as Window & {

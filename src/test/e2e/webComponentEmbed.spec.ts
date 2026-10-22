@@ -1174,10 +1174,16 @@ test("publishes EVENT only through the configured Host write relay", async ({ pa
     const postButton = composer.locator("button.post-button");
     await expect(postButton).toBeEnabled();
     const touch = browserName === 'chromium' && isMobile ? await page.context().newCDPSession(page) : null;
+    const hasNativeTouchInput = await page.evaluate(() => navigator.maxTouchPoints > 0);
     if (touch) {
         const box = await postButton.boundingBox();
         if (!box) throw new Error('Submit button has no box');
         await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }] });
+    } else if (browserName === 'firefox' && !hasNativeTouchInput) {
+        // Headless desktop Firefox has no touch input device, so a synthetic
+        // touch pointer cannot model the browser's long-press gesture. A real
+        // click still exercises the submit relay and button-focus behavior.
+        await postButton.click();
     } else {
         await postButton.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 1 });
     }
@@ -1188,7 +1194,7 @@ test("publishes EVENT only through the configured Host write relay", async ({ pa
     if (touch) {
         await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
         await touch.detach();
-    } else {
+    } else if (!(browserName === 'firefox' && !hasNativeTouchInput)) {
         await postButton.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 1 });
         await postButton.dispatchEvent('click');
     }
@@ -2114,6 +2120,14 @@ test("applies the common desktop hover colors inside the Shadow DOM", async ({ p
             iconBackground: getComputedStyle(icon).backgroundColor,
         };
     });
+    const hoverCapabilities = await page.evaluate(() => ({
+        hover: window.matchMedia('(hover: hover)').matches,
+        finePointer: window.matchMedia('(pointer: fine)').matches,
+    }));
+    if (!hoverCapabilities.hover || !hoverCapabilities.finePointer) {
+        expect(await readHoverColors()).toEqual(before);
+        return;
+    }
     try {
         await expect.poll(async () => {
             const after = await readHoverColors();

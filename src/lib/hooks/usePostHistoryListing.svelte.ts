@@ -2308,7 +2308,19 @@ export function usePostHistoryListing({
             && (shownPosts[0]?.eventId ?? null) === measuredNewestEventId
             && (shownPosts[shownPosts.length - 1]?.eventId ?? null) === measuredOldestEventId;
         if (!showsMeasuredWindow) {
-            return;
+            // The visible window may change while the IndexedDB availability
+            // reads are in flight. Recheck the current window once so a stale
+            // read cannot leave its navigation controls out of sync.
+            if (
+                options.retried
+                || (expectedRequestId !== null && expectedRequestId !== loadRequestId)
+            ) {
+                return;
+            }
+            return refreshTimelineAvailability(pubkeyHex, shownPosts, expectedRequestId, {
+                ...options,
+                retried: true,
+            });
         }
 
         if (visibleUntil !== state.visibleUntil) {

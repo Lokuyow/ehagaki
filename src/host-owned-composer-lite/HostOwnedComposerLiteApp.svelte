@@ -147,10 +147,15 @@
       return;
     }
     preferredHeightMeasurementRaf = window.requestAnimationFrame(() => {
-      preferredHeightMeasurementRaf = null;
-      if (measurePreferredHeight()) {
-        completeInitialPreferredHeightMeasurement();
-      }
+      // Let Svelte's DOM update and the layout metrics ResizeObserver settle
+      // before reading the intrinsic height. WebKit can report the previous
+      // flex size in the first frame after the emoji picker is removed.
+      preferredHeightMeasurementRaf = window.requestAnimationFrame(() => {
+        preferredHeightMeasurementRaf = null;
+        if (measurePreferredHeight()) {
+          completeInitialPreferredHeightMeasurement();
+        }
+      });
     });
   }
 
