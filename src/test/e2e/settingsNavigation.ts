@@ -26,7 +26,7 @@ export async function openSettingsCategory(
 ): Promise<void> {
     const name = settingsCategoryLabel(categoryId, locale);
     await root
-        .getByRole("dialog")
+        .locator(".settings-dialog")
         .getByRole("button", { name, exact: true })
         .evaluate((button) => (button as HTMLButtonElement).click());
 }
@@ -39,7 +39,7 @@ export async function openSettingsToCategory(
     await root
         .locator("button.settings-btn")
         .evaluate((button) => (button as HTMLButtonElement).click());
-    await root.getByRole("dialog").waitFor({ state: "visible" });
+    await root.locator(".settings-dialog").waitFor({ state: "visible" });
     await openSettingsCategory(root, categoryId, locale);
 }
 
