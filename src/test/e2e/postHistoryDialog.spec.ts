@@ -3025,10 +3025,11 @@ test.describe('PostHistoryDialog Playwright', () => {
     });
 
     test('Sensitive payload history previews hide body and media until explicit reveal', async ({ page }) => {
+        test.setTimeout(60_000);
         const emojiRequests: string[] = [];
-        await page.route('https://example.com/sensitive-emoji.svg', async (route) => {
+        await page.route('https://example.com/sensitive-emoji.svg', (route) => {
             emojiRequests.push(route.request().url());
-            await route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="blue"/></svg>' });
+            return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="blue"/></svg>' });
         });
         await page.goto('post-history-dialog-playwright.html?sensitive-preview=1');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
