@@ -66,22 +66,26 @@ describe("post-history attestation repository boundary", () => {
         const db = new EHagakiDB(name);
         const repository = new DexiePostHistoryRepository(db);
         const key = generateSecretKey();
-        const events = Array.from({ length: 1000 }, (_, index) => {
-            const event = finalizeEvent({ kind: [1, 6, 16, 42, 1111][index % 5]!,
+        const kinds = [1, 6, 16, 42, 1111];
+        // Exercise every kind across two distinct bulk writes and a duplicate
+        // replay. Large signing/IndexedDB workloads belong in performance tests.
+        const batchSize = kinds.length * 2;
+        const events = Array.from({ length: batchSize * 2 }, (_, index) => {
+            const event = finalizeEvent({ kind: kinds[index % kinds.length]!,
                 content: `ordinary-${index}`, tags: [], created_at: 1_700_000_000 + index }, key);
             return attestFullyVerifiedPostHistoryRawEvent(event)!;
         });
         const get = vi.spyOn(db.postHistory, "get");
         verifyEventMock.mockClear();
-        for (let offset = 0; offset < events.length; offset += 500) {
-            expect(await repository.upsertFetchedEvents({ events: events.slice(offset, offset + 500) }))
-                .toMatchObject({ insertedCount: 500 });
+        for (let offset = 0; offset < events.length; offset += batchSize) {
+            expect(await repository.upsertFetchedEvents({ events: events.slice(offset, offset + batchSize) }))
+                .toMatchObject({ insertedCount: batchSize });
         }
         expect(await repository.upsertFetchedEvents({ events }))
-            .toMatchObject({ insertedCount: 0, unchangedCount: 1000 });
+            .toMatchObject({ insertedCount: 0, unchangedCount: events.length });
         expect(get.mock.calls.length).toBe(0);
         expect(verifyEventMock).not.toHaveBeenCalled();
-        await expect(db.postHistory.count()).resolves.toBe(1000);
+        await expect(db.postHistory.count()).resolves.toBe(events.length);
         db.close();
     });
     it.each([5,36])("keeps kind %s fallback cryptographic for missing, forged and mutated proofs", async kind => {
