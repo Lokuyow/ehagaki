@@ -293,7 +293,7 @@ test("full scan: 320px and 360px presentation contain essential actions", async 
     await page.setViewportSize({ width: 1000, height: 900 }); await page.goto(hostUrl);
     await page.locator("iframe").evaluate((frame, url) => { (frame as HTMLIFrameElement).src = url; }, childUrl);
     const frame = page.frameLocator("iframe");
-    await expect.poll(() => frame.locator("body").evaluate(() => (window as ScanWindow).__POST_HISTORY_HARNESS__?.ready)).toBe(true);
+    await expect(frame.locator(".post-history-item").first()).toBeVisible();
     const embedded = await openDialog(frame);
     await embedded.getByRole("button", { name: "取得開始", exact: true }).click();
     await expect(embedded.getByRole("status")).toContainText("対象リレーの走査が終了しました");

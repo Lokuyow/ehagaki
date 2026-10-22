@@ -1,0 +1,107 @@
+name: Test reliability
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-and-build:
+    name: Vitest, check, and build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run Vitest with sanitized output
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | node scripts/filterTestOutput.mjs
+      - run: npm run check
+      - run: npm run build
+
+  browser-e2e:
+    name: Browser E2E (${{ matrix.os }}, ${{ matrix.engines }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            engines: all
+            all_browsers: '1'
+          - os: windows-latest
+            engines: chromium
+            all_browsers: '0'
+    runs-on: ${{ matrix.os }}
+    env:
+      EHAGAKI_E2E_ALL_BROWSERS: ${{ matrix.all_browsers }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - if: runner.os == 'Linux'
+        run: npx playwright install --with-deps chromium firefox webkit
+      - if: runner.os == 'Windows'
+        run: npx playwright install chromium
+      - name: Run dev-server Playwright with sanitized output
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:e2e:dev-server -- --reporter=dot --retries=0 2>&1 | node scripts/filterTestOutput.mjs
+      - name: Run Playwright with sanitized output
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:e2e:parallel -- --reporter=dot --retries=0 2>&1 | node scripts/filterTestOutput.mjs
+      - name: Run local relay Playwright with sanitized output
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:e2e:local-relay -- --reporter=dot --retries=0 2>&1 | node scripts/filterTestOutput.mjs
+
+  service-worker-e2e:
+    name: Service Worker E2E (${{ matrix.os }}, ${{ matrix.engines }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            engines: all
+            all_browsers: '1'
+          - os: windows-latest
+            engines: chromium
+            all_browsers: '0'
+    runs-on: ${{ matrix.os }}
+    env:
+      EHAGAKI_E2E_ALL_BROWSERS: ${{ matrix.all_browsers }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - if: runner.os == 'Linux'
+        run: npx playwright install --with-deps chromium firefox webkit
+      - if: runner.os == 'Windows'
+        run: npx playwright install chromium
+      - name: Run Service Worker Playwright with sanitized output
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:e2e:sw -- --reporter=dot --retries=0 2>&1 | node scripts/filterTestOutput.mjs

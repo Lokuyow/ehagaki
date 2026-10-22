@@ -298,8 +298,10 @@ test.beforeEach(() => {
     postComponentFaultRequestCount = 0;
 });
 
-test.afterEach(() => {
+test.afterEach(async ({ page, browserName }) => {
     failPostComponentLoad = false;
+    // Finish closing the tab before Firefox removes its contextual identity.
+    if (browserName === "firefox") await page.close();
 });
 
 function releasePausedRelayRequests(): void {

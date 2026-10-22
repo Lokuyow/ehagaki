@@ -17,6 +17,7 @@ Use a pinned Node version if provided; otherwise inspect the runtime. Current Gi
 | Combined Vitest, check, build, and diff check | `npm run validate` |
 | Selected default-config Playwright | `npx playwright test <file-or-filter> --reporter=dot` |
 | Two-stage Playwright: dev-server then ordinary projects | `npm run test:e2e:agent` |
+| Local relay HTTPS Playwright | `npm run test:e2e:local-relay -- --reporter=dot` |
 | Production Service Worker Playwright | `npm run test:e2e:sw -- --reporter=dot` |
 | Explicitly authorized deployment, after build | `npm run deploy` |
 
@@ -47,5 +48,5 @@ When redesigning instructions, use OpenAI's [AGENTS.md guide](https://learn.chat
 - Test public behavior and meaningful regressions. Reuse `src/test/setup.ts`, `src/test/helpers.ts`, `src/test/mocks/`, store-module mock helpers, and existing Playwright harnesses. Keep tests deterministic and independent of real relays, accounts, secrets, and local user data.
 - Respect `vi.mock()` hoisting with safe factories or `vi.hoisted`. Do not mask failures with arbitrary delays, blanket retries, weakened assertions, duplicate state, broad invalidation, or catch-all fallbacks. Use observable readiness, events, and resource/geometry state.
 - Playwright needs browser binaries separately from `npm ci` (`npx playwright install chromium`, or the required other engines). `CI=true` or `EHAGAKI_E2E_AGENT=1` selects Chromium-only mode; `EHAGAKI_E2E_ALL_BROWSERS=1` overrides it to use configured browser projects. Inspect `scripts/playwrightChromiumOnlyMode.mjs` and the selected config instead of inferring coverage from a project/device name.
-- Ordinary E2E uses `scripts/playwrightWorktreePort.ts`; `EHAGAKI_E2E_PORT` can specify a port, otherwise the runner generates one. Preserve strict-port isolation and do not reuse unrelated worktree servers.
+- Ordinary E2E uses `scripts/playwrightWorktreePort.ts`; `EHAGAKI_E2E_PORT` can specify a port, otherwise the runner probes for a bindable candidate in its automatic range. Preserve strict-port isolation and do not reuse unrelated worktree servers.
 - Report project/engine, viewport or host size, operation, result, and real-device status. Emulation does not prove OS keyboards, browser chrome, PWA standalone UI, or WebViews. Use the [browser debug Skill](../skills/ehagaki-browser-debug/SKILL.md) for investigating those defects; merely running a browser test does not require that Skill.
