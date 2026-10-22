@@ -4,6 +4,7 @@ import { WebSocketServer } from "ws";
 import type { AddressInfo } from "node:net";
 import { openSettingsToCategory } from "./settingsNavigation";
 
+test.describe.configure({ mode: "parallel" });
 test.setTimeout(120_000);
 test.use({ trace: "off" });
 

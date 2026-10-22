@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test.describe.configure({ mode: "parallel" });
+
 type State = { sends: number; signed: number; replyId?: string; quoteId?: string; deletionCount: number; deletionRequests: number;
     sentEvents: { id: string; kind: number; tags: string[][] }[];
     lastResult?: { success: boolean; error?: string }; rows: { id: string; kind: number; content: string; targetId?: string; targetKind?: number; channelEventId?: string; channelRelayHints?: string[] }[] };
