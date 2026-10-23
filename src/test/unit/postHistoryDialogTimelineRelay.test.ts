@@ -210,7 +210,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         expect(cancel).toHaveBeenCalledOnce();
     });
 
-    it('空の投稿履歴では同期中表示を右上通知だけにする', async () => {
+    it('空の投稿履歴では同期中表示を見出し中央の通知だけにする', async () => {
         relayFetchServiceMock.fetchLatest.mockReturnValue({
             promise: new Promise(() => undefined),
             cancel: vi.fn(),
