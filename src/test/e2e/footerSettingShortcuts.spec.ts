@@ -80,15 +80,15 @@ async function chooseShortcut(page: import("@playwright/test").Page, slot: "left
     await expect(dialog).toBeHidden();
 }
 
-test("keeps zero, one, and two explicit footer slots usable at the 360px standalone minimum", async ({ page }) => {
-    await page.setViewportSize({ width: 360, height: 844 });
-    for (const slots of [
-        emptySlots,
-        { left: "language", right: null },
-        { left: null, right: "language" },
-        { left: "language", right: "image-quality" },
-        { left: "quote-notification", right: "reply-notification" },
-    ]) {
+for (const slots of [
+    emptySlots,
+    { left: "language", right: null },
+    { left: null, right: "language" },
+    { left: "language", right: "image-quality" },
+    { left: "quote-notification", right: "reply-notification" },
+]) {
+    test(`keeps explicit footer slots usable at the 360px standalone minimum: ${slots.left ?? "empty"}/${slots.right ?? "empty"}`, async ({ page }) => {
+        await page.setViewportSize({ width: 360, height: 844 });
         await page.addInitScript((value) => localStorage.setItem("footerSettingShortcuts", JSON.stringify(value)), slots);
         await enterApp(page);
         const footer = page.locator(".footer-bar");
@@ -141,9 +141,8 @@ test("keeps zero, one, and two explicit footer slots usable at the 360px standal
                 expect(pair.height).toBe(50);
             }
         }
-        await page.evaluate(() => localStorage.clear());
-    }
-});
+    });
+}
 
 test("keeps authenticated left, history, and right controls in order at 360px", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 844 });
