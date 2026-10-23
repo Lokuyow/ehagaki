@@ -205,7 +205,7 @@ test.afterEach(async ({ page }, info) => {
         const root = document.querySelector<HTMLElement>('.post-history-container');
         const coverage = (window as HarnessWindow).__POST_HISTORY_COVERAGE__;
         const harness = (window as HarnessWindow).__POST_HISTORY_HARNESS__;
-        const ids = harness?.infiniteScrollEventIds ?? [];
+        const ids = coverage?.eventIds ?? harness?.infiniteScrollEventIds ?? [];
         const requestedDate = harness?.jumpDate.split('-').map(Number) ?? [];
         const rows = [...document.querySelectorAll<HTMLElement>('.post-history-item')];
         return {
@@ -1632,7 +1632,9 @@ test.describe('PostHistoryDialog Playwright', () => {
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
         const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
         const rows = () => historyEventIds(page);
-        const fetchButton = page.getByRole('button', { name: 'リレーから続きを取得' });
+        const fetchButton = page.getByRole('button', {
+            name: /^リレーから(?:続きを取得|取得中\.\.\.)$/,
+        });
         await expect.poll(rows).toEqual(ids.slice(0, 50));
         await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequests)).toBe(4);
         await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
@@ -1647,9 +1649,11 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(anchor).not.toBeNull();
         await fetchButton.click();
         await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(5);
+        await expect(fetchButton).toContainText('リレーから取得中...');
         const frameSampling = startPostPositionFrameSampling(page, anchor!.eventId);
         await frameSampling.started;
         await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.release());
+        await fetchButton.waitFor({ state: 'detached' });
         await expect.poll(rows).toEqual(ids.slice(50, 200));
         await expect(fetchButton).toHaveCount(0);
         await frameSampling.stop();
