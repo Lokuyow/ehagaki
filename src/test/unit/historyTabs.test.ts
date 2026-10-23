@@ -84,7 +84,7 @@ describe("history tabs", () => {
         await waitFor(() => expect(document.querySelector(".history-tab-viewport")?.getAttribute("aria-busy")).toBe("false"));
         view.unmount();
     });
-    it.each([50, 350])("reveals initial posts at %ims without waiting for counts or relay work", async (delay) => {
+    it.each([50, 300])("reveals initial posts at %ims without waiting for counts or relay work", async (delay) => {
         vi.useFakeTimers();
         const gate = createDeferred<ReturnType<typeof createRecord>[]>();
         const count = createDeferred<number>();
@@ -102,7 +102,7 @@ describe("history tabs", () => {
             expect(document.querySelector(".history-opening-placeholder")).toBeNull();
             expect(screen.getByText(post.content)).toBeTruthy();
             expect(document.querySelector(".history-tab-viewport")?.getAttribute("aria-busy")).toBe("false");
-            expect(!!document.querySelector(".history-content-reveal")).toBe(delay > 300);
+            expect(!!document.querySelector(".history-content-reveal")).toBe(delay > 250);
         } finally {
             count.resolve(1); view.unmount(); vi.useRealTimers();
         }

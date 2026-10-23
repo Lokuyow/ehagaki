@@ -125,7 +125,7 @@
         if (!open) return;
         const timer = setTimeout(() => {
             if (!destroyed && show && epoch === accountEpoch) openingElapsed = true;
-        }, 300);
+        }, 250);
         return () => clearTimeout(timer);
     });
     $effect(() => {
@@ -263,7 +263,7 @@
 
 <style>
     :global(.post-history-dialog.dialog) { top: 0; translate: -50% 0; height: 100svh; max-height: 100svh; --btn-post-preview-action-hover: var(--svg); }
-    :global(.post-history-dialog.dialog[data-state="open"]) { animation: history-open 300ms ease-out; }
+    :global(.post-history-dialog.dialog[data-state="open"]) { animation: history-open 250ms ease-out; }
     :global(.post-history-dialog.dialog.dialog-container-layout) { height: 100%; max-height: 100%; }
     :global(.post-history-dialog .dialog-content) { position: relative; display: flex; flex: 1; min-height: 0; max-height: none; overflow: hidden; padding: 0; }
     :global(.post-history-dialog .dialog-footer) { flex: none; }
