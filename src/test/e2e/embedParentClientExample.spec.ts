@@ -902,17 +902,17 @@ document.querySelector("#reload").addEventListener("click", () => { iframe.src =
         base: getComputedStyle(html).getPropertyValue("--base-color").trim().toLowerCase(),
     }));
     await expect.poll(readFrameColors).toEqual({ accent: "#abcdef", base: "#cdefab" });
-    await page.evaluate(() => {
-        localStorage.setItem("ehagaki.embed.storage.v1:accentColor", "#112233");
-        localStorage.setItem("ehagaki.embed.storage.v1:baseColor", "#223344");
-    });
     const childFrame = page.frames().find((candidate) => candidate.parentFrame() === page.mainFrame());
     if (!childFrame) throw new Error("expected the sample iframe to be loaded");
     const expectedUrl = childFrame.url();
     const navigation = page.waitForEvent("framenavigated", (candidate) =>
         candidate === childFrame && candidate.url().startsWith(new URL(expectedUrl).origin),
     );
-    await page.locator("#reload").click();
+    await page.evaluate(() => {
+        localStorage.setItem("ehagaki.embed.storage.v1:accentColor", "#112233");
+        localStorage.setItem("ehagaki.embed.storage.v1:baseColor", "#223344");
+        document.querySelector<HTMLButtonElement>("#reload")?.click();
+    });
     await navigation;
 
     await expect.poll(readFrameColors, { timeout: 15_000 }).toEqual({ accent: "#112233", base: "#223344" });
