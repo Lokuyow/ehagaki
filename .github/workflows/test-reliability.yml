@@ -66,7 +66,8 @@ jobs:
         shell: bash
         run: npm install --global "$(node -p 'require("./package.json").packageManager')"
       - run: npm ci
-      - if: runner.os == 'Linux'
+      - name: Install Linux Playwright browsers
+        if: runner.os == 'Linux'
         run: |
           # Prefer the runner's existing Ubuntu archive/security mirrors for APT.
           sudo sed -i '\|azure\.archive\.ubuntu\.com|d' /etc/apt/apt-mirrors.txt
@@ -115,7 +116,8 @@ jobs:
         shell: bash
         run: npm install --global "$(node -p 'require("./package.json").packageManager')"
       - run: npm ci
-      - if: runner.os == 'Linux'
+      - name: Install Linux Playwright browsers
+        if: runner.os == 'Linux'
         run: |
           # Prefer the runner's existing Ubuntu archive/security mirrors for APT.
           sudo sed -i '\|azure\.archive\.ubuntu\.com|d' /etc/apt/apt-mirrors.txt
