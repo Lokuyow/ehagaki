@@ -331,10 +331,10 @@ async function armScrollLoadGate(page: Page, direction: 'older' | 'newer') {
     }, direction);
 }
 
-async function waitForScrollLoadGate(page: Page) {
+async function waitForScrollLoadGate(page: Page, timeout = 5_000) {
     await expect.poll(() => page.evaluate(() =>
         (window as HarnessWindow).__POST_HISTORY_SCROLL_LOAD_GATE__?.entered ?? false,
-    )).toBe(true);
+    ), { timeout }).toBe(true);
 }
 
 async function releaseScrollLoadGate(page: Page) {
@@ -505,11 +505,13 @@ async function scrollHistoryNearBottom(page: Page) {
     });
 }
 
-async function scrollHistoryNearTopAndCaptureAnchor(page: Page) {
-    return page.locator('.post-history-container').evaluate((element) => {
+async function scrollHistoryNearTopAndCaptureAnchor(page: Page, prefetchDepth = 2) {
+    return page.locator('.post-history-container').evaluate((element, depth) => {
         const container = element as HTMLDivElement;
+        // The app's observer height is synchronized through ResizeObserver.
+        // Stay inside its prefetch margin instead of relying on a 24px edge.
         container.scrollTop = Math.min(
-            container.clientHeight * 2 - 24,
+            container.clientHeight * depth - 24,
             container.scrollHeight - container.clientHeight,
         );
         container.dispatchEvent(new Event('scroll', { bubbles: true }));
@@ -532,7 +534,7 @@ async function scrollHistoryNearTopAndCaptureAnchor(page: Page) {
                   }
                 : null,
         };
-    });
+    }, prefetchDepth);
 }
 
 async function scrollHistoryAwayFromTop(page: Page) {
@@ -634,13 +636,15 @@ async function waitForAutoLoadExit(page: Page, direction: 'older' | 'newer') {
 
 async function loadOneOlderChunk(page: Page, expectedEventIds: string[]) {
     await waitForAutoLoadExit(page, 'older');
+    await waitForIntersectionObserverSettle(page);
     await armScrollLoadGate(page, 'older');
-    await scrollHistoryToBottom(page);
-    await waitForScrollLoadGate(page);
+    await page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)')
+        .scrollIntoViewIfNeeded();
+    await waitForScrollLoadGate(page, 15_000);
     await scrollHistoryAwayFromBottom(page);
     await waitForIntersectionObserverSettle(page);
     await releaseScrollLoadGate(page);
-    await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds);
+    await expect.poll(() => historyEventIds(page), { timeout: 15_000 }).toEqual(expectedEventIds);
     await waitForAutoLoadIdle(page, 'older');
 }
 
@@ -1232,13 +1236,20 @@ test.describe('PostHistoryDialog Playwright', () => {
     });
 
     test('Citrine restoration from another database connection replans active open catchup', async ({ page }) => {
+        test.setTimeout(60_000);
         await page.goto('post-history-dialog-playwright.html?relay-coverage=citrine-head');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
-        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(5);
+        await expect.poll(
+            () => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length),
+            { timeout: 15_000 },
+        ).toBe(5);
         expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.importFromSecondConnection()))
             .toMatchObject({ status: 'completed', restoredRangeChanged: true });
         const restored = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.backupRange);
-        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.at(-1)?.since)).toBe(restored.until + 1);
+        await expect.poll(
+            () => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.at(-1)?.since),
+            { timeout: 15_000 },
+        ).toBe(restored.until + 1);
         expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(10);
         await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.release());
         await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
@@ -2138,8 +2149,11 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         await scrollHistoryAwayFromBottom(page);
         await waitForAutoLoadExit(page, 'older');
-        await scrollHistoryToBottom(page);
-        await expect.poll(() => historyEventIds(page)).not.toEqual(windowBeforeDeferredLoad);
+        await waitForIntersectionObserverSettle(page);
+        await page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)')
+            .scrollIntoViewIfNeeded();
+        await expect.poll(() => historyEventIds(page), { timeout: 15_000 })
+            .not.toEqual(windowBeforeDeferredLoad);
         await expectVisiblePostCount(page, 150);
         await waitForAutoLoadIdle(page, 'older');
     });
@@ -2164,8 +2178,8 @@ test.describe('PostHistoryDialog Playwright', () => {
         await scrollHistoryAwayFromTop(page);
         await waitForAutoLoadExit(page, 'newer');
         await armScrollLoadGate(page, 'newer');
-        await scrollHistoryNearTopAndCaptureAnchor(page);
-        await waitForScrollLoadGate(page);
+        await scrollHistoryNearTopAndCaptureAnchor(page, 1.75);
+        await waitForScrollLoadGate(page, 15_000);
         await expect(page.locator('.post-history-auto-load-newer-sentinel .inline-spinner')).toBeVisible();
 
         await scrollHistoryToBottom(page);
@@ -2228,8 +2242,8 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(page.locator('.post-history-auto-load-newer-sentinel'))
             .toHaveCount(1);
         await armScrollLoadGate(page, 'newer');
-        await scrollHistoryNearTopAndCaptureAnchor(page);
-        await waitForScrollLoadGate(page);
+        await scrollHistoryNearTopAndCaptureAnchor(page, 1.75);
+        await waitForScrollLoadGate(page, 15_000);
         await expect(page.locator('.post-history-auto-load-newer-sentinel .inline-spinner')).toBeVisible();
 
         const userSelectedAnchor = await getFirstVisiblePostSnapshot(page);

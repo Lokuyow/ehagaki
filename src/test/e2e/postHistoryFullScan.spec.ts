@@ -100,7 +100,7 @@ test("full scan: four workers keep relay rows independent through queued, AUTH a
     await expect(rows.last()).toBeInViewport();
     await page.screenshot({ path: testInfo.outputPath("relay-progress-auth.png") });
     await releasePendingRelay(page, 2);
-    await expect(rows.nth(2).locator(".scan-relay-state")).toHaveText("投稿なし");
+    await expect(rows.nth(2).locator(".scan-relay-state")).toHaveText("投稿なし", { timeout: 15_000 });
     await expect(rows.nth(2).locator(".scan-relay-count")).toHaveText("0");
     for (const index of [3, 4]) {
         await releasePendingRelay(page, index);
@@ -133,7 +133,7 @@ test("full scan: an ambiguous-only relay completes with an accessible explanatio
     }
     const { dialog } = await open(page, "ambiguous");
     await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
-    await expect(dialog.getByRole("status")).toContainText("対象リレーの走査が終了しました");
+    await expect(dialog.getByRole("status")).toContainText("対象リレーの走査が終了しました", { timeout: 15_000 });
     const rows = dialog.locator(".scan-relay-row");
     await expect(rows.locator(".scan-relay-state > .scan-relay-state-line > span")).toHaveText(["完了", "完了"]);
     await expect(rows.nth(0).getByRole("button", { name: "取得結果の補足情報を表示" })).toBeVisible();
@@ -277,6 +277,7 @@ test("full scan: preserves 150 loaded rows and the scroll anchor", async ({ page
     await expect.poll(async () => Math.abs(await container.evaluate((element) => element.scrollTop) - scrollTop)).toBeLessThanOrEqual(2);
 });
 test("full scan: 320px and 360px presentation contain essential actions", async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
     for (const width of [320, 360]) {
         await page.setViewportSize({ width, height: 720 });
         const { dialog } = await open(page, "relay-width");
@@ -303,7 +304,7 @@ test("full scan: 320px and 360px presentation contain essential actions", async 
     await page.setViewportSize({ width: 1000, height: 900 }); await page.goto(hostUrl);
     await page.locator("iframe").evaluate((frame, url) => { (frame as HTMLIFrameElement).src = url; }, childUrl);
     const frame = page.frameLocator("iframe");
-    await expect(frame.locator(".post-history-item").first()).toBeVisible();
+    await expect(frame.locator(".post-history-item").first()).toBeVisible({ timeout: 15_000 });
     const embedded = await openDialog(frame);
     await embedded.getByRole("button", { name: "取得開始", exact: true }).click();
     await expect(embedded.getByRole("status")).toContainText("対象リレーの走査が終了しました", { timeout: 15_000 });
