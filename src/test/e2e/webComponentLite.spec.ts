@@ -1559,7 +1559,7 @@ test("Lite waits for an intrinsic measurement when an auto-grow host is initiall
 
 test("Lite keeps an explicit auto-grow range while the emoji picker makes the Composer overflow", async ({ page }) => {
     await page.goto(hostOrigin);
-    await page.evaluate(async ({ componentOrigin }) => {
+    const initialPreferredHeight = await page.evaluate(async ({ componentOrigin }) => {
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
         const state = { preferredEvents: [] as number[] };
         (window as any).__litePickerState = state;
@@ -1586,10 +1586,15 @@ test("Lite keeps an explicit auto-grow range while the emoji picker makes the Co
         document.body.append(composer);
         await composer.whenReady();
         await composer.setCustomEmojis([{ shortcode: "wave", url: "https://example.invalid/wave.webp" }]);
+        const initialHeight = composer.preferredHeight;
         await composer.setContext({ content: "one\ntwo\nthree\nfour" });
+        return initialHeight;
     }, { componentOrigin });
 
     const composer = page.locator("ehagaki-composer");
+    await expect.poll(() => composer.evaluate((element) => (
+        element as HTMLElement & { preferredHeight: number | null }
+    ).preferredHeight)).toBeGreaterThan(initialPreferredHeight ?? 0);
     const beforePicker = await composer.evaluate((element) => {
         const editor = element.shadowRoot!.querySelector<HTMLElement>(".tiptap-editor")!;
         const style = getComputedStyle(editor);

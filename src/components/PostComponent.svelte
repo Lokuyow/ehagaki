@@ -135,6 +135,7 @@
     minEditorHeight?: number;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
     onEditorEmptyChange?: (isEmpty: boolean) => void;
+    onEditorContentUpdate?: () => void;
     notificationPort?: AppPostNotificationPort;
     hostOwnedConfig?: EHagakiHostOwnedComposerOptions & { signal: AbortSignal };
     hostCustomEmojiItems?: CustomEmojiItem[];
@@ -154,6 +155,7 @@
     minEditorHeight = POST_EDITOR_MIN_HEIGHT,
     onCustomEmojiSelect,
     onEditorEmptyChange,
+    onEditorContentUpdate,
     notificationPort,
     hostOwnedConfig,
     hostCustomEmojiItems = [],
@@ -698,7 +700,10 @@
           }
         : undefined,
       eventCallbacks: {
-        onContentUpdate: updateEditorContent,
+        onContentUpdate: (plainText, hasMedia) => {
+          updateEditorContent(plainText, hasMedia);
+          onEditorContentUpdate?.();
+        },
         onImageFullscreenRequest: (
           src: string,
           alt: string,

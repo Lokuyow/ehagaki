@@ -281,6 +281,7 @@
     }
     // A channel-only patch is a public context change too.
     notifyContextUpdated();
+    schedulePreferredHeightMeasurement();
   }
 
   export async function setEmbedSettings(
@@ -399,6 +400,7 @@
                 minEditorHeight={postEditorMinHeight}
                 {notificationPort}
                 {onEditorEmptyChange}
+                onEditorContentUpdate={schedulePreferredHeightMeasurement}
                 {hostOwnedConfig}
                 {hostCustomEmojiItems}
               />
