@@ -9,13 +9,18 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: test-reliability-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   unit-and-build:
     name: Vitest, check, and build (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # PR feedback uses one OS; main/manual runs retain platform coverage.
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +38,7 @@ jobs:
       - run: npm run build
 
   browser-e2e:
+    if: github.event_name != 'pull_request'
     name: Browser E2E (${{ matrix.os }}, ${{ matrix.engines }})
     strategy:
       fail-fast: false
@@ -75,6 +81,7 @@ jobs:
           npm run test:e2e:local-relay -- --reporter=dot --retries=0 2>&1 | node scripts/filterTestOutput.mjs
 
   service-worker-e2e:
+    if: github.event_name != 'pull_request'
     name: Service Worker E2E (${{ matrix.os }}, ${{ matrix.engines }})
     strategy:
       fail-fast: false
