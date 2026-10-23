@@ -55,6 +55,82 @@ const open = () => render(PostHistoryDialog, { show: true, onClose: vi.fn(), pub
 const tab = (name: "posts" | "media") => screen.getByRole("tab", { name: `postHistory.${name}Tab` });
 
 describe("history tabs", () => {
+    it("covers a pending tab import without the generic loading text and keeps close accessible", async () => {
+        const gate = createDeferred<void>(); counters.hold = gate.promise;
+        const view = open();
+        await tick();
+        expect(document.querySelector(".history-opening-placeholder")).toBeTruthy();
+        expect(screen.queryByText("loadingPlaceholder.loading")).toBeNull();
+        expect(document.querySelector(".history-tab-viewport")?.getAttribute("aria-busy")).toBe("true");
+        await fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
+        gate.resolve(); await tick();
+        expect(document.querySelector(".history-opening-placeholder")).toBeNull();
+        expect(counters.posts).toBe(0);
+        view.unmount();
+    });
+    it("replaces a failed import with retry and restarts the opening presentation", async () => {
+        const gate = createDeferred<void>(); counters.hold = gate.promise;
+        const onLoadFailure = vi.fn();
+        const view = render(PostHistoryDialog, { show: true, onClose: vi.fn(), pubkeyHex: mediaPubkey, onLoadFailure });
+        await tick();
+        gate.reject(new Error("temporary import failure"));
+        const retry = await screen.findByRole("button", { name: "uploadedMedia.refresh" });
+        expect(document.querySelector(".history-opening-placeholder")).toBeNull();
+        expect(onLoadFailure).toHaveBeenCalledOnce();
+        counters.hold = null;
+        await fireEvent.click(retry);
+        await waitFor(() => expect(counters.posts).toBe(1));
+        await waitFor(() => expect(document.querySelector(".history-tab-viewport")?.getAttribute("aria-busy")).toBe("false"));
+        view.unmount();
+    });
+    it.each([50, 350])("reveals initial posts at %ims without waiting for counts or relay work", async (delay) => {
+        vi.useFakeTimers();
+        const gate = createDeferred<ReturnType<typeof createRecord>[]>();
+        const count = createDeferred<number>();
+        repositoryMock.getLatestVisibleChunk.mockReturnValueOnce(gate.promise);
+        repositoryMock.countForPubkey.mockReturnValue(count.promise);
+        const post = createRecord({ content: "opening ready post" });
+        const view = open();
+        try {
+            await vi.advanceTimersByTimeAsync(0);
+            expect(document.querySelector(".history-opening-placeholder")).toBeTruthy();
+            await vi.advanceTimersByTimeAsync(delay);
+            expect(document.querySelector(".post-history-list-loading")).toBeNull();
+            gate.resolve([post]);
+            await vi.advanceTimersByTimeAsync(0);
+            expect(document.querySelector(".history-opening-placeholder")).toBeNull();
+            expect(screen.getByText(post.content)).toBeTruthy();
+            expect(document.querySelector(".history-tab-viewport")?.getAttribute("aria-busy")).toBe("false");
+            expect(!!document.querySelector(".history-content-reveal")).toBe(delay > 300);
+        } finally {
+            count.resolve(1); view.unmount(); vi.useRealTimers();
+        }
+    });
+    it.each(["empty", "failed"])("finishes the opening presentation for %s local history", async (result) => {
+        if (result === "failed") repositoryMock.getLatestVisibleChunk.mockRejectedValueOnce(new Error("read failed"));
+        const view = open();
+        await waitFor(() => expect(document.querySelector(".history-tab-viewport")?.getAttribute("aria-busy")).toBe("false"));
+        expect(document.querySelector(".history-opening-placeholder")).toBeNull();
+        if (result === "failed") expect(screen.queryByText("投稿履歴はありません")).toBeNull();
+        else expect(screen.getByText("投稿履歴はありません")).toBeTruthy();
+        view.unmount();
+    });
+    it.each(["empty", "failed"])("covers the first media request and reveals its %s result", async (result) => {
+        getAppStorage().setItem("historyActiveTab", "media");
+        const gate = createDeferred<ReturnType<typeof mediaPage>>();
+        counters.list.mockReturnValueOnce(gate.promise);
+        const view = open();
+        await waitFor(() => expect(counters.list).toHaveBeenCalledOnce());
+        expect(document.querySelector(".history-opening-placeholder")).toBeTruthy();
+        expect(document.querySelector(".media-management .loading-placeholder")).toBeNull();
+        if (result === "failed") gate.reject(new Error("media failed"));
+        else gate.resolve(mediaPage(undefined, []));
+        await waitFor(() => expect(document.querySelector(".history-opening-placeholder")).toBeNull());
+        if (result === "failed") expect(screen.getByRole("alert")).toBeTruthy();
+        else expect(screen.getByText("uploadedMedia.empty")).toBeTruthy();
+        expect(counters.posts).toBe(0);
+        view.unmount();
+    });
     it.each([null, "invalid"])("defaults to posts for %s and does no media work", async (stored) => {
         if (stored) getAppStorage().setItem("historyActiveTab", stored);
         open();

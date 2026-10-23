@@ -2,6 +2,86 @@ import { expect, test, type Download, type Locator, type Page, type Route } from
 
 test.describe.configure({ mode: 'parallel' });
 
+test.describe('history opening presentation', () => {
+    async function startFrameSampling(page: Page) {
+        await page.evaluate(() => {
+            const samples: Array<{ pending: boolean; placeholder: boolean; loading: boolean; top: number; left: number }> = [];
+            Reflect.set(window, '__HISTORY_OPENING_FRAMES__', samples);
+            function sample() {
+                const dialog = document.querySelector('.post-history-dialog');
+                if (dialog) {
+                    const rect = dialog.getBoundingClientRect();
+                    samples.push({ pending: !!dialog.querySelector('[data-opening-pending="true"]'),
+                        placeholder: !!dialog.querySelector('.history-opening-placeholder'), top: rect.top, left: rect.left,
+                        loading: [...dialog.querySelectorAll('.placeholder-text')].some(node =>
+                            node.textContent === '読み込み中...' && getComputedStyle(node).visibility !== 'hidden') });
+                }
+                if (samples.length < 300) requestAnimationFrame(sample);
+            }
+            requestAnimationFrame(sample);
+        });
+    }
+    for (const tab of ['posts', 'media'] as const) {
+        test(`history opening presentation covers delayed ${tab} code and preserves layout`, async ({ page }, testInfo) => {
+            await page.addInitScript(tab => localStorage.setItem('historyActiveTab', tab), tab);
+            const component = tab === 'posts' ? 'PostHistoryTabContent' : 'UploadedMediaTabContent';
+            let release!: () => void;
+            const gate = new Promise<void>(resolve => { release = resolve; });
+            await page.route(new RegExp(`/src/components/${component}\\.svelte(?:\\?|$)`), async route => {
+                await gate;
+                await route.continue();
+            });
+            await page.goto('post-history-dialog-playwright.html?history-opening=1');
+            await expect(page.getByTestId('history-launch')).toBeEnabled();
+            await startFrameSampling(page);
+            await page.getByTestId('history-launch').click();
+            const dialog = page.locator('.post-history-dialog');
+            await expect(dialog.locator('.history-opening-placeholder')).toBeVisible();
+            await expect(dialog.locator('.history-tab-viewport')).toHaveAttribute('aria-busy', 'true');
+            await expect(dialog.getByRole('button', { name: '閉じる', exact: true })).toBeEnabled();
+            await dialog.evaluate(async node => { await Promise.all(node.getAnimations().map(animation => animation.finished)); });
+            await page.screenshot({ path: testInfo.outputPath(`opening-${tab}-pending.png`) });
+            release();
+            await expect(dialog.locator('.history-opening-placeholder')).toHaveCount(0);
+            await expect(dialog.locator('.history-tab-viewport')).toHaveAttribute('aria-busy', 'false');
+            if (tab === 'posts') await expect(dialog.getByText('Opening fixture post', { exact: true })).toBeVisible();
+            else await expect(dialog.locator('.media-management')).toBeVisible();
+            await expect(dialog.locator('.history-content-reveal')).toHaveCount(1);
+            await expect.poll(() => page.evaluate(() => Reflect.get(window, '__HISTORY_OPENING_FRAMES__').length)).toBeGreaterThan(2);
+            const frames = await page.evaluate(() => Reflect.get(window, '__HISTORY_OPENING_FRAMES__') as Array<{ pending: boolean; placeholder: boolean; loading: boolean; top: number; left: number }>);
+            expect(frames.some(frame => frame.pending && !frame.placeholder)).toBe(false);
+            expect(frames.some(frame => frame.loading)).toBe(false);
+            expect(Math.max(...frames.map(frame => frame.top)) - Math.min(...frames.map(frame => frame.top))).toBeLessThanOrEqual(1);
+            expect(Math.max(...frames.map(frame => frame.left)) - Math.min(...frames.map(frame => frame.left))).toBeLessThanOrEqual(1);
+            await page.screenshot({ path: testInfo.outputPath(`opening-${tab}-ready.png`) });
+        });
+    }
+    test('history opening presentation waits only for local posts and respects reduced motion on reopen', async ({ page }) => {
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await page.setViewportSize({ width: 360, height: 800 });
+        await page.goto('post-history-dialog-playwright.html?history-opening=1');
+        await expect(page.getByTestId('history-launch')).toBeEnabled();
+        await page.evaluate(() => Reflect.get(window, '__HISTORY_OPENING__').arm());
+        await page.getByTestId('history-launch').click();
+        const dialog = page.locator('.post-history-dialog');
+        await page.waitForFunction(() => Reflect.get(window, '__HISTORY_OPENING__').entered);
+        await expect(dialog.locator('.history-opening-placeholder')).toBeVisible();
+        expect(await dialog.evaluate(node => getComputedStyle(node).animationName)).toBe('none');
+        await page.evaluate(() => Reflect.get(window, '__HISTORY_OPENING__').release());
+        await expect(dialog.getByText('Opening fixture post', { exact: true })).toBeVisible();
+        expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+        const entry = await page.evaluate(() => history.state?.modalId);
+        await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
+        await expect(dialog).toHaveCount(0);
+        await page.waitForFunction(id => history.state?.modalId !== id, entry);
+        await expect(page.getByTestId('history-launch')).toBeFocused();
+        await page.getByTestId('history-launch').click();
+        await expect(dialog.getByText('Opening fixture post', { exact: true })).toBeVisible();
+        await expect(dialog.locator('.history-opening-placeholder')).toHaveCount(0);
+        expect(await dialog.evaluate(node => getComputedStyle(node).animationName)).toBe('none');
+    });
+});
+
 type HarnessState = {
     ready: boolean;
     totalPosts: number;

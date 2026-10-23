@@ -301,7 +301,7 @@ describe('PostHistoryDialog timeline search', () => {
         view.unmount();
     });
 
-    it('200ms超の初回ローカル読込だけspinnerを表示し、完了後に解除する', async () => {
+    it('200ms超の初回ローカル読込は共通の待機表示を使い、完了後に解除する', async () => {
         vi.useFakeTimers();
         const deferredPosts = createDeferred<ReturnType<typeof createRecord>[]>();
         repositoryMock.getLatestVisibleChunk.mockReturnValue(deferredPosts.promise);
@@ -311,13 +311,15 @@ describe('PostHistoryDialog timeline search', () => {
         });
 
         await vi.advanceTimersByTimeAsync(200);
-        expect(document.querySelector('.post-history-list-loading')).not.toBeNull();
+        expect(document.querySelector('.history-opening-placeholder')).not.toBeNull();
+        expect(document.querySelector('.post-history-list-loading')).toBeNull();
         expect(getHistoryContainer().getAttribute('aria-busy')).toBe('true');
 
         deferredPosts.resolve([]);
         await vi.advanceTimersByTimeAsync(0);
         await vi.runAllTicks();
         expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
+        expect(document.querySelector('.history-opening-placeholder')).toBeNull();
         expect(document.querySelector('.post-history-list-loading')).toBeNull();
         expect(getHistoryContainer().getAttribute('aria-busy')).toBe('false');
 
