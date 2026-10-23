@@ -627,6 +627,7 @@ window.addEventListener("message", (event) => {
 
     await page.goto("/ehagaki/e2e-embed-ready-parent.html");
     const frame = page.frameLocator("#child");
+    await frame.locator(".tiptap-editor").waitFor({ state: "attached" });
     await expect(frame.locator(".tiptap-editor")).toBeVisible();
 
     await expect.poll(() => page.evaluate(() => ({
