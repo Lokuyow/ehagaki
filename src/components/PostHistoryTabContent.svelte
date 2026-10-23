@@ -125,11 +125,12 @@
     const POST_HISTORY_LIST_LOADING_DELAY_MS = 200;
 
     import type { PostHistoryDialogProps } from "../lib/postHistoryDialogTypes";
-    interface Props extends PostHistoryDialogProps { sessionOpen?: boolean }
+    interface Props extends PostHistoryDialogProps { sessionOpen?: boolean; onInitialReady?: () => void }
 
     let {
         show: active = false,
         sessionOpen = undefined,
+        onInitialReady = undefined,
         onClose,
         onReplyPost = undefined,
         onQuotePost = undefined,
@@ -492,6 +493,7 @@
     } | null = null;
     let searchInputElement = $state<HTMLInputElement | null>(null);
     let showDelayedListLoading = $state(false);
+    let initialReadyReported = $state(false);
     const previewCollapse = usePostHistoryPreviewCollapse({
         getShow: () => !destroyed && show,
         getSessionOpen: () => sessionOpen ?? active,
@@ -622,6 +624,16 @@
             ? history.searchResultStatus === "ready"
             : history.initialLocalLoadStatus === "ready"),
     );
+    $effect(() => {
+        if (!show || initialReadyReported || !onInitialReady) return;
+        const loadStatus = history.isSearchMode
+            ? history.searchResultStatus
+            : history.initialLocalLoadStatus;
+        if (!pubkeyHex || history.posts.length > 0 || loadStatus === "ready" || loadStatus === "failed") {
+            initialReadyReported = true;
+            onInitialReady();
+        }
+    });
 
     function addRelatedPreviewModel(
         event: NostrEvent,
@@ -842,7 +854,7 @@
     });
 
     $effect(() => {
-        if (!show || !isHistoryListLoading) {
+        if (!show || !isHistoryListLoading || (onInitialReady && !initialReadyReported)) {
             showDelayedListLoading = false;
             return;
         }

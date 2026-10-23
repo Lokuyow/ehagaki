@@ -3,6 +3,9 @@ import {
     type ComponentLoadFailureKind,
     type ComponentLoadResult,
 } from "./appComponentLoader";
+import { importPostHistoryPosts, importPostHistoryMedia } from "./postHistoryTabImports";
+import { historyTabStore } from "../stores/historyTabStore.svelte";
+import { untrack } from "svelte";
 
 type PostComponent = typeof import("../components/PostComponent.svelte").default;
 type LoginDialogComponent = typeof import("../components/LoginDialog.svelte").default;
@@ -111,8 +114,18 @@ export function createAppComponentLoaders(
     const loadPostHistoryDialogModule = createComponentLoader(
         "post-history",
         () => import("../components/PostHistoryDialog.svelte"),
-        commonOptions,
+        // Warm only the lightweight shell at startup; tab instances and I/O stay lazy.
+        { ...commonOptions, eager: true },
     );
+    const historyTabs = {
+        posts: createComponentLoader("post-history-posts", importPostHistoryPosts, commonOptions),
+        media: createComponentLoader("post-history-media", importPostHistoryMedia, commonOptions),
+    };
+    function preloadSelectedHistoryTab() {
+        if (targets.isStaleAssetReloadRequired()) return;
+        // Start alongside the shell, without delaying its publication or mounting a tab.
+        void historyTabs[untrack(() => historyTabStore.restore())].preload();
+    }
     const loadComposerTargetDialogModule = createComponentLoader(
         "composer-target",
         () => import("../components/ComposerTargetDialog.svelte"),
@@ -168,14 +181,18 @@ export function createAppComponentLoaders(
             );
         },
         async loadPostHistoryDialog() {
+            const shell = loadPostHistoryDialogModule();
+            preloadSelectedHistoryTab();
             applyLoadResult(
-                await loadPostHistoryDialogModule(),
+                await shell,
                 targets.setPostHistoryDialogComponent,
                 targets.onLoadFailure,
             );
         },
         async preloadPostHistoryDialog() {
-            const result = await loadPostHistoryDialogModule.preload();
+            const shell = loadPostHistoryDialogModule.preload();
+            preloadSelectedHistoryTab();
+            const result = await shell;
             if (result.status === "loaded") {
                 targets.setPostHistoryDialogComponent(result.component);
             }

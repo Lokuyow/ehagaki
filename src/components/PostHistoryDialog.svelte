@@ -4,8 +4,8 @@
     import { _ } from "svelte-i18n";
     import DialogWrapper from "./DialogWrapper.svelte";
     import Button from "./Button.svelte";
-    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { createComponentLoader } from "../lib/appComponentLoader";
+    import { importPostHistoryPosts, importPostHistoryMedia } from "../lib/postHistoryTabImports";
     import { resolveAppAssetUrl } from "../lib/appAssetUrl";
     import type { AppComponentLoadFailure } from "../lib/appComponentLoaders";
     import type { PostHistoryDialogProps } from "../lib/postHistoryDialogTypes";
@@ -35,9 +35,24 @@
     let loadGeneration = 0;
     let destroyed = false;
     let loadFailed = $state(false);
+    let postsReady = $state(false);
+    let mediaReady = $state(false);
+    let openingElapsed = $state(false);
+    let openingComplete = $state(false);
+    let revealLate = $state(false);
+    const contentReady = $derived(loadFailed || (activeTab === "posts" ? postsReady : mediaReady));
+    function readinessHandler(tab: HistoryTab, epoch: number) {
+        return () => {
+            if (destroyed || !show || invalidated || epoch !== accountEpoch || tab !== activeTab) return;
+            if (tab === "posts") postsReady = true;
+            else mediaReady = true;
+        };
+    }
+    const onPostsReady = $derived(readinessHandler("posts", accountEpoch));
+    const onMediaReady = $derived(readinessHandler("media", accountEpoch));
     const options = { isStale: () => destroyed || isStaleAssetReloadRequired() };
-    const loadPosts = createComponentLoader("post-history-posts", () => import("./PostHistoryTabContent.svelte"), options);
-    const loadMedia = createComponentLoader("post-history-media", () => import("./UploadedMediaTabContent.svelte"), options);
+    const loadPosts = createComponentLoader("post-history-posts", importPostHistoryPosts, options);
+    const loadMedia = createComponentLoader("post-history-media", importPostHistoryMedia, options);
     const busy = () => mediaRef?.isBusy() ?? mediaBusy;
 
     export function invalidateSession() {
@@ -47,6 +62,8 @@
         mediaRef?.invalidateSession();
         mediaBusy = false;
         postsVisited = false; mediaVisited = false;
+        postsReady = false; mediaReady = false;
+        loadFailed = false;
         accountEpoch++;
     }
     function selectTab(value: string) {
@@ -97,7 +114,24 @@
             if (open) { closePrepared = false; return; }
             if (!closePrepared) { postsRef?.prepareClose(); postsRef?.suspend(); mediaRef?.suspend(); }
             postsVisited = false; mediaVisited = false;
+            postsReady = false; mediaReady = false;
         });
+    });
+    $effect(() => {
+        const open = show, epoch = accountEpoch;
+        openingElapsed = false;
+        openingComplete = false;
+        revealLate = false;
+        if (!open) return;
+        const timer = setTimeout(() => {
+            if (!destroyed && show && epoch === accountEpoch) openingElapsed = true;
+        }, 250);
+        return () => clearTimeout(timer);
+    });
+    $effect(() => {
+        if (!show || !contentReady || openingComplete) return;
+        revealLate = openingElapsed;
+        openingComplete = true;
     });
     $effect(() => {
         const tab = activeTab, open = show, epoch = accountEpoch;
@@ -146,21 +180,77 @@
                 </Tabs.List>
                 <span class="history-tab-indicator" style:transform="translateX({tabSwipe.indicatorProgress * 100}%)" aria-hidden="true"></span>
             </div>
-            <div class="history-tab-viewport">
-                <div class="history-tab-panels">
+            <div class="history-tab-viewport" aria-busy={!contentReady} data-opening-pending={!contentReady}>
+                <div class="history-tab-panels" class:history-content-reveal={revealLate && openingComplete}
+                    inert={!contentReady} aria-hidden={!contentReady ? "true" : undefined}>
                     {#key accountEpoch}
                         <Tabs.Content value="posts" class="history-tab-panel">
-                        {#if Posts && postsVisited}<Posts {...postProps} bind:this={postsRef} show={show && !invalidated && activeTab === "posts"} sessionOpen={show} onClose={() => close(false)} />{/if}
+                        {#if Posts && postsVisited}<Posts {...postProps} bind:this={postsRef} show={show && !invalidated && activeTab === "posts"} sessionOpen={show} onClose={() => close(false)} onInitialReady={onPostsReady} />{/if}
                         </Tabs.Content>
                         <Tabs.Content value="media" class="history-tab-panel">
-                        {#if Media && mediaVisited}<Media bind:this={mediaRef} show={show && !invalidated && activeTab === "media"} onBusyChange={(value) => mediaBusy = value} />{/if}
+                        {#if Media && mediaVisited}<Media bind:this={mediaRef} show={show && !invalidated && activeTab === "media"} onBusyChange={(value) => mediaBusy = value} onInitialReady={onMediaReady} />{/if}
                         </Tabs.Content>
                     {/key}
-                    {#if (activeTab === "posts" && !Posts) || (activeTab === "media" && !Media)}
-                        {#if loadFailed}<Button onClick={() => accountEpoch++}>{$_("uploadedMedia.refresh")}</Button>
-                        {:else}<LoadingPlaceholder showLoader text={true} />{/if}
+                    {#if loadFailed}
+                        <Button onClick={() => { invalidateSession(); invalidated = false; }}>{$_("uploadedMedia.refresh")}</Button>
                     {/if}
                 </div>
+                {#if !contentReady}
+                    <div class="history-opening-placeholder" data-history-tab={activeTab} aria-hidden="true">
+                        {#if activeTab === "posts"}
+                            <div class="history-opening-post-heading">
+                                <div class="history-opening-heading-main">
+                                    <span class="history-opening-block history-opening-month"></span>
+                                    <span class="history-opening-block history-opening-icon"></span>
+                                </div>
+                                <div class="history-opening-heading-actions">
+                                    {#each [0, 1, 2] as action (action)}
+                                        <span class="history-opening-block history-opening-icon"></span>
+                                    {/each}
+                                </div>
+                            </div>
+                            <div class="history-opening-post-list">
+                                {#each [0, 1, 2] as row (row)}
+                                    <div class="history-opening-post">
+                                        <div class="history-opening-post-body">
+                                            <span class="history-opening-block history-opening-line"></span>
+                                            <span class="history-opening-block history-opening-line medium"></span>
+                                            {#if row === 1}<span class="history-opening-block history-opening-line short"></span>{/if}
+                                        </div>
+                                        <div class="history-opening-post-footer">
+                                            <span class="history-opening-block history-opening-date"></span>
+                                            <div class="history-opening-post-actions">
+                                                {#each [0, 1, 2] as action (action)}
+                                                    <span class="history-opening-block history-opening-icon"></span>
+                                                {/each}
+                                            </div>
+                                            <span class="history-opening-block history-opening-menu"></span>
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
+                        {:else}
+                            <div class="history-opening-media-toolbar">
+                                <div class="history-opening-media-server">
+                                    <span class="history-opening-block history-opening-line medium"></span>
+                                    <span class="history-opening-block history-opening-chevron"></span>
+                                </div>
+                                <span class="history-opening-block history-opening-icon"></span>
+                            </div>
+                            <div class="history-opening-media-grid">
+                                {#each [0, 1, 2, 3, 4, 5] as tile (tile)}
+                                    <div class="history-opening-media-tile">
+                                        <div class="history-opening-media-meta">
+                                            <span class="history-opening-block history-opening-line short"></span>
+                                            <span class="history-opening-block history-opening-line medium"></span>
+                                        </div>
+                                        <span class="history-opening-block history-opening-media-action"></span>
+                                    </div>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
+                {/if}
             </div>
         </div>
     </Tabs.Root>
@@ -173,6 +263,7 @@
 
 <style>
     :global(.post-history-dialog.dialog) { top: 0; translate: -50% 0; height: 100svh; max-height: 100svh; --btn-post-preview-action-hover: var(--svg); }
+    :global(.post-history-dialog.dialog[data-state="open"]) { animation: history-open 250ms ease-out; }
     :global(.post-history-dialog.dialog.dialog-container-layout) { height: 100%; max-height: 100%; }
     :global(.post-history-dialog .dialog-content) { position: relative; display: flex; flex: 1; min-height: 0; max-height: none; overflow: hidden; padding: 0; }
     :global(.post-history-dialog .dialog-footer) { flex: none; }
@@ -232,6 +323,7 @@
         background-color: var(--theme);
     }
     .history-tab-viewport {
+        position: relative;
         flex: 1;
         min-width: 0;
         min-height: 0;
@@ -246,8 +338,39 @@
         min-height: 0;
     }
     .history-tab-gesture.is-offset .history-tab-panels { transform: translate3d(var(--history-tab-drag), 0, 0); }
+    .history-tab-viewport[data-opening-pending="true"] .history-tab-panels { visibility: hidden; }
+    .history-content-reveal { animation: history-open 80ms ease-out; }
+    .history-opening-placeholder { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+    .history-opening-block { display: block; background: var(--text); opacity: 0.07; border-radius: 4px; }
+    .history-opening-line { height: 12px; }
+    .history-opening-line.short { width: 30%; }
+    .history-opening-line.medium { width: 70%; }
+    .history-opening-icon { width: 20px; height: 20px; flex: none; border-radius: 6px; }
+    .history-opening-post-heading { display: flex; align-items: center; justify-content: space-between; height: 48px; padding-inline: 12px 15px; border-bottom: 1px solid var(--border-hr); }
+    .history-opening-heading-main { display: flex; align-items: center; gap: 20px; min-width: 0; }
+    .history-opening-month { width: 64px; height: 24px; }
+    .history-opening-heading-actions { display: flex; gap: 30px; }
+    .history-opening-post { padding: 6px; border-bottom: 1px solid var(--border-hr-light); }
+    .history-opening-post:last-child { border-bottom: none; }
+    .history-opening-post-body { display: grid; gap: 12px; padding: 6px 16px 6px; }
+    .history-opening-post-footer { display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 36px; align-items: center; height: 36px; padding-inline-start: 16px; }
+    .history-opening-date { width: min(48px, 100%); height: 10px; }
+    .history-opening-post-actions { display: flex; justify-content: space-around; min-width: 0; }
+    .history-opening-menu { width: 4px; height: 14px; justify-self: center; }
+    .history-opening-media-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 4px; padding: 8px; align-items: center; }
+    .history-opening-media-server { display: flex; align-items: center; justify-content: space-between; height: 44px; padding-inline: 10px 14px; border: 1px solid var(--border); border-radius: 6px; }
+    .history-opening-chevron { width: 10px; height: 6px; }
+    .history-opening-media-toolbar > .history-opening-icon { justify-self: center; }
+    .history-opening-media-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; }
+    .history-opening-media-tile { position: relative; min-width: 0; aspect-ratio: 1; }
+    .history-opening-media-tile::before { content: ""; position: absolute; inset: 0; background: var(--text); opacity: 0.05; }
+    .history-opening-media-meta { position: absolute; bottom: 14px; left: 8px; right: 52px; display: grid; gap: 6px; }
+    .history-opening-media-meta .history-opening-line { height: 8px; }
+    .history-opening-media-action { position: absolute; right: 14px; bottom: 16px; width: 20px; height: 20px; }
+    @keyframes history-open { from { opacity: 0; } to { opacity: 1; } }
     @media (prefers-reduced-motion: reduce) {
         .history-tab-indicator { transition: none; }
+        :global(.post-history-dialog.dialog[data-state="open"]), .history-content-reveal { animation: none; }
     }
     :global(.history-tab-panel:not([hidden])) { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 </style>

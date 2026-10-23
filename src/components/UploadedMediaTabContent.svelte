@@ -15,8 +15,10 @@
     import type { FullscreenMediaItem } from "../lib/types";
     import { resolveAppAssetUrl } from "../lib/appAssetUrl";
 
-    interface Props { show: boolean; onBusyChange?: (busy: boolean) => void }
-    let { show: active, onBusyChange = () => undefined }: Props = $props();
+    interface Props { show: boolean; onBusyChange?: (busy: boolean) => void; onInitialReady?: () => void }
+    let { show: active, onBusyChange = () => undefined, onInitialReady }: Props = $props();
+    let configurationStarted = $state(false);
+    let initialReadyReported = $state(false);
     let suspended = $state(false);
     let show = $derived(active && !suspended);
     export function activate() { suspended = false; management.controller.activate(); }
@@ -77,7 +79,16 @@
             const pubkey = account.isAuthenticated ? account.pubkey : null;
             if (destinations.length) management.controller.configure(pubkey, destinations);
             else void management.controller.configureSaved(pubkey);
+            configurationStarted = true;
         });
+    });
+    $effect(() => {
+        if (!show || initialReadyReported || !onInitialReady || !configurationStarted || management.value.configuring) return;
+        if (!authState.value.isAuthenticated || management.value.configurationError || management.value.destinations.length === 0
+            || current?.loaded || current?.items.length || current?.error) {
+            initialReadyReported = true;
+            onInitialReady();
+        }
     });
     $effect(() => {
         if (!show || cacheSupported !== null) return;
@@ -192,7 +203,7 @@
                 {/if}
             </div>
             {#if current}
-                {#if current.loading}<LoadingPlaceholder showLoader text={true} />{/if}
+                {#if current.loading && (!onInitialReady || initialReadyReported)}<LoadingPlaceholder showLoader text={true} />{/if}
                 {#if current.error}
                     <p class="media-status" role="alert">{$_(`uploadedMedia.errors.${current.error.code}`)}</p>
                     {#if current.error.retryAt}<p class="media-status">{$_("uploadedMedia.retryAfter", { values: { time: new Date(current.error.retryAt).toLocaleTimeString() } })}</p>{/if}
