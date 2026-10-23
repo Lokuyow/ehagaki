@@ -3,6 +3,15 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "packageManager": "npm@12.2.1",
+  "engines": {
+    "node": ">=24.22.1 <25",
+    "npm": ">=12.2.1 <13"
+  },
+  "allowScripts": {
+    "es5-ext": false,
+    "esbuild@0.28.2": true
+  },
   "scripts": {
     "dev": "vite --host",
     "dev:web-component": "node scripts/devWebComponentSample.mjs",
@@ -29,54 +38,57 @@
     "verify:rx-nostr-patch": "node scripts/verifyRxNostrPatch.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
-    "@sveltejs/vite-plugin-svelte": "^6.2.0",
-    "@testing-library/svelte": "^5.3.1",
-    "@types/node": "^24.2.0",
+    "@playwright/test": "1.59.1",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@testing-library/svelte": "^5.4.2",
+    "@types/node": "^24.19.2",
     "@types/qrcode": "^1.5.6",
-    "@types/ws": "^8.18.1",
-    "fake-indexeddb": "^6.2.5",
+    "@types/ws": "^8.18.2",
+    "esbuild": "^0.28.2",
+    "fake-indexeddb": "^6.2.6",
     "gh-pages": "^6.3.0",
-    "happy-dom": "^20.0.8",
-    "jsdom": "^26.1.0",
+    "happy-dom": "^21.0.4",
+    "jsdom": "^30.1.3",
     "patch-package": "8.0.1",
-    "svelte": "^5.55.7",
-    "svelte-check": "^4.4.8",
-    "typescript": "~5.8.3",
-    "vite": "^7.0.6",
-    "vite-plugin-pwa": "^1.3.0",
-    "vite-plugin-static-copy": "^3.1.3",
-    "vitest": "^4.1.6",
-    "ws": "^8.18.3"
+    "svelte": "^5.57.2",
+    "svelte-check": "^4.7.7",
+    "typescript": "~6.0.3",
+    "vite": "^8.3.5",
+    "vite-plugin-pwa": "^2.0.0",
+    "vite-plugin-static-copy": "^4.1.1",
+    "vitest": "^5.0.5",
+    "ws": "^8.22.0"
   },
   "dependencies": {
     "@jsquash/webp": "^1.5.0",
-    "@mediabunny/aac-encoder": "1.44.2",
+    "@mediabunny/aac-encoder": "1.62.1",
     "@rx-nostr/crypto": "^3.1.6",
-    "@tiptap/core": "^3.31.3",
-    "@tiptap/extension-image": "^3.31.3",
-    "@tiptap/extensions": "^3.31.3",
-    "@tiptap/starter-kit": "^3.31.3",
-    "@tiptap/suggestion": "^3.31.3",
-    "bits-ui": "^2.18.0",
+    "@tiptap/core": "^3.32.0",
+    "@tiptap/extension-image": "^3.32.0",
+    "@tiptap/extensions": "^3.32.0",
+    "@tiptap/starter-kit": "^3.32.0",
+    "@tiptap/suggestion": "^3.32.0",
+    "bits-ui": "^2.20.2",
     "blurhash": "^2.0.5",
     "browser-image-compression": "^2.0.2",
-    "dexie": "^4.4.2",
-    "dompurify": "^3.4.13",
-    "ipaddr.js": "^2.3.0",
-    "mediabunny": "1.44.2",
+    "dexie": "^4.4.6",
+    "dompurify": "^3.4.17",
+    "ipaddr.js": "^2.5.0",
+    "mediabunny": "1.62.1",
     "nip07-awaiter": "^1.1.0",
-    "nostr-tools": "^2.23.3",
-    "nostr-zap": "^1.3.0",
+    "nostr-tools": "^2.25.2",
+    "nostr-zap": "^1.3.2",
     "nostr-zap-view": "^1.4.6",
     "photoswipe": "^5.4.4",
     "qrcode": "^1.5.4",
     "rx-nostr": "3.7.8",
     "svelte-i18n": "^4.0.1",
-    "svelte-tiptap": "^3.0.1"
+    "svelte-tiptap": "^3.0.2"
   },
   "overrides": {
-    "esbuild": "^0.25.8",
-    "serialize-javascript": ">=7.0.5"
+    "serialize-javascript": "^7.1.3",
+    "svelte-i18n": {
+      "esbuild": "$esbuild"
+    }
   }
 }

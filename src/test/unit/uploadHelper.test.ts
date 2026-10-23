@@ -273,9 +273,24 @@ describe("uploadHelper", () => {
             expect(results[0]).toEqual({
                 file,
                 index: 0,
-                ox: undefined,
+                ox: "010203",
                 dimensions: { width: 100, height: 200, displayWidth: 100, displayHeight: 200 }
             });
+        });
+
+        it("retains dimensions when reading the file for hashing fails", async () => {
+            const file = createTestFile({ name: "test.png", type: "image/png", content: "content" });
+            vi.spyOn(file, "arrayBuffer").mockRejectedValueOnce(new Error("Fixture read failure"));
+
+            const results = await processFilesForUpload([file], mockDependencies);
+
+            expect(results).toEqual([{
+                file,
+                index: 0,
+                ox: undefined,
+                dimensions: { width: 100, height: 200, displayWidth: 100, displayHeight: 200 }
+            }]);
+            expect(mockDependencies.crypto.digest).not.toHaveBeenCalled();
         });
     });
 

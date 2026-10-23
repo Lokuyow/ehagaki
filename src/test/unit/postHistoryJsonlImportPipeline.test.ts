@@ -32,8 +32,8 @@ function setup(worker = new MockWorker(), data = bytes, workerCount: 1 | 2 | 4 =
         postHistoryRepository:{upsertFetchedEvents:posts},deletionRequestsRepository:{upsertImportedDeletionEvents:deletions},
         sensitivePayloadRepository:{putCandidate:payloads},importedRangesRepository:{record:ranges},
     });
-    let streamController!: ReadableStreamDefaultController<Uint8Array>;
-    const stream = new ReadableStream<Uint8Array>({start(c){streamController=c;c.enqueue(data);}});
+    let streamController!: ReadableStreamDefaultController<Uint8Array<ArrayBuffer>>;
+    const stream = new ReadableStream<Uint8Array<ArrayBuffer>>({start(c){streamController=c;c.enqueue(data);}});
     const run = () => service.importFile({file:{name:"citrine-1700000000000.jsonl",size:data.length,stream:()=>stream},ownerPubkeyHex:owner,getCurrentPubkeyHex:()=>currentOwner,signal:controller.signal});
     return {worker,workers,controller,posts,deletions,payloads,ranges,getRevision,run,streamController,setOwner:()=>{currentOwner=other.pubkey;},setRevision:()=>{revision++;}};
 }

@@ -6,8 +6,7 @@ import {
     statSync,
 } from "node:fs";
 import { resolve, relative, sep } from "node:path";
-import type { OutputAsset, OutputChunk } from "rollup";
-import type { Plugin } from "vite";
+import type { Plugin, Rolldown } from "vite";
 
 export interface FixedLegacyBridgeAsset {
     path: `assets/${string}`;
@@ -246,7 +245,7 @@ export function verifyFixedLegacyBridgeSources(
     }
 }
 
-function bundleEntryBytes(entry: OutputAsset | OutputChunk): Buffer {
+function bundleEntryBytes(entry: Rolldown.OutputAsset | Rolldown.OutputChunk): Buffer {
     if (entry.type === "chunk") {
         return Buffer.from(entry.code, "utf8");
     }

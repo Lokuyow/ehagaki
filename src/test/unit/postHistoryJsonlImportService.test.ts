@@ -52,7 +52,7 @@ function createFile(content: string): Pick<File, "stream" | "size"> {
     const bytes = new TextEncoder().encode(content);
     return {
         size: bytes.byteLength,
-        stream: () => new ReadableStream<Uint8Array>({
+        stream: () => new ReadableStream<Uint8Array<ArrayBuffer>>({
             start(controller) {
                 controller.enqueue(bytes);
                 controller.close();
@@ -71,7 +71,7 @@ function createChunkedFile(
     let chunkIndex = 0;
     return {
         size: bytes.byteLength,
-        stream: () => new ReadableStream<Uint8Array>({
+        stream: () => new ReadableStream<Uint8Array<ArrayBuffer>>({
             pull(controller) {
                 if (offset >= bytes.byteLength) {
                     controller.close();
@@ -604,7 +604,7 @@ describe("PostHistoryJsonlImportService", () => {
         const pubkey = getPublicKey(secretKey);
         const event = createSignedEvent(secretKey);
         const encoder = new TextEncoder();
-        const stream = new ReadableStream<Uint8Array>({
+        const stream = new ReadableStream<Uint8Array<ArrayBuffer>>({
             start(controller) {
                 controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
                 controller.enqueue(new Uint8Array([0xff]));

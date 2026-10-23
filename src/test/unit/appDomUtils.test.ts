@@ -260,62 +260,45 @@ describe('appDomUtils', () => {
     });
 
     describe('isTouchDevice', () => {
-        let originalWindow: any;
-        let originalNavigator: any;
-
-        beforeEach(() => {
-            originalWindow = global.window;
-            originalNavigator = global.navigator;
-        });
-
         afterEach(() => {
-            global.window = originalWindow;
-            global.navigator = originalNavigator;
+            vi.unstubAllGlobals();
         });
 
         it('ontouchstartがある場合はtrueを返す', () => {
-            // @ts-ignore
-            global.window = { ontouchstart: null };
+            vi.stubGlobal('window', { ontouchstart: null });
 
             expect(isTouchDevice()).toBe(true);
         });
 
         it('maxTouchPointsが1以上ならtrueを返す', () => {
-            // @ts-ignore
-            global.window = {};
-            // @ts-ignore
-            global.navigator = { maxTouchPoints: 1 };
+            vi.stubGlobal('window', {});
+            vi.stubGlobal('navigator', { maxTouchPoints: 1 });
 
             expect(isTouchDevice()).toBe(true);
         });
 
         it('モバイルのuserAgentならtrueを返す', () => {
-            // @ts-ignore
-            global.window = {};
-            // @ts-ignore
-            global.navigator = {
+            vi.stubGlobal('window', {});
+            vi.stubGlobal('navigator', {
                 maxTouchPoints: 0,
                 userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)'
-            };
+            });
 
             expect(isTouchDevice()).toBe(true);
         });
 
         it('デスクトップデバイスならfalseを返す', () => {
-            // @ts-ignore
-            global.window = {};
-            // @ts-ignore
-            global.navigator = {
+            vi.stubGlobal('window', {});
+            vi.stubGlobal('navigator', {
                 maxTouchPoints: 0,
                 userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            };
+            });
 
             expect(isTouchDevice()).toBe(false);
         });
 
         it('windowがundefinedならfalseを返す', () => {
-            // @ts-ignore
-            global.window = undefined;
+            vi.stubGlobal('window', undefined);
 
             expect(isTouchDevice()).toBe(false);
         });

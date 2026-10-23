@@ -4,16 +4,7 @@
     import { Portal } from "bits-ui";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
-    let {
-        show = false,
-        x = 0,
-        y = 0,
-        variant = "pointer",
-        anchor = null,
-        anchorRightOffset = 0,
-        showInfoIcon = true,
-        children = undefined,
-    } = $props<{
+    interface Props {
         show?: boolean;
         x?: number;
         y?: number;
@@ -26,7 +17,18 @@
         anchorRightOffset?: number;
         showInfoIcon?: boolean;
         children?: Snippet;
-    }>();
+    }
+
+    let {
+        show = false,
+        x = 0,
+        y = 0,
+        variant = "pointer",
+        anchor = null,
+        anchorRightOffset = 0,
+        showInfoIcon = true,
+        children = undefined,
+    }: Props = $props();
 
     let container: HTMLDivElement | undefined = $state();
     let messageX = $state(0);

@@ -84,6 +84,18 @@ iframe、Full Web Component、Host-owned Composer Lite Web Componentの方式選
 
 Web Componentではiframeのparent-client auth/RPCや `postMessage` を使いません。ホストと同じWindow realm / originで動作するためローカルnsec認証には対応せず、NIP-07はhostの `window.nostr` を直接利用し、NIP-46は埋め込まれたeHagakiのUIから利用します。通常版/PWAとiframe版では従来どおりnsec認証を利用できます。
 
+## 開発
+
+Node.jsは[.node-version](.node-version)、npmは[package.json](package.json)の`packageManager`に指定したバージョンを使用します。CIも同じ指定を参照します。
+
+```sh
+npm ci
+npm run dev
+npm run validate
+```
+
+依存関係の固定理由、残る監査警告、ブラウザー検証については[依存関係の更新](docs/DEPENDENCY_UPDATES.md)を参照してください。
+
 ## 技術スタック
 
 ### フロントエンド

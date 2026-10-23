@@ -1,7 +1,7 @@
 export interface TestFileOptions {
     name?: string;
     type?: string;
-    content?: string | Blob | ArrayBuffer | ArrayBufferView;
+    content?: BlobPart;
     lastModified?: number;
 }
 
