@@ -1166,7 +1166,7 @@ describe('PostHistoryDialog', () => {
             });
 
             await waitFor(() => {
-                expect(document.querySelector('.floating-message.anchor-bottom-right')?.textContent)
+                expect(document.querySelector('.floating-message.anchor-center')?.textContent)
                     .toContain('リレーと同期中...');
             });
             await openPostHistoryMenu();
@@ -1174,7 +1174,7 @@ describe('PostHistoryDialog', () => {
             await waitFor(() => {
                 expect(document.querySelector('.post-history-heading .status-loading-placeholder'))
                     .toBeTruthy();
-                expect(document.querySelector('.floating-message.anchor-bottom-right'))
+                expect(document.querySelector('.floating-message.anchor-center'))
                     .toBeNull();
             });
             expect(document.querySelector('.post-history-sync-footer')?.textContent)
@@ -1196,7 +1196,7 @@ describe('PostHistoryDialog', () => {
             });
             await new Promise((resolve) => setTimeout(resolve, 0));
             await waitFor(() => {
-                expect(document.querySelector('.floating-message.anchor-bottom-right')?.textContent)
+                expect(document.querySelector('.floating-message.anchor-center')?.textContent)
                     .toContain('リレーと同期中...');
             });
         } finally {

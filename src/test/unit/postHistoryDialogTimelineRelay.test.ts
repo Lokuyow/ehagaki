@@ -210,7 +210,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         expect(cancel).toHaveBeenCalledOnce();
     });
 
-    it('空の投稿履歴では同期中表示を右上通知だけにする', async () => {
+    it('空の投稿履歴では同期中表示を見出し中央の通知だけにする', async () => {
         relayFetchServiceMock.fetchLatest.mockReturnValue({
             promise: new Promise(() => undefined),
             cancel: vi.fn(),
@@ -228,7 +228,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled();
-            expect(document.querySelector('.floating-message.anchor-bottom-right')?.textContent)
+            expect(document.querySelector('.floating-message.anchor-center')?.textContent)
                 .toContain('リレーと同期中...');
         });
 

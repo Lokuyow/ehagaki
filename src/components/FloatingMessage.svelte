@@ -1,6 +1,7 @@
 <script lang="ts">
     import { tick } from "svelte";
     import type { Snippet } from "svelte";
+    import { fade } from "svelte/transition";
     import { Portal } from "bits-ui";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
@@ -12,10 +13,12 @@
             | "pointer"
             | "top-right"
             | "container-top-right"
-            | "anchor-bottom-right";
+            | "anchor-bottom-right"
+            | "anchor-center";
         anchor?: HTMLElement | null;
         anchorRightOffset?: number;
         showInfoIcon?: boolean;
+        fadeOutDuration?: number;
         children?: Snippet;
     }
 
@@ -27,6 +30,7 @@
         anchor = null,
         anchorRightOffset = 0,
         showInfoIcon = true,
+        fadeOutDuration = 0,
         children = undefined,
     }: Props = $props();
 
@@ -99,11 +103,13 @@
     });
 
     $effect(() => {
-        if (variant !== "anchor-bottom-right") {
+        if (variant !== "anchor-bottom-right" && variant !== "anchor-center") {
             return;
         }
 
-        if (!show || !container || !anchor) {
+        if (!show) return;
+
+        if (!container || !anchor) {
             anchorPositionReady = false;
             return;
         }
@@ -129,17 +135,23 @@
             }
 
             const messageBounds = container.getBoundingClientRect();
+            const anchorX = variant === "anchor-center"
+                ? anchorBounds.left + (anchorBounds.width - messageBounds.width) / 2
+                : anchorBounds.right - messageBounds.width - anchorRightOffset;
+            const anchorY = variant === "anchor-center"
+                ? anchorBounds.top + (anchorBounds.height - messageBounds.height) / 2
+                : anchorBounds.bottom + 8;
             messageX = Math.max(
                 SCREEN_PADDING,
                 Math.min(
-                    anchorBounds.right - messageBounds.width - anchorRightOffset,
+                    anchorX,
                     viewportWidth - messageBounds.width - SCREEN_PADDING,
                 ),
             );
             messageY = Math.max(
                 SCREEN_PADDING,
                 Math.min(
-                    anchorBounds.bottom + 8,
+                    anchorY,
                     viewportHeight - messageBounds.height - SCREEN_PADDING,
                 ),
             );
@@ -166,37 +178,34 @@
     });
 </script>
 
-{#if show}
+{#if show || fadeOutDuration > 0}
     <Portal to={overlayTarget}>
-        <div
-            bind:this={container}
-            class="floating-message {variant === 'top-right'
-                ? 'top-right'
-                : variant === 'container-top-right'
-                  ? 'container-top-right'
-                  : variant === 'anchor-bottom-right'
-                    ? 'anchor-bottom-right'
-                  : 'pointer'}"
-            style={variant === "container-top-right"
-                ? `left: ${messageX}px; top: ${messageY}px; width: ${messageMaxWidth}px;`
-                : variant === "anchor-bottom-right"
-                  ? `left: ${messageX}px; top: ${messageY}px; max-width: ${messageMaxWidth}px; visibility: ${anchorPositionReady ? "visible" : "hidden"};`
-                  : variant === "pointer"
-                  ? `left: ${messageX}px; top: ${messageY}px;`
-                  : undefined}
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-        >
-            <div class="floating-message-body">
-                {#if showInfoIcon}
-                    <span class="info-icon svg-icon" aria-hidden="true"></span>
-                {/if}
-                <div class="floating-message-content">
-                    {@render children?.()}
+        {#if show}
+            <div
+                bind:this={container}
+                out:fade={{ duration: fadeOutDuration }}
+                class="floating-message {variant}"
+                style={variant === "container-top-right"
+                    ? `left: ${messageX}px; top: ${messageY}px; width: ${messageMaxWidth}px;`
+                    : variant === "anchor-bottom-right" || variant === "anchor-center"
+                      ? `left: ${messageX}px; top: ${messageY}px; max-width: ${messageMaxWidth}px; visibility: ${anchorPositionReady ? "visible" : "hidden"};`
+                      : variant === "pointer"
+                      ? `left: ${messageX}px; top: ${messageY}px;`
+                      : undefined}
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+            >
+                <div class="floating-message-body">
+                    {#if showInfoIcon}
+                        <span class="info-icon svg-icon" aria-hidden="true"></span>
+                    {/if}
+                    <div class="floating-message-content">
+                        {@render children?.()}
+                    </div>
                 </div>
             </div>
-        </div>
+        {/if}
     </Portal>
 {/if}
 
@@ -231,7 +240,8 @@
         white-space: normal;
     }
 
-    .floating-message.anchor-bottom-right {
+    .floating-message.anchor-bottom-right,
+    .floating-message.anchor-center {
         top: auto;
         right: auto;
         box-sizing: border-box;

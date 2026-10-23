@@ -1668,7 +1668,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
         const footer = page.locator('.post-history-sync-footer');
         const heading = page.locator('.post-history-heading');
-        const statusToast = page.locator('.floating-message.anchor-bottom-right[role="status"]');
+        const statusToast = page.locator('.floating-message.anchor-center[role="status"]');
         await expect.poll(
             () => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length),
             { timeout: 15_000 },
@@ -1681,8 +1681,8 @@ test.describe('PostHistoryDialog Playwright', () => {
         const toastBounds = await statusToast.boundingBox();
         expect(headingBounds).not.toBeNull();
         expect(toastBounds).not.toBeNull();
-        expect(toastBounds!.y).toBeGreaterThanOrEqual(headingBounds!.y + headingBounds!.height);
-        expect(Math.abs(toastBounds!.x + toastBounds!.width - (headingBounds!.x + headingBounds!.width))).toBeLessThanOrEqual(16);
+        expect(Math.abs(toastBounds!.x + toastBounds!.width / 2 - (headingBounds!.x + headingBounds!.width / 2))).toBeLessThanOrEqual(1);
+        expect(Math.abs(toastBounds!.y + toastBounds!.height / 2 - (headingBounds!.y + headingBounds!.height / 2))).toBeLessThanOrEqual(1);
 
         await scrollHistoryToBottom(page);
         await expect(footer.getByText('リレーと同期中...')).toBeVisible();

@@ -607,6 +607,20 @@
             history.currentViewRefetchStatusMessageKey ===
                 "postHistory.repairFetchFailed",
     );
+    let syncToastExpired = $state(false);
+    const canAutoHideSyncToast = $derived(
+        show && !fullScan.state.open && !exportRunning &&
+            history.syncStatus === "syncing" &&
+            headingStatusMessageKey === "postHistory.syncing" &&
+            history.posts.length > 0,
+    );
+    $effect(() => {
+        syncToastExpired = false;
+        if (!canAutoHideSyncToast) return;
+
+        const timeout = setTimeout(() => { syncToastExpired = true; }, 1000);
+        return () => clearTimeout(timeout);
+    });
     let canUseReturnToLatest = $derived(
         history.canReturnToLatest || !historyViewport.isHistoryScrolledToTop,
     );
@@ -3978,10 +3992,10 @@
 
 
 <FloatingMessage
-    show={show && !fullScan.state.open && !exportRunning && !!headingStatusMessageKey}
-    variant="anchor-bottom-right"
+    show={show && !fullScan.state.open && !exportRunning && !!headingStatusMessageKey && !syncToastExpired}
+    fadeOutDuration={canAutoHideSyncToast ? 200 : 0}
+    variant="anchor-center"
     anchor={postHistoryHeadingElement}
-    anchorRightOffset={16}
     showInfoIcon={!history.showStatusLoader}
 >
     {#if headingStatusMessageKey}
