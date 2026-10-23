@@ -483,7 +483,9 @@ describe("draftManager", () => {
 
     describe("toggleDraftPinned", () => {
         it("下書きのピン留め状態を保存して、ピン留めした下書きを先頭に表示する", async () => {
+            const now = vi.spyOn(Date, "now").mockReturnValue(1000);
             await saveDraft("<p>Old</p>", undefined, undefined, undefined, { pubkeyHex: "pubkey-a" });
+            now.mockReturnValue(2000);
             await saveDraft("<p>New</p>", undefined, undefined, undefined, { pubkeyHex: "pubkey-a" });
             const before = await loadDrafts({ pubkeyHex: "pubkey-a" });
 
@@ -495,7 +497,9 @@ describe("draftManager", () => {
         });
 
         it("ピン留め解除後はタイムスタンプ降順に戻す", async () => {
+            const now = vi.spyOn(Date, "now").mockReturnValue(1000);
             await saveDraft("<p>Old</p>");
+            now.mockReturnValue(2000);
             await saveDraft("<p>New</p>");
             const before = await loadDrafts();
 
