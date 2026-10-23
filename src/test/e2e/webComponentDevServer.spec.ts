@@ -127,9 +127,10 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         failedWebComponentRequests.length = 0;
         consoleErrors.length = 0;
         await page.goto(`${origin}/ehagaki/host-owned-composer-lite-example.html`);
+        const initialReadyStatus = "ready | upload: off | CW: off | hashtag pin: off | bar: on | editor submit: off | enter: newline | shortcuts: default | editor: legacy";
+        await expect(page.locator("#status")).toHaveText(initialReadyStatus, { timeout: 15_000 });
+        await expect(page.locator("#mount-config-status")).toHaveText(initialReadyStatus, { timeout: 15_000 });
         await expect(page.locator("#log")).toContainText("create configuration:");
-        await expect(page.locator("#status")).toHaveText("ready | upload: off | CW: off | hashtag pin: off | bar: on | editor submit: off | enter: newline | shortcuts: default | editor: legacy");
-        await expect(page.locator("#mount-config-status")).toHaveText("ready | upload: off | CW: off | hashtag pin: off | bar: on | editor submit: off | enter: newline | shortcuts: default | editor: legacy");
         await expect(page.locator("#editor-min-lines")).toHaveValue("");
         await expect(page.locator("#editor-max-lines")).toHaveValue("");
         await expect(page.locator("ehagaki-composer")).toBeVisible();
