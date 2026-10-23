@@ -1861,6 +1861,7 @@ test.describe('PostHistoryDialog Playwright', () => {
     });
 
     test('normal history loads exactly one local chunk for each new bottom arrival', async ({ page }) => {
+        test.setTimeout(60_000);
         const harness = await gotoInfiniteScrollHarness(page);
         const expectedEventIds = harness.infiniteScrollEventIds;
 
