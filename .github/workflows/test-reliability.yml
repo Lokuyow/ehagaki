@@ -5,6 +5,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      e2e_grep:
+        description: 'Run only matching ordinary E2E on Ubuntu; empty runs full CI (test title regex)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -15,6 +21,7 @@ concurrency:
 
 jobs:
   unit-and-build:
+    if: github.event_name != 'workflow_dispatch' || inputs.e2e_grep == ''
     name: Vitest, check, and build (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -46,16 +53,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            engines: all
-            all_browsers: '1'
-          - os: windows-latest
-            engines: chromium
-            all_browsers: '0'
+        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.e2e_grep != '' && '[{"os":"ubuntu-latest","engines":"all","all_browsers":"1"}]' || '[{"os":"ubuntu-latest","engines":"all","all_browsers":"1"},{"os":"windows-latest","engines":"chromium","all_browsers":"0"}]') }}
     runs-on: ${{ matrix.os }}
     env:
       EHAGAKI_E2E_ALL_BROWSERS: ${{ matrix.all_browsers }}
+      PLAYWRIGHT_GREP: ${{ github.event_name == 'workflow_dispatch' && inputs.e2e_grep || '' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -75,6 +77,7 @@ jobs:
       - if: runner.os == 'Windows'
         run: npx playwright install chromium
       - name: Run dev-server Playwright with sanitized output
+        if: env.PLAYWRIGHT_GREP == ''
         shell: bash
         run: |
           set -o pipefail
@@ -83,15 +86,20 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npm run test:e2e:parallel -- --reporter=dot --retries=0 2>&1 | node scripts/filterTestOutput.mjs
+          args=(--reporter=dot --retries=0)
+          if [[ -n "$PLAYWRIGHT_GREP" ]]; then
+            args+=(--grep "$PLAYWRIGHT_GREP")
+          fi
+          npm run test:e2e:parallel -- "${args[@]}" 2>&1 | node scripts/filterTestOutput.mjs
       - name: Run local relay Playwright with sanitized output
+        if: env.PLAYWRIGHT_GREP == ''
         shell: bash
         run: |
           set -o pipefail
           npm run test:e2e:local-relay -- --reporter=dot --retries=0 2>&1 | node scripts/filterTestOutput.mjs
 
   service-worker-e2e:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.e2e_grep == '')
     name: Service Worker E2E (${{ matrix.os }}, ${{ matrix.engines }})
     strategy:
       fail-fast: false
