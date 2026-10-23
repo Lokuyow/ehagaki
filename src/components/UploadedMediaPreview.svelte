@@ -54,8 +54,6 @@
                 }}>
                 <img src={imageSrc} alt="" referrerpolicy="no-referrer" onerror={imageFailed} />
             </button>
-        {:else}
-            <LoadingPlaceholder showLoader loaderSize={24} />
         {/if}
     {:else if active}
         <video bind:this={video} use:releaseVideo src={item.url} controls playsinline preload="metadata" onended={onCloseVideo}>
