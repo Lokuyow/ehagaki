@@ -161,7 +161,7 @@ test.describe("composer target dialog fixture", () => {
         await expect(raw).toContainText('"kind": 7');
         await expect(raw).toContainText('"content": "👍"');
         await expect(raw).toBeVisible();
-        await page.keyboard.press("Escape");
+        await raw.press("Escape");
         await expect(raw).toBeHidden();
         await expect(page.getByRole("dialog", { name: "宛先を指定" })).toBeVisible();
     });

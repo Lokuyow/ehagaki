@@ -10,6 +10,7 @@
     import { setNip07Auth, setNsecAuth, secretKeyStore } from "../../stores/authStore.svelte";
     import { writeRelaysStore } from "../../stores/relayStore.svelte";
     import { postHistoryRepository } from "../../lib/storage/postHistoryRepository";
+    import { postHistoryRelayFetchService } from "../../lib/postHistoryRelayFetchService";
     import { postHistoryDeletionRequestsRepository } from "../../lib/storage/postHistoryDeletionRequestsRepository";
     import { ehagakiDb } from "../../lib/storage/ehagakiDb";
     import { channelMetadataRepository } from "../../lib/storage/channelMetadataRepository";
@@ -184,6 +185,16 @@
         return { ...finalizeEvent(template, ownerKey), kind: template.kind };
     }
     onMount(() => { void (async () => {
+        if (holdHistory) {
+            // Keep the deliberately held request active beyond a single E2E test;
+            // the production dialog-open timeout otherwise clears its status mid-test.
+            const fetchLatest = postHistoryRelayFetchService.fetchLatest.bind(postHistoryRelayFetchService);
+            postHistoryRelayFetchService.fetchLatest = (runtime, params) => fetchLatest(runtime,
+                params.reason === "dialog-open-refresh"
+                    ? { ...params, timeoutMs: 60_000 }
+                    : params,
+            );
+        }
         if (targetKind === 42) await channelMetadataRepository.upsertResolvedChannel({
             channelEventId: channelRoot.id, creatorPubkey: channelRoot.pubkey, createEventCreatedAt: channelRoot.created_at,
             quality: "verified-metadata", metadataLookup: "complete", name: "Generic channel", about: "channel enrichment", picture: null,

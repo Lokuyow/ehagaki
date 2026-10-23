@@ -2008,6 +2008,7 @@ test.describe('PostHistoryDialog Playwright', () => {
     });
 
     test('normal history preloads one local chunk before either edge and rearms after exit', async ({ page }) => {
+        test.setTimeout(60_000);
         const harness = await gotoInfiniteScrollHarness(page);
         const expectedEventIds = harness.infiniteScrollEventIds;
 
@@ -2041,6 +2042,7 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         await scrollHistoryAwayFromTop(page);
         await waitForAutoLoadExit(page, 'newer');
+        await waitForIntersectionObserverSettle(page);
         const newerApproach = await scrollHistoryNearTopAndCaptureAnchor(page);
         expect(newerApproach.topOffset).toBeGreaterThan(1);
         expect(newerApproach.topOffset).toBeLessThan(newerApproach.clientHeight * 2);
@@ -2061,6 +2063,7 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         await scrollHistoryAwayFromTop(page);
         await waitForAutoLoadExit(page, 'newer');
+        await waitForIntersectionObserverSettle(page);
         await scrollHistoryNearTopAndCaptureAnchor(page);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(1, 151));
         await waitForAutoLoadIdle(page, 'newer');
@@ -2219,6 +2222,7 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         await scrollHistoryAwayFromTop(page);
         await waitForAutoLoadExit(page, 'newer');
+        await waitForIntersectionObserverSettle(page);
         await expect(page.locator('.post-history-auto-load-newer-slot'))
             .toHaveCSS('height', '24px');
         await expect(page.locator('.post-history-auto-load-newer-sentinel'))
@@ -2273,6 +2277,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         const penultimateWindow = expectedEventIds.slice(1, 151);
         await scrollHistoryAwayFromTop(page);
         await waitForAutoLoadExit(page, 'newer');
+        await waitForIntersectionObserverSettle(page);
         await scrollHistoryNearTopAndCaptureAnchor(page);
         await expect.poll(() => historyEventIds(page)).toEqual(penultimateWindow);
         await waitForAutoLoadIdle(page, 'newer');
@@ -2281,6 +2286,7 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         await scrollHistoryAwayFromTop(page);
         await waitForAutoLoadExit(page, 'newer');
+        await waitForIntersectionObserverSettle(page);
         await armScrollLoadGate(page, 'newer');
         await scrollHistoryNearTopAndCaptureAnchor(page);
         await waitForScrollLoadGate(page);
