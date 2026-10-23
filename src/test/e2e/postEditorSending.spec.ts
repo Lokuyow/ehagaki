@@ -69,7 +69,7 @@ async function pasteHtml(editor: Locator, html: string, text: string) {
     }, { html, text });
 }
 
-test('pastes HTML with clipboard plain text and submits the plain content', async ({ page, isMobile }) => {
+test('pastes HTML with clipboard plain text and submits the plain content', async ({ page }) => {
     await page.goto('post-editor-sending-playwright.html?withSubmit=1');
     const editor = page.locator('.tiptap-editor');
     await editor.click();
@@ -92,7 +92,7 @@ test('pastes HTML with clipboard plain text and submits the plain content', asyn
     });
     expect(caret).toEqual({ insideEditor: true, atTextEnd: true });
 
-    const undoModifier = isMobile ? 'Meta' : 'Control';
+    const undoModifier = await page.evaluate(() => /Mac|iP(hone|[oa]d)/.test(navigator.platform) ? 'Meta' : 'Control');
     await editor.press(`${undoModifier}+z`);
     await expect(editor).toHaveText('');
     await editor.press(`${undoModifier}+Shift+z`);
@@ -121,8 +121,8 @@ test('long-press submits once without losing focus and freezes the document unti
     await expect(editor).toBeFocused();
     await release();
     await expect(editor).toHaveAttribute('contenteditable', 'true');
-    await expect(page.getByRole('textbox')).toHaveAttribute('aria-readonly', 'true');
-    await expect(page.getByRole('textbox')).not.toHaveAttribute('aria-disabled');
+    await expect(page.getByRole('textbox', { name: '投稿エディター' })).toHaveAttribute('aria-readonly', 'true');
+    await expect(page.getByRole('textbox', { name: '投稿エディター' })).not.toHaveAttribute('aria-disabled');
     for (const key of ['x', 'Enter', 'Shift+Enter', 'Backspace', 'Control+z', 'Control+y']) await page.keyboard.press(key);
     for (const type of ['paste', 'cut', 'drop']) {
         await editor.evaluate((element, type) => {
@@ -279,12 +279,12 @@ test('active composition success clears immediately and quarantines stale compos
     await expect(editor).toHaveText('');
     await editor.dispatchEvent('compositionend', { data: 'preedit候補' });
     await editor.dispatchEvent('compositionstart', { data: 'new' });
-    await expect(page.getByRole('textbox')).not.toHaveAttribute('aria-readonly', 'true');
+    await expect(page.getByRole('textbox', { name: '投稿エディター' })).not.toHaveAttribute('aria-readonly', 'true');
     await editor.click();
     await page.keyboard.type('new edit');
     await expect(editor).toContainText('new edit');
     expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(1);
-    await expect(page.getByRole('textbox')).not.toHaveAttribute('aria-readonly');
+    await expect(page.getByRole('textbox', { name: '投稿エディター' })).not.toHaveAttribute('aria-readonly');
     await editor.click();
     await page.keyboard.type('再編集');
     await expect(editor).toContainText('再編集');

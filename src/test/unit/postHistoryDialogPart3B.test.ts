@@ -195,6 +195,9 @@ describe('PostHistoryDialog', () => {
         const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
         await fireEvent.click(actionTrigger);
         await fireEvent.click(await screen.findByRole('menuitem', { name: 'neventをコピー' }));
+        // Finish the menu's exit frame without elapsing the clipboard toast timer.
+        vi.advanceTimersToNextFrame();
+        await vi.advanceTimersByTimeAsync(0);
 
         await waitFor(() => {
             expect(screen.queryByRole('menuitem', { name: 'neventをコピー' })).toBeNull();
@@ -206,7 +209,7 @@ describe('PostHistoryDialog', () => {
         }));
 
         expect(await screen.findByText('コピーしました')).toBeTruthy();
-        await fireEvent.click(actionTrigger);
+        await fireEvent.click(screen.getAllByRole('button', { name: 'アクションを表示' })[0]);
         expect(await screen.findByRole('menuitem', { name: 'neventをコピー' })).toBeTruthy();
         expect(screen.queryByRole('menuitem', { name: 'コピーしました' })).toBeNull();
     });

@@ -2,11 +2,12 @@ import { verifyRxNostrPatch } from "./scripts/verifyRxNostrPatch.mjs";
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
-import { HASHED_PRECACHE_ASSET_PATTERN } from './src/lib/swPrecacheInstall';
+import { HASHED_PRECACHE_ASSET_PATTERN } from './src/lib/swPrecacheInstall.ts';
+import { APP_BROWSER_TARGETS } from './scripts/browserTargets.ts';
 import {
   fixedLegacyBridgeEmitPlugin,
   loadFixedLegacyBridgeManifest,
-} from './scripts/fixedLegacyBridge';
+} from './scripts/fixedLegacyBridge.ts';
 
 // previewモード判定（vite preview時は process.argv に 'preview' が含まれる）
 const isPreview = process.argv.some(arg => arg.includes('preview')) ||
@@ -45,7 +46,7 @@ export default defineConfig({
     format: 'es',
     // Worker output is precached by the service worker and shares the regular
     // hashed asset namespace with the application build.
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         entryFileNames: 'assets/[name]-bridge-[hash].js',
         chunkFileNames: 'assets/[name]-bridge-[hash].js'
@@ -54,56 +55,31 @@ export default defineConfig({
   },
   assetsInclude: ['**/*.wasm'],
   build: {
+    target: APP_BROWSER_TARGETS,
+    cssTarget: APP_BROWSER_TARGETS,
+    // Keep runtime color-scheme switching and color values from Vite 7.
+    cssMinify: 'esbuild',
     emptyOutDir: true,
-    // Appは起動・投稿・認証・iframe同期に必要なコードで構成されるため、
-    // 遅延化で初期転送量を減らせない残存サイズ673.37 kBに対して最小限の閾値を設定する。
+    // Preserve the existing warning budget; optional codec chunks remain lazy.
     chunkSizeWarningLimit: 680,
-    rollupOptions: {
+    rolldownOptions: {
       external: [],
       output: {
         // Keep all application assets in the hashed deployment namespace.
         entryFileNames: 'assets/[name]-bridge-[hash].js',
         chunkFileNames: 'assets/[name]-bridge-[hash].js',
         assetFileNames: 'assets/[name]-bridge-[hash][extname]',
-        manualChunks: (id) => {
-          // Tiptap + ProseMirror (エディタコア)
-          if (id.includes('node_modules/@tiptap/') ||
-              id.includes('node_modules/prosemirror-') ||
-              id.includes('node_modules/svelte-tiptap')) {
-            return 'vendor-editor';
-          }
-          // Nostr関連ライブラリ
-          if (id.includes('node_modules/nostr-tools') ||
-              id.includes('node_modules/rx-nostr') ||
-              id.includes('node_modules/@rx-nostr/') ||
-              id.includes('node_modules/@noble/')) {
-            return 'vendor-nostr';
-          }
-          // 動画圧縮 (MediaBunny). The AAC encoder is dynamically imported
-          // only when native AAC encoding is unavailable, so keep it separate.
-          if (id.includes('node_modules/mediabunny')) {
-            return 'vendor-video';
-          }
-          // 画像圧縮 + blurhash
-          if (id.includes('node_modules/browser-image-compression') ||
-              id.includes('node_modules/blurhash')) {
-            return 'vendor-image';
-          }
-          // Zap関連 (設定ダイアログでのみ使用)
-          if (id.includes('node_modules/nostr-zap')) {
-            return 'vendor-zap';
-          }
-          // bits-ui
-          if (id.includes('node_modules/bits-ui')) {
-            return 'vendor-ui';
-          }
-          // i18n runtime and message-formatting dependencies
-          if (id.includes('node_modules/svelte-i18n') ||
-              id.includes('node_modules/intl-messageformat') ||
-              id.includes('node_modules/@formatjs/') ||
-              id.includes('node_modules/deepmerge')) {
-            return 'vendor-i18n';
-          }
+        codeSplitting: {
+          groups: [
+            { name: 'vendor-editor', test: /node_modules[\\/](?:@tiptap[\\/]|prosemirror-|svelte-tiptap)/ },
+            { name: 'vendor-nostr', test: /node_modules[\\/](?:nostr-tools|rx-nostr|@rx-nostr[\\/]|@noble[\\/])/ },
+            // Keep the optional AAC encoder outside MediaBunny's shared chunk.
+            { name: 'vendor-video', test: /node_modules[\\/]mediabunny[\\/]/ },
+            { name: 'vendor-image', test: /node_modules[\\/](?:browser-image-compression|blurhash)[\\/]/ },
+            { name: 'vendor-zap', test: /node_modules[\\/]nostr-zap/ },
+            { name: 'vendor-ui', test: /node_modules[\\/]bits-ui[\\/]/ },
+            { name: 'vendor-i18n', test: /node_modules[\\/](?:svelte-i18n|intl-messageformat|@formatjs[\\/]|deepmerge)/ },
+          ],
         }
       }
     }

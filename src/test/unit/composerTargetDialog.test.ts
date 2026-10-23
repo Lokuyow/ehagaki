@@ -1634,7 +1634,7 @@ describe("ComposerTargetDialog", () => {
                 }),
         };
         const onClose = vi.fn();
-        render(ComposerTargetDialog, {
+        const { rerender } = render(ComposerTargetDialog, {
             show: true,
             onClose,
             onApply: vi.fn(() => true),
@@ -1650,6 +1650,12 @@ describe("ComposerTargetDialog", () => {
         await fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
         expect(cancel).toHaveBeenCalled();
         expect(onClose).toHaveBeenCalledTimes(1);
-        expect(screen.queryByLabelText("Nostrイベント")).toBeNull();
+        // The parent owns `show` and applies the close callback to that prop.
+        await rerender({ show: false });
+        vi.advanceTimersToNextFrame();
+        await waitFor(() => expect(screen.queryByLabelText("Nostrイベント")).toBeNull());
+        await rerender({ show: true });
+        expect((screen.getByLabelText("Nostrイベント") as HTMLInputElement).value).toBe("");
+        expect(screen.queryByRole("button", { name: "再試行" })).toBeNull();
     });
 });

@@ -26,8 +26,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: npm
+      - name: Install project npm
+        shell: bash
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
       - run: npm ci
       - name: Run Vitest with sanitized output
         shell: bash
@@ -57,8 +60,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: npm
+      - name: Install project npm
+        shell: bash
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
       - run: npm ci
       - if: runner.os == 'Linux'
         run: npx playwright install --with-deps chromium firefox webkit
@@ -100,8 +106,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: npm
+      - name: Install project npm
+        shell: bash
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
       - run: npm ci
       - if: runner.os == 'Linux'
         run: npx playwright install --with-deps chromium firefox webkit

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { access, mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, open, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -173,13 +173,14 @@ export async function ensureWebComponentE2EOutput() {
         if (await outputIsCurrent(fingerprint)) return;
 
         await runProductionBuild();
-        const temporaryMarkerPath = `${markerPath}.${process.pid}.tmp`;
+        // The build lock serializes writers; readers treat incomplete JSON as
+        // a cache miss. Write in place to avoid Windows replacement failures
+        // while another worker is reading this disposable cache marker.
         await writeFile(
-            temporaryMarkerPath,
+            markerPath,
             `${JSON.stringify({ fingerprint })}\n`,
             "utf8",
         );
-        await rename(temporaryMarkerPath, markerPath);
     } finally {
         await lock.close();
         await rm(lockPath, { force: true });

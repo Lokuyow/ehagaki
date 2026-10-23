@@ -27,4 +27,5 @@ run focused tests/type checks unpatched, and reproduce #204 with
 patch and all artifact hashes together. Never refresh hashes merely to bypass a
 failed verifier. Remove this patch only after the direct regression and NIP-65
 E2E pass without it. CI tests clean install and actual ESM/CJS/UMD send on Windows
-and Ubuntu using Node 22, consistent with the repository's existing CI.
+and Ubuntu using the Node version pinned in `.node-version`, consistent with
+the repository's existing CI.

@@ -2,12 +2,13 @@ import { verifyRxNostrPatch } from "./scripts/verifyRxNostrPatch.mjs";
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { viteStaticCopy } from "vite-plugin-static-copy";
-import { getWebComponentIconVariableName } from "./src/web-component/iconAssets";
+import { getWebComponentIconVariableName } from "./src/web-component/iconAssets.ts";
 import {
     createFullSelfPublishGraphGate,
     createHostOwnedLiteGraphGate,
 } from "./scripts/hostOwnedLiteGraphGate.mjs";
 import { resolve } from "node:path";
+import { APP_BROWSER_TARGETS } from "./scripts/browserTargets.ts";
 
 const iconUrlPattern = /url\((["'])\/icons\/([^"'()]+)\1\)/g;
 
@@ -106,15 +107,21 @@ export default defineConfig(({ mode }) => {
                 {
                     src: "public/icons/**/*",
                     dest: "icons",
+                    rename: { stripBase: true },
                 },
                 {
                     src: "public/ehagaki_icon.svg",
                     dest: ".",
+                    rename: { stripBase: true },
                 },
             ],
         }),
     ],
     build: {
+        target: APP_BROWSER_TARGETS,
+        cssTarget: APP_BROWSER_TARGETS,
+        // app.css is adapted for Shadow DOM and switches color-scheme at runtime.
+        cssMinify: "esbuild",
         outDir: distributionDirectory,
         // The Lite directory is nested under the full distribution output.
         // It must not erase the full files built immediately before it.
@@ -127,7 +134,7 @@ export default defineConfig(({ mode }) => {
             formats: ["es"],
             fileName: "ehagaki-composer",
         },
-        rollupOptions: {
+        rolldownOptions: {
             output: {
                 entryFileNames: "ehagaki-composer.js",
                 chunkFileNames: "assets/[name]-[hash].js",

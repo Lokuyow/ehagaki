@@ -22,7 +22,9 @@ async function reservePort(): Promise<number> {
 
 async function requestStatus(url: string): Promise<number> {
     try {
-        return (await fetch(url)).status;
+        const response = await fetch(url);
+        await response.arrayBuffer();
+        return response.status;
     } catch {
         return 0;
     }
@@ -231,12 +233,16 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         if (preferredHeight === null) throw new Error("Lite Composer did not publish a preferred height.");
         expect(preferredHeight).toBeGreaterThan(0);
         await page.locator("#follow-preferred-height").check();
-        await expect.poll(() => page.locator("#mount").evaluate((element) => (
-            Number.parseFloat(getComputedStyle(element).height)
-        ))).toBe(preferredHeight);
-        await expect.poll(() => page.locator("body").evaluate((element) => (
-            Number.parseFloat(getComputedStyle(element).paddingBottom)
-        ))).toBe(preferredHeight + 16);
+        // The picker updates preferredHeight after its layout is measured.
+        // Compare the host and composer in the same frame, not a stale value.
+        await expect.poll(() => page.evaluate(() => {
+            const composer = document.querySelector("ehagaki-composer") as HTMLElement & { preferredHeight: number };
+            const mount = document.querySelector<HTMLElement>("#mount")!;
+            return {
+                mountHeightDifference: Number.parseFloat(getComputedStyle(mount).height) - composer.preferredHeight,
+                bodyPaddingDifference: Number.parseFloat(getComputedStyle(document.body).paddingBottom) - composer.preferredHeight,
+            };
+        })).toEqual({ mountHeightDifference: 0, bodyPaddingDifference: 16 });
         await page.locator("#follow-preferred-height").uncheck();
         await expect(page.locator("#mount")).toHaveCSS("height", "460px");
         await page.locator("ehagaki-composer .emoji-button[aria-label=':wave:']").click();

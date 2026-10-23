@@ -4,7 +4,7 @@ Read for setup, implementation/configuration verification, builds, or browser-te
 
 ## Setup and commands
 
-Use a pinned Node version if provided; otherwise inspect the runtime. Current GitHub workflows use Node 22. Install with `npm ci`; `postinstall` applies and verifies the rx-nostr patch documented in [RX_NOSTR_PATCH.md](../../docs/RX_NOSTR_PATCH.md). No secrets or external accounts are required to boot the composer.
+Use Node 24.22.1 from `.node-version` and npm 12.2.1 from `package.json`'s `packageManager`; GitHub workflows use these same versions. Install with `npm ci`; `postinstall` applies and verifies the rx-nostr patch documented in [RX_NOSTR_PATCH.md](../../docs/RX_NOSTR_PATCH.md). npm 12 blocks dependency install scripts unless covered by the reviewed `allowScripts` entries; review changed scripts before updating their version pins. No secrets or external accounts are required to boot the composer.
 
 | Purpose | Command |
 | --- | --- |
