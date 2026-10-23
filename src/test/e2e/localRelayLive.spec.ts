@@ -118,6 +118,8 @@ async function fixture(page: Page, options: { externalOk?: boolean; localMode?: 
             signEvent: (event: EventTemplate) => (window as any).fixtureSignEvent(event) };
     }, { pubkey, externalUrl });
     await page.goto("./");
+    // The signed-in history action mounts after asynchronous session restore.
+    await page.locator(".post-history-btn").waitFor({ state: "attached" });
     await expect(page.locator(".post-history-btn")).toBeVisible();
     return { pubkey, sign, now, localUrl, localPost, externalPost, localCorpus, externalCorpus,
         localRequests, localResponses, externalRequests, localWrites, externalWrites, stop,
