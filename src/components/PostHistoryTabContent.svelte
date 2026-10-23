@@ -618,7 +618,7 @@
         syncToastExpired = false;
         if (!canAutoHideSyncToast) return;
 
-        const timeout = setTimeout(() => { syncToastExpired = true; }, 1500);
+        const timeout = setTimeout(() => { syncToastExpired = true; }, 1000);
         return () => clearTimeout(timeout);
     });
     let canUseReturnToLatest = $derived(
