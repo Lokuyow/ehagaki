@@ -196,14 +196,59 @@
                     {/if}
                 </div>
                 {#if !contentReady}
-                    <div class="history-opening-placeholder" aria-hidden="true">
-                        {#each [0, 1, 2] as row (row)}
-                            <div class="history-opening-card">
-                                <span class="history-opening-line short"></span>
-                                <span class="history-opening-line"></span>
-                                <span class="history-opening-line medium"></span>
+                    <div class="history-opening-placeholder" data-history-tab={activeTab} aria-hidden="true">
+                        {#if activeTab === "posts"}
+                            <div class="history-opening-post-heading">
+                                <div class="history-opening-heading-main">
+                                    <span class="history-opening-block history-opening-month"></span>
+                                    <span class="history-opening-block history-opening-icon"></span>
+                                </div>
+                                <div class="history-opening-heading-actions">
+                                    {#each [0, 1, 2] as action (action)}
+                                        <span class="history-opening-block history-opening-icon"></span>
+                                    {/each}
+                                </div>
                             </div>
-                        {/each}
+                            <div class="history-opening-post-list">
+                                {#each [0, 1, 2] as row (row)}
+                                    <div class="history-opening-post">
+                                        <div class="history-opening-post-body">
+                                            <span class="history-opening-block history-opening-line"></span>
+                                            <span class="history-opening-block history-opening-line medium"></span>
+                                            {#if row === 1}<span class="history-opening-block history-opening-line short"></span>{/if}
+                                        </div>
+                                        <div class="history-opening-post-footer">
+                                            <span class="history-opening-block history-opening-date"></span>
+                                            <div class="history-opening-post-actions">
+                                                {#each [0, 1, 2] as action (action)}
+                                                    <span class="history-opening-block history-opening-icon"></span>
+                                                {/each}
+                                            </div>
+                                            <span class="history-opening-block history-opening-menu"></span>
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
+                        {:else}
+                            <div class="history-opening-media-toolbar">
+                                <div class="history-opening-media-server">
+                                    <span class="history-opening-block history-opening-line medium"></span>
+                                    <span class="history-opening-block history-opening-chevron"></span>
+                                </div>
+                                <span class="history-opening-block history-opening-icon"></span>
+                            </div>
+                            <div class="history-opening-media-grid">
+                                {#each [0, 1, 2, 3, 4, 5] as tile (tile)}
+                                    <div class="history-opening-media-tile">
+                                        <div class="history-opening-media-meta">
+                                            <span class="history-opening-block history-opening-line short"></span>
+                                            <span class="history-opening-block history-opening-line medium"></span>
+                                        </div>
+                                        <span class="history-opening-block history-opening-media-action"></span>
+                                    </div>
+                                {/each}
+                            </div>
+                        {/if}
                     </div>
                 {/if}
             </div>
@@ -295,11 +340,33 @@
     .history-tab-gesture.is-offset .history-tab-panels { transform: translate3d(var(--history-tab-drag), 0, 0); }
     .history-tab-viewport[data-opening-pending="true"] .history-tab-panels { visibility: hidden; }
     .history-content-reveal { animation: history-open 80ms ease-out; }
-    .history-opening-placeholder { position: absolute; inset: 0; overflow: hidden; padding: 16px; pointer-events: none; }
-    .history-opening-card { display: grid; gap: 14px; padding: 18px 0 26px; }
-    .history-opening-line { display: block; height: 12px; border-radius: 6px; background: var(--text); opacity: 0.07; }
+    .history-opening-placeholder { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+    .history-opening-block { display: block; background: var(--text); opacity: 0.07; border-radius: 4px; }
+    .history-opening-line { height: 12px; }
     .history-opening-line.short { width: 30%; }
     .history-opening-line.medium { width: 70%; }
+    .history-opening-icon { width: 20px; height: 20px; flex: none; border-radius: 6px; }
+    .history-opening-post-heading { display: flex; align-items: center; justify-content: space-between; height: 48px; padding-inline: 12px 15px; border-bottom: 1px solid var(--border-hr); }
+    .history-opening-heading-main { display: flex; align-items: center; gap: 20px; min-width: 0; }
+    .history-opening-month { width: 64px; height: 24px; }
+    .history-opening-heading-actions { display: flex; gap: 30px; }
+    .history-opening-post { padding: 6px; border-bottom: 1px solid var(--border-hr-light); }
+    .history-opening-post:last-child { border-bottom: none; }
+    .history-opening-post-body { display: grid; gap: 12px; padding: 6px 16px 6px; }
+    .history-opening-post-footer { display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 36px; align-items: center; height: 36px; padding-inline-start: 16px; }
+    .history-opening-date { width: min(48px, 100%); height: 10px; }
+    .history-opening-post-actions { display: flex; justify-content: space-around; min-width: 0; }
+    .history-opening-menu { width: 4px; height: 14px; justify-self: center; }
+    .history-opening-media-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 4px; padding: 8px; align-items: center; }
+    .history-opening-media-server { display: flex; align-items: center; justify-content: space-between; height: 44px; padding-inline: 10px 14px; border: 1px solid var(--border); border-radius: 6px; }
+    .history-opening-chevron { width: 10px; height: 6px; }
+    .history-opening-media-toolbar > .history-opening-icon { justify-self: center; }
+    .history-opening-media-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; }
+    .history-opening-media-tile { position: relative; min-width: 0; aspect-ratio: 1; }
+    .history-opening-media-tile::before { content: ""; position: absolute; inset: 0; background: var(--text); opacity: 0.05; }
+    .history-opening-media-meta { position: absolute; bottom: 14px; left: 8px; right: 52px; display: grid; gap: 6px; }
+    .history-opening-media-meta .history-opening-line { height: 8px; }
+    .history-opening-media-action { position: absolute; right: 14px; bottom: 16px; width: 20px; height: 20px; }
     @keyframes history-open { from { opacity: 0; } to { opacity: 1; } }
     @media (prefers-reduced-motion: reduce) {
         .history-tab-indicator { transition: none; }

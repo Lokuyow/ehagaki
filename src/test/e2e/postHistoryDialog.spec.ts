@@ -23,6 +23,7 @@ test.describe('history opening presentation', () => {
     }
     for (const tab of ['posts', 'media'] as const) {
         test(`history opening presentation covers delayed ${tab} code and preserves layout`, async ({ page }, testInfo) => {
+            if (testInfo.project.name.startsWith('mobile-')) await page.setViewportSize({ width: 360, height: 800 });
             await page.addInitScript(tab => localStorage.setItem('historyActiveTab', tab), tab);
             const component = tab === 'posts' ? 'PostHistoryTabContent' : 'UploadedMediaTabContent';
             let release!: () => void;
@@ -37,6 +38,30 @@ test.describe('history opening presentation', () => {
             await page.getByTestId('history-launch').click();
             const dialog = page.locator('.post-history-dialog');
             await expect(dialog.locator('.history-opening-placeholder')).toBeVisible();
+            const placeholder = dialog.locator('.history-opening-placeholder');
+            await expect(placeholder).toHaveAttribute('data-history-tab', tab);
+            await expect(placeholder).toHaveAttribute('aria-hidden', 'true');
+            await expect(placeholder.getByRole('button', { includeHidden: true })).toHaveCount(0);
+            if (tab === 'posts') {
+                await expect(placeholder.locator('.history-opening-post-heading')).toBeVisible();
+                await expect(placeholder.locator('.history-opening-post')).toHaveCount(3);
+                await expect(placeholder.locator('.history-opening-post-footer')).toHaveCount(3);
+                await expect(placeholder.locator('.history-opening-media-grid')).toHaveCount(0);
+            } else {
+                await expect(placeholder.locator('.history-opening-media-toolbar')).toBeVisible();
+                const tiles = await placeholder.locator('.history-opening-media-tile').evaluateAll(nodes => nodes.map(node => {
+                    const { x, y, width, height } = node.getBoundingClientRect();
+                    return { x, y, width, height };
+                }));
+                expect(tiles).toHaveLength(6);
+                expect(tiles.every(tile => Math.abs(tile.width - tile.height) <= 1)).toBe(true);
+                expect(tiles[1].y).toBe(tiles[0].y);
+                expect(tiles[1].x).toBeGreaterThan(tiles[0].x + tiles[0].width);
+                expect(tiles[2].x).toBe(tiles[0].x);
+                expect(tiles[2].y).toBeGreaterThan(tiles[0].y + tiles[0].height);
+                await expect(placeholder.locator('.history-opening-post-list')).toHaveCount(0);
+            }
+            expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
             await expect(dialog.locator('.history-tab-viewport')).toHaveAttribute('aria-busy', 'true');
             await expect(dialog.getByRole('button', { name: '閉じる', exact: true })).toBeEnabled();
             await dialog.evaluate(async node => { await Promise.all(node.getAnimations().map(animation => animation.finished)); });
