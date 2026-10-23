@@ -67,7 +67,10 @@ jobs:
         run: npm install --global "$(node -p 'require("./package.json").packageManager')"
       - run: npm ci
       - if: runner.os == 'Linux'
-        run: npx playwright install --with-deps chromium firefox webkit
+        run: |
+          # Prefer the runner's existing Ubuntu archive/security mirrors for APT.
+          sudo sed -i '\|azure\.archive\.ubuntu\.com|d' /etc/apt/apt-mirrors.txt
+          npx playwright install --with-deps chromium firefox webkit
       - if: runner.os == 'Windows'
         run: npx playwright install chromium
       - name: Run dev-server Playwright with sanitized output
@@ -113,7 +116,10 @@ jobs:
         run: npm install --global "$(node -p 'require("./package.json").packageManager')"
       - run: npm ci
       - if: runner.os == 'Linux'
-        run: npx playwright install --with-deps chromium firefox webkit
+        run: |
+          # Prefer the runner's existing Ubuntu archive/security mirrors for APT.
+          sudo sed -i '\|azure\.archive\.ubuntu\.com|d' /etc/apt/apt-mirrors.txt
+          npx playwright install --with-deps chromium firefox webkit
       - if: runner.os == 'Windows'
         run: npx playwright install chromium
       - name: Run Service Worker Playwright with sanitized output
