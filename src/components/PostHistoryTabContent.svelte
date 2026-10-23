@@ -1077,6 +1077,9 @@
                 threshold: 0,
             },
         );
+        if (!isOlderSentinelInPrefetchRegion()) {
+            recordExit();
+        }
         observer.observe(sentinel);
         root.addEventListener("scroll", handleScrollApproach, { passive: true });
 
@@ -1279,6 +1282,9 @@
                         threshold: 0,
                     },
                 );
+                if (!isNewerSentinelInPrefetchRegion()) {
+                    recordExit();
+                }
                 observer.observe(sentinel);
                 root.addEventListener("scroll", handleScrollApproach, { passive: true });
                 cleanupObserver = () => {
