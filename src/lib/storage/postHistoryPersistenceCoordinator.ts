@@ -49,19 +49,8 @@ export async function clearPostHistoryDisplayForPubkey(
                 .where("pubkeyHex")
                 .equals(pubkeyHex)
                 .delete();
-            const firstPostHistoryRecord = await db.postHistory.orderBy("pubkeyHex").first();
-            if (!firstPostHistoryRecord) return;
-
-            const lastPostHistoryRecord = await db.postHistory.orderBy("pubkeyHex").last();
-            const canClearEntirePostHistory = firstPostHistoryRecord.pubkeyHex === pubkeyHex
-                && lastPostHistoryRecord?.pubkeyHex === pubkeyHex;
-            if (canClearEntirePostHistory) {
-                await db.postHistoryChildInteractions.clear();
-                await db.postHistory.clear();
-                deletedPostHistoryCount = 1;
-                return;
-            }
-
+            // Keep deletion owner-scoped even when this is the only account:
+            // clearing the whole object store can reload WebKit mid-transaction.
             const parentEventIds = (await db.postHistory
                 .where("pubkeyHex")
                 .equals(pubkeyHex)

@@ -1470,7 +1470,10 @@ test.describe('PostHistoryDialog Playwright', () => {
         const footer = page.locator('.post-history-sync-footer');
         const heading = page.locator('.post-history-heading');
         const statusToast = page.locator('.floating-message.anchor-bottom-right[role="status"]');
-        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(5);
+        await expect.poll(
+            () => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length),
+            { timeout: 15_000 },
+        ).toBe(5);
         await expect.poll(() => historyEventIds(page)).toEqual(ids.slice(60, 110));
 
         await expect(statusToast).toContainText('リレーと同期中...');

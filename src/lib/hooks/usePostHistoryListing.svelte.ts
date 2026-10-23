@@ -2304,6 +2304,12 @@ export function usePostHistoryListing({
         const measuredNewestEventId = currentPosts[0]?.eventId ?? null;
         const measuredOldestEventId = currentPosts[currentPosts.length - 1]?.eventId ?? null;
         const shownPosts = state.loadedPosts;
+        const ownerIsCurrent = !isDestroyed
+            && getShow()
+            && getPubkeyHex() === pubkeyHex;
+        const requestIsCurrent = expectedRequestId === null
+            || expectedRequestId === loadRequestId;
+        const retryRequestId = requestIsCurrent ? expectedRequestId : null;
         const showsMeasuredWindow = shownPosts.length === currentPosts.length
             && (shownPosts[0]?.eventId ?? null) === measuredNewestEventId
             && (shownPosts[shownPosts.length - 1]?.eventId ?? null) === measuredOldestEventId;
@@ -2311,50 +2317,50 @@ export function usePostHistoryListing({
             // The visible window may change while the IndexedDB availability
             // reads are in flight. Recheck the current window once so a stale
             // read cannot leave its navigation controls out of sync.
-            if (
-                options.retried
-                || (expectedRequestId !== null && expectedRequestId !== loadRequestId)
-            ) {
+            if (options.retried || !ownerIsCurrent) {
                 return;
             }
-            return refreshTimelineAvailability(pubkeyHex, shownPosts, expectedRequestId, {
+            return refreshTimelineAvailability(pubkeyHex, shownPosts, retryRequestId, {
                 ...options,
                 retried: true,
             });
         }
 
         if (visibleUntil !== state.visibleUntil) {
-            if (options.retried || (expectedRequestId !== null && expectedRequestId !== loadRequestId)) {
+            if (options.retried || !ownerIsCurrent) {
                 return;
             }
-            return refreshTimelineAvailability(pubkeyHex, shownPosts, expectedRequestId, {
+            return refreshTimelineAvailability(pubkeyHex, shownPosts, retryRequestId, {
                 ...options,
                 retried: true,
             });
         }
 
-        const requestIsCurrent = expectedRequestId === null
-            || expectedRequestId === loadRequestId;
-        const viewIsCurrent = !isDestroyed
-            && getShow()
-            && getPubkeyHex() === pubkeyHex
-            && requestIsCurrent;
+        const viewIsCurrent = ownerIsCurrent && requestIsCurrent;
         const deferredFetchChanged = options.deferDuringOlderRelayFetch
             && (isFetchingOlderFromRelays || syncRequestId !== fetchRequestId);
-        if (generation !== coverageGeneration && !options.retried && viewIsCurrent && !deferredFetchChanged) {
+        if (generation !== coverageGeneration && !options.retried && ownerIsCurrent && !deferredFetchChanged) {
             // Coverage can be invalidated while the IndexedDB reads are in
             // flight (for example, by a completed import). Recheck once using
             // the latest visible window so the navigation flags reflect the
             // current coverage generation.
-            return refreshTimelineAvailability(pubkeyHex, state.loadedPosts, expectedRequestId, {
+            return refreshTimelineAvailability(pubkeyHex, state.loadedPosts, retryRequestId, {
                 ...options,
                 retried: true,
             });
         }
 
-        if (
-            !viewIsCurrent || generation !== coverageGeneration || deferredFetchChanged
-        ) {
+        if (!requestIsCurrent && !options.retried && ownerIsCurrent && !deferredFetchChanged) {
+            // A newer navigation request can supersede this read without
+            // changing the visible window. Recheck that current window once
+            // so stale availability flags do not hide its navigation controls.
+            return refreshTimelineAvailability(pubkeyHex, state.loadedPosts, null, {
+                ...options,
+                retried: true,
+            });
+        }
+
+        if (!viewIsCurrent || generation !== coverageGeneration || deferredFetchChanged) {
             return;
         }
 

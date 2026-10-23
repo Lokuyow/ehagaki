@@ -1030,12 +1030,26 @@
                     return;
                 }
 
-                for (const entry of entries) {
-                    if (entry.target !== sentinel) {
-                        continue;
-                    }
+                const currentEntries = entries.filter((entry) => entry.target === sentinel);
+                for (const [index, entry] of currentEntries.entries()) {
                     const isInitialEntry = !receivedInitialEntry;
                     receivedInitialEntry = true;
+                    const rootRect = root.getBoundingClientRect();
+                    const isCurrentlyInPrefetchRegion = rootRect.width > 0 && rootRect.height > 0
+                        ? isOlderSentinelInPrefetchRegion()
+                        : entry.isIntersecting;
+                    const hasLaterIntersection = currentEntries.slice(index + 1)
+                        .some((laterEntry) => laterEntry.isIntersecting);
+
+                    // Ignore a queued exit if the sentinel has already
+                    // returned, while preserving a real exit/re-entry pair
+                    // delivered together in one callback.
+                    if (!entry.isIntersecting && isCurrentlyInPrefetchRegion && !hasLaterIntersection) {
+                        continue;
+                    }
+                    if (entry.isIntersecting && !isCurrentlyInPrefetchRegion) {
+                        continue;
+                    }
                     autoLoadOlderSentinelIsIntersecting = entry.isIntersecting;
 
                     if (!entry.isIntersecting) {
@@ -1218,12 +1232,26 @@
                             return;
                         }
 
-                        for (const entry of entries) {
-                            if (entry.target !== sentinel) {
-                                continue;
-                            }
+                        const currentEntries = entries.filter((entry) => entry.target === sentinel);
+                        for (const [index, entry] of currentEntries.entries()) {
                             const isInitialEntry = !receivedInitialEntry;
                             receivedInitialEntry = true;
+                            const rootRect = root.getBoundingClientRect();
+                            const isCurrentlyInPrefetchRegion = rootRect.width > 0 && rootRect.height > 0
+                                ? isNewerSentinelInPrefetchRegion()
+                                : entry.isIntersecting;
+                            const hasLaterIntersection = currentEntries.slice(index + 1)
+                                .some((laterEntry) => laterEntry.isIntersecting);
+
+                            // Ignore a queued exit if the sentinel has already
+                            // returned, while preserving a real exit/re-entry
+                            // pair delivered together in one callback.
+                            if (!entry.isIntersecting && isCurrentlyInPrefetchRegion && !hasLaterIntersection) {
+                                continue;
+                            }
+                            if (entry.isIntersecting && !isCurrentlyInPrefetchRegion) {
+                                continue;
+                            }
                             autoLoadNewerSentinelIsIntersecting = entry.isIntersecting;
 
                             if (!entry.isIntersecting) {
