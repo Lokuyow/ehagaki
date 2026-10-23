@@ -123,7 +123,12 @@
 
   function measurePreferredHeight(): boolean {
     if (!preferredHeightMountActive || !preferredHeightEnabled || !onPreferredHeightChange) return false;
-    const surfaceHeight = composerScrollContentEl?.getBoundingClientRect().height;
+    const surface = composerScrollContentEl;
+    // WebKit can let an auto-grow flex child overflow the surface's box while
+    // its intrinsic layout settles; include that overflow in the host height.
+    const surfaceHeight = surface
+      ? Math.max(surface.getBoundingClientRect().height, surface.scrollHeight)
+      : 0;
     if (!surfaceHeight || !Number.isFinite(surfaceHeight) || surfaceHeight <= 0) return false;
     const reservedHeight = (hostOwnedConfig.keyboardButtonBarEnabled !== false
       ? KEYBOARD_BUTTON_BAR_HEIGHT
@@ -147,14 +152,20 @@
       return;
     }
     preferredHeightMeasurementRaf = window.requestAnimationFrame(() => {
-      preferredHeightMeasurementRaf = null;
-      if (measurePreferredHeight()) {
-        completeInitialPreferredHeightMeasurement();
-      }
+      // Let Svelte's DOM update and the layout metrics ResizeObserver settle
+      // before reading the intrinsic height. WebKit can report the previous
+      // flex size in the first frame after the emoji picker is removed.
+      preferredHeightMeasurementRaf = window.requestAnimationFrame(() => {
+        preferredHeightMeasurementRaf = null;
+        if (measurePreferredHeight()) {
+          completeInitialPreferredHeightMeasurement();
+        }
+      });
     });
   }
 
   $effect(() => {
+    customEmojiPickerOpen;
     reasonInputVisibleStore.value;
     if (!preferredHeightEnabled || !preferredHeightInitialMeasurementComplete) return;
     schedulePreferredHeightMeasurement();
@@ -270,6 +281,7 @@
     }
     // A channel-only patch is a public context change too.
     notifyContextUpdated();
+    schedulePreferredHeightMeasurement();
   }
 
   export async function setEmbedSettings(
@@ -388,6 +400,7 @@
                 minEditorHeight={postEditorMinHeight}
                 {notificationPort}
                 {onEditorEmptyChange}
+                onEditorContentUpdate={schedulePreferredHeightMeasurement}
                 {hostOwnedConfig}
                 {hostCustomEmojiItems}
               />

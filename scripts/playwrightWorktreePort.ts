@@ -1,4 +1,6 @@
 import { randomInt } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath, URL as NodeURL } from 'node:url';
 
 export const PLAYWRIGHT_HOST = '127.0.0.1';
 export const PLAYWRIGHT_APP_BASE_PATH = '/ehagaki/';
@@ -58,6 +60,19 @@ export interface ResolvePlaywrightPortOptions {
     portSource?: () => number;
 }
 
+function generateBindablePlaywrightPort(): number {
+    // Config evaluation is synchronous; probe in a child without blocking its event loop.
+    const result = spawnSync(process.execPath, [
+        fileURLToPath(new NodeURL('./findBindablePlaywrightPort.mjs', import.meta.url)),
+        PLAYWRIGHT_HOST, String(AUTO_PORT_MIN), String(AUTO_PORT_MAX_EXCLUSIVE),
+        String(generatePlaywrightPort()),
+    ], { encoding: 'utf8', windowsHide: true });
+    if (result.error || result.status !== 0) {
+        throw new Error('Could not find a bindable Playwright port.', { cause: result.error ?? result.stderr.trim() });
+    }
+    return generatePlaywrightPort(() => Number(result.stdout.trim()));
+}
+
 export function resolvePlaywrightPort({
     envPort = process.env[PLAYWRIGHT_PORT_ENV],
     portSource,
@@ -71,7 +86,7 @@ export function resolvePlaywrightPort({
         return parsePlaywrightPort(existingAutoPort);
     }
 
-    const generatedPort = generatePlaywrightPort(portSource);
+    const generatedPort = portSource ? generatePlaywrightPort(portSource) : generateBindablePlaywrightPort();
     process.env[PLAYWRIGHT_AUTO_PORT_ENV] = String(generatedPort);
     return generatedPort;
 }

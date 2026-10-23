@@ -457,8 +457,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         const rearmedObserver = MockIntersectionObserver.instances
             .filter((observer) => observer.observedTargets.has(olderSentinel))
             .at(-1);
-        rearmedObserver?.trigger(olderSentinel, false);
-        rearmedObserver?.trigger(olderSentinel, true);
+        rearmedObserver?.triggerSequence(olderSentinel, [false, true]);
         await waitFor(() => expect(pageChunkRequestCount).toBe(2));
         await screen.findByText('prefetch post 149');
 
@@ -602,7 +601,10 @@ describe('PostHistoryDialog timeline navigation', () => {
             observer.triggerSequence(sentinel, [false, true]);
             await Promise.resolve();
             expect(chunkRequests).toBe(1);
-            if (scenario === 'pendingExit') observer.trigger(sentinel, false);
+            if (scenario === 'pendingExit') {
+                sentinelTop = direction === 'older' ? 2_000 : -2_000;
+                observer.trigger(sentinel, false);
+            }
         }
         if (scenario === 'pendingClose') {
             await view.rerender({ show: false, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX });

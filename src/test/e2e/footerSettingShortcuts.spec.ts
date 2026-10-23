@@ -321,7 +321,7 @@ test("keeps both quality pills and their popovers contained around history at 36
             signEvent: async (event: any) => ({ ...event, id: "22".repeat(32), sig: "33".repeat(64) }),
         };
     }, "22".repeat(32));
-    await enterApp(page);
+    await page.goto("/");
     await page.getByRole("button", { name: "はじめる" }).click();
 
     const footer = page.locator(".footer-bar");
@@ -819,10 +819,10 @@ test("keyboard Enter and Space each directly change a shortcut once without open
     });
     await enterApp(page);
     const button = page.locator(".footer-setting-shortcut-button");
-    await button.focus();
-    await page.keyboard.press("Enter");
+    await expect(button).toBeVisible();
+    await button.press("Enter");
     await expect.poll(() => page.evaluate(() => localStorage.getItem("locale"))).toBe("en");
-    await page.keyboard.press("Space");
+    await button.press("Space");
     await expect.poll(() => page.evaluate(() => localStorage.getItem("locale"))).toBe("ja");
     await expect(page.locator("[role=dialog], [role=menu], [role=radio], .footer-setting-shortcut-popover")).toHaveCount(0);
 });

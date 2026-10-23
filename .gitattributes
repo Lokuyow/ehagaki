@@ -1,2 +1,4 @@
 # Unified patches require a space prefix on empty context lines.
 patches/*.patch whitespace=-blank-at-eol
+# These immutable deployment assets are verified by byte length and SHA-256.
+legacy-bridge/assets/** -text

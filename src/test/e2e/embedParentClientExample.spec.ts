@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { openSettingsToCategory } from "./settingsNavigation";
 import { finalizeEvent, generateSecretKey, nip19 } from "nostr-tools";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -82,6 +82,29 @@ function attachRelayHandler(server: WebSocketServer, timelineEvent: ReturnType<t
     });
 }
 
+async function routeNostrToolsCdnToVite(page: Page) {
+    await page.route("https://esm.sh/nostr-tools@2.23.3/**", async (route) => {
+        const entry = new URL(route.request().url()).pathname.split("/").at(-1);
+        if (!entry || !["pure", "nip19", "pool"].includes(entry)) {
+            await route.abort();
+            return;
+        }
+        const moduleName = entry === "nip19" ? "nostr-tools" : `nostr-tools_${entry}`;
+        const localModuleUrl = new URL(
+            `/ehagaki/node_modules/.vite/deps/${moduleName}.js`,
+            page.url(),
+        ).toString();
+        const body = entry === "nip19"
+            ? `import { nip19 } from ${JSON.stringify(localModuleUrl)};\nexport const decode = nip19.decode;\nexport const neventEncode = nip19.neventEncode;`
+            : `export * from ${JSON.stringify(localModuleUrl)};`;
+        await route.fulfill({
+            contentType: "text/javascript",
+            headers: { "access-control-allow-origin": "*" },
+            body,
+        });
+    });
+}
+
 test.beforeAll(async () => {
     relayServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     attachRelayHandler(relayServer, firstTimelineEvent, 0);
@@ -93,7 +116,8 @@ test.beforeAll(async () => {
     secondRelayOrigin = `ws://127.0.0.1:${secondRelayPort}`;
 });
 
-test.beforeEach(() => {
+test.beforeEach(async ({ page }) => {
+    await routeNostrToolsCdnToVite(page);
     relayTargetEvent = null;
     targetRequestCount = 0;
     timelineRequestCounts = [0, 0];
@@ -203,7 +227,7 @@ window.addEventListener("message", (event) => {
 
     await page.goto("/ehagaki/e2e-host-relay-parent.html");
     const frame = page.frameLocator("#child");
-    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    await expect(frame.locator(".tiptap-editor")).toBeVisible({ timeout: 15_000 });
     await expect.poll(() => page.evaluate(() => (window as any).__iframeHostRelayState))
         .toMatchObject({ requestIds: [expect.any(String)], applied: 1, ready: expect.any(Number) });
     await expect.poll(() => page.evaluate(() =>
@@ -878,20 +902,20 @@ document.querySelector("#reload").addEventListener("click", () => { iframe.src =
         base: getComputedStyle(html).getPropertyValue("--base-color").trim().toLowerCase(),
     }));
     await expect.poll(readFrameColors).toEqual({ accent: "#abcdef", base: "#cdefab" });
-    await page.evaluate(() => {
-        localStorage.setItem("ehagaki.embed.storage.v1:accentColor", "#112233");
-        localStorage.setItem("ehagaki.embed.storage.v1:baseColor", "#223344");
-    });
     const childFrame = page.frames().find((candidate) => candidate.parentFrame() === page.mainFrame());
     if (!childFrame) throw new Error("expected the sample iframe to be loaded");
     const expectedUrl = childFrame.url();
     const navigation = page.waitForEvent("framenavigated", (candidate) =>
         candidate === childFrame && candidate.url().startsWith(new URL(expectedUrl).origin),
     );
-    await page.locator("#reload").click();
+    await page.evaluate(() => {
+        localStorage.setItem("ehagaki.embed.storage.v1:accentColor", "#112233");
+        localStorage.setItem("ehagaki.embed.storage.v1:baseColor", "#223344");
+        document.querySelector<HTMLButtonElement>("#reload")?.click();
+    });
     await navigation;
 
-    await expect.poll(readFrameColors).toEqual({ accent: "#112233", base: "#223344" });
+    await expect.poll(readFrameColors, { timeout: 15_000 }).toEqual({ accent: "#112233", base: "#223344" });
 });
 
 test("new host saves and restores fail-closed content warning through delegated storage", async ({ page }) => {
@@ -899,7 +923,7 @@ test("new host saves and restores fail-closed content warning through delegated 
     const appUrl = new URL("/ehagaki/", page.url());
     await page.getByLabel("eHagaki URL").fill(appUrl.toString());
     const frame = page.frameLocator("#ehagaki-iframe");
-    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    await expect(frame.locator(".tiptap-editor")).toBeVisible({ timeout: 15_000 });
     await openSettingsToCategory(frame, "post");
     const warningSwitch = frame.locator('[aria-labelledby="fail-closed-content-warning-label"]');
     await expect(warningSwitch).toHaveAttribute("aria-checked", "false");

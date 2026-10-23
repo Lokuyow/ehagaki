@@ -1,0 +1,12 @@
+diff --git a/node_modules/playwright-core/lib/server/chromium/chromiumSwitches.js b/node_modules/playwright-core/lib/server/chromium/chromiumSwitches.js
+index eacc4d0..283631a 100644
+--- a/node_modules/playwright-core/lib/server/chromium/chromiumSwitches.js
++++ b/node_modules/playwright-core/lib/server/chromium/chromiumSwitches.js
+@@ -48,6 +48,7 @@ const disabledFeatures = (assistantMode) => [
+   "RenderDocument",
+   // Prevents downloading optimization hints on startup.
+   "OptimizationHints",
++  ...(process.platform === "win32" ? ["TcpPortRandomizationWin"] : []),
+   assistantMode ? "AutomationControlled" : ""
+ ].filter(Boolean);
+ const chromiumSwitches = (assistantMode, channel, android) => [

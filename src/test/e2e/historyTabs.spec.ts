@@ -1,6 +1,24 @@
 import { test, expect, type Page } from "@playwright/test";
 
 const counters = (page: Page) => page.evaluate(() => Reflect.get(window, "__HISTORY_TAB_COUNTERS__") as { localReads: number; relayRequests: number });
+
+let dateJumpMetrics: Record<string, number> = {};
+
+test.beforeEach(() => {
+    dateJumpMetrics = {};
+});
+
+test.afterEach(async ({ page }, info) => {
+    if (info.status === info.expectedStatus) return;
+    const metrics = await page.evaluate(() => Object.fromEntries(
+        ['year', 'month', 'day'].map(part => [
+            part,
+            Number(document.querySelector(`[data-segment="${part}"]`)?.getAttribute('aria-valuenow')),
+        ]),
+    )).catch(() => ({}));
+    console.log('CI_METRICS ' + JSON.stringify({ testLine: info.line, ...metrics, ...dateJumpMetrics }));
+});
+
 async function dismissAndWaitForHistory(page: Page, action: () => Promise<unknown>) {
     const entry = await page.evaluate(() => history.state?.modalId as string | undefined);
     await action();
@@ -97,11 +115,27 @@ test("tab roundtrip preserves expanded text, date window and the visible scroll 
     await media.click(); await posts.click();
     await expect(expanded.getByRole("button", { name: "折りたたむ", exact: true })).toBeVisible();
     const date = await page.evaluate(() => (Reflect.get(window, "__POST_HISTORY_HARNESS__") as { jumpDate: string }).jumpDate);
+    const selectAllKey = await page.evaluate(() =>
+        /Mac|iP(hone|[oa]d)/.test(navigator.platform) ? "Meta+a" : "Control+a",
+    );
     await dialog.locator(".post-history-heading-calendar-button").click();
     for (const [segment, value] of ["year", "month", "day"].map((part, index) => [part, date.split("-")[index]])) {
         await dialog.locator(`.post-history-date-picker-segment[data-segment="${segment}"]`).click();
-        await page.keyboard.press("Control+a"); await page.keyboard.type(String(Number(value)));
+        await page.keyboard.press(selectAllKey); await page.keyboard.type(String(Number(value)));
     }
+    const [requestedYear, requestedMonth, requestedDay] = date.split('-').map(Number);
+    const enteredSegments = await dialog.locator('.post-history-date-picker-segment').evaluateAll(segments => {
+        const values = Object.fromEntries(segments.map(segment => [
+            (segment as HTMLElement).dataset.segment ?? '',
+            Number(segment.getAttribute('aria-valuenow')),
+        ]));
+        return {
+            enteredYear: values.year ?? 0,
+            enteredMonth: values.month ?? 0,
+            enteredDay: values.day ?? 0,
+        };
+    });
+    dateJumpMetrics = { requestedYear, requestedMonth, requestedDay, ...enteredSegments };
     await dialog.getByRole("button", { name: "この日付付近を表示" }).click();
     await expect(dialog.getByRole("button", { name: "新しい投稿を表示" })).toBeVisible();
     const ids = await dialog.locator(".post-history-item").evaluateAll(nodes => nodes.map(node => node.getAttribute("data-post-history-event-id")));

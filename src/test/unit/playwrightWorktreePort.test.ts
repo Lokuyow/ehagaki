@@ -94,8 +94,11 @@ describe('Playwright config connection values', () => {
     it('uses one host and port for the app, server command, and ready URL', async () => {
         const originalPortOverride = process.env.EHAGAKI_E2E_PORT;
         const originalAutoPort = process.env.EHAGAKI_E2E_AUTO_PORT;
+        const originalAllBrowsers = process.env.EHAGAKI_E2E_ALL_BROWSERS;
 
         try {
+            // This test checks the complete project matrix, independently of CI defaults.
+            process.env.EHAGAKI_E2E_ALL_BROWSERS = '1';
             delete process.env.EHAGAKI_E2E_PORT;
             delete process.env.EHAGAKI_E2E_AUTO_PORT;
             vi.resetModules();
@@ -177,6 +180,11 @@ describe('Playwright config connection values', () => {
                 '**/sensitiveContentPayload.spec.ts',
             ]);
         } finally {
+            if (originalAllBrowsers === undefined) {
+                delete process.env.EHAGAKI_E2E_ALL_BROWSERS;
+            } else {
+                process.env.EHAGAKI_E2E_ALL_BROWSERS = originalAllBrowsers;
+            }
             if (originalPortOverride === undefined) {
                 delete process.env.EHAGAKI_E2E_PORT;
             } else {

@@ -47,13 +47,19 @@ async function uploadedReaction(page: Page, free = false) {
 test('uploaded shortcode uses canonical wire, rejects whitespace and clears owned media after success', async ({ page }, testInfo) => {
     const h = await uploadedReaction(page, true);
     const editor = page.locator('.tiptap-editor');
+    const selectAll = await page.evaluate(() =>
+        /Mac|iP(hone|[oa]d)/.test(navigator.platform) ? 'Meta+A' : 'Control+A');
     await expect(page.locator('input[type=file]')).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp');
     await expect(page.locator('input[type=file]')).not.toHaveAttribute('multiple');
     await page.locator('input[type=file]').setInputFiles(await imagePayload(page));
     await expect.poll(async () => (await read(page)).isUploading).toBe(false);
     await editor.click(); await editor.pressSequentially('cat'); await expect(editor).toHaveText('cat');
     for (const text of [':blob:', '::blob::']) {
-        await editor.fill(''); await editor.pressSequentially(text); await expect(editor).toHaveText(text);
+        // Keep selection and deletion on ProseMirror's keyboard input path.
+        await editor.press(selectAll);
+        await editor.press('Backspace');
+        await expect(editor).toHaveText('');
+        await editor.pressSequentially(text); await expect(editor).toHaveText(text);
         await expect(editor.locator('[data-custom-emoji]')).toHaveCount(0);
     }
     for (const text of ['cat', ':cat', 'cat:', ':cat:', '::cat::']) {
@@ -64,7 +70,9 @@ test('uploaded shortcode uses canonical wire, rejects whitespace and clears owne
         await expect.poll(async () => (await read(page)).canPost).toBe(false);
         expect((await read(page)).gallery).toHaveLength(1);
     }
-    await editor.fill('');
+    await editor.press(selectAll);
+    await editor.press('Backspace');
+    await expect(editor).toHaveText('');
     await editor.pressSequentially('https://invalid-shortcode.example/cat.png');
     await expect(editor).toHaveText('https://invalid-shortcode.example/cat.png');
     await expect.poll(async () => (await read(page)).canPost).toBe(false);

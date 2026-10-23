@@ -298,8 +298,10 @@ test.beforeEach(() => {
     postComponentFaultRequestCount = 0;
 });
 
-test.afterEach(() => {
+test.afterEach(async ({ page, browserName }) => {
     failPostComponentLoad = false;
+    // Finish closing the tab before Firefox removes its contextual identity.
+    if (browserName === "firefox") await page.close();
 });
 
 function releasePausedRelayRequests(): void {
@@ -1172,10 +1174,16 @@ test("publishes EVENT only through the configured Host write relay", async ({ pa
     const postButton = composer.locator("button.post-button");
     await expect(postButton).toBeEnabled();
     const touch = browserName === 'chromium' && isMobile ? await page.context().newCDPSession(page) : null;
+    const hasNativeTouchInput = await page.evaluate(() => navigator.maxTouchPoints > 0);
     if (touch) {
         const box = await postButton.boundingBox();
         if (!box) throw new Error('Submit button has no box');
         await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }] });
+    } else if (browserName === 'firefox' && !hasNativeTouchInput) {
+        // Headless desktop Firefox has no touch input device, so a synthetic
+        // touch pointer cannot model the browser's long-press gesture. A real
+        // click still exercises the submit relay and button-focus behavior.
+        await postButton.click();
     } else {
         await postButton.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 1 });
     }
@@ -1186,7 +1194,7 @@ test("publishes EVENT only through the configured Host write relay", async ({ pa
     if (touch) {
         await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
         await touch.detach();
-    } else {
+    } else if (!(browserName === 'firefox' && !hasNativeTouchInput)) {
         await postButton.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 1 });
         await postButton.dispatchEvent('click');
     }
@@ -2103,7 +2111,7 @@ test("applies the common desktop hover colors inside the Shadow DOM", async ({ p
         };
     });
     await settingsButton.hover();
-    const after = await settingsButton.evaluate((button) => {
+    const readHoverColors = () => settingsButton.evaluate((button) => {
         const icon = button.querySelector<HTMLElement>(".svg-icon")!;
         const buttonStyle = getComputedStyle(button);
         return {
@@ -2112,9 +2120,40 @@ test("applies the common desktop hover colors inside the Shadow DOM", async ({ p
             iconBackground: getComputedStyle(icon).backgroundColor,
         };
     });
-    expect(after.background).not.toBe(before.background);
-    expect(after.color).not.toBe(before.color);
-    expect(after.iconBackground).not.toBe(before.iconBackground);
+    const hoverCapabilities = await page.evaluate(() => ({
+        hover: window.matchMedia('(hover: hover)').matches,
+        finePointer: window.matchMedia('(pointer: fine)').matches,
+    }));
+    if (!hoverCapabilities.hover || !hoverCapabilities.finePointer) {
+        expect(await readHoverColors()).toEqual(before);
+        return;
+    }
+    try {
+        await expect.poll(async () => {
+            const after = await readHoverColors();
+            return [after.background !== before.background, after.color !== before.color, after.iconBackground !== before.iconBackground];
+        }).toEqual([true, true, true]);
+    } catch (error) {
+        const after = await readHoverColors();
+        const hoverState = await settingsButton.evaluate((button) => {
+            const root = button.getRootNode();
+            return {
+                hoverMatches: Number(button.matches(':hover')),
+                hoverMedia: Number(window.matchMedia('(hover: hover)').matches),
+                pointerFine: Number(window.matchMedia('(pointer: fine)').matches),
+                settingsButtonDisabled: Number((button as HTMLButtonElement).disabled),
+                hostLightClass: Number(root instanceof ShadowRoot && root.host.classList.contains('light')),
+            };
+        });
+        console.log('CI_METRICS ' + JSON.stringify({
+            testLine: 2082,
+            backgroundChanged: Number(after.background !== before.background),
+            colorChanged: Number(after.color !== before.color),
+            iconBackgroundChanged: Number(after.iconBackground !== before.iconBackground),
+            ...hoverState,
+        }));
+        throw error;
+    }
 });
 
 test("applies Button styles inside a Portal dialog in the Shadow DOM", async ({ page }) => {

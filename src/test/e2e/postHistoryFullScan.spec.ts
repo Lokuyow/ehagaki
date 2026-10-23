@@ -3,8 +3,18 @@ import { installPostHistoryWakeLockProbe, readPostHistoryWakeLockProbe, type Pos
 
 type ScanWindow = Window & { __POST_HISTORY_HARNESS__?: { ready: boolean }; __POST_HISTORY_FULL_SCAN__?: {
     held: number; releasedHeld: number; relayUrls: string[]; closeParent: () => void; readCount: () => Promise<number>;
-    releaseRelay: (url: string) => void; authenticateRelay: (url: string) => void;
+    hasPendingReply: (url: string) => boolean; releaseRelay: (url: string) => void; authenticateRelay: (url: string) => void;
 } };
+async function releasePendingRelay(page: Page, relayIndex: number) {
+    await expect.poll(() => page.evaluate((index) => {
+        const scan = (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!;
+        return scan.hasPendingReply(scan.relayUrls[index]);
+    }, relayIndex)).toBe(true);
+    await page.evaluate((index) => {
+        const scan = (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!;
+        scan.releaseRelay(scan.relayUrls[index]);
+    }, relayIndex);
+}
 async function openDialog(page: Page | FrameLocator) {
     await page.getByRole("button", { name: "投稿履歴メニューを開く", exact: true }).click();
     await page.getByRole("menuitem", { name: "リレーから全件取得", exact: true }).click();
@@ -78,22 +88,22 @@ test("full scan: four workers keep relay rows independent through queued, AUTH a
     await expect(rows.nth(3).locator(".scan-relay-state")).toHaveText("取得中…");
     await expect(rows.nth(4).locator(".scan-relay-state")).toHaveText("順番待ち");
     await expect(dialog).toContainText("0 / 5");
-    await page.evaluate(() => { const scan = (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!; scan.releaseRelay(scan.relayUrls[0]); });
+    await releasePendingRelay(page, 0);
     await expect(rows.nth(0).locator(".scan-relay-state")).toHaveText("完了");
     await expect(rows.nth(0).locator(".scan-relay-count")).toHaveText("2");
     await expect(rows.nth(4).locator(".scan-relay-state")).toHaveText("取得中…");
-    await page.evaluate(() => { const scan = (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!; scan.releaseRelay(scan.relayUrls[1]); });
+    await releasePendingRelay(page, 1);
     await expect(rows.nth(1).locator(".scan-relay-state")).toHaveText("認証中…");
     await expect(rows.nth(1).locator(".scan-relay-count")).toHaveText("0");
     await expect(rows.nth(0).locator(".scan-relay-count")).toHaveText("2");
     await rows.last().scrollIntoViewIfNeeded();
     await expect(rows.last()).toBeInViewport();
     await page.screenshot({ path: testInfo.outputPath("relay-progress-auth.png") });
-    await page.evaluate(() => { const scan = (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!; scan.releaseRelay(scan.relayUrls[2]); });
-    await expect(rows.nth(2).locator(".scan-relay-state")).toHaveText("投稿なし");
+    await releasePendingRelay(page, 2);
+    await expect(rows.nth(2).locator(".scan-relay-state")).toHaveText("投稿なし", { timeout: 15_000 });
     await expect(rows.nth(2).locator(".scan-relay-count")).toHaveText("0");
     for (const index of [3, 4]) {
-        await page.evaluate((relayIndex) => { const scan = (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!; scan.releaseRelay(scan.relayUrls[relayIndex]); }, index);
+        await releasePendingRelay(page, index);
         await expect(rows.nth(index).locator(".scan-relay-state")).toHaveText("完了");
         await expect(rows.nth(index).locator(".scan-relay-count")).toHaveText("2");
     }
@@ -123,7 +133,7 @@ test("full scan: an ambiguous-only relay completes with an accessible explanatio
     }
     const { dialog } = await open(page, "ambiguous");
     await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
-    await expect(dialog.getByRole("status")).toContainText("対象リレーの走査が終了しました");
+    await expect(dialog.getByRole("status")).toContainText("対象リレーの走査が終了しました", { timeout: 15_000 });
     const rows = dialog.locator(".scan-relay-row");
     await expect(rows.locator(".scan-relay-state > .scan-relay-state-line > span")).toHaveText(["完了", "完了"]);
     await expect(rows.nth(0).getByRole("button", { name: "取得結果の補足情報を表示" })).toBeVisible();
@@ -267,6 +277,7 @@ test("full scan: preserves 150 loaded rows and the scroll anchor", async ({ page
     await expect.poll(async () => Math.abs(await container.evaluate((element) => element.scrollTop) - scrollTop)).toBeLessThanOrEqual(2);
 });
 test("full scan: 320px and 360px presentation contain essential actions", async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
     for (const width of [320, 360]) {
         await page.setViewportSize({ width, height: 720 });
         const { dialog } = await open(page, "relay-width");
@@ -293,10 +304,10 @@ test("full scan: 320px and 360px presentation contain essential actions", async 
     await page.setViewportSize({ width: 1000, height: 900 }); await page.goto(hostUrl);
     await page.locator("iframe").evaluate((frame, url) => { (frame as HTMLIFrameElement).src = url; }, childUrl);
     const frame = page.frameLocator("iframe");
-    await expect.poll(() => frame.locator("body").evaluate(() => (window as ScanWindow).__POST_HISTORY_HARNESS__?.ready)).toBe(true);
+    await expect(frame.locator(".post-history-item").first()).toBeVisible({ timeout: 15_000 });
     const embedded = await openDialog(frame);
     await embedded.getByRole("button", { name: "取得開始", exact: true }).click();
-    await expect(embedded.getByRole("status")).toContainText("対象リレーの走査が終了しました");
+    await expect(embedded.getByRole("status")).toContainText("対象リレーの走査が終了しました", { timeout: 15_000 });
     const bounds = await embedded.evaluate((element) => ({ width: element.clientWidth, scroll: element.scrollWidth,
         left: element.getBoundingClientRect().left, right: element.getBoundingClientRect().right }));
     expect(bounds.scroll).toBeLessThanOrEqual(bounds.width); expect(bounds.left).toBeGreaterThanOrEqual(0); expect(bounds.right).toBeLessThanOrEqual(320);

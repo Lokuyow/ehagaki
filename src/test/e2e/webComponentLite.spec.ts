@@ -1559,7 +1559,7 @@ test("Lite waits for an intrinsic measurement when an auto-grow host is initiall
 
 test("Lite keeps an explicit auto-grow range while the emoji picker makes the Composer overflow", async ({ page }) => {
     await page.goto(hostOrigin);
-    await page.evaluate(async ({ componentOrigin }) => {
+    const initialPreferredHeight = await page.evaluate(async ({ componentOrigin }) => {
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
         const state = { preferredEvents: [] as number[] };
         (window as any).__litePickerState = state;
@@ -1586,10 +1586,15 @@ test("Lite keeps an explicit auto-grow range while the emoji picker makes the Co
         document.body.append(composer);
         await composer.whenReady();
         await composer.setCustomEmojis([{ shortcode: "wave", url: "https://example.invalid/wave.webp" }]);
+        const initialHeight = composer.preferredHeight;
         await composer.setContext({ content: "one\ntwo\nthree\nfour" });
+        return initialHeight;
     }, { componentOrigin });
 
     const composer = page.locator("ehagaki-composer");
+    await expect.poll(() => composer.evaluate((element) => (
+        element as HTMLElement & { preferredHeight: number | null }
+    ).preferredHeight)).toBeGreaterThan(initialPreferredHeight ?? 0);
     const beforePicker = await composer.evaluate((element) => {
         const editor = element.shadowRoot!.querySelector<HTMLElement>(".tiptap-editor")!;
         const style = getComputedStyle(editor);
@@ -1624,7 +1629,10 @@ test("Lite keeps an explicit auto-grow range while the emoji picker makes the Co
     expect(afterPicker.minHeight).toBe(beforePicker.minHeight);
     expect(afterPicker.maxHeight).toBe(beforePicker.maxHeight);
     expect(afterPicker.preferredHeight).toBeGreaterThan(beforePicker.preferredHeight!);
-    expect(afterPicker.outerScrollHeight).toBeLessThanOrEqual(afterPicker.outerClientHeight + 1);
+    await expect.poll(() => composer.evaluate((element) => {
+        const outer = element.shadowRoot!.querySelector<HTMLElement>(".composer-scroll-region")!;
+        return outer.scrollHeight - outer.clientHeight;
+    })).toBeLessThanOrEqual(1);
 
     await composer.evaluate((element) => element.style.height = "132px");
     await expect.poll(() => composer.evaluate((element) => {
@@ -1634,9 +1642,32 @@ test("Lite keeps an explicit auto-grow range while the emoji picker makes the Co
 
     await composer.locator(".custom-emoji-button").click();
     await expect(composer.locator(".custom-emoji-picker-region")).toHaveCount(0);
-    await expect.poll(() => composer.evaluate((element) => (
-        element as HTMLElement & { preferredHeight: number | null }
-    ).preferredHeight)).toBe(beforePicker.preferredHeight);
+    try {
+        await expect.poll(() => composer.evaluate((element) => (
+            element as HTMLElement & { preferredHeight: number | null }
+        ).preferredHeight)).toBe(beforePicker.preferredHeight);
+    } catch (error) {
+        const after = await composer.evaluate((element) => {
+            const shadow = element.shadowRoot!;
+            const editor = shadow.querySelector<HTMLElement>(".tiptap-editor")!;
+            const outer = shadow.querySelector<HTMLElement>(".composer-scroll-region")!;
+            const height = (element as HTMLElement & { preferredHeight: number | null }).preferredHeight;
+            return {
+                preferredAfter: height === null ? 0 : height,
+                editorHeightAfter: editor.getBoundingClientRect().height,
+                outerClientHeight: outer.clientHeight,
+                outerScrollHeight: outer.scrollHeight,
+                pickerOpen: Number(Boolean(shadow.querySelector(".custom-emoji-picker-region"))),
+            };
+        });
+        console.log('CI_METRICS ' + JSON.stringify({
+            testLine: 1560,
+            preferredBefore: beforePicker.preferredHeight,
+            editorHeightBefore: beforePicker.height,
+            ...after,
+        }));
+        throw error;
+    }
     const withoutPicker = await composer.evaluate((element) => (
         element as HTMLElement & { preferredHeight: number | null }
     ).preferredHeight);
