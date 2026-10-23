@@ -33,13 +33,13 @@ Windowsの並列E2Eではビルド記録の`rename`が`EPERM`になったため�
 
 ## 監査警告と検証
 
-更新後の`npm audit --omit=dev`は警告0件です。全依存では、修正版が公開されていない`braces` 3.0.3に由来するhighの警告が9パッケージに残っています。主な経路は次のとおりです。
+更新後の`npm audit --omit=dev`は警告0件です。全依存の`npm audit`は、`braces` 3.0.3の単一advisoryに由来するhighの警告を9パッケージに報告しています。ただし、[GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)は2026-10-23 21:53（日本時間）に「実用的に悪用できる脆弱性ではない」として撤回されました。[GitHub APIの`withdrawn_at`と撤回理由](https://api.github.com/advisories/GHSA-vfj7-8cjw-p6xm)で確認しています。撤回確認後もnpmの監査結果には同じ警告が残っており、両者の情報が一致していません。主な依存経路は次のとおりです。
 
 - `patch-package → find-yarn-workspace-root → micromatch → braces`
 - `gh-pages → globby → fast-glob → micromatch → braces`
 - `vite-plugin-static-copy → chokidar → braces`
 
-これらは開発・ビルド・デプロイ用の依存です。監査の提案する旧版へのダウングレードは適用せず、上流の修正版を待ちます。警告の範囲は[GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)と、その時点の`npm audit`で再確認してください。
+これらは開発・ビルド・デプロイ用の依存です。この撤回済みadvisoryを「未修正の脆弱性9件」や「修正版待ち」とは扱わず、これを理由としたダウングレードやoverrideは行いません。更新時には、その時点の`npm audit`出力とadvisoryの有効・撤回状態を照合してください。
 
 依存更新時には`npm ci`、`npm ls --depth=0`、`npm run validate`を実行します。ブラウザーに広く影響する更新では二段階の`npm run test:e2e:agent`、HTTPSの`npm run test:e2e:local-relay`、別の本番ビルドを使う`npm run test:e2e:sw`も実行します。全エンジンを選ぶ場合は`EHAGAKI_E2E_ALL_BROWSERS=1`を設定します。詳細は[開発・検証ガイド](../.agents/guides/development.md)を参照してください。
 
