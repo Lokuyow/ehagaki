@@ -21,6 +21,8 @@ import { EHAGAKI_APP_NAME } from './tags/clientTag';
 export { BUNKER_REGEX };
 
 const RELAY_CONNECT_TIMEOUT_MS = 5000;
+// Bound how long a replaced runtime may retain its pending requests and transport.
+export const NIP46_RETIRED_RUNTIME_TIMEOUT_MS = 30000;
 export const NIP46_NOSTRCONNECT_TIMEOUT_MS = 300000;
 export const NIP46_INITIAL_READINESS_RETRY_WINDOW_MS = 40000;
 export const NIP46_INITIAL_READINESS_ATTEMPT_TIMEOUT_MS = 5000;
@@ -304,10 +306,52 @@ export const NIP46_REQUESTED_PERMS = NIP46_REQUESTED_PERMISSIONS.join(',');
 
 // --- rx-nostr EventSigner アダプタ ---
 export class Nip46SignerAdapter {
+    private pendingRequests = new Set<(reason: Error) => void>();
+    private retired = false;
+    private drainPromise: Promise<void> | null = null;
+    private resolveDrained: (() => void) | null = null;
+
     constructor(
         private bunkerSigner: BunkerSigner,
         private fallbackPubkey: string | null = null,
     ) { }
+
+    get hasPendingRequests(): boolean {
+        return this.pendingRequests.size > 0;
+    }
+
+    /** Stop accepting new requests, retaining the subscription for requests already sent. */
+    retire(): Promise<void> {
+        this.retired = true;
+        if (!this.hasPendingRequests) return Promise.resolve();
+        this.drainPromise ??= new Promise<void>((resolve) => {
+            this.resolveDrained = resolve;
+        });
+        return this.drainPromise;
+    }
+
+    cancelPendingRequests(): void {
+        this.retired = true;
+        for (const cancel of this.pendingRequests) {
+            cancel(new Error('NIP-46 signer connection was closed'));
+        }
+    }
+
+    private async runRequest<T>(request: () => Promise<T>): Promise<T> {
+        if (this.retired) throw new Error('NIP-46 signer connection was closed');
+        let cancel!: (reason: Error) => void;
+        const cancellation = new Promise<never>((_, reject) => { cancel = reject; });
+        this.pendingRequests.add(cancel);
+        try {
+            return await Promise.race([request(), cancellation]);
+        } finally {
+            this.pendingRequests.delete(cancel);
+            if (!this.hasPendingRequests) {
+                this.resolveDrained?.();
+                this.resolveDrained = null;
+            }
+        }
+    }
 
     async signEvent<K extends number>(params: {
         kind: K;
@@ -335,7 +379,7 @@ export class Nip46SignerAdapter {
         });
 
         try {
-            const signedEvent = await this.bunkerSigner.signEvent(template);
+            const signedEvent = await this.runRequest(() => this.bunkerSigner.signEvent(template));
             const durationMs = Date.now() - startedAt;
             console.debug('[NIP-46] sign_event resolved', {
                 method: 'sign_event',
@@ -358,7 +402,7 @@ export class Nip46SignerAdapter {
     }
 
     async getPublicKey(): Promise<string> {
-        return await this.bunkerSigner.getPublicKey();
+        return await this.runRequest(() => this.bunkerSigner.getPublicKey());
     }
 }
 
@@ -948,6 +992,7 @@ export class Nip46Service {
     private currentSession: Nip46SessionData | null = null;
     private persistenceBinding: SessionPersistenceBinding | null = null;
     private operationPromise: Promise<boolean> | null = null;
+    private retiredRuntimeClosers = new Set<() => Promise<void>>();
 
     private setCurrentSession(session: Nip46SessionData | null): void {
         this.currentSession = session
@@ -1000,26 +1045,12 @@ export class Nip46Service {
     }
 
     private async closeRuntimeResources(): Promise<void> {
-        const signer = this.bunkerSigner;
-        const pool = this.pool;
-
-        this.bunkerSigner = null;
-        this.signerAdapter = null;
-        this.userPubkey = null;
-        this.clientSecretKeyHex = null;
-        this.pool = null;
-
-        if (signer) {
-            try {
-                await signer.close();
-            } catch {
-                // noop
-            }
-        }
-
-        if (pool) {
-            pool.destroy();
-        }
+        const runtime = this.snapshotRuntime();
+        this.detachRuntimeIfCurrent(runtime);
+        await Promise.all([
+            this.closeRuntimeSnapshot(runtime),
+            ...Array.from(this.retiredRuntimeClosers, (close) => close()),
+        ]);
     }
 
     private snapshotRuntime(): Nip46RuntimeSnapshot {
@@ -1081,6 +1112,8 @@ export class Nip46Service {
     private async closeRuntimeSnapshot(
         snapshot: Nip46RuntimeSnapshot,
     ): Promise<void> {
+        // BunkerSigner.close() does not reject its outstanding RPC promises.
+        snapshot.signerAdapter?.cancelPendingRequests();
         if (snapshot.bunkerSigner) {
             try {
                 await snapshot.bunkerSigner.close();
@@ -1090,6 +1123,34 @@ export class Nip46Service {
         }
 
         snapshot.pool?.destroy();
+    }
+
+    private async retireRuntimeSnapshot(snapshot: Nip46RuntimeSnapshot): Promise<void> {
+        if (!snapshot.signerAdapter?.hasPendingRequests) {
+            await this.closeRuntimeSnapshot(snapshot);
+            return;
+        }
+
+        const drained = snapshot.signerAdapter.retire();
+        let closing: Promise<void> | null = null;
+        let timer: ReturnType<typeof setTimeout>;
+        const close = (): Promise<void> => {
+            if (!closing) {
+                clearTimeout(timer);
+                this.retiredRuntimeClosers.delete(close);
+                closing = this.closeRuntimeSnapshot(snapshot);
+            }
+            return closing;
+        };
+        this.retiredRuntimeClosers.add(close);
+        timer = setTimeout(() => {
+            void close().catch(() => {
+                console.warn('[NIP-46] retired runtime cleanup failed');
+            });
+        }, NIP46_RETIRED_RUNTIME_TIMEOUT_MS);
+        void drained.then(close).catch(() => {
+            console.warn('[NIP-46] retired runtime cleanup failed');
+        });
     }
 
     private isCurrentSession(
@@ -1225,7 +1286,7 @@ export class Nip46Service {
             this.setCurrentSession(nextSession);
             candidatePool = null;
             candidateBunkerSigner = null;
-            await this.closeRuntimeSnapshot(runtime);
+            await this.retireRuntimeSnapshot(runtime);
             console.debug('[NIP-46] rebuildConnection: pool + BunkerSigner rebuilt');
             return true;
         } catch {

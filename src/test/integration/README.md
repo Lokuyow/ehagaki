@@ -13,6 +13,7 @@
 - `editor-url-paste.integration.test.ts`: URL 単体・複数 URL・画像 URL のペースト挙動。
 - `file-upload-flow.integration.test.ts`: 圧縮、認証ヘッダー生成、アップロード、エラー処理の一連の流れ。
 - `multi-image-upload-uniqueid.integration.test.ts`: 複数画像アップロード時の Unique ID、プレースホルダー検索・置換、削除回帰。
+- `nip46-recovery.integration.test.ts`: 実際の BunkerSigner と relay transport mock による復帰時の署名待機、旧接続の解放、timeout・ログアウト・セッション切替。
 - `video-compression.integration.test.ts`: 圧縮設定、実行フロー、エラー処理、中止、フォールバック動作。
 
 `auth-service.integration.test.ts` は現在このディレクトリに存在しません。README を更新する際は、実在する test file 一覧と一致していることを優先してください。
