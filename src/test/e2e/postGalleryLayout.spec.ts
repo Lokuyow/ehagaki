@@ -104,6 +104,9 @@ test.describe('post gallery layout', () => {
 
         const editor = page.getByRole('textbox', { name: '投稿エディター' });
         const editorContent = editor.locator('.tiptap-editor');
+        // App bootstrap imports the editor asynchronously. Wait for that
+        // lifecycle boundary before checking its rendered visibility.
+        await page.locator('.tiptap-editor').waitFor({ state: 'attached' });
         await expect(page.locator('.tiptap-editor')).toBeVisible();
 
         const welcomeDialog = page.locator('.welcome-dialog');

@@ -942,6 +942,8 @@ test("new host saves and restores fail-closed content warning through delegated 
     const navigation = page.waitForEvent("framenavigated", (candidate) => candidate === childFrame);
     await page.getByRole("button", { name: "iframe を再読み込み" }).click();
     await navigation;
+    // Navigation commits before the asynchronously imported app mounts.
+    await frame.locator(".tiptap-editor").waitFor({ state: "attached" });
     await expect(frame.locator(".tiptap-editor")).toBeVisible();
     await openSettingsToCategory(frame, "post");
     const restoredSwitch = frame.locator('[aria-labelledby="fail-closed-content-warning-label"]');
