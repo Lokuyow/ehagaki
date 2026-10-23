@@ -5,7 +5,7 @@ test.describe.configure({ mode: 'parallel' });
 test.describe('history opening presentation', () => {
     async function startFrameSampling(page: Page) {
         await page.evaluate(() => {
-            const samples: Array<{ pending: boolean; placeholder: boolean; loading: boolean; top: number; left: number }> = [];
+            const samples: Array<{ pending: boolean; placeholder: boolean; loading: boolean; top: number; left: number; contentOpacity: number }> = [];
             Reflect.set(window, '__HISTORY_OPENING_FRAMES__', samples);
             function sample() {
                 const dialog = document.querySelector('.post-history-dialog');
@@ -13,6 +13,7 @@ test.describe('history opening presentation', () => {
                     const rect = dialog.getBoundingClientRect();
                     samples.push({ pending: !!dialog.querySelector('[data-opening-pending="true"]'),
                         placeholder: !!dialog.querySelector('.history-opening-placeholder'), top: rect.top, left: rect.left,
+                        contentOpacity: Number(getComputedStyle(dialog.querySelector('.history-tab-panels')!).opacity),
                         loading: [...dialog.querySelectorAll('.placeholder-text')].some(node =>
                             node.textContent === '読み込み中...' && getComputedStyle(node).visibility !== 'hidden') });
                 }
@@ -71,11 +72,14 @@ test.describe('history opening presentation', () => {
             await expect(dialog.locator('.history-tab-viewport')).toHaveAttribute('aria-busy', 'false');
             if (tab === 'posts') await expect(dialog.getByText('Opening fixture post', { exact: true })).toBeVisible();
             else await expect(dialog.locator('.media-management')).toBeVisible();
-            await expect(dialog.locator('.history-content-reveal')).toHaveCount(1);
+            expect(await dialog.locator('.history-tab-panels').evaluate(node => getComputedStyle(node).animationName)).toBe('none');
             await expect.poll(() => page.evaluate(() => Reflect.get(window, '__HISTORY_OPENING_FRAMES__').length)).toBeGreaterThan(2);
-            const frames = await page.evaluate(() => Reflect.get(window, '__HISTORY_OPENING_FRAMES__') as Array<{ pending: boolean; placeholder: boolean; loading: boolean; top: number; left: number }>);
+            await expect.poll(() => page.evaluate(() => Reflect.get(window, '__HISTORY_OPENING_FRAMES__')
+                .some((frame: { pending: boolean }) => !frame.pending))).toBe(true);
+            const frames = await page.evaluate(() => Reflect.get(window, '__HISTORY_OPENING_FRAMES__') as Array<{ pending: boolean; placeholder: boolean; loading: boolean; top: number; left: number; contentOpacity: number }>);
             expect(frames.some(frame => frame.pending && !frame.placeholder)).toBe(false);
             expect(frames.some(frame => frame.loading)).toBe(false);
+            expect(frames.filter(frame => !frame.pending).every(frame => frame.contentOpacity === 1)).toBe(true);
             expect(Math.max(...frames.map(frame => frame.top)) - Math.min(...frames.map(frame => frame.top))).toBeLessThanOrEqual(1);
             expect(Math.max(...frames.map(frame => frame.left)) - Math.min(...frames.map(frame => frame.left))).toBeLessThanOrEqual(1);
             await page.screenshot({ path: testInfo.outputPath(`opening-${tab}-ready.png`) });

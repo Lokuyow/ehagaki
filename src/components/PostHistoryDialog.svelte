@@ -37,9 +37,6 @@
     let loadFailed = $state(false);
     let postsReady = $state(false);
     let mediaReady = $state(false);
-    let openingElapsed = $state(false);
-    let openingComplete = $state(false);
-    let revealLate = $state(false);
     const contentReady = $derived(loadFailed || (activeTab === "posts" ? postsReady : mediaReady));
     function readinessHandler(tab: HistoryTab, epoch: number) {
         return () => {
@@ -118,22 +115,6 @@
         });
     });
     $effect(() => {
-        const open = show, epoch = accountEpoch;
-        openingElapsed = false;
-        openingComplete = false;
-        revealLate = false;
-        if (!open) return;
-        const timer = setTimeout(() => {
-            if (!destroyed && show && epoch === accountEpoch) openingElapsed = true;
-        }, 250);
-        return () => clearTimeout(timer);
-    });
-    $effect(() => {
-        if (!show || !contentReady || openingComplete) return;
-        revealLate = openingElapsed;
-        openingComplete = true;
-    });
-    $effect(() => {
         const tab = activeTab, open = show, epoch = accountEpoch;
         if (!open || invalidated) return;
         const generation = ++loadGeneration;
@@ -181,7 +162,7 @@
                 <span class="history-tab-indicator" style:transform="translateX({tabSwipe.indicatorProgress * 100}%)" aria-hidden="true"></span>
             </div>
             <div class="history-tab-viewport" aria-busy={!contentReady} data-opening-pending={!contentReady}>
-                <div class="history-tab-panels" class:history-content-reveal={revealLate && openingComplete}
+                <div class="history-tab-panels"
                     inert={!contentReady} aria-hidden={!contentReady ? "true" : undefined}>
                     {#key accountEpoch}
                         <Tabs.Content value="posts" class="history-tab-panel">
@@ -339,7 +320,6 @@
     }
     .history-tab-gesture.is-offset .history-tab-panels { transform: translate3d(var(--history-tab-drag), 0, 0); }
     .history-tab-viewport[data-opening-pending="true"] .history-tab-panels { visibility: hidden; }
-    .history-content-reveal { animation: history-open 80ms ease-out; }
     .history-opening-placeholder { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
     .history-opening-block { display: block; background: var(--text); opacity: 0.07; border-radius: 4px; }
     .history-opening-line { height: 12px; }
@@ -370,7 +350,7 @@
     @keyframes history-open { from { opacity: 0; } to { opacity: 1; } }
     @media (prefers-reduced-motion: reduce) {
         .history-tab-indicator { transition: none; }
-        :global(.post-history-dialog.dialog[data-state="open"]), .history-content-reveal { animation: none; }
+        :global(.post-history-dialog.dialog[data-state="open"]) { animation: none; }
     }
     :global(.history-tab-panel:not([hidden])) { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 </style>

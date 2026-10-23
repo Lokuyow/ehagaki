@@ -102,7 +102,7 @@ describe("history tabs", () => {
             expect(document.querySelector(".history-opening-placeholder")).toBeNull();
             expect(screen.getByText(post.content)).toBeTruthy();
             expect(document.querySelector(".history-tab-viewport")?.getAttribute("aria-busy")).toBe("false");
-            expect(!!document.querySelector(".history-content-reveal")).toBe(delay > 250);
+            expect(document.querySelector(".history-tab-panels")).toHaveProperty("inert", false);
         } finally {
             count.resolve(1); view.unmount(); vi.useRealTimers();
         }
