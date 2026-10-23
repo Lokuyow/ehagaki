@@ -626,7 +626,10 @@
     );
     $effect(() => {
         if (!show || initialReadyReported || !onInitialReady) return;
-        if (!pubkeyHex || history.posts.length > 0 || history.initialLocalLoadStatus === "ready" || history.initialLocalLoadStatus === "failed") {
+        const loadStatus = history.isSearchMode
+            ? history.searchResultStatus
+            : history.initialLocalLoadStatus;
+        if (!pubkeyHex || history.posts.length > 0 || loadStatus === "ready" || loadStatus === "failed") {
             initialReadyReported = true;
             onInitialReady();
         }

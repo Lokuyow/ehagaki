@@ -5,11 +5,12 @@ import { createDeferred } from "../deferredTestUtils";
 import { mediaDestination, mediaPage, mediaPubkey } from "../uploadMediaManagementTestUtils";
 import { mockAuthStoreModule } from "../mocks/storeModules";
 import { getAppStorage } from "../../lib/appStorage";
+import { writePersistedPostHistoryViewState } from "../../lib/postHistoryDialogViewState";
 import { postHistoryLocalRelayService } from "../../lib/postHistoryLocalRelayService";
 import { settingsStore } from "../../stores/settingsStore.svelte";
 import { resetPostHistoryDialogHarness, cleanupPostHistoryDialogHarness,
     repositoryMock, relayFetchServiceMock, profilesRepositoryMock, profileFetchDataMock,
-    contextFetchServiceMock, replyFetchServiceMock, createRecord } from "./postHistoryDialogTestHarness";
+    contextFetchServiceMock, replyFetchServiceMock, localSearchServiceMock, createRecord } from "./postHistoryDialogTestHarness";
 import PostHistoryDialog from "../../components/PostHistoryDialog.svelte";
 import UploadedMediaTabContentComponent from "../../components/UploadedMediaTabContent.svelte";
 export const transformedMediaContent = UploadedMediaTabContentComponent;
@@ -113,6 +114,30 @@ describe("history tabs", () => {
         expect(document.querySelector(".history-opening-placeholder")).toBeNull();
         if (result === "failed") expect(screen.queryByText("投稿履歴はありません")).toBeNull();
         else expect(screen.getByText("投稿履歴はありません")).toBeTruthy();
+        view.unmount();
+    });
+    it.each(["empty", "failed"])("reveals a restored search after its %s result and permits clearing it", async (result) => {
+        writePersistedPostHistoryViewState(mediaPubkey, { searchInput: "missing", searchQuery: "missing" });
+        const gate = createDeferred<{ items: ReturnType<typeof createRecord>[]; total: number; hasNext: boolean }>();
+        localSearchServiceMock.searchLocalPosts.mockReturnValueOnce(gate.promise);
+        const view = open();
+        await waitFor(() => expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledOnce());
+        expect(repositoryMock.getLatestVisibleChunk).not.toHaveBeenCalled();
+        expect(document.querySelector(".history-opening-placeholder")).toBeTruthy();
+        expect(document.querySelector(".history-tab-panels")).toHaveProperty("inert", true);
+        if (result === "failed") gate.reject(new Error("search failed"));
+        else gate.resolve({ items: [], total: 0, hasNext: false });
+        await waitFor(() => expect(document.querySelector(".history-tab-viewport")?.getAttribute("aria-busy")).toBe("false"));
+        expect(document.querySelector(".history-opening-placeholder")).toBeNull();
+        expect(document.querySelector(".history-tab-panels")).toHaveProperty("inert", false);
+        expect(repositoryMock.getLatestVisibleChunk).not.toHaveBeenCalled();
+        if (result === "empty") expect(screen.getByText("一致する投稿はありません")).toBeTruthy();
+        else expect(screen.queryByText("一致する投稿はありません")).toBeNull();
+        await fireEvent.click(screen.getByRole("button", { name: "検索" }));
+        expect(screen.getByRole("searchbox", { name: "検索" })).toHaveProperty("value", "missing");
+        await fireEvent.click(document.querySelector(".post-history-search-close")!);
+        await waitFor(() => expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledOnce());
+        expect(await screen.findByText("投稿履歴はありません")).toBeTruthy();
         view.unmount();
     });
     it.each(["empty", "failed"])("covers the first media request and reveals its %s result", async (result) => {
