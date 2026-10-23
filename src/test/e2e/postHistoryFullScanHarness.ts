@@ -17,6 +17,7 @@ export function createPostHistoryFullScanHarness(secret: Uint8Array, scenario: s
     const events = [50, 40].map((created_at) => finalizeEvent({ kind: 1, created_at, content: `full scan imported ${created_at}`, tags: [] }, secret));
     const control = { requests: 0, held: 0, releasedHeld: 0, relayUrls,
         readCount: () => postHistoryRepository.countForPubkey(owner),
+        hasPendingReply: (relayUrl: string) => pendingReplies.has(relayUrl),
         releaseRelay: (relayUrl: string) => { const reply = pendingReplies.get(relayUrl); pendingReplies.delete(relayUrl); reply?.(); },
         authenticateRelay: (from: string) => {
             const eventId = authIds.get(from);

@@ -632,6 +632,18 @@ async function waitForAutoLoadExit(page: Page, direction: 'older' | 'newer') {
     }, { direction, sentinelSelector })).toBe(true);
 }
 
+async function loadOneOlderChunk(page: Page, expectedEventIds: string[]) {
+    await waitForAutoLoadExit(page, 'older');
+    await armScrollLoadGate(page, 'older');
+    await scrollHistoryToBottom(page);
+    await waitForScrollLoadGate(page);
+    await scrollHistoryAwayFromBottom(page);
+    await waitForIntersectionObserverSettle(page);
+    await releaseScrollLoadGate(page);
+    await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds);
+    await waitForAutoLoadIdle(page, 'older');
+}
+
 async function getFirstVisiblePostSnapshot(page: Page) {
     return page.locator('.post-history-container').evaluate((containerElement) => {
         const container = containerElement as HTMLDivElement;
@@ -2139,20 +2151,14 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(page.locator('.post-history-heading .status-loading-placeholder')).toHaveCount(0);
         const expectedEventIds = harness.infiniteScrollEventIds;
 
-        await scrollHistoryToBottom(page);
-        await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
-        await waitForAutoLoadIdle(page, 'older');
+        await loadOneOlderChunk(page, expectedEventIds.slice(0, 100));
         for (const expectedWindow of [
             expectedEventIds.slice(0, 150),
             expectedEventIds.slice(50, 200),
             expectedEventIds.slice(100, 250),
             expectedEventIds.slice(101),
         ]) {
-            await scrollHistoryAwayFromBottom(page);
-            await waitForAutoLoadExit(page, 'older');
-            await scrollHistoryToBottom(page);
-            await expect.poll(() => historyEventIds(page)).toEqual(expectedWindow);
-            await waitForAutoLoadIdle(page, 'older');
+            await loadOneOlderChunk(page, expectedWindow);
         }
 
         await scrollHistoryAwayFromTop(page);
@@ -2204,20 +2210,14 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(page.locator('.post-history-heading .status-loading-placeholder')).toHaveCount(0);
         const expectedEventIds = harness.infiniteScrollEventIds;
 
-        await scrollHistoryToBottom(page);
-        await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
-        await waitForAutoLoadIdle(page, 'older');
+        await loadOneOlderChunk(page, expectedEventIds.slice(0, 100));
         for (const expectedWindow of [
             expectedEventIds.slice(0, 150),
             expectedEventIds.slice(50, 200),
             expectedEventIds.slice(100, 250),
             expectedEventIds.slice(101),
         ]) {
-            await scrollHistoryAwayFromBottom(page);
-            await waitForAutoLoadExit(page, 'older');
-            await scrollHistoryToBottom(page);
-            await expect.poll(() => historyEventIds(page)).toEqual(expectedWindow);
-            await waitForAutoLoadIdle(page, 'older');
+            await loadOneOlderChunk(page, expectedWindow);
         }
 
         await scrollHistoryAwayFromTop(page);
