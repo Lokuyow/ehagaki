@@ -597,6 +597,41 @@ async function waitForIntersectionObserverSettle(page: Page) {
     });
 }
 
+async function waitForAutoLoadIdle(page: Page, direction: 'older' | 'newer') {
+    const root = page.locator('.post-history-container');
+    const sentinelSelector = direction === 'older'
+        ? '.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)'
+        : '.post-history-auto-load-newer-sentinel';
+    if (direction === 'older') {
+        await expect(root).toHaveAttribute('aria-busy', 'false');
+    }
+    await expect(root.locator(`${sentinelSelector} .inline-spinner`)).toHaveCount(0);
+}
+
+async function waitForAutoLoadExit(page: Page, direction: 'older' | 'newer') {
+    const root = page.locator('.post-history-container');
+    const sentinelSelector = direction === 'older'
+        ? '.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)'
+        : '.post-history-auto-load-newer-sentinel';
+    await waitForAutoLoadIdle(page, direction);
+    await expect.poll(() => root.evaluate((element, args) => {
+        const container = element as HTMLDivElement;
+        const sentinel = container.querySelector<HTMLElement>(args.sentinelSelector);
+        if (!sentinel) return true;
+
+        const rootRect = container.getBoundingClientRect();
+        const sentinelRect = sentinel.getBoundingClientRect();
+        const overlapsHorizontally = sentinelRect.left < rootRect.right
+            && sentinelRect.right > rootRect.left;
+        const isInPrefetchRegion = args.direction === 'older'
+            ? sentinelRect.top <= rootRect.bottom + container.clientHeight * 2
+                && sentinelRect.bottom >= rootRect.top
+            : sentinelRect.bottom >= rootRect.top - container.clientHeight * 2
+                && sentinelRect.top <= rootRect.bottom;
+        return !overlapsHorizontally || !isInPrefetchRegion;
+    }, { direction, sentinelSelector })).toBe(true);
+}
+
 async function getFirstVisiblePostSnapshot(page: Page) {
     return page.locator('.post-history-container').evaluate((containerElement) => {
         const container = containerElement as HTMLDivElement;
@@ -1833,6 +1868,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await scrollHistoryToBottom(page);
         await expectVisiblePostCount(page, 100);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
+        await waitForAutoLoadIdle(page, 'older');
         for (const eventId of await historyEventIds(page)) {
             observedEventIds.add(eventId);
         }
@@ -1840,10 +1876,11 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(await historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
 
         await scrollHistoryAwayFromBottom(page);
-        await waitForIntersectionObserverSettle(page);
+        await waitForAutoLoadExit(page, 'older');
         await scrollHistoryToBottom(page);
         await expectVisiblePostCount(page, 150);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 150));
+        await waitForAutoLoadIdle(page, 'older');
         for (const eventId of await historyEventIds(page)) {
             observedEventIds.add(eventId);
         }
@@ -1857,7 +1894,7 @@ test.describe('PostHistoryDialog Playwright', () => {
             (element as HTMLElement).style.display = 'none';
         });
         await scrollHistoryAwayFromBottom(page);
-        await waitForIntersectionObserverSettle(page);
+        await waitForAutoLoadExit(page, 'older');
         await olderSentinel.evaluate((element) => {
             (element as HTMLElement).style.removeProperty('display');
         });
@@ -1883,6 +1920,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         });
         expect(anchorBeforeLoad).not.toBeNull();
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(50, 200));
+        await waitForAutoLoadIdle(page, 'older');
         await expect(page.locator('.post-history-auto-load-newer-slot'))
             .toHaveCSS('height', '24px');
         await expect(page.locator('.post-history-auto-load-newer-sentinel')).toBeVisible();
@@ -1904,9 +1942,10 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(await historyEventIds(page)).toEqual(expectedEventIds.slice(50, 200));
 
         await scrollHistoryAwayFromBottom(page);
-        await waitForIntersectionObserverSettle(page);
+        await waitForAutoLoadExit(page, 'older');
         await scrollHistoryToBottom(page);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(100, 250));
+        await waitForAutoLoadIdle(page, 'older');
         await expectVisiblePostCount(page, 150);
         for (const eventId of await historyEventIds(page)) {
             observedEventIds.add(eventId);
@@ -1916,9 +1955,10 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(await historyEventIds(page)).toEqual(expectedEventIds.slice(100, 250));
 
         await scrollHistoryAwayFromBottom(page);
-        await waitForIntersectionObserverSettle(page);
+        await waitForAutoLoadExit(page, 'older');
         await scrollHistoryToBottom(page);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(101));
+        await waitForAutoLoadIdle(page, 'older');
         await expectVisiblePostCount(page, 150);
         for (const eventId of await historyEventIds(page)) {
             observedEventIds.add(eventId);
@@ -1941,13 +1981,14 @@ test.describe('PostHistoryDialog Playwright', () => {
             await scrollHistoryToTop(page);
             await expect.poll(() => historyEventIds(page)).toEqual(expectedWindow);
             await expectVisiblePostCount(page, 150);
+            await waitForAutoLoadIdle(page, 'newer');
             await waitForIntersectionObserverSettle(page);
             expect(await historyEventIds(page)).toEqual(expectedWindow);
             await expect(page.getByRole('button', { name: '新しい投稿を表示' })).toHaveCount(0);
 
             if (index < upwardWindows.length - 1) {
                 await scrollHistoryAwayFromTop(page);
-                await waitForIntersectionObserverSettle(page);
+                await waitForAutoLoadExit(page, 'newer');
             }
         }
 
@@ -1972,6 +2013,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(olderApproach.remaining).toBeLessThan(olderApproach.clientHeight * 2);
         expect(olderApproach.remaining).toBeGreaterThan(olderApproach.clientHeight);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
+        await waitForAutoLoadIdle(page, 'older');
         await waitForIntersectionObserverSettle(page);
         expect(await historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
 
@@ -1983,20 +2025,22 @@ test.describe('PostHistoryDialog Playwright', () => {
         ]) {
             await waitForHistoryContainerHeightToSettle(page);
             await scrollHistoryAwayFromBottom(page);
-            await waitForIntersectionObserverSettle(page);
+            await waitForAutoLoadExit(page, 'older');
             await waitForHistoryContainerHeightToSettle(page);
             await scrollHistoryToBottom(page);
             await expect.poll(() => historyEventIds(page)).toEqual(expectedWindow);
+            await waitForAutoLoadIdle(page, 'older');
         }
 
         await scrollHistoryAwayFromTop(page);
-        await waitForIntersectionObserverSettle(page);
+        await waitForAutoLoadExit(page, 'newer');
         const newerApproach = await scrollHistoryNearTopAndCaptureAnchor(page);
         expect(newerApproach.topOffset).toBeGreaterThan(1);
         expect(newerApproach.topOffset).toBeLessThan(newerApproach.clientHeight * 2);
         expect(newerApproach.topOffset).toBeGreaterThan(newerApproach.clientHeight);
         expect(newerApproach.anchor).not.toBeNull();
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(51, 201));
+        await waitForAutoLoadIdle(page, 'newer');
         const restoredAnchor = await getPostSnapshotByEventId(
             page,
             newerApproach.anchor!.eventId,
@@ -2009,9 +2053,10 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(await historyEventIds(page)).toEqual(expectedEventIds.slice(51, 201));
 
         await scrollHistoryAwayFromTop(page);
-        await waitForIntersectionObserverSettle(page);
+        await waitForAutoLoadExit(page, 'newer');
         await scrollHistoryNearTopAndCaptureAnchor(page);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(1, 151));
+        await waitForAutoLoadIdle(page, 'newer');
         await waitForIntersectionObserverSettle(page);
         expect(await historyEventIds(page)).toEqual(expectedEventIds.slice(1, 151));
     });
@@ -2025,13 +2070,15 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         await scrollHistoryToBottom(page);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
+        await waitForAutoLoadIdle(page, 'older');
         await scrollHistoryAwayFromBottom(page);
-        await waitForIntersectionObserverSettle(page);
+        await waitForAutoLoadExit(page, 'older');
         await scrollHistoryToBottom(page);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 150));
+        await waitForAutoLoadIdle(page, 'older');
         const windowBeforeDeferredLoad = await historyEventIds(page);
         await scrollHistoryAwayFromBottom(page);
-        await waitForIntersectionObserverSettle(page);
+        await waitForAutoLoadExit(page, 'older');
 
         await armScrollLoadGate(page, 'older');
         await scrollHistoryToBottom(page);
@@ -2050,6 +2097,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await frameSampling.started;
         await releaseScrollLoadGate(page);
         await expect(page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel) .inline-spinner')).toBeHidden();
+        await waitForAutoLoadIdle(page, 'older');
         await frameSampling.stop();
         const frameSamples = await frameSampling.samples;
         expectPostPositionStableAcrossFrames(frameSamples, userSelectedAnchor!, {
@@ -2067,10 +2115,11 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(Math.abs(retainedUserAnchor!.offsetTop - userSelectedAnchor!.offsetTop)).toBeLessThanOrEqual(1);
 
         await scrollHistoryAwayFromBottom(page);
-        await waitForIntersectionObserverSettle(page);
+        await waitForAutoLoadExit(page, 'older');
         await scrollHistoryToBottom(page);
         await expect.poll(() => historyEventIds(page)).not.toEqual(windowBeforeDeferredLoad);
         await expectVisiblePostCount(page, 150);
+        await waitForAutoLoadIdle(page, 'older');
     });
 
     test('newer autoload defers when the user scrolls to an anchor that the window would trim', async ({ page }) => {
@@ -2082,6 +2131,7 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         await scrollHistoryToBottom(page);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
+        await waitForAutoLoadIdle(page, 'older');
         for (const expectedWindow of [
             expectedEventIds.slice(0, 150),
             expectedEventIds.slice(50, 200),
@@ -2089,13 +2139,14 @@ test.describe('PostHistoryDialog Playwright', () => {
             expectedEventIds.slice(101),
         ]) {
             await scrollHistoryAwayFromBottom(page);
-            await waitForIntersectionObserverSettle(page);
+            await waitForAutoLoadExit(page, 'older');
             await scrollHistoryToBottom(page);
             await expect.poll(() => historyEventIds(page)).toEqual(expectedWindow);
+            await waitForAutoLoadIdle(page, 'older');
         }
 
         await scrollHistoryAwayFromTop(page);
-        await waitForIntersectionObserverSettle(page);
+        await waitForAutoLoadExit(page, 'newer');
         await armScrollLoadGate(page, 'newer');
         await scrollHistoryNearTopAndCaptureAnchor(page);
         await waitForScrollLoadGate(page);
@@ -2113,6 +2164,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await frameSampling.started;
         await releaseScrollLoadGate(page);
         await expect(page.locator('.post-history-auto-load-newer-sentinel .inline-spinner')).toBeHidden();
+        await waitForAutoLoadIdle(page, 'newer');
         await frameSampling.stop();
         const frameSamples = await frameSampling.samples;
         expectPostPositionStableAcrossFrames(frameSamples, userSelectedAnchor!);
@@ -2128,9 +2180,10 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(Math.abs(retainedUserAnchor!.offsetTop - userSelectedAnchor!.offsetTop)).toBeLessThanOrEqual(1);
 
         await scrollHistoryAwayFromTop(page);
-        await waitForIntersectionObserverSettle(page);
+        await waitForAutoLoadExit(page, 'newer');
         await scrollHistoryNearTopAndCaptureAnchor(page);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(51, 201));
+        await waitForAutoLoadIdle(page, 'newer');
     });
 
     test('successful newer autoload returns to latest without moving the visible anchor', async ({ page }) => {
@@ -2143,6 +2196,7 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         await scrollHistoryToBottom(page);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
+        await waitForAutoLoadIdle(page, 'older');
         for (const expectedWindow of [
             expectedEventIds.slice(0, 150),
             expectedEventIds.slice(50, 200),
@@ -2150,13 +2204,14 @@ test.describe('PostHistoryDialog Playwright', () => {
             expectedEventIds.slice(101),
         ]) {
             await scrollHistoryAwayFromBottom(page);
-            await waitForIntersectionObserverSettle(page);
+            await waitForAutoLoadExit(page, 'older');
             await scrollHistoryToBottom(page);
             await expect.poll(() => historyEventIds(page)).toEqual(expectedWindow);
+            await waitForAutoLoadIdle(page, 'older');
         }
 
         await scrollHistoryAwayFromTop(page);
-        await waitForIntersectionObserverSettle(page);
+        await waitForAutoLoadExit(page, 'newer');
         await expect(page.locator('.post-history-auto-load-newer-slot'))
             .toHaveCSS('height', '24px');
         await expect(page.locator('.post-history-auto-load-newer-sentinel'))
@@ -2187,6 +2242,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await releaseScrollLoadGate(page);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedWindow);
         await expect(page.locator('.post-history-auto-load-newer-sentinel .inline-spinner')).toBeHidden();
+        await waitForAutoLoadIdle(page, 'newer');
         await frameSampling.stop();
 
         const frameSamples = await frameSampling.samples;
@@ -2209,14 +2265,15 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         const penultimateWindow = expectedEventIds.slice(1, 151);
         await scrollHistoryAwayFromTop(page);
-        await waitForIntersectionObserverSettle(page);
+        await waitForAutoLoadExit(page, 'newer');
         await scrollHistoryNearTopAndCaptureAnchor(page);
         await expect.poll(() => historyEventIds(page)).toEqual(penultimateWindow);
+        await waitForAutoLoadIdle(page, 'newer');
         await expect(page.locator('.post-history-auto-load-newer-sentinel .inline-spinner'))
             .toBeHidden();
 
         await scrollHistoryAwayFromTop(page);
-        await waitForIntersectionObserverSettle(page);
+        await waitForAutoLoadExit(page, 'newer');
         await armScrollLoadGate(page, 'newer');
         await scrollHistoryNearTopAndCaptureAnchor(page);
         await waitForScrollLoadGate(page);

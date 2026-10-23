@@ -165,7 +165,9 @@ for (const entry of ['history', 'Composer', 'resolved target'] as const) {
             // Saving a known deletion can remove the related card and its menu
             // before a click. Reopen to assert the persisted, stable UI state.
             await page.keyboard.press('Escape');
-            await page.getByRole('button', { name: '閉じる', exact: true }).first().click();
+            await page.locator('.post-history-dialog')
+                .getByRole('button', { name: '閉じる', exact: true })
+                .click();
             await page.getByRole('button', { name: 'Open history' }).click();
             await expect(container).toContainText('元投稿は削除済みです');
             await expect(container.getByRole('button', { name: '元投稿の操作', exact: true })).toHaveCount(0);
