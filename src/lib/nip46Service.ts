@@ -21,8 +21,6 @@ import { EHAGAKI_APP_NAME } from './tags/clientTag';
 export { BUNKER_REGEX };
 
 const RELAY_CONNECT_TIMEOUT_MS = 5000;
-export const NIP46_AUTO_PING_TIMEOUT_MS = 4000;
-export const NIP46_MANUAL_PING_TIMEOUT_MS = 30000;
 export const NIP46_NOSTRCONNECT_TIMEOUT_MS = 300000;
 export const NIP46_INITIAL_READINESS_RETRY_WINDOW_MS = 40000;
 export const NIP46_INITIAL_READINESS_ATTEMPT_TIMEOUT_MS = 5000;
@@ -112,22 +110,10 @@ type LiveIdentityAuthChallenge = {
     reject: () => void;
 };
 
-type Nip46OperationKind = 'manual-check' | 'auto-recovery';
-
 type Nip46SessionIdentity = Pick<
     Nip46SessionData,
     'clientSecretKeyHex' | 'remoteSignerPubkey' | 'userPubkey'
 >;
-
-export interface Nip46ConnectionOperationState {
-    kind: Nip46OperationKind | 'idle';
-    inProgress: boolean;
-}
-
-export interface Nip46ManualConnectionCheckResult {
-    success: boolean;
-    skipped?: boolean;
-}
 
 export interface Nip46PendingNostrConnectSession {
     connectionUri: string;
@@ -288,7 +274,6 @@ function getRelayConnectionFailureHint(relays: string[]): string | null {
  * クライアントが利用する操作の許可設定に使われる。
  * リモートサイナー実装によっては、この要求を参照しない場合がある。
  * - get_public_key — ログイン完了時のユーザー公開鍵取得
- * - ping — 接続状態確認。手動の接続確認と、確認済み session の長時間バックグラウンド復帰で使用
  * - sign_event:1 — ショートテキストノート（投稿）
  * - sign_event:36 — Sensitive Content Payload
  * - sign_event:1111 — NIP-22 comment
@@ -301,7 +286,6 @@ function getRelayConnectionFailureHint(relays: string[]): string | null {
  */
 export const NIP46_REQUESTED_PERMISSIONS = [
     'get_public_key',
-    'ping',
     'sign_event:1',
     'sign_event:6',
     'sign_event:7',
@@ -963,35 +947,15 @@ export class Nip46Service {
     private pool: SimplePool | null = null;
     private currentSession: Nip46SessionData | null = null;
     private persistenceBinding: SessionPersistenceBinding | null = null;
-    private operationKind: Nip46OperationKind | null = null;
     private operationPromise: Promise<boolean> | null = null;
-    private operationListeners = new Set<
-        (state: Nip46ConnectionOperationState) => void
-    >();
-
-    private getOperationStateSnapshot(): Nip46ConnectionOperationState {
-        if (!this.operationKind || !this.operationPromise) {
-            return { kind: 'idle', inProgress: false };
-        }
-
-        return {
-            kind: this.operationKind,
-            inProgress: true,
-        };
-    }
-
-    private emitOperationState(): void {
-        const snapshot = this.getOperationStateSnapshot();
-        for (const listener of this.operationListeners) {
-            listener(snapshot);
-        }
-    }
 
     private setCurrentSession(session: Nip46SessionData | null): void {
         this.currentSession = session
             ? {
-                ...session,
-                pingVerified: session.pingVerified === true,
+                clientSecretKeyHex: session.clientSecretKeyHex,
+                remoteSignerPubkey: session.remoteSignerPubkey,
+                relays: [...session.relays],
+                userPubkey: session.userPubkey,
                 relayResolution: normalizeRelayResolution(
                     session.relayResolution,
                 ),
@@ -999,7 +963,7 @@ export class Nip46Service {
             : null;
     }
 
-    private updateCurrentSessionFromRuntime(pingVerified?: boolean): void {
+    private updateCurrentSessionFromRuntime(): void {
         if (!this.bunkerSigner || !this.userPubkey || !this.clientSecretKeyHex) {
             return;
         }
@@ -1012,24 +976,7 @@ export class Nip46Service {
                 ? [...this.currentSession.relays]
                 : [...this.bunkerSigner.bp.relays],
             userPubkey: this.userPubkey,
-            pingVerified: pingVerified ?? this.currentSession?.pingVerified === true,
             relayResolution: this.currentSession?.relayResolution,
-        });
-    }
-
-    private setPingVerified(value: boolean): void {
-        if (this.bunkerSigner && this.userPubkey && this.clientSecretKeyHex) {
-            this.updateCurrentSessionFromRuntime(value);
-            return;
-        }
-
-        if (!this.currentSession) {
-            return;
-        }
-
-        this.setCurrentSession({
-            ...this.currentSession,
-            pingVerified: value,
         });
     }
 
@@ -1050,17 +997,6 @@ export class Nip46Service {
         }
 
         this.writeSessionSnapshot(storage, pubkeyHex, this.currentSession);
-    }
-
-    private persistBoundSession(): void {
-        if (!this.persistenceBinding || !this.currentSession) {
-            return;
-        }
-
-        this.writeSession(
-            this.persistenceBinding.storage,
-            this.persistenceBinding.pubkeyHex,
-        );
     }
 
     private async closeRuntimeResources(): Promise<void> {
@@ -1110,7 +1046,6 @@ export class Nip46Service {
             && current.clientSecretKeyHex === snapshot.clientSecretKeyHex
             && current.remoteSignerPubkey === snapshot.remoteSignerPubkey
             && current.userPubkey === snapshot.userPubkey
-            && current.pingVerified === snapshot.pingVerified
             && current.relayResolution === snapshot.relayResolution
             && current.relays.length === snapshot.relays.length
             && current.relays.every((relay, index) => relay === snapshot.relays[index]);
@@ -1182,25 +1117,6 @@ export class Nip46Service {
         }
 
         return this.signerAdapter;
-    }
-
-    private async pingWithTimeout(timeoutMs: number): Promise<boolean> {
-        if (!this.bunkerSigner) {
-            return false;
-        }
-
-        try {
-            const result = await Promise.race([
-                this.bunkerSigner.sendRequest('ping', []),
-                new Promise<never>((_, reject) => {
-                    setTimeout(() => reject(new Error('NIP-46 ping timeout')), timeoutMs);
-                }),
-            ]);
-
-            return result === 'pong';
-        } catch {
-            return false;
-        }
     }
 
     private async rebuildConnection(): Promise<boolean> {
@@ -1320,21 +1236,16 @@ export class Nip46Service {
     }
 
     private async runOperation(
-        kind: Nip46OperationKind,
         task: () => Promise<boolean>,
     ): Promise<boolean> {
         const promise = (async () => await task())();
-        this.operationKind = kind;
         this.operationPromise = promise;
-        this.emitOperationState();
 
         try {
             return await promise;
         } finally {
             if (this.operationPromise === promise) {
-                this.operationKind = null;
                 this.operationPromise = null;
-                this.emitOperationState();
             }
         }
     }
@@ -1346,39 +1257,8 @@ export class Nip46Service {
         };
     }
 
-    getOperationState(): Nip46ConnectionOperationState {
-        return this.getOperationStateSnapshot();
-    }
-
-    subscribeOperationState(
-        listener: (state: Nip46ConnectionOperationState) => void,
-    ): () => void {
-        this.operationListeners.add(listener);
-        listener(this.getOperationStateSnapshot());
-
-        return () => {
-            this.operationListeners.delete(listener);
-        };
-    }
-
-    isManualCheckInProgress(): boolean {
-        return this.operationKind === 'manual-check' && this.operationPromise !== null;
-    }
-
-    isAutoRecoveryInProgress(): boolean {
-        return this.operationKind === 'auto-recovery' && this.operationPromise !== null;
-    }
-
     hasRecoverableSession(): boolean {
         return this.currentSession !== null;
-    }
-
-    async waitForPendingOperation(): Promise<boolean> {
-        if (!this.operationPromise) {
-            return true;
-        }
-
-        return await this.operationPromise;
     }
 
     async connect(bunkerUrl: string, timeoutMs: number = 30000): Promise<string> {
@@ -1527,7 +1407,6 @@ export class Nip46Service {
                 remoteSignerPubkey: bunkerPointer.pubkey,
                 relays: [...supportedRelays],
                 userPubkey: resolvedUserPubkey,
-                pingVerified: false,
             });
             candidatePool = null;
             candidateBunkerSigner = null;
@@ -2111,7 +1990,6 @@ export class Nip46Service {
                                     remoteSignerPubkey: event.pubkey,
                                     relays: [...finalSessionRelays],
                                     userPubkey: resolvedUserPubkey,
-                                    pingVerified: false,
                                     relayResolution:
                                         relayResolution.sessionRelayResolution,
                                 });
@@ -2176,7 +2054,6 @@ export class Nip46Service {
         const sessionSnapshot: Nip46SessionData = {
             ...session,
             relays: [...session.relays],
-            pingVerified: session.pingVerified === true,
         };
         let candidatePool: SimplePool | null = null;
         let candidateBunkerSigner: BunkerSigner | null = null;
@@ -2275,7 +2152,6 @@ export class Nip46Service {
             candidatePool = null;
             candidateBunkerSigner = null;
 
-            // セッション復元時はping()を行わない。
             console.debug('[NIP-46] reconnect: session restored after live identity verification');
             return sessionSnapshot.userPubkey;
         } catch (error) {
@@ -2285,9 +2161,7 @@ export class Nip46Service {
     }
 
     async disconnect(): Promise<void> {
-        this.operationKind = null;
         this.operationPromise = null;
-        this.emitOperationState();
         this.setCurrentSession(null);
         this.persistenceBinding = null;
         await this.closeRuntimeResources();
@@ -2298,16 +2172,8 @@ export class Nip46Service {
     }
 
     /**
-     * リレー接続が生きているか確認し、切れている場合はセッションから再接続する。
-     * visibilitychange でバックグラウンド復帰時に呼び出す。
-        * permission を扱うリモートサイナーでは ping に初回許可操作が必要になり得るが、
-        * permission を参照しないリモートサイナーも存在し得る。
-        * eHagaki は signer 種別を推測せず、30 秒以上バックグラウンドだった後でも
-        * 手動確認に成功した session のみ auto ping を試す。
-        * auto ping が成功した場合は既存 connection を維持し、failure の場合は
-        * `pingVerified` を false に戻して pool + BunkerSigner の rebuild に fallback する。
-        * 未確認 session では auto ping を送らず、従来どおり rebuild を使う。
-        * nokandro のように無操作で応答する signer でも、この保守的フローで安全に扱う。
+     * バックグラウンド復帰時や signer 取得時に、保存済み session から接続を再構築する。
+     * 同時要求は進行中の復旧を共有し、live identity 検証に成功した候補だけを採用する。
      *
      * バックグラウンド移行時にWebSocketが切断されると、SimplePool内のリレーオブジェクトが
      * 削除され（enableReconnect=false時）、BunkerSignerの内部サブスクリプションも失われる。
@@ -2319,33 +2185,7 @@ export class Nip46Service {
             return await this.operationPromise;
         }
 
-        return await this.runOperation('auto-recovery', async () => {
-            if (!this.currentSession) {
-                return false;
-            }
-
-            const hasLiveSigner =
-                this.bunkerSigner !== null
-                && this.userPubkey !== null
-                && this.clientSecretKeyHex !== null;
-
-            if (hasLiveSigner && this.currentSession.pingVerified === true) {
-                const pingSucceeded = await this.pingWithTimeout(
-                    NIP46_AUTO_PING_TIMEOUT_MS,
-                );
-                if (pingSucceeded) {
-                    this.setPingVerified(true);
-                    this.persistBoundSession();
-                    return true;
-                }
-
-                this.setPingVerified(false);
-                this.persistBoundSession();
-                return await this.rebuildConnection();
-            }
-
-            return await this.rebuildConnection();
-        });
+        return await this.runOperation(() => this.rebuildConnection());
     }
 
     async getSignerForSession(
@@ -2362,7 +2202,6 @@ export class Nip46Service {
             userPubkey: session.userPubkey,
         };
         const pendingOperationPromise = this.operationPromise;
-        const pendingOperationKind = this.operationKind;
         let pendingOperationSucceeded: boolean | null = null;
 
         if (pendingOperationPromise) {
@@ -2371,22 +2210,12 @@ export class Nip46Service {
             } catch {
                 pendingOperationSucceeded = false;
                 console.warn('[NIP-46] signer request: pending operation failed', {
-                    operationKind: pendingOperationKind,
                     reason: 'unexpected' satisfies Nip46LogFailureReason,
                 });
             }
         }
 
         if (!this.isCurrentSession(sessionIdentity, expectedPubkey)) {
-            return null;
-        }
-
-        if (
-            pendingOperationPromise
-            && pendingOperationKind === 'manual-check'
-            && pendingOperationSucceeded === false
-        ) {
-            console.warn('[NIP-46] signer request: manual check failed');
             return null;
         }
 
@@ -2397,25 +2226,20 @@ export class Nip46Service {
             }
         }
 
-        console.debug('[NIP-46] signer request: starting limited reconnect', {
-            operationKind: pendingOperationKind,
-        });
+        console.debug('[NIP-46] signer request: starting limited reconnect');
 
         let recovered: boolean;
         try {
             recovered = await this.ensureConnection();
         } catch {
             console.error('[NIP-46] signer request: reconnect threw unexpectedly', {
-                operationKind: pendingOperationKind,
                 reason: 'unexpected' satisfies Nip46LogFailureReason,
             });
             return null;
         }
 
         if (!recovered) {
-            console.warn('[NIP-46] signer request: limited reconnect failed', {
-                operationKind: pendingOperationKind,
-            });
+            console.warn('[NIP-46] signer request: limited reconnect failed');
             return null;
         }
 
@@ -2425,44 +2249,9 @@ export class Nip46Service {
 
         const signer = this.getRuntimeSignerForSession(expectedPubkey);
         if (signer) {
-            console.debug('[NIP-46] signer request: limited reconnect succeeded', {
-                operationKind: pendingOperationKind,
-            });
+            console.debug('[NIP-46] signer request: limited reconnect succeeded');
         }
         return signer;
-    }
-
-    async runManualConnectionCheck(): Promise<Nip46ManualConnectionCheckResult> {
-        if (this.operationKind === 'manual-check' && this.operationPromise) {
-            return {
-                success: await this.operationPromise,
-            };
-        }
-
-        if (this.operationPromise) {
-            return {
-                success: false,
-                skipped: true,
-            };
-        }
-
-        const success = await this.runOperation('manual-check', async () => {
-            if (!this.currentSession || !this.bunkerSigner) {
-                this.setPingVerified(false);
-                this.persistBoundSession();
-                return false;
-            }
-
-            const pingSucceeded = await this.pingWithTimeout(
-                NIP46_MANUAL_PING_TIMEOUT_MS,
-            );
-
-            this.setPingVerified(pingSucceeded);
-            this.persistBoundSession();
-            return pingSucceeded;
-        });
-
-        return { success };
     }
 
     getSigner(): Nip46SignerAdapter | null {
@@ -2505,7 +2294,6 @@ export class Nip46Service {
                     session.relays.filter((relay): relay is string => typeof relay === 'string'),
                 ),
                 userPubkey: session.userPubkey,
-                pingVerified: session.pingVerified === true,
                 ...(normalizeRelayResolution(session.relayResolution)
                     ? {
                         relayResolution: normalizeRelayResolution(

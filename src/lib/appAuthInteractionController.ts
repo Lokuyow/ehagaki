@@ -1,11 +1,5 @@
 import { runNip07Login, runNip46Login } from './appAuthUtils';
 
-type Nip46ConnectionCheckStatus = 'idle' | 'success' | 'failure';
-
-interface Nip46RuntimeController {
-    runManualConnectionCheck: () => Promise<{ success: boolean; skipped?: boolean }>;
-}
-
 interface Nip46DisconnectController {
     disconnect: () => Promise<void>;
 }
@@ -28,15 +22,13 @@ export interface AppAuthInteractionControllerDependencies {
     handlePostAuth(pubkeyHex: string): Promise<void>;
     setNip07Loading(next: boolean): void;
     setNip46Loading(next: boolean): void;
-    setNip46ConnectionCheckStatus(next: Nip46ConnectionCheckStatus): void;
-    nip46Service: Nip46RuntimeController & Nip46DisconnectController;
+    nip46Service: Nip46DisconnectController;
     logger: Pick<Console, 'error'>;
 }
 
 export interface AppAuthInteractionController {
     handleNip07Login(): Promise<string | undefined>;
     handleNip46Login(bunkerUrl: string): Promise<string | undefined>;
-    handleNip46ConnectionCheck(pubkeyHex: string): Promise<void>;
 }
 
 export function createAppAuthInteractionController(
@@ -70,27 +62,8 @@ export function createAppAuthInteractionController(
         );
     }
 
-    async function handleNip46ConnectionCheck(pubkeyHex: string): Promise<void> {
-        if (
-            deps.getCurrentAuthType() !== 'nip46'
-            || deps.getCurrentPubkeyHex() !== pubkeyHex
-        ) {
-            return;
-        }
-
-        deps.setNip46ConnectionCheckStatus('idle');
-        const result = await deps.nip46Service.runManualConnectionCheck();
-
-        if (result.skipped) {
-            return;
-        }
-
-        deps.setNip46ConnectionCheckStatus(result.success ? 'success' : 'failure');
-    }
-
     return {
         handleNip07Login,
         handleNip46Login,
-        handleNip46ConnectionCheck,
     };
 }

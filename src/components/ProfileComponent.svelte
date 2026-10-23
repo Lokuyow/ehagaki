@@ -2,7 +2,6 @@
     import { _ } from "svelte-i18n";
     import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
-    import InfoPopoverButton from "./InfoPopoverButton.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
     import { profileDataStore } from "../stores/profileStore.svelte";
@@ -37,7 +36,6 @@
         fallbackRecoveryPubkeyHex?: string;
         onSwitchAccount?: (pubkeyHex: string) => void;
         onAddAccount?: () => void;
-        onCheckNip46Connection?: (pubkeyHex: string) => void | Promise<void>;
         accounts?: StoredAccount[];
         accountProfiles?: Map<
             string,
@@ -45,11 +43,6 @@
         >;
         isLoggingOut?: boolean;
         isSwitchingAccount?: boolean;
-        nip46ConnectionOperationState?:
-            | "idle"
-            | "manual-check"
-            | "auto-recovery";
-        nip46ConnectionStatus?: "idle" | "success" | "failure";
     }
 
     let {
@@ -59,13 +52,10 @@
         fallbackRecoveryPubkeyHex = "",
         onSwitchAccount,
         onAddAccount,
-        onCheckNip46Connection,
         accounts = [],
         accountProfiles = new Map(),
         isLoggingOut = false,
         isSwitchingAccount = false,
-        nip46ConnectionOperationState = "idle",
-        nip46ConnectionStatus = "idle",
     }: Props = $props();
 
     // ダイアログを閉じるハンドラ
@@ -118,10 +108,6 @@
     function handleSwitchAccount(pubkeyHex: string) {
         onSwitchAccount?.(pubkeyHex);
         handleClose();
-    }
-
-    function handleCheckNip46Connection(pubkeyHex: string) {
-        void onCheckNip46Connection?.(pubkeyHex);
     }
 
     async function handleCopy(text: string, type: string): Promise<boolean> {
@@ -249,8 +235,6 @@
                 <div class="account-list">
                     {#each accounts as account (account.pubkeyHex)}
                         {@const isActive = account.pubkeyHex === auth?.pubkey}
-                        {@const showNip46ConnectionPanel =
-                            isActive && account.type === "nip46"}
                         {@const cachedProfile = accountProfiles.get(
                             account.pubkeyHex,
                         )}
@@ -331,84 +315,6 @@
                                     <div class="logout-icon svg-icon"></div>
                                 </button>
                             </div>
-                            {#if showNip46ConnectionPanel}
-                                <div class="nip46-connection-panel">
-                                    <div class="nip46-connection-title-row">
-                                        <div class="nip46-connection-title">
-                                            {$_(
-                                                "profileDialog.nip46_connection_title",
-                                            )}
-                                        </div>
-                                        <InfoPopoverButton
-                                            side="bottom"
-                                            sideOffset={6}
-                                            ariaLabel={$_(
-                                                "profileDialog.nip46_connection_description",
-                                            )}
-                                        >
-                                            {$_(
-                                                "profileDialog.nip46_connection_description",
-                                            )}
-                                        </InfoPopoverButton>
-                                    </div>
-                                    <Button
-                                        className="nip46-connection-button"
-                                        variant="secondary"
-                                        shape="rounded"
-                                        disabled={isLoggingOut ||
-                                            isSwitchingAccount ||
-                                            nip46ConnectionOperationState !==
-                                                "idle"}
-                                        onClick={() =>
-                                            handleCheckNip46Connection(
-                                                account.pubkeyHex,
-                                            )}
-                                        ariaLabel={$_(
-                                            "profileDialog.nip46_connection_check",
-                                        )}
-                                    >
-                                        <div
-                                            class="network-ping-icon svg-icon"
-                                            aria-hidden="true"
-                                        ></div>
-                                        <span>
-                                            {nip46ConnectionOperationState ===
-                                            "manual-check"
-                                                ? $_(
-                                                      "profileDialog.nip46_connection_checking",
-                                                  )
-                                                : $_(
-                                                      "profileDialog.nip46_connection_check",
-                                                  )}
-                                        </span>
-                                    </Button>
-                                    {#if nip46ConnectionOperationState === "auto-recovery"}
-                                        <div
-                                            class="nip46-connection-status info"
-                                        >
-                                            {$_(
-                                                "profileDialog.nip46_connection_auto_recovering",
-                                            )}
-                                        </div>
-                                    {:else if nip46ConnectionStatus === "success"}
-                                        <div
-                                            class="nip46-connection-status success"
-                                        >
-                                            {$_(
-                                                "profileDialog.nip46_connection_success",
-                                            )}
-                                        </div>
-                                    {:else if nip46ConnectionStatus === "failure"}
-                                        <div
-                                            class="nip46-connection-status error"
-                                        >
-                                            {$_(
-                                                "profileDialog.nip46_connection_failed",
-                                            )}
-                                        </div>
-                                    {/if}
-                                </div>
-                            {/if}
                         </div>
                     {/each}
                 </div>
@@ -722,61 +628,6 @@
 
         .add-account-label {
             font-size: 1rem;
-        }
-
-        .nip46-connection-panel {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-            padding: 8px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            background: color-mix(in srgb, var(--btn-bg), transparent 18%);
-        }
-
-        .nip46-connection-title-row {
-            display: flex;
-            align-items: center;
-            gap: 2px;
-        }
-
-        .nip46-connection-title {
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--text);
-        }
-
-        .nip46-connection-status {
-            font-size: 0.875rem;
-            line-height: 1.4;
-        }
-
-        .nip46-connection-status.info {
-            color: var(--text-light);
-        }
-
-        .nip46-connection-status.success {
-            color: var(--theme);
-        }
-
-        .nip46-connection-status.error {
-            color: var(--danger);
-        }
-
-        :global(button.nip46-connection-button) {
-            width: fit-content;
-            min-height: 44px;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .network-ping-icon.svg-icon {
-            width: 26px;
-            height: 26px;
-            mask-image: url("/icons/network_ping_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-            background-color: currentColor;
-            flex-shrink: 0;
         }
     }
 

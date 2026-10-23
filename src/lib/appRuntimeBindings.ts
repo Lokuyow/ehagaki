@@ -7,9 +7,6 @@ export interface AppRuntimeBindingsDependencies {
         onRemoteLogout(handler: (pubkeyHex: string | null) => void): Cleanup;
         announceReady(): void;
     };
-    nip46Service: {
-        subscribeOperationState(handler: (state: unknown) => void): Cleanup;
-    };
     embedComposerContextService: {
         onRemoteSetContext(
             handler: (payload: unknown, requestId: string | undefined) => void,
@@ -27,7 +24,6 @@ export interface AppRuntimeBindingsDependencies {
     onChannelContextChanged(handler: () => void): Cleanup;
     handleRemoteParentClientLogin(pubkeyHex: string | null): Promise<void> | void;
     handleRemoteParentClientLogout(pubkeyHex: string | null): Promise<void> | void;
-    setNip46OperationState(state: unknown): void;
     handleRemoteComposerSetContext(
         payload: unknown,
         requestId: string | undefined,
@@ -52,12 +48,6 @@ export function setupAppRuntimeBindings(
         deps.parentClientAuthService.onRemoteLogout((pubkeyHex) => {
             void deps.handleRemoteParentClientLogout(pubkeyHex);
         });
-
-    const cleanupNip46OperationHandler = deps.nip46Service.subscribeOperationState(
-        (state) => {
-            deps.setNip46OperationState(state);
-        },
-    );
 
     const cleanupRemoteComposerSetContextHandler =
         deps.embedComposerContextService.onRemoteSetContext((payload, requestId) => {
@@ -91,7 +81,6 @@ export function setupAppRuntimeBindings(
     }
 
     return () => {
-        cleanupNip46OperationHandler();
         cleanupParentClientLoginHandler();
         cleanupParentClientLogoutHandler();
         cleanupRemoteComposerSetContextHandler();

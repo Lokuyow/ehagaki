@@ -13,6 +13,7 @@ import {
 } from '../../lib/nip46Service';
 import { DECOMMISSIONED_RELAYS } from '../../lib/relayLists';
 import { createDeferred } from '../deferredTestUtils';
+import type { Nip46SessionData } from '../../lib/types';
 import { MockStorage } from '../helpers';
 import { expectConsoleCallsNotToContain } from '../logAssertions';
 
@@ -26,6 +27,11 @@ const EXPECTED_NIP46_CLIENT_METADATA = {
 };
 
 describe('NIP46_REQUESTED_PERMISSIONS', () => {
+    it('接続確認用のping権限を要求しない', () => {
+        expect(NIP46_REQUESTED_PERMISSIONS).not.toContain('ping');
+        expect(NIP46_REQUESTED_PERMS.split(',')).not.toContain('ping');
+        expect(NIP46_REQUESTED_PERMISSIONS).toContain('get_public_key');
+    });
     it('requests both kind 6 and kind 16 signing', () => {
         expect(NIP46_REQUESTED_PERMISSIONS).toContain('sign_event:6');
         expect(NIP46_REQUESTED_PERMS).toContain('sign_event:6');
@@ -351,7 +357,6 @@ describe('Nip46Service', () => {
         remoteSignerPubkey?: string;
         relays?: string[];
         userPubkey?: string;
-        pingVerified?: boolean;
         relayResolution?: 'signer-negotiated' | 'signer-confirmed-unchanged' | 'client-initial-fallback' | 'client-initial-unconfirmed';
         signerOverrides?: Record<string, unknown>;
     } = {}) {
@@ -361,7 +366,6 @@ describe('Nip46Service', () => {
             remoteSignerPubkey: options.remoteSignerPubkey ?? 'd'.repeat(64),
             relays: options.relays ?? ['wss://relay.test.com'],
             userPubkey: options.userPubkey ?? TEST_RECONNECT_PUBKEY,
-            pingVerified: options.pingVerified ?? false,
             ...(options.relayResolution
                 ? { relayResolution: options.relayResolution }
                 : {}),
@@ -1274,7 +1278,6 @@ describe('Nip46Service', () => {
                 remoteSignerPubkey,
                 relays: finalRelays,
                 userPubkey: TEST_USER_PUBKEY,
-                pingVerified: false,
                 relayResolution: 'signer-negotiated',
             });
         });
@@ -1329,7 +1332,6 @@ describe('Nip46Service', () => {
                     'wss://relay.final.example.com',
                 ],
                 userPubkey: TEST_USER_PUBKEY,
-                pingVerified: false,
                 relayResolution: 'signer-negotiated',
             });
         });
@@ -1365,7 +1367,6 @@ describe('Nip46Service', () => {
                 remoteSignerPubkey: pendingFlow.remoteSignerPubkey,
                 relays: ['ws://127.0.0.1:4869/'],
                 userPubkey: TEST_USER_PUBKEY,
-                pingVerified: false,
                 relayResolution: 'signer-negotiated',
             });
         });
@@ -1423,7 +1424,6 @@ describe('Nip46Service', () => {
                 remoteSignerPubkey: pendingFlow.remoteSignerPubkey,
                 relays: finalRelayCandidates,
                 userPubkey: TEST_USER_PUBKEY,
-                pingVerified: false,
                 relayResolution: 'signer-negotiated',
             });
         });
@@ -1752,7 +1752,6 @@ describe('Nip46Service', () => {
                     'wss://relay.backup-ready.example.com',
                 ],
                 userPubkey: TEST_USER_PUBKEY,
-                pingVerified: false,
                 relayResolution: 'signer-confirmed-unchanged',
             });
         });
@@ -1807,7 +1806,6 @@ describe('Nip46Service', () => {
                 remoteSignerPubkey,
                 relays: initialReadyRelays,
                 userPubkey: TEST_USER_PUBKEY,
-                pingVerified: false,
                 relayResolution: 'client-initial-fallback',
             });
         });
@@ -2162,7 +2160,6 @@ describe('Nip46Service', () => {
                     'wss://relay.backup-ready.example.com',
                 ],
                 userPubkey: TEST_USER_PUBKEY,
-                pingVerified: false,
                 relayResolution: 'client-initial-unconfirmed',
             });
             expect(service.isConnected()).toBe(true);
@@ -2300,18 +2297,11 @@ describe('Nip46Service', () => {
                 remoteSignerPubkey: pendingFlow.remoteSignerPubkey,
                 relays: pendingFlow.initialRelays,
                 userPubkey: TEST_USER_PUBKEY,
-                pingVerified: false,
                 relayResolution: 'client-initial-unconfirmed',
             });
-
-            pendingFlow.fallbackSigner.sendRequest.mockResolvedValue('pong');
-            expect(await service.runManualConnectionCheck()).toEqual({
-                success: true,
-            });
-            expect(pendingFlow.fallbackSigner.sendRequest).toHaveBeenCalledWith('ping', []);
         });
 
-        it('client-initial fallback で保存した session は reconnect / rebuild / ping に initial relay を使える', async () => {
+        it('client-initial fallback で保存した session は reconnect / rebuild に initial relay を使える', async () => {
             const pendingFlow = await createPendingFallbackNostrConnect({
                 initialRelays: ['wss://relay.initial.example.com'],
                 sendRequestError: 'unsupported method: switch_relays',
@@ -2332,7 +2322,6 @@ describe('Nip46Service', () => {
                 remoteSignerPubkey: pendingFlow.remoteSignerPubkey,
                 relays: ['wss://relay.initial.example.com'],
                 userPubkey: TEST_USER_PUBKEY,
-                pingVerified: false,
                 relayResolution: 'client-initial-fallback',
             });
 
@@ -2343,9 +2332,7 @@ describe('Nip46Service', () => {
                     Promise.resolve(
                         method === 'get_public_key'
                             ? TEST_USER_PUBKEY
-                            : method === 'connect'
-                                ? 'ack'
-                                : 'pong',
+                            : 'ack',
                     ),
                 ),
                 getPublicKey: vi.fn().mockResolvedValue(TEST_USER_PUBKEY),
@@ -2388,11 +2375,8 @@ describe('Nip46Service', () => {
                 secret: null,
             });
 
-            rebuiltSigner.sendRequest.mockResolvedValue('pong');
-            expect(await restoredService.runManualConnectionCheck()).toEqual({
-                success: true,
-            });
-            expect(rebuiltSigner.sendRequest).toHaveBeenCalledWith('ping', []);
+            expect(reconnectSigner.sendRequest).not.toHaveBeenCalledWith('ping', []);
+            expect(rebuiltSigner.sendRequest).not.toHaveBeenCalledWith('ping', []);
         });
 
         it('switch_relays publish failure では session を保存せず接続失敗する', async () => {
@@ -2527,6 +2511,24 @@ describe('Nip46Service', () => {
     });
 
     describe('セッション管理', () => {
+        it.each([undefined, false, true])('loadSession: 旧pingVerified=%sを無視して既存保存形式を読み取る', (pingVerified) => {
+            const session: Nip46SessionData = {
+                clientSecretKeyHex: 'ab'.repeat(32),
+                remoteSignerPubkey: 'd'.repeat(64),
+                relays: ['wss://relay.test.com'],
+                userPubkey: TEST_RECONNECT_PUBKEY,
+                relayResolution: 'signer-negotiated',
+            };
+            for (const pubkeyHex of [undefined, session.userPubkey]) {
+                const key = pubkeyHex ? `nostr-nip46-session-${pubkeyHex}` : 'nostr-nip46-session';
+                const stored = JSON.stringify({ ...session, pingVerified });
+                mockStorage.setItem(key, stored);
+
+                expect(Nip46Service.loadSession(mockStorage, pubkeyHex)).toEqual(session);
+                expect(mockStorage.getItem(key)).toBe(stored);
+            }
+        });
+
         it('saveSession: セッションデータをlocalStorageに保存', async () => {
             await connectService({
                 remoteSignerPubkey: 'b'.repeat(64),
@@ -2542,7 +2544,7 @@ describe('Nip46Service', () => {
             expect(parsed.relays).toEqual(['wss://relay1.example.com', 'wss://relay2.example.com']);
             expect(parsed.userPubkey).toBe(TEST_USER_PUBKEY);
             expect(typeof parsed.clientSecretKeyHex).toBe('string');
-            expect(parsed.pingVerified).toBe(false);
+            expect(parsed).not.toHaveProperty('pingVerified');
         });
 
         it('saveSession: pubkeyHex指定時にprefixキーで保存', async () => {
@@ -2582,7 +2584,6 @@ describe('Nip46Service', () => {
                 remoteSignerPubkey: 'c'.repeat(64),
                 relays: ['wss://relay.test.com'],
                 userPubkey: 'user-pub',
-                pingVerified: true,
                 relayResolution: 'signer-negotiated',
             };
             mockStorage.setItem('nostr-nip46-session', JSON.stringify(sessionData));
@@ -2597,7 +2598,6 @@ describe('Nip46Service', () => {
                 remoteSignerPubkey: 'c'.repeat(64),
                 relays: [DECOMMISSIONED_RELAYS[2], 'wss://relay.test.com'],
                 userPubkey: 'user-pub',
-                pingVerified: true,
             };
             mockStorage.setItem('nostr-nip46-session', JSON.stringify(sessionData));
 
@@ -2613,7 +2613,6 @@ describe('Nip46Service', () => {
                 remoteSignerPubkey: 'c'.repeat(64),
                 relays: ['wss://relay.test.com'],
                 userPubkey: 'user-pub',
-                pingVerified: true,
             };
             mockStorage.setItem('nostr-nip46-session-user-pub', JSON.stringify(sessionData));
 
@@ -2623,7 +2622,7 @@ describe('Nip46Service', () => {
             expect(Nip46Service.loadSession(mockStorage)).toBeNull();
         });
 
-        it('loadSession: legacyセッションはpingVerifiedをfalseで補完する', () => {
+        it('loadSession: 追加属性がないlegacyセッションを読み取る', () => {
             const sessionData = {
                 clientSecretKeyHex: 'ab'.repeat(32),
                 remoteSignerPubkey: 'c'.repeat(64),
@@ -2634,7 +2633,6 @@ describe('Nip46Service', () => {
 
             expect(Nip46Service.loadSession(mockStorage)).toEqual({
                 ...sessionData,
-                pingVerified: false,
             });
         });
 
@@ -2680,7 +2678,7 @@ describe('Nip46Service', () => {
             ]);
             expect(mockSigner.sendRequest).toHaveBeenCalledWith('get_public_key', []);
             expect(mockSigner.getPublicKey).not.toHaveBeenCalled();
-            // pingはスキップされる（復元直後の未確認 session は手動確認または後続 recovery で検証する）
+            // 復元時も追加の接続確認は送らず、live identity 検証を使用する。
             expect(mockSigner.sendRequest).not.toHaveBeenCalledWith('ping', []);
             service.saveSession(mockStorage, sessionData.userPubkey);
             expect(JSON.parse(mockStorage.getItem(`nostr-nip46-session-${TEST_RECONNECT_PUBKEY}`)!)).toEqual(sessionData);
@@ -2744,7 +2742,6 @@ describe('Nip46Service', () => {
                 remoteSignerPubkey: 'd'.repeat(64),
                 relays: ['wss://relay.test.com'],
                 userPubkey: TEST_RECONNECT_PUBKEY,
-                pingVerified: false,
             };
             const candidate = {
                 sendRequest: vi.fn().mockImplementation((method: string) =>
@@ -2775,7 +2772,6 @@ describe('Nip46Service', () => {
                 remoteSignerPubkey: 'd'.repeat(64),
                 relays: ['wss://relay.test.com'],
                 userPubkey: TEST_RECONNECT_PUBKEY,
-                pingVerified: false,
             };
             const candidate = {
                 sendRequest: vi.fn().mockImplementation((method: string) =>
@@ -2809,7 +2805,6 @@ describe('Nip46Service', () => {
                 remoteSignerPubkey: 'd'.repeat(64),
                 relays: ['wss://relay.test.com'],
                 userPubkey: TEST_RECONNECT_PUBKEY,
-                pingVerified: false,
             };
             const candidate = {
                 sendRequest: vi.fn().mockImplementation((method: string) =>
@@ -2837,7 +2832,110 @@ describe('Nip46Service', () => {
     });
 
     describe('ensureConnection', () => {
-        it('未確認sessionではpingせずpool + BunkerSignerを再構築する', async () => {
+        it.each([undefined, false, true])('旧pingVerified=%sのセッションを復元し、pingせず再構築・保存できる', async (pingVerified) => {
+            const session: Nip46SessionData = {
+                clientSecretKeyHex: 'ab'.repeat(32),
+                remoteSignerPubkey: 'd'.repeat(64),
+                relays: ['wss://relay.test.com'],
+                userPubkey: TEST_RECONNECT_PUBKEY,
+                relayResolution: 'signer-negotiated',
+            };
+            const key = `nostr-nip46-session-${session.userPubkey}`;
+            mockStorage.setItem(key, JSON.stringify({ ...session, pingVerified }));
+            const { BunkerSigner } = await import('nostr-tools/nip46');
+            const restoredSigner = createMockNostrConnectSigner({
+                getPublicKeyResult: session.userPubkey,
+                sendRequestResult: 'ack',
+            });
+            const rebuiltSigner = createMockNostrConnectSigner({
+                getPublicKeyResult: session.userPubkey,
+            });
+            vi.mocked(BunkerSigner.fromBunker)
+                .mockReturnValueOnce(restoredSigner as any)
+                .mockReturnValueOnce(rebuiltSigner as any);
+
+            await expect(service.reconnect(Nip46Service.loadSession(mockStorage, session.userPubkey)!))
+                .resolves.toBe(session.userPubkey);
+            service.bindSessionPersistence(mockStorage, session.userPubkey);
+            await expect(service.ensureConnection()).resolves.toBe(true);
+
+            expect(BunkerSigner.fromBunker).toHaveBeenCalledTimes(2);
+            expect(restoredSigner.close).toHaveBeenCalledOnce();
+            expect(restoredSigner.sendRequest).not.toHaveBeenCalledWith('ping', []);
+            expect(rebuiltSigner.sendRequest.mock.calls).toEqual([['get_public_key', []]]);
+            expect(JSON.parse(mockStorage.getItem(key)!)).toEqual(session);
+            await expect(service.getSignerForSession(session.userPubkey)).resolves.toBe(service.getSigner());
+        });
+
+        it('同時の復旧と署名要求はidentity検証中のcandidateを共有する', async () => {
+            const { BunkerSigner, mockSigner, pubkey } = await connectService();
+            const identity = createDeferred<string>();
+            const candidate = createMockNostrConnectSigner({ getPublicKeyPromise: identity.promise });
+            vi.mocked(BunkerSigner.fromBunker).mockClear().mockReturnValue(candidate as any);
+
+            const first = service.ensureConnection();
+            const second = service.ensureConnection();
+            const signer = service.getSignerForSession(pubkey);
+            const signerSettled = vi.fn();
+            void signer.then(signerSettled);
+            await vi.waitFor(() => expect(candidate.sendRequest).toHaveBeenCalledWith('get_public_key', []));
+            expect(BunkerSigner.fromBunker).toHaveBeenCalledOnce();
+            expect(mockSigner.close).not.toHaveBeenCalled();
+            expect(signerSettled).not.toHaveBeenCalled();
+
+            identity.resolve(pubkey);
+            await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+            await expect(signer).resolves.toBe(service.getSigner());
+            expect(mockSigner.close).toHaveBeenCalledOnce();
+        });
+
+        it('identity timeout後の遅延応答を採用せず、保存セッションを維持する', async () => {
+            vi.useFakeTimers();
+            const { BunkerSigner, mockSigner, sessionData } = await reconnectService();
+            service.saveSession(mockStorage, sessionData.userPubkey);
+            const identity = createDeferred<string>();
+            const candidate = createMockNostrConnectSigner({ getPublicKeyPromise: identity.promise });
+            vi.mocked(BunkerSigner.fromBunker).mockReturnValue(candidate as any);
+
+            const recovery = service.ensureConnection();
+            await vi.advanceTimersByTimeAsync(5000);
+            await expect(recovery).resolves.toBe(false);
+            identity.resolve(sessionData.userPubkey);
+            await Promise.resolve();
+
+            expect(service.getSigner()).toBeNull();
+            expect(service.hasRecoverableSession()).toBe(true);
+            expect(candidate.close).toHaveBeenCalledOnce();
+            expect(mockSigner.close).toHaveBeenCalledOnce();
+            expect(Nip46Service.loadSession(mockStorage, sessionData.userPubkey)).toEqual(sessionData);
+        });
+
+        it('自動identity検証のauth challengeでは追加操作を促さず失敗する', async () => {
+            const { BunkerSigner, pubkey } = await connectService();
+            const identity = createDeferred<string>();
+            const candidate = createMockNostrConnectSigner({ getPublicKeyPromise: identity.promise });
+            vi.mocked(BunkerSigner.fromBunker).mockReturnValue(candidate as any);
+            const openWindow = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+            try {
+                const recovery = service.ensureConnection();
+                await vi.waitFor(() => expect(candidate.sendRequest).toHaveBeenCalledWith('get_public_key', []));
+                const options = vi.mocked(BunkerSigner.fromBunker).mock.calls.at(-1)![2]!;
+                options.onauth!('https://signer.example/auth');
+                await expect(recovery).resolves.toBe(false);
+                identity.resolve(pubkey);
+                await Promise.resolve();
+
+                expect(openWindow).not.toHaveBeenCalled();
+                expect(candidate.sendRequest.mock.calls).toEqual([['get_public_key', []]]);
+                expect(candidate.close).toHaveBeenCalledOnce();
+                expect(service.getSigner()).toBeNull();
+            } finally {
+                openWindow.mockRestore();
+            }
+        });
+
+        it('pool + BunkerSignerを再構築してlive identityを検証する', async () => {
             const { mockBp, mockSigner, BunkerSigner } = await connectService();
             const mockRebuiltSigner = {
                 sendRequest: vi.fn().mockImplementation((method: string) =>
@@ -2882,66 +2980,6 @@ describe('Nip46Service', () => {
             expect(Nip46Service.loadSession(mockStorage, TEST_USER_PUBKEY)?.relays).toEqual(relays);
         });
 
-        it('ping確認済みsessionではpongならrebuildしない', async () => {
-            const { mockSigner, BunkerSigner } = await reconnectService({
-                pingVerified: true,
-                signerOverrides: {
-                    sendRequest: vi.fn().mockImplementation((method: string) =>
-                        Promise.resolve(
-                            method === 'get_public_key' ? TEST_RECONNECT_PUBKEY : 'pong',
-                        ),
-                    ),
-                },
-            });
-            const callCountAfterReconnect = (BunkerSigner.fromBunker as any).mock.calls.length;
-
-            const result = await service.ensureConnection();
-
-            expect(result).toBe(true);
-            expect(mockSigner.sendRequest).toHaveBeenCalledWith('ping', []);
-            expect((BunkerSigner.fromBunker as any).mock.calls.length).toBe(callCountAfterReconnect);
-        });
-
-        it('ping確認済みsessionでauto pingが失敗したらfalseを永続化してからrebuildする', async () => {
-            const { sessionData, mockSigner, BunkerSigner } = await reconnectService({
-                pingVerified: true,
-                signerOverrides: {
-                    sendRequest: vi.fn().mockImplementation((method: string) =>
-                        method === 'get_public_key'
-                            ? Promise.resolve(TEST_RECONNECT_PUBKEY)
-                            : method === 'connect'
-                                ? Promise.resolve('ack')
-                                : Promise.reject(new Error('offline')),
-                    ),
-                },
-            });
-            service.bindSessionPersistence(mockStorage, sessionData.userPubkey);
-            const mockRebuiltSigner = {
-                sendRequest: vi.fn().mockImplementation((method: string) =>
-                    Promise.resolve(
-                        method === 'get_public_key' ? sessionData.userPubkey : 'ack',
-                    ),
-                ),
-                getPublicKey: vi.fn().mockResolvedValue(sessionData.userPubkey),
-                bp: {
-                    pubkey: sessionData.remoteSignerPubkey,
-                    relays: sessionData.relays,
-                    secret: null,
-                },
-                close: vi.fn().mockResolvedValue(undefined),
-            };
-            (BunkerSigner.fromBunker as any).mockReturnValue(mockRebuiltSigner);
-
-            const result = await service.ensureConnection();
-
-            expect(result).toBe(true);
-            expect(mockSigner.sendRequest).toHaveBeenCalledWith('ping', []);
-            expect(JSON.parse(mockStorage.getItem(`nostr-nip46-session-${TEST_RECONNECT_PUBKEY}`)!)).toEqual({
-                ...sessionData,
-                pingVerified: false,
-            });
-        });
-
         it('リレー再接続失敗時はfalseを返す', async () => {
             await connectService();
             mockPool.ensureRelay.mockRejectedValue(new Error('connection lost'));
@@ -2955,12 +2993,12 @@ describe('Nip46Service', () => {
             expect(result).toBe(false);
         });
 
-        it('rebuildのidentity mismatchでは旧runtimeを無効化し、sessionとbindingを維持する', async () => {
+        it.each(['invalid-pubkey', TEST_USER_PUBKEY])('rebuildの不正・不一致identityでは旧runtimeを無効化する: %s', async (identity) => {
             const { sessionData, mockSigner, BunkerSigner } = await reconnectService();
             service.bindSessionPersistence(mockStorage, sessionData.userPubkey);
             service.saveSession(mockStorage, sessionData.userPubkey);
             const candidate = {
-                sendRequest: vi.fn().mockResolvedValue(TEST_USER_PUBKEY),
+                sendRequest: vi.fn().mockResolvedValue(identity),
                 getPublicKey: vi.fn(),
                 bp: mockSigner.bp,
                 close: vi.fn().mockResolvedValue(undefined),
@@ -3047,6 +3085,49 @@ describe('Nip46Service', () => {
     });
 
     describe('getSignerForSession', () => {
+        it('runtime signerがない場合は1回だけ再構築する', async () => {
+            const { BunkerSigner, pubkey } = await connectService();
+            (service as any).signerAdapter = null;
+            const candidate = createMockNostrConnectSigner({ getPublicKeyResult: pubkey });
+            vi.mocked(BunkerSigner.fromBunker).mockReturnValue(candidate as any);
+            const ensureSpy = vi.spyOn(service, 'ensureConnection');
+
+            const signer = await service.getSignerForSession(pubkey);
+            expect(signer).toBe(service.getSigner());
+            expect(service.getSigner()).not.toBeNull();
+            expect(ensureSpy).toHaveBeenCalledOnce();
+            expect(candidate.sendRequest.mock.calls).toEqual([['get_public_key', []]]);
+        });
+
+        it('logout前の復旧完了は新セッションの復旧共有を解除しない', async () => {
+            const { BunkerSigner, pubkey } = await connectService();
+            const oldIdentity = createDeferred<string>();
+            const oldCandidate = createMockNostrConnectSigner({ getPublicKeyPromise: oldIdentity.promise });
+            vi.mocked(BunkerSigner.fromBunker).mockReturnValue(oldCandidate as any);
+            const oldRecovery = service.ensureConnection();
+            await vi.waitFor(() => expect(oldCandidate.sendRequest).toHaveBeenCalled());
+
+            await service.disconnect();
+            const { pubkey: newPubkey } = await reconnectService({ userPubkey: TEST_NEW_USER_PUBKEY });
+            const newIdentity = createDeferred<string>();
+            const newCandidate = createMockNostrConnectSigner({ getPublicKeyPromise: newIdentity.promise });
+            vi.mocked(BunkerSigner.fromBunker).mockClear().mockReturnValue(newCandidate as any);
+            const newRecovery = service.ensureConnection();
+            await vi.waitFor(() => expect(newCandidate.sendRequest).toHaveBeenCalled());
+
+            oldIdentity.resolve(pubkey);
+            await expect(oldRecovery).resolves.toBe(false);
+            const sharedRecovery = service.ensureConnection();
+            const signer = service.getSignerForSession(newPubkey);
+            newIdentity.resolve(newPubkey);
+
+            await expect(Promise.all([newRecovery, sharedRecovery])).resolves.toEqual([true, true]);
+            await expect(signer).resolves.toBe(service.getSigner());
+            expect(BunkerSigner.fromBunker).toHaveBeenCalledOnce();
+            expect(oldCandidate.close).toHaveBeenCalledOnce();
+            expect(newCandidate.close).not.toHaveBeenCalled();
+        });
+
         it('operationなしでは同一sessionのruntime signerを即時返す', async () => {
             const { pubkey } = await connectService();
             const ensureSpy = vi.spyOn(service, 'ensureConnection');
@@ -3138,73 +3219,6 @@ describe('Nip46Service', () => {
             await expect(service.getSignerForSession(pubkey)).resolves.not.toBeNull();
         });
 
-        it('manual check失敗を待った要求は古いsignerを返さず同じ呼び出し内で再接続しない', async () => {
-            const manualPing = createDeferred<string>();
-            const { sessionData } = await reconnectService({
-                pingVerified: true,
-                signerOverrides: {
-                    sendRequest: vi.fn().mockImplementation((method: string) =>
-                        method === 'get_public_key'
-                            ? Promise.resolve(TEST_RECONNECT_PUBKEY)
-                            : method === 'connect'
-                                ? Promise.resolve('ack')
-                                : manualPing.promise,
-                    ),
-                },
-            });
-            const ensureSpy = vi.spyOn(service, 'ensureConnection');
-
-            const manualCheck = service.runManualConnectionCheck();
-            const signerPromise = service.getSignerForSession(sessionData.userPubkey);
-            manualPing.resolve('not-pong');
-
-            await expect(manualCheck).resolves.toEqual({ success: false });
-            await expect(signerPromise).resolves.toBeNull();
-            expect(ensureSpy).not.toHaveBeenCalled();
-            await expect(
-                service.getSignerForSession(sessionData.userPubkey),
-            ).resolves.toBe(service.getSigner());
-        });
-
-        it('manual check失敗後の別操作でsignerがなければensureConnectionを1回試す', async () => {
-            const { sessionData, BunkerSigner } = await reconnectService({
-                signerOverrides: {
-                    sendRequest: vi.fn().mockImplementation((method: string) =>
-                        Promise.resolve(
-                            method === 'get_public_key'
-                                ? TEST_RECONNECT_PUBKEY
-                                : 'not-pong',
-                        ),
-                    ),
-                },
-            });
-            await expect(service.runManualConnectionCheck()).resolves.toEqual({
-                success: false,
-            });
-            (service as any).signerAdapter = null;
-            const rebuiltSigner = {
-                sendRequest: vi.fn().mockImplementation((method: string) =>
-                    Promise.resolve(
-                        method === 'get_public_key' ? sessionData.userPubkey : 'ack',
-                    ),
-                ),
-                getPublicKey: vi.fn().mockResolvedValue(sessionData.userPubkey),
-                bp: {
-                    pubkey: sessionData.remoteSignerPubkey,
-                    relays: sessionData.relays,
-                    secret: null,
-                },
-                close: vi.fn().mockResolvedValue(undefined),
-            };
-            (BunkerSigner.fromBunker as any).mockReturnValue(rebuiltSigner);
-            const ensureSpy = vi.spyOn(service, 'ensureConnection');
-
-            await expect(
-                service.getSignerForSession(sessionData.userPubkey),
-            ).resolves.not.toBeNull();
-            expect(ensureSpy).toHaveBeenCalledOnce();
-        });
-
         it('rebuild検証中は旧runtimeを保持しつつ、signer取得はcandidate完了を待つ', async () => {
             const liveIdentity = createDeferred<string>();
             const { mockBp, mockSigner, BunkerSigner, pubkey } = await connectService();
@@ -3264,7 +3278,7 @@ describe('Nip46Service', () => {
             expect(staleCandidate.close).toHaveBeenCalledOnce();
         });
 
-        it('session切替中に完了した古いrebuild候補をcommitせず候補資源を閉じる', async () => {
+        it.each([TEST_NEW_USER_PUBKEY, TEST_USER_PUBKEY])('session切替後は古い候補・署名要求を採用しない: %s', async (newPubkey) => {
             const { pubkey, BunkerSigner } = await connectService();
             const { SimplePool } = await import('nostr-tools/pool');
             const oldRelay = createDeferred<unknown>();
@@ -3288,10 +3302,10 @@ describe('Nip46Service', () => {
             const currentSigner = {
                 sendRequest: vi.fn().mockImplementation((method: string) =>
                     Promise.resolve(
-                        method === 'get_public_key' ? TEST_NEW_USER_PUBKEY : 'ack',
+                        method === 'get_public_key' ? newPubkey : 'ack',
                     ),
                 ),
-                getPublicKey: vi.fn().mockResolvedValue(TEST_NEW_USER_PUBKEY),
+                getPublicKey: vi.fn().mockResolvedValue(newPubkey),
                 bp: {
                     pubkey: 'e'.repeat(64),
                     relays: ['wss://new.example'],
@@ -3316,73 +3330,24 @@ describe('Nip46Service', () => {
                 .mockReturnValueOnce(staleSigner);
 
             const staleRecovery = service.ensureConnection();
+            const staleSignerRequest = service.getSignerForSession(pubkey);
             await vi.waitFor(() => expect(stalePool.ensureRelay).toHaveBeenCalled());
             await service.reconnect({
                 clientSecretKeyHex: 'cd'.repeat(32),
                 remoteSignerPubkey: 'e'.repeat(64),
                 relays: ['wss://new.example'],
-                userPubkey: TEST_NEW_USER_PUBKEY,
-                pingVerified: false,
+                userPubkey: newPubkey,
             });
             oldRelay.resolve({});
 
             await expect(staleRecovery).resolves.toBe(false);
-            expect(service.getUserPubkey()).toBe(TEST_NEW_USER_PUBKEY);
-            expect(await service.getSignerForSession(TEST_NEW_USER_PUBKEY)).toBe(service.getSigner());
+            await expect(staleSignerRequest).resolves.toBeNull();
+            expect(service.getUserPubkey()).toBe(newPubkey);
+            expect(await service.getSignerForSession(newPubkey)).toBe(service.getSigner());
             expect(staleSigner.close).toHaveBeenCalledOnce();
             expect(stalePool.destroy).toHaveBeenCalledOnce();
             expect(currentSigner.close).not.toHaveBeenCalled();
             expect(currentPool.destroy).not.toHaveBeenCalled();
-        });
-    });
-
-    describe('runManualConnectionCheck', () => {
-        it('manual ping成功でpingVerifiedをtrue保存する', async () => {
-            const { sessionData, mockSigner } = await reconnectService({
-                pingVerified: false,
-                signerOverrides: {
-                    sendRequest: vi.fn().mockImplementation((method: string) =>
-                        Promise.resolve(
-                            method === 'get_public_key' ? TEST_RECONNECT_PUBKEY : 'pong',
-                        ),
-                    ),
-                },
-            });
-            service.bindSessionPersistence(mockStorage, sessionData.userPubkey);
-
-            const result = await service.runManualConnectionCheck();
-
-            expect(result).toEqual({ success: true });
-            expect(mockSigner.sendRequest).toHaveBeenCalledWith('ping', []);
-            expect(JSON.parse(mockStorage.getItem(`nostr-nip46-session-${TEST_RECONNECT_PUBKEY}`)!)).toEqual({
-                ...sessionData,
-                pingVerified: true,
-            });
-        });
-
-        it('manual ping失敗でpingVerifiedをfalse保存する', async () => {
-            const { sessionData, mockSigner } = await reconnectService({
-                pingVerified: true,
-                signerOverrides: {
-                    sendRequest: vi.fn().mockImplementation((method: string) =>
-                        method === 'get_public_key'
-                            ? Promise.resolve(TEST_RECONNECT_PUBKEY)
-                            : method === 'connect'
-                                ? Promise.resolve('ack')
-                                : Promise.reject(new Error('permission denied')),
-                    ),
-                },
-            });
-            service.bindSessionPersistence(mockStorage, sessionData.userPubkey);
-
-            const result = await service.runManualConnectionCheck();
-
-            expect(result).toEqual({ success: false });
-            expect(mockSigner.sendRequest).toHaveBeenCalledWith('ping', []);
-            expect(JSON.parse(mockStorage.getItem(`nostr-nip46-session-${TEST_RECONNECT_PUBKEY}`)!)).toEqual({
-                ...sessionData,
-                pingVerified: false,
-            });
         });
     });
 });

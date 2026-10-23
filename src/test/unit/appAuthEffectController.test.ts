@@ -49,15 +49,4 @@ describe('createAppAuthEffectController', () => {
         expect(customEmojiStore.prefetchCache).not.toHaveBeenCalled();
         expect(customEmojiUsageStore.load).not.toHaveBeenCalled();
     });
-
-    it('auth identity 変更時の nip46 check status は idle に戻す', () => {
-        const controller = createAppAuthEffectController({
-            customEmojiStore: { prefetchCache: vi.fn() },
-            customEmojiUsageStore: { load: vi.fn() },
-        });
-
-        expect(
-            controller.resolveNip46ConnectionCheckStatusOnAuthIdentityChange(),
-        ).toBe('idle');
-    });
 });

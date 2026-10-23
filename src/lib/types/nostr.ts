@@ -39,7 +39,6 @@ export interface Nip46SessionData {
     remoteSignerPubkey: string;
     relays: string[];
     userPubkey: string;
-    pingVerified?: boolean;
     relayResolution?: Nip46RelayResolution;
 }
 
