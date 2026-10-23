@@ -62,46 +62,58 @@ describe('ProfileComponent', () => {
         };
     });
 
-    it('activeなNIP-46アカウントにリモートサイナー接続確認UIを表示してハンドラを呼ぶ', async () => {
-        const onCheckNip46Connection = vi.fn();
-
+    it.each(['ja', 'en'])('%s: NIP-46アカウントに接続確認セクションを表示しない', async (language) => {
+        locale.set(language);
+        await waitLocale();
         render(ProfileComponent, {
             show: true,
             onClose: vi.fn(),
             onLogout: vi.fn(),
-            onCheckNip46Connection,
             accounts: createAccounts(),
             accountProfiles: new Map([
                 [ACTIVE_PUBKEY, { name: 'tester', displayName: 'Tester', picture: '' }],
             ]),
-            nip46ConnectionOperationState: 'idle',
-            nip46ConnectionStatus: 'idle',
         });
 
-        expect(screen.getByText('NIP-46 接続')).toBeTruthy();
-
-        await fireEvent.click(screen.getByRole('button', { name: 'リモートサイナー接続確認' }));
-
-        expect(onCheckNip46Connection).toHaveBeenCalledWith(ACTIVE_PUBKEY);
+        expect(screen.getByText(language === 'ja' ? 'リモート署名（NIP-46）' : 'Remote Signing (NIP-46)')).toBeTruthy();
+        expect(screen.queryByText(/NIP-46 接続|NIP-46 Connection/)).toBeNull();
+        expect(screen.queryByRole('button', { name: /リモートサイナー接続確認|Check Remote Signer Connection/ })).toBeNull();
     });
 
-    it('auto recovery中はリモートサイナー接続確認ボタンを無効化して案内を出す', () => {
+    it('NIP-46アカウントのログアウトとアカウント追加を実行できる', async () => {
+        const onLogout = vi.fn();
+        const onAddAccount = vi.fn();
         render(ProfileComponent, {
             show: true,
             onClose: vi.fn(),
-            onLogout: vi.fn(),
+            onLogout,
+            onAddAccount,
             accounts: createAccounts(),
             accountProfiles: new Map(),
-            nip46ConnectionOperationState: 'auto-recovery',
-            nip46ConnectionStatus: 'idle',
         });
 
-        expect(
-            screen.getByText('バックグラウンド復帰後の接続確認を実行中です。完了後に再試行してください。'),
-        ).toBeTruthy();
-        expect(
-            screen.getByRole('button', { name: 'リモートサイナー接続確認' }).hasAttribute('disabled'),
-        ).toBe(true);
+        await fireEvent.click(screen.getByRole('button', { name: 'ログアウト' }));
+        expect(onLogout).toHaveBeenCalledWith(ACTIVE_PUBKEY);
+        await fireEvent.click(screen.getByRole('button', { name: 'アカウントを追加' }));
+        expect(onAddAccount).toHaveBeenCalledOnce();
+    });
+
+    it('非アクティブなNIP-46アカウントへ切り替えてダイアログを閉じる', async () => {
+        const nextPubkey = 'b'.repeat(64);
+        const onSwitchAccount = vi.fn();
+        const onClose = vi.fn();
+        render(ProfileComponent, {
+            show: true,
+            onClose,
+            onLogout: vi.fn(),
+            onSwitchAccount,
+            accounts: [...createAccounts(), { pubkeyHex: nextPubkey, type: 'nip46', addedAt: 1 }],
+            accountProfiles: new Map([[nextPubkey, { name: 'next', displayName: 'Next account', picture: '' }]]),
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: /Next account/ }));
+        expect(onSwitchAccount).toHaveBeenCalledWith(nextPubkey);
+        expect(onClose).toHaveBeenCalledOnce();
     });
 
     it('npub コピーボタンで共通のコピー通知を表示する', async () => {

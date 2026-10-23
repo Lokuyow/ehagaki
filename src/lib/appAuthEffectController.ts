@@ -15,7 +15,6 @@ export interface AppAuthEffectControllerDependencies {
 
 export interface AppAuthEffectController {
     runAuthenticatedCustomEmojiPrefetch(auth: AuthState | null | undefined): void;
-    resolveNip46ConnectionCheckStatusOnAuthIdentityChange(): 'idle';
 }
 
 export function createAppAuthEffectController(
@@ -33,12 +32,7 @@ export function createAppAuthEffectController(
         void deps.customEmojiUsageStore.load({ pubkey });
     }
 
-    function resolveNip46ConnectionCheckStatusOnAuthIdentityChange(): 'idle' {
-        return 'idle';
-    }
-
     return {
         runAuthenticatedCustomEmojiPrefetch,
-        resolveNip46ConnectionCheckStatusOnAuthIdentityChange,
     };
 }

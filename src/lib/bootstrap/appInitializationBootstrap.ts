@@ -17,7 +17,6 @@ interface AuthStateLike {
 
 interface Nip46VisibilityServiceLike {
     hasRecoverableSession(): boolean;
-    isManualCheckInProgress(): boolean;
     ensureConnection(): Promise<boolean>;
 }
 
@@ -150,7 +149,6 @@ export function registerNip46VisibilityHandler({
             && hiddenDuration >= NIP46_BACKGROUND_RECOVERY_THRESHOLD_MS
             && authState.value.type === "nip46"
             && nip46Service.hasRecoverableSession()
-            && !nip46Service.isManualCheckInProgress()
         ) {
             console.debug?.("NIP-46 visibility auto recovery started");
             nip46Service.ensureConnection()

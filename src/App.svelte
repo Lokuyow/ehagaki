@@ -16,10 +16,7 @@
   import type { AppPostNotificationPort } from "./lib/appNotificationPort";
   import { waitNostr } from "nip07-awaiter";
   import { AccountManager } from "./lib/accountManager";
-  import {
-    nip46Service,
-    type Nip46ConnectionOperationState,
-  } from "./lib/nip46Service";
+  import { nip46Service } from "./lib/nip46Service";
   import { parentClientAuthService } from "./lib/parentClientAuthService";
   import { embedComposerContextService } from "./lib/embedComposerContextService";
   import { embedIndexedDbService } from "./lib/embedIndexedDbService";
@@ -469,12 +466,6 @@
   let postComponentRef: PostComponentType | null = $state(null);
   let isLoggingOut = $state(false); // 追加: ログアウト中の状態管理
   let isSwitchingAccount = $state(false); // アカウント切替中フラグ
-  let nip46OperationState = $state<Nip46ConnectionOperationState>(
-    nip46Service.getOperationState(),
-  );
-  let nip46ConnectionCheckStatus = $state<"idle" | "success" | "failure">(
-    "idle",
-  );
   let showLastAccountLogoutConfirm = $state(false);
   let pendingLastLogoutPubkey: string | null = $state(null);
   let lastAccountLogoutError = $state("");
@@ -646,9 +637,6 @@
     },
     setNip46Loading: (next) => {
       isLoadingNip46 = next;
-    },
-    setNip46ConnectionCheckStatus: (next) => {
-      nip46ConnectionCheckStatus = next;
     },
     nip46Service,
     logger: console,
@@ -1625,21 +1613,10 @@
     return appAuthInteractionController.handleNip46Login(bunkerUrl);
   }
 
-  async function handleNip46ConnectionCheck(pubkeyHex: string): Promise<void> {
-    await appAuthInteractionController.handleNip46ConnectionCheck(pubkeyHex);
-  }
-
   $effect(() => {
     appAuthEffectController.runAuthenticatedCustomEmojiPrefetch(
       authState.value,
     );
-  });
-
-  $effect(() => {
-    authState.value?.pubkey;
-    authState.value?.type;
-    nip46ConnectionCheckStatus =
-      appAuthEffectController.resolveNip46ConnectionCheckStatusOnAuthIdentityChange();
   });
 
   let localeInitialized = $state(false);
@@ -1675,16 +1652,12 @@
     const cleanupRuntimeBindings = setupAppRuntimeBindings({
       parentClientAvailable,
       parentClientAuthService,
-      nip46Service,
       embedComposerContextService,
       embedSettingsService,
       onReplyQuoteChanged,
       onChannelContextChanged,
       handleRemoteParentClientLogin,
       handleRemoteParentClientLogout,
-      setNip46OperationState: (state) => {
-        nip46OperationState = state as Nip46ConnectionOperationState;
-      },
       handleRemoteComposerSetContext: (payload, requestId) => {
         if (!requestId) {
           return;
@@ -2413,11 +2386,8 @@
             ""}
           onSwitchAccount={switchAccount}
           onAddAccount={handleAddAccount}
-          onCheckNip46Connection={handleNip46ConnectionCheck}
           accounts={accountListStore.value}
           accountProfiles={accountProfileCacheStore.value}
-          nip46ConnectionOperationState={nip46OperationState.kind}
-          nip46ConnectionStatus={nip46ConnectionCheckStatus}
           {isLoggingOut}
           {isSwitchingAccount}
         />

@@ -178,7 +178,6 @@ describe('registerNip46VisibilityHandler', () => {
         let nowMs = 0;
         const nip46Service = {
             hasRecoverableSession: vi.fn(() => true),
-            isManualCheckInProgress: vi.fn(() => false),
             ensureConnection: vi.fn().mockResolvedValue(true),
         };
         const recoveryConsole = {
@@ -225,7 +224,6 @@ describe('registerNip46VisibilityHandler', () => {
             authState: { value: { type: 'nip46' } },
             nip46Service: {
                 hasRecoverableSession: () => true,
-                isManualCheckInProgress: () => false,
                 ensureConnection: vi.fn().mockResolvedValue(false),
             },
             console: recoveryConsole,
@@ -260,7 +258,6 @@ describe('registerNip46VisibilityHandler', () => {
             authState: { value: { type: 'nip46' } },
             nip46Service: {
                 hasRecoverableSession: () => true,
-                isManualCheckInProgress: () => false,
                 ensureConnection: vi.fn().mockRejectedValue(error),
             },
             console: recoveryConsole,
@@ -285,7 +282,6 @@ describe('registerNip46VisibilityHandler', () => {
         const { document, triggerVisibilityChange } = createDocumentMock();
         const nip46Service = {
             hasRecoverableSession: vi.fn(() => true),
-            isManualCheckInProgress: vi.fn(() => false),
             ensureConnection: vi.fn().mockResolvedValue(undefined),
         };
 
@@ -306,7 +302,6 @@ describe('registerNip46VisibilityHandler', () => {
         let nowMs = 0;
         const nip46Service = {
             hasRecoverableSession: vi.fn(() => true),
-            isManualCheckInProgress: vi.fn(() => false),
             ensureConnection: vi.fn().mockResolvedValue(undefined),
         };
 
@@ -327,44 +322,22 @@ describe('registerNip46VisibilityHandler', () => {
         expect(nip46Service.ensureConnection).not.toHaveBeenCalled();
     });
 
-    it('manual check中にvisibleへ戻ってもauto recoveryを開始しない', () => {
+    it.each([
+        ['nsec', true],
+        ['nip07', true],
+        ['parentClient', true],
+        ['nip46', false],
+    ] as const)('%s / recoverable=%sでは再接続しない', (type, recoverable) => {
         const { document, setVisibilityState, triggerVisibilityChange } = createDocumentMock();
         let nowMs = 0;
         const nip46Service = {
-            hasRecoverableSession: vi.fn(() => true),
-            isManualCheckInProgress: vi.fn(() => true),
+            hasRecoverableSession: vi.fn(() => recoverable),
             ensureConnection: vi.fn().mockResolvedValue(undefined),
         };
 
         registerNip46VisibilityHandler({
             document: document as never,
-            authState: { value: { type: 'nip46' } },
-            nip46Service,
-            console: { error: vi.fn() },
-            now: () => nowMs,
-        });
-
-        setVisibilityState('hidden');
-        triggerVisibilityChange();
-        nowMs += NIP46_BACKGROUND_RECOVERY_THRESHOLD_MS;
-        setVisibilityState('visible');
-        triggerVisibilityChange();
-
-        expect(nip46Service.ensureConnection).not.toHaveBeenCalled();
-    });
-
-    it('NIP-46以外またはrecoverable sessionなしでは再接続しない', () => {
-        const { document, setVisibilityState, triggerVisibilityChange } = createDocumentMock();
-        let nowMs = 0;
-        const nip46Service = {
-            hasRecoverableSession: vi.fn(() => false),
-            isManualCheckInProgress: vi.fn(() => false),
-            ensureConnection: vi.fn().mockResolvedValue(undefined),
-        };
-
-        registerNip46VisibilityHandler({
-            document: document as never,
-            authState: { value: { type: 'nsec' } },
+            authState: { value: { type } },
             nip46Service,
             console: { error: vi.fn() },
             now: () => nowMs,

@@ -329,7 +329,7 @@ describe('AuthService.restoreAccount', () => {
 
     it('NIP-46: 保存整合性とreconnect契約一致後だけbindとauth stateを反映する', async () => {
         const { nip46Service, Nip46Service: Nip46ServiceClass } = await import('../../lib/nip46Service');
-        const session = createMockNip46Session(NIP46_PUBKEY, { pingVerified: true });
+        const session = createMockNip46Session(NIP46_PUBKEY);
         vi.mocked(Nip46ServiceClass.loadSession).mockReturnValue(session);
         vi.mocked(nip46Service.reconnect).mockResolvedValue(NIP46_PUBKEY);
         const service = createManagedService(mockDependencies, NIP46_PUBKEY, 'nip46');

@@ -24,7 +24,6 @@ vi.mock('../../lib/signedEventResultValidator', async (importOriginal) => ({
 vi.mock('../../lib/nip46Service', () => ({
     nip46Service: {
         hasRecoverableSession: vi.fn(() => true),
-        isManualCheckInProgress: vi.fn(() => false),
         ensureConnection: nip46RuntimeMocks.ensureConnection,
         getSignerForSession: nip46RuntimeMocks.getSignerForSession,
     },
@@ -353,7 +352,7 @@ describe('ファイルアップロードフロー統合テスト', () => {
             });
         }
 
-        async function prepareRecovery(signer: any) {
+        async function prepareRecovery(signer: any, recoverySucceeded = true) {
             const { authState } = await import('../../stores/authStore.svelte');
             const { keyManager } = await import('../../lib/keyManager.svelte');
             const visibilityRecovery = createDeferred<boolean>();
@@ -366,7 +365,7 @@ describe('ファイルアップロードフロー統合テスト', () => {
             (keyManager.loadFromStorage as any).mockReturnValue(null);
             nip46RuntimeMocks.ensureConnection
                 .mockReturnValueOnce(visibilityRecovery.promise)
-                .mockResolvedValueOnce(true);
+                .mockResolvedValueOnce(recoverySucceeded);
             nip46RuntimeMocks.getSignerForSession.mockImplementation(
                 async (expectedPubkey: string) => {
                     if (expectedPubkey !== 'testpubkey123') return null;
@@ -384,7 +383,6 @@ describe('ファイルアップロードフロー統合テスト', () => {
                 authState,
                 nip46Service: {
                     hasRecoverableSession: () => true,
-                    isManualCheckInProgress: () => false,
                     ensureConnection: nip46RuntimeMocks.ensureConnection,
                 },
                 console: { debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -514,6 +512,46 @@ describe('ファイルアップロードフロー統合テスト', () => {
                 expect.objectContaining({ method: 'PUT' }),
             );
             cleanup();
+        });
+
+        it.each([
+            ['nip96', 'recovery'],
+            ['blossom', 'recovery'],
+            ['nip96', 'signing'],
+            ['blossom', 'signing'],
+        ] as const)('%s: %s失敗をアップロード成功として扱わない', async (protocol, failure) => {
+            const signEvent = vi.fn().mockRejectedValue(new Error('signing failed'));
+            const signer = {
+                getPublicKey: vi.fn().mockResolvedValue('testpubkey123'),
+                signEvent,
+            };
+            const { visibilityRecovery, cleanup } = await prepareRecovery(signer, failure !== 'recovery');
+            const file = new File([new Uint8Array([1, 2, 3])], 'photo.png', { type: 'image/png' });
+            Object.defineProperty(file, 'arrayBuffer', {
+                value: async () => new Uint8Array([1, 2, 3]).buffer,
+            });
+            const fetchMock = vi.fn();
+            const adapter = protocol === 'nip96' ? new Nip96UploadAdapter() : new BlossomUploadAdapter();
+            const upload = adapter.upload({
+                file,
+                destination: createDestination(protocol),
+                authService: new NostrAuthService(),
+                fetch: fetchMock,
+            });
+            const failureAssertion = protocol === 'blossom' && failure === 'signing'
+                ? expect(upload).resolves.toEqual({ success: false, error: 'Blossom upload failed: Blossom authorization failed' })
+                : expect(upload).rejects.toThrow(
+                    failure === 'recovery' ? 'Authentication required' : 'signing failed',
+                );
+            visibilityRecovery.resolve(false);
+            try {
+                await failureAssertion;
+                expect(nip46RuntimeMocks.ensureConnection).toHaveBeenCalledTimes(2);
+                expect(signEvent).toHaveBeenCalledTimes(failure === 'recovery' ? 0 : 1);
+                expect(fetchMock).not.toHaveBeenCalled();
+            } finally {
+                cleanup();
+            }
         });
 
         it('nsecのNIP-96 upload成功経路を維持する', async () => {
