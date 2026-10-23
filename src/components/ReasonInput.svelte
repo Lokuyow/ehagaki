@@ -35,6 +35,7 @@
     <div class="reason-input-container">
         <input
             id="content-warning-reason-input"
+            data-composer-keyboard-input
             type="text"
             placeholder={$_("postComponent.content_warning_reason_placeholder")}
             value={contentWarningReason}

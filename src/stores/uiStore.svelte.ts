@@ -12,7 +12,7 @@ import {
     isIPhoneSafari,
 } from "../lib/utils/viewportLayout";
 import { createKeyboardTouchScrollLock } from "../lib/utils/keyboardTouchScrollLock";
-import { isPostEditorFocusActive } from "../lib/utils/keyboardFocusUtils";
+import { isComposerInputFocusActive } from "../lib/utils/keyboardFocusUtils";
 import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
 // --- 定数 ---
@@ -277,7 +277,7 @@ export const reasonInputVisibleStore = {
     set: (v: boolean) => {
         reasonInputVisible = v;
         syncLayoutCssVariables(
-            lastPhysicalKeyboardVisible && isPostEditorFocusActive(),
+            lastPhysicalKeyboardVisible && isComposerInputFocusActive(),
             { usesKeyboardOverlay: lastUsesVirtualKeyboardGeometry },
         );
     },
@@ -480,7 +480,7 @@ export function setupViewportListener(
                     ? keyboardViewportReduction
                     : calculatedKeyboardHeight;
             const isComposerKeyboardActive =
-                isKeyboardOpen && isPostEditorFocusActive();
+                isKeyboardOpen && isComposerInputFocusActive();
 
             lastVisibleViewportBottom = visibleViewportBottom;
             // キーボードが開いている時はキーボードの直上、閉じている時はフッターの直上

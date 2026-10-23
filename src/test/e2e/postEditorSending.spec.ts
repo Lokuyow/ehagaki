@@ -379,6 +379,60 @@ for (const reason of ['empty', 'revoked', 'destroyed'] as const) {
     });
 }
 
+test('content warning reason stays above the keyboard across composer focus changes', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.addInitScript(() => {
+        Object.defineProperties(window.visualViewport!, {
+            height: { configurable: true, value: 800 },
+            offsetTop: { configurable: true, value: 0 },
+        });
+    });
+    await page.goto('app-composer-picker-playwright.html');
+    const editor = page.locator('.tiptap-editor');
+    const reason = page.getByRole('textbox', { name: 'Content Warning理由' });
+    await page.getByRole('button', { name: 'Content Warning切り替え', exact: true }).click();
+    await expect(reason).toBeVisible();
+
+    const setKeyboardOpen = async (open: boolean) => {
+        await page.evaluate((height) => {
+            Object.defineProperty(window.visualViewport!, 'height', { configurable: true, value: height });
+            window.visualViewport!.dispatchEvent(new Event('resize'));
+        }, open ? 500 : 800);
+    };
+    const expectKeyboardLayout = async (barBottom: number) => {
+        await expect.poll(() => page.evaluate(() => {
+            const bar = document.querySelector<HTMLElement>('.footer-button-bar')!;
+            const reasonContainer = document.querySelector<HTMLElement>('.reason-input-container')!;
+            const barRect = bar.getBoundingClientRect();
+            const reasonRect = reasonContainer.getBoundingClientRect();
+            return {
+                barBottom: Math.round(barRect.bottom),
+                reasonBottom: Math.round(reasonRect.bottom),
+                barTop: Math.round(barRect.top),
+                height: document.documentElement.style.getPropertyValue('--keyboard-height'),
+            };
+        })).toEqual({ barBottom, reasonBottom: barBottom - 50, barTop: barBottom - 50, height: barBottom === 500 ? '300px' : '0px' });
+    };
+
+    // Start in the reason field, then transfer focus without another viewport
+    // resize: focus events alone must preserve both fixed overlays.
+    await reason.click();
+    await setKeyboardOpen(true);
+    await expectKeyboardLayout(500);
+    await reason.fill('理由');
+    await expect(reason).toBeFocused();
+    await editor.click();
+    await expect(editor).toBeFocused();
+    await expectKeyboardLayout(500);
+    await reason.click();
+    await expect(reason).toBeFocused();
+    await expectKeyboardLayout(500);
+    await expect(reason).toHaveValue('理由');
+
+    await setKeyboardOpen(false);
+    await expectKeyboardLayout(734);
+});
+
 test('App and iframe use the normal submission path without refocusing', async ({ page, browserName, isMobile }) => {
     await page.goto('app-composer-picker-playwright.html');
     await page.evaluate(() => (window as any).__APP_COMPOSER_PICKER_HARNESS__.setAuthenticated());

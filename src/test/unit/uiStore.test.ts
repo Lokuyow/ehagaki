@@ -494,6 +494,103 @@ describe('uiStore', () => {
         cancelAnimationFrameSpy.mockRestore();
     });
 
+    it.each([
+        { name: 'Android VirtualKeyboard', ios: false, virtualKeyboard: true, shadow: false, offsetTop: 0 },
+        { name: 'Android VisualViewport', ios: false, virtualKeyboard: false, shadow: false, offsetTop: 0 },
+        { name: 'iPhone Safari', ios: true, virtualKeyboard: false, shadow: false, offsetTop: 0 },
+        { name: 'iPhone Safari auto-pan', ios: true, virtualKeyboard: false, shadow: false, offsetTop: 300 },
+        { name: 'ShadowRoot container', ios: false, virtualKeyboard: true, shadow: true, offsetTop: 0 },
+    ])('$name: 理由欄への直接入力と本文とのフォーカス移動でキーボード追従を維持する', async (scenario) => {
+        setUserAgent(scenario.ios
+            ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1'
+            : 'Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
+        vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+            callback(0);
+            return 1;
+        });
+        vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+
+        const runtime = await import('../../lib/appRuntimeEnvironment');
+        const previousRuntime = runtime.getAppRuntimeEnvironment();
+        const editor = document.querySelector<HTMLElement>('.tiptap-editor')!;
+        let styleTarget = document.documentElement;
+        let inputTarget: HTMLElement = document.body;
+        if (scenario.shadow) {
+            const host = document.createElement('div');
+            const shadowRoot = host.attachShadow({ mode: 'open' });
+            styleTarget = document.createElement('div');
+            shadowRoot.append(styleTarget);
+            document.body.append(host);
+            styleTarget.append(editor.parentElement!);
+            inputTarget = styleTarget;
+            vi.spyOn(styleTarget, 'getBoundingClientRect').mockReturnValue({ bottom: 800, height: 800 } as DOMRect);
+            runtime.configureAppRuntimeEnvironment({
+                domRoot: shadowRoot,
+                styleTarget,
+                layoutTarget: styleTarget,
+                overlayTarget: styleTarget,
+                themeTarget: host,
+                layoutMode: 'container',
+                runtimeKind: 'web-component',
+            });
+        }
+        const reason = document.createElement('input');
+        reason.setAttribute('data-composer-keyboard-input', '');
+        inputTarget.append(reason);
+        reason.focus();
+
+        const viewport = createVisualViewportMock(800);
+        const keyboard = scenario.virtualKeyboard ? createVirtualKeyboardMock() : null;
+        const { FOOTER_HEIGHT, keyboardHeightStore, reasonInputVisibleStore, setupViewportListener } = await import('../../stores/uiStore.svelte');
+        reasonInputVisibleStore.set(true);
+        const cleanup = setupViewportListener();
+        const readStyle = (name: string) => styleTarget.style.getPropertyValue(name);
+        const expectedBottom = 300 - scenario.offsetTop;
+        const expectKeyboardLayout = () => {
+            expect(keyboardHeightStore.value).toBe(300);
+            expect(readStyle('--keyboard-button-bar-bottom')).toBe(`${expectedBottom}px`);
+            expect(readStyle('--reason-input-bottom')).toBe(`${expectedBottom + 50}px`);
+            expect(readStyle('--footer-bottom')).toBe('-66px');
+            expect(readStyle('--app-root-height')).toBe(scenario.virtualKeyboard ? '100%' : '500px');
+        };
+
+        try {
+            expect(keyboardHeightStore.value).toBe(0);
+            if (keyboard) {
+                keyboard.setHeight(300);
+                keyboard.emitGeometryChange();
+            } else {
+                viewport.visualViewport.height = 500;
+                viewport.visualViewport.offsetTop = scenario.offsetTop;
+                viewport.emit('resize');
+            }
+            expectKeyboardLayout();
+
+            editor.focus();
+            expectKeyboardLayout();
+            reason.focus();
+            expectKeyboardLayout();
+            reasonInputVisibleStore.set(true);
+            expectKeyboardLayout();
+
+            if (keyboard) {
+                keyboard.setHeight(0);
+                keyboard.emitGeometryChange();
+            } else {
+                viewport.visualViewport.height = 800;
+                viewport.visualViewport.offsetTop = 0;
+                viewport.emit('resize');
+            }
+            expect(keyboardHeightStore.value).toBe(0);
+            expect(readStyle('--keyboard-button-bar-bottom')).toBe(`${FOOTER_HEIGHT}px`);
+            expect(readStyle('--reason-input-bottom')).toBe(`${FOOTER_HEIGHT + 50}px`);
+            expect(readStyle('--footer-bottom')).toBe('0px');
+        } finally {
+            cleanup?.();
+            runtime.configureAppRuntimeEnvironment(previousRuntime);
+        }
+    });
+
     it('VirtualKeyboard API がない Android Chrome では visual viewport 高さへ合わせる', async () => {
         setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
 
