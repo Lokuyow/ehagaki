@@ -757,6 +757,28 @@ async function loadOneOlderChunk(page: Page, expectedEventIds: string[]) {
     await waitForAutoLoadIdle(page, 'older');
 }
 
+async function prepareOldestBoundedWindow(page: Page, eventIds: string[]) {
+    await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+    await page.getByRole('menuitem', { name: '最古へ移動' }).click();
+    await expect.poll(() => historyEventIds(page)).toEqual(eventIds.slice(-50));
+
+    // Exercise newer loading from the public oldest navigation instead of
+    // replaying five older loads before each newer-window assertion.
+    for (const count of [100, 150]) {
+        await waitForAutoLoadExit(page, 'newer');
+        await waitForIntersectionObserverSettle(page);
+        await armScrollLoadGate(page, 'newer');
+        await page.locator('.post-history-auto-load-newer-sentinel').scrollIntoViewIfNeeded();
+        await waitForScrollLoadGate(page, 15_000);
+        await scrollHistoryAwayFromTop(page);
+        await waitForIntersectionObserverSettle(page);
+        await releaseScrollLoadGate(page);
+        await expect.poll(() => historyEventIds(page), { timeout: 15_000 })
+            .toEqual(eventIds.slice(-count));
+        await waitForAutoLoadIdle(page, 'newer');
+    }
+}
+
 async function getFirstVisiblePostSnapshot(page: Page) {
     return page.locator('.post-history-container').evaluate((containerElement) => {
         const container = containerElement as HTMLDivElement;
@@ -2274,15 +2296,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(page.locator('.post-history-heading .status-loading-placeholder')).toHaveCount(0);
         const expectedEventIds = harness.infiniteScrollEventIds;
 
-        await loadOneOlderChunk(page, expectedEventIds.slice(0, 100));
-        for (const expectedWindow of [
-            expectedEventIds.slice(0, 150),
-            expectedEventIds.slice(50, 200),
-            expectedEventIds.slice(100, 250),
-            expectedEventIds.slice(101),
-        ]) {
-            await loadOneOlderChunk(page, expectedWindow);
-        }
+        await prepareOldestBoundedWindow(page, expectedEventIds);
 
         await scrollHistoryAwayFromTop(page);
         await waitForAutoLoadExit(page, 'newer');
@@ -2333,15 +2347,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(page.locator('.post-history-heading .status-loading-placeholder')).toHaveCount(0);
         const expectedEventIds = harness.infiniteScrollEventIds;
 
-        await loadOneOlderChunk(page, expectedEventIds.slice(0, 100));
-        for (const expectedWindow of [
-            expectedEventIds.slice(0, 150),
-            expectedEventIds.slice(50, 200),
-            expectedEventIds.slice(100, 250),
-            expectedEventIds.slice(101),
-        ]) {
-            await loadOneOlderChunk(page, expectedWindow);
-        }
+        await prepareOldestBoundedWindow(page, expectedEventIds);
 
         await scrollHistoryAwayFromTop(page);
         await waitForAutoLoadExit(page, 'newer');

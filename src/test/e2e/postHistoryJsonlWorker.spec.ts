@@ -105,6 +105,7 @@ test("JSONL dialog close terminates a pending real Worker and reopen imports nor
     await page.evaluate(()=>{Reflect.get(window,"__JSONL_WORKERS__").hold=false;});
     await open();
     await dialog.locator('input[type="file"]').setInputFiles({name:"fixture.jsonl",mimeType:"application/x-ndjson",buffer:Buffer.from(jsonl)});
+    await page.waitForFunction(()=>Reflect.get(window,"__JSONL_WORKERS__").terminated===8);
     await expect(dialog.getByText("読み込みが完了しました")).toBeVisible();
     await expect.poll(()=>readPostHistoryWakeLockProbe(page)).toEqual({requests:2,releases:2,held:0});
     expect(await page.evaluate(()=>Reflect.get(window,"__JSONL_WORKERS__"))).toMatchObject({created:8,terminated:8});

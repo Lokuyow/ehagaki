@@ -33,7 +33,7 @@ Windowsの並列E2Eではビルド記録の`rename`が`EPERM`になったため�
 
 ## 監査警告と検証
 
-更新後の`npm audit --omit=dev`は警告0件です。全依存の`npm audit`は、`braces` 3.0.3の単一advisoryに由来するhighの警告を9パッケージに報告しています。ただし、[GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)は2026-10-23 21:53（日本時間）に「実用的に悪用できる脆弱性ではない」として撤回されました。[GitHub APIの`withdrawn_at`と撤回理由](https://api.github.com/advisories/GHSA-vfj7-8cjw-p6xm)で確認しています。撤回確認後もnpmの監査結果には同じ警告が残っており、両者の情報が一致していません。主な依存経路は次のとおりです。
+更新直後の`npm audit --omit=dev`は警告0件でした。全依存の`npm audit`は、`braces` 3.0.3の単一advisoryに由来するhighの警告を9パッケージに報告していました。ただし、[GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)は2026-10-23 21:53（日本時間）に「実用的に悪用できる脆弱性ではない」として撤回されました。[GitHub APIの`withdrawn_at`と撤回理由](https://api.github.com/advisories/GHSA-vfj7-8cjw-p6xm)で確認しています。撤回確認直後はnpmの監査結果に同じ警告が残っていましたが、2026-10-24の再確認では全依存の`npm audit`も警告0件です。当時の主な依存経路は次のとおりです。
 
 - `patch-package → find-yarn-workspace-root → micromatch → braces`
 - `gh-pages → globby → fast-glob → micromatch → braces`
@@ -59,4 +59,4 @@ Windowsの並列E2Eではビルド記録の`rename`が`EPERM`になったため�
 | 本番Service Worker E2E | Chromium・Firefox・WebKitで42件成功 |
 | 表示 | 360px/1100pxの履歴画面、320pxの宛先ダイアログを目視確認。Reduced Motionは既存E2Eで確認 |
 
-通常E2Eは、デスクトップ/モバイルのChromium、Android相当のChromium、モバイル相当のWebKit、Firefoxの構成を含みます。Ubuntu上のCIと実端末は未実施です。
+通常E2Eは、デスクトップ/モバイルのChromium、Android相当のChromium、モバイル相当のWebKit、Firefoxの構成を含みます。上表はWindowsローカルでの結果です。Ubuntu/WindowsのCI結果は[GitHub Actions](https://github.com/Lokuyow/ehagaki/actions/workflows/test-reliability.yml)で確認できます。実端末での確認は未実施です。
