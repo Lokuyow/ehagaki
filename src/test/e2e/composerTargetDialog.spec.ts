@@ -92,11 +92,11 @@ async function expectTooltip(
 }
 
 test.describe("composer target dialog fixture", () => {
-    test("Repost and Reaction preserve main identity and only show a direct related card", async ({ page }, testInfo) => {
-        await page.emulateMedia({ colorScheme: "dark" });
-        const harness = await gotoHarness(page);
-        await openDialog(page);
-        for (const key of ["repost6", "repost16", "repostTo6", "repostTo16", "reaction7", "markerReaction", "channelReaction"] as const) {
+    for (const key of ["repost6", "repost16", "repostTo6", "repostTo16", "reaction7", "markerReaction", "channelReaction"] as const) {
+        test(`Repost and Reaction preserve main identity and only show a direct related card: ${key}`, async ({ page }) => {
+            await page.emulateMedia({ colorScheme: "dark" });
+            const harness = await gotoHarness(page);
+            await openDialog(page);
             await page.getByLabel("イベントID").fill(harness.inputs[key]);
             const reaction = key === "reaction7" || key === "markerReaction" || key === "channelReaction";
             const main = page.locator(reaction ? ".composer-target-reaction-preview" : ".composer-target-repost-preview");
@@ -134,7 +134,13 @@ test.describe("composer target dialog fixture", () => {
             await page.keyboard.press("Escape");
             await expect(raw).toBeHidden();
             await expect(page.getByRole("dialog", { name: "宛先を指定" })).toBeVisible();
-        }
+        });
+    }
+
+    test("Repost and Reaction related cards reflow with accessible actions", async ({ page }, testInfo) => {
+        await page.emulateMedia({ colorScheme: "dark" });
+        const harness = await gotoHarness(page);
+        await openDialog(page);
         await page.getByLabel("イベントID").fill(harness.inputs.repost16);
         await expect(page.locator(".repost-channel-row")).toContainText("Related fixture channel");
         await page.screenshot({ path: testInfo.outputPath("composer-repost-history-style.png") });
