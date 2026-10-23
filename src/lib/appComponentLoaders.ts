@@ -114,7 +114,8 @@ export function createAppComponentLoaders(
     const loadPostHistoryDialogModule = createComponentLoader(
         "post-history",
         () => import("../components/PostHistoryDialog.svelte"),
-        commonOptions,
+        // Warm only the lightweight shell at startup; tab instances and I/O stay lazy.
+        { ...commonOptions, eager: true },
     );
     const historyTabs = {
         posts: createComponentLoader("post-history-posts", importPostHistoryPosts, commonOptions),
