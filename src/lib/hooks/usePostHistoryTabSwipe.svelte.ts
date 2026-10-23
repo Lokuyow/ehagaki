@@ -181,6 +181,14 @@ export function usePostHistoryTabSwipe(options: UsePostHistoryTabSwipeOptions) {
             if (!session || event.pointerId !== session.pointerId) return;
             trackPoint(event.clientX, event.clientY, event.timeStamp);
         };
+        const onTouchMove = (event: TouchEvent) => {
+            // A native horizontal fling can swallow the next tap, including the
+            // footer's close button. Only consume an established tab swipe;
+            // pending/vertical gestures and multi-touch keep their native behavior.
+            if (session?.axis === "horizontal" && event.touches.length === 1 && event.cancelable) {
+                event.preventDefault();
+            }
+        };
         const onUp = (event: PointerEvent) => {
             if (!session || event.pointerId !== session.pointerId) return;
             endGesture(event.clientX, event.timeStamp, true);
@@ -194,6 +202,7 @@ export function usePostHistoryTabSwipe(options: UsePostHistoryTabSwipeOptions) {
 
         current.addEventListener("pointerdown", onDown);
         current.addEventListener("pointermove", onMove);
+        current.addEventListener("touchmove", onTouchMove, { passive: false });
         current.addEventListener("pointerup", onUp);
         current.addEventListener("pointercancel", onCancel);
         return () => {
@@ -201,6 +210,7 @@ export function usePostHistoryTabSwipe(options: UsePostHistoryTabSwipeOptions) {
             session = null;
             current.removeEventListener("pointerdown", onDown);
             current.removeEventListener("pointermove", onMove);
+            current.removeEventListener("touchmove", onTouchMove);
             current.removeEventListener("pointerup", onUp);
             current.removeEventListener("pointercancel", onCancel);
         };

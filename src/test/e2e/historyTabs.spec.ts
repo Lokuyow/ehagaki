@@ -26,6 +26,64 @@ async function dismissAndWaitForHistory(page: Page, action: () => Promise<unknow
     await page.waitForFunction(id => history.state?.modalId !== id, entry);
 }
 
+test.describe("mobile tab swipes", () => {
+    test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+    for (const from of ["posts", "media"] as const) {
+        for (const timing of ["settling", "switched"] as const) {
+            test(`close responds to the first tap after swiping from ${from} while ${timing}`, async ({ page, browserName }) => {
+                test.skip(browserName !== "chromium", "Native swipe input uses the Chromium protocol.");
+                await page.addInitScript(tab => localStorage.setItem("historyActiveTab", tab), from);
+                await page.goto("post-history-dialog-playwright.html?history-tabs=1");
+                const dialog = page.getByRole("dialog", { name: "履歴", exact: true });
+                await expect(dialog.locator(".history-tab-viewport")).toHaveAttribute("aria-busy", "false");
+                await dialog.evaluate(async node => { await Promise.all(node.getAnimations().map(animation => animation.finished)); });
+
+                if (timing === "settling") {
+                    await page.clock.install({ time: 0 });
+                    await page.clock.pauseAt(1000);
+                }
+                const input = await page.context().newCDPSession(page);
+                const startX = from === "posts" ? 310 : 80;
+                const endX = from === "posts" ? 80 : 310;
+                await input.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: startX, y: 200 }] });
+                for (const fraction of [0.3, 0.6, 1]) {
+                    await input.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: startX + (endX - startX) * fraction, y: 200 }] });
+                }
+                await input.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+                if (timing === "settling") {
+                    await expect(dialog.locator(".history-tab-gesture")).toHaveClass(/is-offset/);
+                    await expect(dialog.getByRole("tab", { name: from === "posts" ? "ポスト" : "メディア", exact: true })).toHaveAttribute("aria-selected", "true");
+                } else {
+                    await expect(dialog.getByRole("tab", { name: from === "posts" ? "メディア" : "ポスト", exact: true })).toHaveAttribute("aria-selected", "true");
+                }
+
+                const button = await dialog.locator(".modal-close").boundingBox();
+                expect(button).not.toBeNull();
+                await page.touchscreen.tap(button!.x + button!.width / 2, button!.y + button!.height / 2);
+                await expect(dialog).toHaveCount(0);
+            });
+        }
+    }
+
+    test("vertical gestures scroll posts without changing tabs", async ({ page, browserName }) => {
+        test.skip(browserName !== "chromium", "Native swipe input uses the Chromium protocol.");
+        await page.goto("post-history-dialog-playwright.html?history-tabs=1");
+        const dialog = page.getByRole("dialog", { name: "履歴", exact: true });
+        await expect(dialog.locator(".post-history-item").first()).toBeVisible();
+        await dialog.evaluate(async node => { await Promise.all(node.getAnimations().map(animation => animation.finished)); });
+        const input = await page.context().newCDPSession(page);
+        await input.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 200, y: 550 }] });
+        for (const y of [490, 440, 350]) {
+            await input.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 200, y }] });
+        }
+        await input.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        await expect.poll(() => dialog.locator(".post-history-container").evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+        await expect(dialog.getByRole("tab", { name: "ポスト", exact: true })).toHaveAttribute("aria-selected", "true");
+        await expect(dialog.locator(".history-tab-gesture")).not.toHaveClass(/is-offset|is-swiping/);
+    });
+});
+
 test("saved Media survives refresh and activates Posts only after explicit selection", async ({ page }, testInfo) => {
     await page.addInitScript(() => localStorage.setItem("historyActiveTab", "media"));
     await page.goto("post-history-dialog-playwright.html?history-tabs=1");
