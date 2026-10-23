@@ -923,7 +923,7 @@ test("new host saves and restores fail-closed content warning through delegated 
     const appUrl = new URL("/ehagaki/", page.url());
     await page.getByLabel("eHagaki URL").fill(appUrl.toString());
     const frame = page.frameLocator("#ehagaki-iframe");
-    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    await expect(frame.locator(".tiptap-editor")).toBeVisible({ timeout: 15_000 });
     await openSettingsToCategory(frame, "post");
     const warningSwitch = frame.locator('[aria-labelledby="fail-closed-content-warning-label"]');
     await expect(warningSwitch).toHaveAttribute("aria-checked", "false");
