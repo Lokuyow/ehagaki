@@ -138,7 +138,7 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByText('再取得中...')).toBeTruthy();
         });
 
-        const statusToast = document.querySelector('.floating-message.anchor-bottom-right[role="status"]');
+        const statusToast = document.querySelector('.floating-message.anchor-center[role="status"]');
         expect(statusToast?.textContent).toContain('再取得中...');
         expect(statusToast?.querySelector('.info-icon')).toBeNull();
         expect(statusToast?.querySelector('.status-loading-placeholder .loader-container')).toBeTruthy();

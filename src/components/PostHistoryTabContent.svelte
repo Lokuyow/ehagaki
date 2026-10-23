@@ -3994,9 +3994,8 @@
 <FloatingMessage
     show={show && !fullScan.state.open && !exportRunning && !!headingStatusMessageKey && !syncToastExpired}
     fadeOutDuration={canAutoHideSyncToast ? 200 : 0}
-    variant="anchor-bottom-right"
+    variant="anchor-center"
     anchor={postHistoryHeadingElement}
-    anchorRightOffset={16}
     showInfoIcon={!history.showStatusLoader}
 >
     {#if headingStatusMessageKey}

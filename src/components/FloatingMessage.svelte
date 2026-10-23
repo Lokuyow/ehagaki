@@ -13,7 +13,8 @@
             | "pointer"
             | "top-right"
             | "container-top-right"
-            | "anchor-bottom-right";
+            | "anchor-bottom-right"
+            | "anchor-center";
         anchor?: HTMLElement | null;
         anchorRightOffset?: number;
         showInfoIcon?: boolean;
@@ -102,7 +103,7 @@
     });
 
     $effect(() => {
-        if (variant !== "anchor-bottom-right") {
+        if (variant !== "anchor-bottom-right" && variant !== "anchor-center") {
             return;
         }
 
@@ -134,17 +135,23 @@
             }
 
             const messageBounds = container.getBoundingClientRect();
+            const anchorX = variant === "anchor-center"
+                ? anchorBounds.left + (anchorBounds.width - messageBounds.width) / 2
+                : anchorBounds.right - messageBounds.width - anchorRightOffset;
+            const anchorY = variant === "anchor-center"
+                ? anchorBounds.top + (anchorBounds.height - messageBounds.height) / 2
+                : anchorBounds.bottom + 8;
             messageX = Math.max(
                 SCREEN_PADDING,
                 Math.min(
-                    anchorBounds.right - messageBounds.width - anchorRightOffset,
+                    anchorX,
                     viewportWidth - messageBounds.width - SCREEN_PADDING,
                 ),
             );
             messageY = Math.max(
                 SCREEN_PADDING,
                 Math.min(
-                    anchorBounds.bottom + 8,
+                    anchorY,
                     viewportHeight - messageBounds.height - SCREEN_PADDING,
                 ),
             );
@@ -177,16 +184,10 @@
             <div
                 bind:this={container}
                 out:fade={{ duration: fadeOutDuration }}
-                class="floating-message {variant === 'top-right'
-                    ? 'top-right'
-                    : variant === 'container-top-right'
-                      ? 'container-top-right'
-                      : variant === 'anchor-bottom-right'
-                        ? 'anchor-bottom-right'
-                      : 'pointer'}"
+                class="floating-message {variant}"
                 style={variant === "container-top-right"
                     ? `left: ${messageX}px; top: ${messageY}px; width: ${messageMaxWidth}px;`
-                    : variant === "anchor-bottom-right"
+                    : variant === "anchor-bottom-right" || variant === "anchor-center"
                       ? `left: ${messageX}px; top: ${messageY}px; max-width: ${messageMaxWidth}px; visibility: ${anchorPositionReady ? "visible" : "hidden"};`
                       : variant === "pointer"
                       ? `left: ${messageX}px; top: ${messageY}px;`
@@ -239,7 +240,8 @@
         white-space: normal;
     }
 
-    .floating-message.anchor-bottom-right {
+    .floating-message.anchor-bottom-right,
+    .floating-message.anchor-center {
         top: auto;
         right: auto;
         box-sizing: border-box;

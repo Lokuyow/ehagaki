@@ -228,7 +228,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled();
-            expect(document.querySelector('.floating-message.anchor-bottom-right')?.textContent)
+            expect(document.querySelector('.floating-message.anchor-center')?.textContent)
                 .toContain('リレーと同期中...');
         });
 
