@@ -215,8 +215,8 @@ for (const base of ["/", "/ehagaki/"] as const) {
                 await dialog.getByRole("tab", { name: "メディア", exact: true }).click();
                 await expect(dialog.locator("article")).toHaveCount(48);
                 expect(requests()).toBe(beforeTabs);
-                await dialog.locator("article").first().getByRole("button", { name: "このサーバーから削除する", exact: true }).click();
-                await page.getByRole("alertdialog").getByRole("button", { name: "このサーバーから削除する", exact: true }).click();
+                await dialog.locator("article").first().getByRole("button", { name: "削除", exact: true }).click();
+                await page.getByRole("alertdialog").getByRole("button", { name: "削除", exact: true }).click();
                 await expect(dialog.locator("article")).toHaveCount(47);
                 await expect(more).toHaveCount(0);
                 expect(f.counts.get("DELETE /" + imageHash)).toBe(1);
@@ -425,7 +425,7 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await expect(dialog.locator("article")).toHaveCount(3);
             await expect(video).toHaveCount(0);
             expect(listRequests()).toBe(listsBeforeSuspend);
-            const remove = dialog.locator('article[data-media-kind="image"]').getByRole("button", { name: "このサーバーから削除する" });
+            const remove = dialog.locator('article[data-media-kind="image"]').getByRole("button", { name: "削除" });
             await expect(remove).toHaveText("");
             const iconUrl = await remove.locator(".media-delete-icon").evaluate((node) => getComputedStyle(node).maskImage);
             expect(iconUrl).toContain(base + "icons/delete_forever_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
@@ -437,7 +437,7 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await confirm.getByRole("button", { name: "キャンセル" }).click();
             await expect(remove).toBeFocused(); expect(f.counts.get("DELETE /" + imageHash)).toBeUndefined();
             f.holdDelete();
-            await remove.click(); await confirm.getByRole("button", { name: "このサーバーから削除する" }).click();
+            await remove.click(); await confirm.getByRole("button", { name: "削除" }).click();
             await expect.poll(() => f.counts.get("DELETE /" + imageHash)).toBe(1);
             await expect(dialog.getByRole("tab", { name: "ポスト", exact: true })).toBeDisabled();
             await expect(footerClose).toBeDisabled();
