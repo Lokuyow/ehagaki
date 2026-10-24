@@ -5,7 +5,7 @@ import { NostrAuthService } from "../nostrAuthService";
 import { assertActiveSession, type AuthStateSource } from "../sessionLiveness";
 import { getUploadAdapter } from "./uploadAdapterRegistry";
 import { resolveUploadDestinationForUse } from "./uploadDestinationResolver";
-import { normalizeMediaOperationError } from "./mediaManagementUtils";
+import { normalizeMediaOperationError, UPLOAD_MEDIA_PAGE_SIZE } from "./mediaManagementUtils";
 import {
     UploadMediaError, type UploadedMediaItem, type UploadMediaContext,
     type UploadMediaPageCursor,
@@ -22,6 +22,7 @@ export interface UploadMediaDestinationView {
     excludedCount: number;
     invalidCount: number;
     nextPage: UploadMediaPageCursor | null;
+    hasMore: boolean;
     context: UploadMediaContext | null;
     needsRefresh: boolean;
     deletingId: string | null;
@@ -36,7 +37,9 @@ export interface UploadMediaManagementView {
 }
 export const emptyUploadMediaManagementView = (): UploadMediaManagementView => ({ destinations: [], selectedId: null, current: null });
 
-interface DestinationState extends UploadMediaDestinationView {
+interface DestinationState extends Omit<UploadMediaDestinationView, "hasMore"> {
+    // null means remote paging; an empty array is an exhausted local snapshot.
+    localSnapshot: UploadedMediaItem[] | null;
     generation: number;
     abort: AbortController | null;
     cursors: Set<string>;
@@ -54,6 +57,11 @@ interface Dependencies {
 
 function signature(destination: UploadDestination): string {
     return `${destination.protocol}\n${destination.serverUrl}`;
+}
+function requireRefresh(state: DestinationState): void {
+    state.localSnapshot = null;
+    state.nextPage = null;
+    state.needsRefresh = true;
 }
 export class UploadMediaManagementController {
     private readonly states = new Map<string, DestinationState>();
@@ -75,7 +83,7 @@ export class UploadMediaManagementController {
         for (const state of this.states.values()) {
             state.abort?.abort();
             state.generation++;
-            if (state.deletingId && state.deleteDispatched) { state.error = new UploadMediaError("unknownDelete"); state.needsRefresh = true; state.nextPage = null; }
+            if (state.deletingId && state.deleteDispatched) { state.error = new UploadMediaError("unknownDelete"); requireRefresh(state); }
             state.loading = false; state.deletingId = null; state.deleteDispatched = false;
         }
         this.emit();
@@ -90,6 +98,7 @@ export class UploadMediaManagementController {
             loading: current.loading, error: current.error, support: current.support,
             excludedCount: current.excludedCount, invalidCount: current.invalidCount,
             nextPage: current.nextPage, context: current.context, needsRefresh: current.needsRefresh,
+            hasMore: !current.needsRefresh && (!!current.nextPage || !!current.localSnapshot?.length),
             deletingId: current.deletingId, notice: current.notice,
         } : null;
         this.deps.onChange({ destinations: [...this.destinations], selectedId: this.selectedId, current: view,
@@ -162,6 +171,7 @@ export class UploadMediaManagementController {
                 context: null, needsRefresh: false, deletingId: null, notice: null,
                 generation: 0, abort: null, cursors: new Set(),
                 deleteDispatched: false,
+                localSnapshot: null,
             });
         }
         if (!this.selectedId || !ids.has(this.selectedId)) {
@@ -178,8 +188,7 @@ export class UploadMediaManagementController {
             if (old) {
                 if (old.deletingId && old.deleteDispatched) {
                     old.error = new UploadMediaError("unknownDelete");
-                    old.nextPage = null;
-                    old.needsRefresh = true;
+                    requireRefresh(old);
                 }
                 old.generation++; old.loading = false; old.deletingId = null; old.deleteDispatched = false;
             }
@@ -220,7 +229,17 @@ export class UploadMediaManagementController {
         const state = this.selectedId ? this.states.get(this.selectedId) : undefined;
         if (!this.active || !state || !this.pubkey || state.loading || state.deletingId) return;
         if (state.error?.retryAt && Date.now() < state.error.retryAt) return;
+        if (append && !state.needsRefresh && state.localSnapshot !== null) {
+            const auth = (this.deps.auth ?? authState).value;
+            if (!auth.isAuthenticated || auth.pubkey !== this.pubkey || !state.localSnapshot.length) return;
+            state.error = null;
+            state.notice = null;
+            state.items.push(...state.localSnapshot.splice(0, UPLOAD_MEDIA_PAGE_SIZE));
+            this.emit();
+            return;
+        }
         append = append && !state.needsRefresh && Boolean(state.nextPage);
+        if (!append && state.localSnapshot !== null) requireRefresh(state);
         const operation = this.begin(state);
         state.loading = true;
         state.error = null;
@@ -234,12 +253,23 @@ export class UploadMediaManagementController {
             });
             operation.params.assertSession();
             if (!operation.current()) return;
+            if (page.localSnapshot && (state.destination.protocol !== "blossom" || page.nextPage)) {
+                throw new UploadMediaError("invalidResponse");
+            }
             const cursor = page.nextPage?.protocol === "blossom" ? page.nextPage.cursor : null;
             if (append && cursor && state.cursors.has(cursor)) throw new UploadMediaError("invalidResponse");
             if (!append) state.cursors.clear();
             if (cursor) state.cursors.add(cursor);
-            const items = append ? [...state.items, ...page.items] : page.items;
-            state.items = [...new Map(items.map((item) => [item.id, item])).values()];
+            if (page.localSnapshot) {
+                const shown = new Set(append ? state.items.map((item) => item.id) : []);
+                state.localSnapshot = [...new Map(page.items.map((item) => [item.id, item])).values()]
+                    .filter((item) => !shown.has(item.id));
+                state.items = [...(append ? state.items : []), ...state.localSnapshot.splice(0, UPLOAD_MEDIA_PAGE_SIZE)];
+            } else {
+                const items = append ? [...state.items, ...page.items] : page.items;
+                state.items = [...new Map(items.map((item) => [item.id, item])).values()];
+                state.localSnapshot = null;
+            }
             state.excludedCount = (append ? state.excludedCount : 0) + page.excludedCount;
             state.invalidCount = (append ? state.invalidCount : 0) + page.invalidCount;
             state.nextPage = page.nextPage;
@@ -252,8 +282,7 @@ export class UploadMediaManagementController {
             state.error = normalizeMediaOperationError(error);
             if (state.error.code === "unavailable") state.support = "unavailable";
             if (state.error.code === "invalidResponse") {
-                state.nextPage = null;
-                state.needsRefresh = true;
+                requireRefresh(state);
             }
         } finally {
             if (operation.current()) { state.loading = false; this.emit(); }
@@ -281,8 +310,7 @@ export class UploadMediaManagementController {
             if (operation.current()) {
                 state.deleteDispatched = false;
                 state.items = state.items.filter((entry) => entry.deleteId?.sha256 !== hash);
-                state.nextPage = null;
-                state.needsRefresh = true;
+                requireRefresh(state);
                 state.notice = "deleted";
                 this.emit();
             }
@@ -296,7 +324,7 @@ export class UploadMediaManagementController {
         } catch (error) {
             if (operation.current()) {
                 state.error = normalizeMediaOperationError(error);
-                if (state.error.code === "unknownDelete") { state.nextPage = null; state.needsRefresh = true; }
+                if (state.error.code === "unknownDelete") requireRefresh(state);
             }
             return false;
         } finally {

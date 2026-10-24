@@ -12,9 +12,10 @@ function setup(loadDestinations?: (pubkey: string) => Promise<ReturnType<typeof 
     const remove = vi.fn(async (_params: UploadMediaDeleteParams): Promise<void> => undefined);
     const evict = vi.fn(async () => true);
     const adapter = { listMediaPage: list, deleteMedia: remove } as unknown as UploadProtocolAdapter;
-    const controller = new UploadMediaManagementController({ loadDestinations, auth, getAdapter: () => adapter, createAuth: () => mediaAuth(),
+    const createAuth = vi.fn(() => mediaAuth());
+    const controller = new UploadMediaManagementController({ loadDestinations, auth, getAdapter: () => adapter, createAuth,
         evictImages: evict, onChange: (next) => { view = next; } });
-    return { controller, auth, list, remove, evict, get view() { return view; } };
+    return { controller, auth, list, remove, evict, createAuth, get view() { return view; } };
 }
 async function loaded(s: ReturnType<typeof setup>) {
     s.controller.configure(mediaPubkey, [mediaDestination()]);
@@ -195,5 +196,178 @@ describe("uploaded-media operation ownership", () => {
         s.controller.configure(mediaPubkey, [d]);
         expect(s.view.destinations[0].serverUrl).toMatch(/^https:\/\/npub1[a-z0-9]+\.blossom\.band/);
         expect(s.list.mock.calls[0]?.[0]).toMatchObject({ expectedPubkey: mediaPubkey, destination: { serverUrl: s.view.destinations[0].serverUrl } });
+    });
+});
+
+function snapshot(count = 231, destination = mediaDestination()): UploadMediaPage {
+    return { ...mediaPage(destination, Array.from({ length: count }, (_, i) =>
+        mediaItem(destination, "image", i.toString(16).padStart(64, "0")))), nextPage: null, localSnapshot: true,
+        excludedCount: 3, invalidCount: 2 };
+}
+
+describe("controller-local Blossom snapshots", () => {
+    it("reveals 231 unique items in 24-item steps without further I/O/auth, and stays exhausted", async () => {
+        const s = setup(), page = snapshot();
+        page.items.push(page.items[0]);
+        s.list.mockResolvedValue(page);
+        await loaded(s);
+        expect(s.view.current).toMatchObject({ nextPage: null, hasMore: true, excludedCount: 3, invalidCount: 2 });
+        expect(s.view.current?.items).toHaveLength(24);
+        for (const count of [48, 72, 96, 120, 144, 168, 192, 216, 231]) {
+            await s.controller.load(true);
+            expect(s.view.current?.items).toHaveLength(count);
+        }
+        await Promise.all([s.controller.load(true), s.controller.load(true)]);
+        expect(s.view.current).toMatchObject({ hasMore: false, excludedCount: 3, invalidCount: 2 });
+        expect(s.view.current?.items).toHaveLength(231);
+        expect(new Set(s.view.current?.items.map((item) => item.id)).size).toBe(231);
+        expect(s.list).toHaveBeenCalledOnce();
+        expect(s.createAuth).toHaveBeenCalledOnce();
+    });
+    it("switches from remote paging to a snapshot and filters already displayed items", async () => {
+        const s = setup(), page = snapshot(60);
+        s.list.mockResolvedValueOnce({ ...mediaPage(), items: page.items.slice(0, 24) }).mockResolvedValue(page);
+        await loaded(s);
+        await s.controller.load(true);
+        expect(s.view.current?.items).toEqual(page.items.slice(0, 48));
+        await s.controller.load(true);
+        expect(s.view.current?.items).toEqual(page.items);
+        expect(s.view.current?.hasMore).toBe(false);
+        expect(s.list).toHaveBeenCalledTimes(2);
+    });
+    it("consumes a remainder once even when more is invoked concurrently", async () => {
+        const s = setup(); s.list.mockResolvedValue(snapshot(60)); await loaded(s);
+        await Promise.all([s.controller.load(true), s.controller.load(true), s.controller.load(true)]);
+        expect(s.view.current?.items).toHaveLength(60);
+        expect(new Set(s.view.current?.items.map((item) => item.id)).size).toBe(60);
+        expect(s.view.current?.hasMore).toBe(false);
+        expect(s.list).toHaveBeenCalledOnce();
+    });
+    it("rejects a delayed oversized page after a server A→B→A selection roundtrip", async () => {
+        const s = setup(), gate = createDeferred<UploadMediaPage>(), a = mediaDestination(), b = mediaDestination("blossom", "other");
+        s.list.mockImplementation(async (params) => mediaPage(params.destination));
+        s.controller.configure(mediaPubkey, [a, b]);
+        await vi.waitFor(() => expect(s.view.current?.loaded).toBe(true));
+        s.list.mockReturnValueOnce(gate.promise);
+        const pending = s.controller.load(true);
+        s.controller.select(b.id);
+        await vi.waitFor(() => expect(s.view.current?.loaded).toBe(true));
+        s.controller.select(a.id);
+        gate.resolve(snapshot(60)); await pending;
+        expect(s.view.current?.items).toEqual([mediaItem(a)]);
+        await s.controller.load(true);
+        expect(s.view.current?.items).toEqual([mediaItem(a)]);
+        expect(s.view.current?.error?.code).toBe("invalidResponse");
+    });
+    it.each([true, false])("discards the previous remainder as soon as refresh starts (success=%s)", async (success) => {
+        const s = setup(), gate = createDeferred<UploadMediaPage>();
+        s.list.mockResolvedValue(snapshot(60)); await loaded(s);
+        s.list.mockReturnValueOnce(gate.promise);
+        const refresh = s.controller.load();
+        expect(s.view.current?.hasMore).toBe(false);
+        await s.controller.load(true);
+        if (success) gate.resolve({ ...snapshot(30), items: snapshot(30).items.map((item) => ({ ...item, id: "fresh:" + item.id })) });
+        else gate.reject(new UploadMediaError("network"));
+        await refresh;
+        expect(s.view.current?.items).toHaveLength(24);
+        if (success) {
+            await s.controller.load(true);
+            expect(s.view.current?.items).toHaveLength(30);
+            expect(s.view.current?.items.every((item) => item.id.startsWith("fresh:"))).toBe(true);
+        } else {
+            expect(s.view.current).toMatchObject({ hasMore: false, needsRefresh: true, error: { code: "network" } });
+        }
+    });
+    it.each(["success", "unknownDelete", "forbidden"] as const)("handles deletion %s without reviving a remainder", async (outcome) => {
+        const s = setup(); s.list.mockResolvedValue(snapshot(60)); await loaded(s);
+        s.evict.mockResolvedValue(false);
+        if (outcome !== "success") s.remove.mockRejectedValue(new UploadMediaError(outcome));
+        const deletedId = s.view.current!.items[0].id;
+        await s.controller.delete(deletedId);
+        expect(s.remove).toHaveBeenCalledOnce();
+        if (outcome === "forbidden") {
+            expect(s.view.current?.hasMore).toBe(true);
+            await s.controller.load(true);
+            expect(s.view.current?.items).toHaveLength(48);
+            expect(s.view.current?.error).toBeNull();
+            expect(s.list).toHaveBeenCalledOnce();
+        } else {
+            expect(s.view.current).toMatchObject({ hasMore: false, nextPage: null, needsRefresh: true });
+            s.list.mockResolvedValue({ ...snapshot(0) });
+            await s.controller.load(true);
+            expect(s.list.mock.calls.at(-1)?.[0]).toMatchObject({ page: null, context: null });
+            expect(s.view.current?.items).toEqual([]);
+            if (outcome === "success") expect(s.evict).toHaveBeenCalledTimes(2);
+        }
+    });
+    it("discards the remainder when a dispatched deletion is suspended", async () => {
+        const s = setup(), gate = createDeferred<void>();
+        s.list.mockResolvedValue(snapshot(60)); await loaded(s);
+        s.remove.mockImplementation((params) => { params.onDeleteDispatched?.(); return gate.promise; });
+        const pending = s.controller.delete(s.view.current!.items[0].id);
+        s.controller.suspend(); s.controller.activate();
+        expect(s.view.current).toMatchObject({ hasMore: false, needsRefresh: true, error: { code: "unknownDelete" } });
+        gate.resolve(); await pending;
+        expect(s.view.current?.hasMore).toBe(false);
+    });
+    it("keeps same-owner snapshots isolated across selection and tab suspension", async () => {
+        const s = setup(), a = mediaDestination(), b = mediaDestination("blossom", "other");
+        s.list.mockImplementation(async (params) => snapshot(60, params.destination));
+        s.controller.configure(mediaPubkey, [a, b]);
+        await vi.waitFor(() => expect(s.view.current?.loaded).toBe(true));
+        s.controller.select(b.id);
+        await vi.waitFor(() => expect(s.view.current?.loaded).toBe(true));
+        await s.controller.load(true);
+        s.controller.select(a.id); s.controller.suspend(); s.controller.activate();
+        expect(s.view.current?.items).toHaveLength(24);
+        await s.controller.load(true);
+        expect(s.view.current?.items).toHaveLength(48);
+        expect(s.view.current?.items.every((item) => item.destinationId === a.id)).toBe(true);
+        s.controller.select(b.id);
+        expect(s.view.current?.items).toHaveLength(48);
+        expect(s.view.current?.items.every((item) => item.destinationId === b.id)).toBe(true);
+        expect(s.list).toHaveBeenCalledTimes(2);
+    });
+    it.each(["account", "logout", "invalidate", "url", "protocol", "remove"])("drops snapshots and delayed results on %s, including A→B→A", async (reason) => {
+        const s = setup(), old = snapshot(60), gate = createDeferred<UploadMediaPage>();
+        s.list.mockResolvedValue(old); await loaded(s);
+        s.list.mockReturnValueOnce(gate.promise).mockResolvedValue({ ...mediaPage(), items: [], nextPage: null });
+        const pending = s.controller.load();
+        const a = mediaDestination();
+        if (reason === "account") {
+            s.auth.value.pubkey = "c".repeat(64); s.controller.configure(s.auth.value.pubkey, [a]);
+            s.auth.value.pubkey = mediaPubkey; s.controller.configure(mediaPubkey, [a]);
+        } else if (reason === "logout") {
+            s.auth.value.isAuthenticated = false; s.controller.configure(null, []);
+        } else if (reason === "url" || reason === "protocol") {
+            s.controller.configure(mediaPubkey, [{ ...a, ...(reason === "url" ? { serverUrl: "https://other.example" } : { protocol: "nip96" as const }) }]);
+        } else if (reason === "remove") s.controller.configure(mediaPubkey, []);
+        else s.controller.invalidate();
+        gate.resolve(old); await pending;
+        await s.controller.load(true);
+        expect(s.view.current?.items ?? []).toEqual([]);
+        expect(s.view.current?.hasMore ?? false).toBe(false);
+    });
+    it.each(["account", "logout", "inactive"])("does not reveal local data for an invalid owner: %s", async (reason) => {
+        const s = setup(); s.list.mockResolvedValue(snapshot(60)); await loaded(s);
+        if (reason === "account") s.auth.value.pubkey = "c".repeat(64);
+        else if (reason === "logout") s.auth.value.isAuthenticated = false;
+        else s.controller.suspend();
+        await s.controller.load(true);
+        expect(s.view.current?.items).toHaveLength(24);
+        expect(s.list).toHaveBeenCalledOnce();
+    });
+    it("does not slice NIP-96 pages and sends their exact remote continuation", async () => {
+        const s = setup(), destination = mediaDestination("nip96"), items = snapshot(30, destination).items;
+        const nextPage = { protocol: "nip96" as const, page: 1, count: 30 };
+        s.list.mockResolvedValueOnce({ ...mediaPage(destination, items), nextPage })
+            .mockResolvedValueOnce({ ...mediaPage(destination, [mediaItem(destination)]), nextPage: null });
+        s.controller.configure(mediaPubkey, [destination]);
+        await vi.waitFor(() => expect(s.view.current?.loaded).toBe(true));
+        expect(s.view.current?.items).toHaveLength(30);
+        expect(s.view.current?.hasMore).toBe(true);
+        await s.controller.load(true);
+        expect(s.list.mock.calls[1][0]).toMatchObject({ page: nextPage });
+        expect(s.view.current).toMatchObject({ hasMore: false, nextPage: null });
     });
 });
