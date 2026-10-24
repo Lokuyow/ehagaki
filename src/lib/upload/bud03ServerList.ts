@@ -13,6 +13,8 @@ import { awaitUploadOperation, throwIfUploadAborted } from "./uploadOperation";
 
 export const BUD03_KIND = 10063;
 export const NIP96_KIND = 10096;
+export const SERVER_LIST_PREPARATION_TIMEOUT_MS = 10_000;
+let serverListRequestSequence = 0;
 
 export interface Bud03ServerListEvent {
     id?: string;
@@ -27,7 +29,7 @@ export interface Bud03FetchResult {
     success: boolean;
     servers: string[];
     event?: Bud03ServerListEvent;
-    error?: "not_found" | "network_error" | "request_error" | "timeout";
+    error?: "not_found" | "network_error" | "request_error" | "timeout" | "preparation_timeout";
 }
 
 export function normalizeBud03ServerUrl(value: string): string | null {
@@ -115,17 +117,24 @@ export function fetchRelayServerList(params: {
 }): Promise<Bud03FetchResult> {
     const { rxNostr, pubkeyHex, relays, kind, signal, timeoutMs = 4000 } = params;
     const hasExplicitRelays = relays !== undefined;
-    const sanitizedRelays = RelayConfigUtils.sanitizeExternalRelayUrls(relays);
+    const relaySnapshot = hasExplicitRelays ? relays
+        : typeof rxNostr.getDefaultRelays === "function"
+            ? Object.keys(rxNostr.getDefaultRelays({ filter: "read-all" })) : undefined;
+    const sanitizedRelays = RelayConfigUtils.sanitizeExternalRelayUrls(relaySnapshot);
+    const hasRelaySnapshot = relaySnapshot !== undefined;
 
-    if (hasExplicitRelays && sanitizedRelays.length === 0) {
+    if (hasRelaySnapshot && sanitizedRelays.length === 0) {
         return Promise.resolve({ success: false, servers: [], error: "not_found" });
     }
 
     return new Promise((resolve) => {
-        const rxReq = createRxBackwardReq();
+        const requestId = `upload-server-list-${kind}-${++serverListRequestSequence}`;
+        const rxReq = createRxBackwardReq(requestId);
+        const subId = `${requestId}:0`;
         const events: Bud03ServerListEvent[] = [];
         let resolved = false;
         let subscription: { unsubscribe?: () => void } | undefined;
+        let outgoingSubscription: { unsubscribe(): void } | undefined;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
         const cleanup = () => {
@@ -133,6 +142,8 @@ export function fetchRelayServerList(params: {
             signal?.removeEventListener("abort", onAbort);
             subscription?.unsubscribe?.();
             subscription = undefined;
+            outgoingSubscription?.unsubscribe();
+            outgoingSubscription = undefined;
         };
 
         const safeResolve = (result: Bud03FetchResult) => {
@@ -161,11 +172,25 @@ export function fetchRelayServerList(params: {
         };
 
         try {
-            timeoutId = setTimeout(() =>
-                safeResolve({ success: false, servers: [], error: "timeout" }), timeoutMs);
+            const canObserveDispatch = hasRelaySnapshot && typeof rxNostr.createOutgoingMessageObservable === "function";
+            const pendingRelays = new Set(sanitizedRelays);
+            // NIP-11 and connection setup can delay REQ dispatch after a reload.
+            // Keep preparation bounded, then give the query its full response budget.
+            timeoutId = setTimeout(() => safeResolve({ success: false, servers: [],
+                error: canObserveDispatch ? "preparation_timeout" : "timeout" }),
+            canObserveDispatch ? SERVER_LIST_PREPARATION_TIMEOUT_MS : timeoutMs);
+            if (canObserveDispatch) {
+                outgoingSubscription = rxNostr.createOutgoingMessageObservable().subscribe({ next: packet => {
+                    if (resolved || packet.message[0] !== "REQ" || packet.message[1] !== subId) return;
+                    const relay = RelayConfigUtils.normalizeExternalRelayUrl(packet.to);
+                    if (!relay || !pendingRelays.delete(relay) || pendingRelays.size > 0) return;
+                    if (timeoutId) clearTimeout(timeoutId);
+                    timeoutId = setTimeout(() => safeResolve({ success: false, servers: [], error: "timeout" }), timeoutMs);
+                } });
+            }
             subscription = rxNostr.use(
                 rxReq,
-                hasExplicitRelays ? { on: { relays: sanitizedRelays } } : undefined,
+                hasRelaySnapshot ? { on: { relays: sanitizedRelays } } : undefined,
             ).subscribe({
                 next: (packet) => {
                     if (packet?.event?.kind === kind && packet.event.pubkey === pubkeyHex) {

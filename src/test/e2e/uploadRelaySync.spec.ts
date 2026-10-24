@@ -2,6 +2,42 @@ import { expect, test } from "@playwright/test";
 import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent, type EventTemplate } from "nostr-tools";
 
 test.use({ trace: "off" });
+test("fetches from an untouched default after cold NIP-11 initialization", async ({ page, baseURL }) => {
+    const key = generateSecretKey(), owner = getPublicKey(key);
+    await page.clock.install();
+    await page.exposeFunction("fixtureSignUploadEvent", (template: EventTemplate) => finalizeEvent(template, key));
+    let releaseInfo!: () => Promise<void>;
+    let infoRequested = false;
+    const requests: number[] = [];
+    await page.route("https://relay.example/", async route => {
+        infoRequested = true;
+        await new Promise<void>(resolve => { releaseInfo = async () => { await route.fulfill({ json: {} }); resolve(); }; });
+    });
+    await page.route("**/.well-known/nostr/nip96.json", route => route.fulfill({ json: { api_url: "https://yabu.me/api/v2/media" } }));
+    await page.routeWebSocket("wss://relay.example/**", socket => socket.onMessage(raw => {
+        const message = JSON.parse(raw.toString());
+        if (message[0] !== "REQ") return;
+        const kind = message[2].kinds[0];
+        requests.push(kind);
+        if (kind === 10096) socket.send(JSON.stringify(["EVENT", message[1], finalizeEvent({
+            kind, created_at: 100, content: "", tags: [["server", "https://share.yabu.me"]],
+        }, key)]));
+        socket.send(JSON.stringify(["EOSE", message[1]]));
+    }));
+    await page.goto(new URL(`upload-relay-sync-playwright.html?owner=${owner}&lang=ja&initial=1&cold=1`, baseURL).href);
+    await page.getByRole("button", { name: "管理", exact: true }).click();
+    await expect(page.locator(".destination-row")).toHaveCount(1);
+    await expect(page.locator(".destination-row")).toContainText("share.yabu.me");
+    await expect.poll(() => infoRequested).toBe(true);
+    await page.getByRole("button", { name: "リレーから取得", exact: true }).click();
+    await page.clock.runFor(5_000);
+    expect(requests).toEqual([]);
+    await expect(page.getByRole("button", { name: "リレー取得中", exact: true })).toBeDisabled();
+    await releaseInfo();
+    await expect.poll(() => requests.length).toBe(2);
+    await expect(page.getByRole("status")).toContainText("NIP-96: 成功");
+    await expect(page.getByRole("status")).toContainText("Blossom: スキップ");
+});
 for (const lang of ["ja", "en"] as const) {
     for (const surface of ["page", "shadow", "iframe"] as const) {
         test(`two-button upload relay sync and partial results (${lang}, ${surface})`, async ({ page, baseURL }, testInfo) => {

@@ -31,7 +31,10 @@ The optional `nip96ServerUrl` and `nip96UrlMode` metadata are backward compatibl
 and iframe snapshots; the database/schema version and Host-owned Lite API do not change.
 
 During relay synchronization, the entire NIP-96 discovery phase has a **10-second deadline**, including
-all servers, delegation, and response bodies. The relay request separately retains its 4-second timeout.
+all servers, delegation, and response bodies. Relay queries separately allow up to 10 seconds for NIP-11
+and connection preparation, followed by a 4-second response budget once REQ has been sent to every target
+read relay. The operation snapshots those read targets; unrelated requests and repeated sends cannot
+extend its timers. Preparation and response timeouts still fail without applying their collected candidates.
 Discovery timeout aborts that protocol's outstanding requests, preserves any Blossom success, and releases
 the operation state. Account changes cancel pending work; delayed results cannot update another session.
 Local configuration edits cancel pending fetch application. No automatic retries or synchronization are added.

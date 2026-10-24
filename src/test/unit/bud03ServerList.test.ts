@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { Subject } from "rxjs";
+import type { OutgoingMessagePacket } from "rx-nostr";
 import {
     BUD03_KIND,
     buildBud03EventTemplate,
@@ -15,6 +17,69 @@ vi.mock("../../lib/signedEventResultValidator", async (importOriginal) => ({
 }));
 
 describe("bud03ServerList", () => {
+    it("allows cold relay preparation before starting the four-second response budget", async () => {
+        vi.useFakeTimers();
+        try {
+            const outgoing = new Subject<OutgoingMessagePacket>();
+            let requestId = "";
+            let observer!: { complete(): void };
+            const unsubscribe = vi.fn();
+            const rxNostr = {
+                getDefaultRelays: vi.fn(() => ({ "wss://relay.example/": { read: true, write: true } })),
+                createOutgoingMessageObservable: () => outgoing,
+                use: vi.fn((request) => { requestId = request.rxReqId; return { subscribe: (next: typeof observer) => { observer = next; return { unsubscribe }; } }; }),
+            };
+            let settled = false;
+            const operation = fetchBud03ServerList({ rxNostr: rxNostr as never, pubkeyHex: "owner" }).then(result => { settled = true; return result; });
+            await vi.advanceTimersByTimeAsync(5_000);
+            expect(settled).toBe(false);
+            outgoing.next({ to: "wss://relay.example/", message: ["REQ", `${requestId}:0`, { kinds: [BUD03_KIND] }] });
+            observer.complete();
+            expect((await operation).error).toBe("not_found");
+            expect(rxNostr.getDefaultRelays).toHaveBeenCalledWith({ filter: "read-all" });
+            expect(rxNostr.use).toHaveBeenCalledWith(expect.anything(), { on: { relays: ["wss://relay.example/"] } });
+            expect(unsubscribe).toHaveBeenCalledOnce();
+            expect(outgoing.observed).toBe(false);
+            expect(vi.getTimerCount()).toBe(0);
+        } finally { vi.useRealTimers(); }
+    });
+    it.each(["preparation", "response", "cancel"])("bounds %s and releases dispatch observation", async phase => {
+        vi.useFakeTimers();
+        try {
+            const outgoing = new Subject<OutgoingMessagePacket>();
+            const controller = new AbortController();
+            let requestId = "";
+            const unsubscribe = vi.fn();
+            const rxNostr = {
+                getDefaultRelays: () => ({ "wss://one.example/": { read: true }, "wss://two.example/": { read: true } }),
+                createOutgoingMessageObservable: () => outgoing,
+                use: (request: { rxReqId: string }) => { requestId = request.rxReqId; return { subscribe: () => ({ unsubscribe }) }; },
+            };
+            const operation = fetchBud03ServerList({ rxNostr: rxNostr as never, pubkeyHex: "owner", signal: controller.signal });
+            await vi.advanceTimersByTimeAsync(5_000);
+            const send = (relay: string, id = requestId) => outgoing.next({ to: relay, message: ["REQ", `${id}:0`, { kinds: [BUD03_KIND] }] });
+            if (phase === "cancel") {
+                controller.abort();
+                send("wss://one.example/"); send("wss://two.example/");
+            } else {
+                send("wss://one.example/");
+                if (phase === "response") {
+                    send("wss://two.example/");
+                    await vi.advanceTimersByTimeAsync(2_000);
+                    send("wss://two.example/");
+                    send("wss://one.example/", "unrelated-query");
+                    await vi.advanceTimersByTimeAsync(2_000);
+                } else {
+                    send("wss://two.example/", "unrelated-query");
+                    await vi.advanceTimersByTimeAsync(5_000);
+                }
+            }
+            expect((await operation).error).toBe(phase === "preparation" ? "preparation_timeout" : phase === "response" ? "timeout" : "request_error");
+            expect(unsubscribe).toHaveBeenCalledOnce();
+            expect(outgoing.observed).toBe(false);
+            expect(vi.getTimerCount()).toBe(0);
+        } finally { vi.useRealTimers(); }
+    });
     it.each([false, true])("keeps the newest empty Blossom list instead of reviving older relay data (reverse=%s)", async reverse => {
         const old = { id: "b".repeat(64), kind: BUD03_KIND, pubkey: "owner", created_at: 10,
             tags: [["server", "https://old.example"]] };

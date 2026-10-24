@@ -479,7 +479,7 @@
     "uploadDestinationRelayInfoFetch": "取得に成功したプロトコルだけを置き換え、一致する項目の無効状態と利用可能な既定先を保持します。NIP-96 の URL を解決できない場合、その設定は変更・送信しません。",
     "uploadDestinationRelaySummary": {"success":"リレー同期に成功しました","partial":"リレー同期は部分成功です","failed":"リレー同期に失敗しました","skipped":"同期する対象がありません"},
     "uploadDestinationRelayOutcome": {"success":"成功","failed":"失敗","skipped":"スキップ"},
-    "uploadDestinationRelayReason": {"not_found":"リストが見つかりません","empty_list":"空リストのため設定を保持しました","no_enabled_servers":"有効なサーバーがありません","timeout":"リレー取得がタイムアウトしました","discovery_timeout":"NIP-96 discovery が10秒でタイムアウトしました","network_error":"リレー通信に失敗しました","request_error":"リストを取得できませんでした","request_failed":"処理またはURLの解決に失敗しました","publish_failed":"リレーに受理されませんでした","settings_changed":"設定が変更されました。再取得してください"},
+    "uploadDestinationRelayReason": {"not_found":"リストが見つかりません","empty_list":"空リストのため設定を保持しました","no_enabled_servers":"有効なサーバーがありません","timeout":"リレー取得がタイムアウトしました","preparation_timeout":"リレーへの接続準備がタイムアウトしました","discovery_timeout":"NIP-96 discovery が10秒でタイムアウトしました","network_error":"リレー通信に失敗しました","request_error":"リストを取得できませんでした","request_failed":"処理またはURLの解決に失敗しました","publish_failed":"リレーに受理されませんでした","settings_changed":"設定が変更されました。再取得してください"},
     "uploadDestinationMoveUp": "上へ",
     "uploadDestinationMoveDown": "下へ",
     "uploadDestinationMimeExpand": "すべて表示",
