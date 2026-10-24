@@ -59,7 +59,8 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
                 },
             }));
         });
-    const control = { owner: fixture.owner, eventIds: fixture.events.map((event) => event.id), headRequests: 0,
+    const control = { owner: fixture.owner, eventIds: fixture.events.map((event) => event.id), relayUrls,
+        headRequests: 0, headRequestRelayUrls: [] as string[],
         backupJsonl: fixture.events.slice(scenario === "citrine-gap" ? 110 : 60).map((event) => JSON.stringify(event)).join("\n") + "\n",
         backupRange: { since: fixture.events[309].created_at, until: fixture.events[scenario === "citrine-gap" ? 110 : 60].created_at },
         futurePostJsonl: JSON.stringify(fixture.futurePost) + "\n",
@@ -127,7 +128,10 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
                 const catchup = authored && filter.limit === 150 && filter.since !== undefined
                     && (scenario === "citrine-head" || filter.since >= latestSavedTimestamp);
                 const older = authored && !catchup && filter.since !== undefined && filter.until !== undefined && filter.limit === 150;
-                if (authored && filter.limit === 30) control.headRequests += 1;
+                if (authored && filter.limit === 30) {
+                    control.headRequests += 1;
+                    control.headRequestRelayUrls.push(relayUrl);
+                }
                 const complete = () => {
                     if (relayUrls.indexOf(relayUrl) >= 3) {
                         errors.next({ from: relayUrl }); stream.complete(); return;

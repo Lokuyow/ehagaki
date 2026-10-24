@@ -153,7 +153,8 @@ type HarnessState = {
 };
 
 type HarnessWindow = Window & typeof globalThis & {
-    __POST_HISTORY_COVERAGE__?: { owner: string; eventIds: string[]; headRequests: number;
+    __POST_HISTORY_COVERAGE__?: { owner: string; eventIds: string[]; relayUrls: string[];
+        headRequests: number; headRequestRelayUrls: string[];
         backupJsonl: string; backupRange: { since: number; until: number };
         futurePostJsonl: string; readFuturePost: () => Promise<{ createdAt: number } | undefined>;
         importFromSecondConnection: () => Promise<{ status: string; restoredRangeChanged?: boolean }>;
@@ -1756,7 +1757,13 @@ test.describe('PostHistoryDialog Playwright', () => {
         const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
         const rows = () => historyEventIds(page);
         const fetchButton = page.getByRole('button', { name: 'リレーから続きを取得' });
-        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequests)).toBe(4);
+        const expectedHeadRelayUrls = await page.evaluate(() =>
+            (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.relayUrls.slice(0, 4).sort());
+        // Coverage restoration can replan an active refresh; assert the intended
+        // four-relay fanout without depending on how many attempts were observed.
+        await expect.poll(() => page.evaluate(() =>
+            [...new Set((window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequestRelayUrls)].sort(),
+        )).toEqual(expectedHeadRelayUrls);
         await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(5);
         await expect.poll(rows).toEqual(ids.slice(60, 110));
         await expect(page.locator('.post-history-sync-footer')).toBeVisible();
