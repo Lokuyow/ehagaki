@@ -38,8 +38,15 @@ with one fixed 30-second authentication budget shared by the targets. When rx-no
 rejected REQ, the query gets its full 4-second response budget. rx-nostr still owns AUTH signing,
 transport, and retransmission; this observer never sends another request itself.
 The operation snapshots those read targets; unrelated requests, duplicate sends, and repeated challenges
-cannot renew their respective deadlines. Timeout, rejected authentication, and cancellation release all
-observers/timers and leave collected candidates unapplied. Real relay outages can still cause a timeout.
+cannot renew their respective deadlines. If a relay fails or a deadline expires, the newest valid,
+signature-verified candidate already received from the other relays can still be applied. This includes
+the existing timestamp/ID tie-break and latest-empty-list handling. The result is marked incomplete.
+Applying such a list reports partial success, even if both protocol lists were obtained; it does not claim that all
+target relays were queried successfully or that an unavailable relay has no newer list.
+If no valid candidate was received, the query fails and preserves existing settings. A missing-list skip
+requires completed relay queries. Cancellation never applies collected candidates. All exit paths release
+observers/timers, and late messages cannot change the settled result. Relay settings and shared reconnect
+behavior are unchanged; no relay is removed from the user's configuration.
 Discovery timeout aborts that protocol's outstanding requests, preserves any Blossom success, and releases
 the operation state. Account changes cancel pending work; delayed results cannot update another session.
 Local configuration edits cancel pending fetch application. No automatic retries or synchronization are added.

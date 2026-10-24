@@ -2,6 +2,66 @@ import { expect, test } from "@playwright/test";
 import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent, type EventTemplate } from "nostr-tools";
 
 test.use({ trace: "off" });
+for (const lang of ["ja", "en"] as const) {
+    for (const phase of ["preparation", "response"] as const) {
+        test(`keeps both lists when another relay stalls during ${phase} (${lang})`, async ({ page, baseURL }) => {
+            const key = generateSecretKey(), owner = getPublicKey(key);
+            await page.clock.install();
+            await page.exposeFunction("fixtureSignUploadEvent", (template: EventTemplate) => finalizeEvent(template, key));
+            await page.route("https://relay.example/", route => route.fulfill({ json: {} }));
+            let releaseInfo: (() => Promise<void>) | undefined;
+            await page.route("https://unavailable.example/", async route => {
+                if (phase === "response") { await route.fulfill({ json: {} }); return; }
+                await new Promise<void>(resolve => { releaseInfo = async () => { await route.fulfill({ json: {} }); resolve(); }; });
+            });
+            await page.route("**/.well-known/nostr/nip96.json", route => route.fulfill({ json: { api_url: "https://new-files.example/api" } }));
+            const unavailableRequests: number[] = [];
+            await page.routeWebSocket("wss://unavailable.example/**", socket => socket.onMessage(raw => {
+                const message = JSON.parse(raw.toString());
+                if (message[0] !== "REQ") return;
+                const kind = message[2].kinds[0];
+                unavailableRequests.push(kind);
+                // An unverified newer event must never replace the healthy relay's list.
+                const event = finalizeEvent({ kind, created_at: 200, content: "", tags: [["server", "https://invalid.example"]] }, key);
+                socket.send(JSON.stringify(["EVENT", message[1], { ...event, sig: "0".repeat(128) }]));
+                // No EOSE: this relay remains incomplete.
+            }));
+            await page.routeWebSocket("wss://relay.example/**", socket => socket.onMessage(raw => {
+                const message = JSON.parse(raw.toString());
+                if (message[0] !== "REQ") return;
+                const kind = message[2].kinds[0];
+                socket.send(JSON.stringify(["EVENT", message[1], finalizeEvent({ kind, created_at: 100, content: "",
+                    tags: [["server", kind === 10063 ? "https://new-blossom.example" : "https://new-files.example"]],
+                }, key)]));
+                socket.send(JSON.stringify(["EOSE", message[1]]));
+            }));
+            await page.setViewportSize({ width: 360, height: 1000 });
+            await page.goto(new URL(`upload-relay-sync-playwright.html?owner=${owner}&lang=${lang}&initial=1&cold=1&unavailable=1`, baseURL).href);
+            await page.getByRole("button", { name: lang === "ja" ? "管理" : "Manage", exact: true }).click();
+            await page.getByRole("button", { name: lang === "ja" ? "リレーから取得" : "Fetch from relays", exact: true }).click();
+            await expect.poll(() => page.evaluate(() => window.uploadRelayVerifiedPreferenceCount())).toBe(2);
+            if (phase === "preparation") await expect.poll(() => releaseInfo !== undefined).toBe(true);
+            else await expect.poll(() => unavailableRequests.length).toBe(2);
+            await page.clock.runFor(phase === "preparation" ? 10_000 : 4_000);
+            const status = page.getByRole("status");
+            await expect(status).toContainText(lang === "ja" ? "リレー同期は部分成功です" : "Relay synchronization partially succeeded");
+            await expect(status).toContainText(lang === "ja" ? "Blossom: 成功" : "Blossom: Succeeded");
+            await expect(status).toContainText(lang === "ja" ? "NIP-96: 成功" : "NIP-96: Succeeded");
+            await expect(status).toContainText(lang === "ja" ? "一部リレーは未完了" : "Some relays did not finish");
+            const snapshot = await page.evaluate(() => window.uploadRelaySnapshot());
+            expect(snapshot.filter(d => ["blossom", "nip96"].includes(d.protocol)).map(d => d.serverUrl).sort())
+                .toEqual(["https://new-blossom.example", "https://new-files.example"]);
+            expect(snapshot.filter(d => d.isDefault)).toHaveLength(1);
+            await expect(page.getByRole("button", { name: lang === "ja" ? "リレーへ送信" : "Publish to relays", exact: true })).toBeEnabled();
+            if (releaseInfo) {
+                await releaseInfo();
+                expect(unavailableRequests).toEqual([]);
+                expect(await page.evaluate(() => window.uploadRelaySnapshot())).toEqual(snapshot);
+            }
+            expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        });
+    }
+}
 test("fetches both lists on the first attempt after a cold NIP-42 handshake", async ({ page, baseURL }) => {
     const key = generateSecretKey(), owner = getPublicKey(key);
     await page.clock.install();

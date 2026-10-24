@@ -30,6 +30,7 @@ export interface Bud03FetchResult {
     success: boolean;
     servers: string[];
     event?: Bud03ServerListEvent;
+    incomplete?: boolean;
     error?: "not_found" | "network_error" | "request_error" | "timeout" | "preparation_timeout";
 }
 
@@ -123,6 +124,8 @@ export function fetchRelayServerList(params: {
             ? Object.keys(rxNostr.getDefaultRelays({ filter: "read-all" })) : undefined;
     const sanitizedRelays = RelayConfigUtils.sanitizeExternalRelayUrls(relaySnapshot);
     const hasRelaySnapshot = relaySnapshot !== undefined;
+    const canObserveDispatch = hasRelaySnapshot && typeof rxNostr.createOutgoingMessageObservable === "function";
+    const canObserveCompletion = canObserveDispatch && typeof rxNostr.createAllMessageObservable === "function";
 
     if (hasRelaySnapshot && sanitizedRelays.length === 0) {
         return Promise.resolve({ success: false, servers: [], error: "not_found" });
@@ -139,6 +142,7 @@ export function fetchRelayServerList(params: {
         let messageSubscription: { unsubscribe(): void } | undefined;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         const pendingAuthRelays = new Set<string>();
+        const finishedRelays = new Set<string>();
 
         const cleanup = () => {
             if (timeoutId) clearTimeout(timeoutId);
@@ -162,15 +166,15 @@ export function fetchRelayServerList(params: {
         signal?.addEventListener("abort", onAbort, { once: true });
         if (signal?.aborted) { onAbort(); return; }
 
-        const finish = () => {
-            // A rejected/unfinished AUTH must not become an empty-list success.
-            if (pendingAuthRelays.size) {
-                safeResolve({ success: false, servers: [], error: "request_error" });
-                return;
-            }
+        const finish = (failure?: Bud03FetchResult["error"]) => {
+            if (resolved) return;
+            if (signal?.aborted) { onAbort(); return; }
+            const incomplete = !!failure || pendingAuthRelays.size > 0
+                || (canObserveCompletion && finishedRelays.size < sanitizedRelays.length);
             const event = getNewestBud03Event(events, kind);
             if (!event || !event.tags) {
-                safeResolve({ success: false, servers: [], error: "not_found" });
+                safeResolve({ success: false, servers: [], error: failure
+                    ?? (pendingAuthRelays.size ? "request_error" : incomplete ? "network_error" : "not_found") });
                 return;
             }
 
@@ -178,11 +182,11 @@ export function fetchRelayServerList(params: {
                 success: true,
                 servers: kind === BUD03_KIND ? parseBud03ServerTags(event.tags) : parseNip96ServerTags(event.tags),
                 event,
+                ...(incomplete ? { incomplete: true } : {}),
             }); } catch { safeResolve({ success: false, servers: [], error: "request_error" }); }
         };
 
         try {
-            const canObserveDispatch = hasRelaySnapshot && typeof rxNostr.createOutgoingMessageObservable === "function";
             const pendingRelays = new Set(sanitizedRelays);
             const preparationDeadline = Date.now() + SERVER_LIST_PREPARATION_TIMEOUT_MS;
             let authDeadline: number | undefined;
@@ -191,20 +195,19 @@ export function fetchRelayServerList(params: {
                 const preparing = pendingRelays.size > 0;
                 const deadline = preparing ? preparationDeadline
                     : pendingAuthRelays.size ? authDeadline! : Date.now() + timeoutMs;
-                timeoutId = setTimeout(() => safeResolve({ success: false, servers: [],
-                    error: preparing ? "preparation_timeout" : "timeout" }), Math.max(0, deadline - Date.now()));
+                timeoutId = setTimeout(() => finish(preparing ? "preparation_timeout" : "timeout"), Math.max(0, deadline - Date.now()));
             };
             // NIP-11 and connection setup can delay REQ dispatch after a reload.
             // Keep preparation bounded, then give the query its full response budget.
-            timeoutId = setTimeout(() => safeResolve({ success: false, servers: [],
-                error: canObserveDispatch ? "preparation_timeout" : "timeout" }),
+            timeoutId = setTimeout(() => finish(canObserveDispatch ? "preparation_timeout" : "timeout"),
             canObserveDispatch ? SERVER_LIST_PREPARATION_TIMEOUT_MS : timeoutMs);
             if (canObserveDispatch) {
                 messageSubscription = rxNostr.createAllMessageObservable?.().subscribe({ next: packet => {
-                    if (resolved || packet.type !== "CLOSED" || packet.subId !== subId
-                        || typeof packet.notice !== "string" || !packet.notice.startsWith("auth-required:")) return;
+                    if (resolved || (packet.type !== "CLOSED" && packet.type !== "EOSE") || packet.subId !== subId) return;
                     const relay = RelayConfigUtils.normalizeExternalRelayUrl(packet.from);
                     if (!relay || !sanitizedRelays.includes(relay)) return;
+                    if (packet.type === "EOSE") { finishedRelays.add(relay); return; }
+                    if (typeof packet.notice !== "string" || !packet.notice.startsWith("auth-required:")) return;
                     pendingAuthRelays.add(relay);
                     // One bounded AUTH budget, shared by all relays/challenges.
                     authDeadline ??= Date.now() + SERVER_LIST_AUTH_TIMEOUT_MS;
@@ -226,12 +229,14 @@ export function fetchRelayServerList(params: {
                 hasRelaySnapshot ? { on: { relays: sanitizedRelays } } : undefined,
             ).subscribe({
                 next: (packet) => {
-                    if (packet?.event?.kind === kind && packet.event.pubkey === pubkeyHex) {
+                    if (!resolved && packet?.event?.kind === kind && packet.event.pubkey === pubkeyHex) {
                         events.push(packet.event);
                     }
                 },
-                complete: finish,
-                error: () => safeResolve({ success: false, servers: [], error: "network_error" }),
+                // rx-nostr may complete inside its EOSE handler, before the
+                // public message observer receives that same final EOSE.
+                complete: () => queueMicrotask(() => finish()),
+                error: () => finish("network_error"),
             });
 
             if (resolved) { subscription?.unsubscribe?.(); return; }

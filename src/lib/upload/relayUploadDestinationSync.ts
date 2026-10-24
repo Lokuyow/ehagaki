@@ -14,13 +14,14 @@ export interface RelaySyncOutcome {
     status: "success" | "failed" | "skipped";
     reason?: string;
     count?: number;
+    incomplete?: boolean;
 }
 export type RelaySyncResults = Record<RelaySyncProtocol, RelaySyncOutcome>;
 export interface ResolvedNip96Server { serverUrl: string; apiUrl: string }
 export interface RelayServerListUpdates { blossom?: string[]; nip96?: ResolvedNip96Server[] }
 export function summarizeRelaySync(results: RelaySyncResults): "success" | "partial" | "failed" | "skipped" {
     const values = Object.values(results);
-    if (values.every(value => value.status === "success")) return "success";
+    if (values.every(value => value.status === "success" && !value.incomplete)) return "success";
     if (values.some(value => value.status === "success")) return "partial";
     return values.some(value => value.status === "failed") ? "failed" : "skipped";
 }
@@ -62,11 +63,12 @@ export async function fetchUploadRelayLists(context: SyncContext): Promise<{ res
             const result = await fetchRelayServerList({ ...context, kind });
             context.assertCurrent();
             if (!result.success) return { status: result.error === "not_found" ? "skipped" : "failed", reason: result.error };
-            if (!result.servers.length) return { status: "skipped", reason: "empty_list" };
+            const coverage = result.incomplete ? { incomplete: true } : {};
+            if (!result.servers.length) return { status: "skipped", reason: "empty_list", ...coverage };
             if (protocol === "blossom") updates.blossom = result.servers;
             else updates.nip96 = await discoverServers(result.servers, context);
             context.assertCurrent();
-            return { status: "success", count: result.servers.length };
+            return { status: "success", count: result.servers.length, ...coverage };
         } catch (error) { return failure(error); }
     };
     const [blossom, nip96] = await Promise.all([run("blossom", BUD03_KIND), run("nip96", NIP96_KIND)]);

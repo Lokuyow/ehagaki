@@ -18,6 +18,7 @@ declare global {
         fixtureSignUploadEvent: (template: EventTemplate) => Promise<VerifiedEvent>;
         uploadRelaySnapshot: () => { id: string; protocol: string; serverUrl: string; enabled: boolean; isDefault: boolean; nip96UrlMode?: string }[];
         uploadRelayFixtureImage: () => Promise<boolean>;
+        uploadRelayVerifiedPreferenceCount: () => number;
     }
 }
 const query = new URLSearchParams(location.search);
@@ -27,10 +28,18 @@ locale.set(query.get("lang") ?? "ja");
 await waitLocale();
 Reflect.set(window, "nostr", { getPublicKey: async () => owner, signEvent: (template: EventTemplate) => window.fixtureSignUploadEvent(template) });
 setNip07Auth(owner, nip19.npubEncode(owner), "fixture");
-const rxNostr = createRxNostr({ verifier: async event => verifyEvent(event), skipFetchNip11: !query.has("cold"), retry: { strategy: "off" },
+let verifiedPreferenceCount = 0;
+window.uploadRelayVerifiedPreferenceCount = () => verifiedPreferenceCount;
+const rxNostr = createRxNostr({ verifier: async event => {
+    const valid = verifyEvent(event);
+    if (valid && [10063, 10096].includes(event.kind)) verifiedPreferenceCount++;
+    return valid;
+}, skipFetchNip11: !query.has("cold"), retry: { strategy: "off" },
     ...(query.has("auth") ? { authenticator: createNip42Authenticator(owner) } : {}),
 });
-rxNostr.setDefaultRelays({ "wss://relay.example/": { read: true, write: true } });
+rxNostr.setDefaultRelays(Object.fromEntries([
+    "wss://relay.example/", ...(query.has("unavailable") ? ["wss://unavailable.example/"] : []),
+].map(url => [url, { read: true, write: true }])));
 const timestamp = Date.now();
 for (const [index, protocol] of (query.has("initial") ? [] : ["blossom", "nip96", "custom-http"] as const).entries()) {
     await uploadDestinationsRepository.put({
