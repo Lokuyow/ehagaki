@@ -725,7 +725,7 @@
                         <p>{$_('settingsDialog.uploadDestinationRelaySummary.' + summarizeRelaySync(destinationState.relaySyncResults))}</p>
                         {#each (['blossom', 'nip96'] as const) as protocol}
                             {@const result = destinationState.relaySyncResults[protocol]}
-                            <p>{protocol === 'blossom' ? 'Blossom' : 'NIP-96'}: {$_('settingsDialog.uploadDestinationRelayOutcome.' + result.status)}{#if result.reason} — {$_('settingsDialog.uploadDestinationRelayReason.' + result.reason)}{/if}{#if result.incomplete} — {$_('settingsDialog.uploadDestinationRelayIncomplete')}{/if}</p>
+                            <p>{protocol === 'blossom' ? 'Blossom' : 'NIP-96'}: {$_('settingsDialog.uploadDestinationRelayOutcome.' + result.status)}{#if result.reason} — {$_('settingsDialog.uploadDestinationRelayReason.' + result.reason)}{/if}</p>
                         {/each}
                     </div>
                 {/if}

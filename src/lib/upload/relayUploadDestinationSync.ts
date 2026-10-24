@@ -21,7 +21,7 @@ export interface ResolvedNip96Server { serverUrl: string; apiUrl: string }
 export interface RelayServerListUpdates { blossom?: string[]; nip96?: ResolvedNip96Server[] }
 export function summarizeRelaySync(results: RelaySyncResults): "success" | "partial" | "failed" | "skipped" {
     const values = Object.values(results);
-    if (values.every(value => value.status === "success" && !value.incomplete)) return "success";
+    if (values.every(value => value.status === "success")) return "success";
     if (values.some(value => value.status === "success")) return "partial";
     return values.some(value => value.status === "failed") ? "failed" : "skipped";
 }

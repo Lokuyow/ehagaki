@@ -40,9 +40,10 @@ transport, and retransmission; this observer never sends another request itself.
 The operation snapshots those read targets; unrelated requests, duplicate sends, and repeated challenges
 cannot renew their respective deadlines. If a relay fails or a deadline expires, the newest valid,
 signature-verified candidate already received from the other relays can still be applied. This includes
-the existing timestamp/ID tie-break and latest-empty-list handling. The result is marked incomplete.
-Applying such a list reports partial success, even if both protocol lists were obtained; it does not claim that all
-target relays were queried successfully or that an unavailable relay has no newer list.
+the existing timestamp/ID tie-break and latest-empty-list handling. Incomplete relay coverage remains
+internal metadata; the settings UI uses the normal per-protocol success, failure, or skip display without
+an additional relay-coverage warning. Receiving both protocol lists shows the usual success summary.
+This is not evidence that an unavailable relay has no newer list.
 If no valid candidate was received, the query fails and preserves existing settings. A missing-list skip
 requires completed relay queries. Cancellation never applies collected candidates. All exit paths release
 observers/timers, and late messages cannot change the settled result. Relay settings and shared reconnect

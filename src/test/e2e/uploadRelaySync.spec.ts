@@ -44,10 +44,10 @@ for (const lang of ["ja", "en"] as const) {
             else await expect.poll(() => unavailableRequests.length).toBe(2);
             await page.clock.runFor(phase === "preparation" ? 10_000 : 4_000);
             const status = page.getByRole("status");
-            await expect(status).toContainText(lang === "ja" ? "リレー同期は部分成功です" : "Relay synchronization partially succeeded");
+            await expect(status).toContainText(lang === "ja" ? "リレー同期に成功しました" : "Relay synchronization succeeded");
             await expect(status).toContainText(lang === "ja" ? "Blossom: 成功" : "Blossom: Succeeded");
             await expect(status).toContainText(lang === "ja" ? "NIP-96: 成功" : "NIP-96: Succeeded");
-            await expect(status).toContainText(lang === "ja" ? "一部リレーは未完了" : "Some relays did not finish");
+            await expect(status).not.toContainText(lang === "ja" ? "一部リレーは未完了" : "Some relays did not finish");
             const snapshot = await page.evaluate(() => window.uploadRelaySnapshot());
             expect(snapshot.filter(d => ["blossom", "nip96"].includes(d.protocol)).map(d => d.serverUrl).sort())
                 .toEqual(["https://new-blossom.example", "https://new-files.example"]);

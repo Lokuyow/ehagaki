@@ -480,7 +480,6 @@
     "uploadDestinationRelayInfoOrder": "Publishing preserves the list order of enabled destinations for each protocol.",
     "uploadDestinationRelayInfoFetch": "Only successfully fetched protocols are replaced. Matching disabled settings and an available default are preserved. If any NIP-96 URL cannot be resolved, its list is neither changed nor published.",
     "uploadDestinationRelaySummary": {"success":"Relay synchronization succeeded","partial":"Relay synchronization partially succeeded","failed":"Relay synchronization failed","skipped":"Nothing to synchronize"},
-    "uploadDestinationRelayIncomplete": "Some relays did not finish; results from responding relays were used",
     "uploadDestinationRelayOutcome": {"success":"Succeeded","failed":"Failed","skipped":"Skipped"},
     "uploadDestinationRelayReason": {"not_found":"No list found","empty_list":"Empty list; settings preserved","no_enabled_servers":"No enabled servers","timeout":"Relay fetch timed out","preparation_timeout":"Relay connection preparation timed out","discovery_timeout":"NIP-96 discovery timed out after 10 seconds","network_error":"Relay communication failed","request_error":"Could not fetch the list","request_failed":"Operation or URL resolution failed","publish_failed":"No relay accepted the event","settings_changed":"Settings changed; fetch again"},
     "uploadDestinationMoveUp": "Up",

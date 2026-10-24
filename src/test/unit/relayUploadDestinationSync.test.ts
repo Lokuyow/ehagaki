@@ -20,16 +20,16 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("integrated upload relay synchronization", () => {
-    it("applies both lists with a partial summary when some read relays did not finish", async () => {
+    it("applies both lists with the normal success summary when some read relays did not finish", async () => {
         transport.fetchRelayServerList.mockImplementation(async ({ kind }) => ({
             ...list(kind === 10063 ? ["https://blossom.example"] : ["https://media.example"]), incomplete: true,
         }));
         const result = await fetchUploadRelayLists(context());
         expect(result.updates).toEqual({ blossom: ["https://blossom.example"], nip96: [{ serverUrl: "https://media.example", apiUrl: "https://api.example/upload" }] });
         expect(result.results).toEqual({ blossom: { status: "success", count: 1, incomplete: true }, nip96: { status: "success", count: 1, incomplete: true } });
-        expect(summarizeRelaySync(result.results)).toBe("partial");
+        expect(summarizeRelaySync(result.results)).toBe("success");
     });
-    it("preserves settings for an empty latest list and retains the incomplete-relay warning", async () => {
+    it("preserves settings for an empty latest list and retains internal incomplete-relay metadata", async () => {
         transport.fetchRelayServerList.mockResolvedValue({ ...list([]), incomplete: true });
         const result = await fetchUploadRelayLists(context());
         expect(result.updates).toEqual({});
