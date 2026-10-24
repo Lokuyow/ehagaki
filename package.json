@@ -33,7 +33,7 @@
     "test:e2e:agent": "npm run test:e2e:dev-server -- --reporter=dot && npm run test:e2e:parallel -- --reporter=dot",
     "test:e2e:local-relay": "playwright test --config=playwright.local-relay.config.ts",
     "test:e2e:sw": "playwright test --config=playwright.service-worker.config.ts",
-    "deploy": "gh-pages -d dist",
+    "deploy": "gh-pages -d dist --nojekyll",
     "postinstall": "patch-package --error-on-fail && node scripts/verifyRxNostrPatch.mjs",
     "verify:rx-nostr-patch": "node scripts/verifyRxNostrPatch.mjs"
   },
