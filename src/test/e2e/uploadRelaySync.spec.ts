@@ -9,6 +9,7 @@ for (const lang of ["ja", "en"] as const) {
             const requests: number[] = [];
             const publications: { kind: number; tags: string[][]; verified: boolean }[] = [];
             let uploaded = false;
+            let emptyBlossom = false;
             await page.exposeFunction("fixtureSignUploadEvent", (template: EventTemplate) => finalizeEvent(template, key));
             await page.route("**/.well-known/nostr/nip96.json", route => route.fulfill({ json: { api_url: new URL("/api", route.request().url()).href }, headers: { "Access-Control-Allow-Origin": "*" } }));
             await page.route("https://new-files.example/api", async route => {
@@ -33,7 +34,12 @@ for (const lang of ["ja", "en"] as const) {
                 if (message[0] === "REQ") {
                     const kind = message[2].kinds[0];
                     requests.push(kind);
-                    const event = finalizeEvent({ kind, created_at: 100, content: "", tags: [["server", kind === 10063 ? "https://new-blossom.example" : "https://new-files.example"]] }, key);
+                    if (kind === 10063 && emptyBlossom) {
+                        const stale = finalizeEvent({ kind, created_at: 50, content: "", tags: [["server", "https://stale-blossom.example"]] }, key);
+                        socket.send(JSON.stringify(["EVENT", message[1], stale]));
+                    }
+                    const event = finalizeEvent({ kind, created_at: emptyBlossom && kind === 10063 ? 150 : 100, content: "",
+                        tags: emptyBlossom && kind === 10063 ? [] : [["server", kind === 10063 ? "https://new-blossom.example" : "https://new-files.example"]] }, key);
                     socket.send(JSON.stringify(["EVENT", message[1], event]));
                     socket.send(JSON.stringify(["EOSE", message[1]]));
                 }
@@ -73,9 +79,25 @@ for (const lang of ["ja", "en"] as const) {
             expect(snapshot.find(destination => destination.id === "custom-http")?.serverUrl).toBe("https://files.example/api");
             expect(snapshot.filter(destination => destination.isDefault)).toHaveLength(1);
             const nip96Card = root.locator(".destination-row").filter({ hasText: "new-files.example" });
+            await nip96Card.getByRole("button", { name: lang === "ja" ? "編集" : "Edit", exact: true }).click();
+            await expect(root.getByLabel("URL", { exact: true })).toHaveValue("https://new-files.example");
+            await root.getByRole("button", { name: lang === "ja" ? "保存" : "Save", exact: true }).click();
+            await expect(root.getByRole("button", { name: lang === "ja" ? "保存" : "Save", exact: true })).toHaveCount(0);
+            const resaved = await documentRoot.evaluate(() => window.uploadRelaySnapshot());
+            expect(resaved.find(destination => destination.protocol === "nip96")).toMatchObject({
+                serverUrl: "https://new-files.example/", nip96UrlMode: "discovery",
+            });
             await nip96Card.getByRole("button", { name: lang === "ja" ? "既定" : "Default", exact: true }).click();
             expect(await documentRoot.evaluate(() => window.uploadRelayFixtureImage())).toBe(true);
             expect(uploaded).toBe(true);
+            emptyBlossom = true;
+            await fetchButton.click();
+            await expect(root.getByRole("status")).toContainText(lang === "ja" ? "空リストのため設定を保持しました" : "Empty list; settings preserved");
+            const afterEmptyList = await documentRoot.evaluate(() => window.uploadRelaySnapshot());
+            expect(afterEmptyList.find(destination => destination.protocol === "blossom"))
+                .toEqual(snapshot.find(destination => destination.protocol === "blossom") && {
+                    ...snapshot.find(destination => destination.protocol === "blossom"), isDefault: false,
+                });
             const geometry = await documentRoot.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
             expect(geometry.scroll).toBeLessThanOrEqual(geometry.width);
             await expect(publishButton).toBeInViewport();

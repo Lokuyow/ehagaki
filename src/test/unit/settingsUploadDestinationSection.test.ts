@@ -476,6 +476,47 @@ describe("SettingsUploadDestinationSection", () => {
         }));
     });
 
+    it.each([
+        ["https://files.example", "https://files.example"],
+        ["https://files.example/", "https://files.example"],
+        ["https://FILES.example:443", " https://files.example/ "],
+    ])("preserves discovery metadata when re-saving equivalent NIP-96 URLs (%s → %s)", async (storedUrl, editedUrl) => {
+        setExistingNip96Destination();
+        const destination = (mockUploadDestinationStore.value.destinations as UploadDestination[])[0];
+        Object.assign(destination, { presetId: "custom", serverUrl: storedUrl,
+            resolvedUploadUrl: "https://api.files.example/upload", nip96ServerUrl: "https://files.example", nip96UrlMode: "discovery" });
+        render(SettingsUploadDestinationSection);
+        await fireEvent.click(screen.getByRole("button", { name: "管理" }));
+        await fireEvent.click(screen.getByRole("button", { name: "編集" }));
+        if (editedUrl !== storedUrl) await fireEvent.input(screen.getByLabelText("URL"), { target: { value: editedUrl } });
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+        expect(getSavedDestination()).toMatchObject({ serverUrl: "https://files.example/",
+            resolvedUploadUrl: "https://api.files.example/upload", nip96ServerUrl: "https://files.example", nip96UrlMode: "discovery" });
+    });
+
+    it.each([
+        ["https://files.example", "https://other.example"],
+        ["https://files.example/upload", "https://files.example/upload/"],
+        ["https://files.example/upload?a=1", "https://files.example/upload?a=2"],
+        ["invalid legacy URL", "https://files.example"],
+    ])("clears discovery metadata when changing or repairing a NIP-96 URL (%s → %s)", async (storedUrl, editedUrl) => {
+        setExistingNip96Destination();
+        const destination = (mockUploadDestinationStore.value.destinations as UploadDestination[])[0];
+        Object.assign(destination, { presetId: "custom", serverUrl: storedUrl,
+            resolvedUploadUrl: "https://api.files.example/upload", nip96ServerUrl: "https://files.example", nip96UrlMode: "discovery" });
+        render(SettingsUploadDestinationSection);
+        await fireEvent.click(screen.getByRole("button", { name: "管理" }));
+        await fireEvent.click(screen.getByRole("button", { name: "編集" }));
+        await fireEvent.input(screen.getByLabelText("URL"), { target: { value: editedUrl } });
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+        const saved = getSavedDestination();
+        expect(saved).not.toHaveProperty("resolvedUploadUrl");
+        expect(saved).not.toHaveProperty("nip96ServerUrl");
+        expect(saved).not.toHaveProperty("nip96UrlMode");
+    });
+
     it("shows a successful Blossom connection test even when the result has no message", async () => {
         setExistingBlossomDestination();
         (mockUploadDestinationStore.value as unknown as {

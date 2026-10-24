@@ -7,6 +7,7 @@ import {
     publishBud03ServerList,
 } from "../../lib/upload/bud03ServerList";
 import { DECOMMISSIONED_RELAYS } from "../../lib/relayLists";
+import { fetchUploadRelayLists } from "../../lib/upload/relayUploadDestinationSync";
 
 vi.mock("../../lib/signedEventResultValidator", async (importOriginal) => ({
     ...await importOriginal<typeof import("../../lib/signedEventResultValidator")>(),
@@ -14,6 +15,37 @@ vi.mock("../../lib/signedEventResultValidator", async (importOriginal) => ({
 }));
 
 describe("bud03ServerList", () => {
+    it.each([false, true])("keeps the newest empty Blossom list instead of reviving older relay data (reverse=%s)", async reverse => {
+        const old = { id: "b".repeat(64), kind: BUD03_KIND, pubkey: "owner", created_at: 10,
+            tags: [["server", "https://old.example"]] };
+        const empty = { id: "a".repeat(64), kind: BUD03_KIND, pubkey: "owner", created_at: 20, tags: [] };
+        const packets = [{ from: "wss://old-relay.example", event: old }, { from: "wss://new-relay.example", event: empty }];
+        if (reverse) packets.reverse();
+        const unsubscribe = vi.fn();
+        const rxNostr = { use: () => ({ subscribe: (observer: { next: (packet: typeof packets[number]) => void; complete: () => void }) => {
+            packets.forEach(packet => observer.next(packet)); observer.complete(); return { unsubscribe };
+        } }) };
+        const result = await fetchBud03ServerList({ rxNostr: rxNostr as never, pubkeyHex: "owner" });
+
+        expect(result).toMatchObject({ success: true, servers: [], event: { id: empty.id } });
+        expect(unsubscribe).toHaveBeenCalledOnce();
+    });
+
+    it("passes the latest empty Blossom event to synchronization as a skip with no replacement", async () => {
+        const rxNostr = { use: vi.fn()
+            .mockReturnValueOnce({ subscribe: (observer: { next: (packet: { event: { id: string; kind: number; pubkey: string; created_at: number; tags: string[][] } }) => void; complete: () => void }) => {
+                observer.next({ event: { id: "b".repeat(64), kind: BUD03_KIND, pubkey: "owner", created_at: 10, tags: [["server", "https://old.example"]] } });
+                observer.next({ event: { id: "a".repeat(64), kind: BUD03_KIND, pubkey: "owner", created_at: 20, tags: [] } });
+                observer.complete(); return { unsubscribe: vi.fn() };
+            } })
+            .mockReturnValueOnce({ subscribe: (observer: { complete: () => void }) => { observer.complete(); return { unsubscribe: vi.fn() }; } }),
+        };
+        const result = await fetchUploadRelayLists({ rxNostr: rxNostr as never, pubkeyHex: "owner",
+            signal: new AbortController().signal, assertCurrent: () => {}, fetch: vi.fn() });
+
+        expect(result.results.blossom).toEqual({ status: "skipped", reason: "empty_list" });
+        expect(result.updates).toEqual({});
+    });
     it("parses server tags with normalization, de-duplication, and ordering", () => {
         expect(parseBud03ServerTags([
             ["server", "https://blossom.example.com/"],

@@ -92,8 +92,7 @@ function getNewestBud03Event(events: Bud03ServerListEvent[], kind: number): Bud0
             && event.id.length > 0
             && Number.isSafeInteger(event.created_at)
             && (event.created_at ?? -1) >= 0
-            && (event.created_at ?? 0) <= Math.floor(Date.now() / 1000)
-            && (kind !== BUD03_KIND || parseBud03ServerTags(event.tags!).length > 0),
+            && (event.created_at ?? 0) <= Math.floor(Date.now() / 1000),
         )
         .filter(event => {
             if (kind !== NIP96_KIND) return true;

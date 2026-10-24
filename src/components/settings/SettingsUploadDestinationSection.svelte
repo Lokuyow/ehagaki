@@ -249,8 +249,15 @@
                             destinationState.destinations.length === 0,
                         now: timestamp,
                     });
-        const unchangedNip96 = existing?.protocol === "nip96" && protocol === "nip96" && existing.serverUrl === serverUrl;
-        const existingResolvedUrl = unchangedNip96 ? resolveUploadDestinationForUse(existing, { pubkeyHex }).resolvedUploadUrl : undefined;
+        let unchangedNip96 = false;
+        if (existing?.protocol === "nip96" && protocol === "nip96") {
+            try {
+                unchangedNip96 = canonicalizeNip96UploadUrl(existing.serverUrl).url === serverUrl;
+            } catch {
+                // An invalid legacy URL can be repaired, but its resolution must be discarded.
+            }
+        }
+        const existingResolvedUrl = unchangedNip96 && existing ? resolveUploadDestinationForUse(existing, { pubkeyHex }).resolvedUploadUrl : undefined;
         const { resolvedUploadUrl: _previousResolvedUploadUrl, nip96ServerUrl: _previousServer, nip96UrlMode: _previousMode, ...destinationWithoutResolvedUploadUrl } = baseDestination;
         const destination: UploadDestination = {
             ...destinationWithoutResolvedUploadUrl,
@@ -261,7 +268,7 @@
             enabled: form.enabled,
             isDefault: form.isDefault,
             updatedAt: timestamp,
-            ...(unchangedNip96 ? {
+            ...(unchangedNip96 && existing ? {
                 ...(existingResolvedUrl ? { resolvedUploadUrl: existingResolvedUrl } : {}),
                 ...(existing.nip96ServerUrl ? { nip96ServerUrl: existing.nip96ServerUrl } : {}),
                 ...(existing.nip96UrlMode ? { nip96UrlMode: existing.nip96UrlMode } : {}),
