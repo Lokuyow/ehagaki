@@ -98,7 +98,10 @@ export default defineConfig(({ mode }) => {
     plugins: [
         resolveWebComponentIconUrls(),
         ...(isHostOwnedLite ? [resolveHostOwnedLiteFullOnlyImports()] : []),
-        svelte({ compilerOptions: { customElement: true } }),
+        // The public custom element is implemented by web-component/element.ts
+        // and mounts ordinary Svelte components. Inject their styles into that
+        // element's ShadowRoot without generating unused custom element wrappers.
+        svelte({ emitCss: false }),
         isHostOwnedLite
             ? createHostOwnedLiteGraphGate(process.cwd())
             : createFullSelfPublishGraphGate(process.cwd()),
