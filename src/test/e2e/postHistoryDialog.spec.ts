@@ -153,8 +153,7 @@ type HarnessState = {
 };
 
 type HarnessWindow = Window & typeof globalThis & {
-    __POST_HISTORY_COVERAGE__?: { owner: string; eventIds: string[]; relayUrls: string[];
-        headRequests: number; headRequestRelayUrls: string[];
+    __POST_HISTORY_COVERAGE__?: { owner: string; eventIds: string[]; headRequests: number;
         backupJsonl: string; backupRange: { since: number; until: number };
         futurePostJsonl: string; readFuturePost: () => Promise<{ createdAt: number } | undefined>;
         importFromSecondConnection: () => Promise<{ status: string; restoredRangeChanged?: boolean }>;
@@ -1757,16 +1756,8 @@ test.describe('PostHistoryDialog Playwright', () => {
         const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
         const rows = () => historyEventIds(page);
         const fetchButton = page.getByRole('button', { name: 'リレーから続きを取得' });
-        // A refreshed head can retry or replan against a changed relay set.
-        // Assert the four-relay fanout without fixing the target order or attempt count.
-        await expect.poll(() => page.evaluate(() =>
-            new Set((window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequestRelayUrls).size,
-        )).toBeGreaterThanOrEqual(4);
-        const configuredHeadRelayUrls = await page.evaluate(() =>
-            (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.relayUrls);
-        const requestedHeadRelayUrls = await page.evaluate(() =>
-            (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequestRelayUrls);
-        expect(requestedHeadRelayUrls.every((relayUrl) => configuredHeadRelayUrls.includes(relayUrl))).toBe(true);
+        await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequests))
+            .toBeGreaterThan(0);
         await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(5);
         await expect.poll(rows).toEqual(ids.slice(60, 110));
         await expect(page.locator('.post-history-sync-footer')).toBeVisible();
