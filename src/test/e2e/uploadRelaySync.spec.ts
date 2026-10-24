@@ -4,6 +4,84 @@ import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent, type Event
 test.use({ trace: "off" });
 for (const lang of ["ja", "en"] as const) {
     for (const surface of ["page", "shadow", "iframe"] as const) {
+        test(`upload destination preset and custom form (${lang}, ${surface})`, async ({ page, baseURL }, testInfo) => {
+            const owner = getPublicKey(generateSecretKey());
+            await page.setViewportSize({ width: surface === "page" ? 360 : 320, height: 1000 });
+            const url = new URL(`upload-relay-sync-playwright.html?owner=${owner}&lang=${lang}&surface=${surface}`, baseURL);
+            if (surface === "iframe") url.searchParams.set("host", "1");
+            await page.goto(url.href);
+            const root = surface === "iframe" ? page.frameLocator("iframe") : page;
+            await root.getByRole("button", { name: lang === "ja" ? "管理" : "Manage", exact: true }).click();
+            await root.getByRole("button", { name: lang === "ja" ? "追加" : "Add", exact: true }).click();
+            const preset = root.getByRole("combobox", { name: lang === "ja" ? "プリセット" : "Preset", exact: true });
+            const protocol = root.getByRole("combobox", { name: "Protocol", exact: true });
+            const input = root.getByLabel("URL", { exact: true });
+            const save = root.getByRole("button", { name: lang === "ja" ? "保存" : "Save", exact: true });
+            const assertLayout = async () => {
+                const layout = await root.locator(".destination-form").evaluate(form => {
+                    const rect = form.getBoundingClientRect();
+                    const controls = Array.from(form.querySelectorAll('select, input:not([type="checkbox"])'))
+                        .map(control => control.getBoundingClientRect());
+                    return {
+                        fits: rect.left >= 0 && rect.right <= form.ownerDocument.documentElement.clientWidth,
+                        controlsFit: controls.every(control => control.left >= rect.left && control.right <= rect.right),
+                        noOverlap: controls.every((control, index) => index === 0 || controls[index - 1].bottom <= control.top),
+                        noOverflow: form.ownerDocument.documentElement.scrollWidth <= form.ownerDocument.documentElement.clientWidth,
+                    };
+                });
+                expect(layout).toEqual({ fits: true, controlsFit: true, noOverlap: true, noOverflow: true });
+                await expect(save).toBeVisible();
+            };
+
+            await expect(preset).toHaveValue("blossom-band");
+            await expect(input).toHaveCount(0);
+            await expect(protocol).toHaveCount(0);
+            await expect(save).toBeEnabled();
+            expect(await preset.locator("option").evaluateAll(options => options.map(option => (option as HTMLOptionElement).value)))
+                .toEqual(["blossom-band", "cdn-nostrcheck-me", "nostr-download", "blossom-primal-net", "nostr-build", "nostrcheck-me", "share-yabu-me", "nostpic-com", "files-sovbit-host", "custom"]);
+            await preset.focus();
+            await preset.press("Tab");
+            await expect(root.getByRole("checkbox", { name: lang === "ja" ? "有効" : "Enabled", exact: true })).toBeFocused();
+            await assertLayout();
+            if (lang === "ja") await page.screenshot({ path: testInfo.outputPath("upload-preset-form.png"), fullPage: true });
+
+            await preset.selectOption("share-yabu-me");
+            await expect(protocol).toHaveCount(0);
+            await expect(input).toHaveCount(0);
+            await preset.selectOption("custom");
+            await expect(protocol).toHaveValue("nip96");
+            await expect(input).toHaveValue("");
+            await expect(save).toBeDisabled();
+            await preset.focus();
+            await preset.press("Tab");
+            await expect(protocol).toBeFocused();
+            await protocol.selectOption("custom-http");
+            await input.fill("https://custom.example/upload");
+            await assertLayout();
+            if (lang === "ja") await page.screenshot({ path: testInfo.outputPath("upload-custom-form.png"), fullPage: true });
+            await root.locator(".upload-destination-url-clear-button").click();
+            await expect(protocol).toHaveValue("custom-http");
+            await expect(input).toBeFocused();
+
+            await preset.selectOption("blossom-band");
+            await expect(protocol).toHaveCount(0);
+            await save.click();
+            const card = root.locator(".destination-row").filter({ hasText: "blossom.band" });
+            await card.getByRole("button", { name: lang === "ja" ? "編集" : "Edit", exact: true }).click();
+            await expect(preset).toHaveValue("blossom-band");
+            await expect(protocol).toHaveCount(0);
+            await expect(input).toHaveCount(0);
+            await preset.selectOption("custom");
+            await expect(preset).toHaveValue("custom");
+            await expect(protocol).toHaveValue("blossom");
+            await expect(input).toHaveValue("");
+            await assertLayout();
+        });
+    }
+}
+
+for (const lang of ["ja", "en"] as const) {
+    for (const surface of ["page", "shadow", "iframe"] as const) {
         test(`two-button upload relay sync and partial results (${lang}, ${surface})`, async ({ page, baseURL }, testInfo) => {
             const key = generateSecretKey(), owner = getPublicKey(key);
             const requests: number[] = [];
