@@ -28,7 +28,6 @@
     "retryAfter": "Retry after {time}.",
     "errors": {
       "unavailable": "This server cannot list uploaded media.",
-      "nostpicListNotImplemented": "Listing uploaded media is not yet implemented on nostpic.com.",
       "authentication": "Sign in or authorize the request to manage your media.",
       "forbidden": "The server rejected this operation due to permissions or policy.",
       "payment": "Payment is required by this server.",

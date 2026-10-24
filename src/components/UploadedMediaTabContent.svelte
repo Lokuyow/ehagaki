@@ -205,9 +205,7 @@
             {#if current}
                 {#if current.loading && (!onInitialReady || initialReadyReported)}<LoadingPlaceholder showLoader text={true} />{/if}
                 {#if current.error}
-                    <p class="media-status" role="alert">{$_(current.error.code === "unavailable" && current.destination.presetId === "nostpic-com"
-                        ? "uploadedMedia.errors.nostpicListNotImplemented"
-                        : `uploadedMedia.errors.${current.error.code}`)}</p>
+                    <p class="media-status" role="alert">{$_(`uploadedMedia.errors.${current.error.code}`)}</p>
                     {#if current.error.retryAt}<p class="media-status">{$_("uploadedMedia.retryAfter", { values: { time: new Date(current.error.retryAt).toLocaleTimeString() } })}</p>{/if}
                     {#if current.error.diagnostic}<p class="media-status diagnostic">{current.error.diagnostic}</p>{/if}
                 {/if}
