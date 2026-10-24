@@ -1,0 +1,1 @@
+export{t as encode}from"./encode-bridge-W7Jo5tQ3.js";

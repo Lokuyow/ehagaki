@@ -1,0 +1,1 @@
+import{i as e}from"./embedProtocol-bridge-CQOM64Tk.js";function t(t,n,r){return!n||!e(t.data)||t.source!==n.parent||r&&t.origin!==r?null:t.data}export{t};

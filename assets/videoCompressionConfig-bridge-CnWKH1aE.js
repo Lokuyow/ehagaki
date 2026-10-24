@@ -1,0 +1,1 @@
+function e(e){return!(`skip`in e)}var t=204800,n={none:{skip:!0},high:{maxSize:1280,qualityPreset:`high`},medium:{maxSize:640,audioSampleRate:44100,qualityPreset:`medium`},low:{maxSize:320,audioSampleRate:44100,audioChannels:1,qualityPreset:`low`}};export{n,e as r,t};

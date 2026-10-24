@@ -1,0 +1,1 @@
+var e,t=new Map,n={get length(){return t.size},clear(){t.clear()},getItem(e){return t.get(e)??null},key(e){return[...t.keys()][e]??null},removeItem(e){t.delete(e)},setItem(e,n){t.set(e,String(n))}};function r(){if(typeof globalThis<`u`){let e=globalThis.localStorage;if(e)return e}return n}function i(){return e??r()}function a(t){e=t}export{i as n,a as t};

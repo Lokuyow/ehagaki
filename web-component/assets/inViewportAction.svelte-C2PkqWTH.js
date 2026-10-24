@@ -1,0 +1,26 @@
+import "./index-client-Bdka-Daw.js";
+// D:/ドキュメント/GitHub/ehagaki/src/lib/hooks/inViewportAction.svelte.ts
+function e(e, t) {
+	let n = t, r = null, i = !1;
+	function a() {
+		r?.disconnect(), r = null;
+	}
+	function o(t) {
+		a(), n = t, !(!n.enabled || !n.onEnterView || typeof IntersectionObserver > "u" || n.once !== !1 && i) && (r = new IntersectionObserver((e) => {
+			e.some((e) => e.isIntersecting) && (n.onEnterView?.(), n.once !== !1 && (i = !0, a()));
+		}, {
+			root: n.root ?? null,
+			rootMargin: n.rootMargin ?? "0px",
+			threshold: n.threshold ?? 0
+		}), r.observe(e));
+	}
+	return o(t), {
+		update(e) {
+			o(e);
+		},
+		destroy() {
+			a();
+		}
+	};
+}
+export { e as t };

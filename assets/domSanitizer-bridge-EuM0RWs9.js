@@ -1,0 +1,1 @@
+import{t as e}from"./purify.es-bridge-B9ve_eFf.js";function t(t){return e.sanitize(t,{ALLOWED_TAGS:[],ALLOWED_ATTR:[]})}export{t};

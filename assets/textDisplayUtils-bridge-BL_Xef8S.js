@@ -1,0 +1,1 @@
+function e(e,t,n){let r=t+n+3;return e.length<=r?e:`${e.slice(0,t)}...${e.slice(-n)}`}export{e as t};
