@@ -96,6 +96,8 @@ npm run validate
 
 依存関係の固定理由、残る監査警告、ブラウザー検証については[依存関係の更新](docs/DEPENDENCY_UPDATES.md)を参照してください。
 
+GitHub Pagesへ公開する場合は、`npm run build`の後に`npm run deploy`を実行します。公開ブランチに`.nojekyll`を生成し、Viteが生成する先頭`_`のファイルも配信します。Jekyllがこれらを除外すると、Service Workerのインストールが失敗して旧版から更新できなくなります。
+
 ## 技術スタック
 
 ### フロントエンド
