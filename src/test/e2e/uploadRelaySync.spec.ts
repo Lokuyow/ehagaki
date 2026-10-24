@@ -2,6 +2,53 @@ import { expect, test } from "@playwright/test";
 import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent, type EventTemplate } from "nostr-tools";
 
 test.use({ trace: "off" });
+test("fetches both lists on the first attempt after a cold NIP-42 handshake", async ({ page, baseURL }) => {
+    const key = generateSecretKey(), owner = getPublicKey(key);
+    await page.clock.install();
+    await page.exposeFunction("fixtureSignUploadEvent", (template: EventTemplate) => finalizeEvent(template, key));
+    await page.route("**/.well-known/nostr/nip96.json", route => route.fulfill({ json: { api_url: "https://yabu.me/api/v2/media" } }));
+    let releaseAuth: (() => void) | undefined;
+    const requests: number[] = [];
+    await page.routeWebSocket("wss://relay.example/**", socket => {
+        let authenticated = false;
+        let pendingRequests = 0;
+        socket.onMessage(raw => {
+            const message = JSON.parse(raw.toString());
+            if (message[0] === "AUTH") {
+                const valid = verifyEvent(message[1]) && message[1].pubkey === owner && message[1].kind === 22242;
+                releaseAuth = () => { authenticated = valid; socket.send(JSON.stringify(["OK", message[1].id, valid, ""])); };
+            }
+            if (message[0] !== "REQ") return;
+            const kind = message[2].kinds[0];
+            requests.push(kind);
+            if (!authenticated) {
+                socket.send(JSON.stringify(["CLOSED", message[1], "auth-required: fixture"]));
+                if (++pendingRequests === 2) socket.send(JSON.stringify(["AUTH", "fixture-challenge"]));
+                return;
+            }
+            socket.send(JSON.stringify(["EVENT", message[1], finalizeEvent({
+                kind, created_at: 100, content: "", tags: [["server", kind === 10063 ? "https://blossom.example" : "https://share.yabu.me"]],
+            }, key)]));
+            socket.send(JSON.stringify(["EOSE", message[1]]));
+        });
+    });
+    await page.goto(new URL(`upload-relay-sync-playwright.html?owner=${owner}&lang=ja&initial=1&auth=1`, baseURL).href);
+    for (const reload of [false, true]) {
+        if (reload) {
+            releaseAuth = undefined;
+            requests.length = 0;
+            await page.reload();
+        }
+        await page.getByRole("button", { name: "管理", exact: true }).click();
+        await page.getByRole("button", { name: "リレーから取得", exact: true }).click();
+        await expect.poll(() => releaseAuth !== undefined).toBe(true);
+        await page.clock.runFor(5_000);
+        await expect(page.getByRole("button", { name: "リレー取得中", exact: true })).toBeDisabled();
+        releaseAuth!();
+        await expect(page.getByRole("status")).toContainText("リレー同期に成功しました");
+        expect(requests.sort()).toEqual([10063, 10063, 10096, 10096]);
+    }
+});
 test("fetches from an untouched default after cold NIP-11 initialization", async ({ page, baseURL }) => {
     const key = generateSecretKey(), owner = getPublicKey(key);
     await page.clock.install();

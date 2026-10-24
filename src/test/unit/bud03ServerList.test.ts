@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Subject } from "rxjs";
-import type { OutgoingMessagePacket } from "rx-nostr";
+import type { MessagePacket, OutgoingMessagePacket } from "rx-nostr";
 import {
     BUD03_KIND,
     buildBud03EventTemplate,
@@ -17,6 +17,72 @@ vi.mock("../../lib/signedEventResultValidator", async (importOriginal) => ({
 }));
 
 describe("bud03ServerList", () => {
+    it.each(["success", "timeout", "cancel", "rejected", "no_response"])("bounds NIP-42 waiting and cleans up after %s", async outcome => {
+        vi.useFakeTimers();
+        try {
+            const outgoing = new Subject<OutgoingMessagePacket>();
+            const messages = new Subject<MessagePacket>();
+            const controller = new AbortController();
+            const removeListener = vi.spyOn(controller.signal, "removeEventListener");
+            let requestId = "";
+            let observer!: { next(packet: unknown): void; complete(): void };
+            const unsubscribe = vi.fn();
+            const rxNostr = {
+                getDefaultRelays: () => ({ "wss://one.example/": { read: true }, "wss://two.example/": { read: true } }),
+                createOutgoingMessageObservable: () => outgoing,
+                createAllMessageObservable: () => messages,
+                use: (request: { rxReqId: string }) => { requestId = request.rxReqId; return { subscribe: (next: typeof observer) => { observer = next; return { unsubscribe }; } }; },
+            };
+            let settled = false;
+            const operation = fetchBud03ServerList({ rxNostr: rxNostr as never, pubkeyHex: "owner", signal: controller.signal })
+                .then(result => { settled = true; return result; });
+            const send = (relay: string, id = requestId) => outgoing.next({ to: relay, message: ["REQ", `${id}:0`, { kinds: [BUD03_KIND] }] });
+            const requireAuth = (relay: string, id = requestId) => messages.next({ from: relay, type: "CLOSED", subId: `${id}:0`,
+                notice: "auth-required: fixture", message: ["CLOSED", `${id}:0`, "auth-required: fixture"] });
+            send("wss://one.example/"); send("wss://two.example/");
+            requireAuth("wss://one.example/");
+            // A candidate from another relay cannot be applied while AUTH is unresolved.
+            observer.next({ event: { id: "a".repeat(64), kind: BUD03_KIND, pubkey: "owner", created_at: 10, tags: [["server", "https://files.example"]] } });
+            await vi.advanceTimersByTimeAsync(5_000);
+            send("wss://one.example/", "unrelated");
+            expect(settled).toBe(false);
+            if (outcome === "timeout") {
+                // Further challenges, including another target relay, cannot renew the deadline.
+                requireAuth("wss://two.example/");
+                await vi.advanceTimersByTimeAsync(24_999);
+                expect(settled).toBe(false);
+                requireAuth("wss://one.example/");
+                await vi.advanceTimersByTimeAsync(1);
+                expect(await operation).toEqual({ success: false, servers: [], error: "timeout" });
+            } else if (outcome === "cancel") {
+                controller.abort();
+                expect((await operation).error).toBe("request_error");
+            } else if (outcome === "rejected") {
+                observer.complete(); // rx-nostr closes the subscription when AUTH is rejected.
+                expect((await operation).error).toBe("request_error");
+            } else {
+                send("wss://one.example/"); // rx-nostr's authenticated retransmission
+                requireAuth("wss://two.example/", "unrelated");
+                requireAuth("wss://unrelated.example/");
+                await vi.advanceTimersByTimeAsync(3_999);
+                expect(settled).toBe(false);
+                if (outcome === "success") {
+                    observer.complete();
+                    expect(await operation).toMatchObject({ success: true, servers: ["https://files.example"] });
+                } else {
+                    send("wss://one.example/"); // duplicate REQ must not extend response time
+                    await vi.advanceTimersByTimeAsync(1);
+                    expect((await operation).error).toBe("timeout");
+                }
+            }
+            send("wss://one.example/"); requireAuth("wss://one.example/");
+            expect(unsubscribe).toHaveBeenCalledOnce();
+            expect(outgoing.observed).toBe(false);
+            expect(messages.observed).toBe(false);
+            expect(removeListener).toHaveBeenCalledWith("abort", expect.any(Function));
+            expect(vi.getTimerCount()).toBe(0);
+        } finally { vi.useRealTimers(); }
+    });
     it("allows cold relay preparation before starting the four-second response budget", async () => {
         vi.useFakeTimers();
         try {

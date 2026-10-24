@@ -14,6 +14,7 @@ import { awaitUploadOperation, throwIfUploadAborted } from "./uploadOperation";
 export const BUD03_KIND = 10063;
 export const NIP96_KIND = 10096;
 export const SERVER_LIST_PREPARATION_TIMEOUT_MS = 10_000;
+export const SERVER_LIST_AUTH_TIMEOUT_MS = 30_000;
 let serverListRequestSequence = 0;
 
 export interface Bud03ServerListEvent {
@@ -135,7 +136,9 @@ export function fetchRelayServerList(params: {
         let resolved = false;
         let subscription: { unsubscribe?: () => void } | undefined;
         let outgoingSubscription: { unsubscribe(): void } | undefined;
+        let messageSubscription: { unsubscribe(): void } | undefined;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        const pendingAuthRelays = new Set<string>();
 
         const cleanup = () => {
             if (timeoutId) clearTimeout(timeoutId);
@@ -144,6 +147,8 @@ export function fetchRelayServerList(params: {
             subscription = undefined;
             outgoingSubscription?.unsubscribe();
             outgoingSubscription = undefined;
+            messageSubscription?.unsubscribe();
+            messageSubscription = undefined;
         };
 
         const safeResolve = (result: Bud03FetchResult) => {
@@ -158,6 +163,11 @@ export function fetchRelayServerList(params: {
         if (signal?.aborted) { onAbort(); return; }
 
         const finish = () => {
+            // A rejected/unfinished AUTH must not become an empty-list success.
+            if (pendingAuthRelays.size) {
+                safeResolve({ success: false, servers: [], error: "request_error" });
+                return;
+            }
             const event = getNewestBud03Event(events, kind);
             if (!event || !event.tags) {
                 safeResolve({ success: false, servers: [], error: "not_found" });
@@ -174,18 +184,41 @@ export function fetchRelayServerList(params: {
         try {
             const canObserveDispatch = hasRelaySnapshot && typeof rxNostr.createOutgoingMessageObservable === "function";
             const pendingRelays = new Set(sanitizedRelays);
+            const preparationDeadline = Date.now() + SERVER_LIST_PREPARATION_TIMEOUT_MS;
+            let authDeadline: number | undefined;
+            const waitForResponse = () => {
+                if (timeoutId) clearTimeout(timeoutId);
+                const preparing = pendingRelays.size > 0;
+                const deadline = preparing ? preparationDeadline
+                    : pendingAuthRelays.size ? authDeadline! : Date.now() + timeoutMs;
+                timeoutId = setTimeout(() => safeResolve({ success: false, servers: [],
+                    error: preparing ? "preparation_timeout" : "timeout" }), Math.max(0, deadline - Date.now()));
+            };
             // NIP-11 and connection setup can delay REQ dispatch after a reload.
             // Keep preparation bounded, then give the query its full response budget.
             timeoutId = setTimeout(() => safeResolve({ success: false, servers: [],
                 error: canObserveDispatch ? "preparation_timeout" : "timeout" }),
             canObserveDispatch ? SERVER_LIST_PREPARATION_TIMEOUT_MS : timeoutMs);
             if (canObserveDispatch) {
+                messageSubscription = rxNostr.createAllMessageObservable?.().subscribe({ next: packet => {
+                    if (resolved || packet.type !== "CLOSED" || packet.subId !== subId
+                        || typeof packet.notice !== "string" || !packet.notice.startsWith("auth-required:")) return;
+                    const relay = RelayConfigUtils.normalizeExternalRelayUrl(packet.from);
+                    if (!relay || !sanitizedRelays.includes(relay)) return;
+                    pendingAuthRelays.add(relay);
+                    // One bounded AUTH budget, shared by all relays/challenges.
+                    authDeadline ??= Date.now() + SERVER_LIST_AUTH_TIMEOUT_MS;
+                    waitForResponse();
+                } });
                 outgoingSubscription = rxNostr.createOutgoingMessageObservable().subscribe({ next: packet => {
                     if (resolved || packet.message[0] !== "REQ" || packet.message[1] !== subId) return;
                     const relay = RelayConfigUtils.normalizeExternalRelayUrl(packet.to);
-                    if (!relay || !pendingRelays.delete(relay) || pendingRelays.size > 0) return;
-                    if (timeoutId) clearTimeout(timeoutId);
-                    timeoutId = setTimeout(() => safeResolve({ success: false, servers: [], error: "timeout" }), timeoutMs);
+                    if (!relay) return;
+                    const dispatched = pendingRelays.delete(relay);
+                    const resumedAfterAuth = pendingAuthRelays.delete(relay);
+                    // rx-nostr owns authentication and REQ retransmission. Only a
+                    // previously auth-required REQ gets a fresh response budget.
+                    if (dispatched || resumedAfterAuth) waitForResponse();
                 } });
             }
             subscription = rxNostr.use(

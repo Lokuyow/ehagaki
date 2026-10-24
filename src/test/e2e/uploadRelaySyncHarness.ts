@@ -10,7 +10,7 @@ import { uploadDestinationStore } from "../../stores/uploadDestinationStore.svel
 import { uploadDestinationsRepository } from "../../lib/storage/uploadDestinationsRepository";
 import { DEFAULT_UPLOAD_CAPABILITIES } from "../../lib/upload/uploadDestinationPresets";
 import { Nip96UploadAdapter } from "../../lib/upload/Nip96UploadAdapter";
-import { NostrAuthService } from "../../lib/nostrAuthService";
+import { createNip42Authenticator, NostrAuthService } from "../../lib/nostrAuthService";
 import { resolveCurrentUploadDestination } from "../../lib/upload/resolveCurrentUploadDestination";
 
 declare global {
@@ -27,7 +27,9 @@ locale.set(query.get("lang") ?? "ja");
 await waitLocale();
 Reflect.set(window, "nostr", { getPublicKey: async () => owner, signEvent: (template: EventTemplate) => window.fixtureSignUploadEvent(template) });
 setNip07Auth(owner, nip19.npubEncode(owner), "fixture");
-const rxNostr = createRxNostr({ verifier: async event => verifyEvent(event), skipFetchNip11: !query.has("cold"), retry: { strategy: "off" } });
+const rxNostr = createRxNostr({ verifier: async event => verifyEvent(event), skipFetchNip11: !query.has("cold"), retry: { strategy: "off" },
+    ...(query.has("auth") ? { authenticator: createNip42Authenticator(owner) } : {}),
+});
 rxNostr.setDefaultRelays({ "wss://relay.example/": { read: true, write: true } });
 const timestamp = Date.now();
 for (const [index, protocol] of (query.has("initial") ? [] : ["blossom", "nip96", "custom-http"] as const).entries()) {

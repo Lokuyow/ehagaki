@@ -33,8 +33,13 @@ and iframe snapshots; the database/schema version and Host-owned Lite API do not
 During relay synchronization, the entire NIP-96 discovery phase has a **10-second deadline**, including
 all servers, delegation, and response bodies. Relay queries separately allow up to 10 seconds for NIP-11
 and connection preparation, followed by a 4-second response budget once REQ has been sent to every target
-read relay. The operation snapshots those read targets; unrelated requests and repeated sends cannot
-extend its timers. Preparation and response timeouts still fail without applying their collected candidates.
+read relay. A matching `CLOSED / auth-required` pauses response waiting for NIP-42 authentication,
+with one fixed 30-second authentication budget shared by the targets. When rx-nostr retransmits the
+rejected REQ, the query gets its full 4-second response budget. rx-nostr still owns AUTH signing,
+transport, and retransmission; this observer never sends another request itself.
+The operation snapshots those read targets; unrelated requests, duplicate sends, and repeated challenges
+cannot renew their respective deadlines. Timeout, rejected authentication, and cancellation release all
+observers/timers and leave collected candidates unapplied. Real relay outages can still cause a timeout.
 Discovery timeout aborts that protocol's outstanding requests, preserves any Blossom success, and releases
 the operation state. Account changes cancel pending work; delayed results cannot update another session.
 Local configuration edits cancel pending fetch application. No automatic retries or synchronization are added.
