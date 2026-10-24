@@ -52,8 +52,9 @@ beforeEach(() => {
         loaded: true, loading: false, error: null, support: "supported", hasMore: true, needsRefresh: false, deletingId: null, notice: null } };
 });
 describe("uploaded-media content", () => {
-    it.each([ ["nostpic-com", false, "unavailable"], ["nostpic-com", true, "invalidResponse"], ["nostr-build", false, "invalidResponse"] ] as const)("shows listing error for %s (loaded: %s)", (presetId, loaded, errorKey) => {
-        mocked.view.current!.destination.presetId = presetId;
+    it.each([ ["https://nostpic.com/api/v2/media", false, "unavailable"], ["https://nostpic.com", false, "unavailable"], ["https://nostpic.com/api/v2/media", true, "invalidResponse"], ["https://nostpic.com.example/api", false, "invalidResponse"], ["https://media.example", false, "invalidResponse"] ] as const)("shows listing error for %s (loaded: %s)", (serverUrl, loaded, errorKey) => {
+        mocked.view.current!.destination.serverUrl = serverUrl;
+        mocked.view.current!.destination.presetId = undefined;
         mocked.view.current!.loaded = loaded;
         mocked.view.current!.error = new UploadMediaError("invalidResponse");
         render(UploadedMediaTabContent, { show: true });
