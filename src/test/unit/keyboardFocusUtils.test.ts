@@ -3,7 +3,7 @@ import {
     focusEditorWithoutKeyboardForCurrentTap,
     isComposerKeyboardVisible,
     isIosTouchDevice,
-    isPostEditorFocusActive,
+    isComposerInputFocusActive,
     preserveKeyboardForScrollableTouch,
     readComposerKeyboardHeight,
 } from '../../lib/utils/keyboardFocusUtils';
@@ -124,10 +124,21 @@ describe('focusEditorWithoutKeyboardForCurrentTap', () => {
     });
 });
 
-describe('isPostEditorFocusActive', () => {
+describe('isComposerInputFocusActive', () => {
     afterEach(() => {
         document.body.innerHTML = '';
         window.getSelection()?.removeAllRanges();
+    });
+
+    it.each([false, true])('理由欄の focus を検出する (ShadowRoot: %s)', (shadow) => {
+        const target = shadow ? createShadowRuntime().styleTarget : document.body;
+        const input = document.createElement('input');
+        input.setAttribute('data-composer-keyboard-input', '');
+        target.append(input);
+
+        input.focus();
+
+        expect(isComposerInputFocusActive()).toBe(true);
     });
 
     it('投稿エディタールート内の focus を検出する', () => {
@@ -141,7 +152,7 @@ describe('isPostEditorFocusActive', () => {
 
         editor.focus();
 
-        expect(isPostEditorFocusActive()).toBe(true);
+        expect(isComposerInputFocusActive()).toBe(true);
     });
 
     it('ShadowRoot 内の投稿エディター focus を runtime root から検出する', () => {
@@ -158,7 +169,7 @@ describe('isPostEditorFocusActive', () => {
 
         expect(document.activeElement).toBe(host);
         expect(shadowRoot.activeElement).toBe(editor);
-        expect(isPostEditorFocusActive()).toBe(true);
+        expect(isComposerInputFocusActive()).toBe(true);
     });
 
     it('投稿エディター内に selection が残っていてもダイアログ input の focus を優先する', () => {
@@ -177,7 +188,7 @@ describe('isPostEditorFocusActive', () => {
 
         input.focus();
 
-        expect(isPostEditorFocusActive()).toBe(false);
+        expect(isComposerInputFocusActive()).toBe(false);
     });
 
     it('ShadowRoot 内の別 input focus を残留 editor selection より優先する', () => {
@@ -197,7 +208,7 @@ describe('isPostEditorFocusActive', () => {
 
         input.focus();
 
-        expect(isPostEditorFocusActive()).toBe(false);
+        expect(isComposerInputFocusActive()).toBe(false);
     });
 });
 

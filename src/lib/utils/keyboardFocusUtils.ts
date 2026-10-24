@@ -14,7 +14,7 @@ function getElementForNode(node: Node | null): Element | null {
     return node?.parentElement ?? null;
 }
 
-export function isPostEditorFocusActive(): boolean {
+export function isComposerInputFocusActive(): boolean {
     const runtimeEnvironment = getAppRuntimeEnvironment();
     const root = runtimeEnvironment.domRoot;
     const doc = runtimeEnvironment.document;
@@ -22,7 +22,10 @@ export function isPostEditorFocusActive(): boolean {
         ? root.activeElement
         : doc?.activeElement;
 
-    if (activeElement?.closest(POST_EDITOR_ROOT_SELECTOR)) {
+    if (
+        activeElement?.closest(POST_EDITOR_ROOT_SELECTOR) ||
+        activeElement?.matches("[data-composer-keyboard-input]")
+    ) {
         return true;
     }
 
