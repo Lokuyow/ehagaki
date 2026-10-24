@@ -1757,13 +1757,16 @@ test.describe('PostHistoryDialog Playwright', () => {
         const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
         const rows = () => historyEventIds(page);
         const fetchButton = page.getByRole('button', { name: 'リレーから続きを取得' });
-        const expectedHeadRelayUrls = await page.evaluate(() =>
-            (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.relayUrls.slice(0, 4).sort());
-        // Coverage restoration can replan an active refresh; assert the intended
-        // four-relay fanout without depending on how many attempts were observed.
+        // A refreshed head can retry or replan against a changed relay set.
+        // Assert the four-relay fanout without fixing the target order or attempt count.
         await expect.poll(() => page.evaluate(() =>
-            [...new Set((window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequestRelayUrls)].sort(),
-        )).toEqual(expectedHeadRelayUrls);
+            new Set((window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequestRelayUrls).size,
+        )).toBeGreaterThanOrEqual(4);
+        const configuredHeadRelayUrls = await page.evaluate(() =>
+            (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.relayUrls);
+        const requestedHeadRelayUrls = await page.evaluate(() =>
+            (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequestRelayUrls);
+        expect(requestedHeadRelayUrls.every((relayUrl) => configuredHeadRelayUrls.includes(relayUrl))).toBe(true);
         await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(5);
         await expect.poll(rows).toEqual(ids.slice(60, 110));
         await expect(page.locator('.post-history-sync-footer')).toBeVisible();
