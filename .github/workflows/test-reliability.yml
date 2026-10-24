@@ -157,7 +157,7 @@ jobs:
           set -euo pipefail
           args=(--list)
           if [[ "$PLAYWRIGHT_PROJECT" != 'all' ]]; then
-            args+=(--project "$PLAYWRIGHT_PROJECT")
+            args+=("--project=$PLAYWRIGHT_PROJECT")
           fi
           if [[ -n "$PLAYWRIGHT_SPECS" ]]; then
             read -r -a specs <<< "$PLAYWRIGHT_SPECS"
@@ -198,7 +198,7 @@ jobs:
           set -o pipefail
           args=(--reporter=dot --retries=0 --repeat-each "$PLAYWRIGHT_REPEAT")
           if [[ "$PLAYWRIGHT_PROJECT" != 'all' ]]; then
-            args+=(--project "$PLAYWRIGHT_PROJECT")
+            args+=("--project=$PLAYWRIGHT_PROJECT")
           fi
           if [[ -n "$PLAYWRIGHT_SPECS" ]]; then
             read -r -a specs <<< "$PLAYWRIGHT_SPECS"
