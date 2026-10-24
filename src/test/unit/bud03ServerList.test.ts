@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+import { Subject } from "rxjs";
+import type { MessagePacket, OutgoingMessagePacket } from "rx-nostr";
 import {
     BUD03_KIND,
+    NIP96_KIND,
     buildBud03EventTemplate,
     fetchBud03ServerList,
+    fetchRelayServerList,
     parseBud03ServerTags,
     publishBud03ServerList,
 } from "../../lib/upload/bud03ServerList";
@@ -15,6 +19,195 @@ vi.mock("../../lib/signedEventResultValidator", async (importOriginal) => ({
 }));
 
 describe("bud03ServerList", () => {
+    it.each(["success", "timeout", "cancel", "rejected", "no_response"])("bounds NIP-42 waiting and cleans up after %s", async outcome => {
+        vi.useFakeTimers();
+        try {
+            const outgoing = new Subject<OutgoingMessagePacket>();
+            const messages = new Subject<MessagePacket>();
+            const controller = new AbortController();
+            const removeListener = vi.spyOn(controller.signal, "removeEventListener");
+            let requestId = "";
+            let observer!: { next(packet: unknown): void; complete(): void };
+            const unsubscribe = vi.fn();
+            const rxNostr = {
+                getDefaultRelays: () => ({ "wss://one.example/": { read: true }, "wss://two.example/": { read: true } }),
+                createOutgoingMessageObservable: () => outgoing,
+                createAllMessageObservable: () => messages,
+                use: (request: { rxReqId: string }) => { requestId = request.rxReqId; return { subscribe: (next: typeof observer) => { observer = next; return { unsubscribe }; } }; },
+            };
+            let settled = false;
+            const operation = fetchBud03ServerList({ rxNostr: rxNostr as never, pubkeyHex: "owner", signal: controller.signal })
+                .then(result => { settled = true; return result; });
+            const send = (relay: string, id = requestId) => outgoing.next({ to: relay, message: ["REQ", `${id}:0`, { kinds: [BUD03_KIND] }] });
+            const requireAuth = (relay: string, id = requestId) => messages.next({ from: relay, type: "CLOSED", subId: `${id}:0`,
+                notice: "auth-required: fixture", message: ["CLOSED", `${id}:0`, "auth-required: fixture"] });
+            send("wss://one.example/"); send("wss://two.example/");
+            requireAuth("wss://one.example/");
+            if (outcome === "success") observer.next({ event: { id: "a".repeat(64), kind: BUD03_KIND, pubkey: "owner", created_at: 10, tags: [["server", "https://files.example"]] } });
+            await vi.advanceTimersByTimeAsync(5_000);
+            send("wss://one.example/", "unrelated");
+            expect(settled).toBe(false);
+            if (outcome === "timeout") {
+                // Further challenges, including another target relay, cannot renew the deadline.
+                requireAuth("wss://two.example/");
+                await vi.advanceTimersByTimeAsync(24_999);
+                expect(settled).toBe(false);
+                requireAuth("wss://one.example/");
+                await vi.advanceTimersByTimeAsync(1);
+                expect(await operation).toEqual({ success: false, servers: [], error: "timeout" });
+            } else if (outcome === "cancel") {
+                controller.abort();
+                expect((await operation).error).toBe("request_error");
+            } else if (outcome === "rejected") {
+                observer.complete(); // rx-nostr closes the subscription when AUTH is rejected.
+                expect((await operation).error).toBe("request_error");
+            } else {
+                send("wss://one.example/"); // rx-nostr's authenticated retransmission
+                requireAuth("wss://two.example/", "unrelated");
+                requireAuth("wss://unrelated.example/");
+                await vi.advanceTimersByTimeAsync(3_999);
+                expect(settled).toBe(false);
+                if (outcome === "success") {
+                    observer.complete();
+                    // The public EOSE notification can follow stream completion.
+                    for (const relay of ["wss://one.example/", "wss://two.example/"]) messages.next({
+                        from: relay, type: "EOSE", subId: `${requestId}:0`, message: ["EOSE", `${requestId}:0`],
+                    });
+                    expect(await operation).toMatchObject({ success: true, servers: ["https://files.example"] });
+                    expect((await operation).incomplete).toBeUndefined();
+                } else {
+                    send("wss://one.example/"); // duplicate REQ must not extend response time
+                    await vi.advanceTimersByTimeAsync(1);
+                    expect((await operation).error).toBe("timeout");
+                }
+            }
+            send("wss://one.example/"); requireAuth("wss://one.example/");
+            expect(unsubscribe).toHaveBeenCalledOnce();
+            expect(outgoing.observed).toBe(false);
+            expect(messages.observed).toBe(false);
+            expect(removeListener).toHaveBeenCalledWith("abort", expect.any(Function));
+            expect(vi.getTimerCount()).toBe(0);
+        } finally { vi.useRealTimers(); }
+    });
+    it.each([BUD03_KIND, NIP96_KIND].flatMap(kind =>
+        ["preparation", "response", "network", "auth", "terminal", "cancel"].map(phase => ({ kind, phase })),
+    ))("retains the newest verified kind $kind candidate when another relay stalls in $phase", async ({ kind, phase }) => {
+        vi.useFakeTimers();
+        try {
+            const outgoing = new Subject<OutgoingMessagePacket>();
+            const messages = new Subject<MessagePacket>();
+            const controller = new AbortController();
+            let requestId = "";
+            let observer!: { next(packet: unknown): void; complete(): void; error(): void };
+            const unsubscribe = vi.fn();
+            const rxNostr = {
+                getDefaultRelays: () => ({ "wss://healthy.example/": { read: true }, "wss://offline.example/": { read: true } }),
+                createOutgoingMessageObservable: () => outgoing,
+                createAllMessageObservable: () => messages,
+                use: (request: { rxReqId: string }) => { requestId = request.rxReqId; return { subscribe: (next: typeof observer) => { observer = next; return { unsubscribe }; } }; },
+            };
+            const operation = fetchRelayServerList({ rxNostr: rxNostr as never, pubkeyHex: "owner", kind, signal: controller.signal });
+            outgoing.next({ to: "wss://healthy.example/", message: ["REQ", `${requestId}:0`, { kinds: [kind] }] });
+            if (phase !== "preparation") outgoing.next({ to: "wss://offline.example/", message: ["REQ", `${requestId}:0`, { kinds: [kind] }] });
+            for (const created_at of [10, 20]) observer.next({ from: "wss://healthy.example/", event: {
+                kind, pubkey: "owner", id: String(created_at).repeat(32), created_at,
+                tags: [["server", created_at === 20 ? "https://new.example" : "https://old.example"]],
+            } });
+            messages.next({ from: "wss://healthy.example/", type: "EOSE", subId: `${requestId}:0`, message: ["EOSE", `${requestId}:0`] });
+            if (phase === "auth") messages.next({ from: "wss://offline.example/", type: "CLOSED", subId: `${requestId}:0`,
+                notice: "auth-required: fixture", message: ["CLOSED", `${requestId}:0`, "auth-required: fixture"] });
+            if (phase === "network") observer.error();
+            else if (phase === "terminal") observer.complete();
+            else if (phase === "cancel") controller.abort();
+            else await vi.advanceTimersByTimeAsync(phase === "preparation" ? 10_000 : phase === "auth" ? 30_000 : 4_000);
+            const result = await operation;
+            expect(result).toMatchObject(phase === "cancel"
+                ? { success: false, servers: [], error: "request_error" }
+                : { success: true, servers: ["https://new.example"], incomplete: true, event: { created_at: 20 } });
+            observer.next({ event: { kind, pubkey: "owner", id: "f".repeat(64), created_at: 30, tags: [["server", "https://late.example"]] } });
+            observer.complete();
+            expect(result.servers).not.toContain("https://late.example");
+            expect(unsubscribe).toHaveBeenCalledOnce();
+            expect(outgoing.observed).toBe(false);
+            expect(messages.observed).toBe(false);
+            expect(vi.getTimerCount()).toBe(0);
+        } finally { vi.useRealTimers(); }
+    });
+    it("does not report a missing list when a relay failed and no valid candidate arrived", async () => {
+        const messages = new Subject<MessagePacket>();
+        const rxNostr = {
+            getDefaultRelays: () => ({ "wss://offline.example/": { read: true } }),
+            createOutgoingMessageObservable: () => new Subject<OutgoingMessagePacket>(),
+            createAllMessageObservable: () => messages,
+            use: () => ({ subscribe: (observer: { complete(): void }) => { observer.complete(); return { unsubscribe: vi.fn() }; } }),
+        };
+        expect(await fetchBud03ServerList({ rxNostr: rxNostr as never, pubkeyHex: "owner" }))
+            .toEqual({ success: false, servers: [], error: "network_error" });
+        expect(messages.observed).toBe(false);
+    });
+    it("allows cold relay preparation before starting the four-second response budget", async () => {
+        vi.useFakeTimers();
+        try {
+            const outgoing = new Subject<OutgoingMessagePacket>();
+            let requestId = "";
+            let observer!: { complete(): void };
+            const unsubscribe = vi.fn();
+            const rxNostr = {
+                getDefaultRelays: vi.fn(() => ({ "wss://relay.example/": { read: true, write: true } })),
+                createOutgoingMessageObservable: () => outgoing,
+                use: vi.fn((request) => { requestId = request.rxReqId; return { subscribe: (next: typeof observer) => { observer = next; return { unsubscribe }; } }; }),
+            };
+            let settled = false;
+            const operation = fetchBud03ServerList({ rxNostr: rxNostr as never, pubkeyHex: "owner" }).then(result => { settled = true; return result; });
+            await vi.advanceTimersByTimeAsync(5_000);
+            expect(settled).toBe(false);
+            outgoing.next({ to: "wss://relay.example/", message: ["REQ", `${requestId}:0`, { kinds: [BUD03_KIND] }] });
+            observer.complete();
+            expect((await operation).error).toBe("not_found");
+            expect(rxNostr.getDefaultRelays).toHaveBeenCalledWith({ filter: "read-all" });
+            expect(rxNostr.use).toHaveBeenCalledWith(expect.anything(), { on: { relays: ["wss://relay.example/"] } });
+            expect(unsubscribe).toHaveBeenCalledOnce();
+            expect(outgoing.observed).toBe(false);
+            expect(vi.getTimerCount()).toBe(0);
+        } finally { vi.useRealTimers(); }
+    });
+    it.each(["preparation", "response", "cancel"])("bounds %s and releases dispatch observation", async phase => {
+        vi.useFakeTimers();
+        try {
+            const outgoing = new Subject<OutgoingMessagePacket>();
+            const controller = new AbortController();
+            let requestId = "";
+            const unsubscribe = vi.fn();
+            const rxNostr = {
+                getDefaultRelays: () => ({ "wss://one.example/": { read: true }, "wss://two.example/": { read: true } }),
+                createOutgoingMessageObservable: () => outgoing,
+                use: (request: { rxReqId: string }) => { requestId = request.rxReqId; return { subscribe: () => ({ unsubscribe }) }; },
+            };
+            const operation = fetchBud03ServerList({ rxNostr: rxNostr as never, pubkeyHex: "owner", signal: controller.signal });
+            await vi.advanceTimersByTimeAsync(5_000);
+            const send = (relay: string, id = requestId) => outgoing.next({ to: relay, message: ["REQ", `${id}:0`, { kinds: [BUD03_KIND] }] });
+            if (phase === "cancel") {
+                controller.abort();
+                send("wss://one.example/"); send("wss://two.example/");
+            } else {
+                send("wss://one.example/");
+                if (phase === "response") {
+                    send("wss://two.example/");
+                    await vi.advanceTimersByTimeAsync(2_000);
+                    send("wss://two.example/");
+                    send("wss://one.example/", "unrelated-query");
+                    await vi.advanceTimersByTimeAsync(2_000);
+                } else {
+                    send("wss://two.example/", "unrelated-query");
+                    await vi.advanceTimersByTimeAsync(5_000);
+                }
+            }
+            expect((await operation).error).toBe(phase === "preparation" ? "preparation_timeout" : phase === "response" ? "timeout" : "request_error");
+            expect(unsubscribe).toHaveBeenCalledOnce();
+            expect(outgoing.observed).toBe(false);
+            expect(vi.getTimerCount()).toBe(0);
+        } finally { vi.useRealTimers(); }
+    });
     it.each([false, true])("keeps the newest empty Blossom list instead of reviving older relay data (reverse=%s)", async reverse => {
         const old = { id: "b".repeat(64), kind: BUD03_KIND, pubkey: "owner", created_at: 10,
             tags: [["server", "https://old.example"]] };

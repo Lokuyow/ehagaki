@@ -13,6 +13,9 @@ import { awaitUploadOperation, throwIfUploadAborted } from "./uploadOperation";
 
 export const BUD03_KIND = 10063;
 export const NIP96_KIND = 10096;
+export const SERVER_LIST_PREPARATION_TIMEOUT_MS = 10_000;
+export const SERVER_LIST_AUTH_TIMEOUT_MS = 30_000;
+let serverListRequestSequence = 0;
 
 export interface Bud03ServerListEvent {
     id?: string;
@@ -27,7 +30,8 @@ export interface Bud03FetchResult {
     success: boolean;
     servers: string[];
     event?: Bud03ServerListEvent;
-    error?: "not_found" | "network_error" | "request_error" | "timeout";
+    incomplete?: boolean;
+    error?: "not_found" | "network_error" | "request_error" | "timeout" | "preparation_timeout";
 }
 
 export function normalizeBud03ServerUrl(value: string): string | null {
@@ -115,24 +119,40 @@ export function fetchRelayServerList(params: {
 }): Promise<Bud03FetchResult> {
     const { rxNostr, pubkeyHex, relays, kind, signal, timeoutMs = 4000 } = params;
     const hasExplicitRelays = relays !== undefined;
-    const sanitizedRelays = RelayConfigUtils.sanitizeExternalRelayUrls(relays);
+    const relaySnapshot = hasExplicitRelays ? relays
+        : typeof rxNostr.getDefaultRelays === "function"
+            ? Object.keys(rxNostr.getDefaultRelays({ filter: "read-all" })) : undefined;
+    const sanitizedRelays = RelayConfigUtils.sanitizeExternalRelayUrls(relaySnapshot);
+    const hasRelaySnapshot = relaySnapshot !== undefined;
+    const canObserveDispatch = hasRelaySnapshot && typeof rxNostr.createOutgoingMessageObservable === "function";
+    const canObserveCompletion = canObserveDispatch && typeof rxNostr.createAllMessageObservable === "function";
 
-    if (hasExplicitRelays && sanitizedRelays.length === 0) {
+    if (hasRelaySnapshot && sanitizedRelays.length === 0) {
         return Promise.resolve({ success: false, servers: [], error: "not_found" });
     }
 
     return new Promise((resolve) => {
-        const rxReq = createRxBackwardReq();
+        const requestId = `upload-server-list-${kind}-${++serverListRequestSequence}`;
+        const rxReq = createRxBackwardReq(requestId);
+        const subId = `${requestId}:0`;
         const events: Bud03ServerListEvent[] = [];
         let resolved = false;
         let subscription: { unsubscribe?: () => void } | undefined;
+        let outgoingSubscription: { unsubscribe(): void } | undefined;
+        let messageSubscription: { unsubscribe(): void } | undefined;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        const pendingAuthRelays = new Set<string>();
+        const finishedRelays = new Set<string>();
 
         const cleanup = () => {
             if (timeoutId) clearTimeout(timeoutId);
             signal?.removeEventListener("abort", onAbort);
             subscription?.unsubscribe?.();
             subscription = undefined;
+            outgoingSubscription?.unsubscribe();
+            outgoingSubscription = undefined;
+            messageSubscription?.unsubscribe();
+            messageSubscription = undefined;
         };
 
         const safeResolve = (result: Bud03FetchResult) => {
@@ -146,10 +166,15 @@ export function fetchRelayServerList(params: {
         signal?.addEventListener("abort", onAbort, { once: true });
         if (signal?.aborted) { onAbort(); return; }
 
-        const finish = () => {
+        const finish = (failure?: Bud03FetchResult["error"]) => {
+            if (resolved) return;
+            if (signal?.aborted) { onAbort(); return; }
+            const incomplete = !!failure || pendingAuthRelays.size > 0
+                || (canObserveCompletion && finishedRelays.size < sanitizedRelays.length);
             const event = getNewestBud03Event(events, kind);
             if (!event || !event.tags) {
-                safeResolve({ success: false, servers: [], error: "not_found" });
+                safeResolve({ success: false, servers: [], error: failure
+                    ?? (pendingAuthRelays.size ? "request_error" : incomplete ? "network_error" : "not_found") });
                 return;
             }
 
@@ -157,23 +182,61 @@ export function fetchRelayServerList(params: {
                 success: true,
                 servers: kind === BUD03_KIND ? parseBud03ServerTags(event.tags) : parseNip96ServerTags(event.tags),
                 event,
+                ...(incomplete ? { incomplete: true } : {}),
             }); } catch { safeResolve({ success: false, servers: [], error: "request_error" }); }
         };
 
         try {
-            timeoutId = setTimeout(() =>
-                safeResolve({ success: false, servers: [], error: "timeout" }), timeoutMs);
+            const pendingRelays = new Set(sanitizedRelays);
+            const preparationDeadline = Date.now() + SERVER_LIST_PREPARATION_TIMEOUT_MS;
+            let authDeadline: number | undefined;
+            const waitForResponse = () => {
+                if (timeoutId) clearTimeout(timeoutId);
+                const preparing = pendingRelays.size > 0;
+                const deadline = preparing ? preparationDeadline
+                    : pendingAuthRelays.size ? authDeadline! : Date.now() + timeoutMs;
+                timeoutId = setTimeout(() => finish(preparing ? "preparation_timeout" : "timeout"), Math.max(0, deadline - Date.now()));
+            };
+            // NIP-11 and connection setup can delay REQ dispatch after a reload.
+            // Keep preparation bounded, then give the query its full response budget.
+            timeoutId = setTimeout(() => finish(canObserveDispatch ? "preparation_timeout" : "timeout"),
+            canObserveDispatch ? SERVER_LIST_PREPARATION_TIMEOUT_MS : timeoutMs);
+            if (canObserveDispatch) {
+                messageSubscription = rxNostr.createAllMessageObservable?.().subscribe({ next: packet => {
+                    if (resolved || (packet.type !== "CLOSED" && packet.type !== "EOSE") || packet.subId !== subId) return;
+                    const relay = RelayConfigUtils.normalizeExternalRelayUrl(packet.from);
+                    if (!relay || !sanitizedRelays.includes(relay)) return;
+                    if (packet.type === "EOSE") { finishedRelays.add(relay); return; }
+                    if (typeof packet.notice !== "string" || !packet.notice.startsWith("auth-required:")) return;
+                    pendingAuthRelays.add(relay);
+                    // One bounded AUTH budget, shared by all relays/challenges.
+                    authDeadline ??= Date.now() + SERVER_LIST_AUTH_TIMEOUT_MS;
+                    waitForResponse();
+                } });
+                outgoingSubscription = rxNostr.createOutgoingMessageObservable().subscribe({ next: packet => {
+                    if (resolved || packet.message[0] !== "REQ" || packet.message[1] !== subId) return;
+                    const relay = RelayConfigUtils.normalizeExternalRelayUrl(packet.to);
+                    if (!relay) return;
+                    const dispatched = pendingRelays.delete(relay);
+                    const resumedAfterAuth = pendingAuthRelays.delete(relay);
+                    // rx-nostr owns authentication and REQ retransmission. Only a
+                    // previously auth-required REQ gets a fresh response budget.
+                    if (dispatched || resumedAfterAuth) waitForResponse();
+                } });
+            }
             subscription = rxNostr.use(
                 rxReq,
-                hasExplicitRelays ? { on: { relays: sanitizedRelays } } : undefined,
+                hasRelaySnapshot ? { on: { relays: sanitizedRelays } } : undefined,
             ).subscribe({
                 next: (packet) => {
-                    if (packet?.event?.kind === kind && packet.event.pubkey === pubkeyHex) {
+                    if (!resolved && packet?.event?.kind === kind && packet.event.pubkey === pubkeyHex) {
                         events.push(packet.event);
                     }
                 },
-                complete: finish,
-                error: () => safeResolve({ success: false, servers: [], error: "network_error" }),
+                // rx-nostr may complete inside its EOSE handler, before the
+                // public message observer receives that same final EOSE.
+                complete: () => queueMicrotask(() => finish()),
+                error: () => finish("network_error"),
             });
 
             if (resolved) { subscription?.unsubscribe?.(); return; }
