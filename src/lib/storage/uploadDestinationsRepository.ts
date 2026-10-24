@@ -6,6 +6,7 @@ import {
     UPLOAD_DESTINATION_GLOBAL_SCOPE,
     UPLOAD_DESTINATION_SCHEMA_VERSION,
     createUploadDestinationFromPreset,
+    createUploadDestinationId,
     createLegacyUploadDestination,
     findUploadDestinationPresetIdentity,
     findUploadPresetByEndpoint,
@@ -18,6 +19,9 @@ import { getEffectiveLocale } from "../utils/settingsStorage";
 import { getAppStorage } from "../appStorage";
 
 import { legacyUploadEndpointImportId } from "./legacyImportMarkers";
+import type { RelayServerListUpdates } from "../upload/relayUploadDestinationSync";
+import { canonicalizeNip96UploadUrl } from "../upload/nip96UrlPolicy";
+import { getNip96DiscoveryServer } from "../upload/nip96ServerIdentity";
 
 export interface UploadDestinationsRepository {
     getAll(pubkeyHex?: string | null): Promise<UploadDestination[]>;
@@ -27,6 +31,8 @@ export interface UploadDestinationsRepository {
     setDefault(id: string, pubkeyHex?: string | null): Promise<void>;
     move(id: string, direction: "up" | "down", pubkeyHex?: string | null): Promise<void>;
     replaceBlossomServers(pubkeyHex: string, servers: string[]): Promise<UploadDestination[]>;
+    applyRelayServerLists(pubkeyHex: string, updates: RelayServerListUpdates, assertCurrent: () => void): Promise<UploadDestination[]>;
+    updateTestCapabilities(destination: UploadDestination, capabilities: UploadDestinationCapabilities, assertCurrent: () => void): Promise<void>;
     applyUploadEndpointPreference(params: {
         endpoint: string;
         mode: "forced" | "default";
@@ -89,6 +95,8 @@ function toPlainDestination(destination: UploadDestination): UploadDestination {
         protocol: destination.protocol,
         serverUrl: destination.serverUrl.trim(),
         ...(destination.resolvedUploadUrl ? { resolvedUploadUrl: destination.resolvedUploadUrl } : {}),
+        ...(destination.nip96ServerUrl ? { nip96ServerUrl: destination.nip96ServerUrl } : {}),
+        ...(destination.nip96UrlMode ? { nip96UrlMode: destination.nip96UrlMode } : {}),
         ...(destination.presetId ? { presetId: destination.presetId } : {}),
         isDefault: Boolean(destination.isDefault),
         enabled: Boolean(destination.enabled),
@@ -411,6 +419,103 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
             ));
         });
         await this.persistParentSnapshot(scopeKey);
+    }
+
+    async updateTestCapabilities(destination: UploadDestination, capabilities: UploadDestinationCapabilities, assertCurrent: () => void): Promise<void> {
+        await this.db.transaction("rw", this.db.uploadDestinations, async () => {
+            assertCurrent();
+            const current = await this.db.uploadDestinations.get(destination.id);
+            assertCurrent();
+            if (!current || current.pubkeyHex !== destination.pubkeyHex || current.updatedAt !== destination.updatedAt
+                || current.protocol !== destination.protocol || current.serverUrl !== destination.serverUrl
+                || current.resolvedUploadUrl !== destination.resolvedUploadUrl
+                || current.nip96ServerUrl !== destination.nip96ServerUrl || current.nip96UrlMode !== destination.nip96UrlMode) return;
+            await this.db.uploadDestinations.put(toRecord({ ...toDestination(current), capabilities, updatedAt: this.now() }));
+            assertCurrent();
+        });
+        assertCurrent();
+        await this.persistParentSnapshot(getScopeKey(destination.pubkeyHex));
+    }
+
+    async applyRelayServerLists(pubkeyHex: string, updates: RelayServerListUpdates, assertCurrent: () => void): Promise<UploadDestination[]> {
+        assertCurrent();
+        await this.getAll(pubkeyHex);
+        assertCurrent();
+        const scopeKey = getScopeKey(pubkeyHex);
+        const next = await this.db.transaction("rw", this.db.uploadDestinations, async () => {
+            assertCurrent();
+            const records = await this.db.uploadDestinations.where("scopeKey").equals(scopeKey).toArray();
+            assertCurrent();
+            const existing = records.map(toDestination).sort(sortDestinations);
+            const timestamp = Math.max(this.now(), ...existing.map(destination => destination.updatedAt + 1));
+            const usedIds = new Set<string>();
+            const replacement: Partial<Record<"blossom" | "nip96", UploadDestination[]>> = {};
+            for (const protocol of ["blossom", "nip96"] as const) {
+                const servers = protocol === "blossom" ? updates.blossom?.map(serverUrl => ({ serverUrl, apiUrl: undefined })) : updates.nip96;
+                if (servers === undefined) continue;
+                replacement[protocol] = servers.map((server, index) => {
+                    const candidates = existing.filter(destination => destination.protocol === protocol && !usedIds.has(destination.id));
+                    const identityMatches = candidates.filter(destination => {
+                        try {
+                            const identity = protocol === "nip96" ? getNip96DiscoveryServer(destination) : destination.serverUrl;
+                            return normalizeServerUrl(identity) === normalizeServerUrl(server.serverUrl);
+                        } catch { return false; }
+                    });
+                    const apiMatches = protocol === "nip96" ? candidates.filter(destination => {
+                        try { return canonicalizeNip96UploadUrl(destination.resolvedUploadUrl || destination.serverUrl).url === server.apiUrl; }
+                        catch { return false; }
+                    }) : [];
+                    const match = identityMatches.find(destination => destination.isDefault && destination.enabled)
+                        ?? identityMatches[0] ?? (apiMatches.length === 1 ? apiMatches[0] : undefined);
+                    if (match) usedIds.add(match.id);
+                    const created = this.createBud03BlossomDestination({ pubkeyHex, serverUrl: server.serverUrl, now: timestamp, index });
+                    return {
+                        ...(match ?? { ...created, id: createUploadDestinationId(), protocol, auth: { type: protocol === "nip96" ? "nip98" as const : "blossom-bud11" as const } }),
+                        ...(protocol === "nip96" ? {
+                            nip96ServerUrl: server.serverUrl,
+                            nip96UrlMode: match?.nip96UrlMode ?? (match ? "direct" as const : "discovery" as const),
+                            ...(!match || match.nip96UrlMode === "discovery" ? { serverUrl: server.serverUrl, resolvedUploadUrl: server.apiUrl } : {}),
+                        } : { serverUrl: server.serverUrl }),
+                        updatedAt: timestamp,
+                    };
+                });
+            }
+            const queues = { blossom: [...(replacement.blossom ?? [])], nip96: [...(replacement.nip96 ?? [])] };
+            const remainingSlots = {
+                blossom: existing.filter(destination => destination.protocol === "blossom").length,
+                nip96: existing.filter(destination => destination.protocol === "nip96").length,
+            };
+            const merged: UploadDestination[] = [];
+            for (const destination of existing) {
+                const protocol = destination.protocol;
+                if (protocol === "custom-http" || replacement[protocol] === undefined) { merged.push(destination); continue; }
+                const item = queues[protocol].shift();
+                if (item) merged.push(item);
+                if (--remainingSlots[protocol] === 0) merged.push(...queues[protocol].splice(0));
+            }
+            merged.push(...queues.blossom, ...queues.nip96);
+            const oldDefault = existing.find(destination => destination.enabled && destination.isDefault);
+            let chosen = merged.find(destination => destination.enabled && destination.id === oldDefault?.id)
+                ?? merged.find(destination => destination.enabled);
+            if (!chosen) {
+                chosen = createLegacyUploadDestination({ endpoint: this.getStorage().getItem(STORAGE_KEYS.UPLOAD_ENDPOINT) ?? "", locale: this.getLocale(), pubkeyHex, now: timestamp });
+                merged.push(chosen);
+            }
+            const chosenId = chosen.id;
+            const result = merged.map((destination, sortIndex) => ({ ...destination, sortIndex,
+                isDefault: destination.id === chosenId,
+                ...(destination.id === chosenId ? { updatedAt: timestamp } : {}),
+            }));
+            assertCurrent();
+            await this.db.uploadDestinations.where("scopeKey").equals(scopeKey).delete();
+            assertCurrent();
+            await this.db.uploadDestinations.bulkPut(result.map(toRecord));
+            assertCurrent();
+            return result.sort(sortDestinations);
+        });
+        assertCurrent();
+        await this.persistParentSnapshot(scopeKey);
+        return next;
     }
 
     async applyUploadEndpointPreference({

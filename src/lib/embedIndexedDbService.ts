@@ -95,6 +95,8 @@ function isUploadDestinationRecord(value: unknown): value is UploadDestinationRe
         && typeof record.protocol === "string"
         && typeof record.serverUrl === "string"
         && (record.resolvedUploadUrl === undefined || typeof record.resolvedUploadUrl === "string")
+        && (record.nip96ServerUrl === undefined || typeof record.nip96ServerUrl === "string")
+        && (record.nip96UrlMode === undefined || record.nip96UrlMode === "direct" || record.nip96UrlMode === "discovery")
         && (record.presetId === undefined || typeof record.presetId === "string")
         && typeof record.isDefault === "boolean"
         && typeof record.enabled === "boolean"

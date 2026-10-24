@@ -51,7 +51,7 @@ describe("EmbedIndexedDbService", () => {
         expect(service.initialize()).toBe(false);
     });
 
-    it("idb.getSnapshot を送信し、uploadDestinations records を返す", async () => {
+    it.each([undefined, "direct", "discovery"] as const)("round-trips legacy and NIP-96 snapshot metadata (%s)", async mode => {
         const { windowObj, parent, listeners } = createMockWindow();
         const service = new EmbedIndexedDbService(windowObj, mockConsole);
         service.initialize();
@@ -71,6 +71,12 @@ describe("EmbedIndexedDbService", () => {
         expect(parent.postMessage.mock.calls[0][1]).toBe("https://parent.example.com");
 
         const record = createDestinationRecord();
+        if (mode) {
+            record.protocol = "nip96";
+            record.nip96UrlMode = mode;
+            record.nip96ServerUrl = "https://files.example";
+            record.resolvedUploadUrl = "https://files.example/api";
+        }
         listeners.get("message")?.({
             data: {
                 namespace: EMBED_MESSAGE_NAMESPACE,

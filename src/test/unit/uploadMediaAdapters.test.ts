@@ -10,6 +10,19 @@ function params(protocol: "nip96" | "blossom") {
 }
 const nipRecord = (tags: string[][]) => ({ created_at: 123, tags });
 describe("uploaded-media adapters", () => {
+    it("uses an imported shared server identity for discovery while retaining a direct API destination", async () => {
+        const p = params("nip96");
+        p.destination.serverUrl = "https://api.example/upload";
+        p.destination.resolvedUploadUrl = "https://api.example/upload";
+        p.destination.nip96ServerUrl = "https://files.example";
+        p.destination.nip96UrlMode = "direct";
+        p.fetch = vi.fn().mockResolvedValueOnce(jsonMedia({ api_url: "https://api.example/upload" }))
+            .mockResolvedValueOnce(jsonMedia({ page: 0, count: 24, total: 0, files: [] }));
+        const page = await new Nip96UploadAdapter().listMediaPage(p);
+        expect(vi.mocked(p.fetch).mock.calls[0][0]).toBe("https://files.example/.well-known/nostr/nip96.json");
+        expect(page.context.endpoint).toBe("https://api.example/upload");
+        expect(p.authService.buildAuthHeader).toHaveBeenCalledWith("https://api.example/upload?page=0&count=24", "GET");
+    });
     it("discovers the NIP-96 API, signs the exact query, carries the returned count, and deletes ox instead of x", async () => {
         const p = params("nip96");
         p.destination.resolvedUploadUrl = "https://media.example/old-upload";

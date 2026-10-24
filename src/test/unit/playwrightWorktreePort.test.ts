@@ -138,6 +138,7 @@ describe('Playwright config connection values', () => {
             ]);
             expect(config.projects?.[1]?.testMatch).toEqual([
                 '**/postHistoryDialog.spec.ts',
+                '**/uploadRelaySync.spec.ts',
                 '**/postEditorSending.spec.ts',
                 '**/webComponentEmbed.spec.ts',
                 '**/webComponentLite.spec.ts',
@@ -163,8 +164,10 @@ describe('Playwright config connection values', () => {
             });
             expect(config.projects?.[4]?.testMatch).toEqual([
                 '**/webComponentEmbed.spec.ts',
+                '**/uploadRelaySync.spec.ts',
             ]);
             expect(config.projects?.[3]?.testMatch).toEqual([
+                '**/uploadRelaySync.spec.ts',
                 '**/composerTargetDialog.spec.ts',
                 '**/webComponentEmbed.spec.ts',
                 '**/webComponentLite.spec.ts',

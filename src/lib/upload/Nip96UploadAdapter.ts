@@ -19,6 +19,7 @@ import type {
 } from "../types";
 import { AuthenticationRequiredError } from "../sessionLiveness";
 import { throwIfUploadAborted, waitForUploadDelay } from "./uploadOperation";
+import { getNip96DiscoveryServer, normalizeNip96ServerUrl } from "./nip96ServerIdentity";
 import { fetchNip96DiscoveryConfig } from "./nip96Discovery";
 import { listNip96MediaPage, deleteNip96Media } from "./nip96MediaManagement";
 
@@ -182,8 +183,19 @@ export class Nip96UploadAdapter implements UploadProtocolAdapter {
         throwIfUploadAborted(params.signal);
         let uploadUrl;
         try {
-            uploadUrl = canonicalizeNip96UploadUrl(getNip96UploadUrl(params.destination));
+            if (params.destination.nip96UrlMode === "discovery") {
+                const serverUrl = normalizeNip96ServerUrl(getNip96DiscoveryServer(params.destination));
+                const { apiUrl } = await fetchNip96DiscoveryConfig({
+                    trustedUploadUrl: canonicalizeNip96UploadUrl(serverUrl),
+                    fetch: params.fetch,
+                    signal: params.signal,
+                });
+                uploadUrl = canonicalizeNip96UploadUrl(apiUrl);
+            } else {
+                uploadUrl = canonicalizeNip96UploadUrl(getNip96UploadUrl(params.destination));
+            }
         } catch (error) {
+            throwIfUploadAborted(params.signal);
             return {
                 success: false,
                 ...toNip96UploadError(error, "destination"),
@@ -305,7 +317,7 @@ export class Nip96UploadAdapter implements UploadProtocolAdapter {
         fetch: typeof fetch;
     }): Promise<UploadConnectionTestResult> {
         try {
-            const uploadUrl = canonicalizeNip96UploadUrl(params.destination.serverUrl);
+            const uploadUrl = canonicalizeNip96UploadUrl(getNip96DiscoveryServer(params.destination));
             const { config, status } = await fetchNip96DiscoveryConfig({
                 trustedUploadUrl: uploadUrl,
                 fetch: params.fetch,

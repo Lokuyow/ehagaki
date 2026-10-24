@@ -58,7 +58,7 @@ export function resolveUploadDestinationForUse(
     identity: UploadDestinationIdentity,
 ): UploadDestination {
     if (destination.protocol === "nip96") {
-        return resolveNip96PresetUploadUrl(destination);
+        return destination.nip96UrlMode === "discovery" ? destination : resolveNip96PresetUploadUrl(destination);
     }
 
     const withoutResolvedUploadUrl = stripOptionalField(destination, "resolvedUploadUrl");

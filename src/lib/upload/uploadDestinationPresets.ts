@@ -21,6 +21,7 @@ export interface UploadDestinationPreset {
     protocol: UploadProtocol;
     serverUrl: string;
     resolvedUploadUrl?: string;
+    nip96ServerUrl?: string;
     capabilities: UploadDestinationCapabilities;
 }
 
@@ -53,6 +54,7 @@ function createNip96Preset(endpointUrl: string): UploadDestinationPreset {
         protocol: "nip96",
         serverUrl: endpoint.url,
         resolvedUploadUrl: NIP96_DIRECT_UPLOAD_URLS[endpoint.url] ?? endpoint.url,
+        nip96ServerUrl: new URL(endpoint.url).origin,
         capabilities: {
             ...DEFAULT_UPLOAD_CAPABILITIES,
             supportedMimeTypes: ["image/*", "video/*"],
@@ -158,7 +160,7 @@ export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
     createNip96Preset("https://files.sovbit.host/api/v2/media"),
 ];
 
-function createUploadDestinationId(): string {
+export function createUploadDestinationId(): string {
     if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
         return crypto.randomUUID();
     }
@@ -240,6 +242,7 @@ export function createUploadDestinationFromPreset(params: {
         protocol: params.preset.protocol,
         serverUrl,
         ...(params.preset.resolvedUploadUrl ? { resolvedUploadUrl: params.preset.resolvedUploadUrl } : {}),
+        ...(params.preset.nip96ServerUrl ? { nip96ServerUrl: params.preset.nip96ServerUrl, nip96UrlMode: "direct" as const } : {}),
         presetId: params.preset.id,
         isDefault: params.isDefault ?? false,
         enabled: true,

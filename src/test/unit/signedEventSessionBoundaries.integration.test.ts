@@ -6,7 +6,7 @@ import { PostDeletionService } from "../../lib/postDeletionService";
 import { NostrAuthService, createNip42Authenticator } from "../../lib/nostrAuthService";
 import { Nip96UploadAdapter } from "../../lib/upload/Nip96UploadAdapter";
 import { BlossomUploadAdapter } from "../../lib/upload/BlossomUploadAdapter";
-import { publishBud03ServerList } from "../../lib/upload/bud03ServerList";
+import { publishRelayServerList } from "../../lib/upload/bud03ServerList";
 import type { AuthState, UploadDestination } from "../../lib/types";
 import type { PostHistoryRecord } from "../../lib/storage/ehagakiDb";
 import { createDeferred } from "../deferredTestUtils";
@@ -660,10 +660,11 @@ describe("active session liveness at authorization and protocol boundaries", () 
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("does not publish BUD-03 when the signer mutates its template in place", async () => {
+    it.each([10063, 10096])("does not publish kind %s when the signer mutates its template in place", async kind => {
         const send = vi.fn();
 
-        await expect(publishBud03ServerList({
+        await expect(publishRelayServerList({
+            kind,
             rxNostr: { send } as never,
             signer: {
                 getPublicKey: async () => pubkeyA,
@@ -679,12 +680,13 @@ describe("active session liveness at authorization and protocol boundaries", () 
         expect(send).not.toHaveBeenCalled();
     });
 
-    it("does not publish BUD-03 after logout during signing", async () => {
+    it.each([10063, 10096])("does not publish kind %s after logout during signing", async kind => {
         const session = { value: createAuthState() };
         const deferred = createDeferred<any>();
         let requestedTemplate: any;
         const send = vi.fn();
-        const publishPromise = publishBud03ServerList({
+        const publishPromise = publishRelayServerList({
+            kind,
             rxNostr: { send } as never,
             signer: {
                 getPublicKey: async () => pubkeyA,

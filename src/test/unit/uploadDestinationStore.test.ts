@@ -9,12 +9,10 @@ const mockRepository = vi.hoisted(() => ({
     delete: vi.fn(),
     setDefault: vi.fn(),
     move: vi.fn(),
-    replaceBlossomServers: vi.fn(),
+    applyRelayServerLists: vi.fn(),
+    updateTestCapabilities: vi.fn(),
 }));
-const bud03Mocks = vi.hoisted(() => ({
-    fetchBud03ServerList: vi.fn(),
-    publishBud03ServerList: vi.fn(),
-}));
+const syncMocks = vi.hoisted(() => ({ fetchUploadRelayLists: vi.fn(), publishUploadRelayLists: vi.fn() }));
 const connectionTestMocks = vi.hoisted(() => ({
     testUploadDestinationConnection: vi.fn(),
 }));
@@ -28,7 +26,7 @@ vi.mock("../../lib/storage/uploadDestinationsRepository", () => ({
     uploadDestinationsRepository: mockRepository,
 }));
 
-vi.mock("../../lib/upload/bud03ServerList", () => bud03Mocks);
+vi.mock("../../lib/upload/relayUploadDestinationSync", () => syncMocks);
 
 vi.mock("../../lib/upload/uploadDestinationConnectionTest", () => connectionTestMocks);
 
@@ -203,22 +201,22 @@ describe("uploadDestinationStore", () => {
     });
 
     it("does not persist a stale A BUD-03 fetch after B becomes current", async () => {
-        const aFetch = createDeferred<{ success: boolean; servers: string[] }>();
+        const aFetch = createDeferred<{ results: { blossom: { status: "success" }; nip96: { status: "skipped" } }; updates: { blossom: string[] } }>();
         const bDestination = createDestination("account-b", "b");
-        bud03Mocks.fetchBud03ServerList.mockReturnValue(aFetch.promise);
+        syncMocks.fetchUploadRelayLists.mockReturnValue(aFetch.promise);
         mockRepository.getDefault.mockResolvedValue(bDestination);
         mockRepository.getAll.mockResolvedValue([bDestination]);
 
-        const aFetchPromise = uploadDestinationStore.fetchBud03({} as never, "account-a");
+        const aFetchPromise = uploadDestinationStore.fetchFromRelays({} as never, "account-a");
         const bLoad = uploadDestinationStore.load("account-b");
         await bLoad;
-        aFetch.resolve({ success: true, servers: ["https://a.example.com"] });
+        aFetch.resolve({ results: { blossom: { status: "success" }, nip96: { status: "skipped" } }, updates: { blossom: ["https://a.example.com"] } });
         await aFetchPromise;
 
-        expect(mockRepository.replaceBlossomServers).not.toHaveBeenCalled();
+        expect(mockRepository.applyRelayServerLists).not.toHaveBeenCalled();
         expect(uploadDestinationStore.value.destinations).toEqual([bDestination]);
-        expect(uploadDestinationStore.value.bud03Fetching).toBe(false);
-        expect(uploadDestinationStore.value.bud03Status).toBeNull();
+        expect(uploadDestinationStore.value.relayFetching).toBe(false);
+        expect(uploadDestinationStore.value.relaySyncResults).toBeNull();
     });
 
     it("keeps a pending list load current when a connection test finishes without capabilities", async () => {
@@ -244,22 +242,23 @@ describe("uploadDestinationStore", () => {
     });
 
     it("keeps BUD-03 fetching active while a connection test completes", async () => {
-        const fetch = createDeferred<{ success: boolean; servers: string[] }>();
+        const fetch = createDeferred<{ results: { blossom: { status: "success" }; nip96: { status: "skipped" } }; updates: { blossom: string[] } }>();
         const destination = createDestination("account-a", "a");
-        bud03Mocks.fetchBud03ServerList.mockReturnValue(fetch.promise);
+        syncMocks.fetchUploadRelayLists.mockReturnValue(fetch.promise);
         connectionTestMocks.testUploadDestinationConnection.mockResolvedValue({ success: true });
         mockRepository.getDefault.mockResolvedValue(destination);
         mockRepository.getAll.mockResolvedValue([destination]);
 
-        const fetchPromise = uploadDestinationStore.fetchBud03({} as never, "account-a");
+        const fetchPromise = uploadDestinationStore.fetchFromRelays({} as never, "account-a");
         const test = uploadDestinationStore.test(destination);
         await test;
-        expect(uploadDestinationStore.value.bud03Fetching).toBe(true);
+        expect(uploadDestinationStore.value.relayFetching).toBe(true);
 
-        fetch.resolve({ success: true, servers: ["https://a.example.com"] });
+        mockRepository.applyRelayServerLists.mockResolvedValue([destination]);
+        fetch.resolve({ results: { blossom: { status: "success" }, nip96: { status: "skipped" } }, updates: { blossom: ["https://a.example.com"] } });
         await fetchPromise;
-        expect(uploadDestinationStore.value.bud03Fetching).toBe(false);
-        expect(mockRepository.replaceBlossomServers).toHaveBeenCalledWith("account-a", ["https://a.example.com"]);
+        expect(uploadDestinationStore.value.relayFetching).toBe(false);
+        expect(mockRepository.applyRelayServerLists).toHaveBeenCalledWith("account-a", { blossom: ["https://a.example.com"] }, expect.any(Function));
     });
 
     it("keeps BUD-03 publishing active while an unrelated list load completes", async () => {
@@ -274,36 +273,59 @@ describe("uploadDestinationStore", () => {
             .mockReturnValueOnce(publishDestinations.promise)
             .mockResolvedValue([destination]);
 
-        const publish = uploadDestinationStore.publishBud03({} as never, "account-a");
+        const publish = uploadDestinationStore.publishToRelays({} as never, "account-a");
         await vi.waitFor(() => expect(mockRepository.getAll).toHaveBeenCalledOnce());
         const load = uploadDestinationStore.load("account-a");
         await load;
-        expect(uploadDestinationStore.value.bud03Publishing).toBe(true);
+        expect(uploadDestinationStore.value.relayPublishing).toBe(true);
 
+        syncMocks.publishUploadRelayLists.mockResolvedValue({ blossom: { status: "skipped", reason: "no_enabled_servers" }, nip96: { status: "skipped", reason: "no_enabled_servers" } });
         publishDestinations.resolve([]);
         await publish;
-        expect(uploadDestinationStore.value.bud03Publishing).toBe(false);
-        expect(uploadDestinationStore.value.bud03Status).toBe("BUD-03 publish skipped: no enabled Blossom servers");
+        expect(uploadDestinationStore.value.relayPublishing).toBe(false);
+        expect(uploadDestinationStore.value.relaySyncResults?.blossom.status).toBe("skipped");
     });
 
-    it("uses only the newest BUD-03 fetch result in the fetch lane", async () => {
-        const firstFetch = createDeferred<{ success: boolean; servers: string[] }>();
-        const secondFetch = createDeferred<{ success: boolean; servers: string[] }>();
-        const destination = createDestination("account-a", "a");
-        bud03Mocks.fetchBud03ServerList
-            .mockReturnValueOnce(firstFetch.promise)
-            .mockReturnValueOnce(secondFetch.promise);
-        mockRepository.getDefault.mockResolvedValue(destination);
-        mockRepository.getAll.mockResolvedValue([destination]);
-
-        const first = uploadDestinationStore.fetchBud03({} as never, "account-a");
-        const second = uploadDestinationStore.fetchBud03({} as never, "account-a");
-        secondFetch.resolve({ success: true, servers: ["https://new.example.com"] });
-        await second;
-        firstFetch.resolve({ success: true, servers: ["https://old.example.com"] });
+    it("coalesces repeated fetch and publish operations while a sync is active", async () => {
+        const deferred = createDeferred<Awaited<ReturnType<typeof syncMocks.fetchUploadRelayLists>>>();
+        syncMocks.fetchUploadRelayLists.mockReturnValue(deferred.promise);
+        const first = uploadDestinationStore.fetchFromRelays({} as never, "account-a");
+        await uploadDestinationStore.fetchFromRelays({} as never, "account-a");
+        await uploadDestinationStore.publishToRelays({} as never, "account-a");
+        expect(syncMocks.fetchUploadRelayLists).toHaveBeenCalledOnce();
+        expect(syncMocks.publishUploadRelayLists).not.toHaveBeenCalled();
+        deferred.resolve({ results: { blossom: { status: "skipped" }, nip96: { status: "skipped" } }, updates: {} });
         await first;
-
-        expect(mockRepository.replaceBlossomServers).toHaveBeenCalledTimes(1);
-        expect(mockRepository.replaceBlossomServers).toHaveBeenCalledWith("account-a", ["https://new.example.com"]);
+        expect(uploadDestinationStore.value.relayFetching).toBe(false);
+    });
+    it("aborts a fetch when settings change and does not commit its delayed results", async () => {
+        const deferred = createDeferred<Awaited<ReturnType<typeof syncMocks.fetchUploadRelayLists>>>();
+        syncMocks.fetchUploadRelayLists.mockReturnValue(deferred.promise);
+        const operation = uploadDestinationStore.fetchFromRelays({} as never, "account-a");
+        const context = syncMocks.fetchUploadRelayLists.mock.calls[0][0];
+        mockRepository.getDefault.mockResolvedValue(createDestination("account-a"));
+        mockRepository.getAll.mockResolvedValue([]);
+        await uploadDestinationStore.move("id", "up", "account-a");
+        expect(context.signal.aborted).toBe(true);
+        deferred.resolve({ results: { blossom: { status: "success" }, nip96: { status: "skipped" } }, updates: { blossom: ["https://new.example"] } });
+        await operation;
+        expect(mockRepository.applyRelayServerLists).not.toHaveBeenCalled();
+        expect(uploadDestinationStore.value.relaySyncResults?.blossom.reason).toBe("settings_changed");
+    });
+    it("does not revive an old fetch after an A to B to A account transition", async () => {
+        const deferred = createDeferred<Awaited<ReturnType<typeof syncMocks.fetchUploadRelayLists>>>();
+        syncMocks.fetchUploadRelayLists.mockReturnValue(deferred.promise);
+        const operation = uploadDestinationStore.fetchFromRelays({} as never, "account-a");
+        const context = syncMocks.fetchUploadRelayLists.mock.calls[0][0];
+        mockRepository.getDefault.mockResolvedValue(createDestination("account-b"));
+        mockRepository.getAll.mockResolvedValue([]);
+        await uploadDestinationStore.load("account-b");
+        mockRepository.getDefault.mockResolvedValue(createDestination("account-a"));
+        await uploadDestinationStore.load("account-a");
+        deferred.resolve({ results: { blossom: { status: "success" }, nip96: { status: "skipped" } }, updates: { blossom: ["https://stale.example"] } });
+        await operation;
+        expect(context.signal.aborted).toBe(true);
+        expect(mockRepository.applyRelayServerLists).not.toHaveBeenCalled();
+        expect(uploadDestinationStore.value.relaySyncResults).toBeNull();
     });
 });

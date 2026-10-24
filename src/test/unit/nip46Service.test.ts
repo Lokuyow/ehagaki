@@ -27,6 +27,12 @@ const EXPECTED_NIP46_CLIENT_METADATA = {
 };
 
 describe('NIP46_REQUESTED_PERMISSIONS', () => {
+    it('requests both upload preference kinds without wildcard signing permission', () => {
+        expect(NIP46_REQUESTED_PERMISSIONS).toContain('sign_event:10063');
+        expect(NIP46_REQUESTED_PERMISSIONS).toContain('sign_event:10096');
+        expect(NIP46_REQUESTED_PERMS.split(',')).toContain('sign_event:10096');
+        expect(NIP46_REQUESTED_PERMS.split(',')).not.toContain('sign_event');
+    });
     it('接続確認用のping権限を要求しない', () => {
         expect(NIP46_REQUESTED_PERMISSIONS).not.toContain('ping');
         expect(NIP46_REQUESTED_PERMS.split(',')).not.toContain('ping');

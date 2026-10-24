@@ -27,6 +27,84 @@ afterEach(async () => {
 });
 
 describe("uploadDestinationsRepository", () => {
+    it("atomically merges both protocols, preserves disabled matching IDs and the current default", async () => {
+        const db = createTestDb();
+        const repository = new DexieUploadDestinationsRepository(db, () => 3000, () => new MockStorage(), null);
+        const base = await repository.getDefault("owner");
+        const blossom = { ...base, id: "blossom", protocol: "blossom" as const, serverUrl: "https://blossom.example", presetId: "custom" as const, isDefault: false, sortIndex: 0 };
+        const custom = { ...base, id: "custom", protocol: "custom-http" as const, isDefault: true, sortIndex: 1 };
+        const nip96 = { ...base, id: "nip96", protocol: "nip96" as const, presetId: "custom" as const, serverUrl: "https://api.example/upload", resolvedUploadUrl: "https://api.example/upload", enabled: false, isDefault: false, sortIndex: 2 };
+        await db.uploadDestinations.where("scopeKey").equals("owner").delete();
+        await repository.put(blossom);
+        await repository.put(custom);
+        await repository.put(nip96);
+        const result = await repository.applyRelayServerLists("owner", {
+            blossom: ["https://new.example", "https://blossom.example"],
+            nip96: [{ serverUrl: "https://files.example", apiUrl: "https://api.example/upload" }],
+        }, () => {});
+        expect(result.find(destination => destination.id === "nip96")).toMatchObject({ enabled: false, nip96ServerUrl: "https://files.example", nip96UrlMode: "direct", resolvedUploadUrl: "https://api.example/upload" });
+        expect(result.filter(destination => destination.protocol === "blossom").map(destination => destination.serverUrl)).toEqual(["https://new.example", "https://blossom.example"]);
+        expect(result.find(destination => destination.id === "blossom")?.createdAt).toBe(blossom.createdAt);
+        expect(result.filter(destination => destination.isDefault).map(destination => destination.id)).toEqual(["custom"]);
+        expect((await repository.getDefault("owner")).id).toBe("custom");
+        expect((await repository.getAll("owner")).find(destination => destination.id === "nip96")?.nip96ServerUrl).toBe("https://files.example");
+        db.close();
+    });
+
+    it("preserves untouched protocols and creates a usable discovery destination with a single default", async () => {
+        const db = createTestDb();
+        const repository = new DexieUploadDestinationsRepository(db, () => 3000, () => new MockStorage(), null);
+        const base = { ...await repository.getDefault("owner"), protocol: "nip96" as const, presetId: "custom" as const, serverUrl: "https://old.example/upload" };
+        await repository.put(base);
+        const otherAccount = await repository.getAll("other-owner");
+        const result = await repository.applyRelayServerLists("owner", {
+            blossom: ["https://blossom.example"],
+        }, () => {});
+        expect(result.find(destination => destination.id === base.id)).toMatchObject({ protocol: base.protocol, serverUrl: base.serverUrl, enabled: true, isDefault: true });
+        const second = await repository.applyRelayServerLists("owner", { nip96: [{ serverUrl: "https://files.example", apiUrl: "https://api.example/upload" }] }, () => {});
+        expect(second.find(destination => destination.protocol === "nip96")).toMatchObject({ serverUrl: "https://files.example", nip96ServerUrl: "https://files.example", nip96UrlMode: "discovery", resolvedUploadUrl: "https://api.example/upload" });
+        expect(second.filter(destination => destination.isDefault)).toHaveLength(1);
+        expect((await repository.getDefault("owner")).enabled).toBe(true);
+        expect(await repository.getAll("other-owner")).toEqual(otherAccount);
+        db.close();
+    });
+
+    it("uses the existing fallback policy when only matching disabled destinations remain", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        storage.setItem(STORAGE_KEYS.UPLOAD_ENDPOINT, "https://fallback.example/upload");
+        const repository = new DexieUploadDestinationsRepository(db, () => 3000, () => storage, null);
+        const base = await repository.getDefault("owner");
+        await repository.put({ ...base, enabled: false, isDefault: false, presetId: "custom", serverUrl: "https://files.example", nip96ServerUrl: "https://files.example", resolvedUploadUrl: "https://files.example/api" });
+        const result = await repository.applyRelayServerLists("owner", { nip96: [{ serverUrl: "https://files.example", apiUrl: "https://files.example/api" }] }, () => {});
+        expect(result.find(destination => destination.id === base.id)?.enabled).toBe(false);
+        expect(result.find(destination => destination.isDefault)).toMatchObject({ enabled: true, serverUrl: "https://fallback.example/upload" });
+        expect((await repository.getDefault("owner")).serverUrl).toBe("https://fallback.example/upload");
+        db.close();
+    });
+
+    it("rolls back both lists and defaults when the operation becomes stale during the write", async () => {
+        const db = createTestDb();
+        const repository = new DexieUploadDestinationsRepository(db, () => 3000, () => new MockStorage(), null);
+        const before = await repository.getAll("owner");
+        let deleted = false;
+        const hook = () => { deleted = true; };
+        db.uploadDestinations.hook("deleting", hook);
+        await expect(repository.applyRelayServerLists("owner", { blossom: ["https://new.example"], nip96: [{ serverUrl: "https://files.example", apiUrl: "https://files.example/api" }] }, () => { if (deleted) throw new Error("stale"); })).rejects.toThrow("stale");
+        db.uploadDestinations.hook("deleting").unsubscribe(hook);
+        expect(await repository.getAll("owner")).toEqual(before);
+        db.close();
+    });
+
+    it("does not overwrite a synchronized destination with stale connection-test settings", async () => {
+        const db = createTestDb();
+        const repository = new DexieUploadDestinationsRepository(db, () => 3000, () => new MockStorage(), null);
+        const before = await repository.getDefault("owner");
+        await repository.put({ ...before, serverUrl: "https://changed.example/upload", updatedAt: 4000 });
+        await repository.updateTestCapabilities(before, { ...before.capabilities, supportsList: true }, () => {});
+        expect((await repository.getAll("owner"))[0]).toMatchObject({ serverUrl: "https://changed.example/upload", capabilities: { supportsList: false } });
+        db.close();
+    });
     it("normalizes legacy share.yabu.me Blossom destinations into the NIP-96 preset", async () => {
         const db = createTestDb();
         const storage = new MockStorage();
