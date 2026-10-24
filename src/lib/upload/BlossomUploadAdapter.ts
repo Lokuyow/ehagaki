@@ -129,7 +129,7 @@ export function createBlossomClient(
             const auth = await addAuthorization();
             throwIfUploadAborted(signal);
             if (!auth) throw new Error("Blossom authorization failed");
-            headers.Authorization = canonicalizeBlossomAuthorizationHeader(auth);
+            headers.Authorization = canonicalizeBlossomAuthorizationHeader(auth, `${baseUrl}${url}`);
         }
 
         const response = await fetchImpl(`${baseUrl}${url}`, {

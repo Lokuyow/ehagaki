@@ -96,10 +96,18 @@ function encodeBase64Url(bytes: Uint8Array): string {
         .replace(/=+$/g, "");
 }
 
-export function encodeBlossomAuthorizationHeader(eventJson: string): string {
-    return `Nostr ${encodeBase64Url(textEncoder.encode(eventJson))}`;
+function encodeAuthorizationBytes(bytes: Uint8Array, serverUrl?: string): string {
+    // Primal's legacy decoder requires standard Base64, including padding.
+    // https://github.com/PrimalHQ/primal-blossom-server/issues/2
+    const legacy = serverUrl !== undefined
+        && new URL(serverUrl).origin === "https://blossom.primal.net";
+    return `Nostr ${legacy ? bytesToBase64(bytes) : encodeBase64Url(bytes)}`;
 }
 
-export function canonicalizeBlossomAuthorizationHeader(authorization: unknown): string {
-    return `Nostr ${encodeBase64Url(parseAuthorizationHeader(authorization))}`;
+export function encodeBlossomAuthorizationHeader(eventJson: string, serverUrl?: string): string {
+    return encodeAuthorizationBytes(textEncoder.encode(eventJson), serverUrl);
+}
+
+export function canonicalizeBlossomAuthorizationHeader(authorization: unknown, serverUrl?: string): string {
+    return encodeAuthorizationBytes(parseAuthorizationHeader(authorization), serverUrl);
 }

@@ -484,13 +484,13 @@ describe('NostrAuthService', () => {
             vi.mocked(keyManager.getFromStore).mockReturnValue(null);
         });
 
-        it('connection test contextは既存builderを1回使い、captured sessionを検証する', async () => {
+        it.each(['https://blossom.example', 'https://blossom.primal.net'])('connection test context uses the origin encoding and captured session: %s', async (serverUrl) => {
             const { keyManager } = await import('../../lib/keyManager.svelte');
             vi.mocked(keyManager.getFromStore).mockReturnValue('nsec1testkey');
             const buildAuthorization = vi.spyOn(service, 'buildBlossomAuthorizationHeader');
 
             const context = await service.createBlossomConnectionTestAuthorization({
-                serverUrl: 'https://blossom.example',
+                serverUrl,
                 method: 'upload',
                 sha256: 'a'.repeat(64),
                 contentType: 'image/png',
@@ -498,7 +498,11 @@ describe('NostrAuthService', () => {
             });
 
             expect(buildAuthorization).toHaveBeenCalledOnce();
-            expect(context.authorization).toMatch(/^Nostr [A-Za-z0-9_-]+$/);
+            const bytes = Buffer.from(context.authorization.slice(6), 'base64url');
+            expect(context.authorization.slice(6)).toBe(bytes.toString(
+                serverUrl === 'https://blossom.primal.net' ? 'base64' : 'base64url',
+            ));
+            expect(JSON.parse(bytes.toString()).tags).toContainEqual(['t', 'upload']);
             expect(() => context.assertSession()).not.toThrow();
 
             mockAuthStoreModule.authState.value = {

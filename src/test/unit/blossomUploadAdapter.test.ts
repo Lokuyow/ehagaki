@@ -123,12 +123,12 @@ function mockImageLoads(loadStates: boolean[]) {
 }
 
 describe("BlossomUploadAdapter", () => {
-    it("uses nostr-tools BlossomClient with an authService signer for uploads", async () => {
+    it.each(["https://npub1example.blossom.band", "https://blossom.primal.net"])("uploads with the destination's auth encoding: %s", async (serverUrl) => {
         mockImageLoads([true]);
 
         const adapter = new BlossomUploadAdapter();
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce(createJsonResponse(createValidDescriptor(), {
+            .mockResolvedValueOnce(createJsonResponse(createValidDescriptor({ url: `${serverUrl}/${SHA256}.png` }), {
                 status: 200,
             }))
             .mockResolvedValueOnce(new Response(null, {
@@ -153,7 +153,7 @@ describe("BlossomUploadAdapter", () => {
             file: new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "test.png", {
                 type: "image/png",
             }),
-            destination: createDestination(),
+            destination: { ...createDestination(), serverUrl, presetId: "custom", name: "My media server" },
             authService,
             fetch: fetchMock as unknown as typeof fetch,
         });
@@ -161,7 +161,7 @@ describe("BlossomUploadAdapter", () => {
         expect(result.success).toBe(true);
         expect(authService.getBlossomSigner).toHaveBeenCalledTimes(1);
         expect(fetchMock).toHaveBeenCalledWith(
-            "https://npub1example.blossom.band/upload",
+            `${serverUrl}/upload`,
             expect.objectContaining({
                 method: "PUT",
                 redirect: "error",
@@ -172,14 +172,17 @@ describe("BlossomUploadAdapter", () => {
         const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
         const authorization = (firstCall[1].headers as Record<string, string>).Authorization;
 
-        expect(authorization).toMatch(/^Nostr [A-Za-z0-9_-]+$/);
-        expect(authorization).not.toMatch(/[+/=]/);
+        const signedJson = JSON.stringify(await signer.signEvent.mock.results[0].value);
+        expect(authorization.slice(6)).toBe(Buffer.from(signedJson).toString(
+            serverUrl === "https://blossom.primal.net" ? "base64" : "base64url",
+        ));
+        expect(signer.signEvent).toHaveBeenCalledOnce();
         expect(JSON.parse(decodeBase64UrlHeader(authorization))).toEqual(await signer.signEvent.mock.results[0].value);
         expect(result).toMatchObject({
             success: true,
-            url: `https://npub1example.blossom.band/${SHA256}.png`,
+            url: `${serverUrl}/${SHA256}.png`,
             nip94: {
-                url: `https://npub1example.blossom.band/${SHA256}.png`,
+                url: `${serverUrl}/${SHA256}.png`,
                 x: SHA256,
                 size: "4",
                 m: "image/png",
