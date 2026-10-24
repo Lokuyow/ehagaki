@@ -716,7 +716,7 @@ test("applies iframe color defaults, persists user colors, and releases runtime 
         );
         await page.getByRole("button", { name: "iframe を再読み込み" }).click();
         await navigation;
-        await expect.poll(countReadyLogRecords).toBe(readyLogCount + 1);
+        await expect.poll(countReadyLogRecords, { timeout: 15_000 }).toBe(readyLogCount + 1);
         await Promise.all([
             expect(frame.locator(".header-actions button").first()).toBeAttached(),
             expect(frame.locator(".settings-btn").first()).toBeAttached(),

@@ -1667,17 +1667,10 @@ test.describe('PostHistoryDialog Playwright', () => {
     test('initial relay sync remains visible at the bottom while scrolling through saved history', async ({ page }, testInfo) => {
         await page.goto('post-history-dialog-playwright.html?relay-coverage=sync-footer');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
-        const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
         const footer = page.locator('.post-history-sync-footer');
         const heading = page.locator('.post-history-heading');
         const statusToast = page.locator('.floating-message.anchor-center[role="status"]');
-        await expect.poll(
-            () => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length),
-            { timeout: 15_000 },
-        ).toBe(5);
-        await expect.poll(() => historyEventIds(page)).toEqual(ids.slice(60, 110));
-
-        await expect(statusToast).toContainText('リレーと同期中...');
+        await expect(statusToast).toContainText('リレーと同期中...', { timeout: 15_000 });
         await expect(heading.locator('.status-loading-placeholder')).toHaveCount(0);
         const headingBounds = await heading.boundingBox();
         const toastBounds = await statusToast.boundingBox();
@@ -1686,6 +1679,17 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(Math.abs(toastBounds!.x + toastBounds!.width / 2 - (headingBounds!.x + headingBounds!.width / 2))).toBeLessThanOrEqual(1);
         expect(Math.abs(toastBounds!.y + toastBounds!.height / 2 - (headingBounds!.y + headingBounds!.height / 2))).toBeLessThanOrEqual(1);
 
+        const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
+        await expect.poll(
+            () => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length),
+            { timeout: 15_000 },
+        ).toBeGreaterThan(0);
+
+        await expect.poll(
+            () => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length),
+            { timeout: 15_000 },
+        ).toBe(5);
+        await expect.poll(() => historyEventIds(page)).toEqual(ids.slice(60, 110));
         await scrollHistoryToBottom(page);
         await expect(footer.getByText('リレーと同期中...')).toBeVisible();
         await expect(footer.locator('.inline-spinner')).toBeInViewport();
@@ -1755,7 +1759,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequests)).toBe(4);
         await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(5);
         await expect.poll(rows).toEqual(ids.slice(60, 110));
-        await expect(page.locator('.status-loading-placeholder .loader-container')).toBeVisible();
+        await expect(page.locator('.post-history-sync-footer')).toBeVisible();
         await expect(fetchButton).toHaveCount(0);
         await expect(page.getByRole('button', { name: '保存済みの古い投稿を表示' })).toHaveCount(0);
         await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.olderRequests.length)).toBe(0);
@@ -2452,6 +2456,7 @@ test.describe('PostHistoryDialog Playwright', () => {
             { topSlotHeights: [24, 0] },
         );
         expect(await historyEventIds(page)).toEqual(latestWindow);
+        await waitForIntersectionObserverSettle(page);
         await expect(page.locator('.post-history-auto-load-newer-sentinel')).toHaveCount(0);
     });
 

@@ -39,6 +39,9 @@ test.describe("mobile tab swipes", () => {
                 test.skip(browserName !== "chromium", "Native swipe input uses the Chromium protocol.");
                 await page.addInitScript(tab => localStorage.setItem("historyActiveTab", tab), from);
                 await page.goto("post-history-dialog-playwright.html?history-tabs=1");
+                await page.waitForFunction(() => Boolean(
+                    Reflect.get(window, "__POST_HISTORY_HARNESS__")?.ready,
+                ));
                 const dialog = page.getByRole("dialog", { name: "履歴", exact: true });
                 await expect(dialog.locator(".history-tab-viewport")).toHaveAttribute("aria-busy", "false");
                 await dialog.evaluate(async node => { await Promise.all(node.getAnimations().map(animation => animation.finished)); });
