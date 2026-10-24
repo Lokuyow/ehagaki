@@ -1,0 +1,34 @@
+diff --git a/node_modules/gh-pages/lib/git.js b/node_modules/gh-pages/lib/git.js
+--- a/node_modules/gh-pages/lib/git.js
++++ b/node_modules/gh-pages/lib/git.js
+@@ -143,7 +143,29 @@ Git.prototype.rm = function (files) {
+   if (!Array.isArray(files)) {
+     files = [files];
+   }
+-  return this.exec('rm', '--ignore-unmatch', '-r', '-f', '--', ...files);
++  // Windows limits the entire command line, not only individual file paths.
++  // Keep quoting and UTF-16 expansion well below that limit, and stop if a
++  // removal fails so publish cannot continue with a partially cleaned site.
++  const batches = [];
++  let batch = [];
++  let bytes = 0;
++  for (const file of files) {
++    const size = Buffer.byteLength(file, 'utf8') + 3;
++    if (batch.length > 0 && bytes + size > 8000) {
++      batches.push(batch);
++      batch = [];
++      bytes = 0;
++    }
++    batch.push(file);
++    bytes += size;
++  }
++  if (batch.length > 0) batches.push(batch);
++  return batches.reduce(
++    (pending, paths) => pending.then(() =>
++      this.exec('rm', '--ignore-unmatch', '-r', '-f', '--', ...paths),
++    ),
++    Promise.resolve(this),
++  );
+ };
+ 
+ /**

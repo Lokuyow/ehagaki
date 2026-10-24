@@ -8,6 +8,7 @@
 - Node.js 24系に合わせ、`@types/node`も24系を使用します。
 - TypeScriptは6系を使用します。現在の`svelte-check` 4.7.7のpeer dependencyはTypeScript 5/6で、7系は対応範囲外です。
 - `rx-nostr` 3.7.8と`patch-package` 8.0.1は、[ACK分離パッチと検証器](RX_NOSTR_PATCH.md)の契約として固定しています。
+- `gh-pages`は6.3.0に固定し、[削除コマンドの分割パッチ](../patches/gh-pages+6.3.0.patch)を適用します。大量の公開済みファイルを更新するとき、Windowsのコマンド長制限による`spawn ENAMETOOLONG`を防ぐためです。
 - Playwrightは[Windows ChromiumのTCPパッチ](PLAYWRIGHT_WINDOWS_TCP_PATCH.md)に合わせて1.59.1に固定しています。1.64.1ではWindows WebKitのJSONL復元後の履歴テストが失敗しました。更新前のコード・アプリ依存でもPlaywrightだけを1.64.1にすると同じ失敗が再現し、1.59.1では成功したため、今回は更新を見送ります。
 - `mediabunny`と`@mediabunny/aac-encoder`は同じ1.62.1に固定し、一緒に更新します。
 

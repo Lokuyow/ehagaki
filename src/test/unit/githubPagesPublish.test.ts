@@ -8,7 +8,7 @@ import { expect, it } from "vitest";
 
 const run = promisify(execFile);
 
-it("publishes underscore-prefixed precache assets with Jekyll disabled", async () => {
+it.each([false, true])("publishes underscore assets and replaces a large existing site: %s", async (existingSite) => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), "ehagaki-pages-"));
     try {
         const remote = join(temporaryRoot, "remote.git");
@@ -19,6 +19,23 @@ it("publishes underscore-prefixed precache assets with Jekyll disabled", async (
         await writeFile(join(temporaryRoot, "dist", asset), body);
         await writeFile(join(temporaryRoot, "dist", "index.html"), "<!doctype html>");
         await run("git", ["init", "--bare", remote]);
+        let previousCommit: string | undefined;
+        if (existingSite) {
+            const seed = join(temporaryRoot, "seed");
+            await mkdir(join(seed, "assets"), { recursive: true });
+            // More than 32,767 characters when gh-pages expands git rm's arguments.
+            for (let index = 0; index < 500; index++) {
+                await writeFile(join(seed, "assets", `old-chunk-${index}-${"x".repeat(60)}.js`), "old");
+            }
+            await run("git", ["init", "--initial-branch=gh-pages", seed]);
+            await run("git", ["-C", seed, "add", "."]);
+            await run("git", [
+                "-C", seed, "-c", "user.name=Pages test", "-c", "user.email=pages-test@example.invalid",
+                "-c", "commit.gpgsign=false", "commit", "-m", "Previous site",
+            ]);
+            previousCommit = (await run("git", ["-C", seed, "rev-parse", "HEAD"])).stdout.trim();
+            await run("git", ["-C", seed, "push", pathToFileURL(remote).href, "HEAD:gh-pages"]);
+        }
 
         const { scripts } = JSON.parse(await readFile(resolve("package.json"), "utf8"));
         const [command, ...args] = scripts.deploy.split(/\s+/);
@@ -41,6 +58,9 @@ it("publishes underscore-prefixed precache assets with Jekyll disabled", async (
         const { stdout } = await run("git", ["-C", clone, "ls-tree", "-r", "--name-only", "HEAD"]);
         expect(stdout.trim().split(/\r?\n/)).toEqual([".nojekyll", asset, "index.html"]);
         expect(await readFile(join(clone, asset), "utf8")).toBe(body);
+        if (previousCommit) {
+            expect((await run("git", ["-C", clone, "rev-parse", "HEAD^"])).stdout.trim()).toBe(previousCommit);
+        }
     } finally {
         await rm(temporaryRoot, { recursive: true, force: true });
     }

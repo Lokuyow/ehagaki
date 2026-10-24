@@ -98,6 +98,8 @@ npm run validate
 
 GitHub Pagesへ公開する場合は、`npm run build`の後に`npm run deploy`を実行します。公開ブランチに`.nojekyll`を生成し、Viteが生成する先頭`_`のファイルも配信します。Jekyllがこれらを除外すると、Service Workerのインストールが失敗して旧版から更新できなくなります。
 
+Windowsで公開済みファイルが多い場合の`spawn ENAMETOOLONG`を防ぐため、`gh-pages`の削除コマンドを分割する[パッチ](patches/gh-pages+6.3.0.patch)を`npm ci`時に適用します。依存の更新後は`npm ci`を実行してから公開してください。
+
 ## 技術スタック
 
 ### フロントエンド
