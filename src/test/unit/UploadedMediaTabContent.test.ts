@@ -6,6 +6,7 @@ import { createDeferred } from "../deferredTestUtils";
 import { mediaDestination, mediaItem, mediaPage, mediaPubkey } from "../uploadMediaManagementTestUtils";
 import { mockAuthStoreModule } from "../mocks/storeModules";
 import type { UploadMediaManagementView } from "../../lib/upload/uploadMediaManagementController";
+import { UploadMediaError } from "../../lib/upload/mediaManagementTypes";
 const mocked = vi.hoisted(() => ({ view: null as unknown as UploadMediaManagementView,
     controller: { activate: vi.fn(), suspend: vi.fn(), busy: false, configure: vi.fn(), configureSaved: vi.fn(async () => undefined), invalidate: vi.fn(), select: vi.fn(), load: vi.fn(), delete: vi.fn(async () => true) },
     viewers: [] as Array<{ options: { index?: number; dataSource?: Array<{ id?: string; src?: string; type?: string }> }; closed: boolean }> }));
@@ -51,6 +52,13 @@ beforeEach(() => {
         loaded: true, loading: false, error: null, support: "supported", hasMore: true, needsRefresh: false, deletingId: null, notice: null } };
 });
 describe("uploaded-media content", () => {
+    it.each([ ["nostpic-com", false, "unavailable"], ["nostpic-com", true, "invalidResponse"], ["nostr-build", false, "invalidResponse"] ] as const)("shows listing error for %s (loaded: %s)", (presetId, loaded, errorKey) => {
+        mocked.view.current!.destination.presetId = presetId;
+        mocked.view.current!.loaded = loaded;
+        mocked.view.current!.error = new UploadMediaError("invalidResponse");
+        render(UploadedMediaTabContent, { show: true });
+        expect(screen.getByRole("alert").textContent).toBe(`uploadedMedia.errors.${errorKey}`);
+    });
     it("does not let a previous session's completed deletion close a new confirmation", async () => {
         const deferred = createDeferred<boolean>();
         mocked.controller.delete.mockImplementationOnce(() => deferred.promise);
