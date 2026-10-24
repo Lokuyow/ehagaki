@@ -36,7 +36,7 @@ on:
           - desktop-firefox
           - desktop-firefox-editor-paste
       e2e_repeat:
-        description: 'Repeat selected E2E tests without retries'
+        description: 'Repeat selected E2E tests serially without retries'
         required: false
         default: '1'
         type: choice
@@ -197,6 +197,10 @@ jobs:
         run: |
           set -o pipefail
           args=(--reporter=dot --retries=0 --repeat-each "$PLAYWRIGHT_REPEAT")
+          if [[ "$PLAYWRIGHT_REPEAT" != '1' ]]; then
+            # Keep repeated focused runs sequential to limit browser-runner contention.
+            args+=(--workers=1)
+          fi
           if [[ "$PLAYWRIGHT_PROJECT" != 'all' ]]; then
             args+=("--project=$PLAYWRIGHT_PROJECT")
           fi
