@@ -9,7 +9,6 @@
     import { authState } from "../../stores/authStore.svelte";
     import type {
         UploadDestination,
-        UploadProtocol,
         UploadPresetId,
     } from "../../lib/types";
     import {
@@ -30,11 +29,15 @@
 
     let { rxNostr = null }: Props = $props();
 
+    const initialPreset = UPLOAD_DESTINATION_PRESETS.find(
+        (preset) => preset.id === "blossom-band",
+    )!;
+
     const emptyForm = {
         id: "",
-        protocol: "blossom" as UploadProtocol,
-        serverUrl: "",
-        presetId: "custom" as UploadPresetId,
+        protocol: initialPreset.protocol,
+        serverUrl: initialPreset.serverUrl,
+        presetId: initialPreset.id,
         enabled: true,
         isDefault: true,
     };
@@ -327,7 +330,6 @@
                             .value as UploadPresetId,
                     )}
             >
-                <option value="custom">custom</option>
                 <optgroup label="Blossom">
                     {#each blossomPresetOptions as preset}
                         <option value={preset.id}>{preset.name}</option>
@@ -338,58 +340,61 @@
                         <option value={preset.id}>{preset.name}</option>
                     {/each}
                 </optgroup>
+                <option value="custom">custom</option>
             </select>
         </label>
-        <label>
-            <span
-                >{$_("settingsDialog.uploadDestinationProtocol") ||
-                    "Protocol"}</span
-            >
-            <select
-                bind:value={form.protocol}
-                onchange={() => (formError = null)}
-            >
-                <option value="blossom">Blossom</option>
-                <option value="nip96">NIP-96 legacy</option>
-                <option value="custom-http">Custom HTTP</option>
-            </select>
-        </label>
-        <div class="url-field">
-            <label for="upload-destination-url-input">
-                <span>URL</span>
+        {#if form.presetId === "custom"}
+            <label>
+                <span
+                    >{$_("settingsDialog.uploadDestinationProtocol") ||
+                        "Protocol"}</span
+                >
+                <select
+                    bind:value={form.protocol}
+                    onchange={() => (formError = null)}
+                >
+                    <option value="blossom">Blossom</option>
+                    <option value="nip96">NIP-96 legacy</option>
+                    <option value="custom-http">Custom HTTP</option>
+                </select>
             </label>
-            <div class="url-input-shell">
-                <input
-                    id="upload-destination-url-input"
-                    class="upload-destination-url-input"
-                    bind:this={serverUrlInputElement}
-                    bind:value={form.serverUrl}
-                    oninput={() => (formError = null)}
-                    inputmode="url"
-                />
-                {#if form.serverUrl.trim().length > 0}
-                    <Button
-                        type="button"
-                        className="upload-destination-url-clear-button"
-                        variant="default"
-                        shape="square"
-                        contentLayout="icon"
-                        ariaLabel={$_("clearInput") || "入力内容を消去"}
-                        onClick={handleClearServerUrl}
-                        onmousedown={preventKeyboardFocusChange}
-                        ontouchstart={preventKeyboardFocusChange}
-                    >
-                        <div
-                            class="url-clear-input-icon svg-icon"
-                            aria-hidden="true"
-                        ></div>
-                    </Button>
+            <div class="url-field">
+                <label for="upload-destination-url-input">
+                    <span>URL</span>
+                </label>
+                <div class="url-input-shell">
+                    <input
+                        id="upload-destination-url-input"
+                        class="upload-destination-url-input"
+                        bind:this={serverUrlInputElement}
+                        bind:value={form.serverUrl}
+                        oninput={() => (formError = null)}
+                        inputmode="url"
+                    />
+                    {#if form.serverUrl.trim().length > 0}
+                        <Button
+                            type="button"
+                            className="upload-destination-url-clear-button"
+                            variant="default"
+                            shape="square"
+                            contentLayout="icon"
+                            ariaLabel={$_("clearInput") || "入力内容を消去"}
+                            onClick={handleClearServerUrl}
+                            onmousedown={preventKeyboardFocusChange}
+                            ontouchstart={preventKeyboardFocusChange}
+                        >
+                            <div
+                                class="url-clear-input-icon svg-icon"
+                                aria-hidden="true"
+                            ></div>
+                        </Button>
+                    {/if}
+                </div>
+                {#if formError}
+                    <span class="form-error" role="alert">{formError}</span>
                 {/if}
             </div>
-            {#if formError}
-                <span class="form-error" role="alert">{formError}</span>
-            {/if}
-        </div>
+        {/if}
         <div class="checkbox-group">
             <label class="checkbox-row">
                 <input type="checkbox" bind:checked={form.enabled} />

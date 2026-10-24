@@ -261,9 +261,41 @@ describe("SettingsUploadDestinationSection", () => {
         expect(manageButton.textContent).toContain('管理');
     });
 
+    it("starts with the first Blossom preset and places custom after both preset groups", async () => {
+        render(SettingsUploadDestinationSection);
+        await openAddForm();
+
+        const presetSelect = screen.getByLabelText("プリセット") as HTMLSelectElement;
+        expect(presetSelect.value).toBe("blossom-band");
+        expect(presetSelect.options[0].value).toBe("blossom-band");
+        expect(presetSelect.options[presetSelect.options.length - 1].value).toBe("custom");
+        expect(Array.from(presetSelect.children).map(child => child.tagName)).toEqual(["OPTGROUP", "OPTGROUP", "OPTION"]);
+        expect(screen.queryByLabelText("Protocol")).toBeNull();
+        expect(screen.queryByLabelText("URL")).toBeNull();
+        expect((screen.getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled).toBe(false);
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+        expect(getSavedDestination()).toMatchObject({ presetId: "blossom-band", protocol: "blossom", serverUrl: "https://blossom.band" });
+    });
+
+    it("shows Protocol only for custom and retains the last preset's protocol", async () => {
+        render(SettingsUploadDestinationSection);
+        await openAddForm();
+        const presetSelect = screen.getByLabelText("プリセット");
+
+        for (const [presetId, protocol] of [["share-yabu-me", "nip96"], ["blossom-band", "blossom"]]) {
+            await fireEvent.change(presetSelect, { target: { value: presetId } });
+            expect(screen.queryByLabelText("Protocol")).toBeNull();
+            await fireEvent.change(presetSelect, { target: { value: "custom" } });
+            expect((screen.getByLabelText("Protocol") as HTMLSelectElement).value).toBe(protocol);
+            expect((screen.getByLabelText("URL") as HTMLInputElement).value).toBe("");
+            expect(Array.from((screen.getByLabelText("Protocol") as HTMLSelectElement).options).map(option => option.value)).toEqual(["blossom", "nip96", "custom-http"]);
+        }
+    });
+
     it("shows and clears a custom URL while keeping the protocol and button state", async () => {
         render(SettingsUploadDestinationSection);
         await openAddForm();
+        await fireEvent.change(screen.getByLabelText("プリセット"), { target: { value: "custom" } });
 
         const input = screen.getByLabelText("URL") as HTMLInputElement;
         const protocolSelect = screen.getByLabelText("Protocol") as HTMLSelectElement;
@@ -293,28 +325,25 @@ describe("SettingsUploadDestinationSection", () => {
         expect((screen.getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled).toBe(true);
     });
 
-    it("clears a URL that was filled from a preset without restoring the preset URL", async () => {
+    it("hides custom URL and clear button when returning to a preset", async () => {
         render(SettingsUploadDestinationSection);
         await openAddForm();
-
-        const presetSelect = screen.getByLabelText("プリセット") as HTMLSelectElement;
-        const input = screen.getByLabelText("URL") as HTMLInputElement;
-
+        const presetSelect = screen.getByLabelText("プリセット");
+        await fireEvent.change(presetSelect, { target: { value: "custom" } });
+        await fireEvent.input(screen.getByLabelText("URL"), { target: { value: "https://custom.example/upload" } });
+        expect(screen.getByRole("button", { name: "入力内容を消去" })).toBeTruthy();
         await fireEvent.change(presetSelect, { target: { value: "blossom-band" } });
-        expect(input.value).not.toBe("");
-
-        await fireEvent.click(screen.getByRole("button", { name: "入力内容を消去" }));
-        await new Promise((resolve) => setTimeout(resolve, 0));
-
-        expect(input.value).toBe("");
-        expect(presetSelect.value).toBe("custom");
+        expect(screen.queryByLabelText("URL")).toBeNull();
+        expect(screen.queryByLabelText("Protocol")).toBeNull();
         expect(screen.queryByRole("button", { name: "入力内容を消去" })).toBeNull();
-        expect((screen.getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled).toBe(true);
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+        expect(getSavedDestination()).toMatchObject({ protocol: "blossom", serverUrl: "https://blossom.band" });
     });
 
     it("renders the URL input with in-field clear button styling", async () => {
         render(SettingsUploadDestinationSection);
         await openAddForm();
+        await fireEvent.change(screen.getByLabelText("プリセット"), { target: { value: "custom" } });
 
         const input = screen.getByLabelText("URL") as HTMLInputElement;
         expect(input.classList.contains("upload-destination-url-input")).toBe(true);
@@ -324,6 +353,7 @@ describe("SettingsUploadDestinationSection", () => {
         currentLocale = "en";
         render(SettingsUploadDestinationSection);
         await openAddForm();
+        await fireEvent.change(screen.getByLabelText("Preset"), { target: { value: "custom" } });
 
         const input = screen.getByLabelText("URL") as HTMLInputElement;
         await fireEvent.input(input, { target: { value: "https://example.com" } });
@@ -337,6 +367,7 @@ describe("SettingsUploadDestinationSection", () => {
         render(SettingsUploadDestinationSection);
         await openAddForm();
 
+        await fireEvent.change(screen.getByLabelText("プリセット"), { target: { value: "custom" } });
         const japaneseInput = screen.getByLabelText("URL") as HTMLInputElement;
         await fireEvent.input(japaneseInput, { target: { value: "https://example.com" } });
 
@@ -348,6 +379,7 @@ describe("SettingsUploadDestinationSection", () => {
     it("rejects an invalid custom NIP-96 URL before saving", async () => {
         render(SettingsUploadDestinationSection);
         await openAddForm();
+        await fireEvent.change(screen.getByLabelText("プリセット"), { target: { value: "custom" } });
 
         const input = screen.getByLabelText("URL") as HTMLInputElement;
         const protocolSelect = screen.getByLabelText("Protocol") as HTMLSelectElement;
@@ -362,7 +394,7 @@ describe("SettingsUploadDestinationSection", () => {
         );
     });
 
-    it("preserves a manually selected protocol when editing a preset destination", async () => {
+    it("allows changing an existing preset's protocol after switching to custom", async () => {
         setExistingNip96Destination();
         render(SettingsUploadDestinationSection);
         await tick();
@@ -371,16 +403,19 @@ describe("SettingsUploadDestinationSection", () => {
         fireEvent.click(screen.getByRole("button", { name: "編集" }));
         await tick();
 
+        expect(screen.queryByLabelText("Protocol")).toBeNull();
+        await fireEvent.change(screen.getByLabelText("プリセット"), { target: { value: "custom" } });
         const protocolSelect = screen.getByLabelText("Protocol") as HTMLSelectElement;
         expect(protocolSelect.value).toBe("nip96");
         await fireEvent.change(protocolSelect, { target: { value: "custom-http" } });
+        await fireEvent.input(screen.getByLabelText("URL"), { target: { value: "https://custom.example/upload" } });
         await fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
         const savedDestination = getSavedDestination();
         expect(savedDestination).toEqual(expect.objectContaining({
             id: "existing-nip96",
             protocol: "custom-http",
-            presetId: "share-yabu-me",
+            presetId: "custom",
         }));
         expect(savedDestination).not.toHaveProperty("resolvedUploadUrl");
     });
@@ -388,6 +423,7 @@ describe("SettingsUploadDestinationSection", () => {
     it("clears the NIP-96 validation error when another protocol is selected", async () => {
         render(SettingsUploadDestinationSection);
         await openAddForm();
+        await fireEvent.change(screen.getByLabelText("プリセット"), { target: { value: "custom" } });
 
         const input = screen.getByLabelText("URL") as HTMLInputElement;
         const protocolSelect = screen.getByLabelText("Protocol") as HTMLSelectElement;
@@ -410,12 +446,12 @@ describe("SettingsUploadDestinationSection", () => {
         await openAddForm();
 
         const presetSelect = screen.getByLabelText("プリセット") as HTMLSelectElement;
-        const protocolSelect = screen.getByLabelText("Protocol") as HTMLSelectElement;
-        const input = screen.getByLabelText("URL") as HTMLInputElement;
         await fireEvent.change(presetSelect, { target: { value: "share-yabu-me" } });
 
-        expect(protocolSelect.value).toBe("nip96");
-        expect(input.value).toBe("https://share.yabu.me/api/v2/media");
+        expect(screen.queryByLabelText("Protocol")).toBeNull();
+        expect(screen.queryByLabelText("URL")).toBeNull();
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+        expect(getSavedDestination()).toMatchObject({ protocol: "nip96", serverUrl: "https://share.yabu.me/api/v2/media" });
     });
 
     it.each([
@@ -449,6 +485,8 @@ describe("SettingsUploadDestinationSection", () => {
         await fireEvent.click(screen.getByRole("button", { name: "編集" }));
         await tick();
 
+        expect(screen.queryByLabelText("URL")).toBeNull();
+        await fireEvent.change(screen.getByLabelText("プリセット"), { target: { value: "custom" } });
         await fireEvent.input(screen.getByLabelText("URL"), {
             target: { value: "https://custom.example/upload" },
         });
