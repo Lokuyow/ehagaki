@@ -20,6 +20,8 @@
         getUploadDestinationDisplayName,
         normalizeServerUrl,
     } from "../../lib/upload/uploadDestinationPresets";
+    import { resolveUploadDestinationForUse } from "../../lib/upload/uploadDestinationResolver";
+    import { summarizeRelaySync } from "../../lib/upload/relayUploadDestinationSync";
     import { canonicalizeNip96UploadUrl } from "../../lib/upload/nip96UrlPolicy";
 
     interface Props {
@@ -50,7 +52,7 @@
     let pubkeyHex = $derived(
         authState.value.isAuthenticated ? authState.value.pubkey || null : null,
     );
-    let canUseBud03 = $derived(Boolean(rxNostr && pubkeyHex));
+    let canUseRelaySync = $derived(Boolean(rxNostr && pubkeyHex));
 
     const presetMap = new Map(
         UPLOAD_DESTINATION_PRESETS.map((preset) => [preset.id, preset]),
@@ -247,7 +249,9 @@
                             destinationState.destinations.length === 0,
                         now: timestamp,
                     });
-        const { resolvedUploadUrl: _previousResolvedUploadUrl, ...destinationWithoutResolvedUploadUrl } = baseDestination;
+        const unchangedNip96 = existing?.protocol === "nip96" && protocol === "nip96" && existing.serverUrl === serverUrl;
+        const existingResolvedUrl = unchangedNip96 ? resolveUploadDestinationForUse(existing, { pubkeyHex }).resolvedUploadUrl : undefined;
+        const { resolvedUploadUrl: _previousResolvedUploadUrl, nip96ServerUrl: _previousServer, nip96UrlMode: _previousMode, ...destinationWithoutResolvedUploadUrl } = baseDestination;
         const destination: UploadDestination = {
             ...destinationWithoutResolvedUploadUrl,
             name: destinationName,
@@ -257,7 +261,11 @@
             enabled: form.enabled,
             isDefault: form.isDefault,
             updatedAt: timestamp,
-            ...(resolvedUploadUrl ? { resolvedUploadUrl } : {}),
+            ...(unchangedNip96 ? {
+                ...(existingResolvedUrl ? { resolvedUploadUrl: existingResolvedUrl } : {}),
+                ...(existing.nip96ServerUrl ? { nip96ServerUrl: existing.nip96ServerUrl } : {}),
+                ...(existing.nip96UrlMode ? { nip96UrlMode: existing.nip96UrlMode } : {}),
+            } : resolvedUploadUrl ? { resolvedUploadUrl, nip96ServerUrl: presetIdentity?.nip96ServerUrl, nip96UrlMode: 'direct' as const } : {}),
         };
 
         await uploadDestinationStore.save(destination);
@@ -286,14 +294,14 @@
         await uploadDestinationStore.delete(destination.id, pubkeyHex);
     }
 
-    async function fetchBud03(): Promise<void> {
+    async function fetchFromRelays(): Promise<void> {
         if (!rxNostr || !pubkeyHex) return;
-        await uploadDestinationStore.fetchBud03(rxNostr, pubkeyHex);
+        await uploadDestinationStore.fetchFromRelays(rxNostr, pubkeyHex);
     }
 
-    async function publishBud03(): Promise<void> {
+    async function publishToRelays(): Promise<void> {
         if (!rxNostr || !pubkeyHex) return;
-        await uploadDestinationStore.publishBud03(rxNostr, pubkeyHex);
+        await uploadDestinationStore.publishToRelays(rxNostr, pubkeyHex);
     }
 </script>
 
@@ -645,69 +653,73 @@
                     <Button
                         variant="default"
                         shape="rounded"
-                        onClick={fetchBud03}
-                        disabled={!canUseBud03 ||
-                            destinationState.bud03Fetching}
+                        onClick={fetchFromRelays}
+                        disabled={!canUseRelaySync ||
+                            destinationState.relayFetching || destinationState.relayPublishing}
                     >
-                        {destinationState.bud03Fetching
+                        {destinationState.relayFetching
                             ? $_(
-                                  "settingsDialog.uploadDestinationBud03Fetching",
-                              ) || "BUD-03 取得中"
+                                  "settingsDialog.uploadDestinationRelayFetching",
+                              ) || "リレー取得中"
                             : $_(
-                                  "settingsDialog.uploadDestinationBud03Fetch",
-                              ) || "BUD-03 から取得"}
+                                  "settingsDialog.uploadDestinationRelayFetch",
+                              ) || "リレーから取得"}
                     </Button>
                     <Button
                         variant="default"
                         shape="rounded"
-                        onClick={publishBud03}
-                        disabled={!canUseBud03 ||
-                            destinationState.bud03Publishing ||
+                        onClick={publishToRelays}
+                        disabled={!canUseRelaySync ||
+                            destinationState.relayFetching || destinationState.relayPublishing ||
                             !destinationState.destinations.some(
                                 (destination) =>
-                                    destination.protocol === "blossom" &&
+                                    (destination.protocol === "blossom" || destination.protocol === "nip96") &&
                                     destination.enabled,
                             )}
                     >
-                        {destinationState.bud03Publishing
+                        {destinationState.relayPublishing
                             ? $_(
-                                  "settingsDialog.uploadDestinationBud03Publishing",
-                              ) || "BUD-03 publish 中"
+                                  "settingsDialog.uploadDestinationRelayPublishing",
+                              ) || "リレー送信中"
                             : $_(
-                                  "settingsDialog.uploadDestinationBud03Publish",
-                              ) || "BUD-03 へ publish"}
+                                  "settingsDialog.uploadDestinationRelayPublish",
+                              ) || "リレーへ送信"}
                     </Button>
                     <InfoPopoverButton
                         side="top"
                         ariaLabel={$_(
-                            "settingsDialog.uploadDestinationBud03InfoLabel",
-                        ) || "BUD-03 の説明"}
+                            "settingsDialog.uploadDestinationRelayInfoLabel",
+                        ) || "リレー同期の説明"}
                     >
                         <div class="bud03-popover">
                             <p>
                                 {$_(
-                                    "settingsDialog.uploadDestinationBud03InfoScope",
+                                    "settingsDialog.uploadDestinationRelayInfoScope",
                                 ) ||
-                                    "BUD-03 は Blossom のアップロード先だけを kind 10063 の server tag として保存します。NIP-96 と Custom HTTP は publish 対象外です。"}
+                                    "Blossom は kind 10063、NIP-96 は kind 10096 として同期します。Custom HTTP は対象外です。"}
                             </p>
                             <p>
                                 {$_(
-                                    "settingsDialog.uploadDestinationBud03InfoOrder",
+                                    "settingsDialog.uploadDestinationRelayInfoOrder",
                                 ) ||
-                                    "publish 時は有効な Blossom アップロード先をこの一覧の順番で保存し、先頭のアップロード先が優先されます。"}
+                                    "送信時は各プロトコルの有効なアップロード先を一覧の順番で保存します。"}
                             </p>
                             <p>
                                 {$_(
-                                    "settingsDialog.uploadDestinationBud03InfoFetch",
+                                    "settingsDialog.uploadDestinationRelayInfoFetch",
                                 ) ||
-                                    "BUD-03 から取得すると、Blossom のアップロード先だけを取得結果で置き換えます。"}
+                                    "取得に成功したプロトコルだけを取得結果で置き換えます。"}
                             </p>
                         </div>
                     </InfoPopoverButton>
                 </div>
-                {#if destinationState.bud03Status}
-                    <div class="test-result">
-                        {destinationState.bud03Status}
+                {#if destinationState.relaySyncResults}
+                    <div class="test-result" role="status" aria-live="polite">
+                        <p>{$_('settingsDialog.uploadDestinationRelaySummary.' + summarizeRelaySync(destinationState.relaySyncResults))}</p>
+                        {#each (['blossom', 'nip96'] as const) as protocol}
+                            {@const result = destinationState.relaySyncResults[protocol]}
+                            <p>{protocol === 'blossom' ? 'Blossom' : 'NIP-96'}: {$_('settingsDialog.uploadDestinationRelayOutcome.' + result.status)}{#if result.reason} — {$_('settingsDialog.uploadDestinationRelayReason.' + result.reason)}{/if}</p>
+                        {/each}
                     </div>
                 {/if}
             {/if}

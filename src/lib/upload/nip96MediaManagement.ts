@@ -1,3 +1,4 @@
+import { getNip96DiscoveryServer } from "./nip96ServerIdentity";
 import { canonicalizeNip96UploadUrl } from "./nip96UrlPolicy";
 import { fetchNip96DiscoveryConfig } from "./nip96Discovery";
 import { UploadMediaError, type UploadMediaContext, type UploadMediaListParams, type UploadMediaDeleteParams, type UploadMediaPage } from "./mediaManagementTypes";
@@ -19,7 +20,7 @@ function tagsOf(record: Record<string, unknown>): Map<string, string | null> | n
 async function contextFor(params: UploadMediaListParams): Promise<UploadMediaContext> {
     if (params.context) { assertMediaContext(params, params.context); return params.context; }
     let trustedUploadUrl;
-    try { trustedUploadUrl = canonicalizeNip96UploadUrl(params.destination.serverUrl); }
+    try { trustedUploadUrl = canonicalizeNip96UploadUrl(getNip96DiscoveryServer(params.destination)); }
     catch { throw new UploadMediaError("invalidDestination"); }
     const { apiUrl } = await fetchNip96DiscoveryConfig({ trustedUploadUrl, fetch: params.fetch, signal: params.signal });
     assertMediaOperation(params);

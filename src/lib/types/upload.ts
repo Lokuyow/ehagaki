@@ -103,6 +103,9 @@ export interface UploadDestination {
     protocol: UploadProtocol;
     serverUrl: string;
     resolvedUploadUrl?: string;
+    /** Verified NIP-96 discovery server, separate from a legacy direct API URL. */
+    nip96ServerUrl?: string;
+    nip96UrlMode?: "direct" | "discovery";
     presetId?: UploadPresetId;
     isDefault: boolean;
     enabled: boolean;

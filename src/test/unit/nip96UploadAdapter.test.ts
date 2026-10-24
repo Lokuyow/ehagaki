@@ -37,6 +37,19 @@ afterEach(() => {
 });
 
 describe("Nip96UploadAdapter", () => {
+    it("discovers relay-imported servers before signing the actual upload API", async () => {
+        const destination = { ...createDestination(), serverUrl: "https://files.example", nip96ServerUrl: "https://files.example", nip96UrlMode: "discovery" as const, resolvedUploadUrl: "https://stale.example/api" };
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(createJsonResponse({ api_url: "https://api.example/upload" }, { status: 200 }))
+            .mockResolvedValueOnce(createJsonResponse({ status: "success", nip94_event: { tags: [["url", "https://cdn.example/image.png"]] } }, { status: 200 }))
+            .mockResolvedValueOnce(new Response(null, { status: 200, headers: { "content-type": "image/png" } }));
+        const authService = { buildAuthHeader: vi.fn(async () => "fixture auth") };
+        const result = await new Nip96UploadAdapter().upload({ file: new File(["image"], "image.png", { type: "image/png" }), destination, authService, fetch: fetchMock });
+        expect(result.success).toBe(true);
+        expect(fetchMock.mock.calls[0][0]).toBe("https://files.example/.well-known/nostr/nip96.json");
+        expect(authService.buildAuthHeader).toHaveBeenCalledWith("https://api.example/upload", "POST");
+        expect(fetchMock.mock.calls[1][0]).toBe("https://api.example/upload");
+    });
     it("propagates operation cancellation during delayed processing polling", async () => {
         const adapter = new Nip96UploadAdapter();
         const controller = new AbortController();

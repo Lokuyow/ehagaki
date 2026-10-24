@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsUploadDestinationSection from "../../components/settings/SettingsUploadDestinationSection.svelte";
 import type { UploadDestination } from "../../lib/types";
 
+const testAuth = vi.hoisted(() => ({ isAuthenticated: false, pubkey: null as string | null }));
 let currentLocale = "ja";
 
 const translations = {
@@ -28,14 +29,14 @@ const translations = {
             uploadDestinationSetDefault: "既定",
             uploadDestinationMoveUp: "Up",
             uploadDestinationMoveDown: "Down",
-            uploadDestinationBud03Fetching: "BUD-03 取得中",
-            uploadDestinationBud03Fetch: "BUD-03 から取得",
-            uploadDestinationBud03Publishing: "BUD-03 publish 中",
-            uploadDestinationBud03Publish: "BUD-03 へ publish",
-            uploadDestinationBud03InfoLabel: "BUD-03 の説明",
-            uploadDestinationBud03InfoScope: "BUD-03 の説明",
-            uploadDestinationBud03InfoOrder: "BUD-03 の説明",
-            uploadDestinationBud03InfoFetch: "BUD-03 の説明",
+            uploadDestinationRelayFetching: "BUD-03 取得中",
+            uploadDestinationRelayFetch: "BUD-03 から取得",
+            uploadDestinationRelayPublishing: "BUD-03 publish 中",
+            uploadDestinationRelayPublish: "BUD-03 へ publish",
+            uploadDestinationRelayInfoLabel: "BUD-03 の説明",
+            uploadDestinationRelayInfoScope: "BUD-03 の説明",
+            uploadDestinationRelayInfoOrder: "BUD-03 の説明",
+            uploadDestinationRelayInfoFetch: "BUD-03 の説明",
             uploadDestinationUnknown: "未確認",
             uploadDestinationNone: "未設定",
             uploadDestinationDefault: "既定",
@@ -70,14 +71,14 @@ const translations = {
             uploadDestinationSetDefault: "Default",
             uploadDestinationMoveUp: "Up",
             uploadDestinationMoveDown: "Down",
-            uploadDestinationBud03Fetching: "Fetching BUD-03",
-            uploadDestinationBud03Fetch: "Fetch from BUD-03",
-            uploadDestinationBud03Publishing: "Publishing BUD-03",
-            uploadDestinationBud03Publish: "Publish to BUD-03",
-            uploadDestinationBud03InfoLabel: "BUD-03 info",
-            uploadDestinationBud03InfoScope: "BUD-03 info",
-            uploadDestinationBud03InfoOrder: "BUD-03 info",
-            uploadDestinationBud03InfoFetch: "BUD-03 info",
+            uploadDestinationRelayFetching: "Fetching BUD-03",
+            uploadDestinationRelayFetch: "Fetch from BUD-03",
+            uploadDestinationRelayPublishing: "Publishing BUD-03",
+            uploadDestinationRelayPublish: "Publish to BUD-03",
+            uploadDestinationRelayInfoLabel: "BUD-03 info",
+            uploadDestinationRelayInfoScope: "BUD-03 info",
+            uploadDestinationRelayInfoOrder: "BUD-03 info",
+            uploadDestinationRelayInfoFetch: "BUD-03 info",
             uploadDestinationUnknown: "Unknown",
             uploadDestinationNone: "None",
             uploadDestinationDefault: "Default",
@@ -98,9 +99,9 @@ const mockUploadDestinationStore = vi.hoisted(() => ({
         destinations: [],
         defaultDestination: null,
         testResults: {},
-        bud03Fetching: false,
-        bud03Publishing: false,
-        bud03Status: null,
+        relayFetching: false,
+        relayPublishing: false,
+        relaySyncResults: null,
     },
     load: vi.fn(async () => undefined),
     save: vi.fn(async () => undefined),
@@ -108,8 +109,8 @@ const mockUploadDestinationStore = vi.hoisted(() => ({
     delete: vi.fn(async () => undefined),
     setDefault: vi.fn(async () => undefined),
     move: vi.fn(async () => undefined),
-    fetchBud03: vi.fn(async () => undefined),
-    publishBud03: vi.fn(async () => undefined),
+    fetchFromRelays: vi.fn(async () => undefined),
+    publishToRelays: vi.fn(async () => undefined),
 }));
 
 vi.mock("svelte-i18n", async () => {
@@ -137,23 +138,22 @@ vi.mock("../../stores/uploadDestinationStore.svelte", () => ({
 
 vi.mock("../../stores/authStore.svelte", () => ({
     authState: {
-        value: {
-            isAuthenticated: false,
-            pubkey: null,
-        },
+        value: testAuth,
     },
 }));
 
 afterEach(() => {
     cleanup();
+    testAuth.isAuthenticated = false;
+    testAuth.pubkey = null;
     currentLocale = "ja";
     mockUploadDestinationStore.value = {
         destinations: [],
         defaultDestination: null,
         testResults: {},
-        bud03Fetching: false,
-        bud03Publishing: false,
-        bud03Status: null,
+        relayFetching: false,
+        relayPublishing: false,
+        relaySyncResults: null,
     };
 });
 
@@ -223,10 +223,30 @@ describe("SettingsUploadDestinationSection", () => {
         mockUploadDestinationStore.delete.mockClear();
         mockUploadDestinationStore.setDefault.mockClear();
         mockUploadDestinationStore.move.mockClear();
-        mockUploadDestinationStore.fetchBud03.mockClear();
-        mockUploadDestinationStore.publishBud03.mockClear();
+        mockUploadDestinationStore.fetchFromRelays.mockClear();
+        mockUploadDestinationStore.publishToRelays.mockClear();
     });
 
+    it("keeps exactly two sync actions and allows NIP-96-only publication", async () => {
+        testAuth.isAuthenticated = true; testAuth.pubkey = 'owner';
+        setExistingNip96Destination();
+        render(SettingsUploadDestinationSection, { rxNostr: {} as never });
+        await fireEvent.click(screen.getByRole('button', { name: '管理' }));
+        const fetchButton = screen.getByRole('button', { name: 'BUD-03 から取得' }) as HTMLButtonElement;
+        const publishButton = screen.getByRole('button', { name: 'BUD-03 へ publish' }) as HTMLButtonElement;
+        expect(fetchButton.disabled).toBe(false); expect(publishButton.disabled).toBe(false);
+        await fireEvent.click(fetchButton); await fireEvent.click(publishButton);
+        expect(mockUploadDestinationStore.fetchFromRelays).toHaveBeenCalledOnce();
+        expect(mockUploadDestinationStore.publishToRelays).toHaveBeenCalledOnce();
+    });
+    it.each(['relayFetching', 'relayPublishing'] as const)("disables both sync buttons during %s", async field => {
+        testAuth.isAuthenticated = true; testAuth.pubkey = 'owner';
+        setExistingNip96Destination(); mockUploadDestinationStore.value[field] = true;
+        render(SettingsUploadDestinationSection, { rxNostr: {} as never });
+        await fireEvent.click(screen.getByRole('button', { name: '管理' }));
+        const buttons = screen.getAllByRole('button').filter(button => button.textContent?.includes('BUD-03') && !button.getAttribute('aria-label')) as HTMLButtonElement[];
+        expect(buttons).toHaveLength(2); expect(buttons.every(button => button.disabled)).toBe(true);
+    });
     it("shows the upload icon beside its label and keeps the manage button text-only", () => {
         render(SettingsUploadDestinationSection);
 

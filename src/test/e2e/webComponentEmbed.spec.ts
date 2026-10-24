@@ -319,6 +319,35 @@ test.afterAll(async () => {
     ]);
 });
 
+test("Full upload relay controls remain accessible at 320px and 360px", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async () => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & { whenReady(): Promise<void> };
+        composer.style.width = "320px";
+        document.body.append(composer);
+        await composer.whenReady();
+    });
+    const composer = page.locator("ehagaki-composer");
+    await composer.locator("button.settings-btn").click();
+    await composer.getByRole("button", { name: /^(メディア|Media)$/ }).click();
+    await composer.locator(".upload-destination-section").getByRole("button", { name: /^(管理|Manage)$/ }).click();
+    const fetchButton = composer.getByRole("button", { name: /^(リレーから取得|Fetch from relays)$/ });
+    const publishButton = composer.getByRole("button", { name: /^(リレーへ送信|Publish to relays)$/ });
+    for (const width of [320, 360]) {
+        await composer.evaluate((element, width) => { (element as HTMLElement).style.width = `${width}px`; }, width);
+        await publishButton.scrollIntoViewIfNeeded();
+        await expect(fetchButton).toBeInViewport();
+        await expect(publishButton).toBeInViewport();
+        const bounds = await composer.boundingBox();
+        for (const button of [fetchButton, publishButton]) {
+            const rect = await button.boundingBox();
+            expect(rect!.x).toBeGreaterThanOrEqual(bounds!.x - 1);
+            expect(rect!.x + rect!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width + 1);
+        }
+    }
+});
+
 test("keeps startup NIP-07 opt-in and preserves the existing ready path when absent", async ({ page }) => {
     await page.goto(hostOrigin);
     const result = await page.evaluate(async ({ componentOrigin }) => {

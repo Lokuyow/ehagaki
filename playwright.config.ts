@@ -26,6 +26,7 @@ const playwrightProjects: Project[] = [
         name: 'mobile-chromium',
         testMatch: [
             '**/postHistoryDialog.spec.ts',
+            '**/uploadRelaySync.spec.ts',
             '**/postEditorSending.spec.ts',
             '**/webComponentEmbed.spec.ts',
             '**/webComponentLite.spec.ts',
@@ -48,6 +49,7 @@ const playwrightProjects: Project[] = [
     {
         name: 'mobile-webkit',
         testMatch: [
+            '**/uploadRelaySync.spec.ts',
             '**/composerTargetDialog.spec.ts',
             '**/webComponentEmbed.spec.ts',
             '**/webComponentLite.spec.ts',
@@ -69,7 +71,7 @@ const playwrightProjects: Project[] = [
     },
     {
         name: 'desktop-firefox',
-        testMatch: ['**/webComponentEmbed.spec.ts'],
+        testMatch: ['**/webComponentEmbed.spec.ts', '**/uploadRelaySync.spec.ts'],
         use: {
             ...devices['Desktop Firefox'],
         },

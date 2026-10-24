@@ -7,9 +7,12 @@ import {
 import type { PostResult } from "../types";
 import { PostEventSender } from "../postEventBuilder";
 import { RelayConfigUtils } from "../relayConfigUtils";
+import { normalizeNip96ServerUrl } from "./nip96ServerIdentity";
 import { normalizeServerUrl } from "./uploadDestinationPresets";
+import { awaitUploadOperation, throwIfUploadAborted } from "./uploadOperation";
 
 export const BUD03_KIND = 10063;
+export const NIP96_KIND = 10096;
 
 export interface Bud03ServerListEvent {
     id?: string;
@@ -80,14 +83,22 @@ export function buildBud03EventTemplate(servers: string[], now = Math.floor(Date
     };
 }
 
-function getNewestBud03Event(events: Bud03ServerListEvent[]): Bud03ServerListEvent | null {
+function getNewestBud03Event(events: Bud03ServerListEvent[], kind: number): Bud03ServerListEvent | null {
     return [...events]
         .filter((event) =>
-            event.kind === BUD03_KIND
+            event.kind === kind
             && Array.isArray(event.tags)
             && typeof event.id === "string"
-            && event.id.length > 0,
+            && event.id.length > 0
+            && Number.isSafeInteger(event.created_at)
+            && (event.created_at ?? -1) >= 0
+            && (event.created_at ?? 0) <= Math.floor(Date.now() / 1000)
+            && (kind !== BUD03_KIND || parseBud03ServerTags(event.tags!).length > 0),
         )
+        .filter(event => {
+            if (kind !== NIP96_KIND) return true;
+            try { parseNip96ServerTags(event.tags!); return true; } catch { return false; }
+        })
         .sort((left, right) => {
             const createdAtDifference = (right.created_at ?? 0) - (left.created_at ?? 0);
             if (createdAtDifference !== 0) return createdAtDifference;
@@ -95,13 +106,15 @@ function getNewestBud03Event(events: Bud03ServerListEvent[]): Bud03ServerListEve
         })[0] ?? null;
 }
 
-export function fetchBud03ServerList(params: {
+export function fetchRelayServerList(params: {
     rxNostr: RxNostr;
     pubkeyHex: string;
     relays?: string[];
     timeoutMs?: number;
+    kind: number;
+    signal?: AbortSignal;
 }): Promise<Bud03FetchResult> {
-    const { rxNostr, pubkeyHex, relays, timeoutMs = 4000 } = params;
+    const { rxNostr, pubkeyHex, relays, kind, signal, timeoutMs = 4000 } = params;
     const hasExplicitRelays = relays !== undefined;
     const sanitizedRelays = RelayConfigUtils.sanitizeExternalRelayUrls(relays);
 
@@ -118,6 +131,7 @@ export function fetchBud03ServerList(params: {
 
         const cleanup = () => {
             if (timeoutId) clearTimeout(timeoutId);
+            signal?.removeEventListener("abort", onAbort);
             subscription?.unsubscribe?.();
             subscription = undefined;
         };
@@ -129,18 +143,22 @@ export function fetchBud03ServerList(params: {
             resolve(result);
         };
 
+        const onAbort = () => safeResolve({ success: false, servers: [], error: "request_error" });
+        signal?.addEventListener("abort", onAbort, { once: true });
+        if (signal?.aborted) { onAbort(); return; }
+
         const finish = () => {
-            const event = getNewestBud03Event(events);
+            const event = getNewestBud03Event(events, kind);
             if (!event || !event.tags) {
                 safeResolve({ success: false, servers: [], error: "not_found" });
                 return;
             }
 
-            safeResolve({
+            try { safeResolve({
                 success: true,
-                servers: parseBud03ServerTags(event.tags),
+                servers: kind === BUD03_KIND ? parseBud03ServerTags(event.tags) : parseNip96ServerTags(event.tags),
                 event,
-            });
+            }); } catch { safeResolve({ success: false, servers: [], error: "request_error" }); }
         };
 
         try {
@@ -151,7 +169,7 @@ export function fetchBud03ServerList(params: {
                 hasExplicitRelays ? { on: { relays: sanitizedRelays } } : undefined,
             ).subscribe({
                 next: (packet) => {
-                    if (packet?.event?.kind === BUD03_KIND && packet.event.pubkey === pubkeyHex) {
+                    if (packet?.event?.kind === kind && packet.event.pubkey === pubkeyHex) {
                         events.push(packet.event);
                     }
                 },
@@ -159,9 +177,10 @@ export function fetchBud03ServerList(params: {
                 error: () => safeResolve({ success: false, servers: [], error: "network_error" }),
             });
 
+            if (resolved) { subscription?.unsubscribe?.(); return; }
             rxReq.emit({
                 authors: [pubkeyHex],
-                kinds: [BUD03_KIND],
+                kinds: [kind],
                 until: Math.floor(Date.now() / 1000),
                 limit: 1,
             });
@@ -172,7 +191,7 @@ export function fetchBud03ServerList(params: {
     });
 }
 
-export async function publishBud03ServerList(params: {
+export async function publishRelayServerList(params: {
     rxNostr: RxNostr;
     signer: Signer;
     servers: string[];
@@ -180,11 +199,17 @@ export async function publishBud03ServerList(params: {
     console?: Console;
     expectedPubkey?: string;
     assertSession?: () => void;
+    kind: number;
+    signal?: AbortSignal;
 }): Promise<PostResult> {
-    const template = buildBud03EventTemplate(params.servers);
+    const template = params.kind === BUD03_KIND ? buildBud03EventTemplate(params.servers) : {
+        ...buildBud03EventTemplate(params.servers.map(normalizeNip96ServerUrl)), kind: NIP96_KIND,
+    };
     params.assertSession?.();
+    throwIfUploadAborted(params.signal);
     const prepared = prepareSignedEventTemplate(template);
-    const signedEvent = await params.signer.signEvent(prepared.signerTemplate);
+    const signedEvent = await awaitUploadOperation(params.signer.signEvent(prepared.signerTemplate), params.signal);
+    throwIfUploadAborted(params.signal);
     params.assertSession?.();
     const event = params.expectedPubkey
         ? validateSignedEventResult(prepared.expectedTemplate, signedEvent, params.expectedPubkey)
@@ -193,7 +218,23 @@ export async function publishBud03ServerList(params: {
     const sender = new PostEventSender(params.rxNostr, params.console ?? console);
     params.assertSession?.();
     return sender.sendEvent(event, {
+        settleSignal: params.signal,
         targetRelays: params.relays,
         includeDefaultWriteRelays: true,
     });
+}
+
+export function parseNip96ServerTags(tags: string[][]): string[] {
+    return [...new Set(tags.filter(tag => tag[0] === "server").map(tag => {
+        if (typeof tag[1] !== "string") throw new Error("invalid_server_url");
+        return normalizeNip96ServerUrl(tag[1]);
+    }))];
+}
+
+export function fetchBud03ServerList(params: Omit<Parameters<typeof fetchRelayServerList>[0], "kind">): Promise<Bud03FetchResult> {
+    return fetchRelayServerList({ ...params, kind: BUD03_KIND });
+}
+
+export function publishBud03ServerList(params: Omit<Parameters<typeof publishRelayServerList>[0], "kind">): Promise<PostResult> {
+    return publishRelayServerList({ ...params, kind: BUD03_KIND });
 }
