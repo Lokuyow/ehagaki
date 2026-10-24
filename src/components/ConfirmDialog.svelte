@@ -284,11 +284,15 @@
         display: flex;
         justify-content: center;
         width: auto;
-        height: 60px;
+        min-height: 60px;
+        flex-shrink: 0;
         gap: 8px;
 
         :global(button) {
             flex: 1;
+            min-width: 0;
+            height: auto;
+            padding: 8px 12px;
             font-size: 1.2rem;
         }
 
