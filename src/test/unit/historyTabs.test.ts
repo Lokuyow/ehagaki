@@ -2,7 +2,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { createDeferred } from "../deferredTestUtils";
-import { mediaDestination, mediaPage, mediaPubkey } from "../uploadMediaManagementTestUtils";
+import { mediaDestination, mediaItem, mediaPage, mediaPubkey } from "../uploadMediaManagementTestUtils";
 import { mockAuthStoreModule } from "../mocks/storeModules";
 import { getAppStorage } from "../../lib/appStorage";
 import { writePersistedPostHistoryViewState } from "../../lib/postHistoryDialogViewState";
@@ -56,6 +56,30 @@ const open = () => render(PostHistoryDialog, { show: true, onClose: vi.fn(), pub
 const tab = (name: "posts" | "media") => screen.getByRole("tab", { name: `postHistory.${name}Tab` });
 
 describe("history tabs", () => {
+    it("pages a 231-item local media snapshot through the real controller, retains it across tabs, and refreshes it", async () => {
+        getAppStorage().setItem("historyActiveTab", "media");
+        const destination = mediaDestination();
+        const items = Array.from({ length: 231 }, (_, index) => mediaItem(destination, "image", index.toString(16).padStart(64, "0")));
+        counters.list.mockResolvedValue({ ...mediaPage(destination, items), localSnapshot: true, nextPage: null });
+        open();
+        const count = () => document.querySelectorAll("article").length;
+        const more = () => screen.getByRole("button", { name: "uploadedMedia.loadMore" });
+        await waitFor(() => expect(count()).toBe(24));
+        await fireEvent.click(more());
+        expect(count()).toBe(48);
+        await fireEvent.click(tab("posts")); await fireEvent.click(tab("media"));
+        await waitFor(() => expect(count()).toBe(48));
+        for (const expected of [72, 96, 120, 144, 168, 192, 216, 231]) {
+            await fireEvent.click(more()); expect(count()).toBe(expected);
+        }
+        expect(screen.queryByRole("button", { name: "uploadedMedia.loadMore" })).toBeNull();
+        expect(counters.list).toHaveBeenCalledOnce();
+        expect(counters.auth).toBe(1);
+        counters.list.mockResolvedValue({ ...mediaPage(destination, items.slice(0, 1)), nextPage: null });
+        await fireEvent.click(screen.getByRole("button", { name: "uploadedMedia.refresh" }));
+        await waitFor(() => expect(count()).toBe(1));
+        expect(counters.list).toHaveBeenCalledTimes(2);
+    });
     it("covers a pending tab import without the generic loading text and keeps close accessible", async () => {
         const gate = createDeferred<void>(); counters.hold = gate.promise;
         const view = open();

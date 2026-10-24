@@ -2,8 +2,41 @@ import { UploadMediaError, type UploadMediaListParams, type UploadMediaDeletePar
 import {
     UPLOAD_MEDIA_PAGE_SIZE, assertMediaOperation, assertMediaContext, assertMediaDeleteItem,
     normalizeBlossomManagementServer, normalizeMediaHash, normalizeListedMedia,
-    mediaAuthorization, mediaFetch, mediaJson, mediaRecord,
+    mediaAuthorization, mediaFetch, mediaRecord,
 } from "./mediaManagementUtils";
+
+export const BLOSSOM_LIST_MAX_BYTES = 8 * 1024 * 1024;
+export const BLOSSOM_LIST_MAX_DESCRIPTORS = 10_000;
+
+async function listJson(response: Response, params: UploadMediaListParams): Promise<unknown> {
+    const length = Number(response.headers.get("Content-Length"));
+    if (Number.isFinite(length) && length > BLOSSOM_LIST_MAX_BYTES) {
+        void response.body?.cancel().catch(() => undefined);
+        throw new UploadMediaError("invalidResponse");
+    }
+    const reader = response.body?.getReader();
+    if (!reader) throw new UploadMediaError("invalidResponse");
+    const decoder = new TextDecoder();
+    let bytes = 0, text = "", done = false;
+    try {
+        while (true) {
+            assertMediaOperation(params);
+            const chunk = await reader.read();
+            assertMediaOperation(params);
+            if (chunk.done) { done = true; break; }
+            bytes += chunk.value.byteLength;
+            if (bytes > BLOSSOM_LIST_MAX_BYTES) throw new UploadMediaError("invalidResponse");
+            text += decoder.decode(chunk.value, { stream: true });
+        }
+        return JSON.parse(text + decoder.decode());
+    } catch {
+        assertMediaOperation(params);
+        throw new UploadMediaError("invalidResponse");
+    } finally {
+        if (!done) void reader.cancel().catch(() => undefined);
+        reader.releaseLock();
+    }
+}
 
 async function authorize(params: UploadMediaListParams, action: "list" | "delete", sha256?: string, kind?: "image" | "video") {
     let assertValid = () => {};
@@ -38,12 +71,14 @@ export async function listBlossomMediaPage(params: UploadMediaListParams): Promi
     }
     const authorization = await authorize(params, "list");
     const response = await mediaFetch(params, url.toString(), "GET", authorization.authorization, authorization.assertValid);
-    const data = await mediaJson(response);
+    if (response.status !== 200) throw new UploadMediaError("invalidResponse");
+    const data = await listJson(response, params);
     assertMediaOperation(params);
-    if (response.status !== 200 || !Array.isArray(data) || data.length > limit) throw new UploadMediaError("invalidResponse");
+    if (!Array.isArray(data) || data.length > BLOSSOM_LIST_MAX_DESCRIPTORS) throw new UploadMediaError("invalidResponse");
+    const localSnapshot = data.length > limit;
     const last = data.at(-1);
     const cursor = mediaRecord(last) ? normalizeMediaHash(last.sha256) : null;
-    if (data.length && (!cursor || cursor === previousCursor
+    if (!localSnapshot && data.length && (!cursor || cursor === previousCursor
         || data.some((entry) => mediaRecord(entry) && normalizeMediaHash(entry.sha256) === previousCursor))) {
         throw new UploadMediaError("invalidResponse");
     }
@@ -58,7 +93,8 @@ export async function listBlossomMediaPage(params: UploadMediaListParams): Promi
         else { items.push(item); if (!item.url || !item.deleteId) invalidCount++; }
     });
     return { items, rawCount: data.length, excludedCount, invalidCount, context,
-        nextPage: cursor ? { protocol: "blossom", cursor, limit } : null };
+        ...(localSnapshot ? { localSnapshot: true as const } : {}),
+        nextPage: !localSnapshot && cursor ? { protocol: "blossom", cursor, limit } : null };
 }
 export async function deleteBlossomMedia(params: UploadMediaDeleteParams): Promise<void> {
     assertMediaContext(params, params.context);

@@ -11,9 +11,10 @@ test.use({ trace: "off" });
 test.setTimeout(90_000);
 const imageHash = "b".repeat(64), videoHash = "c".repeat(64), secondVideoHash = "e".repeat(64), audioHash = "d".repeat(64);
 const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="teal"/></svg>');
-async function fixture(base: "/" | "/ehagaki/") {
+async function fixture(base: "/" | "/ehagaki/", listing?: "paged" | "snapshot") {
     const directory = resolve("node_modules/.cache/sw-update", base === "/" ? "root" : "pages");
     const counts = new Map<string, number>();
+    const deletedHashes = new Set<string>();
     let offline = false, deleted = false, workerVersion = 0, legacy = false;
     let holdDelete = false, deleteRelease: (() => void) | null = null;
     let video = Buffer.from([]), videoMime = "video/webm", videoExtension = "webm";
@@ -28,17 +29,25 @@ async function fixture(base: "/" | "/ehagaki/") {
         if (request.method === "OPTIONS") { response.writeHead(204).end(); return; }
         if (url.pathname.startsWith("/list/")) {
             const origin = `http://127.0.0.1:${(media.address() as AddressInfo).port}`;
-            const descriptors = [
+            const descriptors = listing ? Array.from({ length: 231 }, (_, index) => {
+                const sha256 = index === 0 ? imageHash : index.toString(16).padStart(64, "0");
+                return { sha256, type: "image/png", url: `${origin}/${sha256}.png`, size: svg.length, uploaded: 300 - index };
+            }).filter((item) => !deletedHashes.has(item.sha256)) : [
                 ...(!deleted ? [{ sha256: imageHash, type: "image/png", url: origin + "/" + imageHash + ".png", size: svg.length, uploaded: 123 }] : []),
                 { sha256: videoHash, type: videoMime, url: origin + "/" + videoHash + "." + videoExtension },
                 { sha256: secondVideoHash, type: videoMime, url: origin + "/" + secondVideoHash + "." + videoExtension },
                 { sha256: audioHash, type: "audio/ogg", url: origin + "/" + audioHash + ".ogg" },
             ];
             response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-            response.end(JSON.stringify(url.searchParams.has("cursor") ? [] : descriptors)); return;
+            const cursor = url.searchParams.get("cursor");
+            const offset = cursor ? descriptors.findIndex((item) => item.sha256 === cursor) + 1 : 0;
+            const items = listing === "snapshot" ? descriptors
+                : listing === "paged" ? descriptors.slice(offset, offset + Number(url.searchParams.get("limit") ?? 24))
+                : cursor ? [] : descriptors;
+            response.end(JSON.stringify(items)); return;
         }
         if (request.method === "DELETE") {
-            const finish = () => { deleted = true; response.writeHead(204).end(); deleteRelease = null; };
+            const finish = () => { deleted = true; deletedHashes.add(url.pathname.slice(1)); response.writeHead(204).end(); deleteRelease = null; };
             if (holdDelete) deleteRelease = finish; else finish();
             return;
         }
@@ -115,6 +124,48 @@ async function showImage(page: Page, url: string) {
 async function keys(page: Page, name = bodyName) {
     return page.evaluate(async (cacheName) => (await (await caches.open(cacheName)).keys()).map((key) => key.url), name);
 }
+async function openPaginationMedia(page: Page, f: Awaited<ReturnType<typeof fixture>>) {
+    const key = generateSecretKey(), pubkey = getPublicKey(key);
+    let signedLists = 0;
+    await page.exposeFunction("signPaginationEvent", (event: EventTemplate) => {
+        if (event.tags.some((tag) => tag[0] === "t" && tag[1] === "list")) signedLists++;
+        return finalizeEvent(event, key);
+    });
+    await page.addInitScript((pubkey) => {
+        localStorage.setItem("nostr-accounts", JSON.stringify([{ pubkeyHex: pubkey, type: "nip07", addedAt: 1 }]));
+        localStorage.setItem("nostr-active-account", pubkey);
+        Reflect.set(window, "nostr", { getPublicKey: async () => pubkey, signEvent: (event: unknown) => Reflect.get(window, "signPaginationEvent")(event) });
+        const fetchLocal = window.fetch.bind(window);
+        window.fetch = (input, init) => {
+            const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, location.href);
+            if (!["127.0.0.1", "localhost"].includes(url.hostname)) return Promise.reject(new Error("External fixture fetch disabled"));
+            return fetchLocal(input, init);
+        };
+    }, pubkey);
+    await control(page, f);
+    await page.goto(f.url);
+    const start = page.getByRole("button", { name: "はじめる" });
+    await start.click(); await expect(start).toBeHidden();
+    await page.evaluate(async ({ server, pubkey }) => {
+        const database = await new Promise<IDBDatabase>((done, reject) => {
+            const request = indexedDB.open("eHagakiDB"); request.onsuccess = () => done(request.result); request.onerror = () => reject(request.error);
+        });
+        const transaction = database.transaction("uploadDestinations", "readwrite");
+        const store = transaction.objectStore("uploadDestinations"); store.clear();
+        store.put({ id: "fixture", scopeKey: pubkey, pubkeyHex: pubkey, name: "Fixture media", protocol: "blossom", serverUrl: server,
+            presetId: "custom", isDefault: true, enabled: false, sortIndex: 0, createdAt: 1, updatedAt: 1, schemaVersion: 1, auth: { type: "blossom-bud11" },
+            capabilities: { maxUploadSize: null, supportedMimeTypes: [], supportsDelete: false, supportsList: false, supportsMirror: false, supportsMediaOptimization: false, authRequired: true, source: "preset" } });
+        await new Promise<void>((done, reject) => { transaction.oncomplete = () => done(); transaction.onerror = () => reject(transaction.error); });
+        database.close();
+    }, { server: f.mediaOrigin, pubkey });
+    await page.reload();
+    await page.getByRole("button", { name: "履歴", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "履歴", exact: true });
+    await dialog.getByRole("tab", { name: "メディア", exact: true }).click();
+    await dialog.getByRole("combobox").selectOption("fixture");
+    return { dialog, signedLists: () => signedLists, requests: () => [...f.counts]
+        .filter(([url]) => url.startsWith("GET /list/" + pubkey)).reduce((sum, [, count]) => sum + count, 0) };
+}
 let recordedClip: Promise<{ bytes: number[]; mime: string }> | undefined;
 async function createVideo(url: string) {
     // Windows WebKit has no canvas.captureStream. Record a deterministic MP4 in
@@ -141,6 +192,42 @@ async function createVideo(url: string) {
 }
 test.beforeEach(async ({ context }) => { await context.routeWebSocket("**/*", (socket) => socket.close()); });
 for (const base of ["/", "/ehagaki/"] as const) {
+    for (const mode of ["paged", "snapshot"] as const) {
+        test(`${base} media pagination: ${mode}, 231 items, refresh, tabs and deletion`, async ({ page }) => {
+            const f = await fixture(base, mode);
+            try {
+                const { dialog, requests, signedLists } = await openPaginationMedia(page, f);
+                const more = dialog.getByRole("button", { name: "さらに読み込む", exact: true });
+                await expect(dialog.locator("article")).toHaveCount(24);
+                expect(requests()).toBe(1); expect(signedLists()).toBe(1);
+                for (const count of [48, 72, 96, 120, 144, 168, 192, 216, 231]) {
+                    await more.click(); await expect(dialog.locator("article")).toHaveCount(count);
+                }
+                if (mode === "paged") await more.click(); // Preserve the short-page cursor until an empty response.
+                await expect(more).toHaveCount(0);
+                const total = mode === "paged" ? 11 : 1;
+                expect(requests()).toBe(total); expect(signedLists()).toBe(total);
+                const refresh = dialog.getByRole("button", { name: "一覧を更新", exact: true });
+                await refresh.click(); await expect(dialog.locator("article")).toHaveCount(24);
+                await more.click(); await expect(dialog.locator("article")).toHaveCount(48);
+                const beforeTabs = requests();
+                await dialog.getByRole("tab", { name: "ポスト", exact: true }).click();
+                await dialog.getByRole("tab", { name: "メディア", exact: true }).click();
+                await expect(dialog.locator("article")).toHaveCount(48);
+                expect(requests()).toBe(beforeTabs);
+                await dialog.locator("article").first().getByRole("button", { name: "このサーバーから削除する", exact: true }).click();
+                await page.getByRole("alertdialog").getByRole("button", { name: "このサーバーから削除する", exact: true }).click();
+                await expect(dialog.locator("article")).toHaveCount(47);
+                await expect(more).toHaveCount(0);
+                expect(f.counts.get("DELETE /" + imageHash)).toBe(1);
+                await refresh.click(); await expect(dialog.locator("article")).toHaveCount(24);
+                await expect(dialog.locator("article").first().locator("img")).not.toHaveAttribute("src", new RegExp(imageHash));
+                await more.click(); await expect(dialog.locator("article")).toHaveCount(48);
+                expect(requests()).toBe(beforeTabs + (mode === "paged" ? 2 : 1));
+                expect(signedLists()).toBe(requests());
+            } finally { await f.close(); }
+        });
+    }
     test(`${base} production SW image caching, CORS/opaque, offline, sharing and eviction`, async ({ page }) => {
         const f = await fixture(base);
         try {

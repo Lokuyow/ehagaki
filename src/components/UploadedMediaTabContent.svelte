@@ -212,7 +212,7 @@
                 {#if current.notice}<p class="media-status" role="status">{$_(`uploadedMedia.${current.notice}`)}</p>{/if}
                 {#if current.loaded && current.items.length === 0}
                     <p class="media-status">{$_("uploadedMedia.empty")}</p>
-                    {#if current.nextPage}<p class="media-status">{$_("uploadedMedia.moreUnseen")}</p>{/if}
+                    {#if current.hasMore}<p class="media-status">{$_("uploadedMedia.moreUnseen")}</p>{/if}
                 {/if}
                 <div class="media-list" bind:this={listElement} tabindex="-1">
                     {#each current.items as item (item.id)}
@@ -236,7 +236,7 @@
                         </article>
                     {/each}
                 </div>
-                {#if current.nextPage && !current.needsRefresh}
+                {#if current.hasMore && !current.needsRefresh}
                     <div class="list-end-actions">
                         <Button className="media-load-more-button" onClick={() => management.controller.load(true)} disabled={current.loading || !!current.deletingId}>{$_("uploadedMedia.loadMore")}</Button>
                     </div>

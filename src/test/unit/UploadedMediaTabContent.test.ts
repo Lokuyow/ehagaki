@@ -48,7 +48,7 @@ beforeEach(() => {
     mockAuthStoreModule.authState.value = { ...mockAuthStoreModule.authState.value, isAuthenticated: true, pubkey: mediaPubkey };
     const destination = mediaDestination();
     mocked.view = { destinations: [destination], selectedId: destination.id, current: { destination, ...mediaPage(destination, [mediaItem(), mediaItem(destination, "video", "c".repeat(64))]),
-        loaded: true, loading: false, error: null, support: "supported", needsRefresh: false, deletingId: null, notice: null } };
+        loaded: true, loading: false, error: null, support: "supported", hasMore: true, needsRefresh: false, deletingId: null, notice: null } };
 });
 describe("uploaded-media content", () => {
     it("does not let a previous session's completed deletion close a new confirmation", async () => {
