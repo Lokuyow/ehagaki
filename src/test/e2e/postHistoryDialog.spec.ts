@@ -1328,6 +1328,8 @@ test.describe('PostHistoryDialog Playwright', () => {
         const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
         // Keep the existing open-refresh rebase and viewport autoload behavior.
         await expect.poll(async () => (await historyEventIds(page)).slice(0, 50)).toEqual(ids.slice(0, 50));
+        await waitForIntersectionObserverSettle(page);
+        await waitForAutoLoadExit(page, 'older');
         const entryRows = await historyEventIds(page);
         expect(entryRows).toEqual(ids.slice(0, entryRows.length));
         expect(entryRows.length % 50).toBe(0);

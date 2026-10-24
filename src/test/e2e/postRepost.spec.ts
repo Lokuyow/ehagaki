@@ -53,10 +53,12 @@ test('supported target projection keeps channel enrichment, wire tags, menu layo
     else expect(sent.tags.some(tag => tag[0] === 'k')).toBe(false);
 });
 
-test('history header controls and anchored status coexist with Repost sending and success feedback', async ({ page }, testInfo) => {
+test('history header controls and sync footer coexist with Repost sending and success feedback', async ({ page }, testInfo) => {
     await open(page, '&hold-history=1&hold-publish=1');
     const heading = page.locator('.post-history-heading');
-    const status = page.locator('.floating-message.anchor-bottom-right').filter({ has: page.locator('.post-history-heading-status-placeholder') });
+    // The centered sync toast expires after one second; the footer represents
+    // the held request throughout the Repost operation.
+    const status = page.locator('.post-history-sync-footer');
     await expect(status).toContainText('リレーと同期中...');
     await expect(status).toBeVisible();
     await expect(heading.locator('.post-history-heading-calendar-button')).toBeVisible();
@@ -87,17 +89,7 @@ test('history header controls and anchored status coexist with Repost sending an
     await expect(page.locator('.repost-message')).toBeVisible();
     await expect(repostToast).toBeVisible();
     await expect(page.locator('.post-history-repost')).toContainText('original searchable post');
-    try {
-        await expect(status).toContainText('リレーと同期中...');
-    } catch (error) {
-        const metrics = {
-            statusVisible: Number(await status.isVisible().catch(() => false)),
-            statusHasSyncText: Number((await status.textContent().catch(() => ''))?.includes('リレーと同期中...') ?? false),
-            statusPlaceholderCount: await status.locator('.post-history-heading-status-placeholder').count().catch(() => 0),
-        };
-        console.log('CI_METRICS ' + JSON.stringify({ testLine: 56, ...metrics }));
-        throw error;
-    }
+    await expect(status).toContainText('リレーと同期中...');
     const headingBox = await heading.boundingBox();
     const statusBox = await repostToast.boundingBox();
     expect(statusBox!.y).toBeCloseTo(headingBox!.y + headingBox!.height + 8, 0);

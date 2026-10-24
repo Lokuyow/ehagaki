@@ -24,6 +24,7 @@ interface UsePostHistoryTabSwipeOptions {
 }
 
 interface SwipeSession {
+    touchTarget: EventTarget | null;
     pointerId: number;
     startX: number;
     startY: number;
@@ -100,6 +101,7 @@ export function usePostHistoryTabSwipe(options: UsePostHistoryTabSwipeOptions) {
         const endGesture = (reportedX: number, timeStamp: number, commitAllowed: boolean) => {
             const finished = session;
             if (!finished) return;
+            finished.touchTarget?.removeEventListener("touchmove", onTouchMove as EventListener);
             session = null;
             dragging = false;
             if (finished.axis !== "horizontal") {
@@ -166,6 +168,7 @@ export function usePostHistoryTabSwipe(options: UsePostHistoryTabSwipeOptions) {
             const width = current.clientWidth;
             if (!(width > 0)) return;
             session = {
+                touchTarget: event.target,
                 pointerId: event.pointerId,
                 startX: event.clientX,
                 startY: event.clientY,
@@ -174,6 +177,10 @@ export function usePostHistoryTabSwipe(options: UsePostHistoryTabSwipeOptions) {
                 samples: [{ x: event.clientX, t: event.timeStamp }],
                 width,
             };
+            // Touch events keep their original target even if a media placeholder
+            // is replaced during the swipe. Listen there so cancellation still
+            // prevents a native fling from consuming the next tap.
+            session.touchTarget?.addEventListener("touchmove", onTouchMove as EventListener, { passive: false });
             widthPx = width;
         };
 
@@ -207,6 +214,7 @@ export function usePostHistoryTabSwipe(options: UsePostHistoryTabSwipeOptions) {
         current.addEventListener("pointercancel", onCancel);
         return () => {
             stopSettle();
+            session?.touchTarget?.removeEventListener("touchmove", onTouchMove as EventListener);
             session = null;
             current.removeEventListener("pointerdown", onDown);
             current.removeEventListener("pointermove", onMove);

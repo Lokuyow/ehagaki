@@ -29,9 +29,13 @@ async function dismissAndWaitForHistory(page: Page, action: () => Promise<unknow
 test.describe("mobile tab swipes", () => {
     test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
-    for (const from of ["posts", "media"] as const) {
+    for (const { from, replaceTarget } of [
+        { from: "posts", replaceTarget: false },
+        { from: "media", replaceTarget: false },
+        { from: "posts", replaceTarget: true },
+    ] as const) {
         for (const timing of ["settling", "switched"] as const) {
-            test(`close responds to the first tap after swiping from ${from} while ${timing}`, async ({ page, browserName }) => {
+            test(`close responds to the first tap after swiping from ${from} while ${timing}${replaceTarget ? " with the touch target replaced" : ""}`, async ({ page, browserName }) => {
                 test.skip(browserName !== "chromium", "Native swipe input uses the Chromium protocol.");
                 await page.addInitScript(tab => localStorage.setItem("historyActiveTab", tab), from);
                 await page.goto("post-history-dialog-playwright.html?history-tabs=1");
@@ -46,7 +50,17 @@ test.describe("mobile tab swipes", () => {
                 const input = await page.context().newCDPSession(page);
                 const startX = from === "posts" ? 310 : 80;
                 const endX = from === "posts" ? 80 : 310;
+                if (replaceTarget) {
+                    // Model a media placeholder being replaced after touchstart.
+                    await dialog.locator(".history-tab-gesture").evaluate(node => {
+                        const target = document.createElement("span");
+                        target.dataset.swipeTarget = "true";
+                        target.style.cssText = "position:fixed;left:280px;top:180px;width:60px;height:40px;z-index:1";
+                        node.append(target);
+                    });
+                }
                 await input.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: startX, y: 200 }] });
+                if (replaceTarget) await dialog.locator("[data-swipe-target]").evaluate(node => node.remove());
                 for (const fraction of [0.3, 0.6, 1]) {
                     await input.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: startX + (endX - startX) * fraction, y: 200 }] });
                 }
