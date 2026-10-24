@@ -11,7 +11,7 @@ script = "npm ci"
 [[actions]]
 name = "開発サーバー"
 icon = "run"
-command = "npm run dev"
+command = "npx vite --host localhost --port 5173 --force --open /ehagaki/"
 platform = "win32"
 
 [[actions]]
