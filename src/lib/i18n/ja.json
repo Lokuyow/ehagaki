@@ -28,6 +28,7 @@
     "retryAfter": "{time}以降に再試行してください。",
     "errors": {
       "unavailable": "このサーバーでは一覧取得できません。",
+      "nostpicListNotImplemented": "nostpic.comではアップロード済みメディアの一覧取得が未実装です。",
       "authentication": "メディアを管理するにはログインまたは認証の許可が必要です。",
       "forbidden": "サーバーのpolicyまたは権限により拒否されました。",
       "payment": "このサーバーでは支払いが必要です。",
