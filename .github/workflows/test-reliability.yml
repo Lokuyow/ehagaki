@@ -7,10 +7,40 @@ on:
   workflow_dispatch:
     inputs:
       e2e_grep:
-        description: 'Run only matching ordinary E2E on Ubuntu; empty runs full CI (test title regex)'
+        description: 'Run matching ordinary E2E only (test title regex; retained for compatibility)'
         required: false
         default: ''
         type: string
+      e2e_os:
+        description: 'Runner selection; auto uses full CI unless another filter is selected'
+        required: false
+        default: auto
+        type: choice
+        options: [auto, ubuntu, windows, both]
+      e2e_specs:
+        description: 'Space-separated Playwright spec paths; optional :line selectors are supported'
+        required: false
+        default: ''
+        type: string
+      e2e_project:
+        description: 'Playwright project; Windows supports Chromium projects only'
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - desktop-chromium
+          - mobile-chromium
+          - android-chromium
+          - mobile-webkit
+          - desktop-firefox
+          - desktop-firefox-editor-paste
+      e2e_repeat:
+        description: 'Repeat selected E2E tests serially without retries'
+        required: false
+        default: '1'
+        type: choice
+        options: ['1', '3', '5']
 
 permissions:
   contents: read
@@ -20,8 +50,52 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  prepare-manual-e2e:
+    if: github.event_name == 'workflow_dispatch'
+    name: Resolve manual E2E selection
+    runs-on: ubuntu-latest
+    outputs:
+      focused: ${{ steps.resolve.outputs.focused }}
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: Validate selection and resolve runners
+        id: resolve
+        shell: bash
+        env:
+          E2E_OS: ${{ inputs.e2e_os }}
+          E2E_SPECS: ${{ inputs.e2e_specs }}
+          E2E_PROJECT: ${{ inputs.e2e_project }}
+          E2E_GREP: ${{ inputs.e2e_grep }}
+          E2E_REPEAT: ${{ inputs.e2e_repeat }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          import { resolveManualE2eInputs } from "./scripts/manualE2eWorkflowInputs.ts";
+
+          const resolved = resolveManualE2eInputs({
+            os: process.env.E2E_OS,
+            specs: process.env.E2E_SPECS,
+            project: process.env.E2E_PROJECT,
+            grep: process.env.E2E_GREP,
+            repeat: process.env.E2E_REPEAT,
+          });
+          appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            `focused=${resolved.focused}\nmatrix=${JSON.stringify(resolved.runners)}\n`,
+          );
+          NODE
+
   unit-and-build:
-    if: github.event_name != 'workflow_dispatch' || inputs.e2e_grep == ''
+    needs: [prepare-manual-e2e]
+    if: >-
+      always() &&
+      (github.event_name != 'workflow_dispatch' ||
+      (needs.prepare-manual-e2e.result == 'success' &&
+      needs.prepare-manual-e2e.outputs.focused != 'true'))
     name: Vitest, check, and build (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -48,16 +122,24 @@ jobs:
       - run: npm run build
 
   browser-e2e:
-    if: github.event_name != 'pull_request'
+    needs: [prepare-manual-e2e]
+    if: >-
+      always() && github.event_name != 'pull_request' &&
+      (github.event_name != 'workflow_dispatch' ||
+      needs.prepare-manual-e2e.result == 'success')
     name: Browser E2E (${{ matrix.os }}, ${{ matrix.engines }})
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.e2e_grep != '' && '[{"os":"ubuntu-latest","engines":"all","all_browsers":"1"}]' || '[{"os":"ubuntu-latest","engines":"all","all_browsers":"1"},{"os":"windows-latest","engines":"chromium","all_browsers":"0"}]') }}
+        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && needs.prepare-manual-e2e.outputs.matrix || '[{"os":"ubuntu-latest","engines":"all","all_browsers":"1"},{"os":"windows-latest","engines":"chromium","all_browsers":"0"}]') }}
     runs-on: ${{ matrix.os }}
     env:
       EHAGAKI_E2E_ALL_BROWSERS: ${{ matrix.all_browsers }}
       PLAYWRIGHT_GREP: ${{ github.event_name == 'workflow_dispatch' && inputs.e2e_grep || '' }}
+      PLAYWRIGHT_SPECS: ${{ github.event_name == 'workflow_dispatch' && inputs.e2e_specs || '' }}
+      PLAYWRIGHT_PROJECT: ${{ github.event_name == 'workflow_dispatch' && inputs.e2e_project || 'all' }}
+      PLAYWRIGHT_REPEAT: ${{ github.event_name == 'workflow_dispatch' && inputs.e2e_repeat || '1' }}
+      PLAYWRIGHT_FOCUSED: ${{ github.event_name == 'workflow_dispatch' && needs.prepare-manual-e2e.outputs.focused || 'false' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -68,16 +150,44 @@ jobs:
         shell: bash
         run: npm install --global "$(node -p 'require("./package.json").packageManager')"
       - run: npm ci
+      - name: Validate focused Playwright selection
+        if: env.PLAYWRIGHT_FOCUSED == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--list)
+          if [[ "$PLAYWRIGHT_PROJECT" != 'all' ]]; then
+            args+=("--project=$PLAYWRIGHT_PROJECT")
+          fi
+          if [[ -n "$PLAYWRIGHT_SPECS" ]]; then
+            read -r -a specs <<< "$PLAYWRIGHT_SPECS"
+            args+=("${specs[@]}")
+          fi
+          if [[ -n "$PLAYWRIGHT_GREP" ]]; then
+            args+=(--grep "$PLAYWRIGHT_GREP")
+          fi
+          if [[ "$PLAYWRIGHT_REPEAT" != '1' ]]; then
+            args+=(--repeat-each "$PLAYWRIGHT_REPEAT")
+          fi
+          npx playwright test "${args[@]}" 2>&1 | node scripts/filterTestOutput.mjs
       - name: Install Linux Playwright browsers
         if: runner.os == 'Linux'
         run: |
           # Prefer the runner's existing Ubuntu archive/security mirrors for APT.
           sudo sed -i '\|azure\.archive\.ubuntu\.com|d' /etc/apt/apt-mirrors.txt
-          npx playwright install --with-deps chromium firefox webkit
+          browsers=(chromium)
+          if [[ "$PLAYWRIGHT_PROJECT" == 'all' ]]; then
+            browsers=(chromium firefox webkit)
+          elif [[ "$PLAYWRIGHT_PROJECT" == mobile-webkit ]]; then
+            browsers=(webkit)
+          elif [[ "$PLAYWRIGHT_PROJECT" == *firefox* ]]; then
+            browsers=(firefox)
+          fi
+          npx playwright install --with-deps "${browsers[@]}"
       - if: runner.os == 'Windows'
         run: npx playwright install chromium
       - name: Run dev-server Playwright with sanitized output
-        if: env.PLAYWRIGHT_GREP == ''
+        if: env.PLAYWRIGHT_FOCUSED != 'true'
         shell: bash
         run: |
           set -o pipefail
@@ -86,20 +196,36 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          args=(--reporter=dot --retries=0)
+          args=(--reporter=dot --retries=0 --repeat-each "$PLAYWRIGHT_REPEAT")
+          if [[ "$PLAYWRIGHT_REPEAT" != '1' ]]; then
+            # Keep repeated focused runs sequential to limit browser-runner contention.
+            args+=(--workers=1)
+          fi
+          if [[ "$PLAYWRIGHT_PROJECT" != 'all' ]]; then
+            args+=("--project=$PLAYWRIGHT_PROJECT")
+          fi
+          if [[ -n "$PLAYWRIGHT_SPECS" ]]; then
+            read -r -a specs <<< "$PLAYWRIGHT_SPECS"
+            args+=("${specs[@]}")
+          fi
           if [[ -n "$PLAYWRIGHT_GREP" ]]; then
             args+=(--grep "$PLAYWRIGHT_GREP")
           fi
           npm run test:e2e:parallel -- "${args[@]}" 2>&1 | node scripts/filterTestOutput.mjs
       - name: Run local relay Playwright with sanitized output
-        if: env.PLAYWRIGHT_GREP == ''
+        if: env.PLAYWRIGHT_FOCUSED != 'true'
         shell: bash
         run: |
           set -o pipefail
           npm run test:e2e:local-relay -- --reporter=dot --retries=0 2>&1 | node scripts/filterTestOutput.mjs
 
   service-worker-e2e:
-    if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.e2e_grep == '')
+    needs: [prepare-manual-e2e]
+    if: >-
+      always() && github.event_name != 'pull_request' &&
+      (github.event_name != 'workflow_dispatch' ||
+      (needs.prepare-manual-e2e.result == 'success' &&
+      needs.prepare-manual-e2e.outputs.focused != 'true'))
     name: Service Worker E2E (${{ matrix.os }}, ${{ matrix.engines }})
     strategy:
       fail-fast: false
