@@ -33,6 +33,7 @@
     const deleteIconUrl = resolveAppAssetUrl("icons/delete_forever_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     const refreshIconUrl = resolveAppAssetUrl("icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     let current = $derived(management.value.current);
+    let isNostpic = $derived(!!current && /^https?:\/\/nostpic\.com(?::\d+)?(?:\/|$)/i.test(current.destination.serverUrl));
     let cacheSupported = $state<boolean | null>(null);
     let pending = $state<UploadedMediaItem | null>(null);
     let pendingEndpoint = $state<string | null>(null);
@@ -205,7 +206,7 @@
             {#if current}
                 {#if current.loading && (!onInitialReady || initialReadyReported)}<LoadingPlaceholder showLoader text={true} />{/if}
                 {#if current.error}
-                    <p class="media-status" role="alert">{$_(`uploadedMedia.errors.${current.error.code}`)}</p>
+                    <p class="media-status" role="alert">{$_(`uploadedMedia.errors.${current.error.code === "invalidResponse" && isNostpic && !current.loaded ? "unavailable" : current.error.code}`)}</p>
                     {#if current.error.retryAt}<p class="media-status">{$_("uploadedMedia.retryAfter", { values: { time: new Date(current.error.retryAt).toLocaleTimeString() } })}</p>{/if}
                     {#if current.error.diagnostic}<p class="media-status diagnostic">{current.error.diagnostic}</p>{/if}
                 {/if}
