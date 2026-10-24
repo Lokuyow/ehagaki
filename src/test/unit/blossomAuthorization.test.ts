@@ -59,6 +59,42 @@ describe("Blossom BUD-11 Authorization codec", () => {
     });
 
     it.each([
+        "https://blossom.primal.net",
+        "https://BLOSSOM.PRIMAL.NET:443/list/pubkey?limit=24",
+        "https://blossom.primal.net/upload",
+    ])("uses padded standard Base64 only for the Primal origin: %s", (serverUrl) => {
+        // Whitespace and Unicode ensure re-serialization or alphabet changes are detected.
+        const eventJson = `\n ${createSignedEventJson("こんにちは🌸😀??")} `;
+        const bytes = new TextEncoder().encode(eventJson);
+        const expected = `Nostr ${bytesToBase64(bytes)}`;
+        expect(expected).toMatch(/[+/]/);
+        expect(expected).toMatch(/=$/);
+        expect(encodeBlossomAuthorizationHeader(eventJson, serverUrl)).toBe(expected);
+        for (const input of [expected, encodeBlossomAuthorizationHeader(eventJson)]) {
+            const header = canonicalizeBlossomAuthorizationHeader(input, serverUrl);
+            expect(header).toBe(expected);
+            expect(Array.from(decodeBase64UrlHeader(header))).toEqual(Array.from(bytes));
+        }
+    });
+
+    it.each([
+        "https://media.example",
+        "http://blossom.primal.net",
+        "https://blossom.primal.net:8443",
+        "https://blossom.primal.net.example/upload",
+        "https://sub.blossom.primal.net",
+        "https://blossom.primal.net@media.example/upload",
+        "https://media.example/?server=https://blossom.primal.net",
+    ])("keeps BUD-11 for other origins: %s", (serverUrl) => {
+        const eventJson = createSignedEventJson("こんにちは🌸😀??");
+        const expected = encodeBlossomAuthorizationHeader(eventJson);
+        expect(encodeBlossomAuthorizationHeader(eventJson, serverUrl)).toBe(expected);
+        expect(canonicalizeBlossomAuthorizationHeader(
+            `Nostr ${bytesToBase64(new TextEncoder().encode(eventJson))}`, serverUrl,
+        )).toBe(expected);
+    });
+
+    it.each([
         undefined,
         "",
         "   ",
@@ -75,6 +111,9 @@ describe("Blossom BUD-11 Authorization codec", () => {
         `Nostr ${bytesToBase64(new TextEncoder().encode("{}"))}`,
     ])("rejects an invalid Authorization value: %s", (authorization) => {
         expect(() => canonicalizeBlossomAuthorizationHeader(authorization)).toThrow(
+            "Invalid Blossom authorization",
+        );
+        expect(() => canonicalizeBlossomAuthorizationHeader(authorization, "https://blossom.primal.net")).toThrow(
             "Invalid Blossom authorization",
         );
     });

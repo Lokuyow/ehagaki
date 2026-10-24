@@ -222,7 +222,7 @@ export class NostrAuthService implements AuthService {
             if (Math.floor(Date.now() / 1000) >= expires) throw new Error("Authorization expired");
         };
         assertValid();
-        return { authorization: encodeBlossomAuthorizationHeader(JSON.stringify(event)), assertSession: assertValid };
+        return { authorization: encodeBlossomAuthorizationHeader(JSON.stringify(event), server.origin), assertSession: assertValid };
     }
 
     async buildBlossomAuthorizationHeader(params: {
@@ -233,7 +233,6 @@ export class NostrAuthService implements AuthService {
         contentLength?: number;
     }): Promise<string> {
         this.assertOperationActive();
-        void params.serverUrl;
         void params.contentType;
         void params.contentLength;
 
@@ -256,7 +255,7 @@ export class NostrAuthService implements AuthService {
 
         this.assertOperationActive();
         assertCurrentSession(sessionPubkey);
-        return encodeBlossomAuthorizationHeader(JSON.stringify(event));
+        return encodeBlossomAuthorizationHeader(JSON.stringify(event), params.serverUrl);
     }
 
     async createBlossomConnectionTestAuthorization(params: {
