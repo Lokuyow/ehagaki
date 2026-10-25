@@ -265,6 +265,18 @@ describe("SettingsUploadDestinationSection", () => {
         expect(mockUploadDestinationStore.fetchFromRelays).toHaveBeenCalledOnce();
         expect(mockUploadDestinationStore.publishToRelays).toHaveBeenCalledOnce();
     });
+    it.each([
+        ["ja", "アップロード先をリレーと手動で同期します。", "BUD-03 の説明"],
+        ["en", "Manually synchronize upload destinations with relays.", "BUD-03 info"],
+    ] as const)("places relay sync summary in its info popover (%s)", async (lang, description, infoLabel) => {
+        currentLocale = lang;
+        setExistingNip96Destination();
+        render(SettingsUploadDestinationSection, { rxNostr: {} as never });
+        await fireEvent.click(screen.getByRole("button", { name: lang === "ja" ? "管理" : "Manage" }));
+        expect(screen.queryByText(description)).toBeNull();
+        await fireEvent.click(screen.getByRole("button", { name: infoLabel }));
+        expect(screen.getByText(description)).toBeTruthy();
+    });
     it.each(['relayFetching', 'relayPublishing'] as const)("disables both sync buttons during %s", async field => {
         testAuth.isAuthenticated = true; testAuth.pubkey = 'owner';
         setExistingNip96Destination(); mockUploadDestinationStore.value[field] = true;

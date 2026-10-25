@@ -643,7 +643,6 @@
             {#if !editing}
                 <section class="relay-sync-section" aria-labelledby={panelId + "-relay-heading"}>
                     <h3 id={panelId + "-relay-heading"}>{$_("settingsDialog.uploadDestinationRelayTitle")}</h3>
-                    <p class="relay-sync-description">{$_("settingsDialog.uploadDestinationRelayDescription")}</p>
                     <div class="panel-actions">
                         <Button
                             variant="default"
@@ -687,6 +686,11 @@
                             ) || "リレー同期の説明"}
                         >
                             <div class="bud03-popover">
+                                <p>
+                                    {$_(
+                                        "settingsDialog.uploadDestinationRelayDescription",
+                                    )}
+                                </p>
                                 <p>
                                     {$_(
                                         "settingsDialog.uploadDestinationRelayInfoScope",
@@ -928,12 +932,6 @@
         flex-direction: column;
         gap: 8px;
         min-width: 0;
-    }
-
-    .relay-sync-description {
-        margin: 0;
-        font-size: 0.875rem;
-        color: var(--text-light);
     }
 
     .badge {
