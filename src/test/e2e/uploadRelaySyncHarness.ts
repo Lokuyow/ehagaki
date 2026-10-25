@@ -4,6 +4,7 @@ import { mount } from "svelte";
 import { locale, waitLocale } from "svelte-i18n";
 import { createRxNostr } from "rx-nostr";
 import { verifyEvent, nip19, type EventTemplate, type VerifiedEvent } from "nostr-tools";
+import { configureAppRuntimeEnvironment } from "../../lib/appRuntimeEnvironment";
 import SettingsUploadDestinationSection from "../../components/settings/SettingsUploadDestinationSection.svelte";
 import { setNip07Auth } from "../../stores/authStore.svelte";
 import { uploadDestinationStore } from "../../stores/uploadDestinationStore.svelte";
@@ -43,13 +44,15 @@ rxNostr.setDefaultRelays(Object.fromEntries([
 const timestamp = Date.now();
 for (const [index, protocol] of (query.has("initial") ? [] : ["blossom", "nip96", "custom-http"] as const).entries()) {
     await uploadDestinationsRepository.put({
-        id: protocol, pubkeyHex: owner, name: protocol, protocol,
-        serverUrl: protocol === "blossom" ? "https://old-blossom.example" : "https://files.example/api",
+        id: protocol, pubkeyHex: owner, name: query.has("compact") && protocol === "blossom" ? "long-blossom-server-name-for-narrow-embedded-settings.example" : protocol, protocol,
+        serverUrl: protocol === "blossom" ? query.has("compact") ? "https://long-blossom-server-name-for-narrow-embedded-settings.example" : "https://old-blossom.example" : "https://files.example/api",
         ...(protocol === "nip96" ? { nip96ServerUrl: "https://files.example", resolvedUploadUrl: "https://files.example/api" } : {}),
         presetId: "custom", enabled: true, isDefault: index === 0, sortIndex: index,
         createdAt: timestamp, updatedAt: timestamp, schemaVersion: 1,
         auth: { type: protocol === "blossom" ? "blossom-bud11" : protocol === "nip96" ? "nip98" : "custom" },
-        capabilities: { ...DEFAULT_UPLOAD_CAPABILITIES },
+        capabilities: { ...DEFAULT_UPLOAD_CAPABILITIES, ...(query.has("compact") && protocol === "blossom" ? {
+            supportedMimeTypes: ["image/png", "image/jpeg", "image/webp", "video/mp4", "application/vnd.example.long-format-for-overflow-verification"],
+        } : {}) },
     });
 }
 window.uploadRelaySnapshot = () => uploadDestinationStore.value.destinations.map(({ id, protocol, serverUrl, enabled, isDefault, nip96UrlMode }) => ({ id, protocol, serverUrl, enabled, isDefault, nip96UrlMode }));
@@ -66,5 +69,9 @@ const target = query.get("surface") === "shadow" ? app.attachShadow({ mode: "ope
 if (target instanceof ShadowRoot) {
     for (const sheet of document.querySelectorAll('style, link[rel="stylesheet"]')) target.append(sheet.cloneNode(true));
 }
-mount(SettingsUploadDestinationSection, { target, props: { rxNostr } });
+const container = document.createElement("div");
+container.className = "ehagaki-app-root";
+target.append(container);
+configureAppRuntimeEnvironment({ overlayTarget: container, domRoot: target instanceof ShadowRoot ? target : document });
+mount(SettingsUploadDestinationSection, { target: container, props: { rxNostr } });
 window.addEventListener("pagehide", () => { uploadDestinationStore.reset(); rxNostr.dispose(); }, { once: true });

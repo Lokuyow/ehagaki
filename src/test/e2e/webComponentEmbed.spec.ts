@@ -319,34 +319,59 @@ test.afterAll(async () => {
     ]);
 });
 
-test("Full upload relay controls remain accessible at 320px and 360px", async ({ page }) => {
+for (const lang of ["ja", "en"] as const) {
+test("Full upload destination controls remain accessible at 320px and 360px (" + lang + ")", async ({ page }, testInfo) => {
     await page.goto(hostOrigin);
-    await page.evaluate(async () => {
-        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
-        const composer = document.createElement("ehagaki-composer") as HTMLElement & { whenReady(): Promise<void> };
+    await page.evaluate(async lang => {
+        await import(window.__componentOrigin + "/ehagaki-composer.js");
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+            setSettings(value: { locale: "ja" | "en"; themeMode: "light" | "dark" }): Promise<string[]>;
+        };
         composer.style.width = "320px";
         document.body.append(composer);
         await composer.whenReady();
-    });
+        await composer.setSettings({ locale: lang, themeMode: "light" });
+    }, lang);
     const composer = page.locator("ehagaki-composer");
     await composer.locator("button.settings-btn").click();
-    await composer.getByRole("button", { name: /^(メディア|Media)$/ }).click();
-    await composer.locator(".upload-destination-section").getByRole("button", { name: /^(管理|Manage)$/ }).click();
-    const fetchButton = composer.getByRole("button", { name: /^(リレーから取得|Fetch from relays)$/ });
-    const publishButton = composer.getByRole("button", { name: /^(リレーへ送信|Publish to relays)$/ });
-    for (const width of [320, 360]) {
-        await composer.evaluate((element, width) => { (element as HTMLElement).style.width = `${width}px`; }, width);
+    await composer.getByRole("button", { name: lang === "ja" ? "メディア" : "Media", exact: true }).click();
+    await composer.locator(".upload-destination-section").getByRole("button", { name: lang === "ja" ? "管理" : "Manage", exact: true }).click();
+    const fetchButton = composer.getByRole("button", { name: lang === "ja" ? "リレーから取得" : "Fetch from relays", exact: true });
+    const publishButton = composer.getByRole("button", { name: lang === "ja" ? "リレーへ送信" : "Publish to relays", exact: true });
+    const trigger = composer.getByRole("listitem").first().getByRole("button", { name: /の操作$|^Actions for / });
+    for (const width of [320, 360]) for (const themeMode of ["light", "dark"] as const) {
+        await composer.evaluate(async (element, { width, themeMode }) => {
+            element.style.width = width + "px";
+            await (element as HTMLElement & { setSettings(value: { themeMode: "light" | "dark" }): Promise<string[]> }).setSettings({ themeMode });
+        }, { width, themeMode });
         await publishButton.scrollIntoViewIfNeeded();
         await expect(fetchButton).toBeInViewport();
         await expect(publishButton).toBeInViewport();
         const bounds = await composer.boundingBox();
-        for (const button of [fetchButton, publishButton]) {
+        for (const button of [fetchButton, publishButton, trigger]) {
             const rect = await button.boundingBox();
             expect(rect!.x).toBeGreaterThanOrEqual(bounds!.x - 1);
             expect(rect!.x + rect!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width + 1);
         }
+        await trigger.click();
+        const menu = composer.getByRole("menu");
+        await expect(menu.getByRole("menuitem")).toHaveCount(5);
+        await expect(menu.getByRole("menuitem", { name: lang === "ja" ? "既定にする" : "Set as default", exact: true })).toBeDisabled();
+        const menuRect = await menu.boundingBox();
+        expect(menuRect!.x).toBeGreaterThanOrEqual(bounds!.x - 1);
+        expect(menuRect!.x + menuRect!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width + 1);
+        await composer.screenshot({ path: testInfo.outputPath("upload-settings-" + lang + "-" + themeMode + "-" + width + ".png") });
+        await page.keyboard.press("Escape");
+        await expect(trigger).toBeFocused();
     }
+    await trigger.press("ArrowDown");
+    await composer.getByRole("menuitem", { name: lang === "ja" ? "編集" : "Edit", exact: true }).click();
+    await expect(composer.getByRole("combobox", { name: lang === "ja" ? "プリセット" : "Preset", exact: true })).toBeFocused();
+    await composer.getByRole("button", { name: lang === "ja" ? "キャンセル" : "Cancel", exact: true }).click();
+    await expect(trigger).toBeFocused();
 });
+}
 
 test("keeps startup NIP-07 opt-in and preserves the existing ready path when absent", async ({ page }) => {
     await page.goto(hostOrigin);

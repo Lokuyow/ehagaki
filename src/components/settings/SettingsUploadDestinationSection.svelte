@@ -1,10 +1,12 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, tick } from "svelte";
+    import { DropdownMenu } from "bits-ui";
     import { _ } from "svelte-i18n";
     import type { RxNostr } from "rx-nostr";
     import { preventKeyboardFocusChange } from "../../lib/utils/keyboardFocusUtils";
     import Button from "../Button.svelte";
     import InfoPopoverButton from "../InfoPopoverButton.svelte";
+    import { getAppRuntimeEnvironment } from "../../lib/appRuntimeEnvironment";
     import { uploadDestinationStore } from "../../stores/uploadDestinationStore.svelte";
     import { authState } from "../../stores/authStore.svelte";
     import type {
@@ -28,6 +30,12 @@
     }
 
     let { rxNostr = null }: Props = $props();
+    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
+    const panelId = $props.id();
+    let panelElement: HTMLDivElement | undefined = $state();
+    let presetSelect: HTMLSelectElement | undefined = $state();
+    let menuCloseFocus: "form" | "handled" | null = null;
+    let openMenuId: string | null = $state(null);
 
     const initialPreset = UPLOAD_DESTINATION_PRESETS.find(
         (preset) => preset.id === "blossom-band",
@@ -92,6 +100,8 @@
     $effect(() => {
         if (currentScope === pubkeyHex) return;
         currentScope = pubkeyHex;
+        testingId = null;
+        openMenuId = null;
         void uploadDestinationStore.load(currentScope);
     });
 
@@ -111,7 +121,7 @@
     function getMimeSummary(destination: UploadDestination): string {
         const mimeTypes = destination.capabilities.supportedMimeTypes;
         if (!mimeTypes.length)
-            return $_("settingsDialog.uploadDestinationUnknown") || "未確認";
+            return $_("settingsDialog.uploadDestinationMimeUnknown");
         if (expandedMimeDestinations[destination.id])
             return mimeTypes.join(", ");
         if (mimeTypes.length <= 3) return mimeTypes.join(", ");
@@ -135,12 +145,38 @@
         editing = true;
         editingTargetId = null;
         expanded = true;
+        void tick().then(() => presetSelect?.focus());
     }
 
     function cancelEdit(): void {
+        const targetId = editingTargetId;
         editing = false;
         editingTargetId = null;
         formError = null;
+        void tick().then(() => focusDestination(targetId));
+    }
+
+    function focusDestination(id: string | null): void {
+        const row = Array.from(panelElement?.querySelectorAll<HTMLElement>("[data-destination-id]") ?? [])
+            .find((element) => element.dataset.destinationId === id);
+        const target = row?.querySelector<HTMLButtonElement>("[data-destination-menu]")
+            ?? panelElement?.querySelector<HTMLButtonElement>(".destination-add-button");
+        target?.focus({ preventScroll: true });
+    }
+
+    function handleMenuClose(event: Event): void {
+        const target = menuCloseFocus;
+        menuCloseFocus = null;
+        if (!target) return;
+        event.preventDefault();
+        if (target === "form") void tick().then(() => presetSelect?.focus());
+    }
+
+    async function moveDestination(destination: UploadDestination, direction: "up" | "down"): Promise<void> {
+        menuCloseFocus = "handled";
+        await uploadDestinationStore.move(destination.id, direction, pubkeyHex);
+        await tick();
+        focusDestination(destination.id);
     }
 
     function startEdit(destination: UploadDestination): void {
@@ -278,30 +314,40 @@
             } : resolvedUploadUrl ? { resolvedUploadUrl, nip96ServerUrl: presetIdentity?.nip96ServerUrl, nip96UrlMode: 'direct' as const } : {}),
         };
 
+        const returnTargetId = editingTargetId;
         await uploadDestinationStore.save(destination);
         editing = false;
         editingTargetId = null;
+        await tick();
+        focusDestination(returnTargetId);
     }
 
     async function testDestination(
         destination: UploadDestination,
     ): Promise<void> {
         testingId = destination.id;
+        const scope = currentScope;
         try {
             await uploadDestinationStore.test(destination);
         } finally {
-            testingId = null;
+            if (currentScope === scope && testingId === destination.id) testingId = null;
         }
     }
 
     async function deleteDestination(
         destination: UploadDestination,
     ): Promise<void> {
+        menuCloseFocus = "handled";
+        const index = destinationState.destinations.findIndex((item) => item.id === destination.id);
+        const nextId = destinationState.destinations[index + 1]?.id
+            ?? destinationState.destinations[index - 1]?.id ?? null;
         if (editingTargetId === destination.id) {
             editing = false;
             editingTargetId = null;
         }
         await uploadDestinationStore.delete(destination.id, pubkeyHex);
+        await tick();
+        focusDestination(nextId);
     }
 
     async function fetchFromRelays(): Promise<void> {
@@ -323,6 +369,7 @@
                     "プリセット"}</span
             >
             <select
+                bind:this={presetSelect}
                 value={form.presetId}
                 onchange={(event) =>
                     applyPreset(
@@ -453,6 +500,8 @@
                 shape="rounded"
                 contentLayout="text"
                 className="upload-destination-manage-btn"
+                aria-expanded={expanded}
+                aria-controls={panelId}
                 onClick={() => (expanded = !expanded)}
             >
                 <span class="btn-text">
@@ -467,273 +516,208 @@
     </div>
 
     {#if expanded}
-        <div class="upload-panel">
-            {#each destinationState.destinations as destination}
-                <div class="destination-row">
-                    <div class="destination-main">
-                        <div class="destination-content">
-                            <div class="destination-title">
-                                <span>{destination.name}</span>
-                                {#if destination.isDefault}
-                                    <span class="badge default-badge"
-                                        >{$_(
-                                            "settingsDialog.uploadDestinationDefault",
-                                        ) || "既定"}</span
-                                    >
-                                {/if}
-                                {#if !destination.enabled}
-                                    <span class="badge muted"
-                                        >{$_(
-                                            "settingsDialog.uploadDestinationDisabled",
-                                        ) || "無効"}</span
-                                    >
-                                {/if}
-                            </div>
-                            <div class="destination-meta">
-                                {destination.protocol} / {formatMaxSize(
-                                    destination.capabilities.maxUploadSize,
-                                )}
-                            </div>
-                            <div class="destination-meta mime-meta">
-                                <span>{getMimeSummary(destination)}</span>
-                                {#if canExpandMimeTypes(destination)}
-                                    <button
-                                        type="button"
-                                        class="mime-toggle"
-                                        onclick={() =>
-                                            toggleMimeTypes(destination.id)}
-                                    >
-                                        {expandedMimeDestinations[
-                                            destination.id
-                                        ]
-                                            ? $_(
-                                                  "settingsDialog.uploadDestinationMimeCollapse",
-                                              ) || "折りたたむ"
-                                            : $_(
-                                                  "settingsDialog.uploadDestinationMimeExpand",
-                                              ) || "すべて表示"}
-                                    </button>
-                                {/if}
-                            </div>
-                        </div>
-                        <div class="destination-order-actions">
-                            <Button
-                                variant="default"
-                                shape="rounded"
-                                className="destination-order-button"
-                                ariaLabel={$_(
-                                    "settingsDialog.uploadDestinationMoveUp",
-                                ) || "Up"}
-                                onClick={() =>
-                                    uploadDestinationStore.move(
-                                        destination.id,
-                                        "up",
-                                        pubkeyHex,
-                                    )}
-                                disabled={destinationState.destinations[0]
-                                    ?.id === destination.id}
-                            >
-                                <span class="arrow-up-icon svg-icon"></span>
-                            </Button>
-                            <Button
-                                variant="default"
-                                shape="rounded"
-                                className="destination-order-button"
-                                ariaLabel={$_(
-                                    "settingsDialog.uploadDestinationMoveDown",
-                                ) || "Down"}
-                                onClick={() =>
-                                    uploadDestinationStore.move(
-                                        destination.id,
-                                        "down",
-                                        pubkeyHex,
-                                    )}
-                                disabled={destinationState.destinations[
-                                    destinationState.destinations.length - 1
-                                ]?.id === destination.id}
-                            >
-                                <span class="arrow-down-icon svg-icon"></span>
-                            </Button>
-                        </div>
-                    </div>
-                    <div class="destination-actions">
-                        <Button
-                            variant="default"
-                            shape="rounded"
-                            onClick={() =>
-                                uploadDestinationStore.setDefault(
-                                    destination.id,
-                                    pubkeyHex,
-                                )}
-                            disabled={destination.isDefault}
-                        >
-                            {$_("settingsDialog.uploadDestinationSetDefault") ||
-                                "既定"}
-                        </Button>
-                        <Button
-                            variant="default"
-                            shape="rounded"
-                            onClick={() => startEdit(destination)}
-                        >
-                            {editing && editingTargetId === destination.id
-                                ? $_("settingsDialog.uploadDestinationClose") ||
-                                  "閉じる"
-                                : $_("settingsDialog.uploadDestinationEdit") ||
-                                  "編集"}
-                        </Button>
-                        <Button
-                            variant="default"
-                            shape="rounded"
-                            onClick={() => testDestination(destination)}
-                            disabled={testingId === destination.id}
-                        >
-                            {testingId === destination.id
-                                ? $_(
-                                      "settingsDialog.uploadDestinationTesting",
-                                  ) || "確認中"
-                                : $_("settingsDialog.uploadDestinationTest") ||
-                                  "接続テスト"}
-                        </Button>
-                        <Button
-                            variant="default"
-                            shape="rounded"
-                            onClick={() => deleteDestination(destination)}
-                            disabled={destinationState.destinations.length <= 1}
-                        >
-                            {$_("settingsDialog.uploadDestinationDelete") ||
-                                "削除"}
-                        </Button>
-                        {#if destination.protocol === "blossom"}
-                            <InfoPopoverButton
-                                side="top"
-                                sideOffset={4}
-                                ariaLabel={$_(
-                                    "settingsDialog.uploadDestinationBlossomTestInfoLabel",
-                                ) || "Blossom 接続テストの説明"}
-                            >
-                                <div class="blossom-test-popover">
-                                    <p>
-                                        {$_(
-                                            "settingsDialog.uploadDestinationBlossomTestInfoNoUpload",
-                                        ) ||
-                                            "このテストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。"}
-                                    </p>
-                                    <p>
-                                        {$_(
-                                            "settingsDialog.uploadDestinationBlossomTestInfoAuthorization",
-                                        ) ||
-                                            "Blossom の仕様上、確認に必要な署名で upload 権限が要求される場合があります。"}
-                                    </p>
+        <div class="upload-panel" id={panelId} bind:this={panelElement}>
+            <div class="list-heading">
+                <h3>{$_("settingsDialog.uploadDestinationServers")}</h3>
+                {#if !editing}
+                    <Button variant="default" shape="rounded" className="destination-add-button" onClick={startAdd}>
+                        {$_("settingsDialog.uploadDestinationAdd")}
+                    </Button>
+                {/if}
+            </div>
+            <div class="destination-list" role="list" aria-label={$_("settingsDialog.uploadDestinationServers")}>
+                {#each destinationState.destinations as destination, index (destination.id)}
+                    <div class="destination-row" role="listitem" data-destination-id={destination.id}>
+                        <div class="destination-main">
+                            <div class="destination-content">
+                                <div class="destination-title">
+                                    <span class="destination-name">{destination.name}</span>
+                                    {#if destination.isDefault}
+                                        <span class="badge default-badge">{$_("settingsDialog.uploadDestinationDefault")}</span>
+                                    {/if}
+                                    {#if !destination.enabled}
+                                        <span class="badge muted">{$_("settingsDialog.uploadDestinationDisabled")}</span>
+                                    {/if}
                                 </div>
-                            </InfoPopoverButton>
+                                <div class="destination-meta">
+                                    {destination.protocol === "blossom" ? "Blossom" : destination.protocol === "nip96" ? "NIP-96" : "Custom HTTP"}
+                                    · {destination.capabilities.maxUploadSize ? $_("settingsDialog.uploadDestinationMaxSize", { values: { size: formatMaxSize(destination.capabilities.maxUploadSize) } }) : formatMaxSize(null)}
+                                </div>
+                                <div class="destination-meta mime-meta">
+                                    <span id={panelId + "-mime-" + destination.id}>{getMimeSummary(destination)}</span>
+                                    {#if canExpandMimeTypes(destination)}
+                                        <button type="button" class="mime-toggle"
+                                            aria-expanded={Boolean(expandedMimeDestinations[destination.id])}
+                                            aria-controls={panelId + "-mime-" + destination.id}
+                                            onclick={() => toggleMimeTypes(destination.id)}>
+                                            {$_(expandedMimeDestinations[destination.id] ? "settingsDialog.uploadDestinationMimeCollapse" : "settingsDialog.uploadDestinationMimeExpand")}
+                                        </button>
+                                    {/if}
+                                </div>
+                            </div>
+                            <div class="destination-actions">
+                                <Button variant="default" shape="rounded" onClick={() => testDestination(destination)} disabled={testingId === destination.id}>
+                                    {$_(testingId === destination.id ? "settingsDialog.uploadDestinationTesting" : "settingsDialog.uploadDestinationTest")}
+                                </Button>
+                                {#if destination.protocol === "blossom"}
+                                    <InfoPopoverButton
+                                        side="top"
+                                        sideOffset={4}
+                                        ariaLabel={$_(
+                                            "settingsDialog.uploadDestinationBlossomTestInfoLabel",
+                                        ) || "Blossom 接続テストの説明"}
+                                    >
+                                        <div class="blossom-test-popover">
+                                            <p>
+                                                {$_(
+                                                    "settingsDialog.uploadDestinationBlossomTestInfoNoUpload",
+                                                ) ||
+                                                    "このテストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。"}
+                                            </p>
+                                            <p>
+                                                {$_(
+                                                    "settingsDialog.uploadDestinationBlossomTestInfoAuthorization",
+                                                ) ||
+                                                    "Blossom の仕様上、確認に必要な署名で upload 権限が要求される場合があります。"}
+                                            </p>
+                                        </div>
+                                    </InfoPopoverButton>
+                                {/if}
+                                <DropdownMenu.Root open={openMenuId === destination.id}
+                                    onOpenChange={(open) => (openMenuId = open ? destination.id : null)}>
+                                    <DropdownMenu.Trigger class="destination-menu-trigger" data-destination-menu
+                                        aria-label={$_("settingsDialog.uploadDestinationActions", { values: { name: destination.name } })}>
+                                        <span class="more-icon svg-icon" aria-hidden="true"></span>
+                                    </DropdownMenu.Trigger>
+                                    <DropdownMenu.Portal to={overlayTarget}>
+                                        <DropdownMenu.Content class="destination-menu-content" align="end" sideOffset={4}
+                                            preventScroll={false} onCloseAutoFocus={handleMenuClose}>
+                                            <DropdownMenu.Item class="destination-menu-item" disabled={destination.isDefault}
+                                                onSelect={() => void uploadDestinationStore.setDefault(destination.id, pubkeyHex)}>
+                                                {$_("settingsDialog.uploadDestinationSetDefault")}
+                                            </DropdownMenu.Item>
+                                            <DropdownMenu.Item class="destination-menu-item" onSelect={() => {
+                                                startEdit(destination);
+                                                if (editing) menuCloseFocus = "form";
+                                            }}>
+                                                {$_("settingsDialog.uploadDestinationEdit")}
+                                            </DropdownMenu.Item>
+                                            <DropdownMenu.Item class="destination-menu-item" disabled={index === 0}
+                                                onSelect={() => void moveDestination(destination, "up")}>
+                                                {$_("settingsDialog.uploadDestinationMoveUp")}
+                                            </DropdownMenu.Item>
+                                            <DropdownMenu.Item class="destination-menu-item" disabled={index === destinationState.destinations.length - 1}
+                                                onSelect={() => void moveDestination(destination, "down")}>
+                                                {$_("settingsDialog.uploadDestinationMoveDown")}
+                                            </DropdownMenu.Item>
+                                            <DropdownMenu.Separator class="destination-menu-separator" />
+                                            <DropdownMenu.Item class="destination-menu-item destination-menu-danger" disabled={destinationState.destinations.length <= 1}
+                                                onSelect={() => void deleteDestination(destination)}>
+                                                {$_("settingsDialog.uploadDestinationDelete")}
+                                            </DropdownMenu.Item>
+                                        </DropdownMenu.Content>
+                                    </DropdownMenu.Portal>
+                                </DropdownMenu.Root>
+                            </div>
+                        </div>
+                        {#if testingId === destination.id || destinationState.testResults[destination.id]}
+                            {@const result = destinationState.testResults[destination.id]}
+                            <div class="test-result" class:error={testingId !== destination.id && !result?.success} role="status" aria-live="polite">
+                                {#if testingId === destination.id}
+                                    {$_("settingsDialog.uploadDestinationTesting")}
+                                {:else if result}
+                                    <span>{$_(result.success ? "settingsDialog.uploadDestinationTestSuccess" : "settingsDialog.uploadDestinationTestFailure")}</span>
+                                    {#if result.message}<span class="test-result-detail">{result.message}</span>{/if}
+                                {/if}
+                            </div>
+                        {/if}
+                        {#if editing && editingTargetId === destination.id}
+                            {@render destinationForm()}
                         {/if}
                     </div>
-                    {#if destinationState.testResults[destination.id]?.message ||
-                        destinationState.testResults[destination.id]?.success}
-                        <div
-                            class:error={!destinationState.testResults[
-                                destination.id
-                            ].success}
-                            class="test-result"
-                        >
-                            {destinationState.testResults[destination.id].message ||
-                                (destinationState.testResults[destination.id].success
-                                    ? $_(
-                                          "settingsDialog.uploadDestinationTestSuccess",
-                                      ) || "接続テストに成功しました"
-                                    : "")}
-                        </div>
-                    {/if}
-                </div>
-
-                {#if editing && editingTargetId === destination.id}
-                    {@render destinationForm()}
-                {/if}
-            {/each}
-
+                {/each}
+            </div>
             {#if editing && !editingTargetId}
                 {@render destinationForm()}
-            {:else if !editing}
-                <div class="panel-actions">
-                    <Button
-                        variant="default"
-                        shape="rounded"
-                        onClick={startAdd}
-                    >
-                        {$_("settingsDialog.uploadDestinationAdd") || "追加"}
-                    </Button>
-                    <Button
-                        variant="default"
-                        shape="rounded"
-                        onClick={fetchFromRelays}
-                        disabled={!canUseRelaySync ||
-                            destinationState.relayFetching || destinationState.relayPublishing}
-                    >
-                        {destinationState.relayFetching
-                            ? $_(
-                                  "settingsDialog.uploadDestinationRelayFetching",
-                              ) || "リレー取得中"
-                            : $_(
-                                  "settingsDialog.uploadDestinationRelayFetch",
-                              ) || "リレーから取得"}
-                    </Button>
-                    <Button
-                        variant="default"
-                        shape="rounded"
-                        onClick={publishToRelays}
-                        disabled={!canUseRelaySync ||
-                            destinationState.relayFetching || destinationState.relayPublishing ||
-                            !destinationState.destinations.some(
-                                (destination) =>
-                                    (destination.protocol === "blossom" || destination.protocol === "nip96") &&
-                                    destination.enabled,
-                            )}
-                    >
-                        {destinationState.relayPublishing
-                            ? $_(
-                                  "settingsDialog.uploadDestinationRelayPublishing",
-                              ) || "リレー送信中"
-                            : $_(
-                                  "settingsDialog.uploadDestinationRelayPublish",
-                              ) || "リレーへ送信"}
-                    </Button>
-                    <InfoPopoverButton
-                        side="top"
-                        ariaLabel={$_(
-                            "settingsDialog.uploadDestinationRelayInfoLabel",
-                        ) || "リレー同期の説明"}
-                    >
-                        <div class="bud03-popover">
-                            <p>
-                                {$_(
-                                    "settingsDialog.uploadDestinationRelayInfoScope",
-                                ) ||
-                                    "Blossom は kind 10063、NIP-96 は kind 10096 として同期します。Custom HTTP は対象外です。"}
-                            </p>
-                            <p>
-                                {$_(
-                                    "settingsDialog.uploadDestinationRelayInfoOrder",
-                                ) ||
-                                    "送信時は各プロトコルの有効なアップロード先を一覧の順番で保存します。"}
-                            </p>
-                            <p>
-                                {$_(
-                                    "settingsDialog.uploadDestinationRelayInfoFetch",
-                                ) ||
-                                    "取得に成功したプロトコルだけを取得結果で置き換えます。"}
-                            </p>
-                        </div>
-                    </InfoPopoverButton>
-                </div>
-                {#if destinationState.relaySyncResults}
-                    <div class="test-result" role="status" aria-live="polite">
-                        <p>{$_('settingsDialog.uploadDestinationRelaySummary.' + summarizeRelaySync(destinationState.relaySyncResults))}</p>
-                        {#each (['blossom', 'nip96'] as const) as protocol}
-                            {@const result = destinationState.relaySyncResults[protocol]}
-                            <p>{protocol === 'blossom' ? 'Blossom' : 'NIP-96'}: {$_('settingsDialog.uploadDestinationRelayOutcome.' + result.status)}{#if result.reason} — {$_('settingsDialog.uploadDestinationRelayReason.' + result.reason)}{/if}</p>
-                        {/each}
+            {/if}
+            {#if !editing}
+                <section class="relay-sync-section" aria-labelledby={panelId + "-relay-heading"}>
+                    <h3 id={panelId + "-relay-heading"}>{$_("settingsDialog.uploadDestinationRelayTitle")}</h3>
+                    <p class="relay-sync-description">{$_("settingsDialog.uploadDestinationRelayDescription")}</p>
+                    <div class="panel-actions">
+                        <Button
+                            variant="default"
+                            shape="rounded"
+                            onClick={fetchFromRelays}
+                            disabled={!canUseRelaySync ||
+                                destinationState.relayFetching || destinationState.relayPublishing}
+                        >
+                            {destinationState.relayFetching
+                                ? $_(
+                                      "settingsDialog.uploadDestinationRelayFetching",
+                                  ) || "リレー取得中"
+                                : $_(
+                                      "settingsDialog.uploadDestinationRelayFetch",
+                                  ) || "リレーから取得"}
+                        </Button>
+                        <Button
+                            variant="default"
+                            shape="rounded"
+                            onClick={publishToRelays}
+                            disabled={!canUseRelaySync ||
+                                destinationState.relayFetching || destinationState.relayPublishing ||
+                                !destinationState.destinations.some(
+                                    (destination) =>
+                                        (destination.protocol === "blossom" || destination.protocol === "nip96") &&
+                                        destination.enabled,
+                                )}
+                        >
+                            {destinationState.relayPublishing
+                                ? $_(
+                                      "settingsDialog.uploadDestinationRelayPublishing",
+                                  ) || "リレー送信中"
+                                : $_(
+                                      "settingsDialog.uploadDestinationRelayPublish",
+                                  ) || "リレーへ送信"}
+                        </Button>
+                        <InfoPopoverButton
+                            side="top"
+                            ariaLabel={$_(
+                                "settingsDialog.uploadDestinationRelayInfoLabel",
+                            ) || "リレー同期の説明"}
+                        >
+                            <div class="bud03-popover">
+                                <p>
+                                    {$_(
+                                        "settingsDialog.uploadDestinationRelayInfoScope",
+                                    ) ||
+                                        "Blossom は kind 10063、NIP-96 は kind 10096 として同期します。Custom HTTP は対象外です。"}
+                                </p>
+                                <p>
+                                    {$_(
+                                        "settingsDialog.uploadDestinationRelayInfoOrder",
+                                    ) ||
+                                        "送信時は各プロトコルの有効なアップロード先を一覧の順番で保存します。"}
+                                </p>
+                                <p>
+                                    {$_(
+                                        "settingsDialog.uploadDestinationRelayInfoFetch",
+                                    ) ||
+                                        "取得に成功したプロトコルだけを取得結果で置き換えます。"}
+                                </p>
+                            </div>
+                        </InfoPopoverButton>
                     </div>
-                {/if}
+                    {#if destinationState.relaySyncResults}
+                        <div class="test-result" role="status" aria-live="polite">
+                            <p>{$_('settingsDialog.uploadDestinationRelaySummary.' + summarizeRelaySync(destinationState.relaySyncResults))}</p>
+                            {#each (['blossom', 'nip96'] as const) as protocol}
+                                {@const result = destinationState.relaySyncResults[protocol]}
+                                <p>{protocol === 'blossom' ? 'Blossom' : 'NIP-96'}: {$_('settingsDialog.uploadDestinationRelayOutcome.' + result.status)}{#if result.reason} — {$_('settingsDialog.uploadDestinationRelayReason.' + result.reason)}{/if}</p>
+                            {/each}
+                        </div>
+                    {/if}
+                </section>
             {/if}
         </div>
     {/if}
@@ -754,6 +738,22 @@
         display: flex;
         flex-direction: column;
         min-width: 0;
+    }
+
+    .setting-label-group {
+        min-width: 0;
+    }
+
+    .setting-control {
+        flex-shrink: 0;
+    }
+
+    .upload-summary {
+        overflow-wrap: anywhere;
+    }
+
+    :global(.upload-destination-manage-btn) {
+        white-space: nowrap;
     }
 
     .upload-summary,
@@ -786,7 +786,39 @@
         gap: 12px;
     }
 
-    .destination-row,
+    .list-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    h3 {
+        margin: 0;
+        font-size: 0.95rem;
+        font-weight: 600;
+    }
+
+    .destination-list {
+        min-width: 0;
+    }
+
+    .destination-row {
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .destination-row:first-child {
+        padding-top: 0;
+    }
+    .destination-row:last-child {
+        border-bottom: 0;
+        padding-bottom: 0;
+    }
+
     .destination-form {
         border: 1px solid var(--border);
         border-radius: 8px;
@@ -794,6 +826,7 @@
         display: flex;
         flex-direction: column;
         gap: 8px;
+        min-width: 0;
     }
 
     .destination-title {
@@ -804,43 +837,103 @@
         font-weight: 600;
     }
 
+    .destination-name {
+        overflow-wrap: anywhere;
+        min-width: 0;
+    }
+
     .destination-main {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         justify-content: space-between;
-        gap: 8px;
+        gap: 6px 12px;
         flex-wrap: wrap;
     }
 
     .destination-content {
         min-width: 0;
         display: flex;
-        flex: 1 1 220px;
+        flex: 1 1 200px;
         flex-direction: column;
-        gap: 4px;
+        gap: 2px;
+        overflow-wrap: anywhere;
     }
 
-    .destination-order-actions {
+    :global(.destination-menu-trigger) {
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0;
+        border-radius: 6px;
+        color: var(--text);
+        background: transparent;
+    }
+
+    .more-icon {
+        mask-image: url("/icons/more_vert_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        width: 24px;
+        height: 24px;
+    }
+
+    :global(.destination-menu-content) {
+        box-sizing: border-box;
+        max-width: min(240px, var(--bits-dropdown-menu-content-available-width));
+        max-height: var(--bits-dropdown-menu-content-available-height);
+        overflow: auto;
+        padding: 4px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--dialog-bg);
+        color: var(--text);
+        box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+        z-index: 100002;
+    }
+
+    :global(.destination-menu-item) {
         display: flex;
-        flex-shrink: 0;
-        gap: 4px;
-
-        :global(.destination-order-button) {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 44px;
-            min-height: 44px;
-            padding: 0;
-        }
+        align-items: center;
+        min-height: 44px;
+        padding: 8px 12px;
+        box-sizing: border-box;
+        border-radius: 4px;
+        overflow-wrap: anywhere;
+        cursor: pointer;
     }
 
-    .arrow-up-icon {
-        mask-image: url("/icons/arrow_drop_up_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    :global(.destination-menu-item[data-highlighted]:not([data-disabled])) {
+        background: color-mix(in srgb, var(--theme) 15%, var(--dialog-bg));
+        outline: 2px solid var(--theme);
+        outline-offset: -2px;
     }
 
-    .arrow-down-icon {
-        mask-image: url("/icons/arrow_drop_down_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    :global(.destination-menu-item[data-disabled]) {
+        opacity: 0.5;
+        cursor: default;
+    }
+    :global(.destination-menu-danger) {
+        color: var(--danger);
+    }
+    :global(.destination-menu-separator) {
+        height: 1px;
+        background: var(--border);
+        margin: 4px;
+    }
+
+    .relay-sync-section {
+        border-top: 1px solid var(--border);
+        padding-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .relay-sync-description {
+        margin: 0;
+        font-size: 0.875rem;
+        color: var(--text-light);
     }
 
     .badge {
@@ -872,16 +965,21 @@
     }
 
     .test-result {
+        overflow-wrap: anywhere;
         font-size: 0.875rem;
         color: var(--text-light);
     }
 
+    .test-result-detail {
+        display: block;
+    }
+
     .test-result.error {
-        color: #c62828;
+        color: var(--danger);
     }
 
     .form-error {
-        color: #c62828;
+        color: var(--danger);
         font-size: 0.875rem;
     }
 
