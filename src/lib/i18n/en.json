@@ -26,6 +26,27 @@
     "cacheCleanupFailed": "Deleted from this server, but local image cache cleanup failed.",
     "skipped": "Unsupported or unknown media types: {excluded} records. Records with invalid data: {invalid}.",
     "retryAfter": "Retry after {time}.",
+    "registration": {
+      "title": "Server registration",
+      "offer": "Register with this server to list and delete your media.",
+      "open": "Register with this server",
+      "username": "Username",
+      "usernameHelp": "Use {min}–{max} letters (A–Z), numbers, underscores or hyphens. Edit display names containing other characters or emoji.",
+      "agreement": "By registering, you agree to this server’s terms of service.",
+      "terms": "Terms of service",
+      "submit": "Register and refresh list",
+      "submitting": "Registering…",
+      "external": "Additional steps are required, or the registration requirements could not be verified. Check your registration and account status on the official website, then refresh the list.",
+      "official": "Continue on official website",
+      "errors": {
+        "invalidUsername": "Edit the username to meet the requirements.",
+        "usernameTaken": "This username is already taken. Choose another name.",
+        "authentication": "The signature could not be verified. Allow signing with the current account.",
+        "rateLimited": "Too many registration attempts. Wait before trying again or check the official website.",
+        "serverError": "Registration failed. Check the official website.",
+        "unknownRegistration": "The registration result could not be confirmed. Refresh the list or check the official website."
+      }
+    },
     "errors": {
       "unavailable": "This server cannot list uploaded media.",
       "authentication": "Sign in or authorize the request to manage your media.",

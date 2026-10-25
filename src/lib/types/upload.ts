@@ -208,7 +208,7 @@ export interface VideoCompressionResult {
 }
 
 export interface AuthService {
-    buildAuthHeader(url: string, method: string): Promise<string>;
+    buildAuthHeader(url: string, method: string, payload?: Record<string, unknown>): Promise<string>;
     createBlossomManagementAuthorization?(params: {
         serverUrl: string;
         action: "list" | "delete";

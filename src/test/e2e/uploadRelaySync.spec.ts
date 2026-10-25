@@ -1,7 +1,15 @@
 import { expect, test } from "@playwright/test";
 import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent, type EventTemplate } from "nostr-tools";
+import { checkMediaRegistration } from "./mediaRegistrationScenario";
 
 test.use({ trace: "off" });
+test.describe("media server registration", () => {
+    for (const server of ["yabu", "nostrcheck"] as const) for (const embedded of [false, true]) {
+        test(`registers ${server} and refreshes media (${embedded ? "iframe 280px" : "standalone 360px"})`, async ({ page }, testInfo) => {
+            await checkMediaRegistration(page, testInfo, server, embedded);
+        });
+    }
+});
 for (const lang of ["ja", "en"] as const) {
     for (const phase of ["preparation", "response"] as const) {
         test(`keeps both lists when another relay stalls during ${phase} (${lang})`, async ({ page, baseURL }) => {

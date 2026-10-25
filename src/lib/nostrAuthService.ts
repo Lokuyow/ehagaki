@@ -169,7 +169,7 @@ export class NostrAuthService implements AuthService {
         return signer;
     }
 
-    async buildAuthHeader(url: string, method: string = "POST"): Promise<string> {
+    async buildAuthHeader(url: string, method: string = "POST", payload?: Record<string, unknown>): Promise<string> {
         this.assertOperationActive();
         const sessionPubkey = captureActiveSessionPubkey(authState);
         const signer = await this.getEventSigner(sessionPubkey);
@@ -182,6 +182,7 @@ export class NostrAuthService implements AuthService {
             method,
             async (template) => await signer.signEvent(template),
             true,
+            ...(payload ? [payload] as const : []),
         );
         this.assertOperationActive();
         assertCurrentSession(sessionPubkey);
