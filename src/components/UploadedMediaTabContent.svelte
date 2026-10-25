@@ -7,6 +7,8 @@
     import FloatingMessage from "./FloatingMessage.svelte";
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import UploadedMediaPreview from "./UploadedMediaPreview.svelte";
+    import UploadServerRegistration from "./UploadServerRegistration.svelte";
+    import { profileDataStore } from "../stores/profileStore.svelte";
     import { useUploadMediaManagement } from "../lib/hooks/useUploadMediaManagement.svelte";
     import { supportsUploadMediaImageCache } from "../lib/uploadMediaImageCacheClient";
     import { resolveUploadedMediaImageSrc } from "../lib/uploadMediaImageUrl";
@@ -54,9 +56,12 @@
     let noticeOwner: string | null = null;
     const mediaNotice = $derived(current?.notice ?? null);
     const deleting = $derived(!!current?.deletingId);
-    const feedbackOwner = $derived(`${authState.value.pubkey}\n${current?.destination.id}\n${current?.destination.protocol}\n${current?.destination.serverUrl}`);
+    const registering = $derived(current?.registration?.phase === "submitting");
+    const feedbackOwner = $derived([authState.value.pubkey, current?.destination.id, current?.destination.protocol,
+        current?.destination.serverUrl, current?.destination.resolvedUploadUrl,
+        current?.destination.nip96ServerUrl, current?.destination.nip96UrlMode].join("\n"));
     const showFeedback = $derived(show && !pending && !deleting
-        && !!(current?.error || (current?.loading && current.loaded) || (mediaNotice && !noticeExpired)));
+        && !!((current?.error && !current.registration) || (current?.loading && current.loaded) || (mediaNotice && !noticeExpired)));
 
     $effect(() => {
         const notice = mediaNotice;
@@ -145,7 +150,7 @@
             if (showImageFullscreen && openId && !view?.items.some((item) => item.id === openId && item.kind === "image")) closeFullscreen();
         });
     });
-    $effect(() => { onBusyChange(!!current?.deletingId); });
+    $effect(() => { onBusyChange(!!current?.deletingId || registering); });
     onDestroy(() => { supportGeneration++; invalidateSession(); });
     function cancelConfirm() {
         const epoch = uiEpoch, trigger = deleteTrigger;
@@ -166,6 +171,12 @@
         if (epoch !== uiEpoch) return;
         if (trigger?.isConnected) trigger.focus({ preventScroll: true });
         else listElement?.focus({ preventScroll: true });
+    }
+    async function registerServer(username: string) {
+        const owner = feedbackOwner;
+        await management.controller.register(username);
+        await tick();
+        if (show && owner === feedbackOwner && !current?.registration) listElement?.focus({ preventScroll: true });
     }
     function closeFullscreen() {
         showImageFullscreen = false;
@@ -212,7 +223,7 @@
             <p class="media-status" role="status">{$_("uploadedMedia.noServers")}</p>
         {:else}
             <div class="media-toolbar" bind:this={toolbarElement}>
-                <select class="media-server-select" aria-label={$_("uploadedMedia.server")} disabled={!!current?.deletingId} value={management.value.selectedId ?? ""}
+                <select class="media-server-select" aria-label={$_("uploadedMedia.server")} disabled={!!current?.deletingId || registering} value={management.value.selectedId ?? ""}
                     onchange={(event) => management.controller.select(event.currentTarget.value)}>
                     {#each management.value.destinations as destination (destination.id)}
                         <option value={destination.id}>{destination.name}</option>
@@ -221,12 +232,24 @@
                 {#if current}
                     <Button shape="square" contentLayout="icon" className="media-refresh-button"
                         ariaLabel={$_("uploadedMedia.refresh")} title={$_("uploadedMedia.refresh")}
-                        onClick={() => { activeVideo = null; closeFullscreen(); void management.controller.load(); }} disabled={current.loading || !!current.deletingId}>
+                        onClick={() => { activeVideo = null; closeFullscreen(); void management.controller.load(); }} disabled={current.loading || !!current.deletingId || registering}>
                         <span class="svg-icon" aria-hidden="true" style:mask-image={`url("${refreshIconUrl}")`}></span>
                     </Button>
                 {/if}
             </div>
             {#if current}
+                {#if current.registration}
+                    {#key feedbackOwner}
+                        <UploadServerRegistration registration={current.registration}
+                            initialUsername={profileDataStore.value.displayName || profileDataStore.value.name || ""}
+                            onOpen={() => management.controller.openRegistration()} onCancel={() => management.controller.cancelRegistration()}
+                            onRegister={registerServer} onRefresh={async () => {
+                                const owner = feedbackOwner;
+                                await management.controller.load(); await tick();
+                                if (show && owner === feedbackOwner) toolbarElement?.querySelector("button")?.focus({ preventScroll: true });
+                            }} />
+                    {/key}
+                {/if}
                 {#if current.loading && !current.loaded && (!onInitialReady || initialReadyReported)}<LoadingPlaceholder showLoader text={true} />{/if}
                 {#if current.loaded && current.items.length === 0}
                     <p class="media-status">{$_("uploadedMedia.empty")}</p>
@@ -246,7 +269,7 @@
                                 <Button shape="square" contentLayout="icon" className="media-delete-button"
                                     ariaLabel={current.deletingId === item.id ? $_("uploadedMedia.deleting") : $_("uploadedMedia.delete")}
                                     title={current.deletingId === item.id ? $_("uploadedMedia.deleting") : $_("uploadedMedia.delete")}
-                                    disabled={!item.deleteId || current.loading || !!current.deletingId}
+                                    disabled={!item.deleteId || current.loading || !!current.deletingId || registering}
                                     onClick={(event) => { deleteTrigger = event.currentTarget as HTMLElement; pendingEndpoint = current?.context?.endpoint ?? null; pending = item; }}>
                                     <span class="svg-icon media-delete-icon" aria-hidden="true" style:mask-image={`url("${deleteIconUrl}")`}></span>
                                 </Button>
@@ -256,7 +279,7 @@
                 </div>
                 {#if current.hasMore && !current.needsRefresh}
                     <div class="list-end-actions">
-                        <Button className="media-load-more-button" onClick={() => management.controller.load(true)} disabled={current.loading || !!current.deletingId}>{$_("uploadedMedia.loadMore")}</Button>
+                        <Button className="media-load-more-button" onClick={() => management.controller.load(true)} disabled={current.loading || !!current.deletingId || registering}>{$_("uploadedMedia.loadMore")}</Button>
                     </div>
                 {/if}
             {/if}

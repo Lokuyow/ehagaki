@@ -11,6 +11,10 @@ import {
     type UploadMediaPageCursor,
 } from "./mediaManagementTypes";
 import { createUploadAbortError } from "./uploadOperation";
+import {
+    getUploadRegistrationTarget, loadUploadRegistrationPolicy, registerUploadServer,
+    UploadRegistrationError, type UploadRegistrationView,
+} from "./uploadServerRegistration";
 
 export interface UploadMediaDestinationView {
     destination: UploadDestination;
@@ -27,6 +31,7 @@ export interface UploadMediaDestinationView {
     needsRefresh: boolean;
     deletingId: string | null;
     notice: "deleted" | "cacheCleanupFailed" | null;
+    registration?: UploadRegistrationView | null;
 }
 export interface UploadMediaManagementView {
     destinations: UploadDestination[];
@@ -44,6 +49,7 @@ interface DestinationState extends Omit<UploadMediaDestinationView, "hasMore"> {
     abort: AbortController | null;
     cursors: Set<string>;
     deleteDispatched: boolean;
+    registrationDispatched: boolean;
 }
 interface Dependencies {
     loadDestinations?: (pubkey: string) => Promise<UploadDestination[]>;
@@ -56,7 +62,8 @@ interface Dependencies {
 }
 
 function signature(destination: UploadDestination): string {
-    return `${destination.protocol}\n${destination.serverUrl}`;
+    return [destination.protocol, destination.serverUrl, destination.resolvedUploadUrl,
+        destination.nip96ServerUrl, destination.nip96UrlMode].join("\n");
 }
 function requireRefresh(state: DestinationState): void {
     state.localSnapshot = null;
@@ -74,7 +81,7 @@ export class UploadMediaManagementController {
     private configurationGeneration = 0;
     private savedDestinationsRead = false;
     private active = true;
-    get busy(): boolean { return [...this.states.values()].some(state => !!state.deletingId); }
+    get busy(): boolean { return [...this.states.values()].some(state => !!state.deletingId || state.registration?.phase === "submitting"); }
     activate(): void { this.active = true; }
     suspend(): void {
         this.active = false;
@@ -85,6 +92,7 @@ export class UploadMediaManagementController {
             state.generation++;
             if (state.deletingId && state.deleteDispatched) { state.error = new UploadMediaError("unknownDelete"); requireRefresh(state); }
             state.loading = false; state.deletingId = null; state.deleteDispatched = false;
+            this.stopRegistration(state);
         }
         this.emit();
     }
@@ -100,6 +108,7 @@ export class UploadMediaManagementController {
             nextPage: current.nextPage, context: current.context, needsRefresh: current.needsRefresh,
             hasMore: !current.needsRefresh && (!!current.nextPage || !!current.localSnapshot?.length),
             deletingId: current.deletingId, notice: current.notice,
+            registration: current.registration ? { ...current.registration } : null,
         } : null;
         this.deps.onChange({ destinations: [...this.destinations], selectedId: this.selectedId, current: view,
             configuring: this.configuring, configurationError: this.configurationError });
@@ -124,7 +133,7 @@ export class UploadMediaManagementController {
         if (pubkey !== this.pubkey) { this.invalidate(); this.pubkey = pubkey; }
         if (!pubkey) { this.emit(); return; }
         if (this.savedDestinationsRead) {
-            if (this.selectedId && !this.states.get(this.selectedId)?.loaded) void this.load();
+            if (this.selectedId && !this.states.get(this.selectedId)?.loaded && !this.states.get(this.selectedId)?.registration) void this.load();
             return;
         }
         if (this.configuring) return;
@@ -171,6 +180,7 @@ export class UploadMediaManagementController {
                 context: null, needsRefresh: false, deletingId: null, notice: null,
                 generation: 0, abort: null, cursors: new Set(),
                 deleteDispatched: false,
+                registrationDispatched: false,
                 localSnapshot: null,
             });
         }
@@ -178,7 +188,8 @@ export class UploadMediaManagementController {
             this.selectedId = this.destinations.find((item) => item.isDefault)?.id ?? this.destinations[0]?.id ?? null;
         }
         this.emit();
-        if (this.selectedId && !this.states.get(this.selectedId)?.loaded && !this.states.get(this.selectedId)?.loading) void this.load();
+        if (this.selectedId && !this.states.get(this.selectedId)?.loaded && !this.states.get(this.selectedId)?.loading
+            && !this.states.get(this.selectedId)?.registration) void this.load();
     }
     select(id: string): void {
         if (this.busy || !this.states.has(id) || id === this.selectedId) return;
@@ -191,6 +202,7 @@ export class UploadMediaManagementController {
                     requireRefresh(old);
                 }
                 old.generation++; old.loading = false; old.deletingId = null; old.deleteDispatched = false;
+                this.stopRegistration(old);
             }
         }
         this.selectedId = id;
@@ -227,7 +239,7 @@ export class UploadMediaManagementController {
     }
     async load(append = false): Promise<void> {
         const state = this.selectedId ? this.states.get(this.selectedId) : undefined;
-        if (!this.active || !state || !this.pubkey || state.loading || state.deletingId) return;
+        if (!this.active || !state || !this.pubkey || state.loading || state.deletingId || state.registration?.phase === "submitting") return;
         if (state.error?.retryAt && Date.now() < state.error.retryAt) return;
         if (append && !state.needsRefresh && state.localSnapshot !== null) {
             const auth = (this.deps.auth ?? authState).value;
@@ -242,6 +254,7 @@ export class UploadMediaManagementController {
         append = append && !state.needsRefresh && Boolean(state.nextPage);
         if (!append && state.localSnapshot !== null) requireRefresh(state);
         state.notice = null;
+        state.registration = null;
         await this.loadPage(state, append);
     }
     private async loadPage(state: DestinationState, append: boolean, operation = this.begin(state)): Promise<void> {
@@ -283,6 +296,10 @@ export class UploadMediaManagementController {
         } catch (error) {
             if (!operation.current()) return;
             state.error = normalizeMediaOperationError(error);
+            const target = getUploadRegistrationTarget(state.destination);
+            if (target && [401, 403].includes(state.error.status ?? 0)) {
+                state.registration = { target, phase: "offer", policy: null, error: null };
+            }
             if (state.error.code === "unavailable") state.support = "unavailable";
             if (state.error.code === "invalidResponse") {
                 requireRefresh(state);
@@ -291,10 +308,79 @@ export class UploadMediaManagementController {
             if (operation.current()) { state.loading = false; this.emit(); }
         }
     }
+    private stopRegistration(state: DestinationState): void {
+        if (!state.registration) return;
+        if (state.registration.phase === "submitting" && state.registrationDispatched) {
+            state.registration = { ...state.registration, phase: "unknown", error: "unknownRegistration" };
+        } else if (["loading", "ready", "submitting"].includes(state.registration.phase)) {
+            state.registration = { ...state.registration, phase: "offer", policy: null, error: null };
+        }
+        state.registrationDispatched = false;
+    }
+    async openRegistration(): Promise<void> {
+        const state = this.selectedId ? this.states.get(this.selectedId) : undefined;
+        if (!this.active || !state || state.loading || this.busy || !this.pubkey || state.registration?.phase !== "offer") return;
+        const operation = this.begin(state);
+        state.registration = { ...state.registration, phase: "loading", error: null };
+        this.emit();
+        try {
+            const policy = await loadUploadRegistrationPolicy(operation.params);
+            if (!operation.current()) return;
+            state.registration = { ...state.registration, policy, phase: policy ? "ready" : "external" };
+        } catch {
+            if (!operation.current()) return;
+            state.registration = { ...state.registration, phase: "external" };
+        } finally {
+            if (operation.current()) this.emit();
+        }
+    }
+    cancelRegistration(): void {
+        const state = this.selectedId ? this.states.get(this.selectedId) : undefined;
+        if (!state?.registration) return;
+        state.abort?.abort(); state.generation++;
+        this.stopRegistration(state);
+        this.emit();
+    }
+    async register(username: string): Promise<void> {
+        const state = this.selectedId ? this.states.get(this.selectedId) : undefined;
+        if (!this.active || !state || !this.pubkey || this.busy || state.loading
+            || state.registration?.phase !== "ready" || !state.registration.policy) return;
+        const operation = this.begin(state);
+        const policy = state.registration.policy;
+        state.registration = { ...state.registration, phase: "submitting", error: null };
+        state.registrationDispatched = false;
+        state.error = null;
+        this.emit();
+        try {
+            const result = await registerUploadServer(operation.params, username, policy, () => {
+                operation.params.assertSession(); state.registrationDispatched = true;
+            });
+            if (!operation.current()) return;
+            state.registrationDispatched = false;
+            if (result === "external") {
+                state.registration = { ...state.registration, phase: "external" };
+            } else {
+                const target = state.registration.target;
+                state.registration = null;
+                requireRefresh(state);
+                await this.loadPage(state, false, operation);
+                if (operation.current() && state.registration) {
+                    // A registered but inactive/banned account needs the service's help, not another POST.
+                    state.registration = { target, phase: "external", policy: null, error: null };
+                }
+            }
+        } catch (error) {
+            if (!operation.current()) return;
+            const code = error instanceof UploadRegistrationError ? error.code : "serverError";
+            state.registration = { ...state.registration!, phase: code === "unknownRegistration" ? "unknown" : "ready", error: code };
+        } finally {
+            if (operation.current()) { state.registrationDispatched = false; this.emit(); }
+        }
+    }
     async delete(itemId: string): Promise<boolean> {
         const state = this.selectedId ? this.states.get(this.selectedId) : undefined;
         const item = state?.items.find((entry) => entry.id === itemId);
-        if (!this.active || !state || !item?.deleteId || !state.context || state.loading || state.deletingId || !this.pubkey) return false;
+        if (!this.active || !state || !item?.deleteId || !state.context || state.loading || this.busy || !this.pubkey) return false;
         const operation = this.begin(state);
         const hash = item.deleteId.sha256;
         const urls = item.kind === "image" ? [...new Set(state.items.filter((entry) =>
@@ -304,6 +390,7 @@ export class UploadMediaManagementController {
         state.deleteDispatched = false;
         state.error = null;
         state.notice = null;
+        state.registration = null;
         this.emit();
         try {
             const adapter = (this.deps.getAdapter ?? getUploadAdapter)(state.destination.protocol);

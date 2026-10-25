@@ -13,6 +13,7 @@ import {
 } from '../../lib/nostrAuthService';
 import { createDeferred } from '../deferredTestUtils';
 import { mockAuthStoreModule } from '../mocks/storeModules';
+import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent, type EventTemplate } from 'nostr-tools';
 
 vi.mock('../../lib/signedEventResultValidator', async (importOriginal) => ({
     ...await importOriginal<typeof import('../../lib/signedEventResultValidator')>(),
@@ -103,6 +104,31 @@ describe('NostrAuthService', () => {
     });
 
     describe('buildAuthHeader', () => {
+        it('signs the registration URL, POST and exact JSON hash using the current account', async () => {
+            const actual = await vi.importActual<typeof import('nostr-tools/nip98')>('nostr-tools/nip98');
+            const { getToken } = await import('nostr-tools/nip98');
+            vi.mocked(getToken).mockImplementationOnce(actual.getToken);
+            const previousAccount = mockAuthStoreModule.authState.value;
+            const previousSigner = window.nostr;
+            const fixtureKey = generateSecretKey(), owner = getPublicKey(fixtureKey);
+            try {
+                mockAuthStoreModule.authState.value = { ...previousAccount, isAuthenticated: true, type: 'nip07', pubkey: owner };
+                window.nostr = { getPublicKey: async () => owner,
+                    signEvent: async (template: EventTemplate) => finalizeEvent(template, fixtureKey) } as typeof window.nostr;
+                const payload = { pubkey: owner, username: 'fixture_name', domain: 'yabu.me' };
+                const url = 'https://share.yabu.me/api/v2/register';
+                const token = await new NostrAuthService({ expectedPubkey: owner }).buildAuthHeader(url, 'POST', payload);
+                const event = await actual.unpackEventFromToken(token);
+                expect(event.kind === 27235 && event.pubkey === owner && verifyEvent(event)).toBe(true);
+                expect(event.content).toBe('');
+                expect(event.tags).toEqual([['u', url], ['method', 'POST'], ['payload', actual.hashPayload(payload)]]);
+                expect(await actual.validateToken(token, url, 'POST')).toBe(true);
+                expect(actual.validateEventPayloadTag(event, payload)).toBe(true);
+            } finally {
+                mockAuthStoreModule.authState.value = previousAccount;
+                window.nostr = previousSigner;
+            }
+        });
         it('window.nostr が不在かつ秘密鍵未設定で例外を投げる', async () => {
             // window.nostr は setup.ts で未定義
             // keyManager は null を返すようモック済み
