@@ -14,9 +14,10 @@ function setup(loadDestinations?: (pubkey: string) => Promise<ReturnType<typeof 
     const evict = vi.fn(async () => true);
     const adapter = { listMediaPage: list, deleteMedia: remove } as unknown as UploadProtocolAdapter;
     const createAuth = vi.fn(() => mediaAuth());
+    const onChange = vi.fn((next: typeof view) => { view = next; });
     const controller = new UploadMediaManagementController({ loadDestinations, auth, getAdapter: () => adapter, createAuth,
-        evictImages: evict, onChange: (next) => { view = next; } });
-    return { controller, auth, list, remove, evict, createAuth, get view() { return view; } };
+        evictImages: evict, onChange });
+    return { controller, auth, list, remove, evict, createAuth, onChange, get view() { return view; } };
 }
 async function loaded(s: ReturnType<typeof setup>) {
     s.controller.configure(mediaPubkey, [mediaDestination()]);
@@ -305,6 +306,7 @@ describe("uploaded-media operation ownership", () => {
         expect(s.view.current).toMatchObject({ items, hasMore: false, nextPage: null, needsRefresh: false, error: null });
         await s.controller.load(true);
         expect(fetch).toHaveBeenCalledTimes(2);
+        expect(s.onChange.mock.calls.some(([view]) => Boolean(view.current?.error))).toBe(false);
     });
     it("resolves blossom.band from the captured account pubkey", async () => {
         const s = setup(), d = mediaDestination(); d.serverUrl = "https://blossom.band"; d.presetId = "blossom-band";
