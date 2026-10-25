@@ -28,7 +28,7 @@
     "retryAfter": "Retry after {time}.",
     "registration": {
       "title": "Server registration",
-      "offer": "Registration with this server may be required.",
+      "offer": "Register with this server to list and delete your media.",
       "open": "Register with this server",
       "username": "Username",
       "usernameHelp": "Use {min}–{max} letters (A–Z), numbers, underscores or hyphens. Edit display names containing other characters or emoji.",
