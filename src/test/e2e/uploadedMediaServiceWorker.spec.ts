@@ -217,10 +217,11 @@ for (const base of ["/", "/ehagaki/"] as const) {
                 expect(requests()).toBe(beforeTabs);
                 await dialog.locator("article").first().getByRole("button", { name: "削除", exact: true }).click();
                 await page.getByRole("alertdialog").getByRole("button", { name: "削除", exact: true }).click();
-                await expect(dialog.locator("article")).toHaveCount(47);
-                await expect(more).toHaveCount(0);
+                await expect(dialog.locator("article")).toHaveCount(24);
+                await expect(more).toBeVisible();
                 expect(f.counts.get("DELETE /" + imageHash)).toBe(1);
-                await refresh.click(); await expect(dialog.locator("article")).toHaveCount(24);
+                expect(requests()).toBe(beforeTabs + 1);
+                await expect(dialog.getByText("このサーバーから削除しました。", { exact: true })).toBeVisible();
                 await expect(dialog.locator("article").first().locator("img")).not.toHaveAttribute("src", new RegExp(imageHash));
                 await more.click(); await expect(dialog.locator("article")).toHaveCount(48);
                 expect(requests()).toBe(beforeTabs + (mode === "paged" ? 2 : 1));
@@ -228,22 +229,33 @@ for (const base of ["/", "/ehagaki/"] as const) {
             } finally { await f.close(); }
         });
     }
-    test(`${base} media deletion without a Service Worker skips local cache cleanup`, async ({ browser }) => {
-        const f = await fixture(base);
-        const context = await browser.newContext({ serviceWorkers: "block" });
-        const page = await context.newPage();
-        try {
-            const { dialog } = await openPaginationMedia(page, f, false);
-            expect(await page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(false);
-            await expect(dialog.locator("article")).toHaveCount(3);
-            await dialog.locator('article[data-media-kind="image"]').getByRole("button", { name: "削除", exact: true }).click();
-            await page.getByRole("alertdialog").getByRole("button", { name: "削除", exact: true }).click();
-            await expect(dialog.locator('article[data-media-kind="image"]')).toHaveCount(0);
-            await expect(dialog.getByText("このサーバーから削除しました。追加取得の前に一覧を更新してください。")).toBeVisible();
-            await expect(dialog).not.toContainText("local画像キャッシュの清掃に失敗しました");
-            expect(f.counts.get("DELETE /" + imageHash)).toBe(1);
-        } finally { await context.close(); await f.close(); }
-    });
+    for (const withServiceWorker of [true, false]) {
+        test(`${base} media deletion ${withServiceWorker ? "with" : "without"} a Service Worker refreshes the list`, async ({ browser }) => {
+            const f = await fixture(base);
+            const context = await browser.newContext({ serviceWorkers: withServiceWorker ? "allow" : "block",
+                locale: "ja-JP", viewport: { width: 360, height: 800 } });
+            const page = await context.newPage();
+            try {
+                const { dialog, requests } = await openPaginationMedia(page, f, withServiceWorker);
+                expect(await page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(withServiceWorker);
+                await expect(dialog.locator("article")).toHaveCount(3);
+                if (withServiceWorker) await expect.poll(() => keys(page)).toContain(f.remote());
+                const beforeDelete = requests();
+                await dialog.locator('article[data-media-kind="image"]').getByRole("button", { name: "削除", exact: true }).click();
+                await page.getByRole("alertdialog").getByRole("button", { name: "削除", exact: true }).click();
+                await expect(page.getByRole("alertdialog")).toBeHidden();
+                await expect(dialog.locator('article[data-media-kind="image"]')).toHaveCount(0);
+                await expect(dialog.getByText("このサーバーから削除しました。", { exact: true })).toBeVisible();
+                expect(requests()).toBe(beforeDelete + 1);
+                await expect(dialog).not.toContainText("local画像キャッシュの清掃に失敗しました");
+                expect(f.counts.get("DELETE /" + imageHash)).toBe(1);
+                if (withServiceWorker) {
+                    expect(await keys(page)).not.toContain(f.remote());
+                    expect(await keys(page, metaName)).not.toContain(f.remote());
+                }
+            } finally { await context.close(); await f.close(); }
+        });
+    }
     test(`${base} production SW image caching, CORS/opaque, offline, sharing and eviction`, async ({ page }) => {
         const f = await fixture(base);
         try {
@@ -461,9 +473,10 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await page.keyboard.press("Escape"); await expect(confirm).toBeVisible();
             await page.goBack(); await expect(confirm).toBeVisible(); await expect(dialog).toBeVisible();
             f.releaseDelete();
+            await expect(confirm).toBeHidden();
             await expect(dialog.locator("article")).toHaveCount(2);
             await expect.poll(() => keys(page)).not.toContain(f.remote());
-            await expect(dialog.getByText("このサーバーから削除しました。追加取得の前に一覧を更新してください。")).toBeVisible();
+            await expect(dialog.getByText("このサーバーから削除しました。", { exact: true })).toBeVisible();
             expect(f.counts.get("DELETE /" + imageHash)).toBe(1);
             await page.screenshot({ path: testInfo.outputPath("uploaded-media-360.png") });
             await page.evaluate(() => history.back());

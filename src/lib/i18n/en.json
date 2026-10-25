@@ -22,7 +22,7 @@
     "delete": "Delete from this server",
     "deleting": "Deleting…",
     "confirmDescription": "Delete this media from this server? Posts and copies on other servers will remain.",
-    "deleted": "Deleted from this server. Refresh the list before loading more.",
+    "deleted": "Deleted from this server.",
     "cacheCleanupFailed": "Deleted from this server, but local image cache cleanup failed.",
     "skipped": "Unsupported or unknown media types: {excluded} records. Records with invalid data: {invalid}.",
     "retryAfter": "Retry after {time}.",
