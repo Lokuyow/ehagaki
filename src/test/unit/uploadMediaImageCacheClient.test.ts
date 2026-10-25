@@ -24,10 +24,18 @@ describe("image cache SW client", () => {
         expect(await supportsUploadMediaImageCache()).toBe(true); expect(second.postMessage).toHaveBeenCalledTimes(1);
     });
     it("reports disabled, uncontrolled and old workers without sending eviction as a remote operation", async () => {
+        const urls = ["https://media.example/a.png"];
         runtime.serviceWorkerEnabled = false; expect(await supportsUploadMediaImageCache()).toBe(false);
+        expect(await evictUploadMediaImages(urls)).toBe(true);
         runtime.serviceWorkerEnabled = true; runtime.controller = null; expect(await supportsUploadMediaImageCache()).toBe(false);
-        expect(await evictUploadMediaImages(["https://media.example/a.png"])).toBe(false);
-        runtime.controller = controller(0); expect(await supportsUploadMediaImageCache()).toBe(false);
+        expect(await evictUploadMediaImages(urls)).toBe(true);
+        const oldWorker = controller(0);
+        runtime.controller = oldWorker; expect(await supportsUploadMediaImageCache()).toBe(false);
+        expect(await evictUploadMediaImages(urls)).toBe(false);
+        expect(oldWorker.postMessage.mock.calls.map(([data]) => data.type)).toEqual([
+            UPLOAD_MEDIA_IMAGE_SUPPORT_MESSAGE,
+            UPLOAD_MEDIA_IMAGE_EVICT_MESSAGE,
+        ]);
     });
     it("bounds missing worker replies and keeps cleanup failures independent", async () => {
         vi.useFakeTimers(); runtime.controller = controller(1, false);
