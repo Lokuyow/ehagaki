@@ -4,6 +4,7 @@
     import ConfirmDialog from "./ConfirmDialog.svelte";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import FloatingMessage from "./FloatingMessage.svelte";
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import UploadedMediaPreview from "./UploadedMediaPreview.svelte";
     import { useUploadMediaManagement } from "../lib/hooks/useUploadMediaManagement.svelte";
@@ -24,6 +25,7 @@
     export function activate() { suspended = false; management.controller.activate(); }
     export function suspend() {
         suspended = true; supportGeneration++; uiEpoch++; pending = null; activeVideo = null;
+        noticeExpired = true;
         closeFullscreen();
         management.controller.suspend();
     }
@@ -47,6 +49,27 @@
     let supportGeneration = 0;
     let uiEpoch = $state(0);
     let previousOwner: string | null = null;
+    let toolbarElement = $state<HTMLDivElement | null>(null);
+    let noticeExpired = $state(false);
+    let noticeOwner: string | null = null;
+    const mediaNotice = $derived(current?.notice ?? null);
+    const deleting = $derived(!!current?.deletingId);
+    const feedbackOwner = $derived(`${authState.value.pubkey}\n${current?.destination.id}\n${current?.destination.protocol}\n${current?.destination.serverUrl}`);
+    const showFeedback = $derived(show && !pending && !deleting
+        && !!(current?.error || (current?.loading && current.loaded) || (mediaNotice && !noticeExpired)));
+
+    $effect(() => {
+        const notice = mediaNotice;
+        const busy = deleting;
+        const owner = feedbackOwner;
+        const ownerChanged = noticeOwner !== null && noticeOwner !== owner;
+        noticeOwner = owner;
+        const hidden = ownerChanged || !untrack(() => show);
+        noticeExpired = hidden;
+        if (!notice || busy || hidden) return;
+        const timeout = setTimeout(() => { noticeExpired = true; }, 3500);
+        return () => clearTimeout(timeout);
+    });
 
     $effect(() => { const enabled = active; untrack(() => enabled ? activate() : suspend()); });
     function formatSize(bytes: number) {
@@ -188,7 +211,7 @@
         {:else if management.value.destinations.length === 0}
             <p class="media-status" role="status">{$_("uploadedMedia.noServers")}</p>
         {:else}
-            <div class="media-toolbar">
+            <div class="media-toolbar" bind:this={toolbarElement}>
                 <select class="media-server-select" aria-label={$_("uploadedMedia.server")} disabled={!!current?.deletingId} value={management.value.selectedId ?? ""}
                     onchange={(event) => management.controller.select(event.currentTarget.value)}>
                     {#each management.value.destinations as destination (destination.id)}
@@ -204,13 +227,7 @@
                 {/if}
             </div>
             {#if current}
-                {#if current.loading && (!onInitialReady || initialReadyReported)}<LoadingPlaceholder showLoader text={true} />{/if}
-                {#if current.error}
-                    <p class="media-status" role="alert">{$_(`uploadedMedia.errors.${current.error.code === "invalidResponse" && isNostpic && !current.loaded ? "unavailable" : current.error.code}`)}</p>
-                    {#if current.error.retryAt}<p class="media-status">{$_("uploadedMedia.retryAfter", { values: { time: new Date(current.error.retryAt).toLocaleTimeString() } })}</p>{/if}
-                    {#if current.error.diagnostic}<p class="media-status diagnostic">{current.error.diagnostic}</p>{/if}
-                {/if}
-                {#if current.notice}<p class="media-status" role="status">{$_(`uploadedMedia.${current.notice}`)}</p>{/if}
+                {#if current.loading && !current.loaded && (!onInitialReady || initialReadyReported)}<LoadingPlaceholder showLoader text={true} />{/if}
                 {#if current.loaded && current.items.length === 0}
                     <p class="media-status">{$_("uploadedMedia.empty")}</p>
                     {#if current.hasMore}<p class="media-status">{$_("uploadedMedia.moreUnseen")}</p>{/if}
@@ -246,6 +263,23 @@
         {/if}
     </div>
 </div>
+
+<FloatingMessage show={showFeedback} variant="anchor-bottom-right" anchor={toolbarElement} anchorRightOffset={16}
+    showInfoIcon={!current?.loading || !!current?.error}
+    role={current?.error ? "alert" : "status"}>
+    <div class="media-feedback">
+        {#if current?.error}
+            {#if mediaNotice}<p>{$_(`uploadedMedia.${mediaNotice}`)}</p>{/if}
+            <p>{$_(`uploadedMedia.errors.${current.error.code === "invalidResponse" && isNostpic && !current.loaded ? "unavailable" : current.error.code}`)}</p>
+            {#if current.error.retryAt}<p>{$_("uploadedMedia.retryAfter", { values: { time: new Date(current.error.retryAt).toLocaleTimeString() } })}</p>{/if}
+            {#if current.error.diagnostic}<p class="diagnostic">{current.error.diagnostic}</p>{/if}
+        {:else if current?.loading}
+            <LoadingPlaceholder showLoader text={true} loaderSize={30} />
+        {:else if mediaNotice}
+            <p>{$_(`uploadedMedia.${mediaNotice}`)}</p>
+        {/if}
+    </div>
+</FloatingMessage>
 
 {#key uiEpoch}
 <ConfirmDialog open={!!pending} onOpenChange={(open) => { if (!open) cancelConfirm(); }}
@@ -283,6 +317,7 @@
     p { margin: 0; }
     .media-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 4px; padding: 8px; }
     .media-status { margin: 8px 12px; }
+    .media-feedback { overflow-wrap: anywhere; }
     .media-server-select {
         width: 100%;
         min-width: 0;

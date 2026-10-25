@@ -17,6 +17,7 @@ async function fixture(base: "/" | "/ehagaki/", listing?: "paged" | "snapshot") 
     const deletedHashes = new Set<string>();
     let offline = false, deleted = false, workerVersion = 0, legacy = false, repeatEnd = false;
     let holdDelete = false, deleteRelease: (() => void) | null = null;
+    let holdList = false, listRelease: (() => void) | null = null, listError = 0;
     let video = Buffer.from([]), videoMime = "video/webm", videoExtension = "webm";
     const held = new Map<string, () => void>();
     const media = createServer((request, response) => {
@@ -28,6 +29,7 @@ async function fixture(base: "/" | "/ehagaki/", listing?: "paged" | "snapshot") 
         response.setHeader("Access-Control-Allow-Methods", "GET,DELETE,OPTIONS");
         if (request.method === "OPTIONS") { response.writeHead(204).end(); return; }
         if (url.pathname.startsWith("/list/")) {
+            if (listError) { response.writeHead(listError, { "Content-Type": "application/json" }).end("{}"); return; }
             const origin = `http://127.0.0.1:${(media.address() as AddressInfo).port}`;
             const descriptors = listing ? Array.from({ length: 231 }, (_, index) => {
                 const sha256 = index === 0 ? imageHash : index.toString(16).padStart(64, "0");
@@ -44,7 +46,9 @@ async function fixture(base: "/" | "/ehagaki/", listing?: "paged" | "snapshot") 
             const items = listing === "snapshot" ? descriptors
                 : listing === "paged" ? descriptors.slice(offset, offset + Number(url.searchParams.get("limit") ?? 24))
                 : cursor && !repeatEnd ? [] : descriptors;
-            response.end(JSON.stringify(items)); return;
+            const finish = () => { response.end(JSON.stringify(items)); listRelease = null; };
+            if (holdList) listRelease = finish; else finish();
+            return;
         }
         if (request.method === "DELETE") {
             const finish = () => { deleted = true; deletedHashes.add(url.pathname.slice(1)); response.writeHead(204).end(); deleteRelease = null; };
@@ -93,9 +97,12 @@ async function fixture(base: "/" | "/ehagaki/", listing?: "paged" | "snapshot") 
         setVideo(bytes: number[], mime: string) { video = Buffer.from(bytes); videoMime = mime; videoExtension = mime.includes("mp4") ? "mp4" : "webm"; },
         release() { [...held.values()].forEach((finish) => finish()); },
         holdDelete() { holdDelete = true; },
+        holdList() { holdList = true; },
+        releaseList() { holdList = false; listRelease?.(); },
+        setListError(status: number) { listError = status; },
         repeatLastPage() { repeatEnd = true; },
         releaseDelete() { holdDelete = false; deleteRelease?.(); },
-        async close() { this.releaseDelete(); this.release(); for (const server of [app, media]) { server.closeAllConnections(); await new Promise<void>((done) => server.close(() => done())); } },
+        async close() { this.releaseList(); this.releaseDelete(); this.release(); for (const server of [app, media]) { server.closeAllConnections(); await new Promise<void>((done) => server.close(() => done())); } },
     };
 }
 async function control(page: Page, f: Awaited<ReturnType<typeof fixture>>) {
@@ -193,6 +200,90 @@ async function createVideo(url: string) {
 }
 test.beforeEach(async ({ context }) => { await context.routeWebSocket("**/*", (socket) => socket.close()); });
 for (const base of ["/", "/ehagaki/"] as const) {
+    test(`${base} media feedback floats without shifting the list`, async ({ page }, testInfo) => {
+        const f = await fixture(base, "paged");
+        try {
+            const { dialog } = await openPaginationMedia(page, f);
+            const list = dialog.locator(".media-list");
+            const refresh = dialog.getByRole("button", { name: "一覧を更新", exact: true });
+            const notice = page.locator(".floating-message").filter({ hasText: "このサーバーから削除しました。" });
+            await expect(dialog.locator("article")).toHaveCount(24);
+            for (const width of [360, 320, 1100]) {
+                await page.setViewportSize({ width, height: 800 });
+                const colorScheme = width === 360 ? "dark" : "light";
+                await page.emulateMedia({ colorScheme, reducedMotion: width === 320 ? "reduce" : "no-preference" });
+                await expect.poll(() => page.locator("html").evaluate(node => getComputedStyle(node).colorScheme)).toBe(colorScheme);
+                const top = await list.evaluate(node => node.getBoundingClientRect().top);
+                f.holdList();
+                await refresh.click();
+                const loading = page.locator(".floating-message .loader-container");
+                await expect(loading).toBeVisible();
+                expect(await list.evaluate(node => node.getBoundingClientRect().top)).toBeCloseTo(top, 0);
+                f.releaseList();
+                await expect(loading).toHaveCount(0);
+                await expect(refresh).toBeEnabled();
+                f.setListError(503);
+                await refresh.click();
+                const alert = page.locator(".floating-message[role=alert]");
+                await expect(alert).toContainText("サーバーで処理に失敗しました。");
+                await expect(alert).toBeVisible();
+                expect(await list.evaluate(node => node.getBoundingClientRect().top)).toBeCloseTo(top, 0);
+                expect(await alert.evaluate(node => ({ position: getComputedStyle(node).position,
+                    pointerEvents: getComputedStyle(node).pointerEvents, left: node.getBoundingClientRect().left,
+                    right: node.getBoundingClientRect().right })))
+                    .toMatchObject({ position: "fixed", pointerEvents: "none" });
+                const bounds = await alert.boundingBox();
+                expect(bounds!.x).toBeGreaterThanOrEqual(0);
+                expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+                f.setListError(0);
+                await refresh.click();
+                await expect(refresh).toBeEnabled();
+                await expect(alert).toHaveCount(0);
+                await dialog.locator("article").first().getByRole("button", { name: "削除", exact: true }).click();
+                await page.getByRole("alertdialog").getByRole("button", { name: "削除", exact: true }).click();
+                await expect(page.getByRole("alertdialog")).toBeHidden();
+                await expect(notice).toBeVisible();
+                expect(await list.evaluate(node => node.getBoundingClientRect().top)).toBeCloseTo(top, 0);
+                await expect(dialog.getByText("このサーバーから削除しました。", { exact: true })).toHaveCount(0);
+                if (width === 360) {
+                    await page.screenshot({ path: testInfo.outputPath("media-feedback-360.png") });
+                    await dialog.getByRole("tab", { name: "ポスト", exact: true }).click();
+                    await expect(notice).toHaveCount(0);
+                    await dialog.getByRole("tab", { name: "メディア", exact: true }).click();
+                    await expect(notice).toHaveCount(0);
+                } else {
+                    await expect(notice).toHaveCount(0, { timeout: 5000 });
+                    expect(await list.evaluate(node => node.getBoundingClientRect().top)).toBeCloseTo(top, 0);
+                }
+            }
+            await page.goto(f.url + "monitor.html");
+            await page.evaluate(url => {
+                const frame = document.createElement("iframe"); frame.src = url;
+                frame.style.cssText = "width:320px;height:720px;border:0";
+                document.querySelector("main")!.append(frame);
+            }, f.url);
+            const frame = page.frameLocator("iframe");
+            await expect(frame.locator(".settings-btn")).toBeVisible();
+            const start = frame.getByRole("button", { name: "はじめる" });
+            if (await start.isVisible()) await start.click();
+            await frame.getByRole("button", { name: "履歴", exact: true }).click();
+            const embedded = frame.getByRole("dialog", { name: "履歴", exact: true });
+            await embedded.getByRole("tab", { name: "メディア", exact: true }).click();
+            await embedded.getByRole("combobox").selectOption("fixture");
+            await expect(embedded.locator("article")).toHaveCount(24);
+            const top = await embedded.locator(".media-list").evaluate(node => node.getBoundingClientRect().top);
+            await embedded.locator("article").first().getByRole("button", { name: "削除", exact: true }).click();
+            await frame.getByRole("alertdialog").getByRole("button", { name: "削除", exact: true }).click();
+            await expect(frame.getByRole("alertdialog")).toBeHidden();
+            const embeddedNotice = frame.locator(".floating-message").filter({ hasText: "このサーバーから削除しました。" });
+            await expect(embeddedNotice).toBeVisible();
+            expect(await embedded.locator(".media-list").evaluate(node => node.getBoundingClientRect().top)).toBeCloseTo(top, 0);
+            const bounds = await embeddedNotice.evaluate(node => ({ left: node.getBoundingClientRect().left,
+                right: node.getBoundingClientRect().right }));
+            expect(bounds.left).toBeGreaterThanOrEqual(0); expect(bounds.right).toBeLessThanOrEqual(320);
+            await page.screenshot({ path: testInfo.outputPath("media-feedback-iframe-320.png") });
+        } finally { await f.close(); }
+    });
     for (const end of ["empty", "repeated"] as const) {
         test(`${base} media pagination ends without an error on an ${end} final response`, async ({ page }) => {
             const f = await fixture(base);
@@ -203,7 +294,7 @@ for (const base of ["/", "/ehagaki/"] as const) {
                 await expect(dialog.locator("article")).toHaveCount(3);
                 await more.click();
                 await expect(more).toHaveCount(0);
-                await expect(dialog.getByRole("alert")).toHaveCount(0);
+                await expect(page.getByRole("alert")).toHaveCount(0);
                 await expect(dialog.locator("article")).toHaveCount(3);
                 expect(requests()).toBe(2); expect(signedLists()).toBe(2);
                 await dialog.getByRole("button", { name: "一覧を更新", exact: true }).click();
@@ -241,7 +332,7 @@ for (const base of ["/", "/ehagaki/"] as const) {
                 await expect(more).toBeVisible();
                 expect(f.counts.get("DELETE /" + imageHash)).toBe(1);
                 expect(requests()).toBe(beforeTabs + 1);
-                await expect(dialog.getByText("このサーバーから削除しました。", { exact: true })).toBeVisible();
+                await expect(page.locator(".floating-message").filter({ hasText: "このサーバーから削除しました。" })).toBeVisible();
                 await expect(dialog.locator("article").first().locator("img")).not.toHaveAttribute("src", new RegExp(imageHash));
                 await more.click(); await expect(dialog.locator("article")).toHaveCount(48);
                 expect(requests()).toBe(beforeTabs + (mode === "paged" ? 2 : 1));
@@ -265,9 +356,9 @@ for (const base of ["/", "/ehagaki/"] as const) {
                 await page.getByRole("alertdialog").getByRole("button", { name: "削除", exact: true }).click();
                 await expect(page.getByRole("alertdialog")).toBeHidden();
                 await expect(dialog.locator('article[data-media-kind="image"]')).toHaveCount(0);
-                await expect(dialog.getByText("このサーバーから削除しました。", { exact: true })).toBeVisible();
+                await expect(page.locator(".floating-message").filter({ hasText: "このサーバーから削除しました。" })).toBeVisible();
                 expect(requests()).toBe(beforeDelete + 1);
-                await expect(dialog).not.toContainText("local画像キャッシュの清掃に失敗しました");
+                await expect(page.locator(".floating-message").filter({ hasText: "local画像キャッシュの清掃に失敗しました" })).toHaveCount(0);
                 expect(f.counts.get("DELETE /" + imageHash)).toBe(1);
                 if (withServiceWorker) {
                     expect(await keys(page)).not.toContain(f.remote());
@@ -496,7 +587,7 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await expect(confirm).toBeHidden();
             await expect(dialog.locator("article")).toHaveCount(2);
             await expect.poll(() => keys(page)).not.toContain(f.remote());
-            await expect(dialog.getByText("このサーバーから削除しました。", { exact: true })).toBeVisible();
+            await expect(page.locator(".floating-message").filter({ hasText: "このサーバーから削除しました。" })).toBeVisible();
             expect(f.counts.get("DELETE /" + imageHash)).toBe(1);
             await page.screenshot({ path: testInfo.outputPath("uploaded-media-360.png") });
             await page.evaluate(() => history.back());

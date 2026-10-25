@@ -34,6 +34,13 @@ describe("FloatingMessage", () => {
 
         expect(message.querySelector(".info-icon")).toBeNull();
     });
+    it("can announce an error assertively without changing the default notification semantics", () => {
+        render(FloatingMessage, { props: { show: true, role: "alert" } });
+        const message = screen.getByRole("alert");
+        expect(message.getAttribute("aria-live")).toBe("assertive");
+        expect(message.getAttribute("aria-atomic")).toBe("true");
+        expect(message.hasAttribute("aria-modal")).toBe(false);
+    });
 
     it("does not render when hidden", () => {
         render(FloatingMessage, {

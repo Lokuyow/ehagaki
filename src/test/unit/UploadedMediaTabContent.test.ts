@@ -52,13 +52,56 @@ beforeEach(() => {
         loaded: true, loading: false, error: null, support: "supported", hasMore: true, needsRefresh: false, deletingId: null, notice: null } };
 });
 describe("uploaded-media content", () => {
-    it.each([ ["https://nostpic.com/api/v2/media", false, "unavailable"], ["https://nostpic.com", false, "unavailable"], ["https://nostpic.com/api/v2/media", true, "invalidResponse"], ["https://nostpic.com.example/api", false, "invalidResponse"], ["https://media.example", false, "invalidResponse"] ] as const)("shows listing error for %s (loaded: %s)", (serverUrl, loaded, errorKey) => {
+    it.each([ ["https://nostpic.com/api/v2/media", false, "unavailable"], ["https://nostpic.com", false, "unavailable"], ["https://nostpic.com/api/v2/media", true, "invalidResponse"], ["https://nostpic.com.example/api", false, "invalidResponse"], ["https://media.example", false, "invalidResponse"] ] as const)("shows listing error for %s (loaded: %s)", async (serverUrl, loaded, errorKey) => {
         mocked.view.current!.destination.serverUrl = serverUrl;
         mocked.view.current!.destination.presetId = undefined;
         mocked.view.current!.loaded = loaded;
         mocked.view.current!.error = new UploadMediaError("invalidResponse");
         render(UploadedMediaTabContent, { show: true });
-        expect(screen.getByRole("alert").textContent).toBe(`uploadedMedia.errors.${errorKey}`);
+        const message = await screen.findByRole("alert");
+        expect(message.textContent).toContain(`uploadedMedia.errors.${errorKey}`);
+        expect(message.classList.contains("floating-message")).toBe(true);
+        expect(document.querySelector(".media-management [role=alert]")).toBeNull();
+    });
+    it("shows deletion feedback outside the list and does not replay it after reopening", async () => {
+        mocked.view.current!.notice = "deleted";
+        const { rerender } = render(UploadedMediaTabContent, { show: true });
+        const message = await screen.findByRole("status");
+        expect(message.textContent).toContain("uploadedMedia.deleted");
+        expect(document.querySelector(".uploaded-media-content")!.contains(message)).toBe(false);
+        await rerender({ show: false });
+        await waitFor(() => expect(screen.queryByText("uploadedMedia.deleted")).toBeNull());
+        await rerender({ show: true });
+        expect(screen.queryByText("uploadedMedia.deleted")).toBeNull();
+    });
+    it("keeps cache-cleanup failure feedback in the same floating notification", async () => {
+        mocked.view.current!.notice = "cacheCleanupFailed";
+        render(UploadedMediaTabContent, { show: true });
+        expect((await screen.findByRole("status")).textContent).toContain("uploadedMedia.cacheCleanupFailed");
+        expect(document.querySelector(".media-management .floating-message")).toBeNull();
+    });
+    it.each([true, false])("floats reloading feedback only for an already loaded list (loaded: %s)", async (loaded) => {
+        mocked.view.current!.loading = true;
+        mocked.view.current!.loaded = loaded;
+        render(UploadedMediaTabContent, { show: true });
+        await tick();
+        if (loaded) {
+            const message = await screen.findByRole("status");
+            expect(message.querySelector(".loader-container")).toBeTruthy();
+            expect(document.querySelector(".media-management .loading-placeholder")).toBeNull();
+        } else {
+            expect(document.querySelector(".media-management .loading-placeholder")).toBeTruthy();
+            expect(screen.queryByRole("status")).toBeNull();
+        }
+    });
+    it("retains error details and retry time in the floating alert", async () => {
+        const retryAt = Date.now() + 60_000;
+        mocked.view.current!.error = new UploadMediaError("rateLimited", 429, "Safe diagnostic", retryAt);
+        render(UploadedMediaTabContent, { show: true });
+        const message = await screen.findByRole("alert");
+        expect(message.textContent).toContain("uploadedMedia.errors.rateLimited");
+        expect(message.textContent).toContain("uploadedMedia.retryAfter");
+        expect(message.textContent).toContain("Safe diagnostic");
     });
     it("does not let a previous session's completed deletion close a new confirmation", async () => {
         const deferred = createDeferred<boolean>();
