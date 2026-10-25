@@ -19,6 +19,15 @@ function createTestDb(): EHagakiDB {
     return new EHagakiDB(name);
 }
 
+function legacySovbit(pubkeyHex: string | null = null): UploadDestination {
+    return { id: "legacy-sovbit", pubkeyHex, name: "files.sovbit.host", protocol: "nip96",
+        serverUrl: "https://files.sovbit.host/api/v2/media", resolvedUploadUrl: "https://files.sovbit.host/upload",
+        nip96ServerUrl: "https://files.sovbit.host", nip96UrlMode: "direct", presetId: "files-sovbit-host",
+        enabled: true, isDefault: true, sortIndex: 3, createdAt: 1000, updatedAt: 2000,
+        capabilities: { ...DEFAULT_UPLOAD_CAPABILITIES, source: "protocol-discovery", raw: { api_url: "old-api" } },
+        auth: { type: "nip98" }, schemaVersion: 1 };
+}
+
 afterEach(async () => {
     for (const name of testDbNames) {
         await Dexie.delete(name);
@@ -27,6 +36,84 @@ afterEach(async () => {
 });
 
 describe("uploadDestinationsRepository", () => {
+    it.each([null, "owner"])("reads saved Sovbit NIP-96 settings as Blossom without resetting scope %s", async pubkeyHex => {
+        const db = createTestDb();
+        const repository = new DexieUploadDestinationsRepository(db, () => 3000, () => new MockStorage(), null);
+        const legacy = { ...legacySovbit(pubkeyHex), enabled: false, isDefault: false };
+        await db.uploadDestinations.put({ ...legacy, scopeKey: pubkeyHex ?? UPLOAD_DESTINATION_GLOBAL_SCOPE });
+        const [destination] = await repository.getAll(pubkeyHex);
+        expect(destination).toMatchObject({ id: legacy.id, pubkeyHex, protocol: "blossom", serverUrl: "https://files.sovbit.host",
+            enabled: false, isDefault: false, sortIndex: 3, createdAt: 1000, updatedAt: 2000, auth: { type: "blossom-bud11" } });
+        expect(destination).not.toHaveProperty("resolvedUploadUrl");
+        expect(destination).not.toHaveProperty("nip96ServerUrl");
+        expect(destination).not.toHaveProperty("nip96UrlMode");
+        expect(destination.capabilities).not.toHaveProperty("raw");
+        expect(await repository.getAll(pubkeyHex)).toEqual([destination]);
+        expect(await db.uploadDestinations.get(legacy.id)).toMatchObject(legacy);
+        db.close();
+    });
+
+    it("normalizes a parent Sovbit snapshot and retains its default and ID", async () => {
+        const db = createTestDb();
+        const legacy = legacySovbit("owner");
+        const parentSync: UploadDestinationsParentSync = {
+            getSnapshot: async () => [{ ...legacy, scopeKey: "owner" }], setSnapshot: async () => {},
+        };
+        const repository = new DexieUploadDestinationsRepository(db, () => 3000, () => new MockStorage(), parentSync);
+        expect(await repository.getDefault("owner")).toMatchObject({ id: legacy.id, protocol: "blossom",
+            serverUrl: "https://files.sovbit.host", isDefault: true, enabled: true, createdAt: 1000, updatedAt: 2000 });
+        expect(await db.uploadDestinations.get(legacy.id)).toMatchObject({ protocol: "blossom", scopeKey: "owner" });
+        db.close();
+    });
+
+    it("reuses Sovbit for repeated forced legacy endpoint preferences", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        storage.setItem(STORAGE_KEYS.UPLOAD_ENDPOINT, "https://files.sovbit.host/api/v2/media");
+        const repository = new DexieUploadDestinationsRepository(db, () => 3000, () => storage, null);
+        const initial = await repository.getDefault(null);
+        for (const endpoint of ["https://files.sovbit.host/api/v2/media", "https://files.sovbit.host/upload", "https://files.sovbit.host"]) {
+            expect(await repository.applyUploadEndpointPreference({ endpoint, mode: "forced" }))
+                .toMatchObject({ id: initial.id, protocol: "blossom", serverUrl: "https://files.sovbit.host" });
+        }
+        expect(await repository.getAll(null)).toHaveLength(1);
+        db.close();
+    });
+
+    it("stores current Blossom capability results for an old Sovbit record", async () => {
+        const db = createTestDb();
+        const repository = new DexieUploadDestinationsRepository(db, () => 3000, () => new MockStorage(), null);
+        const legacy = legacySovbit("owner");
+        await db.uploadDestinations.put({ ...legacy, scopeKey: "owner" });
+        const [destination] = await repository.getAll("owner");
+        const capabilities = { ...destination.capabilities, supportsList: true, maxUploadSize: 1024 };
+        await repository.updateTestCapabilities(destination, capabilities, () => {});
+        expect((await repository.getAll("owner"))[0]).toMatchObject({ protocol: "blossom", capabilities, updatedAt: 3000 });
+        db.close();
+    });
+
+    it.each([false, true])("imports legacy Sovbit relay preferences into Blossom without duplicates (both lists: %s)", async both => {
+        const db = createTestDb();
+        const repository = new DexieUploadDestinationsRepository(db, () => 3000, () => new MockStorage(), null);
+        const base = await repository.getDefault("owner");
+        const other = { ...base, protocol: "blossom" as const, presetId: "custom" as const, serverUrl: "https://other.example" };
+        await repository.put(other);
+        const legacy = { ...legacySovbit("owner"), enabled: false, isDefault: false };
+        await db.uploadDestinations.put({ ...legacy, scopeKey: "owner" });
+        const updates = { ...(both ? { blossom: ["https://other.example", "https://files.sovbit.host"] } : {}),
+            nip96: [{ serverUrl: "https://files.sovbit.host", apiUrl: "https://files.sovbit.host/upload" }] };
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const result = await repository.applyRelayServerLists("owner", updates, () => {});
+            expect(result).toHaveLength(2);
+            expect(result.find(destination => destination.id === legacy.id)).toMatchObject({
+                protocol: "blossom", serverUrl: "https://files.sovbit.host", enabled: false, isDefault: false, createdAt: 1000,
+            });
+            expect(result.find(destination => destination.id === other.id)).toMatchObject({ protocol: "blossom", isDefault: true });
+            expect(await repository.getAll("owner")).toEqual(result);
+        }
+        db.close();
+    });
+
     it("atomically merges both protocols, preserves disabled matching IDs and the current default", async () => {
         const db = createTestDb();
         const repository = new DexieUploadDestinationsRepository(db, () => 3000, () => new MockStorage(), null);

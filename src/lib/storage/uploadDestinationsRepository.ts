@@ -14,6 +14,8 @@ import {
     getPreferredDefaultUploadPresetIds,
     getScopeKey,
     normalizeServerUrl,
+    isFilesSovbitUploadEndpoint,
+    normalizeLegacySovbitDestination,
 } from "../upload/uploadDestinationPresets";
 import { getEffectiveLocale } from "../utils/settingsStorage";
 import { getAppStorage } from "../appStorage";
@@ -82,6 +84,7 @@ function toPlainCapabilities(capabilities: UploadDestinationCapabilities): Uploa
 }
 
 function toPlainDestination(destination: UploadDestination): UploadDestination {
+    destination = normalizeLegacySovbitDestination(destination);
     return {
         id: destination.id,
         pubkeyHex: destination.pubkeyHex ?? null,
@@ -159,7 +162,7 @@ function normalizeLegacyShareYabuMeDestination(destination: UploadDestination): 
 
 function toDestination(record: UploadDestinationRecord): UploadDestination {
     const { scopeKey: _scopeKey, ...destination } = record;
-    const normalizedDestination = normalizeLegacyShareYabuMeDestination(destination);
+    const normalizedDestination = normalizeLegacySovbitDestination(normalizeLegacyShareYabuMeDestination(destination));
     const preset = findUploadDestinationPresetIdentity(normalizedDestination);
     return preset
         ? { ...normalizedDestination, name: preset.name }
@@ -177,7 +180,9 @@ function sortDestinations(a: UploadDestination, b: UploadDestination): number {
 
 function isDestinationForEndpoint(destination: UploadDestination, endpoint: string): boolean {
     return destination.resolvedUploadUrl === endpoint
-        || destination.serverUrl === endpoint;
+        || destination.serverUrl === endpoint
+        || (destination.protocol === "blossom" && destination.serverUrl === "https://files.sovbit.host"
+            && isFilesSovbitUploadEndpoint(endpoint));
 }
 
 function getPreferredBlossomDestination(
@@ -424,13 +429,14 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
     async updateTestCapabilities(destination: UploadDestination, capabilities: UploadDestinationCapabilities, assertCurrent: () => void): Promise<void> {
         await this.db.transaction("rw", this.db.uploadDestinations, async () => {
             assertCurrent();
-            const current = await this.db.uploadDestinations.get(destination.id);
+            const record = await this.db.uploadDestinations.get(destination.id);
+            const current = record ? toDestination(record) : undefined;
             assertCurrent();
             if (!current || current.pubkeyHex !== destination.pubkeyHex || current.updatedAt !== destination.updatedAt
                 || current.protocol !== destination.protocol || current.serverUrl !== destination.serverUrl
                 || current.resolvedUploadUrl !== destination.resolvedUploadUrl
                 || current.nip96ServerUrl !== destination.nip96ServerUrl || current.nip96UrlMode !== destination.nip96UrlMode) return;
-            await this.db.uploadDestinations.put(toRecord({ ...toDestination(current), capabilities, updatedAt: this.now() }));
+            await this.db.uploadDestinations.put(toRecord({ ...current, capabilities, updatedAt: this.now() }));
             assertCurrent();
         });
         assertCurrent();
@@ -450,8 +456,18 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
             const timestamp = Math.max(this.now(), ...existing.map(destination => destination.updatedAt + 1));
             const usedIds = new Set<string>();
             const replacement: Partial<Record<"blossom" | "nip96", UploadDestination[]>> = {};
+            // NIP-96 preferences can still contain Sovbit's former identity. Merge it
+            // into Blossom without replacing an otherwise untouched Blossom list.
+            const sovbit = updates.nip96?.filter(server => isFilesSovbitUploadEndpoint(server.serverUrl)
+                && isFilesSovbitUploadEndpoint(server.apiUrl)) ?? [];
+            const blossom = updates.blossom ?? (sovbit.length
+                ? existing.filter(destination => destination.protocol === "blossom").map(destination => destination.serverUrl)
+                : undefined);
+            const blossomServers = blossom === undefined ? undefined
+                : [...new Set([...blossom, ...sovbit.map(() => "https://files.sovbit.host")])];
+            const nip96Servers = updates.nip96?.filter(server => !sovbit.includes(server));
             for (const protocol of ["blossom", "nip96"] as const) {
-                const servers = protocol === "blossom" ? updates.blossom?.map(serverUrl => ({ serverUrl, apiUrl: undefined })) : updates.nip96;
+                const servers = protocol === "blossom" ? blossomServers?.map(serverUrl => ({ serverUrl, apiUrl: undefined })) : nip96Servers;
                 if (servers === undefined) continue;
                 replacement[protocol] = servers.map((server, index) => {
                     const candidates = existing.filter(destination => destination.protocol === protocol && !usedIds.has(destination.id));

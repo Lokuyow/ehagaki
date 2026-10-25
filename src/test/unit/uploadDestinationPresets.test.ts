@@ -29,7 +29,6 @@ describe("uploadDestinationPresets", () => {
             ["nostrcheck-me", "nostrcheck.me", "https://nostrcheck.me/api/v2/media", "https://cdn.nostrcheck.me/"],
             ["nostr-build", "nostr.build", "https://nostr.build/api/v2/nip96/upload", "https://nostr.build/api/v2/nip96/upload"],
             ["nostpic-com", "nostpic.com", "https://nostpic.com/api/v2/media", "https://nostpic.com/api/v2/media"],
-            ["files-sovbit-host", "files.sovbit.host", "https://files.sovbit.host/api/v2/media", "https://files.sovbit.host/upload"],
         ] as const;
 
         for (const [id, name, serverUrl, resolvedUploadUrl] of expectedPresets) {
@@ -107,6 +106,12 @@ describe("uploadDestinationPresets", () => {
                 protocol: "blossom",
                 serverUrl: "https://blossom.primal.net",
             }),
+            expect.objectContaining({
+                id: "files-sovbit-host",
+                name: "files.sovbit.host",
+                protocol: "blossom",
+                serverUrl: "https://files.sovbit.host",
+            }),
         ]));
     });
 
@@ -156,4 +161,22 @@ describe("uploadDestinationPresets", () => {
             presetId: "custom",
         }));
     });
+
+    it.each(["https://files.sovbit.host", "https://files.sovbit.host/api/v2/media", "https://files.sovbit.host/upload/"])(
+        "maps the Sovbit endpoint %s to the Blossom preset", (endpoint) => {
+            expect(findUploadPresetByEndpoint(endpoint)).toMatchObject({ id: "files-sovbit-host", protocol: "blossom" });
+            const destination = createLegacyUploadDestination({ endpoint, now: 1 });
+            expect(destination).toMatchObject({ serverUrl: "https://files.sovbit.host", protocol: "blossom",
+                presetId: "files-sovbit-host", auth: { type: "blossom-bud11" } });
+            expect(destination).not.toHaveProperty("resolvedUploadUrl");
+            expect(destination).not.toHaveProperty("nip96ServerUrl");
+        },
+    );
+
+    it.each(["https://files.sovbit.host#fragment", "https://files.sovbit.host?custom=1", "https://user@files.sovbit.host",
+        "http://files.sovbit.host", "https://files.sovbit.host:8443", "https://files.sovbit.host.evil.example"])(
+        "does not map an edited or invalid endpoint %s to the Sovbit preset", endpoint => {
+            expect(findUploadPresetByEndpoint(endpoint)).toBeNull();
+        },
+    );
 });

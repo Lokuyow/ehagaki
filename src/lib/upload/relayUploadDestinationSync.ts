@@ -7,6 +7,7 @@ import { canonicalizeNip96UploadUrl } from "./nip96UrlPolicy";
 import { getNip96DiscoveryServer, normalizeNip96ServerUrl } from "./nip96ServerIdentity";
 import { awaitUploadOperation, throwIfUploadAborted } from "./uploadOperation";
 import { resolveUploadDestinationForUse } from "./uploadDestinationResolver";
+import { normalizeLegacySovbitDestination } from "./uploadDestinationPresets";
 
 export const NIP96_RELAY_SYNC_DISCOVERY_TIMEOUT_MS = 10_000;
 export type RelaySyncProtocol = "blossom" | "nip96";
@@ -77,7 +78,8 @@ export async function fetchUploadRelayLists(context: SyncContext): Promise<{ res
 }
 
 export async function publishUploadRelayLists(context: SyncContext & { destinations: UploadDestination[]; getSigner: () => Promise<Signer> }): Promise<RelaySyncResults> {
-    const enabled = context.destinations.filter(destination => destination.enabled);
+    const enabled = context.destinations.filter(destination => destination.enabled)
+        .map(normalizeLegacySovbitDestination);
     const blossom = enabled.filter(destination => destination.protocol === "blossom");
     const nip96 = enabled.filter(destination => destination.protocol === "nip96").map(destination =>
         resolveUploadDestinationForUse(destination, { pubkeyHex: context.pubkeyHex }));

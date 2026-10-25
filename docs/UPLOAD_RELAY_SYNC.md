@@ -27,6 +27,13 @@ Custom HTTP settings and the relative order of unaffected destinations are prese
 The shared server URL identifies `/.well-known/nostr/nip96.json`; its `api_url` identifies the HTTP API.
 Legacy direct API destinations remain direct. Newly imported destinations use discovery before upload,
 and connection tests and media management use the same discovery-server identity.
+`files.sovbit.host` is handled as Blossom for uploads and media management. Its former
+NIP-96 preset, root discovery URL, and known `/api/v2/media` and `/upload` endpoints resolve
+to `https://files.sovbit.host` with Blossom authorization. Saved destination IDs, account scopes,
+ordering, enabled states, and defaults are retained; obsolete NIP-96 metadata and capability results
+are discarded. Custom HTTP destinations and edited endpoints remain unchanged. Old NIP-96 relay
+preferences for this server are merged into Blossom without duplicating a matching destination.
+Subsequent manual publication includes it in kind 10063 rather than kind 10096.
 The optional `nip96ServerUrl` and `nip96UrlMode` metadata are backward compatible with existing records
 and iframe snapshots; the database/schema version and Host-owned Lite API do not change.
 
