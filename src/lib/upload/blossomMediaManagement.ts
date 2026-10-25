@@ -75,10 +75,12 @@ export async function listBlossomMediaPage(params: UploadMediaListParams): Promi
     const data = await listJson(response, params);
     assertMediaOperation(params);
     if (!Array.isArray(data) || data.length > BLOSSOM_LIST_MAX_DESCRIPTORS) throw new UploadMediaError("invalidResponse");
-    const localSnapshot = data.length > limit;
     const last = data.at(-1);
     const cursor = mediaRecord(last) ? normalizeMediaHash(last.sha256) : null;
-    if (!localSnapshot && data.length && (!cursor || cursor === previousCursor
+    // A server that ignores the cursor may repeat its final page. Consume that
+    // response as a bounded snapshot, with no further remote continuation.
+    const localSnapshot = data.length > limit || Boolean(previousCursor && cursor === previousCursor);
+    if (!localSnapshot && data.length && (!cursor
         || data.some((entry) => mediaRecord(entry) && normalizeMediaHash(entry.sha256) === previousCursor))) {
         throw new UploadMediaError("invalidResponse");
     }

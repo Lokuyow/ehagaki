@@ -238,12 +238,15 @@ export class UploadMediaManagementController {
             this.emit();
             return;
         }
+        if (append && state.loaded && !state.needsRefresh && !state.nextPage) return;
         append = append && !state.needsRefresh && Boolean(state.nextPage);
         if (!append && state.localSnapshot !== null) requireRefresh(state);
-        const operation = this.begin(state);
+        state.notice = null;
+        await this.loadPage(state, append);
+    }
+    private async loadPage(state: DestinationState, append: boolean, operation = this.begin(state)): Promise<void> {
         state.loading = true;
         state.error = null;
-        state.notice = null;
         this.emit();
         try {
             const adapter = (this.deps.getAdapter ?? getUploadAdapter)(state.destination.protocol);
@@ -320,6 +323,7 @@ export class UploadMediaManagementController {
                 if (!clean && operation.current()) clean = await evict();
                 if (!clean && operation.current()) state.notice = "cacheCleanupFailed";
             }
+            if (operation.current()) await this.loadPage(state, false, operation);
             return true;
         } catch (error) {
             if (operation.current()) {

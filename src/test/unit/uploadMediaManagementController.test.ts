@@ -14,9 +14,10 @@ function setup(loadDestinations?: (pubkey: string) => Promise<ReturnType<typeof 
     const evict = vi.fn(async () => true);
     const adapter = { listMediaPage: list, deleteMedia: remove } as unknown as UploadProtocolAdapter;
     const createAuth = vi.fn(() => mediaAuth());
+    const onChange = vi.fn((next: typeof view) => { view = next; });
     const controller = new UploadMediaManagementController({ loadDestinations, auth, getAdapter: () => adapter, createAuth,
-        evictImages: evict, onChange: (next) => { view = next; } });
-    return { controller, auth, list, remove, evict, createAuth, get view() { return view; } };
+        evictImages: evict, onChange });
+    return { controller, auth, list, remove, evict, createAuth, onChange, get view() { return view; } };
 }
 async function loaded(s: ReturnType<typeof setup>) {
     s.controller.configure(mediaPubkey, [mediaDestination()]);
@@ -28,8 +29,11 @@ describe("uploaded-media operation ownership", () => {
             serverUrl: "https://files.sovbit.host/api/v2/media", resolvedUploadUrl: "https://files.sovbit.host/upload" };
         const url = `https://files.sovbit.host/${mediaHash}.png`;
         const authService = mediaAuth();
-        const fetch = vi.fn(async (_url: string, init?: RequestInit) => init?.method === "DELETE"
-            ? new Response(null, { status: 204 }) : Response.json([{ url, sha256: mediaHash, type: "image/png", size: 10, uploaded: 123 }]));
+        let deleted = false;
+        const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+            if (init?.method === "DELETE") { deleted = true; return new Response(null, { status: 204 }); }
+            return Response.json(deleted ? [] : [{ url, sha256: mediaHash, type: "image/png", size: 10, uploaded: 123 }]);
+        });
         const getAdapter = vi.fn(() => new BlossomUploadAdapter());
         const evictImages = vi.fn(async () => true);
         let view = emptyUploadMediaManagementView();
@@ -47,6 +51,8 @@ describe("uploaded-media operation ownership", () => {
         expect(authService.createBlossomManagementAuthorization).toHaveBeenCalledWith(expect.objectContaining({ action: "delete", sha256: mediaHash }));
         expect(authService.buildAuthHeader).not.toHaveBeenCalled();
         expect(evictImages).toHaveBeenCalledWith([url]);
+        expect(fetch.mock.calls[2][0]).toBe(`https://files.sovbit.host/list/${mediaPubkey}?limit=24`);
+        expect(view.current).toMatchObject({ items: [], notice: "deleted", needsRefresh: false });
     });
     it("loads saved destinations only on activation and rejects an old local configuration read", async () => {
         const gate = createDeferred<ReturnType<typeof mediaDestination>[]>();
@@ -107,7 +113,65 @@ describe("uploaded-media operation ownership", () => {
         await vi.waitFor(() => expect(s.evict).toHaveBeenCalledOnce());
         s.controller.select(b.id); s.controller.select(a.id);
         expect(s.view.current).toMatchObject({ items: [], error: null, notice: "deleted", needsRefresh: true });
+        s.list.mockResolvedValueOnce({ ...mediaPage(a, []), nextPage: null });
         cleanup.resolve(true); await pending;
+        expect(s.view.current).toMatchObject({ items: [], notice: "deleted", needsRefresh: false });
+    });
+    it.each(["nip96", "blossom"] as const)("refreshes %s from the first page after deletion and uses the new pagination", async (protocol) => {
+        const s = setup(), destination = mediaDestination(protocol), refresh = createDeferred<UploadMediaPage>();
+        s.list.mockResolvedValue(mediaPage(destination));
+        s.controller.configure(mediaPubkey, [destination]);
+        await vi.waitFor(() => expect(s.view.current?.loaded).toBe(true));
+        const deletedId = s.view.current!.items[0].id;
+        s.list.mockReturnValueOnce(refresh.promise);
+        const pending = s.controller.delete(deletedId);
+        await vi.waitFor(() => expect(s.list).toHaveBeenCalledTimes(2));
+        expect(s.controller.busy).toBe(true);
+        expect(s.view.current).toMatchObject({ items: [], loading: true, deletingId: deletedId, notice: "deleted" });
+        expect(s.list.mock.calls[1][0]).toMatchObject({ page: null, context: null, expectedPubkey: mediaPubkey,
+            signal: s.remove.mock.calls[0][0].signal });
+        const fresh = mediaPage(destination, [mediaItem(destination, "image", "c".repeat(64))]);
+        fresh.nextPage = protocol === "nip96" ? { protocol, page: 1, count: 24 } : { protocol, cursor: "fresh", limit: 24 };
+        refresh.resolve(fresh);
+        expect(await pending).toBe(true);
+        expect(s.controller.busy).toBe(false);
+        expect(s.view.current).toMatchObject({ items: fresh.items, loading: false, deletingId: null, needsRefresh: false,
+            hasMore: true, notice: "deleted", error: null });
+        s.list.mockResolvedValueOnce({ ...mediaPage(destination, []), nextPage: null });
+        await s.controller.load(true);
+        expect(s.list.mock.calls[2][0]).toMatchObject({ page: fresh.nextPage, context: fresh.context });
+        expect(s.remove).toHaveBeenCalledOnce();
+    });
+    it("keeps deletion successful when the automatic refresh fails and lets the user retry only listing", async () => {
+        const s = setup(); await loaded(s);
+        s.list.mockRejectedValueOnce(new UploadMediaError("network"));
+        expect(await s.controller.delete(s.view.current!.items[0].id)).toBe(true);
+        expect(s.view.current).toMatchObject({ items: [], notice: "deleted", error: { code: "network" },
+            needsRefresh: true, hasMore: false, loading: false, deletingId: null });
+        expect(s.list).toHaveBeenCalledTimes(2);
+        s.list.mockResolvedValueOnce({ ...mediaPage(mediaDestination(), []), nextPage: null });
+        await s.controller.load(true);
+        expect(s.list.mock.calls[2][0]).toMatchObject({ page: null, context: null });
+        expect(s.view.current).toMatchObject({ items: [], error: null, needsRefresh: false });
+        expect(s.remove).toHaveBeenCalledOnce();
+    });
+    it.each(["close", "account", "destination"])("discards a delayed automatic refresh after %s changes", async (reason) => {
+        const s = setup(), refresh = createDeferred<UploadMediaPage>(); await loaded(s);
+        s.list.mockReturnValueOnce(refresh.promise).mockResolvedValue({ ...mediaPage(mediaDestination(), []), nextPage: null });
+        const pending = s.controller.delete(s.view.current!.items[0].id);
+        await vi.waitFor(() => expect(s.list).toHaveBeenCalledTimes(2));
+        const signal = s.list.mock.calls[1][0].signal!;
+        if (reason === "close") s.controller.suspend();
+        else if (reason === "account") {
+            s.auth.value.pubkey = "c".repeat(64);
+            s.controller.configure(s.auth.value.pubkey, [mediaDestination()]);
+        } else s.controller.configure(mediaPubkey, [{ ...mediaDestination(), serverUrl: "https://other.example" }]);
+        expect(signal.aborted).toBe(true);
+        refresh.resolve(mediaPage(mediaDestination(), [mediaItem(mediaDestination(), "video")]));
+        expect(await pending).toBe(true);
+        expect(s.view.current?.items.some(item => item.kind === "video")).toBe(false);
+        expect(s.view.current?.error?.code).not.toBe("unknownDelete");
+        expect(s.remove).toHaveBeenCalledOnce();
     });
     it.each([true, false])("preserves deletion uncertainty after forced suspension only after HTTP dispatch (%s)", async (dispatched) => {
         const s = setup(), deferred = createDeferred<void>(), a = mediaDestination(), b = mediaDestination("blossom", "other");
@@ -169,12 +233,13 @@ describe("uploaded-media operation ownership", () => {
         s.evict.mockResolvedValue(false);
         const beforeStorage = localStorage.length;
         await loaded(s);
+        s.list.mockResolvedValueOnce({ ...mediaPage(mediaDestination(), []), nextPage: null });
         expect(await s.controller.delete(s.view.current!.items[0].id)).toBe(true);
         expect(s.remove).toHaveBeenCalledTimes(1);
         expect(s.evict).toHaveBeenCalledTimes(2);
-        expect(s.view.current).toMatchObject({ items: [], nextPage: null, needsRefresh: true, notice: "cacheCleanupFailed" });
+        expect(s.view.current).toMatchObject({ items: [], nextPage: null, needsRefresh: false, notice: "cacheCleanupFailed" });
+        expect(s.list).toHaveBeenCalledTimes(2);
         expect(localStorage.length).toBe(beforeStorage);
-        await s.controller.load(true);
         expect(s.list.mock.calls.at(-1)?.[0]).toMatchObject({ page: null, context: null });
     });
     it("cleans all displayed image URLs with the same hash after confirmed remote success even after close", async () => {
@@ -187,6 +252,7 @@ describe("uploaded-media operation ownership", () => {
         done.resolve();
         expect(await operation).toBe(true);
         expect(s.evict).toHaveBeenCalledExactlyOnceWith([mediaItem().url, "https://media.example/alias.png"]);
+        expect(s.list).toHaveBeenCalledOnce();
         expect(s.view.current).toBeNull();
     });
     it.each(["forbidden", "unknownDelete"] as const)("keeps an item on %s and never automatically retries", async (code) => {
@@ -198,6 +264,7 @@ describe("uploaded-media operation ownership", () => {
         if (code === "unknownDelete") expect(s.view.current).toMatchObject({ needsRefresh: true, nextPage: null });
         expect(s.evict).not.toHaveBeenCalled();
         expect(s.remove).toHaveBeenCalledTimes(1);
+        expect(s.list).toHaveBeenCalledOnce();
     });
     it("does not clean image caches for video deletion or allow concurrent paging/delete", async () => {
         const s = setup(), done = createDeferred<void>();
@@ -207,15 +274,39 @@ describe("uploaded-media operation ownership", () => {
         const operation = s.controller.delete(id);
         await s.controller.load(true);
         expect(await s.controller.delete(id)).toBe(false);
-        done.resolve(); await operation;
         expect(s.list).toHaveBeenCalledTimes(1);
+        s.list.mockResolvedValueOnce({ ...mediaPage(mediaDestination(), []), nextPage: null });
+        done.resolve(); await operation;
+        expect(s.list).toHaveBeenCalledTimes(2);
         expect(s.remove).toHaveBeenCalledTimes(1);
         expect(s.evict).not.toHaveBeenCalled();
     });
-    it("rejects a repeated cursor across pages and retains previous items for refresh", async () => {
+    it("rejects a cyclic remote cursor and retains previous items for refresh", async () => {
         const s = setup(); await loaded(s);
+        const second = mediaPage(mediaDestination(), [mediaItem(mediaDestination(), "image", "c".repeat(64))]);
+        second.nextPage = { protocol: "blossom", cursor: "c".repeat(64), limit: 24 };
+        s.list.mockResolvedValueOnce(second);
         await s.controller.load(true);
-        expect(s.view.current).toMatchObject({ items: [expect.any(Object)], nextPage: null, needsRefresh: true, error: { code: "invalidResponse" } });
+        await s.controller.load(true);
+        expect(s.view.current).toMatchObject({ items: [expect.any(Object), second.items[0]], nextPage: null,
+            needsRefresh: true, error: { code: "invalidResponse" } });
+    });
+    it.each(["empty", "repeated"] as const)("ends Blossom paging on a %s final response without losing items or requesting again", async (end) => {
+        const s = setup(), adapter = new BlossomUploadAdapter();
+        const data = [mediaItem(), mediaItem(mediaDestination(), "image", "c".repeat(64))].map(item => ({
+            sha256: item.deleteId!.sha256, url: item.url, type: "image/png",
+        }));
+        const fetch = vi.fn().mockResolvedValueOnce(Response.json(data))
+            .mockResolvedValueOnce(Response.json(end === "empty" ? [] : data));
+        s.list.mockImplementation(params => adapter.listMediaPage({ ...params, fetch }));
+        await loaded(s);
+        const items = s.view.current!.items;
+        expect(s.view.current?.hasMore).toBe(true);
+        await s.controller.load(true);
+        expect(s.view.current).toMatchObject({ items, hasMore: false, nextPage: null, needsRefresh: false, error: null });
+        await s.controller.load(true);
+        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(s.onChange.mock.calls.some(([view]) => Boolean(view.current?.error))).toBe(false);
     });
     it("resolves blossom.band from the captured account pubkey", async () => {
         const s = setup(), d = mediaDestination(); d.serverUrl = "https://blossom.band"; d.presetId = "blossom-band";
@@ -308,10 +399,21 @@ describe("controller-local Blossom snapshots", () => {
         const s = setup(); s.list.mockResolvedValue(snapshot(60)); await loaded(s);
         s.evict.mockResolvedValue(false);
         if (outcome !== "success") s.remove.mockRejectedValue(new UploadMediaError(outcome));
+        const fresh = snapshot(60);
+        fresh.items = fresh.items.slice(1).map(item => ({ ...item, id: "fresh:" + item.id }));
+        if (outcome === "success") s.list.mockResolvedValueOnce(fresh);
         const deletedId = s.view.current!.items[0].id;
         await s.controller.delete(deletedId);
         expect(s.remove).toHaveBeenCalledOnce();
-        if (outcome === "forbidden") {
+        if (outcome === "success") {
+            expect(s.view.current).toMatchObject({ hasMore: true, needsRefresh: false, notice: "cacheCleanupFailed" });
+            expect(s.view.current?.items).toEqual(fresh.items.slice(0, 24));
+            expect(s.list.mock.calls[1][0]).toMatchObject({ page: null, context: null });
+            await s.controller.load(true);
+            expect(s.view.current?.items).toEqual(fresh.items.slice(0, 48));
+            expect(s.list).toHaveBeenCalledTimes(2);
+            expect(s.evict).toHaveBeenCalledTimes(2);
+        } else if (outcome === "forbidden") {
             expect(s.view.current?.hasMore).toBe(true);
             await s.controller.load(true);
             expect(s.view.current?.items).toHaveLength(48);
@@ -323,7 +425,6 @@ describe("controller-local Blossom snapshots", () => {
             await s.controller.load(true);
             expect(s.list.mock.calls.at(-1)?.[0]).toMatchObject({ page: null, context: null });
             expect(s.view.current?.items).toEqual([]);
-            if (outcome === "success") expect(s.evict).toHaveBeenCalledTimes(2);
         }
     });
     it("discards the remainder when a dispatched deletion is suspended", async () => {

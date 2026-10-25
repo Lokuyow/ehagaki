@@ -19,6 +19,7 @@
         anchorRightOffset?: number;
         showInfoIcon?: boolean;
         fadeOutDuration?: number;
+        role?: "status" | "alert";
         children?: Snippet;
     }
 
@@ -31,6 +32,7 @@
         anchorRightOffset = 0,
         showInfoIcon = true,
         fadeOutDuration = 0,
+        role = "status",
         children = undefined,
     }: Props = $props();
 
@@ -192,8 +194,8 @@
                       : variant === "pointer"
                       ? `left: ${messageX}px; top: ${messageY}px;`
                       : undefined}
-                role="status"
-                aria-live="polite"
+                {role}
+                aria-live={role === "alert" ? "assertive" : "polite"}
                 aria-atomic="true"
             >
                 <div class="floating-message-body">

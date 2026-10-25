@@ -38,7 +38,9 @@ export async function supportsUploadMediaImageCache(): Promise<boolean> {
 export async function evictUploadMediaImages(urls: string[]): Promise<boolean> {
     if (!urls.length) return true;
     const controller = getController();
-    if (!controller) return false;
+    // The app and its upload-management UI also run without a Service Worker
+    // (for example, on the Vite development server), where this cache is unused.
+    if (!controller) return true;
     const keys = [...new Set(urls)];
     let success = true;
     for (let index = 0; index < keys.length; index += UPLOAD_MEDIA_IMAGE_CACHE_POLICY.maxEntries) {

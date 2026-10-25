@@ -22,7 +22,7 @@
     "delete": "削除",
     "deleting": "削除中…",
     "confirmDescription": "このメディアをこのサーバーから削除しますか？投稿や他サーバーのコピーは残ります。",
-    "deleted": "このサーバーから削除しました。追加取得の前に一覧を更新してください。",
+    "deleted": "このサーバーから削除しました。",
     "cacheCleanupFailed": "このサーバーから削除しましたが、local画像キャッシュの清掃に失敗しました。",
     "skipped": "対象外または種類不明のrecord: {excluded}件。データ不備のあるrecord: {invalid}件。",
     "retryAfter": "{time}以降に再試行してください。",

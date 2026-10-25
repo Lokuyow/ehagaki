@@ -86,8 +86,8 @@ describe("uploaded-media adapters", () => {
         expect(get.mock.calls[1][0]).toBe("https://media.example/list/" + mediaPubkey + "?limit=24&cursor=" + mediaHash);
         expect(p.authService.createBlossomManagementAuthorization).toHaveBeenCalledWith({ serverUrl: "https://media.example", action: "list", expectedPubkey: mediaPubkey, sha256: undefined, kind: undefined });
     });
-    it.each([{ sha256: "bad" }, { sha256: mediaHash }])("rejects invalid/repeated Blossom raw cursors", async (last) => {
-        const p = params("blossom"); p.fetch = vi.fn(async () => jsonMedia([last])) as typeof fetch;
+    it("rejects an invalid Blossom raw cursor", async () => {
+        const p = params("blossom"); p.fetch = vi.fn(async () => jsonMedia([{ sha256: "bad" }])) as typeof fetch;
         await expect(new BlossomUploadAdapter().listMediaPage({ ...p, page: { protocol: "blossom", cursor: mediaHash, limit: 24 } }))
             .rejects.toMatchObject({ code: "invalidResponse" });
     });
