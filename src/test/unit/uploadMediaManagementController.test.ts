@@ -280,10 +280,31 @@ describe("uploaded-media operation ownership", () => {
         expect(s.remove).toHaveBeenCalledTimes(1);
         expect(s.evict).not.toHaveBeenCalled();
     });
-    it("rejects a repeated cursor across pages and retains previous items for refresh", async () => {
+    it("rejects a cyclic remote cursor and retains previous items for refresh", async () => {
         const s = setup(); await loaded(s);
+        const second = mediaPage(mediaDestination(), [mediaItem(mediaDestination(), "image", "c".repeat(64))]);
+        second.nextPage = { protocol: "blossom", cursor: "c".repeat(64), limit: 24 };
+        s.list.mockResolvedValueOnce(second);
         await s.controller.load(true);
-        expect(s.view.current).toMatchObject({ items: [expect.any(Object)], nextPage: null, needsRefresh: true, error: { code: "invalidResponse" } });
+        await s.controller.load(true);
+        expect(s.view.current).toMatchObject({ items: [expect.any(Object), second.items[0]], nextPage: null,
+            needsRefresh: true, error: { code: "invalidResponse" } });
+    });
+    it.each(["empty", "repeated"] as const)("ends Blossom paging on a %s final response without losing items or requesting again", async (end) => {
+        const s = setup(), adapter = new BlossomUploadAdapter();
+        const data = [mediaItem(), mediaItem(mediaDestination(), "image", "c".repeat(64))].map(item => ({
+            sha256: item.deleteId!.sha256, url: item.url, type: "image/png",
+        }));
+        const fetch = vi.fn().mockResolvedValueOnce(Response.json(data))
+            .mockResolvedValueOnce(Response.json(end === "empty" ? [] : data));
+        s.list.mockImplementation(params => adapter.listMediaPage({ ...params, fetch }));
+        await loaded(s);
+        const items = s.view.current!.items;
+        expect(s.view.current?.hasMore).toBe(true);
+        await s.controller.load(true);
+        expect(s.view.current).toMatchObject({ items, hasMore: false, nextPage: null, needsRefresh: false, error: null });
+        await s.controller.load(true);
+        expect(fetch).toHaveBeenCalledTimes(2);
     });
     it("resolves blossom.band from the captured account pubkey", async () => {
         const s = setup(), d = mediaDestination(); d.serverUrl = "https://blossom.band"; d.presetId = "blossom-band";

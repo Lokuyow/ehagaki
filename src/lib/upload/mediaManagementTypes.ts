@@ -28,7 +28,7 @@ export type UploadMediaPageCursor =
     | { protocol: "blossom"; cursor: string; limit: number };
 
 export interface UploadMediaPage {
-    /** Validated oversized Blossom response; continuation is controller-local only. */
+    /** Validated Blossom snapshot (oversized or repeated final cursor); continuation is controller-local only. */
     localSnapshot?: true;
     items: UploadedMediaItem[];
     rawCount: number;

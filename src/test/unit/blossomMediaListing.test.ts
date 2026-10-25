@@ -21,6 +21,14 @@ function streamed(chunks: Uint8Array[], headers: Record<string, string> = {}) {
 }
 
 describe("bounded Blossom media listing", () => {
+    it.each([1, 24])("treats %s repeated descriptors ending at the requested cursor as a local snapshot", async (count) => {
+        const data = Array.from({ length: count }, (_, i) => descriptor(i));
+        const result = await listBlossomMediaPage({ ...params(jsonMedia(data)),
+            page: { protocol: "blossom", cursor: data.at(-1)!.sha256, limit: 24 },
+        });
+        expect(result).toMatchObject({ localSnapshot: true, nextPage: null, rawCount: count, invalidCount: 0 });
+        expect(result.items).toHaveLength(count);
+    });
     it("rejects a previous cursor inside a normal page even when the final hash advances", async () => {
         const data = [descriptor(1), descriptor(2)];
         await expect(listBlossomMediaPage({ ...params(jsonMedia(data)),

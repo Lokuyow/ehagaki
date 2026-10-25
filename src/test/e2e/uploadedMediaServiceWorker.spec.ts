@@ -15,7 +15,7 @@ async function fixture(base: "/" | "/ehagaki/", listing?: "paged" | "snapshot") 
     const directory = resolve("node_modules/.cache/sw-update", base === "/" ? "root" : "pages");
     const counts = new Map<string, number>();
     const deletedHashes = new Set<string>();
-    let offline = false, deleted = false, workerVersion = 0, legacy = false;
+    let offline = false, deleted = false, workerVersion = 0, legacy = false, repeatEnd = false;
     let holdDelete = false, deleteRelease: (() => void) | null = null;
     let video = Buffer.from([]), videoMime = "video/webm", videoExtension = "webm";
     const held = new Map<string, () => void>();
@@ -43,7 +43,7 @@ async function fixture(base: "/" | "/ehagaki/", listing?: "paged" | "snapshot") 
             const offset = cursor ? descriptors.findIndex((item) => item.sha256 === cursor) + 1 : 0;
             const items = listing === "snapshot" ? descriptors
                 : listing === "paged" ? descriptors.slice(offset, offset + Number(url.searchParams.get("limit") ?? 24))
-                : cursor ? [] : descriptors;
+                : cursor && !repeatEnd ? [] : descriptors;
             response.end(JSON.stringify(items)); return;
         }
         if (request.method === "DELETE") {
@@ -93,6 +93,7 @@ async function fixture(base: "/" | "/ehagaki/", listing?: "paged" | "snapshot") 
         setVideo(bytes: number[], mime: string) { video = Buffer.from(bytes); videoMime = mime; videoExtension = mime.includes("mp4") ? "mp4" : "webm"; },
         release() { [...held.values()].forEach((finish) => finish()); },
         holdDelete() { holdDelete = true; },
+        repeatLastPage() { repeatEnd = true; },
         releaseDelete() { holdDelete = false; deleteRelease?.(); },
         async close() { this.releaseDelete(); this.release(); for (const server of [app, media]) { server.closeAllConnections(); await new Promise<void>((done) => server.close(() => done())); } },
     };
@@ -192,6 +193,25 @@ async function createVideo(url: string) {
 }
 test.beforeEach(async ({ context }) => { await context.routeWebSocket("**/*", (socket) => socket.close()); });
 for (const base of ["/", "/ehagaki/"] as const) {
+    for (const end of ["empty", "repeated"] as const) {
+        test(`${base} media pagination ends without an error on an ${end} final response`, async ({ page }) => {
+            const f = await fixture(base);
+            if (end === "repeated") f.repeatLastPage();
+            try {
+                const { dialog, requests, signedLists } = await openPaginationMedia(page, f);
+                const more = dialog.getByRole("button", { name: "さらに読み込む", exact: true });
+                await expect(dialog.locator("article")).toHaveCount(3);
+                await more.click();
+                await expect(more).toHaveCount(0);
+                await expect(dialog.getByRole("alert")).toHaveCount(0);
+                await expect(dialog.locator("article")).toHaveCount(3);
+                expect(requests()).toBe(2); expect(signedLists()).toBe(2);
+                await dialog.getByRole("button", { name: "一覧を更新", exact: true }).click();
+                await expect(more).toBeVisible();
+                expect(requests()).toBe(3); expect(signedLists()).toBe(3);
+            } finally { await f.close(); }
+        });
+    }
     for (const mode of ["paged", "snapshot"] as const) {
         test(`${base} media pagination: ${mode}, 231 items, refresh, tabs and deletion`, async ({ page }) => {
             const f = await fixture(base, mode);
