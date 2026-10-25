@@ -3,6 +3,7 @@ import type { UploadDestination } from "../types";
 import {
     findUploadDestinationPresetIdentity,
     normalizeServerUrl,
+    normalizeLegacySovbitDestination,
 } from "./uploadDestinationPresets";
 
 const BLOSSOM_BAND_HOST = "blossom.band";
@@ -57,6 +58,7 @@ export function resolveUploadDestinationForUse(
     destination: UploadDestination,
     identity: UploadDestinationIdentity,
 ): UploadDestination {
+    destination = normalizeLegacySovbitDestination(destination);
     if (destination.protocol === "nip96") {
         return destination.nip96UrlMode === "discovery" ? destination : resolveNip96PresetUploadUrl(destination);
     }

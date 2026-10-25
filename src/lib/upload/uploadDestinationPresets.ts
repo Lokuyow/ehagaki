@@ -25,12 +25,51 @@ export interface UploadDestinationPreset {
     capabilities: UploadDestinationCapabilities;
 }
 
+const FILES_SOVBIT_PRESET: UploadDestinationPreset = {
+    id: "files-sovbit-host",
+    name: "files.sovbit.host",
+    protocol: "blossom",
+    serverUrl: "https://files.sovbit.host",
+    capabilities: {
+        ...DEFAULT_UPLOAD_CAPABILITIES,
+        supportedMimeTypes: ["image/*", "video/*"],
+    },
+};
+
+export function isFilesSovbitUploadEndpoint(value: string): boolean {
+    try {
+        const url = new URL(value).toString().replace(/\/$/, "");
+        return [FILES_SOVBIT_PRESET.serverUrl, `${FILES_SOVBIT_PRESET.serverUrl}/upload`,
+            `${FILES_SOVBIT_PRESET.serverUrl}/api/v2/media`].includes(url);
+    } catch {
+        return false;
+    }
+}
+
+export function normalizeLegacySovbitDestination(destination: UploadDestination): UploadDestination {
+    if (destination.protocol !== "nip96" || !isFilesSovbitUploadEndpoint(destination.serverUrl)
+        || (destination.resolvedUploadUrl && !isFilesSovbitUploadEndpoint(destination.resolvedUploadUrl))
+        || (destination.nip96ServerUrl && !isFilesSovbitUploadEndpoint(destination.nip96ServerUrl))) {
+        return destination;
+    }
+    const { resolvedUploadUrl: _uploadUrl, nip96ServerUrl: _serverUrl, nip96UrlMode: _mode, ...rest } = destination;
+    return {
+        ...rest,
+        name: FILES_SOVBIT_PRESET.name,
+        protocol: "blossom",
+        serverUrl: FILES_SOVBIT_PRESET.serverUrl,
+        presetId: FILES_SOVBIT_PRESET.id,
+        capabilities: { ...FILES_SOVBIT_PRESET.capabilities,
+            supportedMimeTypes: [...FILES_SOVBIT_PRESET.capabilities.supportedMimeTypes] },
+        auth: { type: "blossom-bud11" },
+    };
+}
+
 const NIP96_PRESET_IDS: Record<string, UploadPresetId> = {
     "https://nostr.build/api/v2/nip96/upload": "nostr-build",
     "https://share.yabu.me/api/v2/media": "share-yabu-me",
     "https://nostpic.com/api/v2/media": "nostpic-com",
     "https://nostrcheck.me/api/v2/media": "nostrcheck-me",
-    "https://files.sovbit.host/api/v2/media": "files-sovbit-host",
 };
 
 const NIP96_DIRECT_UPLOAD_URLS: Record<string, string> = {
@@ -38,7 +77,6 @@ const NIP96_DIRECT_UPLOAD_URLS: Record<string, string> = {
     "https://nostrcheck.me/api/v2/media": "https://cdn.nostrcheck.me/",
     "https://nostr.build/api/v2/nip96/upload": "https://nostr.build/api/v2/nip96/upload",
     "https://nostpic.com/api/v2/media": "https://nostpic.com/api/v2/media",
-    "https://files.sovbit.host/api/v2/media": "https://files.sovbit.host/upload",
 };
 
 function createNip96Preset(endpointUrl: string): UploadDestinationPreset {
@@ -157,7 +195,7 @@ export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
     },
     createNip96Preset("https://nostr.build/api/v2/nip96/upload"),
     createNip96Preset("https://nostpic.com/api/v2/media"),
-    createNip96Preset("https://files.sovbit.host/api/v2/media"),
+    FILES_SOVBIT_PRESET,
 ];
 
 export function createUploadDestinationId(): string {
@@ -187,10 +225,11 @@ export function normalizeServerUrl(url: string): string {
 
 export function findUploadPresetByEndpoint(endpoint: string | null | undefined): UploadDestinationPreset | null {
     if (!endpoint) return null;
+    if (isFilesSovbitUploadEndpoint(endpoint)) return FILES_SOVBIT_PRESET;
     const normalizedEndpoint = normalizeServerUrl(endpoint);
 
     const serverUrlMatch = UPLOAD_DESTINATION_PRESETS.find((preset) =>
-        normalizeServerUrl(preset.serverUrl) === normalizedEndpoint,
+        preset !== FILES_SOVBIT_PRESET && normalizeServerUrl(preset.serverUrl) === normalizedEndpoint,
     );
     if (serverUrlMatch) return serverUrlMatch;
 

@@ -127,7 +127,7 @@ describe("integrated upload relay synchronization", () => {
         expect(transport.publishRelayServerList.mock.calls.map(([params]) => params.kind)).toEqual([10063]);
         expect(vi.getTimerCount()).toBe(0);
     });
-    it.each(["share-yabu-me", "nostrcheck-me", "nostr-build", "nostpic-com", "files-sovbit-host"])("publishes the verified server rather than the %s direct API", async id => {
+    it.each(["share-yabu-me", "nostrcheck-me", "nostr-build", "nostpic-com"])("publishes the verified server rather than the %s direct API", async id => {
         const c = context();
         const preset = UPLOAD_DESTINATION_PRESETS.find(preset => preset.id === id)!;
         const destination = createUploadDestinationFromPreset({ preset });
@@ -146,6 +146,20 @@ describe("integrated upload relay synchronization", () => {
         expect(result.blossom.status).toBe("failed");
         expect(result.nip96.status).toBe("success");
         expect(getSigner).toHaveBeenCalledTimes(2);
+    });
+    it.each([false, true])("publishes Sovbit only in the Blossom list (legacy NIP-96: %s)", async legacy => {
+        const c = context();
+        const preset = UPLOAD_DESTINATION_PRESETS.find(preset => preset.id === "files-sovbit-host")!;
+        const destination = createUploadDestinationFromPreset({ preset });
+        if (legacy) Object.assign(destination, { protocol: "nip96", serverUrl: "https://files.sovbit.host/api/v2/media",
+            resolvedUploadUrl: "https://files.sovbit.host/upload", auth: { type: "nip98" } });
+        const result = await publishUploadRelayLists({ ...c, destinations: [destination], getSigner: async () => ({} as never) });
+        expect(result.blossom.status).toBe("success");
+        expect(result.nip96.status).toBe("skipped");
+        expect(c.fetch).not.toHaveBeenCalled();
+        expect(transport.publishRelayServerList).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+            kind: 10063, servers: ["https://files.sovbit.host"],
+        }));
     });
     it("does not publish an incomplete NIP-96 list when one API does not match discovery", async () => {
         const c = context();

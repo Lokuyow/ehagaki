@@ -181,7 +181,9 @@ for (const lang of ["ja", "en"] as const) {
             await expect(protocol).toHaveCount(0);
             await expect(save).toBeEnabled();
             expect(await preset.locator("option").evaluateAll(options => options.map(option => (option as HTMLOptionElement).value)))
-                .toEqual(["blossom-band", "cdn-nostrcheck-me", "nostr-download", "blossom-primal-net", "nostr-build", "nostrcheck-me", "share-yabu-me", "nostpic-com", "files-sovbit-host", "custom"]);
+                .toEqual(["blossom-band", "cdn-nostrcheck-me", "nostr-download", "blossom-primal-net", "files-sovbit-host", "nostr-build", "nostrcheck-me", "share-yabu-me", "nostpic-com", "custom"]);
+            await expect(preset.locator('optgroup[label="Blossom"] option[value="files-sovbit-host"]')).toHaveCount(1);
+            await expect(preset.locator('optgroup[label="NIP-96"] option[value="files-sovbit-host"]')).toHaveCount(0);
             await preset.focus();
             await preset.press("Tab");
             await expect(root.getByRole("checkbox", { name: lang === "ja" ? "有効" : "Enabled", exact: true })).toBeFocused();
@@ -219,6 +221,13 @@ for (const lang of ["ja", "en"] as const) {
             await expect(protocol).toHaveValue("blossom");
             await expect(input).toHaveValue("");
             await assertLayout();
+            await preset.selectOption("files-sovbit-host");
+            await expect(protocol).toHaveCount(0);
+            await expect(input).toHaveCount(0);
+            await save.click();
+            const sovbit = root.locator(".destination-row").filter({ hasText: "files.sovbit.host" });
+            await expect(sovbit).toContainText("blossom");
+            if (lang === "ja") await page.screenshot({ path: testInfo.outputPath("sovbit-blossom-preset.png"), fullPage: true });
         });
     }
 }

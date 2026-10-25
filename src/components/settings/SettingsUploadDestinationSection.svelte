@@ -66,6 +66,7 @@
         "cdn-nostrcheck-me",
         "nostr-download",
         "blossom-primal-net",
+        "files-sovbit-host",
     ];
 
     const nip96PresetIds: UploadPresetId[] = [
@@ -73,7 +74,6 @@
         "nostrcheck-me",
         "share-yabu-me",
         "nostpic-com",
-        "files-sovbit-host",
     ];
 
     const blossomPresetOptions = blossomPresetIds.map(

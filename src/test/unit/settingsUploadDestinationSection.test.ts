@@ -459,7 +459,6 @@ describe("SettingsUploadDestinationSection", () => {
         ["nostrcheck-me", "nostrcheck.me", "https://nostrcheck.me/api/v2/media", "https://cdn.nostrcheck.me/"],
         ["nostr-build", "nostr.build", "https://nostr.build/api/v2/nip96/upload", "https://nostr.build/api/v2/nip96/upload"],
         ["nostpic-com", "nostpic.com", "https://nostpic.com/api/v2/media", "https://nostpic.com/api/v2/media"],
-        ["files-sovbit-host", "files.sovbit.host", "https://files.sovbit.host/api/v2/media", "https://files.sovbit.host/upload"],
     ])("saves %s with its fixed identity and direct NIP-96 endpoint", async (presetId, name, serverUrl, resolvedUploadUrl) => {
         render(SettingsUploadDestinationSection);
         await openAddForm();
@@ -474,6 +473,21 @@ describe("SettingsUploadDestinationSection", () => {
             resolvedUploadUrl,
             presetId,
         }));
+    });
+
+    it("saves Sovbit as a Blossom preset without NIP-96 metadata", async () => {
+        render(SettingsUploadDestinationSection);
+        await openAddForm();
+        const select = screen.getByLabelText("プリセット") as HTMLSelectElement;
+        expect(select.querySelector('optgroup[label="Blossom"] option[value="files-sovbit-host"]')).not.toBeNull();
+        expect(select.querySelector('optgroup[label="NIP-96"] option[value="files-sovbit-host"]')).toBeNull();
+        await fireEvent.change(select, { target: { value: "files-sovbit-host" } });
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+        const saved = getSavedDestination();
+        expect(saved).toMatchObject({ presetId: "files-sovbit-host", name: "files.sovbit.host",
+            protocol: "blossom", serverUrl: "https://files.sovbit.host", auth: { type: "blossom-bud11" } });
+        expect(saved).not.toHaveProperty("resolvedUploadUrl");
+        expect(saved).not.toHaveProperty("nip96ServerUrl");
     });
 
     it("does not retain a preset direct endpoint after a user edits the server URL", async () => {

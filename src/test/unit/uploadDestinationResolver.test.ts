@@ -156,4 +156,43 @@ describe("uploadDestinationResolver", () => {
         expect(destination).not.toHaveProperty("resolvedUploadUrl");
         expect(destination.protocol).toBe("custom-http");
     });
+
+    it.each(["https://files.sovbit.host", "https://files.sovbit.host/api/v2/media", "https://files.sovbit.host/upload/"])(
+        "uses Blossom for a saved Sovbit NIP-96 destination at %s", (serverUrl) => {
+            const legacy = createNip96Destination({ id: "saved-sovbit", pubkeyHex, serverUrl, presetId: "files-sovbit-host",
+                resolvedUploadUrl: "https://files.sovbit.host/upload", nip96ServerUrl: "https://files.sovbit.host",
+                nip96UrlMode: "discovery", enabled: false, sortIndex: 7,
+                capabilities: { ...createNip96Destination().capabilities, source: "protocol-discovery", raw: { api_url: "old" } } });
+            const resolved = resolveUploadDestinationForUse(legacy, { pubkeyHex });
+            expect(resolved).toMatchObject({ id: legacy.id, pubkeyHex, name: "files.sovbit.host", protocol: "blossom",
+                serverUrl: "https://files.sovbit.host", presetId: "files-sovbit-host", enabled: false,
+                isDefault: true, sortIndex: 7, createdAt: legacy.createdAt, updatedAt: legacy.updatedAt,
+                auth: { type: "blossom-bud11" }, capabilities: { source: "preset" } });
+            expect(resolved.capabilities).not.toHaveProperty("raw");
+            for (const key of ["resolvedUploadUrl", "nip96ServerUrl", "nip96UrlMode"]) expect(resolved).not.toHaveProperty(key);
+            expect(legacy.protocol).toBe("nip96");
+            expect(resolveUploadDestinationForUse(resolved, { pubkeyHex })).toEqual(resolved);
+        },
+    );
+
+    it.each([
+        { serverUrl: "https://files.sovbit.host/upload?custom=1" },
+        { serverUrl: "https://files.sovbit.host/upload#custom" },
+        { serverUrl: "https://user@files.sovbit.host/upload" },
+        { serverUrl: "http://files.sovbit.host/upload" },
+        { serverUrl: "https://files.sovbit.host/other-api" },
+        { serverUrl: "https://files.sovbit.host.evil.example/upload" },
+        { resolvedUploadUrl: "https://custom.example/upload" },
+        { nip96ServerUrl: "https://custom.example" },
+    ])("preserves edited or invalid Sovbit destinations for normal validation (%j)", (overrides) => {
+        const destination = createNip96Destination({ presetId: "files-sovbit-host", serverUrl: "https://files.sovbit.host",
+            resolvedUploadUrl: "https://files.sovbit.host/upload", ...overrides });
+        expect(resolveUploadDestinationForUse(destination, {})).toEqual(destination);
+    });
+
+    it("does not change an explicit Sovbit Custom HTTP destination to Blossom", () => {
+        const destination = createNip96Destination({ protocol: "custom-http", presetId: "custom",
+            serverUrl: "https://files.sovbit.host/upload", resolvedUploadUrl: undefined });
+        expect(resolveUploadDestinationForUse(destination, {})).toEqual(destination);
+    });
 });

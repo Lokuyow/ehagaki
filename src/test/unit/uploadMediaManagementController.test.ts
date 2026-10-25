@@ -4,6 +4,7 @@ import { UploadMediaError, type UploadMediaPage, type UploadMediaListParams, typ
 import type { UploadProtocolAdapter } from "../../lib/types/upload";
 import { mediaAuth, mediaDestination, mediaHash, mediaItem, mediaPage, mediaPubkey } from "../uploadMediaManagementTestUtils";
 import { createDeferred } from "../deferredTestUtils";
+import { BlossomUploadAdapter } from "../../lib/upload/BlossomUploadAdapter";
 
 function setup(loadDestinations?: (pubkey: string) => Promise<ReturnType<typeof mediaDestination>[]>) {
     let view = emptyUploadMediaManagementView();
@@ -22,6 +23,31 @@ async function loaded(s: ReturnType<typeof setup>) {
     await vi.waitFor(() => expect(s.view.current?.loaded).toBe(true));
 }
 describe("uploaded-media operation ownership", () => {
+    it("lists and deletes saved Sovbit NIP-96 media through Blossom with the same destination ID", async () => {
+        const destination = { ...mediaDestination("nip96", "saved-sovbit"), presetId: "files-sovbit-host" as const,
+            serverUrl: "https://files.sovbit.host/api/v2/media", resolvedUploadUrl: "https://files.sovbit.host/upload" };
+        const url = `https://files.sovbit.host/${mediaHash}.png`;
+        const authService = mediaAuth();
+        const fetch = vi.fn(async (_url: string, init?: RequestInit) => init?.method === "DELETE"
+            ? new Response(null, { status: 204 }) : Response.json([{ url, sha256: mediaHash, type: "image/png", size: 10, uploaded: 123 }]));
+        const getAdapter = vi.fn(() => new BlossomUploadAdapter());
+        const evictImages = vi.fn(async () => true);
+        let view = emptyUploadMediaManagementView();
+        const controller = new UploadMediaManagementController({ auth: { value: { isAuthenticated: true, pubkey: mediaPubkey } },
+            fetch: fetch as typeof globalThis.fetch, getAdapter, createAuth: () => authService, evictImages,
+            onChange: next => { view = next; } });
+        controller.configure(mediaPubkey, [destination]);
+        await vi.waitFor(() => expect(view.current?.loaded).toBe(true));
+        expect(getAdapter).toHaveBeenCalledWith("blossom");
+        expect(fetch.mock.calls[0][0]).toBe(`https://files.sovbit.host/list/${mediaPubkey}?limit=24`);
+        expect(view.current?.items).toMatchObject([{ destinationId: destination.id, protocol: "blossom", url }]);
+        expect(await controller.delete(view.current!.items[0].id)).toBe(true);
+        expect(fetch.mock.calls[1]).toEqual([`https://files.sovbit.host/${mediaHash}`, expect.objectContaining({ method: "DELETE" })]);
+        expect(authService.createBlossomManagementAuthorization).toHaveBeenCalledWith(expect.objectContaining({ action: "list", serverUrl: "https://files.sovbit.host" }));
+        expect(authService.createBlossomManagementAuthorization).toHaveBeenCalledWith(expect.objectContaining({ action: "delete", sha256: mediaHash }));
+        expect(authService.buildAuthHeader).not.toHaveBeenCalled();
+        expect(evictImages).toHaveBeenCalledWith([url]);
+    });
     it("loads saved destinations only on activation and rejects an old local configuration read", async () => {
         const gate = createDeferred<ReturnType<typeof mediaDestination>[]>();
         const read = vi.fn().mockReturnValueOnce(gate.promise).mockResolvedValue([mediaDestination()]);
