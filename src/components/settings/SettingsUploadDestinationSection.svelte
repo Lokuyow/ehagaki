@@ -953,7 +953,7 @@
     .relay-sync-toolbar {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 10px;
         min-width: 0;
         white-space: nowrap;
     }
