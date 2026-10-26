@@ -117,7 +117,7 @@ test("fetches both lists on the first attempt after a cold NIP-42 handshake", as
         await page.getByRole("button", { name: "取得", exact: true }).click();
         await expect.poll(() => releaseAuth !== undefined).toBe(true);
         await page.clock.runFor(5_000);
-        await expect(page.getByRole("button", { name: "リレー取得中", exact: true })).toBeDisabled();
+        await expect(page.getByRole("button", { name: "取得中", exact: true })).toBeDisabled();
         releaseAuth!();
         await expect(page.getByRole("status")).toContainText("リレー同期に成功しました");
         expect(requests.sort()).toEqual([10063, 10063, 10096, 10096]);
@@ -153,7 +153,7 @@ test("fetches from an untouched default after cold NIP-11 initialization", async
     await page.getByRole("button", { name: "取得", exact: true }).click();
     await page.clock.runFor(5_000);
     expect(requests).toEqual([]);
-    await expect(page.getByRole("button", { name: "リレー取得中", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "取得中", exact: true })).toBeDisabled();
     await releaseInfo();
     await expect.poll(() => requests.length).toBe(2);
     await expect(page.getByRole("status")).toContainText("NIP-96: 成功");
@@ -174,6 +174,14 @@ for (const lang of ["ja", "en"] as const) {
             const protocol = root.getByRole("combobox", { name: "Protocol", exact: true });
             const input = root.getByLabel("URL", { exact: true });
             const save = root.getByRole("button", { name: lang === "ja" ? "保存" : "Save", exact: true });
+            await expect(preset).toBeFocused();
+            expect(await root.locator(".destination-form").evaluate(form => {
+                const panel = form.closest(".upload-panel")!;
+                const heading = panel.querySelector(".list-heading")!.getBoundingClientRect();
+                const list = panel.querySelector(".destination-list")!.getBoundingClientRect();
+                const rect = form.getBoundingClientRect();
+                return heading.bottom <= rect.top && rect.bottom <= list.top;
+            })).toBe(true);
             const assertLayout = async () => {
                 const layout = await root.locator(".destination-form").evaluate(form => {
                     const rect = form.getBoundingClientRect();
@@ -201,7 +209,10 @@ for (const lang of ["ja", "en"] as const) {
             await preset.focus();
             await preset.press("Tab");
             await expect(root.getByRole("checkbox", { name: lang === "ja" ? "有効" : "Enabled", exact: true })).toBeFocused();
-            await assertLayout();
+            for (const width of [300, 320, 360]) {
+                await page.setViewportSize({ width, height: 1000 });
+                await assertLayout();
+            }
             if (lang === "ja") await page.screenshot({ path: testInfo.outputPath("upload-preset-form.png"), fullPage: true });
 
             await preset.selectOption("share-yabu-me");

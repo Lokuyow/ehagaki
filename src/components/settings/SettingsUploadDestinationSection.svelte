@@ -551,6 +551,9 @@
                     </Button>
                 {/if}
             </div>
+            {#if editing && !editingTargetId}
+                {@render destinationForm()}
+            {/if}
             <div class="destination-list" role="list" aria-label={$_("settingsDialog.uploadDestinationServers")}>
                 {#each destinationState.destinations as destination, index (destination.id)}
                     <div class="destination-row" role="listitem" data-destination-id={destination.id}>
@@ -639,9 +642,6 @@
                     </div>
                 {/each}
             </div>
-            {#if editing && !editingTargetId}
-                {@render destinationForm()}
-            {/if}
             {#if !editing}
                 <section class="relay-sync-section" aria-labelledby={panelId + "-relay-heading"}>
                     <div class="relay-sync-toolbar">
