@@ -175,6 +175,10 @@ for (const lang of ["ja", "en"] as const) {
             const input = root.getByLabel("URL", { exact: true });
             const save = root.getByRole("button", { name: lang === "ja" ? "保存" : "Save", exact: true });
             await expect(preset).toBeFocused();
+            expect(await preset.evaluate(select => {
+                const style = getComputedStyle(select);
+                return style.outlineColor === style.color;
+            })).toBe(true);
             expect(await root.locator(".destination-form").evaluate(form => {
                 const panel = form.closest(".upload-panel")!;
                 const heading = panel.querySelector(".list-heading")!.getBoundingClientRect();

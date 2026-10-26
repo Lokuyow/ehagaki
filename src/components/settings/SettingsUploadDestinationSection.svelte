@@ -1162,9 +1162,13 @@
         font-size: 1rem;
     }
 
-    input:focus-visible,
-    select:focus-visible {
+    input:focus-visible {
         outline: 2px solid var(--theme);
+        outline-offset: -1px;
+    }
+
+    select:focus-visible {
+        outline: 2px solid currentColor;
         outline-offset: -1px;
     }
 </style>
