@@ -33,7 +33,7 @@ const translations = {
             uploadDestinationBlossomTestInfoNoUpload: "Blossomの接続テストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。",
             uploadDestinationBlossomTestInfoAuthorization: "Blossom の仕様上、確認に必要な署名で upload 権限が要求される場合があります。",
             uploadDestinationTesting: "確認中",
-            uploadDestinationSetDefault: "既定にする",
+            uploadDestinationSetDefault: "使用する",
             uploadDestinationMoveUp: "Up",
             uploadDestinationMoveDown: "Down",
             uploadDestinationRelayFetching: "取得中",
@@ -46,7 +46,8 @@ const translations = {
             uploadDestinationRelayInfoFetch: "BUD-03 の説明",
             uploadDestinationUnknown: "未確認",
             uploadDestinationNone: "未設定",
-            uploadDestinationDefault: "既定",
+            uploadDestinationDefault: "使用先にする",
+            uploadDestinationInUse: "使用中",
             uploadDestinationDisabled: "無効",
             uploadDestinationMimeCollapse: "折りたたむ",
             uploadDestinationMimeExpand: "すべて表示",
@@ -82,7 +83,7 @@ const translations = {
             uploadDestinationBlossomTestInfoNoUpload: "Blossom connection tests do not upload an actual file; they check upload availability with HEAD /upload.",
             uploadDestinationBlossomTestInfoAuthorization: "Under the Blossom protocol, the authorization request may ask you to sign the upload permission needed for this check.",
             uploadDestinationTesting: "Testing",
-            uploadDestinationSetDefault: "Set as default",
+            uploadDestinationSetDefault: "Use",
             uploadDestinationMoveUp: "Up",
             uploadDestinationMoveDown: "Down",
             uploadDestinationRelayFetching: "Fetching…",
@@ -95,7 +96,8 @@ const translations = {
             uploadDestinationRelayInfoFetch: "BUD-03 info",
             uploadDestinationUnknown: "Unknown",
             uploadDestinationNone: "None",
-            uploadDestinationDefault: "Default",
+            uploadDestinationDefault: "Use for uploads",
+            uploadDestinationInUse: "In use",
             uploadDestinationDisabled: "Disabled",
             uploadDestinationMimeCollapse: "Collapse",
             uploadDestinationMimeExpand: "Show all",
@@ -721,7 +723,7 @@ describe("SettingsUploadDestinationSection", () => {
         const list = screen.getByRole("list", { name: lang === "ja" ? "サーバー一覧" : "Servers" });
         expect(screen.queryByRole("button", { name: lang === "ja" ? "Blossom 接続テストの説明" : "About the Blossom connection test" })).toBeNull();
         expect(within(list).getByText("share.yabu.me")).toBeTruthy();
-        expect(within(list).getByText(lang === "ja" ? "既定" : "Default")).toBeTruthy();
+        expect(within(list).getByText(lang === "ja" ? "使用中" : "In use")).toBeTruthy();
         expect(within(list).getByText(lang === "ja" ? "無効" : "Disabled")).toBeTruthy();
         expect(list.textContent).toContain("NIP-96");
         expect(list.textContent).toContain("10 MB");
@@ -741,13 +743,13 @@ describe("SettingsUploadDestinationSection", () => {
         await fireEvent.click(screen.getByRole("button", { name: "管理" }));
         const menu = await openDestinationMenu();
         expect(within(menu).getAllByRole("menuitem").map(item => item.textContent?.trim()))
-            .toEqual(["既定にする", "編集", "Up", "Down", "削除"]);
-        for (const name of ["既定にする", "Up", "Down", "削除"]) {
+            .toEqual(["使用する", "編集", "Up", "Down", "削除"]);
+        for (const name of ["使用する", "Up", "Down", "削除"]) {
             expect(within(menu).getByRole("menuitem", { name }).hasAttribute("data-disabled")).toBe(true);
         }
     });
 
-    it.each(["既定にする", "Up", "Down", "削除"])("routes %s to the original store action and account", async action => {
+    it.each(["使用する", "Up", "Down", "削除"])("routes %s to the original store action and account", async action => {
         testAuth.isAuthenticated = true; testAuth.pubkey = "owner";
         setExistingNip96Destination();
         const base = mockUploadDestinationStore.value.destinations[0] as UploadDestination;
@@ -756,7 +758,7 @@ describe("SettingsUploadDestinationSection", () => {
         render(SettingsUploadDestinationSection);
         await fireEvent.click(screen.getByRole("button", { name: "管理" }));
         await selectDestinationAction(action, 1);
-        if (action === "既定にする") expect(mockUploadDestinationStore.setDefault).toHaveBeenCalledWith("server-1", "owner");
+        if (action === "使用する") expect(mockUploadDestinationStore.setDefault).toHaveBeenCalledWith("server-1", "owner");
         else if (action === "削除") expect(mockUploadDestinationStore.delete).toHaveBeenCalledWith("server-1", "owner");
         else expect(mockUploadDestinationStore.move).toHaveBeenCalledWith("server-1", action === "Up" ? "up" : "down", "owner");
     });

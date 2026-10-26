@@ -357,7 +357,7 @@ test("Full upload destination controls remain accessible at 320px and 360px (" +
         await trigger.click();
         const menu = composer.getByRole("menu");
         await expect(menu.getByRole("menuitem")).toHaveCount(5);
-        await expect(menu.getByRole("menuitem", { name: lang === "ja" ? "既定にする" : "Set as default", exact: true })).toBeDisabled();
+        await expect(menu.getByRole("menuitem", { name: lang === "ja" ? "使用する" : "Use", exact: true })).toBeDisabled();
         const menuRect = await menu.boundingBox();
         expect(menuRect!.x).toBeGreaterThanOrEqual(bounds!.x - 1);
         expect(menuRect!.x + menuRect!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width + 1);

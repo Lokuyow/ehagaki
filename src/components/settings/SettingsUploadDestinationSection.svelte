@@ -460,7 +460,7 @@
                 <input type="checkbox" bind:checked={form.isDefault} />
                 <span
                     >{$_("settingsDialog.uploadDestinationDefault") ||
-                        "既定"}</span
+                        "使用先にする"}</span
                 >
             </label>
         </div>
@@ -568,7 +568,7 @@
                                 <div class="destination-title">
                                     <span class="destination-name">{destination.name}</span>
                                     {#if destination.isDefault}
-                                        <span class="badge default-badge">{$_("settingsDialog.uploadDestinationDefault")}</span>
+                                        <span class="badge default-badge">{$_("settingsDialog.uploadDestinationInUse")}</span>
                                     {/if}
                                     {#if !destination.enabled}
                                         <span class="badge muted">{$_("settingsDialog.uploadDestinationDisabled")}</span>
