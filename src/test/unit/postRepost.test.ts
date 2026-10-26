@@ -12,6 +12,7 @@ import { PostHistoryLocalSearchService } from "../../lib/postHistoryLocalSearchS
 import { DexiePostHistoryAuthoredSyncStateRepository } from "../../lib/storage/postHistoryAuthoredSyncStateRepository";
 import { DexiePostHistoryDeletionRequestsRepository } from "../../lib/storage/postHistoryDeletionRequestsRepository";
 import { createPostHistoryRelatedTargetResolver } from "../../lib/postHistoryRelatedTargetResolver.svelte";
+import type { PostHistoryDeletionFetchResult, PostHistoryDeletionFetchTask } from "../../lib/postHistoryDeletionFetchService";
 import type { AuthState, NostrEvent } from "../../lib/types";
 import { createPlainNostrEventSnapshot } from "../../lib/postHistoryEventUtils";
 import { DexiePostHistoryVisibleRangeRepository } from "../../lib/storage/postHistoryVisibleRangeRepository";
@@ -500,17 +501,121 @@ describe("single related-target resolver for Reposts", () => {
             await ehagakiDb.postHistory.bulkDelete([good.id, bad.id]);
         }
     });
-    function resolverFor(target: NostrEvent, deleted = new Map<string, Set<string>>()) {
+    function resolverFor(target: NostrEvent, deleted = new Map<string, Set<string>>(),
+        deletions?: Pick<DexiePostHistoryDeletionRequestsRepository, "getDeletedTargets" | "upsertValidDeletionRequests">) {
         const fetch = vi.fn(() => ({ promise: Promise.resolve({ event: target, relayUrl: relay }), cancel: vi.fn() }));
-        const resolver = createPostHistoryRelatedTargetResolver({ getShow: () => true, getRxNostr: () => ({} as never),
+        const runtime = {} as never;
+        const fetchDeletionRequests = vi.fn<() => PostHistoryDeletionFetchTask>(() => ({
+            promise: Promise.resolve({ status: "success", events: [], fetchedAt: 0, relayUrls: [] }), cancel: vi.fn(),
+        }));
+        const resolver = createPostHistoryRelatedTargetResolver({ getShow: () => true, getRxNostr: () => runtime,
             getRelayConfig: () => null, postHistoryRepositoryImpl: { getByEventId: async () => null },
             contextFetchService: { fetchEventById: fetch },
             profileSyncCoordinator: { ensureProfile: () => null, subscribe: () => () => undefined, reset: () => undefined } as never,
-            deletionRequestsRepositoryImpl: { getDeletedTargets: async () => deleted, upsertValidDeletionRequests: vi.fn() },
-            deletionFetchService: { fetchDeletionRequests: () => ({ promise: Promise.resolve({ status: "success" as const, events: [], fetchedAt: 0, relayUrls: [] }), cancel: () => undefined }) } });
+            deletionRequestsRepositoryImpl: deletions ?? { getDeletedTargets: async () => deleted, upsertValidDeletionRequests: vi.fn() },
+            deletionFetchService: { fetchDeletionRequests } });
         const descriptor = { targetEventId: target.id, relationKind: "repost", scopeKey: "reposts", authorHint: target.pubkey };
-        return { resolver, fetch, descriptor };
+        return { resolver, fetch, descriptor, fetchDeletionRequests };
     }
+    function pendingDeletion() {
+        let complete!: (result: PostHistoryDeletionFetchResult) => void;
+        let reject!: (error: Error) => void;
+        const promise = new Promise<PostHistoryDeletionFetchResult>((resolve, fail) => { complete = resolve; reject = fail; });
+        return { complete, reject, task: { promise, cancel: vi.fn() } };
+    }
+    const emptyDeletionResult = (status: PostHistoryDeletionFetchResult["status"]): PostHistoryDeletionFetchResult =>
+        ({ status, events: [], fetchedAt: 200, relayUrls: [relay] });
+
+    it.each([1, 42, 1111])("resolves kind %s before deletion discovery and shares the pending fetch", async (kind) => {
+        const target = sign(kind); const { resolver, fetch, descriptor, fetchDeletionRequests } = resolverFor(target);
+        const deletion = pendingDeletion(); fetchDeletionRequests.mockReturnValue(deletion.task);
+        let snapshots: Awaited<ReturnType<typeof resolver.ensureTargets>> | undefined;
+        const loading = resolver.ensureTargets([descriptor, { ...descriptor, scopeKey: "another-repost" }])
+            .then(result => { snapshots = result; });
+        try {
+            await vi.waitFor(() => expect(snapshots?.map(snapshot => snapshot?.status)).toEqual(["resolved", "resolved"]));
+            expect(fetch).toHaveBeenCalledOnce();
+            expect(fetchDeletionRequests).toHaveBeenCalledOnce();
+            expect(resolver.getTargetSnapshot(target.id)?.event).toEqual(target);
+        } finally {
+            deletion.complete(emptyDeletionResult("success")); await loading; resolver.reset();
+        }
+    });
+    it("keeps a network target hidden when its deletion is already known locally", async () => {
+        const target = sign(); const deleted = new Map([[target.pubkey, new Set([target.id])]]);
+        const { resolver, descriptor, fetchDeletionRequests } = resolverFor(target, deleted);
+        try {
+            expect(await resolver.ensureTarget(descriptor)).toMatchObject({ status: "deleted", event: null });
+            expect(fetchDeletionRequests).not.toHaveBeenCalled();
+        } finally { resolver.reset(); }
+    });
+    it.each(["success", "timeout", "error", "reject"] as const)("keeps the resolved target after background deletion lookup %s", async (outcome) => {
+        const target = sign(); const { resolver, descriptor, fetchDeletionRequests } = resolverFor(target);
+        const deletion = pendingDeletion(); fetchDeletionRequests.mockReturnValue(deletion.task);
+        let resolved = false;
+        const loading = resolver.ensureTarget(descriptor).then(() => { resolved = true; });
+        try {
+            await vi.waitFor(() => expect(resolved).toBe(true));
+            if (outcome === "reject") deletion.reject(new Error("fixture transport failure"));
+            else deletion.complete(emptyDeletionResult(outcome));
+            await deletion.task.promise.catch(() => undefined);
+            expect(await resolver.ensureTarget(descriptor)).toMatchObject({ status: "resolved", event: target });
+        } finally { deletion.complete(emptyDeletionResult("success")); await loading; resolver.reset(); }
+    });
+    it("restarts cancelled deletion discovery when a refreshed listing reuses the resolved target", async () => {
+        const target = sign(); const { resolver, descriptor, fetch, fetchDeletionRequests } = resolverFor(target);
+        const first = pendingDeletion(); const second = pendingDeletion();
+        fetchDeletionRequests.mockReturnValueOnce(first.task).mockReturnValue(second.task);
+        try {
+            await resolver.ensureTarget(descriptor);
+            await vi.waitFor(() => expect(fetchDeletionRequests).toHaveBeenCalledOnce());
+            resolver.invalidateScope(descriptor.scopeKey);
+            expect(first.task.cancel).toHaveBeenCalledOnce();
+            expect(await resolver.ensureTarget(descriptor)).toMatchObject({ status: "resolved", event: target });
+            await vi.waitFor(() => expect(fetchDeletionRequests).toHaveBeenCalledTimes(2));
+            expect(fetch).toHaveBeenCalledOnce();
+            first.complete(emptyDeletionResult("success"));
+            second.complete(emptyDeletionResult("success"));
+        } finally {
+            first.complete(emptyDeletionResult("success")); second.complete(emptyDeletionResult("success")); resolver.reset();
+        }
+    });
+    it.each(["active", "invalidate", "reset"] as const)("handles a late verified deletion with scope %s", async (scope) => {
+        const key = generateSecretKey();
+        const target = createPlainNostrEventSnapshot(finalizeEvent({ kind: 1, content: "fixture", tags: [], created_at: 100 }, key));
+        const { db } = repository(); const deletions = new DexiePostHistoryDeletionRequestsRepository(db);
+        const { resolver, descriptor, fetchDeletionRequests } = resolverFor(target, undefined, deletions);
+        const pending = pendingDeletion(); fetchDeletionRequests.mockReturnValue(pending.task);
+        const deletion = createPlainNostrEventSnapshot(finalizeEvent({ kind: 5, content: "", tags: [["e", target.id]], created_at: 200 }, key));
+        let resolved = false;
+        const loading = resolver.ensureTarget(descriptor).then(() => { resolved = true; });
+        try {
+            await vi.waitFor(() => expect(resolved).toBe(true));
+            if (scope === "invalidate") resolver.invalidateScope(descriptor.scopeKey);
+            if (scope === "reset") resolver.reset();
+            if (scope !== "active") expect(pending.task.cancel).toHaveBeenCalledOnce();
+            pending.complete({ status: "success", events: [{ event: deletion, relayUrls: [relay] }], fetchedAt: 200, relayUrls: [relay] });
+            if (scope === "active") {
+                await vi.waitFor(() => expect(resolver.getTargetSnapshot(target.id)).toMatchObject({ status: "deleted", event: null }));
+                expect(await db.postHistoryDeletionRequests.count()).toBe(1);
+            } else {
+                await pending.task.promise;
+                expect(await db.postHistoryDeletionRequests.count()).toBe(0);
+                expect(resolver.getTargetSnapshot(target.id)?.status ?? null).toBe(scope === "reset" ? null : "resolved");
+            }
+        } finally { pending.complete(emptyDeletionResult("success")); await loading; resolver.reset(); }
+    });
+    it("still waits for network deletion discovery for a quote", async () => {
+        const target = sign(); const { resolver, descriptor, fetchDeletionRequests } = resolverFor(target);
+        const deletion = pendingDeletion(); fetchDeletionRequests.mockReturnValue(deletion.task);
+        const loading = resolver.ensureTarget({ ...descriptor, relationKind: "quote", authorHint: null });
+        try {
+            await vi.waitFor(() => expect(fetchDeletionRequests).toHaveBeenCalledOnce());
+            expect(resolver.getTargetSnapshot(target.id)?.status).toBe("loading");
+            deletion.complete(emptyDeletionResult("success"));
+            expect(await loading).toMatchObject({ status: "resolved", event: target });
+        } finally { deletion.complete(emptyDeletionResult("success")); await loading; resolver.reset(); }
+    });
     it("deduplicates target fetching and validates the candidate independently of author hints", async () => {
         const target = sign(); const { resolver, fetch, descriptor } = resolverFor(target);
         const [first, second] = await Promise.all([resolver.ensureTarget({ ...descriptor, authorHint: "f".repeat(64) }), resolver.ensureTarget(descriptor)]);

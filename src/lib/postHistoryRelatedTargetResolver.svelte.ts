@@ -465,6 +465,13 @@ export function createPostHistoryRelatedTargetResolver({
                         snapshotsByTargetId[descriptor.targetEventId]?.relayHints
                             ?? existingBeforeMerge.relayHints,
                     );
+                    // A listing refresh can replace the watching scope and cancel
+                    // its background check while retaining the resolved snapshot.
+                    if (descriptor.relationKind === "repost" && !repostPreparation && existingBeforeMerge.event) {
+                        void runDeletionCheck(existingBeforeMerge.event,
+                            snapshotsByTargetId[descriptor.targetEventId]?.relayHints ?? existingBeforeMerge.relayHints,
+                            { background: true });
+                    }
                 }
                 return snapshotsByTargetId[descriptor.targetEventId] ?? existingBeforeMerge;
             }
@@ -677,6 +684,9 @@ export function createPostHistoryRelatedTargetResolver({
                 const deletedAfterResolve = !repostPreparation && await runDeletionCheck(
                     resolvedEvent,
                     resolvedRelayHints,
+                    // Reposts wait only for known local deletions before showing
+                    // the verified target; relay discovery can update it later.
+                    { background: descriptor.relationKind === "repost" },
                 );
                 if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
                     return snapshotsByTargetId[descriptor.targetEventId] ?? null;
