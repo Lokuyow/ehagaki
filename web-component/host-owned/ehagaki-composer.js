@@ -1,6 +1,6 @@
 import { N as e, j as t } from "./assets/index-client-CTw9cD2v.js";
 import { r as n, t as r } from "./assets/appRuntimeEnvironment-BvtUCHcA.js";
-import { t as i } from "./assets/embedComposerContextValidation-pzWiu4ud.js";
+import { t as i } from "./assets/embedComposerContextValidation-CVqyj2Cc.js";
 // D:/ドキュメント/GitHub/ehagaki/src/web-component/types.ts
 var a = "ehagaki-composer", o = 1, s = Symbol.for("ehagaki-composer.distribution");
 function c(e, t) {
@@ -260,7 +260,7 @@ var C = class extends HTMLElement {
 				childList: !0,
 				subtree: !0
 			});
-			let { installEhagakiDatabaseGateForRuntime: p } = await import("./assets/ehagakiDbPageGate-phtR_PE-.js");
+			let { installEhagakiDatabaseGateForRuntime: p } = await import("./assets/ehagakiDbPageGate-DMgPLAun.js");
 			r({
 				storage: n(window.localStorage),
 				window,
@@ -484,7 +484,7 @@ var P = class extends C {
 		});
 	}
 	loadApp() {
-		return import("./assets/HostOwnedComposerLiteApp-xmnOGsVi.js").then((e) => e.t);
+		return import("./assets/HostOwnedComposerLiteApp-eQr0brR2.js").then((e) => e.t);
 	}
 	onConnectionAttempt() {
 		this.#r = !0, this.#a += 1, this.#i = null;
