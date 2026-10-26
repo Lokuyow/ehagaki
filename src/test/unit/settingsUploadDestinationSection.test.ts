@@ -33,7 +33,7 @@ const translations = {
             uploadDestinationBlossomTestInfoNoUpload: "Blossomの接続テストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。",
             uploadDestinationBlossomTestInfoAuthorization: "Blossom の仕様上、確認に必要な署名で upload 権限が要求される場合があります。",
             uploadDestinationTesting: "確認中",
-            uploadDestinationSetDefault: "使用する",
+            uploadDestinationSetDefault: "使用",
             uploadDestinationMoveUp: "Up",
             uploadDestinationMoveDown: "Down",
             uploadDestinationRelayFetching: "取得中",
@@ -743,13 +743,13 @@ describe("SettingsUploadDestinationSection", () => {
         await fireEvent.click(screen.getByRole("button", { name: "管理" }));
         const menu = await openDestinationMenu();
         expect(within(menu).getAllByRole("menuitem").map(item => item.textContent?.trim()))
-            .toEqual(["使用する", "編集", "Up", "Down", "削除"]);
-        for (const name of ["使用する", "Up", "Down", "削除"]) {
+            .toEqual(["使用", "編集", "Up", "Down", "削除"]);
+        for (const name of ["使用", "Up", "Down", "削除"]) {
             expect(within(menu).getByRole("menuitem", { name }).hasAttribute("data-disabled")).toBe(true);
         }
     });
 
-    it.each(["使用する", "Up", "Down", "削除"])("routes %s to the original store action and account", async action => {
+    it.each(["使用", "Up", "Down", "削除"])("routes %s to the original store action and account", async action => {
         testAuth.isAuthenticated = true; testAuth.pubkey = "owner";
         setExistingNip96Destination();
         const base = mockUploadDestinationStore.value.destinations[0] as UploadDestination;
@@ -758,7 +758,7 @@ describe("SettingsUploadDestinationSection", () => {
         render(SettingsUploadDestinationSection);
         await fireEvent.click(screen.getByRole("button", { name: "管理" }));
         await selectDestinationAction(action, 1);
-        if (action === "使用する") expect(mockUploadDestinationStore.setDefault).toHaveBeenCalledWith("server-1", "owner");
+        if (action === "使用") expect(mockUploadDestinationStore.setDefault).toHaveBeenCalledWith("server-1", "owner");
         else if (action === "削除") expect(mockUploadDestinationStore.delete).toHaveBeenCalledWith("server-1", "owner");
         else expect(mockUploadDestinationStore.move).toHaveBeenCalledWith("server-1", action === "Up" ? "up" : "down", "owner");
     });

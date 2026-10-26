@@ -348,7 +348,7 @@ for (const lang of ["ja", "en"] as const) {
             expect(resaved.find(destination => destination.protocol === "nip96")).toMatchObject({
                 serverUrl: "https://new-files.example/", nip96UrlMode: "discovery",
             });
-            await selectServerAction(nip96Card, root, lang === "ja" ? "使用する" : "Use");
+            await selectServerAction(nip96Card, root, lang === "ja" ? "使用" : "Use");
             expect(await documentRoot.evaluate(() => window.uploadRelayFixtureImage())).toBe(true);
             expect(uploaded).toBe(true);
             emptyBlossom = true;
@@ -396,7 +396,7 @@ for (const lang of ["ja", "en"] as const) for (const surface of ["page", "shadow
         const down = lang === "ja" ? "下へ" : "Down";
         const edit = lang === "ja" ? "編集" : "Edit";
         const remove = lang === "ja" ? "削除" : "Delete";
-        const defaultAction = lang === "ja" ? "使用する" : "Use";
+        const defaultAction = lang === "ja" ? "使用" : "Use";
         const assertFits = async (element: Locator) => {
             expect(await element.evaluate(node => {
                 const rect = node.getBoundingClientRect();
