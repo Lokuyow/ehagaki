@@ -412,7 +412,7 @@
     }
     :global(.uploaded-media-dialog button.media-copy-button:hover:not(:disabled) .svg-icon) { background-color: white; }
     .video-active :global(button.media-copy-button) { top: 52px; }
-    .media-overlay { position: absolute; inset: auto 0 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 4px; padding: 16px 4px 4px 8px; color: var(--text); background: linear-gradient(transparent, rgb(0 0 0 / 70%)); pointer-events: none; }
+    .media-overlay { position: absolute; inset: auto 0 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 4px; padding: 16px 4px 4px 8px; color: white; background: linear-gradient(transparent, rgb(0 0 0 / 70%)); pointer-events: none; }
     .media-metadata { min-width: 0; align-self: center; display: flex; flex-direction: column; font-size: .6875rem; line-height: 1.5; overflow-wrap: anywhere; text-shadow: 0 1px 2px rgb(0 0 0 / 70%); }
     .media-overlay :global(button) { pointer-events: auto; }
     /* Keep native video playback controls available beneath the overlay. */
