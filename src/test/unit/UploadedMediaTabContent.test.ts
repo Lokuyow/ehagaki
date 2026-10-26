@@ -57,6 +57,47 @@ beforeEach(() => {
         loaded: true, loading: false, error: null, support: "supported", hasMore: true, needsRefresh: false, deletingId: null, notice: null } };
 });
 describe("uploaded-media content", () => {
+    it.each(["https://nostr.build", "https://nostr.build/", "https://nostr.build/api/v2/nip96/upload", "https://nostr.build/api/v2/nip96/upload/"])("explains NIP-96 listing HTTP 405 for %s with actionable official links", async (serverUrl) => {
+        const current = mocked.view.current!;
+        current.destination = { ...mediaDestination("nip96"), serverUrl, name: "Renamed destination", presetId: "custom" };
+        current.error = new UploadMediaError("unavailable", 405);
+        current.loaded = false; current.items = [];
+        render(UploadedMediaTabContent, { show: true });
+        const help = await screen.findByRole("status");
+        expect(help.textContent).toContain("uploadedMedia.nostrBuild.unavailable");
+        expect(document.querySelector(".media-management")!.contains(help)).toBe(true);
+        for (const [key, url] of [["account", "https://account.nostr.build/"], ["deleteFree", "https://nostr.build/delete/"]]) {
+            const link = screen.getByRole("link", { name: `uploadedMedia.nostrBuild.${key}` });
+            expect(link.getAttribute("href")).toBe(url);
+            expect(link.getAttribute("target")).toBe("_blank");
+            expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+        }
+        expect(screen.queryByRole("alert")).toBeNull();
+        await fireEvent.click(screen.getByRole("button", { name: "uploadedMedia.refresh" }));
+        expect(mocked.controller.load).toHaveBeenCalledTimes(1);
+    });
+    it.each([
+        ["https://nostr.build.example/api/v2/nip96/upload", "nip96", "unavailable", 405],
+        ["https://other.example", "nip96", "unavailable", 405],
+        ["https://nostr.build/other-api", "nip96", "unavailable", 405],
+        ["http://nostr.build", "nip96", "unavailable", 405],
+        ["https://nostr.build:8443", "nip96", "unavailable", 405],
+        ["https://nostr.build", "blossom", "unavailable", 405],
+        ["https://nostr.build", "nip96", "unavailable", 404],
+        ["https://nostr.build", "nip96", "unavailable", undefined],
+        ["https://nostr.build", "nip96", "authentication", 401],
+        ["https://nostr.build", "nip96", "payment", 402],
+        ["https://nostr.build", "nip96", "forbidden", 403],
+        ["https://nostr.build", "nip96", "invalidResponse", 405],
+        ["https://nostr.build", "nip96", "serverError", 503],
+        ["https://nostr.build", "nip96", "network", undefined],
+    ] as const)("retains generic errors for %s (%s, %s/%s)", async (serverUrl, protocol, code, status) => {
+        mocked.view.current!.destination = { ...mediaDestination(protocol), serverUrl, name: "nostr.build", presetId: "nostr-build" };
+        mocked.view.current!.error = new UploadMediaError(code, status);
+        render(UploadedMediaTabContent, { show: true });
+        expect((await screen.findByRole("alert")).textContent).toContain(`uploadedMedia.errors.${code}`);
+        expect(screen.queryByRole("link", { name: "uploadedMedia.nostrBuild.account" })).toBeNull();
+    });
     it.each(["image", "video"] as const)("copies the original %s URL without opening media", async (kind) => {
         if (kind === "image") vi.mocked(supportsUploadMediaImageCache).mockResolvedValue(true);
         render(UploadedMediaTabContent, { show: true });

@@ -1,8 +1,15 @@
 import { expect, test, type Locator, type Page, type FrameLocator } from "@playwright/test";
 import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent, type EventTemplate } from "nostr-tools";
 import { checkMediaRegistration } from "./mediaRegistrationScenario";
+import { checkNostrBuildMediaHelp } from "./nostrBuildMediaScenario";
 
 test.use({ trace: "off" });
+
+for (const lang of ["ja", "en"] as const) for (const embedded of [false, true]) {
+    test(`nostr.build listing guidance (${lang}, ${embedded ? "iframe 320px" : "standalone 360px"})`, async ({ page }, testInfo) => {
+        await checkNostrBuildMediaHelp(page, testInfo, lang, embedded);
+    });
+}
 
 async function selectServerAction(row: Locator, root: Page | FrameLocator, name: string) {
     await row.getByRole("button", { name: /の操作$|^Actions for / }).click();

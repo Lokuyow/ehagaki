@@ -40,6 +40,16 @@
     const copyIconUrl = resolveAppAssetUrl("icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     let current = $derived(management.value.current);
     let isNostpic = $derived(!!current && /^https?:\/\/nostpic\.com(?::\d+)?(?:\/|$)/i.test(current.destination.serverUrl));
+    function isNostrBuildNip96Url(rawUrl: string): boolean {
+        try {
+            const url = new URL(rawUrl);
+            return url.origin === "https://nostr.build" && !url.username && !url.password && !url.search && !url.hash
+                && ["/", "/api/v2/nip96/upload"].includes(url.pathname.replace(/\/$/, "") || "/");
+        } catch { return false; }
+    }
+    const showNostrBuildHelp = $derived(current?.destination.protocol === "nip96"
+        && isNostrBuildNip96Url(current.destination.serverUrl)
+        && current.error?.code === "unavailable" && current.error.status === 405);
     let cacheSupported = $state<boolean | null>(null);
     let pending = $state<UploadedMediaItem | null>(null);
     let pendingEndpoint = $state<string | null>(null);
@@ -62,7 +72,7 @@
     const feedbackOwner = $derived([authState.value.pubkey, current?.destination.id, current?.destination.protocol,
         current?.destination.serverUrl, current?.destination.resolvedUploadUrl,
         current?.destination.nip96ServerUrl, current?.destination.nip96UrlMode].join("\n"));
-    const showFeedback = $derived(show && !pending && !deleting
+    const showFeedback = $derived(show && !pending && !deleting && !showNostrBuildHelp
         && !!((current?.error && !current.registration) || (current?.loading && current.loaded) || (mediaNotice && !noticeExpired)));
 
     $effect(() => {
@@ -244,6 +254,13 @@
                 {/if}
             </div>
             {#if current}
+                {#if showNostrBuildHelp}
+                    <div class="media-status nostr-build-help" role="status">
+                        <p>{$_("uploadedMedia.nostrBuild.unavailable")}</p>
+                        <a href="https://account.nostr.build/" target="_blank" rel="noopener noreferrer" tabindex="0">{$_("uploadedMedia.nostrBuild.account")}</a>
+                        <a href="https://nostr.build/delete/" target="_blank" rel="noopener noreferrer" tabindex="0">{$_("uploadedMedia.nostrBuild.deleteFree")}</a>
+                    </div>
+                {/if}
                 {#if current.registration}
                     {#key feedbackOwner}
                         <UploadServerRegistration registration={current.registration}
@@ -353,6 +370,9 @@
     p { margin: 0; }
     .media-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 4px; padding: 8px; }
     .media-status { margin: 8px 12px; }
+    .nostr-build-help { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 12px;
+        border: 1px solid var(--border); border-radius: 6px; overflow-wrap: anywhere; }
+    .nostr-build-help a { display: flex; align-items: center; align-self: flex-start; min-height: 44px; max-width: 100%; }
     .media-feedback { overflow-wrap: anywhere; }
     .media-server-select {
         width: 100%;
