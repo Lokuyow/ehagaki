@@ -471,6 +471,49 @@ test('App and iframe use the normal submission path without refocusing', async (
     expect(await embeddedEditor.evaluate(() => (window as any).__focusObservation.blurs)).toBe(0);
 });
 
+for (const { name, preedit } of [
+    { name: 'different hiragana', preedit: ['あ', 'あい', 'あいう', 'あい', 'あいう'] },
+    { name: 'repeated hiragana', preedit: ['あ', 'ああ', 'あああ', 'ああ', 'あああ'] },
+]) {
+    test(`Japanese IME deletion keeps ${name} in one composition`, async ({ page, browserName, isMobile }) => {
+        test.skip(browserName !== 'chromium' || isMobile, 'This regression uses desktop Chromium CDP IME input.');
+        await page.goto('post-editor-sending-playwright.html');
+        const editor = page.locator('.tiptap-editor');
+        await editor.click();
+        const cdp = await page.context().newCDPSession(page);
+        try {
+            // Shortening native preedit models Backspace without committing it.
+            // Synthetic composition events alone cannot detect a lost IME range.
+            for (const text of preedit) {
+                await cdp.send('Input.imeSetComposition', {
+                    text, selectionStart: text.length, selectionEnd: text.length,
+                });
+                await expect(editor).toHaveText(text);
+                await expect.poll(() => page.evaluate(() => {
+                    const view = window.__currentEditor!.view;
+                    return { text: view.state.doc.textContent, composing: view.composing };
+                })).toEqual({ text, composing: true });
+            }
+
+            const committed = preedit[preedit.length - 1];
+            await cdp.send('Input.insertText', { text: committed });
+            await expect(editor).toHaveText(committed);
+            await expect.poll(() => page.evaluate(() => window.__currentEditor!.view.composing)).toBe(false);
+
+            await cdp.send('Input.imeSetComposition', { text: 'え', selectionStart: 1, selectionEnd: 1 });
+            await cdp.send('Input.insertText', { text: 'え' });
+            await expect(editor).toHaveText(`${committed}え`);
+            await expect(editor).toBeFocused();
+            await expect.poll(() => page.evaluate(() => {
+                const { doc, selection } = window.__currentEditor!.state;
+                return { text: doc.textContent, from: selection.from, to: selection.to };
+            })).toEqual({ text: `${committed}え`, from: committed.length + 2, to: committed.length + 2 });
+        } finally {
+            await cdp.detach();
+        }
+    });
+}
+
 test.describe('Android composition submit', () => {
     const { defaultBrowserType: _browser, ...pixel } = devices['Pixel 7'];
     test.use(pixel);
