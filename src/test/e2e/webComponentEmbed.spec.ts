@@ -337,8 +337,8 @@ test("Full upload destination controls remain accessible at 320px and 360px (" +
     await composer.locator("button.settings-btn").click();
     await composer.getByRole("button", { name: lang === "ja" ? "メディア" : "Media", exact: true }).click();
     await composer.locator(".upload-destination-section").getByRole("button", { name: lang === "ja" ? "管理" : "Manage", exact: true }).click();
-    const fetchButton = composer.getByRole("button", { name: lang === "ja" ? "リレーから取得" : "Fetch from relays", exact: true });
-    const publishButton = composer.getByRole("button", { name: lang === "ja" ? "リレーへ送信" : "Publish to relays", exact: true });
+    const fetchButton = composer.getByRole("button", { name: lang === "ja" ? "取得" : "Fetch", exact: true });
+    const publishButton = composer.getByRole("button", { name: lang === "ja" ? "送信" : "Send", exact: true });
     const trigger = composer.getByRole("listitem").first().getByRole("button", { name: /の操作$|^Actions for / });
     for (const width of [320, 360]) for (const themeMode of ["light", "dark"] as const) {
         await composer.evaluate(async (element, { width, themeMode }) => {

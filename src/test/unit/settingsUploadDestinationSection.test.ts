@@ -37,9 +37,9 @@ const translations = {
             uploadDestinationMoveUp: "Up",
             uploadDestinationMoveDown: "Down",
             uploadDestinationRelayFetching: "BUD-03 取得中",
-            uploadDestinationRelayFetch: "BUD-03 から取得",
+            uploadDestinationRelayFetch: "取得",
             uploadDestinationRelayPublishing: "BUD-03 publish 中",
-            uploadDestinationRelayPublish: "BUD-03 へ publish",
+            uploadDestinationRelayPublish: "送信",
             uploadDestinationRelayInfoLabel: "BUD-03 の説明",
             uploadDestinationRelayInfoScope: "BUD-03 の説明",
             uploadDestinationRelayInfoOrder: "BUD-03 の説明",
@@ -86,9 +86,9 @@ const translations = {
             uploadDestinationMoveUp: "Up",
             uploadDestinationMoveDown: "Down",
             uploadDestinationRelayFetching: "Fetching BUD-03",
-            uploadDestinationRelayFetch: "Fetch from BUD-03",
+            uploadDestinationRelayFetch: "Fetch",
             uploadDestinationRelayPublishing: "Publishing BUD-03",
-            uploadDestinationRelayPublish: "Publish to BUD-03",
+            uploadDestinationRelayPublish: "Send",
             uploadDestinationRelayInfoLabel: "BUD-03 info",
             uploadDestinationRelayInfoScope: "BUD-03 info",
             uploadDestinationRelayInfoOrder: "BUD-03 info",
@@ -258,8 +258,8 @@ describe("SettingsUploadDestinationSection", () => {
         setExistingNip96Destination();
         render(SettingsUploadDestinationSection, { rxNostr: {} as never });
         await fireEvent.click(screen.getByRole('button', { name: '管理' }));
-        const fetchButton = screen.getByRole('button', { name: 'BUD-03 から取得' }) as HTMLButtonElement;
-        const publishButton = screen.getByRole('button', { name: 'BUD-03 へ publish' }) as HTMLButtonElement;
+        const fetchButton = screen.getByRole('button', { name: '取得' }) as HTMLButtonElement;
+        const publishButton = screen.getByRole('button', { name: '送信' }) as HTMLButtonElement;
         expect(fetchButton.disabled).toBe(false); expect(publishButton.disabled).toBe(false);
         await fireEvent.click(fetchButton); await fireEvent.click(publishButton);
         expect(mockUploadDestinationStore.fetchFromRelays).toHaveBeenCalledOnce();
@@ -282,7 +282,9 @@ describe("SettingsUploadDestinationSection", () => {
         setExistingNip96Destination(); mockUploadDestinationStore.value[field] = true;
         render(SettingsUploadDestinationSection, { rxNostr: {} as never });
         await fireEvent.click(screen.getByRole('button', { name: '管理' }));
-        const buttons = screen.getAllByRole('button').filter(button => button.textContent?.includes('BUD-03') && !button.getAttribute('aria-label')) as HTMLButtonElement[];
+        const buttons = field === "relayFetching"
+            ? [screen.getByRole("button", { name: "BUD-03 取得中" }), screen.getByRole("button", { name: "送信" })]
+            : [screen.getByRole("button", { name: "取得" }), screen.getByRole("button", { name: "BUD-03 publish 中" })];
         expect(buttons).toHaveLength(2); expect(buttons.every(button => button.disabled)).toBe(true);
     });
     it("shows the upload icon beside its label and keeps the manage button text-only", () => {
@@ -769,7 +771,7 @@ describe("SettingsUploadDestinationSection", () => {
         render(SettingsUploadDestinationSection, { rxNostr: authenticated ? null : {} as never });
         await fireEvent.click(screen.getByRole("button", { name: "管理" }));
         const region = screen.getByRole("region", { name: "リレー同期" });
-        for (const name of ["BUD-03 から取得", "BUD-03 へ publish"]) {
+        for (const name of ["取得", "送信"]) {
             expect((within(region).getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
         }
     });

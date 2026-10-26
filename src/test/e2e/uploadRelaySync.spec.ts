@@ -52,7 +52,7 @@ for (const lang of ["ja", "en"] as const) {
             await page.setViewportSize({ width: 360, height: 1000 });
             await page.goto(new URL(`upload-relay-sync-playwright.html?owner=${owner}&lang=${lang}&initial=1&cold=1&unavailable=1`, baseURL).href);
             await page.getByRole("button", { name: lang === "ja" ? "管理" : "Manage", exact: true }).click();
-            await page.getByRole("button", { name: lang === "ja" ? "リレーから取得" : "Fetch from relays", exact: true }).click();
+            await page.getByRole("button", { name: lang === "ja" ? "取得" : "Fetch", exact: true }).click();
             await expect.poll(() => page.evaluate(() => window.uploadRelayVerifiedPreferenceCount())).toBe(2);
             if (phase === "preparation") await expect.poll(() => releaseInfo !== undefined).toBe(true);
             else await expect.poll(() => unavailableRequests.length).toBe(2);
@@ -66,7 +66,7 @@ for (const lang of ["ja", "en"] as const) {
             expect(snapshot.filter(d => ["blossom", "nip96"].includes(d.protocol)).map(d => d.serverUrl).sort())
                 .toEqual(["https://new-blossom.example", "https://new-files.example"]);
             expect(snapshot.filter(d => d.isDefault)).toHaveLength(1);
-            await expect(page.getByRole("button", { name: lang === "ja" ? "リレーへ送信" : "Publish to relays", exact: true })).toBeEnabled();
+            await expect(page.getByRole("button", { name: lang === "ja" ? "送信" : "Send", exact: true })).toBeEnabled();
             if (releaseInfo) {
                 await releaseInfo();
                 expect(unavailableRequests).toEqual([]);
@@ -114,7 +114,7 @@ test("fetches both lists on the first attempt after a cold NIP-42 handshake", as
             await page.reload();
         }
         await page.getByRole("button", { name: "管理", exact: true }).click();
-        await page.getByRole("button", { name: "リレーから取得", exact: true }).click();
+        await page.getByRole("button", { name: "取得", exact: true }).click();
         await expect.poll(() => releaseAuth !== undefined).toBe(true);
         await page.clock.runFor(5_000);
         await expect(page.getByRole("button", { name: "リレー取得中", exact: true })).toBeDisabled();
@@ -150,7 +150,7 @@ test("fetches from an untouched default after cold NIP-11 initialization", async
     await expect(page.locator(".destination-row")).toHaveCount(1);
     await expect(page.locator(".destination-row")).toContainText("share.yabu.me");
     await expect.poll(() => infoRequested).toBe(true);
-    await page.getByRole("button", { name: "リレーから取得", exact: true }).click();
+    await page.getByRole("button", { name: "取得", exact: true }).click();
     await page.clock.runFor(5_000);
     expect(requests).toEqual([]);
     await expect(page.getByRole("button", { name: "リレー取得中", exact: true })).toBeDisabled();
@@ -302,8 +302,8 @@ for (const lang of ["ja", "en"] as const) {
             } else await page.goto(url);
             const root = surface === "iframe" ? page.frameLocator("iframe") : page;
             await root.getByRole("button", { name: lang === "ja" ? "管理" : "Manage", exact: true }).click();
-            const fetchButton = root.getByRole("button", { name: lang === "ja" ? "リレーから取得" : "Fetch from relays", exact: true });
-            const publishButton = root.getByRole("button", { name: lang === "ja" ? "リレーへ送信" : "Publish to relays", exact: true });
+            const fetchButton = root.getByRole("button", { name: lang === "ja" ? "取得" : "Fetch", exact: true });
+            const publishButton = root.getByRole("button", { name: lang === "ja" ? "送信" : "Send", exact: true });
             await expect(fetchButton).toHaveCount(1);
             await expect(publishButton).toHaveCount(1);
             await fetchButton.click();

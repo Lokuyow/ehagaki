@@ -657,7 +657,7 @@
                                   ) || "リレー取得中"
                                 : $_(
                                       "settingsDialog.uploadDestinationRelayFetch",
-                                  ) || "リレーから取得"}
+                                  ) || "取得"}
                         </Button>
                         <Button
                             variant="default"
@@ -677,7 +677,7 @@
                                   ) || "リレー送信中"
                                 : $_(
                                       "settingsDialog.uploadDestinationRelayPublish",
-                                  ) || "リレーへ送信"}
+                                  ) || "送信"}
                         </Button>
                         <InfoPopoverButton
                             side="top"
@@ -907,9 +907,7 @@
     }
 
     :global(.destination-menu-item[data-highlighted]:not([data-disabled])) {
-        background: color-mix(in srgb, var(--theme) 15%, var(--dialog-bg));
-        outline: 2px solid var(--theme);
-        outline-offset: -2px;
+        background: var(--btn-hover-bg);
     }
 
     :global(.destination-menu-item[data-disabled]) {
