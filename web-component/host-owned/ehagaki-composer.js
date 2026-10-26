@@ -484,7 +484,7 @@ var P = class extends C {
 		});
 	}
 	loadApp() {
-		return import("./assets/HostOwnedComposerLiteApp-eQr0brR2.js").then((e) => e.t);
+		return import("./assets/HostOwnedComposerLiteApp-Bn2yW-a7.js").then((e) => e.t);
 	}
 	onConnectionAttempt() {
 		this.#r = !0, this.#a += 1, this.#i = null;

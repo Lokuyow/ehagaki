@@ -429,7 +429,7 @@ var A = class extends w {
 		}
 	}
 	loadApp() {
-		return import("./assets/App-CxNETzG6.js").then((e) => e.t);
+		return import("./assets/App-CPn8s-cx.js").then((e) => e.t);
 	}
 	getConnectionError() {
 		return this.#t ? {
