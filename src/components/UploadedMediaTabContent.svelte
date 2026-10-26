@@ -17,6 +17,7 @@
     import type { UploadedMediaItem } from "../lib/upload/mediaManagementTypes";
     import type { FullscreenMediaItem } from "../lib/types";
     import { resolveAppAssetUrl } from "../lib/appAssetUrl";
+    import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
 
     interface Props { show: boolean; onBusyChange?: (busy: boolean) => void; onInitialReady?: () => void }
     let { show: active, onBusyChange = () => undefined, onInitialReady }: Props = $props();
@@ -36,6 +37,7 @@
     const management = useUploadMediaManagement();
     const deleteIconUrl = resolveAppAssetUrl("icons/delete_forever_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     const refreshIconUrl = resolveAppAssetUrl("icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    const copyIconUrl = resolveAppAssetUrl("icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     let current = $derived(management.value.current);
     let isNostpic = $derived(!!current && /^https?:\/\/nostpic\.com(?::\d+)?(?:\/|$)/i.test(current.destination.serverUrl));
     let cacheSupported = $state<boolean | null>(null);
@@ -193,6 +195,10 @@
             currentOrigin: window.location.origin,
         });
     }
+    function copyUrl(item: UploadedMediaItem, event: MouseEvent): Promise<boolean> | boolean {
+        event.stopPropagation();
+        return item.url ? tryCopyToClipboard(item.url, "URL", navigator, window) : false;
+    }
     function handleImageOpen(item: UploadedMediaItem, focusOrigin: HTMLElement) {
         const mediaList = (current?.items ?? []).flatMap((entry): FullscreenMediaItem[] => {
             if (entry.kind !== "image") return [];
@@ -261,6 +267,13 @@
                             <UploadedMediaPreview {item} {cacheSupported} active={activeVideo === item.id}
                                 onOpenImage={(focusOrigin) => handleImageOpen(item, focusOrigin)}
                                 onOpenVideo={() => { activeVideo = item.id; }} onCloseVideo={() => { activeVideo = null; }} />
+                            <Button variant="copy" shape="circle" contentLayout="icon" className="media-copy-button"
+                                ariaLabel={$_(`${item.kind === "video" ? "videoContextMenu" : "imageContextMenu"}.copyUrl`)}
+                                title={$_(`${item.kind === "video" ? "videoContextMenu" : "imageContextMenu"}.copyUrl`)}
+                                floatingMessage={$_(`${item.kind === "video" ? "videoContextMenu" : "imageContextMenu"}.copySuccess`)}
+                                disabled={!item.url} onClick={(event) => copyUrl(item, event)}>
+                                <span class="svg-icon" aria-hidden="true" style:mask-image={`url("${copyIconUrl}")`}></span>
+                            </Button>
                             <div class="media-overlay">
                                 <div class="media-metadata">
                                     <span>{item.size === undefined ? $_("uploadedMedia.unknown") : formatSize(item.size)}</span>
@@ -371,7 +384,14 @@
     .media-delete-icon { width: 24px; height: 24px; --svg: currentColor; }
     .server-url, .diagnostic { overflow-wrap: anywhere; font-size: .875rem; }
     .media-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; }
-    article { position: relative; min-width: 0; }
+    article { position: relative; min-width: 0; align-self: start; }
+    :global(.uploaded-media-dialog button.media-copy-button) {
+        position: absolute; top: 4px; right: 4px; z-index: 1;
+        width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0;
+        color: white; --text: white;
+    }
+    :global(.uploaded-media-dialog button.media-copy-button:hover:not(:disabled) .svg-icon) { background-color: white; }
+    .video-active :global(button.media-copy-button) { top: 52px; }
     .media-overlay { position: absolute; inset: auto 0 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 4px; padding: 16px 4px 4px 8px; color: var(--text); background: linear-gradient(transparent, rgb(0 0 0 / 70%)); pointer-events: none; }
     .media-metadata { min-width: 0; align-self: center; display: flex; flex-direction: column; font-size: .6875rem; line-height: 1.5; overflow-wrap: anywhere; text-shadow: 0 1px 2px rgb(0 0 0 / 70%); }
     .media-overlay :global(button) { pointer-events: auto; }

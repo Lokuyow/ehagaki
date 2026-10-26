@@ -8,10 +8,12 @@ import { mockAuthStoreModule } from "../mocks/storeModules";
 import type { UploadMediaManagementView } from "../../lib/upload/uploadMediaManagementController";
 import { UploadMediaError } from "../../lib/upload/mediaManagementTypes";
 const mocked = vi.hoisted(() => ({ view: null as unknown as UploadMediaManagementView,
+    copy: vi.fn(async () => true),
     controller: { activate: vi.fn(), suspend: vi.fn(), busy: false, configure: vi.fn(), configureSaved: vi.fn(async () => undefined), invalidate: vi.fn(), select: vi.fn(), load: vi.fn(), delete: vi.fn(async () => true) },
     viewers: [] as Array<{ options: { index?: number; dataSource?: Array<{ id?: string; src?: string; type?: string }> }; closed: boolean }> }));
 vi.mock("svelte-i18n", () => ({ _: readable((key: string) => key) }));
 vi.mock("../../lib/hooks/useDialogHistory.svelte", () => ({ useDialogHistory: vi.fn() }));
+vi.mock("../../lib/utils/clipboardUtils", () => ({ tryCopyToClipboard: mocked.copy }));
 vi.mock("../../lib/hooks/useUploadMediaManagement.svelte", () => ({ useUploadMediaManagement: () => ({ get value() { return mocked.view; }, controller: mocked.controller }) }));
 vi.mock("../../lib/uploadMediaImageCacheClient", () => ({ supportsUploadMediaImageCache: vi.fn(async () => false), evictUploadMediaImages: vi.fn(async () => true) }));
 vi.mock("../../lib/hooks/inViewportAction.svelte", () => ({ inViewportAction: (_node: unknown, params: { onEnterView: () => void }) => { queueMicrotask(params.onEnterView); return {}; } }));
@@ -42,9 +44,12 @@ vi.mock("../../lib/utils/fullscreenViewerUtils", () => ({
     pauseFullscreenVideoContent: vi.fn(),
 }));
 import UploadedMediaTabContent from "../../components/UploadedMediaTabContent.svelte";
+import { supportsUploadMediaImageCache } from "../../lib/uploadMediaImageCacheClient";
 
 beforeEach(() => {
     vi.clearAllMocks();
+    mocked.copy.mockResolvedValue(true);
+    vi.mocked(supportsUploadMediaImageCache).mockResolvedValue(false);
     mocked.viewers.length = 0;
     mockAuthStoreModule.authState.value = { ...mockAuthStoreModule.authState.value, isAuthenticated: true, pubkey: mediaPubkey };
     const destination = mediaDestination();
@@ -52,6 +57,51 @@ beforeEach(() => {
         loaded: true, loading: false, error: null, support: "supported", hasMore: true, needsRefresh: false, deletingId: null, notice: null } };
 });
 describe("uploaded-media content", () => {
+    it.each(["image", "video"] as const)("copies the original %s URL without opening media", async (kind) => {
+        if (kind === "image") vi.mocked(supportsUploadMediaImageCache).mockResolvedValue(true);
+        render(UploadedMediaTabContent, { show: true });
+        const item = mocked.view.current!.items.find((entry) => entry.kind === kind)!;
+        if (kind === "image") await waitFor(() => {
+            const src = document.querySelector("img")?.getAttribute("src");
+            expect(src).toBeTruthy();
+            expect(src).not.toBe(item.url);
+        });
+        await fireEvent.click(screen.getByRole("button", { name: `${kind}ContextMenu.copyUrl` }));
+        expect(mocked.copy).toHaveBeenCalledWith(item.url, "URL", navigator, window);
+        expect(await screen.findByText(`${kind}ContextMenu.copySuccess`)).toBeTruthy();
+        expect(mocked.viewers).toHaveLength(0);
+        expect(document.querySelector("video")).toBeNull();
+        expect(mocked.controller.delete).not.toHaveBeenCalled();
+    });
+    it("disables URL copying when the media URL is missing", async () => {
+        mocked.view.current!.items[0].url = null;
+        render(UploadedMediaTabContent, { show: true });
+        const button = screen.getByRole("button", { name: "imageContextMenu.copyUrl" }) as HTMLButtonElement;
+        expect(button.disabled).toBe(true);
+        await fireEvent.click(button);
+        expect(mocked.copy).not.toHaveBeenCalled();
+        expect(screen.queryByText("imageContextMenu.copySuccess")).toBeNull();
+    });
+    it("does not report success when copying fails", async () => {
+        mocked.copy.mockResolvedValue(false);
+        render(UploadedMediaTabContent, { show: true });
+        await fireEvent.click(screen.getByRole("button", { name: "imageContextMenu.copyUrl" }));
+        await tick();
+        expect(mocked.copy).toHaveBeenCalledTimes(1);
+        expect(screen.queryByText("imageContextMenu.copySuccess")).toBeNull();
+    });
+    it("keeps an active video open when its URL is copied", async () => {
+        const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+        const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+        render(UploadedMediaTabContent, { show: true });
+        await fireEvent.click(screen.getByRole("button", { name: "uploadedMedia.openVideo" }));
+        const video = document.querySelector("video");
+        await fireEvent.click(screen.getByRole("button", { name: "videoContextMenu.copyUrl" }));
+        expect(await screen.findByText("videoContextMenu.copySuccess")).toBeTruthy();
+        expect(document.querySelector("video")).toBe(video);
+        expect(screen.getByRole("button", { name: "uploadedMedia.closeVideo" })).toBeTruthy();
+        pause.mockRestore(); load.mockRestore();
+    });
     it.each([ ["https://nostpic.com/api/v2/media", false, "unavailable"], ["https://nostpic.com", false, "unavailable"], ["https://nostpic.com/api/v2/media", true, "invalidResponse"], ["https://nostpic.com.example/api", false, "invalidResponse"], ["https://media.example", false, "invalidResponse"] ] as const)("shows listing error for %s (loaded: %s)", async (serverUrl, loaded, errorKey) => {
         mocked.view.current!.destination.serverUrl = serverUrl;
         mocked.view.current!.destination.presetId = undefined;
