@@ -237,6 +237,7 @@ for (const lang of ["ja", "en"] as const) {
             await expect(protocol).toHaveCount(0);
             await save.click();
             const card = root.locator(".destination-row").filter({ hasText: "blossom.band" });
+            await expect(root.getByRole("listitem").first()).toContainText("blossom.band");
             await selectServerAction(card, root, lang === "ja" ? "編集" : "Edit");
             await expect(preset).toHaveValue("blossom-band");
             await expect(protocol).toHaveCount(0);
@@ -252,6 +253,7 @@ for (const lang of ["ja", "en"] as const) {
             await save.click();
             const sovbit = root.locator(".destination-row").filter({ hasText: "files.sovbit.host" });
             await expect(sovbit).toContainText("Blossom");
+            await expect(root.getByRole("listitem").first()).toContainText("files.sovbit.host");
             if (lang === "ja") await page.screenshot({ path: testInfo.outputPath("sovbit-blossom-preset.png"), fullPage: true });
         });
     }

@@ -484,6 +484,27 @@ describe("SettingsUploadDestinationSection", () => {
         );
     });
 
+    it.each([undefined, 0, -5])("prepends a new destination ahead of saved order %s", async sortIndex => {
+        setExistingNip96Destination();
+        const existing = (mockUploadDestinationStore.value.destinations as UploadDestination[])[0]!;
+        existing.sortIndex = sortIndex;
+        render(SettingsUploadDestinationSection);
+        await openAddForm();
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+        expect(getSavedDestination().sortIndex).toBeLessThan(existing.sortIndex ?? existing.createdAt);
+    });
+
+    it.each([undefined, 0, -5])("preserves an edited destination's saved order %s", async sortIndex => {
+        setExistingNip96Destination();
+        const existing = (mockUploadDestinationStore.value.destinations as UploadDestination[])[0]!;
+        existing.sortIndex = sortIndex;
+        render(SettingsUploadDestinationSection);
+        await fireEvent.click(screen.getByRole("button", { name: "管理" }));
+        await selectDestinationAction("編集");
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+        expect(getSavedDestination().sortIndex).toBe(sortIndex);
+    });
+
     it("keeps preset protocol and URL when a preset is selected", async () => {
         render(SettingsUploadDestinationSection);
         await openAddForm();

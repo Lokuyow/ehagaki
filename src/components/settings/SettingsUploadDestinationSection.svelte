@@ -300,6 +300,12 @@
         const { resolvedUploadUrl: _previousResolvedUploadUrl, nip96ServerUrl: _previousServer, nip96UrlMode: _previousMode, ...destinationWithoutResolvedUploadUrl } = baseDestination;
         const destination: UploadDestination = {
             ...destinationWithoutResolvedUploadUrl,
+            ...(!existing ? {
+                sortIndex: destinationState.destinations.reduce(
+                    (first, item) => Math.min(first, item.sortIndex ?? item.createdAt),
+                    timestamp,
+                ) - 1,
+            } : {}),
             name: destinationName,
             protocol,
             serverUrl,
