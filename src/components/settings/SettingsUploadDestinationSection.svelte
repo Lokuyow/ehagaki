@@ -775,6 +775,9 @@
     }
 
     .mime-toggle {
+        min-inline-size: 0;
+        min-block-size: 0;
+        height: auto;
         border: none;
         background: transparent;
         color: var(--link);

@@ -285,7 +285,7 @@ describe("SettingsUploadDestinationSection", () => {
         const buttons = field === "relayFetching"
             ? [screen.getByRole("button", { name: "BUD-03 取得中" }), screen.getByRole("button", { name: "送信" })]
             : [screen.getByRole("button", { name: "取得" }), screen.getByRole("button", { name: "BUD-03 publish 中" })];
-        expect(buttons).toHaveLength(2); expect(buttons.every(button => button.disabled)).toBe(true);
+        expect(buttons).toHaveLength(2); expect(buttons.every(button => (button as HTMLButtonElement).disabled)).toBe(true);
     });
     it("shows the upload icon beside its label and keeps the manage button text-only", () => {
         render(SettingsUploadDestinationSection);
