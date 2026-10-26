@@ -20,6 +20,7 @@ export interface ParentClientAuthCoordinator {
     ): Promise<AuthResult>;
     synchronizeParentClientAuth(
         options?: ParentClientAuthRequestOptions,
+        isCurrent?: () => boolean,
     ): Promise<AuthResult>;
     hasPendingRequest(): boolean;
 }
@@ -50,9 +51,10 @@ export function createParentClientAuthCoordinator(
 
     async function synchronizeParentClientAuth(
         options: ParentClientAuthRequestOptions = {},
+        isCurrent: () => boolean = () => true,
     ): Promise<AuthResult> {
         const result = await requestParentClientAuth(options);
-        if (result.success && result.pubkeyHex) {
+        if (result.success && result.pubkeyHex && isCurrent()) {
             deps.syncParentClientAccount(result.pubkeyHex);
         }
 

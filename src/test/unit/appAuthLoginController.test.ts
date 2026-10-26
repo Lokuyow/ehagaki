@@ -6,6 +6,9 @@ function createController(overrides: Record<string, unknown> = {}) {
     let rxNostr: unknown = { dispose: vi.fn() };
 
     const deps = {
+        beginParentClientTransition: vi.fn(() => 1),
+        isAuthTransitionCurrent: vi.fn(() => true),
+        finishParentClientTransition: vi.fn(),
         parentClientAuthCoordinator: {
             synchronizeParentClientAuth: vi.fn(async () => ({
                 success: true,
@@ -50,7 +53,7 @@ describe('createAppAuthLoginController', () => {
         ).toHaveBeenCalledTimes(1);
         expect(deps.clearNip46RuntimeForAuthChange).toHaveBeenCalledTimes(1);
         expect(deps.disposeNostrSession).toHaveBeenCalledTimes(1);
-        expect(deps.handlePostAuth).toHaveBeenCalledWith('ab'.repeat(32));
+        expect(deps.handlePostAuth).toHaveBeenCalledWith('ab'.repeat(32), { generation: 1 });
     });
 
     it('activateParentClientAuth failure は error code を返す', async () => {
@@ -64,6 +67,57 @@ describe('createAppAuthLoginController', () => {
         });
 
         await expect(controller.activateParentClientAuth()).resolves.toBe('parent_sync_failed');
+    });
+
+    it('手動・自動ログインが重なってもpost-auth完了まで同じ処理を共有する', async () => {
+        let finishPostAuth!: () => void;
+        const { deps, controller } = createController({
+            handlePostAuth: vi.fn(() => new Promise<void>(resolve => { finishPostAuth = resolve; })),
+        });
+        const automatic = controller.activateParentClientAuth({ silent: true });
+        await vi.waitFor(() => expect(deps.handlePostAuth).toHaveBeenCalledTimes(1));
+        const repeated = controller.activateParentClientAuth({ silent: true });
+        const manual = controller.handleParentClientLogin();
+        expect(repeated).toBe(automatic);
+        expect(controller.hasPendingParentClientTransition()).toBe(true);
+        expect(deps.beginParentClientTransition).toHaveBeenCalledTimes(1);
+        expect(deps.disposeNostrSession).toHaveBeenCalledTimes(1);
+        finishPostAuth();
+        await Promise.all([automatic, repeated, manual]);
+        expect(deps.handlePostAuth).toHaveBeenCalledTimes(1);
+        expect(deps.cancelPendingNip46Auth).toHaveBeenCalledTimes(1);
+        expect(deps.finishParentClientTransition).toHaveBeenCalledTimes(1);
+        expect(controller.hasPendingParentClientTransition()).toBe(false);
+    });
+
+    it('認証応答前の遷移で無効になったログインはruntimeを置き換えない', async () => {
+        let current = true;
+        let authenticate!: (value: { success: boolean; pubkeyHex: string }) => void;
+        const { deps, controller } = createController({
+            isAuthTransitionCurrent: () => current,
+            parentClientAuthCoordinator: {
+                synchronizeParentClientAuth: vi.fn(() => new Promise(resolve => { authenticate = resolve; })),
+            },
+        });
+        const task = controller.activateParentClientAuth();
+        await vi.waitFor(() => expect(authenticate).toBeTypeOf('function'));
+        current = false;
+        authenticate({ success: true, pubkeyHex: 'ab'.repeat(32) });
+        await task;
+        expect(deps.disposeNostrSession).not.toHaveBeenCalled();
+        expect(deps.handlePostAuth).not.toHaveBeenCalled();
+        expect(deps.finishParentClientTransition).toHaveBeenCalledTimes(1);
+    });
+
+    it('失敗した処理を解放し、次の明示的なログインを受け付ける', async () => {
+        const { deps, controller } = createController({
+            handlePostAuth: vi.fn().mockRejectedValueOnce(new Error('bootstrap failed')).mockResolvedValue(undefined),
+        });
+        await expect(controller.activateParentClientAuth()).rejects.toThrow('bootstrap failed');
+        expect(controller.hasPendingParentClientTransition()).toBe(false);
+        await controller.activateParentClientAuth();
+        expect(deps.handlePostAuth).toHaveBeenCalledTimes(2);
+        expect(deps.finishParentClientTransition).toHaveBeenCalledTimes(2);
     });
 
     it('saveSecretKey failure はエラーを設定する', async () => {

@@ -1,12 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
     applyProfileToStores,
     completePostAuthBootstrap,
+    initializeNostrSession,
     runInitializeNostrSession,
     refreshRelaysAndProfileForAccount,
 } from '../../lib/bootstrap/authBootstrap';
 import { RelayProfileService } from '../../lib/relayProfileService';
+import { profileMetadataCache } from '../../lib/profileMetadataCache.svelte';
 
 function createProfile() {
     return {
@@ -195,7 +197,159 @@ describe('completePostAuthBootstrap', () => {
     });
 });
 
+describe('親連携のbackgroundプロフィールbootstrap', () => {
+    const sessions: Array<{ rxNostr: { dispose(): void } }> = [];
+    afterEach(() => {
+        for (const session of sessions.splice(0)) session.rxNostr.dispose();
+        vi.restoreAllMocks();
+    });
+
+    function createBackgroundBootstrap() {
+        const deps = {
+            pubkeyHex: '05'.repeat(32),
+            closeAuthDialogs: vi.fn(),
+            relayListUpdatedStore: { value: 0, set: vi.fn() },
+            setRelayManager: vi.fn(),
+            profileDataStore: { set: vi.fn() },
+            profileLoadedStore: { set: vi.fn() },
+            isLoadingProfileStore: { set: vi.fn() },
+            accountManager: { getAccounts: () => [] },
+            accountListStore: { set: vi.fn() },
+            accountProfileCacheStore: { setProfile: vi.fn() },
+            isCurrent: () => true,
+            profileLoadMode: 'background' as const,
+        };
+        vi.spyOn(profileMetadataCache, 'getCachedProfile').mockResolvedValue(null);
+        vi.spyOn(RelayProfileService.prototype, 'initializeRelays').mockResolvedValue(undefined);
+        const relays = vi.spyOn(RelayProfileService.prototype, 'fetchRelays').mockResolvedValue({
+            success: false, relayConfig: {}, source: 'fallback',
+        });
+        const profile = vi.spyOn(RelayProfileService.prototype, 'fetchProfile').mockResolvedValue(null);
+        return { deps, relays, profile };
+    }
+
+    it('認証表示を先に確定し、リレーを待って返るがプロフィール取得は待たない', async () => {
+        const { deps, relays, profile } = createBackgroundBootstrap();
+        let finishRelays!: (value: Awaited<ReturnType<RelayProfileService['fetchRelays']>>) => void;
+        let finishProfile!: (value: ReturnType<typeof createProfile>) => void;
+        relays.mockImplementation(() => new Promise(resolve => { finishRelays = resolve; }));
+        profile.mockImplementation(() => new Promise(resolve => { finishProfile = resolve; }));
+        const task = completePostAuthBootstrap(deps);
+        expect(deps.profileDataStore.set).toHaveBeenCalledWith(expect.objectContaining({
+            name: '', picture: '', npub: expect.stringMatching(/^npub1/),
+        }));
+        expect(deps.profileLoadedStore.set).toHaveBeenCalledWith(true);
+        expect(deps.isLoadingProfileStore.set).toHaveBeenCalledWith(false);
+        await vi.waitFor(() => expect(relays).toHaveBeenCalledTimes(1));
+        expect(profile).not.toHaveBeenCalled();
+        let ready = false;
+        void task.then(() => { ready = true; });
+        await Promise.resolve();
+        expect(ready).toBe(false);
+        finishRelays({ success: false, relayConfig: {}, source: 'fallback' });
+        sessions.push(await task);
+        expect(profile).toHaveBeenCalledTimes(1);
+        expect(deps.profileDataStore.set).toHaveBeenCalledTimes(1);
+        const fetched = createProfile();
+        finishProfile(fetched);
+        await vi.waitFor(() => expect(deps.profileDataStore.set).toHaveBeenLastCalledWith(fetched));
+    });
+
+    it.each(['missing', 'failure'] as const)('プロフィール%s時も保存済み表示とruntimeを維持する', async (result) => {
+        const { deps, profile } = createBackgroundBootstrap();
+        const cached = createProfile();
+        vi.mocked(profileMetadataCache.getCachedProfile).mockResolvedValue(cached);
+        if (result === 'failure') profile.mockRejectedValue(new Error('profile unavailable'));
+        sessions.push(await completePostAuthBootstrap(deps));
+        await Promise.resolve();
+        expect(deps.profileDataStore.set).toHaveBeenLastCalledWith(cached);
+        expect(deps.isLoadingProfileStore.set).not.toHaveBeenCalledWith(true);
+    });
+
+    it('後続プロフィール取得の完了で切替先の表示やloadingを上書きしない', async () => {
+        const { deps, profile } = createBackgroundBootstrap();
+        let current = true;
+        deps.isCurrent = () => current;
+        let finish!: (value: ReturnType<typeof createProfile>) => void;
+        profile.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+        sessions.push(await completePostAuthBootstrap(deps));
+        current = false;
+        deps.profileDataStore.set.mockClear();
+        deps.accountProfileCacheStore.setProfile.mockClear();
+        deps.isLoadingProfileStore.set.mockClear();
+        finish(createProfile());
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(deps.profileDataStore.set).not.toHaveBeenCalled();
+        expect(deps.accountProfileCacheStore.setProfile).not.toHaveBeenCalled();
+        expect(deps.isLoadingProfileStore.set).not.toHaveBeenCalled();
+    });
+
+    it('リレー準備中の無効化後はプロフィール取得とアカウント同期を開始しない', async () => {
+        const { deps, relays, profile } = createBackgroundBootstrap();
+        let current = true;
+        deps.isCurrent = () => current;
+        let finish!: (value: Awaited<ReturnType<RelayProfileService['fetchRelays']>>) => void;
+        relays.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+        const task = completePostAuthBootstrap(deps);
+        await vi.waitFor(() => expect(relays).toHaveBeenCalled());
+        current = false;
+        deps.isLoadingProfileStore.set.mockClear();
+        finish({ success: false, relayConfig: {}, source: 'fallback' });
+        sessions.push(await task);
+        expect(profile).not.toHaveBeenCalled();
+        expect(deps.accountListStore.set).not.toHaveBeenCalled();
+        expect(deps.isLoadingProfileStore.set).not.toHaveBeenCalled();
+    });
+
+    it('リレー準備中のabortでは公開前のruntimeを破棄し、後続処理を開始しない', async () => {
+        const { deps, relays, profile } = createBackgroundBootstrap();
+        const abort = new AbortController();
+        let finish!: (value: Awaited<ReturnType<RelayProfileService['fetchRelays']>>) => void;
+        relays.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+        const task = completePostAuthBootstrap({ ...deps, signal: abort.signal });
+        await vi.waitFor(() => expect(relays).toHaveBeenCalled());
+        abort.abort();
+        finish({ success: false, relayConfig: {}, source: 'fallback' });
+        const session = await task;
+        sessions.push(session);
+        expect(profile).not.toHaveBeenCalled();
+        expect(deps.accountListStore.set).not.toHaveBeenCalled();
+        expect(() => session.rxNostr.use({} as never)).toThrow();
+    });
+});
+
 describe('runInitializeNostrSession', () => {
+    it('旧runtimeのリレー保存完了は同じアカウントの新しい画面状態も変更しない', async () => {
+        let current = true;
+        const set = vi.fn();
+        const onRelayConfigSaved = vi.fn();
+        vi.spyOn(RelayProfileService.prototype, 'initializeRelays').mockResolvedValue(undefined);
+        const session = await initializeNostrSession({
+            pubkeyHex: '06'.repeat(32),
+            relayListUpdatedStore: { value: 0, set },
+            setRelayManager: vi.fn(),
+            onRelayConfigSaved,
+            isCurrent: () => current,
+        });
+        try {
+            const config = { 'wss://late-relay.example/': {
+                url: 'wss://late-relay.example/', read: true, write: true,
+            } };
+            current = false;
+            await session.relayProfileService.getRelayManager().saveToLocalStorage('06'.repeat(32), config);
+            expect(onRelayConfigSaved).not.toHaveBeenCalled();
+            expect(set).not.toHaveBeenCalled();
+            current = true;
+            await session.relayProfileService.getRelayManager().saveToLocalStorage('06'.repeat(32), config);
+            expect(onRelayConfigSaved).toHaveBeenCalledTimes(1);
+            expect(set).toHaveBeenCalledTimes(1);
+        } finally {
+            session.rxNostr.dispose();
+            vi.restoreAllMocks();
+        }
+    });
+
     it('初期化した session を callback に渡す', async () => {
         const onSession = vi.fn().mockResolvedValue(undefined);
 

@@ -233,14 +233,20 @@ export class AuthService {
         options: { notifyParentClient?: boolean } = {},
     ): Promise<string | null | undefined> {
         try {
+            const parentClientConnected = this.runtime.parentClientSvc.isConnected();
             const isRuntimeParentClientAccount =
-                this.runtime.parentClientSvc.isConnected()
+                parentClientConnected
                 && this.runtime.parentClientSvc.getUserPubkey() === pubkeyHex;
 
             // NIP-46の場合は接続を切断
             const accountType = this.accountManager?.getAccountType(pubkeyHex);
             if (accountType === 'parentClient' || isRuntimeParentClientAccount) {
-                this.runtime.parentClientSvc.disconnect(options.notifyParentClient ?? true);
+                if (
+                    isRuntimeParentClientAccount
+                    || (!parentClientConnected && this.accountManager?.getActiveAccountPubkey() === pubkeyHex)
+                ) {
+                    this.runtime.parentClientSvc.disconnect(options.notifyParentClient ?? true);
+                }
                 try {
                     ParentClientAuthService.clearSession(this.runtime.localStorage, pubkeyHex);
                 } catch {

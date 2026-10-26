@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { setImmediate } from 'node:timers/promises';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 import { finalizeEvent, generateSecretKey, nip19 } from 'nostr-tools';
@@ -290,6 +291,7 @@ vi.mock('../../lib/parentClientAuthService', () => ({
         }),
         isConnected: vi.fn(() => false),
         getUserPubkey: vi.fn(() => null),
+        disconnect: vi.fn(),
     },
 }));
 
@@ -388,6 +390,7 @@ vi.mock('../../lib/draftManager', () => ({
 }));
 
 import App from '../../App.svelte';
+import { parentClientAuthService } from '../../lib/parentClientAuthService';
 
 describe('App parentClient integration', () => {
     beforeEach(async () => {
@@ -560,6 +563,23 @@ describe('App parentClient integration', () => {
         });
     });
 
+    it('App破棄時に保留中の親認証を切断し、遅い成功応答を反映しない', async () => {
+        let finish!: (value: { success: true; pubkeyHex: string }) => void;
+        mockState.authenticateWithParentClient.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        const view = render(App);
+        await waitFor(() => expect(mockState.parentRemoteLoginListener).toBeTruthy());
+        mockState.parentRemoteLoginListener?.(PARENT_CLIENT_PUBKEY);
+        await waitFor(() => expect(mockState.authenticateWithParentClient).toHaveBeenCalledTimes(1));
+        view.unmount();
+        expect(parentClientAuthService.disconnect).toHaveBeenCalledWith(false);
+        finish({ success: true, pubkeyHex: PARENT_CLIENT_PUBKEY });
+        // Drain promise continuations from the deliberately late auth response.
+        await setImmediate();
+        expect(mockState.completePostAuthBootstrap).not.toHaveBeenCalled();
+        expect(mockState.accountManager.addAccount).not.toHaveBeenCalled();
+        expect(mockState.accountManager.setActiveAccount).not.toHaveBeenCalled();
+    });
+
     it('bootstrap中のauth.result後はstable parent-client session確立までrelay hydrationを保留する', async () => {
         const stableSession = {
             rxNostr: { tag: 'stable-parent-client-rxnostr' },
@@ -710,7 +730,7 @@ describe('App parentClient integration', () => {
         );
     });
 
-    it('並行parent-client transitionは最後のsession確立までstable扱いにしない', async () => {
+    it('重複parent-client通知の初期化を共有し、session確立までhydrationを保留する', async () => {
         const firstSession = {
             rxNostr: { tag: 'first-parent-client-rxnostr' },
             relayProfileService: {
@@ -719,26 +739,17 @@ describe('App parentClient integration', () => {
                 fetchProfileRealtime: vi.fn().mockResolvedValue(null),
             },
         };
-        const secondSession = {
-            ...firstSession,
-            rxNostr: { tag: 'second-parent-client-rxnostr' },
-        };
         let resolveAuth!: (result: { success: true; pubkeyHex: string }) => void;
         const authPromise = new Promise<{ success: true; pubkeyHex: string }>((resolve) => {
             resolveAuth = resolve;
         });
         let resolveFirstSession!: (session: typeof firstSession) => void;
-        let resolveSecondSession!: (session: typeof secondSession) => void;
         const firstSessionPromise = new Promise<typeof firstSession>((resolve) => {
             resolveFirstSession = resolve;
         });
-        const secondSessionPromise = new Promise<typeof secondSession>((resolve) => {
-            resolveSecondSession = resolve;
-        });
         mockState.authenticateWithParentClient.mockReturnValue(authPromise as any);
         mockState.completePostAuthBootstrap
-            .mockReturnValueOnce(firstSessionPromise as any)
-            .mockReturnValueOnce(secondSessionPromise as any);
+            .mockReturnValueOnce(firstSessionPromise as any);
         mockState.getReplyQuoteFromEmbedPayload.mockReturnValue({
             reply: {
                 eventId: DEFAULT_REPLY_EVENT_ID,
@@ -763,7 +774,7 @@ describe('App parentClient integration', () => {
         });
         resolveAuth({ success: true, pubkeyHex: PARENT_CLIENT_PUBKEY });
         await waitFor(() => {
-            expect(mockState.completePostAuthBootstrap).toHaveBeenCalledTimes(2);
+            expect(mockState.completePostAuthBootstrap).toHaveBeenCalledTimes(1);
         });
 
         mockState.composerRemoteSetContextListener?.({
@@ -775,21 +786,19 @@ describe('App parentClient integration', () => {
             );
         });
 
-        resolveFirstSession(firstSession);
-        await firstSessionPromise;
-        await Promise.resolve();
         expect(mockState.hydrateReplyQuoteReferences).not.toHaveBeenCalled();
 
-        resolveSecondSession(secondSession);
-        await secondSessionPromise;
+        resolveFirstSession(firstSession);
+        await firstSessionPromise;
         await waitFor(() => {
             expect(mockState.hydrateReplyQuoteReferences).toHaveBeenCalledTimes(1);
         });
         expect(mockState.hydrateReplyQuoteReferences).toHaveBeenCalledWith(
             expect.objectContaining({
-                rxNostr: secondSession.rxNostr,
+                rxNostr: firstSession.rxNostr,
             }),
         );
+        expect(mockState.completePostAuthBootstrap).toHaveBeenCalledTimes(1);
     });
 
     it('transition中もcontent-only、channel-only、valid preloadを即時適用する', async () => {
