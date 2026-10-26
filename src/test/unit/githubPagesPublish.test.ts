@@ -8,6 +8,7 @@ import { expect, it } from "vitest";
 
 const run = promisify(execFile);
 
+// Real Git can take over 20 seconds to remove the 500-file fixture on Windows.
 it.each([false, true])("publishes underscore assets and replaces a large existing site: %s", async (existingSite) => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), "ehagaki-pages-"));
     try {
@@ -64,4 +65,4 @@ it.each([false, true])("publishes underscore assets and replaces a large existin
     } finally {
         await rm(temporaryRoot, { recursive: true, force: true });
     }
-});
+}, 60_000);
