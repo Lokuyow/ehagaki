@@ -57,4 +57,21 @@ describe('createParentClientAuthCoordinator', () => {
 
         expect(syncParentClientAccount).toHaveBeenCalledWith('pubkey-2');
     });
+
+    it('応答待ち中に無効化された遷移ではactive accountを書き換えない', async () => {
+        let finish!: (value: { success: true; pubkeyHex: string }) => void;
+        let current = true;
+        const syncParentClientAccount = vi.fn();
+        const coordinator = createParentClientAuthCoordinator({
+            authenticateWithParentClient: () => new Promise(resolve => { finish = resolve; }),
+            syncParentClientAccount,
+            setLoading: vi.fn(),
+            onRequestSettled: vi.fn(),
+        });
+        const task = coordinator.synchronizeParentClientAuth({}, () => current);
+        current = false;
+        finish({ success: true, pubkeyHex: 'ab'.repeat(32) });
+        await task;
+        expect(syncParentClientAccount).not.toHaveBeenCalled();
+    });
 });

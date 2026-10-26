@@ -447,7 +447,6 @@
   });
 
   let isAuthenticated = $derived(authState.value?.isAuthenticated === true);
-  let hasPostingCapability = $derived(isAuthenticated);
   let isAuthInitialized = $derived(authState.value?.isInitialized ?? false);
 
   let rxNostr: NostrSessionBootstrap["rxNostr"] | undefined = $state();
@@ -472,6 +471,19 @@
   let showTransitionOverlay = $state(false); // ダイアログ切替時のちらつき防止用
   let isBootstrappingApp = true;
   let authTransitionGeneration = $state(0);
+  let appDisposed = false;
+  let parentClientReadySession = $state<{
+    pubkeyHex: string;
+    runtime: NostrSessionBootstrap["rxNostr"];
+  } | null>(null);
+  let pendingParentClientGeneration = $state<number | null>(null);
+  let parentClientPostAuthAbort: AbortController | undefined;
+  let hasPostingCapability = $derived(isAuthenticated && (
+    appRuntimeEnvironment.runtimeKind !== "iframe" || authState.value.type !== "parentClient"
+    || (pendingParentClientGeneration !== authTransitionGeneration
+      && parentClientReadySession?.pubkeyHex === authState.value.pubkey
+      && parentClientReadySession.runtime === rxNostr)
+  ));
   let startupAuthResult: AuthInitializationResult | null = null;
   let latestInboundInteractionSave = $state<{
     revision: number;
@@ -585,7 +597,6 @@
   let customEmojiPickerHeight = $derived(
     composerLayoutMetrics.customEmojiPickerHeight,
   );
-  let parentClientTransitionCount = 0;
   const parentClientAuthCoordinator = createParentClientAuthCoordinator({
     authenticateWithParentClient: (options) =>
       authService.authenticateWithParentClient(options),
@@ -643,6 +654,19 @@
   });
   const appAuthLoginController = createAppAuthLoginController({
     parentClientAuthCoordinator,
+    beginParentClientTransition: () => {
+      beginAuthTransition({ parentClient: true });
+      pendingParentClientGeneration = authTransitionGeneration;
+      return authTransitionGeneration;
+    },
+    isAuthTransitionCurrent: (generation) => !appDisposed && authTransitionGeneration === generation,
+    finishParentClientTransition: (generation) => {
+      if (pendingParentClientGeneration === generation) pendingParentClientGeneration = null;
+      if (!appDisposed) {
+        void flushPendingRemoteParentClientAndEmbedActions();
+        void flushPendingReplyQuoteHydrationWhenRuntimeReady();
+      }
+    },
     getCurrentAuthType: () => authState.value?.type,
     getCurrentPubkeyHex: () => authState.value?.pubkey,
     getCurrentRxNostr: () => rxNostr,
@@ -748,7 +772,16 @@
     console,
   });
 
-  function beginAuthTransition(): void {
+  function beginAuthTransition(options: { parentClient?: boolean } = {}): void {
+    parentClientPostAuthAbort?.abort();
+    parentClientPostAuthAbort = undefined;
+    pendingParentClientGeneration = null;
+    if (!options.parentClient) {
+      appParentClientSyncController.clearPendingRemoteLogin();
+      if (appAuthLoginController.hasPendingParentClientTransition()) {
+        parentClientAuthService.disconnect(false);
+      }
+    }
     postHistoryLocalRelayService.cancelSession();
     authTransitionGeneration += 1;
     delayedNip07Recovery.markTransition();
@@ -1177,11 +1210,23 @@
     pubkeyHex: string,
     options: { generation?: number } = {},
   ): Promise<void> {
-    const isCurrent = options.generation === undefined
-      ? () => true
-      : () => authTransitionGeneration === options.generation
-        && accountManager.getActiveAccountPubkey() === pubkeyHex
-        && authState.value?.pubkey === pubkeyHex;
+    const backgroundProfile = appRuntimeEnvironment.runtimeKind === "iframe"
+      && authState.value.type === "parentClient";
+    const generation = options.generation ?? authTransitionGeneration;
+    const abort = backgroundProfile ? new AbortController() : undefined;
+    if (abort) parentClientPostAuthAbort = abort;
+    let publishedSession: NostrSessionBootstrap | undefined;
+    const isCurrent = backgroundProfile
+      ? () => !appDisposed && authTransitionGeneration === generation
+        && authState.value.type === "parentClient" && authState.value.pubkey === pubkeyHex
+        && parentClientAuthService.isConnected()
+        && parentClientAuthService.getUserPubkey() === pubkeyHex
+        && (!publishedSession || rxNostr === publishedSession.rxNostr)
+      : options.generation === undefined
+        ? () => true
+        : () => authTransitionGeneration === options.generation
+          && accountManager.getActiveAccountPubkey() === pubkeyHex
+          && authState.value?.pubkey === pubkeyHex;
     const session = await completePostAuthBootstrap({
       pubkeyHex,
       closeAuthDialogs: () => {
@@ -1204,6 +1249,8 @@
       accountProfileCacheStore,
       hostRelayConfig,
       isCurrent,
+      profileLoadMode: backgroundProfile ? "background" : "blocking",
+      signal: abort?.signal,
     });
 
     if (!isCurrent()) {
@@ -1212,6 +1259,10 @@
     }
     rxNostr = session.rxNostr;
     relayProfileService = session.relayProfileService;
+    if (backgroundProfile) {
+      publishedSession = session;
+      parentClientReadySession = { pubkeyHex, runtime: session.rxNostr };
+    }
     void flushPendingReplyQuoteHydrationWhenRuntimeReady();
   }
 
@@ -1239,10 +1290,7 @@
       timeoutMs?: number;
     } = {},
   ): Promise<string | undefined> {
-    beginAuthTransition();
-    return runParentClientTransition(() =>
-      appAuthLoginController.activateParentClientAuth(options),
-    );
+    return appAuthLoginController.activateParentClientAuth(options);
   }
 
   function getReplyQuoteApplyParams() {
@@ -1408,7 +1456,7 @@
     },
     runtime: {
       isBootstrappingApp: () => isBootstrappingApp,
-      isParentClientTransitioning: () => parentClientTransitionCount > 0,
+      isParentClientTransitioning: () => pendingParentClientGeneration === authTransitionGeneration,
       getReplyQuoteState: () => replyQuoteState.value,
       getChannelContextState: () => channelContextState.value,
       getChannelContextProvenance: () => channelContextProvenanceState.value,
@@ -1445,24 +1493,13 @@
   });
 
   async function flushPendingReplyQuoteHydrationWhenRuntimeReady(): Promise<void> {
-    if (!rxNostr || parentClientTransitionCount > 0) {
+    if (!rxNostr || pendingParentClientGeneration === authTransitionGeneration) {
       return;
     }
 
     await appEmbedController.flushPendingReplyQuoteHydration();
   }
 
-  async function runParentClientTransition<T>(
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    parentClientTransitionCount += 1;
-    try {
-      return await operation();
-    } finally {
-      parentClientTransitionCount -= 1;
-      void flushPendingReplyQuoteHydrationWhenRuntimeReady();
-    }
-  }
   const appParentClientSyncController = createAppParentClientSyncController({
     isBootstrappingApp: () => isBootstrappingApp,
     hasPendingParentAuth: () => parentClientAuthCoordinator.hasPendingRequest(),
@@ -1474,7 +1511,10 @@
         authState.value?.type !== "parentClient" ||
         !parentClientAuthService.isConnected() ||
         !currentPubkey ||
-        !connectedPubkey
+        !connectedPubkey ||
+        !rxNostr ||
+        (appRuntimeEnvironment.runtimeKind === "iframe"
+          && parentClientReadySession?.runtime !== rxNostr)
       ) {
         return false;
       }
@@ -1493,6 +1533,7 @@
 
   // Parent client login/logout の保留処理と embed action の flush をまとめる coordinator.
   async function flushPendingRemoteParentClientAndEmbedActions(): Promise<void> {
+    if (appDisposed) return;
     await appParentClientSyncController.flushPendingRemoteParentClientAndEmbedActions();
   }
 
@@ -1534,7 +1575,6 @@
   async function handleRemoteParentClientLogin(
     pubkeyHex: string | null,
   ): Promise<void> {
-    beginAuthTransition();
     await appParentClientSyncController.handleRemoteParentClientLogin(
       pubkeyHex,
     );
@@ -1600,10 +1640,7 @@
   }
 
   async function handleParentClientLogin(): Promise<string | undefined> {
-    beginAuthTransition();
-    return runParentClientTransition(() =>
-      appAuthLoginController.handleParentClientLogin(),
-    );
+    return appAuthLoginController.handleParentClientLogin();
   }
 
   async function handleNip46Login(
@@ -1786,6 +1823,8 @@
     });
 
     return () => {
+      beginAuthTransition();
+      appDisposed = true;
       overlayScopeTarget.classList.remove("ehagaki-app-root");
       cleanupVisibilityHandler();
       cleanupRuntimeBindings();

@@ -18,6 +18,7 @@ interface Nip46RuntimeController {
 interface ParentClientAuthCoordinatorLike {
     synchronizeParentClientAuth(
         options?: ParentClientAuthOptions,
+        isCurrent?: () => boolean,
     ): Promise<ParentClientAuthSyncResult>;
 }
 
@@ -29,6 +30,9 @@ interface AuthResult {
 
 export interface AppAuthLoginControllerDependencies {
     parentClientAuthCoordinator: ParentClientAuthCoordinatorLike;
+    beginParentClientTransition(): number;
+    isAuthTransitionCurrent(generation: number): boolean;
+    finishParentClientTransition(generation: number): void;
     getCurrentAuthType(): string | undefined;
     getCurrentPubkeyHex(): string | null | undefined;
     getCurrentRxNostr(): unknown;
@@ -42,7 +46,7 @@ export interface AppAuthLoginControllerDependencies {
     }): Promise<void>;
     nip46Service: Nip46RuntimeController;
     disposeNostrSession(session: unknown): undefined;
-    handlePostAuth(pubkeyHex: string): Promise<void>;
+    handlePostAuth(pubkeyHex: string, options?: { generation: number }): Promise<void>;
     cancelPendingNip46Auth(): Promise<void>;
     authenticateWithNsec(secretKey: string): Promise<AuthResult>;
     handleSuccessfulAuthResult(
@@ -56,6 +60,7 @@ export interface AppAuthLoginControllerDependencies {
 
 export interface AppAuthLoginController {
     activateParentClientAuth(options?: ParentClientAuthOptions): Promise<string | undefined>;
+    hasPendingParentClientTransition(): boolean;
     saveSecretKey(secretKey: string): Promise<void>;
     handleParentClientLogin(): Promise<string | undefined>;
 }
@@ -63,11 +68,37 @@ export interface AppAuthLoginController {
 export function createAppAuthLoginController(
     deps: AppAuthLoginControllerDependencies,
 ): AppAuthLoginController {
-    async function activateParentClientAuth(
+    let parentTransition: { generation: number; task: Promise<string | undefined> } | null = null;
+
+    function activateParentClientAuth(
         options: ParentClientAuthOptions = {},
     ): Promise<string | undefined> {
+        if (parentTransition && deps.isAuthTransitionCurrent(parentTransition.generation)) {
+            return parentTransition.task;
+        }
+
+        const generation = deps.beginParentClientTransition();
+        const isCurrent = () => deps.isAuthTransitionCurrent(generation);
+        const task = Promise.resolve().then(async () => {
+            await deps.cancelPendingNip46Auth();
+            if (!isCurrent()) return;
+            return runParentClientAuth(options, generation, isCurrent);
+        }).finally(() => {
+            if (parentTransition?.task === task) parentTransition = null;
+            deps.finishParentClientTransition(generation);
+        });
+        parentTransition = { generation, task };
+        return task;
+    }
+
+    async function runParentClientAuth(
+        options: ParentClientAuthOptions,
+        generation: number,
+        isCurrent: () => boolean,
+    ): Promise<string | undefined> {
         const result = await deps.parentClientAuthCoordinator
-            .synchronizeParentClientAuth(options);
+            .synchronizeParentClientAuth(options, isCurrent);
+        if (!isCurrent()) return;
 
         if (!result.success || !result.pubkeyHex) {
             return result.error ?? 'parent_client_auth_error';
@@ -80,9 +111,10 @@ export function createAppAuthLoginController(
             nextPubkeyHex: result.pubkeyHex,
             nip46Service: deps.nip46Service,
         });
+        if (!isCurrent()) return;
 
         deps.setCurrentRxNostr(deps.disposeNostrSession(deps.getCurrentRxNostr()));
-        await deps.handlePostAuth(result.pubkeyHex);
+        await deps.handlePostAuth(result.pubkeyHex, { generation });
         return undefined;
     }
 
@@ -113,7 +145,6 @@ export function createAppAuthLoginController(
 
     async function handleParentClientLogin(): Promise<string | undefined> {
         try {
-            await deps.cancelPendingNip46Auth();
             return await activateParentClientAuth();
         } catch (error) {
             deps.logger.error('親クライアント連携ログインでエラー:', error);
@@ -125,6 +156,8 @@ export function createAppAuthLoginController(
 
     return {
         activateParentClientAuth,
+        hasPendingParentClientTransition: () => parentTransition !== null
+            && deps.isAuthTransitionCurrent(parentTransition.generation),
         saveSecretKey,
         handleParentClientLogin,
     };

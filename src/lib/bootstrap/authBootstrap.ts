@@ -6,6 +6,7 @@ import { RelayProfileService } from "../relayProfileService";
 import type { AccountManager } from "../accountManager";
 import type { ProfileData, RelayConfig } from "../types";
 import { profilesRepository } from "../storage/profilesRepository";
+import { profileMetadataCache } from "../profileMetadataCache.svelte";
 import { createNip42Authenticator } from "../nostrAuthService";
 import { createPostHistoryScanVerifier, registerPostHistoryScanVerifier, registerPostHistoryRelayEventSource } from "../postHistoryRawEventVerification";
 
@@ -65,6 +66,8 @@ interface CompletePostAuthBootstrapParams extends SyncAccountStoresParams, Initi
     profileLoadedStore: BooleanStoreLike;
     isLoadingProfileStore: BooleanStoreLike;
     isCurrent?: () => boolean;
+    profileLoadMode?: 'blocking' | 'background';
+    signal?: AbortSignal;
 }
 
 interface ApplyProfileToStoresParams {
@@ -104,9 +107,13 @@ export async function initializeNostrSession({
     const relayManager = new RelayManager(rxNostr, {
         relayListUpdatedStore: {
             value: relayListUpdatedStore.value,
-            set: (value: number) => relayListUpdatedStore.set(value),
+            set: (value: number) => {
+                if (isCurrent()) relayListUpdatedStore.set(value);
+            },
         },
-        onRelayConfigSaved,
+        onRelayConfigSaved: onRelayConfigSaved
+            ? (owner, config) => isCurrent() ? onRelayConfigSaved(owner, config) : undefined
+            : undefined,
         hostRelayConfig,
     });
     const relayProfileService = new RelayProfileService(
@@ -212,12 +219,37 @@ export async function completePostAuthBootstrap({
     accountProfileCacheStore,
     onRelayConfigSaved,
     hostRelayConfig,
-    isCurrent = () => true,
+    isCurrent: isCurrentAuth = () => true,
+    profileLoadMode = 'blocking',
+    signal,
 }: CompletePostAuthBootstrapParams): Promise<NostrSessionBootstrap> {
-    isLoadingProfileStore.set(true);
+    const backgroundProfile = profileLoadMode === 'background';
+    const isCurrent = () => isCurrentAuth() && !signal?.aborted;
+    let pendingSession: NostrSessionBootstrap | undefined;
+    const abortPendingSession = () => pendingSession?.rxNostr.dispose();
+    isLoadingProfileStore.set(!backgroundProfile);
     closeAuthDialogs();
 
     try {
+        if (backgroundProfile && isCurrent()) {
+            applyProfileToStores({
+                pubkeyHex,
+                profile: createDefaultProfileForAccount(pubkeyHex),
+                profileDataStore,
+                profileLoadedStore,
+                accountProfileCacheStore,
+            });
+            const cachedProfile = await profileMetadataCache.getCachedProfile(pubkeyHex).catch(() => null);
+            if (cachedProfile && isCurrent()) {
+                applyProfileToStores({
+                    pubkeyHex,
+                    profile: cachedProfile,
+                    profileDataStore,
+                    profileLoadedStore,
+                    accountProfileCacheStore,
+                });
+            }
+        }
         const session = await initializeNostrSession({
             pubkeyHex,
             relayListUpdatedStore,
@@ -226,6 +258,35 @@ export async function completePostAuthBootstrap({
             hostRelayConfig,
             isCurrent,
         });
+        if (backgroundProfile) {
+            pendingSession = session;
+            if (signal?.aborted) abortPendingSession();
+            else signal?.addEventListener('abort', abortPendingSession, { once: true });
+            if (!isCurrent()) return session;
+            // Preserve relay selection and fallback before exposing a posting
+            // runtime. Profile network I/O no longer holds this transition open.
+            try {
+                await session.relayProfileService.fetchRelays(pubkeyHex, false);
+            } catch (error) {
+                session.rxNostr.dispose();
+                throw error;
+            }
+            if (!isCurrent()) return session;
+            void session.relayProfileService.fetchProfile(pubkeyHex, false).then((profile) => {
+                if (profile && isCurrent()) {
+                    applyProfileToStores({
+                        pubkeyHex,
+                        profile,
+                        profileDataStore,
+                        profileLoadedStore,
+                        accountProfileCacheStore,
+                    });
+                }
+            }).catch(() => {
+                // The current-account placeholder/cache remains usable.
+            });
+            return session;
+        }
         const fetchedProfile = await session.relayProfileService.initializeForLogin(pubkeyHex);
         if (!isCurrent()) return session;
         const profile = fetchedProfile ?? createDefaultProfileForAccount(pubkeyHex);
@@ -240,7 +301,8 @@ export async function completePostAuthBootstrap({
 
         return session;
     } finally {
-        isLoadingProfileStore.set(false);
+        signal?.removeEventListener('abort', abortPendingSession);
+        if (!backgroundProfile || isCurrent()) isLoadingProfileStore.set(false);
         if (isCurrent()) {
             await syncAccountStores({ accountManager, accountListStore, accountProfileCacheStore });
         }
