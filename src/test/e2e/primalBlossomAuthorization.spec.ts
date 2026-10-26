@@ -58,6 +58,7 @@ for (const mode of ["normal", "snapshot", "unauthorized", "cors"] as const) {
             } else {
                 expect(url.pathname).toBe(`/list/${pubkey}`);
                 expect(url.searchParams.get("limit")).toBe("24");
+                expect(url.searchParams.has("cursor")).toBe(false);
                 await route.fulfill({ json: descriptors.filter(item => !removed.has(item.sha256)) });
             }
         });
@@ -86,7 +87,10 @@ for (const mode of ["normal", "snapshot", "unauthorized", "cors"] as const) {
         await dialog.getByRole("tab", { name: "メディア", exact: true }).click();
         await dialog.getByRole("combobox").selectOption("primal-custom");
         if (mode === "unauthorized" || mode === "cors") {
-            await expect(dialog.getByRole("alert")).toBeVisible();
+            const message = mode === "unauthorized"
+                ? "メディアを管理するにはログインまたは認証の許可が必要です。"
+                : "サーバーに接続できませんでした。接続を確認して再試行してください。";
+            await expect(page.getByRole("alert").filter({ hasText: message })).toBeVisible();
             await expect(dialog.locator("article")).toHaveCount(0);
             expect(actions).toEqual(["list"]);
             return;
@@ -100,7 +104,15 @@ for (const mode of ["normal", "snapshot", "unauthorized", "cors"] as const) {
         expect(actions).toEqual(["list"]);
         await dialog.locator("article").first().getByRole("button", { name: "削除", exact: true }).click();
         await page.getByRole("alertdialog").getByRole("button", { name: "削除", exact: true }).click();
-        await expect(dialog.locator("article")).toHaveCount(count - 1);
-        expect(actions).toEqual(["list", "delete"]);
+        // Confirmation closes after the automatic first-page refresh completes.
+        await expect(page.getByRole("alertdialog")).toBeHidden();
+        await expect(dialog.locator("article")).toHaveCount(Math.min(24, count - 1));
+        if (mode === "snapshot") {
+            const more = dialog.getByRole("button", { name: "さらに読み込む", exact: true });
+            await more.click();
+            await expect(dialog.locator("article")).toHaveCount(count - 1);
+            await expect(more).toHaveCount(0);
+        }
+        expect(actions).toEqual(["list", "delete", "list"]);
     });
 }
