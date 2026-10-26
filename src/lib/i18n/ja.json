@@ -26,6 +26,11 @@
     "cacheCleanupFailed": "このサーバーから削除しましたが、local画像キャッシュの清掃に失敗しました。",
     "skipped": "対象外または種類不明のrecord: {excluded}件。データ不備のあるrecord: {invalid}件。",
     "retryAfter": "{time}以降に再試行してください。",
+    "nostrBuild": {
+      "unavailable": "nostr.buildはNIP-96での一覧取得に対応していません。メディアの管理・削除は公式ページをご利用ください。",
+      "account": "アカウント管理（公式）",
+      "deleteFree": "無料アップロードの削除（公式）"
+    },
     "registration": {
       "title": "サーバーへの登録",
       "offer": "メディアの一覧表示・削除には、このサーバーへの登録が必要です。",

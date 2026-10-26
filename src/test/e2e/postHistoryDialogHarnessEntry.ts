@@ -16,7 +16,7 @@ if (new URLSearchParams(location.search).has("media-registration-host")) {
     url.searchParams.set("container", "1");
     iframe.src = url.href;
     iframe.title = "Media registration fixture";
-    iframe.style.cssText = "width:280px;height:760px;border:0;display:block";
+    iframe.style.cssText = `width:${url.searchParams.get("media-host-width") === "320" ? 320 : 280}px;height:760px;border:0;display:block`;
     target.append(iframe);
 } else if (new URLSearchParams(location.search).has("media-registration")) {
     const { default: UploadMediaRegistrationHarness } = await import("./UploadMediaRegistrationHarness.svelte");

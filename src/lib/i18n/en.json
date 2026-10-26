@@ -26,6 +26,11 @@
     "cacheCleanupFailed": "Deleted from this server, but local image cache cleanup failed.",
     "skipped": "Unsupported or unknown media types: {excluded} records. Records with invalid data: {invalid}.",
     "retryAfter": "Retry after {time}.",
+    "nostrBuild": {
+      "unavailable": "nostr.build does not support listing media through NIP-96. Use the official pages to manage or delete your media.",
+      "account": "Account management (official)",
+      "deleteFree": "Delete free uploads (official)"
+    },
     "registration": {
       "title": "Server registration",
       "offer": "Register with this server to list and delete your media.",

@@ -14,7 +14,7 @@
     const owner = query.get("owner")!;
     const npub = nip19.npubEncode(owner);
     const destination = createUploadDestinationFromPreset({ preset: UPLOAD_DESTINATION_PRESETS.find(preset =>
-        preset.id === (query.get("server") === "nostrcheck" ? "nostrcheck-me" : "share-yabu-me"))!, pubkeyHex: owner, isDefault: true });
+        preset.id === (query.get("server") === "nostr-build" ? "nostr-build" : query.get("server") === "nostrcheck" ? "nostrcheck-me" : "share-yabu-me"))!, pubkeyHex: owner, isDefault: true });
     Reflect.set(window, "nostr", { getPublicKey: async () => owner, signEvent: (event: EventTemplate) =>
         (Reflect.get(window, "fixtureSignMediaRegistrationEvent") as (event: EventTemplate) => Promise<VerifiedEvent>)(event) });
     setNip07Auth(owner, npub, nip19.nprofileEncode({ pubkey: owner, relays: [] }));
@@ -26,6 +26,11 @@
         void (async () => {
             await waitLocale(); locale.set(query.get("lang") ?? "ja"); await waitLocale();
             await uploadDestinationsRepository.put(destination);
+            if (query.get("server") === "nostr-build") {
+                await uploadDestinationsRepository.put(createUploadDestinationFromPreset({
+                    preset: UPLOAD_DESTINATION_PRESETS.find(preset => preset.id === "share-yabu-me")!, pubkeyHex: owner,
+                }));
+            }
             ready = true;
         })();
     });
