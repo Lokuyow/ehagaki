@@ -3,7 +3,10 @@ import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
 
 type PendingRequest = { socket: WebSocketRoute; id: string; author: string };
 
-async function openParentLogin(page: Page, hostRelays = false) {
+async function openParentLogin(page: Page, hostRelays = false, options: {
+    manualLogin?: boolean;
+    savedOtherAccount?: boolean;
+} = {}) {
     // Keys stay in this test runner; the parent fixture only receives public keys.
     const keys = [generateSecretKey(), generateSecretKey()];
     const pubkeys = keys.map(getPublicKey);
@@ -30,8 +33,11 @@ async function openParentLogin(page: Page, hostRelays = false) {
     };
 
     await page.route('https://**/*', route => route.abort());
-    await page.addInitScript(() => {
+    await page.addInitScript(({ savedPubkey }) => {
         localStorage.setItem('firstVisit', '1');
+        if (savedPubkey) localStorage.setItem('nostr-accounts', JSON.stringify([
+            { pubkeyHex: savedPubkey, type: 'parentClient', addedAt: 1 },
+        ]));
         const NativeWebSocket = window.WebSocket;
         class ConnectingSocket extends EventTarget {
             readyState = 0;
@@ -45,7 +51,7 @@ async function openParentLogin(page: Page, hostRelays = false) {
                 return Reflect.construct(target, args);
             },
         });
-    });
+    }, { savedPubkey: options.savedOtherAccount ? pubkeys[1] : null });
     await page.routeWebSocket(/^wss:\/\//, socket => {
         socket.onMessage(raw => {
             const message = JSON.parse(String(raw)) as unknown[];
@@ -91,7 +97,7 @@ async function openParentLogin(page: Page, hostRelays = false) {
 <script>
 const frame = document.querySelector('#child');
 const pubkeys = ${JSON.stringify(pubkeys)};
-const state = window.__parentLogin = { authRequests: 0, ready: 0, account: 0, loggedIn: false, authAt: 0, posted: 0 };
+const state = window.__parentLogin = { authRequests: 0, ready: 0, account: 0, loggedIn: false, authAt: 0, posted: 0, notifyReady: ${!options.manualLogin} };
 const post = (type, payload, requestId) => frame.contentWindow.postMessage({
   namespace: 'ehagaki.embed', version: 1, type, payload, ...(requestId ? { requestId } : {})
 }, location.origin);
@@ -102,7 +108,7 @@ window.addEventListener('message', async event => {
   const m = event.data;
   if (m?.namespace !== 'ehagaki.embed' || m.version !== 1) return;
   if (m.type === 'relays.request') post('relays.set', [{ url: 'wss://login-host.example/', read: true, write: true }], m.requestId);
-  if (m.type === 'ready') { state.ready++; if (state.loggedIn) post('auth.login', { pubkeyHex: pubkeys[state.account] }); }
+  if (m.type === 'ready') { state.ready++; if (state.loggedIn && state.notifyReady) post('auth.login', { pubkeyHex: pubkeys[state.account] }); }
   if (m.type === 'auth.request') {
     state.authRequests++; state.authAt = Date.now();
     post('auth.result', { pubkeyHex: pubkeys[state.account], capabilities: ['signEvent'] }, m.requestId);
@@ -126,7 +132,13 @@ window.addEventListener('message', async event => {
     // authentication. Cold Vite compilation is separate from relay latency.
     await frame.locator('.tiptap-editor').waitFor({ state: 'visible' });
     await frame.getByRole('button', { name: 'ログイン', exact: true }).waitFor({ state: 'visible' });
-    await page.evaluate(() => (window as any).__login());
+    if (options.manualLogin) {
+        await page.evaluate(() => { (window as any).__parentLogin.loggedIn = true; });
+        await frame.getByRole('button', { name: 'ログイン', exact: true }).click();
+        await frame.locator('.parent-client-login-button').click();
+    } else {
+        await page.evaluate(() => (window as any).__login());
+    }
     return {
         frame,
         pendingRelays,
@@ -215,5 +227,35 @@ test('uses Host Relay Config without waiting for a profile response', async ({ p
     await expect(host.frame.getByRole('button', { name: '投稿', exact: true })).toBeEnabled();
     await expect.poll(() => host.pendingProfiles.size).toBeGreaterThan(0);
     expect(host.pendingRelays.size).toBe(0);
+    expect(await page.evaluate(() => (window as any).__parentLogin.authRequests)).toBe(1);
+});
+
+test('keeps a different account notification received during manual login', async ({ page }) => {
+    const host = await openParentLogin(page, false, { manualLogin: true });
+    await expect.poll(() => host.pendingRelays.size).toBeGreaterThan(0);
+    await page.evaluate(() => (window as any).__login(1));
+    host.releaseRelays();
+    await expect.poll(() => page.evaluate(() => (window as any).__parentLogin.authRequests)).toBe(2);
+    host.releaseProfiles();
+    await host.frame.getByRole('button', { name: 'プロフィール', exact: true }).click();
+    await expect(host.frame.getByRole('dialog')).toContainText('Iframe account 2');
+    await expect(host.frame.getByRole('dialog')).not.toContainText('Iframe account 1');
+});
+
+test('finishes login preparation after removing an inactive account', async ({ page }) => {
+    const host = await openParentLogin(page, false, { savedOtherAccount: true });
+    await expect.poll(() => host.pendingRelays.size).toBeGreaterThan(0);
+    await host.frame.getByRole('button', { name: 'プロフィール', exact: true }).click();
+    const inactive = host.frame.locator('.account-item:not(.active)');
+    await expect(inactive).toHaveCount(1);
+    await inactive.locator('.account-logout-button').click();
+    await expect(inactive).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await host.frame.locator('.tiptap-editor').fill('draft after removing another account');
+    host.releaseRelays();
+    const submit = host.frame.getByRole('button', { name: '投稿', exact: true });
+    await expect(submit).toBeEnabled();
+    await submit.click();
+    await expect.poll(() => page.evaluate(() => (window as any).__parentLogin.posted)).toBe(1);
     expect(await page.evaluate(() => (window as any).__parentLogin.authRequests)).toBe(1);
 });

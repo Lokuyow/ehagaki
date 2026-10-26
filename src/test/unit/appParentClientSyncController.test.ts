@@ -7,6 +7,7 @@ function createController(overrides: Record<string, unknown> = {}) {
     const deps = {
         isBootstrappingApp: () => isBootstrapping,
         hasPendingParentAuth: () => false,
+        hasPendingParentClientTransition: () => false,
         isCurrentParentClientRuntime: vi.fn(() => false),
         activateParentClientAuth: vi.fn(async () => undefined),
         flushPendingComposerAction: vi.fn(async () => undefined),
@@ -142,6 +143,42 @@ describe('createAppParentClientSyncController', () => {
         const task = controller.handleRemoteParentClientLogin(null);
         await controller.handleRemoteParentClientLogin('aa'.repeat(32));
         finish('parent_client_timeout');
+        await task;
+        expect(deps.activateParentClientAuth).toHaveBeenCalledTimes(1);
+    });
+
+    it('手動Aへの合流時に届いたB通知を、A完了後に再認証する', async () => {
+        let finishManual!: () => void;
+        let manualPending = true;
+        let current = 'aa'.repeat(32);
+        const activate = vi.fn()
+            .mockImplementationOnce(() => new Promise<void>(resolve => { finishManual = resolve; }))
+            .mockImplementationOnce(async () => { current = 'bb'.repeat(32); });
+        const { controller } = createController({
+            hasPendingParentClientTransition: () => manualPending,
+            isCurrentParentClientRuntime: (pubkey: string) => !manualPending && pubkey === current,
+            activateParentClientAuth: activate,
+        });
+        const task = controller.handleRemoteParentClientLogin('bb'.repeat(32));
+        expect(activate).toHaveBeenCalledTimes(1);
+        manualPending = false;
+        finishManual();
+        await task;
+        expect(activate).toHaveBeenCalledTimes(2);
+        expect(current).toBe('bb'.repeat(32));
+    });
+
+    it.each(['same-account', 'failed'] as const)('手動ログインへの%s合流で余分な再認証をしない', async (outcome) => {
+        let finishManual!: (error?: string) => void;
+        const { controller, deps } = createController({
+            hasPendingParentClientTransition: () => true,
+            isCurrentParentClientRuntime: vi.fn(() => outcome === 'same-account'),
+            activateParentClientAuth: vi.fn(() => new Promise<string | undefined>(resolve => { finishManual = resolve; })),
+        });
+        // An existing manual transition has not exposed its runtime yet.
+        vi.mocked(deps.isCurrentParentClientRuntime).mockReturnValueOnce(false);
+        const task = controller.handleRemoteParentClientLogin('aa'.repeat(32));
+        finishManual(outcome === 'failed' ? 'parent_client_timeout' : undefined);
         await task;
         expect(deps.activateParentClientAuth).toHaveBeenCalledTimes(1);
     });

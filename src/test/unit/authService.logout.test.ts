@@ -76,6 +76,7 @@ describe('AuthService.logoutAccount', () => {
     it('parentClientアカウントのログアウト → parentClientAuthService.disconnect(true)呼出', async () => {
         const { parentClientAuthService } = await import('../../lib/parentClientAuthService');
         mockAccountManager.getAccountType.mockReturnValue('parentClient');
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue('pubkey1');
 
         await authService.logoutAccount('pubkey1');
 
@@ -85,6 +86,7 @@ describe('AuthService.logoutAccount', () => {
     it('parentClientアカウントのリモートログアウト → notifyなしで切断', async () => {
         const { parentClientAuthService } = await import('../../lib/parentClientAuthService');
         mockAccountManager.getAccountType.mockReturnValue('parentClient');
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue('pubkey1');
 
         await authService.logoutAccount('pubkey1', { notifyParentClient: false });
 
@@ -102,11 +104,27 @@ describe('AuthService.logoutAccount', () => {
         expect(parentClientAuthService.disconnect).toHaveBeenCalledWith(false);
     });
 
+    it.each([true, false])('非アクティブな親アカウント削除で別アカウントの接続・準備を切断しない（connected=%s）', async (connected) => {
+        mockAccountManager.getAccountType.mockReturnValue('parentClient');
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue('active-parent');
+        mockAccountManager.removeAccount.mockReturnValue(undefined);
+        vi.mocked(parentClientAuthService.isConnected).mockReturnValue(connected);
+        vi.mocked(parentClientAuthService.getUserPubkey).mockReturnValue(connected ? 'active-parent' : null);
+
+        await expect(authService.logoutAccount('saved-parent')).resolves.toBeUndefined();
+
+        expect(parentClientAuthService.disconnect).not.toHaveBeenCalled();
+        expect(ParentClientAuthService.clearSession).toHaveBeenCalledWith(mockDependencies.localStorage, 'saved-parent');
+        expect(mockAccountManager.cleanupAccountData).toHaveBeenCalledWith('saved-parent');
+        expect(mockAccountManager.removeAccount).toHaveBeenCalledWith('saved-parent');
+    });
+
     it.each([true, false])(
         'Parent client session削除失敗後もcleanupとregistry削除を継続する（notify=%s）',
         async (notifyParentClient) => {
             const events: string[] = [];
             mockAccountManager.getAccountType.mockReturnValue('parentClient');
+            mockAccountManager.getActiveAccountPubkey.mockReturnValue('pubkey1');
             vi.mocked(parentClientAuthService.disconnect).mockImplementation((notify) => {
                 events.push(`disconnect:${notify}`);
             });

@@ -6,6 +6,7 @@ interface ParentClientRemoteLoginOptions {
 export interface AppParentClientSyncControllerDependencies {
     isBootstrappingApp(): boolean;
     hasPendingParentAuth(): boolean;
+    hasPendingParentClientTransition(): boolean;
     isCurrentParentClientRuntime(pubkeyHex?: string | null): boolean;
     activateParentClientAuth(
         options: ParentClientRemoteLoginOptions,
@@ -67,6 +68,7 @@ export function createAppParentClientSyncController(
             return;
         }
 
+        const joinedTransition = deps.hasPendingParentClientTransition();
         const login = { pubkeyHex, generation };
         activeLogin = login;
         try {
@@ -80,6 +82,13 @@ export function createAppParentClientSyncController(
                     pendingRemoteParentLoginPubkey = undefined;
                 }
                 deps.logger.error('親クライアント連携の自動同期に失敗:', error);
+            } else if (
+                joinedTransition && login.pubkeyHex
+                && !deps.isCurrentParentClientRuntime(login.pubkeyHex)
+            ) {
+                // A manual login may have owned the shared operation. Retain
+                // this notification if that operation established another user.
+                pendingRemoteParentLoginPubkey ??= login.pubkeyHex;
             }
         } catch {
             if (generation === login.generation) {

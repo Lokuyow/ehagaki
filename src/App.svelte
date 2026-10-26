@@ -1503,6 +1503,7 @@
   const appParentClientSyncController = createAppParentClientSyncController({
     isBootstrappingApp: () => isBootstrappingApp,
     hasPendingParentAuth: () => parentClientAuthCoordinator.hasPendingRequest(),
+    hasPendingParentClientTransition: () => appAuthLoginController.hasPendingParentClientTransition(),
     isCurrentParentClientRuntime: (pubkeyHex) => {
       const currentPubkey = authState.value?.pubkey;
       const connectedPubkey = parentClientAuthService.getUserPubkey();
@@ -1600,7 +1601,8 @@
     pubkeyHex: string,
     options: { closeDialog?: boolean; notifyParentClient?: boolean } = {},
   ) {
-    beginAuthTransition();
+    const currentPubkey = authState.value?.pubkey || accountManager.getActiveAccountPubkey();
+    if (currentPubkey === pubkeyHex) beginAuthTransition();
     await appAccountSessionController.logoutAccount(pubkeyHex, options);
   }
 
