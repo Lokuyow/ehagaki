@@ -36,9 +36,9 @@ const translations = {
             uploadDestinationSetDefault: "既定にする",
             uploadDestinationMoveUp: "Up",
             uploadDestinationMoveDown: "Down",
-            uploadDestinationRelayFetching: "BUD-03 取得中",
+            uploadDestinationRelayFetching: "取得中",
             uploadDestinationRelayFetch: "取得",
-            uploadDestinationRelayPublishing: "BUD-03 publish 中",
+            uploadDestinationRelayPublishing: "送信中",
             uploadDestinationRelayPublish: "送信",
             uploadDestinationRelayInfoLabel: "BUD-03 の説明",
             uploadDestinationRelayInfoScope: "BUD-03 の説明",
@@ -65,7 +65,7 @@ const translations = {
             uploadDestinationMaxSize: "Max {size}",
             uploadDestinationActions: "Actions for {name}",
             uploadDestinationTestFailure: "Connection test failed",
-            uploadDestinationRelayTitle: "Relay synchronization",
+            uploadDestinationRelayTitle: "Relay sync",
             uploadDestinationRelayDescription: "Manually synchronize upload destinations with relays.",
             uploadDestinationPreset: "Preset",
             uploadDestinationProtocol: "Protocol",
@@ -85,9 +85,9 @@ const translations = {
             uploadDestinationSetDefault: "Set as default",
             uploadDestinationMoveUp: "Up",
             uploadDestinationMoveDown: "Down",
-            uploadDestinationRelayFetching: "Fetching BUD-03",
+            uploadDestinationRelayFetching: "Fetching…",
             uploadDestinationRelayFetch: "Fetch",
-            uploadDestinationRelayPublishing: "Publishing BUD-03",
+            uploadDestinationRelayPublishing: "Sending…",
             uploadDestinationRelayPublish: "Send",
             uploadDestinationRelayInfoLabel: "BUD-03 info",
             uploadDestinationRelayInfoScope: "BUD-03 info",
@@ -275,8 +275,8 @@ describe("SettingsUploadDestinationSection", () => {
         await fireEvent.click(screen.getByRole("button", { name: lang === "ja" ? "管理" : "Manage" }));
         expect(screen.queryByText(description)).toBeNull();
         const infoButton = screen.getByRole("button", { name: infoLabel });
-        const heading = screen.getByRole("heading", { name: lang === "ja" ? "リレー同期" : "Relay synchronization" });
-        expect(heading.parentElement?.contains(infoButton)).toBe(true);
+        const heading = screen.getByRole("heading", { name: lang === "ja" ? "リレー同期" : "Relay sync" });
+        expect(heading.closest(".relay-sync-toolbar")?.contains(infoButton)).toBe(true);
         await fireEvent.click(infoButton);
         expect(screen.getByText(description)).toBeTruthy();
     });
@@ -286,8 +286,8 @@ describe("SettingsUploadDestinationSection", () => {
         render(SettingsUploadDestinationSection, { rxNostr: {} as never });
         await fireEvent.click(screen.getByRole('button', { name: '管理' }));
         const buttons = field === "relayFetching"
-            ? [screen.getByRole("button", { name: "BUD-03 取得中" }), screen.getByRole("button", { name: "送信" })]
-            : [screen.getByRole("button", { name: "取得" }), screen.getByRole("button", { name: "BUD-03 publish 中" })];
+            ? [screen.getByRole("button", { name: "取得中" }), screen.getByRole("button", { name: "送信" })]
+            : [screen.getByRole("button", { name: "取得" }), screen.getByRole("button", { name: "送信中" })];
         expect(buttons).toHaveLength(2); expect(buttons.every(button => (button as HTMLButtonElement).disabled)).toBe(true);
     });
     it("shows the upload icon beside its label and keeps the manage button text-only", () => {

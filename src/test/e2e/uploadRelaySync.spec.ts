@@ -367,7 +367,10 @@ for (const lang of ["ja", "en"] as const) for (const surface of ["page", "shadow
         const relayInfoLabel = lang === "ja" ? "リレー同期の説明" : "About relay synchronization";
         await expect(root.locator(".list-heading").getByRole("button", { name: blossomInfoLabel, exact: true })).toHaveCount(1);
         await expect(root.locator(".destination-actions").getByRole("button", { name: blossomInfoLabel, exact: true })).toHaveCount(0);
-        await expect(root.locator(".relay-sync-section .section-heading").getByRole("button", { name: relayInfoLabel, exact: true })).toHaveCount(1);
+        const relayToolbar = root.locator(".relay-sync-toolbar");
+        await expect(relayToolbar.getByRole("button", { name: relayInfoLabel, exact: true })).toHaveCount(1);
+        await expect(relayToolbar.getByRole("button", { name: lang === "ja" ? "取得" : "Fetch", exact: true })).toHaveCount(1);
+        await expect(relayToolbar.getByRole("button", { name: lang === "ja" ? "送信" : "Send", exact: true })).toHaveCount(1);
         const testButtonOffsets = await root.locator(".destination-actions").evaluateAll(actions =>
             actions.map(actions => actions.querySelector("button")!.getBoundingClientRect().left),
         );
@@ -391,6 +394,12 @@ for (const lang of ["ja", "en"] as const) for (const surface of ["page", "shadow
                 await assertFits(list);
                 await assertFits(root.locator(".list-heading"));
                 await assertFits(root.locator(".upload-destination-section"));
+                await assertFits(relayToolbar);
+                expect(await relayToolbar.evaluate(toolbar => {
+                    const children = Array.from(toolbar.children, child => child.getBoundingClientRect());
+                    const centers = children.map(rect => rect.top + rect.height / 2);
+                    return centers.length === 3 && centers.every(center => Math.abs(center - centers[0]) <= 1);
+                })).toBe(true);
                 await assertFits(root.getByRole("button", { name: lang === "ja" ? "閉じる" : "Close", exact: true }));
                 await trigger.scrollIntoViewIfNeeded();
                 if (isMobile) await trigger.tap();
@@ -440,7 +449,7 @@ for (const lang of ["ja", "en"] as const) for (const surface of ["page", "shadow
         await page.keyboard.press("Enter");
         const preset = root.getByRole("combobox", { name: lang === "ja" ? "プリセット" : "Preset", exact: true });
         await expect(preset).toBeFocused();
-        await expect(root.getByRole("region", { name: lang === "ja" ? "リレー同期" : "Relay synchronization", exact: true })).toHaveCount(0);
+        await expect(root.getByRole("region", { name: lang === "ja" ? "リレー同期" : "Relay sync", exact: true })).toHaveCount(0);
         await root.getByRole("button", { name: lang === "ja" ? "キャンセル" : "Cancel", exact: true }).click();
         await expect(trigger).toBeFocused();
 

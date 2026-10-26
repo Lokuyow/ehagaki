@@ -644,8 +644,47 @@
             {/if}
             {#if !editing}
                 <section class="relay-sync-section" aria-labelledby={panelId + "-relay-heading"}>
-                    <div class="section-heading">
-                        <h3 id={panelId + "-relay-heading"}>{$_("settingsDialog.uploadDestinationRelayTitle")}</h3>
+                    <div class="relay-sync-toolbar">
+                        <div class="section-heading">
+                            <h3 id={panelId + "-relay-heading"}>{$_("settingsDialog.uploadDestinationRelayTitle")}</h3>
+                        </div>
+                        <div class="panel-actions">
+                            <Button
+                                variant="default"
+                                shape="rounded"
+                                onClick={fetchFromRelays}
+                                disabled={!canUseRelaySync ||
+                                    destinationState.relayFetching || destinationState.relayPublishing}
+                            >
+                                {destinationState.relayFetching
+                                    ? $_(
+                                          "settingsDialog.uploadDestinationRelayFetching",
+                                      ) || "取得中"
+                                    : $_(
+                                          "settingsDialog.uploadDestinationRelayFetch",
+                                      ) || "取得"}
+                            </Button>
+                            <Button
+                                variant="default"
+                                shape="rounded"
+                                onClick={publishToRelays}
+                                disabled={!canUseRelaySync ||
+                                    destinationState.relayFetching || destinationState.relayPublishing ||
+                                    !destinationState.destinations.some(
+                                        (destination) =>
+                                            (destination.protocol === "blossom" || destination.protocol === "nip96") &&
+                                            destination.enabled,
+                                    )}
+                            >
+                                {destinationState.relayPublishing
+                                    ? $_(
+                                          "settingsDialog.uploadDestinationRelayPublishing",
+                                      ) || "送信中"
+                                    : $_(
+                                          "settingsDialog.uploadDestinationRelayPublish",
+                                      ) || "送信"}
+                            </Button>
+                        </div>
                         <InfoPopoverButton
                             side="top"
                             ariaLabel={$_(
@@ -678,43 +717,6 @@
                                 </p>
                             </div>
                         </InfoPopoverButton>
-                    </div>
-                    <div class="panel-actions">
-                        <Button
-                            variant="default"
-                            shape="rounded"
-                            onClick={fetchFromRelays}
-                            disabled={!canUseRelaySync ||
-                                destinationState.relayFetching || destinationState.relayPublishing}
-                        >
-                            {destinationState.relayFetching
-                                ? $_(
-                                      "settingsDialog.uploadDestinationRelayFetching",
-                                  ) || "リレー取得中"
-                                : $_(
-                                      "settingsDialog.uploadDestinationRelayFetch",
-                                  ) || "取得"}
-                        </Button>
-                        <Button
-                            variant="default"
-                            shape="rounded"
-                            onClick={publishToRelays}
-                            disabled={!canUseRelaySync ||
-                                destinationState.relayFetching || destinationState.relayPublishing ||
-                                !destinationState.destinations.some(
-                                    (destination) =>
-                                        (destination.protocol === "blossom" || destination.protocol === "nip96") &&
-                                        destination.enabled,
-                                )}
-                        >
-                            {destinationState.relayPublishing
-                                ? $_(
-                                      "settingsDialog.uploadDestinationRelayPublishing",
-                                  ) || "リレー送信中"
-                                : $_(
-                                      "settingsDialog.uploadDestinationRelayPublish",
-                                  ) || "送信"}
-                        </Button>
                     </div>
                     {#if destinationState.relaySyncResults}
                         <div class="test-result" role="status" aria-live="polite">
@@ -946,6 +948,19 @@
         flex-direction: column;
         gap: 8px;
         min-width: 0;
+    }
+
+    .relay-sync-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+        white-space: nowrap;
+    }
+
+    .relay-sync-toolbar .panel-actions {
+        flex-wrap: nowrap;
+        gap: 4px;
     }
 
     .badge {
