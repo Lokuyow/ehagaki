@@ -976,6 +976,11 @@
         gap: 6px;
     }
 
+    .destination-actions {
+        justify-content: flex-end;
+        margin-inline-start: auto;
+    }
+
     .test-result {
         overflow-wrap: anywhere;
         font-size: 0.875rem;

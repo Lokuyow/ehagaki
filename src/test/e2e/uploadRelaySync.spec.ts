@@ -406,6 +406,12 @@ for (const lang of ["ja", "en"] as const) for (const surface of ["page", "shadow
                     const actions = node.querySelector(".destination-actions")!.getBoundingClientRect();
                     return text.right <= actions.left + 1 || text.bottom <= actions.top + 1;
                 })).toBe(true);
+                expect(await rows.evaluateAll(rows => rows.every(row => {
+                    const main = row.querySelector(".destination-main")!.getBoundingClientRect();
+                    const text = row.querySelector(".destination-content")!.getBoundingClientRect();
+                    const actions = row.querySelector(".destination-actions")!.getBoundingClientRect();
+                    return text.bottom > actions.top + 1 || Math.abs(main.right - actions.right) <= 1;
+                }))).toBe(true);
                 if (width === 320 && colorScheme === "dark") {
                     await page.screenshot({ path: testInfo.outputPath("compact-" + lang + "-" + surface + ".png"), fullPage: true });
                 }
