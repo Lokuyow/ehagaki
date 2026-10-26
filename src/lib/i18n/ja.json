@@ -487,7 +487,7 @@
     "uploadDestinationTest": "接続テスト",
     "uploadDestinationTestSuccess": "接続テストに成功しました",
     "uploadDestinationBlossomTestInfoLabel": "Blossom 接続テストの説明",
-    "uploadDestinationBlossomTestInfoNoUpload": "このテストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。",
+    "uploadDestinationBlossomTestInfoNoUpload": "Blossomの接続テストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。",
     "uploadDestinationBlossomTestInfoAuthorization": "Blossom の仕様上、確認に必要な署名で upload 権限が要求される場合があります。",
     "uploadDestinationSetDefault": "既定にする",
     "uploadDestinationEdit": "編集",

@@ -489,7 +489,7 @@
     "uploadDestinationTest": "Test connection",
     "uploadDestinationTestSuccess": "Connection test succeeded",
     "uploadDestinationBlossomTestInfoLabel": "About the Blossom connection test",
-    "uploadDestinationBlossomTestInfoNoUpload": "This test does not upload a file. It checks upload availability with HEAD /upload.",
+    "uploadDestinationBlossomTestInfoNoUpload": "Blossom connection tests do not upload an actual file; they check upload availability with HEAD /upload.",
     "uploadDestinationBlossomTestInfoAuthorization": "Under the Blossom protocol, the authorization request may ask you to sign the upload permission needed for this check.",
     "uploadDestinationSetDefault": "Set as default",
     "uploadDestinationEdit": "Edit",

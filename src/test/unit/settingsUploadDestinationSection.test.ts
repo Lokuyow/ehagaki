@@ -30,7 +30,7 @@ const translations = {
             uploadDestinationTest: "接続テスト",
             uploadDestinationTestSuccess: "接続テストに成功しました",
             uploadDestinationBlossomTestInfoLabel: "Blossom 接続テストの説明",
-            uploadDestinationBlossomTestInfoNoUpload: "このテストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。",
+            uploadDestinationBlossomTestInfoNoUpload: "Blossomの接続テストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。",
             uploadDestinationBlossomTestInfoAuthorization: "Blossom の仕様上、確認に必要な署名で upload 権限が要求される場合があります。",
             uploadDestinationTesting: "確認中",
             uploadDestinationSetDefault: "既定にする",
@@ -79,7 +79,7 @@ const translations = {
             uploadDestinationTest: "Test",
             uploadDestinationTestSuccess: "Connection test succeeded",
             uploadDestinationBlossomTestInfoLabel: "About the Blossom connection test",
-            uploadDestinationBlossomTestInfoNoUpload: "This test does not upload a file. It checks upload availability with HEAD /upload.",
+            uploadDestinationBlossomTestInfoNoUpload: "Blossom connection tests do not upload an actual file; they check upload availability with HEAD /upload.",
             uploadDestinationBlossomTestInfoAuthorization: "Under the Blossom protocol, the authorization request may ask you to sign the upload permission needed for this check.",
             uploadDestinationTesting: "Testing",
             uploadDestinationSetDefault: "Set as default",
@@ -274,7 +274,10 @@ describe("SettingsUploadDestinationSection", () => {
         render(SettingsUploadDestinationSection, { rxNostr: {} as never });
         await fireEvent.click(screen.getByRole("button", { name: lang === "ja" ? "管理" : "Manage" }));
         expect(screen.queryByText(description)).toBeNull();
-        await fireEvent.click(screen.getByRole("button", { name: infoLabel }));
+        const infoButton = screen.getByRole("button", { name: infoLabel });
+        const heading = screen.getByRole("heading", { name: lang === "ja" ? "リレー同期" : "Relay synchronization" });
+        expect(heading.parentElement?.contains(infoButton)).toBe(true);
+        await fireEvent.click(infoButton);
         expect(screen.getByText(description)).toBeTruthy();
     });
     it.each(['relayFetching', 'relayPublishing'] as const)("disables both sync buttons during %s", async field => {
@@ -611,6 +614,14 @@ describe("SettingsUploadDestinationSection", () => {
 
     it("shows a successful Blossom connection test even when the result has no message", async () => {
         setExistingBlossomDestination();
+        const blossomDestination = (mockUploadDestinationStore.value as unknown as {
+            destinations: UploadDestination[];
+        }).destinations[0]!;
+        (mockUploadDestinationStore.value as unknown as { destinations: UploadDestination[] }).destinations.push({
+            ...blossomDestination,
+            id: "second-blossom",
+            name: "Second Blossom",
+        });
         (mockUploadDestinationStore.value as unknown as {
             testResults: Record<string, { success: boolean; message?: string }>;
         }).testResults = {
@@ -622,14 +633,18 @@ describe("SettingsUploadDestinationSection", () => {
         await fireEvent.click(screen.getByRole("button", { name: "管理" }));
         await tick();
 
+        const infoButtons = screen.getAllByRole("button", { name: "Blossom 接続テストの説明" });
+        expect(infoButtons).toHaveLength(1);
+        const list = screen.getByRole("list", { name: "サーバー一覧" });
+        for (const row of within(list).getAllByRole("listitem")) {
+            expect(within(row).getAllByRole("button")).toHaveLength(2);
+        }
         expect(screen.getByText("接続テストに成功しました")).toBeTruthy();
 
-        await fireEvent.click(
-            screen.getByRole("button", { name: "Blossom 接続テストの説明" }),
-        );
+        await fireEvent.click(infoButtons[0]!);
         expect(
             screen.getByText(
-                "このテストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。",
+                "Blossomの接続テストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。",
             ),
         ).toBeTruthy();
         expect(
@@ -664,7 +679,7 @@ describe("SettingsUploadDestinationSection", () => {
         );
         expect(
             screen.getByText(
-                "This test does not upload a file. It checks upload availability with HEAD /upload.",
+                "Blossom connection tests do not upload an actual file; they check upload availability with HEAD /upload.",
             ),
         ).toBeTruthy();
         expect(
@@ -683,6 +698,7 @@ describe("SettingsUploadDestinationSection", () => {
         render(SettingsUploadDestinationSection);
         await fireEvent.click(screen.getByRole("button", { name: lang === "ja" ? "管理" : "Manage" }));
         const list = screen.getByRole("list", { name: lang === "ja" ? "サーバー一覧" : "Servers" });
+        expect(screen.queryByRole("button", { name: lang === "ja" ? "Blossom 接続テストの説明" : "About the Blossom connection test" })).toBeNull();
         expect(within(list).getByText("share.yabu.me")).toBeTruthy();
         expect(within(list).getByText(lang === "ja" ? "既定" : "Default")).toBeTruthy();
         expect(within(list).getByText(lang === "ja" ? "無効" : "Disabled")).toBeTruthy();

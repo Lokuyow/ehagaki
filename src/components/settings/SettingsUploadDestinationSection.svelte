@@ -518,7 +518,33 @@
     {#if expanded}
         <div class="upload-panel" id={panelId} bind:this={panelElement}>
             <div class="list-heading">
-                <h3>{$_("settingsDialog.uploadDestinationServers")}</h3>
+                <div class="section-heading">
+                    <h3>{$_("settingsDialog.uploadDestinationServers")}</h3>
+                    {#if destinationState.destinations.some((destination) => destination.protocol === "blossom")}
+                        <InfoPopoverButton
+                            side="top"
+                            sideOffset={4}
+                            ariaLabel={$_(
+                                "settingsDialog.uploadDestinationBlossomTestInfoLabel",
+                            ) || "Blossom 接続テストの説明"}
+                        >
+                            <div class="blossom-test-popover">
+                                <p>
+                                    {$_(
+                                        "settingsDialog.uploadDestinationBlossomTestInfoNoUpload",
+                                    ) ||
+                                        "Blossomの接続テストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。"}
+                                </p>
+                                <p>
+                                    {$_(
+                                        "settingsDialog.uploadDestinationBlossomTestInfoAuthorization",
+                                    ) ||
+                                        "Blossom の仕様上、確認に必要な署名で upload 権限が要求される場合があります。"}
+                                </p>
+                            </div>
+                        </InfoPopoverButton>
+                    {/if}
+                </div>
                 {#if !editing}
                     <Button variant="default" shape="rounded" className="destination-add-button" onClick={startAdd}>
                         {$_("settingsDialog.uploadDestinationAdd")}
@@ -559,30 +585,6 @@
                                 <Button variant="default" shape="rounded" onClick={() => testDestination(destination)} disabled={testingId === destination.id}>
                                     {$_(testingId === destination.id ? "settingsDialog.uploadDestinationTesting" : "settingsDialog.uploadDestinationTest")}
                                 </Button>
-                                {#if destination.protocol === "blossom"}
-                                    <InfoPopoverButton
-                                        side="top"
-                                        sideOffset={4}
-                                        ariaLabel={$_(
-                                            "settingsDialog.uploadDestinationBlossomTestInfoLabel",
-                                        ) || "Blossom 接続テストの説明"}
-                                    >
-                                        <div class="blossom-test-popover">
-                                            <p>
-                                                {$_(
-                                                    "settingsDialog.uploadDestinationBlossomTestInfoNoUpload",
-                                                ) ||
-                                                    "このテストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。"}
-                                            </p>
-                                            <p>
-                                                {$_(
-                                                    "settingsDialog.uploadDestinationBlossomTestInfoAuthorization",
-                                                ) ||
-                                                    "Blossom の仕様上、確認に必要な署名で upload 権限が要求される場合があります。"}
-                                            </p>
-                                        </div>
-                                    </InfoPopoverButton>
-                                {/if}
                                 <DropdownMenu.Root open={openMenuId === destination.id}
                                     onOpenChange={(open) => (openMenuId = open ? destination.id : null)}>
                                     <DropdownMenu.Trigger class="destination-menu-trigger" data-destination-menu
@@ -642,7 +644,41 @@
             {/if}
             {#if !editing}
                 <section class="relay-sync-section" aria-labelledby={panelId + "-relay-heading"}>
-                    <h3 id={panelId + "-relay-heading"}>{$_("settingsDialog.uploadDestinationRelayTitle")}</h3>
+                    <div class="section-heading">
+                        <h3 id={panelId + "-relay-heading"}>{$_("settingsDialog.uploadDestinationRelayTitle")}</h3>
+                        <InfoPopoverButton
+                            side="top"
+                            ariaLabel={$_(
+                                "settingsDialog.uploadDestinationRelayInfoLabel",
+                            ) || "リレー同期の説明"}
+                        >
+                            <div class="bud03-popover">
+                                <p>
+                                    {$_(
+                                        "settingsDialog.uploadDestinationRelayDescription",
+                                    )}
+                                </p>
+                                <p>
+                                    {$_(
+                                        "settingsDialog.uploadDestinationRelayInfoScope",
+                                    ) ||
+                                        "Blossom は kind 10063、NIP-96 は kind 10096 として同期します。Custom HTTP は対象外です。"}
+                                </p>
+                                <p>
+                                    {$_(
+                                        "settingsDialog.uploadDestinationRelayInfoOrder",
+                                    ) ||
+                                        "送信時は各プロトコルの有効なアップロード先を一覧の順番で保存します。"}
+                                </p>
+                                <p>
+                                    {$_(
+                                        "settingsDialog.uploadDestinationRelayInfoFetch",
+                                    ) ||
+                                        "取得に成功したプロトコルだけを取得結果で置き換えます。"}
+                                </p>
+                            </div>
+                        </InfoPopoverButton>
+                    </div>
                     <div class="panel-actions">
                         <Button
                             variant="default"
@@ -679,38 +715,6 @@
                                       "settingsDialog.uploadDestinationRelayPublish",
                                   ) || "送信"}
                         </Button>
-                        <InfoPopoverButton
-                            side="top"
-                            ariaLabel={$_(
-                                "settingsDialog.uploadDestinationRelayInfoLabel",
-                            ) || "リレー同期の説明"}
-                        >
-                            <div class="bud03-popover">
-                                <p>
-                                    {$_(
-                                        "settingsDialog.uploadDestinationRelayDescription",
-                                    )}
-                                </p>
-                                <p>
-                                    {$_(
-                                        "settingsDialog.uploadDestinationRelayInfoScope",
-                                    ) ||
-                                        "Blossom は kind 10063、NIP-96 は kind 10096 として同期します。Custom HTTP は対象外です。"}
-                                </p>
-                                <p>
-                                    {$_(
-                                        "settingsDialog.uploadDestinationRelayInfoOrder",
-                                    ) ||
-                                        "送信時は各プロトコルの有効なアップロード先を一覧の順番で保存します。"}
-                                </p>
-                                <p>
-                                    {$_(
-                                        "settingsDialog.uploadDestinationRelayInfoFetch",
-                                    ) ||
-                                        "取得に成功したプロトコルだけを取得結果で置き換えます。"}
-                                </p>
-                            </div>
-                        </InfoPopoverButton>
                     </div>
                     {#if destinationState.relaySyncResults}
                         <div class="test-result" role="status" aria-live="polite">
@@ -798,12 +802,21 @@
         align-items: center;
         justify-content: space-between;
         gap: 8px;
+        min-width: 0;
+    }
+
+    .section-heading {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        min-width: 0;
     }
 
     h3 {
         margin: 0;
         font-size: 0.95rem;
         font-weight: 600;
+        min-width: 0;
     }
 
     .destination-list {

@@ -363,6 +363,15 @@ for (const lang of ["ja", "en"] as const) for (const surface of ["page", "shadow
         const rows = list.getByRole("listitem");
         const first = rows.first();
         const trigger = first.getByRole("button", { name: /の操作$|^Actions for / });
+        const blossomInfoLabel = lang === "ja" ? "Blossom 接続テストの説明" : "About the Blossom connection test";
+        const relayInfoLabel = lang === "ja" ? "リレー同期の説明" : "About relay synchronization";
+        await expect(root.locator(".list-heading").getByRole("button", { name: blossomInfoLabel, exact: true })).toHaveCount(1);
+        await expect(root.locator(".destination-actions").getByRole("button", { name: blossomInfoLabel, exact: true })).toHaveCount(0);
+        await expect(root.locator(".relay-sync-section .section-heading").getByRole("button", { name: relayInfoLabel, exact: true })).toHaveCount(1);
+        const testButtonOffsets = await root.locator(".destination-actions").evaluateAll(actions =>
+            actions.map(actions => actions.querySelector("button")!.getBoundingClientRect().left),
+        );
+        expect(Math.max(...testButtonOffsets) - Math.min(...testButtonOffsets)).toBeLessThanOrEqual(1);
         const up = lang === "ja" ? "上へ" : "Up";
         const down = lang === "ja" ? "下へ" : "Down";
         const edit = lang === "ja" ? "編集" : "Edit";
@@ -380,6 +389,7 @@ for (const lang of ["ja", "en"] as const) for (const surface of ["page", "shadow
             for (const colorScheme of ["light", "dark"] as const) {
                 await page.emulateMedia({ colorScheme });
                 await assertFits(list);
+                await assertFits(root.locator(".list-heading"));
                 await assertFits(root.locator(".upload-destination-section"));
                 await assertFits(root.getByRole("button", { name: lang === "ja" ? "閉じる" : "Close", exact: true }));
                 await trigger.scrollIntoViewIfNeeded();
@@ -404,6 +414,16 @@ for (const lang of ["ja", "en"] as const) for (const surface of ["page", "shadow
                 await expect(trigger).toBeFocused();
             }
         }
+        const serverInfo = root.locator(".list-heading").getByRole("button", { name: blossomInfoLabel, exact: true });
+        await serverInfo.focus();
+        if (isMobile) await serverInfo.tap();
+        else await page.keyboard.press("Enter");
+        const serverInfoPopover = root.locator(".popover-content").filter({ hasText: lang === "ja" ? "Blossomの接続テストでは" : "Blossom connection tests" });
+        await expect(serverInfoPopover).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(serverInfoPopover).toHaveCount(0);
+        await expect(serverInfo).toHaveAttribute("aria-expanded", "false");
+
         await trigger.press("ArrowDown");
         await expect(root.getByRole("menu")).toBeVisible();
         await expect(root.getByRole("menuitem", { name: edit, exact: true })).toBeFocused();
