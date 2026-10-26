@@ -11,6 +11,7 @@
 - `gh-pages`は6.3.0に固定し、[削除コマンドの分割パッチ](../patches/gh-pages+6.3.0.patch)を適用します。大量の公開済みファイルを更新するとき、Windowsのコマンド長制限による`spawn ENAMETOOLONG`を防ぐためです。
 - Playwrightは[Windows ChromiumのTCPパッチ](PLAYWRIGHT_WINDOWS_TCP_PATCH.md)に合わせて1.59.1に固定しています。1.64.1ではWindows WebKitのJSONL復元後の履歴テストが失敗しました。更新前のコード・アプリ依存でもPlaywrightだけを1.64.1にすると同じ失敗が再現し、1.59.1では成功したため、今回は更新を見送ります。
 - `mediabunny`と`@mediabunny/aac-encoder`は同じ1.62.1に固定し、一緒に更新します。
+- `prosemirror-view`はoverrideで1.42.6に一時固定しています。1.42.7/1.42.8では、未確定の日本語を削除して入力を続けると文字が重複し、Tiptap 3.32.0と標準StarterKitだけの構成でもChromiumのIME APIで再現しました。1.42.6はTiptapの依存範囲内で、この手順では重複しません。上流修正後に[日本語IMEの削除・再入力テスト](../src/test/e2e/postEditorSending.spec.ts)を通して固定を解除します。その際はSafariの選択処理やウィジェット表示など、1.42.7/1.42.8の修正も改めて確認します。
 
 ## インストールスクリプトとoverride
 
