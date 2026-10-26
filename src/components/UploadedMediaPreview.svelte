@@ -39,7 +39,8 @@
     onDestroy(() => { video?.pause(); });
 </script>
 
-<div class="preview" class:preview-empty={!item.url || (item.kind === "image" && (failed || !visible || cacheSupported === null))}
+<div class="preview" class:preview-active={item.kind === "video" && active}
+    class:preview-empty={!item.url || (item.kind === "image" && (failed || !visible || cacheSupported === null))}
     use:inViewportAction={{ enabled: true, rootMargin: "200px", onEnterView: () => { visible = true; } }}>
     {#if !item.url}
         <LoadingPlaceholder text={$_("uploadedMedia.previewUnavailable")} />
@@ -75,10 +76,12 @@
 
 <style>
     .preview { position: relative; width: 100%; min-width: 0; aspect-ratio: 1; }
+    /* Reserve room for close, copy, delete and native playback controls. */
+    .preview-active { min-height: 204px; }
     .preview-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
     img, video { display: block; width: 100%; height: 100%; }
     img { object-fit: cover; }
-    video { object-fit: contain; }
+    video { position: absolute; inset: 0; object-fit: contain; }
     video, .video-placeholder { background: #181818; }
     .video-placeholder { width: 100%; height: 100%; display: grid; place-items: center; }
     .preview :global(button.image-open) {

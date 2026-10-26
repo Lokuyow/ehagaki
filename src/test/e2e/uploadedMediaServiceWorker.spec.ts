@@ -424,6 +424,11 @@ for (const base of ["/", "/ehagaki/"] as const) {
     test(`${base} history media UI: lazy video, confirmation, responsive layout, focus and back`, async ({ page, context }, testInfo) => {
         const f = await fixture(base), key = generateSecretKey(), pubkey = getPublicKey(key);
         try {
+            await page.addInitScript(() => {
+                Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+                    writeText: async (text: string) => { Reflect.set(window, "__COPIED_MEDIA_URL__", text); },
+                } });
+            });
             await page.exposeFunction("signFixtureEvent", (event: EventTemplate) => finalizeEvent(event, key));
             await page.addInitScript((pubkey) => {
                 localStorage.setItem("nostr-accounts", JSON.stringify([{ pubkeyHex: pubkey, type: "nip07", addedAt: 1 }]));
@@ -462,6 +467,16 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await dialog.getByRole("combobox").selectOption("fixture");
             await expect(dialog.locator("article")).toHaveCount(3);
             await expect(dialog.locator("img")).toBeVisible();
+            const imageCopy = dialog.locator('article[data-media-kind="image"]').getByRole("button", { name: "URLをコピー", exact: true });
+            await imageCopy.focus();
+            await page.keyboard.press("Enter");
+            await expect.poll(() => page.evaluate(() => Reflect.get(window, "__COPIED_MEDIA_URL__"))).toBe(f.remote());
+            await expect(page.locator(".ehagaki-pswp")).toHaveCount(0);
+            await expect(dialog.locator("video")).toHaveCount(0);
+            await expect(page.getByRole("status").filter({ hasText: "URLをコピーしました" })).toBeVisible();
+            const copyIconUrl = await imageCopy.locator(".svg-icon").evaluate((node) => getComputedStyle(node).maskImage);
+            expect(copyIconUrl).toContain(base + "icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+            expect((await page.request.get(f.url + "icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg")).ok()).toBe(true);
             const openImage = dialog.getByRole("button", { name: "画像を開く", exact: true });
             await openImage.click();
             const viewer = page.locator(".ehagaki-pswp");
@@ -470,6 +485,7 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await expect(viewer).toHaveCount(0);
             await expect(dialog).toBeVisible();
             await expect(openImage).toBeFocused();
+            await expect(page.getByRole("status").filter({ hasText: "URLをコピーしました" })).toHaveCount(0);
             await expect(dialog.locator("time")).toHaveAttribute("datetime", "1970-01-01T00:02:03.000Z");
             await expect(dialog.locator("article").first()).toContainText(`${svg.length} B`);
             await expect(dialog.locator(".server-url")).toHaveCount(0);
@@ -499,6 +515,7 @@ for (const base of ["/", "/ehagaki/"] as const) {
                     const image = node.querySelector("img")!.getBoundingClientRect();
                     const metadata = node.querySelector(".media-metadata")!.getBoundingClientRect();
                     const remove = node.querySelector(".media-delete-button")!.getBoundingClientRect();
+                    const copy = node.querySelector(".media-copy-button")!.getBoundingClientRect();
                     return {
                         tileWidth: tiles[0].width, contentWidth: node.querySelector(".dialog-content")!.clientWidth,
                         sameRow: Math.abs(tiles[0].top - tiles[1].top) < 1,
@@ -507,16 +524,20 @@ for (const base of ["/", "/ehagaki/"] as const) {
                         imageFillsTile: Math.abs(image.width - tiles[0].width) < 1 && Math.abs(image.height - tiles[0].height) < 1,
                         metadataOverImage: metadata.top >= image.top && metadata.bottom <= image.bottom && metadata.right <= remove.left,
                         deleteOverBottomRight: remove.top >= image.top && Math.abs(remove.bottom - image.bottom) <= 4.5 && Math.abs(remove.right - image.right) <= 4.5,
+                        copyOverTopRight: Math.abs(copy.top - image.top - 4) < 0.5 && Math.abs(copy.right - image.right + 4) < 0.5,
                     };
                 });
                 expect(layout.tileWidth).toBeCloseTo((layout.contentWidth - 2) / 2, 0);
                 expect(layout.columnGap).toBeCloseTo(2, 0);
                 expect(layout.rowGap).toBeCloseTo(2, 0);
                 expect(layout).toMatchObject({ sameRow: true,
-                    imageFillsTile: true, metadataOverImage: true, deleteOverBottomRight: true });
+                    imageFillsTile: true, metadataOverImage: true, deleteOverBottomRight: true, copyOverTopRight: true });
                 const deletionTargets = await dialog.locator("article .media-delete-button").evaluateAll((nodes) =>
                     nodes.map((node) => { const rect = node.getBoundingClientRect(); return { width: rect.width, height: rect.height }; }));
                 expect(deletionTargets).toEqual(Array(3).fill({ width: 44, height: 44 }));
+                expect(await dialog.locator("article .media-copy-button").evaluateAll((nodes) =>
+                    nodes.map((node) => { const rect = node.getBoundingClientRect(); return { width: rect.width, height: rect.height }; })))
+                    .toEqual(Array(3).fill({ width: 44, height: 44 }));
                 const more = dialog.getByRole("button", { name: "さらに読み込む", exact: true });
                 await more.scrollIntoViewIfNeeded();
                 await expect(more).toBeVisible();
@@ -534,12 +555,32 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await video.evaluate(async (node: HTMLVideoElement) => { await node.play(); });
             await expect.poll(() => video.evaluate((node: HTMLVideoElement) => node.currentTime)).toBeGreaterThan(0);
             await video.evaluate((node: HTMLVideoElement) => node.pause());
-            expect(await video.evaluate((node) => {
-                const tile = node.closest("article")!, playback = node.getBoundingClientRect();
-                const remove = tile.querySelector(".media-delete-button")!.getBoundingClientRect();
-                const close = tile.querySelector(".video-close")!.getBoundingClientRect();
-                return remove.bottom <= playback.bottom - 50 && remove.top >= close.bottom;
-            })).toBe(true);
+            for (const width of [360, 320, 1100]) {
+                await page.setViewportSize({ width, height: 800 });
+                expect(await video.evaluate((node) => {
+                    const tile = node.closest("article")!, playback = node.getBoundingClientRect();
+                    const remove = tile.querySelector(".media-delete-button")!.getBoundingClientRect();
+                    const close = tile.querySelector(".video-close")!.getBoundingClientRect();
+                    const copy = tile.querySelector(".media-copy-button")!.getBoundingClientRect();
+                    const imageTile = document.querySelector('article[data-media-kind="image"]')!;
+                    const image = imageTile.querySelector("img")!.getBoundingClientRect();
+                    const imageRemove = imageTile.querySelector(".media-delete-button")!.getBoundingClientRect();
+                    return playback.height >= 204 && Math.abs(playback.top + 4 - close.top) < 0.5
+                        && Math.abs(close.right - copy.right) < 0.5 && Math.abs(copy.top - close.bottom - 4) < 0.5
+                        && remove.top >= copy.bottom + 3.5 && remove.bottom <= playback.bottom - 56
+                        && Math.abs(imageRemove.bottom - image.bottom + 4) < 0.5;
+                })).toBe(true);
+                const videoCopy = dialog.locator("article.video-active .media-copy-button");
+                await videoCopy.click();
+                await expect.poll(() => page.evaluate(() => Reflect.get(window, "__COPIED_MEDIA_URL__")))
+                    .toBe(await video.getAttribute("src"));
+                await expect(video).toHaveCount(1);
+                expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+                await expect(page.getByRole("status").filter({ hasText: "URLをコピーしました" })).toHaveCount(0);
+                await video.scrollIntoViewIfNeeded();
+                await page.screenshot({ path: testInfo.outputPath(`uploaded-media-video-${width}.png`) });
+            }
+            await page.setViewportSize({ width: 360, height: 800 });
             await video.scrollIntoViewIfNeeded();
             await page.screenshot({ path: testInfo.outputPath("uploaded-media-video-360.png") });
             const released = await video.elementHandle();
@@ -618,6 +659,20 @@ for (const base of ["/", "/ehagaki/"] as const) {
                 return Math.abs(first.top - second.top) < 1 && Math.abs(second.left - first.right - 2) < 0.5;
             })).toBe(true);
             await expect(embeddedDialog.getByRole("button", { name: "動画を開く" }).first()).toBeVisible();
+            await embeddedDialog.getByRole("button", { name: "動画を開く" }).first().click();
+            const embeddedVideo = embeddedDialog.locator("video");
+            expect(await embeddedVideo.evaluate((node) => {
+                const tile = node.closest("article")!;
+                const close = tile.querySelector(".video-close")!.getBoundingClientRect();
+                const copy = tile.querySelector(".media-copy-button")!.getBoundingClientRect();
+                const remove = tile.querySelector(".media-delete-button")!.getBoundingClientRect();
+                return node.getBoundingClientRect().height >= 204 && copy.top >= close.bottom + 4 && remove.top >= copy.bottom + 4;
+            })).toBe(true);
+            await embeddedDialog.locator("article.video-active .media-copy-button").click();
+            await expect(embeddedVideo).toHaveCount(1);
+            await embeddedDialog.getByRole("button", { name: "動画を閉じる" }).click();
+            await expect(embeddedVideo).toHaveCount(0);
+            await expect(frame.getByRole("status").filter({ hasText: "URLをコピーしました" })).toHaveCount(0);
             await page.screenshot({ path: testInfo.outputPath("uploaded-media-iframe-320.png") });
         } finally { await f.close(); }
     });
