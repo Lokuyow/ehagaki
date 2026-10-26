@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsUploadDestinationSection from "../../components/settings/SettingsUploadDestinationSection.svelte";
@@ -11,6 +11,13 @@ const translations = {
     ja: {
         clearInput: "入力内容を消去",
         settingsDialog: {
+            uploadDestinationServers: "サーバー一覧",
+            uploadDestinationMimeUnknown: "MIME形式未確認",
+            uploadDestinationMaxSize: "最大 {size}",
+            uploadDestinationActions: "{name} の操作",
+            uploadDestinationTestFailure: "接続テストに失敗しました",
+            uploadDestinationRelayTitle: "リレー同期",
+            uploadDestinationRelayDescription: "アップロード先をリレーと手動で同期します。",
             uploadDestinationPreset: "プリセット",
             uploadDestinationProtocol: "Protocol",
             uploadDestinationEnabled: "有効",
@@ -23,23 +30,24 @@ const translations = {
             uploadDestinationTest: "接続テスト",
             uploadDestinationTestSuccess: "接続テストに成功しました",
             uploadDestinationBlossomTestInfoLabel: "Blossom 接続テストの説明",
-            uploadDestinationBlossomTestInfoNoUpload: "このテストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。",
+            uploadDestinationBlossomTestInfoNoUpload: "Blossomの接続テストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。",
             uploadDestinationBlossomTestInfoAuthorization: "Blossom の仕様上、確認に必要な署名で upload 権限が要求される場合があります。",
             uploadDestinationTesting: "確認中",
-            uploadDestinationSetDefault: "既定",
+            uploadDestinationSetDefault: "使用",
             uploadDestinationMoveUp: "Up",
             uploadDestinationMoveDown: "Down",
-            uploadDestinationRelayFetching: "BUD-03 取得中",
-            uploadDestinationRelayFetch: "BUD-03 から取得",
-            uploadDestinationRelayPublishing: "BUD-03 publish 中",
-            uploadDestinationRelayPublish: "BUD-03 へ publish",
+            uploadDestinationRelayFetching: "取得中",
+            uploadDestinationRelayFetch: "取得",
+            uploadDestinationRelayPublishing: "送信中",
+            uploadDestinationRelayPublish: "送信",
             uploadDestinationRelayInfoLabel: "BUD-03 の説明",
             uploadDestinationRelayInfoScope: "BUD-03 の説明",
             uploadDestinationRelayInfoOrder: "BUD-03 の説明",
             uploadDestinationRelayInfoFetch: "BUD-03 の説明",
             uploadDestinationUnknown: "未確認",
             uploadDestinationNone: "未設定",
-            uploadDestinationDefault: "既定",
+            uploadDestinationDefault: "使用先にする",
+            uploadDestinationInUse: "使用中",
             uploadDestinationDisabled: "無効",
             uploadDestinationMimeCollapse: "折りたたむ",
             uploadDestinationMimeExpand: "すべて表示",
@@ -53,6 +61,13 @@ const translations = {
     en: {
         clearInput: "Clear input",
         settingsDialog: {
+            uploadDestinationServers: "Servers",
+            uploadDestinationMimeUnknown: "MIME types unknown",
+            uploadDestinationMaxSize: "Max {size}",
+            uploadDestinationActions: "Actions for {name}",
+            uploadDestinationTestFailure: "Connection test failed",
+            uploadDestinationRelayTitle: "Relay sync",
+            uploadDestinationRelayDescription: "Manually synchronize upload destinations with relays.",
             uploadDestinationPreset: "Preset",
             uploadDestinationProtocol: "Protocol",
             uploadDestinationEnabled: "Enabled",
@@ -65,23 +80,24 @@ const translations = {
             uploadDestinationTest: "Test",
             uploadDestinationTestSuccess: "Connection test succeeded",
             uploadDestinationBlossomTestInfoLabel: "About the Blossom connection test",
-            uploadDestinationBlossomTestInfoNoUpload: "This test does not upload a file. It checks upload availability with HEAD /upload.",
+            uploadDestinationBlossomTestInfoNoUpload: "Blossom connection tests do not upload an actual file; they check upload availability with HEAD /upload.",
             uploadDestinationBlossomTestInfoAuthorization: "Under the Blossom protocol, the authorization request may ask you to sign the upload permission needed for this check.",
             uploadDestinationTesting: "Testing",
-            uploadDestinationSetDefault: "Default",
+            uploadDestinationSetDefault: "Use",
             uploadDestinationMoveUp: "Up",
             uploadDestinationMoveDown: "Down",
-            uploadDestinationRelayFetching: "Fetching BUD-03",
-            uploadDestinationRelayFetch: "Fetch from BUD-03",
-            uploadDestinationRelayPublishing: "Publishing BUD-03",
-            uploadDestinationRelayPublish: "Publish to BUD-03",
+            uploadDestinationRelayFetching: "Fetching…",
+            uploadDestinationRelayFetch: "Fetch",
+            uploadDestinationRelayPublishing: "Sending…",
+            uploadDestinationRelayPublish: "Send",
             uploadDestinationRelayInfoLabel: "BUD-03 info",
             uploadDestinationRelayInfoScope: "BUD-03 info",
             uploadDestinationRelayInfoOrder: "BUD-03 info",
             uploadDestinationRelayInfoFetch: "BUD-03 info",
             uploadDestinationUnknown: "Unknown",
             uploadDestinationNone: "None",
-            uploadDestinationDefault: "Default",
+            uploadDestinationDefault: "Use for uploads",
+            uploadDestinationInUse: "In use",
             uploadDestinationDisabled: "Disabled",
             uploadDestinationMimeCollapse: "Collapse",
             uploadDestinationMimeExpand: "Show all",
@@ -117,11 +133,12 @@ vi.mock("svelte-i18n", async () => {
     const { readable } = await import("svelte/store");
 
     return {
-        _: readable((key: string) => {
+        _: readable((key: string, options?: { values?: Record<string, string> }) => {
             const [namespace, nestedKey] = key.split(".");
             const localeData = currentLocale === "en" ? translations.en : translations.ja;
             if (namespace === "settingsDialog") {
-                return localeData.settingsDialog[nestedKey as keyof typeof localeData.settingsDialog] ?? key;
+                const text = localeData.settingsDialog[nestedKey as keyof typeof localeData.settingsDialog] ?? key;
+                return text.replace(/\{(\w+)\}/g, (_, name: string) => options?.values?.[name] ?? "{" + name + "}");
             }
             if (namespace === "postComponent") {
                 return localeData.postComponent[nestedKey as keyof typeof localeData.postComponent] ?? key;
@@ -165,6 +182,17 @@ async function openAddForm(): Promise<void> {
     await tick();
     fireEvent.click(screen.getByRole("button", { name: addLabel }));
     await tick();
+}
+
+async function openDestinationMenu(index = 0): Promise<HTMLElement> {
+    await fireEvent.click(screen.getAllByRole("button", { name: /の操作$|^Actions for / })[index]);
+    return screen.findByRole("menu");
+}
+
+async function selectDestinationAction(name: string, index = 0): Promise<void> {
+    const menu = await openDestinationMenu(index);
+    await fireEvent.click(within(menu).getByRole("menuitem", { name }));
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
 }
 
 function setExistingNip96Destination(): void {
@@ -219,7 +247,7 @@ describe("SettingsUploadDestinationSection", () => {
     beforeEach(() => {
         mockUploadDestinationStore.load.mockClear();
         mockUploadDestinationStore.save.mockClear();
-        mockUploadDestinationStore.test.mockClear();
+        mockUploadDestinationStore.test.mockReset();
         mockUploadDestinationStore.delete.mockClear();
         mockUploadDestinationStore.setDefault.mockClear();
         mockUploadDestinationStore.move.mockClear();
@@ -232,20 +260,37 @@ describe("SettingsUploadDestinationSection", () => {
         setExistingNip96Destination();
         render(SettingsUploadDestinationSection, { rxNostr: {} as never });
         await fireEvent.click(screen.getByRole('button', { name: '管理' }));
-        const fetchButton = screen.getByRole('button', { name: 'BUD-03 から取得' }) as HTMLButtonElement;
-        const publishButton = screen.getByRole('button', { name: 'BUD-03 へ publish' }) as HTMLButtonElement;
+        const fetchButton = screen.getByRole('button', { name: '取得' }) as HTMLButtonElement;
+        const publishButton = screen.getByRole('button', { name: '送信' }) as HTMLButtonElement;
         expect(fetchButton.disabled).toBe(false); expect(publishButton.disabled).toBe(false);
         await fireEvent.click(fetchButton); await fireEvent.click(publishButton);
         expect(mockUploadDestinationStore.fetchFromRelays).toHaveBeenCalledOnce();
         expect(mockUploadDestinationStore.publishToRelays).toHaveBeenCalledOnce();
+    });
+    it.each([
+        ["ja", "アップロード先をリレーと手動で同期します。", "BUD-03 の説明"],
+        ["en", "Manually synchronize upload destinations with relays.", "BUD-03 info"],
+    ] as const)("places relay sync summary in its info popover (%s)", async (lang, description, infoLabel) => {
+        currentLocale = lang;
+        setExistingNip96Destination();
+        render(SettingsUploadDestinationSection, { rxNostr: {} as never });
+        await fireEvent.click(screen.getByRole("button", { name: lang === "ja" ? "管理" : "Manage" }));
+        expect(screen.queryByText(description)).toBeNull();
+        const infoButton = screen.getByRole("button", { name: infoLabel });
+        const heading = screen.getByRole("heading", { name: lang === "ja" ? "リレー同期" : "Relay sync" });
+        expect(heading.closest(".relay-sync-toolbar")?.contains(infoButton)).toBe(true);
+        await fireEvent.click(infoButton);
+        expect(screen.getByText(description)).toBeTruthy();
     });
     it.each(['relayFetching', 'relayPublishing'] as const)("disables both sync buttons during %s", async field => {
         testAuth.isAuthenticated = true; testAuth.pubkey = 'owner';
         setExistingNip96Destination(); mockUploadDestinationStore.value[field] = true;
         render(SettingsUploadDestinationSection, { rxNostr: {} as never });
         await fireEvent.click(screen.getByRole('button', { name: '管理' }));
-        const buttons = screen.getAllByRole('button').filter(button => button.textContent?.includes('BUD-03') && !button.getAttribute('aria-label')) as HTMLButtonElement[];
-        expect(buttons).toHaveLength(2); expect(buttons.every(button => button.disabled)).toBe(true);
+        const buttons = field === "relayFetching"
+            ? [screen.getByRole("button", { name: "取得中" }), screen.getByRole("button", { name: "送信" })]
+            : [screen.getByRole("button", { name: "取得" }), screen.getByRole("button", { name: "送信中" })];
+        expect(buttons).toHaveLength(2); expect(buttons.every(button => (button as HTMLButtonElement).disabled)).toBe(true);
     });
     it("shows the upload icon beside its label and keeps the manage button text-only", () => {
         render(SettingsUploadDestinationSection);
@@ -400,7 +445,7 @@ describe("SettingsUploadDestinationSection", () => {
         await tick();
         fireEvent.click(screen.getByRole("button", { name: "管理" }));
         await tick();
-        fireEvent.click(screen.getByRole("button", { name: "編集" }));
+        await selectDestinationAction("編集");
         await tick();
 
         expect(screen.queryByLabelText("Protocol")).toBeNull();
@@ -439,6 +484,27 @@ describe("SettingsUploadDestinationSection", () => {
         expect(mockUploadDestinationStore.save).toHaveBeenCalledWith(
             expect.objectContaining({ protocol: "blossom" }),
         );
+    });
+
+    it.each([undefined, 0, -5])("prepends a new destination ahead of saved order %s", async sortIndex => {
+        setExistingNip96Destination();
+        const existing = (mockUploadDestinationStore.value.destinations as UploadDestination[])[0]!;
+        existing.sortIndex = sortIndex;
+        render(SettingsUploadDestinationSection);
+        await openAddForm();
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+        expect(getSavedDestination().sortIndex).toBeLessThan(existing.sortIndex ?? existing.createdAt);
+    });
+
+    it.each([undefined, 0, -5])("preserves an edited destination's saved order %s", async sortIndex => {
+        setExistingNip96Destination();
+        const existing = (mockUploadDestinationStore.value.destinations as UploadDestination[])[0]!;
+        existing.sortIndex = sortIndex;
+        render(SettingsUploadDestinationSection);
+        await fireEvent.click(screen.getByRole("button", { name: "管理" }));
+        await selectDestinationAction("編集");
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+        expect(getSavedDestination().sortIndex).toBe(sortIndex);
     });
 
     it("keeps preset protocol and URL when a preset is selected", async () => {
@@ -496,7 +562,7 @@ describe("SettingsUploadDestinationSection", () => {
         await tick();
         await fireEvent.click(screen.getByRole("button", { name: "管理" }));
         await tick();
-        await fireEvent.click(screen.getByRole("button", { name: "編集" }));
+        await selectDestinationAction("編集");
         await tick();
 
         expect(screen.queryByLabelText("URL")).toBeNull();
@@ -517,7 +583,7 @@ describe("SettingsUploadDestinationSection", () => {
         await tick();
         await fireEvent.click(screen.getByRole("button", { name: "管理" }));
         await tick();
-        await fireEvent.click(screen.getByRole("button", { name: "編集" }));
+        await selectDestinationAction("編集");
         await tick();
         await fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
@@ -539,7 +605,7 @@ describe("SettingsUploadDestinationSection", () => {
             resolvedUploadUrl: "https://api.files.example/upload", nip96ServerUrl: "https://files.example", nip96UrlMode: "discovery" });
         render(SettingsUploadDestinationSection);
         await fireEvent.click(screen.getByRole("button", { name: "管理" }));
-        await fireEvent.click(screen.getByRole("button", { name: "編集" }));
+        await selectDestinationAction("編集");
         if (editedUrl !== storedUrl) await fireEvent.input(screen.getByLabelText("URL"), { target: { value: editedUrl } });
         await fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
@@ -559,7 +625,7 @@ describe("SettingsUploadDestinationSection", () => {
             resolvedUploadUrl: "https://api.files.example/upload", nip96ServerUrl: "https://files.example", nip96UrlMode: "discovery" });
         render(SettingsUploadDestinationSection);
         await fireEvent.click(screen.getByRole("button", { name: "管理" }));
-        await fireEvent.click(screen.getByRole("button", { name: "編集" }));
+        await selectDestinationAction("編集");
         await fireEvent.input(screen.getByLabelText("URL"), { target: { value: editedUrl } });
         await fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
@@ -571,6 +637,14 @@ describe("SettingsUploadDestinationSection", () => {
 
     it("shows a successful Blossom connection test even when the result has no message", async () => {
         setExistingBlossomDestination();
+        const blossomDestination = (mockUploadDestinationStore.value as unknown as {
+            destinations: UploadDestination[];
+        }).destinations[0]!;
+        (mockUploadDestinationStore.value as unknown as { destinations: UploadDestination[] }).destinations.push({
+            ...blossomDestination,
+            id: "second-blossom",
+            name: "Second Blossom",
+        });
         (mockUploadDestinationStore.value as unknown as {
             testResults: Record<string, { success: boolean; message?: string }>;
         }).testResults = {
@@ -582,14 +656,18 @@ describe("SettingsUploadDestinationSection", () => {
         await fireEvent.click(screen.getByRole("button", { name: "管理" }));
         await tick();
 
+        const infoButtons = screen.getAllByRole("button", { name: "Blossom 接続テストの説明" });
+        expect(infoButtons).toHaveLength(1);
+        const list = screen.getByRole("list", { name: "サーバー一覧" });
+        for (const row of within(list).getAllByRole("listitem")) {
+            expect(within(row).getAllByRole("button")).toHaveLength(2);
+        }
         expect(screen.getByText("接続テストに成功しました")).toBeTruthy();
 
-        await fireEvent.click(
-            screen.getByRole("button", { name: "Blossom 接続テストの説明" }),
-        );
+        await fireEvent.click(infoButtons[0]!);
         expect(
             screen.getByText(
-                "このテストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。",
+                "Blossomの接続テストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。",
             ),
         ).toBeTruthy();
         expect(
@@ -624,7 +702,7 @@ describe("SettingsUploadDestinationSection", () => {
         );
         expect(
             screen.getByText(
-                "This test does not upload a file. It checks upload availability with HEAD /upload.",
+                "Blossom connection tests do not upload an actual file; they check upload availability with HEAD /upload.",
             ),
         ).toBeTruthy();
         expect(
@@ -633,4 +711,108 @@ describe("SettingsUploadDestinationSection", () => {
             ),
         ).toBeTruthy();
     });
+    it.each(["ja", "en"] as const)("renders compact server information and inline MIME details (%s)", async lang => {
+        currentLocale = lang;
+        setExistingNip96Destination();
+        const destination = mockUploadDestinationStore.value.destinations[0] as UploadDestination;
+        destination.enabled = false;
+        destination.capabilities.maxUploadSize = 10 * 1024 * 1024;
+        destination.capabilities.supportedMimeTypes = ["image/png", "image/jpeg", "image/webp", "video/mp4"];
+        render(SettingsUploadDestinationSection);
+        await fireEvent.click(screen.getByRole("button", { name: lang === "ja" ? "管理" : "Manage" }));
+        const list = screen.getByRole("list", { name: lang === "ja" ? "サーバー一覧" : "Servers" });
+        expect(screen.queryByRole("button", { name: lang === "ja" ? "Blossom 接続テストの説明" : "About the Blossom connection test" })).toBeNull();
+        expect(within(list).getByText("share.yabu.me")).toBeTruthy();
+        expect(within(list).getByText(lang === "ja" ? "使用中" : "In use")).toBeTruthy();
+        expect(within(list).getByText(lang === "ja" ? "無効" : "Disabled")).toBeTruthy();
+        expect(list.textContent).toContain("NIP-96");
+        expect(list.textContent).toContain("10 MB");
+        expect(list.textContent).not.toContain("video/mp4");
+        const expand = within(list).getByRole("button", { name: lang === "ja" ? "すべて表示" : "Show all" });
+        await fireEvent.click(expand);
+        expect(expand.getAttribute("aria-expanded")).toBe("true");
+        expect(list.textContent).toContain("video/mp4");
+        await fireEvent.click(expand);
+        expect(list.textContent).not.toContain("video/mp4");
+        expect(screen.queryByRole("status")).toBeNull();
+    });
+
+    it("keeps unavailable actions visible and disabled for the only default server", async () => {
+        setExistingNip96Destination();
+        render(SettingsUploadDestinationSection);
+        await fireEvent.click(screen.getByRole("button", { name: "管理" }));
+        const menu = await openDestinationMenu();
+        expect(within(menu).getAllByRole("menuitem").map(item => item.textContent?.trim()))
+            .toEqual(["使用", "編集", "Up", "Down", "削除"]);
+        for (const name of ["使用", "Up", "Down", "削除"]) {
+            expect(within(menu).getByRole("menuitem", { name }).hasAttribute("data-disabled")).toBe(true);
+        }
+    });
+
+    it.each(["使用", "Up", "Down", "削除"])("routes %s to the original store action and account", async action => {
+        testAuth.isAuthenticated = true; testAuth.pubkey = "owner";
+        setExistingNip96Destination();
+        const base = mockUploadDestinationStore.value.destinations[0] as UploadDestination;
+        const destinations = [0, 1, 2].map(index => ({ ...base, id: "server-" + index, isDefault: index === 0 }));
+        (mockUploadDestinationStore.value as unknown as { destinations: UploadDestination[] }).destinations = destinations;
+        render(SettingsUploadDestinationSection);
+        await fireEvent.click(screen.getByRole("button", { name: "管理" }));
+        await selectDestinationAction(action, 1);
+        if (action === "使用") expect(mockUploadDestinationStore.setDefault).toHaveBeenCalledWith("server-1", "owner");
+        else if (action === "削除") expect(mockUploadDestinationStore.delete).toHaveBeenCalledWith("server-1", "owner");
+        else expect(mockUploadDestinationStore.move).toHaveBeenCalledWith("server-1", action === "Up" ? "up" : "down", "owner");
+    });
+
+    it("focuses the editor and restores the server menu trigger on cancel", async () => {
+        setExistingNip96Destination();
+        render(SettingsUploadDestinationSection);
+        await fireEvent.click(screen.getByRole("button", { name: "管理" }));
+        await selectDestinationAction("編集");
+        await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("combobox", { name: "プリセット" })));
+        expect(screen.queryByRole("region", { name: "リレー同期" })).toBeNull();
+        await fireEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+        await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "share.yabu.me の操作" })));
+        expect(screen.getByRole("region", { name: "リレー同期" })).toBeTruthy();
+        expect(mockUploadDestinationStore.save).not.toHaveBeenCalled();
+    });
+
+    it.each(["ja", "en"] as const)("shows failure without a message separately from unknown capabilities (%s)", async lang => {
+        currentLocale = lang;
+        setExistingBlossomDestination();
+        (mockUploadDestinationStore.value as unknown as { testResults: Record<string, { success: boolean }> }).testResults =
+            { "existing-nip96": { success: false } };
+        render(SettingsUploadDestinationSection);
+        await fireEvent.click(screen.getByRole("button", { name: lang === "ja" ? "管理" : "Manage" }));
+        expect(screen.getByRole("status").textContent).toContain(lang === "ja" ? "接続テストに失敗しました" : "Connection test failed");
+        expect(screen.getByText(lang === "ja" ? "MIME形式未確認" : "MIME types unknown")).toBeTruthy();
+        expect(screen.queryByText(lang === "ja" ? "接続テストに成功しました" : "Connection test succeeded")).toBeNull();
+    });
+
+    it("prioritizes testing feedback over the previous result until the request settles", async () => {
+        setExistingBlossomDestination();
+        (mockUploadDestinationStore.value as unknown as { testResults: Record<string, { success: boolean }> }).testResults =
+            { "existing-nip96": { success: true } };
+        let finish!: () => void;
+        mockUploadDestinationStore.test.mockImplementationOnce(() => new Promise<undefined>(resolve => { finish = () => resolve(undefined); }));
+        render(SettingsUploadDestinationSection);
+        await fireEvent.click(screen.getByRole("button", { name: "管理" }));
+        await fireEvent.click(screen.getByRole("button", { name: "接続テスト" }));
+        expect(screen.getByRole("status").textContent?.trim()).toBe("確認中");
+        expect((screen.getByRole("button", { name: "確認中" }) as HTMLButtonElement).disabled).toBe(true);
+        expect(screen.queryByText("接続テストに成功しました")).toBeNull();
+        finish();
+        await waitFor(() => expect(screen.getByRole("status").textContent).toContain("接続テストに成功しました"));
+    });
+
+    it.each([false, true])("keeps sync disabled without the required session or relay client (%s)", async authenticated => {
+        testAuth.isAuthenticated = authenticated; testAuth.pubkey = authenticated ? "owner" : null;
+        setExistingNip96Destination();
+        render(SettingsUploadDestinationSection, { rxNostr: authenticated ? null : {} as never });
+        await fireEvent.click(screen.getByRole("button", { name: "管理" }));
+        const region = screen.getByRole("region", { name: "リレー同期" });
+        for (const name of ["取得", "送信"]) {
+            expect((within(region).getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+        }
+    });
+
 });

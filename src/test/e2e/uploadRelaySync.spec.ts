@@ -1,8 +1,14 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page, type FrameLocator } from "@playwright/test";
 import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent, type EventTemplate } from "nostr-tools";
 import { checkMediaRegistration } from "./mediaRegistrationScenario";
 
 test.use({ trace: "off" });
+
+async function selectServerAction(row: Locator, root: Page | FrameLocator, name: string) {
+    await row.getByRole("button", { name: /の操作$|^Actions for / }).click();
+    await root.getByRole("menu").getByRole("menuitem", { name, exact: true }).click();
+}
+
 test.describe("media server registration", () => {
     for (const server of ["yabu", "nostrcheck"] as const) for (const embedded of [false, true]) {
         test(`registers ${server} and refreshes media (${embedded ? "iframe 280px" : "standalone 360px"})`, async ({ page }, testInfo) => {
@@ -46,7 +52,7 @@ for (const lang of ["ja", "en"] as const) {
             await page.setViewportSize({ width: 360, height: 1000 });
             await page.goto(new URL(`upload-relay-sync-playwright.html?owner=${owner}&lang=${lang}&initial=1&cold=1&unavailable=1`, baseURL).href);
             await page.getByRole("button", { name: lang === "ja" ? "管理" : "Manage", exact: true }).click();
-            await page.getByRole("button", { name: lang === "ja" ? "リレーから取得" : "Fetch from relays", exact: true }).click();
+            await page.getByRole("button", { name: lang === "ja" ? "取得" : "Fetch", exact: true }).click();
             await expect.poll(() => page.evaluate(() => window.uploadRelayVerifiedPreferenceCount())).toBe(2);
             if (phase === "preparation") await expect.poll(() => releaseInfo !== undefined).toBe(true);
             else await expect.poll(() => unavailableRequests.length).toBe(2);
@@ -60,7 +66,7 @@ for (const lang of ["ja", "en"] as const) {
             expect(snapshot.filter(d => ["blossom", "nip96"].includes(d.protocol)).map(d => d.serverUrl).sort())
                 .toEqual(["https://new-blossom.example", "https://new-files.example"]);
             expect(snapshot.filter(d => d.isDefault)).toHaveLength(1);
-            await expect(page.getByRole("button", { name: lang === "ja" ? "リレーへ送信" : "Publish to relays", exact: true })).toBeEnabled();
+            await expect(page.getByRole("button", { name: lang === "ja" ? "送信" : "Send", exact: true })).toBeEnabled();
             if (releaseInfo) {
                 await releaseInfo();
                 expect(unavailableRequests).toEqual([]);
@@ -108,10 +114,10 @@ test("fetches both lists on the first attempt after a cold NIP-42 handshake", as
             await page.reload();
         }
         await page.getByRole("button", { name: "管理", exact: true }).click();
-        await page.getByRole("button", { name: "リレーから取得", exact: true }).click();
+        await page.getByRole("button", { name: "取得", exact: true }).click();
         await expect.poll(() => releaseAuth !== undefined).toBe(true);
         await page.clock.runFor(5_000);
-        await expect(page.getByRole("button", { name: "リレー取得中", exact: true })).toBeDisabled();
+        await expect(page.getByRole("button", { name: "取得中", exact: true })).toBeDisabled();
         releaseAuth!();
         await expect(page.getByRole("status")).toContainText("リレー同期に成功しました");
         expect(requests.sort()).toEqual([10063, 10063, 10096, 10096]);
@@ -144,10 +150,10 @@ test("fetches from an untouched default after cold NIP-11 initialization", async
     await expect(page.locator(".destination-row")).toHaveCount(1);
     await expect(page.locator(".destination-row")).toContainText("share.yabu.me");
     await expect.poll(() => infoRequested).toBe(true);
-    await page.getByRole("button", { name: "リレーから取得", exact: true }).click();
+    await page.getByRole("button", { name: "取得", exact: true }).click();
     await page.clock.runFor(5_000);
     expect(requests).toEqual([]);
-    await expect(page.getByRole("button", { name: "リレー取得中", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "取得中", exact: true })).toBeDisabled();
     await releaseInfo();
     await expect.poll(() => requests.length).toBe(2);
     await expect(page.getByRole("status")).toContainText("NIP-96: 成功");
@@ -168,6 +174,18 @@ for (const lang of ["ja", "en"] as const) {
             const protocol = root.getByRole("combobox", { name: "Protocol", exact: true });
             const input = root.getByLabel("URL", { exact: true });
             const save = root.getByRole("button", { name: lang === "ja" ? "保存" : "Save", exact: true });
+            await expect(preset).toBeFocused();
+            expect(await preset.evaluate(select => {
+                const style = getComputedStyle(select);
+                return style.outlineColor === style.color;
+            })).toBe(true);
+            expect(await root.locator(".destination-form").evaluate(form => {
+                const panel = form.closest(".upload-panel")!;
+                const heading = panel.querySelector(".list-heading")!.getBoundingClientRect();
+                const list = panel.querySelector(".destination-list")!.getBoundingClientRect();
+                const rect = form.getBoundingClientRect();
+                return heading.bottom <= rect.top && rect.bottom <= list.top;
+            })).toBe(true);
             const assertLayout = async () => {
                 const layout = await root.locator(".destination-form").evaluate(form => {
                     const rect = form.getBoundingClientRect();
@@ -195,7 +213,10 @@ for (const lang of ["ja", "en"] as const) {
             await preset.focus();
             await preset.press("Tab");
             await expect(root.getByRole("checkbox", { name: lang === "ja" ? "有効" : "Enabled", exact: true })).toBeFocused();
-            await assertLayout();
+            for (const width of [300, 320, 360]) {
+                await page.setViewportSize({ width, height: 1000 });
+                await assertLayout();
+            }
             if (lang === "ja") await page.screenshot({ path: testInfo.outputPath("upload-preset-form.png"), fullPage: true });
 
             await preset.selectOption("share-yabu-me");
@@ -220,7 +241,8 @@ for (const lang of ["ja", "en"] as const) {
             await expect(protocol).toHaveCount(0);
             await save.click();
             const card = root.locator(".destination-row").filter({ hasText: "blossom.band" });
-            await card.getByRole("button", { name: lang === "ja" ? "編集" : "Edit", exact: true }).click();
+            await expect(root.getByRole("listitem").first()).toContainText("blossom.band");
+            await selectServerAction(card, root, lang === "ja" ? "編集" : "Edit");
             await expect(preset).toHaveValue("blossom-band");
             await expect(protocol).toHaveCount(0);
             await expect(input).toHaveCount(0);
@@ -234,7 +256,8 @@ for (const lang of ["ja", "en"] as const) {
             await expect(input).toHaveCount(0);
             await save.click();
             const sovbit = root.locator(".destination-row").filter({ hasText: "files.sovbit.host" });
-            await expect(sovbit).toContainText("blossom");
+            await expect(sovbit).toContainText("Blossom");
+            await expect(root.getByRole("listitem").first()).toContainText("files.sovbit.host");
             if (lang === "ja") await page.screenshot({ path: testInfo.outputPath("sovbit-blossom-preset.png"), fullPage: true });
         });
     }
@@ -296,8 +319,8 @@ for (const lang of ["ja", "en"] as const) {
             } else await page.goto(url);
             const root = surface === "iframe" ? page.frameLocator("iframe") : page;
             await root.getByRole("button", { name: lang === "ja" ? "管理" : "Manage", exact: true }).click();
-            const fetchButton = root.getByRole("button", { name: lang === "ja" ? "リレーから取得" : "Fetch from relays", exact: true });
-            const publishButton = root.getByRole("button", { name: lang === "ja" ? "リレーへ送信" : "Publish to relays", exact: true });
+            const fetchButton = root.getByRole("button", { name: lang === "ja" ? "取得" : "Fetch", exact: true });
+            const publishButton = root.getByRole("button", { name: lang === "ja" ? "送信" : "Send", exact: true });
             await expect(fetchButton).toHaveCount(1);
             await expect(publishButton).toHaveCount(1);
             await fetchButton.click();
@@ -317,7 +340,7 @@ for (const lang of ["ja", "en"] as const) {
             expect(snapshot.find(destination => destination.id === "custom-http")?.serverUrl).toBe("https://files.example/api");
             expect(snapshot.filter(destination => destination.isDefault)).toHaveLength(1);
             const nip96Card = root.locator(".destination-row").filter({ hasText: "new-files.example" });
-            await nip96Card.getByRole("button", { name: lang === "ja" ? "編集" : "Edit", exact: true }).click();
+            await selectServerAction(nip96Card, root, lang === "ja" ? "編集" : "Edit");
             await expect(root.getByLabel("URL", { exact: true })).toHaveValue("https://new-files.example");
             await root.getByRole("button", { name: lang === "ja" ? "保存" : "Save", exact: true }).click();
             await expect(root.getByRole("button", { name: lang === "ja" ? "保存" : "Save", exact: true })).toHaveCount(0);
@@ -325,7 +348,7 @@ for (const lang of ["ja", "en"] as const) {
             expect(resaved.find(destination => destination.protocol === "nip96")).toMatchObject({
                 serverUrl: "https://new-files.example/", nip96UrlMode: "discovery",
             });
-            await nip96Card.getByRole("button", { name: lang === "ja" ? "既定" : "Default", exact: true }).click();
+            await selectServerAction(nip96Card, root, lang === "ja" ? "使用" : "Use");
             expect(await documentRoot.evaluate(() => window.uploadRelayFixtureImage())).toBe(true);
             expect(uploaded).toBe(true);
             emptyBlossom = true;
@@ -342,4 +365,224 @@ for (const lang of ["ja", "en"] as const) {
             if (lang === "ja") await page.screenshot({ path: testInfo.outputPath("upload-relay-sync.png"), fullPage: true });
         });
     }
+}
+
+for (const lang of ["ja", "en"] as const) for (const surface of ["page", "shadow", "iframe"] as const) {
+    test("compact upload destination actions (" + lang + ", " + surface + ")", async ({ page, baseURL, isMobile }, testInfo) => {
+        const fixtureKey = generateSecretKey(), owner = getPublicKey(fixtureKey);
+        const url = new URL("upload-relay-sync-playwright.html", baseURL);
+        url.search = new URLSearchParams({ owner, lang, surface, compact: "1", ...(surface === "iframe" ? { host: "1" } : {}) }).toString();
+        await page.setViewportSize({ width: 360, height: 1000 });
+        await page.goto(url.href);
+        const root = surface === "iframe" ? page.frameLocator("iframe") : page;
+        await root.getByRole("button", { name: lang === "ja" ? "管理" : "Manage", exact: true }).click();
+        const list = root.getByRole("list", { name: lang === "ja" ? "サーバー一覧" : "Servers" });
+        const rows = list.getByRole("listitem");
+        const first = rows.first();
+        const trigger = first.getByRole("button", { name: /の操作$|^Actions for / });
+        const blossomInfoLabel = lang === "ja" ? "Blossom 接続テストの説明" : "About the Blossom connection test";
+        const relayInfoLabel = lang === "ja" ? "リレー同期の説明" : "About relay synchronization";
+        await expect(root.locator(".list-heading").getByRole("button", { name: blossomInfoLabel, exact: true })).toHaveCount(1);
+        await expect(root.locator(".destination-actions").getByRole("button", { name: blossomInfoLabel, exact: true })).toHaveCount(0);
+        const relayToolbar = root.locator(".relay-sync-toolbar");
+        await expect(relayToolbar.getByRole("button", { name: relayInfoLabel, exact: true })).toHaveCount(1);
+        await expect(relayToolbar.getByRole("button", { name: lang === "ja" ? "取得" : "Fetch", exact: true })).toHaveCount(1);
+        await expect(relayToolbar.getByRole("button", { name: lang === "ja" ? "送信" : "Send", exact: true })).toHaveCount(1);
+        const testButtonOffsets = await root.locator(".destination-actions").evaluateAll(actions =>
+            actions.map(actions => actions.querySelector("button")!.getBoundingClientRect().left),
+        );
+        expect(Math.max(...testButtonOffsets) - Math.min(...testButtonOffsets)).toBeLessThanOrEqual(1);
+        const up = lang === "ja" ? "上へ" : "Up";
+        const down = lang === "ja" ? "下へ" : "Down";
+        const edit = lang === "ja" ? "編集" : "Edit";
+        const remove = lang === "ja" ? "削除" : "Delete";
+        const defaultAction = lang === "ja" ? "使用" : "Use";
+        const assertFits = async (element: Locator) => {
+            expect(await element.evaluate(node => {
+                const rect = node.getBoundingClientRect();
+                return rect.left >= 0 && rect.right <= node.ownerDocument.documentElement.clientWidth + 1
+                    && node.scrollWidth <= node.clientWidth + 1;
+            })).toBe(true);
+        };
+        for (const width of surface === "page" ? [320, 360, 1024] : [320, 360]) {
+            await page.setViewportSize({ width, height: 1000 });
+            for (const colorScheme of ["light", "dark"] as const) {
+                await page.emulateMedia({ colorScheme });
+                await assertFits(list);
+                await assertFits(root.locator(".list-heading"));
+                await assertFits(root.locator(".upload-destination-section"));
+                await assertFits(relayToolbar);
+                expect(await relayToolbar.evaluate(toolbar => {
+                    const children = Array.from(toolbar.children, child => child.getBoundingClientRect());
+                    const centers = children.map(rect => rect.top + rect.height / 2);
+                    return centers.length === 3 && centers.every(center => Math.abs(center - centers[0]) <= 1);
+                })).toBe(true);
+                await assertFits(root.getByRole("button", { name: lang === "ja" ? "閉じる" : "Close", exact: true }));
+                await trigger.scrollIntoViewIfNeeded();
+                if (isMobile) await trigger.tap();
+                else await trigger.click();
+                const menu = root.getByRole("menu");
+                await expect(menu.getByRole("menuitem")).toHaveCount(5);
+                await expect(menu.getByRole("menuitem", { name: defaultAction, exact: true })).toBeDisabled();
+                await expect(menu.getByRole("menuitem", { name: up, exact: true })).toBeDisabled();
+                await assertFits(menu);
+                // The text and controls must stay separate, including when controls wrap below the text.
+                expect(await first.evaluate(node => {
+                    const text = node.querySelector(".destination-content")!.getBoundingClientRect();
+                    const actions = node.querySelector(".destination-actions")!.getBoundingClientRect();
+                    return text.right <= actions.left + 1 || text.bottom <= actions.top + 1;
+                })).toBe(true);
+                expect(await rows.evaluateAll(rows => rows.every(row => {
+                    const main = row.querySelector(".destination-main")!.getBoundingClientRect();
+                    const text = row.querySelector(".destination-content")!.getBoundingClientRect();
+                    const actions = row.querySelector(".destination-actions")!.getBoundingClientRect();
+                    return text.bottom > actions.top + 1 || Math.abs(main.right - actions.right) <= 1;
+                }))).toBe(true);
+                if (width === 320 && colorScheme === "dark") {
+                    await page.screenshot({ path: testInfo.outputPath("compact-" + lang + "-" + surface + ".png"), fullPage: true });
+                }
+                await page.keyboard.press("Escape");
+                await expect(menu).toHaveCount(0);
+                await expect(trigger).toBeFocused();
+            }
+        }
+        const serverInfo = root.locator(".list-heading").getByRole("button", { name: blossomInfoLabel, exact: true });
+        await serverInfo.focus();
+        if (isMobile) await serverInfo.tap();
+        else await page.keyboard.press("Enter");
+        const serverInfoPopover = root.locator(".popover-content").filter({ hasText: lang === "ja" ? "Blossomの接続テストでは" : "Blossom connection tests" });
+        await expect(serverInfoPopover).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(serverInfoPopover).toHaveCount(0);
+        await expect(serverInfo).toHaveAttribute("aria-expanded", "false");
+
+        await trigger.press("ArrowDown");
+        await expect(root.getByRole("menu")).toBeVisible();
+        await expect(root.getByRole("menuitem", { name: edit, exact: true })).toBeFocused();
+        await page.keyboard.press("End");
+        await expect(root.getByRole("menuitem", { name: remove, exact: true })).toBeFocused();
+        await page.keyboard.press("Home");
+        await expect(root.getByRole("menuitem", { name: edit, exact: true })).toBeFocused();
+        await page.keyboard.press("Enter");
+        const preset = root.getByRole("combobox", { name: lang === "ja" ? "プリセット" : "Preset", exact: true });
+        await expect(preset).toBeFocused();
+        await expect(root.getByRole("region", { name: lang === "ja" ? "リレー同期" : "Relay sync", exact: true })).toHaveCount(0);
+        await root.getByRole("button", { name: lang === "ja" ? "キャンセル" : "Cancel", exact: true }).click();
+        await expect(trigger).toBeFocused();
+
+        await selectServerAction(first, root, down);
+        await expect(rows.nth(1)).toHaveAttribute("data-destination-id", "blossom");
+        const moved = rows.nth(1);
+        await expect(moved.getByRole("button", { name: /の操作$|^Actions for / })).toBeFocused();
+        await selectServerAction(moved, root, up);
+        await expect(rows.first()).toHaveAttribute("data-destination-id", "blossom");
+        await selectServerAction(rows.nth(1), root, defaultAction);
+        await expect(rows.nth(1).locator(".default-badge")).toBeVisible();
+        await selectServerAction(rows.nth(1), root, remove);
+        await expect(rows).toHaveCount(2);
+        await expect(rows.nth(1).getByRole("button", { name: /の操作$|^Actions for / })).toBeFocused();
+        await selectServerAction(rows.nth(1), root, remove);
+        await expect(rows).toHaveCount(1);
+        await rows.first().getByRole("button", { name: /の操作$|^Actions for / }).click();
+        const menu = root.getByRole("menu");
+        await expect(menu.getByRole("menuitem", { name: remove, exact: true })).toBeDisabled();
+        await expect(menu.getByRole("menuitem", { name: down, exact: true })).toBeDisabled();
+        await page.keyboard.press("Escape");
+
+        const expand = rows.first().getByRole("button", { name: lang === "ja" ? /^(すべて表示|折りたたむ)$/ : /^(Show all|Collapse)$/ });
+        await expand.click();
+        await expect(expand).toHaveAttribute("aria-expanded", "true");
+        await expect(rows.first()).toContainText("video/mp4");
+        await assertFits(rows.first());
+        await expand.click();
+        await expect(rows.first()).not.toContainText("video/mp4");
+
+        const testButton = rows.first().getByRole("button", { name: lang === "ja" ? "接続テスト" : "Test connection", exact: true });
+        let release!: () => Promise<void>;
+        let firstProbe = true;
+        const connectionUrl = "https://long-blossom-server-name-for-narrow-embedded-settings.example/**";
+        await page.route(connectionUrl, async route => {
+            if (route.request().method() === "OPTIONS") {
+                await route.fulfill({ status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Authorization,X-SHA-256,X-Content-Type,X-Content-Length", "Access-Control-Allow-Methods": "HEAD" } });
+                return;
+            }
+            if (!firstProbe) {
+                await route.fulfill({ status: 200, headers: { "Access-Control-Allow-Origin": "*" } });
+                return;
+            }
+            firstProbe = false;
+            await new Promise<void>(resolve => { release = async () => {
+                await route.fulfill({ status: 200, headers: { "Access-Control-Allow-Origin": "*" } }); resolve();
+            }; });
+        });
+        await page.exposeFunction("fixtureSignUploadEvent", (template: EventTemplate) => {
+            // Connection test signatures use the fixture identity, never a real account.
+            return finalizeEvent(template, fixtureKey);
+        });
+        await expect(rows.first().getByRole("status")).toHaveCount(0);
+        await testButton.click();
+        await expect(rows.first().getByRole("status")).toHaveText(lang === "ja" ? "確認中" : "Testing");
+        await expect.poll(() => typeof release).toBe("function");
+        await release();
+        await expect(rows.first().getByRole("status")).toContainText(lang === "ja" ? "接続テストに成功しました" : "Connection test succeeded");
+        await page.unroute(connectionUrl);
+        await page.route(connectionUrl, route => route.fulfill({ status: 500, headers: { "Access-Control-Allow-Origin": "*" } }));
+        await testButton.click();
+        await expect(rows.first().getByRole("status")).toContainText(lang === "ja" ? "接続テストに失敗しました" : "Connection test failed");
+    });
+}
+
+for (const lang of ["ja", "en"] as const) for (const embedded of [false, true]) {
+    test("upload destinations in application settings (" + lang + ", " + (embedded ? "iframe" : "standalone") + ")", async ({ page, baseURL }, testInfo) => {
+        await page.addInitScript(lang => {
+            localStorage.setItem("locale", lang);
+            localStorage.setItem("firstVisit", "1");
+        }, lang);
+        await page.routeWebSocket(/.*/, socket => socket.onMessage(raw => {
+            const message = JSON.parse(raw.toString());
+            if (message[0] === "REQ") socket.send(JSON.stringify(["EOSE", message[1]]));
+        }));
+        await page.route(/^https:\/\//, route => route.fulfill({ json: {} }));
+        await page.setViewportSize({ width: 360, height: 1000 });
+        if (embedded) {
+            const host = new URL("upload-settings-host", baseURL).href;
+            await page.route(host, route => route.fulfill({ contentType: "text/html", body:
+                '<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0"><iframe title="eHagaki" src="' + baseURL + '" style="border:0;width:100%;height:980px"></iframe></body></html>' }));
+            await page.goto(host);
+        } else await page.goto(baseURL!);
+        const root = embedded ? page.frameLocator("iframe") : page;
+        await root.locator("button.settings-btn").click();
+        await root.locator(".settings-dialog").getByRole("button", { name: lang === "ja" ? "メディア" : "Media", exact: true }).click();
+        const section = root.locator(".upload-destination-section");
+        await section.getByRole("button", { name: lang === "ja" ? "管理" : "Manage", exact: true }).click();
+        const trigger = section.getByRole("listitem").first().getByRole("button", { name: /の操作$|^Actions for / });
+        for (const width of [320, 360]) {
+            await page.setViewportSize({ width, height: 1000 });
+            await trigger.click();
+            const menu = root.getByRole("menu");
+            await expect(menu.getByRole("menuitem")).toHaveCount(5);
+            for (const element of [section, menu]) {
+                expect(await element.evaluate(node => {
+                    const rect = node.getBoundingClientRect();
+                    return rect.left >= 0 && rect.right <= node.ownerDocument.documentElement.clientWidth + 1 && node.scrollWidth <= node.clientWidth + 1;
+                })).toBe(true);
+            }
+            await page.screenshot({ path: testInfo.outputPath("application-upload-" + lang + "-" + width + ".png"), fullPage: true });
+            await page.keyboard.press("Escape");
+            await expect(trigger).toBeFocused();
+        }
+        await trigger.click();
+        await root.getByRole("menuitem", { name: lang === "ja" ? "編集" : "Edit", exact: true }).click();
+        const preset = root.getByRole("combobox", { name: lang === "ja" ? "プリセット" : "Preset", exact: true });
+        await expect(preset).toBeFocused();
+        await preset.selectOption("custom");
+        const input = root.getByLabel("URL", { exact: true });
+        await input.fill("https://custom.example/upload");
+        expect(await input.evaluate(node => {
+            const rect = node.getBoundingClientRect();
+            return rect.left >= 0 && rect.right <= node.ownerDocument.documentElement.clientWidth + 1;
+        })).toBe(true);
+        await root.getByRole("button", { name: lang === "ja" ? "キャンセル" : "Cancel", exact: true }).click();
+        await expect(trigger).toBeFocused();
+    });
 }
