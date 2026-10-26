@@ -89,24 +89,27 @@ export class RelayProfileService {
         forceRefresh: boolean,
         allowBackgroundRefresh: boolean,
         initialRequest: Promise<unknown>,
+        signal?: AbortSignal,
     ): Promise<void> {
         try {
+            if (signal?.aborted) return;
             const [nip65] = await Promise.all([
                 this.nip65RelayDirectory.lookup(pubkeyHex),
                 initialRequest.catch(() => undefined),
             ]);
+            if (signal?.aborted) return;
             // Only base Write relays are guaranteed to bypass the contextual-tier cap.
             const existingRoutes = new Set(RelayConfigUtils.sanitizeExternalRelayUrls(baseRelayLists.writeRelays));
             const newWriteRelays = RelayConfigUtils.sanitizeExternalRelayUrls(nip65.writeRelays)
                 .filter((relay) => !existingRoutes.has(relay));
             if (newWriteRelays.length === 0) return;
             const merged = this.mergeAuthorWriteRelays(baseRelayLists, newWriteRelays);
-            await profileMetadataCache.getProfile(pubkeyHex, this.profileOptions(
+            await profileMetadataCache.getProfile(pubkeyHex, { ...this.profileOptions(
                 merged,
                 additionalRelays,
                 true,
                 allowBackgroundRefresh,
-            ));
+            ), signal });
         } catch {
             // Existing-relay retrieval remains useful when NIP-65 discovery fails.
         }
@@ -116,12 +119,13 @@ export class RelayProfileService {
      * 初期化時のリレー設定
      * 保存済みリレー情報があれば使用、なければBOOTSTRAP_RELAYSを設定
      */
-    async initializeRelays(pubkeyHex?: string): Promise<void> {
+    async initializeRelays(pubkeyHex?: string, signal?: AbortSignal): Promise<void> {
+        if (signal?.aborted) return;
         if (this.relayManager.useHostRelayConfig?.()) {
             return;
         }
         if (pubkeyHex) {
-            if (!await this.relayManager.useRelaysFromLocalStorageIfExists(pubkeyHex)) {
+            if (!await this.relayManager.useRelaysFromLocalStorageIfExists(pubkeyHex, signal) && !signal?.aborted) {
                 this.relayManager.setBootstrapRelays();
             }
         } else {
@@ -135,16 +139,18 @@ export class RelayProfileService {
      * @param forceRemote 強制的にリモート取得するか
      * @returns リレー取得結果
      */
-    async fetchRelays(pubkeyHex: string, forceRemote: boolean = false): Promise<{
+    async fetchRelays(pubkeyHex: string, forceRemote: boolean = false, signal?: AbortSignal): Promise<{
         success: boolean;
         relayConfig: RelayConfig;
         source: 'localStorage' | 'kind10002' | 'kind3' | 'fallback' | 'host';
     }> {
+        if (signal?.aborted) throw new DOMException('Relay lookup aborted', 'AbortError');
         if (this.relayManager.hasHostRelayConfig?.()) {
-            return this.relayManager.fetchUserRelays(pubkeyHex, { forceRemote });
+            return this.relayManager.fetchUserRelays(pubkeyHex, { forceRemote, ...(signal ? { signal } : {}) });
         }
         if (!forceRemote) {
             const cachedRelays = await this.relayManager.getFromLocalStorage(pubkeyHex);
+            if (signal?.aborted) throw new DOMException('Relay lookup aborted', 'AbortError');
             if (cachedRelays) {
                 console.log("キャッシュからリレーリストを復元:", cachedRelays);
                 return {
@@ -156,7 +162,7 @@ export class RelayProfileService {
         }
 
         // リモートから取得（自動的にIndexedDBに保存される）
-        const result = await this.relayManager.fetchUserRelays(pubkeyHex, { forceRemote });
+        const result = await this.relayManager.fetchUserRelays(pubkeyHex, { forceRemote, ...(signal ? { signal } : {}) });
         return result;
     }
 
@@ -166,21 +172,23 @@ export class RelayProfileService {
      * @param forceRemote 強制的にリモート取得するか
      * @returns プロフィールデータ
      */
-    async fetchProfile(pubkeyHex: string, forceRemote: boolean = false): Promise<ProfileData | null> {
-        if (!pubkeyHex) return null;
+    async fetchProfile(pubkeyHex: string, forceRemote: boolean = false, signal?: AbortSignal): Promise<ProfileData | null> {
+        if (!pubkeyHex || signal?.aborted) return null;
 
         if (!forceRemote) {
             const cachedProfile = await profileMetadataCache.getCachedProfile(pubkeyHex);
+            if (signal?.aborted) return null;
             if (cachedProfile) return cachedProfile;
         }
 
         const relayLists = await this.getBaseProfileRelayLists(pubkeyHex);
+        if (signal?.aborted) return null;
         const initialRequest = profileMetadataCache.getProfile(
             pubkeyHex,
-            this.profileOptions(relayLists, [], forceRemote, false),
+            { ...this.profileOptions(relayLists, [], forceRemote, false), ...(signal ? { signal } : {}) },
         );
         void this.refreshWithDiscoveredAuthorRelays(
-            pubkeyHex, relayLists, [], forceRemote, false, initialRequest,
+            pubkeyHex, relayLists, [], forceRemote, false, initialRequest, signal,
         );
         return initialRequest;
     }
@@ -347,16 +355,16 @@ export class RelayProfileService {
      * @param pubkeyHex 公開鍵
      * @returns プロフィールデータ
      */
-    async initializeForLogin(pubkeyHex: string): Promise<ProfileData | null> {
+    async initializeForLogin(pubkeyHex: string, signal?: AbortSignal): Promise<ProfileData | null> {
         console.log(`ログイン初期化開始: ${pubkeyHex}`);
 
         // 1. リレーリスト取得（キャッシュがない場合のみリモート取得）
         if (!this.relayManager.hasHostRelayConfig?.()) {
-            await this.fetchRelays(pubkeyHex, false);
+            await this.fetchRelays(pubkeyHex, false, signal);
         }
 
         // 2. プロフィール取得
-        const profile = await this.fetchProfile(pubkeyHex, false);
+        const profile = await this.fetchProfile(pubkeyHex, false, signal);
 
         console.log(`ログイン初期化完了: ${pubkeyHex}`);
         return profile;

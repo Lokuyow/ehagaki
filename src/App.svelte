@@ -472,18 +472,18 @@
   let isBootstrappingApp = true;
   let authTransitionGeneration = $state(0);
   let appDisposed = false;
-  let parentClientReadySession = $state<{
+  let postAuthAbort: AbortController | undefined;
+  let readyAuthSession = $state<{
     pubkeyHex: string;
+    authType: string;
     runtime: NostrSessionBootstrap["rxNostr"];
   } | null>(null);
   let pendingParentClientGeneration = $state<number | null>(null);
-  let parentClientPostAuthAbort: AbortController | undefined;
-  let hasPostingCapability = $derived(isAuthenticated && (
-    appRuntimeEnvironment.runtimeKind !== "iframe" || authState.value.type !== "parentClient"
-    || (pendingParentClientGeneration !== authTransitionGeneration
-      && parentClientReadySession?.pubkeyHex === authState.value.pubkey
-      && parentClientReadySession.runtime === rxNostr)
-  ));
+  let hasPostingCapability = $derived(isAuthenticated
+    && pendingParentClientGeneration !== authTransitionGeneration
+    && readyAuthSession?.pubkeyHex === authState.value.pubkey
+    && readyAuthSession.authType === authState.value.type
+    && readyAuthSession.runtime === rxNostr);
   let startupAuthResult: AuthInitializationResult | null = null;
   let latestInboundInteractionSave = $state<{
     revision: number;
@@ -772,15 +772,16 @@
     console,
   });
 
-  function beginAuthTransition(options: { parentClient?: boolean } = {}): void {
-    parentClientPostAuthAbort?.abort();
-    parentClientPostAuthAbort = undefined;
+  function beginAuthTransition(options: { parentClient?: boolean; invalidateSession?: boolean } = {}): void {
+    // A rejected login must leave the existing, published account usable.
+    if (options.invalidateSession || readyAuthSession?.runtime !== rxNostr || !rxNostr) {
+      postAuthAbort?.abort();
+      postAuthAbort = undefined;
+    }
     pendingParentClientGeneration = null;
     if (!options.parentClient) {
       appParentClientSyncController.clearPendingRemoteLogin();
-      if (appAuthLoginController.hasPendingParentClientTransition()) {
-        parentClientAuthService.disconnect(false);
-      }
+      if (appAuthLoginController.hasPendingParentClientTransition()) parentClientAuthService.disconnect(false);
     }
     postHistoryLocalRelayService.cancelSession();
     authTransitionGeneration += 1;
@@ -1210,23 +1211,20 @@
     pubkeyHex: string,
     options: { generation?: number } = {},
   ): Promise<void> {
-    const backgroundProfile = appRuntimeEnvironment.runtimeKind === "iframe"
-      && authState.value.type === "parentClient";
     const generation = options.generation ?? authTransitionGeneration;
-    const abort = backgroundProfile ? new AbortController() : undefined;
-    if (abort) parentClientPostAuthAbort = abort;
+    const authType = authState.value.type;
+    if (appDisposed || generation !== authTransitionGeneration || authState.value.pubkey !== pubkeyHex) return;
+    const abort = new AbortController();
+    postAuthAbort?.abort();
+    postAuthAbort = abort;
     let publishedSession: NostrSessionBootstrap | undefined;
-    const isCurrent = backgroundProfile
-      ? () => !appDisposed && authTransitionGeneration === generation
-        && authState.value.type === "parentClient" && authState.value.pubkey === pubkeyHex
-        && parentClientAuthService.isConnected()
-        && parentClientAuthService.getUserPubkey() === pubkeyHex
-        && (!publishedSession || rxNostr === publishedSession.rxNostr)
-      : options.generation === undefined
-        ? () => true
-        : () => authTransitionGeneration === options.generation
-          && accountManager.getActiveAccountPubkey() === pubkeyHex
-          && authState.value?.pubkey === pubkeyHex;
+    const isCurrent = () => !appDisposed && !abort.signal.aborted
+      && authState.value.pubkey === pubkeyHex && authState.value.type === authType
+      && (publishedSession ? rxNostr === publishedSession.rxNostr : authTransitionGeneration === generation);
+    if (!isCurrent()) return;
+    readyAuthSession = null;
+    rxNostr = disposeNostrSession(rxNostr);
+    relayProfileService = undefined;
     const session = await completePostAuthBootstrap({
       pubkeyHex,
       closeAuthDialogs: () => {
@@ -1249,8 +1247,9 @@
       accountProfileCacheStore,
       hostRelayConfig,
       isCurrent,
-      profileLoadMode: backgroundProfile ? "background" : "blocking",
-      signal: abort?.signal,
+      profileLoadMode: appRuntimeEnvironment.runtimeKind === "web-component" && isBootstrappingApp
+        ? "blocking" : "background",
+      signal: abort.signal,
     });
 
     if (!isCurrent()) {
@@ -1259,10 +1258,8 @@
     }
     rxNostr = session.rxNostr;
     relayProfileService = session.relayProfileService;
-    if (backgroundProfile) {
-      publishedSession = session;
-      parentClientReadySession = { pubkeyHex, runtime: session.rxNostr };
-    }
+    publishedSession = session;
+    readyAuthSession = { pubkeyHex, authType, runtime: session.rxNostr };
     void flushPendingReplyQuoteHydrationWhenRuntimeReady();
   }
 
@@ -1512,10 +1509,7 @@
         authState.value?.type !== "parentClient" ||
         !parentClientAuthService.isConnected() ||
         !currentPubkey ||
-        !connectedPubkey ||
-        !rxNostr ||
-        (appRuntimeEnvironment.runtimeKind === "iframe"
-          && parentClientReadySession?.runtime !== rxNostr)
+        !connectedPubkey || !rxNostr || readyAuthSession?.runtime !== rxNostr
       ) {
         return false;
       }
@@ -1584,7 +1578,7 @@
   async function handleRemoteParentClientLogout(
     pubkeyHex: string | null,
   ): Promise<void> {
-    beginAuthTransition();
+    if (authState.value.type === "parentClient" && (!pubkeyHex || authState.value.pubkey === pubkeyHex)) beginAuthTransition({ invalidateSession: true });
     await appAccountSessionController.handleRemoteParentClientLogout(pubkeyHex);
   }
 
@@ -1601,8 +1595,8 @@
     pubkeyHex: string,
     options: { closeDialog?: boolean; notifyParentClient?: boolean } = {},
   ) {
-    const currentPubkey = authState.value?.pubkey || accountManager.getActiveAccountPubkey();
-    if (currentPubkey === pubkeyHex) beginAuthTransition();
+    const currentPubkey = authState.value.pubkey || accountManager.getActiveAccountPubkey();
+    if (currentPubkey === pubkeyHex) beginAuthTransition({ invalidateSession: true });
     await appAccountSessionController.logoutAccount(pubkeyHex, options);
   }
 
@@ -1622,7 +1616,8 @@
    * アカウント切替
    */
   async function switchAccount(pubkeyHex: string): Promise<boolean> {
-    beginAuthTransition();
+    if (isSwitchingAccount) return false;
+    beginAuthTransition({ invalidateSession: true });
     return appAccountSessionController.switchAccount(pubkeyHex);
   }
 
@@ -1825,8 +1820,9 @@
     });
 
     return () => {
-      beginAuthTransition();
+      beginAuthTransition({ invalidateSession: true });
       appDisposed = true;
+      readyAuthSession = null;
       overlayScopeTarget.classList.remove("ehagaki-app-root");
       cleanupVisibilityHandler();
       cleanupRuntimeBindings();

@@ -831,11 +831,8 @@ describe('RelayManager統合テスト', () => {
                 timeoutMs: 1,
             });
             await Promise.resolve();
-            expect(timers).toHaveLength(1);
-            timers[0]();
-            await Promise.resolve();
-            await Promise.resolve();
             expect(timers).toHaveLength(2);
+            timers[0]();
             timers[1]();
 
             await expect(pending).resolves.toMatchObject({

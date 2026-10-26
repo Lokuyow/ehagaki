@@ -23,6 +23,12 @@ eHagaki（えはがき）は、画像・動画圧縮機能付きの投稿専用N
 - **埋め込み**: iframe、Full Web Component、Host-owned Composer Lite Web Componentの3方式を提供
 - **多言語対応**: 日本語・英語に対応（ブラウザ設定から自動判定）
 
+## ログイン後の準備
+
+通常版/PWAとiframe版では、認証成功後に仮プロフィールまたは保存済みプロフィールを表示し、本文入力を先に利用できます。投稿は対象アカウントのリレー設定とNostr sessionが確定した時点で有効になり、プロフィールのネットワーク取得はバックグラウンドで続きます。秘密鍵、NIP-07、NIP-46、親クライアント連携に共通する動作です。
+
+保存済みリレーがない場合はkind 10002とkind 3を並行して取得し、kind 10002を優先します。両方が無応答の場合の探索待ちは最大約3秒で、その後に既定のfallbackを使用します。Web Component Fullの初回 `whenReady()` / `ehagaki-ready` は、引き続きプロフィールを含む既存の初期化完了条件を待ちます。
+
 ## ドキュメント
 
 - Sensitive Content Payload形式（実験的仕様）: [docs/SENSITIVE_CONTENT.md](docs/SENSITIVE_CONTENT.md)

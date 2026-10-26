@@ -230,6 +230,8 @@ Full で `auto-login` を有効にした場合は、保存済み認証または 
 bootstrap が完了するまで、どちらも成立しません。`auto-login` 未指定の Full と Lite Host-owned の
 既存 ready timing は変更されません。
 
+初回準備完了後のUIからのログインでは、認証後に仮プロフィールまたは保存済みプロフィールを先に表示します。リレー設定と投稿用sessionの準備ができれば、プロフィールのネットワーク応答前でも投稿できます。通常のリレー探索はkind 10002とkind 3を並行して実行し、kind 10002の優先順位を維持します。Host Relay Configは引き続きそのまま使用します。
+
 ```js
 const composer = document.querySelector('ehagaki-composer');
 
