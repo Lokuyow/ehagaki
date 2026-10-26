@@ -2,12 +2,12 @@ import { expect, test, type Page } from "@playwright/test";
 
 test.describe.configure({ mode: "parallel" });
 
-type State = { sends: number; signed: number; replyId?: string; quoteId?: string; deletionCount: number; deletionRequests: number;
+type State = { sends: number; signed: number; replyId?: string; quoteId?: string; deletionCount: number; deletionRequests: number; heldDeletionRequests: number;
     sentEvents: { id: string; kind: number; tags: string[][] }[];
     lastResult?: { success: boolean; error?: string }; rows: { id: string; kind: number; content: string; targetId?: string; targetKind?: number; channelEventId?: string; channelRelayHints?: string[] }[] };
 type FixtureWindow = Window & { __REPOST__: { ready: boolean; targetId: string; targetInput: string; read(): Promise<State>; allowTarget(): void;
     deleteOnRelay(): void; rememberDeletion(): Promise<unknown>; nextTarget(): string; rejectNextPublish(): void;
-    export(): Promise<string>; releaseHistory(): void; releasePublish(): void } };
+    export(): Promise<string>; releaseHistory(): void; releasePublish(): void; releaseDeletion(): void } };
 const read = (page: Page) => page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.read());
 async function open(page: Page, query = "") {
     const group = test.info().titlePath.find(title => /^target kind /.test(title));
@@ -21,6 +21,23 @@ async function open(page: Page, query = "") {
 for (const targetKind of [1, 42, 1111]) {
 const outerKind = targetKind === 1 ? 6 : 16;
 test.describe(`target kind ${targetKind}`, () => {
+
+test("history shows and saves a fetched target while deletion discovery is held, then applies a late deletion", async ({ page }) => {
+    await open(page, '&external=import&hold-deletion=1');
+    const card = page.locator('.post-history-repost');
+    await expect.poll(async () => (await read(page)).deletionRequests).toBeGreaterThan(0);
+    await expect(card).toContainText('original searchable post');
+    await expect.poll(async () => (await read(page)).rows.map(row => row.targetKind)).toEqual([targetKind]);
+    await expect.poll(async () => (await read(page)).heldDeletionRequests).toBeGreaterThan(0);
+    expect((await read(page)).deletionCount).toBe(0);
+    await page.evaluate(() => {
+        const fixture = (window as unknown as FixtureWindow).__REPOST__;
+        fixture.deleteOnRelay(); fixture.releaseDeletion();
+    });
+    await expect.poll(async () => (await read(page)).deletionCount).toBe(1);
+    await expect(card).toContainText('元投稿は削除済みです');
+    await expect(card).not.toContainText('original searchable post');
+});
 
 test('supported target projection keeps channel enrichment, wire tags, menu layout and outer-only JSONL', async ({ page }) => {
     await open(page, '&external=import&missing-k=1');
@@ -175,7 +192,9 @@ for (const entry of ['history', 'Composer', 'resolved target'] as const) {
 
 for (const entry of ['history', 'Composer', 'resolved target'] as const) {
     test(`${entry} publishes when a relay-only deletion has not been learned locally`, async ({ page }) => {
-        await open(page, entry === 'Composer' ? '&source=target' : entry === 'resolved target' ? '&external=import' : '');
+        // Keep preview discovery pending so the deletion is still unknown at
+        // send time even though the verified target is already visible.
+        await open(page, entry === 'Composer' ? '&source=target' : entry === 'resolved target' ? '&external=import&hold-deletion=1' : '');
         if (entry === 'Composer') {
             await page.locator('.composer-target-dialog input').fill(await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.targetInput));
             await expect(page.locator('.composer-target-dialog')).toContainText('original searchable post');

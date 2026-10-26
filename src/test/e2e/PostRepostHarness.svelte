@@ -57,7 +57,9 @@
     let signed = 0;
     let deletionRequests = 0;
     let holdHistory = query.has("hold-history");
+    let holdDeletion = query.has("hold-deletion");
     const historyResponses = new Set<() => void>();
+    const deletionResponses = new Set<() => void>();
     const publishResponses = new Set<() => void>();
     let lastResult: { success: boolean; error?: string; historySaved?: boolean } | null = null;
     const sentEvents: { id: string; kind: number; tags: string[][] }[] = [];
@@ -83,6 +85,8 @@
             const heldResponses = new Set<() => void>();
             const subscription = req.getReqPacketObservable().subscribe(({ filters }) => {
                 const filter = filters[0];
+                const targetDeletion = filter?.kinds?.includes(5) && filter["#e"]?.includes(target.id);
+                if (targetDeletion) deletionRequests++;
                 const respond = () => {
                     if (filter?.ids?.includes(target.id) && allowTarget) observer.next({ event: target, from: relay });
                     if (deletedOnRelay && filter?.kinds?.includes(5) && filter.authors?.includes(target.pubkey)
@@ -99,9 +103,14 @@
                 if (holdHistory && filter?.authors?.includes(owner) && filter.kinds?.includes(outerKind)) {
                     heldResponses.add(respond); historyResponses.add(respond);
                 }
+                else if (holdDeletion && targetDeletion) {
+                    heldResponses.add(respond); deletionResponses.add(respond);
+                }
                 else queueMicrotask(respond);
             });
-            return () => { subscription.unsubscribe(); heldResponses.forEach(respond => historyResponses.delete(respond)); };
+            return () => { subscription.unsubscribe(); heldResponses.forEach(respond => {
+                historyResponses.delete(respond); deletionResponses.delete(respond);
+            }); };
         }),
     } as unknown as RxNostr;
     // Exercise the actual rx-nostr request/EOSE/verification/publish path. Only
@@ -238,6 +247,7 @@
             ready: true, targetId: target.id, targetInput: nip19.noteEncode(target.id), owner,
             read: async () => { const rows = await ehagakiDb.postHistory.toArray(); return {
                 sends, signed, lastResult, sentEvents, replyId, quoteId, deletionRequests,
+                heldDeletionRequests: deletionResponses.size,
                 deletionCount: await ehagakiDb.postHistoryDeletionRequests.count(),
                 rows: rows.map((row) => ({ id: row.eventId, kind: row.kind, content: row.content,
                     targetId: row.repostTarget?.rawEvent.id, targetKind: row.repostTarget?.rawEvent.kind, channelEventId: row.channelEventId, channelRelayHints: row.channelRelayHints })),
@@ -256,6 +266,7 @@
             },
             rejectNextPublish: () => { rejectPublish = true; },
             releaseHistory: () => { holdHistory = false; [...historyResponses].forEach(respond => respond()); historyResponses.clear(); },
+            releaseDeletion: () => { holdDeletion = false; [...deletionResponses].forEach(respond => respond()); deletionResponses.clear(); },
             releasePublish: () => { [...publishResponses].forEach(respond => respond()); },
         };
         ready = true;
