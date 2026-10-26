@@ -622,7 +622,7 @@
                                                 {$_("settingsDialog.uploadDestinationMoveDown")}
                                             </DropdownMenu.Item>
                                             <DropdownMenu.Separator class="destination-menu-separator" />
-                                            <DropdownMenu.Item class="destination-menu-item destination-menu-danger" disabled={destinationState.destinations.length <= 1}
+                                            <DropdownMenu.Item class="destination-menu-item" disabled={destinationState.destinations.length <= 1}
                                                 onSelect={() => void deleteDestination(destination)}>
                                                 {$_("settingsDialog.uploadDestinationDelete")}
                                             </DropdownMenu.Item>
@@ -937,9 +937,6 @@
     :global(.destination-menu-item[data-disabled]) {
         opacity: 0.5;
         cursor: default;
-    }
-    :global(.destination-menu-danger) {
-        color: var(--danger);
     }
     :global(.destination-menu-separator) {
         height: 1px;
