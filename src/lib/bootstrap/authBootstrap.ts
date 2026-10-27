@@ -69,6 +69,7 @@ interface CompletePostAuthBootstrapParams extends SyncAccountStoresParams, Initi
     isLoadingProfileStore: BooleanStoreLike;
     isCurrent?: () => boolean;
     profileLoadMode?: 'blocking' | 'background';
+    onProfileFetchStatusChange?: (pending: boolean) => void;
 }
 
 interface ApplyProfileToStoresParams {
@@ -237,10 +238,15 @@ export async function completePostAuthBootstrap({
     hostRelayConfig,
     isCurrent = () => true,
     profileLoadMode = 'blocking',
+    onProfileFetchStatusChange,
     signal,
 }: CompletePostAuthBootstrapParams): Promise<NostrSessionBootstrap> {
     const current = () => isCurrent() && !signal?.aborted;
     const background = profileLoadMode === 'background';
+    const setProfilePending = (pending: boolean) => {
+        if (current()) onProfileFetchStatusChange?.(pending);
+    };
+    setProfilePending(true);
     isLoadingProfileStore.set(!background);
     closeAuthDialogs();
 
@@ -279,7 +285,7 @@ export async function completePostAuthBootstrap({
                     profileResolved = true;
                     apply(profile);
                 }
-            }).catch(() => undefined);
+            }).catch(() => undefined).finally(() => setProfilePending(false));
             return session;
         }
         const fetchedProfile = await session.relayProfileService.initializeForLogin(pubkeyHex, signal);
@@ -296,12 +302,14 @@ export async function completePostAuthBootstrap({
 
         return session;
     } catch (error) {
+        setProfilePending(false);
         session?.rxNostr.dispose();
         if (session && signal?.aborted) return session;
         throw error;
     } finally {
         signal?.removeEventListener('abort', cancelPendingSession);
         if (current()) {
+            if (!background) setProfilePending(false);
             isLoadingProfileStore.set(false);
             const sync = syncAccountStores({ accountManager, accountListStore, accountProfileCacheStore, isCurrent: current });
             if (background) void sync.catch(() => undefined);

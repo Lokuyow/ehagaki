@@ -129,6 +129,7 @@
     hasStoredKey: boolean;
     hasPostingCapability?: boolean;
     isSwitchingAccount?: boolean;
+    profilePending?: boolean;
     onPostSuccess?: (result?: PostResult) => void;
     onReactionResult?: (result: PostReactionResult) => void;
     availableComposerHeight?: number;
@@ -149,6 +150,7 @@
     hasStoredKey,
     hasPostingCapability = hasStoredKey,
     isSwitchingAccount = false,
+    profilePending = false,
     onPostSuccess,
     onReactionResult,
     availableComposerHeight = POST_EDITOR_MIN_HEIGHT,
@@ -1500,6 +1502,8 @@
     {#if !isHostOwnedLiteBuild && showAccountPlaceholder}
       <div class="editor-account-placeholder" aria-hidden="true">
         <ProfileAvatar
+          showLoadingIndicator
+          pending={profilePending}
           src={profileData?.picture || ""}
           alt=""
           fallbackAriaLabel=""

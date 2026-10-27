@@ -16,7 +16,13 @@ async function submitSecret(page: Page, key: Uint8Array) {
     return started;
 }
 
-async function setup(page: Page, options: { timed?: boolean; extension?: boolean; rejectExtension?: boolean } = {}) {
+async function setup(page: Page, options: {
+    timed?: boolean;
+    extension?: boolean;
+    rejectExtension?: boolean;
+    profilePicture?: string;
+    profileMissing?: boolean;
+} = {}) {
     const key = generateSecretKey();
     const owner = getPublicKey(key);
     const otherKey = generateSecretKey();
@@ -82,8 +88,8 @@ async function setup(page: Page, options: { timed?: boolean; extension?: boolean
                 profileRequests += 1;
                 const name = eventKey === key ? 'Delayed profile' : 'Other profile';
                 const event = finalizeEvent({ kind, created_at: createdAt, tags: [],
-                    content: JSON.stringify({ name, display_name: name }) }, eventKey);
-                const send = () => respond(subscription, event);
+                    content: JSON.stringify({ name, display_name: name, picture: options.profilePicture ?? '' }) }, eventKey);
+                const send = () => respond(subscription, options.profileMissing ? undefined : event);
                 if (options.timed) setTimeout(send, 1200);
                 else if (holdProfiles) pendingProfiles.push(send);
                 else send();
@@ -270,3 +276,67 @@ test('a successful extension login supersedes a pending secret-key account prepa
     await account(page).click();
     await expect(page.locator('.profile-name')).toHaveText('Delayed profile');
 });
+
+test('pulses the default account icon through profile and image loading without blocking posting', async ({ page }, testInfo) => {
+    const avatarUrl = 'https://avatar.example/login.svg';
+    const pendingImages: import('@playwright/test').Route[] = [];
+    let imagesReleased = false;
+    const deliverImage = (route: import('@playwright/test').Route) => route.fulfill({
+        contentType: 'image/svg+xml', headers: { 'cache-control': 'public, max-age=600' },
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><circle cx="24" cy="24" r="24" fill="#2563eb"/><circle cx="24" cy="18" r="8" fill="white"/><path d="M10 42a14 14 0 0 1 28 0" fill="white"/></svg>',
+    });
+    await page.route('https://avatar.example/**', route => {
+        if (imagesReleased) return deliverImage(route);
+        pendingImages.push(route);
+    });
+    const app = await setup(page, { profilePicture: avatarUrl });
+    await app.login();
+    const fallback = page.locator('.footer-bar .profile-avatar-fallback');
+    const avatar = page.locator('.footer-bar [data-avatar-root]');
+    await expect(fallback).toHaveAttribute('data-loading', 'true');
+    await expect(avatar).toHaveAttribute('aria-busy', 'true');
+    expect(await fallback.evaluate(el => getComputedStyle(el).animationName)).toContain('profile-avatar-loading-pulse');
+    await expect(account(page)).toBeEnabled();
+    await page.locator('.footer-bar').screenshot({ path: testInfo.outputPath('avatar-pending.png') });
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(await fallback.evaluate(el => getComputedStyle(el).animationName)).toBe('none');
+    await expect(fallback).toBeVisible();
+    await expect(avatar).toHaveAttribute('aria-busy', 'true');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+    app.releaseRelays();
+    await page.locator('.tiptap-editor').fill('Image pending draft');
+    await expect(post(page)).toBeEnabled();
+    app.releaseProfiles();
+    await expect.poll(() => pendingImages.length).toBeGreaterThan(0);
+    await expect(fallback).toHaveAttribute('data-loading', 'true');
+    await expect(post(page)).toBeEnabled();
+    await page.locator('.footer-bar').screenshot({ path: testInfo.outputPath('avatar-image-pending.png') });
+
+    imagesReleased = true;
+    await Promise.all(pendingImages.splice(0).map(deliverImage));
+    await expect(page.locator('.footer-bar .profile-picture-image')).toBeVisible();
+    await expect(avatar).not.toHaveAttribute('aria-busy');
+    await expect(fallback).toBeHidden();
+    await page.locator('.footer-bar').screenshot({ path: testInfo.outputPath('avatar-loaded.png') });
+});
+
+for (const outcome of ['missing', 'image-error'] as const) {
+    test(`stops the account icon pulse when the profile is ${outcome}`, async ({ page }) => {
+        await page.route('https://avatar.example/**', route => route.fulfill({ status: 404, body: '' }));
+        const app = await setup(page, {
+            profileMissing: outcome === 'missing',
+            profilePicture: outcome === 'image-error' ? 'https://avatar.example/missing.png' : '',
+        });
+        await app.login();
+        const fallback = page.locator('.footer-bar .profile-avatar-fallback');
+        await expect(fallback).toHaveAttribute('data-loading', 'true');
+        app.releaseRelays();
+        app.releaseProfiles();
+        await expect(fallback).not.toHaveAttribute('data-loading');
+        await expect(fallback).toBeVisible();
+        await expect(page.locator('.footer-bar [data-avatar-root]')).not.toHaveAttribute('aria-busy');
+        await expect(account(page)).toBeEnabled();
+    });
+}

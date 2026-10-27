@@ -473,6 +473,7 @@
   let authTransitionGeneration = $state(0);
   let appDisposed = false;
   let postAuthAbort: AbortController | undefined;
+  let profileFetchPending = $state(false);
   let readyAuthSession = $state<{
     pubkeyHex: string;
     authType: string;
@@ -776,6 +777,7 @@
     // Trying another login must preserve the current account's preparation.
     // Successful authentication replaces it in handlePostAuth.
     if (options.invalidateSession) {
+      profileFetchPending = false;
       postAuthAbort?.abort();
       postAuthAbort = undefined;
     }
@@ -1254,6 +1256,7 @@
       profileLoadMode: appRuntimeEnvironment.runtimeKind === "web-component" && isBootstrappingApp
         ? "blocking" : "background",
       signal: abort.signal,
+      onProfileFetchStatusChange: (pending) => { profileFetchPending = pending; },
     });
 
     if (!isCurrent()) {
@@ -2245,6 +2248,7 @@
                     hasStoredKey={isAuthenticated}
                     hasPostingCapability={hasPostingCapability}
                     {isSwitchingAccount}
+                    profilePending={profileFetchPending}
                     availableComposerHeight={postAvailableComposerHeight}
                     minEditorHeight={postEditorMinHeight}
                     onPostSuccess={handlePostSuccess}
@@ -2320,6 +2324,7 @@
         onCustomEmojiPickerOpenChange={(open) => (customEmojiPickerOpen = open)}
       />
       <FooterComponent
+        profilePending={profileFetchPending}
         {isAuthenticated}
         {isAuthInitialized}
         {isSwitchingAccount}
@@ -2419,6 +2424,7 @@
       {/if}
       {#if showLogoutDialogStore.value && ProfileComponent}
         <ProfileComponent
+          profilePending={profileFetchPending}
           show={showLogoutDialogStore.value}
           onClose={logoutDialog.close}
           onLogout={requestLogoutAccount}

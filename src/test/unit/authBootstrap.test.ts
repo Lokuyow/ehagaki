@@ -401,6 +401,7 @@ function backgroundBootstrap() {
         accountListStore: { set: vi.fn() },
         accountProfileCacheStore: { setProfile: vi.fn() },
         profileLoadMode: 'background' as const,
+        onProfileFetchStatusChange: vi.fn(),
         signal: abort.signal,
     };
     return { params, relays, profile, abort, start: () => completePostAuthBootstrap(params) };
@@ -419,14 +420,17 @@ describe('background post-auth bootstrap', () => {
         expect(setup.params.profileLoadedStore.set).toHaveBeenCalledWith(true);
         expect(setup.params.profileDataStore.set.mock.calls[0][0].npub).toMatch(/^npub1/);
         expect(setup.params.isLoadingProfileStore.set).toHaveBeenCalledWith(false);
+        expect(setup.params.onProfileFetchStatusChange).toHaveBeenLastCalledWith(true);
         await vi.waitFor(() => expect(setup.relays).toHaveBeenCalledOnce());
         expect(ready).toBe(false);
         expect(setup.profile).not.toHaveBeenCalled();
         relay.resolve({ success: true, relayConfig: [], source: 'kind10002' });
         const session = await pending;
         expect(ready).toBe(true);
+        expect(setup.params.onProfileFetchStatusChange).toHaveBeenLastCalledWith(true);
         profile.resolve(createProfile());
         await vi.waitFor(() => expect(setup.params.profileDataStore.set).toHaveBeenLastCalledWith(createProfile()));
+        await vi.waitFor(() => expect(setup.params.onProfileFetchStatusChange).toHaveBeenLastCalledWith(false));
         session.rxNostr.dispose();
     });
 
@@ -459,6 +463,7 @@ describe('background post-auth bootstrap', () => {
         if (failure === 'failed') setup.profile.mockRejectedValue(new Error('offline'));
         const session = await setup.start();
         await Promise.resolve();
+        await vi.waitFor(() => expect(setup.params.onProfileFetchStatusChange).toHaveBeenLastCalledWith(false));
         expect(setup.params.profileDataStore.set).toHaveBeenCalledOnce();
         expect(setup.params.profileDataStore.set).toHaveBeenLastCalledWith(expect.objectContaining({ name: '', picture: '' }));
         expect(setup.params.isLoadingProfileStore.set).toHaveBeenLastCalledWith(false);
@@ -472,9 +477,13 @@ describe('background post-auth bootstrap', () => {
         const session = await setup.start();
         setup.abort.abort();
         setup.params.profileDataStore.set.mockClear();
+        setup.params.onProfileFetchStatusChange.mockClear();
         profile.resolve(createProfile());
         await profile.promise;
+        // Let the background chain finish, including its final status cleanup.
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
         expect(setup.params.profileDataStore.set).not.toHaveBeenCalled();
+        expect(setup.params.onProfileFetchStatusChange).not.toHaveBeenCalled();
         session.rxNostr.dispose();
     });
 
