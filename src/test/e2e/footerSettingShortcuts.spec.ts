@@ -826,7 +826,7 @@ test("keyboard Enter and Space each directly change a shortcut once without open
     await expect(page.locator("[role=dialog], [role=menu], [role=radio], .footer-setting-shortcut-popover")).toHaveCount(0);
 });
 
-test("keeps full mascot transparent and verifies the frame-only SVG has a transparent hole", async ({ page }) => {
+test("shows only the mascot outer contour when hidden", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "hide-mascot", right: null })));
     await enterApp(page);
 
@@ -855,10 +855,11 @@ test("keeps full mascot transparent and verifies the frame-only SVG has a transp
             width: image.naturalWidth,
             height: image.naturalHeight,
             centerAlpha: context.getImageData(32, 32, 1, 1).data[3],
-            frameAlpha: context.getImageData(7, 32, 1, 1).data[3],
+            contourAlpha: context.getImageData(5, 32, 1, 1).data[3],
+            interiorAlpha: context.getImageData(9, 32, 1, 1).data[3],
         };
     });
-    expect(framePixels).toEqual({ width: 64, height: 64, centerAlpha: 0, frameAlpha: 255 });
+    expect(framePixels).toEqual({ width: 64, height: 64, centerAlpha: 0, contourAlpha: 255, interiorAlpha: 0 });
 
     await page.locator(".footer-setting-shortcut-button").click();
     await expect(page.locator(".footer-setting-shortcut-button img.mascot-icon")).toHaveAttribute("src", /ehagaki_icon\.svg/);
