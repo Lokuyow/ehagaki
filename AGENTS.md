@@ -4,9 +4,13 @@ Canonical repository-wide guidance for eHagaki, a post-focused Nostr client with
 
 ## Scope, authorization, and safety
 
-- Follow the explicit task scope and preserve behavior outside it. Keep product implementation and instruction maintenance separate unless both are requested.
-- Resolve routine choices from the task and current checkout. Continue authorized investigation, reversible editing, and verification without redundant permission checks. Ask only about unresolved choices that materially affect behavior, public contracts, security/data, compatibility, scope, or irreversible/external actions; continue independent work while waiting.
-- Commit, push, PR creation, release, and deployment require explicit authorization. Existing authorization remains valid for the task.
+- Follow the explicit task scope and preserve behavior outside it. Keep product implementation and instruction maintenance separate unless both are requested. Individual user instructions take precedence over the default workflow below.
+- Resolve routine choices from the task and current checkout. Continue authorized investigation, reversible editing, and verification without redundant permission checks. Ask only about unresolved choices that materially affect behavior, public contracts, security/data, compatibility, scope, or actions outside the standing authorization below; continue independent work while waiting.
+- For ordinary work that changes code, configuration, documentation, or other repository files, once required verification succeeds, commit and push the changes and create a normal, non-draft PR targeting `main`. These Git operations have standing prior authorization: do not wait for further instructions or request approval again for each task.
+- For additional changes to an existing unmerged PR, commit and push to that PR's branch instead of creating a new PR.
+- Do not perform Git operations in Plan mode or read-only investigations.
+- Do not automatically merge, release, deploy, force push, or make destructive Git history changes. These actions require explicit task-specific authorization.
+- If verification fails, permissions are insufficient, or another blocker prevents completing the Git workflow, clearly report the blocker, which steps completed, and which remain incomplete.
 - Skills provide domain guidance, not extra scope or inferred approval gates. Explicit task instructions take precedence. If a Skill explicitly requires a pause that affects the task, quote and link that instruction and explain its applicability.
 - Never expose nsec/private keys, authentication tokens/payloads, or signing-request bodies in logs, fixtures, traces, screenshots, or reports. Do not weaken sanitization, URL/origin/auth validation, or runtime trust boundaries without an explicit requirement and appropriate verification.
 
@@ -49,4 +53,4 @@ Prefer a local solution unless a shared responsibility and actual reuse justify 
 
 Choose checks by impact using the development guide. Documentation-only changes need frontmatter where applicable, links/anchors, routing and allowed-file-scope checks, and `git diff --check`; application suites are unnecessary unless executable configuration or implementation is affected.
 
-Once required checks pass for the final relevant changes and no relevant concern remains, complete the task. Repeat or broaden verification only for further changes, failures, or unresolved concerns. Report the rationale, material risks, and executed/unexecuted checks truthfully. Remove temporary investigation files and instrumentation; never commit `test-results/`, `playwright-report/`, `blob-report/`, or `playwright/.cache/`.
+Once required checks pass for the final relevant changes and no relevant concern remains, complete the applicable commit, push, and PR workflow under Scope, authorization, and safety. Repeat or broaden verification only for further changes, failures, or unresolved concerns. Report the rationale, material risks, and executed/unexecuted checks truthfully, including the PR link or any incomplete Git operations and their blockers. Remove temporary investigation files and instrumentation; never commit `test-results/`, `playwright-report/`, `blob-report/`, or `playwright/.cache/`.
