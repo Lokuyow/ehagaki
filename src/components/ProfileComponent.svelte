@@ -43,6 +43,7 @@
         >;
         isLoggingOut?: boolean;
         isSwitchingAccount?: boolean;
+        profilePending?: boolean;
     }
 
     let {
@@ -56,6 +57,7 @@
         accountProfiles = new Map(),
         isLoggingOut = false,
         isSwitchingAccount = false,
+        profilePending = false,
     }: Props = $props();
 
     // ダイアログを閉じるハンドラ
@@ -130,6 +132,8 @@
                 <ProfileAvatar
                     pubkeyHex={currentPubkeyHex}
                     displayName={displayedProfile.displayName} name={displayedProfile.name}
+                    showLoadingIndicator
+                    pending={profilePending}
                     src={displayedProfile.picture}
                     alt={currentProfileAlt}
                     rootClassName="profile-image-container"
@@ -256,6 +260,8 @@
                                     <ProfileAvatar
                                         pubkeyHex={account.pubkeyHex}
                                         displayName={cachedProfile?.displayName} name={cachedProfile?.name}
+                                        showLoadingIndicator
+                                        pending={isActive && profilePending}
                                         src={cachedProfile?.picture}
                                         alt={cachedProfile?.displayName ||
                                             cachedProfile?.name ||

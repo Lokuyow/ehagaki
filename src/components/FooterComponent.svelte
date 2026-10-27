@@ -18,6 +18,7 @@
         isAuthenticated: boolean;
         isAuthInitialized: boolean;
         isSwitchingAccount: boolean;
+        profilePending?: boolean;
         swNeedRefresh: boolean;
         onShowLoginDialog: () => void;
         onPreloadPostHistoryDialog?: () => void;
@@ -30,6 +31,7 @@
         isAuthenticated,
         isAuthInitialized,
         isSwitchingAccount,
+        profilePending = false,
         swNeedRefresh,
         onShowLoginDialog,
         onPreloadPostHistoryDialog = undefined,
@@ -139,6 +141,8 @@
             <ProfileAvatar
                 pubkeyHex={authState.value.pubkey}
                 displayName={profileData?.displayName} name={profileData?.name}
+                showLoadingIndicator
+                pending={profilePending}
                 src={profileData?.picture || ""}
                 alt={getProfileAlt()}
                 rootClassName="profile-picture"

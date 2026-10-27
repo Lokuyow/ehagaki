@@ -10,6 +10,8 @@ import {
 import { RelayProfileService } from '../../lib/relayProfileService';
 import { profileMetadataCache } from '../../lib/profileMetadataCache.svelte';
 
+afterEach(() => vi.restoreAllMocks());
+
 function createProfile() {
     return {
         name: 'name',
@@ -368,5 +370,137 @@ describe('runInitializeNostrSession', () => {
             rxNostr: expect.any(Object),
             relayProfileService: expect.any(Object),
         }));
+    });
+});
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+    return { promise, resolve, reject };
+}
+
+function backgroundBootstrap() {
+    vi.spyOn(RelayProfileService.prototype, 'initializeRelays').mockResolvedValue();
+    vi.spyOn(profileMetadataCache, 'getCachedProfile').mockResolvedValue(null);
+    const relays = vi.spyOn(RelayProfileService.prototype, 'fetchRelays').mockResolvedValue({
+        success: true, relayConfig: [], source: 'localStorage',
+    });
+    const profile = vi.spyOn(RelayProfileService.prototype, 'fetchProfile').mockResolvedValue(null);
+    const abort = new AbortController();
+    const params = {
+        pubkeyHex: '05'.repeat(32),
+        closeAuthDialogs: vi.fn(),
+        relayListUpdatedStore: { value: 0, set: vi.fn() },
+        setRelayManager: vi.fn(),
+        onRelayConfigSaved: vi.fn(),
+        profileDataStore: { set: vi.fn() },
+        profileLoadedStore: { set: vi.fn() },
+        isLoadingProfileStore: { set: vi.fn() },
+        accountManager: { getAccounts: () => [] },
+        accountListStore: { set: vi.fn() },
+        accountProfileCacheStore: { setProfile: vi.fn() },
+        profileLoadMode: 'background' as const,
+        onProfileFetchStatusChange: vi.fn(),
+        signal: abort.signal,
+    };
+    return { params, relays, profile, abort, start: () => completePostAuthBootstrap(params) };
+}
+
+describe('background post-auth bootstrap', () => {
+    it('shows the authenticated identity before relays respond and returns before the profile responds', async () => {
+        const setup = backgroundBootstrap();
+        const relay = deferred<Awaited<ReturnType<RelayProfileService['fetchRelays']>>>();
+        const profile = deferred<ReturnType<typeof createProfile>>();
+        setup.relays.mockReturnValue(relay.promise);
+        setup.profile.mockReturnValue(profile.promise);
+        let ready = false;
+        const pending = setup.start().then(session => { ready = true; return session; });
+        expect(setup.params.closeAuthDialogs).toHaveBeenCalledOnce();
+        expect(setup.params.profileLoadedStore.set).toHaveBeenCalledWith(true);
+        expect(setup.params.profileDataStore.set.mock.calls[0][0].npub).toMatch(/^npub1/);
+        expect(setup.params.isLoadingProfileStore.set).toHaveBeenCalledWith(false);
+        expect(setup.params.onProfileFetchStatusChange).toHaveBeenLastCalledWith(true);
+        await vi.waitFor(() => expect(setup.relays).toHaveBeenCalledOnce());
+        expect(ready).toBe(false);
+        expect(setup.profile).not.toHaveBeenCalled();
+        relay.resolve({ success: true, relayConfig: [], source: 'kind10002' });
+        const session = await pending;
+        expect(ready).toBe(true);
+        expect(setup.params.onProfileFetchStatusChange).toHaveBeenLastCalledWith(true);
+        profile.resolve(createProfile());
+        await vi.waitFor(() => expect(setup.params.profileDataStore.set).toHaveBeenLastCalledWith(createProfile()));
+        await vi.waitFor(() => expect(setup.params.onProfileFetchStatusChange).toHaveBeenLastCalledWith(false));
+        session.rxNostr.dispose();
+    });
+
+    it('does not wait for IndexedDB profile reads to initialize relays or become ready', async () => {
+        const setup = backgroundBootstrap();
+        const cache = deferred<ReturnType<typeof createProfile>>();
+        vi.mocked(profileMetadataCache.getCachedProfile).mockReturnValue(cache.promise);
+        const session = await setup.start();
+        expect(setup.relays).toHaveBeenCalledOnce();
+        cache.resolve(createProfile());
+        await vi.waitFor(() => expect(setup.params.profileDataStore.set).toHaveBeenLastCalledWith(createProfile()));
+        session.rxNostr.dispose();
+    });
+
+    it('a slow cached profile never overwrites a completed network profile', async () => {
+        const setup = backgroundBootstrap();
+        const cache = deferred<ReturnType<typeof createProfile>>();
+        vi.mocked(profileMetadataCache.getCachedProfile).mockReturnValue(cache.promise);
+        setup.profile.mockResolvedValue({ ...createProfile(), name: 'new' });
+        const session = await setup.start();
+        await vi.waitFor(() => expect(setup.params.profileDataStore.set).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'new' })));
+        cache.resolve(createProfile());
+        await cache.promise;
+        expect(setup.params.profileDataStore.set).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'new' }));
+        session.rxNostr.dispose();
+    });
+
+    it.each(['missing', 'failed'])('keeps the placeholder usable when the profile is %s', async failure => {
+        const setup = backgroundBootstrap();
+        if (failure === 'failed') setup.profile.mockRejectedValue(new Error('offline'));
+        const session = await setup.start();
+        await Promise.resolve();
+        await vi.waitFor(() => expect(setup.params.onProfileFetchStatusChange).toHaveBeenLastCalledWith(false));
+        expect(setup.params.profileDataStore.set).toHaveBeenCalledOnce();
+        expect(setup.params.profileDataStore.set).toHaveBeenLastCalledWith(expect.objectContaining({ name: '', picture: '' }));
+        expect(setup.params.isLoadingProfileStore.set).toHaveBeenLastCalledWith(false);
+        session.rxNostr.dispose();
+    });
+
+    it('ignores old profile and cache completions after logout, switch, or disposal', async () => {
+        const setup = backgroundBootstrap();
+        const profile = deferred<ReturnType<typeof createProfile>>();
+        setup.profile.mockReturnValue(profile.promise);
+        const session = await setup.start();
+        setup.abort.abort();
+        setup.params.profileDataStore.set.mockClear();
+        setup.params.onProfileFetchStatusChange.mockClear();
+        profile.resolve(createProfile());
+        await profile.promise;
+        // Let the background chain finish, including its final status cleanup.
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        expect(setup.params.profileDataStore.set).not.toHaveBeenCalled();
+        expect(setup.params.onProfileFetchStatusChange).not.toHaveBeenCalled();
+        session.rxNostr.dispose();
+    });
+
+    it('disposes a pending runtime and ignores late relay notifications after cancellation', async () => {
+        const setup = backgroundBootstrap();
+        const relay = deferred<Awaited<ReturnType<RelayProfileService['fetchRelays']>>>();
+        setup.relays.mockReturnValue(relay.promise);
+        const pending = setup.start();
+        await vi.waitFor(() => expect(setup.relays).toHaveBeenCalledOnce());
+        const runtime = (setup.relays.mock.instances[0] as RelayProfileService);
+        const dispose = vi.spyOn((runtime as unknown as { rxNostr: { dispose(): void } }).rxNostr, 'dispose');
+        setup.abort.abort();
+        relay.resolve({ success: true, relayConfig: [], source: 'kind10002' });
+        const session = await pending;
+        expect(setup.profile).not.toHaveBeenCalled();
+        expect(dispose).toHaveBeenCalled();
+        session.rxNostr.dispose();
+        expect(setup.params.accountListStore.set).not.toHaveBeenCalled();
     });
 });

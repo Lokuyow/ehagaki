@@ -259,3 +259,28 @@ test('finishes login preparation after removing an inactive account', async ({ p
     await expect.poll(() => page.evaluate(() => (window as any).__parentLogin.posted)).toBe(1);
     expect(await page.evaluate(() => (window as any).__parentLogin.authRequests)).toBe(1);
 });
+
+test('keeps an authenticated parent connection and preparation after an extension login is rejected', async ({ page }) => {
+    await page.addInitScript(() => {
+        window.nostr = {
+            getPublicKey: async () => { throw new Error('Login declined'); },
+            signEvent: async () => { throw new Error('Unexpected extension signing'); },
+        } as typeof window.nostr;
+    });
+    const host = await openParentLogin(page);
+    await expect.poll(() => host.pendingRelays.size).toBeGreaterThan(0);
+    await host.frame.locator('.tiptap-editor').fill('Parent draft');
+    await host.frame.getByRole('button', { name: 'プロフィール', exact: true }).click();
+    await host.frame.locator('.add-account-btn').click();
+    await host.frame.locator('.nip07-login-button').click();
+    await expect(host.frame.getByText('ブラウザ拡張機能でのログインに失敗しました', { exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(host.frame.locator('.login-dialog')).toBeHidden();
+
+    host.releaseRelays();
+    const submit = host.frame.getByRole('button', { name: '投稿', exact: true });
+    await expect(submit).toBeEnabled();
+    await submit.click();
+    await expect.poll(() => page.evaluate(() => (window as any).__parentLogin.posted)).toBe(1);
+    expect(await page.evaluate(() => (window as any).__parentLogin.authRequests)).toBe(1);
+});

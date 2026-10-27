@@ -132,6 +132,7 @@ export interface RelayManagerDeps {
 export interface RelayFetchOptions {
     forceRemote?: boolean;
     timeoutMs?: number;
+    signal?: AbortSignal;
 }
 
 export interface RelayFetchResult {

@@ -14,6 +14,14 @@ describe('ProfileAvatar', () => {
         expect(svg(container)).toContain('>山</text>');
         expect(container.querySelector('[role="img"]')).toBeNull();
     });
+    it('retains generated initials while upstream pending feedback starts and finishes', async () => {
+        const {container, rerender} = render(ProfileAvatar, {pubkeyHex, name: 'Alice', pending: true, showLoadingIndicator: true});
+        const initial = svg(container);
+        expect(container.querySelector('[data-avatar-root]')?.getAttribute('aria-busy')).toBe('true');
+        await rerender({pubkeyHex, name: 'Alice', pending: false, showLoadingIndicator: true});
+        expect(svg(container)).toBe(initial);
+        expect(container.querySelector('[data-avatar-root]')?.hasAttribute('aria-busy')).toBe(false);
+    });
     it('updates names and account colors', async () => {
         const {container, rerender} = render(ProfileAvatar, {pubkeyHex, name: 'Alice'});
         expect(svg(container)).toContain('#abcdef');

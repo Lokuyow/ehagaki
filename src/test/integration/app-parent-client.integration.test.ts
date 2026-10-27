@@ -85,7 +85,7 @@ const mockState = vi.hoisted(() => {
     const applyReplyQuoteQuery = vi.fn(({ replyQuoteQuery, setReplyQuote }: any) => {
         return setReplyQuote(replyQuoteQuery);
     });
-    const authenticateWithParentClient = vi.fn(async () => ({
+    const authenticateWithParentClient = vi.fn(async (_options?: unknown) => ({
         success: true,
         pubkeyHex: PARENT_CLIENT_PUBKEY,
     }));
@@ -257,7 +257,18 @@ vi.mock('../../lib/authService', () => ({
         authenticateWithNsec: vi.fn(),
         authenticateWithNip07: vi.fn(),
         authenticateWithNip46: vi.fn(),
-        authenticateWithParentClient: mockState.authenticateWithParentClient,
+        authenticateWithParentClient: async (options: unknown) => {
+            const result = await mockState.authenticateWithParentClient(options);
+            if (result.success && result.pubkeyHex) {
+                mockAuthStoreModule.authState.value = {
+                    ...mockAuthStoreModule.authState.value,
+                    isAuthenticated: true,
+                    type: 'parentClient',
+                    pubkey: result.pubkeyHex,
+                };
+            }
+            return result;
+        },
         initializeAuth: vi.fn(async () => ({ hasAuth: true, pubkeyHex: PARENT_CLIENT_PUBKEY })),
         getNip07Service: vi.fn(() => ({
             isAvailable: vi.fn(() => false),
