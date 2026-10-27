@@ -773,15 +773,19 @@
   });
 
   function beginAuthTransition(options: { parentClient?: boolean; invalidateSession?: boolean } = {}): void {
-    // A rejected login must leave the existing, published account usable.
-    if (options.invalidateSession || readyAuthSession?.runtime !== rxNostr || !rxNostr) {
+    // Trying another login must preserve the current account's preparation.
+    // Successful authentication replaces it in handlePostAuth.
+    if (options.invalidateSession) {
       postAuthAbort?.abort();
       postAuthAbort = undefined;
     }
     pendingParentClientGeneration = null;
     if (!options.parentClient) {
       appParentClientSyncController.clearPendingRemoteLogin();
-      if (appAuthLoginController.hasPendingParentClientTransition()) parentClientAuthService.disconnect(false);
+      if (appAuthLoginController.hasPendingParentClientTransition()
+        && (options.invalidateSession || parentClientAuthCoordinator.hasPendingRequest())) {
+        parentClientAuthService.disconnect(false);
+      }
     }
     postHistoryLocalRelayService.cancelSession();
     authTransitionGeneration += 1;
@@ -1218,9 +1222,9 @@
     postAuthAbort?.abort();
     postAuthAbort = abort;
     let publishedSession: NostrSessionBootstrap | undefined;
-    const isCurrent = () => !appDisposed && !abort.signal.aborted
+    const isCurrent = () => !appDisposed && !abort.signal.aborted && postAuthAbort === abort
       && authState.value.pubkey === pubkeyHex && authState.value.type === authType
-      && (publishedSession ? rxNostr === publishedSession.rxNostr : authTransitionGeneration === generation);
+      && (!publishedSession || rxNostr === publishedSession.rxNostr);
     if (!isCurrent()) return;
     readyAuthSession = null;
     rxNostr = disposeNostrSession(rxNostr);

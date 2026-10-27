@@ -16,7 +16,7 @@ async function submitSecret(page: Page, key: Uint8Array) {
     return started;
 }
 
-async function setup(page: Page, options: { timed?: boolean; extension?: boolean } = {}) {
+async function setup(page: Page, options: { timed?: boolean; extension?: boolean; rejectExtension?: boolean } = {}) {
     const key = generateSecretKey();
     const owner = getPublicKey(key);
     const otherKey = generateSecretKey();
@@ -33,14 +33,17 @@ async function setup(page: Page, options: { timed?: boolean; extension?: boolean
         localStorage.setItem('firstVisit', '1');
         localStorage.setItem('locale', 'ja');
     });
-    if (options.extension) {
+    if (options.extension || options.rejectExtension) {
         await page.exposeFunction('fixtureSignEvent', (template: EventTemplate) => finalizeEvent(template, key));
-        await page.addInitScript(pubkey => {
+        await page.addInitScript(({ pubkey, reject }) => {
             window.nostr = {
-                getPublicKey: async () => pubkey,
+                getPublicKey: async () => {
+                    if (reject) throw new Error('Login declined');
+                    return pubkey;
+                },
                 signEvent: (template: EventTemplate) => (window as unknown as { fixtureSignEvent(event: EventTemplate): Promise<NostrEvent> }).fixtureSignEvent(template),
             } as typeof window.nostr;
-        }, owner);
+        }, { pubkey: owner, reject: options.rejectExtension === true });
     }
     await page.routeWebSocket(/^wss?:\/\//, socket => {
         const respond = (subscription: string, event?: NostrEvent) => {
@@ -60,9 +63,12 @@ async function setup(page: Page, options: { timed?: boolean; extension?: boolean
             const subscription = message[1] as string;
             const kind = message[2]?.kinds?.[0];
             const eventKey = message[2]?.authors?.[0] === otherOwner ? otherKey : key;
+            // A queued REQ can cross a second boundary before this fixture
+            // receives it. Match its until bound just as a real relay would.
+            const createdAt = Math.min(Math.floor(Date.now() / 1000), message[2]?.until ?? Infinity);
             if (kind === 10002) {
                 relayRequests += 1;
-                const event = finalizeEvent({ kind, created_at: Math.floor(Date.now() / 1000), content: '',
+                const event = finalizeEvent({ kind, created_at: createdAt, content: '',
                     tags: [['r', 'wss://login-write.example']] }, eventKey);
                 const send = () => respond(subscription, event);
                 if (options.timed) setTimeout(send, 600);
@@ -70,12 +76,12 @@ async function setup(page: Page, options: { timed?: boolean; extension?: boolean
                 else send();
             } else if (kind === 3) {
                 legacyRequests += 1;
-                respond(subscription, finalizeEvent({ kind, created_at: Math.floor(Date.now() / 1000), tags: [],
+                respond(subscription, finalizeEvent({ kind, created_at: createdAt, tags: [],
                     content: JSON.stringify({ 'wss://legacy.example': { read: true, write: true } }) }, eventKey));
             } else if (kind === 0) {
                 profileRequests += 1;
                 const name = eventKey === key ? 'Delayed profile' : 'Other profile';
-                const event = finalizeEvent({ kind, created_at: Math.floor(Date.now() / 1000), tags: [],
+                const event = finalizeEvent({ kind, created_at: createdAt, tags: [],
                     content: JSON.stringify({ name, display_name: name }) }, eventKey);
                 const send = () => respond(subscription, event);
                 if (options.timed) setTimeout(send, 1200);
@@ -212,4 +218,55 @@ test('keeps the new account initialization alive when deleting an inactive accou
     await post(page).click();
     await expect.poll(() => app.posts.length).toBeGreaterThan(0);
     expect(app.posts.every(sent => sent.event.pubkey === app.otherOwner && verifyEvent(sent.event))).toBe(true);
+});
+
+test('keeps a secret-key account preparation alive after another extension login is rejected', async ({ page }) => {
+    const app = await setup(page, { rejectExtension: true });
+    await app.login();
+    app.releaseRelays();
+    await page.locator('.tiptap-editor').fill('Preserved draft');
+    await expect(post(page)).toBeEnabled();
+    app.pauseRelays();
+    await app.addAccount();
+    await expect(account(page)).toBeVisible();
+    await expect(post(page)).toBeDisabled();
+
+    await account(page).click();
+    await page.locator('.add-account-btn').click();
+    await page.locator('.nip07-login-button').click();
+    await expect(page.getByText('ブラウザ拡張機能でのログインに失敗しました', { exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.login-dialog')).toBeHidden();
+    await expect(page.locator('.tiptap-editor')).toHaveText('Preserved draft');
+    await expect(post(page)).toBeDisabled();
+
+    app.releaseRelays();
+    await expect(post(page)).toBeEnabled();
+    await post(page).click();
+    await expect.poll(() => app.posts.length).toBeGreaterThan(0);
+    expect(app.posts.every(sent => sent.event.pubkey === app.otherOwner && verifyEvent(sent.event))).toBe(true);
+});
+
+test('a successful extension login supersedes a pending secret-key account preparation', async ({ page }) => {
+    const app = await setup(page, { extension: true });
+    await app.login();
+    app.releaseRelays();
+    await page.locator('.tiptap-editor').fill('Replacement draft');
+    await expect(post(page)).toBeEnabled();
+    app.pauseRelays();
+    await app.addAccount();
+    await expect(post(page)).toBeDisabled();
+
+    await account(page).click();
+    await page.locator('.add-account-btn').click();
+    await page.locator('.nip07-login-button').click();
+    await expect(page.locator('.login-dialog')).toBeHidden();
+    app.releaseRelays();
+    app.releaseProfiles();
+    await expect(post(page)).toBeEnabled();
+    await post(page).click();
+    await expect.poll(() => app.posts.length).toBeGreaterThan(0);
+    expect(app.posts.every(sent => sent.event.pubkey === app.owner && verifyEvent(sent.event))).toBe(true);
+    await account(page).click();
+    await expect(page.locator('.profile-name')).toHaveText('Delayed profile');
 });
