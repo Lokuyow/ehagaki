@@ -37,3 +37,29 @@ test('generated avatars agree across sizes, reply, kind7, related cards and foot
     expect(await page.evaluate(() => localStorage.getItem('profile-fallback-avatars-v1'))).toBe(saved);
     await page.screenshot({path: '/tmp/profile-avatar-preview.png', fullPage: true});
 });
+
+test('mounts the app and preserves generated initials without Intl.Segmenter', async ({page}) => {
+    await page.setViewportSize({width: 360, height: 800});
+    await page.addInitScript(() => {
+        Object.defineProperty(Intl, 'Segmenter', {value: undefined, configurable: true});
+    });
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto('./');
+    await expect(page.locator('.footer-bar .login-btn')).toBeVisible();
+    await expect(page.locator('.tiptap-editor')).toBeAttached();
+
+    await page.goto('profile-avatar-playwright.html');
+    const icons = page.locator('.profile-avatar-initial');
+    await expect(icons).toHaveCount(7);
+    for (const character of ['山', '👩🏽‍💻', 'e\u0301', '🇯🇵']) {
+        await page.getByLabel('Name', {exact: true}).fill(`${character} Test`);
+        await expect.poll(async () => decodeURIComponent(await icons.first().getAttribute('src') ?? ''))
+            .toContain(`>${character}</text>`);
+    }
+    await page.reload();
+    await expect(icons).toHaveCount(7);
+    await expect(page.locator('.profile-picture .profile-avatar-initial')).toBeVisible();
+    expect(await page.evaluate(() => typeof Intl.Segmenter)).toBe('undefined');
+    expect(errors).toEqual([]);
+});

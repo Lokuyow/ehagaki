@@ -5,6 +5,7 @@ import type { PostHistoryChildInteractionRecord } from "./storage/ehagakiDb";
 import type { ProfileData } from "./types";
 import { toNpub } from "./utils/nostrUtils";
 import { shortenMiddle } from "./utils/textDisplayUtils";
+import { firstGrapheme } from "./utils/graphemeUtils";
 
 export interface PostHistoryReactionActor {
     eventId: string;
@@ -34,10 +35,6 @@ export const EMPTY_POST_HISTORY_REACTION_READ_MODEL: PostHistoryReactionReadMode
     groups: [],
 };
 
-const reactionGraphemeSegmenter = new Intl.Segmenter(undefined, {
-    granularity: "grapheme",
-});
-
 function resolveReactionEmojiUrl(
     record: Pick<PostHistoryChildInteractionRecord, "content" | "tags">,
 ): string | undefined {
@@ -65,12 +62,7 @@ function resolveReactionDisplayContent(content: string): string {
         return normalized;
     }
 
-    const grapheme = reactionGraphemeSegmenter.segment(normalized)[Symbol.iterator]().next();
-    if (grapheme.done) {
-        return "";
-    }
-
-    return grapheme.value.segment;
+    return firstGrapheme(normalized);
 }
 
 function resolveProfileLookup(

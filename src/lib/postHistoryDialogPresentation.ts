@@ -1,4 +1,5 @@
 import { isCustomEmojiShortcodeText } from "./customEmoji";
+import { firstGrapheme } from "./utils/graphemeUtils";
 import type {
     PostHistoryPreviewContent,
 } from "./postHistoryDialogUtils";
@@ -25,10 +26,6 @@ export interface PostHistoryDisplayedReactionGroup {
     count: number;
     emojiUrl?: string;
 }
-
-const reactionGraphemeSegmenter = new Intl.Segmenter(undefined, {
-    granularity: "grapheme",
-});
 
 export function resolvePostHistoryCountSummaryState(input: {
     totalCount: number;
@@ -156,12 +153,7 @@ export function resolvePostHistoryReactionDisplayContent(content: string): strin
         return normalized;
     }
 
-    const grapheme = reactionGraphemeSegmenter.segment(normalized)[Symbol.iterator]().next();
-    if (grapheme.done) {
-        return "";
-    }
-
-    return grapheme.value.segment;
+    return firstGrapheme(normalized);
 }
 
 export function resolvePostHistoryDisplayedReactionGroups(

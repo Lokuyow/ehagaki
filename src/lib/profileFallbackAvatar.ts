@@ -1,5 +1,6 @@
 import { nip19 } from "nostr-tools";
 import { getAppStorage } from "./appStorage";
+import { firstGrapheme } from "./utils/graphemeUtils";
 
 export const PROFILE_FALLBACK_AVATAR_CACHE_KEY = "profile-fallback-avatars-v1";
 export const PROFILE_FALLBACK_AVATAR_CACHE_LIMIT = 256;
@@ -17,7 +18,6 @@ export interface ProfileFallbackAvatar {
     dataUrl: string;
 }
 
-const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const escapeXml = (value: string): string => Array.from(value, char => {
     const point = char.codePointAt(0)!;
     return (point >= 0xd800 && point <= 0xdfff) || point < 0x20 || point >= 0xfffe && point <= 0xffff
@@ -29,7 +29,7 @@ export function resolveProfileAvatarAppearance(identity: ProfileAvatarIdentity) 
     const pubkey = identity.pubkeyHex?.trim().toLowerCase() ?? "";
     const validPubkey = /^[0-9a-f]{64}$/.test(pubkey);
     const name = identity.displayName?.trim() || identity.name?.trim() || "";
-    const initial = segmenter.segment(name)[Symbol.iterator]().next().value?.segment
+    const initial = firstGrapheme(name)
         || (validPubkey ? nip19.npubEncode(pubkey).slice(5, 6) : "");
     if (!initial) return null;
     const background = validPubkey ? `#${pubkey.slice(0, 6)}` : "#808080";
