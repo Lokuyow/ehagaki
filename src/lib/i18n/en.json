@@ -690,7 +690,7 @@
     "unpin": "Unpin draft",
     "save": "Save draft",
     "saved": "Draft saved",
-    "limit_reached": "You have reached the draft limit (20). Delete the oldest draft and save?",
+    "limit_reached": "You have reached the draft limit ({maxDrafts}). Delete the oldest draft and save?",
     "replace_save_failed": "Could not save the draft. Please try again.",
     "load_failed": "Could not load drafts.",
     "retry_load": "Try again",
