@@ -282,7 +282,7 @@ describe('ReplyQuotePreview', () => {
         expect(Array.from(author.children)[0].classList).toContain('reply-quote-profile-avatar');
         expect(image.getAttribute('src')).toBe('https://example.com/alice.png?profile=true');
         expect(image.getAttribute('alt')).toBe('');
-        expect(author.querySelector('.profile-avatar-fallback-icon')?.getAttribute('aria-label')).toBeNull();
+        expect(author.querySelector('.profile-avatar-initial')?.getAttribute('aria-hidden')).toBe('true');
 
         await rerender({
             reference: createReference({
@@ -310,7 +310,8 @@ describe('ReplyQuotePreview', () => {
             },
         });
 
-        expect(container.querySelector('.author-profile img')).toBeNull();
+        expect(container.querySelector('.author-profile [data-avatar-image]')).toBeNull();
+        expect(container.querySelector('.author-profile .profile-avatar-initial')).toBeTruthy();
         expect(container.querySelector('.author-profile .profile-avatar-fallback')).toBeTruthy();
         expect(container.querySelector('.author-name')?.textContent).toMatch(/^npub1/);
     });

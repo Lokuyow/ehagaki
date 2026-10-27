@@ -210,6 +210,7 @@
     {modeLabel}
     {authorDisplay}
     authorPicture={reference.authorPicture ?? ""}
+    authorPubkeyHex={reference.authorPubkey ?? ""} authorAvatarName={reference.authorDisplayName ?? ""}
     {expanded}
     {canToggleExpand}
     {toggleAriaLabel}
@@ -294,6 +295,7 @@
                                         {...restProps}
                                     >
                                         <ProfileAvatar
+                                            pubkeyHex={recipient.pubkey} displayName={recipient.displayName ?? ""}
                                             src={recipient.picture ?? ""}
                                             alt=""
                                             rootClassName="reply-quote-profile-avatar"

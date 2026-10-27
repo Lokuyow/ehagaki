@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { getProfileFallbackAvatar } from "../lib/profileFallbackAvatar";
+    import { untrack } from "svelte";
     import { Avatar } from "bits-ui";
     import type { HTMLImgAttributes } from "svelte/elements";
     import {
@@ -9,6 +11,9 @@
     type AvatarImageStatus = "loading" | "loaded" | "error";
 
     interface Props {
+        pubkeyHex?: string;
+        displayName?: string;
+        name?: string;
         src?: string;
         alt?: string;
         rootClassName?: string;
@@ -25,6 +30,9 @@
     }
 
     let {
+        pubkeyHex = "",
+        displayName = "",
+        name = "",
         src = "",
         alt = "",
         rootClassName = "",
@@ -40,6 +48,7 @@
         delayMs = 0,
     }: Props = $props();
 
+    let fallbackAvatar = $derived(getProfileFallbackAvatar({ pubkeyHex, displayName, name }));
     let safeSrc = $derived(ensureProfilePictureMarker(src));
     let effectiveCrossorigin = $derived(
         crossorigin ??
@@ -91,17 +100,9 @@
     }
 
     $effect(() => {
-        if (!safeSrc) {
-            setAvatarLoadingStatus("error");
-            return;
-        }
-
-        if (loadingStatus !== undefined) {
-            setAvatarLoadingStatus(loadingStatus);
-            return;
-        }
-
-        setAvatarLoadingStatus(preferInstantDisplay ? "loaded" : "loading");
+        const status = !safeSrc ? "error" : loadingStatus ?? (preferInstantDisplay ? "loaded" : "loading");
+        // Image events must not subscribe this source-reset effect to the current status.
+        untrack(() => setAvatarLoadingStatus(status));
     });
 </script>
 
@@ -130,14 +131,22 @@
         aria-label={shouldExposeFallbackAsImage ? fallbackAriaLabel : undefined}
         aria-hidden={shouldExposeFallbackAsImage ? undefined : "true"}
     >
-        <div
-            class="profile-avatar-fallback-icon svg-icon"
-            aria-hidden="true"
-        ></div>
+        {#if fallbackAvatar}
+            <img class="profile-avatar-initial" src={fallbackAvatar.dataUrl} alt="" aria-hidden="true" />
+        {:else}
+            <div class="profile-avatar-fallback-icon svg-icon" aria-hidden="true"></div>
+        {/if}
     </Avatar.Fallback>
 </Avatar.Root>
 
 <style>
+    .profile-avatar-initial {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border-radius: inherit;
+    }
+
     :global(.profile-avatar-fallback) {
         display: flex;
         align-items: center;

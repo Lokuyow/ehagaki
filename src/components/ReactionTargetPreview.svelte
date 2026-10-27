@@ -27,6 +27,7 @@
 <div class="reaction-target" data-reaction-target-id={target.eventId}>
     <ComposerContextPreviewShell previewClass="reaction-target-preview" modeIconClass="reaction-target-icon"
         modeLabel={$_('reaction.entry')} {authorDisplay} authorPicture={author.profile?.picture ?? ''}
+        authorPubkeyHex={target.authorPubkey} authorAvatarName={author.profile?.displayName?.trim() || author.profile?.name?.trim() || ''}
         {expanded} canToggleExpand
         toggleAriaLabel={$_('reaction.target')} clearAriaLabel={$_('reaction.clear')}
         onToggle={() => expanded = !expanded} {onClear}>

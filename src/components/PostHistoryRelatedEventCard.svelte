@@ -1,6 +1,7 @@
 <script lang="ts">
     import { nip19 } from "nostr-tools";
     import type { Snippet } from "svelte";
+    import ProfileAvatar from "./ProfileAvatar.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
     import { formatPostedAt } from "../lib/postHistoryDialogUtils";
@@ -86,18 +87,9 @@
     {@render topActions?.()}
     <div class="post-history-related-card-body">
         <div class="post-history-related-author">
-            {#if profile?.picture}
-                <img
-                    class="post-history-related-avatar"
-                    src={profile.picture}
-                    alt={authorName}
-                />
-            {:else}
-                <span
-                    class="post-history-related-avatar-placeholder"
-                    aria-hidden="true"
-                ></span>
-            {/if}
+            <ProfileAvatar pubkeyHex={event.pubkey} displayName={profile?.displayName} name={profile?.name}
+                src={profile?.picture} alt={authorName} fallbackAriaLabel={authorName}
+                rootClassName="post-history-related-avatar" imageClassName="post-history-related-avatar-image" />
             <span class="post-history-related-author-name">{authorName}</span>
         </div>
         <PostContentPreview
@@ -157,21 +149,15 @@
         gap: 8px;
     }
 
-    .post-history-related-avatar,
-    .post-history-related-avatar-placeholder {
+    :global(.post-history-related-avatar) {
+        display: block;
         width: 24px;
         height: 24px;
         flex: 0 0 auto;
         border-radius: 50%;
-        background: var(--border-hr);
-        object-fit: cover;
+        overflow: hidden;
     }
-
-    .post-history-related-avatar-placeholder {
-        display: inline-block;
-        mask-image: url("/icons/account_circle_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        background-color: var(--text-muted);
-    }
+    :global(.post-history-related-avatar-image) { width: 100%; height: 100%; object-fit: cover; }
 
     .post-history-related-author-name {
         min-width: 0;
