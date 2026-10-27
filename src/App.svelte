@@ -4,6 +4,7 @@
   import Button from './components/Button.svelte';
   import "./i18n";
   import { _, locale, waitLocale } from "svelte-i18n";
+  import { MAX_DRAFTS } from "./lib/constants";
   import { Tooltip } from "bits-ui";
   import type { RelayProfileService } from "./lib/relayProfileService";
   import { createReplyQuoteProfileSyncController } from "./lib/replyQuoteProfileSync";
@@ -2524,7 +2525,7 @@
         <ConfirmDialog
           open={showDraftLimitConfirmStore.value}
           title={$_("common.confirm")}
-          description={$_("draft.limit_reached")}
+          description={$_("draft.limit_reached", { values: { maxDrafts: MAX_DRAFTS } })}
           confirmLabel={$_("common.ok")}
           cancelLabel={$_("common.cancel")}
           confirmVariant="danger"
@@ -2535,7 +2536,7 @@
         >
           <div class="draft-limit-confirm-content">
             <div class="confirm-dialog-message">
-              {$_("draft.limit_reached")}
+              {$_("draft.limit_reached", { values: { maxDrafts: MAX_DRAFTS } })}
             </div>
             {#if draftLimitConfirmError}
               <div class="draft-limit-confirm-error" role="alert">
