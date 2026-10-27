@@ -1502,6 +1502,9 @@
     {#if !isHostOwnedLiteBuild && showAccountPlaceholder}
       <div class="editor-account-placeholder" aria-hidden="true">
         <ProfileAvatar
+          pubkeyHex={authState.value.pubkey}
+          displayName={profileData?.displayName}
+          name={profileData?.name}
           showLoadingIndicator
           pending={profilePending}
           src={profileData?.picture || ""}
@@ -1700,7 +1703,6 @@
     z-index: 3;
     width: 28px;
     height: 28px;
-    opacity: 0.5;
     pointer-events: none;
     user-select: none;
     -webkit-user-select: none;
@@ -1723,6 +1725,7 @@
   }
 
   :global(.editor-account-placeholder-image) {
+    opacity: 0.5;
     object-fit: cover;
   }
 

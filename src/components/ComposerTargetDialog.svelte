@@ -1099,6 +1099,7 @@
         {#snippet interactionAuthor()}
             <span class="interaction-author">
                 <ProfileAvatar
+                    pubkeyHex={previewEvent?.pubkey ?? ""} displayName={authorProfile?.displayName} name={authorProfile?.name}
                     src={authorProfile?.picture ?? ""}
                     alt=""
                     rootClassName="composer-target-avatar"
@@ -1195,6 +1196,7 @@
                     {/if}
                     <div class="event-author">
                     <ProfileAvatar
+                        pubkeyHex={previewEvent?.pubkey ?? ""} displayName={authorProfile?.displayName} name={authorProfile?.name}
                         src={authorProfile?.picture ?? ""}
                         alt=""
                         rootClassName="composer-target-avatar"

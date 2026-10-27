@@ -45,7 +45,18 @@
                     {#each reactionGroup.reactors as actor (actor.eventId)}
                         {@const actorLabel = formatPostHistoryReactionActorLabel(actor)}
                         <span class="post-preview-reaction-actor" title={actorLabel} aria-label={actorLabel}>
-                            <ProfileAvatar src={actor.profile?.picture || ""} alt={actorLabel} rootClassName="post-preview-reaction-avatar" imageClassName="post-preview-reaction-avatar-image" fallbackClassName="post-preview-reaction-avatar-fallback" fallbackAriaLabel={actorLabel} fallbackDelayMs={0} />
+                            <ProfileAvatar
+                                pubkeyHex={actor.pubkey}
+                                displayName={actor.profile?.displayName}
+                                name={actor.profile?.name}
+                                src={actor.profile?.picture || ""}
+                                alt={actorLabel}
+                                rootClassName="post-preview-reaction-avatar"
+                                imageClassName="post-preview-reaction-avatar-image"
+                                fallbackClassName="post-preview-reaction-avatar-fallback"
+                                fallbackAriaLabel={actorLabel}
+                                fallbackDelayMs={0}
+                            />
                         </span>
                     {/each}
                 </div>

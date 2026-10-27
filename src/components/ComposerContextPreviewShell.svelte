@@ -10,6 +10,8 @@
         modeLabel: string;
         authorDisplay?: string;
         authorPicture?: string;
+        authorPubkeyHex?: string;
+        authorAvatarName?: string;
         expanded: boolean;
         toggleAriaLabel: string;
         clearAriaLabel: string;
@@ -29,6 +31,8 @@
         modeLabel,
         authorDisplay = "",
         authorPicture = "",
+        authorPubkeyHex = "",
+        authorAvatarName = "",
         expanded,
         toggleAriaLabel,
         clearAriaLabel,
@@ -69,6 +73,7 @@
                 {#if authorDisplay}
                     <span class="author-profile">
                         <ProfileAvatar
+                            pubkeyHex={authorPubkeyHex} name={authorAvatarName}
                             src={authorPicture}
                             alt=""
                             rootClassName="reply-quote-profile-avatar"

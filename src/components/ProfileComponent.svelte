@@ -130,6 +130,8 @@
             <div class="profile-summary">
                 <!-- プロフィール画像 -->
                 <ProfileAvatar
+                    pubkeyHex={currentPubkeyHex}
+                    displayName={displayedProfile.displayName} name={displayedProfile.name}
                     showLoadingIndicator
                     pending={profilePending}
                     src={displayedProfile.picture}
@@ -256,6 +258,8 @@
                                     disabled={isActive || isSwitchingAccount}
                                 >
                                     <ProfileAvatar
+                                        pubkeyHex={account.pubkeyHex}
+                                        displayName={cachedProfile?.displayName} name={cachedProfile?.name}
                                         showLoadingIndicator
                                         pending={isActive && profilePending}
                                         src={cachedProfile?.picture}

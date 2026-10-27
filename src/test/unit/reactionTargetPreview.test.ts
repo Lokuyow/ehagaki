@@ -20,7 +20,8 @@ describe('Reaction target main presentation', () => {
         expect(container.textContent).toContain(kind === 6 ? 'repost.entry' : 'composerTarget.genericRepost');
         expect(container.textContent).not.toContain('NEVER-EXPOSE'); expect(container.innerHTML).not.toContain('private.example');
         expect(container.textContent).not.toContain(embedded.pubkey);
-        expect(container.querySelectorAll('a, img, video, [data-related-event-id]')).toHaveLength(0);
+        expect(container.querySelector('.preview-content')!.querySelectorAll('a, img, video, [data-related-event-id]')).toHaveLength(0);
+        expect(container.querySelector('.author-profile .profile-avatar-initial')).toBeTruthy();
         expect(container.querySelector('.preview-content')).not.toBeNull();
     });
     it.each(['+', '👍🏽', ':blob:'])('kind 7 shares established Reaction interpretation for %s', async content => {

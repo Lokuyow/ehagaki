@@ -49,7 +49,7 @@ describe("PostHistoryRelatedEventCard", () => {
 
         expect(screen.getByText("Initial name")).toBeTruthy();
         expect(screen.getByAltText("Initial name").getAttribute("src")).toBe(
-            "https://example.com/initial.png",
+            "https://example.com/initial.png?profile=true",
         );
 
         await rerender({
@@ -64,7 +64,7 @@ describe("PostHistoryRelatedEventCard", () => {
         expect(screen.getByText("Updated display name")).toBeTruthy();
         expect(
             screen.getByAltText("Updated display name").getAttribute("src"),
-        ).toBe("https://example.com/updated.png");
+        ).toBe("https://example.com/updated.png?profile=true");
     });
 
     it("preserves link segments instead of flattening related event content", () => {

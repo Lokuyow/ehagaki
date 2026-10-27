@@ -4,6 +4,7 @@
     import FooterSettingShortcutButton from "./FooterSettingShortcutButton.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
+    import { authState } from "../stores/authStore.svelte";
     import { _ } from "svelte-i18n";
     import {
         profileDataStore,
@@ -138,6 +139,8 @@
             ariaLabel={$_("profileDialog.title")}
         >
             <ProfileAvatar
+                pubkeyHex={authState.value.pubkey}
+                displayName={profileData?.displayName} name={profileData?.name}
                 showLoadingIndicator
                 pending={profilePending}
                 src={profileData?.picture || ""}
