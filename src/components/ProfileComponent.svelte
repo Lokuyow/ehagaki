@@ -43,6 +43,7 @@
         >;
         isLoggingOut?: boolean;
         isSwitchingAccount?: boolean;
+        profilePending?: boolean;
     }
 
     let {
@@ -56,6 +57,7 @@
         accountProfiles = new Map(),
         isLoggingOut = false,
         isSwitchingAccount = false,
+        profilePending = false,
     }: Props = $props();
 
     // ダイアログを閉じるハンドラ
@@ -128,6 +130,8 @@
             <div class="profile-summary">
                 <!-- プロフィール画像 -->
                 <ProfileAvatar
+                    showLoadingIndicator
+                    pending={profilePending}
                     src={displayedProfile.picture}
                     alt={currentProfileAlt}
                     rootClassName="profile-image-container"
@@ -252,6 +256,8 @@
                                     disabled={isActive || isSwitchingAccount}
                                 >
                                     <ProfileAvatar
+                                        showLoadingIndicator
+                                        pending={isActive && profilePending}
                                         src={cachedProfile?.picture}
                                         alt={cachedProfile?.displayName ||
                                             cachedProfile?.name ||

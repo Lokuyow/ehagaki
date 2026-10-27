@@ -108,7 +108,7 @@ describe('RelayProfileService', () => {
 
             await service.initializeRelays('pubkey123');
 
-            expect(mockRelayManager.useRelaysFromLocalStorageIfExists).toHaveBeenCalledWith('pubkey123');
+            expect(mockRelayManager.useRelaysFromLocalStorageIfExists).toHaveBeenCalledWith('pubkey123', undefined);
             expect(mockRelayManager.setBootstrapRelays).not.toHaveBeenCalled();
         });
 
@@ -117,7 +117,7 @@ describe('RelayProfileService', () => {
 
             await service.initializeRelays('pubkey123');
 
-            expect(mockRelayManager.useRelaysFromLocalStorageIfExists).toHaveBeenCalledWith('pubkey123');
+            expect(mockRelayManager.useRelaysFromLocalStorageIfExists).toHaveBeenCalledWith('pubkey123', undefined);
             expect(mockRelayManager.setBootstrapRelays).toHaveBeenCalled();
         });
 

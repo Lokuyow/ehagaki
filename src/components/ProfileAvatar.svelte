@@ -1,5 +1,6 @@
 <script lang="ts">
     import { Avatar } from "bits-ui";
+    import { untrack } from "svelte";
     import type { HTMLImgAttributes } from "svelte/elements";
     import {
         ensureProfilePictureMarker,
@@ -17,6 +18,8 @@
         fallbackAriaLabel?: string;
         fallbackDelayMs?: number;
         preferInstantDisplay?: boolean;
+        showLoadingIndicator?: boolean;
+        pending?: boolean;
         loadingStatus?: AvatarImageStatus;
         onLoadingStatusChange?: (status: AvatarImageStatus) => void;
         crossorigin?: HTMLImgAttributes["crossorigin"];
@@ -33,6 +36,8 @@
         fallbackAriaLabel = "User",
         fallbackDelayMs = 120,
         preferInstantDisplay = true,
+        showLoadingIndicator = false,
+        pending = false,
         loadingStatus = undefined,
         onLoadingStatusChange = undefined,
         crossorigin = undefined,
@@ -54,14 +59,17 @@
     const getInitialAvatarStatus = (): AvatarImageStatus => {
         if (loadingStatus !== undefined) return loadingStatus;
         if (!safeSrc) return "error";
-        return preferInstantDisplay ? "loaded" : "loading";
+        return preferInstantDisplay && !showLoadingIndicator ? "loaded" : "loading";
     };
 
     let avatarLoadingStatus = $state<AvatarImageStatus>(
         getInitialAvatarStatus(),
     );
+    let fallbackIsLoading = $derived(showLoadingIndicator && (
+        avatarLoadingStatus === "loading" || (pending && !safeSrc)
+    ));
     let shouldExposeFallbackAsImage = $derived(
-        avatarLoadingStatus === "error" && Boolean(fallbackAriaLabel),
+        (avatarLoadingStatus === "error" || fallbackIsLoading) && Boolean(fallbackAriaLabel),
     );
 
     function setAvatarLoadingStatus(status: AvatarImageStatus) {
@@ -90,18 +98,11 @@
         }
     }
 
-    $effect(() => {
-        if (!safeSrc) {
-            setAvatarLoadingStatus("error");
-            return;
-        }
-
-        if (loadingStatus !== undefined) {
-            setAvatarLoadingStatus(loadingStatus);
-            return;
-        }
-
-        setAvatarLoadingStatus(preferInstantDisplay ? "loaded" : "loading");
+    $effect.pre(() => {
+        const nextStatus = !safeSrc ? "error" : loadingStatus
+            ?? (preferInstantDisplay && !showLoadingIndicator ? "loaded" : "loading");
+        // Reset for new inputs, without resetting a completed load/error event.
+        untrack(() => setAvatarLoadingStatus(nextStatus));
     });
 </script>
 
@@ -110,13 +111,14 @@
     loadingStatus={avatarLoadingStatus}
     onLoadingStatusChange={handleRootLoadingStatusChange}
     {delayMs}
+    aria-busy={fallbackIsLoading ? "true" : undefined}
 >
     {#if safeSrc}
         <Avatar.Image
             src={safeSrc}
             {alt}
             class={imageClassName}
-            loading="lazy"
+            loading={showLoadingIndicator ? "eager" : "lazy"}
             crossorigin={effectiveCrossorigin}
             referrerpolicy={effectiveReferrerPolicy}
             onload={handleImageLoad}
@@ -129,6 +131,7 @@
         role={shouldExposeFallbackAsImage ? "img" : undefined}
         aria-label={shouldExposeFallbackAsImage ? fallbackAriaLabel : undefined}
         aria-hidden={shouldExposeFallbackAsImage ? undefined : "true"}
+        data-loading={fallbackIsLoading ? "true" : undefined}
     >
         <div
             class="profile-avatar-fallback-icon svg-icon"
@@ -167,6 +170,26 @@
     :global(.profile-avatar-fallback[data-status="error"]) {
         opacity: 1;
         animation: none;
+    }
+
+    :global(.profile-avatar-fallback[data-loading="true"]) {
+        opacity: 1;
+        animation: profile-avatar-loading-pulse 1.6s ease-in-out infinite;
+    }
+
+    @keyframes profile-avatar-loading-pulse {
+        50% {
+            opacity: 0.4;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        :global(.profile-avatar-fallback[data-loading="true"]) {
+            animation: none;
+            outline: 1px dotted currentColor;
+            outline-offset: -1px;
+            border-radius: 50%;
+        }
     }
 
     @keyframes profile-avatar-fallback-reveal {

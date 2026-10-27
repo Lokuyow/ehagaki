@@ -126,8 +126,10 @@ export class RelayNetworkFetcher {
     async fetchKind10002(
         pubkeyHex: string,
         relays: string[],
-        timeoutMs: number = 3000
+        timeoutMs: number = 3000,
+        signal?: AbortSignal,
     ): Promise<RelayFetchResult> {
+        if (signal?.aborted) return { success: false, error: 'aborted' };
         this.console.log(`Kind 10002取得試行: ${pubkeyHex}`);
 
         return new Promise((resolve) => {
@@ -138,6 +140,7 @@ export class RelayNetworkFetcher {
             let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
             const cleanup = () => {
+                signal?.removeEventListener('abort', cancel);
                 if (timeoutId !== undefined) {
                     this.clearTimeoutFn(timeoutId);
                     timeoutId = undefined;
@@ -155,6 +158,8 @@ export class RelayNetworkFetcher {
                     resolve(result);
                 }
             };
+            const cancel = () => safeResolve({ success: false, error: 'aborted' });
+            signal?.addEventListener('abort', cancel, { once: true });
 
             try {
                 timeoutId = this.setTimeoutFn(() => {
@@ -226,8 +231,10 @@ export class RelayNetworkFetcher {
     async fetchKind3(
         pubkeyHex: string,
         relays: string[],
-        timeoutMs: number = 3000
+        timeoutMs: number = 3000,
+        signal?: AbortSignal,
     ): Promise<RelayFetchResult> {
+        if (signal?.aborted) return { success: false, error: 'aborted' };
         this.console.log(`Kind 3取得試行: ${pubkeyHex}`);
 
         return new Promise((resolve) => {
@@ -238,6 +245,7 @@ export class RelayNetworkFetcher {
             let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
             const cleanup = () => {
+                signal?.removeEventListener('abort', cancel);
                 if (timeoutId !== undefined) {
                     this.clearTimeoutFn(timeoutId);
                     timeoutId = undefined;
@@ -255,6 +263,8 @@ export class RelayNetworkFetcher {
                     resolve(result);
                 }
             };
+            const cancel = () => safeResolve({ success: false, error: 'aborted' });
+            signal?.addEventListener('abort', cancel, { once: true });
 
             try {
                 timeoutId = this.setTimeoutFn(() => {
@@ -392,8 +402,9 @@ export class RelayManager {
         }
     }
 
-    async useRelaysFromLocalStorageIfExists(pubkeyHex: string): Promise<boolean> {
+    async useRelaysFromLocalStorageIfExists(pubkeyHex: string, signal?: AbortSignal): Promise<boolean> {
         const savedRelays = await this.storage.get(pubkeyHex);
+        if (signal?.aborted) return false;
         if (savedRelays) {
             try {
                 this.rxNostr.setDefaultRelays(savedRelays);
@@ -413,6 +424,7 @@ export class RelayManager {
         pubkeyHex: string,
         opts: RelayFetchOptions = {}
     ): Promise<UserRelaysFetchResult> {
+        if (opts.signal?.aborted) throw new DOMException('Relay lookup aborted', 'AbortError');
         if (this.hostRelayConfig) {
             this.rxNostr.setDefaultRelays(this.hostRelayConfig);
             return {
@@ -422,77 +434,50 @@ export class RelayManager {
             };
         }
         const timeoutMs = opts.timeoutMs || 3000;
+        const assertCurrent = () => {
+            if (opts.signal?.aborted) throw new DOMException('Relay lookup aborted', 'AbortError');
+        };
+        assertCurrent();
 
-        this.console.log(`リレー取得開始: ${pubkeyHex}`);
-
-        // forceRemoteがfalseまたは未指定なら保存済みキャッシュ利用
         if (!opts.forceRemote) {
             const cachedRelays = await this.storage.get(pubkeyHex);
+            assertCurrent();
             if (cachedRelays) {
                 this.rxNostr.setDefaultRelays(cachedRelays);
-                this.console.log("キャッシュからリレーを復元しました");
-                return {
-                    success: true,
-                    relayConfig: cachedRelays,
-                    source: 'localStorage'
-                };
+                return { success: true, relayConfig: cachedRelays, source: 'localStorage' };
             }
         }
 
-        this.console.log("リモートからリレー情報を取得中...");
-
-        // Kind 10002を試行
-        const kind10002Result = await this.networkFetcher.fetchKind10002(
-            pubkeyHex,
-            BOOTSTRAP_RELAYS,
-            timeoutMs
-        );
-
-        if (kind10002Result.success && kind10002Result.relayConfig) {
-            this.rxNostr.setDefaultRelays(kind10002Result.relayConfig);
-            await this.storage.save(pubkeyHex, kind10002Result.relayConfig, {
-                source: 'kind10002',
-                updatedAtFromEvent: kind10002Result.updatedAtFromEvent,
+        // Start both bounded requests together, but always prefer NIP-65.
+        // The losing request must not keep a subscription or timer alive.
+        const lookup = new AbortController();
+        const cancel = () => lookup.abort();
+        opts.signal?.addEventListener('abort', cancel, { once: true });
+        try {
+            const preferred = this.networkFetcher.fetchKind10002(pubkeyHex, BOOTSTRAP_RELAYS, timeoutMs, lookup.signal);
+            const legacy = this.networkFetcher.fetchKind3(pubkeyHex, BOOTSTRAP_RELAYS, timeoutMs, lookup.signal);
+            let result = await preferred;
+            assertCurrent();
+            if (!result.success || !result.relayConfig) {
+                result = await legacy;
+                assertCurrent();
+            }
+            const success = !!(result.success && result.relayConfig);
+            const relayConfig = success ? result.relayConfig! : FALLBACK_RELAYS;
+            const source = success ? result.source as 'kind10002' | 'kind3' : 'fallback';
+            lookup.abort();
+            this.rxNostr.setDefaultRelays(relayConfig);
+            await this.storage.save(pubkeyHex, relayConfig, {
+                source,
+                updatedAtFromEvent: success ? result.updatedAtFromEvent : undefined,
             });
-            this.console.log("Kind 10002からリレー取得成功");
-            return {
-                success: true,
-                relayConfig: kind10002Result.relayConfig,
-                source: 'kind10002'
-            };
+            assertCurrent();
+            if (!success) this.console.log("リモート取得失敗、フォールバックリレーを使用");
+            return { success, relayConfig, source };
+        } finally {
+            opts.signal?.removeEventListener('abort', cancel);
+            lookup.abort();
         }
-
-        // Kind 3を試行
-        const kind3Result = await this.networkFetcher.fetchKind3(
-            pubkeyHex,
-            BOOTSTRAP_RELAYS,
-            timeoutMs
-        );
-
-        if (kind3Result.success && kind3Result.relayConfig) {
-            this.rxNostr.setDefaultRelays(kind3Result.relayConfig);
-            await this.storage.save(pubkeyHex, kind3Result.relayConfig, {
-                source: 'kind3',
-                updatedAtFromEvent: kind3Result.updatedAtFromEvent,
-            });
-            this.console.log("Kind 3からリレー取得成功");
-            return {
-                success: true,
-                relayConfig: kind3Result.relayConfig,
-                source: 'kind3'
-            };
-        }
-
-        // フォールバックリレー使用
-        this.console.log("リモート取得失敗、フォールバックリレーを使用");
-        this.rxNostr.setDefaultRelays(FALLBACK_RELAYS);
-        this.console.log("フォールバックリレーを設定:", FALLBACK_RELAYS);
-        await this.storage.save(pubkeyHex, FALLBACK_RELAYS, { source: 'fallback' });
-        return {
-            success: false,
-            relayConfig: FALLBACK_RELAYS,
-            source: 'fallback'
-        };
     }
 
     /**

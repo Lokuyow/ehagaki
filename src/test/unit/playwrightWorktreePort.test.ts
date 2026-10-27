@@ -165,7 +165,7 @@ describe('Playwright config connection values', () => {
             expect(config.projects?.[4]?.testMatch).toEqual([
                 '**/webComponentEmbed.spec.ts',
                 '**/uploadRelaySync.spec.ts',
-                '**/iframeParentLogin.spec.ts',
+                '**/iframeParentLogin.spec.ts', '**/loginLatency.spec.ts',
             ]);
             expect(config.projects?.[3]?.testMatch).toEqual([
                 '**/uploadRelaySync.spec.ts',
@@ -177,7 +177,7 @@ describe('Playwright config connection values', () => {
                 '**/postEditorSending.spec.ts',
                 '**/postHistoryDialog.spec.ts',
                 '**/historyTabs.spec.ts',
-                '**/iframeParentLogin.spec.ts',
+                '**/iframeParentLogin.spec.ts', '**/loginLatency.spec.ts',
                 '**/postHistoryFullScan.spec.ts',
                 '**/postHistoryJsonlWorker.spec.ts',
                 '**/postRepost.spec.ts',
