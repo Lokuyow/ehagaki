@@ -147,6 +147,7 @@ export interface SetupEventListenersParams {
 
 export interface InitializeEditorParams {
     isReactionMode?: () => boolean;
+    onReactionImageUrls?: (urls: string[]) => void;
     getReactionInputMode?: () => ReactionInputMode;
     isInputBlocked?: () => boolean;
     isCompositionInputAllowed?: () => boolean;

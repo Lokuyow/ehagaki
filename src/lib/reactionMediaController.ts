@@ -1,3 +1,5 @@
+import { generateMediaItemId } from './utils/appUtils';
+import { validateAndNormalizeImageUrl } from './utils/editorUrlUtils';
 import type { Editor } from '@tiptap/core';
 import type { MediaGalleryItem } from './types/media';
 import type { ReactionUploadOperation } from './types/upload';
@@ -12,6 +14,7 @@ interface Dependencies {
     getEnvironment?: () => object;
     isFreePlacement: () => boolean;
     getItems: () => MediaGalleryItem[];
+    addItem: (item: MediaGalleryItem) => void;
     removeItem: (id: string) => void;
     removePlaceholderSize: (id: string) => void;
     restoreItems: (editor: Editor, items: MediaGalleryItem[]) => readonly string[];
@@ -72,6 +75,20 @@ export function createReactionMediaController(deps: Dependencies) {
             return { items: deps.getItems(), ownedItemIds: session?.ownedIds ?? new Set<string>(), originalFileNames: session?.originalFileNames ?? new Map<string, string>() };
         },
         getInputMode() { return getReactionInputMode(this.getContext()); },
+        addImageUrls(urls: readonly string[]): boolean {
+            sync();
+            const owner = session;
+            const normalized = urls.map(url => validateAndNormalizeImageUrl(url) ? url : null);
+            if (!owner || upload || !ownsSession(owner) || !normalized.length
+                || normalized.some(url => url === null)) return false;
+            for (const src of normalized) {
+                const id = generateMediaItemId();
+                owner.ownedIds.add(id);
+                deps.addItem({ id, src: src!, type: 'image', isPlaceholder: false });
+            }
+            deps.onChange();
+            return true;
+        },
         abortUpload() { upload?.abort(); },
         beginUpload(): ReactionUploadOperation | null {
             sync();

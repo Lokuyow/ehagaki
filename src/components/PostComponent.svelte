@@ -203,6 +203,7 @@
     getEnvironment: getAppRuntimeEnvironment,
     isFreePlacement: () => mediaFreePlacementStore.value,
     getItems: () => mediaGalleryStore.getItems(),
+    addItem: item => mediaGalleryStore.addItem(item),
     removeItem: id => mediaGalleryStore.removeItem(id),
     removePlaceholderSize: id => imageSizeMapStore.update(map => {
       const next = { ...map }; delete next[id]; return next;
@@ -674,6 +675,10 @@
         });
     editorResources = initializeEditor({
       isReactionMode: isHostOwned ? undefined : () => reactionComposerState.value !== null,
+      onReactionImageUrls: isHostOwnedLiteBuild ? undefined : urls => {
+        if (isEditorMutationBlocked() || editorState.isSubmitPending || editorState.isUploading) return;
+        reactionMedia?.addImageUrls(urls);
+      },
       getReactionInputMode: isHostOwned ? undefined : () => reactionMedia?.getInputMode() ?? 'singleValue',
       isInputBlocked: isHostOwned ? undefined : isEditorMutationBlocked,
       isCompositionInputAllowed: isHostOwned
