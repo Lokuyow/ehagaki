@@ -23,6 +23,7 @@ export interface PostHistoryDeletionFetchRequest {
     relayHints?: string[];
     relayConfig?: RelayConfig | null;
     timeoutMs?: number;
+    requireRelayEose?: boolean;
 }
 
 export interface PostHistoryDeletionFetchedEvent {
@@ -112,12 +113,16 @@ export class PostHistoryDeletionFetchService {
         const groupedTargetIds = groupTargetIdsByAuthor(params.targets);
         const relayUrls = this.resolveRelayUrls(params);
         const eventsById = new Map<string, EventAccumulator>();
+        const requestId = params.requireRelayEose ? `related-deletion-${Date.now()}-${Math.random().toString(36).slice(2)}` : undefined;
+        const eoseByRelay = new Map<string, Set<string>>();
+        let messageSubscription: { unsubscribe(): void } | undefined;
         let resolved = false;
         let subscription: { unsubscribe?: () => void } | undefined;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let resolveTask: ((status: PostHistoryDeletionFetchResult["status"]) => void) | undefined;
 
         const cleanup = () => {
+            messageSubscription?.unsubscribe();
             if (timeoutId !== undefined) {
                 this.clearTimeoutFn(timeoutId);
                 timeoutId = undefined;
@@ -157,7 +162,13 @@ export class PostHistoryDeletionFetchService {
             }
 
             try {
-                const rxReq = createRxBackwardReq();
+                const rxReq = createRxBackwardReq(requestId);
+                if (requestId) messageSubscription = rxNostr.createAllMessageObservable().subscribe(packet => {
+                    if (!Array.isArray(packet.message) || packet.message[0] !== "EOSE"
+                        || typeof packet.message[1] !== "string" || !packet.message[1].startsWith(`${requestId}:`)) return;
+                    const ids = eoseByRelay.get(packet.from) ?? new Set<string>();
+                    ids.add(String(packet.message[1])); eoseByRelay.set(packet.from, ids);
+                });
                 subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
                     on: relayUrls.length > 0
                         ? { relays: relayUrls }
@@ -166,13 +177,19 @@ export class PostHistoryDeletionFetchService {
                         next: (packet: { event?: NostrEvent; from?: string }) => {
                             this.handlePacket(eventsById, packet);
                         },
-                    complete: () => safeResolve("success"),
+                    complete: () => safeResolve(!requestId || relayUrls.every(relay =>
+                        Array.from(groupedTargetIds.keys()).every((_, index) => eoseByRelay.get(relay)?.has(`${requestId}:${index}`))
+                    ) ? "success" : "timeout"),
                     error: (error: unknown) => {
                         this.console.error("post_history_deletion_fetch_error", error);
                         safeResolve("error");
                     },
                 });
 
+                if (resolved) {
+                    subscription?.unsubscribe?.();
+                    return;
+                }
                 for (const [author, eventIds] of groupedTargetIds.entries()) {
                     rxReq.emit({
                         kinds: [5],
@@ -181,6 +198,7 @@ export class PostHistoryDeletionFetchService {
                     } as never);
                 }
                 rxReq.over();
+                if (resolved) return;
 
                 timeoutId = this.setTimeoutFn(() => {
                     this.warnDeletionFetchTimeout();

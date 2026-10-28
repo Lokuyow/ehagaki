@@ -51,6 +51,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
         onRetryParent?: () => void;
         onToggleNodeParent?: (nodeEventId: string) => void;
         onRetryNodeParent?: (nodeEventId: string) => void;
+        onRefreshRelatedEvents?: (nodeEventId: string) => void;
         onToggleNodeChildren?: (nodeEventId: string) => void;
         onRetryNodeChildren?: (nodeEventId: string) => void;
         onCopyPointerDown?: (
@@ -106,6 +107,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
         onRetryParent = undefined,
         onToggleNodeParent = undefined,
         onRetryNodeParent = undefined,
+        onRefreshRelatedEvents = undefined,
         onToggleNodeChildren = undefined,
         onRetryNodeChildren = undefined,
         onCopyPointerDown = undefined,
@@ -191,6 +193,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
                 {onToggleReaction}
                 onToggleParent={onToggleNodeParent}
                 onRetryParent={onRetryNodeParent}
+                {onRefreshRelatedEvents}
                 onToggleChildren={onToggleNodeChildren}
                 onRetryChildren={onRetryNodeChildren}
                 {onCopyPointerDown}
@@ -225,6 +228,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
                 {onToggleReaction}
                 onToggleParent={onToggleNodeParent}
                 onRetryParent={onRetryNodeParent}
+                {onRefreshRelatedEvents}
                 onToggleChildren={onToggleNodeChildren}
                 onRetryChildren={onRetryNodeChildren}
                 {onCopyPointerDown}
@@ -306,6 +310,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
                     {onToggleReaction}
                     onToggleParent={onToggleNodeParent}
                     onRetryParent={onRetryNodeParent}
+                    {onRefreshRelatedEvents}
                     onToggleChildren={onToggleNodeChildren}
                     onRetryChildren={onRetryNodeChildren}
                     {onCopyPointerDown}

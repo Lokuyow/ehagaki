@@ -3913,7 +3913,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         const actionMenu = visiblePostHistoryActionMenu(page);
         await expect(actionMenu.getByRole('menuitem')).toHaveText([
             'nostterで開く',
-            '返信 1件を表示',
+            '関連イベントを確認',
             'イベントIDをコピー',
             'イベントJSONを表示',
             '削除',
@@ -3978,7 +3978,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         const actionMenu = visiblePostHistoryActionMenu(page);
         await expect(actionMenu.getByRole('menuitem')).toHaveText([
             'nostterで開く',
-            '返信を確認',
+            '関連イベントを確認',
             'イベントJSONを表示',
             'イベントIDをコピー',
             'ブロードキャスト',

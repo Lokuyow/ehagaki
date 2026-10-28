@@ -312,6 +312,7 @@
         );
     }
     const postHistoryThreadGraph = usePostHistoryThreadGraph({
+        onDeletedPost: (eventId, deletedAt, deletionEventId) => history.patchDeletedPost(eventId, deletedAt, deletionEventId),
         getShow: () => !destroyed && show,
         getSessionOpen: () => sessionOpen ?? active,
         getPubkeyHex: () => destroyed ? null : pubkeyHex,
@@ -3254,7 +3255,7 @@
                                         </div>
                                     </div>
                                 {/if}
-                                <PostHistoryThreadGraphPanel onReactionPost={onReactionPost ? handleReactionPost : undefined}
+                                <PostHistoryThreadGraphPanel onRefreshRelatedEvents={(nodeEventId) => void postHistoryThreadGraph.refreshRelatedEvents(post, nodeEventId)} onReactionPost={onReactionPost ? handleReactionPost : undefined}
                                     state={graphState}
                                     section="parent"
                                     previewModelByEventId={relatedPreviewModelByEventId}
@@ -3619,30 +3620,11 @@
                                                         />
                                                         <DropdownMenu.Item
                                                             class="menu-action-button"
-                                                            disabled={graphState
-                                                                .repliesActionState
-                                                                .status ===
-                                                                "loading"}
-                                                            onSelect={() =>
-                                                                handleRepliesAction(
-                                                                    post,
-                                                                )}
+                                                            disabled={graphState.relatedEventsStatus === "loading"}
+                                                            onSelect={() => void postHistoryThreadGraph.refreshRelatedEvents(post)}
                                                         >
-                                                            <div
-                                                                class={`${
-                                                                    graphState
-                                                                        .repliesActionState
-                                                                        .visible
-                                                                        ? "collapse-content-icon"
-                                                                        : "find_in_page-icon"
-                                                                } svg-icon`}
-                                                                aria-hidden="true"
-                                                            ></div>
-                                                            <span>
-                                                                {getRepliesActionLabel(
-                                                                    post,
-                                                                )}
-                                                            </span>
+                                                            <div class="find_in_page-icon svg-icon" aria-hidden="true"></div>
+                                                            <span>{$_(graphState.relatedEventsStatus === "loading" ? "postHistory.checkingRelatedEvents" : "postHistory.checkRelatedEvents")}</span>
                                                         </DropdownMenu.Item>
                                                         {#if history.isSearchMode}
                                                             <DropdownMenu.Item
@@ -3715,6 +3697,9 @@
                                                 {/if}
                                             {/snippet}
                                         </PostHistoryPreviewFooter>
+                                        {#if graphState.relatedEventsStatus === "partial" || graphState.relatedEventsStatus === "failed"}
+                                            <p role="status">{$_(graphState.relatedEventsStatus === "partial" ? "postHistory.relatedEventsPartial" : "postHistory.relatedEventsFailed")}</p>
+                                        {/if}
                                         {#if graphState.reactionSummary.totalCount > 0 && isReactionsExpanded(post)}
                                             <PostHistoryReactionDetails
                                                 readModel={graphState.reactionReadModel}
@@ -3722,7 +3707,7 @@
                                                 emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                             />
                                         {/if}
-                                    <PostHistoryThreadGraphPanel onReactionPost={onReactionPost ? handleReactionPost : undefined}
+                                    <PostHistoryThreadGraphPanel onRefreshRelatedEvents={(nodeEventId) => void postHistoryThreadGraph.refreshRelatedEvents(post, nodeEventId)} onReactionPost={onReactionPost ? handleReactionPost : undefined}
                                         state={graphState}
                                         section="children"
                                         previewModelByEventId={relatedPreviewModelByEventId}
