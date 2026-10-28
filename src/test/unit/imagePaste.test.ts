@@ -24,7 +24,7 @@ vi.mock('../../lib/utils/appUtils', () => ({
 }));
 
 import { mediaFreePlacementStore } from '../../stores/uploadStore.svelte';
-import { MediaPasteExtension } from '../../lib/editor/mediaPaste';
+import { extractReactionImageUrls, MediaPasteExtension } from '../../lib/editor/mediaPaste';
 
 function setMediaFreePlacement(value: boolean) {
     (mediaFreePlacementStore as any).value = value;
@@ -247,5 +247,33 @@ describe('MediaPasteExtension', () => {
             }),
         );
         expect(dispatch).toHaveBeenCalledWith(tr);
+    });
+});
+
+describe('Reaction image URL paste', () => {
+    it.each(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'PNG'])('accepts %s URLs with query and fragment', ext => {
+        const url = `https://example.com/cat.${ext}?v=1#image`;
+        expect(extractReactionImageUrls(url)).toEqual([url]);
+    });
+    it.each(['', 'hello https://example.com/cat.png', 'https://example.com/cat.png https://example.com/movie.mp4',
+        'https://example.com/cat.png https://example.com/unknown', 'javascript:cat.png', 'data:image/png;base64,AA', 'https://example.com/cat.avif'])('rejects mixed or unsupported input %s', text => {
+        expect(extractReactionImageUrls(text)).toBeNull();
+    });
+    it('accepts whitespace separated images', () => {
+        expect(extractReactionImageUrls(' https://example.com/a.png\r\n\thttp://example.com/b.svg ')).toEqual(['https://example.com/a.png', 'http://example.com/b.svg']);
+    });
+    it('routes paste and bulk input without editing the document, and delegates files', () => {
+        const receive = vi.fn();
+        const extension = MediaPasteExtension.configure({ isMediaConversionDisabled: () => true, onReactionImageUrls: receive }) as any;
+        const props = extension.config.addProseMirrorPlugins.call(extension)[0].props;
+        const view = { editable: true, dispatch: vi.fn() };
+        const event = { preventDefault: vi.fn(), clipboardData: { getData: () => 'https://example.com/cat.png', files: [], items: [] } };
+        expect(props.handlePaste(view, event)).toBe(true);
+        expect(props.handleTextInput(view, 1, 5, 'https://example.com/cat.svg')).toBe(true);
+        expect(receive.mock.calls).toEqual([[['https://example.com/cat.png']], [['https://example.com/cat.svg']]]);
+        expect(view.dispatch).not.toHaveBeenCalled();
+        receive.mockClear();
+        expect(props.handlePaste(view, { ...event, clipboardData: { ...event.clipboardData, files: [new File(['x'], 'cat.png')] } })).toBe(false);
+        expect(receive).not.toHaveBeenCalled();
     });
 });

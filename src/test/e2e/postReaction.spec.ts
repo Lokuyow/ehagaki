@@ -397,3 +397,29 @@ for (const kind of [42, 1111]) {
         await expect.poll(async () => (await read(page)).children[0]?.parent).toBe(h.targetId);
     });
 }
+
+for (const free of [false, true]) test(`image URL reaction paste sends original URL, free placement=${free}`, async ({ page }) => {
+    const h = await open(page, `?uploaded${free ? '&free' : ''}`);
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.startReaction());
+    const editor = page.locator('.tiptap-editor');
+    const paste = async (text: string) => editor.evaluate((element, value) => {
+        const data = new DataTransfer(); data.setData('text/plain', value);
+        const event = new Event('paste', { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'clipboardData', { value: data }); element.dispatchEvent(event);
+    }, text);
+    await editor.click();
+    await paste(`${h.profilePicture} ${h.profilePicture}?second=1`);
+    await expect.poll(async () => (await read(page)).gallery.length).toBe(2);
+    expect((await read(page)).canPost).toBe(false);
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.removeImages());
+    await paste(h.profilePicture);
+    await expect.poll(async () => (await read(page)).gallery.length).toBe(1);
+    await expect(editor).toHaveText('');
+    await editor.fill('url_cat');
+    await expect.poll(async () => (await read(page)).canPost).toBe(true);
+    await page.getByRole('button', { name: '投稿', exact: true }).click();
+    await expect.poll(async () => (await read(page)).wire?.content).toBe(':url_cat:');
+    expect((await read(page)).wire?.emoji).toEqual([['emoji', 'url_cat', h.profilePicture]]);
+    expect((await read(page)).uploads).toEqual([]);
+    expect((await read(page)).gallery).toEqual([]);
+});

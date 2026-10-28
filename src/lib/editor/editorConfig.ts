@@ -167,6 +167,7 @@ const GapCursorFocusReset = Extension.create({
 
 export interface EditorConfigOptions {
     isReactionMode?: () => boolean;
+    onReactionImageUrls?: (urls: string[]) => void;
     getReactionInputMode?: () => ReactionInputMode;
     isInputBlocked?: () => boolean;
     isCompositionInputAllowed?: () => boolean;
@@ -361,7 +362,7 @@ export function createEditorStore(options: EditorConfigOptions) {
             }),
             ToolbarCaretExtension,
             ClipboardExtension, // ← クリップボード処理を追加（MediaPasteExtensionの前に配置）
-            MediaPasteExtension.configure({ isMediaConversionDisabled: options.isReactionMode }),
+            MediaPasteExtension.configure({ isMediaConversionDisabled: options.isReactionMode, onReactionImageUrls: options.onReactionImageUrls }),
             ImageDragDropExtension,
             CustomEmojiDragDropExtension,
             SmartBackspaceExtension,

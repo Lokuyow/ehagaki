@@ -115,7 +115,15 @@ function removeEmptyParagraphs(tx: Transaction): Transaction {
     return tx;
 }
 
-export const MediaPasteExtension = Extension.create<{ isMediaConversionDisabled?: () => boolean }>({
+export function extractReactionImageUrls(text: string): string[] | null {
+    const urls = text.trim().split(/\s+/u).map(validateAndNormalizeImageUrl);
+    return urls.length && urls.every((url): url is string => url !== null) ? urls : null;
+}
+
+export const MediaPasteExtension = Extension.create<{
+    isMediaConversionDisabled?: () => boolean;
+    onReactionImageUrls?: (urls: string[]) => void;
+}>({
     name: 'mediaPaste',
     addOptions: () => ({ isMediaConversionDisabled: () => false }),
 
@@ -125,7 +133,15 @@ export const MediaPasteExtension = Extension.create<{ isMediaConversionDisabled?
                 key: new PluginKey('image-paste'),
                 props: {
                     handlePaste: (view, event) => {
-                        if (this.options.isMediaConversionDisabled?.()) return false;
+                        if (this.options.isMediaConversionDisabled?.()) {
+                            if (view.editable === false) return true;
+                            if (event.clipboardData?.files.length || Array.from(event.clipboardData?.items ?? []).some(item => item.kind === 'file')) return false;
+                            const urls = extractReactionImageUrls(event.clipboardData?.getData('text/plain') ?? '');
+                            if (!urls || !this.options.onReactionImageUrls) return false;
+                            event.preventDefault();
+                            this.options.onReactionImageUrls(urls);
+                            return true;
+                        }
                         if (view.editable === false) {
                             event.preventDefault();
                             return true;
@@ -195,7 +211,13 @@ export const MediaPasteExtension = Extension.create<{ isMediaConversionDisabled?
 
                     // スマートフォン対応: inputイベントも処理
                     handleTextInput: (view, from, to, text) => {
-                        if (this.options.isMediaConversionDisabled?.()) return false;
+                        if (this.options.isMediaConversionDisabled?.()) {
+                            if (view.editable === false) return true;
+                            const urls = extractReactionImageUrls(text);
+                            if (!urls || !this.options.onReactionImageUrls) return false;
+                            this.options.onReactionImageUrls(urls);
+                            return true;
+                        }
                         if (view.editable === false) {
                             return true;
                         }

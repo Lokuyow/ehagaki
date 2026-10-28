@@ -18,7 +18,7 @@ function fixture(free = false) {
     const restore = vi.fn((owner: Editor, items: Parameters<typeof moveGalleryMediaToEditor>[0]['items']) => moveGalleryMediaToEditor({ currentEditor: owner, items }).movedItemIds);
     const uploadEnd = vi.fn();
     const controller = createReactionMediaController({ getEditor: () => current, getAuth: () => auth, getRuntime: () => runtime,
-        isFreePlacement: () => free, getItems: mediaGalleryStore.getItems, removeItem: mediaGalleryStore.removeItem,
+        addItem: mediaGalleryStore.addItem, isFreePlacement: () => free, getItems: mediaGalleryStore.getItems, removeItem: mediaGalleryStore.removeItem,
         removePlaceholderSize: vi.fn(), restoreItems: restore, onChange: vi.fn(), onUploadEnd: uploadEnd });
     disposers.push(() => { controller.dispose(); if (!editor.isDestroyed) editor.destroy(); });
     setReactionTarget(target(), []);
@@ -107,4 +107,40 @@ describe('Reaction media session ownership', () => {
         const f = fixture(true); f.complete(); clearReactionTarget(reason);
         expect(f.restore).not.toHaveBeenCalled(); expect(f.editor.getText()).toBe('Original'); expect(mediaGalleryStore.items).toEqual([]);
     });
+});
+
+it('owns pasted URL images and preserves document and selection', () => {
+    const f = fixture(true); f.complete(); mediaGalleryStore.clearAll();
+    const doc = f.editor.state.doc; const selection = f.editor.state.selection;
+    expect(f.controller.addImageUrls(['https://example.com/cat.svg?x=1'])).toBe(true);
+    expect(f.controller.getInputMode()).toBe('uploadedShortcode');
+    expect(f.editor.state.doc.eq(doc)).toBe(true);
+    expect(f.editor.state.selection.eq(selection)).toBe(true);
+    setReactionTarget(target(), []);
+    expect(f.controller.getInputMode()).toBe('uploadedShortcode');
+    clearReactionTarget('success');
+    expect(mediaGalleryStore.items).toEqual([]);
+});
+it('rejects URL images during upload and after ownership loss', () => {
+    const f = fixture();
+    expect(f.controller.addImageUrls(['https://example.com/cat.png'])).toBe(false);
+    f.complete(); f.changeAuth();
+    expect(f.controller.addImageUrls(['https://example.com/cat.png'])).toBe(false);
+});
+
+it.each([false, true])('restores pasted images on cancel, free placement=%s', free => {
+    const f = fixture(free); f.complete(); mediaGalleryStore.clearAll();
+    expect(f.controller.addImageUrls(['https://example.com/a.gif', 'https://example.com/b.webp'])).toBe(true);
+    expect(f.controller.getInputMode()).toBe('singleValue');
+    mediaGalleryStore.removeItem(mediaGalleryStore.items[1].id);
+    expect(f.controller.getInputMode()).toBe('uploadedShortcode');
+    clearReactionTarget();
+    if (free) {
+        expect(f.restore).toHaveBeenCalledOnce();
+        expect(mediaGalleryStore.items).toEqual([]);
+    } else {
+        expect(mediaGalleryStore.items.map(item => item.src)).toEqual(['https://example.com/a.gif']);
+    }
+    setReactionTarget(target(), []);
+    expect(f.controller.getInputMode()).toBe('singleValue');
 });
