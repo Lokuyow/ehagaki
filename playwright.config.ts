@@ -64,6 +64,7 @@ const playwrightProjects: Project[] = [
             '**/postRepost.spec.ts',
             '**/postReaction.spec.ts',
             '**/sensitiveContentPayload.spec.ts',
+            '**/relayDeliveryProgress.spec.ts',
         ],
         use: {
             ...devices['iPhone 13'],
@@ -72,7 +73,8 @@ const playwrightProjects: Project[] = [
     },
     {
         name: 'desktop-firefox',
-        testMatch: ['**/webComponentEmbed.spec.ts', '**/uploadRelaySync.spec.ts', '**/iframeParentLogin.spec.ts', '**/loginLatency.spec.ts'],
+        testMatch: ['**/webComponentEmbed.spec.ts', '**/uploadRelaySync.spec.ts', '**/iframeParentLogin.spec.ts', '**/loginLatency.spec.ts',
+            '**/relayDeliveryProgress.spec.ts'],
         use: {
             ...devices['Desktop Firefox'],
         },

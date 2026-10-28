@@ -1,4 +1,9 @@
 {
+  "relayDelivery": {
+    "dismiss": "Dismiss delivery progress",
+    "discovering": "Discovering delivery relays",
+    "progress": "Accepted by {accepted} of {total} relays"
+  },
   "uploadedMedia": {
     "title": "Media",
     "description": "View images and videos you uploaded to the selected server.",

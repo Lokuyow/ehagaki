@@ -15,6 +15,7 @@
   import { getAppRuntimeEnvironment } from "./lib/appRuntimeEnvironment";
   import { iframeMessageService } from "./lib/iframeMessageService";
   import type { AppPostNotificationPort } from "./lib/appNotificationPort";
+  import RelayDeliveryToasts from "./components/RelayDeliveryToasts.svelte";
   import { waitNostr } from "nip07-awaiter";
   import { AccountManager } from "./lib/accountManager";
   import { nip46Service } from "./lib/nip46Service";
@@ -2391,6 +2392,7 @@
           localNsecAuthEnabled={appRuntimeEnvironment.localNsecAuthEnabled}
         />
       {/if}
+      <RelayDeliveryToasts {rxNostr} />
       {#if showTransitionOverlay}
         <div class="transition-overlay"></div>
       {/if}

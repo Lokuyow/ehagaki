@@ -53,10 +53,31 @@ their isolated, unauthenticated six-second operation and socket ownership. A loc
 history page and its related reads share that same six-second budget.
 
 Internal results expose `deliveryPending` and `deliverySettled`; embed wire messages
-keep their existing shapes. The UI performs success side effects once, and applies a
-late status only to the same live submission. Confirmed late history receipts only
+keep their existing shapes. The UI performs success side effects once. Confirmed late history receipts only
 merge into an existing row in the captured local-write generation, so clearing or
 deleting history cannot recreate a row. Database schemas do not change.
+
+## Floating delivery progress
+
+`deliveryProgress.ts` exposes session-scoped progress from the existing ACK
+subscription. Each user operation has one ID, including NIP-65 discovery and
+additional delivery waves. Only distinct accepted relays advance progress; Sensitive
+delivery requires both Payload and Structure acceptance. Local auxiliary storage,
+REQ and NIP-46 RPC do not create delivery toasts.
+
+The app shows at most three text-free, dismissible bars. Discovery is indeterminate;
+once targets are fixed, the bars show accepted/target counts. Only fully accepted
+delivery with resolved routes fills the bar. Completion holds for 700ms and fades
+for 400ms; incomplete delivery fades from its current width over 1,800ms. These are
+presentation timers; the existing network operation alone controls the 12/30s cap.
+Dismissing or evicting a toast does not cancel delivery or recreate that toast.
+Session replacement/reset clears the bars and their presentation timers.
+
+Progress floats above the active surface's footer, within the visual viewport or
+owned embed container. A modal owns its toast portal so dismissing progress cannot
+close the dialog. Ordinary success and real failure messages remain; partial relay
+delivery warnings and late success-message rewrites are removed. Screen readers
+receive progress and dismiss labels, and reduced-motion preferences are respected.
 
 ## Verification
 

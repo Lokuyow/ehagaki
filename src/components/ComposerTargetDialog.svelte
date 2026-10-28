@@ -195,7 +195,6 @@
     let broadcastFloatingMessageY = $state(0);
     let broadcastFloatingMessageKey = $state<
         | "postHistory.broadcastSent"
-        | "postHistory.broadcastPartial"
         | "postHistory.broadcastFailed"
     >("postHistory.broadcastSent");
     let broadcastFloatingMessageTimeout:
@@ -696,10 +695,7 @@
         broadcastFloatingMessageY = position.y;
         broadcastFloatingMessageKey = !result.success
             ? "postHistory.broadcastFailed"
-            : (result.rejectedRelays?.length ?? 0) > 0 ||
-                (result.timedOutRelays?.length ?? 0) > 0
-              ? "postHistory.broadcastPartial"
-              : "postHistory.broadcastSent";
+            : "postHistory.broadcastSent";
         showBroadcastFloatingMessage = true;
         broadcastFloatingMessageTimeout = setTimeout(() => {
             showBroadcastFloatingMessage = false;

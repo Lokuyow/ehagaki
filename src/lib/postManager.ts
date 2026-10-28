@@ -1,6 +1,7 @@
 import { followPostHistoryDelivery } from "./storage/postHistoryDeliveryReceipt";
 import { RelayOperation } from "./relay/operation";
 import { ownRelayOperation } from "./relay/publish";
+import { beginRelayDelivery } from "./relay/deliveryProgress";
 import type { RxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
 import type { EventTemplate } from "nostr-tools";
@@ -437,6 +438,13 @@ export class PostManager {
     let cancelled = false;
     let lastError: string | undefined;
     let resultFinalized = false;
+    const deliveryProgress = beginRelayDelivery(rxNostr, [...authorWriteRelays, ...additionalRelays], recipientPubkeys.length > 0);
+    const updateDeliveryProgress = () => deliveryProgress.update(
+      [...authorWriteRelays, ...additionalRelays, ...launchedRelays],
+      [...outcomes].filter(([, value]) => value.accepted).map(([relay]) => relay),
+      acceptsDiscovery && recipientPubkeys.length > 0,
+      authorWriteRelays.length === 0 || (!acceptsDiscovery && recipientPubkeys.some(pubkey => recipientRouteStatus.get(pubkey) !== "found")),
+    );
     const deliveryAbort = new AbortController();
     let resolveCancellation!: () => void;
     const cancellation = new Promise<void>((resolve) => {
@@ -456,6 +464,8 @@ export class PostManager {
         }
       }
       resultFinalized = true;
+      updateDeliveryProgress();
+      deliveryProgress.finish(cancelled);
       resolveCutoff();
     };
     const network = new RelayOperation(12_000, reason => {
@@ -558,6 +568,7 @@ export class PostManager {
           deliveryPending: true, deliverySettled: settled };
         resolveAcknowledged(firstReceipt);
       }
+      updateDeliveryProgress();
     };
 
     const queueStructure = (relay: string): void => {
@@ -621,6 +632,7 @@ export class PostManager {
       for (const relay of RelayConfigUtils.sanitizeExternalRelayUrls(relayUrls)) {
         if (!isCurrent() || launchedRelays.has(relay)) continue;
         launchedRelays.add(relay);
+        updateDeliveryProgress();
         const job = sender.sendEvent(params.event, {
           targetRelays: [relay], includeDefaultWriteRelays: false, waitForAllRelays: true,
           authDeadlineAt,
@@ -639,6 +651,7 @@ export class PostManager {
         .filter((relay) => !launchedRelays.has(relay));
       if (targets.length === 0) return;
       targets.forEach((relay) => launchedRelays.add(relay));
+      updateDeliveryProgress();
       const wave = sender.sendEvent(params.event, {
         targetRelays: targets,
         includeDefaultWriteRelays: false,
@@ -730,6 +743,7 @@ export class PostManager {
         }
       }
 
+      updateDeliveryProgress();
       const drainJobs = async () => {
         let drained = 0;
         while (drained < wavePromises.length) {

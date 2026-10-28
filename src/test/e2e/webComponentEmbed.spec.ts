@@ -1131,7 +1131,7 @@ test("uses a preconnection Full relays property instead of saved user relays", a
     ]);
 });
 
-test("publishes EVENT only through the configured Host write relay", async ({ page, browserName, isMobile }) => {
+test("publishes EVENT only through the configured Host write relay", async ({ page, browserName, isMobile }, testInfo) => {
     relayEventsPaused = true;
     const savedUserRelay = "wss://saved-user-relay.example";
     const hostReadRelay = "wss://host-read-relay.example";
@@ -1243,6 +1243,20 @@ test("publishes EVENT only through the configured Host write relay", async ({ pa
     }
 
     await expect.poll(() => relayPublishedEvents.length).toBe(1);
+    const deliveryToast = composer.locator(".relay-delivery-toast");
+    await expect(deliveryToast).toBeVisible();
+    await expect(deliveryToast.locator('[role="progressbar"]')).toHaveAttribute("aria-valuenow", "0");
+    const deliveryBounds = await deliveryToast.evaluate(element => {
+        const toast = element.getBoundingClientRect();
+        const shell = element.getRootNode() as ShadowRoot;
+        const bounds = shell.host.getBoundingClientRect();
+        const footers = [...shell.querySelectorAll(".footer-bar,.footer-button-bar")]
+            .map(node => node.getBoundingClientRect()).filter(rect => rect.height > 0);
+        return { contained: toast.left >= bounds.left && toast.right <= bounds.right && toast.top >= bounds.top,
+            aboveFooter: footers.every(footer => toast.bottom <= footer.top - 10) };
+    });
+    expect(deliveryBounds).toEqual({ contained: true, aboveFooter: true });
+    await composer.screenshot({ path: testInfo.outputPath("relay-delivery-web-component.png") });
     await expect(editor).toHaveAttribute('contenteditable', 'true');
     expect(await composer.evaluate(el => el.shadowRoot?.activeElement?.classList.contains('tiptap-editor'))).toBe(true);
     if (touch) {
@@ -1257,6 +1271,9 @@ test("publishes EVENT only through the configured Host write relay", async ({ pa
     relayEventsPaused = false;
     pendingEventAcks.splice(0).forEach(acknowledge => acknowledge());
     await expect(editor).toHaveText('');
+    await expect(deliveryToast).toHaveAttribute("data-delivery-state", "complete");
+    await expect(deliveryToast.locator('[role="progressbar"]')).toHaveAttribute("aria-valuenow", "100");
+    await expect(deliveryToast).toHaveCount(0);
     expect(await composer.evaluate(el => el.shadowRoot?.activeElement?.classList.contains('tiptap-editor'))).toBe(true);
     expect(await page.evaluate(() => (window as any).__fullSubmitBlurs)).toBe(0);
     expect(relayPublishedEvents).toHaveLength(1);

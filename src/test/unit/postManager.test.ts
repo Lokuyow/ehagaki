@@ -3208,7 +3208,7 @@ describe("NIP-65 staged post delivery", () => {
         const updatePostStatus = vi.fn();
         createPostStatusHandlers({ updatePostStatus, clearContentAfterSuccess: vi.fn() }).markSuccess(result);
         expect(updatePostStatus).toHaveBeenCalledWith(expect.objectContaining({
-            message: "postComponent.post_partial_success",
+            message: "postComponent.post_success",
         }));
 
         const snapshot = JSON.stringify(result);

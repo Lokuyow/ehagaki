@@ -11,7 +11,7 @@ import {
 } from '../../lib/postComponentUtils';
 
 describe('createPostStatusHandlers', () => {
-    it('late settlement updates only the same live submission and never repeats success side effects', async () => {
+    it('late delivery settlement never repeats ordinary success status or side effects', async () => {
         const updatePostStatus = vi.fn(), clearContentAfterSuccess = vi.fn(), onPostSuccess = vi.fn();
         const handlers = createPostStatusHandlers({ updatePostStatus, clearContentAfterSuccess, onPostSuccess });
         let resolve!: (result: import('../../lib/types').PostResult) => void;
@@ -19,7 +19,8 @@ describe('createPostStatusHandlers', () => {
         handlers.markSuccess({ success: true, deliveryPending: true, deliverySettled });
         resolve({ success: true, fullyDelivered: false });
         await Promise.resolve();
-        expect(updatePostStatus.mock.calls.at(-1)?.[0].message).toBe('postComponent.post_partial_success');
+        expect(updatePostStatus).toHaveBeenCalledOnce();
+        expect(updatePostStatus.mock.calls.at(-1)?.[0].message).toBe('postComponent.post_success');
         expect(clearContentAfterSuccess).toHaveBeenCalledOnce();
         expect(onPostSuccess).toHaveBeenCalledOnce();
 
@@ -31,7 +32,6 @@ describe('createPostStatusHandlers', () => {
         finish({ success: true, fullyDelivered: false });
         await Promise.resolve();
         expect(updatePostStatus).toHaveBeenCalledTimes(calls);
-        handlers.dispose();
     });
     it('送信開始・成功・失敗の状態を一貫して更新する', () => {
         const events: string[] = [];
@@ -82,7 +82,7 @@ describe('createPostStatusHandlers', () => {
         expect(events.slice(0, 4)).toEqual(['status', 'status', 'clear', 'callback']);
     });
 
-    it('配送クラスは満たしていても個別relay拒否があれば部分成功を表示する', () => {
+    it('個別relay拒否があっても通常の成功表示を維持する', () => {
         const updatePostStatus = vi.fn();
         const handlers = createPostStatusHandlers({
             updatePostStatus,
@@ -130,7 +130,7 @@ describe('createPostStatusHandlers', () => {
 
         expect(updatePostStatus).toHaveBeenCalledWith(expect.objectContaining({
             success: true,
-            message: 'postComponent.post_partial_success',
+            message: 'postComponent.post_success',
         }));
     });
 

@@ -3,6 +3,7 @@ import { Subscription } from "rxjs";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import type { PostResult, RelayRejection, RelayRejectionCategory } from "../types";
 import { RelayOperation, type RelayEnd } from "./operation";
+import { beginRelayDelivery, resetRelayDeliveries } from "./deliveryProgress";
 
 export interface RelayPublishTask { acknowledged: Promise<PostResult>; settled: Promise<PostResult>; cancel(): void }
 export interface RelayPublishOptions {
@@ -22,6 +23,7 @@ export interface RelayPublishOptions {
 
 const operations = new WeakMap<RxNostr, Set<RelayOperation>>();
 export function cancelRelayOperations(rx: RxNostr): void {
+    resetRelayDeliveries(rx);
     for (const operation of operations.get(rx) ?? []) operation.finish("cancelled");
 }
 export function ownRelayOperation(rx: RxNostr, operation: RelayOperation): void {
@@ -47,6 +49,8 @@ export function startRelayPublish(rx: RxNostr, event: Parameters<RxNostr["send"]
     let done = false;
     let acknowledged = false;
     let eventId = event.id;
+    // Staged delivery and isolated local batches supply their own operation.
+    const delivery = options.operation ? undefined : beginRelayDelivery(rx, options.targetRelays);
     let resolveAck!: (result: PostResult) => void;
     let resolveSettled!: (result: PostResult) => void;
     const task: RelayPublishTask = { acknowledged: new Promise(resolve => { resolveAck = resolve; }),
@@ -67,6 +71,8 @@ export function startRelayPublish(rx: RxNostr, event: Parameters<RxNostr["send"]
         done = true;
         resources.unsubscribe();
         const result = snapshot(true, reason);
+        delivery?.update(options.targetRelays, [...accepted]);
+        delivery?.finish(reason === "cancelled");
         if (!options.operation) operation.finish(reason);
         if (!acknowledged) { acknowledged = true; resolveAck(result); }
         resolveSettled(result);
@@ -101,6 +107,7 @@ export function startRelayPublish(rx: RxNostr, event: Parameters<RxNostr["send"]
                     rejected.set(relay, { relay, category: relayRejectionCategory(packet.notice), ...(packet.notice ? { reason: packet.notice } : {}) });
                 }
                 options.onProgress?.(snapshot(false));
+                delivery?.update(options.targetRelays, [...accepted]);
                 if (accepted.size && !acknowledged && !options.waitForAllRelays) {
                     acknowledged = true;
                     // UI operation cleanup must not cancel an acknowledged session delivery.
