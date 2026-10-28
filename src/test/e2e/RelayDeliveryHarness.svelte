@@ -2,6 +2,8 @@
     import { onDestroy } from "svelte";
     import { Subject } from "rxjs";
     import type { RxNostr } from "rx-nostr";
+    import HeaderComponent from "../../components/HeaderComponent.svelte";
+    import { useRelayDeliveryFeedback } from "../../lib/hooks/useRelayDeliveryFeedback.svelte";
     import RelayDeliveryToasts from "../../components/RelayDeliveryToasts.svelte";
     import DialogWrapper from "../../components/DialogWrapper.svelte";
     import ConfirmDialog from "../../components/ConfirmDialog.svelte";
@@ -10,6 +12,8 @@
     let confirmation = $state(false);
     const sources: Subject<any>[] = [];
     const rx = { send: () => { const source = new Subject<any>(); sources.push(source); return source; } } as unknown as RxNostr;
+    let mascot = $state(new URLSearchParams(location.search).has("mascot"));
+    const feedback = useRelayDeliveryFeedback(() => rx, () => mascot);
     const relays = ["wss://a.example/", "wss://b.example/", "wss://c.example/"];
     window.__deliveryHarness = {
         start() { const index = sources.length; startRelayPublish(rx, { id: `fixture-${index}`, kind: 1, content: "synthetic fixture" }, { targetRelays: relays }); return index; },
@@ -18,7 +22,9 @@
     };
     onDestroy(() => { cancelRelayOperations(rx); delete window.__deliveryHarness; });
 </script>
+<HeaderComponent deliveryProgress={feedback.mascot} showMascot={mascot} showFlavorText={false} onResetPostContent={() => {}} onShowDraftList={() => {}} />
 <div class="controls">
+    <button onclick={() => { mascot = !mascot; }}>Toggle mascot</button>
     <input aria-label="Composer" placeholder="Synthetic composer" />
     <button onclick={() => { open = true; }}>Open dialog</button>
 </div>
@@ -28,7 +34,7 @@
     {#snippet footer()}<button onclick={() => { open = false; }}>Close dialog</button>{/snippet}
 </DialogWrapper>
 <ConfirmDialog open={confirmation} onOpenChange={next => { confirmation = next; }} description="Synthetic confirmation" onConfirm={() => { confirmation = false; }} />
-<RelayDeliveryToasts rxNostr={rx} />
+<RelayDeliveryToasts rows={feedback.bars} onDismiss={feedback.dismiss} />
 <style>
     .controls { display: flex; flex-wrap: wrap; gap: 12px; padding: 20px; }
     .footer-bar { position: absolute; bottom: 0; height: 48px; width: 100%; background: var(--bg-footer); }

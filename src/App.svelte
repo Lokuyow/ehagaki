@@ -15,6 +15,7 @@
   import { getAppRuntimeEnvironment } from "./lib/appRuntimeEnvironment";
   import { iframeMessageService } from "./lib/iframeMessageService";
   import type { AppPostNotificationPort } from "./lib/appNotificationPort";
+  import { useRelayDeliveryFeedback } from "./lib/hooks/useRelayDeliveryFeedback.svelte";
   import RelayDeliveryToasts from "./components/RelayDeliveryToasts.svelte";
   import { waitNostr } from "nip07-awaiter";
   import { AccountManager } from "./lib/accountManager";
@@ -452,6 +453,7 @@
   let isAuthInitialized = $derived(authState.value?.isInitialized ?? false);
 
   let rxNostr: NostrSessionBootstrap["rxNostr"] | undefined = $state();
+  const deliveryFeedback = useRelayDeliveryFeedback(() => rxNostr, () => settingsStore.showMascot);
   let relayProfileService = $state<RelayProfileService | undefined>();
   let isLoadingParentClient = $state(false);
   let isLoadingNip07 = $state(false);
@@ -2161,6 +2163,7 @@
     <main class="ehagaki-app-root">
       <div class="main-content">
         <HeaderComponent
+          deliveryProgress={deliveryFeedback.mascot}
           onResetPostContent={handleResetPostContent}
           onShowDraftList={draftListDialog.open}
           onChooseTarget={composerTargetDialog.open}
@@ -2392,7 +2395,7 @@
           localNsecAuthEnabled={appRuntimeEnvironment.localNsecAuthEnabled}
         />
       {/if}
-      <RelayDeliveryToasts {rxNostr} />
+      <RelayDeliveryToasts rows={deliveryFeedback.bars} onDismiss={deliveryFeedback.dismiss} />
       {#if showTransitionOverlay}
         <div class="transition-overlay"></div>
       {/if}

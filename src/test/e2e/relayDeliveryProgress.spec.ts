@@ -5,6 +5,50 @@ declare global { interface Window { __deliveryHarness?: {
 } } }
 test.use({ trace: "off" });
 for (const theme of ["light", "dark"]) for (const surface of ["standalone", "iframe", "container"]) {
+    test(`mascot fills upward and restores normally (${theme}, ${surface})`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width: 360, height: 640 });
+        await page.goto(`relay-delivery-playwright.html?mascot=1&theme=${theme}${surface === "iframe" ? "&frame=1" : surface === "container" ? "&container=1" : ""}`);
+        const frame = surface === "iframe" ? page.frames().find(frame => frame.parentFrame())! : page.mainFrame();
+        await frame.waitForFunction(() => !!window.__deliveryHarness);
+        await frame.evaluate(() => window.__deliveryHarness!.start());
+        const progress = frame.locator(".mascot-progress-accessible");
+        const base = frame.locator(".mascot-progress-base");
+        await expect(progress).toHaveAttribute("aria-valuenow", "0");
+        await expect(base).toHaveCSS("opacity", "0.3");
+        await expect(frame.locator(".relay-delivery-toast")).toHaveCount(0);
+        await frame.evaluate(() => window.__deliveryHarness!.ack(0, 0));
+        await expect(progress).toHaveAttribute("aria-valuenow", "33");
+        await expect.poll(() => frame.locator(".mascot-progress-clip").evaluate(el => Number(getComputedStyle(el).transform.split(",").at(-1)?.replace(")", "")))).toBeCloseTo(700 * 2 / 3, 1);
+        await page.screenshot({ path: testInfo.outputPath(`mascot-${theme}-${surface}.png`) });
+        await expect(progress).toHaveCount(0, { timeout: 3000 });
+        await expect(base).toHaveCSS("opacity", "1");
+        await frame.evaluate(() => { window.__deliveryHarness!.ack(0, 1); window.__deliveryHarness!.ack(0, 2); });
+        await expect(progress).toHaveCount(0);
+    });
+}
+test("surface switching preserves lifetime and dismissal; latest delivery never falls back to older work", async ({ page }) => {
+    await page.goto("relay-delivery-playwright.html?mascot=1");
+    await page.waitForFunction(() => !!window.__deliveryHarness);
+    await page.evaluate(() => { window.__deliveryHarness!.start(); window.__deliveryHarness!.ack(0, 0); window.__deliveryHarness!.start(); });
+    const progress = page.locator(".mascot-progress-accessible");
+    await expect(progress).toHaveAttribute("aria-valuenow", "0");
+    await page.evaluate(() => window.__deliveryHarness!.ack(0, 1));
+    await expect(progress).toHaveAttribute("aria-valuenow", "0");
+    await page.getByRole("button", { name: "Open dialog" }).click();
+    await expect(progress).toHaveCount(0);
+    await expect(page.locator(".relay-delivery-toast")).toHaveCount(2);
+    await page.locator(".relay-delivery-toast").last().click();
+    await page.getByRole("button", { name: "Close dialog" }).click();
+    await expect(progress).toHaveCount(0);
+    await page.evaluate(() => { window.__deliveryHarness!.ack(1, 0); window.__deliveryHarness!.ack(1, 1); window.__deliveryHarness!.ack(1, 2); });
+    await expect(progress).toHaveCount(0);
+    await page.evaluate(() => window.__deliveryHarness!.reset());
+    await page.getByRole("button", { name: "Toggle mascot" }).click();
+    await page.evaluate(() => window.__deliveryHarness!.start());
+    await expect(page.locator(".relay-delivery-toast")).toHaveCount(1);
+    await page.evaluate(() => window.__deliveryHarness!.reset());
+});
+for (const theme of ["light", "dark"]) for (const surface of ["standalone", "iframe", "container"]) {
     test(`delivery progress is silent, bounded and dismissible (${theme}, ${surface})`, async ({ page }, testInfo) => {
         await page.setViewportSize({ width: 360, height: 640 });
         const query = surface === "iframe" ? `?frame=1&theme=${theme}` : `?theme=${theme}${surface === "container" ? "&container=1" : ""}`;

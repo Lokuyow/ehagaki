@@ -59,6 +59,18 @@ deleting history cannot recreate a row. Database schemas do not change.
 
 ## Floating delivery progress
 
+The app-owned `useRelayDeliveryFeedback` hook owns one presentation subscription
+and its timers. On the TOP composer, the visible mascot represents the newest
+operation: a 30%-opacity base with the original SVG colors filling upward. Discovery
+leaves it translucent. When presentation ends, the base restores uniformly rather
+than falsely filling incomplete delivery to 100%. Older work never replaces the
+newest operation after it retires.
+
+An open owned dialog (including confirmation dialogs), or the mascot-hidden setting,
+uses the floating bars instead. Switching surfaces preserves the same rows, dismissal
+state and deadlines. The mascot's existing home link and theme colors are preserved;
+iframe and Full Web Component share this UI without changing their public contracts.
+
 `deliveryProgress.ts` exposes session-scoped progress from the existing ACK
 subscription. Each user operation has one ID, including NIP-65 discovery and
 additional delivery waves. Only distinct accepted relays advance progress; Sensitive

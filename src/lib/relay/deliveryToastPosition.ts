@@ -2,6 +2,13 @@ import type { AppRuntimeEnvironment } from "../appRuntimeEnvironment";
 
 export interface DeliveryToastPlacement { target: HTMLElement; style: string }
 
+export function getActiveDeliveryDialog(runtime: AppRuntimeEnvironment): HTMLElement | undefined {
+    if (!runtime.domRoot || !runtime.window) return;
+    return [...runtime.domRoot.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"],[role="alertdialog"][data-state="open"]')]
+        .filter(node => node.getBoundingClientRect().width && node.getBoundingClientRect().height)
+        .sort((a, b) => (Number(runtime.window!.getComputedStyle(a).zIndex) || 0) - (Number(runtime.window!.getComputedStyle(b).zIndex) || 0)).at(-1);
+}
+
 /** Keep the portal inside the active modal's focus/outside-interaction boundary. */
 export function positionDeliveryToasts(element: HTMLElement, runtime: AppRuntimeEnvironment,
     place: (placement: DeliveryToastPlacement) => void): () => void {
@@ -15,10 +22,7 @@ export function positionDeliveryToasts(element: HTMLElement, runtime: AppRuntime
     const update = () => {
         frame = 0;
         if (disposed) return;
-        const dialogs = [...root.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"],[role="alertdialog"][data-state="open"]')]
-            .filter(node => node.getBoundingClientRect().width && node.getBoundingClientRect().height)
-            .sort((a, b) => (Number(win.getComputedStyle(a).zIndex) || 0) - (Number(win.getComputedStyle(b).zIndex) || 0));
-        const dialog = dialogs.at(-1);
+        const dialog = getActiveDeliveryDialog(runtime);
         const target = dialog ?? runtime.overlayTarget;
         const absolute = !!dialog || runtime.layoutMode === "container";
         const viewport = win.visualViewport;

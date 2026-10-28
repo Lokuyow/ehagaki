@@ -24,6 +24,21 @@ import { configureAppRuntimeEnvironment } from '../../lib/appRuntimeEnvironment'
 import { MockStorage } from '../helpers';
 
 describe('HeaderComponent', () => {
+    it('uses unique artwork IDs and clips the whole mascot from below, leaving discovery indeterminate', async () => {
+        const props = { onResetPostContent: vi.fn(), onShowDraftList: vi.fn(), showFlavorText: false };
+        const first = render(HeaderComponent, { props: { ...props, deliveryProgress: {
+            progress: { id: 1, total: 2, accepted: 1, discovering: false, state: 'sending' as const }, fading: false, fadeMs: 0,
+        } } });
+        const second = render(HeaderComponent, { props });
+        expect(first.container.querySelector('clipPath')?.id).not.toBe(second.container.querySelector('clipPath')?.id);
+        expect(first.container.querySelector('.mascot-progress-clip')?.getAttribute('style')).toContain('350px');
+        expect(first.container.querySelector('.mascot-progress-base')?.getAttribute('style')).toContain('0.3');
+        await first.rerender({ ...props, deliveryProgress: {
+            progress: { id: 1, total: 1, accepted: 1, discovering: true, state: 'sending' }, fading: false, fadeMs: 0,
+        } });
+        expect(first.container.querySelector('.mascot-progress-clip')?.getAttribute('style')).toContain('700px');
+        expect(first.container.querySelector('[role="progressbar"]')?.hasAttribute('aria-valuenow')).toBe(false);
+    });
     beforeEach(() => {
         configureAppRuntimeEnvironment({
             storage: new MockStorage(),

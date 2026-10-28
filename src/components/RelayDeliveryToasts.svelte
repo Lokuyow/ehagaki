@@ -1,27 +1,16 @@
 <script lang="ts">
-    import type { RxNostr } from "rx-nostr";
     import { Portal } from "bits-ui";
     import { _ } from "svelte-i18n";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
-    import { observeRelayDeliveries } from "../lib/relay/deliveryProgress";
-    import { createRelayDeliveryToasts, type RelayDeliveryToast } from "../lib/relay/deliveryToasts";
+    import { type RelayDeliveryToast } from "../lib/relay/deliveryToasts";
     import { positionDeliveryToasts } from "../lib/relay/deliveryToastPosition";
 
-    interface Props { rxNostr?: RxNostr }
-    let { rxNostr }: Props = $props();
+    interface Props { rows: RelayDeliveryToast[]; onDismiss: (id: number) => void }
+    let { rows, onDismiss }: Props = $props();
     const runtime = getAppRuntimeEnvironment();
-    let rows = $state<RelayDeliveryToast[]>([]);
-    let controller: ReturnType<typeof createRelayDeliveryToasts> | undefined;
     let container = $state<HTMLDivElement>();
     let target = $state(runtime.overlayTarget);
     let position = $state("visibility:hidden");
-    $effect(() => {
-        const rx = rxNostr;
-        if (!rx) { rows = []; return; }
-        const current = createRelayDeliveryToasts(observeRelayDeliveries(rx), next => { rows = next; });
-        controller = current;
-        return () => { current.dispose(); if (controller === current) controller = undefined; };
-    });
     $effect(() => {
         if (!container) return;
         return positionDeliveryToasts(container, runtime, placement => {
@@ -49,7 +38,7 @@
                     aria-label={$_("relayDelivery.dismiss")}
                     aria-describedby={`relay-delivery-${row.progress.id}`}
                     onpointerdown={event => event.preventDefault()}
-                    onclick={() => controller?.dismiss(row.progress.id)}>
+                    onclick={() => onDismiss(row.progress.id)}>
                     <span class="relay-delivery-track" role="progressbar" id={`relay-delivery-${row.progress.id}`}
                         aria-label={$_(row.progress.discovering ? "relayDelivery.discovering" : "relayDelivery.progress",
                             { values: { accepted: row.progress.accepted, total: row.progress.total } })}
