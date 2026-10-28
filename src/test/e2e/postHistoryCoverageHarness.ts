@@ -23,9 +23,9 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
     if (scenario === "sync-footer") {
         const fetchLatest = postHistoryRelayFetchService.fetchLatest.bind(postHistoryRelayFetchService);
         postHistoryRelayFetchService.fetchLatest = (rx, params) => {
-            if (params.reason !== "dialog-open-catchup" || params.operation) return fetchLatest(rx, params);
-            // Keep only the intentionally held catch-up alive while the test
-            // inspects the spinner; other relay operations retain their deadlines.
+            if (!['bootstrap', 'dialog-open-refresh', 'dialog-open-catchup'].includes(params.reason ?? '') || params.operation) return fetchLatest(rx, params);
+            // Keep intentionally held requests alive while the test inspects
+            // each sync indicator; other relay operations retain their deadlines.
             const operation = new RelayOperation(60_000, () => undefined);
             const task = fetchLatest(rx, { ...params, operation });
             void task.promise.finally(() => operation.finish("complete"));
@@ -56,6 +56,7 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
     const errors = new Subject<any>();
     const connections = new Subject<any>();
     const pending: (() => void)[] = [];
+    const pendingHead: (() => void)[] = [];
     const preparation = { hold: false, entered: false, checks: 0, coveredGapReads: 0, release: null as (() => void) | null };
     let localPosted = false;
     const postHistoryCoverageImportEvent = "ehagaki-post-history-coverage-import";
@@ -122,7 +123,8 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
             localPosted = true;
             return fixture.localPost.id;
         },
-        release: () => { for (const complete of pending.splice(0)) complete(); } };
+        release: () => { for (const complete of pending.splice(0)) complete(); },
+        releaseHead: () => { for (const complete of pendingHead.splice(0)) complete(); } };
     const rxNostr = {
         createAllMessageObservable: () => messages,
         createAllErrorObservable: () => errors,
@@ -160,7 +162,9 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
                     stream.complete();
                     messages.next({ type: "EOSE", from: relayUrl, subId, message: ["EOSE", subId] });
                 };
-                if (older || catchup) {
+                if (scenario === "sync-footer" && authored && filter.limit === 30) {
+                    pendingHead.push(complete);
+                } else if (older || catchup) {
                     (catchup ? control.catchupRequests : control.olderRequests)
                         .push({ relayUrl, since: filter.since!, until: filter.until! });
                     pending.push(complete);

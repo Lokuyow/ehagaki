@@ -166,7 +166,7 @@ type HarnessWindow = Window & typeof globalThis & {
         coverGap: () => Promise<void>;
         olderRequests: { relayUrl: string; since: number; until: number }[];
         catchupRequests: { relayUrl: string; since: number; until: number }[];
-        postLocal: () => Promise<string>; release: () => void };
+        postLocal: () => Promise<string>; release: () => void; releaseHead: () => void };
     __POST_HISTORY_HARNESS__?: HarnessState;
     __POST_HISTORY_ACTION_TARGETS__?: {
         replyEventId: string | null;
@@ -1670,6 +1670,10 @@ test.describe('PostHistoryDialog Playwright', () => {
         const footer = page.locator('.post-history-sync-footer');
         const heading = page.locator('.post-history-heading');
         const statusToast = page.locator('.floating-message.anchor-center[role="status"]');
+        await expect.poll(
+            () => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequests),
+            { timeout: 15_000 },
+        ).toBe(4);
         await expect(statusToast).toContainText('リレーと同期中...', { timeout: 15_000 });
         await expect(heading.locator('.status-loading-placeholder')).toHaveCount(0);
         const headingBounds = await heading.boundingBox();
@@ -1680,11 +1684,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(Math.abs(toastBounds!.y + toastBounds!.height / 2 - (headingBounds!.y + headingBounds!.height / 2))).toBeLessThanOrEqual(1);
 
         const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
-        await expect.poll(
-            () => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length),
-            { timeout: 15_000 },
-        ).toBeGreaterThan(0);
-
+        await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.releaseHead());
         await expect.poll(
             () => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length),
             { timeout: 15_000 },
