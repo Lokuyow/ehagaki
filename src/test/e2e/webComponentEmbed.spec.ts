@@ -5,6 +5,7 @@ import { extname, join, normalize, relative } from "node:path";
 import { finalizeEvent, generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
 import { WebSocketServer, type WebSocket } from "ws";
 import { ensureWebComponentE2EOutput } from "../../../scripts/ensureWebComponentE2EOutput.mjs";
+import { createGifFixture } from "../gifFixture";
 
 declare global {
     interface Window {
@@ -28,6 +29,7 @@ let relayConnectionCount = 0;
 let relayPublishedEvents: Array<{ event: Record<string, unknown> }> = [];
 let reactionFixtureEvents: ReturnType<typeof finalizeEvent>[] = [];
 let reactionUploadedImage: Buffer = Buffer.alloc(0);
+let reactionUploadedMimeType = 'image/png';
 let relayEventsPaused = false;
 let pendingEventAcks: Array<() => void> = [];
 let relayRequestsPaused = false;
@@ -249,14 +251,15 @@ test.beforeAll(async () => {
             const end = boundary ? body.indexOf(`\r\n--${boundary}`, start) : -1;
             if (start < 4 || end <= start) { response.writeHead(400).end(); return; }
             reactionUploadedImage = body.subarray(start, end);
+            reactionUploadedMimeType = reactionUploadedImage.subarray(0, 3).toString() === 'GIF' ? 'image/gif' : 'image/png';
             response.writeHead(200, { 'Content-Type': 'application/json' });
             response.end(JSON.stringify({ status: 'success', nip94_event: {
-                tags: [['url', `${hostOrigin}/reaction-uploaded.png`], ['m', 'image/png']],
+                tags: [['url', `${hostOrigin}/reaction-uploaded.${reactionUploadedMimeType === 'image/gif' ? 'gif' : 'png'}`], ['m', reactionUploadedMimeType]],
             } }));
             return;
         }
-        if (pathname === '/reaction-uploaded.png') {
-            response.writeHead(200, { 'Content-Type': 'image/png', 'Access-Control-Allow-Origin': '*' });
+        if (pathname === '/reaction-uploaded.png' || pathname === '/reaction-uploaded.gif') {
+            response.writeHead(200, { 'Content-Type': reactionUploadedMimeType, 'Access-Control-Allow-Origin': '*' });
             response.end(reactionUploadedImage);
             return;
         }
@@ -290,6 +293,7 @@ test.beforeEach(() => {
     relayPublishedEvents = [];
     reactionFixtureEvents = [];
     reactionUploadedImage = Buffer.alloc(0);
+    reactionUploadedMimeType = 'image/png';
     relayEventsPaused = false;
     pendingEventAcks = [];
     relayRequestsPaused = false;
@@ -408,15 +412,18 @@ test("keeps startup NIP-07 opt-in and preserves the existing ready path when abs
     });
 });
 
-for (const { authenticated, uploaded } of [{ authenticated: true, uploaded: false }, { authenticated: false, uploaded: false }, { authenticated: true, uploaded: true }]) {
-test(`Full Reaction at 320px preserves outer identity (${uploaded ? 'uploaded PNG' : authenticated ? 'authenticated' : 'guest'})`, async ({ page }) => {
+for (const { authenticated, uploaded, gif } of [
+    { authenticated: true, uploaded: false, gif: false }, { authenticated: false, uploaded: false, gif: false },
+    { authenticated: true, uploaded: true, gif: false }, { authenticated: true, uploaded: true, gif: true },
+]) {
+test(`Full Reaction at 320px preserves outer identity (${uploaded ? gif ? 'uploaded GIF' : 'uploaded PNG' : authenticated ? 'authenticated' : 'guest'})`, async ({ page }) => {
     const signingSecret = generateSecretKey(); const owner = getPublicKey(signingSecret);
     const original = finalizeEvent({ kind: 1, content: 'OPAQUE-EMBEDDED-BODY https://hidden.example/image.png', tags: [], created_at: 100 }, generateSecretKey());
     const targetSecret = generateSecretKey();
     const target = finalizeEvent({ kind: 6, content: JSON.stringify(original), created_at: 200,
         tags: [['e', original.id], ['p', original.pubkey]] }, targetSecret);
     const profilePicture = `${hostOrigin}/reaction-profile.png`;
-    const uploadedImageUrl = `${hostOrigin}/reaction-uploaded.png`;
+    const uploadedImageUrl = `${hostOrigin}/reaction-uploaded.${gif ? 'gif' : 'png'}`;
     const profile = finalizeEvent({ kind: 0, content: JSON.stringify({ display_name: 'Reaction target author', picture: profilePicture }),
         tags: [], created_at: Math.floor(Date.now() / 1000) }, targetSecret);
     reactionFixtureEvents = [target, original, profile];
@@ -461,9 +468,9 @@ test(`Full Reaction at 320px preserves outer identity (${uploaded ? 'uploaded PN
     await expect(composer.locator('[data-reaction-target-id]')).toHaveAttribute('data-reaction-target-id', target.id);
     await expect(composer.locator('.reaction-target-preview')).not.toContainText('OPAQUE-EMBEDDED-BODY');
     await expect(composer.locator('.reaction-target-preview .author-name')).toHaveText('Reaction target author');
-    await expect(composer.locator('.reaction-target-preview .author-profile img')).toHaveAttribute('src', `${profilePicture}?profile=true`);
-    await composer.locator('.reaction-target-preview .author-profile img').scrollIntoViewIfNeeded();
-    await expect.poll(() => composer.locator('.reaction-target-preview .author-profile img').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+    await expect(composer.locator('.reaction-target-preview .author-profile img[data-avatar-image]')).toHaveAttribute('src', `${profilePicture}?profile=true`);
+    await composer.locator('.reaction-target-preview .author-profile img[data-avatar-image]').scrollIntoViewIfNeeded();
+    await expect.poll(() => composer.locator('.reaction-target-preview .author-profile img[data-avatar-image]').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
     await expect(composer.locator('.reaction-input-help')).toHaveCount(0);
     await expect(editor.locator('.is-editor-empty')).toHaveAttribute('data-placeholder', 'いまどうしてる？');
     const previewBox = await composer.locator('.reaction-target-preview').boundingBox();
@@ -491,15 +498,17 @@ test(`Full Reaction at 320px preserves outer identity (${uploaded ? 'uploaded PN
         return;
     }
     if (uploaded) {
-        await expect(composer.locator('input[type=file]')).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp');
-        const base64 = await page.evaluate(() => {
+        await expect(composer.locator('input[type=file]')).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp,image/gif');
+        const base64 = gif ? '' : await page.evaluate(() => {
             const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 256;
             const context = canvas.getContext('2d')!; context.fillStyle = '#ff8000'; context.fillRect(0, 0, 256, 256);
             return canvas.toDataURL('image/png').split(',')[1];
         });
-        await composer.locator('input[type=file]').setInputFiles({ name: 'cat.png', mimeType: 'image/png', buffer: Buffer.from(base64, 'base64') });
+        const bytes = gif ? Buffer.from(createGifFixture()) : Buffer.from(base64, 'base64');
+        await composer.locator('input[type=file]').setInputFiles({ name: gif ? 'cat.gif' : 'cat.png', mimeType: gif ? 'image/gif' : 'image/png', buffer: bytes });
         await expect(composer.locator('.media-gallery img')).toBeVisible();
-        await expect.poll(() => composer.locator('.media-gallery img').evaluate((image: HTMLImageElement) => [image.naturalWidth, image.naturalHeight])).toEqual([256, 128]);
+        await expect.poll(() => composer.locator('.media-gallery img').evaluate((image: HTMLImageElement) => [image.naturalWidth, image.naturalHeight])).toEqual(gif ? [256, 192] : [256, 128]);
+        if (gif) expect(reactionUploadedImage).toEqual(bytes);
         await expect(editor.locator('.is-editor-empty')).toHaveAttribute('data-placeholder', /shortcode/);
         await editor.click(); await editor.pressSequentially('::cat::');
         await expect(editor).toHaveText('::cat::');

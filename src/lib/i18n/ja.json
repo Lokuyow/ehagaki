@@ -592,7 +592,7 @@
     "about_bitcoin_tip_label": "ビットコインで投げ銭"
   },
   "postComponent": {
-    "reactionUnsupportedImage": "リアクションには静止PNG・JPEG・WebP画像を1枚ずつアップロードしてください。アニメーション画像は使用できません。",
+    "reactionUnsupportedImage": "リアクションには静止PNG・JPEG・WebP、またはGIF画像を1枚ずつアップロードしてください。GIFはアニメーションも使用でき、圧縮・リサイズせずに送信します。",
     "reactionImageTransformFailed": "リアクション画像を変換できませんでした。画像はアップロードされていません。",
     "enter_your_text": "いまどうしてる？",
     "editor_label": "投稿エディター",

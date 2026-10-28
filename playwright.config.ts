@@ -63,6 +63,7 @@ const playwrightProjects: Project[] = [
             '**/postHistoryJsonlWorker.spec.ts',
             '**/postRepost.spec.ts',
             '**/postReaction.spec.ts',
+            '**/gifUpload.spec.ts',
             '**/sensitiveContentPayload.spec.ts',
         ],
         use: {
@@ -72,7 +73,7 @@ const playwrightProjects: Project[] = [
     },
     {
         name: 'desktop-firefox',
-        testMatch: ['**/webComponentEmbed.spec.ts', '**/uploadRelaySync.spec.ts', '**/iframeParentLogin.spec.ts', '**/loginLatency.spec.ts'],
+        testMatch: ['**/webComponentEmbed.spec.ts', '**/uploadRelaySync.spec.ts', '**/iframeParentLogin.spec.ts', '**/loginLatency.spec.ts', '**/gifUpload.spec.ts'],
         use: {
             ...devices['Desktop Firefox'],
         },

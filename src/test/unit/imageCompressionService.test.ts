@@ -6,6 +6,7 @@ import {
 import type { MimeTypeSupportInterface } from '../../lib/types';
 import { MockStorage } from '../helpers';
 import { createTestFile } from '../fileTestUtils';
+import { createGifFixture } from '../gifFixture';
 
 /**
  * ImageCompressionService ユニットテスト
@@ -297,6 +298,31 @@ describe('ImageCompressionService', () => {
     });
 
     describe('compress', () => {
+        describe.each(['none', 'low', 'medium', 'high'])('GIF at %s quality', level => {
+            it.each([false, true])('preserves static and animated GIFs (large=%s)', async large => {
+                mockStorage.setItem('imageQualityLevel', level);
+                for (const animated of [false, true]) {
+                    const file = createTestFile({ name: 'original.gif', type: 'image/gif', content: createGifFixture({ animated, large }), lastModified: 1234 });
+                    expect(file.size > 20 * 1024).toBe(large);
+                    const result = await service.compress(file);
+                    expect(result).toEqual({ file, wasCompressed: false, wasSkipped: true });
+                    expect(result.file).toBe(file);
+                    expect(result.file.name).toBe('original.gif');
+                    expect(result.file.type).toBe('image/gif');
+                    expect(result.file.lastModified).toBe(1234);
+                }
+                expect(imageCompressionMock).not.toHaveBeenCalled();
+                expect(webpEncodeMock).not.toHaveBeenCalled();
+                expect(URL.createObjectURL).not.toHaveBeenCalled();
+            });
+        });
+
+        it('honors an already aborted operation before skipping GIF compression', async () => {
+            const file = createTestFile({ name: 'original.gif', type: 'image/gif', content: createGifFixture() });
+            const controller = new AbortController(); controller.abort();
+            expect(await service.compress(file, { signal: controller.signal })).toEqual({ file, wasCompressed: false, aborted: true });
+        });
+
         describe('画像以外のファイル', () => {
             it('テキストファイルは圧縮しない', async () => {
                 const file = createTestFile({ name: 'doc.txt', type: 'text/plain', content: new Uint8Array(50000) });

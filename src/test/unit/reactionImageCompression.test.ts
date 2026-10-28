@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getReactionResizeDimensions, ReactionImageCompressionService, validateReactionImage } from '../../lib/upload/reactionImageCompression';
 import { FileUploadManager } from '../../lib/fileUploadManager';
 import { Blob as NodeBlob, File as NodeFile } from 'node:buffer';
+import { createGifFixture } from '../gifFixture';
 const { encode, transport } = vi.hoisted(() => ({ encode: vi.fn(), transport: vi.fn() }));
 vi.mock('@jsquash/webp/encode', () => ({ default: encode }));
 vi.mock('../../lib/upload/uploadAdapterRegistry', () => ({ getUploadAdapter: () => ({ upload: transport }) }));
@@ -68,13 +69,53 @@ describe('Reaction image transformation', () => {
         expect(await setup().service.compress(file)).toMatchObject({ file, wasCompressed: false, wasSkipped: true });
         expect(encode).not.toHaveBeenCalled();
     });
-    it.each(['image/svg+xml', 'image/gif', 'image/avif', 'image/heic', 'video/mp4'])('rejects %s before transport', async type => {
+    it.each(['image/svg+xml', 'image/avif', 'image/heic', 'video/mp4'])('rejects %s before transport', async type => {
         await expect(validateReactionImage(new File(['x'], 'image', { type }))).rejects.toThrow('reactionUnsupportedImage');
     });
     it('rejects APNG and animated WebP containers', async () => {
         const animatedPng = new Uint8Array(png.length + 12); animatedPng.set(png.subarray(0, 33)); animatedPng.set(new TextEncoder().encode('acTL'), 37); animatedPng.set(png.subarray(33), 45);
         await expect(validateReactionImage(fileWithBytes(animatedPng, 'image/png'))).rejects.toThrow('reactionUnsupportedImage');
         await expect(validateReactionImage(fileWithBytes(webp('ANIM'), 'image/webp'))).rejects.toThrow('reactionUnsupportedImage');
+    });
+    it.each(['87a', '89a'] as const)('preserves GIF%s bytes, name and dimensions without a canvas', async version => {
+        for (const large of [false, true]) for (const animated of version === '87a' ? [false] : [false, true]) {
+            const bytes = createGifFixture({ version, large, animated });
+            const file = new File([bytes], 'reaction.gif', { type: 'image/gif', lastModified: 1234 });
+            const f = setup(); const result = await f.service.compress(file);
+            expect(result).toEqual({ file, wasCompressed: false, wasSkipped: true });
+            expect(result.file).toBe(file);
+            expect(new Uint8Array(await result.file.arrayBuffer())).toEqual(bytes);
+            expect(result.file.name).toBe('reaction.gif'); expect(result.file.lastModified).toBe(1234);
+            expect(f.progress).toHaveBeenLastCalledWith(100);
+        }
+        expect(document.createElement).not.toHaveBeenCalledWith('canvas');
+        expect(encode).not.toHaveBeenCalled(); expect(URL.revokeObjectURL).toHaveBeenCalled();
+    });
+    it('rejects invalid GIF headers and zero dimensions before transport', async () => {
+        const zeroWidth = createGifFixture(); zeroWidth[6] = 0; zeroWidth[7] = 0;
+        const zeroHeight = createGifFixture(); zeroHeight[8] = 0; zeroHeight[9] = 0;
+        const wrongVersion = createGifFixture(); wrongVersion[4] = 56;
+        for (const bytes of [new Uint8Array(0), new TextEncoder().encode('GIF89a'), png, zeroWidth, zeroHeight, wrongVersion]) {
+            await expect(setup().service.compress(fileWithBytes(bytes, 'image/gif'))).rejects.toThrow('reactionUnsupportedImage');
+        }
+        expect(URL.createObjectURL).not.toHaveBeenCalled(); expect(transport).not.toHaveBeenCalled();
+    });
+    it('rejects a GIF the browser cannot load and releases its object URL', async () => {
+        vi.stubGlobal('Image', class {
+            onload?: () => void; onerror?: () => void;
+            set src(value: string) { if (value) queueMicrotask(() => this.onerror?.()); }
+        });
+        await expect(setup().service.compress(fileWithBytes(createGifFixture(), 'image/gif'))).rejects.toThrow('reactionImageTransformFailed');
+        expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:fixture');
+    });
+    it('cancels a pending GIF decode without uploading or reporting completion', async () => {
+        vi.stubGlobal('Image', class { set src(_value: string) {} });
+        const f = setup(); const pending = f.service.compress(fileWithBytes(createGifFixture(), 'image/gif'));
+        await vi.waitFor(() => expect(URL.createObjectURL).toHaveBeenCalled());
+        f.service.abort();
+        expect(await pending).toMatchObject({ aborted: true, wasCompressed: false });
+        expect(f.progress).not.toHaveBeenCalledWith(100); expect(transport).not.toHaveBeenCalled();
+        expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:fixture');
     });
     it('aborts encoding without completion progress or fallback', async () => {
         encode.mockReturnValue(new Promise(() => {})); const f = setup(); const pending = f.service.compress(imageFile('image/webp'));

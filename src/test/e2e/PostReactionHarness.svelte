@@ -67,7 +67,7 @@
     let reject = query.has('reject'); let holdSave = query.has('hold-save'); let saveEntered = false;
     let failSave = query.has('fail-save'); let releaseSave: (() => void) | undefined;
     let lastResult: PostReactionResult | null = null;
-    const uploads: { width: number; height: number; type: string; size: number; lossless: boolean; alpha: number }[] = [];
+    const uploads: { width: number; height: number; type: string; size: number; name: string; sha256: string; lossless: boolean; alpha: number }[] = [];
     const uploadEndpoint = new URL('reaction-fixture-upload', location.href).href;
     const originalFetch = window.fetch;
     if (query.has('uploaded')) window.fetch = async (input, init) => {
@@ -88,7 +88,8 @@
             const canvas = document.createElement('canvas'); canvas.width = bitmap.width; canvas.height = bitmap.height;
             const context = canvas.getContext('2d')!; context.drawImage(bitmap, 0, 0);
             const alpha = context.getImageData(bitmap.width - 1, 0, 1, 1).data[3];
-            uploads.push({ width: bitmap.width, height: bitmap.height, type: file.type, size: file.size, lossless, alpha }); bitmap.close();
+            const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), byte => byte.toString(16).padStart(2, '0')).join('');
+            uploads.push({ width: bitmap.width, height: bitmap.height, type: file.type, size: file.size, name: file.name, sha256, lossless, alpha }); bitmap.close();
         }
         return await originalFetch.call(window, input, init);
     };

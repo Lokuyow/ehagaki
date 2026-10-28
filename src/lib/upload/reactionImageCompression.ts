@@ -2,15 +2,20 @@ import type { CompressionService, VideoCompressionResult } from '../types/upload
 import { awaitUploadOperation, throwIfUploadAborted } from './uploadOperation';
 
 export const REACTION_WEBP_OPTIONS = { lossless: 1, quality: 100, near_lossless: 100, alpha_quality: 100 } as const;
-const supported = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const supported = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const unsupported = () => new Error('reactionUnsupportedImage');
 
-/** Container-aware checks reject animation before a single-frame decoder can flatten it. */
+/** Reject animation in formats we reencode. GIFs are validated and sent unchanged. */
 export async function validateReactionImage(file: File): Promise<void> {
     if (!supported.has(file.type)) throw unsupported();
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    const bytes = new Uint8Array(await (file.type === 'image/gif' ? file.slice(0, 13) : file).arrayBuffer());
     const view = new DataView(bytes.buffer);
     const ascii = (offset: number, size: number) => String.fromCharCode(...bytes.subarray(offset, offset + size));
+    if (file.type === 'image/gif') {
+        if (bytes.length < 13 || !['GIF87a', 'GIF89a'].includes(ascii(0, 6))
+            || view.getUint16(6, true) === 0 || view.getUint16(8, true) === 0) throw unsupported();
+        return;
+    }
     if (file.type === 'image/jpeg') {
         if (bytes.length < 4 || bytes[0] !== 255 || bytes[1] !== 216 || bytes[2] !== 255) throw unsupported();
         return;
@@ -77,6 +82,10 @@ export class ReactionImageCompressionService implements CompressionService {
             image.src = url;
             await awaitUploadOperation(loaded, signal);
             check(); this.progress?.(25);
+            if (file.type === 'image/gif') {
+                this.progress?.(100);
+                return { file, wasCompressed: false, wasSkipped: true };
+            }
             const dimensions = getReactionResizeDimensions(image.naturalWidth, image.naturalHeight);
             if (dimensions.width === image.naturalWidth && dimensions.height === image.naturalHeight) {
                 this.progress?.(100);

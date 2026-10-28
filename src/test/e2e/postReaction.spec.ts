@@ -49,7 +49,7 @@ test('uploaded shortcode uses canonical wire, rejects whitespace and clears owne
     const editor = page.locator('.tiptap-editor');
     const selectAll = await page.evaluate(() =>
         /Mac|iP(hone|[oa]d)/.test(navigator.platform) ? 'Meta+A' : 'Control+A');
-    await expect(page.locator('input[type=file]')).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp');
+    await expect(page.locator('input[type=file]')).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp,image/gif');
     await expect(page.locator('input[type=file]')).not.toHaveAttribute('multiple');
     await page.locator('input[type=file]').setInputFiles(await imagePayload(page));
     await expect.poll(async () => (await read(page)).isUploading).toBe(false);
@@ -310,8 +310,8 @@ test('Reaction shares Reply button, badge and composer profile geometry', async 
     await page.getByRole('button', { name: 'リアクションする', exact: true }).last().click();
     const preview = page.locator('.reaction-target-preview');
     await expect(preview.locator('.author-name')).toHaveText(h.profileName);
-    await expect(preview.locator('.author-profile img')).toHaveAttribute('src', `${h.profilePicture}?profile=true`);
-    await expect.poll(() => preview.locator('.author-profile img').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+    await expect(preview.locator('.author-profile img[data-avatar-image]')).toHaveAttribute('src', `${h.profilePicture}?profile=true`);
+    await expect.poll(() => preview.locator('.author-profile img[data-avatar-image]').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
     await expect(page.locator('.tiptap-editor .is-editor-empty')).toHaveAttribute('data-placeholder', 'いまどうしてる？');
     for (const width of [800, 360, 320]) {
         await page.setViewportSize({ width, height: 900 });
