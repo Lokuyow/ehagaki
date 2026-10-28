@@ -6,7 +6,12 @@ import { segmentGraphemes } from './utils/graphemeUtils';
 
 export type ReactionValue = { type: 'text'; text: string } | { type: 'customEmoji'; emoji: CustomEmojiSelection };
 export type ReactionInputMode = 'singleValue' | 'uploadedShortcode';
-export interface ReactionMediaContext { items: readonly MediaGalleryItem[]; ownedItemIds: ReadonlySet<string> }
+export interface ReactionMediaContext { items: readonly MediaGalleryItem[]; ownedItemIds: ReadonlySet<string>; originalFileNames: ReadonlyMap<string, string> }
+
+function shortcodeFromFileName(name: string): string {
+    const base = name.replace(/\.[^.]*$/, '');
+    return /[A-Za-z0-9_-]/.test(base) ? base.replace(/[^A-Za-z0-9_-]+/g, '_') : 'emoji';
+}
 
 export function getReactionInputMode(context: ReactionMediaContext): ReactionInputMode {
     const item = context.items[0];
@@ -59,7 +64,9 @@ export function inspectReactionDocument(doc: PMNode, media: boolean | ReactionMe
         let value: ReactionValue | null = null;
         if (getReactionInputMode(media) === 'uploadedShortcode' && !item.isPlaceholder && !inspection.forbidden
             && !/\s/u.test(inspection.text)) {
-            const shortcode = normalizeEmojiShortcode(inspection.text);
+            const shortcode = inspection.text === ''
+                ? shortcodeFromFileName(media.originalFileNames.get(item.id) ?? '')
+                : normalizeEmojiShortcode(inspection.text);
             if (/^[A-Za-z0-9_-]+$/.test(shortcode)) {
                 const candidate: ReactionValue = { type: 'customEmoji', emoji: { shortcode, src: item.src } };
                 try { normalizeReactionValue(candidate); value = candidate; } catch { /* Invalid upload URL. */ }

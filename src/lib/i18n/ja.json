@@ -71,7 +71,7 @@
     }
   },
   "reaction": {
-    "shortcode_hint": "画像のshortcodeを入力してください（例: cat / :cat:）。英数字・-・_のみ使えます。",
+    "shortcode_hint": "ショートコードは任意です。空欄ならファイル名を使います。入力には英数字・-・_のみ使えます（例: cat / :cat:）。",
     "action": "リアクションする",
     "entry": "リアクション",
     "target": "リアクションの対象",
