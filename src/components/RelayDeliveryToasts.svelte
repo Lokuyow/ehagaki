@@ -72,24 +72,23 @@
     }
     .relay-delivery-toast {
         all: unset; box-sizing: border-box; display: flex; align-items: center;
-        flex: 1 1 32px; min-width: 0; height: 100%; padding: 12px 10px; border-radius: 999px;
-        background: var(--dialog-bg, #fff); border: 1px solid var(--border, #8888);
-        box-shadow: 0 2px 8px #0002; cursor: pointer; pointer-events: auto;
+        flex: 1 1 32px; min-width: 0; height: 100%; padding: 12px 7px; border-radius: 999px;
+        cursor: pointer; pointer-events: auto;
         opacity: 1; transition: opacity var(--delivery-fade) ease-out;
         -webkit-tap-highlight-color: transparent;
     }
     .relay-delivery-toast:focus-visible { outline: 2px solid var(--accent-color, #20bc7a); outline-offset: -2px; }
-    .relay-delivery-track { position: relative; display: block; width: 6px; height: 100%; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--text, #888) 12%, transparent); }
+    .relay-delivery-track { position: relative; display: block; width: 18px; height: 100%; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--text, #888) 12%, transparent); }
     .relay-delivery-fill {
         position: absolute; bottom: 0; display: block; width: 100%; height: calc(var(--delivery-ratio) * 100%); border-radius: inherit;
         background: color-mix(in srgb, var(--accent-color, #20bc7a) var(--delivery-strength), #7a9b8c);
         transition: height 240ms ease-out, background-color 240ms ease-out;
     }
     .discovering .relay-delivery-fill { height: 30%; animation: delivery-discover 1.4s ease-in-out infinite alternate; }
-    .complete { animation: delivery-complete 700ms ease-out; }
+    .complete .relay-delivery-fill { animation: delivery-complete 700ms ease-out; }
     .fading { opacity: 0; }
     @keyframes delivery-discover { from { transform: translateY(0); } to { transform: translateY(-230%); } }
-    @keyframes delivery-complete { 40% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-color, #20bc7a) 25%, transparent); } }
+    @keyframes delivery-complete { 40% { filter: brightness(1.35); } }
     @media (prefers-reduced-motion: reduce) {
         .relay-delivery-toast, .relay-delivery-fill { animation: none; }
         .relay-delivery-fill { transition: none; }
