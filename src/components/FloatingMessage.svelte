@@ -12,6 +12,7 @@
         variant?:
             | "pointer"
             | "top-right"
+            | "parent-top"
             | "container-top-right"
             | "anchor-bottom-right"
             | "anchor-center";
@@ -181,7 +182,7 @@
 </script>
 
 {#if show || fadeOutDuration > 0}
-    <Portal to={overlayTarget}>
+    <Portal to={overlayTarget} disabled={variant === "parent-top"}>
         {#if show}
             <div
                 bind:this={container}
@@ -232,7 +233,33 @@
         top: 16px;
         right: 16px;
         max-width: min(360px, calc(100vw - 32px));
+        max-height: calc(100dvh - 32px);
+        box-sizing: border-box;
+        overflow: clip;
+        contain: paint;
         white-space: normal;
+    }
+
+    /* The positioned parent owns these coordinates from the first render. */
+    .floating-message.parent-top {
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        translate: -50% 0;
+        max-width: min(360px, calc(100% - 24px));
+        max-height: calc(100% - 24px);
+        box-sizing: border-box;
+        overflow: clip;
+        contain: paint;
+        white-space: normal;
+    }
+
+    .floating-message.top-right .floating-message-body,
+    .floating-message.top-right .floating-message-content,
+    .floating-message.parent-top .floating-message-body,
+    .floating-message.parent-top .floating-message-content {
+        min-width: 0;
+        overflow-wrap: anywhere;
     }
 
     .floating-message.container-top-right {

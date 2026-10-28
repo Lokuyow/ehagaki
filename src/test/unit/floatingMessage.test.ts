@@ -68,6 +68,14 @@ describe("FloatingMessage", () => {
         expect(message.getAttribute("style") ?? "").not.toContain("left:");
     });
 
+    it("keeps a parent-top toast inside its render target from the first render", () => {
+        const { container } = render(FloatingMessage, { props: { show: true, variant: "parent-top" } });
+        const message = screen.getByRole("status");
+        expect(container.contains(message)).toBe(true);
+        expect(message.classList.contains("parent-top")).toBe(true);
+        expect(message.getAttribute("style") ?? "").not.toMatch(/left:|top:/);
+    });
+
     it("positions an anchored toast below with the requested right inset", async () => {
         const anchor = document.createElement("div");
         document.body.append(anchor);

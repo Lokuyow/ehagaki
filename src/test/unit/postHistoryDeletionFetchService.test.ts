@@ -56,7 +56,7 @@ describe("PostHistoryDeletionFetchService", () => {
         rxNostrMock.use.mockReturnValue({
             subscribe: ({ next, complete }: Record<string, any>) => {
                 next({ event: deletionEvent, from: "wss://relay.example.com" });
-                complete();
+                queueMicrotask(complete);
                 return { unsubscribe: vi.fn() };
             },
         });

@@ -187,6 +187,7 @@
         copyNeventUi.resetState();
         hideBroadcastFloatingMessage();
         hideExportFloatingMessage();
+        hideRelatedEventsResultMessage();
         cancelExport();
         showImageFullscreen = false;
         fullscreenMediaItems = [];
@@ -312,6 +313,10 @@
         );
     }
     const postHistoryThreadGraph = usePostHistoryThreadGraph({
+        onRelatedEventsRefreshed: (status) => {
+            if (status === "success" || status === "partial") showRelatedEventsResultMessage();
+        },
+        onDeletedPost: (eventId, deletedAt, deletionEventId) => history.patchDeletedPost(eventId, deletedAt, deletionEventId),
         getShow: () => !destroyed && show,
         getSessionOpen: () => sessionOpen ?? active,
         getPubkeyHex: () => destroyed ? null : pubkeyHex,
@@ -414,6 +419,39 @@
     });
     let exportAbortController: AbortController | undefined;
     let exportPubkeyHex: string | undefined;
+    let showRelatedEventsResult = $state(false);
+    let relatedEventsMessageKey = $state<"postHistory.relatedEventsChecking" | "postHistory.relatedEventsApplied">("postHistory.relatedEventsApplied");
+    let relatedEventsResultTimeout: ReturnType<typeof setTimeout> | undefined;
+
+    function hideRelatedEventsResultMessage(): void {
+        if (relatedEventsResultTimeout !== undefined) {
+            clearTimeout(relatedEventsResultTimeout);
+            relatedEventsResultTimeout = undefined;
+        }
+        showRelatedEventsResult = false;
+    }
+
+    function showRelatedEventsResultMessage(key: typeof relatedEventsMessageKey = "postHistory.relatedEventsApplied"): void {
+        hideRelatedEventsResultMessage();
+        relatedEventsMessageKey = key;
+        showRelatedEventsResult = true;
+        if (key === "postHistory.relatedEventsApplied") {
+            relatedEventsResultTimeout = setTimeout(hideRelatedEventsResultMessage, 1800);
+        }
+    }
+
+    async function handleRefreshRelatedEvents(post: PostHistoryRecord, nodeEventId = post.eventId): Promise<void> {
+        const owned = captureOperation();
+        showRelatedEventsResultMessage("postHistory.relatedEventsChecking");
+        try {
+            await postHistoryThreadGraph.refreshRelatedEvents(post, nodeEventId);
+        } finally {
+            if (owned() && relatedEventsMessageKey === "postHistory.relatedEventsChecking") {
+                hideRelatedEventsResultMessage();
+            }
+        }
+    }
+
     let showExportFloatingMessage = $state(false);
     let exportFloatingMessageKey = $state<
         | "postHistory.exportComplete"
@@ -759,6 +797,7 @@
         copyNeventUi.resetState();
         hideBroadcastFloatingMessage();
         hideExportFloatingMessage();
+        hideRelatedEventsResultMessage();
         postActionUi.resetDeleteConfirmation();
         importDialogOpen = false;
         fullScan.setOpen(false);
@@ -812,6 +851,7 @@
         copyNeventUi.hideCopyFloatingMessage();
         hideBroadcastFloatingMessage();
         hideExportFloatingMessage();
+        hideRelatedEventsResultMessage();
         cancelExport();
         showImageFullscreen = false;
         fullscreenMediaItems = [];
@@ -1339,6 +1379,7 @@
         resetPendingDeletionRequests();
         profileSyncCoordinator.dispose();
         hideExportFloatingMessage();
+        hideRelatedEventsResultMessage();
     });
 
     $effect(() => {
@@ -2600,6 +2641,9 @@
 
 {#if show}
 <div class="post-history-tab-content">
+    <FloatingMessage show={showRelatedEventsResult} variant="parent-top">
+        <div>{$_(relatedEventsMessageKey)}</div>
+    </FloatingMessage>
     {#if sensitivePayloadDeletionOmitted}
         <p role="status">{$_("postHistory.sensitivePayloadDeletionOmitted")}</p>
     {/if}
@@ -3254,7 +3298,7 @@
                                         </div>
                                     </div>
                                 {/if}
-                                <PostHistoryThreadGraphPanel onReactionPost={onReactionPost ? handleReactionPost : undefined}
+                                <PostHistoryThreadGraphPanel onRefreshRelatedEvents={(nodeEventId) => void handleRefreshRelatedEvents(post, nodeEventId)} onReactionPost={onReactionPost ? handleReactionPost : undefined}
                                     state={graphState}
                                     section="parent"
                                     previewModelByEventId={relatedPreviewModelByEventId}
@@ -3619,30 +3663,11 @@
                                                         />
                                                         <DropdownMenu.Item
                                                             class="menu-action-button"
-                                                            disabled={graphState
-                                                                .repliesActionState
-                                                                .status ===
-                                                                "loading"}
-                                                            onSelect={() =>
-                                                                handleRepliesAction(
-                                                                    post,
-                                                                )}
+                                                            disabled={graphState.relatedEventsStatus === "loading"}
+                                                            onSelect={() => void handleRefreshRelatedEvents(post)}
                                                         >
-                                                            <div
-                                                                class={`${
-                                                                    graphState
-                                                                        .repliesActionState
-                                                                        .visible
-                                                                        ? "collapse-content-icon"
-                                                                        : "find_in_page-icon"
-                                                                } svg-icon`}
-                                                                aria-hidden="true"
-                                                            ></div>
-                                                            <span>
-                                                                {getRepliesActionLabel(
-                                                                    post,
-                                                                )}
-                                                            </span>
+                                                            <div class="find_in_page-icon svg-icon" aria-hidden="true"></div>
+                                                            <span>{$_("postHistory.checkRelatedEvents")}</span>
                                                         </DropdownMenu.Item>
                                                         {#if history.isSearchMode}
                                                             <DropdownMenu.Item
@@ -3715,6 +3740,9 @@
                                                 {/if}
                                             {/snippet}
                                         </PostHistoryPreviewFooter>
+                                        {#if graphState.relatedEventsStatus === "failed"}
+                                            <p role="status">{$_("postHistory.relatedEventsFailed")}</p>
+                                        {/if}
                                         {#if graphState.reactionSummary.totalCount > 0 && isReactionsExpanded(post)}
                                             <PostHistoryReactionDetails
                                                 readModel={graphState.reactionReadModel}
@@ -3722,7 +3750,7 @@
                                                 emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                             />
                                         {/if}
-                                    <PostHistoryThreadGraphPanel onReactionPost={onReactionPost ? handleReactionPost : undefined}
+                                    <PostHistoryThreadGraphPanel onRefreshRelatedEvents={(nodeEventId) => void handleRefreshRelatedEvents(post, nodeEventId)} onReactionPost={onReactionPost ? handleReactionPost : undefined}
                                         state={graphState}
                                         section="children"
                                         previewModelByEventId={relatedPreviewModelByEventId}
@@ -4129,7 +4157,7 @@
 {/snippet}
 
 <style>
-    .post-history-tab-content { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; width: 100%; }
+    .post-history-tab-content { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; width: 100%; }
     .post-history-heading {
         display: flex;
         align-items: stretch;

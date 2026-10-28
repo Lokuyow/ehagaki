@@ -1,3 +1,5 @@
+import { fetchPostHistoryRelatedEvents, type RelatedEventsTask, type RelatedEventsStatus } from "../postHistoryRelatedEventsFetchService";
+import { isValidDeletionRequestForTarget } from "../postHistoryDeletionUtils";
 import { onDestroy, untrack } from "svelte";
 import { postHistoryLocalRelayService } from "../postHistoryLocalRelayService";
 import type { RxNostr } from "rx-nostr";
@@ -136,6 +138,7 @@ export interface PostHistoryThreadGraphNodeState {
     parentNodeState: PostHistoryThreadGraphNodeState | null;
     parentExpansion: PostHistoryThreadGraphExpansionState;
     parentAlreadyInPath: boolean;
+    relatedEventsStatus?: RelatedEventsStatus | "loading";
     repliesActionState: PostHistoryThreadGraphRepliesActionState;
     replyNodeStates: PostHistoryThreadGraphNodeState[];
     isOwnReply: boolean;
@@ -149,6 +152,7 @@ export interface PostHistoryThreadGraphAnchorState {
     parentNode: PostHistoryThreadGraphNode | null;
     parentNodeState: PostHistoryThreadGraphNodeState | null;
     parentExpansion: PostHistoryThreadGraphExpansionState;
+    relatedEventsStatus?: RelatedEventsStatus | "loading";
     repliesActionState: PostHistoryThreadGraphRepliesActionState;
     reactionSummary: PostHistoryReactionSummary;
     reactionReadModel: PostHistoryReactionReadModel;
@@ -157,6 +161,9 @@ export interface PostHistoryThreadGraphAnchorState {
 }
 
 interface UsePostHistoryThreadGraphParams {
+    onRelatedEventsRefreshed?: (status: RelatedEventsStatus) => void;
+    onDeletedPost?: (eventId: string, deletedAt: number, deletionEventId: string) => void;
+    relatedEventsFetch?: typeof fetchPostHistoryRelatedEvents;
     getShow: () => boolean;
     getSessionOpen?: () => boolean;
     getPubkeyHex: () => string | null | undefined;
@@ -299,6 +306,9 @@ export function resolveValidPostHistoryParentNode(input: {
 }
 
 export function usePostHistoryThreadGraph({
+    onRelatedEventsRefreshed,
+    onDeletedPost,
+    relatedEventsFetch = fetchPostHistoryRelatedEvents,
     getShow,
     getSessionOpen = getShow,
     getPubkeyHex,
@@ -356,6 +366,81 @@ export function usePostHistoryThreadGraph({
     let reactionReadModelByParentId =
         $state.raw<Record<string, PostHistoryReactionReadModel>>({});
     const taskTracker = createPostHistoryThreadGraphTaskTracker();
+    let relatedEventsStatuses = $state<Record<string, RelatedEventsStatus | "loading">>({});
+    const relatedTasks = new Map<string, { cancel(): void; promise: Promise<void> }>();
+
+    function refreshRelatedEvents(post: PostHistoryRecord, nodeEventId = post.eventId): Promise<void> {
+        const existing = relatedTasks.get(nodeEventId);
+        if (existing) return existing.promise;
+        const node = resolveChildParentNode(post, nodeEventId);
+        const rxNostr = getRxNostr();
+        if (!node || !rxNostr) {
+            relatedEventsStatuses = { ...relatedEventsStatuses, [nodeEventId]: "failed" };
+            return Promise.resolve();
+        }
+        const owner = getPubkeyHex();
+        const requestId = taskTracker.getRequestId();
+        let cancelled = false;
+        let task: RelatedEventsTask | undefined;
+        const isActive = () => !cancelled && getShow() && owner === getPubkeyHex()
+            && rxNostr === getRxNostr() && requestId === taskTracker.getRequestId();
+        relatedEventsStatuses = { ...relatedEventsStatuses, [nodeEventId]: "loading" };
+        const requestStartedAt = Date.now();
+        const operation = { cancel() { cancelled = true; task?.cancel(); }, promise: Promise.resolve() };
+        relatedTasks.set(nodeEventId, operation);
+        operation.promise = (async () => {
+            try {
+                const generation = await getPostHistoryChildWriteGeneration(ehagakiDb);
+                const [replies, reactions] = await Promise.all([
+                    directReplyRecordsAdapterImpl.getDirectReplyRecords(nodeEventId),
+                    selectPostHistoryReactionRecords(nodeEventId, reactionRecordsAdapterImpl),
+                ]);
+                if (!isActive()) return;
+                task = relatedEventsFetch(rxNostr, {
+                    event: node.event, knownChildren: [...replies, ...reactions].map(record => ({ event: toEventFromReplyRecord(record), relayUrls: record.relayUrls })),
+                    relayHints: getChildrenRelayHints(post, node), relayConfig: getRelayConfig(),
+                });
+                const result = await task.promise;
+                if (!isActive() || result.status === "cancelled") return;
+                await deletionRequestsRepositoryImpl.upsertValidDeletionRequests({ targetEvents: result.targets, deletionEvents: result.deletions, fetchedAt: result.fetchedAt });
+                if (!isActive()) return;
+                await loadDeletedTargetsFromRepository(result.targets);
+                if (!isActive()) return;
+                for (const target of result.targets) {
+                    const deletion = result.deletions.find(item => isValidDeletionRequestForTarget(item.event, target));
+                    if (!deletion) continue;
+                    await postHistoryRepository.markDeleted(target.id, deletion.event.id, deletion.event.created_at * 1000);
+                    if (!isActive()) return;
+                    onDeletedPost?.(target.id, deletion.event.created_at * 1000, deletion.event.id);
+                }
+                const visible = result.events.filter(item => !isDeletedEvent(item.event.pubkey, item.event.id));
+                if (visible.length > 0) await childInteractionsRepositoryImpl.upsertChildInteractions({ parentEventId: nodeEventId, events: visible,
+                    reactionTarget: { eventId: nodeEventId, targetAuthorPubkey: node.event.pubkey, targetKind: node.event.kind },
+                    fetchedAt: result.repliesComplete ? result.fetchedAt : null, expectedChildGeneration: generation });
+                if (!isActive()) return;
+                await directReplyFetchMetadataRepositoryImpl.save({ parentEventId: nodeEventId, completeness: result.repliesComplete ? "complete" : "partial", fetchedAt: result.fetchedAt, requestStartedAt });
+                if (!isActive()) return;
+                const targetPost: PostHistoryRecord = { ...post, id: nodeEventId, eventId: nodeEventId, pubkeyHex: node.event.pubkey,
+                    kind: node.event.kind, content: node.event.content, tags: node.event.tags, createdAt: node.event.created_at,
+                    postedAt: node.event.created_at * 1000, rawEvent: node.event };
+                await loadCachedChildInteractionStateForPosts([targetPost], [nodeEventId], isActive);
+                if (!isActive()) return;
+                const saved = await filterVisibleReplyRecords(await directReplyRecordsAdapterImpl.getDirectReplyRecords(nodeEventId));
+                if (!isActive()) return;
+                await upsertReplyRecords(node, saved, ["reply-db"], { resolveProfiles: false });
+                if (!isActive()) return;
+                updateExpansion(post.eventId, nodeEventId, state => buildChildrenLoadedExpansionState(state, { visibleChildren: true, lastFetchedChildrenAt: result.repliesComplete ? result.fetchedAt : null }));
+                relatedEventsStatuses = { ...relatedEventsStatuses, [nodeEventId]: result.status };
+                onRelatedEventsRefreshed?.(result.status);
+            } catch {
+                if (isActive()) relatedEventsStatuses = { ...relatedEventsStatuses, [nodeEventId]: "failed" };
+            } finally {
+                if (relatedTasks.get(nodeEventId) === operation) relatedTasks.delete(nodeEventId);
+            }
+        })();
+        return operation.promise;
+    }
+
 
     function rebuildReactionReadModelForParent(parentEventId: string): void {
         const records = reactionRecordsByParentId[parentEventId] ?? [];
@@ -730,6 +815,7 @@ export function usePostHistoryThreadGraph({
             : [];
 
         return {
+            relatedEventsStatus: relatedEventsStatuses[nodeEventId],
             anchorEventId,
             node,
             parentTargetId,
@@ -798,6 +884,7 @@ export function usePostHistoryThreadGraph({
             : [];
 
         return {
+            relatedEventsStatus: relatedEventsStatuses[post.eventId],
             anchorEventId: post.eventId,
             parentTargetId,
             parentNode: visibleParentNode,
@@ -2308,6 +2395,7 @@ export function usePostHistoryThreadGraph({
     async function loadCachedChildInteractionStateForPosts(
         posts: PostHistoryRecord[],
         parentEventIds?: string[],
+        isCurrent: () => boolean = () => true,
     ): Promise<void> {
         if (!getShow() || posts.length === 0) {
             return;
@@ -2324,7 +2412,7 @@ export function usePostHistoryThreadGraph({
 
         await coordinateThreadGraphBatchLifecycle({
             items: targetParentIds,
-            isActive: () => activeRequestId === taskTracker.getRequestId() && getShow(),
+            isActive: () => activeRequestId === taskTracker.getRequestId() && getShow() && isCurrent(),
             run: async ({ ensureActive }) => {
                 const preloadTargets = targetParentIds.flatMap((parentEventId) => {
                     const post = postByEventId.get(parentEventId);
@@ -3006,6 +3094,10 @@ export function usePostHistoryThreadGraph({
     });
 
     function cancelCurrentGraphFetches(): void {
+        relatedTasks.forEach(task => task.cancel());
+        relatedTasks.clear();
+        relatedEventsStatuses = {};
+
         taskTracker.incrementRequestId();
         resolver.invalidateScope(parentResolverScopeKey);
         taskTracker.cancelAndClearFetchTasks();
@@ -3018,6 +3110,16 @@ export function usePostHistoryThreadGraph({
         parentLoadingIndicator.clearAll();
         expansionByAnchorNodeKey = Object.fromEntries(Object.entries(expansionByAnchorNodeKey).map(([key, expansion]) => [key, { ...expansion, loadingParent: false, loadingChildren: false, revalidatingParent: false, revalidatingChildren: false, showParentLoadingIndicator: false }]));
     }
+
+    $effect(() => {
+        getPubkeyHex();
+        getRxNostr();
+        return () => {
+            relatedTasks.forEach(task => task.cancel());
+            relatedTasks.clear();
+            relatedEventsStatuses = {};
+        };
+    });
 
     function resetState(): void {
         cancelCurrentGraphFetches();
@@ -3067,6 +3169,7 @@ export function usePostHistoryThreadGraph({
 
     return {
         getAnchorState,
+        refreshRelatedEvents,
         toggleParent,
         retryParent,
         toggleNodeParent,

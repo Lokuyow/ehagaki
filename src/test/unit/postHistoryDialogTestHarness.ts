@@ -1,3 +1,4 @@
+import { buildPostHistoryDirectReplyParentContext } from "../../lib/postHistoryDirectReplyRelationUtils";
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 import { tick } from 'svelte';
@@ -120,6 +121,10 @@ const hoisted = vi.hoisted(() => {
             'postHistory.replyTargetDeleted': '返信先削除済み',
             'postHistory.showReplyTarget': '返信先を見る',
             'postHistory.hideReplyTarget': '返信先を隠す',
+            'postHistory.checkRelatedEvents': '関連イベントを確認',
+            'postHistory.relatedEventsChecking': '確認中',
+            'postHistory.relatedEventsApplied': '完了',
+            'postHistory.relatedEventsFailed': '関連イベントを取得できませんでした',
             'postHistory.checkReplies': '返信を確認',
             'postHistory.recheckReplies': '返信を再確認',
             'postHistory.checkingReplies': '返信を確認中',
@@ -149,6 +154,7 @@ const hoisted = vi.hoisted(() => {
         mockTranslate,
         translationOverrides,
         repositoryMock: {
+            markDeleted: vi.fn(),
             getByEventId: vi.fn(),
             getPage: vi.fn(),
             getLatestVisibleChunk: vi.fn(),
@@ -440,6 +446,31 @@ vi.mock('../../lib/profileMetadataCache.svelte', () => ({
             ])),
         )),
         subscribe: vi.fn(() => vi.fn()),
+    },
+}));
+
+// Keep reply-focused fixtures on the network boundary while the menu uses the
+// new combined operation. Transport budgeting is exercised by its own tests.
+vi.mock('../../lib/postHistoryRelatedEventsFetchService', () => ({
+    fetchPostHistoryRelatedEvents: (rx: unknown, params: any) => {
+        const replyTask = hoisted.replyFetchServiceMock.fetchDirectReplies(rx, {
+            eventId: params.event.id, createdAt: params.event.created_at,
+            relayHints: params.relayHints, relayConfig: params.relayConfig,
+            parents: [buildPostHistoryDirectReplyParentContext({ event: params.event })],
+        });
+        let deletionTask: any;
+        const promise = (async () => {
+            const result = await replyTask.promise;
+            const events = result.events ?? [];
+            const targets = [params.event, ...params.knownChildren.map((x: any) => x.event), ...events.map((x: any) => x.event)];
+            deletionTask = hoisted.deletionFetchServiceMock.fetchDeletionRequests(rx, {
+                targets: targets.map((event: any) => ({ event })), relayHints: params.relayHints,
+            });
+            const deletions = await deletionTask.promise;
+            return { status: result.status ?? 'success', events, deletions: deletions.events ?? [], targets,
+                fetchedAt: result.fetchedAt, repliesComplete: !result.status || result.status === 'success' };
+        })();
+        return { promise, cancel() { replyTask.cancel?.(); deletionTask?.cancel?.(); } };
     },
 }));
 

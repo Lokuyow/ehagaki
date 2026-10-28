@@ -57,6 +57,7 @@
         onToggleReaction?: (eventId: string) => void;
         onToggleParent?: (nodeEventId: string) => void;
         onRetryParent?: (nodeEventId: string) => void;
+        onRefreshRelatedEvents?: (nodeEventId: string) => void;
         onToggleChildren?: (nodeEventId: string) => void;
         onRetryChildren?: (nodeEventId: string) => void;
         onCopyPointerDown?: (
@@ -109,6 +110,7 @@
         onToggleReaction = undefined,
         onToggleParent = undefined,
         onRetryParent = undefined,
+        onRefreshRelatedEvents = undefined,
         onToggleChildren = undefined,
         onRetryChildren = undefined,
         onCopyPointerDown = undefined,
@@ -231,6 +233,7 @@
                     {onToggleReaction}
                     {onToggleParent}
                     {onRetryParent}
+                    {onRefreshRelatedEvents}
                     {onToggleChildren}
                     {onRetryChildren}
                     {onCopyPointerDown}
@@ -381,19 +384,14 @@
                         {/if}
                         <DropdownMenu.Item
                             class="menu-action-button"
-                            disabled={state.repliesActionState.status ===
-                                "loading"}
-                            onSelect={handleRepliesAction}
+                            disabled={state.relatedEventsStatus === "loading"}
+                            onSelect={() => onRefreshRelatedEvents?.(state.node.eventId)}
                         >
                             <div
-                                class={`${
-                                    state.repliesActionState.visible
-                                        ? "collapse-content-icon"
-                                        : "find_in_page-icon"
-                                } svg-icon`}
+                                class="find_in_page-icon svg-icon"
                                 aria-hidden="true"
                             ></div>
-                            <span>{getRepliesActionLabel()}</span>
+                            <span>{$_("postHistory.checkRelatedEvents")}</span>
                         </DropdownMenu.Item>
                         <PostHistoryRecordActionItems
                             order="raw-json-first"
@@ -416,6 +414,10 @@
         </PostHistoryThreadNode>
     </div>
 
+    {#if state.relatedEventsStatus === "failed"}
+        <p role="status">{$_("postHistory.relatedEventsFailed")}</p>
+    {/if}
+
     {#if state.repliesActionState.visible && state.replyNodeStates.length > 0}
         <div class="post-history-thread-node-children">
             {#each state.replyNodeStates as replyState (replyState.node.eventId)}
@@ -437,6 +439,7 @@
                     {onToggleReaction}
                     {onToggleParent}
                     {onRetryParent}
+                    {onRefreshRelatedEvents}
                     {onToggleChildren}
                     {onRetryChildren}
                     {onCopyPointerDown}

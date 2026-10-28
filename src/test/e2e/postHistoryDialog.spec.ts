@@ -3913,7 +3913,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         const actionMenu = visiblePostHistoryActionMenu(page);
         await expect(actionMenu.getByRole('menuitem')).toHaveText([
             'nostterで開く',
-            '返信 1件を表示',
+            '関連イベントを確認',
             'イベントIDをコピー',
             'イベントJSONを表示',
             '削除',
@@ -3978,7 +3978,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         const actionMenu = visiblePostHistoryActionMenu(page);
         await expect(actionMenu.getByRole('menuitem')).toHaveText([
             'nostterで開く',
-            '返信を確認',
+            '関連イベントを確認',
             'イベントJSONを表示',
             'イベントIDをコピー',
             'ブロードキャスト',
@@ -4201,3 +4201,61 @@ test('shared reply and quote actions use the event on each card', async ({ page 
         '8'.repeat(64),
     );
 });
+
+for (const { width, height, largeText } of [
+    { width: 360, height: 800, largeText: false },
+    { width: 390, height: 800, largeText: false },
+    { width: 1280, height: 800, largeText: false },
+    { width: 360, height: 240, largeText: true },
+]) {
+    test(`related event toast starts inside the history panel at ${width}x${height}`, async ({ page }) => {
+        await page.setViewportSize({ width, height });
+        await page.goto('post-history-dialog-playwright.html?related-events-toast=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__!);
+        const card = page.locator(`[data-post-history-event-id="${harness.scrolledPlainPostEventId}"]`);
+        await card.getByRole('button', { name: 'アクションを表示' }).click();
+        if (largeText) await page.addStyleTag({ content: '.floating-message-content { font-size: 3rem !important; }' });
+        await page.evaluate(() => {
+            const samples: unknown[] = [];
+            Reflect.set(window, '__TOAST_BOUNDS__', samples);
+            const sample = () => {
+                const toast = document.querySelector<HTMLElement>('.floating-message.parent-top');
+                const bounds = toast?.getBoundingClientRect();
+                const panel = toast?.closest('.post-history-tab-content')?.getBoundingClientRect();
+                const list = document.querySelector('.post-history-container');
+                samples.push({
+                    panel: panel ? [panel.left, panel.top, panel.width, panel.height] : null,
+                    visible: !!toast,
+                    list: list ? [list.scrollWidth, list.clientWidth, list.scrollHeight, list.clientHeight] : null,
+                    toast: toast && bounds ? [bounds.x, bounds.y, bounds.width, bounds.height, toast.scrollWidth, toast.clientWidth, toast.scrollHeight, toast.clientHeight] : null,
+                });
+            };
+            sample();
+            const observer = new MutationObserver(sample);
+            observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+            const frame = () => { sample(); if (samples.length < 500) requestAnimationFrame(frame); else observer.disconnect(); };
+            requestAnimationFrame(frame);
+        });
+        await page.getByRole('menuitem', { name: '関連イベントを確認' }).click();
+        const toast = page.locator('.floating-message.parent-top');
+        await expect(toast).toBeVisible();
+        await expect(toast).toBeHidden();
+        const samples = await page.evaluate(() => Reflect.get(window, '__TOAST_BOUNDS__'));
+        expect(samples.some((x: any) => x.visible)).toBe(true);
+        for (const sample of samples.filter((x: any) => x.visible)) {
+            // Observe the toast's owning panel, independently of closing menu portals.
+            expect(sample.list[1]).toBe(samples[0].list[1]);
+            expect(sample.list[3]).toBe(samples[0].list[3]);
+            expect(sample.panel).not.toBeNull();
+            expect(sample.toast[0]).toBeGreaterThanOrEqual(sample.panel[0]);
+            expect(sample.toast[0] + sample.toast[2]).toBeLessThanOrEqual(sample.panel[0] + sample.panel[2]);
+            expect(sample.toast[1]).toBeCloseTo(sample.panel[1] + 12, 0);
+            expect(sample.toast[1] + sample.toast[3]).toBeLessThanOrEqual(sample.panel[1] + sample.panel[3]);
+            expect(sample.toast[0]).toBeGreaterThanOrEqual(0);
+            expect(sample.toast[0] + sample.toast[2]).toBeLessThanOrEqual(width);
+            expect(sample.toast[1] + sample.toast[3]).toBeLessThanOrEqual(height);
+            expect(sample.list[0]).toBeLessThanOrEqual(sample.list[1]);
+        }
+    });
+}
