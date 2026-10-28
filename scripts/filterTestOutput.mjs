@@ -26,6 +26,7 @@ function printSummary(line) {
                 'hoverMatches', 'hoverMedia', 'pointerFine', 'settingsButtonDisabled',
                 'hostLightClass', 'requestedYear', 'requestedMonth', 'requestedDay',
                 'documentReadyState',
+                'mediaListingActions', 'mediaListingRequests', 'mediaListingSignatures',
             ]);
             const safe = Object.fromEntries(Object.entries(metrics).filter(([key, value]) =>
                 allowed.has(key) && typeof value === 'number' && Number.isFinite(value)));

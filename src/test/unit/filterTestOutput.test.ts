@@ -37,6 +37,7 @@ describe('CI test output filtering', () => {
                 'CI_METRICS {"testLine":87,"year":2026,"month":10,"day":22,"scrollTop":12.5,"secret":"private post body","count":"private"}',
                 'CI_METRICS {"testLine":"private title","token":123456,"rows":["private"]}',
                 '\x1b[1A runner progress CI_METRICS {"testLine":123,"count":8,"token":"private"}',
+                'CI_METRICS {"mediaListingActions":12,"mediaListingRequests":13,"mediaListingSignatures":13,"payload":"private"}',
             ].join('\n'),
         });
         expect(result.status).toBe(0);
@@ -54,6 +55,7 @@ describe('CI test output filtering', () => {
             'CI metrics: {"testLine":87,"year":2026,"month":10,"day":22,"scrollTop":12.5}',
             'CI metrics: {}',
             'CI metrics: {"testLine":123,"count":8}',
+            'CI metrics: {"mediaListingActions":12,"mediaListingRequests":13,"mediaListingSignatures":13}',
             '',
         ].join('\n'));
     });

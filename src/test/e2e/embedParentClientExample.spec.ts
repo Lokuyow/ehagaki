@@ -458,6 +458,7 @@ test("applies a signed preloaded event through the iframe composer context proto
     const reply = nip19.neventEncode({ id: event.id, author: event.pubkey });
 
     await page.goto("/ehagaki/public/embed-parent-client-example.html");
+    await expect(page.locator("#handshake-status")).toContainText("ready", { timeout: 30_000 });
     const frame = page.frameLocator("#ehagaki-iframe");
     await expect(frame.locator(".tiptap-editor")).toBeVisible();
 

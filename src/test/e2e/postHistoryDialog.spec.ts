@@ -4238,7 +4238,11 @@ for (const { width, height, largeText } of [
             const frame = () => { sample(); if (samples.length < 500) requestAnimationFrame(frame); else observer.disconnect(); };
             requestAnimationFrame(frame);
         });
-        await page.getByRole('menuitem', { name: '関連イベントを確認' }).click();
+        const checkRelatedEvents = page.getByRole('menuitem', { name: '関連イベントを確認' });
+        if (largeText) {
+            await checkRelatedEvents.focus();
+            await page.keyboard.press('Enter');
+        } else await checkRelatedEvents.click();
         const toast = page.locator('.floating-message.parent-top');
         await expect(toast).toBeVisible();
         await expect(toast).toBeHidden();
