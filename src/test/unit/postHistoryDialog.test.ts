@@ -4773,7 +4773,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => expect(screen.queryByText('取得した関連イベントを反映しました')).toBeNull(), { timeout: 3000 });
     });
 
-    it('[direct-replies] 返信確認loading中はfooterに返信バッジを出さずmenu項目だけをdisabled表示する', async () => {
+    it.each(['post', 'thread'] as const)('[related-events] %s keeps the menu text unchanged while loading', async (target) => {
         const post = createRecord({
             eventId: '1'.repeat(64),
             rawEvent: {
@@ -4798,6 +4798,13 @@ describe('PostHistoryDialog', () => {
             cancel: vi.fn(),
         });
 
+        if (target === 'thread') {
+            const reply = createDirectReplyEventRecord({ content: '取得中メニューの返信', fetchedAt: Date.now() });
+            replyEventsRepositoryMock.getDirectReplies.mockImplementation(async (eventId: string) =>
+                eventId === post.eventId ? [reply] : [],
+            );
+        }
+
         render(PostHistoryDialog, {
             props: {
                 show: true,
@@ -4808,15 +4815,20 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await clickPostRepliesMenuAction();
-        await openPostActionMenu();
+        let card: HTMLElement | undefined;
+        if (target === 'thread') {
+            await fireEvent.click(await screen.findByRole('button', { name: '返信 1件を表示' }));
+            card = (await screen.findByText('取得中メニューの返信')).closest('.post-history-related-card') as HTMLElement;
+        }
+        await clickPostRepliesMenuAction('関連イベントを確認', card);
+        await openPostActionMenu(card);
 
         await waitFor(() => {
-            const loadingAction = screen.getByRole('menuitem', { name: '関連イベントを確認中' });
+            const loadingAction = screen.getByRole('menuitem', { name: '関連イベントを確認' });
             expect(loadingAction.getAttribute('data-disabled')).not.toBeNull();
             expect(loadingAction.querySelector('.find_in_page-icon')).toBeTruthy();
         });
-        expect(screen.queryByRole('button', { name: '関連イベントを確認中' })).toBeNull();
+        expect(screen.queryByText('関連イベントを確認中')).toBeNull();
         expect(screen.queryByText('返信を取得中...')).toBeNull();
 
         deferredFetch.resolve({
@@ -4826,7 +4838,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByRole('menuitem', { name: '関連イベントを確認' })).toBeTruthy();
+            expect(screen.getByRole('menuitem', { name: '関連イベントを確認' }).getAttribute('data-disabled')).toBeNull();
         });
         expect(screen.queryByText('この範囲では返信が見つかりませんでした')).toBeNull();
         expect(screen.queryByRole('button', { name: '再試行' })).toBeNull();

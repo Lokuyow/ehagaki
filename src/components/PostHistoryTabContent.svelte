@@ -3651,7 +3651,7 @@
                                                             onSelect={() => void postHistoryThreadGraph.refreshRelatedEvents(post)}
                                                         >
                                                             <div class="find_in_page-icon svg-icon" aria-hidden="true"></div>
-                                                            <span>{$_(graphState.relatedEventsStatus === "loading" ? "postHistory.checkingRelatedEvents" : "postHistory.checkRelatedEvents")}</span>
+                                                            <span>{$_("postHistory.checkRelatedEvents")}</span>
                                                         </DropdownMenu.Item>
                                                         {#if history.isSearchMode}
                                                             <DropdownMenu.Item
