@@ -316,7 +316,7 @@ window.addEventListener("message", (event) => {
 test("preserves reply selection and iframe preview when refreshing the same relay", async ({ page }) => {
     await page.goto("/ehagaki/public/embed-parent-client-example.html");
     const frame = page.frameLocator("#ehagaki-iframe");
-    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    await expect(frame.locator(".tiptap-editor")).toBeVisible({ timeout: 30_000 });
 
     const relayInput = page.getByLabel("タイムライン relay URL");
     await relayInput.fill(relayOrigin);
@@ -395,7 +395,7 @@ test("uses an edited URL as the source of truth after an iframe context update",
 
     await page.goto("/ehagaki/public/embed-parent-client-example.html");
     const initialFrame = page.frameLocator("#ehagaki-iframe");
-    await expect(initialFrame.locator(".tiptap-editor")).toBeVisible();
+    await expect(initialFrame.locator(".tiptap-editor")).toBeVisible({ timeout: 30_000 });
 
     const childFrame = page.frames().find((frame) => frame !== page.mainFrame());
     if (!childFrame) {

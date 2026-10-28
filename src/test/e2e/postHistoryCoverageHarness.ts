@@ -7,7 +7,8 @@ import { ehagakiDb, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { postHistoryRelayCoverageRepository } from "../../lib/storage/postHistoryRelayCoverageRepository";
 import { postHistoryEvidenceTables } from "../../lib/storage/postHistoryPersistenceCoordinator";
 import { buildPostHistoryVisibleKindsKey } from "../../lib/storage/postHistoryVisibleRangeRepository";
-import { POST_HISTORY_FETCH_KINDS } from "../../lib/postHistoryRelayFetchService";
+import { POST_HISTORY_FETCH_KINDS, postHistoryRelayFetchService } from "../../lib/postHistoryRelayFetchService";
+import { RelayOperation } from "../../lib/relay/operation";
 import { postHistoryImportedRangesRepository, DexiePostHistoryImportedRangesRepository } from "../../lib/storage/postHistoryImportedRangesRepository";
 import { getPostHistoryLocalRevision } from "../../lib/storage/postHistoryLocalWriteScope";
 import { PostHistoryJsonlImportService } from "../../lib/postHistoryJsonlImportService";
@@ -19,6 +20,18 @@ const kindsKey = buildPostHistoryVisibleKindsKey([...POST_HISTORY_FETCH_KINDS]);
 
 /** Only public data and signed events survive reload; no signing key is stored. */
 export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "gap" | "empty-gap" | "new-head" | "sync-footer" | "bounded-gap" | "citrine" | "citrine-gap" | "citrine-head" = "gap") {
+    if (scenario === "sync-footer") {
+        const fetchLatest = postHistoryRelayFetchService.fetchLatest.bind(postHistoryRelayFetchService);
+        postHistoryRelayFetchService.fetchLatest = (rx, params) => {
+            if (params.reason !== "dialog-open-catchup" || params.operation) return fetchLatest(rx, params);
+            // Keep only the intentionally held catch-up alive while the test
+            // inspects the spinner; other relay operations retain their deadlines.
+            const operation = new RelayOperation(60_000, () => undefined);
+            const task = fetchLatest(rx, { ...params, operation });
+            void task.promise.finally(() => operation.finish("complete"));
+            return task;
+        };
+    }
     const isCitrine = scenario.startsWith("citrine");
     const isHeadScenario = scenario === "new-head" || scenario === "sync-footer" || scenario === "citrine-head";
     const savedHeadEnd = scenario === "sync-footer" ? 109 : 309;
