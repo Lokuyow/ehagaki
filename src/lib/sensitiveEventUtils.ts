@@ -16,7 +16,7 @@ export function resolveSubmissionKind(input: {
     if (input.channel) return 42;
     if (input.hasReply) {
         if (input.replyKind === 1) return 1;
-        if (input.replyKind === NIP22_COMMENT_KIND) return NIP22_COMMENT_KIND;
+        if (input.replyKind === 7 || input.replyKind === NIP22_COMMENT_KIND) return NIP22_COMMENT_KIND;
         return null;
     }
     return 1;
@@ -30,6 +30,16 @@ export function buildNip22ReplyTags(
     const sanitizedParentHint = RelayConfigUtils.sanitizeExternalRelayUrls(
         parentRelayHint ? [parentRelayHint] : [], { limit: 1 },
     )[0] ?? "";
+    if (parent.kind === 7) {
+        return [
+            ["E", parent.id, sanitizedParentHint, parent.pubkey],
+            ["K", "7"],
+            ["P", parent.pubkey],
+            ["e", parent.id, sanitizedParentHint, parent.pubkey],
+            ["k", "7"],
+            ["p", parent.pubkey],
+        ];
+    }
     if (parent.kind !== NIP22_COMMENT_KIND) return null;
     const parsed = parseNip22CommentReferences(parent);
     if (!parsed.valid || !parsed.rootKind || !parsed.parentKind) return null;

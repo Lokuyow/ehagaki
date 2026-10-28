@@ -92,6 +92,45 @@ async function expectTooltip(
 }
 
 test.describe("composer target dialog fixture", () => {
+    for (const key of ['reaction7', 'missingReaction', 'invalidReaction'] as const) {
+        for (const [action, label] of [['reply', 'リプライ'], ['quote', '引用'], ['reaction', 'リアクションする']] as const) {
+            test(`kind 7 applies ${action} to the input event with ${key}`, async ({ page }) => {
+                const harness = await gotoHarness(page);
+                await openDialog(page);
+                await page.getByLabel('イベントID').fill(harness.inputs[key]);
+                const dialog = page.getByRole('dialog', { name: '宛先を指定' });
+                // The outer footer follows the related card and keeps the selected reaction as its target.
+                await dialog.getByRole('button', { name: label, exact: true }).last().click();
+                await expect(dialog).toBeHidden();
+                const applications = await page.evaluate(() => (window as HarnessWindow).__COMPOSER_TARGET_HARNESS__!.applications);
+                const pointer = nip19.decode(harness.inputs[key]);
+                expect(applications).toEqual([{ action, kind: 7,
+                    eventId: pointer.type === 'note' ? pointer.data : '' }]);
+            });
+        }
+    }
+
+    test('kind 7 offers Repost and author-only deletion', async ({ page }) => {
+        const harness = await gotoHarness(page);
+        await openDialog(page);
+        await page.getByLabel('イベントID').fill(harness.inputs.reaction7);
+        await page.getByRole('button', { name: 'アクションを表示', exact: true }).click();
+        await expect(page.getByRole('menuitem', { name: '削除', exact: true })).toHaveCount(0);
+        await page.getByRole('menuitem', { name: 'リポスト', exact: true }).click();
+        const pointer = nip19.decode(harness.inputs.reaction7);
+        await expect.poll(() => page.evaluate(() =>
+            (window as unknown as { __COMPOSER_TARGET_HARNESS__: { reposts: string[] } }).__COMPOSER_TARGET_HARNESS__.reposts,
+        )).toEqual([pointer.type === 'note' ? pointer.data : '']);
+        await page.evaluate(() => (window as unknown as {
+            __COMPOSER_TARGET_HARNESS__: { useReactionOwner: (owner: boolean) => void };
+        }).__COMPOSER_TARGET_HARNESS__.useReactionOwner(true));
+        await page.getByRole('button', { name: 'アクションを表示', exact: true }).click();
+        await page.getByRole('menuitem', { name: '削除', exact: true }).click();
+        await expect(page.getByRole('alertdialog')).toBeVisible();
+        await page.getByRole('alertdialog').getByRole('button', { name: 'キャンセル', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: '宛先を指定' })).toBeVisible();
+    });
+
     for (const key of ["repost6", "repost16", "repostTo6", "repostTo16", "reaction7", "markerReaction", "channelReaction"] as const) {
         test(`Repost and Reaction preserve main identity and only show a direct related card: ${key}`, async ({ page }) => {
             await page.emulateMedia({ colorScheme: "dark" });
@@ -159,6 +198,15 @@ test.describe("composer target dialog fixture", () => {
             const overflow = await page.locator(".composer-target-reaction-preview").evaluate(element =>
                 element.scrollWidth > element.clientWidth + 1 || document.documentElement.scrollWidth > window.innerWidth);
             expect(overflow).toBe(false);
+            const footer = page.locator('.composer-target-reaction-preview + .post-preview-footer');
+            for (const name of ['リプライ', '引用', 'リアクションする']) {
+                const button = footer.getByRole('button', { name, exact: true });
+                await expect(button).toBeVisible();
+                const bounds = await button.boundingBox();
+                expect(bounds).not.toBeNull();
+                expect(bounds!.x).toBeGreaterThanOrEqual(0);
+                expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+            }
             await page.getByRole("dialog", { name: "宛先を指定" }).screenshot({ path: testInfo.outputPath(`composer-reaction-history-style-${width}.png`) });
         }
         await page.getByRole("button", { name: "アクションを表示" }).click();

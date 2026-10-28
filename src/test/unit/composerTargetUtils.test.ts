@@ -109,7 +109,9 @@ describe("composerTargetUtils", () => {
         expect(getComposerTargetActions(40, true)).toEqual(["channel"]);
         expect(getComposerTargetActions(42, true)).toEqual(["reply", "quote", "reaction"]);
         expect(getComposerTargetActions(42, false)).toEqual(["reaction"]);
-        expect(getComposerTargetActions(7, true)).toEqual(["reaction"]);
+        expect(getComposerTargetActions(7, false)).toEqual(["reply", "quote", "reaction"]);
+        expect(getComposerTargetActions(6, false)).toEqual(["reaction"]);
+        expect(getComposerTargetActions(16, false)).toEqual(["reaction"]);
     });
 
     it("Unicode文字単位でプレビューを省略する", () => {

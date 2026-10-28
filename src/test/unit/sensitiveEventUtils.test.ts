@@ -22,6 +22,7 @@ describe("resolveSubmissionKind", () => {
     it("preserves standard kinds independent of the Sensitive format setting", () => {
         expect(resolveSubmissionKind({ channel: false, hasReply: false })).toBe(1);
         expect(resolveSubmissionKind({ channel: false, hasReply: true, replyKind: 1 })).toBe(1);
+        expect(resolveSubmissionKind({ channel: false, hasReply: true, replyKind: 7 })).toBe(1111);
         expect(resolveSubmissionKind({ channel: false, hasReply: true, replyKind: 1111 })).toBe(1111);
         expect(resolveSubmissionKind({ channel: true, hasReply: false })).toBe(42);
         expect(resolveSubmissionKind({ channel: false, hasReply: true, replyKind: 36 })).toBeNull();
@@ -29,6 +30,27 @@ describe("resolveSubmissionKind", () => {
 });
 
 describe("buildNip22ReplyTags", () => {
+    it.each(["wss://reply.example.com/", "javascript:invalid"])("starts a comment scope at the reaction itself with hint %s", (hint) => {
+        const parent = event(7, PARENT_ID, PARENT_AUTHOR, [
+            ["e", ROOT_ID, "wss://original.example/", "root"], ["p", ROOT_AUTHOR], ["k", "1"],
+        ]);
+        const relay = hint.startsWith("wss:") ? hint : "";
+        const tags = buildNip22ReplyTags(parent, hint)!;
+        expect(tags).toEqual([
+            ["E", PARENT_ID, relay, PARENT_AUTHOR], ["K", "7"], ["P", PARENT_AUTHOR],
+            ["e", PARENT_ID, relay, PARENT_AUTHOR], ["k", "7"], ["p", PARENT_AUTHOR],
+        ]);
+        const comment = event(1111, "3".repeat(64), "c".repeat(64), tags);
+        expect(parseNip22CommentReferences(comment)).toMatchObject({
+            valid: true, rootEventId: PARENT_ID, rootKind: "7", rootPubkey: PARENT_AUTHOR,
+            parentEventId: PARENT_ID, parentKind: "7", parentPubkey: PARENT_AUTHOR,
+        });
+        expect(buildNip22ReplyTags(comment, "wss://comment.example/")).toEqual([
+            ["E", PARENT_ID, relay, PARENT_AUTHOR], ["K", "7"], ["P", PARENT_AUTHOR],
+            ["e", comment.id, "wss://comment.example/", comment.pubkey], ["k", "1111"], ["p", comment.pubkey],
+        ]);
+    });
+
     it("preserves a comment root and changes only the direct parent", () => {
         const address = `30023:${ROOT_AUTHOR}:article`;
         const parent = event(1111, PARENT_ID, PARENT_AUTHOR, [

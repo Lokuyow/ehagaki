@@ -67,7 +67,7 @@ describe("kind 6 reference and wire policy", () => {
 });
 
 describe("Generic Repost references and supported target projection", () => {
-    it.each([42, 1111])("builds kind 16 for %s without copying target tags", (kind) => {
+    it.each([7, 42, 1111])("builds kind 16 for %s without copying target tags", (kind) => {
         const target = sign(kind, "body", [["e", "b".repeat(64), relay, "root"], ["k", "1"], ["-"], ["content-warning", "CW"]]);
         expect(buildRepostEvent(target, "a".repeat(64), relay, 200, ["client", "eHagaki"])).toEqual({
             kind: 16, content: "", pubkey: "a".repeat(64), created_at: 200,
@@ -95,9 +95,9 @@ describe("Generic Repost references and supported target projection", () => {
         expect(verifyRepostTarget(target, { ...getRepostReference({ kind: 16, tags })!, targetKindHint: 1111 })).toBeNull();
     });
     it.each([
-        [6, 1, "supported"], [6, 42, "outer-target-kind-mismatch"], [6, 1111, "outer-target-kind-mismatch"],
+        [6, 1, "supported"], [6, 7, "outer-target-kind-mismatch"], [6, 42, "outer-target-kind-mismatch"], [6, 1111, "outer-target-kind-mismatch"],
         [16, 1, "outer-target-kind-mismatch"], [16, 20, "unsupported-target-kind"],
-        [16, 42, "supported"], [16, 1111, "supported"],
+        [16, 7, "supported"], [16, 42, "supported"], [16, 1111, "supported"],
     ] as const)("separates integrity from classification for %s -> %s (%s)", async (outerKind, targetKind, classification) => {
         const { repo } = repository(); const target = sign(targetKind, "target-only-token");
         const event = sign(outerKind, JSON.stringify(target), [["e", target.id], ["p", target.pubkey], ...(outerKind === 16 ? [["k", String(targetKind)]] : [])]);
@@ -116,7 +116,7 @@ describe("Generic Repost references and supported target projection", () => {
             expect((await exportPostHistoryRecords(event.pubkey, [ (await repo.getByEventId(event.id))! ], [], { includeJsonl: true })).jsonl?.trim()).toBe(JSON.stringify(event));
         }
     });
-    it.each([42, 1111])("persists %s snapshot across echo, searches target and exports only outer", async (kind) => {
+    it.each([7, 42, 1111])("persists %s snapshot across echo, searches target and exports only outer", async (kind) => {
         const { db, repo } = repository(); const target = sign(kind);
         const event = sign(16, "opaque-only-token", [["e", target.id, relay], ["p", target.pubkey], ["k", String(kind)]]);
         await repo.putPostedEvent({ event, repostTarget: { event: target, relayHints: [relay] } });
@@ -407,7 +407,7 @@ describe("Repost signing, publishing and save retry", () => {
         await preview;
         setup.resolver.reset();
     });
-    it.each([1, 42, 1111])("retries the original kind %s outer/target pair without signing or publishing again", async (kind) => {
+    it.each([1, 7, 42, 1111])("retries the original kind %s outer/target pair without signing or publishing again", async (kind) => {
         const saved = vi.fn().mockRejectedValueOnce(new Error("quota")).mockResolvedValue(undefined);
         const { repost, signEvent, sendEvent } = service(saved); const target = sign(kind);
         const result = await repost.repost({ target, relayHints: [relay], rxNostr: {} as never, prepareTarget: confirmedTarget });
@@ -418,7 +418,7 @@ describe("Repost signing, publishing and save retry", () => {
         expect(saved.mock.calls[0]?.[0]).toBe(saved.mock.calls[1]?.[0]);
         expect(signEvent).toHaveBeenCalledTimes(1); expect(sendEvent).toHaveBeenCalledTimes(1);
     });
-    it.each([1, 42, 1111])("blocks concurrent kind %s execution and stops when the session changes during signing", async (kind) => {
+    it.each([1, 7, 42, 1111])("blocks concurrent kind %s execution and stops when the session changes during signing", async (kind) => {
         const { repost, auth, signEvent, sendEvent } = service();
         let finish: (event: NostrEvent) => void = () => undefined;
         signEvent.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
@@ -439,7 +439,7 @@ describe("Repost signing, publishing and save retry", () => {
             prepareTarget: undefined as never })).success).toBe(false);
         expect(signEvent).not.toHaveBeenCalled(); expect(sendEvent).not.toHaveBeenCalled();
     });
-    it.each((["nip07", "nip46", "parentClient", "nsec"] as const).flatMap(type => [1, 42, 1111].map(kind => ({ type, kind }))))("supports $type signing target kind $kind without the composer", async ({ type, kind }) => {
+    it.each((["nip07", "nip46", "parentClient", "nsec"] as const).flatMap(type => [1, 7, 42, 1111].map(kind => ({ type, kind }))))("supports $type signing target kind $kind without the composer", async ({ type, kind }) => {
         const key = generateSecretKey(); const pubkey = getPublicKey(key);
         const signEvent = vi.fn(async template => createPlainNostrEventSnapshot(finalizeEvent(template, key)));
         const signer = { signEvent };
@@ -456,7 +456,7 @@ describe("Repost signing, publishing and save retry", () => {
         expect(saveHistory.mock.calls[0]?.[0].event.tags).toContainEqual(["client", "eHagaki"]);
         expect(sendEvent.mock.calls[0]?.[1]).toEqual({ targetRelays: [relay], includeDefaultWriteRelays: false });
     });
-    it.each([1, 42, 1111])("rejects a signer that changes the kind %s signed template", async (kind) => {
+    it.each([1, 7, 42, 1111])("rejects a signer that changes the kind %s signed template", async (kind) => {
         const { repost, signEvent, sendEvent } = service();
         signEvent.mockImplementationOnce(async () => sign(6, "unexpected content"));
         expect((await repost.repost({ target: sign(kind), relayHints: [relay], rxNostr: {} as never, prepareTarget: confirmedTarget })).success).toBe(false);
@@ -526,7 +526,7 @@ describe("single related-target resolver for Reposts", () => {
     const emptyDeletionResult = (status: PostHistoryDeletionFetchResult["status"]): PostHistoryDeletionFetchResult =>
         ({ status, events: [], fetchedAt: 200, relayUrls: [relay] });
 
-    it.each([1, 42, 1111])("resolves kind %s before deletion discovery and shares the pending fetch", async (kind) => {
+    it.each([1, 7, 42, 1111])("resolves kind %s before deletion discovery and shares the pending fetch", async (kind) => {
         const target = sign(kind); const { resolver, fetch, descriptor, fetchDeletionRequests } = resolverFor(target);
         const deletion = pendingDeletion(); fetchDeletionRequests.mockReturnValue(deletion.task);
         let snapshots: Awaited<ReturnType<typeof resolver.ensureTargets>> | undefined;

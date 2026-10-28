@@ -194,6 +194,8 @@
     }
 
     let show = $state(false);
+    let pubkeyHex = $state<string | null>(null);
+    const reposts: string[] = [];
     let applications = $state<
         Array<{ action: ComposerTargetAction; kind: number; eventId: string }>
     >([]);
@@ -388,6 +390,8 @@
         seedReactionFixtures,
         relatedFetchIds,
         relatedCancelledIds,
+        reposts,
+        useReactionOwner(owner: boolean) { pubkeyHex = owner ? interactionEvents.reaction7.pubkey : null; },
         recoverRelated() { recoverMissing = true; },
         releaseRelated() { releaseHeld?.(); },
         inputs,
@@ -445,6 +449,8 @@
     rxNostr={fixtureRuntime}
     {resolver}
     {relatedResolver}
+    {pubkeyHex}
+    onRepostPost={async post => { reposts.push(post.eventId); return { success: true }; }}
 />
 
 <style>

@@ -110,6 +110,16 @@ describe("postDeletionService helpers", () => {
             expected: false,
         },
         {
+            name: "他人のリアクション",
+            recordOverrides: { kind: 7, pubkeyHex: "b".repeat(64) },
+            expected: false,
+        },
+        {
+            name: "削除済みリアクション",
+            recordOverrides: { kind: 7, deletedAt: 123 },
+            expected: false,
+        },
+        {
             name: "対象外kind",
             recordOverrides: { kind: 30023 },
             expected: false,
@@ -135,7 +145,7 @@ describe("postDeletionService helpers", () => {
         });
     });
 
-    it.each([1, 6, 16, 42, 1111])("kind:%s eventの削除要求はevent IDと実kindを参照する", (kind) => {
+    it.each([1, 6, 7, 16, 42, 1111])("kind:%s eventの削除要求はevent IDと実kindを参照する", (kind) => {
         const eventId = "9".repeat(64);
         const post = createRecord({ eventId, kind });
         expect(canRequestPostDeletion(post, "a".repeat(64))).toBe(true);
@@ -172,6 +182,29 @@ describe("postDeletionService helpers", () => {
 });
 
 describe("PostDeletionService", () => {
+    it('signs deletion of the selected reaction without deleting its referenced post', async () => {
+        const key = generateSecretKey();
+        const originalId = 'b'.repeat(64);
+        const target = finalizeEvent({ kind: 7, content: '+', created_at: 100,
+            tags: [['e', originalId], ['p', 'c'.repeat(64)], ['k', '1']] }, key);
+        const signEvent = vi.fn(async template => finalizeEvent(template, key));
+        const sendEvent = vi.fn(async event => ({ success: true, eventId: event.id }));
+        const saveLocalDeletion = vi.fn();
+        const service = new PostDeletionService({
+            authStateStore: { value: createAuthState({ pubkey: target.pubkey }) },
+            keyManager: { getFromStore: () => 'fixture-key-reference', loadFromStorage: () => null,
+                isWindowNostrAvailable: () => false },
+            seckeySignerFn: () => ({ signEvent }), eventSenderFactory: () => ({ sendEvent }),
+            postHistoryDeletionRequestsRepository: { saveLocalDeletion }, console: createMockConsole(),
+        });
+        expect((await service.requestDeletion({ post: createRecord({ kind: 7, eventId: target.id,
+            pubkeyHex: target.pubkey, rawEvent: target }), rxNostr: {} as never })).success).toBe(true);
+        expect(sendEvent.mock.calls[0]?.[0]).toMatchObject({ kind: 5, pubkey: target.pubkey, content: '',
+            tags: [['e', target.id], ['k', '7']] });
+        expect(saveLocalDeletion).toHaveBeenCalledWith(expect.objectContaining({ targetEvent: target,
+            targetEventIds: [target.id] }));
+    });
+
     it("nsec signer で署名送信し、atomicなローカル削除保存を呼ぶ", async () => {
         const saveLocalDeletion = vi.fn().mockResolvedValue(undefined);
         const sendEvent = vi.fn().mockResolvedValue({
