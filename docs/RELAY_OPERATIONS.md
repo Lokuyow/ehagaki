@@ -66,11 +66,11 @@ delivery requires both Payload and Structure acceptance. Local auxiliary storage
 REQ and NIP-46 RPC do not create delivery toasts.
 
 The app shows at most three text-free, dismissible vertical bars side by side.
-Each bar has an unframed 18px-wide track and fills upward from the bottom, with a preferred height of 144px that shrinks
+Each bar has an unframed, square-cornered 18px-wide track and fills upward from the bottom, with a preferred height of 144px that shrinks
 to fit the available space. Discovery is indeterminate;
 once targets are fixed, the bars show accepted/target counts. Only fully accepted
-delivery with resolved routes fills the bar. Completion holds for 700ms and fades
-for 400ms; incomplete delivery fades from its current width over 1,800ms. These are
+delivery with resolved routes fills the bar. Completion holds for 250ms and fades
+for 150ms; incomplete delivery fades from its current width over 300ms. These are
 presentation timers; the existing network operation alone controls the 12/30s cap.
 Dismissing or evicting a toast does not cancel delivery or recreate that toast.
 Session replacement/reset clears the bars and their presentation timers.

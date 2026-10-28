@@ -38,8 +38,8 @@ export function createRelayDeliveryToasts(source: Observable<RelayDeliveryEvent>
         }
         notify();
         if (progress.state === "complete" && previous?.progress.state !== "complete") {
-            timers.set(progress.id, setTimeout(() => fade(progress.id, 400), 700));
-        } else if (progress.state === "incomplete" && previous?.progress.state !== "incomplete") fade(progress.id, 1800);
+            timers.set(progress.id, setTimeout(() => fade(progress.id, 150), 250));
+        } else if (progress.state === "incomplete" && previous?.progress.state !== "incomplete") fade(progress.id, 300);
     });
     return {
         dismiss(id: number) { if (rows.get(id)?.progress.state === "sending") hidden.add(id); remove(id); notify(); },

@@ -34,14 +34,14 @@ describe("relay delivery progress", () => {
         expect(vi.getTimerCount()).toBe(0);
         view.controller.dispose();
     });
-    it("shows completion for 700ms, then fades for 400ms", async () => {
+    it("shows completion for 250ms, then fades for 150ms", async () => {
         const rx = {} as RxNostr, view = ui(rx);
         const delivery = beginRelayDelivery(rx, relays);
         delivery.update(relays, relays); delivery.finish();
         expect(view.rows[0]).toMatchObject({ progress: { state: "complete", accepted: 3 }, fading: false });
-        await vi.advanceTimersByTimeAsync(699); expect(view.rows[0].fading).toBe(false);
-        await vi.advanceTimersByTimeAsync(1); expect(view.rows[0]).toMatchObject({ fading: true, fadeMs: 400 });
-        await vi.advanceTimersByTimeAsync(400); expect(view.rows).toEqual([]);
+        await vi.advanceTimersByTimeAsync(249); expect(view.rows[0].fading).toBe(false);
+        await vi.advanceTimersByTimeAsync(1); expect(view.rows[0]).toMatchObject({ fading: true, fadeMs: 150 });
+        await vi.advanceTimersByTimeAsync(150); expect(view.rows).toEqual([]);
         view.controller.dispose();
     });
     it.each([false, true])("never fills incomplete delivery, including unresolved discovery=%s", async unresolved => {
@@ -49,8 +49,8 @@ describe("relay delivery progress", () => {
         const delivery = beginRelayDelivery(rx, relays, true);
         delivery.update(relays, unresolved ? relays : relays.slice(0, 1), false, unresolved);
         delivery.finish();
-        expect(view.rows[0]).toMatchObject({ progress: { state: "incomplete" }, fading: true, fadeMs: 1800 });
-        await vi.advanceTimersByTimeAsync(1799); expect(view.rows).toHaveLength(1);
+        expect(view.rows[0]).toMatchObject({ progress: { state: "incomplete" }, fading: true, fadeMs: 300 });
+        await vi.advanceTimersByTimeAsync(299); expect(view.rows).toHaveLength(1);
         await vi.advanceTimersByTimeAsync(1); expect(view.rows).toEqual([]);
         view.controller.dispose();
     });
