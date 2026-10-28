@@ -108,4 +108,7 @@ editor submission, history repair, upload-list synchronization and embedded logi
 the existing Playwright harnesses; no real relay or account is required.
 
 The success balloon waits for delivery settlement or the presentation idle timeout.
+The TOP submit button uses that same readiness to end its loading display, without
+an additional button timer. First acceptance keeps it loading; delivery settlement
+or the 2.5-second presentation idle timeout ends it. Posting errors end it immediately.
 Composer clearing and host success notifications still happen at the first acceptance.

@@ -30,6 +30,39 @@ vi.mock('svelte-i18n', () => ({
 import KeyboardButtonBarWithProvider from './fixtures/KeyboardButtonBarWithProvider.svelte';
 
 describe('KeyboardButtonBar', () => {
+    it('keeps the TOP loader through first acceptance and ends at shared readiness without an extra hold', async () => {
+        vi.useFakeTimers();
+        editorState.postStatus.sending = true;
+        const view = render(KeyboardButtonBarWithProvider, { props: { postLoading: true } });
+        const button = screen.getByRole('button', { name: '投稿' });
+        expect(button.classList.contains('loading')).toBe(true);
+        editorState.postStatus.sending = false;
+        editorState.postStatus.success = true;
+        await tick();
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(button.classList.contains('loading')).toBe(true);
+        await view.rerender({ postLoading: false });
+        expect(button.classList.contains('loading')).toBe(false);
+        expect(button.querySelector('.plane-icon')).toBeTruthy();
+        // A later state update must not revive the retired loading display.
+        editorState.postStatus.completed = true;
+        await tick();
+        expect(button.classList.contains('loading')).toBe(false);
+    });
+
+    it('preserves the 400ms hold on surfaces without shared delivery feedback', async () => {
+        vi.useFakeTimers();
+        editorState.postStatus.sending = true;
+        render(KeyboardButtonBarWithProvider);
+        const button = screen.getByRole('button', { name: '投稿' });
+        editorState.postStatus.sending = false;
+        await tick();
+        await vi.advanceTimersByTimeAsync(399);
+        expect(button.classList.contains('loading')).toBe(true);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(button.classList.contains('loading')).toBe(false);
+    });
+
     afterEach(() => {
         vi.useRealTimers();
         document.documentElement.style.removeProperty('--keyboard-height');

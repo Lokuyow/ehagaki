@@ -28,16 +28,36 @@ test("only full mascot delivery celebrates, with reduced motion respected", asyn
 test("success balloon waits for full delivery or 2.5 seconds of stalled progress", async ({ page }) => {
     await page.goto("relay-delivery-playwright.html?mascot=1");
     await page.waitForFunction(() => !!window.__deliveryHarness);
-    await page.evaluate(() => { window.__deliveryHarness!.start(); window.__deliveryHarness!.ack(0, 0); });
+    const button = page.locator('.post-button');
+    await page.evaluate(() => window.__deliveryHarness!.start());
+    await expect(button).toHaveClass(/loading/);
+    await page.evaluate(() => window.__deliveryHarness!.ack(0, 0));
     await expect(page.locator(".mascot-progress-accessible")).toHaveAttribute("aria-valuenow", "33");
+    await expect(button).toHaveClass(/loading/);
     const success = page.locator(".compact-message.success");
     await expect(success).toHaveCount(0);
     await expect(success).toBeVisible({ timeout: 4000 });
+    await expect(button).not.toHaveClass(/loading/);
     expect(await page.evaluate(() => window.__deliveryHarness!.observed(0))).toBe(true);
+    await page.evaluate(() => { window.__deliveryHarness!.ack(0, 1); window.__deliveryHarness!.ack(0, 2); });
+    await expect(button).not.toHaveClass(/loading/);
     await page.evaluate(() => window.__deliveryHarness!.start());
+    await expect(button).toHaveClass(/loading/);
     await expect(success).toHaveCount(0);
     await page.evaluate(() => { for (let i = 0; i < 3; i++) window.__deliveryHarness!.ack(1, i); });
     await expect(success).toBeVisible();
+    await expect(button).not.toHaveClass(/loading/);
+    await page.evaluate(() => window.__deliveryHarness!.reset());
+});
+test("TOP submit loader ends on complete rejection without waiting for presentation timeout", async ({ page }) => {
+    await page.goto("relay-delivery-playwright.html?mascot=1");
+    await page.waitForFunction(() => !!window.__deliveryHarness);
+    await page.evaluate(() => window.__deliveryHarness!.start());
+    const button = page.locator('.post-button');
+    await expect(button).toHaveClass(/loading/);
+    await page.evaluate(() => { for (let i = 0; i < 3; i++) window.__deliveryHarness!.ack(0, i, false); });
+    await expect(button).not.toHaveClass(/loading/);
+    await expect(page.locator('.compact-message.success')).toHaveCount(0);
     await page.evaluate(() => window.__deliveryHarness!.reset());
 });
 for (const theme of ["light", "dark"]) for (const surface of ["standalone", "iframe", "container"]) {

@@ -2321,6 +2321,7 @@
       </div>
       <ReasonInput />
       <KeyboardButtonBar
+        postLoading={editorState.postStatus.sending || (editorState.postStatus.success && !deliveryFeedback.successReady)}
         onUploadImage={() => postComponentRef?.openFileDialog()}
         onPostButtonTap={() => balloon.showTips()}
         {customEmojiPickerOpen}

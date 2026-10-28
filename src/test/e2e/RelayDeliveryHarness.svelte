@@ -1,11 +1,13 @@
 <script lang="ts">
     import { onDestroy } from "svelte";
+    import { Tooltip } from "bits-ui";
+    import KeyboardButtonBar from "../../components/KeyboardButtonBar.svelte";
     import { Subject } from "rxjs";
     import type { RxNostr } from "rx-nostr";
     import HeaderComponent from "../../components/HeaderComponent.svelte";
     import { useRelayDeliveryFeedback } from "../../lib/hooks/useRelayDeliveryFeedback.svelte";
     import { useBalloonMessage } from "../../lib/hooks/useBalloonMessage.svelte";
-    import { updatePostStatus } from "../../stores/editorStore.svelte";
+    import { editorState, updatePostStatus } from "../../stores/editorStore.svelte";
     import { _ } from "svelte-i18n";
     import RelayDeliveryToasts from "../../components/RelayDeliveryToasts.svelte";
     import DialogWrapper from "../../components/DialogWrapper.svelte";
@@ -37,7 +39,11 @@
     <input aria-label="Composer" placeholder="Synthetic composer" />
     <button onclick={() => { open = true; }}>Open dialog</button>
 </div>
-<div class="footer-bar">Footer controls</div>
+<div class="footer-bar">
+    <Tooltip.Provider>
+        <KeyboardButtonBar postLoading={editorState.postStatus.sending || (editorState.postStatus.success && !feedback.successReady)} />
+    </Tooltip.Provider>
+</div>
 <DialogWrapper bind:open title="Delivery dialog" description="Synthetic modal" footerVariant="close-button">
     <div style="height:190px;width:100%"><input aria-label="Dialog input" /><button onclick={() => { confirmation = true; }}>Open confirmation</button></div>
     {#snippet footer()}<button onclick={() => { open = false; }}>Close dialog</button>{/snippet}
