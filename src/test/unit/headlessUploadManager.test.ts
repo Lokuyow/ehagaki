@@ -1,3 +1,4 @@
+import { createWebpFixture } from '../webpFixture';
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FileUploadManager } from "../../lib/fileUploadManager";
 import type { CompressionService, FileUploadDependencies, UploadDestination } from "../../lib/types";
@@ -75,6 +76,28 @@ describe("headless FileUploadManager", () => {
                 originalFilename: "animation.gif", compressedFilename: "animation.gif" } });
         if (headless) expect(persistUploadedMediaMock).not.toHaveBeenCalled();
         else expect(persistUploadedMediaMock).toHaveBeenCalledWith(expect.objectContaining({ file, mimeType: "image/gif" }));
+    });
+
+    it.each([false, true])("sends original WebP bytes and metadata (headless=%s)", async headless => {
+        const bytes = createWebpFixture();
+        const file = new NodeFile([bytes], "animation.webp", { type: "image/webp", lastModified: 1234 }) as unknown as File;
+        const storage = new MockStorage(); storage.setItem("imageQualityLevel", "low");
+        const signal = new AbortController().signal;
+        vi.mocked(getImageDimensions).mockResolvedValueOnce({ width: 256, height: 192, displayWidth: 256, displayHeight: 192 });
+        adapterMock.upload.mockResolvedValue({ success: true, url: "https://blossom.example/animation.webp",
+            nip94: { x: "a".repeat(64), m: "image/webp", size: String(file.size) } });
+        const manager = new FileUploadManager({ localStorage: storage, fetch, crypto: crypto.subtle, document, window, navigator,
+            isUploadAborted: () => signal.aborted, setImageSizeInfoFromFileSize: setImageSizeInfoMock }, { buildAuthHeader: vi.fn() });
+        const result = headless ? await manager.uploadFileForHost(file, destination, signal)
+            : await manager.uploadFile(file, undefined, false, undefined, undefined, destination);
+        const sent = adapterMock.upload.mock.calls[0][0].file as File;
+        expect(sent).toBe(file); expect(new Uint8Array(await sent.arrayBuffer())).toEqual(bytes);
+        expect(sent.name).toBe("animation.webp"); expect(sent.type).toBe("image/webp");
+        expect(result).toMatchObject({ success: true, nip94: { m: "image/webp", size: String(bytes.length), dim: "256x192" },
+            sizeInfo: { originalSize: bytes.length, compressedSize: bytes.length, wasSkipped: true,
+                originalFilename: "animation.webp", compressedFilename: "animation.webp" } });
+        if (headless) expect(persistUploadedMediaMock).not.toHaveBeenCalled();
+        else expect(persistUploadedMediaMock).toHaveBeenCalledWith(expect.objectContaining({ file, mimeType: "image/webp" }));
     });
 
     it("returns local image metadata only for Blossom's verified uploaded bytes and skips post cache", async () => {

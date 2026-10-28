@@ -1,3 +1,4 @@
+import { inspectWebp } from './utils/webpContainer';
 import type { CompressionService, MimeTypeSupportInterface } from './types';
 import {
     COMPRESSION_OPTIONS_MAP,
@@ -339,6 +340,17 @@ export class ImageCompressionService implements CompressionService {
         const level = this.getCompressionLevel();
         const options = this.getCompressionOptions(level);
         if (!options) return { file, wasCompressed: false, wasSkipped: true };
+
+        if (file.type === WEBP_MIME_TYPE) {
+            try {
+                const kind = await inspectWebp(file, operation?.signal);
+                if (isAborted()) return { file, wasCompressed: false, aborted: true };
+                if (kind !== 'static') return { file, wasCompressed: false, wasSkipped: true };
+            } catch {
+                return isAborted() ? { file, wasCompressed: false, aborted: true }
+                    : { file, wasCompressed: false, wasSkipped: true };
+            }
+        }
 
         const requestedTargetMime = (options.fileType as string) || file.type;
         const maxSizeMB = this.getTargetMaxSizeMB(file.size, level);

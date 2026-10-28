@@ -1,3 +1,4 @@
+import { createStaticWebpFixture } from '../webpFixture';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ImageCompressionService } from '../../lib/imageCompressionService';
 import { MimeTypeSupport } from '../../lib/mimeTypeSupport';
@@ -763,7 +764,7 @@ describe('ファイルアップロードフロー統合テスト', () => {
             const files = [
                 new File([new ArrayBuffer(1024 * 100)], 'image1.jpg', { type: 'image/jpeg' }),
                 new File([new ArrayBuffer(1024 * 150)], 'image2.png', { type: 'image/png' }),
-                new File([new ArrayBuffer(1024 * 80)], 'image3.webp', { type: 'image/webp' })
+                new File([createStaticWebpFixture()], 'image3.webp', { type: 'image/webp' })
             ];
 
             // バリデーション

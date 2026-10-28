@@ -136,6 +136,8 @@ NIP-46 の bunker URL に `ws://127.0.0.1:4869/` のようなデバイス内ロ�
 
 GIF（`image/gif`）は通常投稿・リアクションともアップロードできます。静止画・アニメーションのどちらも画像圧縮設定にかかわらず原本のまま送信し、圧縮・リサイズ・形式変換を行いません。
 
+アニメーションWebP（`image/webp`）も通常投稿・リアクションで利用でき、圧縮設定にかかわらず原本を送信します。静止WebPは従来の画像処理を使用します。
+
 ## Host-provided temporary Relay Config
 
 iframe で Host がこの mount 専用の Relay Config を所有する場合は、`parentOrigin` に加えて

@@ -1,3 +1,4 @@
+import { inspectWebp, type WebpKind } from '../utils/webpContainer';
 import type { CompressionService, VideoCompressionResult } from '../types/upload';
 import { awaitUploadOperation, throwIfUploadAborted } from './uploadOperation';
 
@@ -5,9 +6,14 @@ export const REACTION_WEBP_OPTIONS = { lossless: 1, quality: 100, near_lossless:
 const supported = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const unsupported = () => new Error('reactionUnsupportedImage');
 
-/** Reject animation in formats we reencode. GIFs are validated and sent unchanged. */
-export async function validateReactionImage(file: File): Promise<void> {
+/** GIF and animated WebP are validated and sent unchanged. */
+export async function validateReactionImage(file: File, signal?: AbortSignal): Promise<WebpKind | undefined> {
     if (!supported.has(file.type)) throw unsupported();
+    if (file.type === 'image/webp') {
+        const kind = await inspectWebp(file, signal);
+        if (kind === 'invalid') throw unsupported();
+        return kind;
+    }
     const bytes = new Uint8Array(await (file.type === 'image/gif' ? file.slice(0, 13) : file).arrayBuffer());
     const view = new DataView(bytes.buffer);
     const ascii = (offset: number, size: number) => String.fromCharCode(...bytes.subarray(offset, offset + size));
@@ -35,19 +41,7 @@ export async function validateReactionImage(file: File): Promise<void> {
         if (!ended || position !== bytes.length) throw unsupported();
         return;
     }
-    if (bytes.length < 20 || ascii(0, 4) !== 'RIFF' || ascii(8, 4) !== 'WEBP'
-        || view.getUint32(4, true) + 8 !== bytes.length) throw unsupported();
-    let position = 12;
-    let hasImage = false;
-    while (position + 8 <= bytes.length) {
-        const type = ascii(position, 4);
-        const size = view.getUint32(position + 4, true);
-        if (position + 8 + size > bytes.length || type === 'ANIM' || type === 'ANMF'
-            || (type === 'VP8X' && (size < 10 || (bytes[position + 8] & 2) !== 0))) throw unsupported();
-        if (type === 'VP8 ' || type === 'VP8L') hasImage = true;
-        position += 8 + size + (size % 2);
-    }
-    if (!hasImage || position !== bytes.length) throw unsupported();
+
 }
 
 export function getReactionResizeDimensions(width: number, height: number) {
@@ -71,7 +65,7 @@ export class ReactionImageCompressionService implements CompressionService {
         let url: string | undefined;
         try {
             check(); this.progress?.(0);
-            await awaitUploadOperation(validateReactionImage(file), signal);
+            const kind = await awaitUploadOperation(validateReactionImage(file, signal), signal);
             check();
             image = new Image();
             const loaded = new Promise<void>((resolve, reject) => {
@@ -82,7 +76,7 @@ export class ReactionImageCompressionService implements CompressionService {
             image.src = url;
             await awaitUploadOperation(loaded, signal);
             check(); this.progress?.(25);
-            if (file.type === 'image/gif') {
+            if (file.type === 'image/gif' || kind === 'animated') {
                 this.progress?.(100);
                 return { file, wasCompressed: false, wasSkipped: true };
             }
