@@ -1,3 +1,9 @@
+// jsdom has no Web Animations API; verify notification lifetime without the fade.
+vi.mock("svelte/transition", async (importOriginal) => ({
+    ...await importOriginal<typeof import("svelte/transition")>(),
+    fade: () => ({ duration: 0 }),
+}));
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import {
@@ -1532,6 +1538,9 @@ describe('PostHistoryDialog timeline navigation', () => {
     });
 
     it('古すぎる日付ジャンプで contiguous miss したら sparse relay 取得して anchor を保存する', async () => {
+        const relayDeferred = createDeferred<ReturnType<typeof createRelayFetchResult>>();
+        const saveDeferred = createDeferred<{ insertedCount: number; updatedCount: number; unchangedCount: number }>();
+        const datePostsDeferred = createDeferred<ReturnType<typeof createRecord>[]>();
         const newest = createRecord({
             eventId: 'jump-sparse-newest',
             content: '最新投稿',
@@ -1557,12 +1566,8 @@ describe('PostHistoryDialog timeline navigation', () => {
         repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
         repositoryMock.getVisibleChunkFromCreatedAt
             .mockResolvedValueOnce([newest, oldestVisible])
-            .mockResolvedValueOnce([fetchedAroundTarget]);
-        repositoryMock.upsertFetchedEvents.mockResolvedValue({
-            insertedCount: 1,
-            updatedCount: 0,
-            unchangedCount: 0,
-        });
+            .mockReturnValueOnce(datePostsDeferred.promise);
+        repositoryMock.upsertFetchedEvents.mockReturnValue(saveDeferred.promise);
 
         jumpCacheAnchorRepositoryMock.hasNearbyAnchorForPubkey.mockResolvedValue(false);
         jumpCacheAnchorRepositoryMock.addForPubkey.mockResolvedValue([
@@ -1577,36 +1582,35 @@ describe('PostHistoryDialog timeline navigation', () => {
             (_rxNostr: any, request: { reason?: string }) => {
                 if (request.reason !== 'repair-visible-range') {
                     return {
-                        promise: Promise.resolve(createRelayFetchResult({
-                            status: 'cancelled',
-                        })),
+                        promise: new Promise(() => undefined),
                         cancel: vi.fn(),
                     };
                 }
 
                 return {
-                    promise: Promise.resolve(createRelayFetchResult({
-                        fetchedAt: 2000,
-                        relayUrls: ['wss://relay.example.com/'],
-                        events: [
-                            {
-                                event: {
-                                    id: 'jump-sparse-fetched-event'.repeat(4),
-                                    pubkey: PUBKEY_HEX,
-                                    kind: 1,
-                                    content: '日付周辺で取得した投稿',
-                                    tags: [],
-                                    created_at: 1_695_000_000,
-                                    sig: 'c'.repeat(128),
-                                },
-                                relayUrls: ['wss://relay.example.com/'],
-                            },
-                        ],
-                    })),
+                    promise: relayDeferred.promise,
                     cancel: vi.fn(),
                 };
             },
         );
+        const relayResult = createRelayFetchResult({
+            fetchedAt: 2000,
+            relayUrls: ['wss://relay.example.com/'],
+            events: [
+                {
+                    event: {
+                        id: 'jump-sparse-fetched-event'.repeat(4),
+                        pubkey: PUBKEY_HEX,
+                        kind: 1,
+                        content: '日付周辺で取得した投稿',
+                        tags: [],
+                        created_at: 1_695_000_000,
+                        sig: 'c'.repeat(128),
+                    },
+                    relayUrls: ['wss://relay.example.com/'],
+                },
+            ],
+        });
 
         const view = render(PostHistoryDialog, {
             props: {
@@ -1621,9 +1625,26 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
         });
 
+        await waitFor(() => expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled());
+        await waitFor(() => expect(document.querySelector('.floating-message.anchor-center')).toBeNull(), { timeout: 2500 });
         await openJumpDatePanel();
         await setJumpDateValue('2023-10-01');
         await fireEvent.click(getJumpDateSubmitButton());
+
+        const syncToast = () => document.querySelector('.floating-message.anchor-center');
+        await waitFor(() => expect(syncToast()?.textContent).toContain('リレーと同期中...'));
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        expect(syncToast()?.textContent).toContain('リレーと同期中...');
+        relayDeferred.resolve(relayResult);
+        await waitFor(() => expect(repositoryMock.upsertFetchedEvents).toHaveBeenCalled());
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        expect(syncToast()?.textContent).toContain('リレーと同期中...');
+        saveDeferred.resolve({ insertedCount: 1, updatedCount: 0, unchangedCount: 0 });
+
+        await waitFor(() => expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenCalledTimes(2));
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        expect(syncToast()?.textContent).toContain('リレーと同期中...');
+        datePostsDeferred.resolve([fetchedAroundTarget]);
 
         await waitFor(() => {
             expect(screen.getByText('日付周辺で取得した投稿')).toBeTruthy();
@@ -1657,6 +1678,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             );
         });
 
+        expect(syncToast()).toBeNull();
         view.unmount();
     });
 

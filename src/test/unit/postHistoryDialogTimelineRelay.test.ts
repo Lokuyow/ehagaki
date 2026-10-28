@@ -1,3 +1,9 @@
+// jsdom has no Web Animations API; verify notification lifetime without the fade.
+vi.mock("svelte/transition", async (importOriginal) => ({
+    ...await importOriginal<typeof import("svelte/transition")>(),
+    fade: () => ({ duration: 0 }),
+}));
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import {
@@ -205,6 +211,9 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 timeoutMs: 6000,
             }),
         );
+
+        await waitFor(() => expect(document.querySelector('.floating-message.anchor-center')).toBeNull(), { timeout: 2500 });
+        expect(within(footer!).getByText('リレーと同期中...')).toBeTruthy();
 
         view.unmount();
         expect(cancel).toHaveBeenCalledOnce();
