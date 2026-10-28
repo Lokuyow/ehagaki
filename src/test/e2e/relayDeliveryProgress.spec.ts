@@ -9,7 +9,7 @@ test("only full mascot delivery celebrates, with reduced motion respected", asyn
     await page.waitForFunction(() => !!window.__deliveryHarness);
     await page.evaluate(() => { window.__deliveryHarness!.start(); window.__deliveryHarness!.ack(0, 0); });
     await expect(page.locator('.mascot-delivery-complete')).toHaveCount(0);
-    await expect(page.locator('.mascot-progress-accessible')).toHaveCount(0, { timeout: 3000 });
+    await expect(page.locator('.mascot-progress-accessible')).toHaveCount(0, { timeout: 4000 });
     await expect(page.locator('.mascot-delivery-complete')).toHaveCount(0);
     await page.evaluate(() => { window.__deliveryHarness!.start(); for (let i = 0; i < 3; i++) window.__deliveryHarness!.ack(1, i); });
     await expect(page.locator('.site-icon')).toHaveClass(/mascot-delivery-complete/);
@@ -25,14 +25,14 @@ test("only full mascot delivery celebrates, with reduced motion respected", asyn
     expect(await page.locator('.site-icon').evaluate(el => getComputedStyle(el).animationName)).toBe('none');
     await page.evaluate(() => window.__deliveryHarness!.reset());
 });
-test("success balloon waits for full delivery or two seconds of stalled progress", async ({ page }) => {
+test("success balloon waits for full delivery or 2.5 seconds of stalled progress", async ({ page }) => {
     await page.goto("relay-delivery-playwright.html?mascot=1");
     await page.waitForFunction(() => !!window.__deliveryHarness);
     await page.evaluate(() => { window.__deliveryHarness!.start(); window.__deliveryHarness!.ack(0, 0); });
     await expect(page.locator(".mascot-progress-accessible")).toHaveAttribute("aria-valuenow", "33");
     const success = page.locator(".compact-message.success");
     await expect(success).toHaveCount(0);
-    await expect(success).toBeVisible({ timeout: 3000 });
+    await expect(success).toBeVisible({ timeout: 4000 });
     expect(await page.evaluate(() => window.__deliveryHarness!.observed(0))).toBe(true);
     await page.evaluate(() => window.__deliveryHarness!.start());
     await expect(success).toHaveCount(0);
@@ -56,7 +56,7 @@ for (const theme of ["light", "dark"]) for (const surface of ["standalone", "ifr
         await expect(progress).toHaveAttribute("aria-valuenow", "33");
         await expect.poll(() => frame.locator(".mascot-progress-clip").evaluate(el => Number(getComputedStyle(el).transform.split(",").at(-1)?.replace(")", "")))).toBeCloseTo(700 * 2 / 3, 1);
         await page.screenshot({ path: testInfo.outputPath(`mascot-${theme}-${surface}.png`) });
-        await expect(progress).toHaveCount(0, { timeout: 3000 });
+        await expect(progress).toHaveCount(0, { timeout: 4000 });
         await expect(base).toHaveCSS("opacity", "1");
         await frame.evaluate(() => { window.__deliveryHarness!.ack(0, 1); window.__deliveryHarness!.ack(0, 2); });
         await expect(progress).toHaveCount(0);

@@ -63,7 +63,7 @@ export function createRelayDeliveryToasts(source: Observable<RelayDeliveryEvent>
                 signal(progress.id);
                 if (hidden.has(progress.id)) { remove(progress.id); return; }
                 fade(progress.id, 300);
-            }, 2000));
+            }, 2500));
         }
     });
     return {
