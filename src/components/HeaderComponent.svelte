@@ -78,7 +78,7 @@
             >
                 <svg
                     class="site-icon"
-                    class:mascot-delivery-complete={deliveryProgress?.progress.state === "complete"}
+                    class:mascot-delivery-complete={deliveryProgress && deliveryProgress.progress.accepted > 0 && deliveryProgress.progress.state !== "cancelled" && (deliveryProgress.progress.state === "complete" || deliveryProgress.fading)}
                     viewBox="0 0 700 700"
                     aria-hidden="true"
                     xmlns="http://www.w3.org/2000/svg"

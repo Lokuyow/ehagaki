@@ -24,7 +24,7 @@ import { configureAppRuntimeEnvironment } from '../../lib/appRuntimeEnvironment'
 import { MockStorage } from '../helpers';
 
 describe('HeaderComponent', () => {
-    it('celebrates full delivery but never timeout restoration', async () => {
+    it('celebrates full delivery and accepted timeout restoration without filling to 100%', async () => {
         const props = { onResetPostContent: vi.fn(), onShowDraftList: vi.fn() };
         const view = render(HeaderComponent, { props: { ...props, deliveryProgress: {
             progress: { id: 1, total: 2, accepted: 2, discovering: false, state: 'complete' as const }, fading: false, fadeMs: 0,
@@ -33,6 +33,15 @@ describe('HeaderComponent', () => {
         await view.rerender({ ...props, deliveryProgress: {
             progress: { id: 2, total: 2, accepted: 1, discovering: false, state: 'sending' }, fading: true, fadeMs: 300,
         } });
+        expect(view.container.querySelector('.mascot-delivery-complete')).toBeTruthy();
+        expect(view.container.querySelector('.mascot-progress-clip')?.getAttribute('style')).toContain('350px');
+        for (const state of ['sending', 'incomplete', 'cancelled'] as const) {
+            await view.rerender({ ...props, deliveryProgress: {
+                progress: { id: 3, total: 2, accepted: state === 'cancelled' ? 1 : 0, discovering: false, state }, fading: true, fadeMs: 300,
+            } });
+            expect(view.container.querySelector('.mascot-delivery-complete')).toBeNull();
+        }
+        await view.rerender(props);
         expect(view.container.querySelector('.mascot-delivery-complete')).toBeNull();
     });
     it('uses unique artwork IDs and clips the whole mascot from below, leaving discovery indeterminate', async () => {

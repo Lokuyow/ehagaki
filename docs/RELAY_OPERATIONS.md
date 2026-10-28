@@ -62,8 +62,9 @@ deleting history cannot recreate a row. Database schemas do not change.
 The app-owned `useRelayDeliveryFeedback` hook owns one presentation subscription
 and its timers. On the TOP composer, the visible mascot represents the newest
 operation: a 30%-opacity base with the original SVG colors filling upward. Discovery
-leaves it translucent. The mascot briefly pops and glows only on full delivery,
-never on timeout restoration; reduced-motion preferences suppress that animation.
+leaves it translucent. The mascot briefly pops and glows on full delivery or when
+presentation ends with at least one accepted relay, including idle timeout restoration;
+partial delivery never fills to 100%. Reduced-motion preferences suppress that animation.
 When presentation ends, the base restores uniformly rather
 than falsely filling incomplete delivery to 100%. Older work never replaces the
 newest operation after it retires.
@@ -87,7 +88,7 @@ delivery with resolved routes fills the bar. Completion holds for 250ms and fade
 for 150ms; incomplete delivery fades from its current width over 300ms. These are
 presentation timers; the existing network operation alone controls the 12/30s cap.
 Dismissing or evicting a toast does not cancel delivery or recreate that toast.
-After discovery closes and at least one relay has accepted, 2,500ms without another
+After discovery closes and at least one relay has accepted, 2,000ms without another
 acceptance retires the display with a 300ms fade. Duplicate ACKs do not renew this
 presentation-only idle wait. Late ACKs still settle and persist normally without
 reopening the retired display; transport keeps its existing 12/30s deadline.
@@ -110,5 +111,5 @@ the existing Playwright harnesses; no real relay or account is required.
 The success balloon waits for delivery settlement or the presentation idle timeout.
 The TOP submit button uses that same readiness to end its loading display, without
 an additional button timer. First acceptance keeps it loading; delivery settlement
-or the 2.5-second presentation idle timeout ends it. Posting errors end it immediately.
+or the two-second presentation idle timeout ends it. Posting errors end it immediately.
 Composer clearing and host success notifications still happen at the first acceptance.

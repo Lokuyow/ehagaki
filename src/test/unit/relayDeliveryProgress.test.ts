@@ -15,7 +15,7 @@ function ui(rx: RxNostr) {
     return { controller, get rows() { return rows; } };
 }
 describe("relay delivery progress", () => {
-    it("signals balloon readiness at the 2.5-second idle limit even after manual dismissal", async () => {
+    it("signals balloon readiness at the two-second idle limit even after manual dismissal", async () => {
         const rx = {} as RxNostr;
         const ready = vi.fn();
         const controller = createRelayDeliveryToasts(observeRelayDeliveries(rx), () => {}, ready);
@@ -26,7 +26,7 @@ describe("relay delivery progress", () => {
         const snapshot: RelayDeliveryProgress[] = [];
         const sub = observeRelayDeliveries(rx).subscribe(e => { if (e.type === "progress") snapshot.push(e.progress); });
         controller.dismiss(snapshot[0].id);
-        await vi.advanceTimersByTimeAsync(2499); expect(ready).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1999); expect(ready).not.toHaveBeenCalled();
         await vi.advanceTimersByTimeAsync(1); expect(ready).toHaveBeenCalledOnce();
         delivery.update(relays, relays); delivery.finish();
         expect(ready).toHaveBeenCalledOnce();
@@ -42,9 +42,7 @@ describe("relay delivery progress", () => {
         ack(0); ack(1);
         await vi.advanceTimersByTimeAsync(1700);
         ack(1); // Duplicate traffic must not extend the visible wait.
-        await vi.advanceTimersByTimeAsync(300);
-        expect(view.rows[0].fading).toBe(false);
-        await vi.advanceTimersByTimeAsync(499);
+        await vi.advanceTimersByTimeAsync(299);
         expect(view.rows[0].fading).toBe(false);
         await vi.advanceTimersByTimeAsync(1);
         expect(view.rows[0]).toMatchObject({ fading: true, progress: { accepted: 2, state: "sending" } });

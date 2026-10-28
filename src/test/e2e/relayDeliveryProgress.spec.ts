@@ -4,12 +4,17 @@ declare global { interface Window { __deliveryHarness?: {
     observed(index: number): boolean; reset(): void;
 } } }
 test.use({ trace: "off" });
-test("only full mascot delivery celebrates, with reduced motion respected", async ({ page }, testInfo) => {
+test("full and accepted partial mascot delivery celebrate, with reduced motion respected", async ({ page }, testInfo) => {
     await page.goto("relay-delivery-playwright.html?mascot=1");
     await page.waitForFunction(() => !!window.__deliveryHarness);
     await page.evaluate(() => { window.__deliveryHarness!.start(); window.__deliveryHarness!.ack(0, 0); });
     await expect(page.locator('.mascot-delivery-complete')).toHaveCount(0);
+    await page.waitForFunction(() => document.querySelector('.site-icon')?.classList.contains('mascot-delivery-complete'));
+    await expect(page.locator('.site-icon')).toHaveClass(/mascot-delivery-complete/);
+    expect(await page.locator('.mascot-progress-clip').getAttribute('style')).not.toContain('translateY(0px)');
     await expect(page.locator('.mascot-progress-accessible')).toHaveCount(0, { timeout: 4000 });
+    await expect(page.locator('.mascot-delivery-complete')).toHaveCount(0);
+    await page.evaluate(() => { window.__deliveryHarness!.ack(0, 1); window.__deliveryHarness!.ack(0, 2); });
     await expect(page.locator('.mascot-delivery-complete')).toHaveCount(0);
     await page.evaluate(() => { window.__deliveryHarness!.start(); for (let i = 0; i < 3; i++) window.__deliveryHarness!.ack(1, i); });
     await expect(page.locator('.site-icon')).toHaveClass(/mascot-delivery-complete/);
@@ -23,9 +28,14 @@ test("only full mascot delivery celebrates, with reduced motion respected", asyn
     await page.evaluate(() => { window.__deliveryHarness!.start(); for (let i = 0; i < 3; i++) window.__deliveryHarness!.ack(2, i); });
     await expect(page.locator('.site-icon')).toHaveClass(/mascot-delivery-complete/);
     expect(await page.locator('.site-icon').evaluate(el => getComputedStyle(el).animationName)).toBe('none');
+    await expect(page.locator('.mascot-progress-accessible')).toHaveCount(0);
+    await page.evaluate(() => { window.__deliveryHarness!.start(); window.__deliveryHarness!.ack(3, 0); });
+    await page.waitForFunction(() => document.querySelector('.site-icon')?.classList.contains('mascot-delivery-complete'));
+    await expect(page.locator('.site-icon')).toHaveClass(/mascot-delivery-complete/);
+    expect(await page.locator('.site-icon').evaluate(el => getComputedStyle(el).animationName)).toBe('none');
     await page.evaluate(() => window.__deliveryHarness!.reset());
 });
-test("success balloon waits for full delivery or 2.5 seconds of stalled progress", async ({ page }) => {
+test("success balloon waits for full delivery or two seconds of stalled progress", async ({ page }) => {
     await page.goto("relay-delivery-playwright.html?mascot=1");
     await page.waitForFunction(() => !!window.__deliveryHarness);
     const button = page.locator('.post-button');
