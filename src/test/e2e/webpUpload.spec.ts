@@ -60,10 +60,11 @@ for (const reaction of [false, true]) for (const input of ['picker', 'paste', 'd
         }
         if (reaction) {
             expect((await read(page)).gallery[0]).toMatchObject({ mimeType: 'image/webp', isPlaceholder: false });
-            await editor.fill('webp_reaction');
+            await expect(editor).toBeEmpty();
+            await expect(page.getByRole('button', { name: '投稿', exact: true })).toBeEnabled();
             await page.getByRole('button', { name: '投稿', exact: true }).click();
-            await expect.poll(async () => (await read(page)).wire?.content).toBe(':webp_reaction:');
-            expect((await read(page)).wire?.emoji).toEqual([['emoji', 'webp_reaction', new URL('webp-fixture.webp', page.url()).href]]);
+            await expect.poll(async () => (await read(page)).wire?.content).toBe(':animation:');
+            expect((await read(page)).wire?.emoji).toEqual([['emoji', 'animation', new URL('webp-fixture.webp', page.url()).href]]);
         }
         expect(pageErrors).toEqual([]);
     });

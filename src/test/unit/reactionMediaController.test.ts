@@ -37,6 +37,7 @@ describe('Reaction media session ownership', () => {
         setReactionTarget(target(), []);
         expect(reactionComposerState.value!.sessionToken).toBe(session);
         expect(reactionComposerState.value!.ownerToken).not.toBe(targetOwner);
+        expect(f.controller.getContext().originalFileNames.get('owned')).toBe('cat.png');
         expect(f.upload.isCurrent()).toBe(true); expect(f.controller.getInputMode()).toBe('uploadedShortcode');
         expect(f.upload.signal.aborted).toBe(false);
     });
@@ -66,6 +67,7 @@ describe('Reaction media session ownership', () => {
         const f = fixture(true); clearReactionTarget('ownership');
         expect(f.upload.signal.aborted).toBe(true); expect(mediaGalleryStore.items).toEqual([]);
         setReactionTarget(target(), []); f.upload.onPlaceholdersCreated([{ placeholderId: 'late', file: new File(['x'], 'late.png') }]);
+        expect(f.controller.getContext().originalFileNames.size).toBe(0);
         expect(f.upload.isCurrent()).toBe(false); expect(f.controller.getContext().ownedItemIds.size).toBe(0);
     });
     it('blocks a late hash result from recreating an old item after editor replacement', async () => {
@@ -89,6 +91,7 @@ describe('Reaction media session ownership', () => {
         const f = fixture(); f.complete(); clearReactionTarget();
         expect(mediaGalleryStore.items).toHaveLength(1);
         setReactionTarget(target(), []); expect(f.controller.getInputMode()).toBe('singleValue');
+        expect(f.controller.getContext().originalFileNames.size).toBe(0);
     });
     it('retains completed items if their restoration transaction is rejected', () => {
         const f = fixture(true); f.complete();

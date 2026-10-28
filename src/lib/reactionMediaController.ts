@@ -19,7 +19,7 @@ interface Dependencies {
     onUploadEnd: () => void;
 }
 interface Session {
-    token: symbol; editor: Editor; auth: object; runtime: unknown; environment?: object; ownedIds: Set<string>;
+    token: symbol; editor: Editor; auth: object; runtime: unknown; environment?: object; ownedIds: Set<string>; originalFileNames: Map<string, string>;
 }
 
 /** App-owned media lifecycle. Store transitions notify it synchronously before editor disposal. */
@@ -61,7 +61,7 @@ export function createReactionMediaController(deps: Dependencies) {
         const editor = deps.getEditor();
         if (!session && state && editor && !editor.isDestroyed) {
             session = { token: state.sessionToken, editor, auth: deps.getAuth(), runtime: deps.getRuntime(),
-                environment: deps.getEnvironment?.(), ownedIds: new Set() };
+                environment: deps.getEnvironment?.(), ownedIds: new Set(), originalFileNames: new Map() };
             deps.onChange();
         }
     };
@@ -69,7 +69,7 @@ export function createReactionMediaController(deps: Dependencies) {
     return {
         sync,
         getContext(): ReactionMediaContext {
-            return { items: deps.getItems(), ownedItemIds: session?.ownedIds ?? new Set<string>() };
+            return { items: deps.getItems(), ownedItemIds: session?.ownedIds ?? new Set<string>(), originalFileNames: session?.originalFileNames ?? new Map<string, string>() };
         },
         getInputMode() { return getReactionInputMode(this.getContext()); },
         abortUpload() { upload?.abort(); },
@@ -84,7 +84,10 @@ export function createReactionMediaController(deps: Dependencies) {
                 isCurrent: () => session === owner && upload === operation && ownsSession(owner),
                 onPlaceholdersCreated: entries => {
                     if (!operation.isCurrent()) return;
-                    entries.forEach(entry => owner.ownedIds.add(entry.placeholderId));
+                    entries.forEach(entry => {
+                        owner.ownedIds.add(entry.placeholderId);
+                        owner.originalFileNames.set(entry.placeholderId, entry.file.name);
+                    });
                     deps.onChange();
                 },
             };

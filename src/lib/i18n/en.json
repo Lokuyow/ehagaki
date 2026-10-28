@@ -71,7 +71,7 @@
     }
   },
   "reaction": {
-    "shortcode_hint": "Enter the image shortcode, e.g. cat or :cat:. Use letters, numbers, - and _ only.",
+    "shortcode_hint": "Enter a shortcode\nUse A–Z, a–z, 0–9, - and _\nLeave blank to use the filename",
     "action": "React",
     "entry": "Reaction",
     "target": "Reaction target",
