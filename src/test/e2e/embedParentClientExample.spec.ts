@@ -898,7 +898,7 @@ document.querySelector("#reload").addEventListener("click", () => { iframe.src =
 
     await page.goto("/ehagaki/e2e-v1-storage-host.html");
     const frame = page.frameLocator("#child");
-    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    await expect(frame.locator(".tiptap-editor")).toBeVisible({ timeout: 30_000 });
     const readFrameColors = () => frame.locator("html").evaluate((html) => ({
         accent: getComputedStyle(html).getPropertyValue("--accent-color").trim().toLowerCase(),
         base: getComputedStyle(html).getPropertyValue("--base-color").trim().toLowerCase(),

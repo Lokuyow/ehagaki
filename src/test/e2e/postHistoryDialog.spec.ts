@@ -1689,7 +1689,9 @@ test.describe('PostHistoryDialog Playwright', () => {
             () => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length),
             { timeout: 15_000 },
         ).toBe(5);
-        await expect.poll(() => historyEventIds(page)).toEqual(ids.slice(60, 110));
+        // Relay events can arrive while the saved page is displayed. Wait for
+        // a saved post without assuming that the visible window is unchanged.
+        await expect.poll(() => historyEventIds(page)).toContain(ids[60]);
         await scrollHistoryToBottom(page);
         await expect(footer.getByText('リレーと同期中...')).toBeVisible();
         await expect(footer.locator('.inline-spinner')).toBeInViewport();
