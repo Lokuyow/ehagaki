@@ -306,6 +306,8 @@ upload progress/error などの Composer UI state も変更しません。現在
 
 GIF（`image/gif`）は静止画・アニメーションとも圧縮設定にかかわらず原本のまま送信し、リサイズや形式変換を行いません。Composer UI と Host-owned Lite の `uploadMedia` への受け渡しも同じ扱いです。
 
+アニメーションWebP（`image/webp`）も通常投稿・リアクションで利用でき、圧縮設定にかかわらず原本を送信します。静止WebPは従来の画像処理を使用します。
+
 ```ts
 const composer = document.querySelector('ehagaki-composer');
 await composer.whenReady();

@@ -1,3 +1,4 @@
+import { createWebpFixture } from '../webpFixture';
 import { describe, expect, it, vi } from "vitest";
 import { File as NodeFile } from "node:buffer";
 import { webcrypto } from "node:crypto";
@@ -45,6 +46,26 @@ describe("Host-owned media handoff", () => {
             originalSize: bytes.length, processedSize: bytes.length, width: 256, height: 192,
         }), { signal });
         expect(result).toMatchObject({ success: true, nip94: { m: "image/gif", size: String(bytes.length), dim: "256x192" },
+            sizeInfo: { wasCompressed: false, originalSize: bytes.length, compressedSize: bytes.length } });
+    });
+    it("hands the original animated WebP to Lite's host with matching metadata", async () => {
+        const bytes = createWebpFixture();
+        const file = new NodeFile([bytes], "animation.webp", { type: "image/webp", lastModified: 1234 }) as unknown as File;
+        const storage = new MockStorage(); storage.setItem("imageQualityLevel", "low");
+        const signal = new AbortController().signal;
+        const uploadMedia = vi.fn(async (received: File) => {
+            expect(received).toBe(file); expect(new Uint8Array(await received.arrayBuffer())).toEqual(bytes);
+            return { url: "https://host.example/animation.webp" };
+        });
+        const executor = createHostOwnedUploadExecutor({ uploadMedia, signal });
+        const prepared = await executor.prepareFiles([file], { localStorage: storage, crypto: webcrypto.subtle } as unknown as UploadHelperDependencies);
+        expect(prepared[0].file).toBe(file);
+        const [result] = await executor.uploadPreparedFiles(prepared.map(entry => entry.file), [{ file, placeholderId: "webp" }]);
+        expect(uploadMedia).toHaveBeenCalledWith(file, expect.objectContaining({
+            originalName: "animation.webp", processedName: "animation.webp", originalType: "image/webp", processedType: "image/webp",
+            originalSize: bytes.length, processedSize: bytes.length, width: 256, height: 192,
+        }), { signal });
+        expect(result).toMatchObject({ success: true, nip94: { m: "image/webp", size: String(bytes.length), dim: "256x192" },
             sizeInfo: { wasCompressed: false, originalSize: bytes.length, compressedSize: bytes.length } });
     });
     it("passes the same File instance to the host and accepts only an HTTP(S) result", async () => {

@@ -1,3 +1,4 @@
+import { createWebpFixture } from '../webpFixture';
 import { test, expect } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import { readFile, readdir } from "node:fs/promises";
@@ -251,14 +252,14 @@ test.beforeAll(async () => {
             const end = boundary ? body.indexOf(`\r\n--${boundary}`, start) : -1;
             if (start < 4 || end <= start) { response.writeHead(400).end(); return; }
             reactionUploadedImage = body.subarray(start, end);
-            reactionUploadedMimeType = reactionUploadedImage.subarray(0, 3).toString() === 'GIF' ? 'image/gif' : 'image/png';
+            reactionUploadedMimeType = reactionUploadedImage.subarray(0, 3).toString() === 'GIF' ? 'image/gif' : reactionUploadedImage.subarray(0, 4).toString() === 'RIFF' ? 'image/webp' : 'image/png';
             response.writeHead(200, { 'Content-Type': 'application/json' });
             response.end(JSON.stringify({ status: 'success', nip94_event: {
-                tags: [['url', `${hostOrigin}/reaction-uploaded.${reactionUploadedMimeType === 'image/gif' ? 'gif' : 'png'}`], ['m', reactionUploadedMimeType]],
+                tags: [['url', `${hostOrigin}/reaction-uploaded.${reactionUploadedMimeType === 'image/gif' ? 'gif' : reactionUploadedMimeType === 'image/webp' ? 'webp' : 'png'}`], ['m', reactionUploadedMimeType]],
             } }));
             return;
         }
-        if (pathname === '/reaction-uploaded.png' || pathname === '/reaction-uploaded.gif') {
+        if (pathname === '/reaction-uploaded.png' || pathname === '/reaction-uploaded.gif' || pathname === '/reaction-uploaded.webp') {
             response.writeHead(200, { 'Content-Type': reactionUploadedMimeType, 'Access-Control-Allow-Origin': '*' });
             response.end(reactionUploadedImage);
             return;
@@ -412,18 +413,18 @@ test("keeps startup NIP-07 opt-in and preserves the existing ready path when abs
     });
 });
 
-for (const { authenticated, uploaded, gif } of [
+for (const { authenticated, uploaded, gif, webp = false } of [
     { authenticated: true, uploaded: false, gif: false }, { authenticated: false, uploaded: false, gif: false },
-    { authenticated: true, uploaded: true, gif: false }, { authenticated: true, uploaded: true, gif: true },
+    { authenticated: true, uploaded: true, gif: false }, { authenticated: true, uploaded: true, gif: true }, { authenticated: true, uploaded: true, gif: false, webp: true },
 ]) {
-test(`Full Reaction at 320px preserves outer identity (${uploaded ? gif ? 'uploaded GIF' : 'uploaded PNG' : authenticated ? 'authenticated' : 'guest'})`, async ({ page }) => {
+test(`Full Reaction at 320px preserves outer identity (${uploaded ? gif ? 'uploaded GIF' : webp ? 'uploaded WebP' : 'uploaded PNG' : authenticated ? 'authenticated' : 'guest'})`, async ({ page }) => {
     const signingSecret = generateSecretKey(); const owner = getPublicKey(signingSecret);
     const original = finalizeEvent({ kind: 1, content: 'OPAQUE-EMBEDDED-BODY https://hidden.example/image.png', tags: [], created_at: 100 }, generateSecretKey());
     const targetSecret = generateSecretKey();
     const target = finalizeEvent({ kind: 6, content: JSON.stringify(original), created_at: 200,
         tags: [['e', original.id], ['p', original.pubkey]] }, targetSecret);
     const profilePicture = `${hostOrigin}/reaction-profile.png`;
-    const uploadedImageUrl = `${hostOrigin}/reaction-uploaded.${gif ? 'gif' : 'png'}`;
+    const uploadedImageUrl = `${hostOrigin}/reaction-uploaded.${gif ? 'gif' : webp ? 'webp' : 'png'}`;
     const profile = finalizeEvent({ kind: 0, content: JSON.stringify({ display_name: 'Reaction target author', picture: profilePicture }),
         tags: [], created_at: Math.floor(Date.now() / 1000) }, targetSecret);
     reactionFixtureEvents = [target, original, profile];
@@ -499,16 +500,16 @@ test(`Full Reaction at 320px preserves outer identity (${uploaded ? gif ? 'uploa
     }
     if (uploaded) {
         await expect(composer.locator('input[type=file]')).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp,image/gif');
-        const base64 = gif ? '' : await page.evaluate(() => {
+        const base64 = gif || webp ? '' : await page.evaluate(() => {
             const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 256;
             const context = canvas.getContext('2d')!; context.fillStyle = '#ff8000'; context.fillRect(0, 0, 256, 256);
             return canvas.toDataURL('image/png').split(',')[1];
         });
-        const bytes = gif ? Buffer.from(createGifFixture()) : Buffer.from(base64, 'base64');
-        await composer.locator('input[type=file]').setInputFiles({ name: gif ? 'cat.gif' : 'cat.png', mimeType: gif ? 'image/gif' : 'image/png', buffer: bytes });
+        const bytes = gif ? Buffer.from(createGifFixture()) : webp ? Buffer.from(createWebpFixture()) : Buffer.from(base64, 'base64');
+        await composer.locator('input[type=file]').setInputFiles({ name: gif ? 'cat.gif' : webp ? 'cat.webp' : 'cat.png', mimeType: gif ? 'image/gif' : webp ? 'image/webp' : 'image/png', buffer: bytes });
         await expect(composer.locator('.media-gallery img')).toBeVisible();
-        await expect.poll(() => composer.locator('.media-gallery img').evaluate((image: HTMLImageElement) => [image.naturalWidth, image.naturalHeight])).toEqual(gif ? [256, 192] : [256, 128]);
-        if (gif) expect(reactionUploadedImage).toEqual(bytes);
+        await expect.poll(() => composer.locator('.media-gallery img').evaluate((image: HTMLImageElement) => [image.naturalWidth, image.naturalHeight])).toEqual(gif || webp ? [256, 192] : [256, 128]);
+        if (gif || webp) expect(reactionUploadedImage).toEqual(bytes);
         await expect(editor.locator('.is-editor-empty')).toHaveAttribute('data-placeholder', /shortcode/);
         await editor.click(); await editor.pressSequentially('::cat::');
         await expect(editor).toHaveText('::cat::');
