@@ -15,6 +15,45 @@ function ui(rx: RxNostr) {
     return { controller, get rows() { return rows; } };
 }
 describe("relay delivery progress", () => {
+    it("retires stalled partial progress without cancelling delivery or reappearing on late ACKs", async () => {
+        const source = new Subject<any>();
+        const rx = { send: () => source } as unknown as RxNostr;
+        const view = ui(rx);
+        const task = startRelayPublish(rx, { id: "fixture", kind: 1, content: "fixture" }, { targetRelays: relays });
+        const ack = (index: number) => source.next({ from: relays[index], ok: true, done: true, eventId: "fixture" });
+        ack(0); ack(1);
+        await vi.advanceTimersByTimeAsync(1200);
+        ack(1); // Duplicate traffic must not extend the visible wait.
+        await vi.advanceTimersByTimeAsync(299);
+        expect(view.rows[0].fading).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(view.rows[0]).toMatchObject({ fading: true, progress: { accepted: 2, state: "sending" } });
+        await vi.advanceTimersByTimeAsync(300);
+        expect(view.rows).toEqual([]);
+        expect(source.observed).toBe(true);
+        ack(2);
+        expect((await task.settled).success).toBe(true);
+        expect(view.rows).toEqual([]);
+        expect(vi.getTimerCount()).toBe(0);
+        view.controller.dispose();
+    });
+    it("renews the visible wait only when acceptance advances, after discovery closes", async () => {
+        const rx = {} as RxNostr, view = ui(rx);
+        const delivery = beginRelayDelivery(rx, relays, true);
+        delivery.update(relays, relays.slice(0, 1), true);
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(view.rows[0].fading).toBe(false);
+        delivery.update(relays, relays.slice(0, 1), false);
+        await vi.advanceTimersByTimeAsync(1000);
+        delivery.update(relays, relays.slice(0, 2));
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(view.rows[0].fading).toBe(false);
+        delivery.update(relays, relays); delivery.finish();
+        await vi.advanceTimersByTimeAsync(400);
+        expect(view.rows).toEqual([]);
+        expect(vi.getTimerCount()).toBe(0);
+        view.controller.dispose();
+    });
     it("counts only distinct successful final ACKs and dismissing does not stop sending", async () => {
         const source = new Subject<any>();
         const rx = { send: vi.fn(() => source) } as unknown as RxNostr;

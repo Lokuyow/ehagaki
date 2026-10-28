@@ -19,6 +19,7 @@ export function createRelayDeliveryToasts(source: Observable<RelayDeliveryEvent>
     const fade = (id: number, duration: number) => {
         const row = rows.get(id);
         if (!row) return;
+        clearTimeout(timers.get(id));
         rows.set(id, { ...row, fading: true, fadeMs: duration }); notify();
         timers.set(id, setTimeout(() => { remove(id); notify(); }, duration));
     };
@@ -38,8 +39,18 @@ export function createRelayDeliveryToasts(source: Observable<RelayDeliveryEvent>
         }
         notify();
         if (progress.state === "complete" && previous?.progress.state !== "complete") {
+            clearTimeout(timers.get(progress.id));
             timers.set(progress.id, setTimeout(() => fade(progress.id, 150), 250));
         } else if (progress.state === "incomplete" && previous?.progress.state !== "incomplete") fade(progress.id, 300);
+        else if (progress.state === "sending" && !progress.discovering && progress.accepted > 0
+            && (!previous || previous.progress.discovering || previous.progress.accepted !== progress.accepted)) {
+            clearTimeout(timers.get(progress.id));
+            timers.set(progress.id, setTimeout(() => {
+                // A stalled display can retire while the session keeps delivering.
+                hidden.add(progress.id);
+                fade(progress.id, 300);
+            }, 1500));
+        }
     });
     return {
         dismiss(id: number) { if (rows.get(id)?.progress.state === "sending") hidden.add(id); remove(id); notify(); },
