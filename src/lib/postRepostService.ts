@@ -1,3 +1,4 @@
+import { followPostHistoryDelivery } from "./storage/postHistoryDeliveryReceipt";
 import { seckeySigner } from "@rx-nostr/crypto";
 import type { EventTemplate } from "nostr-tools";
 import type { RxNostr } from "rx-nostr";
@@ -122,6 +123,7 @@ export class PostRepostService {
                 localWriteScope: { ownerPubkeyHex: pubkey, expectedRevision, isActive: () => true } };
             try {
                 await this.deps.saveHistory(input);
+                void followPostHistoryDelivery(signed.id, pubkey, published, expectedRevision).catch(() => undefined);
                 return { ...published, eventId: signed.id, event: signed, historySaved: true };
             } catch {
                 return { ...published, eventId: signed.id, event: signed, historySaved: false, retryInput: input };

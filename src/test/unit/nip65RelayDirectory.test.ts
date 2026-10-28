@@ -86,7 +86,7 @@ describe("Nip65RelayDirectory", () => {
         const contextualRelay = "wss://reply-target.example/";
         const bootstrapLookup = directory.lookup(pubkey);
         observers[0].complete();
-        await expect(bootstrapLookup).resolves.toMatchObject({ status: "not-found" });
+        await expect(bootstrapLookup).resolves.toMatchObject({ status: "network-error" });
 
         const contextualLookup = directory.lookup(pubkey, { discoveryRelays: [contextualRelay] });
         expect(rxNostr.use).toHaveBeenCalledTimes(2);
@@ -422,7 +422,7 @@ describe("Nip65RelayDirectory", () => {
             observer.complete();
             return { unsubscribe };
         } }) } as unknown as RxNostr;
-        await expect(new Nip65RelayDirectory(rxNostr).lookup(pubkey)).resolves.toMatchObject({ status: "not-found" });
+        await expect(new Nip65RelayDirectory(rxNostr).lookup(pubkey)).resolves.toMatchObject({ status: "network-error" });
         expect(unsubscribe).toHaveBeenCalledOnce();
         expect(requests).toEqual([]);
         expect(vi.getTimerCount()).toBe(0);

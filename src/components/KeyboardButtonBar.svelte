@@ -25,6 +25,7 @@
         onCustomEmojiPickerOpenChange?: (open: boolean) => void;
         hasPostingCapability?: boolean;
         showPostButton?: boolean;
+        postLoading?: boolean;
         mediaEnabled?: boolean;
         customEmojiEnabled?: boolean;
         customEmojiAvailable?: boolean;
@@ -41,6 +42,7 @@
         onCustomEmojiPickerOpenChange,
         hasPostingCapability = false,
         showPostButton = true,
+        postLoading,
         mediaEnabled = true,
         customEmojiEnabled = true,
         customEmojiAvailable = true,
@@ -53,18 +55,23 @@
     let isUploading = $derived(editorState.isUploading);
     let canPost = $derived(editorState.canPost);
 
-    // ローダーの表示状態（最低0.4秒表示）
+    // TOP uses shared delivery readiness; other surfaces retain their short hold.
     let isShowingLoader = $state(false);
 
     // 送信中のローダー表示管理
     $effect(() => {
+        if (postLoading !== undefined) {
+            isShowingLoader = postLoading;
+            return;
+        }
         if (postStatus.sending) {
             isShowingLoader = true;
         } else if (isShowingLoader) {
             // 送信完了したら0.4秒後にローダーを隠す
-            setTimeout(() => {
+            const timer = setTimeout(() => {
                 isShowingLoader = false;
             }, 400);
+            return () => clearTimeout(timer);
         }
     });
 
@@ -112,6 +119,7 @@
             !canPost ||
             editorState.isSubmitPending ||
             postStatus.sending ||
+            postLoading ||
             isUploading ||
             !hasPostingCapability ||
             !!postStatus.completed
@@ -356,6 +364,7 @@
                                     : ''}"
                                 disabled={!canPost ||
                                     postStatus.sending ||
+                                    postLoading ||
                                     editorState.isSubmitPending ||
                                     isUploading ||
                                     !hasPostingCapability ||

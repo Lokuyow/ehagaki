@@ -91,7 +91,8 @@ async function startDeferredPost(sensitive: boolean, empty: boolean) {
     signing.resolve();
     if (!empty) await vi.waitFor(() => expect(lookup).toHaveBeenCalledOnce());
     discovery.resolve({ readRelays: empty ? [] : [recipient] });
-    return { result: await pending, published };
+    const first = await pending;
+    return { result: first.deliverySettled ? await first.deliverySettled : first, published };
 }
 
 describe("post-start immutable relay target snapshots", () => {

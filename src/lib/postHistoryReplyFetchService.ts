@@ -1,3 +1,4 @@
+import { useRelayQuery, type RelayQuerySummary } from "./relay/query";
 import {
     createRxBackwardReq,
     type RxNostr,
@@ -178,15 +179,12 @@ export class PostHistoryReplyFetchService {
         );
         const eventsById = new Map<string, EventAccumulator>();
         let resolved = false;
+        let querySummary: RelayQuerySummary | undefined;
         let subscription: { unsubscribe?: () => void } | undefined;
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
         let resolveTask: ((status: PostHistoryReplyFetchResult["status"]) => void) | undefined;
 
         const cleanup = () => {
-            if (timeoutId !== undefined) {
-                this.clearTimeoutFn(timeoutId);
-                timeoutId = undefined;
-            }
             subscription?.unsubscribe?.();
             subscription = undefined;
         };
@@ -222,15 +220,18 @@ export class PostHistoryReplyFetchService {
                     return;
                 }
 
-                subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
+                subscription = useRelayQuery(rxNostr, rxReq, {
                     on: relayUrls.length > 0
                         ? { relays: relayUrls }
                         : { defaultReadRelays: true },
-                }).subscribe({
+                }, { timeoutMs: Math.min(6_000, params.timeoutMs ?? POST_HISTORY_DIRECT_REPLY_FETCH_TIMEOUT_MS), quorum: true,
+                        source: (req, on) => usePostHistoryRelayEvents(rxNostr, req, on),
+                        setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn,
+                        onEnd: result => { querySummary = result; } }).subscribe({
                     next: (packet: { event?: NostrEvent; from?: string }) => {
                         this.handlePacket(eventsById, parentContextsById, packet);
                     },
-                    complete: () => safeResolve("success"),
+                    complete: () => safeResolve(querySummary && !querySummary.complete ? "failed" : "success"),
                     error: (error: unknown) => {
                         this.console.error("post_history_reply_fetch_error", error);
                         safeResolve("failed");
@@ -251,10 +252,7 @@ export class PostHistoryReplyFetchService {
                 } as never);
                 rxReq.over();
 
-                timeoutId = this.setTimeoutFn(() => {
-                    this.console.warn("post_history_reply_fetch_timeout", eventIds.join(","));
-                    safeResolve("failed");
-                }, params.timeoutMs ?? POST_HISTORY_DIRECT_REPLY_FETCH_TIMEOUT_MS);
+
             } catch (error) {
                 this.console.error("post_history_reply_fetch_request_error", error);
                 safeResolve("failed");

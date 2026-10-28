@@ -1131,7 +1131,7 @@ test("uses a preconnection Full relays property instead of saved user relays", a
     ]);
 });
 
-test("publishes EVENT only through the configured Host write relay", async ({ page, browserName, isMobile }) => {
+test("publishes EVENT only through the configured Host write relay", async ({ page, browserName, isMobile }, testInfo) => {
     relayEventsPaused = true;
     const savedUserRelay = "wss://saved-user-relay.example";
     const hostReadRelay = "wss://host-read-relay.example";
@@ -1243,6 +1243,11 @@ test("publishes EVENT only through the configured Host write relay", async ({ pa
     }
 
     await expect.poll(() => relayPublishedEvents.length).toBe(1);
+    const deliveryProgress = composer.locator(".mascot-progress-accessible");
+    await expect(deliveryProgress).toBeAttached();
+    await expect(deliveryProgress).toHaveAttribute("aria-valuenow", "0");
+    await expect(composer.locator(".relay-delivery-toast")).toHaveCount(0);
+    await composer.screenshot({ path: testInfo.outputPath("relay-delivery-web-component.png") });
     await expect(editor).toHaveAttribute('contenteditable', 'true');
     expect(await composer.evaluate(el => el.shadowRoot?.activeElement?.classList.contains('tiptap-editor'))).toBe(true);
     if (touch) {
@@ -1257,6 +1262,9 @@ test("publishes EVENT only through the configured Host write relay", async ({ pa
     relayEventsPaused = false;
     pendingEventAcks.splice(0).forEach(acknowledge => acknowledge());
     await expect(editor).toHaveText('');
+
+    await expect(deliveryProgress).toHaveAttribute("aria-valuenow", "100");
+    await expect(deliveryProgress).toHaveCount(0);
     expect(await composer.evaluate(el => el.shadowRoot?.activeElement?.classList.contains('tiptap-editor'))).toBe(true);
     expect(await page.evaluate(() => (window as any).__fullSubmitBlurs)).toBe(0);
     expect(relayPublishedEvents).toHaveLength(1);

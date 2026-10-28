@@ -1667,7 +1667,7 @@ describe("profileMetadataCache", () => {
         expect(resolution.stopReason).toBe("persistence-unavailable");
     });
 
-    it("gives each relay tier its own four-second timeout budget", async () => {
+    it("shares one six-second deadline across relay tiers", async () => {
         const contextRelay = "wss://context.example.com/";
         const rxNostr = createNonCompletingRxNostr();
         const startedAt = Date.now();
@@ -1677,51 +1677,19 @@ describe("profileMetadataCache", () => {
             forceRefresh: true,
         });
         await flushProfileBatch();
-        await vi.advanceTimersByTimeAsync(
-            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS,
-        );
-        expect(rxNostr.calls.map((call) => call.relays)).toEqual([
-            BOOTSTRAP_RELAYS,
-            [contextRelay],
-        ]);
-        await vi.advanceTimersByTimeAsync(
-            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS,
-        );
-        expect(rxNostr.calls.map((call) => call.relays)).toEqual([
-            BOOTSTRAP_RELAYS,
-            [contextRelay],
-            FALLBACK_RELAYS,
-        ]);
-        await vi.advanceTimersByTimeAsync(
-            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS,
-        );
-
+        await vi.advanceTimersByTimeAsync(3_998);
+        expect(rxNostr.calls).toHaveLength(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(rxNostr.calls.map(call => call.relays)).toEqual([BOOTSTRAP_RELAYS, [contextRelay]]);
+        let done = false;
+        void pending.then(() => { done = true; });
+        await vi.advanceTimersByTimeAsync(1_999);
+        expect(done).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
         await expect(pending).resolves.toBeNull();
-        expect(Date.now() - startedAt).toBe(
-            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS * 3 + 31,
-        );
-        expect(rxNostr.calls.map((call) => call.authors)).toEqual([
-            [pubkey],
-            [pubkey],
-            [pubkey],
-        ]);
+        expect(Date.now() - startedAt).toBe(6_030);
+        expect(rxNostr.calls).toHaveLength(2);
         expect(profileMetadataCache.getReactiveEntry(pubkey)).toBeNull();
-
-        const retry = profileMetadataCache.getProfile(pubkey, {
-            rxNostr: rxNostr as never,
-        });
-        await flushProfileBatch();
-        await vi.advanceTimersByTimeAsync(
-            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS,
-        );
-        await vi.advanceTimersByTimeAsync(
-            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS,
-        );
-        await vi.advanceTimersByTimeAsync(
-            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS,
-        );
-        await expect(retry).resolves.toBeNull();
-        expect(rxNostr.calls.length).toBeGreaterThan(3);
     });
 
     it("fails soft after network errors in every tier", async () => {
@@ -1747,7 +1715,7 @@ describe("profileMetadataCache", () => {
         });
         await flushProfileBatch();
         await expect(retry).resolves.toBeNull();
-        expect(rxNostr.calls.length).toBeGreaterThan(3);
+        expect(rxNostr.calls.length).toBeGreaterThan(2);
     });
 
     it.each(["error", "rejected"] as const)(
@@ -1791,7 +1759,7 @@ describe("profileMetadataCache", () => {
         expect(profileMetadataCacheInternals.getPendingProfileCountForTests()).toBe(0);
     });
 
-    it("creates a negative entry only after all available tiers miss", async () => {
+    it("does not negative-cache stream completion without EOSE evidence", async () => {
         const contextRelay = "wss://context.example.com/";
         const rxNostr = createTieredRxNostr(() => []);
 
@@ -1812,10 +1780,7 @@ describe("profileMetadataCache", () => {
             [FALLBACK_RELAYS[0], contextRelay],
             FALLBACK_RELAYS.slice(1),
         ]);
-        expect(profileMetadataCache.getReactiveEntry(pubkey)).toMatchObject({
-            status: "negative",
-            profile: null,
-        });
+        expect(profileMetadataCache.getReactiveEntry(pubkey)).toBeNull();
     });
 
     it("passes all relays that observed the selected event to the repository", async () => {

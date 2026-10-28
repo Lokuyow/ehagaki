@@ -122,15 +122,15 @@ for (const scenario of [
                 taggedUserRead: { [fixture.pubkey]: { status: "delivered" } },
             },
         });
-        expect(result.history).toEqual([{ eventId: result.result.eventId, verified: true, acceptedRelays: [authorRelay, recipientRelay] }]);
+        expect(result.history).toEqual([{ eventId: result.result.eventId, verified: true, acceptedRelays: [authorRelay] }]);
         expect(fixture.requests.filter((request) => request.kind === 10002 && request.relay === contextualRelay)).toHaveLength(1);
         expect(result.waves.find((wave) => wave.relays.includes(recipientRelay))!.startedMs).toBeLessThan(1_000);
-        expect(result.completedMs).toBeLessThan(2_500);
+        expect(result.acknowledgedMs).toBeLessThan(2_500);
     });
 }
 
 for (const silentClasses of ["author", "recipient", "both"] as const) {
-    test(`successful class ACKs finish promptly with silent ${silentClasses} relays`, async ({ page }) => {
+    test(`first ACK returns promptly while background delivery waits for silent ${silentClasses} relays`, async ({ page }) => {
         const fixture = await relayFixture(page, "hung", silentClasses);
         const extraAuthors = ["author", "both"].includes(silentClasses) ? [silentAuthorRelay] : [];
         const result = await page.evaluate(({ pointer, authorRelay, extraAuthors }) =>
@@ -138,8 +138,8 @@ for (const silentClasses of ["author", "recipient", "both"] as const) {
         { pointer: fixture.pointer, authorRelay, extraAuthors });
         expect(result.result).toMatchObject({ success: true, fullyDelivered: true, acceptedRelays: [authorRelay, recipientRelay] });
         expect(result.waves.find((wave) => wave.relays.includes(recipientRelay))!.startedMs).toBeLessThan(1_000);
-        expect(result.completedMs).toBeLessThan(2_500);
-        expect(result.history).toEqual([{ eventId: result.result.eventId, verified: true, acceptedRelays: [authorRelay, recipientRelay] }]);
+        expect(result.acknowledgedMs).toBeLessThan(2_500);
+        expect(result.history).toEqual([{ eventId: result.result.eventId, verified: true, acceptedRelays: [authorRelay] }]);
         expect(result.result.timedOutRelays).toEqual(expect.arrayContaining([
             ...extraAuthors,
             ...(["recipient", "both"].includes(silentClasses) ? [silentRecipientRelay] : []),
@@ -175,12 +175,13 @@ for (const sensitive of [false, true]) {
         const authorWave = progress.waves.find(wave => wave.kind === structureKind && wave.relays.includes(authorRelay))!;
         expect(authorWave.acceptedRelays).toEqual([]); expect(authorWave.completed).toBe(false);
         expect(progress.finished).toBe(false);
+        expect(progress.acknowledged).toBe(true);
         fixture.ack(authorRelay, structureKind);
         const result = await pending;
         expect(result.result).toMatchObject({ success: true, fullyDelivered: true,
             delivery: { authorWrite: { acceptedRelays: [authorRelay] }, taggedUserRead: { [fixture.pubkey]: { acceptedRelays: [recipientRelay] } } } });
         expect(new Set(result.result.acceptedRelays)).toEqual(new Set([authorRelay, recipientRelay]));
-        expect(result.history).toEqual([{ eventId: result.result.eventId, verified: true, acceptedRelays: expect.arrayContaining([authorRelay, recipientRelay]) }]);
+        expect(result.history).toEqual([{ eventId: result.result.eventId, verified: true, acceptedRelays: [recipientRelay] }]);
         expect(fixture.publications.every(packet => packet.verified)).toBe(true);
         if (sensitive) {
             expect(result.signedKinds).toEqual([36, 1]);

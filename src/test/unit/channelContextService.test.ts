@@ -88,7 +88,7 @@ describe("ChannelContextService", () => {
         }, rxNostr, null)).resolves.toEqual({
             status: "resolved",
             quality: "verified-metadata",
-            metadataLookup: "complete",
+            metadataLookup: "incomplete",
             metadata: {
                 channelEventId: channelId,
                 relayHints: [
@@ -142,7 +142,7 @@ describe("ChannelContextService", () => {
 
         expect(result).toMatchObject({
             status: "resolved",
-            metadataLookup: "complete",
+            metadataLookup: "incomplete",
             metadata: {
                 name: "Recovered",
                 verifiedSourceRelays: [],
@@ -169,7 +169,7 @@ describe("ChannelContextService", () => {
             status: "root-only",
             quality: "verified-root-only",
             reason: "invalid-root-content",
-            metadataLookup: "complete",
+            metadataLookup: "incomplete",
             channelEventId: channelId,
             creatorPubkey: authorPubkey,
             createEventCreatedAt: 100,
@@ -576,7 +576,7 @@ describe("ChannelContextService", () => {
             relayHints: [],
         }, rxNostr, null)).resolves.toEqual({
             status: "failed",
-            reason: "root-not-found",
+            reason: "timeout",
         });
     });
 

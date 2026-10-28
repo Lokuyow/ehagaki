@@ -1,3 +1,4 @@
+import { useRelayQuery } from "./relay/query";
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./relayLists";
 import {
@@ -56,16 +57,11 @@ export class PostHistorySelfParentFetchService {
         params: PostHistorySelfParentFetchRequest,
     ): PostHistorySelfParentFetchTask {
         let subscription: SubscriptionLike | undefined;
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let resolved = false;
         let resolveTask: ((result: PostHistorySelfParentFetchResult) => void) | undefined;
         const relayUrls = this.resolveRelayUrls(params.relayConfig);
 
         const cleanup = () => {
-            if (timeoutId !== undefined) {
-                this.clearTimeoutFn(timeoutId);
-                timeoutId = undefined;
-            }
             subscription?.unsubscribe?.();
             subscription = undefined;
         };
@@ -89,11 +85,13 @@ export class PostHistorySelfParentFetchService {
                 }
 
                 const rxReq = createRxBackwardReq();
-                subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
+                subscription = useRelayQuery(rxNostr, rxReq, {
                     on: relayUrls.length > 0
                         ? { relays: relayUrls }
                         : { defaultReadRelays: true },
-                }).subscribe({
+                }, { quorum: false, timeoutMs: params.timeoutMs ?? POST_HISTORY_SELF_PARENT_FETCH_TIMEOUT_MS,
+                    setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn,
+                    source: (req, on) => usePostHistoryRelayEvents(rxNostr, req, on) }).subscribe({
                     next: (packet: { event?: NostrEvent; from?: string }) => {
                         const event = packet.event;
                         if (
@@ -127,10 +125,7 @@ export class PostHistorySelfParentFetchService {
                     return;
                 }
 
-                timeoutId = this.setTimeoutFn(() => {
-                    this.console.warn("post_history_self_parent_fetch_timeout", params.parentEventId);
-                    safeResolve({ event: null, relayUrl: null });
-                }, params.timeoutMs ?? POST_HISTORY_SELF_PARENT_FETCH_TIMEOUT_MS);
+
             } catch (error) {
                 this.console.error("post_history_self_parent_fetch_request_error", error);
                 safeResolve({ event: null, relayUrl: null });

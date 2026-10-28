@@ -1,8 +1,8 @@
 # Sensitive Content Payload方式 設計メモ
 
-> **Status:** Implementation target / experimental  
-> **Scope:** eHagaki PR #284 で検証中の fail-closed Content Warning 形式  
-> **Reference implementation:** SnowCait/nostter PR #2680 が本方式の read-only 対応を実装している。  
+> **Status:** Implementation target / experimental
+> **Scope:** eHagaki PR #284 で検証中の fail-closed Content Warning 形式
+> **Reference implementation:** SnowCait/nostter PR #2680 が本方式の read-only 対応を実装している。
 > **Relation to previous branch design:** 本書は、PR #284 内で先に実装された `kind 36 / 3636` canonical event + kind 1 companion 方式を置き換える設計とする。未releaseの旧実験方式を互換対象として残さない。
 
 規範的な形式仕様は [Sensitive Content Payload形式](SENSITIVE_CONTENT.md) を参照してください。
@@ -491,9 +491,9 @@ Structureがpayload IDを参照するためpayloadは先に署名する必要が
 
 実際にpayloadを保存したrelayを `c` hintへ入れるため、Structure署名は最初の確認済みpayload ACK後になる。hintは後続ACKで変更せず、同一relayが後から別配送roleを持った場合は既存ACKを再利用する。relay URL単位でpayload/Structureそれぞれ一度だけ送信する（transportのAUTH再送を除く）。最終acceptedRelaysと配送class成功にはStructure ACKだけを数える。
 
-discovery budgetは3秒。各relayの各stageは送信開始から12秒、AUTHはoperation開始から30秒の共通deadlineまで待つ。Structure署名・新規送信もこの30秒以内に限定する。必要な全配送classが満たされた後は最大1500msで残りのsendをsettleする。cache/history保存はnetwork deadline外で完了を待つ。
+discovery budgetは3秒。PayloadとStructureの全stageでoperation開始から12秒の共通deadlineを使い、AUTHが必要な場合だけ開始から最大30秒まで待つ。stageごとに待機時間を追加しない。最初のStructure ACKで投稿成功を返し、残りの配送と配送先探索は同じsession内で継続する。成功後の1500ms settleは廃止した。cache/history保存はnetwork deadline外で完了を待つ。待機の所有と取得側の方針は[リレー通信の待機制御](RELAY_OPERATIONS.md)を参照。
 
-Payload ACKごとにcacheへ累積accepted relayを保存し、repositoryのread/union/putを同一Dexie transactionに収める。reject/timeout/未確認relayへStructureは送らない。cancel/logout/session/runtime変更後は新しい送信を開始せず、既に開始したsendの確認済みACKとPayload cache情報は保持する。
+Payload ACKごとにcacheへ累積accepted relayを保存し、repositoryのread/union/putを同一Dexie transactionに収める。reject/timeout/未確認relayへStructureは送らない。成功前のcancel、またはlogout/session/runtime変更後は新しい送信を開始せず、確認済みACKとPayload cache情報は保持する。成功後のコンポーザーのクリアや次投稿はバックグラウンド配送を取り消さない。
 
 ### 16.2 payload publish失敗
 

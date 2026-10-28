@@ -1,3 +1,4 @@
+import { useRelayQuery, type RelayQuerySummary } from "./relay/query";
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import {
     classifyPostHistoryInboundInteraction,
@@ -202,8 +203,9 @@ export class PostHistoryInboundInteractionsSyncService {
         params: PostHistoryInboundInteractionsSyncRequest,
     ): PostHistoryInboundInteractionsSyncTask {
         let cancelled = false;
+        let querySummary: RelayQuerySummary | undefined;
         let subscription: SubscriptionLike | undefined;
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
         let resolveTask: ((status: PostHistoryInboundInteractionsSyncStatus) => void) | undefined;
 
         const generationReady = this.getChildWriteGeneration();
@@ -223,10 +225,6 @@ export class PostHistoryInboundInteractionsSyncService {
             let resolved = false;
 
             const cleanup = () => {
-                if (timeoutId !== undefined) {
-                    this.clearTimeoutFn(timeoutId);
-                    timeoutId = undefined;
-                }
                 subscription?.unsubscribe?.();
                 subscription = undefined;
             };
@@ -250,15 +248,18 @@ export class PostHistoryInboundInteractionsSyncService {
                     }
 
                     const rxReq = createRxBackwardReq();
-                    subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
+                    subscription = useRelayQuery(rxNostr, rxReq, {
                         on: relayUrls.length > 0
                             ? { relays: relayUrls }
                             : { defaultReadRelays: true },
-                    }).subscribe({
+                    }, { timeoutMs: Math.min(6_000, timeoutMs), quorum: true,
+                        source: (req, on) => usePostHistoryRelayEvents(rxNostr, req, on),
+                        setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn,
+                        onEnd: result => { querySummary = result; } }).subscribe({
                         next: (packet: { event?: NostrEvent; from?: string }) => {
                             rawCount = this.handlePacket(eventsById, rawCount, packet);
                         },
-                        complete: () => safeResolve("success"),
+                        complete: () => safeResolve(querySummary && !querySummary.complete ? "timeout" : "success"),
                         error: (error: unknown) => {
                             this.console.error("post_history_inbound_interactions_sync_error", error);
                             safeResolve("error");
@@ -279,10 +280,7 @@ export class PostHistoryInboundInteractionsSyncService {
                     } as never);
                     rxReq.over();
 
-                    timeoutId = this.setTimeoutFn(() => {
-                        this.console.warn("post_history_inbound_interactions_sync_timeout", params.ownerPubkeyHex);
-                        safeResolve("timeout");
-                    }, timeoutMs);
+
                 } catch (error) {
                     this.console.error("post_history_inbound_interactions_sync_request_error", error);
                     safeResolve("error");

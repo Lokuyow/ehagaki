@@ -31,6 +31,10 @@ export interface EditorState {
 export interface PostResult {
     success: boolean;
     fullyDelivered?: boolean;
+    /** The first ACK is committed; remaining relay deliveries are still running. */
+    deliveryPending?: boolean;
+    /** Internal completion, never serialized into embed messages. */
+    deliverySettled?: Promise<PostResult>;
     /** Internal success state: the published event belongs to a prior session, so preserve the active composer. */
     preserveComposerContent?: boolean;
     error?: string;

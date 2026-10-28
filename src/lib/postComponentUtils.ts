@@ -38,26 +38,12 @@ function createSendingStatus(): PostStatus {
     };
 }
 
-function createSuccessStatus(result?: PostResult): PostStatus {
-    const isPartial = result?.fullyDelivered === false
-        || (result?.rejectedRelays?.length ?? 0) > 0
-        || (result?.timedOutRelays?.length ?? 0) > 0
-        || (result?.authRequiredRelays?.length ?? 0) > 0
-        || (result?.delivery?.authorWrite?.status !== undefined
-            && result.delivery.authorWrite.status !== "delivered")
-        || Object.values(result?.delivery?.taggedUserRead ?? {}).some(
-            (delivery) => delivery.status !== "delivered",
-        )
-        || (result?.delivery?.additional ?? []).some(
-            (delivery) => delivery.status !== "delivered",
-        );
+function createSuccessStatus(): PostStatus {
     return {
         sending: false,
         success: true,
         error: false,
-        message: isPartial
-            ? 'postComponent.post_partial_success'
-            : 'postComponent.post_success',
+        message: 'postComponent.post_success',
         completed: true,
     };
 }
@@ -82,7 +68,7 @@ export function createPostStatusHandlers({
             updatePostStatus(createSendingStatus());
         },
         markSuccess: (result?: PostResult) => {
-            updatePostStatus(createSuccessStatus(result));
+            updatePostStatus(createSuccessStatus());
             if (!result?.preserveComposerContent) {
                 clearContentAfterSuccess();
                 onPostSuccess?.(result);

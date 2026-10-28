@@ -116,7 +116,7 @@ describe("PostBroadcastService", () => {
             rxNostr: { send } as any,
         });
 
-        expect(result).toEqual({
+        expect(result.deliverySettled ? await result.deliverySettled : result).toEqual({
             success: true,
             eventId: "e".repeat(64),
             acceptedRelays: [
@@ -148,7 +148,7 @@ describe("PostBroadcastService", () => {
             rxNostr: { send } as any,
         });
 
-        expect(result).toEqual({
+        expect(result.deliverySettled ? await result.deliverySettled : result).toEqual({
             success: false,
             error: "post_timeout",
             acceptedRelays: [],
@@ -169,9 +169,10 @@ describe("PostBroadcastService", () => {
             rxNostr: { send } as any,
         });
 
-        expect(result).toEqual({
+        expect(result.deliverySettled ? await result.deliverySettled : result).toEqual({
             success: false,
             error: "post_network_error",
+            acceptedRelays: [],
         });
     });
 
@@ -184,7 +185,7 @@ describe("PostBroadcastService", () => {
             rxNostr: { send } as any,
         });
 
-        expect(result).toEqual({
+        expect(result.deliverySettled ? await result.deliverySettled : result).toEqual({
             success: false,
             error: "no_write_relays",
         });
@@ -200,7 +201,7 @@ describe("PostBroadcastService", () => {
             rxNostr: { send } as any,
         });
 
-        expect(result).toEqual({
+        expect(result.deliverySettled ? await result.deliverySettled : result).toEqual({
             success: false,
             error: "invalid_event",
         });

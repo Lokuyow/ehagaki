@@ -1,3 +1,5 @@
+import { RelayOperation } from "./relay/operation";
+import { useRelayQuery, type RelayQuerySummary } from "./relay/query";
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import { BOOTSTRAP_RELAYS } from "./relayLists";
 import { RelayConfigParser, RelayConfigUtils } from "./relayConfigUtils";
@@ -47,6 +49,7 @@ export interface Nip65RelayLookupOptions {
     discoveryRelays?: string[];
     /** Absolute consumer deadline, including time spent waiting for a lookup slot. */
     deadlineAt?: number;
+    operation?: RelayOperation;
     /** Publishing can use the latest known Read route while discovery continues. */
     resolveOnReadRoute?: boolean;
 }
@@ -267,11 +270,15 @@ export class Nip65RelayDirectory {
         if (deadlineAt <= this.now()) return Promise.resolve(this.snapshot(pubkey, flight, deadlineAt));
         return new Promise((resolve) => {
             let settled = false;
-            let timer: ReturnType<typeof setTimeout> | undefined;
+            let operation: RelayOperation | undefined;
+            const deadlineKey = {};
+            let detach: (() => void) | undefined;
             const finish = () => {
                 if (settled) return;
                 settled = true;
-                if (timer !== undefined) this.clearTimeoutFn(timer);
+                detach?.();
+                if (options.operation) operation?.unschedule(deadlineKey);
+                else operation?.finish();
                 flight.candidateListeners.delete(checkRoute);
                 resolve(this.snapshot(pubkey, flight, deadlineAt));
             };
@@ -299,7 +306,12 @@ export class Nip65RelayDirectory {
                 checkRoute();
             }
             if (!settled && Number.isFinite(deadlineAt)) {
-                timer = this.setTimeoutFn(finish, deadlineAt - this.now());
+                operation = options.operation ?? new RelayOperation(deadlineAt - this.now(), finish,
+                    { now: this.now, setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn });
+                if (options.operation) {
+                    operation.schedule(deadlineKey, deadlineAt, finish);
+                    detach = operation.add(finish);
+                }
             }
             // A consumer deadline never completes or cancels another consumer's shared discovery.
             void flight.promise.then(finish);
@@ -344,14 +356,11 @@ export class Nip65RelayDirectory {
             const request = createRxBackwardReq();
             let latest: Nip65RelayDirectoryEntry | undefined;
             let subscription: { unsubscribe?: () => void } | undefined;
-            let timer: ReturnType<typeof setTimeout> | undefined;
+
             let settled = false;
+            let querySummary: RelayQuerySummary | undefined;
 
             const cleanup = () => {
-                if (timer !== undefined) {
-                    this.clearTimeoutFn(timer);
-                    timer = undefined;
-                }
                 subscription?.unsubscribe?.();
                 subscription = undefined;
             };
@@ -369,10 +378,11 @@ export class Nip65RelayDirectory {
             };
 
             try {
-                timer = this.setTimeoutFn(() => finish(!latest), LOOKUP_TIMEOUT_MS);
-                const activeSubscription = this.rxNostr.use(request, {
+                const activeSubscription = useRelayQuery(this.rxNostr, request, {
                     on: { relays: discoveryRelays },
-                }).subscribe({
+                }, { timeoutMs: LOOKUP_TIMEOUT_MS, now: this.now,
+                    setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn,
+                    onEnd: result => { querySummary = result; } }).subscribe({
                     next: (packet: { event?: unknown }) => {
                         if (settled || !isKind10002Event(packet.event, pubkey)) return;
                         const receivedAt = this.now();
@@ -380,7 +390,7 @@ export class Nip65RelayDirectory {
                         onCandidate(candidate, receivedAt);
                         if (this.isNewer(candidate, latest)) latest = candidate;
                     },
-                    complete: () => finish(),
+                    complete: () => finish(querySummary !== undefined && !querySummary.complete && !latest),
                     error: () => finish(true),
                 });
                 if (settled) {
