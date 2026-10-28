@@ -13,7 +13,7 @@ export interface PostHistoryRelayOutcome {
     relayUrl: string;
     eoseReceived: boolean;
     verificationDrained: boolean;
-    termination: "eose" | "timeout" | "error" | "cancelled";
+    termination: "eose" | "timeout" | "error" | "cancelled" | "early-stop";
     rawCount: number;
     oldestCreatedAt: number | null;
     saturated: boolean;

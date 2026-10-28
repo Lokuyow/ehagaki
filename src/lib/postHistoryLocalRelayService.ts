@@ -1,4 +1,5 @@
 import { getAppRuntimeEnvironment } from "./appRuntimeEnvironment";
+import { RelayOperation } from "./relay/operation";
 import { normalizeLocalRelayUrl } from "./localRelayUrl";
 import { LocalRelayTransport, type LocalRelayTask, type LocalRelayPage } from "./localRelayTransport";
 import { POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS, type PostHistoryRelayFetchRequest } from "./postHistoryRelayFetchService";
@@ -140,14 +141,15 @@ export class PostHistoryLocalRelayService {
         let cancelled = false;
         const cancel = () => { cancelled = true; abort.abort(); };
         session.abort.signal.addEventListener("abort", cancel, { once: true });
-        const timer = setTimeout(() => abort.abort(), POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS);
+        const operation = new RelayOperation(POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS, () => abort.abort());
+        operation.bind(abort.signal);
         const active = () => !abort.signal.aborted && this.isCurrent(session) && request.isActive();
         const promise = (async (): Promise<LocalRelayHistoryReadResult | null> => {
             const localRevision = await this.getLocalRevision(session.ownerPubkeyHex);
             if (!active()) return null;
             const scope: PostHistoryLocalWriteScope = { ownerPubkeyHex: session.ownerPubkeyHex,
                 expectedRevision: localRevision, isActive: active };
-            const page = await this.getTransport().fetchAuthored(session.url, request, abort.signal).promise;
+            const page = await this.getTransport().fetchAuthored(session.url, request, abort.signal, operation).promise;
             if (!page || !active()) return null;
             // A resume hint is not exhaustion evidence. Empty pages retain their request bound;
             // head refreshes may seed a missing hint, but cannot rewind older pagination.
@@ -171,10 +173,10 @@ export class PostHistoryLocalRelayService {
             // Related reads are bounded to this authored page/current view, not a mirror.
             const related = await Promise.allSettled([
                 payloadIds.length ? this.getTransport().fetchRelated(session.url,
-                    { ids: [...new Set(payloadIds)], authors: [session.ownerPubkeyHex], kinds: [36], limit: payloadIds.length }, abort.signal).promise
+                    { ids: [...new Set(payloadIds)], authors: [session.ownerPubkeyHex], kinds: [36], limit: payloadIds.length }, abort.signal, operation).promise
                     : Promise.resolve([]),
                 targetIds.length ? this.getTransport().fetchRelated(session.url,
-                    { authors: [session.ownerPubkeyHex], kinds: [5], "#e": [...new Set(targetIds)], limit: request.limit ?? 150 }, abort.signal).promise
+                    { authors: [session.ownerPubkeyHex], kinds: [5], "#e": [...new Set(targetIds)], limit: request.limit ?? 150 }, abort.signal, operation).promise
                     : Promise.resolve([]),
             ]);
             if (active()) {
@@ -200,7 +202,7 @@ export class PostHistoryLocalRelayService {
                 localRevision, changed, browsingRanges: page.browsingRanges,
                 eventIds: page.events.map(({ event }) => event.id), nextUntil: page.nextUntil, hasMore: page.hasMore };
         })().catch(() => null).finally(() => {
-            cancel(); clearTimeout(timer); session.abort.signal.removeEventListener("abort", cancel);
+            operation.finish(); cancel(); session.abort.signal.removeEventListener("abort", cancel);
         });
         return { promise, cancel };
     }

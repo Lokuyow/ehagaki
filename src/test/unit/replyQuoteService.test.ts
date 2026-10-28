@@ -524,7 +524,7 @@ describe("ReplyQuoteService", () => {
             expect(result).toBeNull();
         });
 
-        it("readリレーがある場合はdefaultReadRelaysを使用し、リレーヒントを追加する", async () => {
+        it("readリレーを含む取得対象をsnapshotし、リレーヒントを追加する", async () => {
             let capturedOnParams: any = {};
             const mockRxNostr: RxNostr = {
                 use: vi.fn().mockImplementation((_req: any, opts: any) => {
@@ -545,8 +545,8 @@ describe("ReplyQuoteService", () => {
                 { "wss://user-relay.example.com/": { read: true, write: true } },
             );
 
-            // defaultReadRelaysが有効
-            expect(capturedOnParams.defaultReadRelays).toBe(true);
+            // 共通処理へ渡した対象は明示relayへ固定される
+            expect(capturedOnParams.defaultReadRelays).toBeUndefined();
             // hintリレーがテンポラリリレーとして含まれている
             expect(capturedOnParams.relays).toContain("wss://hint-relay.example.com/");
         });
@@ -614,13 +614,14 @@ describe("ReplyQuoteService", () => {
                 { "wss://user-relay.example.com/": { read: true, write: true } },
             );
 
-            expect(capturedOnParams.defaultReadRelays).toBe(true);
+            expect(capturedOnParams.defaultReadRelays).toBeUndefined();
             expect(capturedOnParams.relays).toEqual(["wss://hint-relay.example.com/"]);
         });
 
-        it("リレーヒントが空かつreadリレーがある場合はdefaultReadRelaysのみ使用する", async () => {
+        it("リレーヒントが空かつreadリレーがある場合はread relayのsnapshotだけを使用する", async () => {
             let capturedOnParams: any = {};
             const mockRxNostr: RxNostr = {
+                getDefaultRelays: () => ({ "wss://user-relay.example.com/": { url: "wss://user-relay.example.com/", read: true, write: true } }),
                 use: vi.fn().mockImplementation((_req: any, opts: any) => {
                     capturedOnParams = opts?.on || {};
                     return {
@@ -639,10 +640,10 @@ describe("ReplyQuoteService", () => {
                 { "wss://user-relay.example.com/": { read: true, write: true } },
             );
 
-            // defaultReadRelaysが有効
-            expect(capturedOnParams.defaultReadRelays).toBe(true);
-            // relaysは未設定
-            expect(capturedOnParams.relays).toBeUndefined();
+            // 共通処理へ渡した対象は明示relayへ固定される
+            expect(capturedOnParams.defaultReadRelays).toBeUndefined();
+            // 設定済みread relayを取得開始時に固定する
+            expect(capturedOnParams.relays).toEqual(["wss://user-relay.example.com/"]);
         });
 
         it("readリレーが0件の場合はFALLBACK_RELAYSを使用する", async () => {
@@ -666,7 +667,7 @@ describe("ReplyQuoteService", () => {
                 { "wss://write-only.example.com/": { read: false, write: true } },
             );
 
-            expect(capturedOnParams.defaultReadRelays).toBe(false);
+            expect(capturedOnParams.defaultReadRelays).toBeUndefined();
             expect(capturedOnParams.relays).toContain("wss://hint-relay.example.com/");
             for (const fallbackRelay of FALLBACK_RELAYS) {
                 expect(capturedOnParams.relays).toContain(fallbackRelay);

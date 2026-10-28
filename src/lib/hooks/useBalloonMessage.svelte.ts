@@ -31,6 +31,7 @@ declare global {
 }
 
 interface UseBalloonMessageOptions {
+    getSuccessReady?: () => boolean;
     /** バルーン自動非表示のミリ秒（デフォルト: 3000） */
     hideDelay?: number;
     /** visibilitychangeのデバウンス間隔ms（デフォルト: 1000） */
@@ -155,6 +156,8 @@ export function useBalloonMessage(
 
     function showSuccess() {
         if (!balloonManager || hasProcessedSuccess) return;
+        currentMessage = null;
+        if (messageHideTimeout) { clearTimeout(messageHideTimeout); messageHideTimeout = null; }
         successMessage = balloonManager.createMessage("success");
         hasProcessedSuccess = true;
         if (successHideTimeout) clearTimeout(successHideTimeout);
@@ -269,6 +272,7 @@ export function useBalloonMessage(
     $effect(() => {
         const postStatus = editorState.postStatus;
         if (
+            (options.getSuccessReady?.() ?? true) &&
             postStatus.success &&
             postStatus.completed &&
             !successMessage &&

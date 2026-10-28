@@ -4,11 +4,12 @@
 
     interface Props {
         showPostButton?: boolean;
+        postLoading?: boolean;
     }
 
-    let { showPostButton = true }: Props = $props();
+    let { showPostButton = true, postLoading }: Props = $props();
 </script>
 
 <Tooltip.Provider>
-    <KeyboardButtonBar {showPostButton} />
+    <KeyboardButtonBar {showPostButton} {postLoading} />
 </Tooltip.Provider>

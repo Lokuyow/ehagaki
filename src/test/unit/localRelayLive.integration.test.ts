@@ -11,6 +11,7 @@ import { DexiePostHistoryRelayCoverageRepository } from "../../lib/storage/postH
 import { DexiePostHistoryImportedRangesRepository } from "../../lib/storage/postHistoryImportedRangesRepository";
 import { DexiePostHistoryLocalBrowsingRangesRepository } from "../../lib/storage/postHistoryLocalBrowsingRangesRepository";
 import { LocalRelayTransport } from "../../lib/localRelayTransport";
+import { RelayOperation } from "../../lib/relay/operation";
 import { PostHistoryLocalRelayService } from "../../lib/postHistoryLocalRelayService";
 import { attestFullyVerifiedPostHistoryRawEvent } from "../../lib/postHistoryRawEventVerification";
 import { buildSensitivePayloadEvent, buildSensitiveStructureEvent } from "../../lib/sensitiveContentPayload";
@@ -280,6 +281,27 @@ describe("local relay with real rx-nostr verification and IndexedDB", () => {
         task.cancel(); expect(await task.promise).toBeNull();
         expect(LocalSocket.instances.every(socket => socket.readyState === 3)).toBe(true);
         expect(LocalSocket.sent.filter(([type]) => type === "EVENT")).toHaveLength(1);
+    });
+
+    it("shares the original deadline across sequential local reads without resetting the budget", async () => {
+        vi.useFakeTimers(); LocalSocket.mode = "silent";
+        const operation = new RelayOperation(6000, () => undefined);
+        const signal = new AbortController().signal;
+        const first = transport.fetchRelated(url, { kinds: [1] }, signal, operation);
+        await vi.advanceTimersByTimeAsync(4000);
+        const request = LocalSocket.sent.find(([type]) => type === "REQ")!;
+        LocalSocket.instances[0].receive(["EOSE", request[1]]);
+        expect(await first.promise).toEqual([]);
+        expect(operation.reason).toBeUndefined();
+        const second = transport.fetchRelated(url, { kinds: [5] }, signal, operation);
+        let settled = false; void second.promise.then(() => { settled = true; });
+        await vi.advanceTimersByTimeAsync(1999);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(await second.promise).toEqual([]);
+        expect(operation.reason).toBe("timeout");
+        expect(LocalSocket.instances.every(socket => socket.readyState === 3)).toBe(true);
+        expect(vi.getTimerCount()).toBe(0);
     });
 
     it("URL and identity changes cancel the old read and reject mismatched store ownership", async () => {

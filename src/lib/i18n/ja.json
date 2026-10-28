@@ -1,4 +1,9 @@
 {
+  "relayDelivery": {
+    "dismiss": "配送状況の表示を閉じる",
+    "discovering": "配送先の探索中",
+    "progress": "{total}台中{accepted}台のリレーが受理"
+  },
   "uploadedMedia": {
     "title": "メディア",
     "description": "選択したサーバーへ自分がアップロードした画像・動画を確認します。",

@@ -15,6 +15,8 @@
   import { getAppRuntimeEnvironment } from "./lib/appRuntimeEnvironment";
   import { iframeMessageService } from "./lib/iframeMessageService";
   import type { AppPostNotificationPort } from "./lib/appNotificationPort";
+  import { useRelayDeliveryFeedback } from "./lib/hooks/useRelayDeliveryFeedback.svelte";
+  import RelayDeliveryToasts from "./components/RelayDeliveryToasts.svelte";
   import { waitNostr } from "nip07-awaiter";
   import { AccountManager } from "./lib/accountManager";
   import { nip46Service } from "./lib/nip46Service";
@@ -451,6 +453,7 @@
   let isAuthInitialized = $derived(authState.value?.isInitialized ?? false);
 
   let rxNostr: NostrSessionBootstrap["rxNostr"] | undefined = $state();
+  const deliveryFeedback = useRelayDeliveryFeedback(() => rxNostr, () => settingsStore.showMascot);
   let relayProfileService = $state<RelayProfileService | undefined>();
   let isLoadingParentClient = $state(false);
   let isLoadingNip07 = $state(false);
@@ -2080,6 +2083,7 @@
   const balloon = useBalloonMessage(
     () => $_,
     () => localeInitialized,
+    { getSuccessReady: () => deliveryFeedback.successReady },
   );
   const showHeaderBalloonMessage = $derived(
     settingsStore.showMascot && settingsStore.showFlavorText,
@@ -2160,6 +2164,7 @@
     <main class="ehagaki-app-root">
       <div class="main-content">
         <HeaderComponent
+          deliveryProgress={deliveryFeedback.mascot}
           onResetPostContent={handleResetPostContent}
           onShowDraftList={draftListDialog.open}
           onChooseTarget={composerTargetDialog.open}
@@ -2316,6 +2321,7 @@
       </div>
       <ReasonInput />
       <KeyboardButtonBar
+        postLoading={editorState.postStatus.sending || (editorState.postStatus.success && !deliveryFeedback.successReady)}
         onUploadImage={() => postComponentRef?.openFileDialog()}
         onPostButtonTap={() => balloon.showTips()}
         {customEmojiPickerOpen}
@@ -2391,6 +2397,7 @@
           localNsecAuthEnabled={appRuntimeEnvironment.localNsecAuthEnabled}
         />
       {/if}
+      <RelayDeliveryToasts rows={deliveryFeedback.bars} onDismiss={deliveryFeedback.dismiss} />
       {#if showTransitionOverlay}
         <div class="transition-overlay"></div>
       {/if}

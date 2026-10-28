@@ -163,7 +163,7 @@ describe("bud03ServerList", () => {
             expect(settled).toBe(false);
             outgoing.next({ to: "wss://relay.example/", message: ["REQ", `${requestId}:0`, { kinds: [BUD03_KIND] }] });
             observer.complete();
-            expect((await operation).error).toBe("not_found");
+            expect((await operation).error).toBe("network_error");
             expect(rxNostr.getDefaultRelays).toHaveBeenCalledWith({ filter: "read-all" });
             expect(rxNostr.use).toHaveBeenCalledWith(expect.anything(), { on: { relays: ["wss://relay.example/"] } });
             expect(unsubscribe).toHaveBeenCalledOnce();
@@ -236,7 +236,7 @@ describe("bud03ServerList", () => {
         const result = await fetchUploadRelayLists({ rxNostr: rxNostr as never, pubkeyHex: "owner",
             signal: new AbortController().signal, assertCurrent: () => {}, fetch: vi.fn() });
 
-        expect(result.results.blossom).toEqual({ status: "skipped", reason: "empty_list" });
+        expect(result.results.blossom).toEqual({ status: "skipped", reason: "empty_list", incomplete: true });
         expect(result.updates).toEqual({});
     });
     it("parses server tags with normalization, de-duplication, and ordering", () => {
@@ -426,7 +426,7 @@ describe("bud03ServerList", () => {
             servers: ["https://blossom.example.com"],
         });
 
-        expect(result).toEqual({
+        expect(result.deliverySettled ? await result.deliverySettled : result).toEqual({
             success: true,
             eventId: "event-id",
             acceptedRelays: ["wss://write.example.com/"],

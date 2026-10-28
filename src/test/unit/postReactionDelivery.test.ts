@@ -43,7 +43,8 @@ describe('Reaction reuses PostManager NIP-65 delivery', () => {
         await signStarted.promise;
         defaults = ['wss://changed.example/']; writes.value.push('wss://new-store.example/'); releaseSign.resolve();
         if (route === 'timeout') { await vi.waitFor(() => expect(lookup).toHaveBeenCalledOnce()); await vi.advanceTimersByTimeAsync(4_000); }
-        const result = await pending;
+        const first = await pending;
+        const result = first.deliverySettled ? await first.deliverySettled : first;
         expect(new Set(sent.flatMap(entry => entry.relays))).toEqual(new Set(route === 'found' ? [author, recipient] : [author]));
         expect(lookup).toHaveBeenCalledWith(target.pubkey, expect.objectContaining({ discoveryRelays: [hint], resolveOnReadRoute: true }));
         expect(result.success).toBe(route !== 'reject' && route !== 'outsider');

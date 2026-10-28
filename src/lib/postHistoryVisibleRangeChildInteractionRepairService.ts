@@ -1,3 +1,4 @@
+import { RelayOperation } from "./relay/operation";
 import { ehagakiDb } from "./storage/ehagakiDb";
 import { getPostHistoryChildWriteGeneration } from "./storage/postHistoryLocalWriteScope";
 import {
@@ -49,7 +50,6 @@ export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CONCURRENCY = 2
 export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT = 250;
 export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_TIMEOUT_MS = 6_000;
 const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_RELAY_LIMIT = 8;
-const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_TIMEOUT_WARN_INTERVAL_MS = 60_000;
 const DEFAULT_VISIBLE_RANGE_RELATION_KINDS: PostHistoryRelationKind[] =
     POST_HISTORY_RELATION_REPAIR_KINDS;
 
@@ -283,7 +283,6 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
     private setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
     private clearTimeoutFn: (id: ReturnType<typeof setTimeout>) => void;
     private now: () => number;
-    private lastFetchTimeoutWarnAt = 0;
 
     constructor(deps: PostHistoryVisibleRangeChildInteractionRepairServiceDeps = {}) {
         this.directReplySaveService =
@@ -789,14 +788,10 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         let messageSubscription: SubscriptionLike | undefined;
         let errorSubscription: SubscriptionLike | undefined;
         let connectionStateSubscription: SubscriptionLike | undefined;
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let operation: RelayOperation;
         let resolveTask: ((terminal: "complete" | "timeout" | "error" | "cancelled") => void) | undefined;
 
         const cleanup = () => {
-            if (timeoutId !== undefined) {
-                this.clearTimeoutFn(timeoutId);
-                timeoutId = undefined;
-            }
             subscription?.unsubscribe?.();
             subscription = undefined;
             messageSubscription?.unsubscribe?.();
@@ -854,10 +849,14 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                 }
 
                 resolved = true;
-                cleanup();
+                operation?.finish(terminal === "complete" ? "complete" : terminal);
                 resolve(buildResult(terminal));
             };
             resolveTask = safeResolve;
+            operation = new RelayOperation(POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_TIMEOUT_MS,
+                reason => safeResolve(reason === "cancelled" ? "cancelled" : reason === "timeout" ? "timeout" : "complete"),
+                { now: this.now, setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn });
+            operation.add(cleanup);
 
             try {
                 if (parentEventIds.length === 0) {
@@ -940,14 +939,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                 } as never);
                 rxReq.over();
 
-                timeoutId = this.setTimeoutFn(() => {
-                    const coverageComplete = coverageRelayUrls.length > 0
-                        && coverageRelayUrls.every((relayUrl) => eoseRelayUrls.has(relayUrl));
-                    if (!coverageComplete) {
-                        this.warnCandidateFetchTimeout();
-                    }
-                    safeResolve("timeout");
-                }, POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_TIMEOUT_MS);
+
             } catch (error) {
                 this.console.error("post_history_visible_child_interaction_repair_request_error", error);
                 safeResolve("error");
@@ -960,17 +952,6 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         };
     }
 
-    private warnCandidateFetchTimeout(): void {
-        const now = this.now();
-        if (now - this.lastFetchTimeoutWarnAt
-            < POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_TIMEOUT_WARN_INTERVAL_MS
-        ) {
-            return;
-        }
-
-        this.lastFetchTimeoutWarnAt = now;
-        this.console.warn("post_history_visible_child_interaction_repair_fetch_timeout");
-    }
 
     private handleCandidatePacket(
         eventsById: Map<string, EventAccumulator>,

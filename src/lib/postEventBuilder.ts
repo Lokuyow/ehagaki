@@ -1,12 +1,12 @@
-import { noopSigner, type EventSigner, type RxNostr } from "rx-nostr";
+import { startRelayPublish, type RelayPublishTask } from "./relay/publish";
+import type { RelayOperation } from "./relay/operation";
+import { type EventSigner, type RxNostr } from "rx-nostr";
 import { ALLOWED_IMAGE_EXTENSIONS, ALLOWED_VIDEO_EXTENSIONS } from "./constants";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type {
     ChannelContextState,
     ImetaField,
     PostResult,
-    RelayRejection,
-    RelayRejectionCategory,
 } from "./types";
 import type { ImageImetaMetadataMap } from "./types";
 
@@ -156,14 +156,13 @@ export class PostEventBuilder {
 export class PostEventSender {
     static readonly DEFAULT_SETTLE_TIMEOUTS = {
         initialMs: 12_000,
-        successMs: 1_500,
         authMs: 30_000,
     } as const;
 
     constructor(
         private rxNostr: RxNostr,
         private console: Console,
-        private settleTimeouts: PostEventSenderSettleTimeouts = PostEventSender.DEFAULT_SETTLE_TIMEOUTS,
+        private timeouts: PostEventSenderTimeouts = PostEventSender.DEFAULT_SETTLE_TIMEOUTS,
     ) { }
 
     getDefaultWriteRelays(): string[] {
@@ -196,216 +195,18 @@ export class PostEventSender {
             return Promise.resolve({ success: false, error: "no_write_relays" });
         }
 
-        return new Promise((resolve) => {
-            let resolved = false;
-            let subscription: { unsubscribe(): void } | null = null;
-            let settleTimer: ReturnType<typeof setTimeout> | undefined;
-            let resultEventId = event.id;
-            let successSettleScheduled = false;
-            const acceptedRelays = new Set<string>();
-            const rejectedByRelay = new Map<string, RelayRejection>();
-            const authRequiredRelays = new Set<string>();
-            const pendingAuthRelays = new Set<string>();
+        return this.startEvent(event, options, targetRelays).acknowledged;
+    }
 
-            const safeUnsubscribe = () => {
-                try {
-                    subscription?.unsubscribe();
-                } catch (e) {
-                    // ignore
-                }
-            };
-
-            const clearSettleTimer = () => {
-                if (settleTimer) {
-                    clearTimeout(settleTimer);
-                    settleTimer = undefined;
-                }
-            };
-
-            const getResult = (final = true): PostResult => {
-                const accepted = [...acceptedRelays];
-                const rejected = [...rejectedByRelay.values()];
-                const finalRelays = new Set([
-                    ...acceptedRelays,
-                    ...rejectedByRelay.keys(),
-                ]);
-                const timedOutRelays = final ? targetRelays.filter(
-                    (relay) => !finalRelays.has(relay),
-                ) : [];
-                const success = accepted.length > 0;
-
-                const hasUnresolvedRelays = timedOutRelays.length > 0
-                    || (!success && rejected.length === 0);
-
-                return {
-                    success,
-                    ...(success ? { eventId: resultEventId } : {
-                        error: hasUnresolvedRelays
-                            ? "post_timeout"
-                            : "post_rejected",
-                    }),
-                    acceptedRelays: accepted,
-                    ...(rejected.length ? { rejectedRelays: rejected } : {}),
-                    ...(timedOutRelays.length ? { timedOutRelays } : {}),
-                    ...(authRequiredRelays.size
-                        ? { authRequiredRelays: [...authRequiredRelays] }
-                        : {}),
-                };
-            };
-
-            const scheduleSettle = (delayMs: number) => {
-                clearSettleTimer();
-                settleTimer = setTimeout(() => {
-                    if (
-                        options.waitForAllRelays
-                        && pendingAuthRelays.size > 0
-                        && typeof options.authDeadlineAt === "number"
-                        && Date.now() < options.authDeadlineAt
-                    ) {
-                        scheduleSettle(options.authDeadlineAt - Date.now());
-                        return;
-                    }
-                    safeResolve(getResult());
-                }, delayMs);
-            };
-
-            const maybeResolveAll = () => {
-                if (!options.waitForAllRelays) return;
-                const terminalRelays = new Set([
-                    ...acceptedRelays,
-                    ...rejectedByRelay.keys(),
-                ]);
-                if (
-                    pendingAuthRelays.size === 0
-                    && targetRelays.every((relay) => terminalRelays.has(relay))
-                ) {
-                    safeResolve(getResult());
-                }
-            };
-
-            const safeResolve = (result: PostResult) => {
-                if (!resolved) {
-                    resolved = true;
-                    clearSettleTimer();
-                    safeUnsubscribe();
-                    options.settleSignal?.removeEventListener("abort", settleFromSignal);
-                    resolve(result);
-                }
-            };
-
-            const observer: import("rxjs").Observer<import("rx-nostr").OkPacketAgainstEvent> = {
-                next: (packet) => {
-                    if (resolved) return;
-                    this.console.log('リレー送信結果', {
-                        stage: 'publish',
-                        outcome: packet.ok ? 'success' : 'failure',
-                    });
-                    const relay = RelayConfigUtils.normalizeExternalRelayUrl(packet.from) ?? packet.from;
-                    if (!relay) return;
-                    if (targetRelays.length > 0 && !targetRelays.includes(relay)) return;
-                    const packetEventId = "event" in packet
-                        && packet.event !== null
-                        && typeof packet.event === "object"
-                        && "id" in packet.event
-                        && typeof packet.event.id === "string"
-                        ? packet.event.id
-                        : undefined;
-                    resultEventId = packetEventId || packet.eventId || resultEventId;
-
-                    if (!packet.done) {
-                        if (!packet.ok && getRejectionCategory(packet.notice) === "auth-required") {
-                            authRequiredRelays.add(relay);
-                            pendingAuthRelays.add(relay);
-                            successSettleScheduled = false;
-                            scheduleSettle(options.waitForAllRelays
-                                ? Math.max(1, (options.authDeadlineAt ?? Date.now()) - Date.now())
-                                : this.settleTimeouts.authMs);
-                            options.onProgress?.(getResult(false));
-                        }
-                        return;
-                    }
-
-                    if (packet.ok) {
-                        acceptedRelays.add(relay);
-                        rejectedByRelay.delete(relay);
-                        pendingAuthRelays.delete(relay);
-                        options.onProgress?.(getResult(false));
-                        if (options.waitForAllRelays) {
-                            maybeResolveAll();
-                        } else if (pendingAuthRelays.size === 0 && !successSettleScheduled) {
-                            successSettleScheduled = true;
-                            scheduleSettle(this.settleTimeouts.successMs);
-                        }
-                    } else {
-                        if (acceptedRelays.has(relay)) return;
-                        pendingAuthRelays.delete(relay);
-                        rejectedByRelay.set(relay, {
-                            relay,
-                            ...(packet.notice ? { reason: packet.notice } : {}),
-                            category: getRejectionCategory(packet.notice),
-                        });
-                        options.onProgress?.(getResult(false));
-                        if (options.waitForAllRelays) {
-                            maybeResolveAll();
-                        } else if (acceptedRelays.size > 0 && pendingAuthRelays.size === 0 && !successSettleScheduled) {
-                            successSettleScheduled = true;
-                            scheduleSettle(this.settleTimeouts.successMs);
-                        }
-                    }
-                },
-                error: () => {
-                    if (resolved) return;
-                    this.console.error("送信エラー", {
-                        stage: 'publish',
-                        reason: 'unexpected',
-                    });
-                    if (options.waitForAllRelays) {
-                        const result = getResult();
-                        safeResolve(result.success
-                            ? result
-                            : { ...result, error: "post_network_error" });
-                    } else {
-                        const result = getResult();
-                        if (result.success) {
-                            if (!successSettleScheduled) {
-                                successSettleScheduled = true;
-                                scheduleSettle(this.settleTimeouts.successMs);
-                            }
-                        } else {
-                            safeResolve({ success: false, error: "post_network_error" });
-                        }
-                    }
-                },
-                complete: () => {
-                    if (!resolved) {
-                        safeResolve(getResult());
-                    }
-                }
-            };
-
-            const sendOptions: NonNullable<Parameters<RxNostr["send"]>[1]> = { completeOn: "all-ok", signer: options.signer ?? noopSigner() };
-            if ((options.targetRelays?.length ?? 0) > 0 || options.includeDefaultWriteRelays) {
-                sendOptions.on = {
-                    ...((options.targetRelays?.length ?? 0) > 0
-                        ? { relays: options.targetRelays }
-                        : {}),
-                    ...(options.includeDefaultWriteRelays
-                        ? { defaultWriteRelays: true }
-                        : {}),
-                };
-            }
-
-            const defaultDeadline = Date.now() + this.settleTimeouts.initialMs;
-            const deadlineAt = options.deadlineAt ?? defaultDeadline;
-            const settleFromSignal = () => safeResolve(getResult());
-            options.settleSignal?.addEventListener("abort", settleFromSignal, { once: true });
-            if (options.settleSignal?.aborted) {
-                settleFromSignal();
-                return;
-            }
-            scheduleSettle(Math.max(1, deadlineAt - Date.now()));
-            subscription = this.rxNostr.send(event, sendOptions).subscribe(observer);
-            if (resolved) safeUnsubscribe();
+    startEvent(event: RxNostrEventParameters, options: SendEventOptions = {}, targets = resolveTargetRelays(this.rxNostr, options)): RelayPublishTask {
+        return startRelayPublish(this.rxNostr, event, {
+            ...options, targetRelays: targets,
+            onSettled: result => {
+                if (result.error === "post_network_error") this.console.error("送信エラー", { stage: "publish", reason: "unexpected" });
+                options.onSettled?.(result);
+            },
+            initialMs: this.timeouts.initialMs, authMs: this.timeouts.authMs,
+            on: { relays: targets },
         });
     }
 }
@@ -426,13 +227,14 @@ export interface SendEventOptions {
     authDeadlineAt?: number;
     /** Internal staged-publish progress; contains confirmed results, not provisional timeouts. */
     onProgress?: (result: PostResult) => void;
-    /** The operation owner closes remaining waves after successful class settlement. */
+    /** The operation owner cancels remaining waves when delivery ends. */
     settleSignal?: AbortSignal;
+    operation?: RelayOperation;
+    onSettled?: (result: PostResult) => void;
 }
 
-export interface PostEventSenderSettleTimeouts {
+export interface PostEventSenderTimeouts {
     initialMs: number;
-    successMs: number;
     authMs: number;
 }
 
@@ -480,25 +282,4 @@ function resolveTargetRelays(rxNostr: RxNostr, options: SendEventOptions): strin
         ...defaultRelays,
         ...(options.targetRelays ?? []),
     ]);
-}
-
-function getRejectionCategory(notice: unknown): RelayRejectionCategory {
-    const prefix = typeof notice === "string"
-        ? notice.split(":", 1)[0].trim().toLowerCase()
-        : "";
-    switch (prefix) {
-        case "auth-required":
-        case "restricted":
-        case "blocked":
-        case "rate-limited":
-        case "duplicate":
-        case "invalid":
-        case "pow":
-        case "error":
-        case "mute":
-        case "unsupported":
-            return prefix;
-        default:
-            return "unknown";
-    }
 }

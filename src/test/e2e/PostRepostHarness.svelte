@@ -170,7 +170,7 @@
             signEvent: async template => { signed++; return signer.signEvent(template); },
         }; },
         createSender: (runtime) => new PostEventSender(runtime, { log() {}, warn() {}, error() {} } as Console,
-            { initialMs: query.has("hold-publish") ? 30_000 : 200, successMs: 10, authMs: 200 }),
+            { initialMs: query.has("hold-publish") ? 30_000 : 200, authMs: 200 }),
         saveHistory: async (input) => {
             if (failSave) { failSave = false; throw new Error("test storage failure"); }
             await postHistoryRepository.putPostedEvent(input);

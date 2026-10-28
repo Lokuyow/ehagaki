@@ -1,3 +1,4 @@
+import { useRelayQuery, type RelayQuerySummary } from "./relay/query";
 import { createRxBackwardReq } from "rx-nostr";
 import type { RxNostr } from "rx-nostr";
 import { nip19 } from "nostr-tools";
@@ -72,13 +73,9 @@ export class ReplyQuoteService {
             const rxReq = createRxBackwardReq();
             let resolved = false;
             let subscription: { unsubscribe(): void } | undefined;
-            let timeoutId: ReturnType<typeof setTimeout> | undefined;
+            let querySummary: RelayQuerySummary | undefined;
 
             const cleanup = () => {
-                if (timeoutId !== undefined) {
-                    this.clearTimeoutFn(timeoutId);
-                    timeoutId = undefined;
-                }
                 if (subscription && typeof subscription.unsubscribe === 'function') {
                     subscription.unsubscribe();
                     subscription = undefined;
@@ -117,7 +114,7 @@ export class ReplyQuoteService {
             }
 
             try {
-                const nextSubscription = rxNostr.use(rxReq, { on: onParams }).subscribe({
+                const nextSubscription = useRelayQuery(rxNostr, rxReq, { on: onParams }, { quorum: false, timeoutMs, setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn, onEnd: result => { querySummary = result; } }).subscribe({
                     next: (packet) => {
                         if (resolved) return;
                         if (packet.event?.id === eventId) {
@@ -134,7 +131,7 @@ export class ReplyQuoteService {
                     complete: () => {
                         if (!resolved) {
                             this.console.log('参照イベント取得: EOSE受信、イベントなし');
-                            safeResolve({ status: 'not-found' });
+                            safeResolve({ status: querySummary && !querySummary.complete ? 'timeout' : 'not-found' });
                         }
                     },
                     error: (error) => {
@@ -151,14 +148,7 @@ export class ReplyQuoteService {
                 rxReq.emit({ ids: [eventId] });
                 rxReq.over();
 
-                if (!resolved) {
-                    timeoutId = this.setTimeoutFn(() => {
-                        if (!resolved) {
-                            this.console.warn('参照イベント取得タイムアウト');
-                            safeResolve({ status: 'timeout' });
-                        }
-                    }, timeoutMs);
-                }
+
 
             } catch (error) {
                 this.console.error('参照イベントリクエスト作成エラー:', error);

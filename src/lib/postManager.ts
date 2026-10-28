@@ -1,3 +1,7 @@
+import { followPostHistoryDelivery } from "./storage/postHistoryDeliveryReceipt";
+import { RelayOperation } from "./relay/operation";
+import { ownRelayOperation } from "./relay/publish";
+import { beginRelayDelivery } from "./relay/deliveryProgress";
 import type { RxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
 import type { EventTemplate } from "nostr-tools";
@@ -63,6 +67,7 @@ interface Nip65RelayRoles {
 }
 
 interface ActiveNip65Operation {
+  acknowledged(): boolean;
   cancel(): void;
 }
 
@@ -179,18 +184,20 @@ export class PostManager {
 
   setRxNostr(rxNostr: RxNostr) {
     if (this.eventSender) {
-      this.cancelActiveNip65Operations();
+      this.cancelActiveNip65Operations(true);
     }
     this.rxNostr = rxNostr;
     this.eventSender = new PostEventSender(rxNostr, this.deps.console || console);
   }
 
-  cancelActiveNip65Operations(): void {
-    this.operationGeneration += 1;
+  cancelActiveNip65Operations(includeBackground = false): void {
+    if (includeBackground) this.operationGeneration += 1;
     for (const operation of this.activeNip65Operations) {
-      operation.cancel();
+      if (includeBackground || !operation.acknowledged()) {
+        operation.cancel();
+        this.activeNip65Operations.delete(operation);
+      }
     }
-    this.activeNip65Operations.clear();
   }
 
   private clearReplyQuoteAfterSuccess(): void {
@@ -318,12 +325,14 @@ export class PostManager {
     ], { limit: 3 });
 
     try {
+      const revision = await getPostHistoryLocalRevision(ehagakiDb, params.event.pubkey);
       await this.deps.savePostHistoryFn({
         event: params.event,
         attestation: params.attestation,
         acceptedRelays,
         relayHints,
       });
+      void followPostHistoryDelivery(params.event.id, params.event.pubkey, params.result, revision).catch(() => undefined);
     } catch {
       this.deps.console?.warn?.("post_history_save_failed", {
         stage: 'post-history',
@@ -363,6 +372,13 @@ export class PostManager {
     discoveryRelaysByRecipient?: Record<string, string[]>;
     isCurrent?: () => boolean;
   }): Promise<PostResult> {
+    let foregroundAcknowledged = false;
+    let firstReceipt: PostResult | undefined;
+    let resolveAcknowledged!: (result: PostResult) => void;
+    let resolveSettled!: (result: PostResult) => void;
+    const acknowledged = new Promise<PostResult>(resolve => { resolveAcknowledged = resolve; });
+    const settled = new Promise<PostResult>(resolve => { resolveSettled = resolve; });
+    const run = async (): Promise<PostResult> => {
     const sender = this.eventSender;
     const rxNostr = this.rxNostr;
     if (!sender || !rxNostr) return { success: false, error: "nostr_not_ready" };
@@ -372,7 +388,6 @@ export class PostManager {
     const capturedGeneration = this.operationGeneration;
     const operationStartedAt = Date.now();
     const discoveryDeadline = operationStartedAt + NIP65_DISCOVERY_BUDGET_MS;
-    const deadlineAt = operationStartedAt + 12_000;
     const authDeadlineAt = operationStartedAt + NIP65_POST_OPERATION_DEADLINE_MS;
     const authorWriteRelays = params.authorWriteRelaySnapshot;
     if (isHostRelayConfigActive() && authorWriteRelays.length === 0) {
@@ -423,8 +438,14 @@ export class PostManager {
     let cancelled = false;
     let lastError: string | undefined;
     let resultFinalized = false;
-    let successTimer: ReturnType<typeof setTimeout> | undefined;
-    const successSettlement = new AbortController();
+    const deliveryProgress = beginRelayDelivery(rxNostr, [...authorWriteRelays, ...additionalRelays], recipientPubkeys.length > 0);
+    const updateDeliveryProgress = () => deliveryProgress.update(
+      [...authorWriteRelays, ...additionalRelays, ...launchedRelays],
+      [...outcomes].filter(([, value]) => value.accepted).map(([relay]) => relay),
+      acceptsDiscovery && recipientPubkeys.length > 0,
+      authorWriteRelays.length === 0 || (!acceptsDiscovery && recipientPubkeys.some(pubkey => recipientRouteStatus.get(pubkey) !== "found")),
+    );
+    const deliveryAbort = new AbortController();
     let resolveCancellation!: () => void;
     const cancellation = new Promise<void>((resolve) => {
       resolveCancellation = resolve;
@@ -435,7 +456,7 @@ export class PostManager {
       operationActive = false;
       acceptsDiscovery = false;
       // ACK progress is already recorded. Close transport and project unresolved targets.
-      successSettlement.abort();
+      deliveryAbort.abort();
       for (const relay of launchedRelays) {
         const outcome = outcomes.get(relay);
         if (!outcome?.accepted && !outcome?.rejected) {
@@ -443,17 +464,25 @@ export class PostManager {
         }
       }
       resultFinalized = true;
+      updateDeliveryProgress();
+      deliveryProgress.finish(cancelled);
       resolveCutoff();
     };
-    const hardTimer = setTimeout(closeSends, Math.max(1, authDeadlineAt - Date.now()));
+    const network = new RelayOperation(12_000, reason => {
+      if (reason === "cancelled") cancelled = true;
+      closeSends();
+    });
+    ownRelayOperation(rxNostr, network);
 
     const operation: ActiveNip65Operation = {
+      acknowledged: () => foregroundAcknowledged,
       cancel: () => {
         if (!operationActive) return;
         operationActive = false;
         cancelled = true;
         acceptsDiscovery = false;
         resolveCancellation();
+        network.finish("cancelled");
       },
     };
     this.activeNip65Operations.add(operation);
@@ -467,7 +496,7 @@ export class PostManager {
         || currentAuth !== capturedAuthState
         || !currentAuth.isAuthenticated
         || currentAuth.pubkey !== params.sessionPubkey
-        || params.isCurrent?.() === false
+        || (!foregroundAcknowledged && params.isCurrent?.() === false)
       ) {
         operation.cancel();
         return false;
@@ -486,24 +515,6 @@ export class PostManager {
 
     authorWriteRelays.forEach((relay) => { getRoles(relay).authorWrite = true; });
     additionalRelays.forEach((relay) => { getRoles(relay).additional = true; });
-
-    const settleSuccessfulClasses = (): void => {
-      const hasAck = (relays: Iterable<string>) => [...relays].some((relay) => outcomes.get(relay)?.accepted);
-      const complete = (params.sensitive !== undefined || recipientPubkeys.length > 0)
-        && hasAck(authorWriteRelays)
-        && recipientPubkeys.every((pubkey) => hasAck(recipientRelays.get(pubkey) ?? []))
-        && (additionalRelays.length === 0 || hasAck(additionalRelays));
-      if (!complete || !isCurrent()) {
-        if (successTimer !== undefined) clearTimeout(successTimer);
-        successTimer = undefined;
-        return;
-      }
-      if (successTimer !== undefined || successSettlement.signal.aborted) return;
-      successTimer = setTimeout(() => {
-        successTimer = undefined;
-        if (isCurrent()) closeSends();
-      }, Math.min(PostEventSender.DEFAULT_SETTLE_TIMEOUTS.successMs, authDeadlineAt - Date.now()));
-    };
 
     const applyWaveResult = (result: PostResult, targets: string[], final = true,
       ledger = outcomes): void => {
@@ -550,7 +561,14 @@ export class PostManager {
           if (payload?.accepted) queueStructure(relay);
         }
       }
-      settleSuccessfulClasses();
+      if (ledger === outcomes && !foregroundAcknowledged && [...outcomes.values()].some(value => value.accepted)) {
+        foregroundAcknowledged = true;
+        firstReceipt = { success: true, eventId: structureEvent?.id ?? params.event.id,
+          acceptedRelays: [...outcomes].filter(([, value]) => value.accepted).map(([relay]) => relay),
+          deliveryPending: true, deliverySettled: settled };
+        resolveAcknowledged(firstReceipt);
+      }
+      updateDeliveryProgress();
     };
 
     const queueStructure = (relay: string): void => {
@@ -601,8 +619,8 @@ export class PostManager {
         outcomes.set(relay, { unconfirmed: true });
         const result = await sender.sendEvent(event, {
           targetRelays: [relay], includeDefaultWriteRelays: false, waitForAllRelays: true,
-          deadlineAt: Math.min(Date.now() + 12_000, authDeadlineAt), authDeadlineAt,
-          settleSignal: successSettlement.signal,
+          authDeadlineAt,
+          settleSignal: deliveryAbort.signal, operation: network,
           onProgress: (progress: PostResult) => applyWaveResult(progress, [relay], false),
         });
         applyWaveResult(result, [relay]);
@@ -614,10 +632,11 @@ export class PostManager {
       for (const relay of RelayConfigUtils.sanitizeExternalRelayUrls(relayUrls)) {
         if (!isCurrent() || launchedRelays.has(relay)) continue;
         launchedRelays.add(relay);
+        updateDeliveryProgress();
         const job = sender.sendEvent(params.event, {
           targetRelays: [relay], includeDefaultWriteRelays: false, waitForAllRelays: true,
-          deadlineAt: Math.min(Date.now() + 12_000, authDeadlineAt), authDeadlineAt,
-          settleSignal: successSettlement.signal,
+          authDeadlineAt,
+          settleSignal: deliveryAbort.signal, operation: network,
           onProgress: (progress: PostResult) => applyWaveResult(progress, [relay], false, payloadOutcomes),
         }).then((result) => applyWaveResult(result, [relay], true, payloadOutcomes))
           .catch(() => applyWaveResult({ success: false, error: "post_network_error" }, [relay], true, payloadOutcomes));
@@ -632,13 +651,13 @@ export class PostManager {
         .filter((relay) => !launchedRelays.has(relay));
       if (targets.length === 0) return;
       targets.forEach((relay) => launchedRelays.add(relay));
+      updateDeliveryProgress();
       const wave = sender.sendEvent(params.event, {
         targetRelays: targets,
         includeDefaultWriteRelays: false,
         waitForAllRelays: true,
-        deadlineAt,
         authDeadlineAt,
-        settleSignal: successSettlement.signal,
+        settleSignal: deliveryAbort.signal, operation: network,
         onProgress: (result: PostResult) => applyWaveResult(result, targets, false),
       }).then((result) => applyWaveResult(result, targets))
         .catch(() => {
@@ -663,10 +682,9 @@ export class PostManager {
         const initialWave = sender.sendEvent(params.event, {
           targetRelays: initialTargets,
           includeDefaultWriteRelays: false,
-          waitForAllRelays: recipientPubkeys.length > 0,
-          deadlineAt,
+          waitForAllRelays: true,
           authDeadlineAt,
-          settleSignal: successSettlement.signal,
+          settleSignal: deliveryAbort.signal, operation: network,
           onProgress: (result: PostResult) => applyWaveResult(result, initialTargets, false),
         }).then((result) => applyWaveResult(result, initialTargets))
           .catch(() => {
@@ -683,12 +701,12 @@ export class PostManager {
           const entry: Pick<Nip65RelayDirectoryEntry, "readRelays"> = this.deps.nip65ReadRelayLookupFn
             ? await this.deps.nip65ReadRelayLookupFn(pubkey, {
               discoveryRelays: params.discoveryRelaysByRecipient?.[pubkey],
-              deadlineAt: discoveryDeadline,
+              deadlineAt: discoveryDeadline, operation: network,
               resolveOnReadRoute: true,
             })
             : await getNip65RelayDirectory(rxNostr).lookup(pubkey, {
               discoveryRelays: params.discoveryRelaysByRecipient?.[pubkey],
-              deadlineAt: discoveryDeadline,
+              deadlineAt: discoveryDeadline, operation: network,
               resolveOnReadRoute: true,
             });
           if (!acceptsDiscovery || !isCurrent()) return;
@@ -697,7 +715,6 @@ export class PostManager {
           recipientRouteStatus.set(pubkey, relays.length > 0 ? "found" : "unavailable");
           relays.forEach((relay) => getRoles(relay).recipients.add(pubkey));
           launchAdditionalRelays(relays);
-          settleSuccessfulClasses();
         } catch {
           if (acceptsDiscovery && isCurrent()) {
             recipientRelays.set(pubkey, new Set());
@@ -706,18 +723,18 @@ export class PostManager {
         }
       });
 
-      let discoveryTimer: ReturnType<typeof setTimeout> | undefined;
+      const discoveryTimer = {};
       if (lookups.length > 0) {
         await Promise.race([
           Promise.all(lookups),
           cancellation,
           cutoff,
           new Promise<void>((resolve) => {
-            discoveryTimer = setTimeout(resolve, Math.max(1, discoveryDeadline - Date.now()));
+            network.schedule(discoveryTimer, discoveryDeadline, resolve);
           }),
         ]);
       }
-      if (discoveryTimer !== undefined) clearTimeout(discoveryTimer);
+      network.unschedule(discoveryTimer);
       acceptsDiscovery = false;
       for (const pubkey of recipientPubkeys) {
         if (!recipientRouteStatus.has(pubkey)) {
@@ -726,6 +743,7 @@ export class PostManager {
         }
       }
 
+      updateDeliveryProgress();
       const drainJobs = async () => {
         let drained = 0;
         while (drained < wavePromises.length) {
@@ -801,11 +819,15 @@ export class PostManager {
       };
     } finally {
       resultFinalized = true;
-      clearTimeout(hardTimer);
-      if (successTimer !== undefined) clearTimeout(successTimer);
+      network.finish("complete");
       operation.cancel();
       this.activeNip65Operations.delete(operation);
     }
+    };
+    void run().then(resolveSettled, () => resolveSettled(firstReceipt
+      ? { ...firstReceipt, deliveryPending: false, deliverySettled: undefined, fullyDelivered: false }
+      : { success: false, error: "post_network_error" }));
+    return Promise.race([acknowledged, settled]);
   }
 
   private async sendPreparedEvent(params: {

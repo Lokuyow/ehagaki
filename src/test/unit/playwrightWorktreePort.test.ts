@@ -167,6 +167,7 @@ describe('Playwright config connection values', () => {
                 '**/uploadRelaySync.spec.ts',
                 '**/iframeParentLogin.spec.ts', '**/loginLatency.spec.ts',
                 '**/gifUpload.spec.ts',
+                '**/relayDeliveryProgress.spec.ts',
             ]);
             expect(config.projects?.[3]?.testMatch).toEqual([
                 '**/uploadRelaySync.spec.ts',
@@ -185,6 +186,7 @@ describe('Playwright config connection values', () => {
                 '**/postReaction.spec.ts',
                 '**/gifUpload.spec.ts',
                 '**/sensitiveContentPayload.spec.ts',
+                '**/relayDeliveryProgress.spec.ts',
             ]);
         } finally {
             if (originalAllBrowsers === undefined) {

@@ -1,3 +1,4 @@
+import { useRelayQuery } from "./relay/query";
 import type { createRxNostr } from 'rx-nostr';
 import { createRxBackwardReq } from 'rx-nostr';
 import { toNpub, toNprofile } from "./utils/nostrUtils";
@@ -141,8 +142,8 @@ export class ProfileNetworkFetcher {
   constructor(
     private rxNostr: ReturnType<typeof createRxNostr>,
     private profileDataFactory: ProfileDataFactory,
-    setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>,
-    clearTimeoutFn: (timeoutId: ReturnType<typeof setTimeout>) => void,
+    private setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>,
+    private clearTimeoutFn: (timeoutId: ReturnType<typeof setTimeout>) => void,
     private console: Console
   ) { }
 
@@ -180,9 +181,10 @@ export class ProfileNetworkFetcher {
         ? { on: { relays: additionalRelays } }
         : undefined;
 
-      const rxNostrUse = useOptions
-        ? this.rxNostr.use(rxReq, useOptions)
-        : this.rxNostr.use(rxReq);
+      const rxNostrUse = useRelayQuery(this.rxNostr, rxReq, useOptions, {
+        timeoutMs: Math.min(6_000, opts?.timeoutMs ?? 6_000),
+        setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn,
+      });
 
       subscription = rxNostrUse.subscribe({
         next: (packet) => {

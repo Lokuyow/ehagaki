@@ -1,3 +1,4 @@
+import { useRelayQuery } from "./relay/query";
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import type { Filter } from "nostr-tools";
 import type { EmojisRepository } from "./storage/emojisRepository";
@@ -412,6 +413,7 @@ function fetchEvents(params: {
     rxNostr: RxNostr;
     filter: Filter;
     timeoutMs?: number;
+    deadlineAt?: number;
 }): Promise<NostrEventLike[]> {
     const { rxNostr, filter, timeoutMs = 4000 } = params;
 
@@ -420,10 +422,10 @@ function fetchEvents(params: {
         const events: NostrEventLike[] = [];
         let resolved = false;
         let subscription: { unsubscribe?: () => void } | undefined;
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
 
         const cleanup = () => {
-            if (timeoutId) clearTimeout(timeoutId);
+
             subscription?.unsubscribe?.();
             subscription = undefined;
         };
@@ -436,7 +438,7 @@ function fetchEvents(params: {
         };
 
         try {
-            subscription = rxNostr.use(rxReq).subscribe({
+            subscription = useRelayQuery(rxNostr, rxReq, undefined, { timeoutMs: Math.min(6_000, timeoutMs), deadlineAt: params.deadlineAt }).subscribe({
                 next: (packet) => {
                     if (packet?.event?.tags) {
                         events.push(packet.event);
@@ -448,7 +450,6 @@ function fetchEvents(params: {
 
             rxReq.emit(filter);
             rxReq.over();
-            timeoutId = setTimeout(safeResolve, timeoutMs);
         } catch {
             safeResolve();
         }
@@ -463,10 +464,11 @@ export async function fetchCustomEmojiList(params: {
     rxNostr: RxNostr;
     pubkey: string;
 }): Promise<CustomEmojiItem[]> {
+    const deadlineAt = Date.now() + 6_000;
     const until = Math.floor(Date.now() / 1000);
     const listEvent = getNewestEvent(
         await fetchEvents({
-            rxNostr: params.rxNostr,
+            rxNostr: params.rxNostr, deadlineAt,
             filter: {
                 authors: [params.pubkey],
                 kinds: [10030],
@@ -493,7 +495,7 @@ export async function fetchCustomEmojiList(params: {
         .map((address) => parseEmojiSetAddress(address))
         .filter((address): address is NonNullable<ReturnType<typeof parseEmojiSetAddress>> => !!address);
     const setEvents = await fetchEvents({
-        rxNostr: params.rxNostr,
+        rxNostr: params.rxNostr, deadlineAt,
         filter: {
             kinds: [30030],
             authors: [...new Set(parsedAddresses.map((address) => address.pubkey))],
