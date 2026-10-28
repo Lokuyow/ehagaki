@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { EMPTY } from "rxjs";
+    import { EMPTY, NEVER } from "rxjs";
     import { finalizeEvent, generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
     import type { RxNostr } from "rx-nostr";
     import PostHistoryDialog from "../../components/PostHistoryDialog.svelte";
@@ -31,11 +31,11 @@
     const isHistoryTabsScenario = new URLSearchParams(location.search).has("history-tabs");
     let historyTrigger: HTMLButtonElement | null = $state(null);
     const tabCounters = { localReads: 0, relayRequests: 0 };
-    const tabRuntime = { use: () => { tabCounters.relayRequests++; return { subscribe: () => ({ unsubscribe: () => undefined }) }; } } as unknown as RxNostr;
+    const tabRuntime = { use: () => { tabCounters.relayRequests++; return NEVER; } } as unknown as RxNostr;
     const relatedEventsToastRuntime = new URLSearchParams(location.search).has("related-events-toast")
         ? { use: () => EMPTY, createAllMessageObservable: () => EMPTY } as unknown as RxNostr
         : null;
-    const defaultRuntime = relatedEventsToastRuntime ?? { use: () => ({ subscribe: () => ({ unsubscribe: () => undefined }) }) } as unknown as RxNostr;
+    const defaultRuntime = relatedEventsToastRuntime ?? { use: () => NEVER } as unknown as RxNostr;
     if (isHistoryTabsScenario) Reflect.set(window, "__HISTORY_TAB_COUNTERS__", tabCounters);
     const isRelayCoverageScenario = new URLSearchParams(window.location.search).has("relay-coverage");
     const HARNESS_SECRET_KEY = generateSecretKey();

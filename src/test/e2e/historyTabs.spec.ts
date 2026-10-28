@@ -148,6 +148,8 @@ test("saved Media survives refresh and activates Posts only after explicit selec
 
 test("tab roundtrip retains post search and page; close keeps existing search reset", async ({ page }) => {
     await page.goto("post-history-dialog-playwright.html?history-tabs=1");
+    await page.waitForFunction(() => Reflect.get(window, "__POST_HISTORY_HARNESS__")?.ready);
+    await page.waitForFunction(() => document.querySelector('.history-tab-viewport')?.getAttribute('aria-busy') === 'false');
     const dialog = page.getByRole("dialog", { name: "履歴", exact: true });
     const posts = dialog.getByRole("tab", { name: "ポスト", exact: true });
     const media = dialog.getByRole("tab", { name: "メディア", exact: true });

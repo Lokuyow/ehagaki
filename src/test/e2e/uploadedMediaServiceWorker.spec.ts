@@ -309,32 +309,39 @@ for (const base of ["/", "/ehagaki/"] as const) {
             try {
                 const { dialog, requests, signedLists } = await openPaginationMedia(page, f);
                 const more = dialog.getByRole("button", { name: "さらに読み込む", exact: true });
+                const listingAction = async (action: () => Promise<unknown>) => {
+                    const response = page.waitForResponse(response => response.request().method() === 'GET'
+                        && response.url().startsWith(f.mediaOrigin + '/list/'));
+                    await action();
+                    await response;
+                };
+                const loadMore = () => mode === 'paged' ? listingAction(() => more.click()) : more.click();
                 await expect(dialog.locator("article")).toHaveCount(24);
                 expect(requests()).toBe(1); expect(signedLists()).toBe(1);
                 for (const count of [48, 72, 96, 120, 144, 168, 192, 216, 231]) {
-                    await more.click(); await expect(dialog.locator("article")).toHaveCount(count);
+                    await loadMore(); await expect(dialog.locator("article")).toHaveCount(count);
                 }
-                if (mode === "paged") await more.click(); // Preserve the short-page cursor until an empty response.
+                if (mode === "paged") await loadMore(); // Preserve the short-page cursor until an empty response.
                 await expect(more).toHaveCount(0);
                 const total = mode === "paged" ? 11 : 1;
                 expect(requests()).toBe(total); expect(signedLists()).toBe(total);
                 const refresh = dialog.getByRole("button", { name: "一覧を更新", exact: true });
-                await refresh.click(); await expect(dialog.locator("article")).toHaveCount(24);
-                await more.click(); await expect(dialog.locator("article")).toHaveCount(48);
+                await listingAction(() => refresh.click()); await expect(dialog.locator("article")).toHaveCount(24);
+                await loadMore(); await expect(dialog.locator("article")).toHaveCount(48);
                 const beforeTabs = requests();
                 await dialog.getByRole("tab", { name: "ポスト", exact: true }).click();
                 await dialog.getByRole("tab", { name: "メディア", exact: true }).click();
                 await expect(dialog.locator("article")).toHaveCount(48);
                 expect(requests()).toBe(beforeTabs);
                 await dialog.locator("article").first().getByRole("button", { name: "削除", exact: true }).click();
-                await page.getByRole("alertdialog").getByRole("button", { name: "削除", exact: true }).click();
+                await listingAction(() => page.getByRole("alertdialog").getByRole("button", { name: "削除", exact: true }).click());
                 await expect(dialog.locator("article")).toHaveCount(24);
                 await expect(more).toBeVisible();
                 expect(f.counts.get("DELETE /" + imageHash)).toBe(1);
                 expect(requests()).toBe(beforeTabs + 1);
                 await expect(page.locator(".floating-message").filter({ hasText: "このサーバーから削除しました。" })).toBeVisible();
                 await expect(dialog.locator("article").first().locator("img")).not.toHaveAttribute("src", new RegExp(imageHash));
-                await more.click(); await expect(dialog.locator("article")).toHaveCount(48);
+                await loadMore(); await expect(dialog.locator("article")).toHaveCount(48);
                 expect(requests()).toBe(beforeTabs + (mode === "paged" ? 2 : 1));
                 expect(signedLists()).toBe(requests());
             } finally { await f.close(); }

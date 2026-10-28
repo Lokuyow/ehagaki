@@ -6,6 +6,7 @@ import { STORAGE_KEYS } from '../../lib/constants';
 import { updateAuthState } from '../../stores/authStore.svelte';
 import { editorState, updatePostStatus } from '../../stores/editorStore.svelte';
 import { installPostSubmitHarness } from './postSubmitHarness';
+import { AuthService } from '../../lib/authService';
 
 installPostSubmitHarness();
 
@@ -38,7 +39,16 @@ updateAuthState({
     nprofile: 'nprofile1testappcomposer',
 });
 
-mount(App, { target });
+// Let App complete its real post-auth bootstrap once the test authenticates.
+// Updating the store alone does not prepare a posting session.
+let authenticate: () => void;
+const authenticationRequested = new Promise<void>(resolve => { authenticate = resolve; });
+AuthService.prototype.initializeAuth = async () => {
+    await authenticationRequested;
+    return { hasAuth: true, pubkeyHex: TEST_PUBKEY };
+};
+
+mount(App, { target, props: { hostRelayConfig: {} } });
 
 (window as HarnessWindow).__APP_COMPOSER_PICKER_HARNESS__ = {
     setAuthenticated: () => {
@@ -50,6 +60,7 @@ mount(App, { target });
             npub: 'npub1testappcomposer',
             nprofile: 'nprofile1testappcomposer',
         });
+        authenticate();
     },
     setSending: () => {
         updatePostStatus({ ...editorState.postStatus, sending: true });

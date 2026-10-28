@@ -591,7 +591,7 @@ test.describe('post editor sending state', () => {
         const editorContainer = page.getByRole('textbox', { name: '投稿エディター' });
         const editor = editorContainer.locator('.tiptap-editor');
         const wrapper = page.locator('.editor-account-placeholder');
-        const image = wrapper.locator('img');
+        const image = wrapper.locator('img[data-avatar-image]');
 
         await expect(image).toHaveJSProperty('naturalWidth', 512);
         await expect(image).toHaveJSProperty('naturalHeight', 512);
@@ -599,7 +599,7 @@ test.describe('post editor sending state', () => {
         const geometry = await page.evaluate(() => {
             const wrapper = document.querySelector('.editor-account-placeholder');
             const root = wrapper?.querySelector('.editor-account-placeholder-avatar');
-            const image = wrapper?.querySelector('img');
+            const image = wrapper?.querySelector('img[data-avatar-image]');
             const paragraph = document.querySelector('.tiptap-editor p');
             if (!wrapper || !root || !image || !paragraph) {
                 throw new Error('Editor placeholder geometry nodes were not found.');

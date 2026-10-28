@@ -722,10 +722,24 @@ for (const externalRead of ["closed", "silent"] as const) {
             }
             const relayOlder = page.getByRole("button", { name: "リレーから続きを取得", exact: true });
             if (await relayOlder.count()) {
-                const before = f.externalRequests.filter(filter => filter.kinds?.includes(1)).length;
-                await expect(relayOlder).toBeEnabled(); await relayOlder.click();
-                await expect.poll(() => f.externalRequests.filter(filter => filter.kinds?.includes(1)).length).toBeGreaterThan(before);
-                expect(f.externalRequests.filter(filter => filter.kinds?.includes(1)).at(-1)?.until).toBe(f.now - 49);
+                await expect(relayOlder).toBeEnabled();
+                const externalAuthored = () => f.externalRequests
+                    .filter(filter => filter.kinds?.includes(1) && filter.authors?.includes(f.pubkey));
+                const before = externalAuthored().length;
+                await relayOlder.click();
+                await expect.poll(() => externalAuthored().length).toBeGreaterThan(before);
+                const nextUntil = externalAuthored()[before].until;
+                const certifiedStarts = await page.evaluate(async ({ pubkey, relay }) => {
+                    const { postHistoryRelayCoverageRepository } = await import(/* @vite-ignore */ new URL("src/lib/storage/postHistoryRelayCoverageRepository.ts", location.href).href);
+                    const { POST_HISTORY_FETCH_KINDS } = await import(/* @vite-ignore */ new URL("src/lib/postHistoryRelayFetchService.ts", location.href).href);
+                    const coverage = await postHistoryRelayCoverageRepository.get(pubkey, [...POST_HISTORY_FETCH_KINDS].sort((a: number, b: number) => a - b).join(','));
+                    return coverage.relays.filter((entry: { relayUrl: string }) => entry.relayUrl === relay)
+                        .flatMap((entry: { ranges: { since: number }[] }) => entry.ranges.map(range => range.since));
+                }, { pubkey: f.pubkey, relay: externalUrl });
+                // A late external response may certify a wider range before the
+                // click completes. Continue from the initial external cursor or
+                // a certified external edge, never from the local browsing edge.
+                expect([f.now - 49, ...certifiedStarts.map((since: number) => since - 1)]).toContain(nextUntil);
             }
             expect(authored()).toHaveLength(count); // Exhausted local continuation never starts again.
         } finally { await f.stop(); }

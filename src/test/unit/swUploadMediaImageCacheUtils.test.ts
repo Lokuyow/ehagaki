@@ -8,6 +8,7 @@ class MemoryCache {
     entries = new Map<string, Response>();
     key(request: RequestInfo | URL) { return typeof request === "string" ? request : request instanceof URL ? request.href : request.url; }
     match = vi.fn(async (request: RequestInfo | URL) => this.entries.get(this.key(request))?.clone());
+    matchAll = vi.fn(async () => [...this.entries.values()].map(response => response.clone()));
     put = vi.fn(async (request: RequestInfo | URL, response: Response) => { this.entries.set(this.key(request), response.clone()); });
     delete = vi.fn(async (request: RequestInfo | URL) => this.entries.delete(this.key(request)));
     keys = vi.fn(async () => [...this.entries.keys()].map((url) => new Request(url)));
@@ -39,6 +40,44 @@ function setup(basePath = "/ehagaki/") {
     return { controller, body, meta, storage, fetchRequest, display, url, advance: (ms: number) => { now += ms; } };
 }
 describe("upload-management image cache", () => {
+    it("acknowledges eviction ahead of queued preview writes while finishing the active commit", async () => {
+        const s = setup();
+        const touchedUrl = 'https://media.example/touched.png';
+        const activeUrl = 'https://media.example/active.png';
+        await (await s.display()).done();
+        await (await s.display(touchedUrl)).done();
+        s.advance(policy.touchMs);
+        const activeCommit = createDeferred<void>(), activeStarted = createDeferred<void>();
+        const touchCommit = createDeferred<void>(), touchStarted = createDeferred<void>();
+        const putBody = s.body.put.getMockImplementation()!;
+        const putMeta = s.meta.put.getMockImplementation()!;
+        s.body.put.mockImplementation(async (request, response) => {
+            if (s.body.key(request) === activeUrl) { activeStarted.resolve(); await activeCommit.promise; }
+            await putBody(request, response);
+        });
+        s.meta.put.mockImplementation(async (request, response) => {
+            if (s.meta.key(request) === touchedUrl) { touchStarted.resolve(); await touchCommit.promise; }
+            await putMeta(request, response);
+        });
+        const active = await s.display(activeUrl);
+        await activeStarted.promise;
+        const touch = await s.display(touchedUrl);
+        let acknowledged = false;
+        const eviction = s.controller.evict([s.url]).then(result => { acknowledged = result; });
+        expect(s.body.entries.has(s.url)).toBe(true);
+        activeCommit.resolve();
+        await touchStarted.promise;
+        try {
+            await vi.waitFor(() => expect(acknowledged).toBe(true));
+            expect(s.body.entries.has(s.url)).toBe(false);
+            expect(s.meta.entries.has(s.url)).toBe(false);
+            expect(s.body.entries.has(activeUrl)).toBe(true);
+        } finally {
+            touchCommit.resolve();
+            await Promise.all([active.done(), touch.done(), eviction]);
+        }
+    });
+
     it("preserves entries being refreshed and displays a new response without storing when all slots are protected", async () => {
         const s = setup(), refresh = createDeferred<Response>();
         for (let index = 0; index < policy.maxEntries; index++) {

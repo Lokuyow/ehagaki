@@ -32,7 +32,7 @@ function printSummary(line) {
             process.stdout.write(`CI metrics: ${JSON.stringify(safe)}\n`);
         } catch { /* Drop malformed diagnostic data. */ }
     }
-    const failure = line.replaceAll('\\', '/').match(/\[(desktop-chromium|mobile-chromium|android-chromium|mobile-webkit|desktop-firefox|desktop-firefox-editor-paste)\].*?(src\/test\/e2e\/[A-Za-z0-9_-]+\.spec\.ts:\d+:\d+)/);
+    const failure = line.replaceAll('\\', '/').match(/\[(desktop-chromium|mobile-chromium|android-chromium|mobile-webkit|desktop-firefox|desktop-firefox-editor-paste|sw-chromium|sw-firefox|sw-webkit)\].*?(src\/test\/e2e\/[A-Za-z0-9_-]+\.spec\.ts:\d+:\d+)/);
     if (failure && existsSync(failure[2].split(':')[0])) {
         process.stdout.write(`Failure: ${failure[1]} ${failure[2]}\n`);
     }

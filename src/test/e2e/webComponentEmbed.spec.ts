@@ -510,7 +510,7 @@ test(`Full Reaction at 320px preserves outer identity (${uploaded ? gif ? 'uploa
         await expect(composer.locator('.media-gallery img')).toBeVisible();
         await expect.poll(() => composer.locator('.media-gallery img').evaluate((image: HTMLImageElement) => [image.naturalWidth, image.naturalHeight])).toEqual(gif || webp ? [256, 192] : [256, 128]);
         if (gif || webp) expect(reactionUploadedImage).toEqual(bytes);
-        await expect(editor.locator('.is-editor-empty')).toHaveAttribute('data-placeholder', /shortcode/);
+        await expect(editor.locator('.is-editor-empty')).toHaveAttribute('data-placeholder', 'ショートコードを入力\n入力は英数字・-・_\n空欄ならファイル名を使用');
         await editor.click(); await editor.pressSequentially('::cat::');
         await expect(editor).toHaveText('::cat::');
         await composer.screenshot({ path: test.info().outputPath('full-uploaded-reaction-320.png') });

@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 test.describe.configure({ mode: "parallel" });
 
-type State = { sends: number; signed: number; replyId?: string; quoteId?: string; deletionCount: number; deletionRequests: number; heldDeletionRequests: number;
+type State = { sends: number; signed: number; replyId?: string; quoteId?: string; deletionCount: number; deletionRequests: number; deletionRequestsAtPublish: number | null; heldDeletionRequests: number;
     sentEvents: { id: string; kind: number; tags: string[][] }[];
     lastResult?: { success: boolean; error?: string }; rows: { id: string; kind: number; content: string; targetId?: string; targetKind?: number; channelEventId?: string; channelRelayHints?: string[] }[] };
 type FixtureWindow = Window & { __REPOST__: { ready: boolean; targetId: string; targetInput: string; read(): Promise<State>; allowTarget(): void;
@@ -136,7 +136,9 @@ for (const entry of ['history', 'Composer'] as const) {
             await page.getByRole('menuitem', { name: 'リポスト', exact: true }).click();
             await expect.poll(async () => { const state = await read(page); return [state.lastResult?.success, state.signed, state.sends, state.deletionCount]; },
                 { timeout: 3_000 }).toEqual([true, 1, 1, 0]);
-            expect((await read(page)).deletionRequests).toBe(0);
+            // Saved reposts can start background preview discovery. Assert at
+            // the publish boundary so those later lookups do not race this check.
+            expect((await read(page)).deletionRequestsAtPublish).toBe(0);
             expect((await read(page)).rows.filter(row => row.kind === outerKind)).toHaveLength(1);
             expect((await read(page)).rows.find(row => row.kind === outerKind)).toMatchObject({ content: '', targetKind });
         });
@@ -149,7 +151,7 @@ test('360px Repost publishes when deletion lookup relays would never respond', a
     await page.locator('.post-history-item').first().getByRole('button', { name: 'アクションを表示', exact: true }).click();
     await page.getByRole('menuitem', { name: 'リポスト', exact: true }).click();
     await expect.poll(async () => (await read(page)).lastResult?.success, { timeout: 3_000 }).toBe(true);
-    expect(await read(page)).toMatchObject({ signed: 1, sends: 1, deletionRequests: 0 });
+    expect(await read(page)).toMatchObject({ signed: 1, sends: 1, deletionRequestsAtPublish: 0 });
     await expect(page.locator('.floating-message')).toContainText('リポストしました');
     const message = await page.locator('.floating-message-content').boundingBox();
     expect(message!.x).toBeGreaterThanOrEqual(0);
@@ -194,7 +196,7 @@ for (const entry of ['history', 'Composer', 'resolved target'] as const) {
     test(`${entry} publishes when a relay-only deletion has not been learned locally`, async ({ page }) => {
         // Keep preview discovery pending so the deletion is still unknown at
         // send time even though the verified target is already visible.
-        await open(page, entry === 'Composer' ? '&source=target' : entry === 'resolved target' ? '&external=import&hold-deletion=1' : '');
+        await open(page, '&hold-deletion=1' + (entry === 'Composer' ? '&source=target' : entry === 'resolved target' ? '&external=import' : ''));
         if (entry === 'Composer') {
             await page.locator('.composer-target-dialog input').fill(await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.targetInput));
             await expect(page.locator('.composer-target-dialog')).toContainText('original searchable post');

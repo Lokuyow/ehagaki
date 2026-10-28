@@ -2,6 +2,23 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 describe('CI test output filtering', () => {
+    it('identifies Service Worker browser failures without exposing titles or values', () => {
+        const result = spawnSync(process.execPath, ['scripts/filterTestOutput.mjs'], {
+            encoding: 'utf8',
+            input: ['chromium', 'firefox', 'webkit'].map(browser =>
+                `1) [sw-${browser}] › src/test/e2e/uploadedMediaServiceWorker.spec.ts:307:9 › private title`,
+            ).join('\n') + '\nError: private payload\n1) [private-project] › private title',
+        });
+        expect(result.status).toBe(0);
+        expect(result.stdout).toBe([
+            'Failure: sw-chromium src/test/e2e/uploadedMediaServiceWorker.spec.ts:307:9',
+            'Test location: src/test/e2e/uploadedMediaServiceWorker.spec.ts:307:9',
+            'Failure: sw-firefox src/test/e2e/uploadedMediaServiceWorker.spec.ts:307:9',
+            'Failure: sw-webkit src/test/e2e/uploadedMediaServiceWorker.spec.ts:307:9',
+            '',
+        ].join('\n'));
+    });
+
     it('keeps failure counts and locations while dropping sensitive diagnostics', () => {
         const result = spawnSync(process.execPath, ['scripts/filterTestOutput.mjs'], {
             encoding: 'utf8',

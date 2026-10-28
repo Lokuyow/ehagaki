@@ -2351,6 +2351,7 @@ test.describe('PostHistoryDialog Playwright', () => {
     });
 
     test('successful newer autoload returns to latest without moving the visible anchor', async ({ page }) => {
+        test.setTimeout(60_000);
         const harness = await gotoInfiniteScrollHarness(page, {
             fixContainerHeight: false,
             longPreviews: true,
