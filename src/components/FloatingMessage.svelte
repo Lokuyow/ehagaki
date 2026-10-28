@@ -232,7 +232,17 @@
         top: 16px;
         right: 16px;
         max-width: min(360px, calc(100vw - 32px));
+        max-height: calc(100dvh - 32px);
+        box-sizing: border-box;
+        overflow: clip;
+        contain: paint;
         white-space: normal;
+    }
+
+    .floating-message.top-right .floating-message-body,
+    .floating-message.top-right .floating-message-content {
+        min-width: 0;
+        overflow-wrap: anywhere;
     }
 
     .floating-message.container-top-right {

@@ -4201,3 +4201,53 @@ test('shared reply and quote actions use the event on each card', async ({ page 
         '8'.repeat(64),
     );
 });
+
+for (const { width, height, largeText } of [
+    { width: 360, height: 800, largeText: false },
+    { width: 390, height: 800, largeText: false },
+    { width: 360, height: 240, largeText: true },
+]) {
+    test(`related event toast keeps mobile scroll bounds at ${width}x${height}`, async ({ page }) => {
+        await page.setViewportSize({ width, height });
+        await page.goto('post-history-dialog-playwright.html?related-events-toast=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__!);
+        const card = page.locator(`[data-post-history-event-id="${harness.scrolledPlainPostEventId}"]`);
+        await card.getByRole('button', { name: 'アクションを表示' }).click();
+        if (largeText) await page.addStyleTag({ content: '.floating-message-content { font-size: 3rem !important; }' });
+        await page.evaluate(() => {
+            const samples: unknown[] = [];
+            Reflect.set(window, '__TOAST_BOUNDS__', samples);
+            const sample = () => {
+                const toast = document.querySelector<HTMLElement>('.floating-message.top-right');
+                const bounds = toast?.getBoundingClientRect();
+                const list = document.querySelector('.post-history-container');
+                samples.push({
+                    visible: !!toast, root: [document.documentElement.scrollWidth, document.documentElement.clientWidth, document.documentElement.scrollHeight, document.documentElement.clientHeight],
+                    body: [document.body.scrollWidth, document.body.clientWidth, document.body.scrollHeight, document.body.clientHeight],
+                    list: list ? [list.scrollWidth, list.clientWidth, list.scrollHeight, list.clientHeight] : null,
+                    toast: toast && bounds ? [bounds.x, bounds.y, bounds.width, bounds.height, toast.scrollWidth, toast.clientWidth, toast.scrollHeight, toast.clientHeight] : null,
+                });
+            };
+            sample();
+            const observer = new MutationObserver(sample);
+            observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+            const frame = () => { sample(); if (samples.length < 500) requestAnimationFrame(frame); else observer.disconnect(); };
+            requestAnimationFrame(frame);
+        });
+        await page.getByRole('menuitem', { name: '関連イベントを確認' }).click();
+        const toast = page.locator('.floating-message.top-right');
+        await expect(toast).toBeVisible();
+        await expect(toast).toBeHidden();
+        const samples = await page.evaluate(() => Reflect.get(window, '__TOAST_BOUNDS__'));
+        expect(samples.some((x: any) => x.visible)).toBe(true);
+        for (const sample of samples.filter((x: any) => x.visible)) {
+            expect(sample.root[0]).toBeLessThanOrEqual(Math.max(sample.root[1], samples[0].root[0]));
+            expect(sample.root[2]).toBeLessThanOrEqual(Math.max(sample.root[3], samples[0].root[2]));
+            expect(sample.toast[0]).toBeGreaterThanOrEqual(0);
+            expect(sample.toast[0] + sample.toast[2]).toBeLessThanOrEqual(width);
+            expect(sample.toast[1] + sample.toast[3]).toBeLessThanOrEqual(height);
+            expect(sample.list[0]).toBeLessThanOrEqual(sample.list[1]);
+        }
+    });
+}
