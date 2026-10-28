@@ -24,6 +24,17 @@ import { configureAppRuntimeEnvironment } from '../../lib/appRuntimeEnvironment'
 import { MockStorage } from '../helpers';
 
 describe('HeaderComponent', () => {
+    it('celebrates full delivery but never timeout restoration', async () => {
+        const props = { onResetPostContent: vi.fn(), onShowDraftList: vi.fn() };
+        const view = render(HeaderComponent, { props: { ...props, deliveryProgress: {
+            progress: { id: 1, total: 2, accepted: 2, discovering: false, state: 'complete' as const }, fading: false, fadeMs: 0,
+        } } });
+        expect(view.container.querySelector('.site-icon')?.classList.contains('mascot-delivery-complete')).toBe(true);
+        await view.rerender({ ...props, deliveryProgress: {
+            progress: { id: 2, total: 2, accepted: 1, discovering: false, state: 'sending' }, fading: true, fadeMs: 300,
+        } });
+        expect(view.container.querySelector('.mascot-delivery-complete')).toBeNull();
+    });
     it('uses unique artwork IDs and clips the whole mascot from below, leaving discovery indeterminate', async () => {
         const props = { onResetPostContent: vi.fn(), onShowDraftList: vi.fn(), showFlavorText: false };
         const first = render(HeaderComponent, { props: { ...props, deliveryProgress: {

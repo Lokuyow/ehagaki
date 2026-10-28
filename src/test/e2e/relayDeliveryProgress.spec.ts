@@ -4,6 +4,27 @@ declare global { interface Window { __deliveryHarness?: {
     observed(index: number): boolean; reset(): void;
 } } }
 test.use({ trace: "off" });
+test("only full mascot delivery celebrates, with reduced motion respected", async ({ page }, testInfo) => {
+    await page.goto("relay-delivery-playwright.html?mascot=1");
+    await page.waitForFunction(() => !!window.__deliveryHarness);
+    await page.evaluate(() => { window.__deliveryHarness!.start(); window.__deliveryHarness!.ack(0, 0); });
+    await expect(page.locator('.mascot-delivery-complete')).toHaveCount(0);
+    await expect(page.locator('.mascot-progress-accessible')).toHaveCount(0, { timeout: 3000 });
+    await expect(page.locator('.mascot-delivery-complete')).toHaveCount(0);
+    await page.evaluate(() => { window.__deliveryHarness!.start(); for (let i = 0; i < 3; i++) window.__deliveryHarness!.ack(1, i); });
+    await expect(page.locator('.site-icon')).toHaveClass(/mascot-delivery-complete/);
+    expect(await page.locator('.site-icon').evaluate(el => getComputedStyle(el).animationName)).toMatch(/mascot-delivery-complete$/);
+    await page.locator('.site-icon').evaluate(el => {
+        for (const animation of el.getAnimations()) { animation.pause(); animation.currentTime = 175; }
+    });
+    await page.locator('.header-container').screenshot({ path: testInfo.outputPath('mascot-complete.png') });
+    await expect(page.locator('.mascot-progress-accessible')).toHaveCount(0);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.evaluate(() => { window.__deliveryHarness!.start(); for (let i = 0; i < 3; i++) window.__deliveryHarness!.ack(2, i); });
+    await expect(page.locator('.site-icon')).toHaveClass(/mascot-delivery-complete/);
+    expect(await page.locator('.site-icon').evaluate(el => getComputedStyle(el).animationName)).toBe('none');
+    await page.evaluate(() => window.__deliveryHarness!.reset());
+});
 test("success balloon waits for full delivery or two seconds of stalled progress", async ({ page }) => {
     await page.goto("relay-delivery-playwright.html?mascot=1");
     await page.waitForFunction(() => !!window.__deliveryHarness);

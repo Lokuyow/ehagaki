@@ -62,7 +62,9 @@ deleting history cannot recreate a row. Database schemas do not change.
 The app-owned `useRelayDeliveryFeedback` hook owns one presentation subscription
 and its timers. On the TOP composer, the visible mascot represents the newest
 operation: a 30%-opacity base with the original SVG colors filling upward. Discovery
-leaves it translucent. When presentation ends, the base restores uniformly rather
+leaves it translucent. The mascot briefly pops and glows only on full delivery,
+never on timeout restoration; reduced-motion preferences suppress that animation.
+When presentation ends, the base restores uniformly rather
 than falsely filling incomplete delivery to 100%. Older work never replaces the
 newest operation after it retires.
 

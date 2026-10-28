@@ -78,6 +78,7 @@
             >
                 <svg
                     class="site-icon"
+                    class:mascot-delivery-complete={deliveryProgress?.progress.state === "complete"}
                     viewBox="0 0 700 700"
                     aria-hidden="true"
                     xmlns="http://www.w3.org/2000/svg"
@@ -257,6 +258,12 @@
     .mascot-progress-base { transition: opacity 150ms ease-out; }
     .mascot-progress-clip { transition: transform 150ms ease-out; }
     .mascot-progress-accessible { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .mascot-delivery-complete { animation: mascot-delivery-complete 250ms ease-out; transform-origin: center; }
+    @keyframes mascot-delivery-complete {
+        0%, 100% { transform: scale(1); filter: brightness(1); }
+        70% { transform: scale(1.08); filter: brightness(1.25) drop-shadow(0 0 3px var(--mascot-accent-color, #3FB57E)); }
+    }
+    @media (prefers-reduced-motion: reduce) { .mascot-delivery-complete { animation: none; } }
     @media (prefers-reduced-motion: reduce) { .mascot-progress-base, .mascot-progress-clip { transition: none; } }
 
     .header-container {
