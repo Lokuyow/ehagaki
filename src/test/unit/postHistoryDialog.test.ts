@@ -4764,13 +4764,13 @@ describe('PostHistoryDialog', () => {
             card = (await screen.findByText('トースト確認の返信')).closest('.post-history-related-card') as HTMLElement;
         }
         await clickPostRepliesMenuAction('関連イベントを確認', card);
-        const message = await screen.findByText('取得した関連イベントを反映しました');
+        const message = await screen.findByText('完了');
         expect(message.closest('.floating-message.parent-top')).toBeTruthy();
         expect(message.closest('.post-history-tab-content')).toBeTruthy();
         expect(message.closest('.post-history-item')).toBeNull();
         expect(message.closest('.post-history-related-card')).toBeNull();
         expect(screen.queryByText(/一部は未確認/)).toBeNull();
-        await waitFor(() => expect(screen.queryByText('取得した関連イベントを反映しました')).toBeNull(), { timeout: 3000 });
+        await waitFor(() => expect(screen.queryByText('完了')).toBeNull(), { timeout: 3000 });
     });
 
     it.each(['post', 'thread'] as const)('[related-events] %s keeps the menu text unchanged while loading', async (target) => {
@@ -4821,9 +4821,9 @@ describe('PostHistoryDialog', () => {
             card = (await screen.findByText('取得中メニューの返信')).closest('.post-history-related-card') as HTMLElement;
         }
         await clickPostRepliesMenuAction('関連イベントを確認', card);
-        const progressToast = await screen.findByText('関連イベントを確認しています');
+        const progressToast = await screen.findByText('確認中');
         expect(progressToast.closest('.floating-message.parent-top')).toBeTruthy();
-        expect(screen.queryByText('取得した関連イベントを反映しました')).toBeNull();
+        expect(screen.queryByText('完了')).toBeNull();
         await openPostActionMenu(card);
 
         await waitFor(() => {
@@ -4843,8 +4843,8 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(screen.getByRole('menuitem', { name: '関連イベントを確認' }).getAttribute('data-disabled')).toBeNull();
         });
-        expect(await screen.findByText('取得した関連イベントを反映しました')).toBeTruthy();
-        expect(screen.queryByText('関連イベントを確認しています')).toBeNull();
+        expect(await screen.findByText('完了')).toBeTruthy();
+        expect(screen.queryByText('確認中')).toBeNull();
         expect(screen.queryByText('この範囲では返信が見つかりませんでした')).toBeNull();
         expect(screen.queryByRole('button', { name: '再試行' })).toBeNull();
         expect(screen.queryByRole('button', { name: '関連イベントを確認' })).toBeNull();
