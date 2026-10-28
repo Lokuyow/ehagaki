@@ -314,7 +314,7 @@
     }
     const postHistoryThreadGraph = usePostHistoryThreadGraph({
         onRelatedEventsRefreshed: (status) => {
-            if (status === "partial") showRelatedEventsResultMessage();
+            if (status === "success" || status === "partial") showRelatedEventsResultMessage();
         },
         onDeletedPost: (eventId, deletedAt, deletionEventId) => history.patchDeletedPost(eventId, deletedAt, deletionEventId),
         getShow: () => !destroyed && show,
@@ -420,6 +420,7 @@
     let exportAbortController: AbortController | undefined;
     let exportPubkeyHex: string | undefined;
     let showRelatedEventsResult = $state(false);
+    let relatedEventsMessageKey = $state<"postHistory.relatedEventsChecking" | "postHistory.relatedEventsApplied">("postHistory.relatedEventsApplied");
     let relatedEventsResultTimeout: ReturnType<typeof setTimeout> | undefined;
 
     function hideRelatedEventsResultMessage(): void {
@@ -430,10 +431,25 @@
         showRelatedEventsResult = false;
     }
 
-    function showRelatedEventsResultMessage(): void {
+    function showRelatedEventsResultMessage(key: typeof relatedEventsMessageKey = "postHistory.relatedEventsApplied"): void {
         hideRelatedEventsResultMessage();
+        relatedEventsMessageKey = key;
         showRelatedEventsResult = true;
-        relatedEventsResultTimeout = setTimeout(hideRelatedEventsResultMessage, 1800);
+        if (key === "postHistory.relatedEventsApplied") {
+            relatedEventsResultTimeout = setTimeout(hideRelatedEventsResultMessage, 1800);
+        }
+    }
+
+    async function handleRefreshRelatedEvents(post: PostHistoryRecord, nodeEventId = post.eventId): Promise<void> {
+        const owned = captureOperation();
+        showRelatedEventsResultMessage("postHistory.relatedEventsChecking");
+        try {
+            await postHistoryThreadGraph.refreshRelatedEvents(post, nodeEventId);
+        } finally {
+            if (owned() && relatedEventsMessageKey === "postHistory.relatedEventsChecking") {
+                hideRelatedEventsResultMessage();
+            }
+        }
     }
 
     let showExportFloatingMessage = $state(false);
@@ -2626,7 +2642,7 @@
 {#if show}
 <div class="post-history-tab-content">
     <FloatingMessage show={showRelatedEventsResult} variant="parent-top">
-        <div>{$_("postHistory.relatedEventsApplied")}</div>
+        <div>{$_(relatedEventsMessageKey)}</div>
     </FloatingMessage>
     {#if sensitivePayloadDeletionOmitted}
         <p role="status">{$_("postHistory.sensitivePayloadDeletionOmitted")}</p>
@@ -3282,7 +3298,7 @@
                                         </div>
                                     </div>
                                 {/if}
-                                <PostHistoryThreadGraphPanel onRefreshRelatedEvents={(nodeEventId) => void postHistoryThreadGraph.refreshRelatedEvents(post, nodeEventId)} onReactionPost={onReactionPost ? handleReactionPost : undefined}
+                                <PostHistoryThreadGraphPanel onRefreshRelatedEvents={(nodeEventId) => void handleRefreshRelatedEvents(post, nodeEventId)} onReactionPost={onReactionPost ? handleReactionPost : undefined}
                                     state={graphState}
                                     section="parent"
                                     previewModelByEventId={relatedPreviewModelByEventId}
@@ -3648,7 +3664,7 @@
                                                         <DropdownMenu.Item
                                                             class="menu-action-button"
                                                             disabled={graphState.relatedEventsStatus === "loading"}
-                                                            onSelect={() => void postHistoryThreadGraph.refreshRelatedEvents(post)}
+                                                            onSelect={() => void handleRefreshRelatedEvents(post)}
                                                         >
                                                             <div class="find_in_page-icon svg-icon" aria-hidden="true"></div>
                                                             <span>{$_("postHistory.checkRelatedEvents")}</span>
@@ -3734,7 +3750,7 @@
                                                 emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                             />
                                         {/if}
-                                    <PostHistoryThreadGraphPanel onRefreshRelatedEvents={(nodeEventId) => void postHistoryThreadGraph.refreshRelatedEvents(post, nodeEventId)} onReactionPost={onReactionPost ? handleReactionPost : undefined}
+                                    <PostHistoryThreadGraphPanel onRefreshRelatedEvents={(nodeEventId) => void handleRefreshRelatedEvents(post, nodeEventId)} onReactionPost={onReactionPost ? handleReactionPost : undefined}
                                         state={graphState}
                                         section="children"
                                         previewModelByEventId={relatedPreviewModelByEventId}

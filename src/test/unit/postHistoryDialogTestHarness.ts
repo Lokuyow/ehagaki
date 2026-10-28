@@ -122,6 +122,7 @@ const hoisted = vi.hoisted(() => {
             'postHistory.showReplyTarget': '返信先を見る',
             'postHistory.hideReplyTarget': '返信先を隠す',
             'postHistory.checkRelatedEvents': '関連イベントを確認',
+            'postHistory.relatedEventsChecking': '関連イベントを確認しています',
             'postHistory.relatedEventsApplied': '取得した関連イベントを反映しました',
             'postHistory.relatedEventsFailed': '関連イベントを取得できませんでした',
             'postHistory.checkReplies': '返信を確認',

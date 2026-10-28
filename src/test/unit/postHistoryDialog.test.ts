@@ -4821,6 +4821,9 @@ describe('PostHistoryDialog', () => {
             card = (await screen.findByText('取得中メニューの返信')).closest('.post-history-related-card') as HTMLElement;
         }
         await clickPostRepliesMenuAction('関連イベントを確認', card);
+        const progressToast = await screen.findByText('関連イベントを確認しています');
+        expect(progressToast.closest('.floating-message.parent-top')).toBeTruthy();
+        expect(screen.queryByText('取得した関連イベントを反映しました')).toBeNull();
         await openPostActionMenu(card);
 
         await waitFor(() => {
@@ -4840,6 +4843,8 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(screen.getByRole('menuitem', { name: '関連イベントを確認' }).getAttribute('data-disabled')).toBeNull();
         });
+        expect(await screen.findByText('取得した関連イベントを反映しました')).toBeTruthy();
+        expect(screen.queryByText('関連イベントを確認しています')).toBeNull();
         expect(screen.queryByText('この範囲では返信が見つかりませんでした')).toBeNull();
         expect(screen.queryByRole('button', { name: '再試行' })).toBeNull();
         expect(screen.queryByRole('button', { name: '関連イベントを確認' })).toBeNull();

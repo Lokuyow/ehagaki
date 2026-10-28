@@ -405,6 +405,7 @@
     "contextFetchFailed": "Could not fetch related post",
     "contextRetry": "Retry",
     "checkRelatedEvents": "Check related events",
+    "relatedEventsChecking": "Checking related events…",
     "relatedEventsApplied": "Fetched related events have been applied.",
     "relatedEventsFailed": "Could not fetch related events",
     "checkReplies": "Check replies",
