@@ -406,7 +406,7 @@
     "contextRetry": "再試行",
     "checkRelatedEvents": "関連イベントを確認",
     "checkingRelatedEvents": "関連イベントを確認中",
-    "relatedEventsPartial": "取得できた関連イベントを反映しました。一部は未確認です",
+    "relatedEventsApplied": "取得した関連イベントを反映しました",
     "relatedEventsFailed": "関連イベントを取得できませんでした",
     "checkReplies": "返信を確認",
     "checkingReplies": "返信を確認中",

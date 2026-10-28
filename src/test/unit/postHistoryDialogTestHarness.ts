@@ -123,7 +123,7 @@ const hoisted = vi.hoisted(() => {
             'postHistory.hideReplyTarget': '返信先を隠す',
             'postHistory.checkRelatedEvents': '関連イベントを確認',
             'postHistory.checkingRelatedEvents': '関連イベントを確認中',
-            'postHistory.relatedEventsPartial': '取得できた関連イベントを反映しました。一部は未確認です',
+            'postHistory.relatedEventsApplied': '取得した関連イベントを反映しました',
             'postHistory.relatedEventsFailed': '関連イベントを取得できませんでした',
             'postHistory.checkReplies': '返信を確認',
             'postHistory.recheckReplies': '返信を再確認',

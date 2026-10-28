@@ -187,6 +187,7 @@
         copyNeventUi.resetState();
         hideBroadcastFloatingMessage();
         hideExportFloatingMessage();
+        hideRelatedEventsResultMessage();
         cancelExport();
         showImageFullscreen = false;
         fullscreenMediaItems = [];
@@ -312,6 +313,9 @@
         );
     }
     const postHistoryThreadGraph = usePostHistoryThreadGraph({
+        onRelatedEventsRefreshed: (status) => {
+            if (status === "partial") showRelatedEventsResultMessage();
+        },
         onDeletedPost: (eventId, deletedAt, deletionEventId) => history.patchDeletedPost(eventId, deletedAt, deletionEventId),
         getShow: () => !destroyed && show,
         getSessionOpen: () => sessionOpen ?? active,
@@ -415,6 +419,23 @@
     });
     let exportAbortController: AbortController | undefined;
     let exportPubkeyHex: string | undefined;
+    let showRelatedEventsResult = $state(false);
+    let relatedEventsResultTimeout: ReturnType<typeof setTimeout> | undefined;
+
+    function hideRelatedEventsResultMessage(): void {
+        if (relatedEventsResultTimeout !== undefined) {
+            clearTimeout(relatedEventsResultTimeout);
+            relatedEventsResultTimeout = undefined;
+        }
+        showRelatedEventsResult = false;
+    }
+
+    function showRelatedEventsResultMessage(): void {
+        hideRelatedEventsResultMessage();
+        showRelatedEventsResult = true;
+        relatedEventsResultTimeout = setTimeout(hideRelatedEventsResultMessage, 1800);
+    }
+
     let showExportFloatingMessage = $state(false);
     let exportFloatingMessageKey = $state<
         | "postHistory.exportComplete"
@@ -760,6 +781,7 @@
         copyNeventUi.resetState();
         hideBroadcastFloatingMessage();
         hideExportFloatingMessage();
+        hideRelatedEventsResultMessage();
         postActionUi.resetDeleteConfirmation();
         importDialogOpen = false;
         fullScan.setOpen(false);
@@ -813,6 +835,7 @@
         copyNeventUi.hideCopyFloatingMessage();
         hideBroadcastFloatingMessage();
         hideExportFloatingMessage();
+        hideRelatedEventsResultMessage();
         cancelExport();
         showImageFullscreen = false;
         fullscreenMediaItems = [];
@@ -1340,6 +1363,7 @@
         resetPendingDeletionRequests();
         profileSyncCoordinator.dispose();
         hideExportFloatingMessage();
+        hideRelatedEventsResultMessage();
     });
 
     $effect(() => {
@@ -3697,8 +3721,8 @@
                                                 {/if}
                                             {/snippet}
                                         </PostHistoryPreviewFooter>
-                                        {#if graphState.relatedEventsStatus === "partial" || graphState.relatedEventsStatus === "failed"}
-                                            <p role="status">{$_(graphState.relatedEventsStatus === "partial" ? "postHistory.relatedEventsPartial" : "postHistory.relatedEventsFailed")}</p>
+                                        {#if graphState.relatedEventsStatus === "failed"}
+                                            <p role="status">{$_("postHistory.relatedEventsFailed")}</p>
                                         {/if}
                                         {#if graphState.reactionSummary.totalCount > 0 && isReactionsExpanded(post)}
                                             <PostHistoryReactionDetails
@@ -4077,6 +4101,10 @@
     y={broadcastFloatingMessageY}
 >
     <div>{$_(broadcastFloatingMessageKey)}</div>
+</FloatingMessage>
+
+<FloatingMessage show={showRelatedEventsResult} variant="top-right">
+    <div role="status">{$_("postHistory.relatedEventsApplied")}</div>
 </FloatingMessage>
 
 <FloatingMessage show={showExportFloatingMessage} variant="top-right">

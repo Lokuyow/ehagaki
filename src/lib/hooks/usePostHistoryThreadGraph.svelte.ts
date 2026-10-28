@@ -161,6 +161,7 @@ export interface PostHistoryThreadGraphAnchorState {
 }
 
 interface UsePostHistoryThreadGraphParams {
+    onRelatedEventsRefreshed?: (status: RelatedEventsStatus) => void;
     onDeletedPost?: (eventId: string, deletedAt: number, deletionEventId: string) => void;
     relatedEventsFetch?: typeof fetchPostHistoryRelatedEvents;
     getShow: () => boolean;
@@ -305,6 +306,7 @@ export function resolveValidPostHistoryParentNode(input: {
 }
 
 export function usePostHistoryThreadGraph({
+    onRelatedEventsRefreshed,
     onDeletedPost,
     relatedEventsFetch = fetchPostHistoryRelatedEvents,
     getShow,
@@ -429,6 +431,7 @@ export function usePostHistoryThreadGraph({
                 if (!isActive()) return;
                 updateExpansion(post.eventId, nodeEventId, state => buildChildrenLoadedExpansionState(state, { visibleChildren: true, lastFetchedChildrenAt: result.repliesComplete ? result.fetchedAt : null }));
                 relatedEventsStatuses = { ...relatedEventsStatuses, [nodeEventId]: result.status };
+                onRelatedEventsRefreshed?.(result.status);
             } catch {
                 if (isActive()) relatedEventsStatuses = { ...relatedEventsStatuses, [nodeEventId]: "failed" };
             } finally {

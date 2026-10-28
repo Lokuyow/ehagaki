@@ -406,7 +406,7 @@
     "contextRetry": "Retry",
     "checkRelatedEvents": "Check related events",
     "checkingRelatedEvents": "Checking related events",
-    "relatedEventsPartial": "Received related events have been applied. Some remain unchecked.",
+    "relatedEventsApplied": "Fetched related events have been applied.",
     "relatedEventsFailed": "Could not fetch related events",
     "checkReplies": "Check replies",
     "checkingReplies": "Checking replies",

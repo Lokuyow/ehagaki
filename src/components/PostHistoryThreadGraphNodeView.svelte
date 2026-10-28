@@ -414,8 +414,8 @@
         </PostHistoryThreadNode>
     </div>
 
-    {#if state.relatedEventsStatus === "partial" || state.relatedEventsStatus === "failed"}
-        <p role="status">{$_(state.relatedEventsStatus === "partial" ? "postHistory.relatedEventsPartial" : "postHistory.relatedEventsFailed")}</p>
+    {#if state.relatedEventsStatus === "failed"}
+        <p role="status">{$_("postHistory.relatedEventsFailed")}</p>
     {/if}
 
     {#if state.repliesActionState.visible && state.replyNodeStates.length > 0}

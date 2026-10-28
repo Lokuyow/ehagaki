@@ -4745,6 +4745,33 @@ describe('PostHistoryDialog', () => {
         expect(screen.getByRole('button', { name: '返信 2件を表示' })).toBeTruthy();
     });
 
+    it.each(['post', 'thread'] as const)('[related-events-toast] %s shows neutral feedback outside the post and dismisses it', async (target) => {
+        const post = createRecord({ eventId: '1'.repeat(64), content: 'トースト確認の投稿', tags: [], media: [] });
+        const reply = createDirectReplyEventRecord({ content: 'トースト確認の返信', fetchedAt: Date.now() });
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockImplementation(async (eventId: string) =>
+            target === 'thread' && eventId === post.eventId ? [reply] : [],
+        );
+        replyFetchServiceMock.fetchDirectReplies.mockReturnValue({
+            promise: Promise.resolve({ status: 'partial', events: [], fetchedAt: Date.now(), relayUrls: [] }),
+            cancel: vi.fn(),
+        });
+        render(PostHistoryDialog, { props: { show: true, onClose: vi.fn(), onReplyPost: vi.fn(), pubkeyHex: post.pubkeyHex, rxNostr: {} as any } });
+        let card: HTMLElement | undefined;
+        if (target === 'thread') {
+            await fireEvent.click(await screen.findByRole('button', { name: '返信 1件を表示' }));
+            card = (await screen.findByText('トースト確認の返信')).closest('.post-history-related-card') as HTMLElement;
+        }
+        await clickPostRepliesMenuAction('関連イベントを確認', card);
+        const message = await screen.findByText('取得した関連イベントを反映しました');
+        expect(message.closest('.floating-message.top-right')).toBeTruthy();
+        expect(message.closest('.post-history-item')).toBeNull();
+        expect(message.closest('.post-history-related-card')).toBeNull();
+        expect(screen.queryByText(/一部は未確認/)).toBeNull();
+        await waitFor(() => expect(screen.queryByText('取得した関連イベントを反映しました')).toBeNull(), { timeout: 3000 });
+    });
+
     it('[direct-replies] 返信確認loading中はfooterに返信バッジを出さずmenu項目だけをdisabled表示する', async () => {
         const post = createRecord({
             eventId: '1'.repeat(64),
