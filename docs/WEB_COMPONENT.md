@@ -304,6 +304,8 @@ Full self-publish distribution は `uploadFile(file, options?)` で `File` 1 件
 upload progress/error などの Composer UI state も変更しません。現在選択中の eHagaki upload destination、
 圧縮設定、destination が必要とする認証、通常の media validation と transport を使います。
 
+GIF（`image/gif`）は静止画・アニメーションとも圧縮設定にかかわらず原本のまま送信し、リサイズや形式変換を行いません。Composer UI と Host-owned Lite の `uploadMedia` への受け渡しも同じ扱いです。
+
 ```ts
 const composer = document.querySelector('ehagaki-composer');
 await composer.whenReady();

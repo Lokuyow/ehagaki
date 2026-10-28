@@ -134,6 +134,8 @@ NIP-46 の bunker URL に `ws://127.0.0.1:4869/` のようなデバイス内ロ�
 
 埋め込みクエリを指定しない場合、iframe 内の eHagaki は通常起動時と同じ初期設定で起動します。アップロード先は eHagaki 側 IndexedDB へ、その他の設定は初回参照時に eHagaki 側 localStorage へ保存されます。
 
+GIF（`image/gif`）は通常投稿・リアクションともアップロードできます。静止画・アニメーションのどちらも画像圧縮設定にかかわらず原本のまま送信し、圧縮・リサイズ・形式変換を行いません。
+
 ## Host-provided temporary Relay Config
 
 iframe で Host がこの mount 専用の Relay Config を所有する場合は、`parentOrigin` に加えて

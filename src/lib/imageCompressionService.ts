@@ -332,6 +332,8 @@ export class ImageCompressionService implements CompressionService {
         }
 
         if (!file.type.startsWith("image/")) return { file, wasCompressed: false };
+        // Canvas encoders only retain one frame; keep every GIF byte intact.
+        if (file.type === "image/gif") return { file, wasCompressed: false, wasSkipped: true };
         if (file.size <= 20 * 1024) return { file, wasCompressed: false, wasSkipped: true };
 
         const level = this.getCompressionLevel();

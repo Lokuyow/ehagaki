@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { File as NodeFile } from "node:buffer";
+import { webcrypto } from "node:crypto";
+import { MockStorage } from "../helpers";
+import { createGifFixture } from "../gifFixture";
 
 const videoCompressionState = vi.hoisted(() => ({
     processedFile: null as File | null,
@@ -14,11 +18,35 @@ vi.mock("../../lib/videoCompression/videoCompressionService", () => ({
         }
     },
 }));
+vi.mock("../../lib/utils/fileUtils", async importOriginal => ({
+    ...await importOriginal<typeof import("../../lib/utils/fileUtils")>(),
+    getImageDimensions: vi.fn(async () => ({ width: 256, height: 192, displayWidth: 256, displayHeight: 192 })),
+}));
 
 import { createHostOwnedUploadExecutor } from "../../lib/hostOwnedUpload";
 import type { UploadHelperDependencies } from "../../lib/types";
 
 describe("Host-owned media handoff", () => {
+    it("hands the original animated GIF to Lite's host with matching metadata", async () => {
+        const bytes = createGifFixture();
+        const file = new NodeFile([bytes], "animation.gif", { type: "image/gif", lastModified: 1234 }) as unknown as File;
+        const storage = new MockStorage(); storage.setItem("imageQualityLevel", "low");
+        const signal = new AbortController().signal;
+        const uploadMedia = vi.fn(async (received: File) => {
+            expect(received).toBe(file); expect(new Uint8Array(await received.arrayBuffer())).toEqual(bytes);
+            return { url: "https://host.example/animation.gif" };
+        });
+        const executor = createHostOwnedUploadExecutor({ uploadMedia, signal });
+        const prepared = await executor.prepareFiles([file], { localStorage: storage, crypto: webcrypto.subtle } as unknown as UploadHelperDependencies);
+        expect(prepared[0].file).toBe(file);
+        const [result] = await executor.uploadPreparedFiles(prepared.map(entry => entry.file), [{ file, placeholderId: "gif" }]);
+        expect(uploadMedia).toHaveBeenCalledWith(file, expect.objectContaining({
+            originalName: "animation.gif", processedName: "animation.gif", originalType: "image/gif", processedType: "image/gif",
+            originalSize: bytes.length, processedSize: bytes.length, width: 256, height: 192,
+        }), { signal });
+        expect(result).toMatchObject({ success: true, nip94: { m: "image/gif", size: String(bytes.length), dim: "256x192" },
+            sizeInfo: { wasCompressed: false, originalSize: bytes.length, compressedSize: bytes.length } });
+    });
     it("passes the same File instance to the host and accepts only an HTTP(S) result", async () => {
         const controller = new AbortController();
         const file = new File(["media"], "photo.webp", { type: "image/webp" });

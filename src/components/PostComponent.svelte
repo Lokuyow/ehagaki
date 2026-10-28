@@ -1563,7 +1563,7 @@
   {#if mediaEnabled}
     <input
       type="file"
-      accept={reactionComposerState.value ? 'image/png,image/jpeg,image/webp' : 'image/*,video/*'}
+      accept={reactionComposerState.value ? 'image/png,image/jpeg,image/webp,image/gif' : 'image/*,video/*'}
       multiple={!reactionComposerState.value}
       onchange={handleFileSelect}
       bind:this={fileInput}
