@@ -342,8 +342,7 @@ for (const base of ["/", "/ehagaki/"] as const) {
                     listingActions++;
                     const response = page.waitForResponse(response => response.request().method() === 'GET'
                         && response.url().startsWith(f.mediaOrigin + '/list/'), { timeout: 30_000 });
-                    const [reply] = await Promise.all([response, action()]);
-                    await reply.finished();
+                    await Promise.all([response, action()]);
                     // A response can arrive before loadPage's finally clears
                     // loading; start the next action only after that UI commit.
                     await expect(dialog.locator('.media-refresh-button')).toBeEnabled();
