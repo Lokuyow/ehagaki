@@ -155,13 +155,13 @@ test.describe("composer target dialog fixture", () => {
             await expect(main).not.toContainText("Nested JSON must stay hidden");
             await expect(related).not.toContainText("Nested JSON must stay hidden");
             await expect(related.locator("a, .post-preview-media-item")).toHaveCount(0);
-            await expect(main.getByRole("button", { name: "リプライ", exact: true })).toHaveCount(0);
-            await expect(main.getByRole("button", { name: "引用", exact: true })).toHaveCount(0);
+            await expect(main.getByRole("button", { name: "リプライ", exact: true })).toHaveCount(reaction ? 1 : 0);
+            await expect(main.getByRole("button", { name: "引用", exact: true })).toHaveCount(reaction ? 1 : 0);
             if (reaction) await expect(main.locator(".composer-target-reaction-label .favorite-icon")).toHaveCount(1);
             else await expect(main).toContainText("リポスト");
             if (key === "reaction7" || key === "markerReaction") await expect(related).toContainText("👀");
             if (key === "repost16" || key === "channelReaction") await expect(main.locator(".repost-channel-row, .related-channel-row")).toContainText("Related fixture channel");
-            const menu = main.getByRole("button", { name: "アクションを表示" });
+            const menu = main.locator(".post-preview-footer-right").getByRole("button", { name: "アクションを表示" });
             await menu.focus();
             await expect(menu).toBeFocused();
             await menu.press("Enter");
@@ -198,14 +198,17 @@ test.describe("composer target dialog fixture", () => {
             const overflow = await page.locator(".composer-target-reaction-preview").evaluate(element =>
                 element.scrollWidth > element.clientWidth + 1 || document.documentElement.scrollWidth > window.innerWidth);
             expect(overflow).toBe(false);
-            const footer = page.locator('.composer-target-reaction-preview + .post-preview-footer');
-            for (const name of ['リプライ', '引用', 'リアクションする']) {
+            const footer = page.locator('.composer-target-reaction-preview > .post-preview-footer');
+            for (const name of ['リプライ', '引用', 'リアクションする', 'アクションを表示']) {
                 const button = footer.getByRole('button', { name, exact: true });
                 await expect(button).toBeVisible();
                 const bounds = await button.boundingBox();
                 expect(bounds).not.toBeNull();
                 expect(bounds!.x).toBeGreaterThanOrEqual(0);
                 expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+                const footerBounds = await footer.boundingBox();
+                expect(bounds!.y).toBeGreaterThanOrEqual(footerBounds!.y);
+                expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(footerBounds!.y + footerBounds!.height);
             }
             await page.getByRole("dialog", { name: "宛先を指定" }).screenshot({ path: testInfo.outputPath(`composer-reaction-history-style-${width}.png`) });
         }
@@ -241,7 +244,7 @@ test.describe("composer target dialog fixture", () => {
             await page.setViewportSize({ width, height: 720 });
             const overlapsFooter = await retryButton.evaluate((button) => {
                 const footer = document.querySelector<HTMLElement>(
-                    ".composer-target-content > .post-preview-footer",
+                    ".composer-target-reaction-preview > .post-preview-footer",
                 );
                 if (!footer) throw new Error("main target footer is missing");
                 const retry = button.getBoundingClientRect();

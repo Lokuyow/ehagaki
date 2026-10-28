@@ -359,7 +359,8 @@ describe("ComposerTargetDialog", () => {
         expect(preview.getAttribute("data-reaction-event-id")).toBe(outer.id);
         expect(label.querySelector(".favorite-icon.svg-icon")).toBeTruthy();
         expect(label.textContent).toContain("composerTarget.reaction");
-        expect(within(label).getByRole("button", { name: "アクションを表示" })).toBeTruthy();
+        expect(within(preview.querySelector(":scope > .post-preview-footer .post-preview-footer-right") as HTMLElement)
+            .getByRole("button", { name: "アクションを表示" })).toBeTruthy();
         expect(preview.querySelector(".related-channel-row")?.textContent).toContain("Related channel");
         expect(card.textContent).toContain("Related author");
         expect(card.textContent).toContain("Related reaction channel body");
@@ -370,7 +371,7 @@ describe("ComposerTargetDialog", () => {
         expect(preview.querySelector(".interaction-author .composer-target-avatar")).toBeTruthy();
         expect(preview.textContent).not.toContain("kind 7");
         expect(preview.textContent).not.toContain("kind 42");
-        expect(within(preview).getAllByRole('button', { name: 'reaction.action' })).toHaveLength(1);
+        expect(within(preview).getAllByRole('button', { name: 'reaction.action' })).toHaveLength(2);
         expect(onApply).not.toHaveBeenCalled();
         await openActionMenu();
         await fireEvent.click(screen.getByRole("menuitem", { name: "イベントJSONを表示" }));
@@ -387,7 +388,7 @@ describe("ComposerTargetDialog", () => {
         const preview = document.querySelector(".post-history-repost") as HTMLElement;
         expect(preview.getAttribute("data-repost-event-id")).toBe(outer.id);
         expect(preview.querySelector(".post-history-repost-label")?.textContent).toContain("repost.entry");
-        expect(within(preview.querySelector(".post-history-repost-label") as HTMLElement)
+        expect(within(preview.querySelector(":scope > .post-preview-footer .post-preview-footer-right") as HTMLElement)
             .getByRole("button", { name: "アクションを表示" })).toBeTruthy();
         expect(preview.querySelector(".repost-channel-row")?.textContent).toContain("Related channel");
         const card = preview.querySelector(".post-history-related-card")!;
