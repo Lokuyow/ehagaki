@@ -771,6 +771,7 @@ export function usePostHistoryListing({
         pending: number; succeeded: boolean; changed: boolean;
         resolve(changed: boolean): void; promise: Promise<boolean>;
     } | null = null;
+    let dialogOpenSync = $state(false);
     let fetchRequestId = 0;
     let currentViewRefetchTask: PostHistoryCurrentViewRefetchTask | null = null;
     let contiguousProgress: ContiguousProgressSnapshot | null = null;
@@ -940,6 +941,7 @@ export function usePostHistoryListing({
     );
 
     function cancelCurrentSync(): void {
+        dialogOpenSync = false;
         foregroundFeedback?.resolve(false);
         foregroundFeedback = null;
         externalOperation += 1;
@@ -956,7 +958,8 @@ export function usePostHistoryListing({
         if (state.syncStatus === "older-syncing") state.syncStatus = "idle";
     }
 
-    function beginHistoryFeedback(loading: "syncing" | "older-syncing", peers: number) {
+    function beginHistoryFeedback(loading: "syncing" | "older-syncing", peers: number, isDialogOpen = false) {
+        dialogOpenSync = isDialogOpen;
         foregroundFeedback?.resolve(false);
         let resolve!: (changed: boolean) => void;
         const promise = new Promise<boolean>((done) => { resolve = done; });
@@ -3642,7 +3645,7 @@ export function usePostHistoryListing({
         cancelCurrentSync();
         const requestId = ++fetchRequestId;
         const localTask = startLocalHistoryRead("bootstrap");
-        const feedback = beginHistoryFeedback("syncing", localTask ? 2 : 1);
+        const feedback = beginHistoryFeedback("syncing", localTask ? 2 : 1, true);
         if (localTask) void localTask.promise.then(result => finishHistoryPeer(feedback, !!result, result?.changed ?? false));
         const operation = ++externalOperation;
         externalReadBusy = true;
@@ -3766,7 +3769,7 @@ export function usePostHistoryListing({
         const requestId = ++fetchRequestId;
         openRefreshRequestId = requestId;
         const localTask = startLocalHistoryRead("dialog-open-refresh");
-        const feedback = beginHistoryFeedback("syncing", localTask ? 2 : 1);
+        const feedback = beginHistoryFeedback("syncing", localTask ? 2 : 1, true);
         if (localTask) void localTask.promise.then(result => finishHistoryPeer(feedback, !!result, result?.changed ?? false));
         const operation = ++externalOperation;
         externalReadBusy = true;
@@ -3961,7 +3964,7 @@ export function usePostHistoryListing({
         } else {
             const task = startLocalHistoryRead("dialog-open-refresh");
             if (task) {
-                const feedback = beginHistoryFeedback("syncing", 1);
+                const feedback = beginHistoryFeedback("syncing", 1, true);
                 void task.promise.then(result => finishHistoryPeer(feedback, !!result, result?.changed ?? false));
             }
         }
@@ -5650,6 +5653,9 @@ export function usePostHistoryListing({
         },
         get latestOlderBackfillUiResult() {
             return state.latestOlderBackfillUiResult;
+        },
+        get isDialogOpenSyncing() {
+            return dialogOpenSync && state.syncStatus === "syncing";
         },
         get syncStatus() {
             return state.syncStatus;

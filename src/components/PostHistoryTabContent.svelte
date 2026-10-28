@@ -610,7 +610,7 @@
     let syncToastExpired = $state(false);
     const canAutoHideSyncToast = $derived(
         show && !fullScan.state.open && !exportRunning &&
-            history.syncStatus === "syncing" &&
+            history.isDialogOpenSyncing &&
             headingStatusMessageKey === "postHistory.syncing" &&
             history.posts.length > 0,
     );
