@@ -66,7 +66,7 @@ describe("PostHistoryRelayFetchService", () => {
         const result = await h.task.promise;
         expect(getPostHistoryQuorumCoverage(result.relayFetchCoverage!, urls.slice(0, total))).toEqual([{ since: 10, until: 200 }]);
         expect(result.relayOutcomes!.filter((outcome) => outcome.termination === "eose")).toHaveLength(required);
-        expect(h.clearTimeoutFn).toHaveBeenCalledOnce();
+        expect(h.streams.size).toBe(total);
     });
     it.each(["timeout", "error"])("fewer than half EOSE does not reach quorum with %s", async (failure) => {
         const h = harness();

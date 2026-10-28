@@ -1,3 +1,4 @@
+import { RelayOperation } from "./relay/operation";
 import {
     createRxBackwardReq,
     type RxNostr,
@@ -62,7 +63,7 @@ export class PostHistoryContextFetchService {
     ): PostHistoryContextFetchTask {
         let resolved = false;
         const subscriptions = new Set<{ unsubscribe?: () => void }>();
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let operation: RelayOperation;
         let resolveTask: ((result: PostHistoryContextFetchResult) => void) | undefined;
         const searchedRelays = new Set<string>();
         let baseSearchDone = false;
@@ -70,10 +71,6 @@ export class PostHistoryContextFetchService {
         let authorSearchDone = true;
 
         const cleanup = () => {
-            if (timeoutId !== undefined) {
-                this.clearTimeoutFn(timeoutId);
-                timeoutId = undefined;
-            }
             for (const subscription of subscriptions) {
                 subscription.unsubscribe?.();
             }
@@ -87,7 +84,7 @@ export class PostHistoryContextFetchService {
                 return;
             }
             resolved = true;
-            cleanup();
+            operation?.finish();
             resolve(result);
         };
 
@@ -95,10 +92,10 @@ export class PostHistoryContextFetchService {
             const safeResolve = safeResolveFactory(resolve);
             resolveTask = safeResolve;
 
-            timeoutId = this.setTimeoutFn(() => {
-                this.console.warn("post_history_context_fetch_timeout", params.eventId);
+            operation = new RelayOperation(Math.min(6_000, params.timeoutMs ?? DEFAULT_CONTEXT_FETCH_TIMEOUT_MS), () => {
                 safeResolve({ event: null, relayUrl: null });
-            }, params.timeoutMs ?? DEFAULT_CONTEXT_FETCH_TIMEOUT_MS);
+            }, { setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn });
+            operation.add(cleanup);
 
             const maybeResolveMissing = () => {
                 if (baseSearchDone && authorLookupDone && authorSearchDone) {

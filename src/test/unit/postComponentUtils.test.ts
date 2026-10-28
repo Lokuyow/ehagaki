@@ -11,6 +11,28 @@ import {
 } from '../../lib/postComponentUtils';
 
 describe('createPostStatusHandlers', () => {
+    it('late settlement updates only the same live submission and never repeats success side effects', async () => {
+        const updatePostStatus = vi.fn(), clearContentAfterSuccess = vi.fn(), onPostSuccess = vi.fn();
+        const handlers = createPostStatusHandlers({ updatePostStatus, clearContentAfterSuccess, onPostSuccess });
+        let resolve!: (result: import('../../lib/types').PostResult) => void;
+        const deliverySettled = new Promise<import('../../lib/types').PostResult>(done => { resolve = done; });
+        handlers.markSuccess({ success: true, deliveryPending: true, deliverySettled });
+        resolve({ success: true, fullyDelivered: false });
+        await Promise.resolve();
+        expect(updatePostStatus.mock.calls.at(-1)?.[0].message).toBe('postComponent.post_partial_success');
+        expect(clearContentAfterSuccess).toHaveBeenCalledOnce();
+        expect(onPostSuccess).toHaveBeenCalledOnce();
+
+        let finish!: (result: import('../../lib/types').PostResult) => void;
+        handlers.markSuccess({ success: true, deliveryPending: true,
+            deliverySettled: new Promise(done => { finish = done; }) });
+        handlers.markSending();
+        const calls = updatePostStatus.mock.calls.length;
+        finish({ success: true, fullyDelivered: false });
+        await Promise.resolve();
+        expect(updatePostStatus).toHaveBeenCalledTimes(calls);
+        handlers.dispose();
+    });
     it('送信開始・成功・失敗の状態を一貫して更新する', () => {
         const events: string[] = [];
         const updatePostStatus = vi.fn(() => events.push('status'));

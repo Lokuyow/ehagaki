@@ -1,7 +1,9 @@
+import { RelayOperation } from "./relay/operation";
+import { useRelayQuery } from "./relay/query";
+import { startRelayPublish } from "./relay/publish";
 import { createRxBackwardReq, createRxNostr, noopSigner, type RxNostr } from "rx-nostr";
 import { verifier } from "@rx-nostr/crypto";
 import { matchFilter, type Filter } from "nostr-tools";
-import { Subscription } from "rxjs";
 import { postHistoryRelayFetchService, POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS,
     type PostHistoryRelayFetchRequest } from "./postHistoryRelayFetchService";
 import { usePostHistoryRelayEvents, type AttestedPostHistoryRawEvent } from "./postHistoryRawEventVerification";
@@ -26,7 +28,6 @@ export class LocalRelayTransport {
         const cancel = () => abort.abort();
         let client: RxNostr | undefined;
         let messages: { unsubscribe(): void } | undefined;
-        let timer: ReturnType<typeof setTimeout> | undefined;
         let resolveCancelled: (value: null) => void = () => undefined;
         const cancelled = new Promise<null>((resolve) => { resolveCancelled = resolve; });
         abort.signal.addEventListener("abort", () => resolveCancelled(null), { once: true });
@@ -43,13 +44,11 @@ export class LocalRelayTransport {
                     if (Array.isArray(message) && message[0] === "CLOSED"
                         && typeof message[2] === "string" && message[2].startsWith("auth-required:")) cancel();
                 });
-                timer = setTimeout(cancel, POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS);
                 return await Promise.race([work(client, abort.signal), cancelled]);
             } catch {
                 return null;
             } finally {
                 cancel();
-                if (timer !== undefined) clearTimeout(timer);
                 signal.removeEventListener("abort", cancel);
                 messages?.unsubscribe();
                 client?.dispose();
@@ -58,10 +57,10 @@ export class LocalRelayTransport {
         return { promise, cancel };
     }
 
-    fetchAuthored(url: string, request: PostHistoryRelayFetchRequest, signal: AbortSignal): LocalRelayTask<LocalRelayPage> {
+    fetchAuthored(url: string, request: PostHistoryRelayFetchRequest, signal: AbortSignal, operation?: RelayOperation): LocalRelayTask<LocalRelayPage> {
         return this.run(url, signal, async (rx, operationSignal) => {
             const task = postHistoryRelayFetchService.fetchRelayPage(rx, { ...request, relayUrl: url,
-                timeoutMs: POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS });
+                timeoutMs: POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS, operation });
             const cancel = () => task.cancel();
             operationSignal.addEventListener("abort", cancel, { once: true });
             if (operationSignal.aborted) cancel();
@@ -75,7 +74,7 @@ export class LocalRelayTransport {
         });
     }
 
-    fetchRelated(url: string, filter: Filter, signal: AbortSignal): LocalRelayTask<AttestedPostHistoryRawEvent[]> {
+    fetchRelated(url: string, filter: Filter, signal: AbortSignal, operation?: RelayOperation): LocalRelayTask<AttestedPostHistoryRawEvent[]> {
         return this.run(url, signal, async (rx, operationSignal) => {
             const request = createRxBackwardReq();
             const events = new Map<string, AttestedPostHistoryRawEvent>();
@@ -87,7 +86,7 @@ export class LocalRelayTransport {
                     resolve([...events.values()]);
                 };
                 operationSignal.addEventListener("abort", finish, { once: true });
-                subscription = usePostHistoryRelayEvents(rx, request, { on: { relays: [url] } }).subscribe({
+                subscription = useRelayQuery(rx, request, { on: { relays: [url] } }, { operation, quorum: false, timeoutMs: POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS, source: (req, on) => usePostHistoryRelayEvents(rx, req, on) }).subscribe({
                     next: ({ event, attestation }) => {
                         if (!operationSignal.aborted && matchFilter(filter, event) && events.size < (filter.limit ?? 150)) events.set(event.id, { event, attestation });
                     }, complete: finish, error: finish,
@@ -108,26 +107,16 @@ export class LocalRelayTransport {
         const uniqueEvents = [...new Map(events.map(event => [event.id, event])).values()];
         if (!uniqueEvents.length) return { promise: Promise.resolve(signal.aborted ? null : true), cancel() {} };
         return this.run(url, signal, async (rx, operationSignal) => {
-            const results = await Promise.all(uniqueEvents.map(event => this.sendSignedEvent(rx, url, event, operationSignal)));
-            return results.every(accepted => accepted);
+            const operation = new RelayOperation(POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS, () => undefined);
+            operation.bind(operationSignal);
+            try {
+                const results = await Promise.all(uniqueEvents.map(event => startRelayPublish(rx, event, {
+                    targetRelays: [url], on: { relays: [url] }, operation,
+                }).settled));
+                if (results.some(result => result.error === "post_timeout")) throw new Error("local_relay_publish_timeout");
+                return results.every(result => result.success);
+            } finally { operation.finish(); }
         });
     }
 
-    private sendSignedEvent(rx: RxNostr, url: string, event: NostrEvent, operationSignal: AbortSignal): Promise<boolean> {
-        return new Promise<boolean>((resolve) => {
-            const subscription = new Subscription();
-            const finish = (accepted = false) => {
-                subscription.unsubscribe();
-                operationSignal.removeEventListener("abort", cancel);
-                resolve(accepted);
-            };
-            const cancel = () => finish();
-            operationSignal.addEventListener("abort", cancel, { once: true });
-            if (operationSignal.aborted) { cancel(); return; }
-            subscription.add(rx.send(event, { signer: noopSigner(), on: { relays: [url] }, completeOn: "all-ok" }).subscribe({
-                next: (packet) => { if (packet.eventId === event.id) finish(packet.ok); },
-                error: cancel, complete: cancel,
-            }));
-        });
-    }
 }

@@ -1,3 +1,4 @@
+import { RelayOperation, createRelayQueryCompletion, type RelayEnd } from "./relay/operation";
 import {
     createRxBackwardReq,
     type ConnectionStatePacket,
@@ -20,9 +21,9 @@ export const POST_HISTORY_BOOTSTRAP_FETCH_LIMIT = 150;
 export const POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT = 30;
 export const POST_HISTORY_OLDER_FETCH_LIMIT = 150;
 export const POST_HISTORY_REPAIR_FETCH_LIMIT = 250;
-export const POST_HISTORY_BOOTSTRAP_FETCH_TIMEOUT_MS = 20_000;
+export const POST_HISTORY_BOOTSTRAP_FETCH_TIMEOUT_MS = 6_000;
 export const POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS = 6_000;
-export const POST_HISTORY_OLDER_FETCH_TIMEOUT_MS = 25_000;
+export const POST_HISTORY_OLDER_FETCH_TIMEOUT_MS = 6_000;
 // rx-nostr allows 30 seconds for EOSE and AUTH. Manual repair must not cut
 // that protocol-level retry path short.
 export const POST_HISTORY_REPAIR_FETCH_TIMEOUT_MS = 35_000;
@@ -52,6 +53,7 @@ export interface PostHistoryRelayFetchRequest {
     since?: number;
     until?: number;
     timeoutMs?: number;
+    operation?: RelayOperation;
 }
 
 export interface PostHistoryRelayFetchedEvent {
@@ -68,6 +70,7 @@ export interface PostHistoryRelayPerRelayCount {
 
 export interface PostHistoryRelayFetchResult {
     status: PostHistoryRelayFetchStatus;
+    completionReason?: RelayEnd;
     events: PostHistoryRelayFetchedEvent[];
     fetchedAt: number;
     nextUntil: number | null;
@@ -243,7 +246,7 @@ export class PostHistoryRelayFetchService {
         const startedAt = this.now();
         const kinds = params.kinds ?? [...POST_HISTORY_FETCH_KINDS];
         const limit = resolveFetchLimit(params.reason, params.limit);
-        const timeoutMs = resolveFetchTimeoutMs(params.reason, params.timeoutMs);
+        const timeoutMs = Math.min(params.reason === "repair-visible-range" || pageRelayUrl ? Infinity : 6_000, resolveFetchTimeoutMs(params.reason, params.timeoutMs));
         const canonicalRelayUrls = pageRelayUrl === undefined ? resolvePostHistoryAuthoredRelayUrls(params.relayConfig)
             : RelayConfigUtils.sanitizeExternalRelayUrls([pageRelayUrl]);
         const recent = ["dialog-open-refresh", "visibility-resume", "foreground-periodic"].includes(params.reason ?? "");
@@ -266,17 +269,16 @@ export class PostHistoryRelayFetchService {
         const downRelayUrls = new Set<string>();
         const diagnostics: SubscriptionLike[] = [];
         let resolved = false;
-        let launching = true;
-        let completionScheduled = false;
+        let operation: RelayOperation;
+        let completionReason: RelayEnd | undefined;
+        let detachOperation = () => {};
+        let tryFinish = () => {};
         let completedByRxNostr = false;
         let completedByLocalTimeout = false;
         let bufferLimited = false;
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let finish: (status: PostHistoryRelayFetchStatus) => void = () => undefined;
 
         const cleanup = () => {
-            if (timeoutId !== undefined) this.clearTimeoutFn(timeoutId);
-            timeoutId = undefined;
             states.forEach((state) => state.subscription?.unsubscribe?.());
             diagnostics.forEach((subscription) => subscription.unsubscribe?.());
         };
@@ -290,7 +292,7 @@ export class PostHistoryRelayFetchService {
                 verificationDrained: state.verificationDrained,
                 termination: status === "cancelled" ? "cancelled"
                     : state.eoseReceived && state.verificationDrained ? "eose"
-                    : state.failed ? "error" : "timeout",
+                    : state.failed ? "error" : completionReason === "quorum" ? "early-stop" : "timeout",
                 rawCount: state.rawCount, oldestCreatedAt: state.oldestCreatedAt,
                 saturated: state.rawCount >= limit,
             }));
@@ -313,7 +315,7 @@ export class PostHistoryRelayFetchService {
             const hasAnyRelayResponse = eventRelayUrls.size > 0 || eoseRelayUrls.length > 0 || noticeRelayUrls.size > 0;
             const allRelaysFailed = states.length > 0 && !hasAnyRelayResponse && states.every((state) => state.failed);
             return {
-                status, events, fetchedAt: this.now(), nextUntil: cursors.length ? Math.max(...cursors) : null,
+                status, completionReason, events, fetchedAt: this.now(), nextUntil: cursors.length ? Math.max(...cursors) : null,
                 hasMore, relayUrls, observedRelayUrls: perRelayCounts.map((item) => item.relayUrl),
                 rawCount, uniqueCount: events.length, duplicateCount: Math.max(0, rawCount - events.length),
                 perRelayCounts, oldestCreatedAt, newestCreatedAt, requestedRelayUrls: relayUrls,
@@ -332,18 +334,6 @@ export class PostHistoryRelayFetchService {
                 } : {}),
             };
         };
-        const tryFinish = () => {
-            if (resolved || completionScheduled) return;
-            completionScheduled = true;
-            // rx-nostr can complete use() before the same terminal packet reaches
-            // all-message observers. Reconcile both signals after that dispatch.
-            queueMicrotask(() => {
-                completionScheduled = false;
-                if (resolved || launching || !states.every((state) => state.finished)) return;
-                completedByRxNostr = true;
-                finish(states.length && states.every((state) => state.failed) ? "error" : "success");
-            });
-        };
         const readState = (from: string | undefined) => {
             const relayUrl = RelayConfigUtils.sanitizeExternalRelayUrls(from ? [from] : [])[0];
             return relayUrl ? stateByRelay.get(relayUrl) : undefined;
@@ -352,11 +342,25 @@ export class PostHistoryRelayFetchService {
             finish = (status) => {
                 if (resolved) return;
                 resolved = true;
+                completionReason ??= status === "success" ? "complete" : status;
                 cleanup();
+                detachOperation();
+                if (!params.operation) operation?.finish(completionReason);
                 resolve(buildResult(status));
             };
+            const end = (reason: RelayEnd) => {
+                completionReason = reason;
+                completedByLocalTimeout = reason === "timeout";
+                completedByRxNostr = reason === "complete";
+                finish(reason === "cancelled" ? "cancelled" : reason === "timeout" ? "timeout"
+                    : states.length && states.every(state => state.failed) ? "error" : "success");
+            };
+            operation = params.operation ?? new RelayOperation(timeoutMs, end,
+                { now: this.now, setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn });
+            detachOperation = operation.add(() => end(operation.reason ?? "cancelled"));
+            tryFinish = createRelayQueryCompletion(operation, states, !pageRelayUrl && params.reason !== "repair-visible-range", end);
+            if (resolved) return;
             if (!states.length) {
-                launching = false;
                 finish("error");
                 return;
             }
@@ -412,10 +416,6 @@ export class PostHistoryRelayFetchService {
                         state.failed = true; downRelayUrls.add(state.relayUrl);
                     }
                 });
-                timeoutId = this.setTimeoutFn(() => {
-                    completedByLocalTimeout = true;
-                    finish("timeout");
-                }, timeoutMs);
                 for (const state of states) {
                     state.subscription = usePostHistoryRelayEvents(rxNostr, state.request, { on: { relays: [state.relayUrl] } }).subscribe({
                         next: (packet) => {
@@ -455,7 +455,6 @@ export class PostHistoryRelayFetchService {
                         state.request.over();
                     }
                 }
-                launching = false;
                 tryFinish();
             } catch {
                 finish("error");

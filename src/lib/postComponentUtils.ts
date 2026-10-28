@@ -39,7 +39,7 @@ function createSendingStatus(): PostStatus {
 }
 
 function createSuccessStatus(result?: PostResult): PostStatus {
-    const isPartial = result?.fullyDelivered === false
+    const isPartial = !result?.deliveryPending && (result?.fullyDelivered === false
         || (result?.rejectedRelays?.length ?? 0) > 0
         || (result?.timedOutRelays?.length ?? 0) > 0
         || (result?.authRequiredRelays?.length ?? 0) > 0
@@ -50,7 +50,7 @@ function createSuccessStatus(result?: PostResult): PostStatus {
         )
         || (result?.delivery?.additional ?? []).some(
             (delivery) => delivery.status !== "delivered",
-        );
+        ));
     return {
         sending: false,
         success: true,
@@ -77,11 +77,18 @@ export function createPostStatusHandlers({
     clearContentAfterSuccess,
     onPostSuccess,
 }: PostStatusHandlersParams) {
+    let generation = 0;
     return {
+        dispose: () => { generation++; },
         markSending: () => {
+            generation++;
             updatePostStatus(createSendingStatus());
         },
         markSuccess: (result?: PostResult) => {
+            const current = ++generation;
+            if (result?.deliverySettled) void result.deliverySettled.then(final => {
+                if (generation === current) updatePostStatus(createSuccessStatus(final));
+            }).catch(() => undefined);
             updatePostStatus(createSuccessStatus(result));
             if (!result?.preserveComposerContent) {
                 clearContentAfterSuccess();
@@ -89,6 +96,7 @@ export function createPostStatusHandlers({
             }
         },
         markFailure: (message?: string) => {
+            generation++;
             updatePostStatus(createErrorStatus(message));
         },
     };

@@ -45,7 +45,8 @@ with one fixed 30-second authentication budget shared by the targets. When rx-no
 rejected REQ, the query gets its full 4-second response budget. rx-nostr still owns AUTH signing,
 transport, and retransmission; this observer never sends another request itself.
 The operation snapshots those read targets; unrelated requests, duplicate sends, and repeated challenges
-cannot renew their respective deadlines. If a relay fails or a deadline expires, the newest valid,
+cannot renew their respective deadlines. The shared relay operation owns these timers and caps the
+whole relay query at 44 seconds; see [relay waiting policies](RELAY_OPERATIONS.md). If a relay fails or a deadline expires, the newest valid,
 signature-verified candidate already received from the other relays can still be applied. This includes
 the existing timestamp/ID tie-break and latest-empty-list handling. Incomplete relay coverage remains
 internal metadata; the settings UI uses the normal per-protocol success, failure, or skip display without

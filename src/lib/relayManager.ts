@@ -1,3 +1,4 @@
+import { useRelayQuery, type RelayQuerySummary } from "./relay/query";
 import { createRxBackwardReq } from "rx-nostr";
 import type { RxNostr } from "rx-nostr";
 import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./relayLists";
@@ -137,14 +138,10 @@ export class RelayNetworkFetcher {
             let found = false;
             let resolved = false;
             let subscription: { unsubscribe(): void } | undefined;
-            let timeoutId: ReturnType<typeof setTimeout> | undefined;
+            let querySummary: RelayQuerySummary | undefined;
 
             const cleanup = () => {
                 signal?.removeEventListener('abort', cancel);
-                if (timeoutId !== undefined) {
-                    this.clearTimeoutFn(timeoutId);
-                    timeoutId = undefined;
-                }
                 if (subscription && typeof subscription.unsubscribe === "function") {
                     subscription.unsubscribe();
                     subscription = undefined;
@@ -162,11 +159,8 @@ export class RelayNetworkFetcher {
             signal?.addEventListener('abort', cancel, { once: true });
 
             try {
-                timeoutId = this.setTimeoutFn(() => {
-                    safeResolve({ success: false, error: 'timeout' });
-                }, Math.max(1, timeoutMs));
 
-                subscription = this.rxNostr.use(rxReq, { on: { relays } }).subscribe({
+                subscription = useRelayQuery(this.rxNostr, rxReq, { on: { relays } }, { timeoutMs: Math.min(6_000, timeoutMs), signal, setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn, onEnd: result => { querySummary = result; } }).subscribe({
                     next: (packet) => {
                         if (resolved) return;
 
@@ -197,7 +191,7 @@ export class RelayNetworkFetcher {
                         if (!found) {
                             this.console.log("Kind 10002: EOSE受信、イベントなし");
                         }
-                        safeResolve({ success: found, error: found ? undefined : 'not_found' });
+                        safeResolve({ success: found, error: found ? undefined : querySummary && !querySummary.complete ? 'timeout' : 'not_found' });
                     },
                     error: (error) => {
                         if (resolved) return;
@@ -242,14 +236,10 @@ export class RelayNetworkFetcher {
             let found = false;
             let resolved = false;
             let subscription: { unsubscribe(): void } | undefined;
-            let timeoutId: ReturnType<typeof setTimeout> | undefined;
+            let querySummary: RelayQuerySummary | undefined;
 
             const cleanup = () => {
                 signal?.removeEventListener('abort', cancel);
-                if (timeoutId !== undefined) {
-                    this.clearTimeoutFn(timeoutId);
-                    timeoutId = undefined;
-                }
                 if (subscription && typeof subscription.unsubscribe === "function") {
                     subscription.unsubscribe();
                     subscription = undefined;
@@ -267,11 +257,8 @@ export class RelayNetworkFetcher {
             signal?.addEventListener('abort', cancel, { once: true });
 
             try {
-                timeoutId = this.setTimeoutFn(() => {
-                    safeResolve({ success: false, error: 'timeout' });
-                }, Math.max(1, timeoutMs));
 
-                subscription = this.rxNostr.use(rxReq, { on: { relays } }).subscribe({
+                subscription = useRelayQuery(this.rxNostr, rxReq, { on: { relays } }, { timeoutMs: Math.min(6_000, timeoutMs), signal, setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn, onEnd: result => { querySummary = result; } }).subscribe({
                     next: (packet) => {
                         if (resolved) return;
 
@@ -299,7 +286,7 @@ export class RelayNetworkFetcher {
                         if (!found) {
                             this.console.log("Kind 3: EOSE受信、イベントなし");
                         }
-                        safeResolve({ success: found, error: found ? undefined : 'not_found' });
+                        safeResolve({ success: found, error: found ? undefined : querySummary && !querySummary.complete ? 'timeout' : 'not_found' });
                     },
                     error: (error) => {
                         if (resolved) return;

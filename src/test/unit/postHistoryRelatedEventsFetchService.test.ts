@@ -3,7 +3,7 @@ import { Subject } from "rxjs";
 import { createEvent } from "../postHistoryEventTestUtils";
 const requests = vi.hoisted(() => [] as any[]);
 vi.mock("rx-nostr", () => ({ createRxBackwardReq: (id?: string) => {
-    const req = { id: id ?? `delete-${requests.length}`, emit: vi.fn(), over: vi.fn() };
+    const req = { id: id ?? `delete-${requests.length}`, rxReqId: id ?? `delete-${requests.length}`, emit: vi.fn(), over: vi.fn() };
     requests.push(req); return req;
 } }));
 vi.mock("../../lib/postHistoryRawEventVerification", () => ({ usePostHistoryRelayEvents: (rx: any, req: any) => rx.use(req) }));
@@ -23,7 +23,7 @@ describe("bounded related event check", () => {
         streams.get(requests[index])!.next({ from: relay, event });
     };
     const complete = (index: number) => {
-        messages.next({ from: relay, message: ["EOSE", `${requests[index].id}:0`] });
+        messages.next({ from: relay, type: "EOSE", subId: `${requests[index].id}:0`, message: ["EOSE", `${requests[index].id}:0`] });
         streams.get(requests[index])!.complete();
     };
     beforeEach(() => {

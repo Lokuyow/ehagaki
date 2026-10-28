@@ -1,3 +1,5 @@
+import { cancelRelayOperations } from "./relay/publish";
+import type { RxNostr } from "rx-nostr";
 import type { RestoreResult } from './authRestoreUtils';
 import type { AuthResult } from './types';
 
@@ -39,6 +41,7 @@ export interface Nip46LoginDependencies {
 export function disposeNostrSession<T extends DisposableSession | undefined>(
     session: T,
 ): undefined {
+    if (session) cancelRelayOperations(session as unknown as RxNostr);
     session?.dispose();
     return undefined;
 }

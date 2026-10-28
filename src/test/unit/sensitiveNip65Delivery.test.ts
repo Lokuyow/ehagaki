@@ -48,7 +48,8 @@ function harness(options: { extra?: string[]; authorRelays?: string[]; save?: (i
         savePostHistoryFn: async input => { history.push(input.event); },
         storeSignedEventsFn: localStore,
     });
-    const pending = manager.submitPost("sensitive fixture");
+    const foreground = manager.submitPost("sensitive fixture");
+    const pending = foreground.then(async first => first.deliverySettled ? { ...first, ...await first.deliverySettled } : first);
     const send = (relay: string, kind: number) => sends.find(item => item.relay === relay && item.event.kind === kind)!;
     const ack = (relay: string, kind: number, ok = true, done = true) => {
         const item = send(relay, kind);
@@ -78,7 +79,7 @@ describe("Sensitive NIP-65 per-relay Payload -> ACK -> Structure", () => {
         expect(h.send(second, 1).event).toEqual(structure);
         expect(h.sign).toHaveBeenCalledTimes(2); expect(verifyEvent(structure)).toBe(true);
         h.ack(recipient, 1); await flush();
-        expect(h.localStore).not.toHaveBeenCalled();
+        expect(h.localStore).toHaveBeenCalledOnce();
         let settled = false; void h.pending.then(() => { settled = true; }); await flush(); expect(settled).toBe(false);
         h.ack(author, 1); await flush();
         const result = await h.pending;
@@ -174,21 +175,21 @@ describe("Sensitive NIP-65 per-relay Payload -> ACK -> Structure", () => {
         expect(JSON.stringify(await h.pending)).toBe(frozen);
     });
 
-    it("a late Payload ACK starts a fresh 12s Structure budget", async () => {
+    it("a late Payload ACK cannot restart the operation deadline", async () => {
         const h = harness(); await flush(); h.routes.resolve({ readRelays: [] });
         await vi.advanceTimersByTimeAsync(11_000); h.ack(author, 36); await flush();
         await vi.advanceTimersByTimeAsync(11_999); h.ack(author, 1); await flush();
-        expect(await h.pending).toMatchObject({ success: true, fullyDelivered: false });
+        expect(await h.pending).toMatchObject({ success: false, fullyDelivered: false });
     });
 
-    it("fulfilled classes settle at 1500ms with a silent extra relay and retain confirmed ACKs", async () => {
+    it("fulfilled classes settle at the operation deadline with a silent extra relay and retain confirmed ACKs", async () => {
         const silent = "wss://silent.example/";
         const h = harness({ extra: [extra], authorRelays: [silent] }); await flush(); h.routes.resolve({ readRelays: [author] });
         h.ack(author, 36); h.ack(extra, 36); await flush(); h.ack(author, 42); await flush();
         // The silent redundant author is still pending after all required classes have ACKs.
         h.ack(extra, 42); await flush();
         let settled = false; void h.pending.then(() => { settled = true; });
-        await vi.advanceTimersByTimeAsync(1499); expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(11999); expect(settled).toBe(false);
         await vi.advanceTimersByTimeAsync(1);
         expect((await h.pending).timedOutRelays).toEqual([silent]);
         expect(await h.pending).toMatchObject({ success: true, fullyDelivered: true });
@@ -211,12 +212,12 @@ describe("Sensitive NIP-65 per-relay Payload -> ACK -> Structure", () => {
         h.auth.value = { ...h.auth.value, pubkey: "f".repeat(64) };
         h.ack(recipient, 36); await flush();
         const result = await h.pending;
-        expect(result).toMatchObject({ success: true, fullyDelivered: false, preserveComposerContent: true,
+        expect(result).toMatchObject({ success: true, fullyDelivered: false,
             acceptedRelays: [author], delivery: { taggedUserRead: { [recipientPubkey]: { status: "cancelled", acceptedRelays: [], unconfirmedRelays: [recipient] } } } });
         expect(h.send(recipient, 1)).toBeUndefined();
         expect(h.cached.at(-1)!.acceptedRelays).toEqual([author, recipient]);
         expect(h.history).toEqual([h.send(author, 1).event]);
-        expect(h.clearReplyQuoteFn).not.toHaveBeenCalled();
+        expect(h.clearReplyQuoteFn).toHaveBeenCalledOnce();
     });
 
     it("Structure AUTH can complete after its normal timeout without resetting the 30s cap", async () => {

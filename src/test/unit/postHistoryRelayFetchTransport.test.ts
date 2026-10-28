@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createRxNostr, type RxNostr } from "rx-nostr";
-import { verifyEvent } from "nostr-tools";
+import { createRxNostr, createRxBackwardReq, type RxNostr } from "rx-nostr";
+import { finalizeEvent, generateSecretKey, verifyEvent } from "nostr-tools";
+import { useRelayQuery, type RelayQuerySummary } from "../../lib/relay/query";
 import { PostHistoryRelayFetchService } from "../../lib/postHistoryRelayFetchService";
 import { getPostHistoryQuorumCoverage } from "../../lib/postHistoryRelayCoverage";
 
@@ -55,6 +56,40 @@ function fetch(total: number) {
 }
 
 describe("authored coverage with the real rx-nostr transport pipeline", () => {
+    it("isolates per-relay REQs and drains signature verification before quorum settlement", async () => {
+        const total = 5;
+        const socketsReady = new Promise<RelaySocket[]>(resolve => {
+            RelaySocket.onCreated = () => { if (RelaySocket.instances.length === total) resolve([...RelaySocket.instances]); };
+        });
+        let release!: () => void;
+        const verification = new Promise<void>(resolve => { release = resolve; });
+        const rx = createRxNostr({ verifier: async event => { await verification; return verifyEvent(event); },
+            skipFetchNip11: true, retry: { strategy: "off" }, websocketCtor: RelaySocket as never });
+        runtimes.add(rx);
+        const urls = Array.from({ length: total }, (_, i) => `wss://query-${i}.example.test/`);
+        const req = createRxBackwardReq("isolated-query");
+        const events: string[] = [];
+        let summary: RelayQuerySummary | undefined;
+        let ended = false;
+        const completed = new Promise<void>((resolve, reject) => {
+            useRelayQuery(rx, req, { on: { relays: urls } }, { onEnd: result => { summary = result; } }).subscribe({
+                next: packet => events.push(packet.event.id), error: reject, complete: () => { ended = true; resolve(); },
+            });
+        });
+        req.emit({ kinds: [1] }); req.over();
+        const sockets = await socketsReady;
+        const requests = await Promise.all(sockets.map(socket => socket.firstRequest));
+        expect(new Set(requests.map(request => request[1])).size).toBe(total);
+        const event = finalizeEvent({ kind: 1, content: "synthetic query", created_at: 100, tags: [] }, generateSecretKey());
+        sockets[0].receive(["EVENT", requests[0][1], event]);
+        for (let i = 0; i < 3; i++) sockets[i].receive(["EOSE", requests[i][1]]);
+        await Promise.resolve();
+        expect(ended).toBe(false);
+        release();
+        await completed;
+        expect(events).toEqual([event.id]);
+        expect(summary).toEqual({ reason: "quorum", complete: false, eoseRelays: urls.slice(0, 3) });
+    });
     it.each([[1, 1], [2, 1], [3, 2]])("retains empty EOSE quorum with %i relays and %i successes", async (total, successes) => {
         const { task, urls, socketsReady } = fetch(total);
         const sockets = await socketsReady;

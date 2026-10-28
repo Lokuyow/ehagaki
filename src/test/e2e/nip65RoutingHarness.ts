@@ -81,7 +81,7 @@ async function reply(input: string, authorRelay: string, mode: "cold" | "warm" |
         });
         const startedAt = performance.now();
         const waves: Array<{ relays: string[]; startedMs: number; eventId?: string; kind?: number; acceptedRelays: string[]; completed: boolean }> = [];
-        window.__NIP65_ROUTING_PROGRESS__ = { waves, finished: false };
+        window.__NIP65_ROUTING_PROGRESS__ = { waves, finished: false, acknowledged: false };
         const send = rxNostr.send.bind(rxNostr);
         rxNostr.send = (event, options) => {
             const on = options?.on as { relays?: string[]; defaultWriteRelays?: boolean } | undefined;
@@ -95,11 +95,14 @@ async function reply(input: string, authorRelay: string, mode: "cold" | "warm" |
                 next: packet => { if (packet.done && packet.ok) wave.acceptedRelays.push(packet.from); },
             }), finalize(() => { wave.completed = true; }));
         };
-        const result = await manager.submitPost("Local routing fixture");
+        const first = await manager.submitPost("Local routing fixture");
+        const acknowledgedMs = performance.now() - startedAt;
+        window.__NIP65_ROUTING_PROGRESS__.acknowledged = first.success;
+        const result = first.deliverySettled ? await first.deliverySettled : first;
         window.__NIP65_ROUTING_PROGRESS__.finished = true;
         const payloadCache = payloadId ? (await sensitivePayloadRepository.getByIds([payloadId]))
             .map(record => ({ eventId: record.id, acceptedRelays: record.acceptedRelays })) : [];
-        return { state, result, history, waves, signedKinds, payloadCache, completedMs: performance.now() - startedAt };
+        return { state, result, history, waves, signedKinds, payloadCache, acknowledgedMs, completedMs: performance.now() - startedAt };
     } finally {
         rxNostr.dispose();
         clearReplyQuote();
@@ -118,7 +121,7 @@ async function directory(pubkey: string, discoveryRelays: string[]) {
 declare global {
     interface Window {
         __NIP65_ROUTING_HARNESS__: { reply: typeof reply; directory: typeof directory };
-        __NIP65_ROUTING_PROGRESS__: { waves: Array<{ relays: string[]; kind?: number; acceptedRelays: string[]; completed: boolean }>; finished: boolean };
+        __NIP65_ROUTING_PROGRESS__: { waves: Array<{ relays: string[]; kind?: number; acceptedRelays: string[]; completed: boolean }>; finished: boolean; acknowledged: boolean };
     }
 }
 window.__NIP65_ROUTING_HARNESS__ = { reply, directory };

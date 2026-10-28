@@ -1,3 +1,4 @@
+import { useRelayQuery, type RelayQuerySummary } from "./relay/query";
 import { createRxBackwardReq } from "rx-nostr";
 import type { RxNostr } from "rx-nostr";
 import type { Filter } from "nostr-tools";
@@ -238,12 +239,13 @@ export class ChannelContextService {
         relayConfig?: RelayConfig | null,
         options: ChannelContextResolveOptions = {},
     ): Promise<ChannelNetworkResolution> {
+        const deadlineAt = Date.now() + 6_000;
         const rootResult = await this.fetchEventById(
             eventId,
             relayHints,
             rxNostr,
             relayConfig,
-            5000,
+            Math.max(1, Math.min(5000, deadlineAt - Date.now())),
             options.signal,
         );
         if (rootResult.status === "aborted") return { status: "aborted" };
@@ -281,7 +283,7 @@ export class ChannelContextService {
             metadataReadRelays,
             rxNostr,
             relayConfig,
-            5000,
+            Math.max(1, Math.min(5000, deadlineAt - Date.now())),
             options.signal,
         );
         if (metadataResult.status === "aborted") return { status: "aborted" };
@@ -377,12 +379,8 @@ export class ChannelContextService {
         return new Promise((resolve) => {
             let resolved = false;
             let subscription: { unsubscribe?: () => void } | undefined;
-            let timeoutId: ReturnType<typeof setTimeout> | undefined;
+            let querySummary: RelayQuerySummary | undefined;
             const cleanup = () => {
-                if (timeoutId !== undefined) {
-                    this.clearTimeoutFn(timeoutId);
-                    timeoutId = undefined;
-                }
                 signal?.removeEventListener("abort", handleAbort);
                 subscription?.unsubscribe?.();
                 subscription = undefined;
@@ -399,15 +397,12 @@ export class ChannelContextService {
                 return;
             }
             signal?.addEventListener("abort", handleAbort, { once: true });
-            timeoutId = this.setTimeoutFn(() => {
-                this.console.warn("チャンネルイベント取得タイムアウト");
-                safeResolve({ status: "timeout" });
-            }, timeoutMs);
             try {
                 const rxReq = this.createRxBackwardReqFn();
-                subscription = rxNostr.use(rxReq, {
+                subscription = useRelayQuery(rxNostr, rxReq, {
                     on: buildChannelReadOnParams(relayHints, relayConfig),
-                }).subscribe({
+                }, { timeoutMs, quorum: false, signal, setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn,
+                    onEnd: result => { querySummary = result; } }).subscribe({
                     next: (packet: { event?: NostrEvent; from?: string }) => {
                         if (packet.event?.id !== eventId) return;
                         safeResolve({
@@ -416,7 +411,7 @@ export class ChannelContextService {
                             relayUrl: typeof packet.from === "string" ? packet.from : null,
                         });
                     },
-                    complete: () => safeResolve({ status: "not-found" }),
+                    complete: () => safeResolve({ status: querySummary && !querySummary.complete ? "timeout" : "not-found" }),
                     error: (cause: unknown) => {
                         this.console.error("チャンネルイベント取得エラー:", cause);
                         safeResolve({ status: "request-error", cause });
@@ -448,15 +443,11 @@ export class ChannelContextService {
         return new Promise((resolve) => {
             let resolved = false;
             let subscription: { unsubscribe?: () => void } | undefined;
-            let timeoutId: ReturnType<typeof setTimeout> | undefined;
+            let querySummary: RelayQuerySummary | undefined;
             let latestEvent: NostrEvent | null = null;
             let latestMetadata: ChannelMetadataContent = { relays: [] };
             const relayUrls = new Set<string>();
             const cleanup = () => {
-                if (timeoutId !== undefined) {
-                    this.clearTimeoutFn(timeoutId);
-                    timeoutId = undefined;
-                }
                 signal?.removeEventListener("abort", handleAbort);
                 subscription?.unsubscribe?.();
                 subscription = undefined;
@@ -486,15 +477,12 @@ export class ChannelContextService {
                 return;
             }
             signal?.addEventListener("abort", handleAbort, { once: true });
-            timeoutId = this.setTimeoutFn(() => {
-                this.console.warn("チャンネル metadata 取得タイムアウト");
-                safeResolve("timeout");
-            }, timeoutMs);
             try {
                 const rxReq = this.createRxBackwardReqFn();
-                subscription = rxNostr.use(rxReq, {
+                subscription = useRelayQuery(rxNostr, rxReq, {
                     on: buildChannelReadOnParams(relayHints, relayConfig),
-                }).subscribe({
+                }, { timeoutMs, quorum: true, signal, setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn,
+                    onEnd: result => { querySummary = result; } }).subscribe({
                     next: (packet: { event?: NostrEvent; from?: string }) => {
                         const event = packet.event;
                         if (!event || event.kind !== 41 || event.pubkey !== authorPubkey) return;
@@ -507,7 +495,7 @@ export class ChannelContextService {
                             latestMetadata = parsedMetadata.metadata;
                         }
                     },
-                    complete: () => safeResolve("complete"),
+                    complete: () => safeResolve(querySummary && !querySummary.complete ? "timeout" : "complete"),
                     error: (cause: unknown) => {
                         this.console.error("チャンネル metadata 取得エラー:", cause);
                         safeResolve("request-error", cause);

@@ -586,6 +586,7 @@
   });
 
   onDestroy(() => {
+    postStatusHandlers.dispose();
     reactionMedia?.dispose();
     componentDestroyed = true;
     if (!isHostOwned) clearReactionTarget('ownership');

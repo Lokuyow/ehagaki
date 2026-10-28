@@ -1,3 +1,4 @@
+import { useRelayQuery } from "./relay/query";
 import {
     createRxBackwardReq,
     type ConnectionStatePacket,
@@ -570,6 +571,7 @@ async function fetchBatchFromNetwork(
     timeoutMs: number,
     onRequestStarted?: (authors: string[]) => void,
     signals: AbortSignal[] = [],
+    deadlineAt?: number,
 ): Promise<Record<string, BatchNetworkResult>> {
     const authors = Array.from(new Set(pubkeys.filter((pubkey) => !!pubkey)));
     const results: Record<string, BatchNetworkResult> = {};
@@ -604,22 +606,13 @@ async function fetchBatchFromNetwork(
                 return;
             }
             settled = true;
-            clearTimeout(timeoutId);
             signals.forEach(signal => signal.removeEventListener("abort", cancel));
             subscription?.unsubscribe();
             connectionStateSubscription?.unsubscribe();
             resolve();
         };
 
-        const timeoutId = setTimeout(() => {
-            for (const pubkey of authors) {
-                results[pubkey] = {
-                    ...results[pubkey],
-                    timedOut: true,
-                };
-            }
-            done();
-        }, Math.max(1, timeoutMs));
+
 
         const cancel = () => { if (signals.every(signal => signal.aborted)) done(); };
         signals.forEach(signal => signal.addEventListener("abort", cancel));
@@ -678,10 +671,12 @@ async function fetchBatchFromNetwork(
                 next: handleConnectionState,
             }) ?? null;
 
-            const source = rxNostr.use(
-                rxReq,
-                { on: { relays: relayHints } },
-            ) as { pipe?: (op: unknown) => { subscribe: (observer: unknown) => { unsubscribe: () => void } }; subscribe: (observer: unknown) => { unsubscribe: () => void } };
+            const source = useRelayQuery(rxNostr, rxReq, { on: { relays: relayHints } }, {
+                timeoutMs, deadlineAt,
+                onEnd: summary => {
+                    if (!summary.complete) for (const pubkey of authors) results[pubkey] = { ...results[pubkey], timedOut: true };
+                },
+            }) as { pipe?: (op: unknown) => { subscribe: (observer: unknown) => { unsubscribe: () => void } }; subscribe: (observer: unknown) => { unsubscribe: () => void } };
 
             const stream = typeof source.pipe === "function"
                 // Upstream guard: reject bogus future kind:0 events before latest-selection.
@@ -762,13 +757,11 @@ async function fetchBatchFromNetwork(
                     };
                 },
                 complete: () => {
-                    clearTimeout(timeoutId);
-                    done();
+                            done();
                 },
                 error: () => {
                     markNetworkError();
-                    clearTimeout(timeoutId);
-                    done();
+                            done();
                 },
             });
 
@@ -782,7 +775,6 @@ async function fetchBatchFromNetwork(
             onRequestStarted?.(authors);
         } catch {
             markNetworkError();
-            clearTimeout(timeoutId);
             done();
         }
     });
@@ -930,6 +922,7 @@ async function flushPendingBatch(): Promise<void> {
         const transientFailures = new Set<string>();
         const queriedPubkeys = new Set<string>();
         const tierNames = ["bootstrap", "contextual", "fallback"] as const;
+        const deadlineAt = nowMs() + 6_000;
 
         const getRelayGroups = (
             tierName: typeof tierNames[number],
@@ -955,6 +948,10 @@ async function flushPendingBatch(): Promise<void> {
 
         try {
             for (const tierName of tierNames) {
+                if (nowMs() >= deadlineAt) {
+                    for (const pubkey of unresolvedPubkeys) transientFailures.add(pubkey);
+                    break;
+                }
                 const targets = Array.from(unresolvedPubkeys).filter(alive);
                 const groups = chunkProfileRelayGroups(getRelayGroups(tierName, targets));
 
@@ -978,6 +975,7 @@ async function flushPendingBatch(): Promise<void> {
                                 }
                             },
                             activeTargets.flatMap(pubkey => (groupedByPubkey.get(pubkey) ?? []).flatMap(request => request.signal ? [request.signal] : [])),
+                            deadlineAt,
                         );
                         return { activeTargets, results };
                     },
