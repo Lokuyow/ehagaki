@@ -4765,7 +4765,8 @@ describe('PostHistoryDialog', () => {
         }
         await clickPostRepliesMenuAction('関連イベントを確認', card);
         const message = await screen.findByText('取得した関連イベントを反映しました');
-        expect(message.closest('.floating-message.top-right')).toBeTruthy();
+        expect(message.closest('.floating-message.parent-top')).toBeTruthy();
+        expect(message.closest('.post-history-tab-content')).toBeTruthy();
         expect(message.closest('.post-history-item')).toBeNull();
         expect(message.closest('.post-history-related-card')).toBeNull();
         expect(screen.queryByText(/一部は未確認/)).toBeNull();

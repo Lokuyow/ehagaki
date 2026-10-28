@@ -2625,6 +2625,9 @@
 
 {#if show}
 <div class="post-history-tab-content">
+    <FloatingMessage show={showRelatedEventsResult} variant="parent-top">
+        <div>{$_("postHistory.relatedEventsApplied")}</div>
+    </FloatingMessage>
     {#if sensitivePayloadDeletionOmitted}
         <p role="status">{$_("postHistory.sensitivePayloadDeletionOmitted")}</p>
     {/if}
@@ -4103,10 +4106,6 @@
     <div>{$_(broadcastFloatingMessageKey)}</div>
 </FloatingMessage>
 
-<FloatingMessage show={showRelatedEventsResult} variant="top-right">
-    <div role="status">{$_("postHistory.relatedEventsApplied")}</div>
-</FloatingMessage>
-
 <FloatingMessage show={showExportFloatingMessage} variant="top-right">
     <div>
         {$_(exportFloatingMessageKey, {
@@ -4142,7 +4141,7 @@
 {/snippet}
 
 <style>
-    .post-history-tab-content { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; width: 100%; }
+    .post-history-tab-content { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; width: 100%; }
     .post-history-heading {
         display: flex;
         align-items: stretch;
