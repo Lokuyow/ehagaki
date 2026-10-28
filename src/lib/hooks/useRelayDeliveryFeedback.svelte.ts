@@ -8,6 +8,7 @@ import { getActiveDeliveryDialog } from "../relay/deliveryToastPosition";
 export function useRelayDeliveryFeedback(getRx: () => RxNostr | undefined, showMascot: () => boolean) {
     let rows = $state<RelayDeliveryToast[]>([]);
     let newest = $state(0);
+    let readyId = $state(0);
     let modal = $state(false);
     let controller: ReturnType<typeof createRelayDeliveryToasts> | undefined;
     $effect(() => {
@@ -16,7 +17,7 @@ export function useRelayDeliveryFeedback(getRx: () => RxNostr | undefined, showM
         const current = untrack(() => createRelayDeliveryToasts(observeRelayDeliveries(rx), next => {
             rows = next;
             newest = Math.max(newest, ...next.map(row => row.progress.id));
-        }));
+        }, id => { readyId = Math.max(readyId, id); }));
         controller = current;
         return () => { current.dispose(); controller = undefined; };
     });
@@ -30,6 +31,7 @@ export function useRelayDeliveryFeedback(getRx: () => RxNostr | undefined, showM
     });
     const useMascot = $derived(showMascot() && !modal);
     return {
+        get successReady() { return newest === 0 || readyId >= newest; },
         get mascot() { return useMascot ? rows.find(row => row.progress.id === newest) : undefined; },
         get bars() { return useMascot ? [] : rows; },
         dismiss(id: number) { controller?.dismiss(id); },

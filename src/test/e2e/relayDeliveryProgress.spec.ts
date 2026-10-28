@@ -4,6 +4,21 @@ declare global { interface Window { __deliveryHarness?: {
     observed(index: number): boolean; reset(): void;
 } } }
 test.use({ trace: "off" });
+test("success balloon waits for full delivery or two seconds of stalled progress", async ({ page }) => {
+    await page.goto("relay-delivery-playwright.html?mascot=1");
+    await page.waitForFunction(() => !!window.__deliveryHarness);
+    await page.evaluate(() => { window.__deliveryHarness!.start(); window.__deliveryHarness!.ack(0, 0); });
+    await expect(page.locator(".mascot-progress-accessible")).toHaveAttribute("aria-valuenow", "33");
+    const success = page.locator(".compact-message.success");
+    await expect(success).toHaveCount(0);
+    await expect(success).toBeVisible({ timeout: 3000 });
+    expect(await page.evaluate(() => window.__deliveryHarness!.observed(0))).toBe(true);
+    await page.evaluate(() => window.__deliveryHarness!.start());
+    await expect(success).toHaveCount(0);
+    await page.evaluate(() => { for (let i = 0; i < 3; i++) window.__deliveryHarness!.ack(1, i); });
+    await expect(success).toBeVisible();
+    await page.evaluate(() => window.__deliveryHarness!.reset());
+});
 for (const theme of ["light", "dark"]) for (const surface of ["standalone", "iframe", "container"]) {
     test(`mascot fills upward and restores normally (${theme}, ${surface})`, async ({ page }, testInfo) => {
         await page.setViewportSize({ width: 360, height: 640 });

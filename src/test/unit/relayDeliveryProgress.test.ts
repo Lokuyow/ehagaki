@@ -15,6 +15,24 @@ function ui(rx: RxNostr) {
     return { controller, get rows() { return rows; } };
 }
 describe("relay delivery progress", () => {
+    it("signals balloon readiness at the two-second idle limit even after manual dismissal", async () => {
+        const rx = {} as RxNostr;
+        const ready = vi.fn();
+        const controller = createRelayDeliveryToasts(observeRelayDeliveries(rx), () => {}, ready);
+        const delivery = beginRelayDelivery(rx, relays);
+        delivery.update(relays, relays.slice(0, 1));
+        expect(ready).not.toHaveBeenCalled();
+        // The presentation deadline belongs to the operation, not its visible row.
+        const snapshot: RelayDeliveryProgress[] = [];
+        const sub = observeRelayDeliveries(rx).subscribe(e => { if (e.type === "progress") snapshot.push(e.progress); });
+        controller.dismiss(snapshot[0].id);
+        await vi.advanceTimersByTimeAsync(1999); expect(ready).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1); expect(ready).toHaveBeenCalledOnce();
+        delivery.update(relays, relays); delivery.finish();
+        expect(ready).toHaveBeenCalledOnce();
+        expect(vi.getTimerCount()).toBe(0);
+        sub.unsubscribe(); controller.dispose();
+    });
     it("retires stalled partial progress without cancelling delivery or reappearing on late ACKs", async () => {
         const source = new Subject<any>();
         const rx = { send: () => source } as unknown as RxNostr;
@@ -22,7 +40,7 @@ describe("relay delivery progress", () => {
         const task = startRelayPublish(rx, { id: "fixture", kind: 1, content: "fixture" }, { targetRelays: relays });
         const ack = (index: number) => source.next({ from: relays[index], ok: true, done: true, eventId: "fixture" });
         ack(0); ack(1);
-        await vi.advanceTimersByTimeAsync(1200);
+        await vi.advanceTimersByTimeAsync(1700);
         ack(1); // Duplicate traffic must not extend the visible wait.
         await vi.advanceTimersByTimeAsync(299);
         expect(view.rows[0].fading).toBe(false);

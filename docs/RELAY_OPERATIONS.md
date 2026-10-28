@@ -85,7 +85,7 @@ delivery with resolved routes fills the bar. Completion holds for 250ms and fade
 for 150ms; incomplete delivery fades from its current width over 300ms. These are
 presentation timers; the existing network operation alone controls the 12/30s cap.
 Dismissing or evicting a toast does not cancel delivery or recreate that toast.
-After discovery closes and at least one relay has accepted, 1,500ms without another
+After discovery closes and at least one relay has accepted, 2,000ms without another
 acceptance retires the display with a 300ms fade. Duplicate ACKs do not renew this
 presentation-only idle wait. Late ACKs still settle and persist normally without
 reopening the retired display; transport keeps its existing 12/30s deadline.
@@ -104,3 +104,6 @@ verification drainage, AUTH caps, continued delivery, cancellation and stale rec
 The real rx-nostr pipeline is tested against synthetic WebSockets. Browser routing,
 editor submission, history repair, upload-list synchronization and embedded login use
 the existing Playwright harnesses; no real relay or account is required.
+
+The success balloon waits for delivery settlement or the presentation idle timeout.
+Composer clearing and host success notifications still happen at the first acceptance.

@@ -2083,6 +2083,7 @@
   const balloon = useBalloonMessage(
     () => $_,
     () => localeInitialized,
+    { getSuccessReady: () => deliveryFeedback.successReady },
   );
   const showHeaderBalloonMessage = $derived(
     settingsStore.showMascot && settingsStore.showFlavorText,
