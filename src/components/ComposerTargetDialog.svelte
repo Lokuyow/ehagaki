@@ -989,7 +989,9 @@
     {#if targetPost}
         <PostHistoryPreviewFooter formattedDate={formatPostedAt(targetPost.postedAt)}>
             {#snippet actions()}
-                <PostHistoryPostActions post={targetPost} onReactionPost={() => handleApply('reaction')}>
+                <PostHistoryPostActions post={targetPost} onReactionPost={() => handleApply('reaction')}
+                    onReplyPost={targetActions.includes('reply') ? () => handleApply('reply') : undefined}
+                    onQuotePost={targetActions.includes('quote') ? () => { void handleApply('quote'); } : undefined}>
                     {#snippet reactionExtras()}{@render reactionCount(targetPost)}{/snippet}
                 </PostHistoryPostActions>
             {/snippet}

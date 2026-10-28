@@ -1007,7 +1007,7 @@ export class PostManager {
         && !channelContext
         && (!replyEvent
           || replyEvent.id !== rqState.reply.eventId
-          || ![1, 1111].includes(replyEvent.kind)
+          || ![1, 7, 1111].includes(replyEvent.kind)
           || (rqState.reply.authorPubkey && replyEvent.pubkey !== rqState.reply.authorPubkey))
       ) {
         return this.notifyPostFailure("postComponent.error.reply_target_event_unavailable");

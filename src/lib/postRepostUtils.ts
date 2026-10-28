@@ -21,11 +21,11 @@ export function isRepostOuterKind(kind: number): kind is 6 | 16 {
     return kind === 6 || kind === 16;
 }
 
-export function isRepostTargetKind(kind: number): kind is 1 | 42 | 1111 {
-    return kind === 1 || kind === 42 || kind === 1111;
+export function isRepostTargetKind(kind: number): kind is 1 | 7 | 42 | 1111 {
+    return kind === 1 || kind === 7 || kind === 42 || kind === 1111;
 }
 
-export function classifyRepostTargetKind(outerKind: 6 | 16, targetKind: number, supportedKinds: readonly number[] = [1, 42, 1111]) {
+export function classifyRepostTargetKind(outerKind: 6 | 16, targetKind: number, supportedKinds: readonly number[] = [1, 7, 42, 1111]) {
     if (outerKind === 6) return targetKind === 1 ? "supported" : "outer-target-kind-mismatch";
     if (targetKind === 1) return "outer-target-kind-mismatch";
     return supportedKinds.includes(targetKind) ? "supported" : "unsupported-target-kind";

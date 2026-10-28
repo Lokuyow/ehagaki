@@ -246,9 +246,10 @@ function renderRelatedTarget(outer: NostrEvent, related: NostrEvent | null) {
             subscribe: () => () => undefined, reset: vi.fn(), dispose: vi.fn() },
     });
     const onApply = vi.fn(() => true);
-    const rendered = render(ComposerTargetDialog, { show: true, onClose: vi.fn(), onApply,
+    const onClose = vi.fn();
+    const rendered = render(ComposerTargetDialog, { show: true, onClose, onApply,
         rxNostr: {} as never, resolver: createResolver({ status: "resolved", target }), relatedResolver });
-    return { ...rendered, fetchEventById, onApply, relatedResolver };
+    return { ...rendered, fetchEventById, onApply, onClose, relatedResolver };
 }
 
 async function enterNote(): Promise<void> {
@@ -302,6 +303,50 @@ async function openActionMenu(): Promise<void> {
 }
 
 describe("ComposerTargetDialog", () => {
+    it.each(['resolved', 'missing', 'invalid'] as const)('applies actions to kind 7 itself with a %s related target', async status => {
+        const related = signInteraction(1, 'Original post');
+        const outer = signInteraction(7, '+', status === 'invalid' ? [['e', 'invalid']]
+            : [['e', related.id], ['p', related.pubkey], ['k', '1']]);
+        const { onApply, onClose } = renderRelatedTarget(outer, status === 'resolved' ? related : null);
+        await enterNoteFor(outer.id);
+        await vi.advanceTimersByTimeAsync(0);
+        for (const [action, label] of [['reply', 'リプライ'], ['quote', '引用'], ['reaction', 'reaction.action']] as const) {
+            onApply.mockReturnValueOnce(false);
+            const buttons = screen.getAllByRole('button', { name: label });
+            await fireEvent.click(buttons.at(-1)!);
+            expect(onApply).toHaveBeenLastCalledWith(action, expect.objectContaining({
+                kind: 7, eventId: outer.id, authorPubkey: outer.pubkey, event: outer, channelQuery: null,
+            }));
+            expect(onClose).not.toHaveBeenCalled();
+        }
+        await fireEvent.click(screen.getByRole('button', { name: 'リプライ' }));
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it.each([true, false])('reposts kind 7 and only offers deletion to its author (owner: %s)', async owner => {
+        const outer = signInteraction(7, '+', [['e', 'invalid']]);
+        const { rerender, onClose } = renderRelatedTarget(outer, null);
+        const onRepostPost = vi.fn(async () => ({ success: true }));
+        await rerender({ pubkeyHex: owner ? outer.pubkey : 'a'.repeat(64), onRepostPost });
+        await enterNoteFor(outer.id);
+        await openActionMenu();
+        expect(!!screen.queryByRole('menuitem', { name: '削除' })).toBe(owner);
+        await fireEvent.click(screen.getByRole('menuitem', { name: 'repost.action' }));
+        expect(onRepostPost).toHaveBeenCalledWith(expect.objectContaining({
+            eventId: outer.id, kind: 7, pubkeyHex: outer.pubkey, rawEvent: outer,
+        }), expect.any(Function));
+        if (owner) {
+            await openActionMenu();
+            await fireEvent.click(screen.getByRole('menuitem', { name: '削除' }));
+            postActionMocks.requestDeletion.mockResolvedValueOnce({ success: true });
+            await fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '送信' }));
+            expect(postActionMocks.requestDeletion).toHaveBeenCalledWith(expect.objectContaining({
+                post: expect.objectContaining({ kind: 7, eventId: outer.id, rawEvent: outer }),
+            }));
+            expect(onClose).toHaveBeenCalledOnce();
+        }
+    });
+
     it.each(["", "+", "👍 extra text", "通常のリアクション"])("renders Reaction %s in a compact label above the channel target", async content => {
         const related = signInteraction(42, "Related reaction channel body", [["e", "a".repeat(64), "", "root"]]);
         const outer = signInteraction(7, content, [["e", related.id, "", related.pubkey], ["p", related.pubkey]]);
@@ -446,8 +491,8 @@ describe("ComposerTargetDialog", () => {
         expect(customEmojiMock.preloadCustomEmojiImageWithMeta).not.toHaveBeenCalled();
         expect(fetchEventById).toHaveBeenCalledOnce();
         expect(fetchEventById).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ eventId: related.id }));
-        expect(screen.queryByRole("button", { name: "リプライ" })).toBeNull();
-        expect(screen.queryByRole("button", { name: "引用" })).toBeNull();
+        expect(!!screen.queryByRole("button", { name: "リプライ" })).toBe(outerKind === 7);
+        expect(!!screen.queryByRole("button", { name: "引用" })).toBe(outerKind === 7);
         expect(onApply).not.toHaveBeenCalled();
         await openActionMenu();
         await fireEvent.click(screen.getByRole("menuitem", { name: "イベントJSONを表示" }));
@@ -1448,7 +1493,7 @@ describe("ComposerTargetDialog", () => {
             rxNostr: {} as never,
             resolver: createResolver({
                 status: "resolved",
-                target: resolvedTarget(7),
+                target: resolvedTarget(30023),
             }),
         });
         await enterNote();
@@ -1458,8 +1503,8 @@ describe("ComposerTargetDialog", () => {
             .toBeTruthy();
     });
 
-    it("削除は自己投稿だけに表示し、キャンセル・送信中・失敗・再試行を扱う", async () => {
-        const target = resolvedTarget(1);
+    it.each([1, 7])("kind %sの削除は自己投稿だけに表示し、キャンセル・送信中・失敗・再試行を扱う", async kind => {
+        const target = resolvedTarget(kind);
         let resolveDeletion: ((value: { success: boolean }) => void) | undefined;
         postActionMocks.requestDeletion.mockReturnValueOnce(
             new Promise((resolve) => {
@@ -1567,8 +1612,8 @@ describe("ComposerTargetDialog", () => {
         expect(screen.getByRole("button", { name: "リプライ" })).toBeTruthy();
     });
 
-    it("入力変更後に完了した古い削除結果では親ダイアログを閉じない", async () => {
-        const target = resolvedTarget(1);
+    it.each([1, 7])("kind %sの入力変更後に完了した古い削除結果では親ダイアログを閉じない", async kind => {
+        const target = resolvedTarget(kind);
         let resolveDeletion:
             | ((value: {
                   success: boolean;

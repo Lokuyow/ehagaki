@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { finalizeEvent, generateSecretKey } from "nostr-tools";
 import { buildComposerInteractionRenderModel, COMPOSER_RELATED_PREVIEW_KINDS } from "../../lib/composerTargetRelatedPreview";
 import { parseRepostReference, resolveRepostPreview } from "../../lib/postRepostUtils";
+import { isPostHistoryAuthoredKind } from "../../lib/postHistoryKinds";
 import type { NostrEvent } from "../../lib/types";
 import type { PostHistoryRelatedTargetSnapshot } from "../../lib/postHistoryRelatedTargetResolver.svelte";
 
@@ -11,12 +12,20 @@ const snapshot = (event: NostrEvent): PostHistoryRelatedTargetSnapshot => ({ tar
     status: "resolved", event, profile: null, authorPubkey: event.pubkey, relayHints: [], errorCode: null, updatedAt: 0 });
 
 describe("shared Repost projection", () => {
-    it.each([6, 7, 16])("permits Composer's target kind %s without expanding history support", kind => {
+    it.each([6, 16])("permits Composer's target kind %s without expanding history support", kind => {
         const target = sign(kind);
         const outer = sign(16, JSON.stringify(sign()), [["e", target.id], ["p", target.pubkey], ["k", String(kind)]]);
         expect(resolveRepostPreview(outer, snapshot(target)).status).toBe("unsupported-target-kind");
         expect(resolveRepostPreview(outer, snapshot(target), COMPOSER_RELATED_PREVIEW_KINDS)).toMatchObject({ status: "resolved", event: target });
         expect(parseRepostReference(outer).reference?.eventId).toBe(target.id);
+    });
+    it('shows a kind 7 Repost target in both previews without adding reactions to the authored timeline', () => {
+        const target = sign(7, '+');
+        const outer = sign(16, '', [['e', target.id], ['p', target.pubkey], ['k', '7']]);
+        expect(resolveRepostPreview(outer, snapshot(target))).toMatchObject({ status: 'resolved', event: target });
+        expect(resolveRepostPreview(outer, snapshot(target), COMPOSER_RELATED_PREVIEW_KINDS))
+            .toMatchObject({ status: 'resolved', event: target });
+        expect(isPostHistoryAuthoredKind(7)).toBe(false);
     });
     it.each([[6, 7], [16, 1]])("rejects outer/target kind mismatch %s -> %s", (kind, targetKind) => {
         const target = sign(targetKind);

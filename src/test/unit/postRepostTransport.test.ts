@@ -98,7 +98,7 @@ function setup(targetKind: number, eoseTimeout = 30_000, verifyDeletion?: () => 
     return { target, targetKey, repo, db, resolver, descriptor, repost, requests, signEvent, sendEvent, fetchDeletionRequests };
 }
 
-describe.each([1, 42, 1111])("Immediate kind %s Repost through real rx-nostr and secret-key signing", (targetKind) => {
+describe.each([1, 7, 42, 1111])("Immediate kind %s Repost through real rx-nostr and secret-key signing", (targetKind) => {
     const outerKind = targetKind === 1 ? 6 : 16;
     const kindTags = targetKind === 1 ? [] : [["k", String(targetKind)]];
     it("signs and saves a verified target without issuing a deletion request", async () => {
@@ -132,6 +132,9 @@ describe.each([1, 42, 1111])("Immediate kind %s Repost through real rx-nostr and
             rawEvent: fixture.target, relayHints: ["wss://slow.example.test/"],
         });
     });
+    // The remaining cases seed authored history, which deliberately excludes kind 7.
+    if (targetKind === 7) return;
+
     it.each(["closed", "rx-timeout"])("publishes after an incomplete background lookup (%s)", async termination => {
         const fixture = setup(targetKind, 1_000);
         await drain(fixture.repo.putPostedEvent({ event: fixture.target, relayHints: fixture.descriptor.relayHints }));

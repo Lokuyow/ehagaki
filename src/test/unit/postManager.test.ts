@@ -1478,6 +1478,62 @@ describe('PostManager統合テスト', () => {
         expect(sentEvents[1].tags).not.toContainEqual(['t', 'nsfw']);
     });
 
+    it.each([
+        { mode: 'reply', sensitive: false },
+        { mode: 'reply', sensitive: true },
+        { mode: 'quote', sensitive: false },
+    ] as const)('targets the selected kind 7 in a $mode (Sensitive: $sensitive)', async ({ mode, sensitive }) => {
+        const originalId = 'a'.repeat(64);
+        const originalAuthor = 'b'.repeat(64);
+        const parent = finalizeEvent({ kind: 7, content: '+', created_at: 100,
+            tags: [['e', originalId], ['p', originalAuthor], ['k', '1']] }, generateSecretKey());
+        const reference = {
+            mode, eventId: parent.id, authorPubkey: parent.pubkey,
+            relayHints: ['wss://parent.example.com/'], referencedEvent: parent,
+            rootEventId: originalId, rootRelayHint: '', rootPubkey: originalAuthor,
+            quoteNotificationEnabled: false, replyNotificationRecipients: [{ pubkey: originalAuthor, enabled: false }],
+            authorDisplayName: null, authorPicture: null, loading: false, error: null,
+        };
+        mockDeps.replyQuoteState = { value: {
+            reply: mode === 'reply' ? reference : null, quotes: mode === 'quote' ? [reference] : [],
+        } } as any;
+        mockDeps.contentWarningStore = { value: sensitive, reset: vi.fn() };
+        mockDeps.contentWarningReasonStore = { value: 'Spoiler', reset: vi.fn() };
+        mockDeps.settingsStore = { clientTagEnabled: true, quoteNotificationEnabled: false,
+            replyNotificationEnabled: false, failClosedContentWarning: true } as any;
+        vi.mocked(mockRxNostr.send).mockReturnValue({ subscribe: (observer: any) => {
+            process.nextTick(() => observer.next({ from: 'wss://relay1.example.com/', ok: true, done: true,
+                eventId: 'comment-event-id', type: 'ok', message: '' }));
+            return { unsubscribe: vi.fn() };
+        } } as any);
+        manager = new PostManager(mockRxNostr, mockDeps);
+        expect((await manager.submitPost('Response to reaction')).success).toBe(true);
+        const events = vi.mocked(mockRxNostr.send).mock.calls.map(([event]) => event as any);
+        const published = events.at(-1);
+        expect(published.kind).toBe(mode === 'reply' ? 1111 : 1);
+        if (mode === 'reply') {
+            expect(published.tags.filter((tag: string[]) => ['E', 'K', 'P', 'e', 'k', 'p'].includes(tag[0]))).toEqual([
+                ['E', parent.id, 'wss://parent.example.com/', parent.pubkey], ['K', '7'], ['P', parent.pubkey],
+                ['e', parent.id, 'wss://parent.example.com/', parent.pubkey], ['k', '7'], ['p', parent.pubkey],
+            ]);
+        } else {
+            expect(published.tags.filter((tag: string[]) => ['e', 'q', 'p'].includes(tag[0]))).toEqual([
+                ['q', parent.id, 'wss://parent.example.com/', parent.pubkey],
+            ]);
+        }
+        expect(published.tags.flat()).not.toContain(originalId);
+        expect(published.tags.flat()).not.toContain(originalAuthor);
+        if (sensitive) {
+            expect(events).toHaveLength(2);
+            expect(events[0]).toMatchObject({ kind: 36, content: 'Response to reaction', tags: [['k', '1111']] });
+            expect(published.content).toBe('');
+            expect(published.tags).toContainEqual(['c', events[0].id, 'wss://relay1.example.com/']);
+        } else {
+            expect(events).toHaveLength(1);
+            expect(published.content).toContain('Response to reaction');
+        }
+    });
+
     it('Sensitive設定ONのkind 1111 replyはkindを維持してpayload分離する', async () => {
         const mockObservable = {
             subscribe: vi.fn((observer) => {
