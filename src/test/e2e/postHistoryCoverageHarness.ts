@@ -7,7 +7,8 @@ import { ehagakiDb, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { postHistoryRelayCoverageRepository } from "../../lib/storage/postHistoryRelayCoverageRepository";
 import { postHistoryEvidenceTables } from "../../lib/storage/postHistoryPersistenceCoordinator";
 import { buildPostHistoryVisibleKindsKey } from "../../lib/storage/postHistoryVisibleRangeRepository";
-import { POST_HISTORY_FETCH_KINDS } from "../../lib/postHistoryRelayFetchService";
+import { POST_HISTORY_FETCH_KINDS, postHistoryRelayFetchService } from "../../lib/postHistoryRelayFetchService";
+import { RelayOperation } from "../../lib/relay/operation";
 import { postHistoryImportedRangesRepository, DexiePostHistoryImportedRangesRepository } from "../../lib/storage/postHistoryImportedRangesRepository";
 import { getPostHistoryLocalRevision } from "../../lib/storage/postHistoryLocalWriteScope";
 import { PostHistoryJsonlImportService } from "../../lib/postHistoryJsonlImportService";
@@ -19,6 +20,18 @@ const kindsKey = buildPostHistoryVisibleKindsKey([...POST_HISTORY_FETCH_KINDS]);
 
 /** Only public data and signed events survive reload; no signing key is stored. */
 export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "gap" | "empty-gap" | "new-head" | "sync-footer" | "bounded-gap" | "citrine" | "citrine-gap" | "citrine-head" = "gap") {
+    if (scenario === "sync-footer") {
+        const fetchLatest = postHistoryRelayFetchService.fetchLatest.bind(postHistoryRelayFetchService);
+        postHistoryRelayFetchService.fetchLatest = (rx, params) => {
+            if (!['bootstrap', 'dialog-open-refresh', 'dialog-open-catchup'].includes(params.reason ?? '') || params.operation) return fetchLatest(rx, params);
+            // Keep intentionally held requests alive while the test inspects
+            // each sync indicator; other relay operations retain their deadlines.
+            const operation = new RelayOperation(60_000, () => undefined);
+            const task = fetchLatest(rx, { ...params, operation });
+            void task.promise.finally(() => operation.finish("complete"));
+            return task;
+        };
+    }
     const isCitrine = scenario.startsWith("citrine");
     const isHeadScenario = scenario === "new-head" || scenario === "sync-footer" || scenario === "citrine-head";
     const savedHeadEnd = scenario === "sync-footer" ? 109 : 309;
@@ -43,6 +56,7 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
     const errors = new Subject<any>();
     const connections = new Subject<any>();
     const pending: (() => void)[] = [];
+    const pendingHead: (() => void)[] = [];
     const preparation = { hold: false, entered: false, checks: 0, coveredGapReads: 0, release: null as (() => void) | null };
     let localPosted = false;
     const postHistoryCoverageImportEvent = "ehagaki-post-history-coverage-import";
@@ -109,7 +123,8 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
             localPosted = true;
             return fixture.localPost.id;
         },
-        release: () => { for (const complete of pending.splice(0)) complete(); } };
+        release: () => { for (const complete of pending.splice(0)) complete(); },
+        releaseHead: () => { for (const complete of pendingHead.splice(0)) complete(); } };
     const rxNostr = {
         createAllMessageObservable: () => messages,
         createAllErrorObservable: () => errors,
@@ -147,7 +162,9 @@ export function createPostHistoryCoverageHarness(secret: Uint8Array, scenario: "
                     stream.complete();
                     messages.next({ type: "EOSE", from: relayUrl, subId, message: ["EOSE", subId] });
                 };
-                if (older || catchup) {
+                if (scenario === "sync-footer" && authored && filter.limit === 30) {
+                    pendingHead.push(complete);
+                } else if (older || catchup) {
                     (catchup ? control.catchupRequests : control.olderRequests)
                         .push({ relayUrl, since: filter.since!, until: filter.until! });
                     pending.push(complete);

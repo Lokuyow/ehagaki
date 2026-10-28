@@ -25,6 +25,11 @@ async function chooseTarget(page: Page, input: string, card: 'main' | 'related' 
     await page.getByTestId('open-target').click();
     await page.getByPlaceholder('note または nevent を入力').fill(input);
     const actions = page.getByRole('button', { name: 'リアクションする', exact: true });
+    // Interaction targets render the related card and outer footer separately.
+    // Wait for both before choosing a positional action.
+    if ([6, 7, 16].includes(Number(new URL(page.url()).searchParams.get('kind')))) {
+        await expect(actions).toHaveCount(2);
+    }
     await expect(actions.first()).toBeVisible();
     await (card === 'related' ? actions.first() : actions.last()).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);

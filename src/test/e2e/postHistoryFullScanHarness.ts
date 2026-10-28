@@ -33,6 +33,7 @@ export function createPostHistoryFullScanHarness(secret: Uint8Array, scenario: s
             const relayUrl = options?.on && "relays" in options.on ? options.on.relays?.[0] : relayUrls[0];
             const from = relayUrl ?? relayUrls[0]; const subId = `${req.rxReqId}:0`;
             let held = false;
+            let pendingReply: (() => void) | undefined;
             const subscription = req.getReqPacketObservable().subscribe(({ filters }) => {
                 const filter = filters[0] as { authors?: string[]; kinds?: number[]; since?: number; until?: number; limit?: number };
                 if (!filter) return;
@@ -55,13 +56,14 @@ export function createPostHistoryFullScanHarness(secret: Uint8Array, scenario: s
                     };
                     if (scenario === "relay-progress") {
                         if (from === relayUrls[1] && count > 1) { respond([events[0]], ["finish"]); return; }
-                        pendingReplies.set(from, () => {
+                        pendingReply = () => {
                             if (from === relayUrls[1]) {
                                 const auth = { ...finalizeEvent({ kind: 22242, created_at: 100, content: "", tags: [] }, secret), kind: 22242 as const };
                                 authIds.set(from, auth.id); outgoing.next({ to: from, message: ["AUTH", auth] });
                                 respond([], ["auth", "finish"]);
                             } else respond(from === relayUrls[2] ? [] : events, ["finish"]);
-                        });
+                        };
+                        pendingReplies.set(from, pendingReply);
                         return;
                     }
                     if (full && scenario === "hold" && filter.until === 40) { control.held++; held = true; return; }
@@ -74,7 +76,13 @@ export function createPostHistoryFullScanHarness(secret: Uint8Array, scenario: s
                     respond(selected, scenario === "hold" || (scenario === "ambiguous" && from === relayUrls[0]) ? [] : ["finish"]);
                 });
             });
-            return () => { subscription.unsubscribe(); pendingReplies.delete(from); if (held) control.releasedHeld++; };
+            return () => {
+                subscription.unsubscribe();
+                // Normal history queries share this relay with the held scan.
+                // Their cleanup must not remove another subscription's reply.
+                if (pendingReply && pendingReplies.get(from) === pendingReply) pendingReplies.delete(from);
+                if (held) control.releasedHeld++;
+            };
         }),
     } as unknown as RxNostr;
     // Deterministic operation clock/window; production retains the 30-day default.

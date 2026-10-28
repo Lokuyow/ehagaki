@@ -2,6 +2,23 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 describe('CI test output filtering', () => {
+    it('identifies Service Worker browser failures without exposing titles or values', () => {
+        const result = spawnSync(process.execPath, ['scripts/filterTestOutput.mjs'], {
+            encoding: 'utf8',
+            input: ['chromium', 'firefox', 'webkit'].map(browser =>
+                `1) [sw-${browser}] › src/test/e2e/uploadedMediaServiceWorker.spec.ts:307:9 › private title`,
+            ).join('\n') + '\nError: private payload\n1) [private-project] › private title',
+        });
+        expect(result.status).toBe(0);
+        expect(result.stdout).toBe([
+            'Failure: sw-chromium src/test/e2e/uploadedMediaServiceWorker.spec.ts:307:9',
+            'Test location: src/test/e2e/uploadedMediaServiceWorker.spec.ts:307:9',
+            'Failure: sw-firefox src/test/e2e/uploadedMediaServiceWorker.spec.ts:307:9',
+            'Failure: sw-webkit src/test/e2e/uploadedMediaServiceWorker.spec.ts:307:9',
+            '',
+        ].join('\n'));
+    });
+
     it('keeps failure counts and locations while dropping sensitive diagnostics', () => {
         const result = spawnSync(process.execPath, ['scripts/filterTestOutput.mjs'], {
             encoding: 'utf8',
@@ -20,6 +37,7 @@ describe('CI test output filtering', () => {
                 'CI_METRICS {"testLine":87,"year":2026,"month":10,"day":22,"scrollTop":12.5,"secret":"private post body","count":"private"}',
                 'CI_METRICS {"testLine":"private title","token":123456,"rows":["private"]}',
                 '\x1b[1A runner progress CI_METRICS {"testLine":123,"count":8,"token":"private"}',
+                'CI_METRICS {"mediaListingActions":12,"mediaListingRequests":13,"mediaListingSignatures":13,"payload":"private"}',
             ].join('\n'),
         });
         expect(result.status).toBe(0);
@@ -37,6 +55,7 @@ describe('CI test output filtering', () => {
             'CI metrics: {"testLine":87,"year":2026,"month":10,"day":22,"scrollTop":12.5}',
             'CI metrics: {}',
             'CI metrics: {"testLine":123,"count":8}',
+            'CI metrics: {"mediaListingActions":12,"mediaListingRequests":13,"mediaListingSignatures":13}',
             '',
         ].join('\n'));
     });

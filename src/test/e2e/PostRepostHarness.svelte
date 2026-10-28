@@ -56,6 +56,7 @@
     let sends = 0;
     let signed = 0;
     let deletionRequests = 0;
+    let deletionRequestsAtPublish: number | null = null;
     let holdHistory = query.has("hold-history");
     let holdDeletion = query.has("hold-deletion");
     const historyResponses = new Set<() => void>();
@@ -72,6 +73,7 @@
         createAllErrorObservable: () => new Subject(),
         createConnectionStateObservable: () => new Subject(),
         send: (event: NostrEvent) => {
+            deletionRequestsAtPublish = deletionRequests;
             sends++; sentEvents.push({ id: event.id, kind: event.kind, tags: event.tags });
             const ok = !rejectPublish; rejectPublish = false;
             if (query.has("hold-publish")) return new Observable(observer => {
@@ -145,6 +147,7 @@
                         ? ["CLOSED", subId, "error: fixture"] : ["EOSE", subId]);
                 }, deletion && this.url === slowRelay ? 5_000 : 0));
             } else if (message[0] === "EVENT") {
+                deletionRequestsAtPublish = deletionRequests;
                 const event = message[1] as NostrEvent;
                 sends++; sentEvents.push({ id: event.id, kind: event.kind, tags: event.tags });
                 const ok = !rejectPublish; rejectPublish = false;
@@ -246,7 +249,7 @@
         (window as unknown as { __REPOST__: unknown }).__REPOST__ = {
             ready: true, targetId: target.id, targetInput: nip19.noteEncode(target.id), owner,
             read: async () => { const rows = await ehagakiDb.postHistory.toArray(); return {
-                sends, signed, lastResult, sentEvents, replyId, quoteId, deletionRequests,
+                sends, signed, lastResult, sentEvents, replyId, quoteId, deletionRequests, deletionRequestsAtPublish,
                 heldDeletionRequests: deletionResponses.size,
                 deletionCount: await ehagakiDb.postHistoryDeletionRequests.count(),
                 rows: rows.map((row) => ({ id: row.eventId, kind: row.kind, content: row.content,

@@ -49,16 +49,32 @@ function retained(meta: UploadMediaImageMeta, now: number): boolean {
 export class UploadMediaImageCacheController {
     private readonly inFlight = new Map<string, Flight>();
     private readonly evictions = new Map<string, Promise<boolean>>();
-    private writes: Promise<void> = Promise.resolve();
+    private readonly pendingWrites: Array<{ run: () => void; eviction: boolean }> = [];
+    private writing = false;
     private reconciled = false;
     private reconciliation: Promise<void> | null = null;
     private readonly now: () => number;
     constructor(private readonly deps: Dependencies) { this.now = deps.now ?? Date.now; }
 
-    private serialize<T>(operation: () => Promise<T>): Promise<T> {
-        const result = this.writes.then(operation);
-        this.writes = result.then(() => undefined, () => undefined);
-        return result;
+    private serialize<T>(operation: () => Promise<T>, eviction = false): Promise<T> {
+        return new Promise<T>((resolve, reject) => {
+            const run = () => {
+                this.writing = true;
+                void Promise.resolve().then(operation).then(resolve, reject).finally(() => {
+                    const next = this.pendingWrites.shift();
+                    if (next) next.run();
+                    else this.writing = false;
+                });
+            };
+            if (!this.writing) run();
+            else {
+                // Keep each cache mutation atomic. User-requested eviction goes
+                // ahead of queued preview commits/touches, in eviction order.
+                const index = eviction ? this.pendingWrites.findIndex(write => !write.eviction) : -1;
+                if (index < 0) this.pendingWrites.push({ run, eviction });
+                else this.pendingWrites.splice(index, 0, { run, eviction });
+            }
+        });
     }
     private async open(): Promise<CachePair> {
         const [body, meta] = await Promise.all([
@@ -205,15 +221,24 @@ export class UploadMediaImageCacheController {
         });
     }
     private async records(pair: CachePair): Promise<UploadMediaImageMeta[]> {
-        const records: UploadMediaImageMeta[] = [];
-        for (const key of await pair.meta.keys()) {
-            const meta = await this.readMeta(pair, key.url);
-            if (!meta || !retained(meta, this.now()) || !await pair.body.match(cacheKey(key.url))) {
-                if (!this.inFlight.has(key.url)) await this.deletePair(pair, key.url);
-            } else records.push(meta);
+        // Cache.keys()/matchAll() share insertion order. Read the inventory in
+        // bulk instead of making two Cache API round trips per cached image
+        // on every commit; those trips can hold up eviction for seconds.
+        const [metaKeys, metadata, bodyKeys] = await Promise.all([pair.meta.keys(), pair.meta.matchAll(), pair.body.keys()]);
+        const bodyUrls = new Set(bodyKeys.map(key => key.url));
+        const candidates = await Promise.all(metaKeys.map(async (key, index) => {
+            let value: unknown;
+            try { value = await metadata[index]?.json(); } catch { value = null; }
+            const meta = validMeta(value, key.url) ? value : null;
+            return meta && retained(meta, this.now()) && bodyUrls.has(key.url) ? meta : null;
+        }));
+        for (const [index, key] of metaKeys.entries()) {
+            if (!candidates[index] && !this.inFlight.has(key.url)) await this.deletePair(pair, key.url);
         }
-        for (const key of await pair.body.keys()) {
-            if (!records.some((entry) => entry.url === key.url) && !this.inFlight.has(key.url)) await pair.body.delete(key);
+        const records = candidates.filter((meta): meta is UploadMediaImageMeta => meta !== null);
+        const urls = new Set(records.map(record => record.url));
+        for (const key of bodyKeys) {
+            if (!urls.has(key.url) && !this.inFlight.has(key.url)) await pair.body.delete(key);
         }
         return records.sort((a, b) => a.lastAccessedAt - b.lastAccessedAt || a.url.localeCompare(b.url));
     }
@@ -256,7 +281,7 @@ export class UploadMediaImageCacheController {
             const pair = await this.open();
             const results = await Promise.allSettled(keys.map((url) => this.deletePair(pair, url)));
             return results.every((result) => result.status === "fulfilled");
-        }).catch(() => false);
+        }, true).catch(() => false);
         for (const key of keys) this.evictions.set(key, operation);
         try { return await operation; }
         finally { for (const key of keys) if (this.evictions.get(key) === operation) this.evictions.delete(key); }

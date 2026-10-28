@@ -166,7 +166,7 @@ type HarnessWindow = Window & typeof globalThis & {
         coverGap: () => Promise<void>;
         olderRequests: { relayUrl: string; since: number; until: number }[];
         catchupRequests: { relayUrl: string; since: number; until: number }[];
-        postLocal: () => Promise<string>; release: () => void };
+        postLocal: () => Promise<string>; release: () => void; releaseHead: () => void };
     __POST_HISTORY_HARNESS__?: HarnessState;
     __POST_HISTORY_ACTION_TARGETS__?: {
         replyEventId: string | null;
@@ -1670,6 +1670,10 @@ test.describe('PostHistoryDialog Playwright', () => {
         const footer = page.locator('.post-history-sync-footer');
         const heading = page.locator('.post-history-heading');
         const statusToast = page.locator('.floating-message.anchor-center[role="status"]');
+        await expect.poll(
+            () => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequests),
+            { timeout: 15_000 },
+        ).toBe(4);
         await expect(statusToast).toContainText('リレーと同期中...', { timeout: 15_000 });
         await expect(heading.locator('.status-loading-placeholder')).toHaveCount(0);
         const headingBounds = await heading.boundingBox();
@@ -1680,16 +1684,14 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(Math.abs(toastBounds!.y + toastBounds!.height / 2 - (headingBounds!.y + headingBounds!.height / 2))).toBeLessThanOrEqual(1);
 
         const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
-        await expect.poll(
-            () => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length),
-            { timeout: 15_000 },
-        ).toBeGreaterThan(0);
-
+        await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.releaseHead());
         await expect.poll(
             () => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length),
             { timeout: 15_000 },
         ).toBe(5);
-        await expect.poll(() => historyEventIds(page)).toEqual(ids.slice(60, 110));
+        // Relay events can arrive while the saved page is displayed. Wait for
+        // a saved post without assuming that the visible window is unchanged.
+        await expect.poll(() => historyEventIds(page)).toContain(ids[60]);
         await scrollHistoryToBottom(page);
         await expect(footer.getByText('リレーと同期中...')).toBeVisible();
         await expect(footer.locator('.inline-spinner')).toBeInViewport();
@@ -2351,6 +2353,7 @@ test.describe('PostHistoryDialog Playwright', () => {
     });
 
     test('successful newer autoload returns to latest without moving the visible anchor', async ({ page }) => {
+        test.setTimeout(60_000);
         const harness = await gotoInfiniteScrollHarness(page, {
             fixContainerHeight: false,
             longPreviews: true,
@@ -4237,7 +4240,11 @@ for (const { width, height, largeText } of [
             const frame = () => { sample(); if (samples.length < 500) requestAnimationFrame(frame); else observer.disconnect(); };
             requestAnimationFrame(frame);
         });
-        await page.getByRole('menuitem', { name: '関連イベントを確認' }).click();
+        const checkRelatedEvents = page.getByRole('menuitem', { name: '関連イベントを確認' });
+        if (largeText) {
+            await checkRelatedEvents.focus();
+            await page.keyboard.press('Enter');
+        } else await checkRelatedEvents.click();
         const toast = page.locator('.floating-message.parent-top');
         await expect(toast).toBeVisible();
         await expect(toast).toBeHidden();

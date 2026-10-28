@@ -18,6 +18,7 @@ async function fixture(base: "/" | "/ehagaki/", listing?: "paged" | "snapshot") 
     let offline = false, deleted = false, workerVersion = 0, legacy = false, repeatEnd = false;
     let holdDelete = false, deleteRelease: (() => void) | null = null;
     let holdList = false, listRelease: (() => void) | null = null, listError = 0;
+    let signEvent: ((event: EventTemplate) => unknown) | undefined;
     let video = Buffer.from([]), videoMime = "video/webm", videoExtension = "webm";
     const held = new Map<string, () => void>();
     const media = createServer((request, response) => {
@@ -78,6 +79,19 @@ async function fixture(base: "/" | "/ehagaki/", listing?: "paged" | "snapshot") 
         const pathname = new URL(request.url!, "http://localhost").pathname;
         if (!pathname.startsWith(base)) { response.writeHead(404).end(); return; }
         let path = decodeURIComponent(pathname.slice(base.length)) || "index.html";
+        if (path === "__fixture-sign" && request.method === "POST" && signEvent) {
+            let input = "";
+            request.setEncoding("utf8");
+            request.on("data", chunk => { input += chunk; });
+            request.on("end", () => {
+                try {
+                    const signed = JSON.stringify(signEvent!(JSON.parse(input)));
+                    response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(signed);
+                }
+                catch { response.writeHead(400).end(); }
+            });
+            return;
+        }
         if (path === "monitor.html") { response.writeHead(200, { "Content-Type": "text/html" }).end("<html><body><main></main></body></html>"); return; }
         const fullPath = resolve(directory, path);
         if (!fullPath.startsWith(directory + sep) || !existsSync(fullPath)) { response.writeHead(404).end(); return; }
@@ -91,6 +105,7 @@ async function fixture(base: "/" | "/ehagaki/", listing?: "paged" | "snapshot") 
     await new Promise<void>((done) => app.listen(0, "127.0.0.1", done));
     const origin = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
     return { origin, url: origin + base, mediaOrigin, counts, held,
+        setSigner(signer: (event: EventTemplate) => unknown) { signEvent = signer; },
         remote: (query = "") => mediaOrigin + "/" + imageHash + ".png" + query,
         proxy(query = "") { return origin + base + "__ehagaki-image/upload-media?url=" + encodeURIComponent(this.remote(query)) + "&server=" + encodeURIComponent(mediaOrigin); },
         setOffline(value: boolean) { offline = value; }, setLegacy(value: boolean) { legacy = value; workerVersion++; },
@@ -135,14 +150,20 @@ async function keys(page: Page, name = bodyName) {
 async function openPaginationMedia(page: Page, f: Awaited<ReturnType<typeof fixture>>, withServiceWorker = true) {
     const key = generateSecretKey(), pubkey = getPublicKey(key);
     let signedLists = 0;
-    await page.exposeFunction("signPaginationEvent", (event: EventTemplate) => {
+    f.setSigner((event: EventTemplate) => {
         if (event.tags.some((tag) => tag[0] === "t" && tag[1] === "list")) signedLists++;
         return finalizeEvent(event, key);
     });
     await page.addInitScript((pubkey) => {
         localStorage.setItem("nostr-accounts", JSON.stringify([{ pubkeyHex: pubkey, type: "nip07", addedAt: 1 }]));
         localStorage.setItem("nostr-active-account", pubkey);
-        Reflect.set(window, "nostr", { getPublicKey: async () => pubkey, signEvent: (event: unknown) => Reflect.get(window, "signPaginationEvent")(event) });
+        Reflect.set(window, "nostr", { getPublicKey: async () => pubkey, signEvent: async (event: unknown) => {
+            const response = await fetch(new URL("__fixture-sign", location.href), {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(event),
+            });
+            if (!response.ok) throw new Error("Fixture signer failed");
+            return response.json();
+        } });
         const fetchLocal = window.fetch.bind(window);
         window.fetch = (input, init) => {
             const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, location.href);
@@ -305,38 +326,60 @@ for (const base of ["/", "/ehagaki/"] as const) {
     }
     for (const mode of ["paged", "snapshot"] as const) {
         test(`${base} media pagination: ${mode}, 231 items, refresh, tabs and deletion`, async ({ page }) => {
+            // The paged case signs 15 listings plus DELETE and caches 231 real
+            // previews. Bound each request separately and allow for the whole flow.
+            test.setTimeout(180_000);
             const f = await fixture(base, mode);
+            let listingActions = 0;
+            let requestCount = () => 0;
+            let signatureCount = () => 0;
             try {
                 const { dialog, requests, signedLists } = await openPaginationMedia(page, f);
+                requestCount = requests;
+                signatureCount = signedLists;
                 const more = dialog.getByRole("button", { name: "さらに読み込む", exact: true });
+                const listingAction = async (action: () => Promise<unknown>) => {
+                    listingActions++;
+                    const response = page.waitForResponse(response => response.request().method() === 'GET'
+                        && response.url().startsWith(f.mediaOrigin + '/list/'), { timeout: 30_000 });
+                    await Promise.all([response, action()]);
+                    // A response can arrive before loadPage's finally clears
+                    // loading; start the next action only after that UI commit.
+                    await expect(dialog.locator('.media-refresh-button')).toBeEnabled();
+                };
+                const loadMore = () => mode === 'paged' ? listingAction(() => more.click()) : more.click();
                 await expect(dialog.locator("article")).toHaveCount(24);
                 expect(requests()).toBe(1); expect(signedLists()).toBe(1);
                 for (const count of [48, 72, 96, 120, 144, 168, 192, 216, 231]) {
-                    await more.click(); await expect(dialog.locator("article")).toHaveCount(count);
+                    await loadMore(); await expect(dialog.locator("article")).toHaveCount(count);
                 }
-                if (mode === "paged") await more.click(); // Preserve the short-page cursor until an empty response.
+                if (mode === "paged") await loadMore(); // Preserve the short-page cursor until an empty response.
                 await expect(more).toHaveCount(0);
                 const total = mode === "paged" ? 11 : 1;
                 expect(requests()).toBe(total); expect(signedLists()).toBe(total);
                 const refresh = dialog.getByRole("button", { name: "一覧を更新", exact: true });
-                await refresh.click(); await expect(dialog.locator("article")).toHaveCount(24);
-                await more.click(); await expect(dialog.locator("article")).toHaveCount(48);
+                await listingAction(() => refresh.click()); await expect(dialog.locator("article")).toHaveCount(24);
+                await loadMore(); await expect(dialog.locator("article")).toHaveCount(48);
                 const beforeTabs = requests();
                 await dialog.getByRole("tab", { name: "ポスト", exact: true }).click();
                 await dialog.getByRole("tab", { name: "メディア", exact: true }).click();
                 await expect(dialog.locator("article")).toHaveCount(48);
                 expect(requests()).toBe(beforeTabs);
                 await dialog.locator("article").first().getByRole("button", { name: "削除", exact: true }).click();
-                await page.getByRole("alertdialog").getByRole("button", { name: "削除", exact: true }).click();
+                await listingAction(() => page.getByRole("alertdialog").getByRole("button", { name: "削除", exact: true }).click());
                 await expect(dialog.locator("article")).toHaveCount(24);
                 await expect(more).toBeVisible();
                 expect(f.counts.get("DELETE /" + imageHash)).toBe(1);
                 expect(requests()).toBe(beforeTabs + 1);
                 await expect(page.locator(".floating-message").filter({ hasText: "このサーバーから削除しました。" })).toBeVisible();
                 await expect(dialog.locator("article").first().locator("img")).not.toHaveAttribute("src", new RegExp(imageHash));
-                await more.click(); await expect(dialog.locator("article")).toHaveCount(48);
+                await loadMore(); await expect(dialog.locator("article")).toHaveCount(48);
                 expect(requests()).toBe(beforeTabs + (mode === "paged" ? 2 : 1));
                 expect(signedLists()).toBe(requests());
+            } catch (error) {
+                console.log('CI_METRICS ' + JSON.stringify({ testLine: test.info().line,
+                    mediaListingActions: listingActions, mediaListingRequests: requestCount(), mediaListingSignatures: signatureCount() }));
+                throw error;
             } finally { await f.close(); }
         });
     }

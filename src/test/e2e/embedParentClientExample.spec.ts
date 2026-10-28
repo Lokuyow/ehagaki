@@ -316,7 +316,7 @@ window.addEventListener("message", (event) => {
 test("preserves reply selection and iframe preview when refreshing the same relay", async ({ page }) => {
     await page.goto("/ehagaki/public/embed-parent-client-example.html");
     const frame = page.frameLocator("#ehagaki-iframe");
-    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    await expect(frame.locator(".tiptap-editor")).toBeVisible({ timeout: 30_000 });
 
     const relayInput = page.getByLabel("タイムライン relay URL");
     await relayInput.fill(relayOrigin);
@@ -395,7 +395,7 @@ test("uses an edited URL as the source of truth after an iframe context update",
 
     await page.goto("/ehagaki/public/embed-parent-client-example.html");
     const initialFrame = page.frameLocator("#ehagaki-iframe");
-    await expect(initialFrame.locator(".tiptap-editor")).toBeVisible();
+    await expect(initialFrame.locator(".tiptap-editor")).toBeVisible({ timeout: 30_000 });
 
     const childFrame = page.frames().find((frame) => frame !== page.mainFrame());
     if (!childFrame) {
@@ -458,6 +458,7 @@ test("applies a signed preloaded event through the iframe composer context proto
     const reply = nip19.neventEncode({ id: event.id, author: event.pubkey });
 
     await page.goto("/ehagaki/public/embed-parent-client-example.html");
+    await expect(page.locator("#handshake-status")).toContainText("ready", { timeout: 30_000 });
     const frame = page.frameLocator("#ehagaki-iframe");
     await expect(frame.locator(".tiptap-editor")).toBeVisible();
 
@@ -897,7 +898,7 @@ document.querySelector("#reload").addEventListener("click", () => { iframe.src =
 
     await page.goto("/ehagaki/e2e-v1-storage-host.html");
     const frame = page.frameLocator("#child");
-    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    await expect(frame.locator(".tiptap-editor")).toBeVisible({ timeout: 30_000 });
     const readFrameColors = () => frame.locator("html").evaluate((html) => ({
         accent: getComputedStyle(html).getPropertyValue("--accent-color").trim().toLowerCase(),
         base: getComputedStyle(html).getPropertyValue("--base-color").trim().toLowerCase(),

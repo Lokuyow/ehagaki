@@ -25,6 +25,7 @@ async function openDialog(page: Page | FrameLocator) {
 async function open(page: Page, scenario = "completed", extra = "") {
     await page.goto(`post-history-dialog-playwright.html?full-scan=${scenario}${extra}`);
     await page.waitForFunction(() => (window as ScanWindow).__POST_HISTORY_HARNESS__?.ready);
+    await page.waitForFunction(() => document.querySelector('.history-tab-viewport')?.getAttribute('aria-busy') === 'false');
     await expect(page.locator(".post-history-item").first()).toBeVisible();
     const before = await page.evaluate(() => (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!.readCount());
     const dialog = await openDialog(page);
