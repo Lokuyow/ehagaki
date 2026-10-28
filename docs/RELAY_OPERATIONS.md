@@ -65,7 +65,9 @@ additional delivery waves. Only distinct accepted relays advance progress; Sensi
 delivery requires both Payload and Structure acceptance. Local auxiliary storage,
 REQ and NIP-46 RPC do not create delivery toasts.
 
-The app shows at most three text-free, dismissible bars. Discovery is indeterminate;
+The app shows at most three text-free, dismissible vertical bars side by side.
+Each bar fills upward from the bottom, with a preferred height of 144px that shrinks
+to fit the available space. Discovery is indeterminate;
 once targets are fixed, the bars show accepted/target counts. Only fully accepted
 delivery with resolved routes fills the bar. Completion holds for 700ms and fades
 for 400ms; incomplete delivery fades from its current width over 1,800ms. These are

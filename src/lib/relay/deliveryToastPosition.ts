@@ -40,13 +40,13 @@ export function positionDeliveryToasts(element: HTMLElement, runtime: AppRuntime
         const parentRect = parent?.getBoundingClientRect();
         const scaleX = parentRect && parent?.offsetWidth ? parentRect.width / parent.offsetWidth : 1;
         const scaleY = parentRect && parent?.offsetHeight ? parentRect.height / parent.offsetHeight : 1;
-        const width = Math.max(0, Math.min(144, (right - left) / scaleX));
-        const height = element.getBoundingClientRect().height;
+        const width = Math.max(0, Math.min(element.children.length * 32 + Math.max(0, element.children.length - 1) * 8, (right - left) / scaleX));
+        const height = Math.max(0, Math.min(144, (bottom - top) / scaleY));
         const x = right - width * scaleX;
-        const y = Math.max(top, bottom - height);
+        const y = Math.max(top, bottom - height * scaleY);
         const localX = absolute && parentRect ? (x - parentRect.left) / scaleX + parent!.scrollLeft - parent!.clientLeft : x;
         const localY = absolute && parentRect ? (y - parentRect.top) / scaleY + parent!.scrollTop - parent!.clientTop : y;
-        place({ target, style: `position:${absolute ? "absolute" : "fixed"};left:${localX}px;top:${localY}px;width:${width}px;max-height:${Math.max(0, bottom - top) / scaleY}px;` });
+        place({ target, style: `position:${absolute ? "absolute" : "fixed"};left:${localX}px;top:${localY}px;width:${width}px;height:${height}px;` });
         const next = [runtime.layoutTarget, element, ...(dialog ? [dialog] : []), ...footers];
         if (next.length !== observed.length || next.some((node, index) => node !== observed[index])) {
             observer.disconnect();

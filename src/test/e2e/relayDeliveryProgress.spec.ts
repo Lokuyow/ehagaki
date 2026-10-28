@@ -22,7 +22,7 @@ for (const theme of ["light", "dark"]) for (const surface of ["standalone", "ifr
         await expect.poll(() => toast.evaluate(element => {
             const fill = element.querySelector(".relay-delivery-fill")!.getBoundingClientRect();
             const track = element.querySelector(".relay-delivery-track")!.getBoundingClientRect();
-            return Math.abs(fill.width / track.width - 1 / 3) < .015;
+            return Math.abs(fill.height / track.height - 1 / 3) < .015 && Math.abs(fill.bottom - track.bottom) < 1 && track.height > track.width;
         })).toBe(true);
         const measurements = await toast.evaluate(element => ({ rect: element.getBoundingClientRect().toJSON(),
             footer: document.querySelector(".footer-bar")!.getBoundingClientRect().toJSON(),
