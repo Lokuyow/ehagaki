@@ -398,6 +398,7 @@
     "channel": "Channel",
     "channelLoading": "Loading...",
     "channelUnknown": "Unknown",
+    "replyTargetLabel": "Reply target",
     "showReplyTarget": "Show reply target",
     "hideReplyTarget": "Hide reply target",
     "replyTargetDeleted": "Reply target deleted",

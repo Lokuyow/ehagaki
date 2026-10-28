@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
 
     interface Props {
@@ -27,7 +28,7 @@
     className={`post-history-thread-toggle-button ${stateClassName}`.trim()}
     {ariaLabel}
     {title}
-    contentLayout="icon"
+    contentLayout="iconText"
     shape="rounded"
     selected={expanded}
     disabled={loading}
@@ -52,6 +53,7 @@
             ></span>
         </span>
     {/if}
+    <span class="post-history-thread-toggle-label">{$_("postHistory.replyTargetLabel")}</span>
 </Button>
 
 <style>
@@ -66,7 +68,10 @@
                 .post-history-thread-toggle-button
         ) {
         position: relative;
-        width: 40px;
+        width: auto;
+        padding: 0 8px;
+        gap: 4px;
+        white-space: nowrap;
         height: 28px;
         min-height: 28px;
         background: inherit;
