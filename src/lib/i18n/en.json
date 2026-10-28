@@ -71,7 +71,7 @@
     }
   },
   "reaction": {
-    "shortcode_hint": "Leave blank to use the filename.",
+    "shortcode_hint": "Blank uses filename. Allowed: A–Z, a–z, 0–9, - and _.",
     "action": "React",
     "entry": "Reaction",
     "target": "Reaction target",
