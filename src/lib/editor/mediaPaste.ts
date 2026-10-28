@@ -116,7 +116,8 @@ function removeEmptyParagraphs(tx: Transaction): Transaction {
 }
 
 export function extractReactionImageUrls(text: string): string[] | null {
-    const urls = text.trim().split(/\s+/u).map(validateAndNormalizeImageUrl);
+    // Validate with the existing image rules, but preserve encoded paths and signed queries.
+    const urls = text.trim().split(/\s+/u).map(url => validateAndNormalizeImageUrl(url) ? url : null);
     return urls.length && urls.every((url): url is string => url !== null) ? urls : null;
 }
 

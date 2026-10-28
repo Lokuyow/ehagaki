@@ -251,6 +251,19 @@ describe('MediaPasteExtension', () => {
 });
 
 describe('Reaction image URL paste', () => {
+    it.each([
+        'https://example.com/my%20cat.png',
+        'https://example.com/cat%2Fface.webp?signature=a%2Fb%2Bc%3D&name=my%20cat#preview%20image',
+        'https://example.com/cat.gif?key=%2520&sig=a+b',
+    ])('preserves existing percent encoding exactly: %s', url => {
+        expect(extractReactionImageUrls(url)).toEqual([url]);
+        const receive = vi.fn();
+        const extension = MediaPasteExtension.configure({ isMediaConversionDisabled: () => true, onReactionImageUrls: receive }) as any;
+        const props = extension.config.addProseMirrorPlugins.call(extension)[0].props;
+        props.handlePaste({ editable: true }, { preventDefault: vi.fn(), clipboardData: { getData: () => url, files: [], items: [] } });
+        props.handleTextInput({ editable: true }, 1, 1, url);
+        expect(receive.mock.calls).toEqual([[[url]], [[url]]]);
+    });
     it.each(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'PNG'])('accepts %s URLs with query and fragment', ext => {
         const url = `https://example.com/cat.${ext}?v=1#image`;
         expect(extractReactionImageUrls(url)).toEqual([url]);
