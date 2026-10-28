@@ -71,7 +71,7 @@
     }
   },
   "reaction": {
-    "shortcode_hint": "The shortcode is optional. Leave blank to use the filename. Use letters, numbers, - and _ only (e.g. cat or :cat:).",
+    "shortcode_hint": "Leave blank to use the filename.",
     "action": "React",
     "entry": "Reaction",
     "target": "Reaction target",
