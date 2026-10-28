@@ -991,6 +991,7 @@
                     {#snippet reactionExtras()}{@render reactionCount(targetPost)}{/snippet}
                 </PostHistoryPostActions>
             {/snippet}
+            {#snippet trailing()}{@render mainTargetMenu(targetPost)}{/snippet}
         </PostHistoryPreviewFooter>
         {@render reactionDetails(targetPost)}
     {/if}
@@ -1115,7 +1116,7 @@
                     onReactionPost={post => post.eventId === targetPost?.eventId ? handleApply('reaction') : handleRelatedReaction(post)}
                     reactionExtras={reactionCount} reactionDetails={reactionDetails} preview={repostPreview}
                     author={interactionAuthor}
-                    menu={mainTargetMenu} channelText={relatedChannelText} model={relatedRenderModel ?? undefined}
+                    footerMenu={mainTargetMenu} channelText={relatedChannelText} model={relatedRenderModel ?? undefined}
                     targetLabel={repostPreview.event && [6, 7, 16].includes(repostPreview.event.kind)
                         ? $_(interactionLabelKey(repostPreview.event.kind)) : null}
                     onRetry={relatedPreviewController.retry}
@@ -1136,7 +1137,6 @@
                         <div class="composer-target-reaction-symbol favorite-icon svg-icon" aria-hidden="true"></div>
                         <span>{$_("composerTarget.reaction")}</span>
                     </div>
-                    {@render mainTargetMenu(targetPost)}
                 </div>
                 {#if relatedPreview.status === "resolved" && relatedPreview.event && relatedRenderModel}
                     {@const relatedEvent = relatedPreview.event}
@@ -1176,8 +1176,8 @@
                     {/if}
                 {/if}
                 {#if deleteRequestState === "failed"}<p class="delete-failed">{$_("postHistory.deleteFailed")}</p>{/if}
-            </section>
                 {@render interactionFooter()}
+            </section>
         {:else if previewEvent}
             <section
                 bind:this={targetPreviewElement}
@@ -1614,9 +1614,6 @@
         flex: 0 0 22px;
         --svg: currentColor;
         mask-image: url("/icons/favorite_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
-    }
-    :global(.composer-target-reaction-label .post-history-menu-trigger) {
-        inline-size: 28px; block-size: 28px; min-inline-size: 28px; min-block-size: 28px; flex: 0 0 28px; padding: 0;
     }
     .related-channel-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px; overflow-wrap: anywhere; }
     .related-interaction-label { padding: 4px 6px; color: var(--text-muted); }

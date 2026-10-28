@@ -14,6 +14,7 @@
     interface Props {
         post: PostHistoryRecord; preview: Omit<RepostPreviewState, "saveFailed"> & { saveFailed?: boolean };
         menu?: Snippet<[PostHistoryRecord, string]>;
+        footerMenu?: Snippet<[PostHistoryRecord]>;
         author?: Snippet;
         channelText?: string | null;
         model?: PostContentRenderModel;
@@ -30,7 +31,7 @@
         emojiLoadStateByUrl?: Record<string, import("../lib/postContentPreview").PostContentEmojiLoadState | undefined>;
         emojiImageMetaByUrl?: Record<string, import("../lib/postContentPreview").PostContentEmojiImageMeta | undefined>;
     }
-    let { post, preview, menu, author, channelText = null, model, targetLabel = null, onRetry, onReplyPost, onQuotePost, onReactionPost, reactionExtras: renderReactionExtras, reactionDetails: renderReactionDetails, loadSensitiveBody,
+    let { post, preview, menu, footerMenu, author, channelText = null, model, targetLabel = null, onRetry, onReplyPost, onQuotePost, onReactionPost, reactionExtras: renderReactionExtras, reactionDetails: renderReactionDetails, loadSensitiveBody,
         scrollRoot = null, onImageOpen, emojiLoadStateByUrl = {}, emojiImageMetaByUrl = {} }: Props = $props();
     const target = $derived(preview.event ? repostTargetToPost(preview.event, preview.relayHints) : null);
     const message = $derived(preview.status === "deleted" ? "repost.targetDeleted"
@@ -80,13 +81,14 @@
             <Button onClick={onRetry}>{$_("postHistory.contextRetry")}</Button>
         {/if}
     {/if}
-    {#if post.deletedAt === undefined && onReactionPost}
+    {#if post.deletedAt === undefined && (onReactionPost || footerMenu)}
         <PostHistoryPreviewFooter formattedDate={formatPostedAt(post.postedAt)}>
             {#snippet actions()}
                 <PostHistoryPostActions {post} {onReactionPost}>
                     {#snippet reactionExtras()}{@render renderReactionExtras?.(post)}{/snippet}
                 </PostHistoryPostActions>
             {/snippet}
+            {#snippet trailing()}{@render footerMenu?.(post)}{/snippet}
         </PostHistoryPreviewFooter>
         {@render renderReactionDetails?.(post)}
     {/if}
