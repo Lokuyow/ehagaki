@@ -4875,17 +4875,6 @@
         padding-inline-start: 1rem;
         gap: 4px;
 
-        .post-preview-content {
-            overflow-wrap: anywhere;
-            white-space: pre-wrap;
-            font-size: 1rem;
-            line-height: 1.5;
-        }
-
-        .post-preview-media {
-            display: block;
-        }
-
         .post-preview-quotes {
             display: flex;
             flex-direction: column;
