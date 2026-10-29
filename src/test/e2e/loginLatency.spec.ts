@@ -293,6 +293,12 @@ test('pulses the default account icon through profile and image loading without 
     await app.login();
     const fallback = page.locator('.footer-bar .profile-avatar-fallback');
     const avatar = page.locator('.footer-bar [data-avatar-root]');
+    const editorFallback = page.locator('.editor-account-placeholder-fallback');
+    await expect(editorFallback).toHaveAttribute('data-loading', 'true');
+    await expect(editorFallback).toBeHidden();
+    const placeholderPosition = () => page.locator('.tiptap-editor p').evaluate(el =>
+        getComputedStyle(el, '::before').paddingLeft);
+    const initialPadding = await placeholderPosition();
     await expect(fallback).toHaveAttribute('data-loading', 'true');
     await expect(avatar).toHaveAttribute('aria-busy', 'true');
     expect(await fallback.evaluate(el => getComputedStyle(el).animationName)).toContain('profile-avatar-loading-pulse');
@@ -306,13 +312,15 @@ test('pulses the default account icon through profile and image loading without 
     await page.emulateMedia({ reducedMotion: 'no-preference' });
 
     app.releaseRelays();
-    await page.locator('.tiptap-editor').fill('Image pending draft');
-    await expect(post(page)).toBeEnabled();
     app.releaseProfiles();
     await expect.poll(() => pendingImages.length).toBeGreaterThan(0);
     await expect(fallback).toHaveAttribute('data-loading', 'true');
-    await expect(post(page)).toBeEnabled();
+    await expect(editorFallback).toHaveAttribute('data-loading', 'true');
+    await expect(editorFallback).toBeHidden();
+    await expect.poll(placeholderPosition).toBe(initialPadding);
     await page.locator('.footer-bar').screenshot({ path: testInfo.outputPath('avatar-image-pending.png') });
+    await page.locator('.tiptap-editor').fill('Image pending draft');
+    await expect(post(page)).toBeEnabled();
 
     imagesReleased = true;
     await Promise.all(pendingImages.splice(0).map(deliverImage));
@@ -320,6 +328,47 @@ test('pulses the default account icon through profile and image loading without 
     await expect(avatar).not.toHaveAttribute('aria-busy');
     await expect(fallback).toBeHidden();
     await page.locator('.footer-bar').screenshot({ path: testInfo.outputPath('avatar-loaded.png') });
+});
+
+test('never paints an editor fallback while restoring a saved avatar on reload or revisit', async ({ page }) => {
+    await page.addInitScript(() => {
+        const observation = { frames: 0, visibleFallbackFrames: 0 };
+        (window as unknown as { avatarObservation: typeof observation }).avatarObservation = observation;
+        const sample = () => {
+            const fallback = document.querySelector('.editor-account-placeholder-fallback');
+            if (fallback) {
+                observation.frames++;
+                const style = getComputedStyle(fallback);
+                if (style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0
+                    && fallback.getBoundingClientRect().width > 0) observation.visibleFallbackFrames++;
+            }
+            requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+    });
+    await page.route('https://avatar.example/**', route => route.fulfill({
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="48" height="48" fill="blue"/></svg>',
+    }));
+    const app = await setup(page, { profilePicture: 'https://avatar.example/saved.svg' });
+    await app.login();
+    app.releaseRelays();
+    app.releaseProfiles();
+    const image = page.locator('.editor-account-placeholder-image');
+    await expect(image).toBeVisible();
+    for (const navigation of ['reload', 'revisit']) {
+        if (navigation === 'reload') await page.reload();
+        else {
+            await page.goto('about:blank');
+            await page.goto('/ehagaki/');
+        }
+        await expect(image).toBeVisible();
+        await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+        const observation = await page.evaluate(() =>
+            (window as unknown as { avatarObservation: { frames: number; visibleFallbackFrames: number } }).avatarObservation);
+        expect(observation.frames).toBeGreaterThan(0);
+        expect(observation.visibleFallbackFrames).toBe(0);
+    }
 });
 
 for (const outcome of ['missing', 'image-error'] as const) {
@@ -336,6 +385,7 @@ for (const outcome of ['missing', 'image-error'] as const) {
         app.releaseProfiles();
         await expect(fallback).not.toHaveAttribute('data-loading');
         await expect(fallback).toBeVisible();
+        await expect(page.locator('.editor-account-placeholder-fallback')).toBeVisible();
         await expect(page.locator('.footer-bar [data-avatar-root]')).not.toHaveAttribute('aria-busy');
         await expect(account(page)).toBeEnabled();
     });
