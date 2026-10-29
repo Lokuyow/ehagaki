@@ -1734,6 +1734,11 @@
     object-fit: cover;
   }
 
+  :global(.editor-account-placeholder-fallback[data-loading="true"]) {
+    visibility: hidden;
+    animation: none;
+  }
+
   .editor-container.account-avatar-placeholder
     :global(p.is-editor-empty:first-child::before) {
     padding-left: 38px;
