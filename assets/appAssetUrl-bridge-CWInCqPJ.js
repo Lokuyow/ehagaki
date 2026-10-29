@@ -1,0 +1,1 @@
+import{n as e}from"./appRuntimeEnvironment-bridge-xgs4JOfd.js";function t(t){let n=e().assetBase;return n?new URL(t,n).href:`./${t}`}export{t};

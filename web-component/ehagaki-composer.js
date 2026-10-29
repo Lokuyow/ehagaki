@@ -1,4 +1,4 @@
-import { V as e, z as t } from "./assets/index-client-Bdka-Daw.js";
+import { V as e, z as t } from "./assets/index-client-57Odq85c.js";
 import { r as n, t as r } from "./assets/appRuntimeEnvironment-BvtUCHcA.js";
 import { n as i } from "./assets/relayConfigUtils-DD5f1UAM.js";
 import { t as a } from "./assets/embedComposerContextValidation-CtufTFtW.js";
@@ -252,7 +252,7 @@ var w = class extends HTMLElement {
 				childList: !0,
 				subtree: !0
 			});
-			let { installEhagakiDatabaseGateForRuntime: p } = await import("./assets/ehagakiDbPageGate-znS4S86z.js");
+			let { installEhagakiDatabaseGateForRuntime: p } = await import("./assets/ehagakiDbPageGate-B-RTUPn8.js");
 			r({
 				storage: n(window.localStorage),
 				window,
@@ -429,7 +429,7 @@ var A = class extends w {
 		}
 	}
 	loadApp() {
-		return import("./assets/App-CPn8s-cx.js").then((e) => e.t);
+		return import("./assets/App-BWEIk7fu.js").then((e) => e.t);
 	}
 	getConnectionError() {
 		return this.#t ? {

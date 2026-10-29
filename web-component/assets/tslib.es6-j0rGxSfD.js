@@ -1,0 +1,61 @@
+// D:/ドキュメント/GitHub/ehagaki/node_modules/tslib/tslib.es6.mjs
+var e = function(t, n) {
+	return e = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(e, t) {
+		e.__proto__ = t;
+	} || function(e, t) {
+		for (var n in t) Object.prototype.hasOwnProperty.call(t, n) && (e[n] = t[n]);
+	}, e(t, n);
+};
+function t(t, n) {
+	if (typeof n != "function" && n !== null) throw TypeError("Class extends value " + String(n) + " is not a constructor or null");
+	e(t, n);
+	function r() {
+		this.constructor = t;
+	}
+	t.prototype = n === null ? Object.create(n) : (r.prototype = n.prototype, new r());
+}
+var n = function() {
+	return n = Object.assign || function(e) {
+		for (var t, n = 1, r = arguments.length; n < r; n++) for (var i in t = arguments[n], t) Object.prototype.hasOwnProperty.call(t, i) && (e[i] = t[i]);
+		return e;
+	}, n.apply(this, arguments);
+};
+function r(e, t) {
+	var n = {};
+	for (var r in e) Object.prototype.hasOwnProperty.call(e, r) && t.indexOf(r) < 0 && (n[r] = e[r]);
+	if (e != null && typeof Object.getOwnPropertySymbols == "function") for (var i = 0, r = Object.getOwnPropertySymbols(e); i < r.length; i++) t.indexOf(r[i]) < 0 && Object.prototype.propertyIsEnumerable.call(e, r[i]) && (n[r[i]] = e[r[i]]);
+	return n;
+}
+function i(e) {
+	var t = typeof Symbol == "function" && Symbol.iterator, n = t && e[t], r = 0;
+	if (n) return n.call(e);
+	if (e && typeof e.length == "number") return { next: function() {
+		return e && r >= e.length && (e = void 0), {
+			value: e && e[r++],
+			done: !e
+		};
+	} };
+	throw TypeError(t ? "Object is not iterable." : "Symbol.iterator is not defined.");
+}
+function a(e, t) {
+	var n = typeof Symbol == "function" && e[Symbol.iterator];
+	if (!n) return e;
+	var r = n.call(e), i, a = [], o;
+	try {
+		for (; (t === void 0 || t-- > 0) && !(i = r.next()).done;) a.push(i.value);
+	} catch (e) {
+		o = { error: e };
+	} finally {
+		try {
+			i && !i.done && (n = r.return) && n.call(r);
+		} finally {
+			if (o) throw o.error;
+		}
+	}
+	return a;
+}
+function o(e, t, n) {
+	if (n || arguments.length === 2) for (var r = 0, i = t.length, a; r < i; r++) (a || !(r in t)) && (a ||= Array.prototype.slice.call(t, 0, r), a[r] = t[r]);
+	return e.concat(a || Array.prototype.slice.call(t));
+}
+export { o as a, r as i, t as n, i as o, a as r, n as t };

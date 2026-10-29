@@ -1,1 +1,0 @@
-import{Ft as e,Jt as t,Kt as n,qt as r}from"./vendor-editor-bridge-BioXeuHN.js";var i=t(n({name:``,displayName:``,picture:``,npub:``,nprofile:``})),a=t(!1),o=t(!1),s={get value(){return e(i)},set:e=>{r(i,e,!0)}},c={get value(){return e(a)},set:e=>{r(a,e,!0)}},l={get value(){return e(o)},set:e=>{r(o,e,!0)}};export{s as n,c as r,l as t};

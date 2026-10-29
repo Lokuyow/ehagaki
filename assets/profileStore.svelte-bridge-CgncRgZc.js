@@ -1,0 +1,1 @@
+import{It as e,Jt as t,Yt as n,qt as r}from"./vendor-editor-bridge-B11t5MBt.js";var i=n(r({name:``,displayName:``,picture:``,npub:``,nprofile:``})),a=n(!1),o=n(!1),s={get value(){return e(i)},set:e=>{t(i,e,!0)}},c={get value(){return e(a)},set:e=>{t(a,e,!0)}},l={get value(){return e(o)},set:e=>{t(o,e,!0)}};export{s as n,c as r,l as t};

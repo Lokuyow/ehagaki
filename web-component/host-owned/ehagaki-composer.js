@@ -260,7 +260,7 @@ var C = class extends HTMLElement {
 				childList: !0,
 				subtree: !0
 			});
-			let { installEhagakiDatabaseGateForRuntime: p } = await import("./assets/ehagakiDbPageGate-DMgPLAun.js");
+			let { installEhagakiDatabaseGateForRuntime: p } = await import("./assets/ehagakiDbPageGate-DnhRm9oh.js");
 			r({
 				storage: n(window.localStorage),
 				window,
@@ -484,7 +484,7 @@ var P = class extends C {
 		});
 	}
 	loadApp() {
-		return import("./assets/HostOwnedComposerLiteApp-Bn2yW-a7.js").then((e) => e.t);
+		return import("./assets/HostOwnedComposerLiteApp-IQxQmzRN.js").then((e) => e.t);
 	}
 	onConnectionAttempt() {
 		this.#r = !0, this.#a += 1, this.#i = null;
