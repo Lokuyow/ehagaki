@@ -404,6 +404,10 @@ test('notifications persist read state, render quotes, and hand reply/reaction t
     for (const target of await targets.all()) {
         await expect(target).toHaveCSS('border-inline-start-width', '0px');
         await expect(target).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        const lefts = await target.evaluate(node => ['.post-history-related-author', '.post-history-preview-text', '.post-preview-date']
+            .map(selector => node.querySelector(selector)!.getBoundingClientRect().left));
+        expect(lefts[1]).toBeCloseTo(lefts[0], 0);
+        expect(lefts[2]).toBeCloseTo(lefts[0], 0);
     }
     const quote = dialog.locator('.notification-entry').filter({ hasText: 'Quote notification text' })
         .locator('.notification-post').last().locator('.post-history-related-card');

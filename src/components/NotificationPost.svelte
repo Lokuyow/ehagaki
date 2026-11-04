@@ -57,7 +57,7 @@
     .notification-post { min-width: 0; }
     .plain :global(.post-history-related-card) { border-inline-start: 0; background: transparent; margin-inline-start: 0; }
     .plain :global(.post-history-related-card-body) { padding-inline: 0; }
-    .plain :global(.post-preview-footer) { margin-inline: 0; }
+    .plain :global(.post-preview-footer) { margin-inline: 0; padding-inline-start: 0; }
     .has-actions :global(.post-preview-footer) {
         grid-template-columns: minmax(0, 1fr) 80px 0;
     }
