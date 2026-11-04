@@ -81,8 +81,8 @@
 </DialogWrapper>
 <style>
     :global(.notification-dialog) { width: min(800px, calc(100% - 16px)); min-width: 0; }
-    :global(.notification-dialog.dialog) { height: 85svh; }
-    :global(.notification-dialog.dialog.dialog-container-layout) { height: calc(100% - 32px); }
+    :global(.notification-dialog.dialog) { top: 0; translate: -50% 0; height: 100svh; max-height: 100svh; }
+    :global(.notification-dialog.dialog.dialog-container-layout) { height: 100%; max-height: 100%; }
     :global(.notification-dialog .dialog-content) { height: 100%; max-height: none; }
     :global(.notification-dialog.dialog[data-state="open"]) { animation: notification-open 250ms ease-out; }
     @keyframes notification-open { from { opacity: 0; } to { opacity: 1; } }

@@ -23,6 +23,11 @@ test('a delayed content module leaves the 280px shell closable and reopens safel
     await frame.locator('.notification-btn').click();
     const dialog = frame.getByRole('dialog');
     await expect(dialog.locator('.notification-opening-placeholder')).toBeVisible();
+    const hostHeight = await frame.locator('body').evaluate(node => node.ownerDocument.documentElement.clientHeight);
+    const bounds = (await dialog.boundingBox())!;
+    const hostBounds = (await page.locator('iframe').boundingBox())!;
+    expect(bounds.y - hostBounds.y).toBeCloseTo(0, 0);
+    expect(bounds.height).toBeCloseTo(hostHeight, 0);
     expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath('notification-skeleton-280.png') });
     await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
@@ -39,6 +44,9 @@ test('opening shows a noninteractive skeleton until local data renders without w
     await page.goto('post-history-dialog-playwright.html?notifications=1&opening=delay');
     await page.locator('.notification-btn').click();
     const dialog = page.getByRole('dialog');
+    const bounds = (await dialog.boundingBox())!;
+    expect(bounds.y).toBeCloseTo(0, 0);
+    expect(bounds.height).toBeCloseTo(844, 0);
     await expect(dialog.locator('.notification-opening-placeholder')).toBeVisible();
     await expect(dialog.getByRole('button', { name: '更新', exact: true })).toBeDisabled();
     await expect(dialog.locator('.notification-viewport')).toHaveAttribute('aria-busy', 'true');
