@@ -4,4 +4,3 @@ export type RawEventVerificationState = {
     status: "valid" | "invalid";
     ruleVersion: number;
 };
-

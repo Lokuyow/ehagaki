@@ -42,4 +42,3 @@ export function splitEventRecord(row: RecordValue, name: EventRecordTableName): 
             relatedEventIds: target ? [target.id] : [] }] : []),
         ...(target ? [{ event: target, relayUrls: repostTarget.relayHints, verification: repostTarget.rawEventVerification }] : []) ] };
 }
-

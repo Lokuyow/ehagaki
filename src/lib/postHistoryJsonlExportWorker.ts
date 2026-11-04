@@ -1,5 +1,5 @@
-import { eventRecords } from "./storage/eventRepository";
 /// <reference lib="webworker" />
+import { eventRecords } from "./storage/eventRepository";
 
 import {
     runPostHistoryJsonlExportEngine,
