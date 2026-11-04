@@ -15,6 +15,7 @@
     import { useDialogHistory } from '../lib/hooks/useDialogHistory.svelte';
     import { notificationRepository, type NotificationRecord } from '../lib/storage/notificationRepository';
     import { notificationType } from '../lib/notification';
+    import { groupNotifications, type NotificationGroup } from '../lib/notificationGrouping';
     import { syncNotifications } from '../lib/notificationSyncService';
     import { createPostHistoryProfileSyncCoordinator } from '../lib/postHistoryProfileSync';
     import { createPostHistoryRelatedTargetResolver, type RelatedTargetDescriptor } from '../lib/postHistoryRelatedTargetResolver.svelte';
@@ -50,18 +51,19 @@
     let media = $state.raw<FullscreenMediaItem[]>([]), mediaIndex = $state(-1);
     let task: ReturnType<typeof syncNotifications> | null = null;
     let generation = $state(0);
-    function reactionModel(event: NotificationRecord['event']) {
-        return buildPostHistoryReactionReadModel([{ eventId: event.id, authorPubkey: event.pubkey,
-            kind: event.kind, content: event.content, tags: event.tags, createdAt: event.created_at }], profiles);
+    function reactionModel(items: NotificationRecord[]) {
+        return buildPostHistoryReactionReadModel(items.map(({ event }) => ({ eventId: event.id, authorPubkey: event.pubkey,
+            kind: event.kind, content: event.content, tags: event.tags, createdAt: event.created_at })), profiles);
     }
     const reactionEmoji = usePostHistoryEmojiState({ getShow: () => show && !invalidated,
         getEmojiUrls: () => records.filter(record => record.event.kind === 7)
-            .flatMap(record => reactionModel(record.event).groups.flatMap(group => group.emojiUrl ? [group.emojiUrl] : [])) });
+            .flatMap(record => reactionModel([record]).groups.flatMap(group => group.emojiUrl ? [group.emojiUrl] : [])) });
     const profileSync = createPostHistoryProfileSyncCoordinator({ getShow: () => show && !invalidated, getRxNostr: () => rxNostr });
     const unsubscribeProfile = profileSync.subscribe((key, profile) => { profiles = { ...profiles, [key]: profile }; });
     const resolver = createPostHistoryRelatedTargetResolver({ getShow: () => show && !invalidated,
         getOwner: () => pubkeyHex,
         getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig, profileSyncCoordinator: profileSync, requireFullVerification: true });
+    const notificationGroups = $derived(groupNotifications(records, id => resolver.getTargetSnapshot(id)?.event ?? null));
     const posts = $derived(records.filter(record => [1, 42, 1111].includes(record.event.kind))
         .map(record => repostTargetToPost(record.event, record.relayUrls)));
     const quotes = usePostHistoryQuotePreviews({ getShow: () => show && !invalidated, getPosts: () => posts,
@@ -123,6 +125,11 @@
             relayHints: [...reference.relayHints, ...record.relayUrls], relationKind: 'notification',
             scopeKey: 'notifications', sourceEventId: record.eventId } : null;
     }
+    function groupDescriptor(group: NotificationGroup): RelatedTargetDescriptor | null {
+        const value = descriptor(group.record);
+        if (!value || group.reactions.length < 2) return value;
+        return { ...value, relayHints: [...new Set(group.reactions.flatMap(record => descriptor(record)?.relayHints ?? []))] };
+    }
     function targetSnapshot(record: NotificationRecord) {
         const reference = record.event.kind === 7 ? parseReactionReference(record.event).reference : getRepostReference(record.event);
         const snapshot = reference ? resolver.getTargetSnapshot(reference.eventId) : null;
@@ -133,10 +140,25 @@
     }
     $effect(() => {
         if (!show || invalidated) return;
-        const targets = records.filter(record => [6, 7, 16].includes(record.event.kind)).flatMap(record => {
-            const value = descriptor(record); return value ? [value] : [];
-        });
-        void resolver.ensureTargets(targets);
+        const currentRecords = records;
+        const targets = untrack(() => groupNotifications(currentRecords, id => resolver.getTargetSnapshot(id)?.event ?? null).flatMap(group => {
+            const record = group.record;
+            if (![6, 7, 16].includes(record.event.kind)) return [];
+            const value = groupDescriptor(group);
+            if (value && resolver.getTargetSnapshot(value.targetEventId)?.event && targetSnapshot(record)?.status === 'error') return [];
+            return value ? [value] : [];
+        }));
+        let active = true;
+        const byTarget = new Map<string, RelatedTargetDescriptor[]>();
+        for (const target of targets) byTarget.set(target.targetEventId, [...(byTarget.get(target.targetEventId) ?? []), target]);
+        void Promise.all([...byTarget.values()].map(async candidates => {
+            let result = await resolver.ensureTarget(candidates[0]);
+            for (const candidate of candidates.slice(1)) {
+                if (!active || result?.status !== 'error' || result.errorCode !== 'invalid_event') break;
+                result = await resolver.retryTarget(candidate);
+            }
+        }));
+        return () => { active = false; };
     });
     async function refresh(older = false) {
         if (busy || !show || !visible || invalidated || !pubkeyHex || !rxNostr) return;
@@ -190,17 +212,18 @@
     <div class="notification-list" aria-busy={busy}>
         {#if !loaded}<p role="status">{$_('notifications.loading')}</p>
         {:else if !records.length}<p>{$_('notifications.empty')}</p>{/if}
-        {#each records as record (record.id)}
+        {#each notificationGroups as group (group.id)}
+            {@const record = group.record}
             {@const type = notificationType(record.event)}
-            <article class="notification-entry" data-notification-id={record.eventId}>
+            <article class="notification-entry" data-notification-id={group.reactions[0]?.eventId ?? record.eventId}>
                 {#if type === 'reaction' || type === 'repost'}
                     {#if type === 'reaction'}
                         <div class="notification-reaction">
-                            <PostHistoryReactionDetails readModel={reactionModel(record.event)} showCount={false}
+                            <PostHistoryReactionDetails readModel={reactionModel(group.reactions)}
                                 emojiLoadStateByUrl={reactionEmoji.emojiLoadStateByUrl} emojiImageMetaByUrl={reactionEmoji.emojiImageMetaByUrl} />
-                            <span>{profiles[record.event.pubkey]?.displayName || profiles[record.event.pubkey]?.name || shortenMiddle(record.event.pubkey, 12, 4)}</span>
+                            {#if group.reactions.length === 1}<span>{profiles[record.event.pubkey]?.displayName || profiles[record.event.pubkey]?.name || shortenMiddle(record.event.pubkey, 12, 4)}</span>{/if}
                             <span class="notification-type">{$_('notifications.reaction')}</span>
-                            <time>{formatPostedAt(record.createdAt * 1000)}</time>
+                            <time>{formatPostedAt(group.reactions[0].createdAt * 1000)}</time>
                         </div>
                     {:else}
                     <div class="notification-actor">
@@ -212,7 +235,7 @@
                         <time>{formatPostedAt(record.createdAt * 1000)}</time>
                     </div>
                     {/if}
-                    {@const target = descriptor(record)}
+                    {@const target = groupDescriptor(group)}
                     {@const snapshot = targetSnapshot(record)}
                     {#if snapshot?.event}
                         <NotificationPost event={snapshot.event} profile={snapshot.profile} onImageOpen={openImage}

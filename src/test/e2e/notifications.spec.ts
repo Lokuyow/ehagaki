@@ -14,22 +14,36 @@ test.beforeEach(async ({ context, page }) => {
 });
 test.afterEach(() => expect(pageErrors).toEqual([]));
 
-test('shows each reaction compactly with its actor, time, custom emoji and target preview', async ({ page }, info) => {
+test('groups reactions to the same target with actor icons, counts, custom emoji and one preview', async ({ page }, info) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1');
     await page.getByRole('button', { name: '通知（未読あり）' }).click();
     await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addReaction());
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addGroupedReaction());
     const dialog = page.getByRole('dialog');
     const reactions = dialog.locator('.notification-entry:has(.notification-reaction)');
-    await expect(reactions).toHaveCount(2);
+    await expect(reactions).toHaveCount(1);
     const custom = reactions.filter({ has: page.locator('img[alt=":demo:"]') });
     await expect(custom).toHaveCount(1);
-    await expect(custom.locator('.notification-reaction')).toContainText('Fixture sender');
+    await expect(custom.locator('.post-preview-reaction-avatar-image')).toHaveCount(3);
     await expect(custom.locator('.notification-reaction time')).toBeVisible();
-    await expect(custom.locator('.post-preview-reaction-count')).toHaveCount(0);
+    await expect(custom.locator('.post-preview-reaction-count')).toHaveText(['2', '1']);
     await expect(custom.getByText('Original notification target', { exact: true })).toBeVisible();
     await expect(custom.getByRole('button', { name: 'リアクションする' })).toHaveCount(0);
     await page.screenshot({ path: info.outputPath('reaction-360.png') });
+});
+
+test('keeps an incompatible reaction separate without hiding the valid target', async ({ page }) => {
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await expect(page.getByRole('button', { name: '通知（未読あり）' })).toBeVisible();
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addMismatchedReaction());
+    await page.getByRole('button', { name: '通知（未読あり）' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Original notification target', { exact: true })).toHaveCount(3);
+    const reactions = dialog.locator('.notification-entry:has(.notification-reaction)');
+    await expect(reactions).toHaveCount(2);
+    await expect(reactions.filter({ hasText: 'Original notification target' })).toHaveCount(1);
+    await expect(reactions.getByRole('button', { name: '再試行', exact: true })).toHaveCount(1);
 });
 
 test('centers history with a shortcut on either side at desktop, phone, and embedded widths', async ({ page }) => {
