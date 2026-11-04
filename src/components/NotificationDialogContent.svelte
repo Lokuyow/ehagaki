@@ -235,11 +235,14 @@
                     {/if}
                 {:else}
                     {#if type === 'reply'}
-                        <span class="notification-kind-icon notification-reply-icon svg-icon" role="img" aria-label={$_('notifications.reply')}></span>
+                        <div class="notification-reply-label">
+                            <span class="notification-kind-icon notification-reply-icon svg-icon" aria-hidden="true"></span>
+                            <span>{$_('notifications.reply')}</span>
+                        </div>
                     {:else}
                         <span class="notification-type">{$_(`notifications.${type}`)}</span>
                     {/if}
-                    <NotificationPost event={record.event} profile={profiles[record.event.pubkey]} relayUrls={record.relayUrls} loadSensitiveBody={sensitiveBody(record.event, record.relayUrls)}
+                    <NotificationPost plain={type === 'reply'} event={record.event} profile={profiles[record.event.pubkey]} relayUrls={record.relayUrls} loadSensitiveBody={sensitiveBody(record.event, record.relayUrls)}
                         onReply={(post) => apply(post, false)} onReaction={(post) => apply(post, true)} onImageOpen={openImage} />
                     {#each quotes.getQuotePreviews(repostTargetToPost(record.event, record.relayUrls)) as preview (preview.eventId)}
                         {#if preview.status === 'resolved'}
@@ -266,6 +269,7 @@
     .notification-list { width: 100%; display: grid; min-width: 0; gap: 12px; overflow-wrap: anywhere; }
     .notification-entry { display: grid; min-width: 0; gap: 6px; padding-block: 8px; border-bottom: 1px solid var(--border-hr); }
     .notification-type { font-size: .85rem; opacity: .8; }
+    .notification-reply-label { display: flex; align-items: center; gap: 6px; }
     .notification-actor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
     .notification-reaction { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
     .notification-reaction :global(.post-preview-reactions-panel) { padding: 0; }

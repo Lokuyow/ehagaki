@@ -947,7 +947,7 @@
     "partialFailure": "一部の通知を取得できていない可能性があります。再試行するか、続きを読み込んでください。",
     "targetUnavailable": "元の投稿を表示できません",
     "mention": "メンション",
-    "reply": "返信",
+    "reply": "リプライ",
     "quote": "引用",
     "reaction": "リアクション",
     "repost": "リポスト"

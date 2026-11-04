@@ -92,11 +92,16 @@ test('notification headers omit labels and times and identify reposts and replie
     await expect(dialog.getByText('リポスト', { exact: true })).toHaveCount(0);
     await expect(dialog.getByText('返信', { exact: true })).toHaveCount(0);
     const repost = dialog.getByRole('img', { name: 'リポスト', exact: true });
-    const reply = dialog.getByRole('img', { name: '返信', exact: true });
+    const reply = dialog.locator('.notification-reply-icon');
     await expect(repost).toBeVisible(); await expect(reply).toBeVisible();
     expect(await repost.evaluate(node => getComputedStyle(node).maskImage)).toContain('repost.svg');
     expect(await reply.evaluate(node => getComputedStyle(node).maskImage)).toContain('chat_bubble_');
     await expect(dialog.getByText('Reply notification text', { exact: true })).toBeVisible();
+    const replyEntry = dialog.locator('.notification-entry').filter({ hasText: 'Reply notification text' });
+    await expect(replyEntry.locator('.notification-reply-label')).toHaveText('リプライ');
+    const replyCard = replyEntry.locator('.post-history-related-card');
+    await expect(replyCard).toHaveCSS('border-inline-start-width', '0px');
+    await expect(replyCard).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await page.screenshot({ path: info.outputPath('notification-headers-360.png') });
     await expect(dialog.getByRole('button', { name: '閉じる', exact: true })).toHaveCount(1);
     const bottomClose = dialog.locator('.modal-close');
