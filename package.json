@@ -70,7 +70,6 @@
     "@tiptap/suggestion": "^3.32.0",
     "bits-ui": "^2.20.2",
     "blurhash": "^2.0.5",
-    "browser-image-compression": "^2.0.2",
     "dexie": "^4.4.6",
     "dompurify": "^3.4.17",
     "ipaddr.js": "^2.5.0",

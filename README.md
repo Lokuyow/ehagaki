@@ -122,7 +122,6 @@ Windowsで公開済みファイルが多い場合の`spawn ENAMETOOLONG`を防�
 - [nostr-tools](https://github.com/nbd-wtf/nostr-tools) - Nostrプロトコル実装
 
 ### メディア処理
-- [browser-image-compression](https://github.com/Donaldcwl/browser-image-compression) - 画像圧縮
 - [mediabunny](https://mediabunny.dev/) - 動画圧縮（WebCodecs API）
 - [@mediabunny/aac-encoder](https://mediabunny.dev/guide/extensions/aac-encoder) - ネイティブAACエンコード非対応時の任意ロードAAC encoder
 - [blurhash](https://github.com/woltapp/blurhash) - 画像プレースホルダー生成

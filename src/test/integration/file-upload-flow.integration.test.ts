@@ -1,3 +1,4 @@
+import { mockImageCompressionCanvas } from '../imageCompressionCanvasMock';
 import { createStaticWebpFixture } from '../webpFixture';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ImageCompressionService } from '../../lib/imageCompressionService';
@@ -61,24 +62,6 @@ vi.mock("../../lib/keyManager.svelte", () => ({
     }
 }));
 
-vi.mock("browser-image-compression", () => ({
-    default: vi.fn(async (file: File, options: any) => {
-        // 圧縮シミュレーション
-        const compressedSize = Math.floor(file.size * 0.7);
-        const compressedType = options?.fileType ?? file.type;
-        const compressedBlob = new Blob([new ArrayBuffer(compressedSize)], { type: compressedType });
-
-        // 進捗コールバックをシミュレート
-        if (options?.onProgress) {
-            setTimeout(() => options.onProgress(0.3), 0);
-            setTimeout(() => options.onProgress(0.6), 10);
-            setTimeout(() => options.onProgress(1.0), 20);
-        }
-
-        return new File([compressedBlob], file.name, { type: compressedType });
-    })
-}));
-
 vi.mock("nostr-tools/nip98", () => ({
     getToken: vi.fn(async (
         url: string,
@@ -109,6 +92,8 @@ vi.mock("@rx-nostr/crypto", () => ({
  * ファイル選択→バリデーション→圧縮→アップロードの一連の流れをテスト
  */
 describe('ファイルアップロードフロー統合テスト', () => {
+    beforeEach(() => { mockImageCompressionCanvas(); });
+    afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
     describe('画像圧縮フロー統合', () => {
         let mimeSupport: MimeTypeSupport;
         let compressionService: ImageCompressionService;
@@ -118,7 +103,7 @@ describe('ファイルアップロードフロー統合テスト', () => {
         beforeEach(() => {
             // LocalStorageのモック
             mockLocalStorage = {
-                getItem: vi.fn(() => 'none'), // 圧縮をスキップ
+                getItem: vi.fn(() => 'medium'),
                 setItem: vi.fn(),
                 removeItem: vi.fn(),
                 clear: vi.fn(),
@@ -168,8 +153,8 @@ describe('ファイルアップロードフロー統合テスト', () => {
 
             const result = await compressionService.compress(file);
 
-            expect(result.wasCompressed).toBe(false);
-            expect(result.wasSkipped).toBe(true);
+            expect(result.wasCompressed).toBe(true);
+            expect(result.wasSkipped).toBeUndefined();
         });
 
         it('小さいファイル(20KB以下)はスキップされること', async () => {
@@ -230,14 +215,7 @@ describe('ファイルアップロードフロー統合テスト', () => {
 
             await compressionService.compress(file);
 
-            // 進捗が記録されていることを確認
-            // browser-image-compressionモックが非同期で進捗を送信するため、
-            // 少し待機してから確認するか、少なくとも圧縮が完了したことを確認
-            expect(progressValues.length).toBeGreaterThanOrEqual(0);
-            // 進捗値が送信された場合は、0より大きい値があることを確認
-            if (progressValues.length > 0) {
-                expect(progressValues.some(p => p > 0)).toBe(true);
-            }
+            expect(progressValues).toEqual([5, 40, 100]);
         });
     });
 

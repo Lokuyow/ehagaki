@@ -1,3 +1,4 @@
+import { writeFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { createWebpFixture } from '../webpFixture';
@@ -69,3 +70,73 @@ for (const reaction of [false, true]) for (const input of ['picker', 'paste', 'd
         expect(pageErrors).toEqual([]);
     });
 }
+
+test('static document keeps text resolution through native and WASM encoding', async ({ page }, testInfo) => {
+    await page.goto('post-reaction-playwright.html');
+    const result = await page.evaluate(async () => {
+        const modulePath = new URL('src/lib/imageCompressionService.ts', location.href).href;
+        const { ImageCompressionService } = await import(modulePath);
+        const source = document.createElement('canvas'); source.width = 2000; source.height = 7038;
+        const context = source.getContext('2d')!;
+        context.fillStyle = '#fff'; context.fillRect(0, 0, source.width, source.height);
+        context.fillStyle = '#111'; context.font = '24px sans-serif';
+        for (let y = 50; y < source.height; y += 45) context.fillText('文書の可読性：濁点・小さい文字・細線 0123456789', 20, y);
+        const png = await new Promise<Blob>(resolve => source.toBlob(blob => resolve(blob!), 'image/png'));
+        // Padding leaves the valid PNG intact while avoiding original-size fallback in this encoder test.
+        const file = new File([png, new Uint8Array(3_000_000)], 'document.png', { type: 'image/png' });
+        source.width = source.height = 0;
+        const results = [];
+        for (const native of [true, false]) {
+            const service = new ImageCompressionService({ canEncodeMimeType: () => native }, { getItem: () => 'medium' }, () => false);
+            const start = performance.now(); const output = await service.compress(file);
+            const url = URL.createObjectURL(output.file);
+            const image = new Image(); image.src = url; await image.decode();
+            const crop = document.createElement('canvas'); crop.width = 600; crop.height = 100;
+            crop.getContext('2d')!.drawImage(image, 0, 0);
+            results.push({ native, compressed: output.wasCompressed, width: image.naturalWidth, height: image.naturalHeight,
+                size: output.file.size, type: output.file.type, ms: performance.now() - start, preview: crop.toDataURL() });
+            URL.revokeObjectURL(url);
+        }
+        return results;
+    });
+    for (const output of result) {
+        expect(output).toMatchObject({ compressed: true, width: 1024, height: 3603, type: 'image/webp' });
+        const previewPath = testInfo.outputPath(`${output.native ? 'native' : 'wasm'}-text.png`);
+        await writeFile(previewPath, Buffer.from(output.preview.split(',')[1], 'base64'));
+        await testInfo.attach('text-preview', { path: previewPath, contentType: 'image/png' });
+    }
+    await testInfo.attach('encoding-metrics.json', { body: JSON.stringify(result.map(({ preview, ...metrics }) => metrics)), contentType: 'application/json' });
+});
+
+test('static encoding preserves transparency and browser-decoded EXIF orientation', async ({ page }) => {
+    await page.goto('post-reaction-playwright.html');
+    const result = await page.evaluate(async () => {
+        const { ImageCompressionService } = await import(new URL('src/lib/imageCompressionService.ts', location.href).href);
+        const service = new ImageCompressionService({ canEncodeMimeType: () => true }, { getItem: () => 'medium' }, () => false);
+        const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 800;
+        const ctx = canvas.getContext('2d')!; ctx.fillStyle = '#00f'; ctx.fillRect(0,0,600,800);
+        const png = await new Promise<Blob>(resolve => canvas.toBlob(blob => resolve(blob!), 'image/png'));
+        const alphaOutput = await service.compress(new File([png,new Uint8Array(100000)],'alpha.png',{type:'image/png'}));
+        const load = async (blob: Blob) => { const url=URL.createObjectURL(blob);const image=new Image();image.src=url;await image.decode();URL.revokeObjectURL(url);return image; };
+        const alphaImage=await load(alphaOutput.file);ctx.clearRect(0,0,1200,800);ctx.drawImage(alphaImage,0,0);
+        const alpha=ctx.getImageData(1100,400,1,1).data[3];
+        ctx.fillStyle='#fff';ctx.fillRect(0,0,1200,800);ctx.fillStyle='#00f';ctx.fillRect(0,0,600,400);
+        const jpeg=await new Promise<Blob>(resolve=>canvas.toBlob(blob=>resolve(blob!),'image/jpeg',.95));
+        const bytes=new Uint8Array(await jpeg.arrayBuffer()); const orientations=[];
+        for(const orientation of [2,6,8]) {
+            const hex='ffe100224578696600004d4d002a0000000800010112000300000001'+orientation.toString(16).padStart(4,'0')+'000000000000';
+            const exif=Uint8Array.from(hex.match(/../g)!, value=>parseInt(value,16));
+            const input=new File([bytes.slice(0,2),exif,bytes.slice(2),new Uint8Array(100000)],'oriented.jpg',{type:'image/jpeg'});
+            const reference=await load(input);const output=await service.compress(input);const image=await load(output.file);
+            const pixels=(img: HTMLImageElement)=> {canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;ctx.drawImage(img,0,0);return [...ctx.getImageData(10,10,1,1).data];};
+            orientations.push({orientation,compressed:output.wasCompressed,width:image.naturalWidth,height:image.naturalHeight,reference:[reference.naturalWidth,reference.naturalHeight],pixel:pixels(image),expected:pixels(reference)});
+        }
+        return {alpha,compressed:alphaOutput.wasCompressed,orientations};
+    });
+    expect(result.alpha).toBe(0);expect(result.compressed).toBe(true);
+    for(const item of result.orientations) {
+        expect(item.compressed).toBe(true);expect([item.width,item.height]).toEqual(item.reference);
+        expect(item.reference).toEqual(item.orientation===2?[1200,800]:[800,1200]);
+        item.pixel.forEach((value:number,index:number)=>expect(Math.abs(value-item.expected[index])).toBeLessThan(15));
+    }
+});

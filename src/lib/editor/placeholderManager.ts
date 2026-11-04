@@ -17,6 +17,12 @@ function findMatchedPlaceholder(
     remainingPlaceholders: PlaceholderEntry[],
     result: FileUploadResponse
 ): { matched: PlaceholderEntry | undefined; matchedIndex: number } {
+    // Explicit operation-local IDs take priority over names that may change during compression.
+    if (result.placeholderId !== undefined) {
+        const matchedIndex = remainingPlaceholders.findIndex(p => p.placeholderId === result.placeholderId);
+        return { matched: remainingPlaceholders[matchedIndex], matchedIndex };
+    }
+
     let matched: PlaceholderEntry | undefined;
     let matchedIndex = -1;
 
@@ -339,7 +345,9 @@ async function processReplacementResults(
 
     for (const result of results) {
         if (result.aborted) {
-            const aborted = remainingPlaceholders.shift();
+            const abortedIndex = result.placeholderId !== undefined
+                ? findMatchedPlaceholder(remainingPlaceholders, result).matchedIndex : 0;
+            const aborted = abortedIndex < 0 ? undefined : remainingPlaceholders.splice(abortedIndex, 1)[0];
             if (aborted) {
                 await handlers.onAborted(aborted);
             }
@@ -356,7 +364,9 @@ async function processReplacementResults(
         }
 
         failedResults.push(result);
-        const failed = remainingPlaceholders.shift();
+        const failedIndex = result.placeholderId !== undefined
+            ? findMatchedPlaceholder(remainingPlaceholders, result).matchedIndex : 0;
+        const failed = failedIndex < 0 ? undefined : remainingPlaceholders.splice(failedIndex, 1)[0];
         if (failed) {
             await handlers.onFailure(failed);
         }

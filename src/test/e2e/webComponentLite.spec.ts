@@ -116,7 +116,7 @@ async function mountHostOwned(page: import("@playwright/test").Page) {
         const submitted: unknown[] = [];
         composer.configureHostOwned({
             submit: (output: unknown) => { submitted.push(output); return { eventId: "a".repeat(64) }; },
-            uploadMedia: (file: File) => ({ url: `https://example.invalid/${file.name}` }),
+            uploadMedia: (file: File) => { (window as any).__liteLastUpload = { size: file.size, type: file.type }; return { url: `https://example.invalid/${file.name}` }; },
             contentWarningEnabled: true,
             hashtagPinEnabled: true,
         });
@@ -2527,7 +2527,7 @@ test("Lite Resource Timing keeps initial media code lazy and resolves every capa
     await page.goto(hostOrigin);
     await mountHostOwned(page);
     const initial = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name));
-    for (const capability of ["HostOwnedCustomEmojiPicker-", "browser-image-compression-", "mediabunnyCompression-", "mediabunny-aac-encoder-"]) {
+    for (const capability of ["HostOwnedCustomEmojiPicker-", "webp_enc", "mediabunnyCompression-", "mediabunny-aac-encoder-"]) {
         expect(initial.some((url) => url.includes(capability))).toBe(false);
     }
     await page.locator("ehagaki-composer").evaluate((element) => {
@@ -2540,15 +2540,35 @@ test("Lite Resource Timing keeps initial media code lazy and resolves every capa
         const composer = document.querySelector("ehagaki-composer") as HTMLElement & {
             setSettings(value: unknown): Promise<unknown>;
         };
-        await composer.setSettings({ imageCompressionLevel: "low", videoCompressionLevel: "low" });
+        await composer.setSettings({ imageQualityLevel: "low", videoQualityLevel: "low" });
+    });
+    const imageBytes = await page.evaluate(async () => {
+        const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 1200;
+        const context = canvas.getContext('2d')!;
+        const data = context.createImageData(1200, 1200);
+        for (let i = 0; i < data.data.length; i++) data.data[i] = (i * 31 + (i >> 8)) % 256;
+        context.putImageData(data, 0, 0);
+        const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+        return [...new Uint8Array(await blob.arrayBuffer())];
     });
     await page.locator("ehagaki-composer").locator('input[type="file"]').setInputFiles({
-        name: "large-image.png",
-        mimeType: "image/png",
-        buffer: Buffer.alloc(21 * 1024),
+        name: "large-image.png", mimeType: "image/png", buffer: Buffer.concat([Buffer.from(imageBytes), Buffer.alloc(5_000_000)]),
     });
-    await expect.poll(() => page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name)))
-        .toContainEqual(expect.stringContaining("/host-owned/assets/browser-image-compression-"));
+    await expect.poll(() => page.evaluate(() => (window as any).__liteLastUpload?.type)).toBe('image/webp');
+    expect(await page.evaluate(() => performance.getEntriesByType('resource').some(entry => /webp_enc/.test(entry.name)))).toBe(false);
+    await page.evaluate(() => {
+        (window as any).__liteLastUpload = undefined;
+        const nativeToBlob = HTMLCanvasElement.prototype.toBlob;
+        HTMLCanvasElement.prototype.toBlob = function(callback, type, quality) {
+            return nativeToBlob.call(this, callback, type === 'image/webp' ? 'image/png' : type, quality);
+        };
+    });
+    await page.locator("ehagaki-composer").locator('input[type="file"]').setInputFiles({
+        name: "fallback-image.png", mimeType: "image/png",
+        buffer: Buffer.concat([Buffer.from(imageBytes), Buffer.alloc(5_000_000)]),
+    });
+    await expect.poll(() => page.evaluate(() => (window as any).__liteLastUpload?.type)).toBe('image/webp');
+    await expect.poll(() => page.evaluate(() => performance.getEntriesByType('resource').some(entry => /host-owned\/assets\/webp_enc/.test(entry.name)))).toBe(true);
     const imageResources = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name));
 
     // Use a new document for each media boundary so a pending previous handoff
@@ -2643,3 +2663,44 @@ test("Lite Resource Timing keeps initial media code lazy and resolves every capa
     expect(resources.every((url) => !url.startsWith(`${hostOrigin}/assets/`))).toBe(true);
     expect(resources.every((url) => !url.startsWith(`${componentOrigin}/assets/`))).toBe(true);
 });
+for (const gallery of [false, true]) {
+    test(`Lite keeps duplicate-name uploads in order with mixed compression (${gallery ? 'gallery' : 'editor'})`, async ({ page }) => {
+        await page.goto(hostOrigin);
+        const state = await page.evaluate(async ({ gallery, componentOrigin }) => {
+            await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+            const canvas = document.createElement('canvas'); canvas.width = 1000; canvas.height = 1200;
+            const context = canvas.getContext('2d')!; context.fillStyle = '#f00'; context.fillRect(0, 0, 1000, 1200);
+            const png = await new Promise<Blob>(resolve => canvas.toBlob(blob => resolve(blob!), 'image/png'));
+            canvas.width = canvas.height = 10;
+            const small = await new Promise<Blob>(resolve => canvas.toBlob(blob => resolve(blob!), 'image/png'));
+            const composer = document.createElement('ehagaki-composer') as any;
+            composer.assetBase = `${componentOrigin}/host-owned/`;
+            const uploads: { type: string; name: string; originalName: string }[] = [];
+            (window as any).__duplicateUploads = uploads;
+            composer.configureHostOwned({
+                submit: () => ({ eventId: 'a'.repeat(64) }),
+                uploadMedia: (file: File, metadata: { originalName: string }) => {
+                    uploads.push({ type: file.type, name: file.name, originalName: metadata.originalName });
+                    return { url: `https://media.example/duplicate-${uploads.length}.png` };
+                },
+            });
+            document.body.append(composer);
+            await composer.whenReady();
+            await composer.setSettings({ mediaFreePlacement: !gallery, imageQualityLevel: 'medium' });
+            const transfer = new DataTransfer();
+            transfer.items.add(new File([png, new Uint8Array(100000)], 'image.png', { type: 'image/png' }));
+            transfer.items.add(new File([small], 'image.png', { type: 'image/png' }));
+            composer.shadowRoot.querySelector('.tiptap-editor').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+            return { preview: [...new Uint8Array(await small.arrayBuffer())] };
+        }, { gallery, componentOrigin });
+        await page.route('https://media.example/**', route => route.fulfill({ contentType: 'image/png', body: Buffer.from(state.preview) }));
+        await expect.poll(() => page.evaluate(() => (window as any).__duplicateUploads)).toEqual([
+            { type: 'image/webp', name: 'image.webp', originalName: 'image.png' },
+            { type: 'image/png', name: 'image.png', originalName: 'image.png' },
+        ]);
+        const images = page.locator('ehagaki-composer').locator(gallery ? '.media-gallery img' : '.tiptap-editor img');
+        await expect(images).toHaveCount(2);
+        await expect(images.nth(0)).toHaveAttribute('src', 'https://media.example/duplicate-1.png');
+        await expect(images.nth(1)).toHaveAttribute('src', 'https://media.example/duplicate-2.png');
+    });
+}

@@ -59,9 +59,7 @@ vi.mock("../../lib/tags/imetaTag", () => ({
     createPlaceholderUrl: vi.fn(async () => "placeholder-url")
 }));
 
-vi.mock("browser-image-compression", () => ({
-    default: vi.fn(async (file) => file)
-}));
+
 
 vi.mock("nostr-tools/nip98", () => ({
     getToken: vi.fn(async () => "Bearer mock-token")
