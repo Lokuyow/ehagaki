@@ -3,6 +3,7 @@
     import { _ } from 'svelte-i18n';
     import DialogWrapper from './DialogWrapper.svelte';
     import Button from './Button.svelte';
+    import { resolveAppAssetUrl } from '../lib/appAssetUrl';
     import { createComponentLoader } from '../lib/appComponentLoader';
     import { importNotificationContent } from '../lib/notificationDialogImports';
     import type { NotificationDialogProps } from '../lib/notificationDialogTypes';
@@ -13,6 +14,7 @@
         onLoadFailure?: (failure: AppComponentLoadFailure) => void;
     }
     let { show = $bindable(false), onClose, returnFocus = null, isStaleAssetReloadRequired = () => false, onLoadFailure, ...contentProps }: Props = $props();
+    const closeIconUrl = resolveAppAssetUrl('icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg');
     let Content = $state<typeof import('./NotificationDialogContent.svelte').default | null>(null);
     let contentRef = $state<{ invalidateSession(): void; isFullscreen(): boolean; refresh(older?: boolean): Promise<void> } | null>(null);
     let ready = $state(false), busy = $state(false), failed = $state(false), invalidated = $state(false);
@@ -47,13 +49,12 @@
 </script>
 <DialogWrapper bind:open={show} onOpenChange={(open) => { if (!open) close(); }}
     title={$_('notifications.title')} description={$_('notifications.description')}
-    contentClass="notification-dialog" initialFocus="content" trapFocus={false}
+    contentClass="notification-dialog" footerVariant="close-button" initialFocus="content" trapFocus={false}
     onEscapeKeydown={(event) => { if (contentRef?.isFullscreen()) event.preventDefault(); }}
     onInteractOutside={(event) => { if (contentRef?.isFullscreen()) event.preventDefault(); }}>
     <div class="notification-toolbar">
         <h2>{$_('notifications.title')}</h2>
         <Button variant="default" shape="pill" onClick={() => contentRef?.refresh()} disabled={!ready || busy}>{$_('notifications.refresh')}</Button>
-        <Button variant="default" shape="pill" onClick={() => close()}>{$_('notifications.close')}</Button>
     </div>
     <div class="notification-viewport" aria-busy={!ready && !failed}>
         <div inert={!ready} aria-hidden={!ready ? 'true' : undefined} class:hidden={!ready}>
@@ -78,12 +79,18 @@
             </div>
         {/if}
     </div>
+    {#snippet footer()}
+        <Button className="modal-close" shape="square" ariaLabel={$_('global.close')} onClick={() => close()}>
+            <span class="svg-icon" style:mask-image={`url("${closeIconUrl}")`} aria-hidden="true"></span>
+        </Button>
+    {/snippet}
 </DialogWrapper>
 <style>
     :global(.notification-dialog) { width: min(800px, calc(100% - 16px)); min-width: 0; }
     :global(.notification-dialog.dialog) { top: 0; translate: -50% 0; height: 100svh; max-height: 100svh; }
     :global(.notification-dialog.dialog.dialog-container-layout) { height: 100%; max-height: 100%; }
-    :global(.notification-dialog .dialog-content) { height: 100%; max-height: none; }
+    :global(.notification-dialog .dialog-content) { flex: 1; min-height: 0; max-height: none; }
+    :global(.notification-dialog .dialog-footer) { flex: none; }
     :global(.notification-dialog.dialog[data-state="open"]) { animation: notification-open 250ms ease-out; }
     @keyframes notification-open { from { opacity: 0; } to { opacity: 1; } }
     @media (prefers-reduced-motion: reduce) { :global(.notification-dialog.dialog[data-state="open"]) { animation: none; } }

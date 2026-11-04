@@ -28,9 +28,13 @@ test('a delayed content module leaves the 280px shell closable and reopens safel
     const hostBounds = (await page.locator('iframe').boundingBox())!;
     expect(bounds.y - hostBounds.y).toBeCloseTo(0, 0);
     expect(bounds.height).toBeCloseTo(hostHeight, 0);
+    const closeButton = dialog.locator('.modal-close');
+    await expect(closeButton).toBeVisible();
+    const closeBounds = (await closeButton.boundingBox())!;
+    expect(closeBounds.y + closeBounds.height).toBeCloseTo(bounds.y + bounds.height, 0);
     expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath('notification-skeleton-280.png') });
-    await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
+    await dialog.getByRole('button', { name: '閉じる', exact: true }).first().click();
     await expect(dialog).toHaveCount(0);
     await frame.locator('.notification-btn').click();
     await expect(dialog.locator('.notification-opening-placeholder')).toBeVisible();
@@ -72,7 +76,7 @@ for (const mode of ['empty', 'fail']) test(`opening exits the skeleton for local
     await expect(dialog.locator('.notification-opening-placeholder')).toHaveCount(0);
     await expect(dialog.locator('.notification-viewport')).toHaveAttribute('aria-busy', 'false');
     expect(await dialog.evaluate(node => getComputedStyle(node).animationName)).toBe('none');
-    await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
+    await dialog.getByRole('button', { name: '閉じる', exact: true }).first().click();
     await expect(dialog).toHaveCount(0);
 });
 
@@ -94,6 +98,14 @@ test('notification headers omit labels and times and identify reposts and replie
     expect(await reply.evaluate(node => getComputedStyle(node).maskImage)).toContain('chat_bubble_');
     await expect(dialog.getByText('Reply notification text', { exact: true })).toBeVisible();
     await page.screenshot({ path: info.outputPath('notification-headers-360.png') });
+    await expect(dialog.getByRole('button', { name: '閉じる', exact: true })).toHaveCount(1);
+    const bottomClose = dialog.locator('.modal-close');
+    await expect(bottomClose).toBeVisible();
+    const closeBounds = (await bottomClose.boundingBox())!;
+    expect(closeBounds.y + closeBounds.height).toBeCloseTo(844, 0);
+    await bottomClose.click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('.notification-btn')).toBeFocused();
 });
 
 test('notification images are compact and can be expanded independently', async ({ page }, info) => {
@@ -449,7 +461,7 @@ test('read state survives reloads and is shared across tabs, while hidden dialog
         document.dispatchEvent(new Event('visibilitychange'));
     });
     await expect.poll(() => page.evaluate(() => (window as any).__NOTIFICATIONS__.unread())).toBe(false);
-    await page.getByRole('dialog').getByRole('button', { name: '閉じる', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '閉じる', exact: true }).first().click();
     const second = await context.newPage(); await second.goto(url);
     await expect(second.getByRole('button', { name: '通知', exact: true })).toBeVisible();
     await second.evaluate(() => (window as any).__NOTIFICATIONS__.add());
@@ -488,7 +500,7 @@ test('opening notifications clears unread saved beyond the first local page with
     await expect.poll(() => page.evaluate(() => (window as any).__NOTIFICATIONS__.unread())).toBe(false);
     expect(await page.evaluate(() => (window as any).__NOTIFICATIONS__.requests()
         .flat().some((filter: { since?: number }) => filter.since === 0))).toBe(false);
-    await page.getByRole('dialog').getByRole('button', { name: '閉じる', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '閉じる', exact: true }).first().click();
     await page.reload();
     await expect(page.getByRole('button', { name: '通知', exact: true })).toBeVisible();
     expect(await page.evaluate(() => (window as any).__NOTIFICATIONS__.count())).toBe(106);
