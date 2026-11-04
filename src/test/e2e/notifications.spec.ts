@@ -152,6 +152,26 @@ test('unavailable targets retain the incoming notification and offer retry', asy
     await expect(dialog.locator('.notification-entry')).toHaveCount(4);
 });
 
+test('opening notifications clears unread saved beyond the first local page without fetching more', async ({ page }) => {
+    const url = 'post-history-dialog-playwright.html?notifications=1';
+    await page.goto(url);
+    await page.waitForFunction(() => Reflect.has(window, '__NOTIFICATIONS__'));
+    await page.evaluate(() => (window as any).__NOTIFICATIONS__.addOlder(101));
+    await page.getByRole('button', { name: '通知（未読あり）', exact: true }).click();
+    await expect(page.getByRole('dialog').locator('.notification-entry')).toHaveCount(100);
+    await expect(page.locator('.notification-badge')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => (window as any).__NOTIFICATIONS__.unread())).toBe(false);
+    // Even an older event arriving while the inbox is open must not leave the badge on.
+    await page.evaluate(() => (window as any).__NOTIFICATIONS__.addOlder(102));
+    await expect.poll(() => page.evaluate(() => (window as any).__NOTIFICATIONS__.unread())).toBe(false);
+    expect(await page.evaluate(() => (window as any).__NOTIFICATIONS__.requests()
+        .flat().some((filter: { since?: number }) => filter.since === 0))).toBe(false);
+    await page.getByRole('dialog').getByRole('button', { name: '閉じる', exact: true }).click();
+    await page.reload();
+    await expect(page.getByRole('button', { name: '通知', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => (window as any).__NOTIFICATIONS__.count())).toBe(106);
+});
+
 test('notification slots control traffic, persist removal, and close an open dialog when disabled', async ({ page, context }) => {
     const url = 'post-history-dialog-playwright.html?notifications=1';
     await page.goto(url);

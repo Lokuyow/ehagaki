@@ -51,6 +51,18 @@ describe('notification persistence', () => {
         expect(await repository.list(owner)).toMatchObject([{ eventId: next.id, unread: 1 }, { eventId: first.id, unread: 0 }]);
         expect(await repository.list(author)).toEqual([]);
     });
+    it('snapshots every saved unread ID independently of the display page and excludes later arrivals', async () => {
+        const incoming = Array.from({ length: 101 }, (_, index) => event(1, [['p', owner]], index + 100, `saved ${index}`));
+        await repository.upsert(owner, incoming.map(event => ({ event })));
+        expect(await repository.list(owner)).toHaveLength(100);
+        const ids = await repository.unreadEventIds(owner);
+        expect(ids).toHaveLength(101);
+        expect(await repository.unreadEventIds(author)).toEqual([]);
+        const arrival = event(1, [['p', owner]], 500, 'later arrival');
+        await repository.upsert(owner, [{ event: arrival }]);
+        await repository.markRead(owner, ids);
+        expect(await repository.unreadEventIds(owner)).toEqual([arrival.id]);
+    });
     it('does not apply cancelled writes or read transitions', async () => {
         const incoming = event();
         await repository.upsert(owner, [{ event: incoming }], () => false);

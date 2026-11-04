@@ -63,6 +63,9 @@
         }).then(() => notificationRepository.upsert(owner, incoming.map(event => ({ event, relayUrls: [relay] }))))
             .then(() => ready = true);
         Reflect.set(window, '__NOTIFICATIONS__', {
+            addOlder: async (count: number) => notificationRepository.upsert(owner, Array.from({ length: count }, (_, index) => ({
+                event: finalizeEvent({ kind: 1, content: `Older notification ${index}`, tags: [['p', owner]], created_at: now - index - 100 }, authorKey),
+            }))),
             add: async () => notificationRepository.upsert(owner, [{ event: sign('New incoming notification') }]),
             unread: () => notificationRepository.hasUnread(owner),
             replay: () => notificationRepository.upsert(owner, incoming.map(event => ({ event }))),

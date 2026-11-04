@@ -85,11 +85,21 @@
         return () => { active = false; subscription.unsubscribe(); };
     });
     $effect(() => {
-        const ids = records.filter(record => record.unread).map(record => record.eventId);
         const owner = pubkeyHex, epoch = generation;
-        if (!show || !visible || invalidated || !owner || !ids.length) return;
-        void tick().then(() => notificationRepository.markRead(owner, ids,
-            () => show && visible && !invalidated && generation === epoch && pubkeyHex === owner)).catch(() => { failed = true; });
+        if (!show || !visible || invalidated || !owner) return;
+        let active = true;
+        const owned = () => active && show && visible && !invalidated && generation === epoch && pubkeyHex === owner;
+        // Opening the inbox acknowledges saved notifications, including later local pages.
+        // Snapshot IDs keep arrivals after hiding/closing out of an already queued update.
+        const subscription = liveQuery(() => notificationRepository.unreadEventIds(owner)).subscribe({
+            next: ids => {
+                if (!ids.length || !owned()) return;
+                void tick().then(() => notificationRepository.markRead(owner, ids, owned))
+                    .catch(() => { if (owned()) failed = true; });
+            },
+            error: () => { if (owned()) failed = true; },
+        });
+        return () => { active = false; subscription.unsubscribe(); };
     });
     $effect(() => {
         for (const record of records) profileSync.ensureProfile(record.event.pubkey, record.relayUrls);

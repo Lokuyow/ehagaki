@@ -59,6 +59,10 @@ export class NotificationRepository {
     async hasUnread(owner: string) {
         return !!await this.db.notifications.where('[ownerPubkeyHex+unread]').equals([owner, 1]).first();
     }
+    async unreadEventIds(owner: string): Promise<string[]> {
+        const keys = await this.db.notifications.where('[ownerPubkeyHex+unread]').equals([owner, 1]).primaryKeys();
+        return keys.map(id => id.slice(owner.length + 1));
+    }
     async markRead(owner: string, eventIds: string[], isActive = () => true) {
         await this.db.transaction('rw', this.db.notifications, async () => {
             if (!isActive()) return;
