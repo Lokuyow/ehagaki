@@ -16,15 +16,14 @@
     import { usePostHistoryEmojiState } from '../lib/hooks/usePostHistoryEmojiState.svelte';
     import { notificationRepository, type NotificationRecord } from '../lib/storage/notificationRepository';
     import { notificationType } from '../lib/notification';
-    import { groupNotifications, type NotificationGroup } from '../lib/notificationGrouping';
+    import { groupNotifications, notificationTargetReference, type NotificationGroup } from '../lib/notificationGrouping';
     import { syncNotifications } from '../lib/notificationSyncService';
     import { createPostHistoryProfileSyncCoordinator } from '../lib/postHistoryProfileSync';
     import { createPostHistoryRelatedTargetResolver, type RelatedTargetDescriptor } from '../lib/postHistoryRelatedTargetResolver.svelte';
     import { usePostHistoryQuotePreviews } from '../lib/hooks/usePostHistoryQuotePreviews.svelte';
     import { createSensitivePayloadBodyLoader } from '../lib/sensitiveContentPayloadReader';
     import { verifyRelatedEvent } from '../lib/relatedEventVerification';
-    import { parseReactionReference } from '../lib/reactionReference';
-    import { getRepostReference, repostTargetToPost } from '../lib/postRepostUtils';
+    import { repostTargetToPost } from '../lib/postRepostUtils';
     import { shortenMiddle } from '../lib/utils/textDisplayUtils';
     import { getPostHistoryAuthoredRelayScopeKey } from '../lib/postHistoryRelayResolver';
     import type { FullscreenMediaItem, ProfileData, RelayConfig } from '../lib/types';
@@ -122,20 +121,20 @@
         for (const record of records) profileSync.ensureProfile(record.event.pubkey, record.relayUrls);
     });
     function descriptor(record: NotificationRecord): RelatedTargetDescriptor | null {
-        const reference = record.event.kind === 7 ? parseReactionReference(record.event).reference : getRepostReference(record.event);
+        const reference = notificationTargetReference(record);
         return reference ? { targetEventId: reference.eventId, authorHint: reference.authorHint,
-            authorHints: reference.authorHints, targetKindHint: record.event.kind === 6 ? 1 : reference.targetKindHint,
-            excludedKinds: record.event.kind === 16 ? [1] : undefined,
+            authorHints: reference.authorHints, targetKindHint: reference.targetKindHint,
+            excludedKinds: reference.excludedKinds,
             relayHints: [...reference.relayHints, ...record.relayUrls], relationKind: 'notification',
             scopeKey: 'notifications', sourceEventId: record.eventId } : null;
     }
     function groupDescriptor(group: NotificationGroup): RelatedTargetDescriptor | null {
         const value = descriptor(group.record);
-        if (!value || group.reactions.length < 2) return value;
-        return { ...value, relayHints: [...new Set(group.reactions.flatMap(record => descriptor(record)?.relayHints ?? []))] };
+        if (!value) return null;
+        return { ...value, relayHints: [...new Set([...group.reactions, ...group.reposts].flatMap(record => descriptor(record)?.relayHints ?? []))] };
     }
     function targetSnapshot(record: NotificationRecord) {
-        const reference = record.event.kind === 7 ? parseReactionReference(record.event).reference : getRepostReference(record.event);
+        const reference = notificationTargetReference(record);
         const snapshot = reference ? resolver.getTargetSnapshot(reference.eventId) : null;
         if (!snapshot?.event || !reference) return snapshot;
         const kindValid = record.event.kind === 6 ? snapshot.event.kind === 1
@@ -210,22 +209,38 @@
         {#each notificationGroups as group (group.id)}
             {@const record = group.record}
             {@const type = notificationType(record.event)}
-            <article class="notification-entry" data-notification-id={group.reactions[0]?.eventId ?? record.eventId}>
+            <article class="notification-entry" data-notification-id={group.id} data-notification-target={group.targetId}>
                 {#if type === 'reaction' || type === 'repost'}
-                    {#if type === 'reaction'}
+                    {#if group.reposts.length}
+                        <div class="notification-actor">
+                            <div class="notification-repost-chip post-preview-reaction-chip">
+                                <span class="notification-kind-icon notification-repost-icon svg-icon" role="img" aria-label={$_('notifications.repost')}></span>
+                                <div class="post-preview-reaction-actors">
+                                    {#each group.reposts as repost (repost.eventId)}
+                                        {@const label = profiles[repost.event.pubkey]?.displayName || profiles[repost.event.pubkey]?.name || shortenMiddle(repost.event.pubkey, 12, 4)}
+                                        <span class="notification-reposter post-preview-reaction-actor" title={label} aria-label={label}>
+                                            <ProfileAvatar pubkeyHex={repost.event.pubkey} displayName={profiles[repost.event.pubkey]?.displayName}
+                                                src={profiles[repost.event.pubkey]?.picture} alt={label} rootClassName="notification-avatar"
+                                                imageClassName="notification-avatar-image" fallbackDelayMs={0} />
+                                        </span>
+                                    {/each}
+                                </div>
+                            </div>
+                            {#if group.reposts.length === 1}
+                                {@const repost = group.reposts[0]}
+                                <span>{profiles[repost.event.pubkey]?.displayName || profiles[repost.event.pubkey]?.name || shortenMiddle(repost.event.pubkey, 12, 4)}</span>
+                            {/if}
+                        </div>
+                    {/if}
+                    {#if group.reactions.length}
                         <div class="notification-reaction">
                             <PostHistoryReactionDetails readModel={reactionModel(group.reactions)}
                                 emojiLoadStateByUrl={reactionEmoji.emojiLoadStateByUrl} emojiImageMetaByUrl={reactionEmoji.emojiImageMetaByUrl} />
-                            {#if group.reactions.length === 1}<span>{profiles[record.event.pubkey]?.displayName || profiles[record.event.pubkey]?.name || shortenMiddle(record.event.pubkey, 12, 4)}</span>{/if}
+                            {#if group.reactions.length === 1}
+                                {@const reaction = group.reactions[0]}
+                                <span>{profiles[reaction.event.pubkey]?.displayName || profiles[reaction.event.pubkey]?.name || shortenMiddle(reaction.event.pubkey, 12, 4)}</span>
+                            {/if}
                         </div>
-                    {:else}
-                    <div class="notification-actor">
-                        <span class="notification-kind-icon notification-repost-icon svg-icon" role="img" aria-label={$_('notifications.repost')}></span>
-                        <ProfileAvatar pubkeyHex={record.event.pubkey} displayName={profiles[record.event.pubkey]?.displayName}
-                            src={profiles[record.event.pubkey]?.picture} alt="" rootClassName="notification-avatar"
-                            imageClassName="notification-avatar-image" />
-                        <span>{profiles[record.event.pubkey]?.displayName || profiles[record.event.pubkey]?.name || shortenMiddle(record.event.pubkey, 12, 4)}</span>
-                    </div>
                     {/if}
                     {@const target = groupDescriptor(group)}
                     {@const snapshot = targetSnapshot(record)}
@@ -277,13 +292,14 @@
     .notification-entry { display: grid; min-width: 0; gap: 6px; padding-block: 8px; border-bottom: 1px solid var(--border-hr); }
     .notification-type { font-size: .85rem; opacity: .8; }
     .notification-reply-label { display: flex; align-items: center; gap: 6px; }
+    .notification-repost-chip { max-width: 100%; min-width: 0; }
     .notification-actor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
     .notification-reaction { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
     .notification-reaction :global(.post-preview-reactions-panel) { padding: 0; }
     .notification-actor :global(.notification-avatar) {
         display: block;
-        width: 24px;
-        height: 24px;
+        width: 100%;
+        height: 100%;
         flex: 0 0 auto;
         border-radius: 50%;
         overflow: hidden;

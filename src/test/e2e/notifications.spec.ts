@@ -137,7 +137,7 @@ test('opening, scrolling, refreshing and reopening never read or fetch post repl
     for (let index = 0; index < 2; index++) {
         await page.locator('.notification-btn').click();
         const dialog = page.getByRole('dialog');
-        await expect(dialog.locator('.notification-entry')).toHaveCount(4);
+        await expect(dialog.locator('.notification-entry')).toHaveCount(3);
         await dialog.locator('.notification-entry').last().scrollIntoViewIfNeeded();
         await dialog.getByRole('button', { name: '更新', exact: true }).click();
         await expect(dialog.getByRole('button', { name: '更新', exact: true })).toBeEnabled();
@@ -308,13 +308,53 @@ test('groups reactions to the same target with actor icons, counts, custom emoji
     await page.screenshot({ path: info.outputPath('reaction-360.png') });
 });
 
+for (const width of [360, 280]) test(`combines reposts and reactions in one target card at ${width}px`, async ({ page }, info) => {
+    if (width === 280) {
+        await page.setViewportSize({ width: 800, height: 850 });
+        await page.goto('post-history-dialog-playwright.html?notifications-host=1');
+    } else {
+        await page.setViewportSize({ width, height: 844 });
+        await page.goto('post-history-dialog-playwright.html?notifications=1');
+    }
+    const content = width === 280 ? page.frameLocator('iframe[title="Notifications in a narrow host"]') : page;
+    await content.locator('.notification-btn').waitFor({ state: 'attached' });
+    await content.locator('body').evaluate(async node => {
+        const api = Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__');
+        await api.addRepost(); await api.addReaction();
+    });
+    await content.locator('.notification-btn').click();
+    const dialog = content.getByRole('dialog');
+    const combined = dialog.locator('.notification-entry:has(.notification-actor):has(.notification-reaction)');
+    await expect(combined).toHaveCount(1);
+    await expect(combined.locator('.notification-reposter')).toHaveCount(2);
+    await expect(combined.locator('.notification-repost-icon')).toHaveCount(1);
+    await expect(combined.locator('.notification-actor')).toHaveText('');
+    const repostStyle = await combined.locator('.notification-repost-chip').evaluate(node => ({ radius: getComputedStyle(node).borderRadius, background: getComputedStyle(node).backgroundColor }));
+    const reactionStyle = await combined.locator('.notification-reaction .post-preview-reaction-chip').first().evaluate(node => ({ radius: getComputedStyle(node).borderRadius, background: getComputedStyle(node).backgroundColor }));
+    expect(repostStyle).toEqual(reactionStyle);
+    await expect(combined.locator('.notification-reaction .post-preview-reaction-avatar-image')).toHaveCount(2);
+    await expect(combined.locator('img[alt=":demo:"]')).toBeVisible();
+    await expect(combined.getByText('Original notification target', { exact: true })).toHaveCount(1);
+    await expect(combined.locator('.post-preview-footer')).toHaveCount(1);
+    await expect(dialog.locator('.notification-entry').first()).toHaveAttribute('data-notification-target', await combined.getAttribute('data-notification-target') as string);
+    expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`combined-${width}.png`) });
+    await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
+    await content.locator('body').evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').replay());
+    await content.locator('.notification-btn').click();
+    await expect(combined.locator('.notification-reposter')).toHaveCount(2);
+    await expect(combined.getByText('Original notification target', { exact: true })).toHaveCount(1);
+    expect(await content.locator('body').evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').relatedActivity())).toEqual({ childReads: 0, repairs: 0 });
+    await expect.poll(() => content.locator('body').evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').unread())).toBe(false);
+});
+
 test('keeps an incompatible reaction separate without hiding the valid target', async ({ page }) => {
     await page.goto('post-history-dialog-playwright.html?notifications=1');
     await expect(page.getByRole('button', { name: '通知（未読あり）' })).toBeVisible();
     await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addMismatchedReaction());
     await page.getByRole('button', { name: '通知（未読あり）' }).click();
     const dialog = page.getByRole('dialog');
-    await expect(dialog.getByText('Original notification target', { exact: true })).toHaveCount(3);
+    await expect(dialog.getByText('Original notification target', { exact: true })).toHaveCount(2);
     const reactions = dialog.locator('.notification-entry:has(.notification-reaction)');
     await expect(reactions).toHaveCount(2);
     await expect(reactions.filter({ hasText: 'Original notification target' })).toHaveCount(1);
@@ -409,14 +449,14 @@ test('upgrades a v18 history and read notification without resetting data or ref
 test('notification targets survive reload and are read from the shared event store without another target REQ', async ({ page }) => {
     await page.goto('post-history-dialog-playwright.html?notifications=1');
     await page.getByRole('button', { name: '通知（未読あり）' }).click();
-    await expect(page.getByRole('dialog').getByText('Original notification target', { exact: true })).toHaveCount(3);
+    await expect(page.getByRole('dialog').getByText('Original notification target', { exact: true })).toHaveCount(2);
     const stored = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').storage());
     expect(stored.event?.rawEvent.content).toBe('Original notification target');
     expect(stored.notifications).toHaveLength(4);
     for (const notification of stored.notifications) expect(notification).not.toHaveProperty('event');
     await page.reload();
     await page.getByRole('button', { name: '通知', exact: true }).click();
-    await expect(page.getByRole('dialog').getByText('Original notification target', { exact: true })).toHaveCount(3);
+    await expect(page.getByRole('dialog').getByText('Original notification target', { exact: true })).toHaveCount(2);
     const targetRequests = await page.evaluate(() => {
         const fixture = JSON.parse(localStorage.getItem('notificationPublicFixture')!);
         const harness = Reflect.get(window, '__NOTIFICATIONS__');
@@ -440,10 +480,10 @@ async function expectContainedActorAvatar(dialog: Locator) {
             actor: { left: actor.left, top: actor.top, right: actor.right, bottom: actor.bottom },
         };
     });
-    expect(bounds.image.width).toBeCloseTo(24);
-    expect(bounds.image.height).toBeCloseTo(24);
-    expect(bounds.avatar.width).toBeCloseTo(24);
-    expect(bounds.avatar.height).toBeCloseTo(24);
+    expect(bounds.image.width).toBeCloseTo(26);
+    expect(bounds.image.height).toBeCloseTo(26);
+    expect(bounds.avatar.width).toBeCloseTo(26);
+    expect(bounds.avatar.height).toBeCloseTo(26);
     for (const container of [bounds.avatar, bounds.actor]) {
         expect(bounds.image.left).toBeGreaterThanOrEqual(container.left);
         expect(bounds.image.top).toBeGreaterThanOrEqual(container.top);
@@ -473,7 +513,7 @@ test('notifications persist read state, render quotes, and hand reply/reaction t
     await expect(dialog.getByText('Quote notification text', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Original notification target', { exact: true }).first()).toBeVisible();
     const targets = dialog.locator('.notification-post.plain .post-history-related-card');
-    await expect(targets).toHaveCount(2);
+    await expect(targets).toHaveCount(1);
     for (const target of await targets.all()) {
         await expect(target).toHaveCSS('border-inline-start-width', '0px');
         await expect(target).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -503,8 +543,8 @@ test('notifications persist read state, render quotes, and hand reply/reaction t
     await expect(page.locator('.notification-badge')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => (window as any).__NOTIFICATIONS__.count())).toBe(5);
     await page.getByRole('button', { name: '通知', exact: true }).click();
-    await expect(page.getByRole('dialog').locator('.notification-entry')).toHaveCount(5);
-    await expect(page.getByRole('dialog').getByText('Original notification target', { exact: true })).toHaveCount(3);
+    await expect(page.getByRole('dialog').locator('.notification-entry')).toHaveCount(4);
+    await expect(page.getByRole('dialog').getByText('Original notification target', { exact: true })).toHaveCount(2);
     await page.screenshot({ path: info.outputPath('notifications-360.png') });
     await page.goBack();
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -525,8 +565,8 @@ test('notification controls reflow in a 280px embedded viewport with both shortc
     for (let index = 1; index < boxes.length; index++) expect(boxes[index]!.left).toBeGreaterThanOrEqual(boxes[index - 1]!.right);
     await embedded.getByRole('button', { name: '通知（未読あり）' }).click();
     await expect(embedded.getByRole('dialog')).toBeVisible();
-    await expect(embedded.getByRole('dialog').locator('.notification-entry')).toHaveCount(4);
-    await expect(embedded.getByRole('dialog').getByText('Original notification target', { exact: true })).toHaveCount(3);
+    await expect(embedded.getByRole('dialog').locator('.notification-entry')).toHaveCount(3);
+    await expect(embedded.getByRole('dialog').getByText('Original notification target', { exact: true })).toHaveCount(2);
     await expectContainedActorAvatar(embedded.getByRole('dialog'));
     expect(await embedded.getByRole('dialog').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath('notifications-280.png') });
@@ -538,7 +578,7 @@ test('read state survives reloads and is shared across tabs, while hidden dialog
     const url = 'post-history-dialog-playwright.html?notifications=1';
     await page.goto(url);
     await page.getByRole('button', { name: '通知（未読あり）' }).click();
-    await expect(page.getByRole('dialog').locator('.notification-entry')).toHaveCount(4);
+    await expect(page.getByRole('dialog').locator('.notification-entry')).toHaveCount(3);
     await expect.poll(() => page.evaluate(() => (window as any).__NOTIFICATIONS__.unread())).toBe(false);
     await page.evaluate(() => {
         Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
@@ -558,7 +598,7 @@ test('read state survives reloads and is shared across tabs, while hidden dialog
     await second.evaluate(() => (window as any).__NOTIFICATIONS__.add());
     await expect(page.locator('.notification-badge')).toBeVisible();
     await page.getByRole('button', { name: '通知（未読あり）' }).click();
-    await expect(page.getByRole('dialog').locator('.notification-entry')).toHaveCount(6);
+    await expect(page.getByRole('dialog').locator('.notification-entry')).toHaveCount(5);
     await expect(second.locator('.notification-badge')).toHaveCount(0);
     await page.reload();
     await expect(page.getByRole('button', { name: '通知', exact: true })).toBeVisible();
@@ -571,10 +611,10 @@ test('unavailable targets retain the incoming notification and offer retry', asy
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByText('Quote notification text', { exact: true })).toBeVisible();
     const unavailable = dialog.locator('.notification-entry').filter({ hasText: '元の投稿を表示できません' });
-    await expect(unavailable).toHaveCount(2);
+    await expect(unavailable).toHaveCount(1);
     await expect(unavailable.first().getByRole('button', { name: '再試行', exact: true })).toBeVisible();
     await unavailable.first().getByRole('button', { name: '再試行', exact: true }).click();
-    await expect(dialog.locator('.notification-entry')).toHaveCount(4);
+    await expect(dialog.locator('.notification-entry')).toHaveCount(3);
 });
 
 test('opening notifications clears unread saved beyond the first local page without fetching more', async ({ page }) => {
@@ -583,7 +623,7 @@ test('opening notifications clears unread saved beyond the first local page with
     await page.waitForFunction(() => Reflect.has(window, '__NOTIFICATIONS__'));
     await page.evaluate(() => (window as any).__NOTIFICATIONS__.addOlder(101));
     await page.getByRole('button', { name: '通知（未読あり）', exact: true }).click();
-    await expect(page.getByRole('dialog').locator('.notification-entry')).toHaveCount(100);
+    await expect(page.getByRole('dialog').locator('.notification-entry')).toHaveCount(99);
     await expect(page.locator('.notification-badge')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => (window as any).__NOTIFICATIONS__.unread())).toBe(false);
     // Even an older event arriving while the inbox is open must not leave the badge on.
