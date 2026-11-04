@@ -113,7 +113,7 @@
 </div>
 <style>
     .notification-post { min-width: 0; }
-    .plain :global(.post-history-related-card) { border-inline-start: 0; background: transparent; margin-inline-start: 0; }
+    .plain :global(.post-history-related-card) { --post-history-related-card-bg: var(--dialog-bg); border-inline-start: 0; background: transparent; margin-inline-start: 0; }
     .plain :global(.post-history-related-card-body) { padding-inline: 0; }
     .plain :global(.post-preview-footer) { margin-inline: 0; padding-inline-start: 0; }
 </style>

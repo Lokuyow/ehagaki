@@ -92,7 +92,13 @@ for (const width of [360, 791]) test(`shared footer uses the available width at 
     expect(await card.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     await expect(footer.getByRole('button', { name: '引用', exact: true })).toBeVisible();
     await expect(footer.getByRole('button', { name: 'アクションを表示', exact: true })).toBeVisible();
-    await page.screenshot({ path: info.outputPath(`footer-${width}.png`) });
+    for (const theme of ['light', 'dark']) {
+        await page.evaluate(value => { document.documentElement.classList.remove('light', 'dark'); document.documentElement.classList.add(value); document.documentElement.style.colorScheme = value; }, theme);
+        const surface = await page.getByRole('dialog').evaluate(node => getComputedStyle(node).backgroundColor);
+        const buttons = footer.locator('button');
+        for (const button of await buttons.all()) await expect(button).toHaveCSS('background-color', surface);
+        await page.screenshot({ path: info.outputPath(`footer-${width}-${theme}.png`) });
+    }
 });
 
 test('shared post footers target their own events and expand cached replies and reactions', async ({ page }, info) => {
@@ -103,6 +109,7 @@ test('shared post footers target their own events and expand cached replies and 
     await page.locator('.notification-btn').click();
     const dialog = page.getByRole('dialog');
     const target = dialog.locator('.notification-entry:has(.notification-reaction) .notification-post').first();
+    await target.scrollIntoViewIfNeeded();
     await expect(target.locator('.post-preview-footer')).toHaveCount(1);
     await expect(target.getByRole('button', { name: '引用', exact: true })).toBeVisible();
     await target.getByRole('button', { name: /返信 1件を表示/ }).click();
@@ -129,6 +136,7 @@ test('failed related lookups preserve cached counts and offer retry', async ({ p
     await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').seedInteractions());
     await page.locator('.notification-btn').click();
     const target = page.getByRole('dialog').locator('.notification-entry:has(.notification-reaction) .notification-post').first();
+    await target.scrollIntoViewIfNeeded();
     await expect(target.getByRole('button', { name: /返信 1件を表示/ })).toBeVisible();
     const retry = target.getByRole('button', { name: '再試行', exact: true });
     await expect(retry).toBeVisible();
