@@ -16,6 +16,16 @@
     import type { NostrEvent } from '../../lib/types';
     import { configureAppRuntimeEnvironment } from '../../lib/appRuntimeEnvironment';
 
+    let releaseInitialList = () => {};
+    const listGate = new Promise<void>(resolve => releaseInitialList = resolve);
+    const listMethod = notificationRepository.list.bind(notificationRepository);
+    const openingMode = new URLSearchParams(location.search).get('opening');
+    if (openingMode) notificationRepository.list = async (...args) => {
+        if (openingMode === 'delay') await listGate;
+        if (openingMode === 'fail') throw new Error('Fixture local read failure');
+        if (openingMode === 'empty') return [];
+        return listMethod(...args);
+    };
     const authorKey = generateSecretKey();
     const now = Math.floor(Date.now() / 1000), relay = 'wss://fixture.example/';
     const config = { [relay]: { read: true, write: false } };
@@ -64,6 +74,7 @@
         }).then(() => notificationRepository.upsert(owner, incoming.map(event => ({ event, relayUrls: [relay] }))))
             .then(() => ready = true);
         Reflect.set(window, '__NOTIFICATIONS__', {
+            releaseInitialList,
             addOlder: async (count: number) => notificationRepository.upsert(owner, Array.from({ length: count }, (_, index) => ({
                 event: finalizeEvent({ kind: 1, content: `Older notification ${index}`, tags: [['p', owner]], created_at: now - index - 100 }, authorKey),
             }))),

@@ -415,6 +415,7 @@
     loadDraftListDialog,
     loadPostHistoryDialog,
     loadNotificationDialog,
+    preloadNotificationDialog,
     preloadPostHistoryDialog,
     loadComposerTargetDialog,
     loadCustomEmojiPicker,
@@ -817,6 +818,9 @@
   const draftListDialog = createDialogVisibilityHandlers(
     showDraftListDialogStore,
   );
+  $effect(() => {
+    if (isAuthenticated && footerSettingShortcutsStore.notificationsEnabled && !isSwitchingAccount && !isLoggingOut) void preloadNotificationDialog();
+  });
   const notificationDialog = createDialogVisibilityHandlers(showNotificationDialogStore);
   const postHistoryDialog = createDialogVisibilityHandlers(
     showPostHistoryDialogStore,
@@ -2537,6 +2541,7 @@
         <NotificationDialogComponent bind:this={notificationDialogRef} show={true}
           pubkeyHex={authState.value?.pubkey ?? null} {rxNostr} relayConfig={relayConfigStore.value}
           returnFocus={notificationReturnFocus} onClose={notificationDialog.close}
+          onLoadFailure={handleAppComponentLoadFailure} isStaleAssetReloadRequired={() => staleAssetReloadRequired}
           onReplyPost={handlePostHistoryReply} onReactionPost={handlePostHistoryReaction}
           reconcileDirectReplyCandidates={postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates} />
       {/if}

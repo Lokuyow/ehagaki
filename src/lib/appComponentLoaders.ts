@@ -1,3 +1,4 @@
+import { importNotificationContent } from './notificationDialogImports';
 import {
     createComponentLoader,
     type ComponentLoadFailureKind,
@@ -25,6 +26,7 @@ export type AppComponentKey =
     | "settings"
     | "welcome"
     | "draft-list"
+    | "notifications-content"
     | "notifications"
     | "post-history"
     | "post-history-posts"
@@ -46,6 +48,7 @@ export interface AppComponentLoaders {
     loadWelcomeDialog(): Promise<void>;
     loadDraftListDialog(): Promise<void>;
     loadNotificationDialog(): Promise<void>;
+    preloadNotificationDialog(): Promise<void>;
     loadPostHistoryDialog(): Promise<void>;
     preloadPostHistoryDialog(): Promise<void>;
     loadComposerTargetDialog(): Promise<void>;
@@ -115,6 +118,7 @@ export function createAppComponentLoaders(
         () => import("../components/DraftListDialog.svelte"),
         commonOptions,
     );
+    const notificationContent = createComponentLoader("notifications-content", importNotificationContent, commonOptions);
     const loadNotificationDialogModule = createComponentLoader("notifications", () => import("../components/NotificationDialog.svelte"), commonOptions);
     const loadPostHistoryDialogModule = createComponentLoader(
         "post-history",
@@ -185,7 +189,12 @@ export function createAppComponentLoaders(
                 targets.onLoadFailure,
             );
         },
+        async preloadNotificationDialog() {
+            const result = await loadNotificationDialogModule.preload();
+            if (result.status === "loaded") targets.setNotificationDialogComponent?.(result.component);
+        },
         async loadNotificationDialog() {
+            void notificationContent.preload();
             applyLoadResult(await loadNotificationDialogModule(), component => targets.setNotificationDialogComponent?.(component), targets.onLoadFailure);
         },
         async loadPostHistoryDialog() {

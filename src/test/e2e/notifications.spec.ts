@@ -14,6 +14,60 @@ test.beforeEach(async ({ context, page }) => {
 });
 test.afterEach(() => expect(pageErrors).toEqual([]));
 
+test('a delayed content module leaves the 280px shell closable and reopens safely', async ({ page }, info) => {
+    let release = () => {};
+    const gate = new Promise<void>(resolve => release = resolve);
+    await page.route('**/src/components/NotificationDialogContent.svelte*', async route => { await gate; await route.continue(); });
+    await page.goto('post-history-dialog-playwright.html?notifications-host=1');
+    const frame = page.frameLocator('iframe[title="Notifications in a narrow host"]');
+    await frame.locator('.notification-btn').click();
+    const dialog = frame.getByRole('dialog');
+    await expect(dialog.locator('.notification-opening-placeholder')).toBeVisible();
+    expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath('notification-skeleton-280.png') });
+    await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await frame.locator('.notification-btn').click();
+    await expect(dialog.locator('.notification-opening-placeholder')).toBeVisible();
+    release();
+    await expect(dialog.getByText('A mention addressed to you', { exact: true })).toBeVisible();
+    await expect(dialog.locator('.notification-opening-placeholder')).toHaveCount(0);
+});
+
+test('opening shows a noninteractive skeleton until local data renders without waiting for sync', async ({ page }, info) => {
+    await page.setViewportSize({ width: 360, height: 844 });
+    await page.goto('post-history-dialog-playwright.html?notifications=1&opening=delay');
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('.notification-opening-placeholder')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: '更新', exact: true })).toBeDisabled();
+    await expect(dialog.locator('.notification-viewport')).toHaveAttribute('aria-busy', 'true');
+    expect(await dialog.evaluate(node => getComputedStyle(node).animationDuration)).toBe('0.25s');
+    await page.screenshot({ path: info.outputPath('notification-skeleton-360.png') });
+    const toolbarTop = (await dialog.locator('.notification-toolbar').boundingBox())!.y;
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').releaseInitialList());
+    await expect(dialog.locator('.notification-opening-placeholder')).toHaveCount(0);
+    await expect(dialog.getByText('A mention addressed to you', { exact: true })).toBeVisible();
+    await expect(dialog.locator('.notification-viewport')).toHaveAttribute('aria-busy', 'false');
+    expect((await dialog.locator('.notification-toolbar').boundingBox())!.y).toBeCloseTo(toolbarTop, 0);
+    expect(await dialog.locator('.notification-list').evaluate(node => getComputedStyle(node).animationName)).toBe('none');
+    await page.goBack();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('.notification-btn')).toBeFocused();
+});
+
+for (const mode of ['empty', 'fail']) test(`opening exits the skeleton for local ${mode} and honors reduced motion`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`post-history-dialog-playwright.html?notifications=1&opening=${mode}`);
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('.notification-opening-placeholder')).toHaveCount(0);
+    await expect(dialog.locator('.notification-viewport')).toHaveAttribute('aria-busy', 'false');
+    expect(await dialog.evaluate(node => getComputedStyle(node).animationName)).toBe('none');
+    await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+});
+
 test('notification headers omit labels and times and identify reposts and replies with SVG icons', async ({ page }, info) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1');
