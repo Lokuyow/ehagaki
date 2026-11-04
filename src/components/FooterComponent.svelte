@@ -105,7 +105,7 @@
             onClick={(event) => onOpenNotificationDialog?.(event.currentTarget as HTMLElement)}
             ariaLabel={$_(notificationStore.hasUnread ? "notifications.openUnread" : "notifications.open")}>
             <div class="notification-icon svg-icon" aria-hidden="true"
-                style:mask-image={`url("${resolveAppAssetUrl('icons/notifications.svg')}")`}></div>
+                style:mask-image={`url("${resolveAppAssetUrl('icons/notifications_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg')}")`}></div>
             {#if notificationStore.hasUnread}<span class="notification-badge" aria-hidden="true"></span>{/if}
         </Button>
     {/if}

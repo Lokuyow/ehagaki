@@ -57,7 +57,7 @@
     </span>
 {:else}
     <span class="shortcut-icon shortcut-mask-icon {iconClass}" aria-hidden="true"
-        style:mask-image={shortcutId === 'notifications' ? `url("${resolveAppAssetUrl('icons/notifications.svg')}")` : undefined}></span>
+        style:mask-image={shortcutId === 'notifications' ? `url("${resolveAppAssetUrl('icons/notifications_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg')}")` : undefined}></span>
 {/if}
 
 <style>
