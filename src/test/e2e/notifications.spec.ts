@@ -14,6 +14,26 @@ test.beforeEach(async ({ context, page }) => {
 });
 test.afterEach(() => expect(pageErrors).toEqual([]));
 
+test('notification headers omit labels and times and identify reposts and replies with SVG icons', async ({ page }, info) => {
+    await page.setViewportSize({ width: 360, height: 844 });
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await expect(page.locator('.notification-btn')).toBeVisible();
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addReply());
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('.notification-reaction time, .notification-actor time')).toHaveCount(0);
+    await expect(dialog.getByText('リアクション', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText('リポスト', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText('返信', { exact: true })).toHaveCount(0);
+    const repost = dialog.getByRole('img', { name: 'リポスト', exact: true });
+    const reply = dialog.getByRole('img', { name: '返信', exact: true });
+    await expect(repost).toBeVisible(); await expect(reply).toBeVisible();
+    expect(await repost.evaluate(node => getComputedStyle(node).maskImage)).toContain('repost.svg');
+    expect(await reply.evaluate(node => getComputedStyle(node).maskImage)).toContain('chat_bubble_');
+    await expect(dialog.getByText('Reply notification text', { exact: true })).toBeVisible();
+    await page.screenshot({ path: info.outputPath('notification-headers-360.png') });
+});
+
 test('notification images are compact and can be expanded independently', async ({ page }, info) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1');
@@ -131,7 +151,7 @@ test('groups reactions to the same target with actor icons, counts, custom emoji
     const custom = reactions.filter({ has: page.locator('img[alt=":demo:"]') });
     await expect(custom).toHaveCount(1);
     await expect(custom.locator('.post-preview-reaction-avatar-image')).toHaveCount(3);
-    await expect(custom.locator('.notification-reaction time')).toBeVisible();
+    await expect(custom.locator('.notification-reaction time')).toHaveCount(0);
     await expect(custom.locator('.post-preview-reaction-count')).toHaveText(['2', '1']);
     await expect(custom.getByText('Original notification target', { exact: true })).toBeVisible();
     await expect(custom.getByRole('button', { name: 'リアクションする' })).toHaveCount(0);

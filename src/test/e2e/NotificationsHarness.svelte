@@ -68,6 +68,7 @@
                 event: finalizeEvent({ kind: 1, content: `Older notification ${index}`, tags: [['p', owner]], created_at: now - index - 100 }, authorKey),
             }))),
             add: async () => notificationRepository.upsert(owner, [{ event: sign('New incoming notification') }]),
+            addReply: async () => notificationRepository.upsert(owner, [{ event: finalizeEvent({ kind: 1, content: 'Reply notification text', tags: [['p', owner], ['e', original.id, relay, 'reply']], created_at: now + 1 }, authorKey) }]),
             addReaction: async () => notificationRepository.upsert(owner, [{ event: finalizeEvent({ kind: 7,
                 content: ':demo:', tags: [['p', owner], ['e', original.id], ['k', '1'], ['emoji', 'demo', 'https://profiles.example/large-avatar.png']],
                 created_at: now + 2 }, authorKey) }]),

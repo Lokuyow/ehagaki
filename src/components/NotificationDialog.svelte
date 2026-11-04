@@ -24,7 +24,6 @@
     import { verifyRelatedEvent } from '../lib/relatedEventVerification';
     import { parseReactionReference } from '../lib/reactionReference';
     import { getRepostReference, repostTargetToPost } from '../lib/postRepostUtils';
-    import { formatPostedAt } from '../lib/postHistoryDialogUtils';
     import { shortenMiddle } from '../lib/utils/textDisplayUtils';
     import { getPostHistoryAuthoredRelayScopeKey } from '../lib/postHistoryRelayResolver';
     import type { FullscreenMediaItem, ProfileData, RelayConfig } from '../lib/types';
@@ -222,17 +221,14 @@
                             <PostHistoryReactionDetails readModel={reactionModel(group.reactions)}
                                 emojiLoadStateByUrl={reactionEmoji.emojiLoadStateByUrl} emojiImageMetaByUrl={reactionEmoji.emojiImageMetaByUrl} />
                             {#if group.reactions.length === 1}<span>{profiles[record.event.pubkey]?.displayName || profiles[record.event.pubkey]?.name || shortenMiddle(record.event.pubkey, 12, 4)}</span>{/if}
-                            <span class="notification-type">{$_('notifications.reaction')}</span>
-                            <time>{formatPostedAt(group.reactions[0].createdAt * 1000)}</time>
                         </div>
                     {:else}
                     <div class="notification-actor">
+                        <span class="notification-kind-icon notification-repost-icon svg-icon" role="img" aria-label={$_('notifications.repost')}></span>
                         <ProfileAvatar pubkeyHex={record.event.pubkey} displayName={profiles[record.event.pubkey]?.displayName}
                             src={profiles[record.event.pubkey]?.picture} alt="" rootClassName="notification-avatar"
                             imageClassName="notification-avatar-image" />
                         <span>{profiles[record.event.pubkey]?.displayName || profiles[record.event.pubkey]?.name || shortenMiddle(record.event.pubkey, 12, 4)}</span>
-                        <span>{$_(`notifications.${type}`)}</span>
-                        <time>{formatPostedAt(record.createdAt * 1000)}</time>
                     </div>
                     {/if}
                     {@const target = groupDescriptor(group)}
@@ -247,7 +243,11 @@
                         {/if}
                     {/if}
                 {:else}
-                    <span class="notification-type">{$_(`notifications.${type}`)}</span>
+                    {#if type === 'reply'}
+                        <span class="notification-kind-icon notification-reply-icon svg-icon" role="img" aria-label={$_('notifications.reply')}></span>
+                    {:else}
+                        <span class="notification-type">{$_(`notifications.${type}`)}</span>
+                    {/if}
                     <NotificationPost event={record.event} profile={profiles[record.event.pubkey]} relayUrls={record.relayUrls} loadSensitiveBody={sensitiveBody(record.event, record.relayUrls)}
                         onReply={(post) => apply(post, false)} onReaction={(post) => apply(post, true)} onImageOpen={openImage} />
                     {#each quotes.getQuotePreviews(repostTargetToPost(record.event, record.relayUrls)) as preview (preview.eventId)}
@@ -294,5 +294,7 @@
         height: 100%;
         object-fit: cover;
     }
-    time { font-size: .8rem; }
+    .notification-kind-icon { --icon-size: 22px; --svg: currentColor; width: 22px; height: 22px; flex: 0 0 22px; }
+    .notification-repost-icon { mask-image: url('/icons/repost.svg'); }
+    .notification-reply-icon { mask-image: url('/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg'); }
 </style>
