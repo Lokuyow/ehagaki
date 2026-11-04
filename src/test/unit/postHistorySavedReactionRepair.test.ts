@@ -1,3 +1,4 @@
+import { eventRecords } from "../../lib/storage/eventRepository";
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
 import { finalizeEvent, generateSecretKey } from "nostr-tools";
@@ -82,7 +83,7 @@ describe("saved Reaction NIP-25 repair", () => {
         await db.postHistoryChildInteractions.put(saved);
         expect(await repository.getReactionInteractions(newParent)).toEqual([]);
         expect(await repository.getReactionInteractions(oldParent)).toEqual([]);
-        expect(await db.postHistoryChildInteractions.get(event.id)).toBeUndefined();
+        expect(await eventRecords(db, "postHistoryChildInteractions").get(event.id)).toBeUndefined();
     });
 
     it.each(["hash", "structure", "missing-raw", "invalid-reference", "unsupported-reference"])("removes %s failures without touching other kinds", async failure => {
@@ -99,9 +100,9 @@ describe("saved Reaction NIP-25 repair", () => {
         await db.postHistoryChildInteractions.bulkPut([saved, reply]);
         await db.postHistory.put(main);
         expect(await repository.getReactionInteractions(newParent)).toEqual([]);
-        expect(await db.postHistoryChildInteractions.get(saved.id)).toBeUndefined();
-        expect(await db.postHistoryChildInteractions.get(reply.id)).toEqual(reply);
-        expect(await db.postHistory.get(main.id)).toEqual(main);
+        expect(await eventRecords(db, "postHistoryChildInteractions").get(saved.id)).toBeUndefined();
+        expect(await eventRecords(db, "postHistoryChildInteractions").get(reply.id)).toEqual(reply);
+        expect(await eventRecords(db, "postHistory").get(main.id)).toEqual(main);
     });
 
     it.each(["author", "kind"])("removes a fully signed reference contradicting a known target's %s", async mismatch => {
@@ -112,7 +113,7 @@ describe("saved Reaction NIP-25 repair", () => {
         await db.postHistory.put(post(target));
         await db.postHistoryChildInteractions.put(record(event));
         expect(await repository.getReactionInteractions(target.id)).toEqual([]);
-        expect(await db.postHistoryChildInteractions.get(event.id)).toBeUndefined();
+        expect(await eventRecords(db, "postHistoryChildInteractions").get(event.id)).toBeUndefined();
     });
 
     it("rolls back removal and reassignment together and retries after a failed repair", async () => {
@@ -126,7 +127,7 @@ describe("saved Reaction NIP-25 repair", () => {
         expect(await repository.getReactionInteractions(newParent)).toEqual([
             { ...valid, parentEventId: newParent, updatedAt: 1000 },
         ]);
-        expect(await db.postHistoryChildInteractions.get(invalid.id)).toBeUndefined();
+        expect(await eventRecords(db, "postHistoryChildInteractions").get(invalid.id)).toBeUndefined();
     });
 
     it("removes a contradictory cached reaction when a related target becomes known after initial repair", async () => {
@@ -137,6 +138,6 @@ describe("saved Reaction NIP-25 repair", () => {
         expect(await repository.getChildInteractionsForParents([newParent], [
             { eventId: newParent, targetKind: 42 },
         ])).toEqual([]);
-        expect(await db.postHistoryChildInteractions.get(event.id)).toBeUndefined();
+        expect(await eventRecords(db, "postHistoryChildInteractions").get(event.id)).toBeUndefined();
     });
 });

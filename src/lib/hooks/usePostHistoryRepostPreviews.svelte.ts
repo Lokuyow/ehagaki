@@ -11,8 +11,8 @@ export async function loadStoredRepostTarget(descriptor: RelatedTargetDescriptor
     const outer = await postHistoryRepository.getByEventId(descriptor.sourceEventId);
     const reference = outer && getRepostReference(outer);
     const target = outer?.repostTarget ?? (outer && reference
-        ? (await ehagakiDb.postHistory.where("pubkeyHex").equals(outer.pubkeyHex)
-            .filter((record) => isRepostOuterKind(record.kind) && record.repostTarget?.rawEvent.id === reference.eventId).first())?.repostTarget
+        ? (await postHistoryRepository.getAll({ pubkeyHex: outer.pubkeyHex }))
+            .find(record => isRepostOuterKind(record.kind) && record.repostTarget?.rawEvent.id === reference.eventId)?.repostTarget
         : undefined);
     const verified = reference && reference.eventId === descriptor.targetEventId && target
         // The resolver shares raw events by ID. Each outer's constraints and

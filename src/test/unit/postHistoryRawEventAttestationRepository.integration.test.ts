@@ -1,3 +1,4 @@
+import { eventRecords } from "../../lib/storage/eventRepository";
 import { usePostHistoryJsonlVerificationWorkerMock } from "../mocks/postHistoryJsonlVerificationWorker";
 import "fake-indexeddb/auto";
 import Dexie from "dexie";

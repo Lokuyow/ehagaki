@@ -18,12 +18,8 @@ import { createPostHistoryJsonlWorkerVerification, type PostHistoryJsonlWorkerVe
  * Kept independently from record schema versions. A stored result produced by
  * a different rule must be migrated before it is used by JSONL export.
  */
-export const RAW_EVENT_VERIFICATION_RULE_VERSION = 1;
-
-export type RawEventVerificationState = {
-    status: "valid" | "invalid";
-    ruleVersion: number;
-};
+export { RAW_EVENT_VERIFICATION_RULE_VERSION, type RawEventVerificationState } from "./rawEventVerificationState";
+import { RAW_EVENT_VERIFICATION_RULE_VERSION } from "./rawEventVerificationState";
 
 /**
  * This is intentionally opaque. The runtime registry, rather than its
@@ -201,7 +197,13 @@ export function attestFullyVerifiedPostHistoryRawEvent(
             return null;
         }
 
-        if (!verifyEvent(snapshot as never)) {
+        const priorToken = eventAttestations.get(event);
+        const prior = priorToken && attestations.get(priorToken);
+        // Reuse only a full in-memory proof for the identical wire fingerprint.
+        // Persisted flags and relay-signature capabilities do not grant this path.
+        const fullyAttested = prior?.evidence === 'full'
+            && prior.ruleVersion === RAW_EVENT_VERIFICATION_RULE_VERSION && prior.fingerprint === fingerprint;
+        if (!fullyAttested && !verifyEvent(snapshot as never)) {
             return null;
         }
 

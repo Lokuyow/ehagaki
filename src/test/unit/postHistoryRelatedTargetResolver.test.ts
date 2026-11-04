@@ -188,7 +188,7 @@ describe("createPostHistoryRelatedTargetResolver", () => {
         const target = finalizeEvent({ kind: 7, content: "+", tags: [], created_at: 1 }, generateSecretKey());
         const { resolver, contextFetchService, deletionRequestsRepositoryImpl } = createResolver({ requireFullVerification: true });
         contextFetchService.fetchEventById.mockReturnValue({ promise: Promise.resolve({ event: target, relayUrl: null }), cancel: vi.fn() });
-        const desc = createDescriptor({ targetEventId: target.id, relationKind: "reaction", authorHint: "b".repeat(64) });
+        const desc = createDescriptor({ targetEventId: target.id, relationKind: "reaction", authorHint: target.pubkey });
         expect(await resolver.ensureTarget(desc)).toMatchObject({ status: "resolved" });
         deletionRequestsRepositoryImpl.getDeletedTargets = vi.fn(async () => new Map([[target.pubkey, new Set([target.id])]]));
         expect(await resolver.ensureTarget(desc)).toMatchObject({ status: "deleted", event: null, authorPubkey: target.pubkey });
@@ -218,7 +218,7 @@ describe("createPostHistoryRelatedTargetResolver", () => {
         const target = finalizeEvent({ kind: 7, content: "👍", tags: [], created_at: 1 }, generateSecretKey());
         const { resolver, contextFetchService } = createResolver({ requireFullVerification: true });
         contextFetchService.fetchEventById.mockReturnValue({ promise: Promise.resolve({ event: target, relayUrl: null }), cancel: vi.fn() });
-        const desc = createDescriptor({ targetEventId: target.id, relationKind: "reaction" });
+        const desc = createDescriptor({ targetEventId: target.id, relationKind: "reaction", authorHint: target.pubkey });
         const first = await resolver.ensureTarget(desc);
         first!.event!.content = "tampered";
         await resolver.ensureTarget(desc);
@@ -259,7 +259,7 @@ describe("createPostHistoryRelatedTargetResolver", () => {
         const deferred = createDeferred<{ events: never[]; fetchedAt: number; relayUrls: string[] }>();
         const cancel = vi.fn();
         deletionFetchService.fetchDeletionRequests.mockReturnValue({ promise: deferred.promise, cancel });
-        const task = resolver.ensureTarget(createDescriptor({ targetEventId: target.id, relationKind: "reaction" }));
+        const task = resolver.ensureTarget(createDescriptor({ targetEventId: target.id, relationKind: "reaction", authorHint: target.pubkey }));
         await flushMicrotasks();
         resolver.reset();
         deferred.resolve({ events: [], fetchedAt: 0, relayUrls: [] });

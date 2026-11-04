@@ -1,3 +1,4 @@
+import { eventRecords } from "../../lib/storage/eventRepository";
 import { usePostHistoryJsonlVerificationWorkerMock } from "../mocks/postHistoryJsonlVerificationWorker";
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
@@ -80,7 +81,7 @@ describe("Citrine import restoration", () => {
         const future = h.post(now + 75);
         const result = await h.run(h.jsonl([...historical, afterExport, future]), `citrine-${exportSecond * 1000}.jsonl`);
         expect(result).toMatchObject({ status: "completed", insertedPostCount: 4, failedPostEventCount: 0, restoredRangeChanged: true });
-        expect((await h.db.postHistory.get(future.id))?.rawEvent).toEqual(JSON.parse(JSON.stringify(future)));
+        expect((await eventRecords(h.db, "postHistory").get(future.id))?.rawEvent).toEqual(JSON.parse(JSON.stringify(future)));
         expect((await h.ranges.get(h.owner, kindsKey)).ranges).toEqual([{
             since: historical[0].created_at,
             until: exportSecond < now ? historical[1].created_at : afterExport.created_at,

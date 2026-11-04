@@ -1,3 +1,4 @@
+import { eventRecords } from "../../lib/storage/eventRepository";
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRxNostr } from "rx-nostr";
@@ -215,7 +216,7 @@ describe("local relay with real rx-nostr verification and IndexedDB", () => {
         expect((await repository.getByEventId(saved.id))?.deletionEventId).toBe(deletion.id);
         expect((await repository.getByEventId(structure.id))?.deletedAt).toBeUndefined();
         expect(LocalSocket.sent.filter(([type]) => type === "EVENT")).toHaveLength(0);
-        expect((await db.postHistoryDeletionRequests.toArray()).every((record) => !record.relayUrls.length)).toBe(true);
+        expect((await db.postHistoryDeletionRequests.toArray().then(rows => eventRecords(db, "postHistoryDeletionRequests").hydrate(rows))).every((record) => !record.relayUrls.length)).toBe(true);
     });
 
     it("continues REQ/EVENT after Citrine's initial AUTH challenge without authenticating", async () => {
@@ -407,7 +408,7 @@ describe("local relay with real rx-nostr verification and IndexedDB", () => {
         const deletion = sign(5, 110, [["e", payload.id], ["k", "36"]], "");
         LocalSocket.corpus = [structure, payload, deletion];
         await read().promise;
-        expect((await db.postHistoryDeletionRequests.toArray()).map(record => record.deletionEventId)).toEqual([deletion.id]);
+        expect((await db.postHistoryDeletionRequests.toArray().then(rows => eventRecords(db, "postHistoryDeletionRequests").hydrate(rows))).map(record => record.deletionEventId)).toEqual([deletion.id]);
         expect(LocalSocket.sent.filter(([type]) => type === "EVENT")).toHaveLength(0);
         const attested = attestFullyVerifiedPostHistoryRawEvent(structure)!;
         await repository.upsertFetchedEvents({ events: [{ ...attested, relayUrls: ["wss://external.example/"] }] });

@@ -50,6 +50,8 @@ export function ensureCurrentEHagakiDbSchema(
     sharedMediaStoreName = 'sharedMedia',
     upgradeTransaction?: IndexedDbUpgradeTransactionLike | null,
 ): void {
+    createObjectStoreIfMissing(db, 'events', 'id');
+    createObjectStoreIfMissing(db, 'eventStoreMigration', 'id');
     const postHistoryAlreadyExists = db.objectStoreNames.contains('postHistory');
     createObjectStoreIfMissing(db, 'emojiItems', 'id', [
         { name: 'pubkeyHex', keyPath: 'pubkeyHex' },

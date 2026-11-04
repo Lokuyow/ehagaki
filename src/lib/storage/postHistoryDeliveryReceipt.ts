@@ -1,3 +1,4 @@
+import { eventRecords } from "./eventRepository";
 import { ehagakiDb } from "./ehagakiDb";
 import { getPostHistoryLocalRevision } from "./postHistoryLocalWriteScope";
 import { RelayConfigUtils } from "../relayConfigUtils";
@@ -8,11 +9,11 @@ export async function followPostHistoryDelivery(eventId: string, ownerPubkeyHex:
     if (!result.deliverySettled) return;
     const final = await result.deliverySettled;
     if (!ehagakiDb.isOpen()) return;
-    await ehagakiDb.transaction("rw", ehagakiDb.postHistory, ehagakiDb.postHistoryWriteGeneration, async () => {
+    await ehagakiDb.transaction("rw", ehagakiDb.events, ehagakiDb.postHistory, ehagakiDb.postHistoryWriteGeneration, async () => {
         if (await getPostHistoryLocalRevision(ehagakiDb, ownerPubkeyHex) !== expectedRevision) return;
-        const existing = await ehagakiDb.postHistory.get(eventId);
+        const existing = await eventRecords(ehagakiDb, "postHistory").get(eventId);
         if (!existing || existing.pubkeyHex !== ownerPubkeyHex || existing.deletedAt) return;
-        await ehagakiDb.postHistory.update(eventId, {
+        await eventRecords(ehagakiDb, "postHistory").update(eventId, {
             acceptedRelays: RelayConfigUtils.sanitizeExternalRelayUrls([...existing.acceptedRelays, ...(final.acceptedRelays ?? [])]),
         });
     });

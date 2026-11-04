@@ -1,3 +1,4 @@
+import { eventRecords } from "./storage/eventRepository";
 /// <reference lib="webworker" />
 
 import {
@@ -16,16 +17,16 @@ function send(message: PostHistoryJsonlExportWorkerResponse): void {
 
 function createVerificationStores(): PostHistoryVerificationStores {
     return {
-        post: ehagakiDb.postHistory,
-        deletion: ehagakiDb.postHistoryDeletionRequests,
+        post: eventRecords(ehagakiDb, "postHistory"),
+        deletion: eventRecords(ehagakiDb, "postHistoryDeletionRequests"),
         transaction: {
             post: (run) => ehagakiDb.transaction(
-                "rw",
+                "rw", ehagakiDb.events,
                 ehagakiDb.postHistory,
                 run,
             ),
             deletion: (run) => ehagakiDb.transaction(
-                "rw",
+                "rw", ehagakiDb.events,
                 ehagakiDb.postHistoryDeletionRequests,
                 run,
             ),
@@ -39,16 +40,16 @@ async function exportForPubkey(pubkeyHex: string): Promise<{
 }> {
     send({ type: "progress", progress: { phase: "loading" } });
     const [postRecords, deletionRecords] = await Promise.all([
-        ehagakiDb.postHistory.where("pubkeyHex").equals(pubkeyHex).toArray(),
+        ehagakiDb.postHistory.where("pubkeyHex").equals(pubkeyHex).toArray().then(rows => eventRecords(ehagakiDb, "postHistory").hydrate(rows)),
         ehagakiDb.postHistoryDeletionRequests
             .where("targetAuthorPubkey")
             .equals(pubkeyHex)
-            .toArray(),
+            .toArray().then(rows => eventRecords(ehagakiDb, "postHistoryDeletionRequests").hydrate(rows)),
     ]);
     const sensitivePayloadRecords = await ehagakiDb.sensitivePayloads
         .where("pubkeyHex")
         .equals(pubkeyHex)
-        .toArray();
+        .toArray().then(rows => eventRecords(ehagakiDb, "sensitivePayloads").hydrate(rows));
     const { result, blob } = await runPostHistoryJsonlExportEngine({
         pubkeyHex,
         postRecords,

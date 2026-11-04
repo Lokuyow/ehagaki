@@ -50,6 +50,7 @@
     const profileSync = createPostHistoryProfileSyncCoordinator({ getShow: () => show && !invalidated, getRxNostr: () => rxNostr });
     const unsubscribeProfile = profileSync.subscribe((key, profile) => { profiles = { ...profiles, [key]: profile }; });
     const resolver = createPostHistoryRelatedTargetResolver({ getShow: () => show && !invalidated,
+        getOwner: () => pubkeyHex,
         getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig, profileSyncCoordinator: profileSync, requireFullVerification: true });
     const posts = $derived(records.filter(record => [1, 42, 1111].includes(record.event.kind))
         .map(record => repostTargetToPost(record.event, record.relayUrls)));
@@ -107,6 +108,8 @@
     function descriptor(record: NotificationRecord): RelatedTargetDescriptor | null {
         const reference = record.event.kind === 7 ? parseReactionReference(record.event).reference : getRepostReference(record.event);
         return reference ? { targetEventId: reference.eventId, authorHint: reference.authorHint,
+            authorHints: reference.authorHints, targetKindHint: record.event.kind === 6 ? 1 : reference.targetKindHint,
+            excludedKinds: record.event.kind === 16 ? [1] : undefined,
             relayHints: [...reference.relayHints, ...record.relayUrls], relationKind: 'notification',
             scopeKey: 'notifications', sourceEventId: record.eventId } : null;
     }

@@ -71,6 +71,7 @@
             replay: () => notificationRepository.upsert(owner, incoming.map(event => ({ event }))),
             setShortcuts: (value: unknown) => footerSettingShortcutsStore.set(value),
             requests: () => requests,
+            storage: async () => ({ event: await ehagakiDb.events.get(original.id), notifications: await ehagakiDb.notifications.toArray() }),
             count: () => ehagakiDb.notifications.where('ownerPubkeyHex').equals(owner).count(),
         });
     });

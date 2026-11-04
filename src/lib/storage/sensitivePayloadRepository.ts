@@ -1,3 +1,4 @@
+import { eventRecords } from "./eventRepository";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import { attestFullyVerifiedPostHistoryRawEvent, isCurrentPostHistoryRawEventAttestation, type PostHistoryRawEventAttestation, RAW_EVENT_VERIFICATION_RULE_VERSION } from "../postHistoryRawEventVerification";
 import { createPlainNostrEventSnapshot } from "../postHistoryEventUtils";
@@ -47,10 +48,10 @@ export class DexieSensitivePayloadRepository implements SensitivePayloadReposito
             ? createPlainNostrEventSnapshot(input.event)
             : attestFullyVerifiedPostHistoryRawEvent(input.event)?.event;
         if (!event || !isPayloadCandidate(event)) throw new Error("invalid_sensitive_payload_candidate");
-        const saved = await this.db.transaction("rw", [this.db.sensitivePayloads,
+        const saved = await this.db.transaction("rw", [this.db.events, this.db.sensitivePayloads,
             ...(input.localWriteScope ? [this.db.postHistoryWriteGeneration] : [])], async () => {
             await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
-            const existing = await this.db.sensitivePayloads.get(event.id);
+            const existing = await eventRecords(this.db, "sensitivePayloads").get(event.id);
             if (existing?.deletedAt !== undefined) return false;
             const record: SensitivePayloadRecord = {
                 id: event.id,
@@ -79,7 +80,7 @@ export class DexieSensitivePayloadRepository implements SensitivePayloadReposito
                 updatedAt: this.now(),
                 schemaVersion: SENSITIVE_PAYLOAD_SCHEMA_VERSION,
             };
-            await this.db.sensitivePayloads.put(record);
+            await eventRecords(this.db, "sensitivePayloads").put(record);
             await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
             return true;
         });
@@ -91,11 +92,25 @@ export class DexieSensitivePayloadRepository implements SensitivePayloadReposito
     async getByIds(ids: string[]): Promise<SensitivePayloadRecord[]> {
         const uniqueIds = [...new Set(ids.filter((id) => /^[0-9a-f]{64}$/.test(id)))];
         if (uniqueIds.length === 0) return [];
-        return this.db.sensitivePayloads.where("id").anyOf(uniqueIds).toArray();
+        const records = await this.db.sensitivePayloads.where("id").anyOf(uniqueIds).toArray()
+            .then(rows => eventRecords(this.db, "sensitivePayloads").hydrate(rows));
+        const known = new Set(records.map(row => row.id));
+        const missing = uniqueIds.filter(id => !known.has(id));
+        const cached = missing.length ? await this.db.events.bulkGet(missing) : [];
+        for (const saved of cached) {
+            if (!saved || !isPayloadCandidate(saved.rawEvent)) continue;
+            records.push({ id: saved.id, pubkeyHex: saved.rawEvent.pubkey,
+                structureKind: Number(saved.rawEvent.tags.find(tag => tag[0] === 'k')![1]),
+                rawEvent: saved.rawEvent, rawEventVerification: saved.verification,
+                acceptedRelays: [], fetchedRelays: saved.relayUrls, relayHints: saved.relayUrls,
+                createdAt: saved.receivedAt, updatedAt: saved.lastSeenAt, schemaVersion: SENSITIVE_PAYLOAD_SCHEMA_VERSION,
+                deletedAt: saved.deletedAt, deletionEventId: saved.deletionEventId });
+        }
+        return records;
     }
 
     async getAllForPubkey(pubkeyHex: string): Promise<SensitivePayloadRecord[]> {
-        return this.db.sensitivePayloads.where("pubkeyHex").equals(pubkeyHex).toArray();
+        return this.db.sensitivePayloads.where("pubkeyHex").equals(pubkeyHex).toArray().then(rows => eventRecords(this.db, "sensitivePayloads").hydrate(rows));
     }
 
     async markDeleted(input: {
@@ -104,9 +119,9 @@ export class DexieSensitivePayloadRepository implements SensitivePayloadReposito
         deletionEventId: string;
         deletedAt: number;
     }): Promise<void> {
-        const record = await this.db.sensitivePayloads.get(input.id);
+        const record = await eventRecords(this.db, "sensitivePayloads").get(input.id);
         if (!record || record.pubkeyHex !== input.pubkeyHex) return;
-        await this.db.sensitivePayloads.put({
+        await eventRecords(this.db, "sensitivePayloads").put({
             ...record,
             deletedAt: input.deletedAt,
             deletionEventId: input.deletionEventId,

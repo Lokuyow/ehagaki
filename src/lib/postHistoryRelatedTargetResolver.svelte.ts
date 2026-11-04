@@ -5,6 +5,8 @@ import { getPostHistoryLocalRevision } from "./storage/postHistoryLocalWriteScop
 import { isRepostTargetKind, verifyRepostTarget } from "./postRepostUtils";
 import { attestFullyVerifiedPostHistoryRawEvent } from "./postHistoryRawEventVerification";
 import { verifyRelatedEvent } from "./relatedEventVerification";
+import { EventRepository } from './storage/eventRepository';
+import { getPostHistoryAuthoredRelayScopeKey } from './postHistoryRelayResolver';
 import {
     postHistoryContextFetchService,
     type PostHistoryContextFetchService,
@@ -54,6 +56,9 @@ export interface RelatedTargetDescriptor {
     sourceEventId?: string;
     relayHints?: string[];
     authorHint?: string | null;
+    authorHints?: string[];
+    targetKindHint?: number | null;
+    excludedKinds?: number[];
 }
 
 export interface PostHistoryRelatedTargetSnapshot {
@@ -68,6 +73,8 @@ export interface PostHistoryRelatedTargetSnapshot {
 }
 
 interface CreatePostHistoryRelatedTargetResolverParams {
+    getOwner?: () => string | null | undefined;
+    eventRepositoryImpl?: Pick<EventRepository, 'get' | 'save' | 'link'>;
     requireFullVerification?: boolean;
     loadRepostTarget?: (descriptor: RelatedTargetDescriptor) => Promise<{ event: NostrEvent; relayHints: string[] } | null>;
     getShow: () => boolean;
@@ -146,6 +153,8 @@ export function createPostHistoryRelatedTargetResolver({
     profileSyncCoordinator = undefined,
     loadRepostTarget = undefined,
     requireFullVerification = false,
+    getOwner = () => undefined,
+    eventRepositoryImpl = postHistoryRepositoryImpl === postHistoryRepository ? new EventRepository(ehagakiDb) : undefined,
 }: CreatePostHistoryRelatedTargetResolverParams) {
     const profileSync = profileSyncCoordinator
         ?? createPostHistoryProfileSyncCoordinator({ getShow, getRxNostr });
@@ -433,14 +442,19 @@ export function createPostHistoryRelatedTargetResolver({
         const preserveResolvedState = !!options.background && existingBeforeMerge?.status === "resolved";
         if (requireFullVerification && existingBeforeMerge?.status === "resolved"
             && !verifyRelatedEvent(existingBeforeMerge.event, { eventId: descriptor.targetEventId,
-                authorHint: null, relayHints: [] })) {
+                authorHint: descriptor.authorHint ?? null, authorHints: descriptor.authorHints,
+                targetKindHint: descriptor.targetKindHint, relayHints: [] })) {
             options = { ...options, force: true };
         }
         // A signed event of another kind can still be valid for a quote/thread.
         // Let the Repost projection reject it without poisoning the shared ID cache.
         if ((descriptor.relationKind === "repost" || requireFullVerification) && existingBeforeMerge?.status === "resolved") {
             const cached = attestFullyVerifiedPostHistoryRawEvent(existingBeforeMerge.event)?.event;
-            if (cached?.id === descriptor.targetEventId) {
+            if (cached?.id === descriptor.targetEventId
+                && (!requireFullVerification || verifyRelatedEvent(cached, { eventId: descriptor.targetEventId,
+                    authorHint: descriptor.authorHint ?? null, authorHints: descriptor.authorHints,
+                    targetKindHint: descriptor.targetKindHint, relayHints: [] }))
+                && !descriptor.excludedKinds?.includes(cached.kind)) {
                 const generation = scopeGenerationByKey[descriptor.scopeKey];
                 const deleted = await isDeletedTarget(cached.pubkey, cached.id);
                 if (!getShow() || generation !== scopeGenerationByKey[descriptor.scopeKey]
@@ -507,6 +521,11 @@ export function createPostHistoryRelatedTargetResolver({
 
         const requestId = ++nextLoadRequestId;
         loadRequestIdsByTargetId.set(descriptor.targetEventId, requestId);
+        const requestedOwner = getOwner(), requestedRuntime = getRxNostr();
+        const requestedRelayScope = getPostHistoryAuthoredRelayScopeKey(getRelayConfig());
+        const canPersist = () => getShow() && isCurrentLoadRequest(descriptor.targetEventId, requestId)
+            && getOwner() === requestedOwner && getRxNostr() === requestedRuntime
+            && getPostHistoryAuthoredRelayScopeKey(getRelayConfig()) === requestedRelayScope;
 
         const taskPromise = (async (): Promise<PostHistoryRelatedTargetSnapshot | null> => {
             try {
@@ -520,7 +539,7 @@ export function createPostHistoryRelatedTargetResolver({
                 const repostLocal = repostPreparation
                     ? { event: repostPreparation.target, relayHints: mergedSnapshot.relayHints }
                     : descriptor.relationKind === "repost" ? await loadRepostTarget?.(descriptor) : null;
-                if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) return null;
+                if (!canPersist()) return null;
                 const localVerified = repostLocal && verifyRepostTarget(repostLocal.event, {
                     eventId: descriptor.targetEventId, authorHint: null, relayHints: descriptor.relayHints ?? [],
                 });
@@ -533,16 +552,36 @@ export function createPostHistoryRelatedTargetResolver({
                     if (!repostPreparation) void runDeletionCheck(localVerified.event, hints, { background: true });
                     return snapshot;
                 }
+                const cached = await eventRepositoryImpl?.get(descriptor.targetEventId);
+                if (!canPersist()) return null;
+                if (cached && (!options.requireRelayHint || cached.relayUrls.length)
+                    && verifyRelatedEvent(cached.rawEvent, { eventId: descriptor.targetEventId,
+                        authorHint: descriptor.authorHint ?? null, authorHints: descriptor.authorHints,
+                        targetKindHint: descriptor.targetKindHint, relayHints: [] })
+                    && !descriptor.excludedKinds?.includes(cached.rawEvent.kind)) {
+                    const hints = sanitizeRelayHints([...cached.relayUrls, ...mergedSnapshot.relayHints]);
+                    if (cached.deletedAt !== undefined) return applySnapshotUpdate(descriptor.targetEventId,
+                        { status: 'deleted', event: null, relayHints: hints, updatedAt: Date.now() });
+                    if (descriptor.sourceEventId) await eventRepositoryImpl!.link(descriptor.sourceEventId, cached.id, canPersist);
+                    if (!canPersist()) return null;
+                    const snapshot = applySnapshotUpdate(descriptor.targetEventId, { status: 'resolved',
+                        event: cached.rawEvent, authorPubkey: cached.rawEvent.pubkey, relayHints: hints,
+                        errorCode: null, updatedAt: Date.now() });
+                    ensureProfileForTarget(cached.rawEvent.pubkey, hints);
+                    if (!repostPreparation) void runDeletionCheck(cached.rawEvent, hints, { background: true });
+                    return snapshot;
+                }
                 const existingRecord = await postHistoryRepositoryImpl.getByEventId(
                     descriptor.targetEventId,
                 );
-                if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
+                if (!canPersist()) {
                     return snapshotsByTargetId[descriptor.targetEventId] ?? null;
                 }
 
                 const verifiedRecord = requireFullVerification && existingRecord
                     ? verifyRelatedEvent(existingRecord.rawEvent, { eventId: descriptor.targetEventId,
-                        authorHint: null, relayHints: [] }) : null;
+                        authorHint: descriptor.authorHint ?? null, authorHints: descriptor.authorHints,
+                        targetKindHint: descriptor.targetKindHint, relayHints: [] }) : null;
                 if (existingRecord && (!requireFullVerification || verifiedRecord)
                     && (!options.requireRelayHint || [...existingRecord.relayHints, ...existingRecord.acceptedRelays, ...(existingRecord.fetchedRelays ?? [])].length > 0)
                     && (descriptor.relationKind !== "repost" || verifyRepostTarget(existingRecord.rawEvent, {
@@ -591,7 +630,7 @@ export function createPostHistoryRelatedTargetResolver({
                         ),
                         mergedSnapshot.relayHints,
                     );
-                    if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
+                    if (!canPersist()) {
                         return snapshotsByTargetId[descriptor.targetEventId] ?? null;
                     }
 
@@ -628,7 +667,7 @@ export function createPostHistoryRelatedTargetResolver({
                 loadTasksByTargetId.set(descriptor.targetEventId, fetchTask);
                 const result = await fetchTask.promise;
 
-                if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
+                if (!canPersist()) {
                     return snapshotsByTargetId[descriptor.targetEventId] ?? null;
                 }
                 loadTasksByTargetId.delete(descriptor.targetEventId);
@@ -642,7 +681,7 @@ export function createPostHistoryRelatedTargetResolver({
                             ),
                             mergedSnapshot.relayHints,
                         );
-                        if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
+                        if (!canPersist()) {
                             return snapshotsByTargetId[descriptor.targetEventId] ?? null;
                         }
 
@@ -670,13 +709,15 @@ export function createPostHistoryRelatedTargetResolver({
                     ...mergedSnapshot.relayHints,
                 ]);
                 const verifiedResult = requireFullVerification ? verifyRelatedEvent(result.event, {
-                    eventId: descriptor.targetEventId, authorHint: null, relayHints: [],
+                    eventId: descriptor.targetEventId, authorHint: descriptor.authorHint ?? null,
+                    authorHints: descriptor.authorHints, targetKindHint: descriptor.targetKindHint, relayHints: [],
                 }) : null;
                 if (requireFullVerification && !verifiedResult) {
                     return applySnapshotUpdate(descriptor.targetEventId, { status: "error", event: null,
                         errorCode: "invalid_event", updatedAt: Date.now() });
                 }
                 const resolvedEvent = verifiedResult?.event ?? result.event;
+                if (descriptor.excludedKinds?.includes(resolvedEvent.kind)) throw new Error('invalid_related_kind');
                 if (descriptor.relationKind === "repost" && !verifyRepostTarget(resolvedEvent, {
                     eventId: descriptor.targetEventId, authorHint: null, relayHints: [],
                 })) throw new Error("invalid_repost_target");
@@ -688,7 +729,7 @@ export function createPostHistoryRelatedTargetResolver({
                     // the verified target; relay discovery can update it later.
                     { background: descriptor.relationKind === "repost" },
                 );
-                if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
+                if (!canPersist()) {
                     return snapshotsByTargetId[descriptor.targetEventId] ?? null;
                 }
 
@@ -706,6 +747,15 @@ export function createPostHistoryRelatedTargetResolver({
                     return snapshotsByTargetId[descriptor.targetEventId] ?? null;
                 }
 
+                if (eventRepositoryImpl) {
+                    const verified = verifyRelatedEvent(resolvedEvent, { eventId: descriptor.targetEventId,
+                        authorHint: descriptor.authorHint ?? null, authorHints: descriptor.authorHints,
+                        targetKindHint: descriptor.targetKindHint, relayHints: [] });
+                    if (!verified && requireFullVerification) throw new Error('invalid_related_event');
+                    if (verified) await eventRepositoryImpl.save(verified.event, resolvedRelayHints,
+                        canPersist, descriptor.sourceEventId);
+                    if (!canPersist()) return null;
+                }
                 const snapshot = applySnapshotUpdate(descriptor.targetEventId, {
                     status: "resolved",
                     event: resolvedEvent,
@@ -720,7 +770,7 @@ export function createPostHistoryRelatedTargetResolver({
                 );
                 return snapshotsByTargetId[descriptor.targetEventId] ?? snapshot;
             } catch {
-                if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
+                if (!canPersist()) {
                     return snapshotsByTargetId[descriptor.targetEventId] ?? null;
                 }
 

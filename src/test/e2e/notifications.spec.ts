@@ -1,5 +1,6 @@
 import { expect, test, type Locator } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
+import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
 
 let pageErrors: string[] = [];
 test.beforeEach(async ({ context, page }) => {
@@ -12,6 +13,68 @@ test.beforeEach(async ({ context, page }) => {
     }));
 });
 test.afterEach(() => expect(pageErrors).toEqual([]));
+
+test('upgrades a v18 history and read notification without resetting data or refetching the target', async ({ page }) => {
+    const ownerKey = generateSecretKey(), authorKey = generateSecretKey(), owner = getPublicKey(ownerKey);
+    const now = Math.floor(Date.now() / 1000);
+    const original = finalizeEvent({ kind: 1, content: 'Original notification target', tags: [], created_at: now - 10 }, ownerKey);
+    const incoming = [finalizeEvent({ kind: 7, content: '+', tags: [['p', owner], ['e', original.id]], created_at: now }, authorKey)];
+    await page.route('**/migration-seed.html', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>migration fixture</title>' }));
+    await page.goto('migration-seed.html');
+    await page.evaluate(async fixture => {
+        const schemaUrl = new URL('src/lib/swIndexedDbSchema.ts', location.href).href;
+        const { ensureCurrentEHagakiDbSchema } = await import(/* @vite-ignore */ schemaUrl);
+        localStorage.setItem('notificationPublicFixture', JSON.stringify(fixture));
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
+            const opening = indexedDB.open('eHagakiDB', 180);
+            opening.onupgradeneeded = () => {
+                ensureCurrentEHagakiDbSchema(opening.result, 'sharedMedia', opening.transaction);
+                opening.result.deleteObjectStore('events');
+                opening.result.deleteObjectStore('eventStoreMigration');
+            };
+            opening.onsuccess = () => resolve(opening.result); opening.onerror = () => reject(opening.error);
+        });
+        await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction(['postHistory', 'notifications'], 'readwrite');
+            const event = fixture.original;
+            tx.objectStore('postHistory').put({ id: event.id, eventId: event.id, pubkeyHex: event.pubkey, kind: event.kind,
+                content: event.content, tags: event.tags, rawEvent: event, createdAt: event.created_at, postedAt: 12345,
+                acceptedRelays: ['wss://accepted.example/'], fetchedRelays: ['wss://fixture.example/'], relayHints: [], media: [], updatedAt: 1, schemaVersion: 1 });
+            for (const event of fixture.incoming) tx.objectStore('notifications').put({ id: `${fixture.owner}:${event.id}`,
+                ownerPubkeyHex: fixture.owner, eventId: event.id, event, createdAt: event.created_at,
+                receivedAt: 456, unread: 0, relayUrls: ['wss://fixture.example/'] });
+            tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+        }); db.close();
+    }, { owner, original, incoming });
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await page.getByRole('button', { name: '通知', exact: true }).click();
+    await expect(page.getByRole('dialog').getByText('Original notification target', { exact: true })).toBeVisible();
+    const saved = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').storage());
+    expect(saved.event?.rawEvent).toEqual(JSON.parse(JSON.stringify(original)));
+    expect(saved.notifications).toMatchObject([{ unread: 0, receivedAt: 456 }]);
+    expect(saved.notifications[0]).not.toHaveProperty('event');
+    expect(await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').requests().flat()
+        .filter((filter: { ids?: string[] }) => filter.ids?.length).length)).toBe(0);
+});
+
+test('notification targets survive reload and are read from the shared event store without another target REQ', async ({ page }) => {
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await page.getByRole('button', { name: '通知（未読あり）' }).click();
+    await expect(page.getByRole('dialog').getByText('Original notification target', { exact: true })).toHaveCount(3);
+    const stored = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').storage());
+    expect(stored.event?.rawEvent.content).toBe('Original notification target');
+    expect(stored.notifications).toHaveLength(4);
+    for (const notification of stored.notifications) expect(notification).not.toHaveProperty('event');
+    await page.reload();
+    await page.getByRole('button', { name: '通知', exact: true }).click();
+    await expect(page.getByRole('dialog').getByText('Original notification target', { exact: true })).toHaveCount(3);
+    const targetRequests = await page.evaluate(() => {
+        const fixture = JSON.parse(localStorage.getItem('notificationPublicFixture')!);
+        const harness = Reflect.get(window, '__NOTIFICATIONS__');
+        return harness.requests().flat().filter((filter: { ids?: string[] }) => filter.ids?.includes(fixture.original.id)).length;
+    });
+    expect(targetRequests).toBe(0);
+});
 
 async function expectContainedActorAvatar(dialog: Locator) {
     const actor = dialog.locator('.notification-actor');

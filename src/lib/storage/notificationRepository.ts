@@ -3,6 +3,7 @@ import type { NostrEvent } from '../types';
 import { isNotificationEvent } from '../notification';
 import { verifyRelatedEvent } from '../relatedEventVerification';
 import { RelayConfigUtils } from '../relayConfigUtils';
+import { eventRecords } from './eventRepository';
 
 export interface NotificationRecord {
     id: string;
@@ -36,25 +37,28 @@ export class NotificationRepository {
                 return result ? [{ ...item, event: result.event }] : [];
             });
         if (!verified.length || !isActive()) return;
-        await this.db.transaction('rw', this.db.notifications, async () => {
+        await this.db.transaction('rw', this.db.events, this.db.notifications, async tx => {
             for (const item of verified) {
-                if (!isActive()) return;
+                if (!isActive()) { tx.abort(); return; }
                 const id = `${owner}:${item.event.id}`;
                 const previous = await this.db.notifications.get(id);
                 const relayUrls = RelayConfigUtils.sanitizeExternalRelayUrls([
-                    ...(previous?.relayUrls ?? []), ...(item.relayUrls ?? []),
+                    ...(item.relayUrls ?? []),
                 ]);
-                if (!isActive()) return;
-                await this.db.notifications.put({ id, ownerPubkeyHex: owner, eventId: item.event.id,
+                if (!isActive()) { tx.abort(); return; }
+                await eventRecords(this.db, 'notifications').put({ id, ownerPubkeyHex: owner, eventId: item.event.id,
                     createdAt: item.event.created_at, event: item.event, relayUrls,
                     receivedAt: previous?.receivedAt ?? this.now(), unread: previous?.unread ?? 1 });
             }
+            if (!isActive()) tx.abort();
         });
     }
 
     list(owner: string, limit = 100): Promise<NotificationRecord[]> {
         return this.db.notifications.where('[ownerPubkeyHex+createdAt+eventId]')
-            .between([owner, -Infinity, ''], [owner, Infinity, '\uffff']).reverse().limit(limit).toArray();
+            .between([owner, -Infinity, ''], [owner, Infinity, '\uffff']).reverse().limit(limit).toArray()
+            .then(rows => eventRecords(this.db, 'notifications').hydrate(rows))
+            .then(rows => rows.filter(row => row.event && isNotificationEvent(row.event, owner)));
     }
     async hasUnread(owner: string) {
         return !!await this.db.notifications.where('[ownerPubkeyHex+unread]').equals([owner, 1]).first();

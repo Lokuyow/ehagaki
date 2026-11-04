@@ -757,7 +757,7 @@ describe('Service Worker Tests', () => {
 
     describe('IndexedDBManager', () => {
         it('uses the shared native IndexedDB version', () => {
-            expect(swModule.INDEXEDDB_VERSION).toBe(180);
+            expect(swModule.INDEXEDDB_VERSION).toBe(190);
         });
 
         it('should save shared media in the app database', async () => {

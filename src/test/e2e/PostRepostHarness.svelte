@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { eventRecords } from "../../lib/storage/eventRepository";
     import { onDestroy, onMount } from "svelte";
     import { finalizeEvent, generateSecretKey, getPublicKey, nip19, verifyEvent } from "nostr-tools";
     import { seckeySigner } from "@rx-nostr/crypto";
@@ -212,7 +213,7 @@
             quality: "verified-metadata", metadataLookup: "complete", name: "Generic channel", about: "channel enrichment", picture: null,
             verifiedSourceRelays: ["wss://channel.example.com/"],
         });
-        const existing = await ehagakiDb.postHistory.toArray();
+        const existing = await ehagakiDb.postHistory.toArray().then(rows => eventRecords(ehagakiDb, "postHistory").hydrate(rows));
         const oldTarget = (existing.find((record) => isRepostTargetKind(record.kind))?.rawEvent
             ?? existing.find((record) => isRepostOuterKind(record.kind))?.repostTarget?.rawEvent) as NostrEvent | undefined;
         if (oldTarget) target = oldTarget;
@@ -248,7 +249,7 @@
         }
         (window as unknown as { __REPOST__: unknown }).__REPOST__ = {
             ready: true, targetId: target.id, targetInput: nip19.noteEncode(target.id), owner,
-            read: async () => { const rows = await ehagakiDb.postHistory.toArray(); return {
+            read: async () => { const rows = await ehagakiDb.postHistory.toArray().then(rows => eventRecords(ehagakiDb, "postHistory").hydrate(rows)); return {
                 sends, signed, lastResult, sentEvents, replyId, quoteId, deletionRequests, deletionRequestsAtPublish,
                 heldDeletionRequests: deletionResponses.size,
                 deletionCount: await ehagakiDb.postHistoryDeletionRequests.count(),
@@ -261,7 +262,7 @@
                     created_at: target.created_at + 1, content: "", tags: [["e", target.id], ["k", String(target.kind)]] }, targetKey), relayUrls: [relay] }],
                 fetchedAt: Date.now(),
             }),
-            export: async () => (await exportPostHistoryRecords(owner, await ehagakiDb.postHistory.toArray(), [], { includeJsonl: true })).jsonl,
+            export: async () => (await exportPostHistoryRecords(owner, await ehagakiDb.postHistory.toArray().then(rows => eventRecords(ehagakiDb, "postHistory").hydrate(rows)), [], { includeJsonl: true })).jsonl,
             nextTarget: () => {
                 target = finalizeEvent({ kind: targetKind, created_at: fixtureTarget.created_at + 1,
                     content: "another original post", tags: targetTags }, targetKey);
