@@ -55,8 +55,6 @@ const DEFAULT_VISIBLE_RANGE_RELATION_KINDS: PostHistoryRelationKind[] =
 
 export interface PostHistoryVisibleRangeChildInteractionRepairRequest {
     ownerPubkeyHex: string;
-    /** Notifications also render posts by other authors; history keeps its own-post default. */
-    includeOtherAuthors?: boolean;
     visiblePosts: PostHistoryRecord[];
     relayConfig?: RelayConfig | null;
     isActive?: () => boolean;
@@ -212,13 +210,12 @@ function buildVisibleRangeRelationRepairRxReqId(): string {
 function toUniqueDirectReplyOwnerPosts(
     ownerPubkeyHex: string,
     posts: PostHistoryRecord[],
-    includeOtherAuthors = false,
 ): PostHistoryRecord[] {
     const postsByEventId = new Map<string, PostHistoryRecord>();
     for (const post of posts) {
         if (
             ![1, 42, 1111].includes(post.kind)
-            || (!includeOtherAuthors && post.pubkeyHex !== ownerPubkeyHex)
+            || post.pubkeyHex !== ownerPubkeyHex
             || !post.eventId
             || postsByEventId.has(post.eventId)
         ) {
@@ -470,7 +467,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         const candidateFetches = new Set<CandidateFetchTask>();
         const saveTasks = new Set<PostHistoryDirectReplyRepairSaveTask>();
         const isActive = () => active && params.isActive?.() !== false;
-        const targetPosts = toUniqueDirectReplyOwnerPosts(params.ownerPubkeyHex, params.visiblePosts, params.includeOtherAuthors);
+        const targetPosts = toUniqueDirectReplyOwnerPosts(params.ownerPubkeyHex, params.visiblePosts);
         const targetParentEventIds = targetPosts.map((post) => post.eventId);
 
         const generationReady = getPostHistoryChildWriteGeneration(ehagakiDb);

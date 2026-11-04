@@ -240,7 +240,7 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
 
     afterEach(() => deactivateHostRelayConfig());
 
-    it.each([false, true])("other authors require the notification opt-in (%s)", async includeOtherAuthors => {
+    it("history repair ignores posts by other authors", async () => {
         const harness = createRxNostrHarness();
         const service = new PostHistoryVisibleRangeChildInteractionRepairService({
             childInteractionsRepository: { upsertChildInteractions: vi.fn() } as any,
@@ -248,15 +248,14 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
         });
         const id = "1".repeat(64);
         const task = service.repairVisibleRangeChildInteractions(harness.rxNostr as any, {
-            ownerPubkeyHex: OWNER, includeOtherAuthors,
+            ownerPubkeyHex: OWNER,
             visiblePosts: [{ ...createPost(id), pubkeyHex: "b".repeat(64) }],
             relayConfig: { "wss://relay.example.com": { read: true, write: false } },
         });
         harness.emitEose("wss://relay.example.com"); harness.complete();
         const result = await task.promise;
-        expect(result.targetParentEventIds).toEqual(includeOtherAuthors ? [id] : []);
-        expect(rxNostrMock.emittedFilters).toHaveLength(includeOtherAuthors ? 1 : 0);
-        if (includeOtherAuthors) expect(rxNostrMock.emittedFilters[0]).toMatchObject({ "#e": [id], kinds: [1, 7, 1111] });
+        expect(result.targetParentEventIds).toEqual([]);
+        expect(rxNostrMock.emittedFilters).toHaveLength(0);
     });
 
     it.each(["visible", "related"])("%s repair saves only the trailing target and rejects invalid or mismatched hints", async mode => {

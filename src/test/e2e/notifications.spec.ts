@@ -101,9 +101,10 @@ for (const width of [360, 791]) test(`shared footer uses the available width at 
     }
 });
 
-test('shared post footers target their own events and expand cached replies and reactions', async ({ page }, info) => {
+test('post footers keep actions on their own events without related counts or lists', async ({ page }, info) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await page.locator('.notification-btn').waitFor({ state: 'attached' });
     await expect(page.locator('.notification-btn')).toBeVisible();
     await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').seedInteractions());
     await page.locator('.notification-btn').click();
@@ -112,14 +113,12 @@ test('shared post footers target their own events and expand cached replies and 
     await target.scrollIntoViewIfNeeded();
     await expect(target.locator('.post-preview-footer')).toHaveCount(1);
     await expect(target.getByRole('button', { name: '引用', exact: true })).toBeVisible();
-    await target.getByRole('button', { name: /返信 1件を表示/ }).click();
-    await expect(target.getByText('Shared footer child reply', { exact: true })).toBeVisible();
-    await expect(target.locator('.notification-post .post-preview-footer')).toHaveCount(1);
-    await target.getByRole('button', { name: /リアクション 1件を表示/ }).first().click();
-    await expect(target.locator('.post-preview-reactions-panel')).toBeVisible();
-    await expect(target.locator('.post-preview-reactions-panel img[alt=":fixture:"]')).toBeVisible();
+    await expect(target.getByRole('button', { name: /返信 .*件を表示|リアクション .*件を表示/ })).toHaveCount(0);
+    await expect(dialog.getByText('Shared footer child reply', { exact: true })).toHaveCount(0);
+    await expect(dialog.locator('.notification-post .post-preview-reactions-panel')).toHaveCount(0);
     await target.getByRole('button', { name: 'アクションを表示', exact: true }).first().click();
     await expect(page.getByRole('menuitem', { name: '削除', exact: true })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: '関連イベントを確認', exact: true })).toHaveCount(0);
     await page.getByRole('menuitem', { name: /JSON/ }).click();
     await expect(page.getByRole('dialog').last().getByText(/Original notification target/)).toBeVisible();
     await page.keyboard.press('Escape');
@@ -129,21 +128,27 @@ test('shared post footers target their own events and expand cached replies and 
     await expect(page.getByTestId('applied')).toHaveText('quote:Original notification target');
 });
 
-test('failed related lookups preserve cached counts and offer retry', async ({ page }) => {
-    // This fixture cannot provide relay connection observables, so related REQs fail.
+test('opening, scrolling, refreshing and reopening never read or fetch post replies or reactions', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await page.locator('.notification-btn').waitFor({ state: 'attached' });
     await expect(page.locator('.notification-btn')).toBeVisible();
     await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').seedInteractions());
-    await page.locator('.notification-btn').click();
-    const target = page.getByRole('dialog').locator('.notification-entry:has(.notification-reaction) .notification-post').first();
-    await target.scrollIntoViewIfNeeded();
-    await expect(target.getByRole('button', { name: /返信 1件を表示/ })).toBeVisible();
-    const retry = target.getByRole('button', { name: '再試行', exact: true });
-    await expect(retry).toBeVisible();
-    await retry.click();
-    await expect(retry).toBeEnabled();
-    await expect(target.getByRole('button', { name: /返信 1件を表示/ })).toBeVisible();
-    await expect(target.getByRole('button', { name: /リアクション 1件を表示/ })).toBeVisible();
+    for (let index = 0; index < 2; index++) {
+        await page.locator('.notification-btn').click();
+        const dialog = page.getByRole('dialog');
+        await expect(dialog.locator('.notification-entry')).toHaveCount(4);
+        await dialog.locator('.notification-entry').last().scrollIntoViewIfNeeded();
+        await dialog.getByRole('button', { name: '更新', exact: true }).click();
+        await expect(dialog.getByRole('button', { name: '更新', exact: true })).toBeEnabled();
+        await expect(dialog.getByRole('button', { name: /返信 .*件を表示|リアクション .*件を表示/ })).toHaveCount(0);
+        await expect(dialog.getByText('関連イベントを取得できませんでした', { exact: true })).toHaveCount(0);
+        await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
+        await expect(dialog).toHaveCount(0);
+    }
+    expect(await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').relatedActivity())).toEqual({ childReads: 0, repairs: 0 });
+    expect(await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').cachedChildCount())).toBe(2);
+    expect(await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').requests().flat().some((filter: { kinds?: number[]; '#e'?: string[] }) => filter['#e'] && filter.kinds?.some(kind => [1, 42, 1111, 7].includes(kind))))).toBe(false);
 });
 
 test('notification headers omit labels and times and identify reposts and replies with SVG icons', async ({ page }, info) => {

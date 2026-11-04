@@ -6,6 +6,7 @@
     import FooterComponent from '../../components/FooterComponent.svelte';
     import NotificationDialog from '../../components/NotificationDialog.svelte';
     import { notificationRepository } from '../../lib/storage/notificationRepository';
+    import { postHistoryVisibleRangeChildInteractionRepairService as relatedRepair } from '../../lib/postHistoryVisibleRangeChildInteractionRepairService';
     import { postHistoryChildInteractionsRepository } from '../../lib/storage/postHistoryChildInteractionsRepository';
     import { EventRepository } from '../../lib/storage/eventRepository';
     import { profilesRepository } from '../../lib/storage/profilesRepository';
@@ -17,6 +18,13 @@
     import type { NostrEvent } from '../../lib/types';
     import { configureAppRuntimeEnvironment } from '../../lib/appRuntimeEnvironment';
 
+    const relatedActivity = { childReads: 0, repairs: 0 };
+    const readChildren = postHistoryChildInteractionsRepository.getChildInteractionsForParents.bind(postHistoryChildInteractionsRepository);
+    postHistoryChildInteractionsRepository.getChildInteractionsForParents = (...args) => { relatedActivity.childReads++; return readChildren(...args); };
+    const repairChildren = relatedRepair.repairVisibleRangeChildInteractions.bind(relatedRepair);
+    relatedRepair.repairVisibleRangeChildInteractions = (...args) => { relatedActivity.repairs++; return repairChildren(...args); };
+    const repairReactions = relatedRepair.repairRelatedCardReactions.bind(relatedRepair);
+    relatedRepair.repairRelatedCardReactions = (...args) => { relatedActivity.repairs++; return repairReactions(...args); };
     let releaseInitialList = () => {};
     const listGate = new Promise<void>(resolve => releaseInitialList = resolve);
     const listMethod = notificationRepository.list.bind(notificationRepository);
@@ -115,6 +123,8 @@
             replay: () => notificationRepository.upsert(owner, incoming.map(event => ({ event }))),
             setShortcuts: (value: unknown) => footerSettingShortcutsStore.set(value),
             requests: () => requests,
+            relatedActivity: () => ({ ...relatedActivity }),
+            cachedChildCount: () => ehagakiDb.postHistoryChildInteractions.count(),
             storage: async () => ({ event: await ehagakiDb.events.get(original.id), notifications: await ehagakiDb.notifications.toArray() }),
             count: () => ehagakiDb.notifications.where('ownerPubkeyHex').equals(owner).count(),
         });
