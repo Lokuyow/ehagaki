@@ -192,7 +192,10 @@
 
     <FooterInfoDisplay>
         {#snippet fallback()}
-            <div class="footer-setting-controls">
+            <div class="footer-setting-controls"
+                class:single-shortcut={isAuthenticated && !!footerSettingShortcutsStore.value.left !== !!footerSettingShortcutsStore.value.right}
+                class:left-shortcut={!!footerSettingShortcutsStore.value.left}
+                class:right-shortcut={!!footerSettingShortcutsStore.value.right}>
                 {#if footerSettingShortcutsStore.value.left}
                     {#if footerSettingShortcutsStore.value.left === 'notifications'}
                         {@render notificationShortcut()}
@@ -302,6 +305,23 @@
         min-width: 0;
         height: 100%;
     }
+    .footer-setting-controls.single-shortcut {
+        --shortcut-space: 72px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(44px, min(200px, calc(100% - 2 * var(--shortcut-space) - 12px))) minmax(0, 1fr);
+    }
+    .single-shortcut :global(.post-history-btn.default) {
+        grid-column: 2;
+        grid-row: 1;
+        width: 100%;
+    }
+    .single-shortcut :global(.footer-setting-shortcut-button) {
+        grid-row: 1;
+        justify-self: center;
+    }
+    .single-shortcut.left-shortcut :global(.footer-setting-shortcut-button) { grid-column: 1; }
+    .single-shortcut.right-shortcut :global(.footer-setting-shortcut-button) { grid-column: 3; }
+    .compact .footer-setting-controls.single-shortcut { --shortcut-space: 44px; }
     :global(.post-history-btn.default) {
         background-color: var(--btn-bg);
         max-width: 200px;
@@ -320,6 +340,7 @@
     .compact :global(.footer-setting-controls button.notification-btn) {
         width: 32px; min-width: 0; flex: 1 1 32px; padding-inline: 0;
     }
+    .compact .single-shortcut :global(button.post-history-btn) { width: 100%; }
     .compact :global(.footer-setting-controls .quality-shortcut-label) { display: none; }
     .compact :global(.footer-setting-controls .svg-icon) { width: 24px; height: 24px; }
     .compact :global(.footer-setting-controls .paired-icons) { width: 30px; flex-basis: 30px; gap: 2px; }

@@ -9,6 +9,9 @@
     import PostHistoryQuotePreview from './PostHistoryQuotePreview.svelte';
     import ImageFullscreen from './ImageFullscreen.svelte';
     import ProfileAvatar from './ProfileAvatar.svelte';
+    import PostHistoryReactionDetails from './PostHistoryReactionDetails.svelte';
+    import { buildPostHistoryReactionReadModel } from '../lib/postHistoryReactionReadModel';
+    import { usePostHistoryEmojiState } from '../lib/hooks/usePostHistoryEmojiState.svelte';
     import { useDialogHistory } from '../lib/hooks/useDialogHistory.svelte';
     import { notificationRepository, type NotificationRecord } from '../lib/storage/notificationRepository';
     import { notificationType } from '../lib/notification';
@@ -47,6 +50,13 @@
     let media = $state.raw<FullscreenMediaItem[]>([]), mediaIndex = $state(-1);
     let task: ReturnType<typeof syncNotifications> | null = null;
     let generation = $state(0);
+    function reactionModel(event: NotificationRecord['event']) {
+        return buildPostHistoryReactionReadModel([{ eventId: event.id, authorPubkey: event.pubkey,
+            kind: event.kind, content: event.content, tags: event.tags, createdAt: event.created_at }], profiles);
+    }
+    const reactionEmoji = usePostHistoryEmojiState({ getShow: () => show && !invalidated,
+        getEmojiUrls: () => records.filter(record => record.event.kind === 7)
+            .flatMap(record => reactionModel(record.event).groups.flatMap(group => group.emojiUrl ? [group.emojiUrl] : [])) });
     const profileSync = createPostHistoryProfileSyncCoordinator({ getShow: () => show && !invalidated, getRxNostr: () => rxNostr });
     const unsubscribeProfile = profileSync.subscribe((key, profile) => { profiles = { ...profiles, [key]: profile }; });
     const resolver = createPostHistoryRelatedTargetResolver({ getShow: () => show && !invalidated,
@@ -185,8 +195,13 @@
             <article class="notification-entry" data-notification-id={record.eventId}>
                 {#if type === 'reaction' || type === 'repost'}
                     {#if type === 'reaction'}
-                        <span class="notification-type">{$_('notifications.reaction')}</span>
-                        <NotificationPost event={record.event} profile={profiles[record.event.pubkey]} onImageOpen={openImage} />
+                        <div class="notification-reaction">
+                            <PostHistoryReactionDetails readModel={reactionModel(record.event)} showCount={false}
+                                emojiLoadStateByUrl={reactionEmoji.emojiLoadStateByUrl} emojiImageMetaByUrl={reactionEmoji.emojiImageMetaByUrl} />
+                            <span>{profiles[record.event.pubkey]?.displayName || profiles[record.event.pubkey]?.name || shortenMiddle(record.event.pubkey, 12, 4)}</span>
+                            <span class="notification-type">{$_('notifications.reaction')}</span>
+                            <time>{formatPostedAt(record.createdAt * 1000)}</time>
+                        </div>
                     {:else}
                     <div class="notification-actor">
                         <ProfileAvatar pubkeyHex={record.event.pubkey} displayName={profiles[record.event.pubkey]?.displayName}
@@ -240,6 +255,8 @@
     .notification-entry { display: grid; min-width: 0; gap: 6px; padding-block: 8px; border-bottom: 1px solid var(--border-hr); }
     .notification-type { font-size: .85rem; opacity: .8; }
     .notification-actor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+    .notification-reaction { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+    .notification-reaction :global(.post-preview-reactions-panel) { padding: 0; }
     .notification-actor :global(.notification-avatar) {
         display: block;
         width: 24px;

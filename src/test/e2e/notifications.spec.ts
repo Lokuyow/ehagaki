@@ -14,6 +14,64 @@ test.beforeEach(async ({ context, page }) => {
 });
 test.afterEach(() => expect(pageErrors).toEqual([]));
 
+test('shows each reaction compactly with its actor, time, custom emoji and target preview', async ({ page }, info) => {
+    await page.setViewportSize({ width: 360, height: 844 });
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await page.getByRole('button', { name: '通知（未読あり）' }).click();
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addReaction());
+    const dialog = page.getByRole('dialog');
+    const reactions = dialog.locator('.notification-entry:has(.notification-reaction)');
+    await expect(reactions).toHaveCount(2);
+    const custom = reactions.filter({ has: page.locator('img[alt=":demo:"]') });
+    await expect(custom).toHaveCount(1);
+    await expect(custom.locator('.notification-reaction')).toContainText('Fixture sender');
+    await expect(custom.locator('.notification-reaction time')).toBeVisible();
+    await expect(custom.locator('.post-preview-reaction-count')).toHaveCount(0);
+    await expect(custom.getByText('Original notification target', { exact: true })).toBeVisible();
+    await expect(custom.getByRole('button', { name: 'リアクションする' })).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath('reaction-360.png') });
+});
+
+test('centers history with a shortcut on either side at desktop, phone, and embedded widths', async ({ page }) => {
+    for (const width of [800, 360, 280]) {
+        await page.setViewportSize({ width: 800, height: 850 });
+        if (width === 280) {
+            await page.goto('post-history-dialog-playwright.html?notifications-host=1');
+        } else {
+            await page.setViewportSize({ width, height: 850 });
+            await page.goto('post-history-dialog-playwright.html?notifications=1');
+        }
+        const frame = width === 280 ? page.frameLocator('iframe[title="Notifications in a narrow host"]') : page;
+        const footer = frame.locator('.footer-bar');
+        await expect(footer).toBeVisible();
+        for (const slots of [{ left: null, right: 'notifications' }, { left: 'notifications', right: null },
+            { left: null, right: 'quote-notification' }, { left: 'image-quality', right: null }]) {
+            await footer.evaluate((element, value) => {
+                const view = element.ownerDocument.defaultView!;
+                Reflect.get(view, '__NOTIFICATIONS__').setShortcuts(value);
+            }, slots);
+            const geometry = await footer.evaluate(element => {
+                const rect = element.getBoundingClientRect();
+                const history = element.querySelector<HTMLElement>('.post-history-btn')!.getBoundingClientRect();
+                const buttons = Array.from(element.querySelectorAll<HTMLElement>('button')).map(button => {
+                    const box = button.getBoundingClientRect();
+                    return { left: box.left, right: box.right };
+                });
+                return { offset: Math.abs((history.left + history.right - rect.left - rect.right) / 2), buttons,
+                    left: rect.left, right: rect.right, scrollWidth: element.ownerDocument.documentElement.scrollWidth,
+                    viewportWidth: element.ownerDocument.documentElement.clientWidth };
+            });
+            expect(geometry.offset, `${width}: ${JSON.stringify(slots)} ${JSON.stringify(geometry)}`).toBeLessThanOrEqual(1);
+            expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+            for (const button of geometry.buttons) {
+                expect(button.left).toBeGreaterThanOrEqual(geometry.left - 0.5);
+                expect(button.right).toBeLessThanOrEqual(geometry.right + 0.5);
+            }
+            for (let i = 1; i < geometry.buttons.length; i++) expect(geometry.buttons[i]!.left).toBeGreaterThanOrEqual(geometry.buttons[i - 1]!.right - 0.5);
+        }
+    }
+});
+
 test('upgrades a v18 history and read notification without resetting data or refetching the target', async ({ page }) => {
     const ownerKey = generateSecretKey(), authorKey = generateSecretKey(), owner = getPublicKey(ownerKey);
     const now = Math.floor(Date.now() / 1000);

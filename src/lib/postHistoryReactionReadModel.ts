@@ -105,8 +105,8 @@ export async function selectPostHistoryReactionRecords(
     return adapter.getReactionRecords(parentEventId);
 }
 
-export function buildPostHistoryReactionReadModel(
-    records: PostHistoryChildInteractionRecord[],
+export function buildPostHistoryReactionReadModel<T extends Pick<PostHistoryChildInteractionRecord, "kind" | "content" | "tags" | "eventId" | "authorPubkey" | "createdAt">>(
+    records: T[],
     profileLookup?: PostHistoryReactionProfileLookup,
 ): PostHistoryReactionReadModel {
     if (records.length === 0) {
