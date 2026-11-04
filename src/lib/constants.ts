@@ -2,41 +2,26 @@
 export const DEFAULT_API_URL = "https://nostr.build/api/v2/upload/files";
 export const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1GB
 
-export type ExtremeAspectCompressionSettings = {
-    enabled: boolean;
-    aspectRatioThreshold: number;
-    minShortEdge: number;
-    maxMegapixels: number;
-};
-
-export const DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS: ExtremeAspectCompressionSettings = {
-    enabled: true,
-    aspectRatioThreshold: 3,
-    minShortEdge: 320,
-    maxMegapixels: 8,
-};
+export const IMAGE_RESIZE_LIMITS = { maxPixels: 8_000_000, maxLongEdge: 8192 } as const;
 
 export const COMPRESSION_OPTIONS_MAP = {
     none: {
         skip: true
     },
     high: {
-        maxWidthOrHeight: 2048,
+        maxShortEdge: 2048,
         fileType: "image/webp" as const,
-        initialQuality: 0.95,
-        useWebWorker: true,
+        quality: 0.95,
     },
     medium: {
-        maxWidthOrHeight: 1024,
+        maxShortEdge: 1024,
         fileType: "image/webp" as const,
-        initialQuality: 0.80,
-        useWebWorker: true,
+        quality: 0.80,
     },
     low: {
-        maxWidthOrHeight: 800,
+        maxShortEdge: 800,
         fileType: "image/webp" as const,
-        initialQuality: 0.50,
-        useWebWorker: true,
+        quality: 0.50,
     }
 } as const;
 

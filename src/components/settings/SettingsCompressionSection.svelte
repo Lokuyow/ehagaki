@@ -5,7 +5,7 @@
     import InfoPopoverButton from "../InfoPopoverButton.svelte";
     import {
         COMPRESSION_OPTIONS_MAP,
-        DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS,
+        IMAGE_RESIZE_LIMITS,
         VIDEO_COMPRESSION_OPTIONS_MAP,
     } from "../../lib/constants";
 
@@ -54,7 +54,7 @@
                     <thead>
                         <tr>
                             <th>{$_("settingsDialog.info_header_setting")}</th>
-                            <th>{$_("settingsDialog.info_header_pixels")}</th>
+                            <th>{$_("settingsDialog.info_header_short_edge")}</th>
                             <th>{$_("settingsDialog.info_header_quality")}</th>
                         </tr>
                     </thead>
@@ -63,12 +63,12 @@
                             <td>{$_("settingsDialog.quality_high")}</td>
                             <td
                                 >{COMPRESSION_OPTIONS_MAP.high
-                                    .maxWidthOrHeight}px</td
+                                    .maxShortEdge}px</td
                             >
                             <td
                                 >{Math.round(
                                     COMPRESSION_OPTIONS_MAP.high
-                                        .initialQuality * 100,
+                                        .quality * 100,
                                 )}%</td
                             >
                         </tr>
@@ -76,12 +76,12 @@
                             <td>{$_("settingsDialog.quality_medium")}</td>
                             <td
                                 >{COMPRESSION_OPTIONS_MAP.medium
-                                    .maxWidthOrHeight}px</td
+                                    .maxShortEdge}px</td
                             >
                             <td
                                 >{Math.round(
                                     COMPRESSION_OPTIONS_MAP.medium
-                                        .initialQuality * 100,
+                                        .quality * 100,
                                 )}%</td
                             >
                         </tr>
@@ -89,11 +89,11 @@
                             <td>{$_("settingsDialog.quality_low")}</td>
                             <td
                                 >{COMPRESSION_OPTIONS_MAP.low
-                                    .maxWidthOrHeight}px</td
+                                    .maxShortEdge}px</td
                             >
                             <td
                                 >{Math.round(
-                                    COMPRESSION_OPTIONS_MAP.low.initialQuality *
+                                    COMPRESSION_OPTIONS_MAP.low.quality *
                                         100,
                                 )}%</td
                             >
@@ -101,13 +101,10 @@
                     </tbody>
                 </table>
                 <p class="popover-note">
-                    {$_("settingsDialog.image_short_edge_protection_note", {
+                    {$_("settingsDialog.image_resize_limits_note", {
                         values: {
-                            aspectRatio:
-                                DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS.aspectRatioThreshold,
-                            pixels: DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS.minShortEdge,
-                            megapixels:
-                                DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS.maxMegapixels,
+                            longEdge: IMAGE_RESIZE_LIMITS.maxLongEdge,
+                            megapixels: IMAGE_RESIZE_LIMITS.maxPixels / 1_000_000,
                         },
                     })}
                 </p>

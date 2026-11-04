@@ -268,9 +268,15 @@ export async function uploadHelper({
         return abortAfterFileProcessing;
     }
 
+    // Host-owned preprocessing produces the files handed to the host transport.
+    // Keep placeholders keyed by those same files so metadata and bytes agree.
+    const placeholderFiles = prepareFiles
+        ? fileProcessingResults.map(result => result.file)
+        : fileArray;
+
     let placeholderMap = galleryMode
         ? insertPlaceholdersIntoGallery(
-            fileArray,
+            placeholderFiles,
             fileProcessingResults,
             showUploadError,
             dependencies.imageSizeMapStore,
@@ -278,7 +284,7 @@ export async function uploadHelper({
             devMode
         )
         : insertPlaceholdersIntoEditor(
-            fileArray,
+            placeholderFiles,
             fileProcessingResults,
             currentEditor as TipTapEditor | null,
             showUploadError,

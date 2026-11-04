@@ -116,7 +116,7 @@ async function mountHostOwned(page: import("@playwright/test").Page) {
         const submitted: unknown[] = [];
         composer.configureHostOwned({
             submit: (output: unknown) => { submitted.push(output); return { eventId: "a".repeat(64) }; },
-            uploadMedia: (file: File) => ({ url: `https://example.invalid/${file.name}` }),
+            uploadMedia: (file: File) => { (window as any).__liteLastUpload = { size: file.size, type: file.type }; return { url: `https://example.invalid/${file.name}` }; },
             contentWarningEnabled: true,
             hashtagPinEnabled: true,
         });
@@ -2527,7 +2527,7 @@ test("Lite Resource Timing keeps initial media code lazy and resolves every capa
     await page.goto(hostOrigin);
     await mountHostOwned(page);
     const initial = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name));
-    for (const capability of ["HostOwnedCustomEmojiPicker-", "browser-image-compression-", "mediabunnyCompression-", "mediabunny-aac-encoder-"]) {
+    for (const capability of ["HostOwnedCustomEmojiPicker-", "webp_enc", "mediabunnyCompression-", "mediabunny-aac-encoder-"]) {
         expect(initial.some((url) => url.includes(capability))).toBe(false);
     }
     await page.locator("ehagaki-composer").evaluate((element) => {
@@ -2540,15 +2540,35 @@ test("Lite Resource Timing keeps initial media code lazy and resolves every capa
         const composer = document.querySelector("ehagaki-composer") as HTMLElement & {
             setSettings(value: unknown): Promise<unknown>;
         };
-        await composer.setSettings({ imageCompressionLevel: "low", videoCompressionLevel: "low" });
+        await composer.setSettings({ imageQualityLevel: "low", videoQualityLevel: "low" });
+    });
+    const imageBytes = await page.evaluate(async () => {
+        const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 1200;
+        const context = canvas.getContext('2d')!;
+        const data = context.createImageData(1200, 1200);
+        for (let i = 0; i < data.data.length; i++) data.data[i] = (i * 31 + (i >> 8)) % 256;
+        context.putImageData(data, 0, 0);
+        const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/png'));
+        return [...new Uint8Array(await blob.arrayBuffer())];
     });
     await page.locator("ehagaki-composer").locator('input[type="file"]').setInputFiles({
-        name: "large-image.png",
-        mimeType: "image/png",
-        buffer: Buffer.alloc(21 * 1024),
+        name: "large-image.png", mimeType: "image/png", buffer: Buffer.concat([Buffer.from(imageBytes), Buffer.alloc(5_000_000)]),
     });
-    await expect.poll(() => page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name)))
-        .toContainEqual(expect.stringContaining("/host-owned/assets/browser-image-compression-"));
+    await expect.poll(() => page.evaluate(() => (window as any).__liteLastUpload?.type)).toBe('image/webp');
+    expect(await page.evaluate(() => performance.getEntriesByType('resource').some(entry => /webp_enc/.test(entry.name)))).toBe(false);
+    await page.evaluate(() => {
+        (window as any).__liteLastUpload = undefined;
+        const nativeToBlob = HTMLCanvasElement.prototype.toBlob;
+        HTMLCanvasElement.prototype.toBlob = function(callback, type, quality) {
+            return nativeToBlob.call(this, callback, type === 'image/webp' ? 'image/png' : type, quality);
+        };
+    });
+    await page.locator("ehagaki-composer").locator('input[type="file"]').setInputFiles({
+        name: "fallback-image.png", mimeType: "image/png",
+        buffer: Buffer.concat([Buffer.from(imageBytes), Buffer.alloc(5_000_000)]),
+    });
+    await expect.poll(() => page.evaluate(() => (window as any).__liteLastUpload?.type)).toBe('image/webp');
+    await expect.poll(() => page.evaluate(() => performance.getEntriesByType('resource').some(entry => /host-owned\/assets\/webp_enc/.test(entry.name)))).toBe(true);
     const imageResources = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name));
 
     // Use a new document for each media boundary so a pending previous handoff

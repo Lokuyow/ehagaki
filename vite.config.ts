@@ -75,7 +75,7 @@ export default defineConfig({
             { name: 'vendor-nostr', test: /node_modules[\\/](?:nostr-tools|rx-nostr|@rx-nostr[\\/]|@noble[\\/])/ },
             // Keep the optional AAC encoder outside MediaBunny's shared chunk.
             { name: 'vendor-video', test: /node_modules[\\/]mediabunny[\\/]/ },
-            { name: 'vendor-image', test: /node_modules[\\/](?:browser-image-compression|blurhash)[\\/]/ },
+            { name: 'vendor-image', test: /node_modules[\\/](?:blurhash)[\\/]/ },
             { name: 'vendor-zap', test: /node_modules[\\/]nostr-zap/ },
             { name: 'vendor-ui', test: /node_modules[\\/]bits-ui[\\/]/ },
             { name: 'vendor-i18n', test: /node_modules[\\/](?:svelte-i18n|intl-messageformat|@formatjs[\\/]|deepmerge)/ },

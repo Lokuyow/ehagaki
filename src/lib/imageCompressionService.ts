@@ -1,436 +1,140 @@
 import { inspectWebp } from './utils/webpContainer';
 import type { CompressionService, MimeTypeSupportInterface } from './types';
-import {
-    COMPRESSION_OPTIONS_MAP,
-    DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS,
-    type ExtremeAspectCompressionSettings,
-} from './constants';
+import { COMPRESSION_OPTIONS_MAP, IMAGE_RESIZE_LIMITS } from './constants';
 import { renameByMimeType } from './utils/fileUtils';
 import { getImageCompressionLevelPreference } from './utils/settingsStorage';
 import { showCompressedImagePreview } from './debug';
 import { isDefaultUploadAborted } from './uploadAbortUtils';
+import { awaitUploadOperation, createUploadAbortError } from './upload/uploadOperation';
 
-type ImageCompressionLevel = keyof typeof COMPRESSION_OPTIONS_MAP;
-
-const WEBP_MIME_TYPE = "image/webp";
-const DEFAULT_WEBP_QUALITY = 0.8;
-
-let imageCompressionModulePromise: Promise<typeof import("browser-image-compression")> | null = null;
-
-const IMAGE_COMPRESSION_TARGET_RATIO_MAP: Partial<Record<ImageCompressionLevel, number>> = {
-    low: 0.9,
-    medium: 0.75,
-    high: 0.6,
-};
-
-interface ImageDimensions {
-    width: number;
-    height: number;
-}
-
-interface PreparedCompressionOptions {
-    options: Record<string, unknown>;
-    shouldSkipMaxSizeMB: boolean;
-}
-
-export interface ExtremeAspectResizeResult {
-    maxWidthOrHeight: number;
-    targetWidth: number;
-    targetHeight: number;
-    wasAdjusted: boolean;
-}
-
-function calculateScaledDimensions(
-    width: number,
-    height: number,
-    scale: number,
-): { targetWidth: number; targetHeight: number } {
-    return {
-        targetWidth: Math.max(1, Math.floor(width * scale)),
-        targetHeight: Math.max(1, Math.floor(height * scale)),
-    };
-}
-
-export function calculateExtremeAspectMaxWidthOrHeight({
-    width,
-    height,
-    maxWidthOrHeight,
-    settings = DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS,
-}: {
-    width: number;
-    height: number;
-    maxWidthOrHeight: number;
-    settings?: ExtremeAspectCompressionSettings;
-}): ExtremeAspectResizeResult {
-    const baseMaxWidthOrHeight = Math.max(1, Math.floor(maxWidthOrHeight));
-    const hasValidDimensions =
-        Number.isFinite(width) &&
-        Number.isFinite(height) &&
-        width > 0 &&
-        height > 0;
-    const baseScale = hasValidDimensions
-        ? Math.min(1, baseMaxWidthOrHeight / Math.max(width, height))
-        : 1;
-    const fallbackResult = {
-        maxWidthOrHeight: baseMaxWidthOrHeight,
-        ...calculateScaledDimensions(
-            hasValidDimensions ? width : 1,
-            hasValidDimensions ? height : 1,
-            baseScale,
-        ),
-        wasAdjusted: false,
-    };
-
-    if (
-        !settings.enabled ||
-        !hasValidDimensions ||
-        !Number.isFinite(maxWidthOrHeight) ||
-        maxWidthOrHeight <= 0 ||
-        settings.aspectRatioThreshold <= 0 ||
-        settings.minShortEdge <= 0 ||
-        settings.maxMegapixels <= 0
-    ) {
-        return fallbackResult;
+/** Bounds generated images, not originals returned by skip/failure/size comparison. */
+export function calculateImageResizeDimensions(width: number, height: number, maxShortEdge: number) {
+    if (![width, height, maxShortEdge].every(value => Number.isFinite(value) && value > 0)) {
+        throw new Error('Invalid image dimensions');
     }
-
-    const longEdge = Math.max(width, height);
-    const shortEdge = Math.min(width, height);
-    const aspectRatio = longEdge / shortEdge;
-    const baseShortEdge = Math.floor(shortEdge * baseScale);
-
-    if (
-        aspectRatio < settings.aspectRatioThreshold ||
-        baseShortEdge >= settings.minShortEdge
-    ) {
-        return fallbackResult;
-    }
-
-    const targetShortEdge = Math.min(settings.minShortEdge, shortEdge);
-    const shortEdgeScale = targetShortEdge / shortEdge;
-    const maxPixels = settings.maxMegapixels * 1_000_000;
-    const megapixelScale = Math.sqrt(maxPixels / (width * height));
-    const isMegapixelLimited = megapixelScale < shortEdgeScale;
-    const adjustedScale = Math.min(shortEdgeScale, megapixelScale, 1);
-    const { targetWidth, targetHeight } = isMegapixelLimited
-        ? calculateScaledDimensions(width, height, adjustedScale)
-        : height >= width
-            ? {
-                targetWidth: Math.max(1, Math.floor(width * adjustedScale)),
-                targetHeight: Math.max(1, Math.ceil(height * adjustedScale)),
-            }
-            : {
-                targetWidth: Math.max(1, Math.ceil(width * adjustedScale)),
-                targetHeight: Math.max(1, Math.floor(height * adjustedScale)),
-            };
-    const adjustedMaxWidthOrHeight = Math.max(targetWidth, targetHeight);
-
-    return {
-        maxWidthOrHeight: adjustedMaxWidthOrHeight,
-        targetWidth,
-        targetHeight,
-        wasAdjusted: adjustedMaxWidthOrHeight !== baseMaxWidthOrHeight,
-    };
+    const scale = Math.min(1, maxShortEdge / Math.min(width, height),
+        Math.sqrt(IMAGE_RESIZE_LIMITS.maxPixels / (width * height)),
+        IMAGE_RESIZE_LIMITS.maxLongEdge / Math.max(width, height));
+    return { width: Math.max(1, Math.floor(width * scale)), height: Math.max(1, Math.floor(height * scale)) };
 }
 
-async function loadImageCompression() {
-    if (!imageCompressionModulePromise) {
-        imageCompressionModulePromise = import("browser-image-compression");
-    }
-
-    const module = await imageCompressionModulePromise;
-    return module.default;
-}
-
-// --- 画像圧縮サービス ---
 export class ImageCompressionService implements CompressionService {
     private onProgress?: (progress: number) => void;
-
     constructor(
         private mimeSupport: MimeTypeSupportInterface,
         private localStorage: Storage,
         private isUploadAborted: () => boolean = isDefaultUploadAborted,
-    ) { }
+    ) {}
 
-    /**
-     * 圧縮処理を中止（グローバルフラグで管理）
-     */
-    public abort(): void {
-        const isDev = import.meta.env.DEV;
-        if (isDev) console.log('[ImageCompressionService] Abort requested');
-
-        if (this.onProgress) {
-            this.onProgress(0);
-        }
+    public abort(): void { this.onProgress?.(0); }
+    public setProgressCallback(callback?: (progress: number) => void): void { this.onProgress = callback; }
+    private getCompressionOptions() {
+        const level = getImageCompressionLevelPreference(this.localStorage);
+        const options = COMPRESSION_OPTIONS_MAP[level as keyof typeof COMPRESSION_OPTIONS_MAP] ?? COMPRESSION_OPTIONS_MAP.medium;
+        return 'skip' in options ? null : options;
     }
+    public hasCompressionSettings(): boolean { return this.getCompressionOptions() !== null; }
 
-    /**
-     * 進捗コールバックを設定
-     */
-    public setProgressCallback(callback?: (progress: number) => void): void {
-        this.onProgress = callback;
-    }
-
-    private getCompressionLevel(): ImageCompressionLevel {
-        const normalizedLevel = getImageCompressionLevelPreference(this.localStorage);
-        return normalizedLevel in COMPRESSION_OPTIONS_MAP
-            ? normalizedLevel as ImageCompressionLevel
-            : "medium";
-    }
-
-    private getCompressionOptions(level: ImageCompressionLevel = this.getCompressionLevel()): Record<string, unknown> | null {
-        const opt = COMPRESSION_OPTIONS_MAP[level];
-        if (typeof opt === "object" && opt && "skip" in opt && opt.skip) {
-            return null;
-        }
-        return opt ? { ...opt, preserveExif: false } : null;
-    }
-
-    private getTargetMaxSizeMB(fileSize: number, level: ImageCompressionLevel): number | undefined {
-        const ratio = IMAGE_COMPRESSION_TARGET_RATIO_MAP[level];
-        if (!ratio) {
-            return undefined;
+    async compress(file: File, operation?: { signal?: AbortSignal }): ReturnType<CompressionService["compress"]> {
+        const isAborted = () => !!operation?.signal?.aborted || this.isUploadAborted();
+        const check = () => { if (isAborted()) throw createUploadAbortError(); };
+        const original = { file, wasCompressed: false };
+        if (isAborted()) return { ...original, aborted: true };
+        if (!file.type.startsWith('image/')) return original;
+        const options = this.getCompressionOptions();
+        if (!options || file.type === 'image/gif' || file.size <= 20 * 1024) {
+            return { ...original, wasSkipped: true };
         }
 
-        const targetBytes = Math.floor(Math.min(fileSize * ratio, fileSize - 1024));
-        if (targetBytes <= 0) {
-            return undefined;
-        }
-
-        return targetBytes / (1024 * 1024);
-    }
-
-    private getWebpQuality(options: Record<string, unknown>): number {
-        const quality = typeof options.initialQuality === "number"
-            ? options.initialQuality
-            : DEFAULT_WEBP_QUALITY;
-
-        return Math.round(Math.min(Math.max(quality, 0), 1) * 100);
-    }
-
-    private createReadableCanvas(width: number, height: number): { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D } {
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-
-        const context = canvas.getContext("2d", { willReadFrequently: true });
-        if (!context) {
-            throw new Error("Failed to create canvas context for WebP transcoding");
-        }
-
-        return { canvas, context };
-    }
-
-    private async loadImageDimensions(file: Blob): Promise<ImageDimensions | null> {
-        if (typeof URL.createObjectURL !== "function" || typeof window.Image !== "function") {
-            return null;
-        }
-
-        const url = URL.createObjectURL(file);
-
+        let image: HTMLImageElement | undefined;
+        let url: string | undefined;
+        let canvas: HTMLCanvasElement | undefined;
         try {
-            return await new Promise<ImageDimensions | null>((resolve) => {
-                const img = new window.Image();
-                img.onload = () => {
-                    const width = img.naturalWidth || img.width;
-                    const height = img.naturalHeight || img.height;
-                    resolve(width > 0 && height > 0 ? { width, height } : null);
-                };
-                img.onerror = () => resolve(null);
-                img.src = url;
-            });
-        } finally {
-            URL.revokeObjectURL?.(url);
-        }
-    }
-
-    private async applyExtremeAspectProtection(
-        file: File,
-        options: Record<string, unknown>,
-    ): Promise<PreparedCompressionOptions> {
-        const maxWidthOrHeight = options.maxWidthOrHeight;
-        if (typeof maxWidthOrHeight !== "number") {
-            return {
-                options,
-                shouldSkipMaxSizeMB: false,
-            };
-        }
-
-        const dimensions = await this.loadImageDimensions(file);
-        if (!dimensions) {
-            return {
-                options,
-                shouldSkipMaxSizeMB: false,
-            };
-        }
-
-        const result = calculateExtremeAspectMaxWidthOrHeight({
-            ...dimensions,
-            maxWidthOrHeight,
-        });
-
-        return result.wasAdjusted
-            ? {
-                options: { ...options, maxWidthOrHeight: result.maxWidthOrHeight },
-                shouldSkipMaxSizeMB: true,
-            }
-            : {
-                options,
-                shouldSkipMaxSizeMB: false,
-            };
-    }
-
-    private async loadImageData(file: Blob): Promise<ImageData> {
-        const url = URL.createObjectURL(file);
-
-        try {
-            const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-                const img = new window.Image();
-                img.onload = () => resolve(img);
-                img.onerror = () => reject(new Error("Failed to load image for WebP transcoding"));
-                img.src = url;
-            });
-
-            const { canvas, context } = this.createReadableCanvas(
-                image.naturalWidth || image.width,
-                image.naturalHeight || image.height,
-            );
-
-            context.drawImage(image, 0, 0, canvas.width, canvas.height);
-            return context.getImageData(0, 0, canvas.width, canvas.height);
-        } finally {
-            URL.revokeObjectURL(url);
-        }
-    }
-
-    private async tryTranscodeToWebp(file: Blob, originalName: string, options: Record<string, unknown>): Promise<File | null> {
-        try {
-            const imageData = await this.loadImageData(file);
-            const { encode } = await import("@jsquash/webp");
-            const encoded = await encode(imageData, {
-                quality: this.getWebpQuality(options),
-            });
-
-            return new File([encoded], renameByMimeType(originalName, WEBP_MIME_TYPE), {
-                type: WEBP_MIME_TYPE,
-            });
-        } catch (error) {
-            console.warn("[ImageCompressionService] WebP fallback transcoding failed:", error);
-            return null;
-        }
-    }
-
-    public hasCompressionSettings(): boolean {
-        return this.getCompressionOptions() !== null;
-    }
-
-    async compress(
-        file: File,
-        operation?: { signal?: AbortSignal },
-    ): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean; aborted?: boolean }> {
-        const isAborted = () => operation?.signal?.aborted || this.isUploadAborted();
-        if (isAborted()) {
-            return { file, wasCompressed: false, aborted: true };
-        }
-
-        if (!file.type.startsWith("image/")) return { file, wasCompressed: false };
-        // Canvas encoders only retain one frame; keep every GIF byte intact.
-        if (file.type === "image/gif") return { file, wasCompressed: false, wasSkipped: true };
-        if (file.size <= 20 * 1024) return { file, wasCompressed: false, wasSkipped: true };
-
-        const level = this.getCompressionLevel();
-        const options = this.getCompressionOptions(level);
-        if (!options) return { file, wasCompressed: false, wasSkipped: true };
-
-        if (file.type === WEBP_MIME_TYPE) {
-            try {
+            if (file.type === 'image/webp') {
                 const kind = await inspectWebp(file, operation?.signal);
-                if (isAborted()) return { file, wasCompressed: false, aborted: true };
-                if (kind !== 'static') return { file, wasCompressed: false, wasSkipped: true };
-            } catch {
-                return isAborted() ? { file, wasCompressed: false, aborted: true }
-                    : { file, wasCompressed: false, wasSkipped: true };
+                check();
+                if (kind !== 'static') return { ...original, wasSkipped: true };
             }
-        }
+            this.onProgress?.(5);
+            check();
+            image = new window.Image();
+            const loaded = new Promise<void>((resolve, reject) => {
+                image!.onload = () => resolve();
+                image!.onerror = () => reject(new Error('Failed to decode image'));
+            });
+            url = URL.createObjectURL(file);
+            image.src = url;
+            await awaitUploadOperation(loaded, operation?.signal);
+            check();
+            // Supported browsers decode EXIF orientation before exposing natural dimensions/drawing.
+            const dimensions = calculateImageResizeDimensions(image.naturalWidth, image.naturalHeight, options.maxShortEdge);
+            canvas = document.createElement('canvas');
+            canvas.width = dimensions.width;
+            canvas.height = dimensions.height;
+            const context = canvas.getContext('2d');
+            if (!context) throw new Error('Failed to create image canvas');
+            context.imageSmoothingEnabled = true;
+            context.imageSmoothingQuality = 'high';
+            context.drawImage(image, 0, 0, dimensions.width, dimensions.height);
+            this.onProgress?.(40);
+            check();
 
-        const requestedTargetMime = (options.fileType as string) || file.type;
-        const maxSizeMB = this.getTargetMaxSizeMB(file.size, level);
-        const {
-            options: compressionOptions,
-            shouldSkipMaxSizeMB,
-        } = await this.applyExtremeAspectProtection(file, options);
-        if (isAborted()) return { file, wasCompressed: false, aborted: true };
-
-        let usedOptions: Record<string, unknown> = {
-            ...compressionOptions,
-            ...(!shouldSkipMaxSizeMB && maxSizeMB ? { maxSizeMB } : {}),
-            alwaysKeepResolution: true,
-            onProgress: (progress: number) => {
-                if (this.onProgress) {
-                    this.onProgress(Math.round(progress * 100));
+            const encodeNative = async (mime: string): Promise<Blob | null> => {
+                try {
+                    const blob = await awaitUploadOperation(new Promise<Blob | null>((resolve) => {
+                        canvas!.toBlob(resolve, mime, options.quality);
+                    }), operation?.signal);
+                    check();
+                    return blob?.size && blob.type === mime ? blob : null;
+                } catch (error) {
+                    check();
+                    return null;
+                }
+            };
+            let encoded = this.mimeSupport.canEncodeMimeType('image/webp')
+                ? await encodeNative('image/webp') : null;
+            if (!encoded) {
+                try {
+                    const { encode } = await import('@jsquash/webp');
+                    check();
+                    const data = context.getImageData(0, 0, canvas.width, canvas.height);
+                    const bytes = await awaitUploadOperation(encode(data, { quality: Math.round(options.quality * 100) }), operation?.signal);
+                    check();
+                    if (bytes.byteLength) encoded = new Blob([bytes], { type: 'image/webp' });
+                } catch (error) {
+                    check();
+                    console.warn('[ImageCompressionService] WebP fallback failed:', error);
                 }
             }
-        };
-
-        if (usedOptions.fileType === WEBP_MIME_TYPE) {
-            const webpSupported = this.mimeSupport.canEncodeMimeType(WEBP_MIME_TYPE);
-            if (!webpSupported) {
-                usedOptions.fileType = file.type === "image/png" ? "image/png" : "image/jpeg";
-            }
-        }
-
-        if (isAborted()) {
-            return { file, wasCompressed: false, aborted: true };
-        }
-
-        if (operation?.signal) usedOptions.signal = operation.signal;
-
-        let targetMime: string = (usedOptions.fileType as string) || file.type;
-        if (!this.mimeSupport.canEncodeMimeType(targetMime)) {
-            targetMime = file.type;
-            delete usedOptions.fileType;
-        }
-
-        try {
-            const imageCompression = await loadImageCompression();
-            const compressed = await imageCompression(file, usedOptions as Parameters<typeof imageCompression>[1]);
-            const compressedBlob = compressed as Blob;
-
-            if (this.isUploadAborted()) {
-                if (this.onProgress) {
-                    this.onProgress(0);
+            check();
+            if (!encoded) {
+                const mime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+                if (mime === 'image/jpeg') {
+                    context.globalCompositeOperation = 'destination-over';
+                    context.fillStyle = '#fff';
+                    context.fillRect(0, 0, canvas.width, canvas.height);
                 }
-                return { file, wasCompressed: false, aborted: true };
+                encoded = await encodeNative(mime);
             }
-
-            let finalCompressedFile: Blob | File = compressedBlob;
-            if (requestedTargetMime === WEBP_MIME_TYPE && compressedBlob.type !== WEBP_MIME_TYPE) {
-                const webpFallbackFile = await this.tryTranscodeToWebp(compressedBlob, file.name, options);
-                if (webpFallbackFile) {
-                    finalCompressedFile = webpFallbackFile;
-                }
-            }
-            if (isAborted()) return { file, wasCompressed: false, aborted: true };
-
-            if (finalCompressedFile.size >= file.size) {
-                return { file, wasCompressed: false };
-            }
-
-            const outType = finalCompressedFile.type || (usedOptions.fileType as string) || targetMime || file.type;
-            const outName = renameByMimeType(file.name, outType);
-            const outFile = new File([finalCompressedFile], outName, { type: outType });
-
-            if (!operation?.signal) showCompressedImagePreview(outFile);
-            return { file: outFile, wasCompressed: true };
+            check();
+            if (!encoded) throw new Error('Failed to encode image');
+            this.onProgress?.(100);
+            check();
+            if (encoded.size >= file.size) return original;
+            const output = new File([encoded], renameByMimeType(file.name, encoded.type), { type: encoded.type });
+            if (!operation?.signal) showCompressedImagePreview(output);
+            return { file: output, wasCompressed: true };
         } catch (error) {
             if (isAborted()) {
-                if (this.onProgress) {
-                    this.onProgress(0);
-                }
-                return { file, wasCompressed: false, aborted: true };
+                this.onProgress?.(0);
+                return { ...original, aborted: true };
             }
-
-            console.warn("[ImageCompressionService] Compression failed:", error);
-            return { file, wasCompressed: false, wasSkipped: true };
+            console.warn('[ImageCompressionService] Compression failed:', error);
+            return { ...original, wasSkipped: true };
+        } finally {
+            if (image) { image.onload = null; image.onerror = null; image.src = ''; }
+            if (url) URL.revokeObjectURL(url);
+            if (canvas) { canvas.width = 0; canvas.height = 0; }
         }
     }
 }
