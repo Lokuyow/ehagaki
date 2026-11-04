@@ -431,6 +431,8 @@
     "mediaNotCached": "Not cached",
     "mediaFetchAndCache": "Fetch and cache",
     "mediaOpen": "Open",
+    "showAllImages": "Show all {count} images",
+    "hideExtraImages": "Show fewer images",
     "mediaLoading": "Loading...",
     "mediaLoadFailed": "Failed to load",
     "expand": "Show more",

@@ -35,6 +35,7 @@
 
 <div class="notification-post" bind:this={container} class:has-actions={Boolean(onReply || onReaction)}>
 <PostHistoryRelatedEventCard {event} {profile} {model} {onImageOpen} {loadSensitiveBody}
+    maxVisibleImages={3}
     previewCollapseAction={collapse.previewRef} previewCollapseEventId={previewId} previewContentId={previewId}
     isTextCollapsed={!collapse.isPostExpanded(collapsePost)}
     emojiLoadStateByUrl={emoji.emojiLoadStateByUrl} emojiImageMetaByUrl={emoji.emojiImageMetaByUrl}>

@@ -84,6 +84,14 @@
                 await new EventRepository(ehagakiDb).save(target, [relay], () => true);
                 await notificationRepository.upsert(owner, [mention, warning, reaction].map(event => ({ event, relayUrls: [relay] })));
             },
+            addImagePosts: async () => {
+                const images = (prefix: string, count: number) => Array.from({ length: count }, (_, index) => `https://profiles.example/${prefix}-${index}.png`).join('\n');
+                const target = finalizeEvent({ kind: 30023, content: `MANY-ARTICLE-IMAGES\n${images('article', 8)}`, tags: [], created_at: now }, authorKey);
+                const mention = finalizeEvent({ kind: 1, content: `MANY-NOTE-IMAGES\n${images('note', 5)}`, tags: [['p', owner]], created_at: now + 5 }, authorKey);
+                const reaction = finalizeEvent({ kind: 7, content: '+', tags: [['p', owner], ['p', target.pubkey], ['e', target.id], ['k', '30023']], created_at: now + 6 }, generateSecretKey());
+                await new EventRepository(ehagakiDb).save(target, [relay], () => true);
+                await notificationRepository.upsert(owner, [mention, reaction].map(event => ({ event, relayUrls: [relay] })));
+            },
             unread: () => notificationRepository.hasUnread(owner),
             replay: () => notificationRepository.upsert(owner, incoming.map(event => ({ event }))),
             setShortcuts: (value: unknown) => footerSettingShortcutsStore.set(value),

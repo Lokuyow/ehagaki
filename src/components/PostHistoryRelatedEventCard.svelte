@@ -34,6 +34,7 @@
             PostContentEmojiImageMeta | undefined
         >;
         scrollRoot?: HTMLElement | null;
+        maxVisibleImages?: number;
         isTextCollapsed?: boolean;
         previewCollapseAction?: (node: HTMLDivElement, eventId: string) => { destroy?: () => void } | void;
         previewCollapseEventId?: string;
@@ -59,6 +60,7 @@
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         scrollRoot = null,
+        maxVisibleImages = undefined,
         isTextCollapsed = false,
         previewCollapseAction = undefined,
         previewCollapseEventId = undefined,
@@ -111,6 +113,7 @@
             {emojiLoadStateByUrl}
             {emojiImageMetaByUrl}
             {scrollRoot}
+            {maxVisibleImages}
             {onImageOpen}
             {isTextCollapsed}
             {previewCollapseAction}

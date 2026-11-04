@@ -29,6 +29,7 @@
             focusOrigin: HTMLElement | null;
         }) => void;
         mediaLayout?: PostHistoryMediaLayout;
+        maxVisibleImages?: number;
     }
 
     type DisplayMediaItem = PostHistoryResolvedMedia & {
@@ -61,6 +62,7 @@
         scrollRoot = null,
         onImageOpen = undefined,
         mediaLayout = undefined,
+        maxVisibleImages = undefined,
     }: Props = $props();
 
     let copyStateByUrl = $state<
@@ -69,6 +71,7 @@
     const autoRequestedUrls = new Set<string>();
     const layoutAspectRatioByItemId = new Map<string, string>();
     const layoutHasKnownDimensionsByItemId = new Map<string, boolean>();
+    let imagesExpanded = $state(false);
 
     const resolvedMediaLayout = $derived.by(
         () => mediaLayout ?? buildPostHistoryMediaLayout(media),
@@ -85,12 +88,15 @@
             ),
     );
 
-    const imageRows = $derived.by(() =>
-        resolvedMediaLayout.imageRows.map((row) => ({
-            ...row,
-            items: row.items.map((item) => toDisplayMediaItem(item)),
-        })),
-    );
+    const canCollapseImages = $derived(maxVisibleImages !== undefined && resolvedMediaLayout.images.length > maxVisibleImages);
+    const imageRows = $derived.by(() => {
+        let remaining = canCollapseImages && !imagesExpanded ? maxVisibleImages! : Infinity;
+        return resolvedMediaLayout.imageRows.flatMap((row) => {
+            const items = row.items.slice(0, remaining).map((item) => toDisplayMediaItem(item));
+            remaining -= items.length;
+            return items.length ? [{ ...row, items }] : [];
+        });
+    });
     const videoItems = $derived.by(() =>
         resolvedMediaLayout.videos.map((item) => toDisplayMediaItem(item)),
     );
@@ -739,6 +745,13 @@
             </div>
         {/if}
 
+        {#if canCollapseImages}
+            <button type="button" class="post-history-image-toggle" aria-expanded={imagesExpanded}
+                onclick={() => imagesExpanded = !imagesExpanded}>
+                {imagesExpanded ? $_("postHistory.hideExtraImages") : $_("postHistory.showAllImages", { values: { count: resolvedMediaLayout.images.length } })}
+            </button>
+        {/if}
+
         {#if videoItems.length > 0}
             <div class="post-history-video-list">
                 {#each videoItems as item (item.id)}
@@ -887,6 +900,17 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
+    }
+
+    .post-history-image-toggle {
+        align-self: flex-start;
+        padding: 4px 10px;
+        border: 1px solid var(--border-hr);
+        border-radius: 999px;
+        background: var(--bg-input);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
     }
 
     .post-history-image-grid {

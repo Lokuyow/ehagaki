@@ -14,6 +14,58 @@ test.beforeEach(async ({ context, page }) => {
 });
 test.afterEach(() => expect(pageErrors).toEqual([]));
 
+test('notification images are compact and can be expanded independently', async ({ page }, info) => {
+    await page.setViewportSize({ width: 360, height: 844 });
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await expect(page.locator('.notification-btn')).toBeVisible();
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addImagePosts());
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    const article = dialog.locator('.notification-entry').filter({ hasText: 'MANY-ARTICLE-IMAGES' });
+    const note = dialog.locator('.notification-entry').filter({ hasText: 'MANY-NOTE-IMAGES' });
+    await expect(article.locator('.post-history-image-cell')).toHaveCount(3);
+    await expect(note.locator('.post-history-image-cell')).toHaveCount(3);
+    const toggle = article.getByRole('button', { name: '画像をすべて表示（8枚）' });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await toggle.click();
+    await expect(article.locator('.post-history-image-cell')).toHaveCount(8);
+    await expect(note.locator('.post-history-image-cell')).toHaveCount(3);
+    const hide = article.getByRole('button', { name: '画像を収納' });
+    await expect(hide).toHaveAttribute('aria-expanded', 'true');
+    await hide.focus();
+    await page.keyboard.press('Enter');
+    await expect(article.locator('.post-history-image-cell')).toHaveCount(3);
+    await expect(article.getByRole('button', { name: '画像をすべて表示（8枚）' })).toBeFocused();
+    await expect(note.getByRole('button', { name: 'リプライ' })).toBeVisible();
+    expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath('notification-images-360.png') });
+    await article.locator('.post-history-media-surface').first().click();
+    const viewer = page.locator('.pswp');
+    await expect(viewer.locator('.pswp__counter')).toHaveText('1 / 8');
+    await page.keyboard.press('ArrowRight');
+    await expect(viewer.locator('.pswp__counter')).toHaveText('2 / 8');
+    await page.keyboard.press('Escape');
+    await expect(viewer).toHaveCount(0);
+});
+
+test('image controls fit inside a 280px embedded notification dialog', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 850 });
+    await page.goto('post-history-dialog-playwright.html?notifications-host=1');
+    const frame = page.frameLocator('iframe[title="Notifications in a narrow host"]');
+    await expect(frame.locator('.notification-btn')).toBeVisible();
+    await frame.locator('.footer-bar').evaluate(element => Reflect.get(element.ownerDocument.defaultView!, '__NOTIFICATIONS__').addImagePosts());
+    await frame.locator('.notification-btn').click();
+    const dialog = frame.getByRole('dialog');
+    const article = dialog.locator('.notification-entry').filter({ hasText: 'MANY-ARTICLE-IMAGES' });
+    await expect(article.locator('.post-history-image-cell')).toHaveCount(3);
+    await article.getByRole('button', { name: '画像をすべて表示（8枚）' }).click();
+    await expect(article.locator('.post-history-image-cell')).toHaveCount(8);
+    expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await article.getByRole('button', { name: '画像を収納' }).click();
+    await expect(article.locator('.post-history-image-cell')).toHaveCount(3);
+    expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+});
+
 test('collapses and independently expands long kind 1 and NIP-23 notification posts', async ({ page }, info) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1');
