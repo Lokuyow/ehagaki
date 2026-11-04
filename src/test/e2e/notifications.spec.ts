@@ -394,6 +394,15 @@ test('notifications persist read state, render quotes, and hand reply/reaction t
     await expect(dialog.getByText('A mention addressed to you', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Quote notification text', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Original notification target', { exact: true }).first()).toBeVisible();
+    const targets = dialog.locator('.notification-post.plain .post-history-related-card');
+    await expect(targets).toHaveCount(2);
+    for (const target of await targets.all()) {
+        await expect(target).toHaveCSS('border-inline-start-width', '0px');
+        await expect(target).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    }
+    const quote = dialog.locator('.notification-entry').filter({ hasText: 'Quote notification text' })
+        .locator('.notification-post').last().locator('.post-history-related-card');
+    await expect(quote).toHaveCSS('border-inline-start-width', '2px');
     await expectContainedActorAvatar(dialog);
     await expect(page.locator('.notification-badge')).toHaveCount(0);
     await page.evaluate(() => (window as any).__NOTIFICATIONS__.add());

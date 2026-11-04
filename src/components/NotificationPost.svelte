@@ -14,12 +14,13 @@
         event: NostrEvent;
         profile?: ProfileData | null;
         relayUrls?: string[];
+        plain?: boolean;
         loadSensitiveBody?: SensitiveBodyLoader;
         onReply?: (post: PostHistoryRecord) => Promise<boolean>;
         onReaction?: (post: PostHistoryRecord) => Promise<boolean>;
         onImageOpen: (value: { index: number; mediaList: FullscreenMediaItem[] }) => void;
     }
-    let { event, profile = null, relayUrls = [], loadSensitiveBody, onReply, onReaction, onImageOpen }: Props = $props();
+    let { event, profile = null, relayUrls = [], plain = false, loadSensitiveBody, onReply, onReaction, onImageOpen }: Props = $props();
     const componentId = $props.id();
     const previewId = `notification-preview-${componentId}`;
     let container = $state<HTMLElement | null>(null);
@@ -33,7 +34,7 @@
         .flatMap(segment => segment.type === 'emoji' ? [segment.url] : []), onStateChanged: () => collapse.remeasure() });
 </script>
 
-<div class="notification-post" bind:this={container} class:has-actions={Boolean(onReply || onReaction)}>
+<div class="notification-post" bind:this={container} class:plain class:has-actions={Boolean(onReply || onReaction)}>
 <PostHistoryRelatedEventCard {event} {profile} {model} {onImageOpen} {loadSensitiveBody}
     maxVisibleImages={3}
     previewCollapseAction={collapse.previewRef} previewCollapseEventId={previewId} previewContentId={previewId}
@@ -54,6 +55,9 @@
 </div>
 <style>
     .notification-post { min-width: 0; }
+    .plain :global(.post-history-related-card) { border-inline-start: 0; background: transparent; margin-inline-start: 0; }
+    .plain :global(.post-history-related-card-body) { padding-inline: 0; }
+    .plain :global(.post-preview-footer) { margin-inline: 0; }
     .has-actions :global(.post-preview-footer) {
         grid-template-columns: minmax(0, 1fr) 80px 0;
     }

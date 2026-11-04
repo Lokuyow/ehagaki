@@ -223,7 +223,7 @@
                     {@const target = groupDescriptor(group)}
                     {@const snapshot = targetSnapshot(record)}
                     {#if snapshot?.event}
-                        <NotificationPost event={snapshot.event} profile={snapshot.profile} onImageOpen={openImage}
+                        <NotificationPost plain={true} event={snapshot.event} profile={snapshot.profile} onImageOpen={openImage}
                             loadSensitiveBody={sensitiveBody(snapshot.event, snapshot.relayHints)} />
                     {:else}
                         {#if !snapshot || snapshot.status === 'loading'}
