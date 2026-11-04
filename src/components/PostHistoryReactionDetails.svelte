@@ -22,7 +22,7 @@
 </script>
 
 {#if readModel.totalCount > 0}
-    <div class="post-preview-reactions-panel">
+    <div class="post-preview-reactions-panel" class:has-named-actor={showSingleActorName}>
         {#each readModel.groups as reactionGroup (reactionGroup.content)}
             {@const single = reactionGroup.reactors.length === 1 ? reactionGroup.reactors[0] : null}
             <svelte:element this={onSelectActor && single ? 'button' : 'div'}
@@ -71,7 +71,7 @@
                         </svelte:element>
                     {/each}
                 </div>
-                {#if single && showSingleActorName}<span class="single-actor-name">{formatPostHistoryReactionActorLabel(single)}</span>{/if}
+                {#if single && showSingleActorName}<span class="single-actor-name" title={formatPostHistoryReactionActorLabel(single)}>{formatPostHistoryReactionActorLabel(single)}</span>{/if}
             </svelte:element>
         {/each}
     </div>
@@ -79,7 +79,10 @@
 
 <style>
     .selectable { font: inherit; text-align: start; max-width: 100%; min-width: 0; }
-    .single-actor-name { min-width: 0; overflow-wrap: anywhere; }
+    .has-named-actor { min-width: 0; max-width: 100%; }
+    .selectable .post-preview-reaction-summary,
+    .selectable .post-preview-reaction-actors { flex-shrink: 0; }
+    .single-actor-name { min-width: 0; max-inline-size: 16ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .actor-selectable { padding: 0; min-height: 0; border: 0; background: transparent; color: inherit; }
 
     :global(.post-preview-reactions-panel) {

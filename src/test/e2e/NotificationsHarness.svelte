@@ -87,6 +87,9 @@
             .then(() => ready = true);
         Reflect.set(window, '__NOTIFICATIONS__', {
             releaseInitialList,
+            setActorName: async (name: string) => profilesRepository.put(incoming[0]!.pubkey, {
+                name, displayName: name, picture: 'https://profiles.example/large-avatar.png', npub: '', nprofile: '',
+            }),
             seedInteractions: async () => {
                 const child = finalizeEvent({ kind: 1, content: 'Shared footer child reply', tags: [['p', original.pubkey], ['e', original.id, relay, 'reply']], created_at: now + 9 }, authorKey);
                 const reaction = finalizeEvent({ kind: 7, content: ':fixture:', tags: [['p', original.pubkey], ['e', original.id], ['k', '1'], ['emoji', 'fixture', 'https://profiles.example/large-avatar.png']], created_at: now + 10 }, authorKey);

@@ -349,6 +349,34 @@ for (const width of [360, 280]) test(`combines reposts and reactions in one targ
     await expect.poll(() => content.locator('body').evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').unread())).toBe(false);
 });
 
+for (const width of [791, 360, 280]) test(`long actor names stay on one line inside notification pills at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width: width === 280 ? 800 : width, height: 850 });
+    await page.goto(width === 280 ? 'post-history-dialog-playwright.html?notifications-host=1' : 'post-history-dialog-playwright.html?notifications=1');
+    const content = width === 280 ? page.frameLocator('iframe[title="Notifications in a narrow host"]') : page;
+    await content.locator('.notification-btn').waitFor({ state: 'attached' });
+    const longName = '寿限無 '.repeat(60) + '\n' + 'LongUnbrokenName'.repeat(60);
+    await content.locator('body').evaluate((node, name) => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').setActorName(name), longName);
+    await content.locator('.notification-btn').click();
+    const dialog = content.getByRole('dialog');
+    for (const selector of ['.notification-repost-name', '.single-actor-name']) {
+        const name = dialog.locator(selector).first();
+        await expect(name).toHaveText(longName);
+        await expect(name).toHaveCSS('white-space', 'nowrap');
+        await expect(name).toHaveCSS('text-overflow', 'ellipsis');
+        expect(await name.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
+        const chip = name.locator('..');
+        const box = (await chip.boundingBox())!;
+        expect(box.height).toBeLessThanOrEqual(40);
+        const avatar = (await chip.locator('[data-avatar-image]').first().boundingBox())!;
+        expect(avatar.width).toBeCloseTo(26, 0);
+        expect(avatar.height).toBeCloseTo(26, 0);
+    }
+    expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`actor-name-${width}.png`) });
+    await dialog.locator('.single-actor-name').click();
+    await expect(content.getByLabel('イベントID', { exact: true })).toBeVisible();
+});
+
 for (const kind of [6, 7]) for (const multiple of [false, true]) test(`actor selection opens target input for kind ${kind}, multiple=${multiple}`, async ({ page }, info) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1');

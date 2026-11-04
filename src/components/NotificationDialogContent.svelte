@@ -240,7 +240,7 @@
                                 </div>
                                 {#if group.reposts.length === 1}
                                     {@const repost = group.reposts[0]}
-                                    <span>{profiles[repost.event.pubkey]?.displayName || profiles[repost.event.pubkey]?.name || shortenMiddle(repost.event.pubkey, 12, 4)}</span>
+                                    <span class="notification-repost-name" title={profiles[repost.event.pubkey]?.displayName || profiles[repost.event.pubkey]?.name}>{profiles[repost.event.pubkey]?.displayName || profiles[repost.event.pubkey]?.name || shortenMiddle(repost.event.pubkey, 12, 4)}</span>
                                 {/if}
                             </svelte:element>
                         </div>
@@ -303,7 +303,8 @@
     .notification-reply-label { display: flex; align-items: center; gap: 6px; }
     .notification-repost-chip { max-width: 100%; min-width: 0; font: inherit; }
     .notification-reposter { padding: 0; min-height: 0; border: 0; background: transparent; color: inherit; }
-    .notification-repost-chip > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+    button.notification-repost-chip > .post-preview-reaction-actors { flex-shrink: 0; }
+    .notification-repost-name { min-width: 0; max-inline-size: 16ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .notification-actor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
     .notification-reaction { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
     .notification-reaction :global(.post-preview-reactions-panel) { padding: 0; }
