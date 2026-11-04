@@ -186,6 +186,7 @@
     createComposerTargetApplyController,
     type ComposerEventTarget,
   } from "./lib/composerTargetApplyController";
+  import { buildPostHistoryNevent } from "./lib/postHistoryNevent";
   import type { ComposerTargetAction } from "./lib/composerTargetUtils";
   import type { PostHistoryRecord } from "./lib/storage/ehagakiDb";
   import {
@@ -825,6 +826,8 @@
   const postHistoryDialog = createDialogVisibilityHandlers(
     showPostHistoryDialogStore,
   );
+  let notificationTargetInput = $state("");
+  $effect(() => { if (!showComposerTargetDialogStore.value) notificationTargetInput = ""; });
   const composerTargetDialog = createDialogVisibilityHandlers(
     showComposerTargetDialogStore,
   );
@@ -2543,6 +2546,7 @@
           returnFocus={notificationReturnFocus} onClose={notificationDialog.close}
           onLoadFailure={handleAppComponentLoadFailure} isStaleAssetReloadRequired={() => staleAssetReloadRequired}
           onReplyPost={handlePostHistoryReply} onReactionPost={handlePostHistoryReaction}
+          onOpenTarget={(post) => { notificationTargetInput = buildPostHistoryNevent(post, []); composerTargetDialog.open(); }}
           onQuotePost={handlePostHistoryQuote} onRepostPost={repostOperation.execute} repostPending={repostOperation.pending}
           repostSaveFailure={repostOperation.saveFailure} onRetryRepostSave={repostOperation.retrySave}
           reconcileDirectReplyCandidates={postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates} />
@@ -2573,6 +2577,7 @@
           onRepostPost={repostOperation.execute} repostPending={repostOperation.pending}
           repostSaveFailure={repostOperation.saveFailure}
           onRetryRepostSave={repostOperation.retrySave}
+          initialInput={notificationTargetInput}
           show={showComposerTargetDialogStore.value}
           onClose={composerTargetDialog.close}
           onApply={handleComposerTargetApply}

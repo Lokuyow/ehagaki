@@ -12,6 +12,7 @@ import type { PostHistoryInboundInteractionsSyncRequest } from './postHistoryInb
         returnFocus?: HTMLElement | null;
         onClose: () => void;
         onReplyPost: (post: PostHistoryRecord) => Promise<boolean>;
+        onOpenTarget?: (post: PostHistoryRecord) => void;
         onQuotePost?: (post: PostHistoryRecord) => boolean;
         onRepostPost?: RepostPostHandler;
         repostPending?: boolean;

@@ -9,8 +9,10 @@
         emojiLoadStateByUrl?: Record<string, PostContentEmojiLoadState | undefined>;
         emojiImageMetaByUrl?: Record<string, PostContentEmojiImageMeta | undefined>;
         showCount?: boolean;
+        onSelectActor?: (eventId: string) => void;
+        showSingleActorName?: boolean;
     }
-    let { readModel, emojiLoadStateByUrl = {}, emojiImageMetaByUrl = {}, showCount = true }: Props = $props();
+    let { readModel, emojiLoadStateByUrl = {}, emojiImageMetaByUrl = {}, showCount = true, onSelectActor, showSingleActorName = false }: Props = $props();
 
     function slotStyle(url: string): string {
         const ratio = emojiImageMetaByUrl[url]?.aspectRatio;
@@ -22,7 +24,11 @@
 {#if readModel.totalCount > 0}
     <div class="post-preview-reactions-panel">
         {#each readModel.groups as reactionGroup (reactionGroup.content)}
-            <div class="post-preview-reaction-chip">
+            {@const single = reactionGroup.reactors.length === 1 ? reactionGroup.reactors[0] : null}
+            <svelte:element this={onSelectActor && single ? 'button' : 'div'}
+                type={onSelectActor && single ? 'button' : undefined} role={onSelectActor && single ? 'button' : undefined}
+                data-notification-event={single?.eventId} class="post-preview-reaction-chip" class:selectable={!!onSelectActor && !!single}
+                onclick={onSelectActor && single ? () => onSelectActor?.(single.eventId) : undefined}>
                 <div class="post-preview-reaction-summary">
                     {#if isPostHistoryFavoriteReactionContent(reactionGroup.content)}
                         <div class="favorite-icon svg-icon post-preview-reaction-symbol" aria-hidden="true"></div>
@@ -45,7 +51,11 @@
                 <div class="post-preview-reaction-actors">
                     {#each reactionGroup.reactors as actor (actor.eventId)}
                         {@const actorLabel = formatPostHistoryReactionActorLabel(actor)}
-                        <span class="post-preview-reaction-actor" title={actorLabel} aria-label={actorLabel}>
+                        <svelte:element this={onSelectActor && !single ? 'button' : 'span'}
+                            type={onSelectActor && !single ? 'button' : undefined} role={onSelectActor && !single ? 'button' : undefined}
+                            data-notification-event={actor.eventId} class="post-preview-reaction-actor" class:actor-selectable={!!onSelectActor && !single}
+                            title={actorLabel} aria-label={actorLabel}
+                            onclick={onSelectActor && !single ? () => onSelectActor?.(actor.eventId) : undefined}>
                             <ProfileAvatar
                                 pubkeyHex={actor.pubkey}
                                 displayName={actor.profile?.displayName}
@@ -58,15 +68,20 @@
                                 fallbackAriaLabel={actorLabel}
                                 fallbackDelayMs={0}
                             />
-                        </span>
+                        </svelte:element>
                     {/each}
                 </div>
-            </div>
+                {#if single && showSingleActorName}<span class="single-actor-name">{formatPostHistoryReactionActorLabel(single)}</span>{/if}
+            </svelte:element>
         {/each}
     </div>
 {/if}
 
 <style>
+    .selectable { font: inherit; text-align: start; max-width: 100%; min-width: 0; }
+    .single-actor-name { min-width: 0; overflow-wrap: anywhere; }
+    .actor-selectable { padding: 0; min-height: 0; border: 0; background: transparent; color: inherit; }
+
     :global(.post-preview-reactions-panel) {
         display: flex;
         flex-wrap: wrap;

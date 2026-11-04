@@ -36,7 +36,7 @@
         onBusyChange?: (busy: boolean) => void;
     }
     let { show = $bindable(false), pubkeyHex, rxNostr, relayConfig, returnFocus = null,
-        onClose, onReplyPost, onReactionPost, reconcileDirectReplyCandidates, onQuotePost, onRepostPost, repostPending, repostSaveFailure, onRetryRepostSave, presentationReady = false, onInitialReady, onBusyChange }: Props = $props();
+        onClose, onReplyPost, onReactionPost, onOpenTarget, reconcileDirectReplyCandidates, onQuotePost, onRepostPost, repostPending, repostSaveFailure, onRetryRepostSave, presentationReady = false, onInitialReady, onBusyChange }: Props = $props();
     let records = $state.raw<NotificationRecord[]>([]);
     let limit = $state(100), localMore = $state(false), exhausted = $state(false);
     let loaded = $state(false), busy = $state(false), failed = $state(false), visible = $state(false);
@@ -49,6 +49,12 @@
         onReplyPost: post => apply(post, false), onReactionPost: post => apply(post, true),
         onQuotePost: post => { const applied = onQuotePost?.(post) ?? false; if (applied) close(); return applied; },
         onRepostPost, repostPending }), () => show && visible && !invalidated);
+    function openNotificationTarget(eventId: string) {
+        const record = records.find(item => item.eventId === eventId);
+        if (!record || !onOpenTarget) return;
+        const post = repostTargetToPost(record.event, record.relayUrls);
+        if (close()) onOpenTarget(post);
+    }
     function reactionModel(items: NotificationRecord[]) {
         return buildPostHistoryReactionReadModel(items.map(({ event }) => ({ eventId: event.id, authorPubkey: event.pubkey,
             kind: event.kind, content: event.content, tags: event.tags, createdAt: event.created_at })), profiles);
@@ -213,33 +219,36 @@
                 {#if type === 'reaction' || type === 'repost'}
                     {#if group.reposts.length}
                         <div class="notification-actor">
-                            <div class="notification-repost-chip post-preview-reaction-chip">
+                            <svelte:element this={group.reposts.length === 1 ? 'button' : 'div'}
+                                type={group.reposts.length === 1 ? 'button' : undefined} role={group.reposts.length === 1 ? 'button' : undefined}
+                                data-notification-event={group.reposts.length === 1 ? group.reposts[0].eventId : undefined}
+                                class="notification-repost-chip post-preview-reaction-chip"
+                                onclick={group.reposts.length === 1 ? () => openNotificationTarget(group.reposts[0].eventId) : undefined}>
                                 <span class="notification-kind-icon notification-repost-icon svg-icon" role="img" aria-label={$_('notifications.repost')}></span>
                                 <div class="post-preview-reaction-actors">
                                     {#each group.reposts as repost (repost.eventId)}
                                         {@const label = profiles[repost.event.pubkey]?.displayName || profiles[repost.event.pubkey]?.name || shortenMiddle(repost.event.pubkey, 12, 4)}
-                                        <span class="notification-reposter post-preview-reaction-actor" title={label} aria-label={label}>
+                                        <svelte:element this={group.reposts.length > 1 ? 'button' : 'span'}
+                                            type={group.reposts.length > 1 ? 'button' : undefined} role={group.reposts.length > 1 ? 'button' : undefined}
+                                            data-notification-event={repost.eventId} class="notification-reposter post-preview-reaction-actor" title={label} aria-label={label}
+                                            onclick={group.reposts.length > 1 ? () => openNotificationTarget(repost.eventId) : undefined}>
                                             <ProfileAvatar pubkeyHex={repost.event.pubkey} displayName={profiles[repost.event.pubkey]?.displayName}
                                                 src={profiles[repost.event.pubkey]?.picture} alt={label} rootClassName="notification-avatar"
                                                 imageClassName="notification-avatar-image" fallbackDelayMs={0} />
-                                        </span>
+                                        </svelte:element>
                                     {/each}
                                 </div>
-                            </div>
-                            {#if group.reposts.length === 1}
-                                {@const repost = group.reposts[0]}
-                                <span>{profiles[repost.event.pubkey]?.displayName || profiles[repost.event.pubkey]?.name || shortenMiddle(repost.event.pubkey, 12, 4)}</span>
-                            {/if}
+                                {#if group.reposts.length === 1}
+                                    {@const repost = group.reposts[0]}
+                                    <span>{profiles[repost.event.pubkey]?.displayName || profiles[repost.event.pubkey]?.name || shortenMiddle(repost.event.pubkey, 12, 4)}</span>
+                                {/if}
+                            </svelte:element>
                         </div>
                     {/if}
                     {#if group.reactions.length}
                         <div class="notification-reaction">
-                            <PostHistoryReactionDetails readModel={reactionModel(group.reactions)}
+                            <PostHistoryReactionDetails readModel={reactionModel(group.reactions)} onSelectActor={openNotificationTarget} showSingleActorName={group.reactions.length === 1}
                                 emojiLoadStateByUrl={reactionEmoji.emojiLoadStateByUrl} emojiImageMetaByUrl={reactionEmoji.emojiImageMetaByUrl} />
-                            {#if group.reactions.length === 1}
-                                {@const reaction = group.reactions[0]}
-                                <span>{profiles[reaction.event.pubkey]?.displayName || profiles[reaction.event.pubkey]?.name || shortenMiddle(reaction.event.pubkey, 12, 4)}</span>
-                            {/if}
                         </div>
                     {/if}
                     {@const target = groupDescriptor(group)}
@@ -292,7 +301,9 @@
     .notification-entry { display: grid; min-width: 0; gap: 6px; padding-block: 8px; border-bottom: 1px solid var(--border-hr); }
     .notification-type { font-size: .85rem; opacity: .8; }
     .notification-reply-label { display: flex; align-items: center; gap: 6px; }
-    .notification-repost-chip { max-width: 100%; min-width: 0; }
+    .notification-repost-chip { max-width: 100%; min-width: 0; font: inherit; }
+    .notification-reposter { padding: 0; min-height: 0; border: 0; background: transparent; color: inherit; }
+    .notification-repost-chip > span:last-child { min-width: 0; overflow-wrap: anywhere; }
     .notification-actor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
     .notification-reaction { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
     .notification-reaction :global(.post-preview-reactions-panel) { padding: 0; }

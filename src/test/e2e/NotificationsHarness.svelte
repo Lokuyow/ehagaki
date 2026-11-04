@@ -4,6 +4,8 @@
     import { Observable } from 'rxjs';
     import type { RxNostr } from 'rx-nostr';
     import FooterComponent from '../../components/FooterComponent.svelte';
+    import ComposerTargetDialog from '../../components/ComposerTargetDialog.svelte';
+    import { buildPostHistoryNevent } from '../../lib/postHistoryNevent';
     import NotificationDialog from '../../components/NotificationDialog.svelte';
     import { notificationRepository } from '../../lib/storage/notificationRepository';
     import { postHistoryVisibleRangeChildInteractionRepairService as relatedRepair } from '../../lib/postHistoryVisibleRangeChildInteractionRepairService';
@@ -55,6 +57,7 @@
     const { owner, original, incoming } = fixture;
     const sign = (content: string) => finalizeEvent({ kind: 1, content, tags: [['p', owner]], created_at: now + 1 }, authorKey);
     let open = $state(false), ready = $state(false), applied = $state('');
+    let targetOpen = $state(false), targetInput = $state('');
     let trigger = $state<HTMLElement | null>(null);
     const requests: Array<Array<{ kinds?: number[]; ids?: string[] }>> = [];
     const runtime = { use: (req: { getReqPacketObservable: () => Observable<{ filters: Array<{ ids?: string[] }> }> }) => new Observable(observer => {
@@ -128,6 +131,7 @@
             replay: () => notificationRepository.upsert(owner, incoming.map(event => ({ event }))),
             setShortcuts: (value: unknown) => footerSettingShortcutsStore.set(value),
             requests: () => requests,
+            sourceEvents: async () => (await notificationRepository.list(owner, 100)).map(({ event }) => ({ id: event.id, pubkey: event.pubkey, kind: event.kind })),
             relatedActivity: () => ({ ...relatedActivity }),
             cachedChildCount: () => ehagakiDb.postHistoryChildInteractions.count(),
             storage: async () => ({ event: await ehagakiDb.events.get(original.id), notifications: await ehagakiDb.notifications.toArray() }),
@@ -143,9 +147,14 @@
             onOpenNotificationDialog={(element) => { trigger = element; open = true; }} />
         {#if open}
             <NotificationDialog show={true} pubkeyHex={owner} rxNostr={runtime} relayConfig={config} returnFocus={trigger}
+                onOpenTarget={post => { targetInput = buildPostHistoryNevent(post, []); targetOpen = true; }}
                 onClose={() => open = false} onReplyPost={async post => { applied = `reply:${post.content}`; return true; }}
                 onQuotePost={post => { applied = `quote:${post.content}`; return true; }}
                 onReactionPost={async post => { applied = `reaction:${post.content}`; return true; }} />
+        {/if}
+        {#if targetOpen}
+            <ComposerTargetDialog show={true} initialInput={targetInput} rxNostr={runtime} relayConfig={config} pubkeyHex={owner}
+                onClose={() => targetOpen = false} onApply={() => true} />
         {/if}
     {/if}
 </div>

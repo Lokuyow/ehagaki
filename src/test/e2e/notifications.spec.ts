@@ -1,6 +1,6 @@
 import { expect, test, type Locator } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
-import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
+import { finalizeEvent, generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
 
 let pageErrors: string[] = [];
 test.beforeEach(async ({ context, page }) => {
@@ -329,6 +329,7 @@ for (const width of [360, 280]) test(`combines reposts and reactions in one targ
     await expect(combined.locator('.notification-reposter')).toHaveCount(2);
     await expect(combined.locator('.notification-repost-icon')).toHaveCount(1);
     await expect(combined.locator('.notification-actor')).toHaveText('');
+    await expect(combined.locator('.single-actor-name')).toHaveCount(0);
     const repostStyle = await combined.locator('.notification-repost-chip').evaluate(node => ({ radius: getComputedStyle(node).borderRadius, background: getComputedStyle(node).backgroundColor }));
     const reactionStyle = await combined.locator('.notification-reaction .post-preview-reaction-chip').first().evaluate(node => ({ radius: getComputedStyle(node).borderRadius, background: getComputedStyle(node).backgroundColor }));
     expect(repostStyle).toEqual(reactionStyle);
@@ -346,6 +347,33 @@ for (const width of [360, 280]) test(`combines reposts and reactions in one targ
     await expect(combined.getByText('Original notification target', { exact: true })).toHaveCount(1);
     expect(await content.locator('body').evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').relatedActivity())).toEqual({ childReads: 0, repairs: 0 });
     await expect.poll(() => content.locator('body').evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').unread())).toBe(false);
+});
+
+for (const kind of [6, 7]) for (const multiple of [false, true]) test(`actor selection opens target input for kind ${kind}, multiple=${multiple}`, async ({ page }, info) => {
+    await page.setViewportSize({ width: 360, height: 844 });
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await page.locator('.notification-btn').waitFor({ state: 'attached' });
+    if (multiple) await page.evaluate(value => {
+        const api = Reflect.get(window, '__NOTIFICATIONS__');
+        return value === 6 ? api.addRepost() : api.addGroupedReaction();
+    }, kind);
+    const sources = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').sourceEvents()) as Array<{ id: string; pubkey: string; kind: number }>;
+    await page.locator('.notification-btn').click();
+    const prefix = kind === 6 ? '.notification-actor' : '.notification-reaction';
+    const chip = page.locator(`${prefix} .post-preview-reaction-chip`).first();
+    if (!multiple) await expect(chip).toContainText('Fixture sender');
+    const button = multiple ? chip.locator('button[data-notification-event]').first() : chip;
+    const id = await button.getAttribute('data-notification-event');
+    const source = sources.find(event => event.id === id)!;
+    expect(source.kind).toBe(kind);
+    await page.screenshot({ path: info.outputPath(`actor-${kind}-${multiple}.png`) });
+    await button.focus(); await page.keyboard.press('Enter');
+    await expect(page.locator('.notification-list')).toHaveCount(0);
+    const input = page.getByLabel('イベントID', { exact: true });
+    await expect(input).toBeVisible();
+    const pointer = nip19.decode((await input.inputValue()).replace(/^nostr:/, ''));
+    expect(pointer.type).toBe('nevent');
+    expect(pointer.data).toMatchObject({ id: source.id, author: source.pubkey, kind });
 });
 
 test('keeps an incompatible reaction separate without hiding the valid target', async ({ page }) => {
