@@ -6,6 +6,7 @@
     import FooterComponent from '../../components/FooterComponent.svelte';
     import NotificationDialog from '../../components/NotificationDialog.svelte';
     import { notificationRepository } from '../../lib/storage/notificationRepository';
+    import { postHistoryChildInteractionsRepository } from '../../lib/storage/postHistoryChildInteractionsRepository';
     import { EventRepository } from '../../lib/storage/eventRepository';
     import { profilesRepository } from '../../lib/storage/profilesRepository';
     import { ehagakiDb } from '../../lib/storage/ehagakiDb';
@@ -75,6 +76,12 @@
             .then(() => ready = true);
         Reflect.set(window, '__NOTIFICATIONS__', {
             releaseInitialList,
+            seedInteractions: async () => {
+                const child = finalizeEvent({ kind: 1, content: 'Shared footer child reply', tags: [['p', original.pubkey], ['e', original.id, relay, 'reply']], created_at: now + 9 }, authorKey);
+                const reaction = finalizeEvent({ kind: 7, content: ':fixture:', tags: [['p', original.pubkey], ['e', original.id], ['k', '1'], ['emoji', 'fixture', 'https://profiles.example/large-avatar.png']], created_at: now + 10 }, authorKey);
+                await postHistoryChildInteractionsRepository.upsertChildInteractions({ parentEventId: original.id, events: [child, reaction].map(event => ({ event, relayUrls: [relay] })),
+                    reactionTarget: { eventId: original.id, targetAuthorPubkey: original.pubkey, targetKind: 1 }, fetchedAt: Date.now() });
+            },
             addOlder: async (count: number) => notificationRepository.upsert(owner, Array.from({ length: count }, (_, index) => ({
                 event: finalizeEvent({ kind: 1, content: `Older notification ${index}`, tags: [['p', owner]], created_at: now - index - 100 }, authorKey),
             }))),
@@ -122,6 +129,7 @@
         {#if open}
             <NotificationDialog show={true} pubkeyHex={owner} rxNostr={runtime} relayConfig={config} returnFocus={trigger}
                 onClose={() => open = false} onReplyPost={async post => { applied = `reply:${post.content}`; return true; }}
+                onQuotePost={post => { applied = `quote:${post.content}`; return true; }}
                 onReactionPost={async post => { applied = `reaction:${post.content}`; return true; }} />
         {/if}
     {/if}

@@ -20,6 +20,7 @@
     }: Props = $props();
 </script>
 
+<div class="post-preview-footer-container">
 <div
     class={`post-preview-footer post-preview-footer-${density} ${dimmed ? "is-dimmed" : ""}`.trim()}
 >
@@ -35,6 +36,7 @@
     </div>
 </div>
 
+</div>
 <style>
     .post-preview-footer {
         display: grid;
@@ -46,6 +48,15 @@
         --post-history-preview-footer-surface: var(--dialog-bg);
     }
 
+    .post-preview-footer-container { container: post-footer / inline-size; width: 100%; min-width: 0; }
+    @container post-footer (width < 320px) {
+    .post-preview-footer:is(.post-preview-footer-compact, .post-preview-footer-regular) { height: 72px; padding-inline-start: 0; grid-template-columns: minmax(0, 1fr) 36px; grid-template-rows: 36px 36px; }
+    .post-preview-footer .post-preview-footer-left { grid-column: 1 / -1; }
+    .post-preview-footer .post-preview-footer-actions { grid-column: 1; min-width: 0; }
+    .post-preview-footer .post-preview-footer-right { grid-column: 2; }
+    .post-preview-footer :global(.post-preview-action-buttons-group) { grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr); }
+    .post-preview-footer :global(.post-preview-reply-action-cell), .post-preview-footer :global(.post-preview-reaction-action-cell:has(.reaction-compose-button)) { grid-template-columns: 36px minmax(0, 36px); }
+    }
     .post-preview-footer-regular {
         padding-inline-start: 1rem;
     }

@@ -1,3 +1,5 @@
+import type { RepostPostHandler } from './hooks/usePostRepostOperation.svelte';
+import type { PostRepostResult } from './postRepostService';
 import type { RxNostr } from 'rx-nostr';
 import type { RelayConfig } from './types';
 import type { PostHistoryRecord } from './storage/ehagakiDb';
@@ -10,6 +12,11 @@ import type { PostHistoryInboundInteractionsSyncRequest } from './postHistoryInb
         returnFocus?: HTMLElement | null;
         onClose: () => void;
         onReplyPost: (post: PostHistoryRecord) => Promise<boolean>;
+        onQuotePost?: (post: PostHistoryRecord) => boolean;
+        onRepostPost?: RepostPostHandler;
+        repostPending?: boolean;
+        repostSaveFailure?: PostRepostResult | null;
+        onRetryRepostSave?: (result: PostRepostResult) => Promise<boolean>;
         onReactionPost: (post: PostHistoryRecord) => Promise<boolean>;
         reconcileDirectReplyCandidates?: PostHistoryInboundInteractionsSyncRequest['reconcileDirectReplyCandidates'];
     }

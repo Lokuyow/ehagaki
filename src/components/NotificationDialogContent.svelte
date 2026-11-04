@@ -4,6 +4,8 @@
     import { _ } from 'svelte-i18n';
     import type { RxNostr } from 'rx-nostr';
     import type { NotificationDialogProps } from '../lib/notificationDialogTypes';
+    import { useNotificationPostInteractions } from '../lib/hooks/useNotificationPostInteractions.svelte';
+    import PostRepostFeedback from './PostRepostFeedback.svelte';
     import Button from './Button.svelte';
     import NotificationPost from './NotificationPost.svelte';
     import PostHistoryQuotePreview from './PostHistoryQuotePreview.svelte';
@@ -35,7 +37,7 @@
         onBusyChange?: (busy: boolean) => void;
     }
     let { show = $bindable(false), pubkeyHex, rxNostr, relayConfig, returnFocus = null,
-        onClose, onReplyPost, onReactionPost, reconcileDirectReplyCandidates, presentationReady = false, onInitialReady, onBusyChange }: Props = $props();
+        onClose, onReplyPost, onReactionPost, reconcileDirectReplyCandidates, onQuotePost, onRepostPost, repostPending, repostSaveFailure, onRetryRepostSave, presentationReady = false, onInitialReady, onBusyChange }: Props = $props();
     let records = $state.raw<NotificationRecord[]>([]);
     let limit = $state(100), localMore = $state(false), exhausted = $state(false);
     let loaded = $state(false), busy = $state(false), failed = $state(false), visible = $state(false);
@@ -44,6 +46,10 @@
     let task: ReturnType<typeof syncNotifications> | null = null;
     let generation = $state(0);
     let listRevision = $state(0), localReadFailed = $state(false);
+    const interactions = useNotificationPostInteractions(() => ({ show, pubkeyHex, rxNostr, relayConfig, onClose,
+        onReplyPost: post => apply(post, false), onReactionPost: post => apply(post, true),
+        onQuotePost: post => { const applied = onQuotePost?.(post) ?? false; if (applied) close(); return applied; },
+        onRepostPost, repostPending }), () => show && visible && !invalidated);
     function reactionModel(items: NotificationRecord[]) {
         return buildPostHistoryReactionReadModel(items.map(({ event }) => ({ eventId: event.id, authorPubkey: event.pubkey,
             kind: event.kind, content: event.content, tags: event.tags, createdAt: event.created_at })), profiles);
@@ -198,6 +204,7 @@
     onDestroy(() => { invalidateSession(); unsubscribeProfile(); profileSync.dispose(); });
 </script>
 
+    <PostRepostFeedback result={null} saveFailure={repostSaveFailure} pending={repostPending} onRetrySave={onRetryRepostSave} />
     <div class="notification-list" aria-busy={busy}>
         {#if loaded && !records.length}<p>{$_('notifications.empty')}</p>{/if}
         {#each notificationGroups as group (group.id)}
@@ -223,7 +230,7 @@
                     {@const target = groupDescriptor(group)}
                     {@const snapshot = targetSnapshot(record)}
                     {#if snapshot?.event}
-                        <NotificationPost plain={true} event={snapshot.event} profile={snapshot.profile} onImageOpen={openImage}
+                        <NotificationPost plain={true} relayUrls={snapshot.relayHints} event={snapshot.event} profile={snapshot.profile} onImageOpen={openImage}
                             loadSensitiveBody={sensitiveBody(snapshot.event, snapshot.relayHints)} />
                     {:else}
                         {#if !snapshot || snapshot.status === 'loading'}
@@ -243,10 +250,10 @@
                         <span class="notification-type">{$_(`notifications.${type}`)}</span>
                     {/if}
                     <NotificationPost plain={type === 'reply'} event={record.event} profile={profiles[record.event.pubkey]} relayUrls={record.relayUrls} loadSensitiveBody={sensitiveBody(record.event, record.relayUrls)}
-                        onReply={(post) => apply(post, false)} onReaction={(post) => apply(post, true)} onImageOpen={openImage} />
+                        onImageOpen={openImage} />
                     {#each quotes.getQuotePreviews(repostTargetToPost(record.event, record.relayUrls)) as preview (preview.eventId)}
                         {#if preview.status === 'resolved'}
-                            <NotificationPost event={preview.event} profile={preview.profile} onImageOpen={openImage}
+                            <NotificationPost relayUrls={preview.relayHints} event={preview.event} profile={preview.profile} onImageOpen={openImage}
                                 loadSensitiveBody={sensitiveBody(preview.event, preview.relayHints)} />
                         {:else}
                             <PostHistoryQuotePreview {preview} onImageOpen={openImage} onRetry={(eventId) => quotes.retryQuotePreview(eventId)} />

@@ -3639,8 +3639,8 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(cardBox).not.toBeNull();
         expect(footerBox).not.toBeNull();
         expect(menuBox).not.toBeNull();
-        expect(footerBox!.height).toBeGreaterThanOrEqual(35);
-        expect(footerBox!.height).toBeLessThanOrEqual(37);
+        expect(footerBox!.height).toBeGreaterThanOrEqual(footerBox!.width < 320 ? 71 : 35);
+        expect(footerBox!.height).toBeLessThanOrEqual(footerBox!.width < 320 ? 73 : 37);
         expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1);
         expect(width.scrollWidth).toBeLessThanOrEqual(width.clientWidth + 1);
 

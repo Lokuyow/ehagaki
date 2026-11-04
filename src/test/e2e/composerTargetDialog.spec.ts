@@ -198,7 +198,7 @@ test.describe("composer target dialog fixture", () => {
             const overflow = await page.locator(".composer-target-reaction-preview").evaluate(element =>
                 element.scrollWidth > element.clientWidth + 1 || document.documentElement.scrollWidth > window.innerWidth);
             expect(overflow).toBe(false);
-            const footer = page.locator('.composer-target-reaction-preview > .post-preview-footer');
+            const footer = page.locator('.composer-target-reaction-preview > .post-preview-footer-container > .post-preview-footer');
             for (const name of ['リプライ', '引用', 'リアクションする', 'アクションを表示']) {
                 const button = footer.getByRole('button', { name, exact: true });
                 await expect(button).toBeVisible();
@@ -244,7 +244,7 @@ test.describe("composer target dialog fixture", () => {
             await page.setViewportSize({ width, height: 720 });
             const overlapsFooter = await retryButton.evaluate((button) => {
                 const footer = document.querySelector<HTMLElement>(
-                    ".composer-target-reaction-preview > .post-preview-footer",
+                    ".composer-target-reaction-preview > .post-preview-footer-container > .post-preview-footer",
                 );
                 if (!footer) throw new Error("main target footer is missing");
                 const retry = button.getBoundingClientRect();

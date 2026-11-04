@@ -80,6 +80,64 @@ for (const mode of ['empty', 'fail']) test(`opening exits the skeleton for local
     await expect(dialog).toHaveCount(0);
 });
 
+for (const width of [360, 791]) test(`shared footer uses the available width at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await page.locator('.notification-btn').click();
+    const card = page.getByRole('dialog').locator('.notification-post.plain').first();
+    const footer = card.locator('.post-preview-footer');
+    await expect(footer).toBeVisible();
+    const size = (await footer.boundingBox())!;
+    expect(size.height).toBeCloseTo(size.width < 320 ? 72 : 36, 0);
+    expect(await card.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await expect(footer.getByRole('button', { name: '引用', exact: true })).toBeVisible();
+    await expect(footer.getByRole('button', { name: 'アクションを表示', exact: true })).toBeVisible();
+    await page.screenshot({ path: info.outputPath(`footer-${width}.png`) });
+});
+
+test('shared post footers target their own events and expand cached replies and reactions', async ({ page }, info) => {
+    await page.setViewportSize({ width: 360, height: 844 });
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await expect(page.locator('.notification-btn')).toBeVisible();
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').seedInteractions());
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    const target = dialog.locator('.notification-entry:has(.notification-reaction) .notification-post').first();
+    await expect(target.locator('.post-preview-footer')).toHaveCount(1);
+    await expect(target.getByRole('button', { name: '引用', exact: true })).toBeVisible();
+    await target.getByRole('button', { name: /返信 1件を表示/ }).click();
+    await expect(target.getByText('Shared footer child reply', { exact: true })).toBeVisible();
+    await expect(target.locator('.notification-post .post-preview-footer')).toHaveCount(1);
+    await target.getByRole('button', { name: /リアクション 1件を表示/ }).first().click();
+    await expect(target.locator('.post-preview-reactions-panel')).toBeVisible();
+    await expect(target.locator('.post-preview-reactions-panel img[alt=":fixture:"]')).toBeVisible();
+    await target.getByRole('button', { name: 'アクションを表示', exact: true }).first().click();
+    await expect(page.getByRole('menuitem', { name: '削除', exact: true })).toBeVisible();
+    await page.getByRole('menuitem', { name: /JSON/ }).click();
+    await expect(page.getByRole('dialog').last().getByText(/Original notification target/)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.screenshot({ path: info.outputPath('shared-footer-360.png') });
+    await target.getByRole('button', { name: '引用', exact: true }).first().click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByTestId('applied')).toHaveText('quote:Original notification target');
+});
+
+test('failed related lookups preserve cached counts and offer retry', async ({ page }) => {
+    // This fixture cannot provide relay connection observables, so related REQs fail.
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await expect(page.locator('.notification-btn')).toBeVisible();
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').seedInteractions());
+    await page.locator('.notification-btn').click();
+    const target = page.getByRole('dialog').locator('.notification-entry:has(.notification-reaction) .notification-post').first();
+    await expect(target.getByRole('button', { name: /返信 1件を表示/ })).toBeVisible();
+    const retry = target.getByRole('button', { name: '再試行', exact: true });
+    await expect(retry).toBeVisible();
+    await retry.click();
+    await expect(retry).toBeEnabled();
+    await expect(target.getByRole('button', { name: /返信 1件を表示/ })).toBeVisible();
+    await expect(target.getByRole('button', { name: /リアクション 1件を表示/ })).toBeVisible();
+});
+
 test('notification headers omit labels and times and identify reposts and replies with SVG icons', async ({ page }, info) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1');
@@ -229,11 +287,11 @@ test('groups reactions to the same target with actor icons, counts, custom emoji
     await expect(reactions).toHaveCount(1);
     const custom = reactions.filter({ has: page.locator('img[alt=":demo:"]') });
     await expect(custom).toHaveCount(1);
-    await expect(custom.locator('.post-preview-reaction-avatar-image')).toHaveCount(3);
+    await expect(custom.locator('.notification-reaction .post-preview-reaction-avatar-image')).toHaveCount(3);
     await expect(custom.locator('.notification-reaction time')).toHaveCount(0);
-    await expect(custom.locator('.post-preview-reaction-count')).toHaveText(['2', '1']);
+    await expect(custom.locator('.notification-reaction .post-preview-reaction-count')).toHaveText(['2', '1']);
     await expect(custom.getByText('Original notification target', { exact: true })).toBeVisible();
-    await expect(custom.getByRole('button', { name: 'リアクションする' })).toHaveCount(0);
+    await expect(custom.getByRole('button', { name: 'リアクションする' })).toHaveCount(1);
     await page.screenshot({ path: info.outputPath('reaction-360.png') });
 });
 
@@ -247,7 +305,9 @@ test('keeps an incompatible reaction separate without hiding the valid target', 
     const reactions = dialog.locator('.notification-entry:has(.notification-reaction)');
     await expect(reactions).toHaveCount(2);
     await expect(reactions.filter({ hasText: 'Original notification target' })).toHaveCount(1);
-    await expect(reactions.getByRole('button', { name: '再試行', exact: true })).toHaveCount(1);
+    const incompatible = reactions.filter({ hasNot: page.locator('.notification-post') });
+    await expect(incompatible).toHaveCount(1);
+    await expect(incompatible.getByRole('button', { name: '再試行', exact: true })).toHaveCount(1);
 });
 
 test('centers history with a shortcut on either side at desktop, phone, and embedded widths', async ({ page }) => {

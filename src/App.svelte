@@ -2071,8 +2071,8 @@
     return postHistoryDialogApplyController.applyReply(post);
   }
 
-  function handlePostHistoryQuote(post: PostHistoryRecord): void {
-    postHistoryDialogApplyController.applyQuote(post);
+  function handlePostHistoryQuote(post: PostHistoryRecord): boolean {
+    return postHistoryDialogApplyController.applyQuote(post);
   }
 
   async function handlePostHistoryReaction(post: PostHistoryRecord): Promise<boolean> {
@@ -2543,6 +2543,8 @@
           returnFocus={notificationReturnFocus} onClose={notificationDialog.close}
           onLoadFailure={handleAppComponentLoadFailure} isStaleAssetReloadRequired={() => staleAssetReloadRequired}
           onReplyPost={handlePostHistoryReply} onReactionPost={handlePostHistoryReaction}
+          onQuotePost={handlePostHistoryQuote} onRepostPost={repostOperation.execute} repostPending={repostOperation.pending}
+          repostSaveFailure={repostOperation.saveFailure} onRetryRepostSave={repostOperation.retrySave}
           reconcileDirectReplyCandidates={postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates} />
       {/if}
       {#if showPostHistoryDialogStore.value && PostHistoryDialogComponent}

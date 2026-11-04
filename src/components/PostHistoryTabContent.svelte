@@ -5,6 +5,8 @@
     import { _, locale } from "svelte-i18n";
     import { DatePicker, Dialog, DropdownMenu } from "bits-ui";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
+    import { usePostEventOperations } from '../lib/hooks/usePostEventOperations.svelte';
+    import PostEventMenu from './PostEventMenu.svelte';
     import Button from "./Button.svelte";
     import ConfirmDialog from "./ConfirmDialog.svelte";
     import FloatingMessage from "./FloatingMessage.svelte";
@@ -56,7 +58,6 @@
     } from "../lib/postHistoryInboundReplyReconciliationService";
     import {
         canRequestPostDeletion,
-        postDeletionService,
     } from "../lib/postDeletionService";
     import {
         formatPostedAt,
@@ -89,7 +90,6 @@
     import { triggerPostHistoryChildInteractionDeletionLifecycle } from "../lib/postHistoryChildInteractionDeletionLifecycleTrigger";
     import { formatPostHistoryReactionActorLabel } from "../lib/postHistoryReactionReadModel";
     import {
-        postBroadcastService,
         resolveBroadcastEvent,
     } from "../lib/postBroadcastService";
     import {
@@ -1827,6 +1827,7 @@
         return broadcastRequestState[post.eventId] === "sending";
     }
 
+    const eventOperations = usePostEventOperations(() => rxNostr, () => show && !destroyed, () => `${pubkeyHex}:${JSON.stringify(relayConfig)}`);
     function canBroadcastPost(post: PostHistoryRecord): boolean {
         return resolveBroadcastEvent(post) !== null;
     }
@@ -1947,10 +1948,7 @@
             [post.eventId]: "sending",
         };
 
-        const result = await postBroadcastService.broadcast({
-            post,
-            rxNostr,
-        });
+        const result = await eventOperations.broadcast(post) ?? { success: false };
 
         if (!owned()) return;
         broadcastRequestState = {
@@ -2564,10 +2562,7 @@
             [targetPost.eventId]: "sending",
         };
 
-        const result = await postDeletionService.requestDeletion({
-            post: targetPost,
-            rxNostr,
-        });
+        const result = await eventOperations.deletePost(targetPost) ?? { success: false };
         if (!owned()) return;
         sensitivePayloadDeletionOmitted = result.success && result.sensitivePayloadOmitted === true;
 
@@ -4130,26 +4125,9 @@
 
 
 {#snippet repostRecordMenu(record: PostHistoryRecord, menuKey: string)}
-    <PostHistoryActionMenu open={postActionUi.isPostMenuOpen(menuKey)}
-        restoreFocusOnClose={true}
-        onOpenChange={(open) => setExclusivePostMenuOpen(menuKey, open)}
-        triggerAriaLabel={$_(isRepostOuterKind(record.kind) ? "repost.outerActions" : "repost.targetActions")}
-        timestamp={formatPostedAtExact(record.postedAt, $locale)}>
-        {#snippet items()}
-            <PostHistoryRecordActionItems order="standard"
-                onRepost={canRepost(record) ? () => void handleRepost(record) : undefined} {repostPending}
-                copyFailed={copyNeventUi.copyState[record.eventId] === "failed"}
-                showBroadcast={canBroadcastPost(record)} broadcastSending={isBroadcastSending(record)}
-                showDelete={canDeletePost(record)} showDeleteSeparator={true} deletionSending={isDeletionSending(record)}
-                onCopyPointerDown={(event) => copyNeventUi.captureCopyPointerPosition(record, event)}
-                onCopyNevent={(event) => void copyNeventUi.handleCopyNevent(record, event)}
-                externalClientLabel={getExternalClientOpenLabel()} onOpenExternalClient={() => handleOpenExternalClient(record)}
-                onShowRawJson={() => openRawJson(record.rawEvent, record.relayHints)}
-                onBroadcastPointerDown={(event) => captureBroadcastPointerPosition(record, event)}
-                onBroadcastPost={(event) => void handleBroadcastPost(record, event)}
-                onOpenDeleteConfirm={() => openDeleteConfirm(record)} />
-        {/snippet}
-    </PostHistoryActionMenu>
+    <PostEventMenu open={postActionUi.isPostMenuOpen(menuKey)} onOpenChange={(open) => setExclusivePostMenuOpen(menuKey, open)} post={record} owner={pubkeyHex} {rxNostr} {relayConfig} operations={eventOperations} active={() => show && !destroyed}
+        triggerLabel={$_(isRepostOuterKind(record.kind) ? "repost.outerActions" : "repost.targetActions")} onDelete={() => openDeleteConfirm(record)} onRequestRepost={() => void handleRepost(record)} onRefresh={() => postHistoryThreadGraph.refreshRelatedEvents(record)}
+        onRepost={onRepostPost} {repostPending} />
 {/snippet}
 
 <style>
