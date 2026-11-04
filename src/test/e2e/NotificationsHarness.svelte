@@ -6,6 +6,7 @@
     import FooterComponent from '../../components/FooterComponent.svelte';
     import NotificationDialog from '../../components/NotificationDialog.svelte';
     import { notificationRepository } from '../../lib/storage/notificationRepository';
+    import { profilesRepository } from '../../lib/storage/profilesRepository';
     import { ehagakiDb } from '../../lib/storage/ehagakiDb';
     import { useNotifications } from '../../lib/hooks/useNotifications.svelte';
     import { profileLoadedStore } from '../../stores/profileStore.svelte';
@@ -50,7 +51,11 @@
         profileLoadedStore.set(true);
         document.documentElement.classList.add('light');
         footerSettingShortcutsStore.set({ left: 'image-quality', right: 'video-quality' });
-        void notificationRepository.upsert(owner, incoming.map(event => ({ event, relayUrls: [relay] }))).then(() => ready = true);
+        void profilesRepository.put(incoming[0]!.pubkey, {
+            name: 'Fixture sender', displayName: 'Fixture sender',
+            picture: 'https://profiles.example/large-avatar.png', npub: '', nprofile: '',
+        }).then(() => notificationRepository.upsert(owner, incoming.map(event => ({ event, relayUrls: [relay] }))))
+            .then(() => ready = true);
         Reflect.set(window, '__NOTIFICATIONS__', {
             add: async () => notificationRepository.upsert(owner, [{ event: sign('New incoming notification') }]),
             unread: () => notificationRepository.hasUnread(owner),

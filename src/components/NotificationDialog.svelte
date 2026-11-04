@@ -177,7 +177,8 @@
                     {:else}
                     <div class="notification-actor">
                         <ProfileAvatar pubkeyHex={record.event.pubkey} displayName={profiles[record.event.pubkey]?.displayName}
-                            src={profiles[record.event.pubkey]?.picture} alt="" rootClassName="notification-avatar" />
+                            src={profiles[record.event.pubkey]?.picture} alt="" rootClassName="notification-avatar"
+                            imageClassName="notification-avatar-image" />
                         <span>{profiles[record.event.pubkey]?.displayName || profiles[record.event.pubkey]?.name || shortenMiddle(record.event.pubkey, 12, 4)}</span>
                         <span>{$_(`notifications.${type}`)}</span>
                         <time>{formatPostedAt(record.createdAt * 1000)}</time>
@@ -226,6 +227,19 @@
     .notification-entry { display: grid; min-width: 0; gap: 6px; padding-block: 8px; border-bottom: 1px solid var(--border-hr); }
     .notification-type { font-size: .85rem; opacity: .8; }
     .notification-actor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-    .notification-actor :global(.notification-avatar) { width: 24px; height: 24px; }
+    .notification-actor :global(.notification-avatar) {
+        display: block;
+        width: 24px;
+        height: 24px;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        overflow: hidden;
+    }
+    .notification-actor :global(.notification-avatar-image) {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
     time { font-size: .8rem; }
 </style>

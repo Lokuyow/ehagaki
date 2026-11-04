@@ -1,4 +1,39 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
+import { fileURLToPath } from 'node:url';
+
+test.beforeEach(async ({ context }) => {
+    await context.route('https://profiles.example/**', route => route.fulfill({
+        contentType: 'image/png',
+        path: fileURLToPath(new URL('../../../public/ehagaki_icon_x512.png', import.meta.url)),
+    }));
+});
+
+async function expectContainedActorAvatar(dialog: Locator) {
+    const actor = dialog.locator('.notification-actor');
+    await expect(actor).toContainText('Fixture sender');
+    const image = actor.locator('img[data-avatar-image]');
+    await expect.poll(() => image.evaluate(node => (node as HTMLImageElement).naturalWidth)).toBe(512);
+    const bounds = await image.evaluate(node => {
+        const image = node.getBoundingClientRect();
+        const avatar = node.parentElement!.getBoundingClientRect();
+        const actor = node.closest('.notification-actor')!.getBoundingClientRect();
+        return {
+            image: { left: image.left, top: image.top, right: image.right, bottom: image.bottom, width: image.width, height: image.height },
+            avatar: { left: avatar.left, top: avatar.top, right: avatar.right, bottom: avatar.bottom, width: avatar.width, height: avatar.height },
+            actor: { left: actor.left, top: actor.top, right: actor.right, bottom: actor.bottom },
+        };
+    });
+    expect(bounds.image.width).toBeCloseTo(24);
+    expect(bounds.image.height).toBeCloseTo(24);
+    expect(bounds.avatar.width).toBeCloseTo(24);
+    expect(bounds.avatar.height).toBeCloseTo(24);
+    for (const container of [bounds.avatar, bounds.actor]) {
+        expect(bounds.image.left).toBeGreaterThanOrEqual(container.left);
+        expect(bounds.image.top).toBeGreaterThanOrEqual(container.top);
+        expect(bounds.image.right).toBeLessThanOrEqual(container.right);
+        expect(bounds.image.bottom).toBeLessThanOrEqual(container.bottom);
+    }
+}
 
 test('notifications persist read state, render quotes, and hand reply/reaction to the composer', async ({ page }, info) => {
     await page.setViewportSize({ width: 360, height: 800 });
@@ -11,6 +46,7 @@ test('notifications persist read state, render quotes, and hand reply/reaction t
     await expect(dialog.getByText('A mention addressed to you', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Quote notification text', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Original notification target', { exact: true }).first()).toBeVisible();
+    await expectContainedActorAvatar(dialog);
     await expect(page.locator('.notification-badge')).toHaveCount(0);
     await page.evaluate(() => (window as any).__NOTIFICATIONS__.add());
     await expect(dialog.getByText('New incoming notification', { exact: true })).toBeVisible();
@@ -51,6 +87,7 @@ test('notification controls reflow in a 280px embedded viewport with both shortc
     await expect(embedded.getByRole('dialog')).toBeVisible();
     await expect(embedded.getByRole('dialog').locator('.notification-entry')).toHaveCount(4);
     await expect(embedded.getByRole('dialog').getByText('Original notification target', { exact: true })).toHaveCount(3);
+    await expectContainedActorAvatar(embedded.getByRole('dialog'));
     expect(await embedded.getByRole('dialog').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath('notifications-280.png') });
     await embedded.getByRole('dialog').getByRole('button', { name: '閉じる', exact: true }).first().click();
