@@ -12,6 +12,7 @@ import type {
 } from "../postHistoryInboundReplyReconciliationService";
 
 interface UsePostHistoryInboundInteractionsRealtimeParams {
+    getNotificationsEnabled?: () => boolean;
     getIsAuthenticated: () => boolean;
     getPubkeyHex: () => string | null | undefined;
     getRxNostr: () => RxNostr | undefined;
@@ -27,6 +28,7 @@ function canUseRxNostr(rxNostr: RxNostr | undefined): rxNostr is RxNostr {
 }
 
 export function usePostHistoryInboundInteractionsRealtime({
+    getNotificationsEnabled = () => true,
     getIsAuthenticated,
     getPubkeyHex,
     getRxNostr,
@@ -69,6 +71,7 @@ export function usePostHistoryInboundInteractionsRealtime({
         const ownerPubkeyHex = getPubkeyHex() ?? null;
         const rxNostr = getRxNostr();
         const relayConfig = getRelayConfig();
+        const includeNotifications = getNotificationsEnabled();
 
         if (!visible || !isAuthenticated || !ownerPubkeyHex || !canUseRxNostr(rxNostr)) {
             stopCurrentSubscription();
@@ -108,6 +111,7 @@ export function usePostHistoryInboundInteractionsRealtime({
         };
 
         const subscription = postHistoryInboundInteractionsRealtimeService.subscribe(rxNostr, {
+            includeNotifications,
             ownerPubkeyHex,
             relayConfig,
             onSavedInboundInteractions: handleSavedInboundInteractions,

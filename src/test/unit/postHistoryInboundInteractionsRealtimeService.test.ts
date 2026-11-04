@@ -113,6 +113,19 @@ function openSubscription(observer: Record<string, any>, unsubscribe = vi.fn()) 
 }
 
 describe("PostHistoryInboundInteractionsRealtimeService", () => {
+    it('retains history interaction processing with notifications disabled', async () => {
+        let next!: (packet: unknown) => void;
+        const upsert = vi.fn();
+        rxNostrMock.use.mockReturnValue({ subscribe: (observer: any) => { next = observer.next; return { unsubscribe: vi.fn() }; } });
+        const { service, postHistoryChildInteractionsRepository } = createService({ notificationRepository: { upsert } });
+        const subscription = service.subscribe(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY, includeNotifications: false });
+        next({ event: createEvent(), from: 'wss://relay.example/' });
+        await subscription.waitForIdle();
+        expect(rxNostrMock.emittedFilters.map(filter => filter.kinds)).toEqual([[1, 42, 1111, 7], [1111]]);
+        expect(upsert).not.toHaveBeenCalled();
+        expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledTimes(1);
+        subscription.stop();
+    });
     it("persists mention-only notifications before the history classifier excludes them", async () => {
         const upsert = vi.fn(async () => undefined);
         let next!: (packet: unknown) => void;

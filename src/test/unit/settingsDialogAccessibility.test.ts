@@ -148,7 +148,7 @@ describe('SettingsDialog accessibility', () => {
         const left = screen.getByRole('combobox', { name: '左' }) as HTMLSelectElement;
         const right = screen.getByRole('combobox', { name: '右' }) as HTMLSelectElement;
         expect(Array.from(left.options).map((option) => option.value)).toEqual([
-            '', 'language', 'image-quality', 'video-quality', 'theme-mode',
+            '', 'notifications', 'language', 'image-quality', 'video-quality', 'theme-mode',
             'media-free-placement', 'hide-mascot', 'hide-flavor-text',
             'quote-notification', 'reply-notification', 'client-tag',
             'fail-closed-content-warning',

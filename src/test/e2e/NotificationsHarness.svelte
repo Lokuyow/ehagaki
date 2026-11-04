@@ -9,6 +9,7 @@
     import { profilesRepository } from '../../lib/storage/profilesRepository';
     import { ehagakiDb } from '../../lib/storage/ehagakiDb';
     import { useNotifications } from '../../lib/hooks/useNotifications.svelte';
+    import { usePostHistoryInboundInteractionsRealtime } from '../../lib/hooks/usePostHistoryInboundInteractionsRealtime.svelte';
     import { profileLoadedStore } from '../../stores/profileStore.svelte';
     import { footerSettingShortcutsStore } from '../../stores/footerSettingShortcutsStore.svelte';
     import type { NostrEvent } from '../../lib/types';
@@ -35,8 +36,10 @@
     const sign = (content: string) => finalizeEvent({ kind: 1, content, tags: [['p', owner]], created_at: now + 1 }, authorKey);
     let open = $state(false), ready = $state(false), applied = $state('');
     let trigger = $state<HTMLElement | null>(null);
+    const requests: Array<Array<{ kinds?: number[]; ids?: string[] }>> = [];
     const runtime = { use: (req: { getReqPacketObservable: () => Observable<{ filters: Array<{ ids?: string[] }> }> }) => new Observable(observer => {
         const subscription = req.getReqPacketObservable().subscribe(({ filters }) => {
+            requests.push(filters);
             queueMicrotask(() => {
                 if (!new URLSearchParams(location.search).has('missing') && filters.some(filter => filter.ids?.includes(original.id))) observer.next({ event: original, from: relay });
                 observer.complete();
@@ -45,12 +48,15 @@
         return () => subscription.unsubscribe();
     }) } as unknown as RxNostr;
     if (new URLSearchParams(location.search).has('container')) configureAppRuntimeEnvironment({ layoutMode: 'container' });
-    useNotifications({ getOwner: () => ready ? owner : null, getRxNostr: () => runtime, getRelayConfig: () => config });
+    useNotifications({ getEnabled: () => footerSettingShortcutsStore.notificationsEnabled, getOwner: () => ready ? owner : null, getRxNostr: () => runtime, getRelayConfig: () => config });
+    usePostHistoryInboundInteractionsRealtime({ getIsAuthenticated: () => ready, getPubkeyHex: () => owner,
+        getRxNostr: () => runtime, getRelayConfig: () => config, getNotificationsEnabled: () => footerSettingShortcutsStore.notificationsEnabled });
+    $effect(() => { if (!footerSettingShortcutsStore.notificationsEnabled) open = false; });
     onMount(() => {
         document.body.classList.add('ehagaki-app-root');
         profileLoadedStore.set(true);
         document.documentElement.classList.add('light');
-        footerSettingShortcutsStore.set({ left: 'image-quality', right: 'video-quality' });
+        if (!savedFixture) footerSettingShortcutsStore.set({ left: 'image-quality', right: 'notifications' });
         void profilesRepository.put(incoming[0]!.pubkey, {
             name: 'Fixture sender', displayName: 'Fixture sender',
             picture: 'https://profiles.example/large-avatar.png', npub: '', nprofile: '',
@@ -60,6 +66,8 @@
             add: async () => notificationRepository.upsert(owner, [{ event: sign('New incoming notification') }]),
             unread: () => notificationRepository.hasUnread(owner),
             replay: () => notificationRepository.upsert(owner, incoming.map(event => ({ event }))),
+            setShortcuts: (value: unknown) => footerSettingShortcutsStore.set(value),
+            requests: () => requests,
             count: () => ehagakiDb.notifications.where('ownerPubkeyHex').equals(owner).count(),
         });
     });

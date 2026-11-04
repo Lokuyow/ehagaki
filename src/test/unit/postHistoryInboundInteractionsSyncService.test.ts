@@ -24,6 +24,7 @@ vi.mock("../../lib/postHistoryRawEventVerification", () => ({
 }));
 
 import { PostHistoryInboundInteractionsSyncService } from "../../lib/postHistoryInboundInteractionsSyncService";
+import { configureNotifications } from '../../lib/notificationFeaturePolicy';
 import { PostHistoryInboundReplyReconciliationService } from "../../lib/postHistoryInboundReplyReconciliationService";
 import { EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { DexiePostHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryChildInteractionsRepository";
@@ -109,6 +110,27 @@ function createService(overrides: Record<string, any> = {}) {
 }
 
 describe("PostHistoryInboundInteractionsSyncService", () => {
+    it('replaces an expanded request with history-only filters and ignores delayed notification packets', async () => {
+        const observers: any[] = [], upsert = vi.fn(), unsubscribe = vi.fn();
+        rxNostrMock.use.mockReturnValue({ subscribe: (observer: any) => { observers.push(observer); return { unsubscribe }; } });
+        const { service, postHistoryChildInteractionsRepository } = createService({ notificationRepository: { upsert } });
+        const task = service.syncRecent(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY, reason: 'dialog-open-refresh' });
+        try {
+            await vi.waitFor(() => expect(observers).toHaveLength(1));
+            configureNotifications(false);
+            await vi.waitFor(() => expect(observers).toHaveLength(2));
+            expect(unsubscribe).toHaveBeenCalled();
+            expect(rxNostrMock.emittedFilters.map(filter => filter.kinds)).toEqual([[1, 6, 7, 16, 42, 1111], [1111], [1, 42, 1111, 7], [1111]]);
+            observers[0].next({ event: createEvent({ tags: [['p', OWNER_PUBKEY]] }) });
+            observers[0].complete();
+            observers[1].next({ event: createEvent(), from: 'wss://relay.example/' });
+            observers[1].complete();
+            // This transport fixture has no EOSE; partial history still persists.
+            expect((await task.promise).status).toBe('timeout');
+            expect(upsert).not.toHaveBeenCalled();
+            expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledTimes(1);
+        } finally { task.cancel(); configureNotifications(true); }
+    });
     it("advances pagination using saturated relays without pinning it to a sparse relay's newer event", async () => {
         rxNostrMock.use.mockReturnValue({ subscribe: ({ next, complete }: any) => {
             next({ event: createEvent({ id: '3'.repeat(64), created_at: 300 }), from: 'wss://sparse.example/' });

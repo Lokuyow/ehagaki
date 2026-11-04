@@ -1,4 +1,5 @@
 import type { RxNostr } from 'rx-nostr';
+import { notificationsEnabled } from './notificationFeaturePolicy';
 import { NOTIFICATION_LOOKBACK_SECONDS } from './notification';
 import { postHistoryLightweightSyncCoordinator } from './postHistoryLightweightSyncCoordinator';
 import { getPostHistoryAuthoredRelayScopeKey } from './postHistoryRelayResolver';
@@ -14,7 +15,7 @@ export function syncNotifications(rxNostr: RxNostr,
     params: Omit<PostHistoryInboundInteractionsSyncRequest, 'reason'> & { older?: boolean }) {
     let active = true;
     let task: ReturnType<typeof postHistoryLightweightSyncCoordinator.runInbound> | undefined;
-    const isActive = () => active && params.isActive?.() !== false;
+    const isActive = () => active && notificationsEnabled() && params.isActive?.() !== false;
     const promise = (async (): Promise<NotificationSyncResult | null> => {
         const id = JSON.stringify([params.ownerPubkeyHex, getPostHistoryAuthoredRelayScopeKey(params.relayConfig)]);
         const state = await notificationRepository.getSyncState(id);
@@ -25,7 +26,7 @@ export function syncNotifications(rxNostr: RxNostr,
         if (params.older && state?.exhausted && !pending) return null;
         const since = pending ? state.pendingSince ?? state.recentSince : params.older ? 0 : state?.recentSince ?? initialSince;
         const until = pending ? state.pendingUntil! : params.older ? state?.olderUntil ?? initialSince : now;
-        task = postHistoryLightweightSyncCoordinator.runInbound(rxNostr, { ...params, since, until,
+        task = postHistoryLightweightSyncCoordinator.runInbound(rxNostr, { ...params, since, until, includeNotifications: true,
             limit: state || params.older ? 100 : 150, relayLimit: 6, timeoutMs: 6000,
             reason: params.older ? 'notification-older' : state ? 'notification-refresh' : 'notification-initial', isActive });
         const result = await task.promise;

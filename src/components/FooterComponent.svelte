@@ -99,6 +99,18 @@
     }
 </script>
 
+{#snippet notificationShortcut()}
+    {#if isAuthenticated && onOpenNotificationDialog}
+        <Button variant="default" shape="circle" contentLayout="icon" className="notification-btn footer-setting-shortcut-button"
+            onClick={(event) => onOpenNotificationDialog?.(event.currentTarget as HTMLElement)}
+            ariaLabel={$_(notificationStore.hasUnread ? "notifications.openUnread" : "notifications.open")}>
+            <div class="notification-icon svg-icon" aria-hidden="true"
+                style:mask-image={`url("${resolveAppAssetUrl('icons/notifications.svg')}")`}></div>
+            {#if notificationStore.hasUnread}<span class="notification-badge" aria-hidden="true"></span>{/if}
+        </Button>
+    {/if}
+{/snippet}
+
 <div class="footer-bar" class:compact {@attach observeFooter}>
     {#if isSwitchingAccount}
         <Button
@@ -182,7 +194,11 @@
         {#snippet fallback()}
             <div class="footer-setting-controls">
                 {#if footerSettingShortcutsStore.value.left}
-                    <FooterSettingShortcutButton shortcutId={footerSettingShortcutsStore.value.left} />
+                    {#if footerSettingShortcutsStore.value.left === 'notifications'}
+                        {@render notificationShortcut()}
+                    {:else}
+                        <FooterSettingShortcutButton shortcutId={footerSettingShortcutsStore.value.left} />
+                    {/if}
                 {/if}
                 {#if isAuthenticated}
                     <Button
@@ -199,17 +215,12 @@
                         <div class="post-history-icon svg-icon" aria-hidden="true"></div>
                     </Button>
                 {/if}
-                {#if isAuthenticated && onOpenNotificationDialog}
-                    <Button variant="default" shape="pill" contentLayout="icon" className="notification-btn"
-                        onClick={(event) => onOpenNotificationDialog?.(event.currentTarget as HTMLElement)}
-                        ariaLabel={$_(notificationStore.hasUnread ? "notifications.openUnread" : "notifications.open")}>
-                        <div class="notification-icon svg-icon" aria-hidden="true"
-                            style:mask-image={`url("${resolveAppAssetUrl('icons/notifications.svg')}")`}></div>
-                        {#if notificationStore.hasUnread}<span class="notification-badge" aria-hidden="true"></span>{/if}
-                    </Button>
-                {/if}
                 {#if footerSettingShortcutsStore.value.right}
-                    <FooterSettingShortcutButton shortcutId={footerSettingShortcutsStore.value.right} />
+                    {#if footerSettingShortcutsStore.value.right === 'notifications'}
+                        {@render notificationShortcut()}
+                    {:else}
+                        <FooterSettingShortcutButton shortcutId={footerSettingShortcutsStore.value.right} />
+                    {/if}
                 {/if}
             </div>
         {/snippet}
@@ -291,8 +302,7 @@
         min-width: 0;
         height: 100%;
     }
-    :global(.post-history-btn.default),
-    :global(.notification-btn.default) {
+    :global(.post-history-btn.default) {
         background-color: var(--btn-bg);
         max-width: 200px;
         height: 50px;
@@ -314,7 +324,9 @@
     .compact :global(.footer-setting-controls .svg-icon) { width: 24px; height: 24px; }
     .compact :global(.footer-setting-controls .paired-icons) { width: 30px; flex-basis: 30px; gap: 2px; }
     .compact :global(.footer-setting-controls .paired-icons .svg-icon) { width: 14px; height: 20px; }
-    :global(.notification-btn.default) { position: relative; }
+    :global(.notification-btn.default) { position: relative; width: 50px; height: 50px; min-width: 50px; flex: 0 0 50px; padding: 0; }
+    .compact :global(.footer-setting-controls button.notification-btn) { width: 44px; height: 44px; min-width: 44px; flex: 0 0 44px; }
+    .notification-icon { width: 24px; height: 24px; }
     .notification-badge { position: absolute; inset: 5px 5px auto auto; width: 9px; height: 9px;
         border-radius: 50%; background: var(--theme); pointer-events: none; }
     :global(.settings-btn.has-update) {

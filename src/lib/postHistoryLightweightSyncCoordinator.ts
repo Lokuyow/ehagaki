@@ -1,4 +1,5 @@
 import { createPostHistoryAuthoredFetchScope, persistPostHistoryAuthoredFetch, EMPTY_POST_HISTORY_FETCH_SAVE } from "./postHistoryAuthoredFetchPersistence";
+import { followNotificationMode } from './notificationFeaturePolicy';
 import { getPostHistoryAuthoredRelayScopeKey } from "./postHistoryRelayResolver";
 import { POST_HISTORY_FETCH_KINDS } from "./postHistoryRelayFetchService";
 import type { PostHistoryCoverageWrite } from "./storage/postHistoryRelayCoverageRepository";
@@ -227,9 +228,10 @@ export class PostHistoryLightweightSyncCoordinator {
         rxNostr: RxNostr,
         params: PostHistoryLightweightInboundSyncRequest,
     ): PostHistoryLightweightInboundSyncTask {
+        if (params.includeNotifications === undefined) return followNotificationMode(mode => this.runInbound(rxNostr, { ...params, includeNotifications: mode }));
         let runtimeId = this.runtimeIds.get(rxNostr);
         if (runtimeId === undefined) { runtimeId = ++this.nextRuntimeId; this.runtimeIds.set(rxNostr, runtimeId); }
-        const key = JSON.stringify([params.ownerPubkeyHex, runtimeId,
+        const key = JSON.stringify([params.ownerPubkeyHex, runtimeId, params.includeNotifications,
             getPostHistoryAuthoredRelayScopeKey(params.relayConfig), params.reason,
             params.since ?? null, params.until ?? null, params.limit ?? null,
             params.timeoutMs ?? null, params.relayLimit ?? null]);

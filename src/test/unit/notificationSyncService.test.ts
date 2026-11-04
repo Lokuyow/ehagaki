@@ -10,6 +10,7 @@ vi.mock('../../lib/storage/notificationRepository', () => ({ notificationReposit
 } }));
 vi.mock('../../lib/postHistoryLightweightSyncCoordinator', () => ({ postHistoryLightweightSyncCoordinator: { runInbound: mocks.run } }));
 import { syncNotifications } from '../../lib/notificationSyncService';
+import { configureNotifications } from '../../lib/notificationFeaturePolicy';
 
 const owner = 'a'.repeat(64), runtime = {} as RxNostr;
 beforeEach(() => {
@@ -17,8 +18,23 @@ beforeEach(() => {
     mocks.get.mockResolvedValue(undefined); mocks.save.mockResolvedValue(undefined);
     mocks.run.mockReturnValue({ promise: Promise.resolve(createInboundSyncResult({ status: 'success' })), cancel: mocks.cancel });
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => { vi.useRealTimers(); configureNotifications(true); });
 describe('notification synchronization coverage', () => {
+    it('does not request or advance coverage while notifications are disabled', async () => {
+        configureNotifications(false);
+        expect(await syncNotifications(runtime, { ownerPubkeyHex: owner }).promise).toBeNull();
+        expect(mocks.run).not.toHaveBeenCalled();
+        expect(mocks.save).not.toHaveBeenCalled();
+    });
+    it('resumes from saved coverage after the disabled interval', async () => {
+        mocks.get.mockResolvedValue({ recentSince: 100, olderUntil: 50 });
+        configureNotifications(false);
+        await syncNotifications(runtime, { ownerPubkeyHex: owner }).promise;
+        configureNotifications(true);
+        await syncNotifications(runtime, { ownerPubkeyHex: owner }).promise;
+        expect(mocks.run).toHaveBeenCalledTimes(1);
+        expect(mocks.run).toHaveBeenCalledWith(runtime, expect.objectContaining({ since: 100, includeNotifications: true }));
+    });
     it('starts seven days back independently of the existing post-history cursor', async () => {
         await syncNotifications(runtime, { ownerPubkeyHex: owner }).promise;
         expect(mocks.run).toHaveBeenCalledWith(runtime, expect.objectContaining({ since: 1_800_000_000 - 604800,

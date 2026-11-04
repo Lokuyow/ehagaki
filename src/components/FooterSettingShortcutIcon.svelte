@@ -17,6 +17,7 @@
 
     function getIconClass(): string {
         switch (shortcutId) {
+            case "notifications": return "notifications-icon";
             case "language":
                 return "language-icon";
             case "image-quality":
@@ -55,7 +56,8 @@
         <span class="shortcut-icon shortcut-mask-icon paired-notification-icon" class:notification-on={active} class:notification-off={!active}></span>
     </span>
 {:else}
-    <span class="shortcut-icon shortcut-mask-icon {iconClass}" aria-hidden="true"></span>
+    <span class="shortcut-icon shortcut-mask-icon {iconClass}" aria-hidden="true"
+        style:mask-image={shortcutId === 'notifications' ? `url("${resolveAppAssetUrl('icons/notifications.svg')}")` : undefined}></span>
 {/if}
 
 <style>

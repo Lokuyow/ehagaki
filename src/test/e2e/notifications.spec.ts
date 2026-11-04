@@ -1,12 +1,17 @@
 import { expect, test, type Locator } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 
-test.beforeEach(async ({ context }) => {
+let pageErrors: string[] = [];
+test.beforeEach(async ({ context, page }) => {
+    pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+    context.on('page', opened => opened.on('pageerror', error => pageErrors.push(error.message)));
     await context.route('https://profiles.example/**', route => route.fulfill({
         contentType: 'image/png',
         path: fileURLToPath(new URL('../../../public/ehagaki_icon_x512.png', import.meta.url)),
     }));
 });
+test.afterEach(() => expect(pageErrors).toEqual([]));
 
 async function expectContainedActorAvatar(dialog: Locator) {
     const actor = dialog.locator('.notification-actor');
@@ -35,11 +40,20 @@ async function expectContainedActorAvatar(dialog: Locator) {
     }
 }
 
+async function expectRoundNotification(button: Locator) {
+    const box = await button.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeCloseTo(box!.height);
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+}
+
 test('notifications persist read state, render quotes, and hand reply/reaction to the composer', async ({ page }, info) => {
     await page.setViewportSize({ width: 360, height: 800 });
     await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await page.waitForFunction(() => Reflect.has(window, '__NOTIFICATIONS__'));
     const button = page.getByRole('button', { name: '通知（未読あり）', exact: true });
     await expect(button).toBeVisible();
+    await expectRoundNotification(button);
     await expect(page.locator('.notification-badge')).toBeVisible();
     await button.click();
     const dialog = page.getByRole('dialog');
@@ -77,10 +91,11 @@ test('notification controls reflow in a 280px embedded viewport with both shortc
     await page.goto('post-history-dialog-playwright.html?notifications-host=1');
     const embedded = page.frameLocator('iframe[title="Notifications in a narrow host"]');
     await expect(embedded.getByRole('button', { name: '通知（未読あり）' })).toBeVisible();
+    await expectRoundNotification(embedded.getByRole('button', { name: '通知（未読あり）' }));
     const boxes = await embedded.locator('.footer-bar button').evaluateAll(nodes => nodes.map(node => {
         const box = node.getBoundingClientRect(); return { left: box.left, right: box.right, width: box.width };
     }));
-    expect(boxes).toHaveLength(6);
+    expect(boxes).toHaveLength(5);
     for (const box of boxes) { expect(box.left).toBeGreaterThanOrEqual(0); expect(box.right).toBeLessThanOrEqual(280); expect(box.width).toBeGreaterThan(20); }
     for (let index = 1; index < boxes.length; index++) expect(boxes[index]!.left).toBeGreaterThanOrEqual(boxes[index - 1]!.right);
     await embedded.getByRole('button', { name: '通知（未読あり）' }).click();
@@ -135,4 +150,35 @@ test('unavailable targets retain the incoming notification and offer retry', asy
     await expect(unavailable.first().getByRole('button', { name: '再試行', exact: true })).toBeVisible();
     await unavailable.first().getByRole('button', { name: '再試行', exact: true }).click();
     await expect(dialog.locator('.notification-entry')).toHaveCount(4);
+});
+
+test('notification slots control traffic, persist removal, and close an open dialog when disabled', async ({ page, context }) => {
+    const url = 'post-history-dialog-playwright.html?notifications=1';
+    await page.goto(url);
+    await expect(page.locator('.notification-btn')).toBeVisible();
+    const set = (slots: { left: string | null; right: string | null }) => page.evaluate(value => (window as any).__NOTIFICATIONS__.setShortcuts(value), slots);
+    const kinds = () => page.evaluate(() => (window as any).__NOTIFICATIONS__.requests().flatMap((filters: any[]) => filters.flatMap(filter => filter.kinds ?? [])));
+    await expect.poll(kinds).toContain(6);
+    await set({ left: 'notifications', right: 'image-quality' });
+    const bell = (await page.locator('.notification-btn').boundingBox())!;
+    const history = (await page.locator('.post-history-btn').boundingBox())!;
+    expect(bell.x + bell.width).toBeLessThanOrEqual(history.x);
+    await set({ left: 'image-quality', right: 'video-quality' });
+    await expect(page.locator('.notification-btn')).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator('.post-history-btn')).toBeVisible();
+    await expect.poll(kinds).toContain(7);
+    expect(await kinds()).not.toContain(6);
+    expect(await kinds()).not.toContain(16);
+    const second = await context.newPage();
+    await second.goto(url);
+    await expect(second.locator('.post-history-btn')).toBeVisible();
+    await second.evaluate(() => (window as any).__NOTIFICATIONS__.setShortcuts({ left: null, right: 'notifications' }));
+    await expect(page.locator('.notification-btn')).toBeVisible();
+    await expect.poll(kinds).toContain(6);
+    await page.locator('.notification-btn').click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await set({ left: null, right: 'video-quality' });
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.notification-btn')).toHaveCount(0);
 });

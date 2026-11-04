@@ -30,6 +30,7 @@ export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_RELAY_LIMIT = 6;
 export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_SINCE_OVERLAP_SECONDS = 60;
 
 export interface PostHistoryInboundInteractionsRealtimeSubscribeRequest {
+    includeNotifications?: boolean;
     ownerPubkeyHex: string;
     relayConfig?: RelayConfig | null;
     relayLimit?: number;
@@ -137,7 +138,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
             });
 
             rxReq.emit({
-                kinds: [...NOTIFICATION_KINDS],
+                kinds: params.includeNotifications === false ? [1, 42, 1111, 7] : [...NOTIFICATION_KINDS],
                 "#p": [params.ownerPubkeyHex],
                 since: subscribedSince,
             } as never);
@@ -175,7 +176,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
             return;
         }
 
-        await this.notificationRepository.upsert(params.ownerPubkeyHex, [{ event,
+        if (params.includeNotifications !== false) await this.notificationRepository.upsert(params.ownerPubkeyHex, [{ event,
             relayUrls: packet.from ? [packet.from] : [] }], isActive);
         if (!isActive()) return;
         const preliminary = classifyPostHistoryInboundInteraction({

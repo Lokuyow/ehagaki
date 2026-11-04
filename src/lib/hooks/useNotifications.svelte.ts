@@ -1,4 +1,6 @@
 import { onMount } from 'svelte';
+import { configureNotifications } from '../notificationFeaturePolicy';
+import { watchFooterSettingShortcuts } from '../../stores/footerSettingShortcutsStore.svelte';
 import { liveQuery } from 'dexie';
 import type { RxNostr } from 'rx-nostr';
 import type { RelayConfig } from '../types';
@@ -9,19 +11,22 @@ import { getPostHistoryAuthoredRelayScopeKey } from '../postHistoryRelayResolver
 import type { PostHistoryInboundInteractionsSyncRequest } from '../postHistoryInboundInteractionsSyncService';
 
 export function useNotifications(params: {
+    getEnabled?: () => boolean;
     getOwner: () => string | null;
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
     reconcileDirectReplyCandidates?: PostHistoryInboundInteractionsSyncRequest['reconcileDirectReplyCandidates'];
 }) {
+    $effect.pre(() => { configureNotifications(params.getEnabled?.() ?? true); });
     let visible = $state(false);
     onMount(() => {
+        const unwatch = watchFooterSettingShortcuts();
         const sync = () => { visible = document.visibilityState === 'visible'; };
         sync(); document.addEventListener('visibilitychange', sync);
-        return () => { document.removeEventListener('visibilitychange', sync); };
+        return () => { unwatch(); document.removeEventListener('visibilitychange', sync); };
     });
     $effect(() => {
-        const owner = params.getOwner();
+        const owner = (params.getEnabled?.() ?? true) ? params.getOwner() : null;
         notificationStore.selectAccount(owner);
         if (!owner) return;
         const subscription = liveQuery(() => notificationRepository.hasUnread(owner)).subscribe({
@@ -33,11 +38,11 @@ export function useNotifications(params: {
     $effect(() => {
         const owner = params.getOwner(), runtime = params.getRxNostr(), config = params.getRelayConfig();
         const scope = getPostHistoryAuthoredRelayScopeKey(config);
-        if (!visible || !owner || !runtime || typeof runtime.use !== 'function') return;
+        if (!(params.getEnabled?.() ?? true) || !visible || !owner || !runtime || typeof runtime.use !== 'function') return;
         let active = true;
         const task = syncNotifications(runtime, { ownerPubkeyHex: owner, relayConfig: config,
             reconcileDirectReplyCandidates: params.reconcileDirectReplyCandidates,
-            isActive: () => active && visible && params.getOwner() === owner && params.getRxNostr() === runtime
+            isActive: () => active && (params.getEnabled?.() ?? true) && visible && params.getOwner() === owner && params.getRxNostr() === runtime
                 && getPostHistoryAuthoredRelayScopeKey(params.getRelayConfig()) === scope });
         void task.promise.catch(() => undefined);
         return () => { active = false; task.cancel(); };

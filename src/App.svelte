@@ -1038,6 +1038,7 @@
     });
 
   useNotifications({
+    getEnabled: () => footerSettingShortcutsStore.notificationsEnabled,
     getOwner: () => isAuthenticated && !isSwitchingAccount && !isLoggingOut ? authState.value?.pubkey ?? null : null,
     getRxNostr: () => rxNostr,
     getRelayConfig: () => relayConfigStore.value,
@@ -1045,6 +1046,11 @@
   });
 
   $effect(() => {
+    if (!footerSettingShortcutsStore.notificationsEnabled) {
+      notificationDialogRef?.invalidateSession();
+      showNotificationDialogStore.set(false);
+      return;
+    }
     if (showNotificationDialogStore.value) {
       if (blockUnloadedComponentWhileStale(NotificationDialogComponent, () => showNotificationDialogStore.set(false))) return;
       void loadNotificationDialog();
@@ -1052,6 +1058,7 @@
   });
 
   usePostHistoryInboundInteractionsRealtime({
+    getNotificationsEnabled: () => footerSettingShortcutsStore.notificationsEnabled,
     getIsAuthenticated: () => isAuthenticated,
     getPubkeyHex: () => authState.value?.pubkey ?? null,
     getRxNostr: () => rxNostr,
@@ -2372,7 +2379,7 @@
           ($swNeedRefresh || staleAssetReloadRequired)}
         onShowLoginDialog={loginDialog.open}
         onPreloadPostHistoryDialog={handlePreloadPostHistoryDialog}
-        onOpenNotificationDialog={(trigger) => { notificationReturnFocus = trigger; notificationDialog.open(); }}
+        onOpenNotificationDialog={(trigger) => { if (!footerSettingShortcutsStore.notificationsEnabled) return; notificationReturnFocus = trigger; notificationDialog.open(); }}
         onOpenPostHistoryDialog={(trigger) => { historyReturnFocus = trigger ?? null; postHistoryDialog.open(); }}
         onOpenSettingsDialog={handleOpenSettingsFromFooter}
         onOpenLogoutDialog={logoutDialog.open}

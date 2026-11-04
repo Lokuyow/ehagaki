@@ -39,13 +39,14 @@ describe("scoped lightweight inbound synchronization", () => {
         expect((await joined.promise).status).toBe('success');
         expect((await first.promise).status).toBe('cancelled');
     });
-    it.each(['runtime', 'config', 'range'])("does not share different inbound %s scopes", async difference => {
+    it.each(['runtime', 'config', 'range', 'notification-mode'])("does not share different inbound %s scopes", async difference => {
         const syncRecent = vi.fn(() => ({ promise: Promise.resolve(createInboundSyncResult()), cancel: vi.fn() }));
         const coordinator = new PostHistoryLightweightSyncCoordinator({ postHistoryInboundInteractionsSyncService: { syncRecent } as any });
         const runtime = {} as RxNostr;
         const request = { ownerPubkeyHex: owner, reason: 'notification-refresh' as const, since: 10, until: 20 };
         const first = coordinator.runInbound(runtime, request);
         const next = coordinator.runInbound(difference === 'runtime' ? {} as RxNostr : runtime, { ...request,
+            ...(difference === 'notification-mode' ? { includeNotifications: false } : {}),
             ...(difference === 'range' ? { until: 19 } : {}),
             ...(difference === 'config' ? { relayConfig: { 'wss://other.example/': { read: true, write: false } } } : {}) });
         await Promise.all([first.promise, next.promise]); expect(syncRecent).toHaveBeenCalledTimes(2);

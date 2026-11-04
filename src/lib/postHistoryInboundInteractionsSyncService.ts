@@ -1,4 +1,5 @@
 import { NOTIFICATION_KINDS } from './notification';
+import { followNotificationMode, subscribeNotificationMode } from './notificationFeaturePolicy';
 import { notificationRepository, type NotificationRepository } from './storage/notificationRepository';
 import { useRelayQuery, type RelayQuerySummary } from "./relay/query";
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
@@ -66,6 +67,7 @@ export type PostHistoryInboundInteractionsSyncStatus =
     | "cancelled";
 
 export interface PostHistoryInboundInteractionsSyncRequest {
+    includeNotifications?: boolean;
     ownerPubkeyHex: string;
     relayConfig?: RelayConfig | null;
     reason: PostHistoryInboundInteractionsSyncReason;
@@ -212,6 +214,7 @@ export class PostHistoryInboundInteractionsSyncService {
         rxNostr: RxNostr,
         params: PostHistoryInboundInteractionsSyncRequest,
     ): PostHistoryInboundInteractionsSyncTask {
+        if (params.includeNotifications === undefined) return followNotificationMode(mode => this.syncRecent(rxNostr, { ...params, includeNotifications: mode }));
         let cancelled = false;
         let querySummary: RelayQuerySummary | undefined;
         let subscription: SubscriptionLike | undefined;
@@ -252,6 +255,8 @@ export class PostHistoryInboundInteractionsSyncService {
                 };
                 resolveTask = safeResolve;
 
+                if (cancelled || params.isActive?.() === false) { safeResolve('cancelled'); return; }
+
                 try {
                     if (typeof (rxNostr as { use?: unknown }).use !== "function") {
                         safeResolve("cancelled");
@@ -283,7 +288,7 @@ export class PostHistoryInboundInteractionsSyncService {
                     });
 
                     rxReq.emit({
-                        kinds: [...NOTIFICATION_KINDS],
+                        kinds: params.includeNotifications ? [...NOTIFICATION_KINDS] : [1, 42, 1111, 7],
                         "#p": [params.ownerPubkeyHex],
                         since,
                         ...(params.until === undefined ? {} : { until: params.until }),
@@ -333,12 +338,14 @@ export class PostHistoryInboundInteractionsSyncService {
                 pageBoundary,
                 saturated: saturatedRelays.length > 0,
                 expectedChildGeneration: await generationReady,
+                includeNotifications: params.includeNotifications,
                 isActive: () => !cancelled && params.isActive?.() !== false,
             });
         })();
 
+        const unsubscribeMode = subscribeNotificationMode(() => { cancelled = true; resolveTask?.('cancelled'); });
         return {
-            promise,
+            promise: promise.finally(unsubscribeMode),
             cancel: () => {
                 cancelled = true;
                 resolveTask?.("cancelled");
@@ -347,6 +354,7 @@ export class PostHistoryInboundInteractionsSyncService {
     }
 
     private async processFetchedEvents(input: {
+        includeNotifications?: boolean;
         ownerPubkeyHex: string;
         reason: PostHistoryInboundInteractionsSyncReason;
         status: PostHistoryInboundInteractionsSyncStatus;
@@ -367,7 +375,7 @@ export class PostHistoryInboundInteractionsSyncService {
         if (!input.isActive()) {
             return this.buildCancelledResultFromFetchedEvents(input);
         }
-        await this.notificationRepository.upsert(input.ownerPubkeyHex, input.events, input.isActive);
+        if (input.includeNotifications) await this.notificationRepository.upsert(input.ownerPubkeyHex, input.events, input.isActive);
         if (!input.isActive()) return this.buildCancelledResultFromFetchedEvents(input);
         const classifications: Record<PostHistoryInboundInteractionClassification["type"], number> = {
             "direct-reply": 0,
