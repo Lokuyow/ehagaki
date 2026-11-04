@@ -14,6 +14,13 @@ beforeEach(() => { db = new EHagakiDB(`notification-${crypto.randomUUID()}`); re
 afterEach(async () => { await db.delete(); });
 
 describe('notification persistence', () => {
+    it('finds the inclusive local window for an anchor using account and same-second ordering', async () => {
+        const entries = [event(1, [['p', owner]], 100, 'a'), event(1, [['p', owner]], 100, 'b'), event(1, [['p', owner]], 101)];
+        await repository.upsert(owner, entries.map(event => ({ event })));
+        const ordered = await repository.list(owner);
+        for (let index = 0; index < ordered.length; index++) expect(await repository.requiredLimitForEvent(owner, ordered[index].eventId)).toBe(index + 1);
+        expect(await repository.requiredLimitForEvent(author, ordered[0].eventId)).toBeNull();
+    });
     it.each([...NOTIFICATION_KINDS])('keeps addressed kind %s even without a locally saved parent', async kind => {
         const incoming = event(kind);
         await repository.upsert(owner, [{ event: incoming }]);

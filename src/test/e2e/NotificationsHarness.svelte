@@ -1,7 +1,8 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
+    import { finalizeEvent, generateSecretKey, getPublicKey, matchFilter } from 'nostr-tools';
     import { Observable } from 'rxjs';
+    import { liveQuery } from 'dexie';
     import type { RxNostr } from 'rx-nostr';
     import FooterComponent from '../../components/FooterComponent.svelte';
     import ComposerTargetDialog from '../../components/ComposerTargetDialog.svelte';
@@ -59,16 +60,22 @@
     let open = $state(false), ready = $state(false), applied = $state('');
     let targetOpen = $state(false), targetInput = $state('');
     let trigger = $state<HTMLElement | null>(null);
+    let liveSequence = 0;
+    const liveReceivers = new Set<(event: NostrEvent) => void>();
     const requests: Array<Array<{ kinds?: number[]; ids?: string[] }>> = [];
-    const runtime = { use: (req: { getReqPacketObservable: () => Observable<{ filters: Array<{ ids?: string[] }> }> }) => new Observable(observer => {
+    const runtime = { use: (req: { strategy?: string; getReqPacketObservable: () => Observable<{ filters: Array<{ ids?: string[] }> }> }) => new Observable(observer => {
+        let currentFilters: Array<{ ids?: string[] }> = [];
+        const receive = (event: NostrEvent) => { if (currentFilters.some(filter => matchFilter(filter, event))) observer.next({ event, from: relay }); };
+        if (req.strategy === 'forward') liveReceivers.add(receive);
         const subscription = req.getReqPacketObservable().subscribe(({ filters }) => {
+            currentFilters = filters;
             requests.push(filters);
             queueMicrotask(() => {
                 if (!new URLSearchParams(location.search).has('missing') && filters.some(filter => filter.ids?.includes(original.id))) observer.next({ event: original, from: relay });
-                observer.complete();
+                if (req.strategy !== 'forward') observer.complete();
             });
         });
-        return () => subscription.unsubscribe();
+        return () => { subscription.unsubscribe(); liveReceivers.delete(receive); };
     }) } as unknown as RxNostr;
     if (new URLSearchParams(location.search).has('container')) configureAppRuntimeEnvironment({ layoutMode: 'container' });
     useNotifications({ getEnabled: () => footerSettingShortcutsStore.notificationsEnabled, getOwner: () => ready ? owner : null, getRxNostr: () => runtime, getRelayConfig: () => config });
@@ -87,6 +94,22 @@
             .then(() => ready = true);
         Reflect.set(window, '__NOTIFICATIONS__', {
             releaseInitialList,
+            liveSubscriptions: () => liveReceivers.size,
+            addLive: async (count = 1, reaction = false) => {
+                const events = Array.from({ length: count }, () => finalizeEvent({ kind: reaction ? 7 : 1,
+                    content: reaction ? '+' : `Live notification ${++liveSequence}`,
+                    tags: reaction ? [['p', owner], ['e', original.id, relay]] : [['p', owner]], created_at: now + 100 + ++liveSequence }, authorKey));
+                // Wait for real inbound persistence, not an arbitrary UI delay. The
+                // browser assertion separately waits for the dialog's DB observer.
+                const committed = new Promise<void>((resolve, reject) => {
+                    const subscription = liveQuery(() => ehagakiDb.notifications.bulkGet(events.map(event => `${owner}:${event.id}`)))
+                        .subscribe({ next: rows => { if (rows.every(Boolean)) { subscription.unsubscribe(); resolve(); } },
+                            error: error => { subscription.unsubscribe(); reject(error); } });
+                });
+                events.forEach(event => liveReceivers.forEach(receive => receive(event)));
+                await committed;
+                return events.map(event => event.id);
+            },
             setActorName: async (name: string) => profilesRepository.put(incoming[0]!.pubkey, {
                 name, displayName: name, picture: 'https://profiles.example/large-avatar.png', npub: '', nprofile: '',
             }),

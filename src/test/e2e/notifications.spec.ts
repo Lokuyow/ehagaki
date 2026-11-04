@@ -377,6 +377,76 @@ for (const width of [791, 360, 280]) test(`long actor names stay on one line ins
     await expect(content.getByLabel('イベントID', { exact: true })).toBeVisible();
 });
 
+for (const width of [360, 280]) test(`live receiving keeps the head and shares one subscription at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width: width === 280 ? 800 : width, height: 850 });
+    await page.goto(width === 280 ? 'post-history-dialog-playwright.html?notifications-host=1' : 'post-history-dialog-playwright.html?notifications=1');
+    const content = width === 280 ? page.frameLocator('iframe[title="Notifications in a narrow host"]') : page;
+    const api = (action: 'live' | 'count') => content.locator('body').evaluate((node, action) => {
+        const harness = Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__');
+        return action === 'live' ? harness.addLive(1) : harness.liveSubscriptions();
+    }, action);
+    await content.locator('.notification-btn').waitFor({ state: 'attached' });
+    await expect.poll(() => api('count')).toBe(1);
+    await content.locator('.notification-btn').click();
+    const dialog = content.getByRole('dialog');
+    await expect(dialog.locator('.notification-entry')).toHaveCount(3);
+    await api('live');
+    await expect(dialog.getByText('Live notification 1', { exact: true })).toHaveCount(1);
+    expect(await dialog.locator('.dialog-content').evaluate(node => node.scrollTop)).toBe(0);
+    await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
+    expect(await api('count')).toBe(1);
+    await api('live');
+    await expect(content.locator('.notification-badge')).toBeVisible();
+    await content.locator('.notification-btn').click();
+    await expect(dialog.getByText('Live notification 3', { exact: true })).toHaveCount(1);
+    await expect(content.locator('.notification-badge')).toHaveCount(0);
+    expect(await api('count')).toBe(1);
+});
+
+for (const width of [360, 280]) test(`live notifications preserve reading position beyond the local window at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width: width === 280 ? 800 : width, height: 850 });
+    await page.goto(width === 280 ? 'post-history-dialog-playwright.html?notifications-host=1' : 'post-history-dialog-playwright.html?notifications=1');
+    const content = width === 280 ? page.frameLocator('iframe[title="Notifications in a narrow host"]') : page;
+    await content.locator('.notification-btn').waitFor({ state: 'attached' });
+    await content.locator('body').evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').addOlder(100));
+    await content.locator('.notification-btn').click();
+    const dialog = content.getByRole('dialog');
+    await expect(dialog.locator('.notification-entry')).toHaveCount(99);
+    const anchor = dialog.locator('.notification-entry').filter({ hasText: 'Older notification 95' });
+    await anchor.scrollIntoViewIfNeeded();
+    const top = (await anchor.boundingBox())!.y;
+    const requests = await content.locator('body').evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').requests().length);
+    await content.locator('body').evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').addLive(1));
+    // Wait for the local snapshot to reach the DOM before measuring its geometry.
+    await dialog.getByText('Live notification 1', { exact: true }).waitFor({ state: 'attached' });
+    await expect(anchor).toBeVisible();
+    await expect.poll(async () => Math.abs((await anchor.boundingBox())!.y - top)).toBeLessThanOrEqual(1);
+    expect(await dialog.locator('.notification-entry').count()).toBeGreaterThan(99);
+    expect(await content.locator('body').evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').requests().length)).toBe(requests);
+    await page.screenshot({ path: info.outputPath(`live-scroll-${width}.png`) });
+});
+
+test('new reactions retain a visible grouped card even when its newest notification ID changes', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 650 });
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await page.locator('.notification-btn').waitFor({ state: 'attached' });
+    await expect.poll(() => page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').liveSubscriptions())).toBe(1);
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addOlder(30));
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Older notification 29', { exact: true })).toHaveCount(1);
+    const card = dialog.locator('.notification-entry:has(.notification-reaction)');
+    await card.scrollIntoViewIfNeeded();
+    await card.evaluate(node => { const root = node.closest('.dialog-content')!; root.scrollTop += node.getBoundingClientRect().top - root.getBoundingClientRect().top + 4; });
+    const top = (await card.boundingBox())!.y;
+    const oldKey = await card.getAttribute('data-notification-id');
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addLive(1, true));
+    await expect(card).not.toHaveAttribute('data-notification-id', oldKey!);
+    // Scroll offsets may be rounded to physical pixels in WebKit.
+    await expect.poll(async () => Math.abs((await card.boundingBox())!.y - top)).toBeLessThanOrEqual(1);
+    await expect.poll(() => page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').unread())).toBe(false);
+});
+
 for (const kind of [6, 7]) for (const multiple of [false, true]) test(`actor selection opens target input for kind ${kind}, multiple=${multiple}`, async ({ page }, info) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1');

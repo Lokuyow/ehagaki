@@ -89,7 +89,7 @@
     :global(.notification-dialog) { width: min(800px, calc(100% - 16px)); min-width: 0; }
     :global(.notification-dialog.dialog) { top: 0; translate: -50% 0; height: 100svh; max-height: 100svh; }
     :global(.notification-dialog.dialog.dialog-container-layout) { height: 100%; max-height: 100%; }
-    :global(.notification-dialog .dialog-content) { flex: 1; min-height: 0; max-height: none; }
+    :global(.notification-dialog .dialog-content) { flex: 1; min-height: 0; max-height: none; overflow-anchor: none; }
     :global(.notification-dialog .dialog-footer) { flex: none; }
     :global(.notification-dialog.dialog[data-state="open"]) { animation: notification-open 250ms ease-out; }
     @keyframes notification-open { from { opacity: 0; } to { opacity: 1; } }

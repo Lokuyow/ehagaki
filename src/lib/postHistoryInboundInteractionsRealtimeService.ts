@@ -31,6 +31,7 @@ export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_SINCE_OVERLAP_SECONDS = 
 
 export interface PostHistoryInboundInteractionsRealtimeSubscribeRequest {
     includeNotifications?: boolean;
+    isActive?: () => boolean;
     ownerPubkeyHex: string;
     relayConfig?: RelayConfig | null;
     relayLimit?: number;
@@ -90,6 +91,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
         params: PostHistoryInboundInteractionsRealtimeSubscribeRequest,
     ): PostHistoryInboundInteractionsRealtimeSubscription {
         let active = true;
+        const isActive = () => active && params.isActive?.() !== false;
         let subscription: SubscriptionLike | undefined;
         let workQueue: Promise<void> = Promise.resolve();
         const relayUrls = resolvePostHistoryRelayUrls(
@@ -117,6 +119,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
                     : { defaultReadRelays: true },
             }).subscribe({
                 next: (packet: { event?: NostrEvent; from?: string }) => {
+                    if (!isActive()) return;
                     // Start the generation read before this packet waits on workQueue.
                     // A history clear that commits after receipt must not become the
                     // generation used to accept this packet.
@@ -125,7 +128,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
                         .then(() => this.processPacket(
                             packet,
                             params,
-                            () => active,
+                            isActive,
                             expectedChildGeneration,
                         ))
                         .catch((error) => {
@@ -137,16 +140,15 @@ export class PostHistoryInboundInteractionsRealtimeService {
                 },
             });
 
-            rxReq.emit({
+            rxReq.emit([{
                 kinds: params.includeNotifications === false ? [1, 42, 1111, 7] : [...NOTIFICATION_KINDS],
                 "#p": [params.ownerPubkeyHex],
                 since: subscribedSince,
-            } as never);
-            rxReq.emit({
+            }, {
                 kinds: [1111],
                 "#P": [params.ownerPubkeyHex],
                 since: subscribedSince,
-            } as never);
+            }]);
         } catch (error) {
             active = false;
             subscription?.unsubscribe?.();

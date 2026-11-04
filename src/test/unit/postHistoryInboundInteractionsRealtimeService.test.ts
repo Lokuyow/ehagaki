@@ -12,7 +12,7 @@ const rxNostrMock = vi.hoisted(() => ({
 
 const rxReqMock = vi.hoisted(() => ({
     emit: vi.fn((filter: any) => {
-        rxNostrMock.emittedFilters.push(filter);
+        rxNostrMock.emittedFilters.push(...(Array.isArray(filter) ? filter : [filter]));
     }),
 }));
 
@@ -184,6 +184,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         expect(rxNostrMock.use).toHaveBeenCalledWith(expect.anything(), {
             on: { relays: ["wss://read.example.com/"] },
         });
+        expect(rxReqMock.emit).toHaveBeenCalledTimes(1);
         expect(rxNostrMock.emittedFilters).toEqual([
             {
                 kinds: [1, 6, 7, 16, 42, 1111],

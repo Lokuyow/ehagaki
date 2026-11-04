@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onDestroy, onMount, tick, untrack } from 'svelte';
+    import { useNotificationViewport } from '../lib/hooks/useNotificationViewport.svelte';
     import { liveQuery } from 'dexie';
     import { _ } from 'svelte-i18n';
     import type { RxNostr } from 'rx-nostr';
@@ -37,6 +38,8 @@
     }
     let { show = $bindable(false), pubkeyHex, rxNostr, relayConfig, returnFocus = null,
         onClose, onReplyPost, onReactionPost, onOpenTarget, reconcileDirectReplyCandidates, onQuotePost, onRepostPost, repostPending, repostSaveFailure, onRetryRepostSave, presentationReady = false, onInitialReady, onBusyChange }: Props = $props();
+    let listElement = $state<HTMLElement | null>(null);
+    const viewport = useNotificationViewport(() => listElement, () => show && visible && !invalidated);
     let records = $state.raw<NotificationRecord[]>([]);
     let limit = $state(100), localMore = $state(false), exhausted = $state(false);
     let loaded = $state(false), busy = $state(false), failed = $state(false), visible = $state(false);
@@ -68,13 +71,15 @@
         getOwner: () => pubkeyHex,
         getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig, profileSyncCoordinator: profileSync, requireFullVerification: true });
     const notificationGroups = $derived(groupNotifications(records, id => resolver.getTargetSnapshot(id)?.event ?? null));
+    $effect(() => { if (listElement) viewport.observe(listElement); });
+    $effect.pre(() => { notificationGroups; listElement; untrack(() => viewport.preserve()); });
     const posts = $derived(records.filter(record => [1, 42, 1111].includes(record.event.kind))
         .map(record => repostTargetToPost(record.event, record.relayUrls)));
     const quotes = usePostHistoryQuotePreviews({ getShow: () => show && !invalidated, getPosts: () => posts,
         getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig, profileSyncCoordinator: profileSync, relatedTargetResolver: resolver });
 
     export function invalidateSession() {
-        invalidated = true; generation++; task?.cancel(); task = null; busy = false;
+        viewport.reset(); invalidated = true; generation++; task?.cancel(); task = null; busy = false;
         records = []; profiles = {}; media = []; mediaIndex = -1;
         resolver.reset(); profileSync.reset();
     }
@@ -90,6 +95,7 @@
         });
     });
     $effect(() => { onBusyChange?.(busy); });
+    $effect(() => { if (!show || !visible || invalidated) untrack(() => viewport.reset()); });
     onMount(() => {
         const sync = () => { visible = document.visibilityState === 'visible'; };
         sync(); document.addEventListener('visibilitychange', sync);
@@ -99,9 +105,23 @@
         const owner = pubkeyHex, pageSize = limit;
         listRevision;
         if (!show || !owner || invalidated) return;
-        let active = true;
+        let active = true, readVersion = 0;
         const subscription = liveQuery(() => notificationRepository.list(owner, pageSize + 1)).subscribe({
-            next: value => { if (active) { localReadFailed = false; records = value.slice(0, pageSize); localMore = value.length > pageSize; loaded = true; } },
+            next: value => {
+                if (!active) return;
+                const version = ++readVersion;
+                const owned = () => active && version === readVersion;
+                const apply = () => { if (owned()) { localReadFailed = false; records = value.slice(0, pageSize); localMore = value.length > pageSize; loaded = true; } };
+                const anchors = viewport.visibleSourceIds();
+                if (value.length > pageSize && anchors.length && !anchors.every(id => value.slice(0, pageSize).some(item => item.eventId === id))) {
+                    const oldestAnchor = records.filter(item => anchors.includes(item.eventId)).at(-1)?.eventId ?? anchors.at(-1)!;
+                    void notificationRepository.requiredLimitForEvent(owner, oldestAnchor).then(required => {
+                        if (!owned()) return;
+                        if (required && required > pageSize) limit = Math.max(limit, required);
+                        else apply();
+                    }).catch(() => { if (owned()) { failed = true; apply(); } });
+                } else apply();
+            },
             error: () => { if (active) { localReadFailed = true; failed = true; loaded = true; } },
         });
         return () => { active = false; subscription.unsubscribe(); };
@@ -210,12 +230,12 @@
 </script>
 
     <PostRepostFeedback result={null} saveFailure={repostSaveFailure} pending={repostPending} onRetrySave={onRetryRepostSave} />
-    <div class="notification-list" aria-busy={busy}>
+    <div class="notification-list" bind:this={listElement} aria-busy={busy}>
         {#if loaded && !records.length}<p>{$_('notifications.empty')}</p>{/if}
         {#each notificationGroups as group (group.id)}
             {@const record = group.record}
             {@const type = notificationType(record.event)}
-            <article class="notification-entry" data-notification-id={group.id} data-notification-target={group.targetId}>
+            <article class="notification-entry" data-notification-id={group.id} data-notification-target={group.targetId} data-notification-events={JSON.stringify([...group.reactions, ...group.reposts].length ? [...group.reactions, ...group.reposts].map(item => item.eventId) : [record.eventId])}>
                 {#if type === 'reaction' || type === 'repost'}
                     {#if group.reposts.length}
                         <div class="notification-actor">

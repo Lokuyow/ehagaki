@@ -60,6 +60,12 @@ export class NotificationRepository {
             .then(rows => eventRecords(this.db, 'notifications').hydrate(rows))
             .then(rows => rows.filter(row => row.event && isNotificationEvent(row.event, owner)));
     }
+    async requiredLimitForEvent(owner: string, eventId: string): Promise<number | null> {
+        const record = await this.db.notifications.get(`${owner}:${eventId}`);
+        if (!record) return null;
+        return this.db.notifications.where('[ownerPubkeyHex+createdAt+eventId]')
+            .between([owner, record.createdAt, eventId], [owner, Infinity, '\uffff'], true, true).count();
+    }
     async hasUnread(owner: string) {
         return !!await this.db.notifications.where('[ownerPubkeyHex+unread]').equals([owner, 1]).first();
     }

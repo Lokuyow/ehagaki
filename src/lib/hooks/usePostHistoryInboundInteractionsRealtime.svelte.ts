@@ -1,3 +1,4 @@
+import { getPostHistoryAuthoredRelayScopeKey } from "../postHistoryRelayResolver";
 import { onMount } from "svelte";
 import type { RxNostr } from "rx-nostr";
 import {
@@ -78,19 +79,22 @@ export function usePostHistoryInboundInteractionsRealtime({
             return;
         }
 
+        let active = true;
+        const scope = getPostHistoryAuthoredRelayScopeKey(relayConfig);
+        const owned = () => active && state.visible && getIsAuthenticated()
+            && getPubkeyHex() === ownerPubkeyHex && getRxNostr() === rxNostr
+            && getNotificationsEnabled() === includeNotifications
+            && getPostHistoryAuthoredRelayScopeKey(getRelayConfig()) === scope;
         const handleSavedInboundInteractions = async (parentEventIds: string[]) => {
+            if (!owned()) return;
             await onSavedInboundInteractions(parentEventIds);
+            if (!owned()) return;
             void triggerPostHistoryChildInteractionDeletionLifecycle({
                 source: "inbound-realtime",
                 parentEventIds,
                 rxNostr,
                 relayConfig,
-                isActive: () => (
-                    state.visible
-                    && getIsAuthenticated()
-                    && getPubkeyHex() === ownerPubkeyHex
-                    && getRxNostr() === rxNostr
-                ),
+                isActive: owned,
             }).then((result) => {
                 if (
                     result.status === "cancelled"
@@ -98,10 +102,7 @@ export function usePostHistoryInboundInteractionsRealtime({
                         result.deletedReactionEventIds.length === 0
                         && result.deletedReplyEventIds.length === 0
                     )
-                    || !state.visible
-                    || !getIsAuthenticated()
-                    || getPubkeyHex() !== ownerPubkeyHex
-                    || getRxNostr() !== rxNostr
+                    || !owned()
                 ) {
                     return;
                 }
@@ -112,6 +113,7 @@ export function usePostHistoryInboundInteractionsRealtime({
 
         const subscription = postHistoryInboundInteractionsRealtimeService.subscribe(rxNostr, {
             includeNotifications,
+            isActive: owned,
             ownerPubkeyHex,
             relayConfig,
             onSavedInboundInteractions: handleSavedInboundInteractions,
@@ -122,6 +124,7 @@ export function usePostHistoryInboundInteractionsRealtime({
         state.activePubkeyHex = ownerPubkeyHex;
 
         return () => {
+            active = false;
             if (currentSubscription === subscription) {
                 stopCurrentSubscription();
                 return;
