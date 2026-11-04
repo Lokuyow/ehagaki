@@ -478,7 +478,6 @@
     "footer_shortcut_quality_low": "Low",
     "image_compression_settings_description": "Image compression settings description",
     "info_header_short_edge": "Short-edge limit",
-    "image_resize_limits_note": "Images are resized without upscaling. The {megapixels} megapixel and {longEdge}px long-edge limits take priority, so the short edge may be smaller than shown. The original is used if encoding does not reduce file size.",
     "video_quality_setting": "Video Quality",
     "video_compression_settings_description": "Video compression settings description",
     "quality_lossless": "Lossless",

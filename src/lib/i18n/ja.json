@@ -478,7 +478,6 @@
     "footer_shortcut_quality_low": "低",
     "image_compression_settings_description": "画像圧縮設定の説明",
     "info_header_short_edge": "短辺上限",
-    "image_resize_limits_note": "短辺上限を基準に、拡大せず縮小します。総画素数 {megapixels} メガピクセル・長辺 {longEdge}px の上限を優先するため、短辺は表の値より小さくなる場合があります。容量が減らなければ原本を使用します。",
     "video_quality_setting": "動画品質",
     "video_compression_settings_description": "動画圧縮設定の説明",
     "quality_lossless": "オリジナル",

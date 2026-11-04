@@ -5,7 +5,6 @@
     import InfoPopoverButton from "../InfoPopoverButton.svelte";
     import {
         COMPRESSION_OPTIONS_MAP,
-        IMAGE_RESIZE_LIMITS,
         VIDEO_COMPRESSION_OPTIONS_MAP,
     } from "../../lib/constants";
 
@@ -100,14 +99,6 @@
                         </tr>
                     </tbody>
                 </table>
-                <p class="popover-note">
-                    {$_("settingsDialog.image_resize_limits_note", {
-                        values: {
-                            longEdge: IMAGE_RESIZE_LIMITS.maxLongEdge,
-                            megapixels: IMAGE_RESIZE_LIMITS.maxPixels / 1_000_000,
-                        },
-                    })}
-                </p>
             </InfoPopoverButton>
         </div>
         <RadioGroup.Root
@@ -267,13 +258,6 @@
         td {
             font-weight: normal;
         }
-    }
-    .popover-note {
-        max-width: 320px;
-        margin: 8px 0 0;
-        color: var(--text-secondary);
-        font-size: 0.875rem;
-        line-height: 1.5;
     }
     :global(.radio-group) {
         display: flex;
