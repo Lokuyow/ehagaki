@@ -2663,3 +2663,44 @@ test("Lite Resource Timing keeps initial media code lazy and resolves every capa
     expect(resources.every((url) => !url.startsWith(`${hostOrigin}/assets/`))).toBe(true);
     expect(resources.every((url) => !url.startsWith(`${componentOrigin}/assets/`))).toBe(true);
 });
+for (const gallery of [false, true]) {
+    test(`Lite keeps duplicate-name uploads in order with mixed compression (${gallery ? 'gallery' : 'editor'})`, async ({ page }) => {
+        await page.goto(hostOrigin);
+        const state = await page.evaluate(async ({ gallery, componentOrigin }) => {
+            await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+            const canvas = document.createElement('canvas'); canvas.width = 1000; canvas.height = 1200;
+            const context = canvas.getContext('2d')!; context.fillStyle = '#f00'; context.fillRect(0, 0, 1000, 1200);
+            const png = await new Promise<Blob>(resolve => canvas.toBlob(blob => resolve(blob!), 'image/png'));
+            canvas.width = canvas.height = 10;
+            const small = await new Promise<Blob>(resolve => canvas.toBlob(blob => resolve(blob!), 'image/png'));
+            const composer = document.createElement('ehagaki-composer') as any;
+            composer.assetBase = `${componentOrigin}/host-owned/`;
+            const uploads: { type: string; name: string; originalName: string }[] = [];
+            (window as any).__duplicateUploads = uploads;
+            composer.configureHostOwned({
+                submit: () => ({ eventId: 'a'.repeat(64) }),
+                uploadMedia: (file: File, metadata: { originalName: string }) => {
+                    uploads.push({ type: file.type, name: file.name, originalName: metadata.originalName });
+                    return { url: `https://media.example/duplicate-${uploads.length}.png` };
+                },
+            });
+            document.body.append(composer);
+            await composer.whenReady();
+            await composer.setSettings({ mediaFreePlacement: !gallery, imageQualityLevel: 'medium' });
+            const transfer = new DataTransfer();
+            transfer.items.add(new File([png, new Uint8Array(100000)], 'image.png', { type: 'image/png' }));
+            transfer.items.add(new File([small], 'image.png', { type: 'image/png' }));
+            composer.shadowRoot.querySelector('.tiptap-editor').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+            return { preview: [...new Uint8Array(await small.arrayBuffer())] };
+        }, { gallery, componentOrigin });
+        await page.route('https://media.example/**', route => route.fulfill({ contentType: 'image/png', body: Buffer.from(state.preview) }));
+        await expect.poll(() => page.evaluate(() => (window as any).__duplicateUploads)).toEqual([
+            { type: 'image/webp', name: 'image.webp', originalName: 'image.png' },
+            { type: 'image/png', name: 'image.png', originalName: 'image.png' },
+        ]);
+        const images = page.locator('ehagaki-composer').locator(gallery ? '.media-gallery img' : '.tiptap-editor img');
+        await expect(images).toHaveCount(2);
+        await expect(images.nth(0)).toHaveAttribute('src', 'https://media.example/duplicate-1.png');
+        await expect(images.nth(1)).toHaveAttribute('src', 'https://media.example/duplicate-2.png');
+    });
+}

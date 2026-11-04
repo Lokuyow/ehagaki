@@ -43,6 +43,8 @@ export interface FileValidationResult {
 
 export interface FileUploadResponse {
     success: boolean;
+    /** Internal placeholder correlation; never part of the host uploadMedia API. */
+    placeholderId?: string;
     /** Internal provenance marker for results produced by Host-owned uploadMedia. */
     hostOwnedMedia?: boolean;
     url?: string;

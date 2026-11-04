@@ -130,7 +130,7 @@ describe("Host-owned media handoff", () => {
             file,
             placeholderId: "placeholder-1",
         }]);
-        expect(invalidResult).toMatchObject({ success: false, error: "host_media_invalid_result" });
+        expect(invalidResult).toMatchObject({ success: false, error: "host_media_invalid_result", placeholderId: "placeholder-1" });
 
         const abortController = new AbortController();
         const aborted = createHostOwnedUploadExecutor({
@@ -144,7 +144,7 @@ describe("Host-owned media handoff", () => {
             file,
             placeholderId: "placeholder-2",
         }]);
-        expect(abortedResult).toMatchObject({ success: false, aborted: true });
+        expect(abortedResult).toMatchObject({ success: false, aborted: true, placeholderId: "placeholder-2" });
     });
 
     it("preprocesses a large video before handing the processed file to the host transport", async () => {

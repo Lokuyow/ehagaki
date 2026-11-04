@@ -205,11 +205,12 @@ export function createHostOwnedUploadExecutor(params: {
             );
             const results: FileUploadResponse[] = [];
             for (const file of files) {
+                const placeholder = placeholderByFile.get(file);
+                const correlation = placeholder ? { placeholderId: placeholder.placeholderId } : {};
                 if (params.signal.aborted) {
-                    results.push({ success: false, aborted: true });
+                    results.push({ ...correlation, success: false, aborted: true });
                     continue;
                 }
-                const placeholder = placeholderByFile.get(file);
                 const base = metadataByFile.get(file) ?? {
                     originalName: file.name,
                     originalSize: file.size,
@@ -228,15 +229,16 @@ export function createHostOwnedUploadExecutor(params: {
                         signal: params.signal,
                     });
                     if (params.signal.aborted) {
-                        results.push({ success: false, aborted: true });
+                        results.push({ ...correlation, success: false, aborted: true });
                         continue;
                     }
                     if (!isHttpUrl(response?.url)) {
-                        results.push({ success: false, error: "host_media_invalid_result" });
+                        results.push({ ...correlation, success: false, error: "host_media_invalid_result" });
                         continue;
                     }
                     const imeta = sanitizeImeta(response.imeta);
                     results.push({
+                        ...correlation,
                         success: true,
                         hostOwnedMedia: true,
                         url: response.url,
@@ -272,6 +274,7 @@ export function createHostOwnedUploadExecutor(params: {
                     });
                 } catch (error) {
                     results.push({
+                        ...correlation,
                         success: false,
                         ...(params.signal.aborted ? { aborted: true } : {}),
                         error: error instanceof Error ? error.message : "host_media_upload_failed",
