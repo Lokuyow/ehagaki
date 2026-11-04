@@ -1,0 +1,74 @@
+<script lang="ts">
+    import { onMount } from 'svelte';
+    import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
+    import { Observable } from 'rxjs';
+    import type { RxNostr } from 'rx-nostr';
+    import FooterComponent from '../../components/FooterComponent.svelte';
+    import NotificationDialog from '../../components/NotificationDialog.svelte';
+    import { notificationRepository } from '../../lib/storage/notificationRepository';
+    import { ehagakiDb } from '../../lib/storage/ehagakiDb';
+    import { useNotifications } from '../../lib/hooks/useNotifications.svelte';
+    import { profileLoadedStore } from '../../stores/profileStore.svelte';
+    import { footerSettingShortcutsStore } from '../../stores/footerSettingShortcutsStore.svelte';
+    import type { NostrEvent } from '../../lib/types';
+    import { configureAppRuntimeEnvironment } from '../../lib/appRuntimeEnvironment';
+
+    const authorKey = generateSecretKey();
+    const now = Math.floor(Date.now() / 1000), relay = 'wss://fixture.example/';
+    const config = { [relay]: { read: true, write: false } };
+    // Persist public signed fixture events only, so reloads and a second tab
+    // exercise the same account without storing any fixture signing keys.
+    const savedFixture = localStorage.getItem('notificationPublicFixture');
+    const fixture = savedFixture ? JSON.parse(savedFixture) as { owner: string; original: NostrEvent; incoming: NostrEvent[] } : (() => {
+        const ownerKey = generateSecretKey(), owner = getPublicKey(ownerKey);
+        const original = finalizeEvent({ kind: 1, created_at: now - 10, tags: [], content: 'Original notification target' }, ownerKey);
+        const sign = (content: string, tags: string[][], kind = 1) => finalizeEvent({ kind, content, tags, created_at: now }, authorKey);
+        const incoming = [sign('A mention addressed to you', [['p', owner]]),
+            sign('Quote notification text', [['p', owner], ['q', original.id, relay]]),
+            sign('+', [['p', owner], ['e', original.id, relay]], 7), sign('', [['p', owner], ['e', original.id, relay]], 6)];
+        const result = { owner, original, incoming };
+        localStorage.setItem('notificationPublicFixture', JSON.stringify(result));
+        return result;
+    })();
+    const { owner, original, incoming } = fixture;
+    const sign = (content: string) => finalizeEvent({ kind: 1, content, tags: [['p', owner]], created_at: now + 1 }, authorKey);
+    let open = $state(false), ready = $state(false), applied = $state('');
+    let trigger = $state<HTMLElement | null>(null);
+    const runtime = { use: (req: { getReqPacketObservable: () => Observable<{ filters: Array<{ ids?: string[] }> }> }) => new Observable(observer => {
+        const subscription = req.getReqPacketObservable().subscribe(({ filters }) => {
+            queueMicrotask(() => {
+                if (!new URLSearchParams(location.search).has('missing') && filters.some(filter => filter.ids?.includes(original.id))) observer.next({ event: original, from: relay });
+                observer.complete();
+            });
+        });
+        return () => subscription.unsubscribe();
+    }) } as unknown as RxNostr;
+    if (new URLSearchParams(location.search).has('container')) configureAppRuntimeEnvironment({ layoutMode: 'container' });
+    useNotifications({ getOwner: () => ready ? owner : null, getRxNostr: () => runtime, getRelayConfig: () => config });
+    onMount(() => {
+        document.body.classList.add('ehagaki-app-root');
+        profileLoadedStore.set(true);
+        document.documentElement.classList.add('light');
+        footerSettingShortcutsStore.set({ left: 'image-quality', right: 'video-quality' });
+        void notificationRepository.upsert(owner, incoming.map(event => ({ event, relayUrls: [relay] }))).then(() => ready = true);
+        Reflect.set(window, '__NOTIFICATIONS__', {
+            add: async () => notificationRepository.upsert(owner, [{ event: sign('New incoming notification') }]),
+            unread: () => notificationRepository.hasUnread(owner),
+            replay: () => notificationRepository.upsert(owner, incoming.map(event => ({ event }))),
+            count: () => ehagakiDb.notifications.where('ownerPubkeyHex').equals(owner).count(),
+        });
+    });
+</script>
+<div class="ehagaki-app-root">
+    <p data-testid="applied">{applied}</p>
+    {#if ready}
+        <FooterComponent isAuthenticated={true} isAuthInitialized={true} isSwitchingAccount={false} swNeedRefresh={false}
+            onShowLoginDialog={() => {}} onOpenPostHistoryDialog={() => {}} onOpenSettingsDialog={() => {}} onOpenLogoutDialog={() => {}}
+            onOpenNotificationDialog={(element) => { trigger = element; open = true; }} />
+        {#if open}
+            <NotificationDialog show={true} pubkeyHex={owner} rxNostr={runtime} relayConfig={config} returnFocus={trigger}
+                onClose={() => open = false} onReplyPost={async post => { applied = `reply:${post.content}`; return true; }}
+                onReactionPost={async post => { applied = `reaction:${post.content}`; return true; }} />
+        {/if}
+    {/if}
+</div>

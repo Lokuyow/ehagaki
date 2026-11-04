@@ -221,6 +221,12 @@ export function ensureCurrentEHagakiDbSchema(
         { name: 'parentEventId', keyPath: 'parentEventId' },
         { name: 'updatedAt', keyPath: 'updatedAt' },
     ]);
+    createObjectStoreIfMissing(db, 'notifications', 'id', [
+        { name: 'ownerPubkeyHex', keyPath: 'ownerPubkeyHex' },
+        { name: '[ownerPubkeyHex+createdAt+eventId]', keyPath: ['ownerPubkeyHex', 'createdAt', 'eventId'] },
+        { name: '[ownerPubkeyHex+unread]', keyPath: ['ownerPubkeyHex', 'unread'] },
+    ]);
+    createScopedStore(db, 'notificationSyncState');
     createScopedStore(db, 'legacyImportState', false);
 }
 

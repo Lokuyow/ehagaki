@@ -54,6 +54,8 @@ describe('swIndexedDbSchema', () => {
     it('ensureCurrentEHagakiDbSchema は必要な store と index を作成する', () => {
         const { db, createdStores } = createMockDb();
         const indexAssertions = [
+            { storeName: 'notifications', indexName: '[ownerPubkeyHex+createdAt+eventId]', keyPath: ['ownerPubkeyHex', 'createdAt', 'eventId'] },
+            { storeName: 'notifications', indexName: '[ownerPubkeyHex+unread]', keyPath: ['ownerPubkeyHex', 'unread'] },
             {
                 storeName: 'emojiItems',
                 indexName: '[pubkeyHex+identityKey]',
@@ -133,7 +135,7 @@ describe('swIndexedDbSchema', () => {
 
         ensureCurrentEHagakiDbSchema(db, 'sharedMedia');
 
-        expect(db.createObjectStore).toHaveBeenCalledTimes(30);
+        expect(db.createObjectStore).toHaveBeenCalledTimes(32);
         expect(getCreatedStore(createdStores, 'legacyImportState').keyPath).toBe('id');
         expect(createdStores.has('meta')).toBe(false);
 

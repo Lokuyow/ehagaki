@@ -165,9 +165,34 @@ afterEach(async () => {
 });
 
 describe("EHagakiDB", () => {
-    it("uses logical v17 and native v170", () => {
-        expect(EHAGAKI_DB_VERSION).toBe(17);
-        expect(EHAGAKI_DB_NATIVE_VERSION).toBe(170);
+    it("upgrades v17 without removing history, drafts or existing caches", async () => {
+        const name = `${EHAGAKI_DB_NAME}-v17-${crypto.randomUUID()}`;
+        testDbNames.add(name);
+        const native = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open(name, 170);
+            request.onupgradeneeded = () => {
+                ensureCurrentEHagakiDbSchema(request.result, 'sharedMedia', request.transaction);
+                request.result.deleteObjectStore('notifications');
+                request.result.deleteObjectStore('notificationSyncState');
+                request.transaction!.objectStore('postHistory').put({ id: 'kept-history', pubkeyHex: 'owner' });
+                request.transaction!.objectStore('drafts').put({ id: 'kept-draft', scopeKey: 'owner' });
+                request.transaction!.objectStore('profiles').put({ pubkeyHex: 'owner', name: 'Kept profile' });
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        native.close();
+        await upgradeWithSharedMigrator(name);
+        const upgraded = new EHagakiDB(name); await upgraded.open();
+        expect(await upgraded.postHistory.get('kept-history')).toMatchObject({ id: 'kept-history' });
+        expect(await upgraded.drafts.get('kept-draft')).toMatchObject({ id: 'kept-draft' });
+        expect(await upgraded.profiles.get('owner')).toMatchObject({ name: 'Kept profile' });
+        expect(await upgraded.notifications.count()).toBe(0);
+        upgraded.close();
+    });
+    it("uses logical v18 and native v180", () => {
+        expect(EHAGAKI_DB_VERSION).toBe(18);
+        expect(EHAGAKI_DB_NATIVE_VERSION).toBe(180);
     });
 
     it("opens one app database with currently used stores", async () => {
@@ -185,6 +210,8 @@ describe("EHagakiDB", () => {
             "emojiItems",
             "hashtagHistory",
             "legacyImportState",
+            "notificationSyncState",
+            "notifications",
             "postHistory",
             "postHistoryAuthoredSyncCursor",
             "postHistoryChildInteractions",
@@ -234,7 +261,7 @@ describe("EHagakiDB", () => {
         await upgradeWithSharedMigrator(name);
         const upgraded = new EHagakiDB(name);
         await upgraded.open();
-        expect(upgraded.backendDB().version).toBe(170);
+        expect(upgraded.backendDB().version).toBe(180);
         expect(upgraded.backendDB().objectStoreNames.contains("meta")).toBe(false);
         expect(upgraded.postHistory.schema.idxByName[POST_HISTORY_TIMELINE_INDEX]).toBeDefined();
         await expect(upgraded.postHistory.count()).resolves.toBe(0);
@@ -256,7 +283,7 @@ describe("EHagakiDB", () => {
         ["空の一覧", () => Promise.resolve([])],
         ["version 0", (name: string) => Promise.resolve([{ name, version: 0 }])],
         ["例外", () => Promise.reject(new DOMException("databases failed", "UnknownError"))],
-    ] as const)("databases() が%sでも v14 の marker を残して 170 にする", async (_label, databasesFor) => {
+    ] as const)("databases() が%sでも v14 の marker を残して 180 にする", async (_label, databasesFor) => {
         const name = `${EHAGAKI_DB_NAME}-unreported-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         testDbNames.add(name);
         const v14 = createV14Db(name);
@@ -275,7 +302,7 @@ describe("EHagakiDB", () => {
         });
         const upgraded = new EHagakiDB(name);
         await upgraded.open();
-        expect(upgraded.backendDB().version).toBe(170);
+        expect(upgraded.backendDB().version).toBe(180);
         expect(upgraded.backendDB().objectStoreNames.contains("meta")).toBe(false);
         await expect(upgraded.postHistory.count()).resolves.toBe(0);
         await expect(upgraded.drafts.get("draft")).resolves.toMatchObject({ id: "draft" });
@@ -286,7 +313,7 @@ describe("EHagakiDB", () => {
         upgraded.close();
     });
 
-    it("WebKit が upgradeneeded の外の schema 変更を拒否しても v14 から 170 になる", async () => {
+    it("WebKit が upgradeneeded の外の schema 変更を拒否しても v14 から 180 になる", async () => {
         const name = `${EHAGAKI_DB_NAME}-webkit-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         testDbNames.add(name);
         const v14 = createV14Db(name);
@@ -303,7 +330,7 @@ describe("EHagakiDB", () => {
         await withWebKitSchemaChangeGuard(() => upgradeWithSharedMigrator(name));
         const upgraded = new EHagakiDB(name);
         await upgraded.open();
-        expect(upgraded.backendDB().version).toBe(170);
+        expect(upgraded.backendDB().version).toBe(180);
         expect(upgraded.backendDB().objectStoreNames.contains("meta")).toBe(false);
         await expect(upgraded.postHistory.count()).resolves.toBe(0);
         await expect(upgraded.drafts.get("draft")).resolves.toMatchObject({ id: "draft" });
@@ -314,7 +341,7 @@ describe("EHagakiDB", () => {
         upgraded.close();
     });
 
-    it("versionless 作成のあと open(170) は sharedMedia を残し履歴消去を再実行しない", async () => {
+    it("versionless 作成のあと open(180) は sharedMedia を残し履歴消去を再実行しない", async () => {
         const name = `${EHAGAKI_DB_NAME}-versionless-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         testDbNames.add(name);
         const created = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -344,13 +371,13 @@ describe("EHagakiDB", () => {
         await upgradeWithSharedMigrator(name);
         const upgraded = new EHagakiDB(name);
         await upgraded.open();
-        expect(upgraded.backendDB().version).toBe(170);
+        expect(upgraded.backendDB().version).toBe(180);
         await expect(upgraded.sharedMedia.get("latest")).resolves.toMatchObject({ id: "latest" });
         await expect(upgraded.postHistory.get("kept")).resolves.toMatchObject({ eventId: "kept" });
         upgraded.close();
     });
 
-    it("Service Worker先行でもDexie先行でもnative v170の同じschemaを開く", async () => {
+    it("Service Worker先行でもDexie先行でもnative v180の同じschemaを開く", async () => {
         const swFirstName = `${EHAGAKI_DB_NAME}-sw-first-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const dexieFirstName = `${EHAGAKI_DB_NAME}-dexie-first-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         testDbNames.add(swFirstName);
@@ -418,7 +445,7 @@ describe("EHagakiDB", () => {
         await opening;
         const upgraded = new EHagakiDB(name);
         await upgraded.open();
-        expect(upgraded.backendDB().version).toBe(170);
+        expect(upgraded.backendDB().version).toBe(180);
         await expect(upgraded.drafts.get("draft")).resolves.toMatchObject({ id: "draft" });
         await expect(upgraded.postHistory.count()).resolves.toBe(0);
         upgraded.close();
@@ -440,11 +467,11 @@ describe("EHagakiDB", () => {
         expect(v14.isOpen()).toBe(false);
         const upgraded = new EHagakiDB(name);
         await upgraded.open();
-        expect(upgraded.backendDB().version).toBe(170);
+        expect(upgraded.backendDB().version).toBe(180);
         upgraded.close();
     });
 
-    it("native v140 の VersionError 後もDBを削除せずv170で再openできる", async () => {
+    it("native v140 の VersionError 後もDBを削除せずv180で再openできる", async () => {
         const db = createTestDb();
         await db.drafts.put(V14_FIXTURES.drafts as never);
         await db.open();
@@ -463,12 +490,12 @@ describe("EHagakiDB", () => {
 
         const reopened = new EHagakiDB(name);
         await reopened.open();
-        expect(reopened.backendDB().version).toBe(170);
+        expect(reopened.backendDB().version).toBe(180);
         await expect(reopened.drafts.get("draft")).resolves.toMatchObject({ id: "draft" });
         reopened.close();
     });
 
-    it("v17 upgrade transaction が失敗してもv14 DBとrecordを維持する", async () => {
+    it("v18 upgrade transaction が失敗してもv14 DBとrecordを維持する", async () => {
         const name = `${EHAGAKI_DB_NAME}-abort-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         testDbNames.add(name);
         const v14 = createV14Db(name);

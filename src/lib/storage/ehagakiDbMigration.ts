@@ -37,7 +37,7 @@ export function migrateEhagakiIndexedDb(
     }
     ensureCurrentEHagakiDbSchema(db, "sharedMedia", transaction);
     // Version 0 creates the final schema. Version 1 already has that schema and
-    // only needs the later open(170) to bump the version. Neither path wipes
+    // only needs the later open(180) to bump the version. Neither path wipes
     // display history or copies markers.
     if (!wipeDisplayHistory || !transaction) {
         return;
@@ -129,7 +129,7 @@ export async function upgradeEhagakiDatabase(
 
 function needsNativeUpgrade(version: number): boolean {
     // Dexie keeps schema patches at 171, 172, … inside logical version 17.
-    // Opening those databases again at exactly 170 raises VersionError.
+    // Opening those databases again at exactly 180 raises VersionError.
     if (version >= NEXT_EHAGAKI_DB_NATIVE_VERSION) {
         throw new DOMException("The database is newer than this page.", "VersionError");
     }

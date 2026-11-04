@@ -30,6 +30,7 @@
     EMBED_STORAGE_KEYS,
   } from "./lib/embedStorageService";
   import HeaderComponent from "./components/HeaderComponent.svelte";
+  import { useNotifications } from "./lib/hooks/useNotifications.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
   import ReasonInput from "./components/ReasonInput.svelte";
@@ -49,6 +50,7 @@
     showSettingsDialogStore,
     showWelcomeDialogStore,
     showPostHistoryDialogStore,
+    showNotificationDialogStore,
     showComposerTargetDialogStore,
     showDraftListDialogStore,
     showDraftLimitConfirmStore,
@@ -296,6 +298,9 @@
   let LoginDialogComponent: LoginDialogComponent | null = $state(null);
   let ProfileComponent: ProfileComponent | null = $state(null);
   let SettingsDialogComponent: SettingsDialogComponent | null = $state(null);
+  let NotificationDialogComponent = $state<typeof import("./components/NotificationDialog.svelte").default | null>(null);
+  let notificationDialogRef: { invalidateSession(): void } | null = $state(null);
+  let notificationReturnFocus = $state<HTMLElement | null>(null);
   let historyReturnFocus: HTMLElement | null = $state(null);
   let postHistoryDialogRef: { invalidateSession(): void } | null = $state(null);
   let WelcomeDialogComponent: WelcomeDialogComponent | null = $state(null);
@@ -328,6 +333,9 @@
         break;
       case "draft-list":
         showDraftListDialogStore.set(false);
+        break;
+      case "notifications":
+        showNotificationDialogStore.set(false);
         break;
       case "post-history-posts":
       case "post-history-media":
@@ -406,6 +414,7 @@
     loadWelcomeDialog,
     loadDraftListDialog,
     loadPostHistoryDialog,
+    loadNotificationDialog,
     preloadPostHistoryDialog,
     loadComposerTargetDialog,
     loadCustomEmojiPicker,
@@ -430,6 +439,7 @@
     setDraftListDialogComponent: (component) => {
       DraftListDialogComponent = component;
     },
+    setNotificationDialogComponent: (component) => { NotificationDialogComponent = component; },
     setPostHistoryDialogComponent: (component) => {
       PostHistoryDialogComponent = component;
     },
@@ -807,6 +817,7 @@
   const draftListDialog = createDialogVisibilityHandlers(
     showDraftListDialogStore,
   );
+  const notificationDialog = createDialogVisibilityHandlers(showNotificationDialogStore);
   const postHistoryDialog = createDialogVisibilityHandlers(
     showPostHistoryDialogStore,
   );
@@ -843,12 +854,16 @@
     handlePostAuth,
     resetUploadDisplayState,
     invalidatePendingAccountScopedAsyncState: () => {
+      notificationDialogRef?.invalidateSession();
+      showNotificationDialogStore.set(false);
       postHistoryDialogRef?.invalidateSession();
       customEmojiStore.invalidatePendingLoads();
       uploadDestinationStore.invalidatePendingOperations();
       invalidatePendingRelayConfigOperations();
     },
     clearAccountScopedAsyncState: () => {
+      notificationDialogRef?.invalidateSession();
+      showNotificationDialogStore.set(false);
       postHistoryDialogRef?.invalidateSession();
       customEmojiStore.reset();
       uploadDestinationStore.reset();
@@ -902,12 +917,16 @@
     },
     resetUploadDisplayState,
     invalidatePendingAccountScopedAsyncState: () => {
+      notificationDialogRef?.invalidateSession();
+      showNotificationDialogStore.set(false);
       postHistoryDialogRef?.invalidateSession();
       customEmojiStore.invalidatePendingLoads();
       uploadDestinationStore.invalidatePendingOperations();
       invalidatePendingRelayConfigOperations();
     },
     clearAccountScopedAsyncState: () => {
+      notificationDialogRef?.invalidateSession();
+      showNotificationDialogStore.set(false);
       postHistoryDialogRef?.invalidateSession();
       customEmojiStore.reset();
       uploadDestinationStore.reset();
@@ -1017,6 +1036,20 @@
       getRelayConfig: () => relayConfigStore.value,
       onSavedInboundInteractions: notifyInboundInteractionsSaved,
     });
+
+  useNotifications({
+    getOwner: () => isAuthenticated && !isSwitchingAccount && !isLoggingOut ? authState.value?.pubkey ?? null : null,
+    getRxNostr: () => rxNostr,
+    getRelayConfig: () => relayConfigStore.value,
+    reconcileDirectReplyCandidates: postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates,
+  });
+
+  $effect(() => {
+    if (showNotificationDialogStore.value) {
+      if (blockUnloadedComponentWhileStale(NotificationDialogComponent, () => showNotificationDialogStore.set(false))) return;
+      void loadNotificationDialog();
+    }
+  });
 
   usePostHistoryInboundInteractionsRealtime({
     getIsAuthenticated: () => isAuthenticated,
@@ -2339,6 +2372,7 @@
           ($swNeedRefresh || staleAssetReloadRequired)}
         onShowLoginDialog={loginDialog.open}
         onPreloadPostHistoryDialog={handlePreloadPostHistoryDialog}
+        onOpenNotificationDialog={(trigger) => { notificationReturnFocus = trigger; notificationDialog.open(); }}
         onOpenPostHistoryDialog={(trigger) => { historyReturnFocus = trigger ?? null; postHistoryDialog.open(); }}
         onOpenSettingsDialog={handleOpenSettingsFromFooter}
         onOpenLogoutDialog={logoutDialog.open}
@@ -2491,6 +2525,13 @@
           canSaveDraft={!reactionComposerState.value && (editorState.canPost || hasDraftComposerContext)}
           pubkeyHex={authState.value?.pubkey ?? null}
         />
+      {/if}
+      {#if showNotificationDialogStore.value && NotificationDialogComponent}
+        <NotificationDialogComponent bind:this={notificationDialogRef} show={true}
+          pubkeyHex={authState.value?.pubkey ?? null} {rxNostr} relayConfig={relayConfigStore.value}
+          returnFocus={notificationReturnFocus} onClose={notificationDialog.close}
+          onReplyPost={handlePostHistoryReply} onReactionPost={handlePostHistoryReaction}
+          reconcileDirectReplyCandidates={postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates} />
       {/if}
       {#if showPostHistoryDialogStore.value && PostHistoryDialogComponent}
         <PostHistoryDialogComponent bind:this={postHistoryDialogRef}

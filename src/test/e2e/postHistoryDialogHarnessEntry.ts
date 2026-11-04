@@ -8,7 +8,18 @@ if (!target) {
     throw new Error('Harness mount target was not found.');
 }
 
-if (new URLSearchParams(location.search).has("media-registration-host")) {
+if (new URLSearchParams(location.search).has("notifications-host")) {
+    const iframe = document.createElement("iframe");
+    const url = new URL(location.href);
+    url.search = "?notifications=1&container=1";
+    iframe.src = url.href;
+    iframe.title = "Notifications in a narrow host";
+    iframe.style.cssText = "width:280px;height:760px;border:0;display:block";
+    target.append(iframe);
+} else if (new URLSearchParams(location.search).has("notifications")) {
+    const { default: NotificationsHarness } = await import("./NotificationsHarness.svelte");
+    mount(NotificationsHarness, { target });
+} else if (new URLSearchParams(location.search).has("media-registration-host")) {
     const iframe = document.createElement("iframe");
     const url = new URL(location.href);
     url.searchParams.delete("media-registration-host");

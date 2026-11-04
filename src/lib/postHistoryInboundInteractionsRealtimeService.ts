@@ -1,3 +1,5 @@
+import { NOTIFICATION_KINDS } from './notification';
+import { notificationRepository, type NotificationRepository } from './storage/notificationRepository';
 import { createRxForwardReq, type RxNostr } from "rx-nostr";
 import { classifyPostHistoryInboundInteraction } from "./postHistoryInboundInteractionClassifier";
 import { matchesReactionReferenceTarget, parseReactionReference } from "./reactionReference";
@@ -45,6 +47,7 @@ export interface PostHistoryInboundInteractionsRealtimeSubscription {
 export interface PostHistoryInboundInteractionsRealtimeServiceDeps {
     postHistoryRepository?: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     postHistoryChildInteractionsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
+    notificationRepository?: Pick<NotificationRepository, "upsert">;
     getChildWriteGeneration?: () => Promise<number>;
     console?: Pick<Console, "warn" | "error">;
     now?: () => number;
@@ -63,6 +66,7 @@ function normalizeRelayLimit(relayLimit: number | undefined): number {
 export class PostHistoryInboundInteractionsRealtimeService {
     private postHistoryRepository: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     private postHistoryChildInteractionsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
+    private notificationRepository: Pick<NotificationRepository, "upsert">;
     private getChildWriteGeneration: () => Promise<number>;
     private console: Pick<Console, "warn" | "error">;
     private now: () => number;
@@ -71,6 +75,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
         this.postHistoryRepository = deps.postHistoryRepository ?? postHistoryRepository;
         this.postHistoryChildInteractionsRepository =
             deps.postHistoryChildInteractionsRepository ?? postHistoryChildInteractionsRepository;
+        this.notificationRepository = deps.notificationRepository ?? notificationRepository;
         this.getChildWriteGeneration = deps.getChildWriteGeneration
             ?? (() => getPostHistoryChildWriteGeneration(ehagakiDb));
         this.console = deps.console ?? (typeof globalThis.console !== "undefined"
@@ -132,7 +137,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
             });
 
             rxReq.emit({
-                kinds: [1, 7, 42, 1111],
+                kinds: [...NOTIFICATION_KINDS],
                 "#p": [params.ownerPubkeyHex],
                 since: subscribedSince,
             } as never);
@@ -170,6 +175,9 @@ export class PostHistoryInboundInteractionsRealtimeService {
             return;
         }
 
+        await this.notificationRepository.upsert(params.ownerPubkeyHex, [{ event,
+            relayUrls: packet.from ? [packet.from] : [] }], isActive);
+        if (!isActive()) return;
         const preliminary = classifyPostHistoryInboundInteraction({
             event,
             ownerPubkeyHex: params.ownerPubkeyHex,

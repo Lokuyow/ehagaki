@@ -51,7 +51,7 @@ function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
     });
 }
 
-function createService() {
+function createService(overrides: Record<string, any> = {}) {
     const postHistoryRepository = {
         getExistingEventIdsForPubkey: vi.fn(async ({ eventIds }: { eventIds: string[] }) =>
             eventIds.filter((eventId) => eventId === PARENT_ID)
@@ -80,6 +80,7 @@ function createService() {
         postHistoryChildInteractionsRepository,
         now: () => 1_700_000_000_000,
         console: { warn: vi.fn(), error: vi.fn() },
+        ...overrides,
     });
 
     return {
@@ -112,6 +113,19 @@ function openSubscription(observer: Record<string, any>, unsubscribe = vi.fn()) 
 }
 
 describe("PostHistoryInboundInteractionsRealtimeService", () => {
+    it("persists mention-only notifications before the history classifier excludes them", async () => {
+        const upsert = vi.fn(async () => undefined);
+        let next!: (packet: unknown) => void;
+        rxNostrMock.use.mockReturnValue({ subscribe: (observer: any) => { next = observer.next; return { unsubscribe: vi.fn() }; } });
+        const { service, postHistoryChildInteractionsRepository } = createService({ notificationRepository: { upsert } });
+        const subscription = service.subscribe(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY });
+        const mention = createEvent({ tags: [["p", OWNER_PUBKEY]], content: "mention only" });
+        next({ event: mention, from: "wss://relay.example/" }); await subscription.waitForIdle();
+        expect(upsert).toHaveBeenCalledWith(OWNER_PUBKEY, [{ event: mention, relayUrls: ["wss://relay.example/"] }], expect.any(Function));
+        expect(postHistoryChildInteractionsRepository.upsertChildInteractions).not.toHaveBeenCalled();
+        subscription.stop();
+    });
+
     beforeEach(() => {
         vi.clearAllMocks();
         rxNostrMock.emittedFilters = [];
@@ -159,7 +173,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         });
         expect(rxNostrMock.emittedFilters).toEqual([
             {
-                kinds: [1, 7, 42, 1111],
+                kinds: [1, 6, 7, 16, 42, 1111],
                 "#p": [OWNER_PUBKEY],
                 since: 1_699_999_940,
             },

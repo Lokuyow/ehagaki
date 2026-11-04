@@ -10,6 +10,7 @@ import type {
 import {
     postHistoryInboundInteractionsSyncService,
     type PostHistoryInboundInteractionsSyncResult,
+    type PostHistoryInboundInteractionsSyncRequest,
     type PostHistoryInboundInteractionsSyncService,
     type PostHistoryInboundInteractionsSyncTask,
 } from "./postHistoryInboundInteractionsSyncService";
@@ -65,15 +66,7 @@ export interface PostHistoryLightweightAuthoredSyncTask {
     joinedExisting: boolean;
 }
 
-export interface PostHistoryLightweightInboundSyncRequest {
-    ownerPubkeyHex: string;
-    relayConfig?: RelayConfig | null;
-    reason: PostHistoryLightweightSyncReason;
-    reconcileDirectReplyCandidates?: (
-        candidates: PostHistoryInboundDirectReplyCandidate[],
-    ) => Promise<PostHistoryInboundReplyReconciliationResult>;
-    isActive?: () => boolean;
-}
+export interface PostHistoryLightweightInboundSyncRequest extends PostHistoryInboundInteractionsSyncRequest {}
 
 export interface PostHistoryLightweightInboundSyncTask {
     promise: Promise<PostHistoryInboundInteractionsSyncResult>;
@@ -105,6 +98,8 @@ type InFlightAuthored = {
 };
 
 type InFlightInbound = {
+    ownerPubkeyHex: string;
+    consumers: Map<symbol, PostHistoryLightweightInboundSyncRequest>;
     sourceTask: PostHistoryInboundInteractionsSyncTask;
     promise: Promise<PostHistoryInboundInteractionsSyncResult>;
     leases: Set<symbol>;
@@ -138,7 +133,7 @@ export class PostHistoryLightweightSyncCoordinator {
     private runtimeIds = new WeakMap<object, number>();
     private nextRuntimeId = 0;
     private ownerCancellationRevisions = new Map<string, number>();
-    private inFlightInboundByOwner = new Map<string, InFlightInbound>();
+    private inFlightInbound = new Map<string, InFlightInbound>();
     private latestSuccessfulAuthoredAtByOwner = new Map<string, number>();
     private latestSuccessfulInboundAtByOwner = new Map<string, number>();
 
@@ -232,50 +227,46 @@ export class PostHistoryLightweightSyncCoordinator {
         rxNostr: RxNostr,
         params: PostHistoryLightweightInboundSyncRequest,
     ): PostHistoryLightweightInboundSyncTask {
-        const inFlight = this.inFlightInboundByOwner.get(params.ownerPubkeyHex);
-        if (inFlight) {
-            return this.joinInbound(params.ownerPubkeyHex, inFlight);
-        }
-
-        const lease = Symbol("post-history-inbound-lightweight-lease");
-        let sourceActive = true;
-        const isActive = () => sourceActive && params.isActive?.() !== false;
-        const sourceTask = this.postHistoryInboundInteractionsSyncService.syncRecent(rxNostr, {
-            ownerPubkeyHex: params.ownerPubkeyHex,
-            relayConfig: params.relayConfig,
-            reason: params.reason,
-            reconcileDirectReplyCandidates: params.reconcileDirectReplyCandidates,
-            isActive,
-        });
-        const promise = sourceTask.promise
-            .then((result) => {
-                if (result.status === "success" && isActive()) {
-                    this.latestSuccessfulInboundAtByOwner.set(params.ownerPubkeyHex, result.fetchedAt);
-                }
-                return result;
-            })
-            .finally(() => {
-                const current = this.inFlightInboundByOwner.get(params.ownerPubkeyHex);
-                if (current?.promise === promise) {
-                    this.inFlightInboundByOwner.delete(params.ownerPubkeyHex);
-                }
+        let runtimeId = this.runtimeIds.get(rxNostr);
+        if (runtimeId === undefined) { runtimeId = ++this.nextRuntimeId; this.runtimeIds.set(rxNostr, runtimeId); }
+        const key = JSON.stringify([params.ownerPubkeyHex, runtimeId,
+            getPostHistoryAuthoredRelayScopeKey(params.relayConfig), params.reason,
+            params.since ?? null, params.until ?? null, params.limit ?? null,
+            params.timeoutMs ?? null, params.relayLimit ?? null]);
+        const lease = Symbol("inbound-consumer");
+        let active = true;
+        const consumer = { ...params, isActive: () => active && params.isActive?.() !== false };
+        let entry = this.inFlightInbound.get(key);
+        const joinedExisting = !!entry;
+        if (!entry) {
+            let sourceActive = true;
+            const consumers = new Map([[lease, consumer]]);
+            const isActive = () => sourceActive && [...consumers.values()].some(value => value.isActive?.());
+            const sourceTask = this.postHistoryInboundInteractionsSyncService.syncRecent(rxNostr, {
+                ...params, isActive,
+                reconcileDirectReplyCandidates: params.reconcileDirectReplyCandidates
+                    ? candidates => {
+                        const current = [...consumers.values()].find(value => value.isActive?.() && value.reconcileDirectReplyCandidates);
+                        return current?.reconcileDirectReplyCandidates?.(candidates) ?? Promise.resolve({ changedParentEventIds: [], savedDirectReplyCount: 0, unresolvedParentEventIds: [] });
+                    } : undefined,
             });
-        const inFlightInbound: InFlightInbound = {
-            sourceTask,
-            promise,
-            leases: new Set([lease]),
-            cancelSource: () => {
-                sourceActive = false;
-                sourceTask.cancel();
-            },
-        };
-        this.inFlightInboundByOwner.set(params.ownerPubkeyHex, inFlightInbound);
-
-        return {
-            promise,
-            cancel: () => this.releaseInbound(params.ownerPubkeyHex, inFlightInbound, lease),
-            joinedExisting: false,
-        };
+            const promise = sourceTask.promise.then(result => {
+                if (result.status === "success" && !result.maybeIncomplete && isActive())
+                    this.latestSuccessfulInboundAtByOwner.set(params.ownerPubkeyHex, result.fetchedAt);
+                return result;
+            }).finally(() => {
+                if (this.inFlightInbound.get(key)?.promise === promise) this.inFlightInbound.delete(key);
+            });
+            entry = { ownerPubkeyHex: params.ownerPubkeyHex, sourceTask, promise, consumers,
+                leases: new Set([lease]), cancelSource: () => { sourceActive = false; sourceTask.cancel(); } };
+            this.inFlightInbound.set(key, entry);
+        } else {
+            entry.leases.add(lease); entry.consumers.set(lease, consumer);
+        }
+        const ownedEntry = entry;
+        return { joinedExisting, promise: entry.promise.then(result => consumer.isActive()
+            ? result : { ...result, status: "cancelled" }),
+            cancel: () => { active = false; ownedEntry.consumers.delete(lease); this.releaseInbound(key, ownedEntry, lease); } };
     }
 
     isForegroundPeriodicCooldownActive(
@@ -300,10 +291,10 @@ export class PostHistoryLightweightSyncCoordinator {
             }
         }
 
-        const inbound = this.inFlightInboundByOwner.get(ownerPubkeyHex);
-        if (inbound) {
-            inbound.cancelSource();
-            this.inFlightInboundByOwner.delete(ownerPubkeyHex);
+        for (const [key, inbound] of this.inFlightInbound) {
+            if (inbound.ownerPubkeyHex === ownerPubkeyHex) {
+                inbound.cancelSource(); this.inFlightInbound.delete(key);
+            }
         }
     }
 
@@ -346,19 +337,6 @@ export class PostHistoryLightweightSyncCoordinator {
         return { fetchResult, upsertSummary, savedSelfPostEventIds };
     }
 
-    private joinInbound(
-        ownerPubkeyHex: string,
-        inFlight: InFlightInbound,
-    ): PostHistoryLightweightInboundSyncTask {
-        const lease = Symbol("post-history-inbound-lightweight-join");
-        inFlight.leases.add(lease);
-        return {
-            promise: inFlight.promise,
-            cancel: () => this.releaseInbound(ownerPubkeyHex, inFlight, lease),
-            joinedExisting: true,
-        };
-    }
-
     private releaseAuthored(
         key: string,
         inFlight: InFlightAuthored,
@@ -386,8 +364,8 @@ export class PostHistoryLightweightSyncCoordinator {
         }
 
         inFlight.cancelSource();
-        if (this.inFlightInboundByOwner.get(ownerPubkeyHex) === inFlight) {
-            this.inFlightInboundByOwner.delete(ownerPubkeyHex);
+        if (this.inFlightInbound.get(ownerPubkeyHex) === inFlight) {
+            this.inFlightInbound.delete(ownerPubkeyHex);
         }
     }
 }

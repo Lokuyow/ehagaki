@@ -14,6 +14,8 @@
     import { isSameOriginProfilePictureUrl } from "../lib/profilePictureUrlUtils";
     import { footerSettingShortcutsStore } from "../stores/footerSettingShortcutsStore.svelte";
 
+    import { notificationStore } from "../stores/notificationStore.svelte";
+    import { resolveAppAssetUrl } from "../lib/appAssetUrl";
     interface Props {
         isAuthenticated: boolean;
         isAuthInitialized: boolean;
@@ -23,6 +25,7 @@
         onShowLoginDialog: () => void;
         onPreloadPostHistoryDialog?: () => void;
         onOpenPostHistoryDialog: (trigger?: HTMLElement) => void;
+        onOpenNotificationDialog?: (trigger: HTMLElement) => void;
         onOpenSettingsDialog: () => void;
         onOpenLogoutDialog: () => void;
     }
@@ -36,9 +39,19 @@
         onShowLoginDialog,
         onPreloadPostHistoryDialog = undefined,
         onOpenPostHistoryDialog,
+        onOpenNotificationDialog,
         onOpenSettingsDialog,
         onOpenLogoutDialog,
     }: Props = $props();
+
+    let compact = $state(false);
+    function observeFooter(node: HTMLElement) {
+        compact = node.clientWidth > 0 && node.clientWidth <= 336;
+        if (typeof ResizeObserver === "undefined") return;
+        const observer = new ResizeObserver(([entry]) => { compact = entry.contentRect.width <= 320; });
+        observer.observe(node);
+        return () => observer.disconnect();
+    }
 
     // ストアから直接プロフィール情報を取得
     let profileData = $derived(profileDataStore.value);
@@ -86,7 +99,7 @@
     }
 </script>
 
-<div class="footer-bar">
+<div class="footer-bar" class:compact {@attach observeFooter}>
     {#if isSwitchingAccount}
         <Button
             variant="default"
@@ -186,6 +199,15 @@
                         <div class="post-history-icon svg-icon" aria-hidden="true"></div>
                     </Button>
                 {/if}
+                {#if isAuthenticated && onOpenNotificationDialog}
+                    <Button variant="default" shape="pill" contentLayout="icon" className="notification-btn"
+                        onClick={(event) => onOpenNotificationDialog?.(event.currentTarget as HTMLElement)}
+                        ariaLabel={$_(notificationStore.hasUnread ? "notifications.openUnread" : "notifications.open")}>
+                        <div class="notification-icon svg-icon" aria-hidden="true"
+                            style:mask-image={`url("${resolveAppAssetUrl('icons/notifications.svg')}")`}></div>
+                        {#if notificationStore.hasUnread}<span class="notification-badge" aria-hidden="true"></span>{/if}
+                    </Button>
+                {/if}
                 {#if footerSettingShortcutsStore.value.right}
                     <FooterSettingShortcutButton shortcutId={footerSettingShortcutsStore.value.right} />
                 {/if}
@@ -269,7 +291,8 @@
         min-width: 0;
         height: 100%;
     }
-    :global(.post-history-btn.default) {
+    :global(.post-history-btn.default),
+    :global(.notification-btn.default) {
         background-color: var(--btn-bg);
         max-width: 200px;
         height: 50px;
@@ -281,6 +304,19 @@
             height: 32px;
         }
     }
+    .compact .footer-setting-controls { gap: 4px; }
+    .compact :global(.footer-setting-controls button.footer-setting-shortcut-button),
+    .compact :global(.footer-setting-controls button.post-history-btn),
+    .compact :global(.footer-setting-controls button.notification-btn) {
+        width: 32px; min-width: 0; flex: 1 1 32px; padding-inline: 0;
+    }
+    .compact :global(.footer-setting-controls .quality-shortcut-label) { display: none; }
+    .compact :global(.footer-setting-controls .svg-icon) { width: 24px; height: 24px; }
+    .compact :global(.footer-setting-controls .paired-icons) { width: 30px; flex-basis: 30px; gap: 2px; }
+    .compact :global(.footer-setting-controls .paired-icons .svg-icon) { width: 14px; height: 20px; }
+    :global(.notification-btn.default) { position: relative; }
+    .notification-badge { position: absolute; inset: 5px 5px auto auto; width: 9px; height: 9px;
+        border-radius: 50%; background: var(--theme); pointer-events: none; }
     :global(.settings-btn.has-update) {
         position: relative;
     }

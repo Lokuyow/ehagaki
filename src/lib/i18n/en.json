@@ -930,5 +930,24 @@
     "retry": "The database update did not finish. You can try again.",
     "retryButton": "Try again",
     "versionError": "This database is newer than this page. Reload the page. The database will not be deleted."
+  },
+  "notifications": {
+    "close": "Close",
+    "title": "Notifications",
+    "description": "Mentions, replies, quotes, reactions and reposts addressed to you.",
+    "open": "Notifications",
+    "openUnread": "Notifications (unread)",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "empty": "No notifications",
+    "more": "Load more",
+    "retry": "Retry",
+    "partialFailure": "Some notifications may be missing. Retry or load more to continue.",
+    "targetUnavailable": "The original post is unavailable",
+    "mention": "Mention",
+    "reply": "Reply",
+    "quote": "Quote",
+    "reaction": "Reaction",
+    "repost": "Repost"
   }
 }

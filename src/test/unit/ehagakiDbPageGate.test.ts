@@ -199,7 +199,7 @@ describe("eHagaki database open gate", () => {
     it("does not delete the database or open Dexie after VersionError", async () => {
         const name = databaseName();
         const newer = await new Promise<IDBDatabase>((resolve, reject) => {
-            const request = indexedDB.open(name, 180);
+            const request = indexedDB.open(name, 190);
             request.onupgradeneeded = () => {
                 request.result.createObjectStore("drafts", { keyPath: "id" });
             };
@@ -220,13 +220,13 @@ describe("eHagaki database open gate", () => {
         expect(opened).toBe(false);
         expect(document.querySelector("[data-ehagaki-db-gate='versionError']")).toBeTruthy();
         expect(document.querySelector("#ehagaki-db-gate-notice button")).toBeNull();
-        expect(await readVersion(name)).toBe(180);
+        expect(await readVersion(name)).toBe(190);
     });
 
     it("does not open Dexie when a service worker reports completion for a newer database", async () => {
         const name = databaseName();
         const newer = await new Promise<IDBDatabase>((resolve, reject) => {
-            const request = indexedDB.open(name, 180);
+            const request = indexedDB.open(name, 190);
             request.onupgradeneeded = () => {
                 request.result.createObjectStore("drafts", { keyPath: "id" });
             };
@@ -261,13 +261,13 @@ describe("eHagaki database open gate", () => {
         await new Promise((resolve) => setTimeout(resolve, 30));
         expect(opened).toBe(false);
         expect(document.querySelector("[data-ehagaki-db-gate='versionError']")).toBeTruthy();
-        expect(await readVersion(name)).toBe(180);
+        expect(await readVersion(name)).toBe(190);
     });
 
-    it("opens Dexie when the native version is already a Dexie patch above 170", async () => {
+    it("opens Dexie when the native version is already a Dexie patch above 180", async () => {
         const name = databaseName();
         const patched = await new Promise<IDBDatabase>((resolve, reject) => {
-            const request = indexedDB.open(name, 171);
+            const request = indexedDB.open(name, 181);
             request.onupgradeneeded = () => {
                 request.result.createObjectStore("drafts", { keyPath: "id" });
             };
@@ -288,7 +288,7 @@ describe("eHagaki database open gate", () => {
         const db = new EHagakiDB(name);
         await db.open();
         expect(document.querySelector("[data-ehagaki-db-gate='versionError']")).toBeNull();
-        expect(db.backendDB().version).toBeGreaterThanOrEqual(171);
+        expect(db.backendDB().version).toBeGreaterThanOrEqual(181);
         await expect(db.drafts.get("draft")).resolves.toMatchObject({ id: "draft" });
         db.close();
     });

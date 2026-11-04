@@ -109,6 +109,30 @@ function createService(overrides: Record<string, any> = {}) {
 }
 
 describe("PostHistoryInboundInteractionsSyncService", () => {
+    it("advances pagination using saturated relays without pinning it to a sparse relay's newer event", async () => {
+        rxNostrMock.use.mockReturnValue({ subscribe: ({ next, complete }: any) => {
+            next({ event: createEvent({ id: '3'.repeat(64), created_at: 300 }), from: 'wss://sparse.example/' });
+            next({ event: createEvent({ id: '4'.repeat(64), created_at: 200 }), from: 'wss://full.example/' });
+            next({ event: createEvent({ id: '5'.repeat(64), created_at: 100 }), from: 'wss://full.example/' });
+            complete(); return { unsubscribe: vi.fn() };
+        } });
+        const { service } = createService({ notificationRepository: { upsert: vi.fn() } });
+        const result = await service.syncRecent(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY,
+            reason: 'notification-older', since: 0, until: 500, limit: 2 }).promise;
+        expect(result).toMatchObject({ saturated: true, maybeIncomplete: true, oldestSeenCreatedAt: 100 });
+    });
+    it("persists mention-only notifications before classifying history relations", async () => {
+        const upsert = vi.fn(async () => undefined);
+        const mention = createEvent({ tags: [["p", OWNER_PUBKEY]], content: "mention only" });
+        rxNostrMock.use.mockReturnValue({ subscribe: ({ next, complete }: any) => {
+            next({ event: mention, from: "wss://relay.example/" }); complete(); return { unsubscribe: vi.fn() };
+        } });
+        const { service, postHistoryChildInteractionsRepository } = createService({ notificationRepository: { upsert } });
+        await service.syncRecent(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY, reason: "notification-initial" }).promise;
+        expect(upsert).toHaveBeenCalledWith(OWNER_PUBKEY, [{ event: mention, relayUrls: ["wss://relay.example/"] }], expect.any(Function));
+        expect(postHistoryChildInteractionsRepository.upsertChildInteractions).not.toHaveBeenCalled();
+    });
+
     beforeEach(() => {
         vi.clearAllMocks();
         rxNostrMock.emittedFilters = [];
@@ -171,7 +195,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         });
         expect(rxNostrMock.emittedFilters).toEqual([
             {
-                kinds: [1, 7, 42, 1111],
+                kinds: [1, 6, 7, 16, 42, 1111],
                 "#p": [OWNER_PUBKEY],
                 since: 1_699_395_200,
                 limit: 150,

@@ -1,3 +1,4 @@
+import type { NotificationRecord, NotificationSyncState } from './notificationRepository';
 import Dexie, { type Table } from "dexie";
 import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem, UploadDestination } from "../types";
@@ -371,6 +372,8 @@ export class EHagakiDB extends Dexie {
     postHistoryChildWriteGeneration!: Table<EhagakiScopedRecord, string>;
     postHistoryReactionDeletionAttempts!: Table<EhagakiScopedRecord, string>;
     postHistoryReplyDeletionAttempts!: Table<EhagakiScopedRecord, string>;
+    notifications!: Table<NotificationRecord, string>;
+    notificationSyncState!: Table<NotificationSyncState, string>;
     legacyImportState!: Table<LegacyImportStateRecord, string>;
 
     constructor(databaseName = EHAGAKI_DB_NAME) {
@@ -411,6 +414,8 @@ export class EHagakiDB extends Dexie {
             postHistoryChildWriteGeneration: "id, updatedAt",
             postHistoryReactionDeletionAttempts: "id, parentEventId, updatedAt",
             postHistoryReplyDeletionAttempts: "id, parentEventId, updatedAt",
+            notifications: "id, ownerPubkeyHex, [ownerPubkeyHex+createdAt+eventId], [ownerPubkeyHex+unread]",
+            notificationSyncState: "id, ownerPubkeyHex, updatedAt",
             legacyImportState: "id, updatedAt",
         });
     }
