@@ -6,6 +6,7 @@
     import FooterComponent from '../../components/FooterComponent.svelte';
     import NotificationDialog from '../../components/NotificationDialog.svelte';
     import { notificationRepository } from '../../lib/storage/notificationRepository';
+    import { EventRepository } from '../../lib/storage/eventRepository';
     import { profilesRepository } from '../../lib/storage/profilesRepository';
     import { ehagakiDb } from '../../lib/storage/ehagakiDb';
     import { useNotifications } from '../../lib/hooks/useNotifications.svelte';
@@ -74,6 +75,15 @@
                 content: '+', tags: [['p', owner], ['e', original.id]], created_at: now + 3 }, authorKey) }]),
             addMismatchedReaction: async () => notificationRepository.upsert(owner, [{ event: finalizeEvent({ kind: 7,
                 content: '-', tags: [['p', owner], ['e', original.id], ['k', '42']], created_at: now + 4 }, authorKey) }]),
+            addLongPosts: async () => {
+                const lines = Array.from({ length: 24 }, (_, index) => `Long line ${index + 1}`).join('\n');
+                const target = finalizeEvent({ kind: 30023, content: `LONG-ARTICLE-START\n${lines}\nLONG-ARTICLE-END`, tags: [], created_at: now }, authorKey);
+                const mention = finalizeEvent({ kind: 1, content: `LONG-NOTE-START\n${lines}\nLONG-NOTE-END`, tags: [['p', owner]], created_at: now + 5 }, authorKey);
+                const warning = finalizeEvent({ kind: 1, content: `LONG-CW-START\n${lines}\nLONG-CW-END`, tags: [['p', owner], ['content-warning']], created_at: now + 6 }, authorKey);
+                const reaction = finalizeEvent({ kind: 7, content: '+', tags: [['p', owner], ['p', target.pubkey], ['e', target.id], ['k', '30023']], created_at: now + 7 }, generateSecretKey());
+                await new EventRepository(ehagakiDb).save(target, [relay], () => true);
+                await notificationRepository.upsert(owner, [mention, warning, reaction].map(event => ({ event, relayUrls: [relay] })));
+            },
             unread: () => notificationRepository.hasUnread(owner),
             replay: () => notificationRepository.upsert(owner, incoming.map(event => ({ event }))),
             setShortcuts: (value: unknown) => footerSettingShortcutsStore.set(value),

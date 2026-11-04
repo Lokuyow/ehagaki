@@ -7,6 +7,8 @@
     import { buildPostContentRenderModel, type SensitiveBodyLoader } from '../lib/postContentPreview';
     import { stripPostHistoryInlineQuoteUrisForDisplay } from '../lib/postHistoryQuoteUtils';
     import { usePostHistoryEmojiState } from '../lib/hooks/usePostHistoryEmojiState.svelte';
+    import { usePostHistoryPreviewCollapse } from '../lib/hooks/usePostHistoryPreviewCollapse.svelte';
+    import PostPreviewToggleButton from './PostPreviewToggleButton.svelte';
     import type { PostHistoryRecord } from '../lib/storage/ehagakiDb';
     interface Props {
         event: NostrEvent;
@@ -18,16 +20,29 @@
         onImageOpen: (value: { index: number; mediaList: FullscreenMediaItem[] }) => void;
     }
     let { event, profile = null, relayUrls = [], loadSensitiveBody, onReply, onReaction, onImageOpen }: Props = $props();
+    const componentId = $props.id();
+    const previewId = `notification-preview-${componentId}`;
+    let container = $state<HTMLElement | null>(null);
+    const collapsePost = $derived({ eventId: previewId, content: event.content });
+    const collapse = usePostHistoryPreviewCollapse({ getShow: () => true,
+        getPosts: () => [collapsePost], getContainer: () => container });
     const model = $derived([6, 7, 16].includes(event.kind) ? buildComposerInteractionRenderModel(event) : buildPostContentRenderModel({ kind: event.kind, sourceContent: event.content,
         tags: event.tags, displayContent: stripPostHistoryInlineQuoteUrisForDisplay(event) }));
     const post = $derived(repostTargetToPost(event, relayUrls));
     const emoji = usePostHistoryEmojiState({ getShow: () => true, getEmojiUrls: () => model.previewContent.segments
-        .flatMap(segment => segment.type === 'emoji' ? [segment.url] : []) });
+        .flatMap(segment => segment.type === 'emoji' ? [segment.url] : []), onStateChanged: () => collapse.remeasure() });
 </script>
 
-<div class="notification-post" class:has-actions={Boolean(onReply || onReaction)}>
+<div class="notification-post" bind:this={container} class:has-actions={Boolean(onReply || onReaction)}>
 <PostHistoryRelatedEventCard {event} {profile} {model} {onImageOpen} {loadSensitiveBody}
+    previewCollapseAction={collapse.previewRef} previewCollapseEventId={previewId} previewContentId={previewId}
+    isTextCollapsed={!collapse.isPostExpanded(collapsePost)}
     emojiLoadStateByUrl={emoji.emojiLoadStateByUrl} emojiImageMetaByUrl={emoji.emojiImageMetaByUrl}>
+    {#snippet textOverlay()}
+        <PostPreviewToggleButton placement="overlay" visible={collapse.shouldCollapsePost(collapsePost)}
+            expanded={collapse.isPostExpanded(collapsePost)} controls={previewId}
+            onToggle={() => collapse.togglePostExpanded(previewId)} />
+    {/snippet}
     {#snippet footerActions()}
         {#if onReply || onReaction}
             <PostHistoryPostActions {post} onReplyPost={onReply} onReactionPost={onReaction} />

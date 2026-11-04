@@ -14,6 +14,59 @@ test.beforeEach(async ({ context, page }) => {
 });
 test.afterEach(() => expect(pageErrors).toEqual([]));
 
+test('collapses and independently expands long kind 1 and NIP-23 notification posts', async ({ page }, info) => {
+    await page.setViewportSize({ width: 360, height: 844 });
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await expect(page.locator('.notification-btn')).toBeVisible();
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addLongPosts());
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    const note = dialog.locator('.notification-entry').filter({ hasText: 'LONG-NOTE-START' });
+    const article = dialog.locator('.notification-entry').filter({ hasText: 'LONG-ARTICLE-START' });
+    const warning = dialog.locator('.notification-entry:has(button:text-is("本文を表示"))');
+    await expect(note).toHaveCount(1); await expect(article).toHaveCount(1); await expect(warning).toHaveCount(1);
+    const noteText = note.locator('.post-history-preview-text');
+    const articleText = article.locator('.post-history-preview-text');
+    const noteToggle = note.getByRole('button', { name: 'もっと見る' });
+    const articleToggle = article.getByRole('button', { name: 'もっと見る' });
+    await expect(noteToggle).toBeVisible(); await expect(articleToggle).toBeVisible();
+    expect(await noteToggle.getAttribute('aria-controls')).not.toBe(await articleToggle.getAttribute('aria-controls'));
+    const noteHeight = await noteText.evaluate(node => node.getBoundingClientRect().height);
+    const articleHeight = await articleText.evaluate(node => node.getBoundingClientRect().height);
+    expect(await noteText.evaluate(node => node.scrollHeight)).toBeGreaterThan(noteHeight);
+    expect(await articleText.evaluate(node => node.scrollHeight)).toBeGreaterThan(articleHeight);
+    await noteToggle.click();
+    await expect(note.getByRole('button', { name: '折りたたむ' })).toHaveAttribute('aria-expanded', 'true');
+    expect(await noteText.evaluate(node => node.getBoundingClientRect().height)).toBeGreaterThan(noteHeight);
+    await expect(articleToggle).toHaveAttribute('aria-expanded', 'false');
+    await articleToggle.click();
+    expect(await articleText.evaluate(node => node.getBoundingClientRect().height)).toBeGreaterThan(articleHeight);
+    await note.getByRole('button', { name: '折りたたむ' }).click();
+    await expect(noteToggle).toHaveAttribute('aria-expanded', 'false');
+    await article.getByRole('button', { name: '折りたたむ' }).click();
+    await warning.getByRole('button', { name: '本文を表示' }).click();
+    await expect(dialog.locator('.notification-entry').filter({ hasText: 'LONG-CW-START' }).getByRole('button', { name: 'もっと見る' })).toBeVisible();
+    await expect(note.getByRole('button', { name: 'リプライ' })).toBeVisible();
+    await page.screenshot({ path: info.outputPath('notification-long-posts-360.png') });
+});
+
+test('long notification posts remain usable in a 280px embedded host', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 850 });
+    await page.goto('post-history-dialog-playwright.html?notifications-host=1');
+    const frame = page.frameLocator('iframe[title="Notifications in a narrow host"]');
+    await expect(frame.locator('.notification-btn')).toBeVisible();
+    await frame.locator('.footer-bar').evaluate(element => Reflect.get(element.ownerDocument.defaultView!, '__NOTIFICATIONS__').addLongPosts());
+    await frame.locator('.notification-btn').click();
+    const dialog = frame.getByRole('dialog');
+    const article = dialog.locator('.notification-entry').filter({ hasText: 'LONG-ARTICLE-START' });
+    const toggle = article.getByRole('button', { name: 'もっと見る' });
+    await expect(toggle).toBeVisible();
+    expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await toggle.click();
+    await expect(article.getByRole('button', { name: '折りたたむ' })).toHaveAttribute('aria-expanded', 'true');
+    expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+});
+
 test('groups reactions to the same target with actor icons, counts, custom emoji and one preview', async ({ page }, info) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1');

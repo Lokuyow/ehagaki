@@ -34,6 +34,11 @@
             PostContentEmojiImageMeta | undefined
         >;
         scrollRoot?: HTMLElement | null;
+        isTextCollapsed?: boolean;
+        previewCollapseAction?: (node: HTMLDivElement, eventId: string) => { destroy?: () => void } | void;
+        previewCollapseEventId?: string;
+        previewContentId?: string;
+        textOverlay?: Snippet;
         onImageOpen?: (params: {
             index: number;
             mediaList: FullscreenMediaItem[];
@@ -54,6 +59,11 @@
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         scrollRoot = null,
+        isTextCollapsed = false,
+        previewCollapseAction = undefined,
+        previewCollapseEventId = undefined,
+        previewContentId = undefined,
+        textOverlay = undefined,
         onImageOpen = undefined,
         topActions = undefined,
         footerLeftExtras = undefined,
@@ -102,6 +112,11 @@
             {emojiImageMetaByUrl}
             {scrollRoot}
             {onImageOpen}
+            {isTextCollapsed}
+            {previewCollapseAction}
+            {previewCollapseEventId}
+            {previewContentId}
+            {textOverlay}
         />
         <PostHistoryPreviewFooter
             formattedDate={postedAt}
