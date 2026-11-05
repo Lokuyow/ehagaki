@@ -58,6 +58,7 @@ test('uploaded shortcode uses canonical wire, rejects whitespace and clears owne
     await expect(page.locator('input[type=file]')).not.toHaveAttribute('multiple');
     await page.locator('input[type=file]').setInputFiles(await imagePayload(page));
     await expect.poll(async () => (await read(page)).isUploading).toBe(false);
+    await expect(page.locator('button.post-button .plane-icon')).toBeVisible();
     await editor.click(); await editor.pressSequentially('cat'); await expect(editor).toHaveText('cat');
     for (const text of [':blob:', '::blob::']) {
         // Keep selection and deletion on ProseMirror's keyboard input path.
@@ -429,4 +430,35 @@ for (const free of [false, true]) test(`image URL reaction paste sends original 
     expect((await read(page)).wire?.emoji).toEqual([['emoji', 'url_cat', imageUrl]]);
     expect((await read(page)).uploads).toEqual([]);
     expect((await read(page)).gallery).toEqual([]);
+});
+
+for (const input of ['', '+', 'deleted']) test(`like send icon and wire for ${input || 'empty'} input`, async ({ page }) => {
+    const h = await open(page); await chooseTarget(page, h.targetInput);
+    const editor = page.locator('.tiptap-editor');
+    const button = page.locator('button.post-button');
+    await expect(button.locator('.favorite-icon')).toBeVisible();
+    await editor.fill('A'); await expect(button.locator('.plane-icon')).toBeVisible();
+    await editor.fill(' '); await expect(button).toBeDisabled();
+    await expect(button.locator('.plane-icon')).toBeVisible();
+    await editor.fill(input === '+' ? '+' : '');
+    await expect(button).toBeEnabled(); await expect(button.locator('.favorite-icon')).toBeVisible();
+    const mask = await button.locator('.favorite-icon').evaluate(element => getComputedStyle(element).maskImage);
+    expect(mask).toContain('favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg');
+    const asset = await page.request.get(mask.slice(5, -2)); expect(asset.ok()).toBe(true);
+    if (input !== '+') await expect(editor).toBeEmpty();
+    await button.screenshot({ path: test.info().outputPath('like-send-button.png') });
+    await button.click();
+    await expect.poll(async () => (await read(page)).wire?.content).toBe('+');
+    const state = await read(page);
+    expect(state.wire?.emoji).toEqual([]); expect(state.children[0].parent).toBe(h.targetId);
+    expect(state.signs).toBe(1); expect(state.sends.every(event => event.kind === 7)).toBe(true);
+    await expect(button.locator('.plane-icon')).toBeVisible(); await expect(button).toBeDisabled();
+});
+
+test('cancel empty reaction restores the ordinary send icon', async ({ page }) => {
+    const h = await open(page); await chooseTarget(page, h.targetInput);
+    await expect(page.locator('button.post-button .favorite-icon')).toBeVisible();
+    await page.evaluate(() => (window as unknown as HarnessWindow).__REACTION__.cancelReaction());
+    await expect(page.locator('button.post-button .plane-icon')).toBeVisible();
+    await expect(page.locator('button.post-button')).toBeDisabled();
 });

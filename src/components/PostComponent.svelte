@@ -271,13 +271,18 @@
   );
 
   $effect(() => {
-    const target = reactionComposerState.value;
     const instance = currentEditor;
     const gallery = mediaGalleryStore.hasNonPlaceholderItems();
     if (!instance) return;
-    updateEditorPostEligibility(instance, gallery, target ?
-      Boolean(inspectCurrentReaction(instance).value) && !isReactionComposing(instance) : undefined);
+    syncPostEligibility(instance, gallery);
   });
+
+  function syncPostEligibility(instance: TipTapEditor | null, hasGalleryMedia: boolean): void {
+    const reaction = reactionComposerState.value && instance ? inspectCurrentReaction(instance).value : null;
+    updateEditorPostEligibility(instance, hasGalleryMedia,
+      reactionComposerState.value ? Boolean(reaction) && Boolean(instance && !isReactionComposing(instance)) : undefined,
+      reaction?.type === 'text' && reaction.text === '+' ? 'favorite' : 'plane');
+  }
 
   let reactionSubmit = $state.raw<{ editor: TipTapEditor; isCurrent: () => boolean } | null>(null);
   $effect(() => {
@@ -737,11 +742,7 @@
       if (changed) onEditorEmptyChange?.(nextIsEmpty);
     };
     const syncLivePostEligibility = (editorInstance: TipTapEditor): void => {
-      updateEditorPostEligibility(
-        editorInstance,
-        mediaGalleryStore.hasNonPlaceholderItems(),
-        reactionComposerState.value ? Boolean(inspectCurrentReaction(editorInstance).value) && !isReactionComposing(editorInstance) : undefined,
-      );
+      syncPostEligibility(editorInstance, mediaGalleryStore.hasNonPlaceholderItems());
     };
     const handleEditorTransaction = ({
       editor: editorInstance,
@@ -1407,12 +1408,7 @@
     const hasGalleryMedia = mediaGalleryStore.items.some(
       (item) => !item.isPlaceholder,
     );
-    updateEditorPostEligibility(
-      currentEditor,
-      hasGalleryMedia,
-      reactionComposerState.value ? Boolean(currentEditor && inspectCurrentReaction(currentEditor).value)
-        && Boolean(currentEditor && !isReactionComposing(currentEditor)) : undefined,
-    );
+    syncPostEligibility(currentEditor, hasGalleryMedia);
   });
 
   // --- モード切替時の自動整理 ---

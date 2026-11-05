@@ -88,7 +88,9 @@ export function inspectReactionDocument(doc: PMNode, media: boolean | ReactionMe
     forbidden += Math.max(0, paragraphs - 1);
     const count = [...segmentGraphemes(text)].length + emojis.length;
     let value: ReactionValue | null = null;
-    if (!forbidden && count === 1) {
+    if (!forbidden && count === 0) {
+        value = { type: 'text', text: '+' };
+    } else if (!forbidden && count === 1) {
         const candidate: ReactionValue = emojis.length ? { type: 'customEmoji', emoji: { ...emojis[0] } } : { type: 'text', text };
         try { normalizeReactionValue(candidate); value = candidate; } catch { /* Invalid rich attributes remain editable. */ }
     }

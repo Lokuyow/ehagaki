@@ -22,6 +22,7 @@ export interface EditorState {
     isSubmitPending: boolean;
     content: string;
     canPost: boolean;
+    submitIcon: 'plane' | 'favorite';
     isUploading: boolean;
     uploadErrorMessage: string;
     postStatus: PostStatus;

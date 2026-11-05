@@ -19,6 +19,18 @@ function fixture(content = '') {
     return { editor, insert, activate: () => active = true, setMode: (value: ReactionInputMode) => { mode = value; } };
 }
 describe('Reaction document transactions', () => {
+    it('defaults a genuinely empty document to like without changing it', () => {
+        const f = fixture(); f.activate();
+        const before = f.editor.getJSON();
+        expect(inspectReactionDocument(f.editor.state.doc)).toEqual({ value: { type: 'text', text: '+' }, count: 0, forbidden: 0 });
+        expect(f.editor.getJSON()).toEqual(before);
+        for (const content of [{ type: 'paragraph', content: [{ type: 'text', text: ' ' }] }, { type: 'paragraph', content: [{ type: 'hardBreak' }] }]) {
+            const invalid = fixture();
+            invalid.editor.commands.setContent({ type: 'doc', content: [content] });
+            expect(inspectReactionDocument(invalid.editor.state.doc).value).toBeNull();
+        }
+        expect(inspectReactionDocument(f.editor.state.doc, true).value).toBeNull();
+    });
     it.each(['cat', ':cat:', '::cat::', ':', 'cat ', '猫'])('allows incremental shortcode editing even before regex validity: %s', text => {
         const f = fixture(); f.activate(); f.setMode('uploadedShortcode');
         for (const character of text) f.insert(character);
