@@ -117,6 +117,11 @@ test('post footers keep actions on their own events without related counts or li
     await expect(dialog.getByText('Shared footer child reply', { exact: true })).toHaveCount(0);
     await expect(dialog.locator('.notification-post .post-preview-reactions-panel')).toHaveCount(0);
     await target.getByRole('button', { name: 'アクションを表示', exact: true }).first().click();
+    for (const [selector, filename] of [['.copy-icon', 'file_copy_'], ['.raw-json-icon', 'data_object_'], ['.broadcast-icon', 'cell_tower_'], ['.trash-icon', 'delete_forever_']]) {
+        const icon = page.getByRole('menu').locator(selector);
+        await expect(icon).toBeVisible();
+        expect(await icon.evaluate(node => getComputedStyle(node).maskImage)).toContain(filename);
+    }
     await expect(page.getByRole('menuitem', { name: '削除', exact: true })).toBeVisible();
     await expect(page.getByRole('menuitem', { name: '関連イベントを確認', exact: true })).toHaveCount(0);
     await page.getByRole('menuitem', { name: /JSON/ }).click();
