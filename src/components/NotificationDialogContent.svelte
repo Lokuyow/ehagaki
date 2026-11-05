@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onDestroy, onMount, tick, untrack } from 'svelte';
+    import { resolveAppAssetUrl } from '../lib/appAssetUrl';
     import { useNotificationViewport } from '../lib/hooks/useNotificationViewport.svelte';
     import { liveQuery } from 'dexie';
     import { _ } from 'svelte-i18n';
@@ -287,6 +288,11 @@
                         <div class="notification-reply-label">
                             <span class="notification-kind-icon notification-reply-icon svg-icon" aria-hidden="true"></span>
                             <span>{$_('notifications.reply')}</span>
+                        </div>
+                    {:else if type === 'mention'}
+                        <div class="notification-reply-label">
+                            <span class="notification-kind-icon notification-mention-icon svg-icon" style:mask-image={`url("${resolveAppAssetUrl('icons/alternate_email_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg')}")`} aria-hidden="true"></span>
+                            <span>{$_('notifications.mention')}</span>
                         </div>
                     {:else}
                         <span class="notification-type">{$_(`notifications.${type}`)}</span>
