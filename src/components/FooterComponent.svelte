@@ -348,7 +348,7 @@
     :global(.notification-btn.default) { position: relative; width: 50px; height: 50px; min-width: 50px; flex: 0 0 50px; padding: 0; }
     .compact :global(.footer-setting-controls button.notification-btn) { width: 44px; height: 44px; min-width: 44px; flex: 0 0 44px; }
     .notification-icon { width: 24px; height: 24px; }
-    .notification-badge { position: absolute; inset: 5px 5px auto auto; width: 9px; height: 9px;
+    .notification-badge { position: absolute; inset: 8px 8px auto auto; width: 10px; height: 10px;
         border-radius: 50%; background: var(--theme); pointer-events: none; }
     :global(.settings-btn.has-update) {
         position: relative;
