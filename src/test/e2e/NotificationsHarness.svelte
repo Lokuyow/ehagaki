@@ -193,6 +193,7 @@
                 const invalid = finalizeEvent({ kind: 1, content: 'Quote with an invalid author hint',
                     tags: [['p', owner], ['q', quoteTarget.id, relay, wrongQuoteAuthor]], created_at: now + 12 }, authorKey);
                 await notificationRepository.upsert(owner, (includeInvalid ? [invalid, valid] : [valid]).map(event => ({ event, relayUrls: [relay] })));
+                return quoteTarget.id;
             },
             addLongPosts: async () => {
                 const lines = Array.from({ length: 24 }, (_, index) => `Long line ${index + 1}`).join('\n');

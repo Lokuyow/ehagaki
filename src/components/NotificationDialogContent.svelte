@@ -80,7 +80,7 @@
     $effect.pre(() => { notificationGroups; listElement; untrack(() => viewport.preserve()); });
     const posts = $derived(records.filter(record => [1, 42, 1111].includes(record.event.kind))
         .map(record => repostTargetToPost(record.event, record.relayUrls)));
-    const quotes = usePostHistoryQuotePreviews({ getShow: () => show && !invalidated, getPosts: () => posts,
+    const quotes = usePostHistoryQuotePreviews({ getShow: () => show && visible && !invalidated, getPosts: () => posts,
         getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig, profileSyncCoordinator: profileSync, relatedTargetResolver: resolver });
 
     export function invalidateSession() {
@@ -187,7 +187,7 @@
         return kindValid && verifyRelatedEvent(snapshot.event, reference) ? snapshot : { ...snapshot, event: null, status: 'error' as const };
     }
     $effect(() => {
-        if (!show || invalidated) return;
+        if (!show || !visible || invalidated) return;
         const currentRecords = records;
         const targets = untrack(() => groupNotifications(currentRecords, id => resolver.getTargetSnapshot(id)?.event ?? null).flatMap(group => {
             const record = group.record;

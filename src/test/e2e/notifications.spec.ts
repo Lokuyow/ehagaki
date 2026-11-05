@@ -14,6 +14,41 @@ test.beforeEach(async ({ context, page }) => {
 });
 test.afterEach(() => expect(pageErrors).toEqual([]));
 
+test('quote-only notification previews resume from the shared DB after visibility changes without new events', async ({ page }) => {
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await page.locator('.notification-btn').waitFor({ state: 'visible' });
+    const targetId = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addConflictingQuotes(false));
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    const quote = dialog.locator('.notification-entry').filter({ hasText: 'Quote with a valid author hint' });
+    const target = quote.getByText('Shared quote with independent author hints', { exact: true });
+    await expect(target).toBeVisible();
+    await expect.poll(() => page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').unread())).toBe(false);
+    await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
+    const targetRequests = () => page.evaluate(id => Reflect.get(window, '__NOTIFICATIONS__').requests().flat()
+        .filter((filter: { ids?: string[] }) => filter.ids?.includes(id)).length, targetId);
+    const fetched = await targetRequests();
+    expect(fetched).toBe(1);
+    const count = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').count());
+    for (let cycle = 0; cycle < 2; cycle++) {
+        await page.evaluate(() => {
+            Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+            document.dispatchEvent(new Event('visibilitychange'));
+        });
+        await expect(target).toHaveCount(0);
+        const before = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests().length);
+        await page.evaluate(() => {
+            Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+            document.dispatchEvent(new Event('visibilitychange'));
+        });
+        await expect.poll(() => page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests().length)).toBeGreaterThan(before);
+        await expect(target).toBeVisible();
+        await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
+        expect(await targetRequests()).toBe(fetched);
+        expect(await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').count())).toBe(count);
+    }
+});
+
 for (const cached of [false, true]) test(`conflicting quote author hints preserve the valid notification preview (cached=${cached})`, async ({ page }) => {
     await page.goto('post-history-dialog-playwright.html?notifications=1');
     await page.locator('.notification-btn').waitFor({ state: 'visible' });
