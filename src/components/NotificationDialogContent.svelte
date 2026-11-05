@@ -315,8 +315,6 @@
                 {/if}
             </article>
         {/each}
-        {#if failed}<p role="status">{$_('notifications.partialFailure')}</p>
-            <Button variant="default" shape="pill" onClick={() => refresh()} disabled={busy}>{$_('notifications.retry')}</Button>{/if}
         {#if localMore || !exhausted}<Button variant="default" shape="pill" disabled={busy} onClick={() => { if (localMore) limit += 100; else void refresh(true); }}>{$_('notifications.more')}</Button>{/if}
     </div>
 
