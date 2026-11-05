@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { finalizeEvent, generateSecretKey, getPublicKey, matchFilter } from 'nostr-tools';
-    import { Observable } from 'rxjs';
+    import { Observable, Subject } from 'rxjs';
     import { liveQuery } from 'dexie';
     import type { RxNostr } from 'rx-nostr';
     import FooterComponent from '../../components/FooterComponent.svelte';
@@ -32,9 +32,10 @@
     const listGate = new Promise<void>(resolve => releaseInitialList = resolve);
     const listMethod = notificationRepository.list.bind(notificationRepository);
     const openingMode = new URLSearchParams(location.search).get('opening');
+    let localListUnavailable = openingMode === 'fail';
     if (openingMode) notificationRepository.list = async (...args) => {
         if (openingMode === 'delay') await listGate;
-        if (openingMode === 'fail') throw new Error('Fixture local read failure');
+        if (localListUnavailable) throw new Error('Fixture local read failure');
         if (openingMode === 'empty') return [];
         return listMethod(...args);
     };
@@ -56,23 +57,45 @@
         return result;
     })();
     const { owner, original, incoming } = fixture;
+    const relayTargets = new Map([[original.id, original]]);
     const sign = (content: string) => finalizeEvent({ kind: 1, content, tags: [['p', owner]], created_at: now + 1 }, authorKey);
     let open = $state(false), ready = $state(false), applied = $state('');
     let targetOpen = $state(false), targetInput = $state('');
     let trigger = $state<HTMLElement | null>(null);
     let liveSequence = 0;
     const liveReceivers = new Set<(event: NostrEvent) => void>();
-    const requests: Array<Array<{ kinds?: number[]; ids?: string[] }>> = [];
-    const runtime = { use: (req: { strategy?: string; getReqPacketObservable: () => Observable<{ filters: Array<{ ids?: string[] }> }> }) => new Observable(observer => {
-        let currentFilters: Array<{ ids?: string[] }> = [];
+    type FixtureFilter = { kinds?: number[]; ids?: string[]; since?: number; until?: number; '#p'?: string[] };
+    const requests: FixtureFilter[][] = [];
+    const messages = new Subject();
+    let notificationPage: NostrEvent[] | null = null;
+    let notificationFetchFails = new URLSearchParams(location.search).has('sync-fail');
+    const runtime = { createAllMessageObservable: () => messages,
+        use: (req: { rxReqId: string; strategy?: string; getReqPacketObservable: () => Observable<{ filters: FixtureFilter[] }> }) => new Observable(observer => {
+        let currentFilters: FixtureFilter[] = [];
+        let requestIndex = 0;
         const receive = (event: NostrEvent) => { if (currentFilters.some(filter => matchFilter(filter, event))) observer.next({ event, from: relay }); };
         if (req.strategy === 'forward') liveReceivers.add(receive);
         const subscription = req.getReqPacketObservable().subscribe(({ filters }) => {
             currentFilters = filters;
             requests.push(filters);
+            const subId = `${req.rxReqId}:${requestIndex++}`;
             queueMicrotask(() => {
-                if (!new URLSearchParams(location.search).has('missing') && filters.some(filter => filter.ids?.includes(original.id))) observer.next({ event: original, from: relay });
-                if (req.strategy !== 'forward') observer.complete();
+                if (notificationFetchFails && req.strategy !== 'forward' && filters.some(filter => filter.kinds?.includes(16))) {
+                    observer.error('Fixture notification fetch failure');
+                    return;
+                }
+                if (notificationPage && req.strategy !== 'forward' && filters.some(filter => filter.kinds?.includes(16))) {
+                    const events = notificationPage;
+                    notificationPage = null;
+                    for (const event of events) if (filters.some(filter => matchFilter(filter, event))) observer.next({ event, from: relay });
+                }
+                if (!new URLSearchParams(location.search).has('missing')) for (const target of relayTargets.values()) {
+                    if (filters.some(filter => filter.ids?.includes(target.id))) observer.next({ event: target, from: relay });
+                }
+                if (req.strategy !== 'forward') {
+                    messages.next({ type: 'EOSE', from: relay, subId, message: ['EOSE', subId] });
+                    observer.complete();
+                }
             });
         });
         return () => { subscription.unsubscribe(); liveReceivers.delete(receive); };
@@ -94,6 +117,14 @@
             .then(() => ready = true);
         Reflect.set(window, '__NOTIFICATIONS__', {
             releaseInitialList,
+            recoverLocalList: () => { localListUnavailable = false; },
+            setNotificationFetchFailure: (value: boolean) => { notificationFetchFails = value; },
+            notificationRequests: () => requests.flat().filter(filter => filter.kinds?.includes(16) && filter.until != null),
+            saturateNextNotificationFetch: () => {
+                notificationPage = Array.from({ length: 100 }, (_, index) => finalizeEvent({ kind: 1,
+                    content: `Saturated notification ${index}`, tags: [['p', owner]], created_at: now - index }, authorKey));
+                return notificationPage.at(-1)!.created_at;
+            },
             liveSubscriptions: () => liveReceivers.size,
             addLive: async (count = 1, reaction = false) => {
                 const events = Array.from({ length: count }, () => finalizeEvent({ kind: reaction ? 7 : 1,
@@ -144,6 +175,15 @@
                 content: '+', tags: [['p', owner], ['e', original.id]], created_at: now + 3 }, authorKey) }]),
             addMismatchedReaction: async () => notificationRepository.upsert(owner, [{ event: finalizeEvent({ kind: 7,
                 content: '-', tags: [['p', owner], ['e', original.id], ['k', '42']], created_at: now + 4 }, authorKey) }]),
+            addConflictingReposts: async () => {
+                const target = finalizeEvent({ kind: 1, content: 'Cold-cache valid repost target', tags: [], created_at: now - 1 }, authorKey);
+                relayTargets.set(target.id, target);
+                const tags = [['p', owner], ['p', target.pubkey], ['e', target.id, relay]];
+                const valid = finalizeEvent({ kind: 6, content: '', tags, created_at: now + 10 }, generateSecretKey());
+                const invalid = finalizeEvent({ kind: 16, content: '', tags, created_at: now + 11 }, generateSecretKey());
+                await notificationRepository.upsert(owner, [invalid, valid].map(event => ({ event, relayUrls: [relay] })));
+                return { targetId: target.id, validId: valid.id, invalidId: invalid.id };
+            },
             addLongPosts: async () => {
                 const lines = Array.from({ length: 24 }, (_, index) => `Long line ${index + 1}`).join('\n');
                 const target = finalizeEvent({ kind: 30023, content: `LONG-ARTICLE-START\n${lines}\nLONG-ARTICLE-END`, tags: [], created_at: now }, authorKey);

@@ -944,7 +944,7 @@
     "empty": "No notifications",
     "more": "Load more",
     "retry": "Retry",
-    "partialFailure": "Some notifications may be missing. Retry or load more to continue.",
+    "partialFailure": "Notifications could not be fully loaded. Please try again.",
     "targetUnavailable": "The original post is unavailable",
     "mention": "Mention",
     "reply": "Reply",

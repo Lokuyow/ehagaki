@@ -184,6 +184,21 @@ function createKnownProfileCoordinator(
 }
 
 describe("createPostHistoryRelatedTargetResolver", () => {
+    it("classifies an excluded kind as invalid and lets a compatible notification retry the same target", async () => {
+        const target = finalizeEvent({ kind: 1, content: "valid repost target", tags: [], created_at: 1 }, generateSecretKey());
+        const { resolver, contextFetchService } = createResolver({ requireFullVerification: true });
+        contextFetchService.fetchEventById.mockReturnValue({ promise: Promise.resolve({ event: target, relayUrl: null }), cancel: vi.fn() });
+        const descriptor = createDescriptor({ targetEventId: target.id, relationKind: "notification", authorHint: target.pubkey });
+        try {
+            expect(await resolver.ensureTarget({ ...descriptor, excludedKinds: [1] })).toMatchObject({
+                status: "error", event: null, errorCode: "invalid_event",
+            });
+            expect(await resolver.retryTarget({ ...descriptor, targetKindHint: 1 })).toMatchObject({
+                status: "resolved", event: target,
+            });
+        } finally { resolver.reset(); }
+    });
+
     it("full verification checks a Reaction target's verified author for known deletions, including cached hits", async () => {
         const target = finalizeEvent({ kind: 7, content: "+", tags: [], created_at: 1 }, generateSecretKey());
         const { resolver, contextFetchService, deletionRequestsRepositoryImpl } = createResolver({ requireFullVerification: true });

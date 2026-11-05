@@ -717,7 +717,10 @@ export function createPostHistoryRelatedTargetResolver({
                         errorCode: "invalid_event", updatedAt: Date.now() });
                 }
                 const resolvedEvent = verifiedResult?.event ?? result.event;
-                if (descriptor.excludedKinds?.includes(resolvedEvent.kind)) throw new Error('invalid_related_kind');
+                if (descriptor.excludedKinds?.includes(resolvedEvent.kind)) {
+                    return applySnapshotUpdate(descriptor.targetEventId, { status: "error", event: null,
+                        errorCode: "invalid_event", updatedAt: Date.now() });
+                }
                 if (descriptor.relationKind === "repost" && !verifyRepostTarget(resolvedEvent, {
                     eventId: descriptor.targetEventId, authorHint: null, relayHints: [],
                 })) throw new Error("invalid_repost_target");

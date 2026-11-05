@@ -47,6 +47,7 @@
     let records = $state.raw<NotificationRecord[]>([]);
     let limit = $state(100), localMore = $state(false), exhausted = $state(false);
     let loaded = $state(false), busy = $state(false), failed = $state(false), visible = $state(false);
+    let retryOlder = $state(false);
     let invalidated = $state(false), profiles = $state.raw<Record<string, ProfileData>>({});
     let media = $state.raw<FullscreenMediaItem[]>([]), mediaIndex = $state(-1);
     let task: ReturnType<typeof syncNotifications> | null = null;
@@ -214,7 +215,7 @@
         const scope = getPostHistoryAuthoredRelayScopeKey(relayConfig);
         const owned = () => show && visible && !invalidated && epoch === generation && owner === pubkeyHex
             && runtime === rxNostr && scope === getPostHistoryAuthoredRelayScopeKey(relayConfig);
-        busy = true; failed = false;
+        busy = true; failed = false; retryOlder = older;
         const current = syncNotifications(runtime, { ownerPubkeyHex: owner, relayConfig, older,
             reconcileDirectReplyCandidates, isActive: owned });
         task = current;
@@ -222,6 +223,8 @@
             const result = await current.promise;
             if (!owned()) return;
             failed = !!result && (result.status !== 'success' || result.maybeIncomplete);
+            // Successful partial pages leave a pending interval for the older-page path.
+            retryOlder = older || (result?.status === 'success' && result.maybeIncomplete);
             if (result?.maybeIncomplete) exhausted = false;
             if (older) { exhausted = !result || result.notificationsExhausted === true; limit += 100; }
         } catch { if (owned()) failed = true; }
@@ -249,7 +252,12 @@
 
     <PostRepostFeedback result={null} saveFailure={repostSaveFailure} pending={repostPending} onRetrySave={onRetryRepostSave} />
     <div class="notification-list" bind:this={listElement} aria-busy={busy}>
-        {#if loaded && !records.length}<p>{$_('notifications.empty')}</p>{/if}
+        {#if failed || localReadFailed}
+            <div class="notification-load-error">
+                <p role="status">{$_('notifications.partialFailure')}</p>
+                <Button variant="default" shape="pill" disabled={busy} onClick={() => refresh(retryOlder)}>{$_('notifications.retry')}</Button>
+            </div>
+        {:else if loaded && !busy && !records.length}<p>{$_('notifications.empty')}</p>{/if}
         {#each notificationGroups as group (group.id)}
             {@const record = group.record}
             {@const type = notificationType(record.event)}
@@ -355,7 +363,7 @@
                 {/if}
             </article>
         {/each}
-        {#if localMore || !exhausted}<Button className="notification-load-more" variant="default" shape="pill" disabled={busy} onClick={() => { if (localMore) limit += 100; else void refresh(true); }}>{$_('notifications.more')}</Button>{/if}
+        {#if !failed && !localReadFailed && (localMore || !exhausted)}<Button className="notification-load-more" variant="default" shape="pill" disabled={busy} onClick={() => { if (localMore) limit += 100; else void refresh(true); }}>{$_('notifications.more')}</Button>{/if}
     </div>
 
 {#if mediaIndex >= 0}
@@ -365,6 +373,8 @@
 <style>
     .notification-target-placeholder { height: 100px; border-radius: 4px; background: var(--text); opacity: .05; }
     .notification-list { width: 100%; display: grid; min-width: 0; overflow-wrap: anywhere; }
+    .notification-load-error { display: grid; justify-items: start; gap: 8px; margin-block: 8px; }
+    .notification-load-error p { margin: 0; }
     .notification-list :global(.notification-load-more) { margin-top: 8px; }
     .notification-entry { display: grid; min-width: 0; gap: 6px; padding-block: 8px; border-bottom: 1px solid var(--border-hr); }
     .notification-entry :global(.notification-post), .notification-entry :global(.post-history-quote-status-card), .notification-target-placeholder { margin-inline-start: 16px; }
