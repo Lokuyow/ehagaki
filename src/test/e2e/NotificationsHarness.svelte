@@ -124,6 +124,14 @@
             }))),
             add: async () => notificationRepository.upsert(owner, [{ event: sign('New incoming notification') }]),
             addReply: async () => notificationRepository.upsert(owner, [{ event: finalizeEvent({ kind: 1, content: 'Reply notification text', tags: [['p', owner], ['e', original.id, relay, 'reply']], created_at: now + 1 }, authorKey) }]),
+            addReplyWithParent: async (missing = false) => {
+                const parent = finalizeEvent({ kind: 1, content: 'Direct reply parent', tags: [], created_at: now - 1 }, authorKey);
+                if (!missing) await new EventRepository(ehagakiDb).save(parent, [relay], () => true);
+                const reply = finalizeEvent({ kind: 1, content: 'Nested reply notification',
+                    tags: [['p', owner], ['e', original.id, relay, 'root'], ['e', parent.id, relay, 'reply', parent.pubkey]], created_at: now + 1 }, authorKey);
+                await notificationRepository.upsert(owner, [{ event: reply, relayUrls: [relay] }]);
+                return parent.id;
+            },
             addRepost: async () => {
                 const key = generateSecretKey(), pubkey = getPublicKey(key);
                 await profilesRepository.put(pubkey, { name: 'Second reposter', displayName: 'Second reposter', picture: 'https://profiles.example/second-reposter.png', npub: '', nprofile: '' });

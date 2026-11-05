@@ -14,6 +14,51 @@ test.beforeEach(async ({ context, page }) => {
 });
 test.afterEach(() => expect(pageErrors).toEqual([]));
 
+for (const width of [360, 280]) test(`reply title toggles the direct parent from the shared DB at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('post-history-dialog-playwright.html?notifications=1&container=1');
+    await expect(page.locator('.notification-btn')).toBeVisible();
+    const parentId = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addReplyWithParent());
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    const entry = dialog.locator('.notification-entry').filter({ hasText: 'Nested reply notification' });
+    const toggle = entry.locator('.notification-reply-toggle');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(entry.getByText('Direct reply parent', { exact: true })).toHaveCount(0);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(entry.getByText('Direct reply parent', { exact: true })).toBeVisible();
+    await expect(entry.getByText('Original notification target', { exact: true })).toHaveCount(0);
+    expect(await entry.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`notification-reply-parent-${width}.png`) });
+    await toggle.click();
+    await expect(entry.getByText('Direct reply parent', { exact: true })).toHaveCount(0);
+    await toggle.focus(); await page.keyboard.press('Enter');
+    await expect(entry.getByText('Direct reply parent', { exact: true })).toBeVisible();
+    expect(await page.evaluate(id => Reflect.get(window, '__NOTIFICATIONS__').requests().flat().filter((filter: { ids?: string[] }) => filter.ids?.includes(id)).length, parentId)).toBe(0);
+    await entry.locator('.notification-reply-parent').getByRole('button', { name: 'リプライ', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByTestId('applied')).toHaveText('reply:Direct reply parent');
+});
+
+test('reply parent missing state offers retry and closing clears expansion', async ({ page }) => {
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await expect(page.locator('.notification-btn')).toBeVisible();
+    const parentId = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addReplyWithParent(true));
+    await page.locator('.notification-btn').click();
+    const entry = page.getByRole('dialog').locator('.notification-entry').filter({ hasText: 'Nested reply notification' });
+    const requests = () => page.evaluate(id => Reflect.get(window, '__NOTIFICATIONS__').requests().flat().filter((filter: { ids?: string[] }) => filter.ids?.includes(id)).length, parentId);
+    expect(await requests()).toBe(0);
+    await entry.getByRole('button', { name: '返信先を見る', exact: true }).click();
+    await expect(entry.getByText('返信先が見つかりませんでした', { exact: true })).toBeVisible();
+    expect(await requests()).toBe(1);
+    await entry.getByRole('button', { name: '再試行', exact: true }).click();
+    await expect.poll(requests).toBe(2);
+    await page.getByRole('button', { name: '閉じる', exact: true }).click();
+    await page.locator('.notification-btn').click();
+    await expect(entry.locator('.notification-reply-toggle')).toHaveAttribute('aria-expanded', 'false');
+});
+
 test('a delayed content module leaves the 280px shell closable and reopens safely', async ({ page }, info) => {
     let release = () => {};
     const gate = new Promise<void>(resolve => release = resolve);

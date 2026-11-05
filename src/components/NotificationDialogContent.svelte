@@ -18,6 +18,8 @@
     import { usePostHistoryEmojiState } from '../lib/hooks/usePostHistoryEmojiState.svelte';
     import { notificationRepository, type NotificationRecord } from '../lib/storage/notificationRepository';
     import { notificationType } from '../lib/notification';
+    import { postHistoryReplyParentTargetDiscoveryAdapter } from '../lib/postHistoryRelatedTargetDiscoveryAdapter';
+    import { buildThreadGraphNode } from '../lib/postHistoryThreadGraphUtils';
     import { groupNotifications, notificationTargetReference, type NotificationGroup } from '../lib/notificationGrouping';
     import { syncNotifications } from '../lib/notificationSyncService';
     import { createPostHistoryProfileSyncCoordinator } from '../lib/postHistoryProfileSync';
@@ -39,6 +41,8 @@
     let { show = $bindable(false), pubkeyHex, rxNostr, relayConfig, returnFocus = null,
         onClose, onReplyPost, onReactionPost, onOpenTarget, reconcileDirectReplyCandidates, onQuotePost, onRepostPost, repostPending, repostSaveFailure, onRetryRepostSave, presentationReady = false, onInitialReady }: Props = $props();
     let listElement = $state<HTMLElement | null>(null);
+    const replyTargetPrefix = $props.id();
+    let expandedReplyTargets = $state<Record<string, boolean>>({});
     const viewport = useNotificationViewport(() => listElement, () => show && visible && !invalidated);
     let records = $state.raw<NotificationRecord[]>([]);
     let limit = $state(100), localMore = $state(false), exhausted = $state(false);
@@ -81,6 +85,7 @@
     export function invalidateSession() {
         viewport.reset(); invalidated = true; generation++; task?.cancel(); task = null; busy = false;
         records = []; profiles = {}; media = []; mediaIndex = -1;
+        expandedReplyTargets = {};
         resolver.reset(); profileSync.reset();
     }
     function close() { if (mediaIndex >= 0) return false; invalidateSession(); onClose(); return true; }
@@ -153,6 +158,20 @@
             relayHints: [...reference.relayHints, ...record.relayUrls], relationKind: 'notification',
             scopeKey: 'notifications', sourceEventId: record.eventId } : null;
     }
+    function replyParentDescriptor(record: NotificationRecord): RelatedTargetDescriptor | null {
+        const post = repostTargetToPost(record.event, record.relayUrls);
+        const node = buildThreadGraphNode({ event: record.event, relayUrls: record.relayUrls, sources: ['inbound-sync'] });
+        const context = postHistoryReplyParentTargetDiscoveryAdapter.buildContext(post, record.eventId, node);
+        return context ? postHistoryReplyParentTargetDiscoveryAdapter.toDescriptor(context, 'notification-reply-parents') : null;
+    }
+    function toggleReplyParent(record: NotificationRecord) {
+        if (!show || invalidated) return;
+        const target = replyParentDescriptor(record);
+        if (!target) return;
+        const expanded = !expandedReplyTargets[record.eventId];
+        expandedReplyTargets = { ...expandedReplyTargets, [record.eventId]: expanded };
+        if (expanded) void resolver.ensureTarget(target);
+    }
     function groupDescriptor(group: NotificationGroup): RelatedTargetDescriptor | null {
         const value = descriptor(group.record);
         if (!value) return null;
@@ -213,7 +232,7 @@
         getPostHistoryAuthoredRelayScopeKey(relayConfig);
         if (!open || !owner || !foreground || invalidated) return;
         untrack(() => { generation++; task?.cancel(); task = null; busy = false; void refresh(); });
-        return () => { generation++; task?.cancel(); task = null; busy = false; resolver.reset(); };
+        return () => { generation++; task?.cancel(); task = null; busy = false; expandedReplyTargets = {}; resolver.reset(); };
     });
     async function apply(post: PostHistoryRecord, reaction: boolean) {
         const epoch = generation;
@@ -285,10 +304,14 @@
                     {/if}
                 {:else}
                     {#if type === 'reply'}
-                        <div class="notification-reply-label">
+                        <button type="button" class="notification-reply-label notification-reply-toggle"
+                            aria-expanded={!!expandedReplyTargets[record.eventId]} aria-controls={`${replyTargetPrefix}-${record.eventId}`}
+                            aria-label={$_(expandedReplyTargets[record.eventId] ? 'postHistory.hideReplyTarget' : 'postHistory.showReplyTarget')}
+                            title={$_(expandedReplyTargets[record.eventId] ? 'postHistory.hideReplyTarget' : 'postHistory.showReplyTarget')}
+                            onclick={() => toggleReplyParent(record)}>
                             <span class="notification-kind-icon notification-reply-icon svg-icon" aria-hidden="true"></span>
                             <span>{$_('notifications.reply')}</span>
-                        </div>
+                        </button>
                     {:else if type === 'mention'}
                         <div class="notification-reply-label">
                             <span class="notification-kind-icon notification-mention-icon svg-icon" style:mask-image={`url("${resolveAppAssetUrl('icons/alternate_email_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg')}")`} aria-hidden="true"></span>
@@ -301,6 +324,23 @@
                         </div>
                     {:else}
                         <span class="notification-type">{$_(`notifications.${type}`)}</span>
+                    {/if}
+                    {#if type === 'reply' && expandedReplyTargets[record.eventId]}
+                        {@const parent = replyParentDescriptor(record)}
+                        {@const snapshot = parent ? resolver.getTargetSnapshot(parent.targetEventId) : null}
+                        <div class="notification-reply-parent" id={`${replyTargetPrefix}-${record.eventId}`}>
+                            {#if snapshot?.status === 'resolved' && snapshot.event}
+                                <NotificationPost event={snapshot.event} profile={snapshot.profile} relayUrls={snapshot.relayHints}
+                                    loadSensitiveBody={sensitiveBody(snapshot.event, snapshot.relayHints)} onImageOpen={openImage} />
+                            {:else if snapshot?.status === 'deleted'}
+                                <p role="status">{$_('postHistory.replyTargetDeleted')}</p>
+                            {:else if snapshot?.status === 'not-found' || snapshot?.status === 'error'}
+                                <p role="status">{$_(snapshot.status === 'not-found' ? 'postHistory.contextNotFound' : 'postHistory.contextFetchFailed')}</p>
+                                {#if parent}<Button className="notification-reply-retry" variant="default" shape="pill" onClick={() => resolver.retryTarget(parent)}>{$_('postHistory.contextRetry')}</Button>{/if}
+                            {:else}
+                                <p role="status">{$_('postHistory.contextLoading')}</p>
+                            {/if}
+                        </div>
                     {/if}
                     <NotificationPost plain={true} event={record.event} profile={profiles[record.event.pubkey]} relayUrls={record.relayUrls} loadSensitiveBody={sensitiveBody(record.event, record.relayUrls)}
                         onImageOpen={openImage} />
@@ -315,7 +355,7 @@
                 {/if}
             </article>
         {/each}
-        {#if localMore || !exhausted}<Button variant="default" shape="pill" disabled={busy} onClick={() => { if (localMore) limit += 100; else void refresh(true); }}>{$_('notifications.more')}</Button>{/if}
+        {#if localMore || !exhausted}<Button className="notification-load-more" variant="default" shape="pill" disabled={busy} onClick={() => { if (localMore) limit += 100; else void refresh(true); }}>{$_('notifications.more')}</Button>{/if}
     </div>
 
 {#if mediaIndex >= 0}
@@ -325,9 +365,15 @@
 <style>
     .notification-target-placeholder { height: 100px; border-radius: 4px; background: var(--text); opacity: .05; }
     .notification-list { width: 100%; display: grid; min-width: 0; overflow-wrap: anywhere; }
+    .notification-list :global(.notification-load-more) { margin-top: 8px; }
     .notification-entry { display: grid; min-width: 0; gap: 6px; padding-block: 8px; border-bottom: 1px solid var(--border-hr); }
     .notification-entry :global(.notification-post), .notification-entry :global(.post-history-quote-status-card), .notification-target-placeholder { margin-inline-start: 16px; }
     .notification-type { font-size: .85rem; opacity: .8; }
+    .notification-reply-toggle { font: inherit; color: inherit; border: 0; }
+    .notification-reply-parent { display: grid; gap: 6px; min-width: 0; margin-inline-start: 16px; }
+    .notification-reply-parent p { margin: 0; }
+    .notification-reply-parent :global(.notification-reply-retry) { height: 36px; justify-self: start; }
+    .notification-reply-parent :global(.notification-post) { margin-inline-start: 0; }
     .notification-reply-label { display: inline-flex; justify-self: start; align-items: center; gap: 6px; height: 34px; box-sizing: border-box; padding: 4px 8px; border-radius: 18px; background: color-mix(in srgb, var(--btn-bg), transparent 40%); }
     .notification-entry :global(.post-preview-reaction-chip) { height: 34px; min-height: 34px; box-sizing: border-box; }
     .notification-repost-chip { max-width: 100%; min-width: 0; font: inherit; }
@@ -353,7 +399,7 @@
         object-fit: cover;
     }
     .notification-kind-icon { --icon-size: 22px; --svg: currentColor; width: 22px; height: 22px; flex: 0 0 22px; }
-    .notification-reply-label .notification-kind-icon { --icon-size: 26px; width: 26px; height: 26px; flex-basis: 26px; }
-    .notification-repost-icon { mask-image: url('/icons/repost.svg'); }
+    .notification-reply-label .notification-kind-icon { --icon-size: 26px; --svg: var(--accent-color); width: 26px; height: 26px; flex-basis: 26px; }
+    .notification-repost-icon { --svg: var(--accent-color); mask-image: url('/icons/repost.svg'); }
     .notification-reply-icon { mask-image: url('/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg'); }
 </style>
