@@ -326,7 +326,7 @@
 
 <style>
     .notification-target-placeholder { height: 100px; border-radius: 4px; background: var(--text); opacity: .05; }
-    .notification-list { width: 100%; display: grid; min-width: 0; gap: 12px; overflow-wrap: anywhere; }
+    .notification-list { width: 100%; display: grid; min-width: 0; overflow-wrap: anywhere; }
     .notification-entry { display: grid; min-width: 0; gap: 6px; padding-block: 8px; border-bottom: 1px solid var(--border-hr); }
     .notification-entry :global(.notification-post), .notification-entry :global(.post-history-quote-status-card), .notification-target-placeholder { margin-inline-start: 16px; }
     .notification-type { font-size: .85rem; opacity: .8; }
