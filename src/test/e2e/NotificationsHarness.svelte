@@ -58,6 +58,8 @@
     })();
     const { owner, original, incoming } = fixture;
     const relayTargets = new Map([[original.id, original]]);
+    const quoteTarget = finalizeEvent({ kind: 1, content: 'Shared quote with independent author hints', tags: [], created_at: now - 1 }, authorKey);
+    const wrongQuoteAuthor = getPublicKey(generateSecretKey());
     const sign = (content: string) => finalizeEvent({ kind: 1, content, tags: [['p', owner]], created_at: now + 1 }, authorKey);
     let open = $state(false), ready = $state(false), applied = $state('');
     let targetOpen = $state(false), targetInput = $state('');
@@ -183,6 +185,14 @@
                 const invalid = finalizeEvent({ kind: 16, content: '', tags, created_at: now + 11 }, generateSecretKey());
                 await notificationRepository.upsert(owner, [invalid, valid].map(event => ({ event, relayUrls: [relay] })));
                 return { targetId: target.id, validId: valid.id, invalidId: invalid.id };
+            },
+            addConflictingQuotes: async (includeInvalid = true) => {
+                relayTargets.set(quoteTarget.id, quoteTarget);
+                const valid = finalizeEvent({ kind: 1, content: 'Quote with a valid author hint',
+                    tags: [['p', owner], ['q', quoteTarget.id, relay, quoteTarget.pubkey]], created_at: now + 11 }, authorKey);
+                const invalid = finalizeEvent({ kind: 1, content: 'Quote with an invalid author hint',
+                    tags: [['p', owner], ['q', quoteTarget.id, relay, wrongQuoteAuthor]], created_at: now + 12 }, authorKey);
+                await notificationRepository.upsert(owner, (includeInvalid ? [invalid, valid] : [valid]).map(event => ({ event, relayUrls: [relay] })));
             },
             addLongPosts: async () => {
                 const lines = Array.from({ length: 24 }, (_, index) => `Long line ${index + 1}`).join('\n');

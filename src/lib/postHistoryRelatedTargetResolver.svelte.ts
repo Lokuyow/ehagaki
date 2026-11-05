@@ -61,6 +61,8 @@ export interface RelatedTargetDescriptor {
     excludedKinds?: number[];
 }
 
+type RelatedTargetConstraints = Pick<RelatedTargetDescriptor, 'authorHint' | 'authorHints' | 'targetKindHint' | 'excludedKinds'>;
+
 export interface PostHistoryRelatedTargetSnapshot {
     targetEventId: string;
     status: PostHistoryRelatedTargetStatus;
@@ -440,21 +442,21 @@ export function createPostHistoryRelatedTargetResolver({
         const mergedSnapshot = snapshotsByTargetId[descriptor.targetEventId]
             ?? createInitialSnapshot(descriptor);
         const preserveResolvedState = !!options.background && existingBeforeMerge?.status === "resolved";
-        if (requireFullVerification && existingBeforeMerge?.status === "resolved"
-            && !verifyRelatedEvent(existingBeforeMerge.event, { eventId: descriptor.targetEventId,
-                authorHint: descriptor.authorHint ?? null, authorHints: descriptor.authorHints,
-                targetKindHint: descriptor.targetKindHint, relayHints: [] })) {
-            options = { ...options, force: true };
+        if (requireFullVerification && existingBeforeMerge?.status === "resolved") {
+            if (!verifyRelatedEvent(existingBeforeMerge.event, { eventId: descriptor.targetEventId,
+                authorHint: null, relayHints: [] })) {
+                options = { ...options, force: true };
+            } else if (projectSnapshot(existingBeforeMerge, descriptor)?.status === 'error') {
+                // A conflicting reference cannot invalidate an independently verified ID.
+                return existingBeforeMerge;
+            }
         }
         // A signed event of another kind can still be valid for a quote/thread.
         // Let the Repost projection reject it without poisoning the shared ID cache.
         if ((descriptor.relationKind === "repost" || requireFullVerification) && existingBeforeMerge?.status === "resolved") {
             const cached = attestFullyVerifiedPostHistoryRawEvent(existingBeforeMerge.event)?.event;
             if (cached?.id === descriptor.targetEventId
-                && (!requireFullVerification || verifyRelatedEvent(cached, { eventId: descriptor.targetEventId,
-                    authorHint: descriptor.authorHint ?? null, authorHints: descriptor.authorHints,
-                    targetKindHint: descriptor.targetKindHint, relayHints: [] }))
-                && !descriptor.excludedKinds?.includes(cached.kind)) {
+                && (requireFullVerification || !descriptor.excludedKinds?.includes(cached.kind))) {
                 const generation = scopeGenerationByKey[descriptor.scopeKey];
                 const deleted = await isDeletedTarget(cached.pubkey, cached.id);
                 if (!getShow() || generation !== scopeGenerationByKey[descriptor.scopeKey]
@@ -556,9 +558,10 @@ export function createPostHistoryRelatedTargetResolver({
                 if (!canPersist()) return null;
                 if (cached && (!options.requireRelayHint || cached.relayUrls.length)
                     && verifyRelatedEvent(cached.rawEvent, { eventId: descriptor.targetEventId,
-                        authorHint: descriptor.authorHint ?? null, authorHints: descriptor.authorHints,
-                        targetKindHint: descriptor.targetKindHint, relayHints: [] })
-                    && !descriptor.excludedKinds?.includes(cached.rawEvent.kind)) {
+                        authorHint: requireFullVerification ? null : descriptor.authorHint ?? null,
+                        authorHints: requireFullVerification ? undefined : descriptor.authorHints,
+                        targetKindHint: requireFullVerification ? undefined : descriptor.targetKindHint, relayHints: [] })
+                    && (requireFullVerification || !descriptor.excludedKinds?.includes(cached.rawEvent.kind))) {
                     const hints = sanitizeRelayHints([...cached.relayUrls, ...mergedSnapshot.relayHints]);
                     if (cached.deletedAt !== undefined) return applySnapshotUpdate(descriptor.targetEventId,
                         { status: 'deleted', event: null, relayHints: hints, updatedAt: Date.now() });
@@ -580,8 +583,7 @@ export function createPostHistoryRelatedTargetResolver({
 
                 const verifiedRecord = requireFullVerification && existingRecord
                     ? verifyRelatedEvent(existingRecord.rawEvent, { eventId: descriptor.targetEventId,
-                        authorHint: descriptor.authorHint ?? null, authorHints: descriptor.authorHints,
-                        targetKindHint: descriptor.targetKindHint, relayHints: [] }) : null;
+                        authorHint: null, relayHints: [] }) : null;
                 if (existingRecord && (!requireFullVerification || verifiedRecord)
                     && (!options.requireRelayHint || [...existingRecord.relayHints, ...existingRecord.acceptedRelays, ...(existingRecord.fetchedRelays ?? [])].length > 0)
                     && (descriptor.relationKind !== "repost" || verifyRepostTarget(existingRecord.rawEvent, {
@@ -709,15 +711,14 @@ export function createPostHistoryRelatedTargetResolver({
                     ...mergedSnapshot.relayHints,
                 ]);
                 const verifiedResult = requireFullVerification ? verifyRelatedEvent(result.event, {
-                    eventId: descriptor.targetEventId, authorHint: descriptor.authorHint ?? null,
-                    authorHints: descriptor.authorHints, targetKindHint: descriptor.targetKindHint, relayHints: [],
+                    eventId: descriptor.targetEventId, authorHint: null, relayHints: [],
                 }) : null;
                 if (requireFullVerification && !verifiedResult) {
                     return applySnapshotUpdate(descriptor.targetEventId, { status: "error", event: null,
                         errorCode: "invalid_event", updatedAt: Date.now() });
                 }
                 const resolvedEvent = verifiedResult?.event ?? result.event;
-                if (descriptor.excludedKinds?.includes(resolvedEvent.kind)) {
+                if (!requireFullVerification && descriptor.excludedKinds?.includes(resolvedEvent.kind)) {
                     return applySnapshotUpdate(descriptor.targetEventId, { status: "error", event: null,
                         errorCode: "invalid_event", updatedAt: Date.now() });
                 }
@@ -752,8 +753,9 @@ export function createPostHistoryRelatedTargetResolver({
 
                 if (eventRepositoryImpl) {
                     const verified = verifyRelatedEvent(resolvedEvent, { eventId: descriptor.targetEventId,
-                        authorHint: descriptor.authorHint ?? null, authorHints: descriptor.authorHints,
-                        targetKindHint: descriptor.targetKindHint, relayHints: [] });
+                        authorHint: requireFullVerification ? null : descriptor.authorHint ?? null,
+                        authorHints: requireFullVerification ? undefined : descriptor.authorHints,
+                        targetKindHint: requireFullVerification ? undefined : descriptor.targetKindHint, relayHints: [] });
                     if (!verified && requireFullVerification) throw new Error('invalid_related_event');
                     if (verified) await eventRepositoryImpl.save(verified.event, resolvedRelayHints,
                         canPersist, descriptor.sourceEventId);
@@ -802,7 +804,7 @@ export function createPostHistoryRelatedTargetResolver({
     }
 
     async function ensureTarget(descriptor: RelatedTargetDescriptor, options: EnsureRelatedTargetOptions = {}) {
-        return resolveTarget(descriptor, options);
+        return projectSnapshot(await resolveTarget(descriptor, options), descriptor);
     }
 
     /** Validate provenance and known local deletions without waiting for network deletion checks. */
@@ -846,8 +848,18 @@ export function createPostHistoryRelatedTargetResolver({
         });
     }
 
-    function getTargetSnapshot(targetEventId: string): PostHistoryRelatedTargetSnapshot | null {
-        return snapshotsByTargetId[targetEventId] ?? null;
+    function projectSnapshot(snapshot: PostHistoryRelatedTargetSnapshot | null, constraints?: RelatedTargetConstraints): PostHistoryRelatedTargetSnapshot | null {
+        if (!requireFullVerification || !constraints || !snapshot?.event) return snapshot;
+        if (!verifyRelatedEvent(snapshot.event, { eventId: snapshot.targetEventId, authorHint: constraints.authorHint ?? null,
+            authorHints: constraints.authorHints, targetKindHint: constraints.targetKindHint, relayHints: [] })
+            || constraints.excludedKinds?.includes(snapshot.event.kind)) {
+            return { ...snapshot, status: 'error', event: null, errorCode: 'invalid_event' };
+        }
+        return snapshot;
+    }
+
+    function getTargetSnapshot(targetEventId: string, constraints?: RelatedTargetConstraints): PostHistoryRelatedTargetSnapshot | null {
+        return projectSnapshot(snapshotsByTargetId[targetEventId] ?? null, constraints);
     }
 
     function getScopeRevision(scopeKey: string): number {

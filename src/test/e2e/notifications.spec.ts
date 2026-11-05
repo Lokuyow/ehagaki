@@ -14,6 +14,25 @@ test.beforeEach(async ({ context, page }) => {
 });
 test.afterEach(() => expect(pageErrors).toEqual([]));
 
+for (const cached of [false, true]) test(`conflicting quote author hints preserve the valid notification preview (cached=${cached})`, async ({ page }) => {
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await page.locator('.notification-btn').waitFor({ state: 'visible' });
+    await page.evaluate(includeInvalid => Reflect.get(window, '__NOTIFICATIONS__').addConflictingQuotes(includeInvalid), !cached);
+    await page.locator('.notification-btn').click();
+    const entries = page.getByRole('dialog').locator('.notification-entry');
+    const valid = entries.filter({ hasText: 'Quote with a valid author hint' });
+    const invalid = entries.filter({ hasText: 'Quote with an invalid author hint' });
+    const target = 'Shared quote with independent author hints';
+    await expect(valid.getByText(target, { exact: true })).toBeVisible();
+    if (cached) await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addConflictingQuotes());
+    await expect(invalid.locator('.post-history-quote-status-error')).toBeVisible();
+    await expect(invalid.getByText(target, { exact: true })).toHaveCount(0);
+    await invalid.getByRole('button', { name: '再試行', exact: true }).click();
+    await expect(valid.getByText(target, { exact: true })).toBeVisible();
+    await expect(invalid.locator('.post-history-quote-status-error')).toBeVisible();
+    await expect(invalid.getByText(target, { exact: true })).toHaveCount(0);
+});
+
 for (const width of [360, 280]) test(`notification fetch failures retry the recent interval at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1&container=1&sync-fail=1');
@@ -82,9 +101,11 @@ test('a saturated notification page retries its pending interval instead of repe
     await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     await page.waitForFunction(() => !history.state?.modalId);
+    const requestCount = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests().length);
     const boundary = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').saturateNextNotificationFetch());
     await page.locator('.notification-btn').click();
     const error = dialog.locator('.notification-load-error');
+    await expect.poll(() => page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests().length)).toBe(requestCount + 1);
     await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false', { timeout: 15_000 });
     await expect(error.getByRole('status')).toBeVisible();
     const before = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests());
@@ -586,7 +607,8 @@ for (const width of [360, 280]) test(`live notifications preserve reading positi
     await expect(anchor).toBeVisible();
     await expect.poll(async () => Math.abs((await anchor.boundingBox())!.y - top)).toBeLessThanOrEqual(1);
     expect(await dialog.locator('.notification-entry').count()).toBeGreaterThan(99);
-    expect(await content.locator('body').evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').requests().length)).toBe(requests);
+    const afterRequests = await content.locator('body').evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').requests());
+    expect(afterRequests.length, JSON.stringify(afterRequests.map((filters: any[]) => filters.map(filter => ({ kinds: filter.kinds, ids: filter.ids?.length }))))).toBe(requests);
     await page.screenshot({ path: info.outputPath(`live-scroll-${width}.png`) });
 });
 

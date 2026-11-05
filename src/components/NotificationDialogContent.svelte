@@ -313,7 +313,7 @@
                 {:else}
                     {#if type === 'reply' && expandedReplyTargets[record.eventId]}
                         {@const parent = replyParentDescriptor(record)}
-                        {@const snapshot = parent ? resolver.getTargetSnapshot(parent.targetEventId) : null}
+                        {@const snapshot = parent ? resolver.getTargetSnapshot(parent.targetEventId, parent) : null}
                         <div class="notification-reply-parent" id={`${replyTargetPrefix}-${record.eventId}`}>
                             {#if snapshot?.status === 'resolved' && snapshot.event}
                                 <NotificationPost event={snapshot.event} profile={snapshot.profile} relayUrls={snapshot.relayHints}

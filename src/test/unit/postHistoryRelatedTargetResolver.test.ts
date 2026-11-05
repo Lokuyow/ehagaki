@@ -184,6 +184,26 @@ function createKnownProfileCoordinator(
 }
 
 describe("createPostHistoryRelatedTargetResolver", () => {
+    it.each([false, true])("isolates a wrong quote author from the shared verified target (wrong first=%s)", async wrongFirst => {
+        const target = finalizeEvent({ kind: 1, content: "shared quote target", tags: [], created_at: 1 }, generateSecretKey());
+        const { resolver, contextFetchService } = createResolver({ requireFullVerification: true });
+        contextFetchService.fetchEventById.mockReturnValue({ promise: Promise.resolve({ event: target, relayUrl: null }), cancel: vi.fn() });
+        const valid = createDescriptor({ targetEventId: target.id, relationKind: "quote", authorHint: target.pubkey });
+        const invalid = { ...valid, sourceEventId: 'e'.repeat(64), authorHint: 'c'.repeat(64) };
+        try {
+            const first = await resolver.ensureTarget(wrongFirst ? invalid : valid);
+            expect(first).toMatchObject({ status: wrongFirst ? "error" : "resolved", event: wrongFirst ? null : target });
+            const second = await resolver.ensureTarget(wrongFirst ? valid : invalid);
+            expect(second).toMatchObject({ status: wrongFirst ? "resolved" : "error", event: wrongFirst ? target : null });
+            expect(resolver.getTargetSnapshot(target.id)).toMatchObject({ status: "resolved", event: target });
+            expect(resolver.getTargetSnapshot(target.id, valid)).toMatchObject({ status: "resolved", event: target });
+            expect(resolver.getTargetSnapshot(target.id, invalid)).toMatchObject({ status: "error", event: null, errorCode: "invalid_event" });
+            expect(await resolver.retryTarget(invalid)).toMatchObject({ status: "error", event: null, errorCode: "invalid_event" });
+            expect(resolver.getTargetSnapshot(target.id)).toMatchObject({ status: "resolved", event: target });
+            expect(contextFetchService.fetchEventById).toHaveBeenCalledOnce();
+        } finally { resolver.reset(); }
+    });
+
     it("classifies an excluded kind as invalid and lets a compatible notification retry the same target", async () => {
         const target = finalizeEvent({ kind: 1, content: "valid repost target", tags: [], created_at: 1 }, generateSecretKey());
         const { resolver, contextFetchService } = createResolver({ requireFullVerification: true });
