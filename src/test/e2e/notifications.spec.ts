@@ -81,25 +81,25 @@ for (const cached of [false, true]) test(`conflicting quote author hints preserv
     await expect(invalid.getByText(target, { exact: true })).toHaveCount(0);
 });
 
-for (const width of [360, 280]) test(`notification fetch failures retry the recent interval at ${width}px`, async ({ page }, info) => {
+for (const width of [360, 280]) test(`notification fetch failures keep the list without a warning and load more retries the recent interval at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1&container=1&sync-fail=1');
     await page.locator('.notification-btn').click();
     const dialog = page.getByRole('dialog');
-    const error = dialog.locator('.notification-load-error');
-    await expect(error.getByRole('status')).toBeVisible();
     await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
-    await expect(dialog.locator('.notification-load-more')).toHaveCount(0);
+    await expect(dialog.locator('.notification-load-error')).toHaveCount(0);
+    await expect(dialog.getByText('通知の読み込みが完了しませんでした。再試行してください。', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: '再試行', exact: true })).toHaveCount(0);
     await expect(dialog.getByText('通知はありません', { exact: true })).toHaveCount(0);
     const before = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests());
     expect(before.at(-1).since).toBeGreaterThan(0);
-    const retry = error.getByRole('button', { name: '再試行', exact: true });
+    const retry = dialog.locator('.notification-load-more');
     await expect(retry).toBeVisible();
     expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath(`notification-fetch-retry-${width}.png`) });
     await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').setNotificationFetchFailure(false));
     await retry.click();
-    await expect(error).toHaveCount(0);
+    await expect(dialog.locator('.notification-load-error')).toHaveCount(0);
     await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
     await expect(dialog.getByText('A mention addressed to you', { exact: true })).toBeVisible();
     const after = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests());
@@ -108,36 +108,38 @@ for (const width of [360, 280]) test(`notification fetch failures retry the rece
     expect(after.some((filter: { since: number }) => filter.since === 0)).toBe(false);
 });
 
-test('notification fetch failures retry the same older interval', async ({ page }) => {
+test('notification fetch failures load more retries the same older interval without a warning', async ({ page }) => {
     await page.goto('post-history-dialog-playwright.html?notifications=1');
     await page.locator('.notification-btn').click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.locator('.notification-load-more')).toBeEnabled();
     await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').setNotificationFetchFailure(true));
     await dialog.locator('.notification-load-more').click();
-    const error = dialog.locator('.notification-load-error');
-    await expect(error.getByRole('status')).toBeVisible();
+    await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
+    await expect(dialog.locator('.notification-load-error')).toHaveCount(0);
     const before = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests());
     expect(before.at(-1).since).toBe(0);
     await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').setNotificationFetchFailure(false));
-    await error.getByRole('button', { name: '再試行', exact: true }).click();
-    await expect(error).toHaveCount(0);
+    await dialog.locator('.notification-load-more').click();
+    await expect(dialog.locator('.notification-load-error')).toHaveCount(0);
     await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
     const after = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests());
     expect(after.at(-1)).toMatchObject({ since: 0, until: before.at(-1).until });
 });
 
-test('notification local read failures offer a working retry without an empty state', async ({ page }) => {
+test('notification local read failures recover with load more without a warning or empty state', async ({ page }) => {
     await page.goto('post-history-dialog-playwright.html?notifications=1&opening=fail');
     await page.locator('.notification-btn').click();
     const dialog = page.getByRole('dialog');
-    const error = dialog.locator('.notification-load-error');
-    await expect(error.getByRole('status')).toBeVisible();
     await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
+    await expect(dialog.locator('.notification-viewport')).toHaveAttribute('aria-busy', 'false');
+    await expect(dialog.locator('.notification-load-error')).toHaveCount(0);
+    await expect(dialog.getByText('通知の読み込みが完了しませんでした。再試行してください。', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: '再試行', exact: true })).toHaveCount(0);
     await expect(dialog.getByText('通知はありません', { exact: true })).toHaveCount(0);
     await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').recoverLocalList());
-    await error.getByRole('button', { name: '再試行', exact: true }).click();
-    await expect(error).toHaveCount(0);
+    await dialog.locator('.notification-load-more').click();
+    await expect(dialog.locator('.notification-load-error')).toHaveCount(0);
     await expect(dialog.getByText('A mention addressed to you', { exact: true })).toBeVisible();
 });
 

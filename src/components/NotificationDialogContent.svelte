@@ -262,12 +262,7 @@
 
     <PostRepostFeedback result={null} saveFailure={repostSaveFailure} pending={repostPending} onRetrySave={onRetryRepostSave} />
     <div class="notification-list" bind:this={listElement} aria-busy={busy}>
-        {#if failed || localReadFailed}
-            <div class="notification-load-error">
-                <p role="status">{$_('notifications.partialFailure')}</p>
-                <Button variant="default" shape="pill" disabled={busy} onClick={() => refresh(retryOlder)}>{$_('notifications.retry')}</Button>
-            </div>
-        {:else if loaded && !busy && !records.length}<p>{$_('notifications.empty')}</p>{/if}
+        {#if loaded && !busy && !failed && !localReadFailed && !records.length}<p>{$_('notifications.empty')}</p>{/if}
         {#each rendering.cards as card (card.key)}
             {@const group = card.group}
             {@const record = group.record}
@@ -376,7 +371,7 @@
         {/each}
         {#if rendering.hasMore}
             {#key rendering.cards.length}<div class="notification-render-sentinel" use:rendering.sentinel aria-hidden="true"></div>{/key}
-        {:else if !failed && !localReadFailed && (localMore || !exhausted)}<Button className="notification-load-more" variant="default" shape="pill" disabled={busy} onClick={() => { if (localMore) limit += 100; else void refresh(true); }}>{$_('notifications.more')}</Button>{/if}
+        {:else if failed || localReadFailed || localMore || !exhausted}<Button className="notification-load-more" variant="default" shape="pill" disabled={busy} onClick={() => { if (failed || localReadFailed) void refresh(retryOlder); else if (localMore) limit += 100; else void refresh(true); }}>{$_('notifications.more')}</Button>{/if}
     </div>
 
 {#if mediaIndex >= 0}
@@ -387,8 +382,6 @@
     .notification-target-placeholder { height: 100px; border-radius: 4px; background: var(--text); opacity: .05; }
     .notification-list { width: 100%; display: grid; min-width: 0; overflow-wrap: anywhere; }
     .notification-render-sentinel { height: 1px; }
-    .notification-load-error { display: grid; justify-items: start; gap: 8px; margin-block: 8px; }
-    .notification-load-error p { margin: 0; }
     .notification-list :global(.notification-load-more) { margin-top: 8px; }
     .notification-entry { display: grid; min-width: 0; gap: 6px; padding-block: 8px; border-bottom: 1px solid var(--border-hr); }
     .notification-entry :global(.notification-post), .notification-entry :global(.post-history-quote-status-card), .notification-target-placeholder { margin-inline-start: 16px; }
