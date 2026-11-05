@@ -233,9 +233,8 @@
         try {
             const result = await current.promise;
             if (!owned()) return;
-            failed = !!result && (result.status !== 'success' || result.maybeIncomplete);
-            // Successful partial pages leave a pending interval for the older-page path.
-            retryOlder = older || (result?.status === 'success' && result.maybeIncomplete);
+            // Successful saturated pages continue through "more", using the saved pending interval.
+            failed = !!result && result.status !== 'success';
             if (result?.maybeIncomplete) exhausted = false;
             if (older) { exhausted = !result || result.notificationsExhausted === true; limit += 100; }
         } catch { if (owned()) failed = true; }

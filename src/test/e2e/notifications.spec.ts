@@ -141,8 +141,9 @@ test('notification local read failures offer a working retry without an empty st
     await expect(dialog.getByText('A mention addressed to you', { exact: true })).toBeVisible();
 });
 
-test('a saturated notification page retries its pending interval instead of repeating the newest page', async ({ page }) => {
-    await page.goto('post-history-dialog-playwright.html?notifications=1');
+for (const width of [360, 280]) test(`a saturated notification page loads more from its pending interval without an error at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('post-history-dialog-playwright.html?notifications=1&container=1');
     await page.locator('.notification-btn').click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.locator('.notification-load-more')).toBeEnabled();
@@ -155,9 +156,20 @@ test('a saturated notification page retries its pending interval instead of repe
     const error = dialog.locator('.notification-load-error');
     await expect.poll(() => page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests().length)).toBe(requestCount + 1);
     await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false', { timeout: 15_000 });
-    await expect(error.getByRole('status')).toBeVisible();
+    await expect(error).toHaveCount(0);
     const before = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests());
-    await error.getByRole('button', { name: '再試行', exact: true }).click();
+    // Finish staged rendering and the saved local page before fetching the pending interval.
+    await expect.poll(() => page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').count())).toBe(104);
+    await renderThrough(dialog, 99);
+    const more = dialog.locator('.notification-load-more');
+    await expect(more).toBeEnabled();
+    await more.click();
+    await renderThrough(dialog, 103);
+    expect(await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests().length)).toBe(before.length);
+    await expect(more).toBeEnabled();
+    expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`notification-saturated-more-${width}.png`) });
+    await more.click();
     await expect(error).toHaveCount(0);
     await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
     const after = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests());
