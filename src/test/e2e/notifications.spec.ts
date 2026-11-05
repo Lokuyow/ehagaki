@@ -168,11 +168,13 @@ test('notification headers omit labels and times and identify reposts and replie
     const mention = dialog.locator('.notification-entry').filter({ hasText: 'A mention addressed to you' });
     const mentionIcon = mention.locator('.notification-mention-icon');
     await expect(mentionIcon).toBeVisible();
+    expect(await mention.evaluate(node => node.querySelector('.notification-post')!.getBoundingClientRect().left - node.getBoundingClientRect().left)).toBeCloseTo(16, 0);
     expect(await mentionIcon.evaluate(node => getComputedStyle(node).maskImage)).toContain('alternate_email_');
     await expect(mention.getByText('メンション', { exact: true })).toBeVisible();
     const quote = dialog.locator('.notification-entry').filter({ hasText: 'Quote notification text' });
     const quoteIcon = quote.locator('.notification-quote-icon');
     await expect(quoteIcon).toBeVisible();
+    expect(await quote.evaluate(node => node.querySelector('.notification-post')!.getBoundingClientRect().left - node.getBoundingClientRect().left)).toBeCloseTo(16, 0);
     expect(await quoteIcon.evaluate(node => getComputedStyle(node).maskImage)).toContain('format_quote_');
     await expect(quote.getByText('引用', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Reply notification text', { exact: true })).toBeVisible();
