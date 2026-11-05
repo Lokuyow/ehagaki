@@ -163,6 +163,7 @@ describe('Playwright config connection values', () => {
                 userAgent: expect.stringMatching(/Android.+Chrome\//),
             });
             expect(config.projects?.[4]?.testMatch).toEqual([
+                '**/notifications.spec.ts',
                 '**/webComponentEmbed.spec.ts',
                 '**/uploadRelaySync.spec.ts',
                 '**/iframeParentLogin.spec.ts', '**/loginLatency.spec.ts',
@@ -178,7 +179,7 @@ describe('Playwright config connection values', () => {
                 '**/footerSettingShortcuts.spec.ts',
                 '**/postEditorSending.spec.ts',
                 '**/postHistoryDialog.spec.ts',
-                '**/historyTabs.spec.ts',
+                '**/historyTabs.spec.ts', '**/notifications.spec.ts',
                 '**/iframeParentLogin.spec.ts', '**/loginLatency.spec.ts',
                 '**/postHistoryFullScan.spec.ts',
                 '**/postHistoryJsonlWorker.spec.ts',

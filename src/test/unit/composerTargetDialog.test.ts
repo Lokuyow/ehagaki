@@ -359,7 +359,7 @@ describe("ComposerTargetDialog", () => {
         expect(preview.getAttribute("data-reaction-event-id")).toBe(outer.id);
         expect(label.querySelector(".favorite-icon.svg-icon")).toBeTruthy();
         expect(label.textContent).toContain("composerTarget.reaction");
-        expect(within(preview.querySelector(":scope > .post-preview-footer .post-preview-footer-right") as HTMLElement)
+        expect(within(preview.querySelector(":scope > .post-preview-footer-container .post-preview-footer .post-preview-footer-right") as HTMLElement)
             .getByRole("button", { name: "アクションを表示" })).toBeTruthy();
         expect(preview.querySelector(".related-channel-row")?.textContent).toContain("Related channel");
         expect(card.textContent).toContain("Related author");
@@ -388,7 +388,7 @@ describe("ComposerTargetDialog", () => {
         const preview = document.querySelector(".post-history-repost") as HTMLElement;
         expect(preview.getAttribute("data-repost-event-id")).toBe(outer.id);
         expect(preview.querySelector(".post-history-repost-label")?.textContent).toContain("repost.entry");
-        expect(within(preview.querySelector(":scope > .post-preview-footer .post-preview-footer-right") as HTMLElement)
+        expect(within(preview.querySelector(":scope > .post-preview-footer-container .post-preview-footer .post-preview-footer-right") as HTMLElement)
             .getByRole("button", { name: "アクションを表示" })).toBeTruthy();
         expect(preview.querySelector(".repost-channel-row")?.textContent).toContain("Related channel");
         const card = preview.querySelector(".post-history-related-card")!;

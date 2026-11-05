@@ -50,6 +50,8 @@ export function ensureCurrentEHagakiDbSchema(
     sharedMediaStoreName = 'sharedMedia',
     upgradeTransaction?: IndexedDbUpgradeTransactionLike | null,
 ): void {
+    createObjectStoreIfMissing(db, 'events', 'id');
+    createObjectStoreIfMissing(db, 'eventStoreMigration', 'id');
     const postHistoryAlreadyExists = db.objectStoreNames.contains('postHistory');
     createObjectStoreIfMissing(db, 'emojiItems', 'id', [
         { name: 'pubkeyHex', keyPath: 'pubkeyHex' },
@@ -221,6 +223,12 @@ export function ensureCurrentEHagakiDbSchema(
         { name: 'parentEventId', keyPath: 'parentEventId' },
         { name: 'updatedAt', keyPath: 'updatedAt' },
     ]);
+    createObjectStoreIfMissing(db, 'notifications', 'id', [
+        { name: 'ownerPubkeyHex', keyPath: 'ownerPubkeyHex' },
+        { name: '[ownerPubkeyHex+createdAt+eventId]', keyPath: ['ownerPubkeyHex', 'createdAt', 'eventId'] },
+        { name: '[ownerPubkeyHex+unread]', keyPath: ['ownerPubkeyHex', 'unread'] },
+    ]);
+    createScopedStore(db, 'notificationSyncState');
     createScopedStore(db, 'legacyImportState', false);
 }
 

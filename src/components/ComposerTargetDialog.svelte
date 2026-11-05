@@ -108,6 +108,7 @@
 
     interface Props {
         show: boolean;
+        initialInput?: string;
         onClose: () => void;
         onApply: (
             action: ComposerTargetAction,
@@ -129,6 +130,7 @@
     let {
         show,
         onClose,
+        initialInput = "",
         onApply,
         inboundInteractionSave = null,
         rxNostr = undefined,
@@ -820,6 +822,11 @@
     function handleFullscreenNavigate(index: number): void {
         fullscreenIndex = index;
     }
+
+    $effect(() => {
+        const seed = initialInput;
+        if (show) untrack(() => inputValue = seed);
+    });
 
     $effect(() => {
         if (!show) {

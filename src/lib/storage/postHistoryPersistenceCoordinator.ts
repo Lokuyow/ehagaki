@@ -1,6 +1,7 @@
 import type { EHagakiDB } from "./ehagakiDb";
 import { advancePostHistoryChildWriteGeneration } from "./postHistoryLocalWriteScope";
 import { DexiePostHistoryRelayCoverageRepository } from "./postHistoryRelayCoverageRepository";
+import { collectUnreferencedEvents } from './eventRepository';
 
 export function postHistoryEvidenceTables(db: EHagakiDB) {
     return [
@@ -36,6 +37,9 @@ export async function clearPostHistoryDisplayForPubkey(
         "rw",
         [
             db.postHistory,
+            db.events,
+            db.notifications,
+            db.postHistoryDeletionRequests,
             db.postHistoryChildInteractions,
             db.sensitivePayloads,
             ...postHistoryEvidenceTables(db),
@@ -65,6 +69,7 @@ export async function clearPostHistoryDisplayForPubkey(
                 .where("pubkeyHex")
                 .equals(pubkeyHex)
                 .delete();
+            await collectUnreferencedEvents(db);
         },
     );
     return { deletedPostHistoryCount, deletedPayloadCount };

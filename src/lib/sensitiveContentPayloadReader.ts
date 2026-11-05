@@ -1,3 +1,4 @@
+import { eventRecords } from "./storage/eventRepository";
 import type { RxNostr } from "rx-nostr";
 import { liveQuery } from "dexie";
 import { preloadCustomEmojiImageWithMeta } from "./customEmoji";
@@ -14,10 +15,10 @@ import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
 import { getPostHistoryLocalRevision } from "./storage/postHistoryLocalWriteScope";
 
 async function isPairDeleted(structure: NostrEvent, payloadId: string): Promise<boolean> {
-    const local = await ehagakiDb.postHistory.get(structure.id);
+    const local = await eventRecords(ehagakiDb, "postHistory").get(structure.id);
     if (local?.deletedAt !== undefined) return true;
     const requests = await ehagakiDb.postHistoryDeletionRequests
-        .where("targetEventId").anyOf([structure.id, payloadId]).toArray();
+        .where("targetEventId").anyOf([structure.id, payloadId]).toArray().then(rows => eventRecords(ehagakiDb, "postHistoryDeletionRequests").hydrate(rows));
     return requests.some((record) => {
         const deletion = record.rawEvent as NostrEvent;
         return isFullyVerifiedEvent(deletion)
@@ -131,7 +132,7 @@ export function createSensitivePayloadBodyLoader(params: {
     loader.loadEmoji = preloadCustomEmojiImageWithMeta;
     loader.observe = (onChange) => {
         const subscription = liveQuery(async (): Promise<SensitiveBodyCacheStatus> => {
-            const record = await ehagakiDb.sensitivePayloads.get(reference.eventId);
+            const [record] = await sensitivePayloadRepository.getByIds([reference.eventId]);
             if (record?.deletedAt !== undefined || await isPairDeleted(structure, reference.eventId)) return "deleted";
             if (!record) return "missing";
             return verifySensitivePayloadLink(structure, record.rawEvent as NostrEvent, reference.eventId)

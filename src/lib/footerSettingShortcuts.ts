@@ -1,4 +1,5 @@
 export const FOOTER_SETTING_SHORTCUTS = [
+    { id: "notifications", labelKey: "notifications.title", icon: "notifications" },
     { id: "language", labelKey: "settingsDialog.language", icon: "language" },
     { id: "image-quality", labelKey: "settingsDialog.image_quality_setting", icon: "image" },
     { id: "video-quality", labelKey: "settingsDialog.video_quality_setting", icon: "video" },
@@ -47,10 +48,17 @@ export function normalizeFooterSettingShortcuts(value: unknown): FooterSettingSh
 }
 
 export function parseFooterSettingShortcuts(raw: string | null): FooterSettingShortcutSlots {
-    if (raw === null) return { ...EMPTY_FOOTER_SETTING_SHORTCUTS };
+    let value: unknown;
     try {
-        return normalizeFooterSettingShortcuts(JSON.parse(raw));
-    } catch {
-        return { ...EMPTY_FOOTER_SETTING_SHORTCUTS };
+        value = raw === null ? null : JSON.parse(raw);
+    } catch { value = null; }
+    const slots = normalizeFooterSettingShortcuts(value);
+    if (typeof value !== 'object' || value === null || !('version' in value) || value.version !== 1) {
+        return { left: slots.left === 'notifications' ? null : slots.left, right: 'notifications' };
     }
+    return slots;
+}
+
+export function serializeFooterSettingShortcuts(slots: FooterSettingShortcutSlots): string {
+    return JSON.stringify({ version: 1, ...slots });
 }

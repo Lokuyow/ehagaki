@@ -1,3 +1,4 @@
+import { eventRecords } from "./eventRepository";
 import {
     comparePostHistoryDeletionRequests,
     isValidDeletionRequestForTarget,
@@ -20,7 +21,7 @@ export async function reconcileSensitivePayloadDeletionForStructure(
     db: EHagakiDB = ehagakiDb,
     now: () => number = Date.now,
 ): Promise<boolean> {
-    const structureRecord = await db.postHistory.get(structureId);
+    const structureRecord = await eventRecords(db, "postHistory").get(structureId);
     if (!structureRecord || !isPostHistoryRawEventConsistent(
         structureRecord.rawEvent,
         structureRecord,
@@ -30,7 +31,7 @@ export async function reconcileSensitivePayloadDeletionForStructure(
     const structure = structureRecord.rawEvent as NostrEvent;
     const reference = getSensitivePayloadReference(structure);
     if (!reference || !isFullyVerifiedEvent(structure)) return false;
-    const payloadRecord = await db.sensitivePayloads.get(reference.eventId);
+    const payloadRecord = await eventRecords(db, "sensitivePayloads").get(reference.eventId);
     if (
         !payloadRecord
         || payloadRecord.deletedAt !== undefined
@@ -42,13 +43,13 @@ export async function reconcileSensitivePayloadDeletionForStructure(
 
     let changed = false;
     await db.transaction(
-        "rw",
+        "rw", db.events,
         db.postHistory,
         db.sensitivePayloads,
         db.postHistoryDeletionRequests,
         async () => {
-        const currentStructureRecord = await db.postHistory.get(structureId);
-        const currentPayload = await db.sensitivePayloads.get(reference.eventId);
+        const currentStructureRecord = await eventRecords(db, "postHistory").get(structureId);
+        const currentPayload = await eventRecords(db, "sensitivePayloads").get(reference.eventId);
         if (
             !currentStructureRecord
             || !isPostHistoryRawEventConsistent(currentStructureRecord.rawEvent, currentStructureRecord)
@@ -68,7 +69,7 @@ export async function reconcileSensitivePayloadDeletionForStructure(
         const requests = await db.postHistoryDeletionRequests
             .where("targetEventId")
             .equals(reference.eventId)
-            .toArray();
+            .toArray().then(rows => eventRecords(db, "postHistoryDeletionRequests").hydrate(rows));
         const applicable = requests.filter((record) => {
             if (
                 record.targetAuthorPubkey !== currentStructureRecord.pubkeyHex
@@ -90,7 +91,7 @@ export async function reconcileSensitivePayloadDeletionForStructure(
         const selected = applicable[0]!;
         for (const request of applicable) {
             if (request.targetVerified !== true) {
-                await db.postHistoryDeletionRequests.put({
+                await eventRecords(db, "postHistoryDeletionRequests").put({
                     ...request,
                     targetVerified: true,
                     updatedAt: now(),
@@ -98,7 +99,7 @@ export async function reconcileSensitivePayloadDeletionForStructure(
                 });
             }
         }
-        await db.sensitivePayloads.put({
+        await eventRecords(db, "sensitivePayloads").put({
             ...currentPayload,
             ...toPostHistoryDeletionState(selected),
             updatedAt: now(),
@@ -119,13 +120,13 @@ export async function reconcileSensitivePayloadDeletionForCandidate(
 ): Promise<void> {
     // Ordinary deletion targets are not payloads. A late payload is retried by
     // putCandidate() after its record has been saved.
-    const payloadRecord = await db.sensitivePayloads.get(payloadId);
+    const payloadRecord = await eventRecords(db, "sensitivePayloads").get(payloadId);
     if (!payloadRecord || payloadRecord.deletedAt !== undefined) return;
 
     const requests = await db.postHistoryDeletionRequests
         .where("targetEventId")
         .equals(payloadId)
-        .toArray();
+        .toArray().then(rows => eventRecords(db, "postHistoryDeletionRequests").hydrate(rows));
     const structureIds = new Set<string>();
     const authors = new Set<string>();
     for (const request of requests) {
@@ -146,7 +147,7 @@ export async function reconcileSensitivePayloadDeletionForCandidate(
     }
 
     for (const author of authors) {
-        const structures = await db.postHistory.where("pubkeyHex").equals(author).toArray();
+        const structures = await db.postHistory.where("pubkeyHex").equals(author).toArray().then(rows => eventRecords(db, "postHistory").hydrate(rows));
         for (const record of structures) {
             if (isPostHistoryRawEventConsistent(record.rawEvent, record)
                 && getSensitivePayloadReference(record.rawEvent as NostrEvent)?.eventId === payloadId) {

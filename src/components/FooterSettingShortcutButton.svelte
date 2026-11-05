@@ -53,6 +53,7 @@
 
     function getCurrentValueLabel(): string {
         switch (shortcutId) {
+            case "notifications": return label;
             case "language":
                 return settingsStore.locale === "ja"
                     ? $_("settingsDialog.footer_shortcut_japanese")!
@@ -86,6 +87,7 @@
 
     function getActiveState(): boolean {
         switch (shortcutId) {
+            case "notifications": return false;
             case "language":
             case "image-quality":
             case "video-quality":

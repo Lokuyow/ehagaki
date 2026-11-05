@@ -1,3 +1,4 @@
+import { importNotificationContent } from './notificationDialogImports';
 import {
     createComponentLoader,
     type ComponentLoadFailureKind,
@@ -13,6 +14,7 @@ type ProfileComponent = typeof import("../components/ProfileComponent.svelte").d
 type SettingsDialogComponent = typeof import("../components/SettingsDialog.svelte").default;
 type WelcomeDialogComponent = typeof import("../components/WelcomeDialog.svelte").default;
 type DraftListDialogComponent = typeof import("../components/DraftListDialog.svelte").default;
+type NotificationDialogComponent = typeof import("../components/NotificationDialog.svelte").default;
 type PostHistoryDialogComponent = typeof import("../components/PostHistoryDialog.svelte").default;
 type ComposerTargetDialogComponent = typeof import("../components/ComposerTargetDialog.svelte").default;
 type CustomEmojiPickerComponent = typeof import("../components/CustomEmojiPicker.svelte").default;
@@ -24,6 +26,8 @@ export type AppComponentKey =
     | "settings"
     | "welcome"
     | "draft-list"
+    | "notifications-content"
+    | "notifications"
     | "post-history"
     | "post-history-posts"
     | "post-history-media"
@@ -43,6 +47,8 @@ export interface AppComponentLoaders {
     loadSettingsDialog(): Promise<void>;
     loadWelcomeDialog(): Promise<void>;
     loadDraftListDialog(): Promise<void>;
+    loadNotificationDialog(): Promise<void>;
+    preloadNotificationDialog(): Promise<void>;
     loadPostHistoryDialog(): Promise<void>;
     preloadPostHistoryDialog(): Promise<void>;
     loadComposerTargetDialog(): Promise<void>;
@@ -58,6 +64,7 @@ export interface AppComponentLoaderTargets {
     setSettingsDialogComponent(component: SettingsDialogComponent): void;
     setWelcomeDialogComponent(component: WelcomeDialogComponent): void;
     setDraftListDialogComponent(component: DraftListDialogComponent): void;
+    setNotificationDialogComponent?(component: NotificationDialogComponent): void;
     setPostHistoryDialogComponent(component: PostHistoryDialogComponent): void;
     setComposerTargetDialogComponent(component: ComposerTargetDialogComponent): void;
     setCustomEmojiPickerComponent(component: CustomEmojiPickerComponent): void;
@@ -111,6 +118,8 @@ export function createAppComponentLoaders(
         () => import("../components/DraftListDialog.svelte"),
         commonOptions,
     );
+    const notificationContent = createComponentLoader("notifications-content", importNotificationContent, commonOptions);
+    const loadNotificationDialogModule = createComponentLoader("notifications", () => import("../components/NotificationDialog.svelte"), commonOptions);
     const loadPostHistoryDialogModule = createComponentLoader(
         "post-history",
         () => import("../components/PostHistoryDialog.svelte"),
@@ -179,6 +188,14 @@ export function createAppComponentLoaders(
                 targets.setDraftListDialogComponent,
                 targets.onLoadFailure,
             );
+        },
+        async preloadNotificationDialog() {
+            const result = await loadNotificationDialogModule.preload();
+            if (result.status === "loaded") targets.setNotificationDialogComponent?.(result.component);
+        },
+        async loadNotificationDialog() {
+            void notificationContent.preload();
+            applyLoadResult(await loadNotificationDialogModule(), component => targets.setNotificationDialogComponent?.(component), targets.onLoadFailure);
         },
         async loadPostHistoryDialog() {
             const shell = loadPostHistoryDialogModule();

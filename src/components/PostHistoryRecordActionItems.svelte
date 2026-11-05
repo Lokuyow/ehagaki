@@ -2,6 +2,7 @@
     import { DropdownMenu } from "bits-ui";
     import { _ } from "svelte-i18n";
     import PostRepostMenuItem from "./PostRepostMenuItem.svelte";
+    import { resolveAppAssetUrl } from "../lib/appAssetUrl";
 
     type ActionOrder = "standard" | "raw-json-first";
 
@@ -52,7 +53,7 @@
         onpointerdown={onCopyPointerDown}
         onSelect={onCopyNevent}
     >
-        <div class="copy-icon svg-icon" aria-hidden="true"></div>
+        <div class="copy-icon svg-icon" style:mask-image={`url("${resolveAppAssetUrl('icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg')}")`} aria-hidden="true"></div>
         <span>
             {copyFailed
                 ? $_("postHistory.copyFailed")
@@ -67,7 +68,7 @@
         class="menu-action-button"
         onSelect={() => onShowRawJson()}
     >
-        <div class="raw-json-icon svg-icon" aria-hidden="true"></div>
+        <div class="raw-json-icon svg-icon" style:mask-image={`url("${resolveAppAssetUrl('icons/data_object_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg')}")`} aria-hidden="true"></div>
         <span>{$_("postHistory.rawJson")}</span>
     </DropdownMenu.Item>
 {/snippet}
@@ -98,7 +99,7 @@
         onpointerdown={onBroadcastPointerDown}
         onSelect={onBroadcastPost}
     >
-        <div class="broadcast-icon svg-icon" aria-hidden="true"></div>
+        <div class="broadcast-icon svg-icon" style:mask-image={`url("${resolveAppAssetUrl('icons/cell_tower_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg')}")`} aria-hidden="true"></div>
         <span>{$_("postHistory.broadcast")}</span>
     </DropdownMenu.Item>
 {/if}
@@ -112,7 +113,7 @@
         disabled={deletionSending}
         onSelect={() => onOpenDeleteConfirm()}
     >
-        <div class="trash-icon svg-icon" aria-hidden="true"></div>
+        <div class="trash-icon svg-icon" style:mask-image={`url("${resolveAppAssetUrl('icons/delete_forever_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg')}")`} aria-hidden="true"></div>
         <span>
             {deletionSending
                 ? $_("postHistory.deleteSending")

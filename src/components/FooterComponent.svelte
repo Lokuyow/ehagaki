@@ -14,6 +14,8 @@
     import { isSameOriginProfilePictureUrl } from "../lib/profilePictureUrlUtils";
     import { footerSettingShortcutsStore } from "../stores/footerSettingShortcutsStore.svelte";
 
+    import { notificationStore } from "../stores/notificationStore.svelte";
+    import { resolveAppAssetUrl } from "../lib/appAssetUrl";
     interface Props {
         isAuthenticated: boolean;
         isAuthInitialized: boolean;
@@ -23,6 +25,7 @@
         onShowLoginDialog: () => void;
         onPreloadPostHistoryDialog?: () => void;
         onOpenPostHistoryDialog: (trigger?: HTMLElement) => void;
+        onOpenNotificationDialog?: (trigger: HTMLElement) => void;
         onOpenSettingsDialog: () => void;
         onOpenLogoutDialog: () => void;
     }
@@ -36,9 +39,19 @@
         onShowLoginDialog,
         onPreloadPostHistoryDialog = undefined,
         onOpenPostHistoryDialog,
+        onOpenNotificationDialog,
         onOpenSettingsDialog,
         onOpenLogoutDialog,
     }: Props = $props();
+
+    let compact = $state(false);
+    function observeFooter(node: HTMLElement) {
+        compact = node.clientWidth > 0 && node.clientWidth <= 336;
+        if (typeof ResizeObserver === "undefined") return;
+        const observer = new ResizeObserver(([entry]) => { compact = entry.contentRect.width <= 320; });
+        observer.observe(node);
+        return () => observer.disconnect();
+    }
 
     // ストアから直接プロフィール情報を取得
     let profileData = $derived(profileDataStore.value);
@@ -86,7 +99,19 @@
     }
 </script>
 
-<div class="footer-bar">
+{#snippet notificationShortcut()}
+    {#if isAuthenticated && onOpenNotificationDialog}
+        <Button variant="default" shape="circle" contentLayout="icon" className="notification-btn footer-setting-shortcut-button"
+            onClick={(event) => onOpenNotificationDialog?.(event.currentTarget as HTMLElement)}
+            ariaLabel={$_(notificationStore.hasUnread ? "notifications.openUnread" : "notifications.open")}>
+            <div class="notification-icon svg-icon" aria-hidden="true"
+                style:mask-image={`url("${resolveAppAssetUrl('icons/notifications_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg')}")`}></div>
+            {#if notificationStore.hasUnread}<span class="notification-badge" aria-hidden="true"></span>{/if}
+        </Button>
+    {/if}
+{/snippet}
+
+<div class="footer-bar" class:compact {@attach observeFooter}>
     {#if isSwitchingAccount}
         <Button
             variant="default"
@@ -167,9 +192,16 @@
 
     <FooterInfoDisplay>
         {#snippet fallback()}
-            <div class="footer-setting-controls">
+            <div class="footer-setting-controls"
+                class:single-shortcut={isAuthenticated && !!footerSettingShortcutsStore.value.left !== !!footerSettingShortcutsStore.value.right}
+                class:left-shortcut={!!footerSettingShortcutsStore.value.left}
+                class:right-shortcut={!!footerSettingShortcutsStore.value.right}>
                 {#if footerSettingShortcutsStore.value.left}
-                    <FooterSettingShortcutButton shortcutId={footerSettingShortcutsStore.value.left} />
+                    {#if footerSettingShortcutsStore.value.left === 'notifications'}
+                        {@render notificationShortcut()}
+                    {:else}
+                        <FooterSettingShortcutButton shortcutId={footerSettingShortcutsStore.value.left} />
+                    {/if}
                 {/if}
                 {#if isAuthenticated}
                     <Button
@@ -187,7 +219,11 @@
                     </Button>
                 {/if}
                 {#if footerSettingShortcutsStore.value.right}
-                    <FooterSettingShortcutButton shortcutId={footerSettingShortcutsStore.value.right} />
+                    {#if footerSettingShortcutsStore.value.right === 'notifications'}
+                        {@render notificationShortcut()}
+                    {:else}
+                        <FooterSettingShortcutButton shortcutId={footerSettingShortcutsStore.value.right} />
+                    {/if}
                 {/if}
             </div>
         {/snippet}
@@ -269,6 +305,23 @@
         min-width: 0;
         height: 100%;
     }
+    .footer-setting-controls.single-shortcut {
+        --shortcut-space: 72px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(44px, min(200px, calc(100% - 2 * var(--shortcut-space) - 12px))) minmax(0, 1fr);
+    }
+    .single-shortcut :global(.post-history-btn.default) {
+        grid-column: 2;
+        grid-row: 1;
+        width: 100%;
+    }
+    .single-shortcut :global(.footer-setting-shortcut-button) {
+        grid-row: 1;
+        justify-self: center;
+    }
+    .single-shortcut.left-shortcut :global(.footer-setting-shortcut-button) { grid-column: 1; }
+    .single-shortcut.right-shortcut :global(.footer-setting-shortcut-button) { grid-column: 3; }
+    .compact .footer-setting-controls.single-shortcut { --shortcut-space: 44px; }
     :global(.post-history-btn.default) {
         background-color: var(--btn-bg);
         max-width: 200px;
@@ -281,6 +334,22 @@
             height: 32px;
         }
     }
+    .compact .footer-setting-controls { gap: 4px; }
+    .compact :global(.footer-setting-controls button.footer-setting-shortcut-button),
+    .compact :global(.footer-setting-controls button.post-history-btn),
+    .compact :global(.footer-setting-controls button.notification-btn) {
+        width: 32px; min-width: 0; flex: 1 1 32px; padding-inline: 0;
+    }
+    .compact .single-shortcut :global(button.post-history-btn) { width: 100%; }
+    .compact :global(.footer-setting-controls .quality-shortcut-label) { display: none; }
+    .compact :global(.footer-setting-controls .svg-icon) { width: 24px; height: 24px; }
+    .compact :global(.footer-setting-controls .paired-icons) { width: 30px; flex-basis: 30px; gap: 2px; }
+    .compact :global(.footer-setting-controls .paired-icons .svg-icon) { width: 14px; height: 20px; }
+    :global(.notification-btn.default) { position: relative; width: 50px; height: 50px; min-width: 50px; flex: 0 0 50px; padding: 0; }
+    .compact :global(.footer-setting-controls button.notification-btn) { width: 44px; height: 44px; min-width: 44px; flex: 0 0 44px; }
+    .notification-icon { width: 24px; height: 24px; }
+    .notification-badge { position: absolute; inset: 8px 8px auto auto; width: 10px; height: 10px;
+        border-radius: 50%; background: var(--theme); pointer-events: none; }
     :global(.settings-btn.has-update) {
         position: relative;
     }

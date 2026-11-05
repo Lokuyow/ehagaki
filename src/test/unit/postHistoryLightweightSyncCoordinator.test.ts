@@ -23,6 +23,36 @@ function harness() {
         resolve: () => resolve(createAuthoredFetchResult(event, { relayFetchCoverage: [{ relayUrl: "wss://relay.example.com/", ranges: [{ since: 10, until: 200 }] }] })) };
 }
 
+describe("scoped lightweight inbound synchronization", () => {
+    it("shares identical requests and keeps the source alive after the starter releases its lease", async () => {
+        let resolve!: (result: ReturnType<typeof createInboundSyncResult>) => void;
+        const cancel = vi.fn();
+        const syncRecent = vi.fn((_runtime: RxNostr, _params: { isActive?: () => boolean }) => ({ promise: new Promise<ReturnType<typeof createInboundSyncResult>>(done => resolve = done), cancel }));
+        const coordinator = new PostHistoryLightweightSyncCoordinator({ postHistoryInboundInteractionsSyncService: { syncRecent } as any });
+        const runtime = {} as RxNostr;
+        const request = { ownerPubkeyHex: owner, reason: 'notification-refresh' as const, since: 10, until: 20 };
+        const first = coordinator.runInbound(runtime, request), joined = coordinator.runInbound(runtime, request);
+        expect(joined.joinedExisting).toBe(true); first.cancel();
+        expect(cancel).not.toHaveBeenCalled();
+        expect(syncRecent.mock.calls[0]?.[1]?.isActive?.()).toBe(true);
+        resolve(createInboundSyncResult());
+        expect((await joined.promise).status).toBe('success');
+        expect((await first.promise).status).toBe('cancelled');
+    });
+    it.each(['runtime', 'config', 'range', 'notification-mode'])("does not share different inbound %s scopes", async difference => {
+        const syncRecent = vi.fn(() => ({ promise: Promise.resolve(createInboundSyncResult()), cancel: vi.fn() }));
+        const coordinator = new PostHistoryLightweightSyncCoordinator({ postHistoryInboundInteractionsSyncService: { syncRecent } as any });
+        const runtime = {} as RxNostr;
+        const request = { ownerPubkeyHex: owner, reason: 'notification-refresh' as const, since: 10, until: 20 };
+        const first = coordinator.runInbound(runtime, request);
+        const next = coordinator.runInbound(difference === 'runtime' ? {} as RxNostr : runtime, { ...request,
+            ...(difference === 'notification-mode' ? { includeNotifications: false } : {}),
+            ...(difference === 'range' ? { until: 19 } : {}),
+            ...(difference === 'config' ? { relayConfig: { 'wss://other.example/': { read: true, write: false } } } : {}) });
+        await Promise.all([first.promise, next.promise]); expect(syncRecent).toHaveBeenCalledTimes(2);
+    });
+});
+
 describe("scoped lightweight authored synchronization", () => {
     it("rejects a catchup page whose history revision changed before transport", async () => {
         const h = harness();

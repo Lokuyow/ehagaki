@@ -1,3 +1,4 @@
+import { eventRecords } from "../../lib/storage/eventRepository";
 import "fake-indexeddb/auto";
 import Dexie, { cmp } from "dexie";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -228,8 +229,9 @@ function createInstrumentedTimelineDb(records: PostHistoryRecord[]) {
 
     return {
         db: {
+            events: { bulkGet: async (ids: string[]) => ids.map(() => undefined) },
             postHistory,
-            transaction: async (_mode: string, _table: unknown, callback: () => unknown) => callback(),
+            transaction: async (...args: any[]) => args.at(-1)(),
         },
         materializedCounts,
         filterEvaluatedCounts,
@@ -1768,23 +1770,23 @@ describe("DexiePostHistoryRepository", () => {
             appliedDeletionCount: 2,
         });
 
-        await expect(db.postHistory.get(unchangedEvent.id)).resolves.toMatchObject({
+        await expect(eventRecords(db, "postHistory").get(unchangedEvent.id)).resolves.toMatchObject({
             deletedAt: 700_000,
             deletionEventId: "a".repeat(64),
         });
-        await expect(db.postHistory.get(updatedEvent.id)).resolves.toMatchObject({
+        await expect(eventRecords(db, "postHistory").get(updatedEvent.id)).resolves.toMatchObject({
             deletedAt: 800_000,
             deletionEventId: "c".repeat(64),
             fetchedRelays: ["wss://updated.example.com/"],
         });
-        await expect(db.postHistory.get(insertedEvent.id)).resolves.toMatchObject({
+        await expect(eventRecords(db, "postHistory").get(insertedEvent.id)).resolves.toMatchObject({
             fetchedRelays: ["wss://dedup.example.com/"],
         });
-        const savedUnmatched = await db.postHistory.get(unmatchedEvent.id);
+        const savedUnmatched = await eventRecords(db, "postHistory").get(unmatchedEvent.id);
         expect(savedUnmatched).toBeDefined();
         expect(savedUnmatched).not.toHaveProperty("deletedAt");
 
-        const deletionRecords = await db.postHistoryDeletionRequests.toArray();
+        const deletionRecords = await db.postHistoryDeletionRequests.toArray().then(rows => eventRecords(db, "postHistoryDeletionRequests").hydrate(rows));
         expect(deletionRecords).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 targetEventId: unchangedEvent.id,
@@ -1870,7 +1872,7 @@ describe("DexiePostHistoryRepository", () => {
             unchangedCount: 0,
             appliedDeletionCount: 1,
         });
-        await expect(db.postHistory.get(event.id)).resolves.toMatchObject({
+        await expect(eventRecords(db, "postHistory").get(event.id)).resolves.toMatchObject({
             deletedAt: 1_700_000_000_000,
             deletionEventId: deletionEvent.id,
         });
@@ -1905,7 +1907,7 @@ describe("DexiePostHistoryRepository", () => {
         });
 
         expect(result.appliedDeletionCount).toBe(1);
-        await expect(db.postHistory.get(event.id)).resolves.toMatchObject({
+        await expect(eventRecords(db, "postHistory").get(event.id)).resolves.toMatchObject({
             deletedAt: 700_000,
             deletionEventId: deletionEvent.id,
         });
@@ -2001,7 +2003,7 @@ describe("DexiePostHistoryRepository", () => {
             unchangedCount: 1,
             appliedDeletionCount: 0,
         });
-        await expect(db.postHistory.get(event.id)).resolves.toMatchObject({
+        await expect(eventRecords(db, "postHistory").get(event.id)).resolves.toMatchObject({
             deletedAt: 123_000,
             deletionEventId: "8".repeat(64),
         });
@@ -2033,7 +2035,7 @@ describe("DexiePostHistoryRepository", () => {
         });
 
         expect(result.appliedDeletionCount).toBe(0);
-        await expect(db.postHistory.get(event.id)).resolves.not.toHaveProperty("deletedAt");
+        await expect(eventRecords(db, "postHistory").get(event.id)).resolves.not.toHaveProperty("deletedAt");
         await expect(db.postHistoryDeletionRequests.toArray()).resolves.toMatchObject([
             { targetVerified: false },
         ]);
@@ -2065,7 +2067,7 @@ describe("DexiePostHistoryRepository", () => {
         });
 
         expect(result.appliedDeletionCount).toBe(0);
-        await expect(db.postHistory.get(event.id)).resolves.not.toHaveProperty("deletedAt");
+        await expect(eventRecords(db, "postHistory").get(event.id)).resolves.not.toHaveProperty("deletedAt");
         await expect(db.postHistoryDeletionRequests.toArray()).resolves.toMatchObject([
             { targetVerified: false },
         ]);
@@ -2096,7 +2098,7 @@ describe("DexiePostHistoryRepository", () => {
 
         bulkPutSpy.mockRestore();
 
-        await expect(db.postHistory.get(event.id)).resolves.toBeUndefined();
+        await expect(eventRecords(db, "postHistory").get(event.id)).resolves.toBeUndefined();
         await expect(db.postHistoryDeletionRequests.toArray()).resolves.toEqual([
             expect.objectContaining({
                 targetEventId: event.id,

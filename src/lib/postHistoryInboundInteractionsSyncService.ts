@@ -1,3 +1,6 @@
+import { NOTIFICATION_KINDS } from './notification';
+import { followNotificationMode, subscribeNotificationMode } from './notificationFeaturePolicy';
+import { notificationRepository, type NotificationRepository } from './storage/notificationRepository';
 import { useRelayQuery, type RelayQuerySummary } from "./relay/query";
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import {
@@ -52,7 +55,10 @@ export type PostHistoryInboundInteractionsSyncReason =
     | "visibility-resume"
     | "manual-refresh"
     | "visible-range-repair"
-    | "realtime";
+    | "realtime"
+    | "notification-initial"
+    | "notification-refresh"
+    | "notification-older";
 
 export type PostHistoryInboundInteractionsSyncStatus =
     | "success"
@@ -61,10 +67,12 @@ export type PostHistoryInboundInteractionsSyncStatus =
     | "cancelled";
 
 export interface PostHistoryInboundInteractionsSyncRequest {
+    includeNotifications?: boolean;
     ownerPubkeyHex: string;
     relayConfig?: RelayConfig | null;
     reason: PostHistoryInboundInteractionsSyncReason;
     since?: number;
+    until?: number;
     limit?: number;
     timeoutMs?: number;
     relayLimit?: number;
@@ -85,6 +93,7 @@ export interface PostHistoryInboundInteractionsSyncResult {
     saturated: boolean;
     maybeIncomplete: boolean;
     newestSeenCreatedAt: number | null;
+    oldestSeenCreatedAt?: number | null;
     changedParentEventIds: string[];
     savedDirectReplyCount: number;
     classifications: Record<PostHistoryInboundInteractionClassification["type"], number>;
@@ -99,6 +108,7 @@ export interface PostHistoryInboundInteractionsSyncServiceDeps {
     postHistoryRepository?: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     postHistoryChildInteractionsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     syncStateRepository?: Pick<PostHistoryInboundInteractionsSyncStateRepository, "get" | "save">;
+    notificationRepository?: Pick<NotificationRepository, "upsert">;
     getChildWriteGeneration?: () => Promise<number>;
     console?: Pick<Console, "warn" | "error">;
     setTimeoutFn?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
@@ -176,6 +186,7 @@ export class PostHistoryInboundInteractionsSyncService {
     private postHistoryRepository: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     private postHistoryChildInteractionsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     private syncStateRepository: Pick<PostHistoryInboundInteractionsSyncStateRepository, "get" | "save">;
+    private notificationRepository: Pick<NotificationRepository, "upsert">;
     private getChildWriteGeneration: () => Promise<number>;
     private console: Pick<Console, "warn" | "error">;
     private setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
@@ -188,6 +199,7 @@ export class PostHistoryInboundInteractionsSyncService {
             deps.postHistoryChildInteractionsRepository ?? postHistoryChildInteractionsRepository;
         this.syncStateRepository =
             deps.syncStateRepository ?? postHistoryInboundInteractionsSyncStateRepository;
+        this.notificationRepository = deps.notificationRepository ?? notificationRepository;
         this.getChildWriteGeneration = deps.getChildWriteGeneration
             ?? (() => getPostHistoryChildWriteGeneration(ehagakiDb));
         this.console = deps.console ?? (typeof globalThis.console !== "undefined"
@@ -202,6 +214,7 @@ export class PostHistoryInboundInteractionsSyncService {
         rxNostr: RxNostr,
         params: PostHistoryInboundInteractionsSyncRequest,
     ): PostHistoryInboundInteractionsSyncTask {
+        if (params.includeNotifications === undefined) return followNotificationMode(mode => this.syncRecent(rxNostr, { ...params, includeNotifications: mode }));
         let cancelled = false;
         let querySummary: RelayQuerySummary | undefined;
         let subscription: SubscriptionLike | undefined;
@@ -221,6 +234,7 @@ export class PostHistoryInboundInteractionsSyncService {
                 ? Math.max(0, Math.trunc(params.since ?? 0))
                 : this.resolveSince(state?.lastSeenCreatedAt ?? null);
             const eventsById = new Map<string, EventAccumulator>();
+            const requestEvents = new Map<string, Map<string, number>>();
             let rawCount = 0;
             let resolved = false;
 
@@ -241,6 +255,8 @@ export class PostHistoryInboundInteractionsSyncService {
                 };
                 resolveTask = safeResolve;
 
+                if (cancelled || params.isActive?.() === false) { safeResolve('cancelled'); return; }
+
                 try {
                     if (typeof (rxNostr as { use?: unknown }).use !== "function") {
                         safeResolve("cancelled");
@@ -256,8 +272,14 @@ export class PostHistoryInboundInteractionsSyncService {
                         source: (req, on) => usePostHistoryRelayEvents(rxNostr, req, on),
                         setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn,
                         onEnd: result => { querySummary = result; } }).subscribe({
-                        next: (packet: { event?: NostrEvent; from?: string }) => {
+                        next: (packet: { event?: NostrEvent; from?: string; subId?: string }) => {
                             rawCount = this.handlePacket(eventsById, rawCount, packet);
+                            if (packet.event) {
+                                // Each backward REQ has its own limit, including #p and #P on one relay.
+                                const key = JSON.stringify([packet.from ?? '', packet.subId ?? '']);
+                                const events = requestEvents.get(key) ?? new Map<string, number>();
+                                events.set(packet.event.id, packet.event.created_at); requestEvents.set(key, events);
+                            }
                         },
                         complete: () => safeResolve(querySummary && !querySummary.complete ? "timeout" : "success"),
                         error: (error: unknown) => {
@@ -267,15 +289,17 @@ export class PostHistoryInboundInteractionsSyncService {
                     });
 
                     rxReq.emit({
-                        kinds: [1, 7, 42, 1111],
+                        kinds: params.includeNotifications ? [...NOTIFICATION_KINDS] : [1, 42, 1111, 7],
                         "#p": [params.ownerPubkeyHex],
                         since,
+                        ...(params.until === undefined ? {} : { until: params.until }),
                         limit,
                     } as never);
                     rxReq.emit({
                         kinds: [1111],
                         "#P": [params.ownerPubkeyHex],
                         since,
+                        ...(params.until === undefined ? {} : { until: params.until }),
                         limit,
                     } as never);
                     rxReq.over();
@@ -297,6 +321,10 @@ export class PostHistoryInboundInteractionsSyncService {
                 });
             }
 
+            const saturatedRequests = [...requestEvents.values()].filter(events => events.size >= limit);
+            const pageBoundary = saturatedRequests.length
+                ? Math.max(...saturatedRequests.map(events => Math.min(...events.values())))
+                : eventsById.size ? Math.min(...[...eventsById.values()].map(item => item.event.created_at)) : null;
             return this.processFetchedEvents({
                 ownerPubkeyHex: params.ownerPubkeyHex,
                 reason: params.reason,
@@ -308,13 +336,17 @@ export class PostHistoryInboundInteractionsSyncService {
                 rawCount,
                 events: toResultEvents(eventsById),
                 reconcileDirectReplyCandidates: params.reconcileDirectReplyCandidates,
+                pageBoundary,
+                saturated: saturatedRequests.length > 0,
                 expectedChildGeneration: await generationReady,
+                includeNotifications: params.includeNotifications,
                 isActive: () => !cancelled && params.isActive?.() !== false,
             });
         })();
 
+        const unsubscribeMode = subscribeNotificationMode(() => { cancelled = true; resolveTask?.('cancelled'); });
         return {
-            promise,
+            promise: promise.finally(unsubscribeMode),
             cancel: () => {
                 cancelled = true;
                 resolveTask?.("cancelled");
@@ -323,6 +355,7 @@ export class PostHistoryInboundInteractionsSyncService {
     }
 
     private async processFetchedEvents(input: {
+        includeNotifications?: boolean;
         ownerPubkeyHex: string;
         reason: PostHistoryInboundInteractionsSyncReason;
         status: PostHistoryInboundInteractionsSyncStatus;
@@ -335,12 +368,16 @@ export class PostHistoryInboundInteractionsSyncService {
         reconcileDirectReplyCandidates?: (
             candidates: PostHistoryInboundDirectReplyCandidate[],
         ) => Promise<PostHistoryInboundReplyReconciliationResult>;
+        pageBoundary: number | null;
+        saturated: boolean;
         expectedChildGeneration: number;
         isActive: () => boolean;
     }): Promise<PostHistoryInboundInteractionsSyncResult> {
         if (!input.isActive()) {
             return this.buildCancelledResultFromFetchedEvents(input);
         }
+        if (input.includeNotifications) await this.notificationRepository.upsert(input.ownerPubkeyHex, input.events, input.isActive);
+        if (!input.isActive()) return this.buildCancelledResultFromFetchedEvents(input);
         const classifications: Record<PostHistoryInboundInteractionClassification["type"], number> = {
             "direct-reply": 0,
             "direct-reply-candidate": 0,
@@ -518,18 +555,18 @@ export class PostHistoryInboundInteractionsSyncService {
         }
         changedParentEventIds = Array.from(changedParentEventIdSet);
 
-        const saturated = input.events.length >= input.limit || input.rawCount >= input.limit;
-        const maybeIncomplete = saturated;
+        const saturated = input.saturated;
+        const maybeIncomplete = saturated || input.status !== "success";
         if (!input.isActive()) {
             return this.buildCancelledResultFromFetchedEvents(input);
         }
 
-        await this.syncStateRepository.save(input.ownerPubkeyHex, {
+        if (!input.reason.startsWith("notification-")) await this.syncStateRepository.save(input.ownerPubkeyHex, {
             lastSyncedAt: input.fetchedAt,
             lastDialogRefreshAt: input.reason === "dialog-open-refresh"
                 ? input.fetchedAt
                 : undefined,
-            lastSeenCreatedAt: saturated
+            lastSeenCreatedAt: saturated || input.status !== "success"
                 ? undefined
                 : newestSeenCreatedAt,
             saturated,
@@ -550,6 +587,7 @@ export class PostHistoryInboundInteractionsSyncService {
             saturated,
             maybeIncomplete,
             newestSeenCreatedAt,
+            oldestSeenCreatedAt: input.pageBoundary,
             changedParentEventIds,
             savedDirectReplyCount,
             classifications,

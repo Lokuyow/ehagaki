@@ -24,6 +24,7 @@ vi.mock("../../lib/postHistoryRawEventVerification", () => ({
 }));
 
 import { PostHistoryInboundInteractionsSyncService } from "../../lib/postHistoryInboundInteractionsSyncService";
+import { configureNotifications } from '../../lib/notificationFeaturePolicy';
 import { PostHistoryInboundReplyReconciliationService } from "../../lib/postHistoryInboundReplyReconciliationService";
 import { EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { DexiePostHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryChildInteractionsRepository";
@@ -109,6 +110,77 @@ function createService(overrides: Record<string, any> = {}) {
 }
 
 describe("PostHistoryInboundInteractionsSyncService", () => {
+    it('replaces an expanded request with history-only filters and ignores delayed notification packets', async () => {
+        const observers: any[] = [], upsert = vi.fn(), unsubscribe = vi.fn();
+        rxNostrMock.use.mockReturnValue({ subscribe: (observer: any) => { observers.push(observer); return { unsubscribe }; } });
+        const { service, postHistoryChildInteractionsRepository } = createService({ notificationRepository: { upsert } });
+        const task = service.syncRecent(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY, reason: 'dialog-open-refresh' });
+        try {
+            await vi.waitFor(() => expect(observers).toHaveLength(1));
+            configureNotifications(false);
+            await vi.waitFor(() => expect(observers).toHaveLength(2));
+            expect(unsubscribe).toHaveBeenCalled();
+            expect(rxNostrMock.emittedFilters.map(filter => filter.kinds)).toEqual([[1, 6, 7, 16, 42, 1111], [1111], [1, 42, 1111, 7], [1111]]);
+            observers[0].next({ event: createEvent({ tags: [['p', OWNER_PUBKEY]] }) });
+            observers[0].complete();
+            observers[1].next({ event: createEvent(), from: 'wss://relay.example/' });
+            observers[1].complete();
+            // This transport fixture has no EOSE; partial history still persists.
+            expect((await task.promise).status).toBe('timeout');
+            expect(upsert).not.toHaveBeenCalled();
+            expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledTimes(1);
+        } finally { task.cancel(); configureNotifications(true); }
+    });
+    it("advances pagination using saturated relays without pinning it to a sparse relay's newer event", async () => {
+        rxNostrMock.use.mockReturnValue({ subscribe: ({ next, complete }: any) => {
+            next({ event: createEvent({ id: '3'.repeat(64), created_at: 300 }), from: 'wss://sparse.example/' });
+            next({ event: createEvent({ id: '4'.repeat(64), created_at: 200 }), from: 'wss://full.example/' });
+            next({ event: createEvent({ id: '5'.repeat(64), created_at: 100 }), from: 'wss://full.example/' });
+            complete(); return { unsubscribe: vi.fn() };
+        } });
+        const { service } = createService({ notificationRepository: { upsert: vi.fn() } });
+        const result = await service.syncRecent(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY,
+            reason: 'notification-older', since: 0, until: 500, limit: 2 }).promise;
+        expect(result).toMatchObject({ saturated: true, maybeIncomplete: true, oldestSeenCreatedAt: 100 });
+    });
+    it.each([false, true])("keeps a sparse #P request from moving a saturated #p boundary on the same relay (overlap=%s)", async overlap => {
+        rxNostrMock.use.mockReturnValue({ subscribe: ({ next, complete }: any) => {
+            next({ event: createEvent({ id: '3'.repeat(64), created_at: 300 }), from: 'wss://relay.example/', subId: 'inbound:0' });
+            next({ event: createEvent({ id: '4'.repeat(64), created_at: 200 }), from: 'wss://relay.example/', subId: 'inbound:0' });
+            next({ event: createEvent({ id: '5'.repeat(64), kind: 1111, created_at: 10,
+                tags: [['P', OWNER_PUBKEY], ...(overlap ? [['p', OWNER_PUBKEY]] : [])] }),
+                from: 'wss://relay.example/', subId: 'inbound:1' });
+            complete(); return { unsubscribe: vi.fn() };
+        } });
+        const { service } = createService({ notificationRepository: { upsert: vi.fn() } });
+        const result = await service.syncRecent(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY,
+            reason: 'notification-older', since: 0, until: 500, limit: 2 }).promise;
+        expect(result).toMatchObject({ saturated: true, maybeIncomplete: true, oldestSeenCreatedAt: 200 });
+    });
+    it("does not infer saturation by adding the results of individually sparse requests", async () => {
+        rxNostrMock.use.mockReturnValue({ subscribe: ({ next, complete }: any) => {
+            next({ event: createEvent({ id: '3'.repeat(64), created_at: 300 }), from: 'wss://relay.example/', subId: 'inbound:0' });
+            next({ event: createEvent({ id: '4'.repeat(64), kind: 1111, created_at: 10, tags: [['P', OWNER_PUBKEY]] }),
+                from: 'wss://relay.example/', subId: 'inbound:1' });
+            complete(); return { unsubscribe: vi.fn() };
+        } });
+        const { service } = createService({ notificationRepository: { upsert: vi.fn() } });
+        const result = await service.syncRecent(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY,
+            reason: 'notification-older', since: 0, until: 500, limit: 2 }).promise;
+        expect(result).toMatchObject({ saturated: false, oldestSeenCreatedAt: 10 });
+    });
+    it("persists mention-only notifications before classifying history relations", async () => {
+        const upsert = vi.fn(async () => undefined);
+        const mention = createEvent({ tags: [["p", OWNER_PUBKEY]], content: "mention only" });
+        rxNostrMock.use.mockReturnValue({ subscribe: ({ next, complete }: any) => {
+            next({ event: mention, from: "wss://relay.example/" }); complete(); return { unsubscribe: vi.fn() };
+        } });
+        const { service, postHistoryChildInteractionsRepository } = createService({ notificationRepository: { upsert } });
+        await service.syncRecent(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY, reason: "notification-initial" }).promise;
+        expect(upsert).toHaveBeenCalledWith(OWNER_PUBKEY, [{ event: mention, relayUrls: ["wss://relay.example/"] }], expect.any(Function));
+        expect(postHistoryChildInteractionsRepository.upsertChildInteractions).not.toHaveBeenCalled();
+    });
+
     beforeEach(() => {
         vi.clearAllMocks();
         rxNostrMock.emittedFilters = [];
@@ -171,7 +243,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         });
         expect(rxNostrMock.emittedFilters).toEqual([
             {
-                kinds: [1, 7, 42, 1111],
+                kinds: [1, 6, 7, 16, 42, 1111],
                 "#p": [OWNER_PUBKEY],
                 since: 1_699_395_200,
                 limit: 150,

@@ -18,6 +18,7 @@ import { createPlainNostrEventSnapshot } from "../../lib/postHistoryEventUtils";
 import { DexiePostHistoryVisibleRangeRepository } from "../../lib/storage/postHistoryVisibleRangeRepository";
 import { DexiePostHistoryImportedRangesRepository } from "../../lib/storage/postHistoryImportedRangesRepository";
 import { DexiePostHistoryRelayCoverageRepository } from "../../lib/storage/postHistoryRelayCoverageRepository";
+import { EventRepository } from "../../lib/storage/eventRepository";
 
 const relay = "wss://relay.example.com/";
 const sign = (kind = 1, content = "original searchable post", tags: string[][] = []) =>
@@ -480,6 +481,53 @@ describe("Repost signing, publishing and save retry", () => {
 });
 
 describe("single related-target resolver for Reposts", () => {
+    it("hydrates only the matching snapshot in a large account history", async () => {
+        const { db, repo } = repository();
+        const target = sign(), event = outer(target);
+        await repo.putPostedEvent({ event, repostTarget: { event: target, relayHints: [relay] } });
+        const projection = (await db.postHistory.get(event.id))!;
+        await db.postHistory.bulkPut(Array.from({ length: 1000 }, (_, index) => {
+            const id = index.toString(16).padStart(64, '0');
+            return { ...projection, id, eventId: id, kind: 1, repostTarget: undefined };
+        }));
+        const bodyReads = vi.spyOn(db.events, 'bulkGet');
+        const getAll = vi.spyOn(repo, 'getAll');
+        try {
+            expect(await repo.findRepostTargetSnapshot(event.pubkey, target.id)).toMatchObject({ rawEvent: target });
+            expect(bodyReads).toHaveBeenCalledOnce();
+            expect(bodyReads.mock.calls[0][0]).toEqual([event.id, target.id]);
+            expect(await repo.findRepostTargetSnapshot(sign().pubkey, target.id)).toBeNull();
+            expect(bodyReads).toHaveBeenCalledOnce();
+            expect(getAll).not.toHaveBeenCalled();
+        } finally { bodyReads.mockRestore(); getAll.mockRestore(); }
+    });
+
+    it.each([false, true])("uses the shared event cache before any repost snapshot scan (deleted=%s)", async deleted => {
+        const { db } = repository();
+        const target = sign();
+        await new EventRepository(db).save(target, [relay], () => true);
+        if (deleted) await db.events.update(target.id, { deletedAt: 200, deletionEventId: 'd'.repeat(64) });
+        const loadRepostTarget = vi.fn(async () => null);
+        const fetchEventById = vi.fn();
+        const getByEventId = vi.fn(async () => null);
+        const runtime = {} as never;
+        const resolver = createPostHistoryRelatedTargetResolver({ getShow: () => true, getRxNostr: () => runtime,
+            getRelayConfig: () => null, eventRepositoryImpl: new EventRepository(db), loadRepostTarget,
+            postHistoryRepositoryImpl: { getByEventId }, contextFetchService: { fetchEventById },
+            deletionRequestsRepositoryImpl: { getDeletedTargets: async () => new Map(), upsertValidDeletionRequests: vi.fn() },
+            deletionFetchService: { fetchDeletionRequests: () => ({ promise: Promise.resolve({ status: 'success' as const,
+                events: [], fetchedAt: 0, relayUrls: [] }), cancel: vi.fn() }) },
+            profileSyncCoordinator: { ensureProfile: () => null, subscribe: () => () => undefined, reset: vi.fn(), dispose: vi.fn() },
+        });
+        try {
+            expect(await resolver.ensureTarget({ targetEventId: target.id, relationKind: 'repost', scopeKey: 'cache', authorHint: target.pubkey }))
+                .toMatchObject({ status: deleted ? 'deleted' : 'resolved', event: deleted ? null : target });
+            expect(loadRepostTarget).not.toHaveBeenCalled();
+            expect(getByEventId).not.toHaveBeenCalled();
+            expect(fetchEventById).not.toHaveBeenCalled();
+        } finally { resolver.reset(); }
+    });
+
     it.each(["author", "kind-hint", "outer-kind"])("reads a shared verified snapshot independently of another outer's %s mismatch", async (mismatch) => {
         const target = sign(42); const key = generateSecretKey();
         const good = createPlainNostrEventSnapshot(finalizeEvent({ kind: 16, created_at: 100, content: "",
@@ -487,17 +535,23 @@ describe("single related-target resolver for Reposts", () => {
         const bad = createPlainNostrEventSnapshot(finalizeEvent({ kind: mismatch === "outer-kind" ? 6 : 16, created_at: 200, content: "",
             tags: [["e", target.id], ["p", mismatch === "author" ? sign().pubkey : target.pubkey],
                 ["k", mismatch === "kind-hint" ? "1111" : "42"]] }, key));
+        const getAll = vi.spyOn(postHistoryRepository, 'getAll');
+        const bodyReads = vi.spyOn(ehagakiDb.events, 'bulkGet');
         try {
             await postHistoryRepository.putPostedEvent({ event: good, repostTarget: { event: target, relayHints: [relay] } });
             await postHistoryRepository.upsertFetchedEvents({ events: [{ event: bad }] });
+            bodyReads.mockClear();
             const candidate = await loadStoredRepostTarget({ sourceEventId: bad.id, targetEventId: target.id,
                 scopeKey: "shared", relationKind: "repost" });
+            expect(getAll).not.toHaveBeenCalled();
+            expect(bodyReads.mock.calls.every(([ids]) => Array.isArray(ids) && ids.length <= 2)).toBe(true);
             expect(candidate && createPlainNostrEventSnapshot(candidate.event)).toEqual(target);
             expect(candidate?.relayHints).toEqual([relay]);
             expect(verifySupportedRepostTarget(candidate?.event, getRepostReference(bad)!)).toBeNull();
             expect(verifySupportedRepostTarget(candidate?.event, getRepostReference(good)!)).not.toBeNull();
             expect((await postHistoryRepository.getByEventId(bad.id))?.repostTarget).toBeUndefined();
         } finally {
+            getAll.mockRestore(); bodyReads.mockRestore();
             await ehagakiDb.postHistory.bulkDelete([good.id, bad.id]);
         }
     });

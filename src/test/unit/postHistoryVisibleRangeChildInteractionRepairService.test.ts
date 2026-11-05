@@ -240,6 +240,24 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
 
     afterEach(() => deactivateHostRelayConfig());
 
+    it("history repair ignores posts by other authors", async () => {
+        const harness = createRxNostrHarness();
+        const service = new PostHistoryVisibleRangeChildInteractionRepairService({
+            childInteractionsRepository: { upsertChildInteractions: vi.fn() } as any,
+            setTimeoutFn: (() => 1) as any, clearTimeoutFn: vi.fn(), now: () => 500,
+        });
+        const id = "1".repeat(64);
+        const task = service.repairVisibleRangeChildInteractions(harness.rxNostr as any, {
+            ownerPubkeyHex: OWNER,
+            visiblePosts: [{ ...createPost(id), pubkeyHex: "b".repeat(64) }],
+            relayConfig: { "wss://relay.example.com": { read: true, write: false } },
+        });
+        harness.emitEose("wss://relay.example.com"); harness.complete();
+        const result = await task.promise;
+        expect(result.targetParentEventIds).toEqual([]);
+        expect(rxNostrMock.emittedFilters).toHaveLength(0);
+    });
+
     it.each(["visible", "related"])("%s repair saves only the trailing target and rejects invalid or mismatched hints", async mode => {
         const targetId = "1".repeat(64), otherId = "2".repeat(64);
         const kind = mode === "related" ? 42 : 1;

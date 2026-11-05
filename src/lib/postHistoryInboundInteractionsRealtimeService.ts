@@ -1,3 +1,5 @@
+import { NOTIFICATION_KINDS } from './notification';
+import { notificationRepository, type NotificationRepository } from './storage/notificationRepository';
 import { createRxForwardReq, type RxNostr } from "rx-nostr";
 import { classifyPostHistoryInboundInteraction } from "./postHistoryInboundInteractionClassifier";
 import { matchesReactionReferenceTarget, parseReactionReference } from "./reactionReference";
@@ -28,6 +30,8 @@ export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_RELAY_LIMIT = 6;
 export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_SINCE_OVERLAP_SECONDS = 60;
 
 export interface PostHistoryInboundInteractionsRealtimeSubscribeRequest {
+    includeNotifications?: boolean;
+    isActive?: () => boolean;
     ownerPubkeyHex: string;
     relayConfig?: RelayConfig | null;
     relayLimit?: number;
@@ -45,6 +49,7 @@ export interface PostHistoryInboundInteractionsRealtimeSubscription {
 export interface PostHistoryInboundInteractionsRealtimeServiceDeps {
     postHistoryRepository?: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     postHistoryChildInteractionsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
+    notificationRepository?: Pick<NotificationRepository, "upsert">;
     getChildWriteGeneration?: () => Promise<number>;
     console?: Pick<Console, "warn" | "error">;
     now?: () => number;
@@ -63,6 +68,7 @@ function normalizeRelayLimit(relayLimit: number | undefined): number {
 export class PostHistoryInboundInteractionsRealtimeService {
     private postHistoryRepository: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     private postHistoryChildInteractionsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
+    private notificationRepository: Pick<NotificationRepository, "upsert">;
     private getChildWriteGeneration: () => Promise<number>;
     private console: Pick<Console, "warn" | "error">;
     private now: () => number;
@@ -71,6 +77,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
         this.postHistoryRepository = deps.postHistoryRepository ?? postHistoryRepository;
         this.postHistoryChildInteractionsRepository =
             deps.postHistoryChildInteractionsRepository ?? postHistoryChildInteractionsRepository;
+        this.notificationRepository = deps.notificationRepository ?? notificationRepository;
         this.getChildWriteGeneration = deps.getChildWriteGeneration
             ?? (() => getPostHistoryChildWriteGeneration(ehagakiDb));
         this.console = deps.console ?? (typeof globalThis.console !== "undefined"
@@ -84,6 +91,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
         params: PostHistoryInboundInteractionsRealtimeSubscribeRequest,
     ): PostHistoryInboundInteractionsRealtimeSubscription {
         let active = true;
+        const isActive = () => active && params.isActive?.() !== false;
         let subscription: SubscriptionLike | undefined;
         let workQueue: Promise<void> = Promise.resolve();
         const relayUrls = resolvePostHistoryRelayUrls(
@@ -111,6 +119,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
                     : { defaultReadRelays: true },
             }).subscribe({
                 next: (packet: { event?: NostrEvent; from?: string }) => {
+                    if (!isActive()) return;
                     // Start the generation read before this packet waits on workQueue.
                     // A history clear that commits after receipt must not become the
                     // generation used to accept this packet.
@@ -119,7 +128,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
                         .then(() => this.processPacket(
                             packet,
                             params,
-                            () => active,
+                            isActive,
                             expectedChildGeneration,
                         ))
                         .catch((error) => {
@@ -131,16 +140,15 @@ export class PostHistoryInboundInteractionsRealtimeService {
                 },
             });
 
-            rxReq.emit({
-                kinds: [1, 7, 42, 1111],
+            rxReq.emit([{
+                kinds: params.includeNotifications === false ? [1, 42, 1111, 7] : [...NOTIFICATION_KINDS],
                 "#p": [params.ownerPubkeyHex],
                 since: subscribedSince,
-            } as never);
-            rxReq.emit({
+            }, {
                 kinds: [1111],
                 "#P": [params.ownerPubkeyHex],
                 since: subscribedSince,
-            } as never);
+            }]);
         } catch (error) {
             active = false;
             subscription?.unsubscribe?.();
@@ -170,6 +178,9 @@ export class PostHistoryInboundInteractionsRealtimeService {
             return;
         }
 
+        if (params.includeNotifications !== false) await this.notificationRepository.upsert(params.ownerPubkeyHex, [{ event,
+            relayUrls: packet.from ? [packet.from] : [] }], isActive);
+        if (!isActive()) return;
         const preliminary = classifyPostHistoryInboundInteraction({
             event,
             ownerPubkeyHex: params.ownerPubkeyHex,

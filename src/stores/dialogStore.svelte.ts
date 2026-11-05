@@ -13,6 +13,7 @@ let showSettings = $state(false);
 let showWelcome = $state(false);
 let showAddAccount = $state(false);
 let showPostHistory = $state(false);
+let showNotifications = $state(false);
 let showComposerTarget = $state(false);
 
 export const showLoginDialogStore = createBooleanStore(() => showLogin, (value) => { showLogin = value; });
@@ -24,6 +25,7 @@ export const showSettingsDialogStore = createBooleanStore(() => showSettings, (v
 export const showWelcomeDialogStore = createBooleanStore(() => showWelcome, (value) => { showWelcome = value; });
 
 export const showPostHistoryDialogStore = createBooleanStore(() => showPostHistory, (value) => { showPostHistory = value; });
+export const showNotificationDialogStore = createBooleanStore(() => showNotifications, (value) => { showNotifications = value; });
 export const showComposerTargetDialogStore = createBooleanStore(() => showComposerTarget, (value) => { showComposerTarget = value; });
 
 let showDraftList = $state(false);
@@ -43,6 +45,7 @@ export function isAnyDialogOpen(): boolean {
         showWelcome ||
         showAddAccount ||
         showPostHistory ||
+        showNotifications ||
         showComposerTarget ||
         showDraftList ||
         showDraftLimitConfirm;

@@ -89,7 +89,7 @@ for (const slots of [
 ]) {
     test(`keeps explicit footer slots usable at the 360px standalone minimum: ${slots.left ?? "empty"}/${slots.right ?? "empty"}`, async ({ page }) => {
         await page.setViewportSize({ width: 360, height: 844 });
-        await page.addInitScript((value) => localStorage.setItem("footerSettingShortcuts", JSON.stringify(value)), slots);
+        await page.addInitScript((value) => localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, ...value })), slots);
         await enterApp(page);
         const footer = page.locator(".footer-bar");
         await expect(footer).toBeVisible();
@@ -147,7 +147,7 @@ for (const slots of [
 test("keeps authenticated left, history, and right controls in order at 360px", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.addInitScript((pubkey) => {
-        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "quote-notification", right: "reply-notification" }));
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, left: "quote-notification", right: "reply-notification" }));
         localStorage.setItem("quoteNotificationEnabled", "false");
         localStorage.setItem("replyNotificationEnabled", "false");
         localStorage.setItem("nostr-accounts", JSON.stringify([{ pubkeyHex: pubkey, type: "nip07", addedAt: 1 }]));
@@ -229,7 +229,7 @@ test("distributes authenticated Footer gaps evenly with variable-width shortcuts
     ];
 
     for (const combination of combinations) {
-        await page.evaluate((slots) => localStorage.setItem("footerSettingShortcuts", JSON.stringify(slots)), {
+        await page.evaluate((slots) => localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, ...slots })), {
             left: combination.left,
             right: combination.right,
         });
@@ -279,7 +279,7 @@ test("distributes authenticated Footer gaps evenly with variable-width shortcuts
 test("keeps unauthenticated Footer shortcut spacing balanced without history", async ({ page }) => {
     await page.setViewportSize({ width: 640, height: 844 });
     await page.addInitScript(() => {
-        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "language", right: "quote-notification" }));
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, left: "language", right: "quote-notification" }));
     });
     await enterApp(page);
     await expect(page.locator(".login-btn")).toBeVisible();
@@ -310,7 +310,7 @@ test("keeps unauthenticated Footer shortcut spacing balanced without history", a
 test("keeps both quality pills and their popovers contained around history at 360px", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.addInitScript((pubkey) => {
-        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "image-quality", right: "video-quality" }));
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, left: "image-quality", right: "video-quality" }));
         localStorage.setItem("imageQualityLevel", "none");
         localStorage.setItem("videoQualityLevel", "none");
         localStorage.setItem("nostr-accounts", JSON.stringify([{ pubkeyHex: pubkey, type: "nip07", addedAt: 1 }]));
@@ -379,7 +379,7 @@ test("keeps both quality pills and their popovers contained around history at 36
 test("keeps language direct and lets image quality be selected from its popover", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.addInitScript(() => {
-        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "language", right: "image-quality" }));
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, left: "language", right: "image-quality" }));
         localStorage.setItem("locale", "ja");
         localStorage.setItem("imageQualityLevel", "none");
     });
@@ -471,7 +471,7 @@ test("keeps language direct and lets image quality be selected from its popover"
 
 test("selects video quality directly and follows the canonical setting", async ({ page }) => {
     await page.addInitScript(() => {
-        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "video-quality", right: null }));
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, left: "video-quality", right: null }));
         localStorage.setItem("videoQualityLevel", "none");
     });
     await enterApp(page);
@@ -492,7 +492,7 @@ test("selects video quality directly and follows the canonical setting", async (
 
 test("opens the quality popover from the keyboard and supports radio arrow navigation", async ({ page }) => {
     await page.addInitScript(() => {
-        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "image-quality", right: null }));
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, left: "image-quality", right: null }));
         localStorage.setItem("imageQualityLevel", "none");
     });
     await enterApp(page);
@@ -528,7 +528,7 @@ test("opens the quality popover from the keyboard and supports radio arrow navig
 
 test("cycles theme mode system to light to dark and back", async ({ page }) => {
     await page.addInitScript(() => {
-        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "theme-mode", right: null }));
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, left: "theme-mode", right: null }));
         localStorage.setItem("themeMode", "system");
     });
     await enterApp(page);
@@ -543,7 +543,7 @@ test("cycles theme mode system to light to dark and back", async ({ page }) => {
 
 test("keeps direct Footer theme changes and SettingsDialog changes on the same canonical store", async ({ page }) => {
     await page.addInitScript(() => {
-        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "theme-mode", right: null }));
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, left: "theme-mode", right: null }));
         localStorage.setItem("themeMode", "system");
     });
     await enterApp(page);
@@ -562,7 +562,7 @@ test("keeps direct Footer theme changes and SettingsDialog changes on the same c
 
 test("Sensitive CW Footer shortcut and SettingsDialog share the canonical setting", async ({ page }) => {
     await page.addInitScript(() => {
-        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "fail-closed-content-warning", right: null }));
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, left: "fail-closed-content-warning", right: null }));
         localStorage.setItem("failClosedContentWarning", "false");
     });
     await enterApp(page);
@@ -595,7 +595,7 @@ test("Sensitive CW Footer shortcut and SettingsDialog share the canonical settin
 
 test("toggles boolean settings, keeps flavor preference latent while mascot is hidden, and reflects selection", async ({ page }) => {
     await page.addInitScript(() => {
-        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "media-free-placement", right: "hide-flavor-text" }));
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, left: "media-free-placement", right: "hide-flavor-text" }));
         localStorage.setItem("mediaFreePlacement", "false");
         localStorage.setItem("showMascot", "true");
         localStorage.setItem("showFlavorText", "true");
@@ -716,7 +716,7 @@ test("toggles quote, reply, and client-tag preferences with icon and aria-presse
 
 test("shows natural localized FloatingMessages for both states of every boolean shortcut", async ({ page }) => {
     await page.addInitScript(() => {
-        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: null, right: "language" }));
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, left: null, right: "language" }));
         localStorage.setItem("mediaFreePlacement", "false");
         localStorage.setItem("showMascot", "true");
         localStorage.setItem("showFlavorText", "true");
@@ -776,7 +776,7 @@ test("shows natural localized FloatingMessages for both states of every boolean 
 test("updates boolean, theme, and quality presentation icons and compact labels", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.addInitScript(() => {
-        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "media-free-placement", right: "theme-mode" }));
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, left: "media-free-placement", right: "theme-mode" }));
         localStorage.setItem("themeMode", "system");
         localStorage.setItem("mediaFreePlacement", "false");
         localStorage.setItem("imageQualityLevel", "none");
@@ -813,7 +813,7 @@ test("updates boolean, theme, and quality presentation icons and compact labels"
 
 test("keyboard Enter and Space each directly change a shortcut once without opening an overlay", async ({ page }) => {
     await page.addInitScript(() => {
-        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "language", right: null }));
+        localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, left: "language", right: null }));
         localStorage.setItem("locale", "ja");
     });
     await enterApp(page);
@@ -827,7 +827,7 @@ test("keyboard Enter and Space each directly change a shortcut once without open
 });
 
 test("shows only the mascot outer contour when hidden", async ({ page }) => {
-    await page.addInitScript(() => localStorage.setItem("footerSettingShortcuts", JSON.stringify({ left: "hide-mascot", right: null })));
+    await page.addInitScript(() => localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, left: "hide-mascot", right: null })));
     await enterApp(page);
 
     const footerMascot = page.locator(".footer-setting-shortcut-button img.mascot-icon");
@@ -873,7 +873,7 @@ test("shows only the mascot outer contour when hidden", async ({ page }) => {
 });
 
 test("SettingsDialog edits both slots, disables only a duplicate in the opposite select, and syncs the Footer", async ({ page }) => {
-    await page.addInitScript(() => localStorage.setItem("footerSettingShortcuts", JSON.stringify(emptySlots)));
+    await page.addInitScript((slots) => localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, ...slots })), emptySlots);
     await enterApp(page);
     await page.getByRole("button", { name: "設定" }).click();
     await openSettingsCategoryId(page, "display");
@@ -883,14 +883,14 @@ test("SettingsDialog edits both slots, disables only a duplicate in the opposite
     await expect(right.locator('option[value="language"]')).toHaveAttribute("disabled", "");
     await right.selectOption("image-quality");
     await expect.poll(() => page.evaluate(() => localStorage.getItem("footerSettingShortcuts")))
-        .toBe('{"left":"language","right":"image-quality"}');
+        .toBe('{"version":1,"left":"language","right":"image-quality"}');
     await page.getByRole("button", { name: "閉じる" }).click();
     await expect(page.locator(".footer-setting-shortcut-button")).toHaveCount(2);
     await expect(page.locator(".footer-setting-shortcut-button").first()).toHaveAttribute("aria-label", "言語: 日本語");
 });
 
 test("aligns Footer shortcut slots with its icon heading without narrow dialog overflow", async ({ page }) => {
-    await page.addInitScript(() => localStorage.setItem("footerSettingShortcuts", JSON.stringify(emptySlots)));
+    await page.addInitScript((slots) => localStorage.setItem("footerSettingShortcuts", JSON.stringify({ version: 1, ...slots })), emptySlots);
     await enterApp(page);
 
     for (const width of [360, 320]) {

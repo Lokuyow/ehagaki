@@ -36,7 +36,7 @@ export interface PostHistoryDialogApplyControllerDependencies {
 
 export interface PostHistoryDialogApplyController {
     applyReply(post: PostHistoryRecord): Promise<boolean>;
-    applyQuote(post: PostHistoryRecord): void;
+    applyQuote(post: PostHistoryRecord): boolean;
 }
 
 const FALLBACK_LOGGER: Pick<Console, 'error'> = console;
@@ -65,7 +65,7 @@ export function createPostHistoryDialogApplyController(
             );
         },
         applyQuote(post) {
-            applyController.applyQuote(
+            return applyController.applyQuote(
                 buildPostHistoryComposerEventTarget(post),
             );
         },

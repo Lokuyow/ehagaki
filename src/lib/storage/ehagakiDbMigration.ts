@@ -1,3 +1,4 @@
+import { migrateEventStore } from "./eventStoreMigration";
 import { ensureCurrentEHagakiDbSchema } from "../swIndexedDbSchema";
 import {
     EHAGAKI_DB_NAME,
@@ -5,12 +6,6 @@ import {
     NEXT_EHAGAKI_DB_NATIVE_VERSION,
 } from "./ehagakiDbConstants";
 import { isCopiedLegacyImportMarker } from "./legacyImportMarkers";
-
-const DISPLAY_HISTORY_STORES = [
-    "postHistory",
-    "sensitivePayloads",
-    "postHistoryChildInteractions",
-] as const;
 
 export interface LegacyImportMarker {
     id: string;
@@ -25,21 +20,12 @@ export function migrateEhagakiIndexedDb(
     legacyMarkers: readonly LegacyImportMarker[] = [],
 ): void {
     const hadMeta = db.objectStoreNames.contains("meta");
-    const wipeDisplayHistory = oldVersion !== 0 && hadMeta && !!transaction;
-    // Drop the old history stores before creating indexes. Clearing every row
-    // and indexing that data freezes the upgrade for a large profile.
-    if (wipeDisplayHistory) {
-        for (const name of DISPLAY_HISTORY_STORES) {
-            if (db.objectStoreNames.contains(name)) {
-                db.deleteObjectStore(name);
-            }
-        }
-    }
+    const copyLegacyMarkers = oldVersion !== 0 && hadMeta && !!transaction;
     ensureCurrentEHagakiDbSchema(db, "sharedMedia", transaction);
     // Version 0 creates the final schema. Version 1 already has that schema and
-    // only needs the later open(170) to bump the version. Neither path wipes
+    // only needs the later open(190) to bump the version. Neither path wipes
     // display history or copies markers.
-    if (!wipeDisplayHistory || !transaction) {
+    if (!copyLegacyMarkers || !transaction) {
         return;
     }
 
@@ -94,7 +80,9 @@ export function openEhagakiIndexedDb({
         };
         request.onsuccess = () => {
             if (wasBlocked) onBlockedResolved?.();
-            resolve(request.result);
+            const db = request.result;
+            db.onversionchange = () => db.close();
+            resolve(db);
         };
     });
 }
@@ -110,10 +98,14 @@ export async function upgradeEhagakiDatabase(
     const databaseName = hooks.databaseName ?? EHAGAKI_DB_NAME;
     const reported = await readReportedNativeVersion(indexedDb, databaseName);
     if (reported !== null && !needsNativeUpgrade(reported)) {
+        const current = await openEhagakiIndexedDb({ indexedDb, version: null, databaseName });
+        try { await migrateEventStore(current); } finally { current.close(); }
         return;
     }
     const snapshot = await readDatabaseSnapshot(indexedDb, databaseName, hooks);
     if (!needsNativeUpgrade(snapshot.version)) {
+        const current = await openEhagakiIndexedDb({ indexedDb, version: null, databaseName });
+        try { await migrateEventStore(current); } finally { current.close(); }
         return;
     }
     const db = await openEhagakiIndexedDb({
@@ -124,12 +116,12 @@ export async function upgradeEhagakiDatabase(
         onBlocked: hooks.onBlocked,
         onBlockedResolved: hooks.onBlockedResolved,
     });
-    db.close();
+    try { await migrateEventStore(db); } finally { db.close(); }
 }
 
 function needsNativeUpgrade(version: number): boolean {
-    // Dexie keeps schema patches at 171, 172, … inside logical version 17.
-    // Opening those databases again at exactly 170 raises VersionError.
+    // Dexie keeps schema patches at 191, 192, … inside logical version 19.
+    // Opening those databases again at exactly 190 raises VersionError.
     if (version >= NEXT_EHAGAKI_DB_NATIVE_VERSION) {
         throw new DOMException("The database is newer than this page.", "VersionError");
     }

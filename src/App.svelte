@@ -30,6 +30,7 @@
     EMBED_STORAGE_KEYS,
   } from "./lib/embedStorageService";
   import HeaderComponent from "./components/HeaderComponent.svelte";
+  import { useNotifications } from "./lib/hooks/useNotifications.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
   import ReasonInput from "./components/ReasonInput.svelte";
@@ -49,6 +50,7 @@
     showSettingsDialogStore,
     showWelcomeDialogStore,
     showPostHistoryDialogStore,
+    showNotificationDialogStore,
     showComposerTargetDialogStore,
     showDraftListDialogStore,
     showDraftLimitConfirmStore,
@@ -184,6 +186,7 @@
     createComposerTargetApplyController,
     type ComposerEventTarget,
   } from "./lib/composerTargetApplyController";
+  import { buildPostHistoryNevent } from "./lib/postHistoryNevent";
   import type { ComposerTargetAction } from "./lib/composerTargetUtils";
   import type { PostHistoryRecord } from "./lib/storage/ehagakiDb";
   import {
@@ -296,6 +299,9 @@
   let LoginDialogComponent: LoginDialogComponent | null = $state(null);
   let ProfileComponent: ProfileComponent | null = $state(null);
   let SettingsDialogComponent: SettingsDialogComponent | null = $state(null);
+  let NotificationDialogComponent = $state<typeof import("./components/NotificationDialog.svelte").default | null>(null);
+  let notificationDialogRef: { invalidateSession(): void } | null = $state(null);
+  let notificationReturnFocus = $state<HTMLElement | null>(null);
   let historyReturnFocus: HTMLElement | null = $state(null);
   let postHistoryDialogRef: { invalidateSession(): void } | null = $state(null);
   let WelcomeDialogComponent: WelcomeDialogComponent | null = $state(null);
@@ -328,6 +334,9 @@
         break;
       case "draft-list":
         showDraftListDialogStore.set(false);
+        break;
+      case "notifications":
+        showNotificationDialogStore.set(false);
         break;
       case "post-history-posts":
       case "post-history-media":
@@ -406,6 +415,8 @@
     loadWelcomeDialog,
     loadDraftListDialog,
     loadPostHistoryDialog,
+    loadNotificationDialog,
+    preloadNotificationDialog,
     preloadPostHistoryDialog,
     loadComposerTargetDialog,
     loadCustomEmojiPicker,
@@ -430,6 +441,7 @@
     setDraftListDialogComponent: (component) => {
       DraftListDialogComponent = component;
     },
+    setNotificationDialogComponent: (component) => { NotificationDialogComponent = component; },
     setPostHistoryDialogComponent: (component) => {
       PostHistoryDialogComponent = component;
     },
@@ -807,9 +819,15 @@
   const draftListDialog = createDialogVisibilityHandlers(
     showDraftListDialogStore,
   );
+  $effect(() => {
+    if (isAuthenticated && footerSettingShortcutsStore.notificationsEnabled && !isSwitchingAccount && !isLoggingOut) void preloadNotificationDialog();
+  });
+  const notificationDialog = createDialogVisibilityHandlers(showNotificationDialogStore);
   const postHistoryDialog = createDialogVisibilityHandlers(
     showPostHistoryDialogStore,
   );
+  let notificationTargetInput = $state("");
+  $effect(() => { if (!showComposerTargetDialogStore.value) notificationTargetInput = ""; });
   const composerTargetDialog = createDialogVisibilityHandlers(
     showComposerTargetDialogStore,
   );
@@ -843,12 +861,16 @@
     handlePostAuth,
     resetUploadDisplayState,
     invalidatePendingAccountScopedAsyncState: () => {
+      notificationDialogRef?.invalidateSession();
+      showNotificationDialogStore.set(false);
       postHistoryDialogRef?.invalidateSession();
       customEmojiStore.invalidatePendingLoads();
       uploadDestinationStore.invalidatePendingOperations();
       invalidatePendingRelayConfigOperations();
     },
     clearAccountScopedAsyncState: () => {
+      notificationDialogRef?.invalidateSession();
+      showNotificationDialogStore.set(false);
       postHistoryDialogRef?.invalidateSession();
       customEmojiStore.reset();
       uploadDestinationStore.reset();
@@ -902,12 +924,16 @@
     },
     resetUploadDisplayState,
     invalidatePendingAccountScopedAsyncState: () => {
+      notificationDialogRef?.invalidateSession();
+      showNotificationDialogStore.set(false);
       postHistoryDialogRef?.invalidateSession();
       customEmojiStore.invalidatePendingLoads();
       uploadDestinationStore.invalidatePendingOperations();
       invalidatePendingRelayConfigOperations();
     },
     clearAccountScopedAsyncState: () => {
+      notificationDialogRef?.invalidateSession();
+      showNotificationDialogStore.set(false);
       postHistoryDialogRef?.invalidateSession();
       customEmojiStore.reset();
       uploadDestinationStore.reset();
@@ -1018,7 +1044,28 @@
       onSavedInboundInteractions: notifyInboundInteractionsSaved,
     });
 
+  useNotifications({
+    getEnabled: () => footerSettingShortcutsStore.notificationsEnabled,
+    getOwner: () => isAuthenticated && !isSwitchingAccount && !isLoggingOut ? authState.value?.pubkey ?? null : null,
+    getRxNostr: () => rxNostr,
+    getRelayConfig: () => relayConfigStore.value,
+    reconcileDirectReplyCandidates: postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates,
+  });
+
+  $effect(() => {
+    if (!footerSettingShortcutsStore.notificationsEnabled) {
+      notificationDialogRef?.invalidateSession();
+      showNotificationDialogStore.set(false);
+      return;
+    }
+    if (showNotificationDialogStore.value) {
+      if (blockUnloadedComponentWhileStale(NotificationDialogComponent, () => showNotificationDialogStore.set(false))) return;
+      void loadNotificationDialog();
+    }
+  });
+
   usePostHistoryInboundInteractionsRealtime({
+    getNotificationsEnabled: () => footerSettingShortcutsStore.notificationsEnabled,
     getIsAuthenticated: () => isAuthenticated,
     getPubkeyHex: () => authState.value?.pubkey ?? null,
     getRxNostr: () => rxNostr,
@@ -2027,8 +2074,8 @@
     return postHistoryDialogApplyController.applyReply(post);
   }
 
-  function handlePostHistoryQuote(post: PostHistoryRecord): void {
-    postHistoryDialogApplyController.applyQuote(post);
+  function handlePostHistoryQuote(post: PostHistoryRecord): boolean {
+    return postHistoryDialogApplyController.applyQuote(post);
   }
 
   async function handlePostHistoryReaction(post: PostHistoryRecord): Promise<boolean> {
@@ -2339,6 +2386,7 @@
           ($swNeedRefresh || staleAssetReloadRequired)}
         onShowLoginDialog={loginDialog.open}
         onPreloadPostHistoryDialog={handlePreloadPostHistoryDialog}
+        onOpenNotificationDialog={(trigger) => { if (!footerSettingShortcutsStore.notificationsEnabled) return; notificationReturnFocus = trigger; notificationDialog.open(); }}
         onOpenPostHistoryDialog={(trigger) => { historyReturnFocus = trigger ?? null; postHistoryDialog.open(); }}
         onOpenSettingsDialog={handleOpenSettingsFromFooter}
         onOpenLogoutDialog={logoutDialog.open}
@@ -2492,6 +2540,17 @@
           pubkeyHex={authState.value?.pubkey ?? null}
         />
       {/if}
+      {#if showNotificationDialogStore.value && NotificationDialogComponent}
+        <NotificationDialogComponent bind:this={notificationDialogRef} show={true}
+          pubkeyHex={authState.value?.pubkey ?? null} {rxNostr} relayConfig={relayConfigStore.value}
+          returnFocus={notificationReturnFocus} onClose={notificationDialog.close}
+          onLoadFailure={handleAppComponentLoadFailure} isStaleAssetReloadRequired={() => staleAssetReloadRequired}
+          onReplyPost={handlePostHistoryReply} onReactionPost={handlePostHistoryReaction}
+          onOpenTarget={(post) => { notificationTargetInput = buildPostHistoryNevent(post, []); composerTargetDialog.open(); }}
+          onQuotePost={handlePostHistoryQuote} onRepostPost={repostOperation.execute} repostPending={repostOperation.pending}
+          repostSaveFailure={repostOperation.saveFailure} onRetryRepostSave={repostOperation.retrySave}
+          reconcileDirectReplyCandidates={postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates} />
+      {/if}
       {#if showPostHistoryDialogStore.value && PostHistoryDialogComponent}
         <PostHistoryDialogComponent bind:this={postHistoryDialogRef}
           returnFocus={historyReturnFocus} onLoadFailure={handleAppComponentLoadFailure} isStaleAssetReloadRequired={() => staleAssetReloadRequired}
@@ -2518,6 +2577,7 @@
           onRepostPost={repostOperation.execute} repostPending={repostOperation.pending}
           repostSaveFailure={repostOperation.saveFailure}
           onRetryRepostSave={repostOperation.retrySave}
+          initialInput={notificationTargetInput}
           show={showComposerTargetDialogStore.value}
           onClose={composerTargetDialog.close}
           onApply={handleComposerTargetApply}

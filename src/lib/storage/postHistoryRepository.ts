@@ -1,3 +1,4 @@
+import { eventRecords } from "./eventRepository";
 import Dexie, { cmp } from "dexie";
 import { isPostHistoryAuthoredKind } from "../postHistoryKinds";
 import { createRepostTargetSnapshot, getRepostReference, isRepostOuterKind } from "../postRepostUtils";
@@ -32,6 +33,7 @@ import type {
     PostHistoryDeletionRequestRecord,
     PostHistoryRecord,
     PostHistoryMediaRecord,
+    PostHistoryRepostTarget,
     EHagakiDB,
 } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
@@ -151,6 +153,7 @@ export interface PostHistorySearchScanChunk {
 
 export interface PostHistoryRepository {
     getByEventId(eventId: string): Promise<PostHistoryRecord | null>;
+    findRepostTargetSnapshot(pubkeyHex: string, targetEventId: string): Promise<PostHistoryRepostTarget | null>;
     getExistingEventIdsForPubkey(input: {
         pubkeyHex: string | null | undefined;
         eventIds: string[];
@@ -257,14 +260,14 @@ export function comparePostHistoryTimelineOrder(
 }
 
 function isOlderThanTimelineCursor(
-    record: PostHistoryRecord,
+    record: PostHistoryTimelineCursor,
     cursor: PostHistoryTimelineCursor,
 ): boolean {
     return comparePostHistoryTimelineOrder(record, cursor) > 0;
 }
 
 function isNewerThanTimelineCursor(
-    record: PostHistoryRecord,
+    record: PostHistoryTimelineCursor,
     cursor: PostHistoryTimelineCursor,
 ): boolean {
     return comparePostHistoryTimelineOrder(record, cursor) < 0;
@@ -293,12 +296,12 @@ function getTimelineBounds(pubkeyHex: string): {
     };
 }
 
-function isSupportedPost(record: PostHistoryRecord): boolean {
+function isSupportedPost(record: Pick<PostHistoryRecord, "kind">): boolean {
     return isPostHistoryAuthoredKind(record.kind);
 }
 
 function matchesVisibleUntil(
-    record: PostHistoryRecord,
+    record: Pick<PostHistoryRecord, "kind" | "createdAt">,
     visibleUntil: number | null,
 ): boolean {
     return isSupportedPost(record) && (visibleUntil === null || record.createdAt >= visibleUntil);
@@ -384,7 +387,7 @@ function normalizeFetchedEventItems(
 }
 
 async function getDeletionRequestsByTargetEventIds(
-    db: Pick<EHagakiDB, "postHistoryDeletionRequests">,
+    db: EHagakiDB,
     targetEventIds: string[],
 ): Promise<Map<string, PostHistoryDeletionRequestRecord[]>> {
     if (targetEventIds.length === 0) {
@@ -394,7 +397,7 @@ async function getDeletionRequestsByTargetEventIds(
     const records = await db.postHistoryDeletionRequests
         .where("targetEventId")
         .anyOf(targetEventIds)
-        .toArray();
+        .toArray().then(rows => eventRecords(db, "postHistoryDeletionRequests").hydrate(rows));
     const grouped = new Map<string, PostHistoryDeletionRequestRecord[]>();
 
     for (const record of records) {
@@ -464,8 +467,19 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     async getByEventId(eventId: string): Promise<PostHistoryRecord | null> {
         if (!eventId) return null;
 
-        const record = await this.db.postHistory.get(eventId);
+        const record = await eventRecords(this.db, "postHistory").get(eventId);
         return record && isSupportedPost(record) ? record : null;
+    }
+
+    async findRepostTargetSnapshot(pubkeyHex: string, targetEventId: string): Promise<PostHistoryRepostTarget | null> {
+        if (!pubkeyHex || !targetEventId) return null;
+        const row = await this.db.postHistory.where('pubkeyHex').equals(pubkeyHex).filter(record => {
+            const target = record.repostTarget as { eventId?: string; rawEvent?: NostrEvent } | undefined;
+            return isRepostOuterKind(record.kind) && (target?.eventId ?? target?.rawEvent?.id) === targetEventId;
+        }).first();
+        if (!row) return null;
+        const [record] = await eventRecords(this.db, 'postHistory').hydrate([row]);
+        return record.repostTarget ?? null;
     }
 
     async getExistingEventIdsForPubkey(input: {
@@ -477,7 +491,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         }
 
         const eventIds = Array.from(new Set(input.eventIds.filter((eventId) => !!eventId)));
-        const records = await this.db.postHistory.bulkGet(eventIds);
+        const records = await eventRecords(this.db, "postHistory").bulkGet(eventIds);
 
         return records
             .filter((record): record is PostHistoryRecord =>
@@ -493,7 +507,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .where("[pubkeyHex+postedAt]")
             .between([options.pubkeyHex, Dexie.minKey], [options.pubkeyHex, Dexie.maxKey])
             .reverse()
-            .toArray();
+            .toArray().then(rows => eventRecords(this.db, "postHistory").hydrate(rows));
 
         return sortPostHistoryRecords(records.filter(isSupportedPost));
     }
@@ -515,7 +529,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .between(bounds.lower, upper, true, !options.cursor)
             .reverse()
             .limit(limit)
-            .toArray();
+            .toArray().then(rows => eventRecords(this.db, "postHistory").hydrate(rows));
         const last = records.at(-1);
 
         return {
@@ -541,7 +555,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .filter(isSupportedPost)
             .offset((page - 1) * pageSize)
             .limit(pageSize)
-            .toArray();
+            .toArray().then(rows => eventRecords(this.db, "postHistory").hydrate(rows));
     }
 
     async getLatestVisibleChunk(
@@ -559,7 +573,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .reverse()
             .filter((record) => matchesVisibleUntil(record, visibleUntil))
             .limit(limit)
-            .toArray();
+            .toArray().then(rows => eventRecords(this.db, "postHistory").hydrate(rows));
     }
 
     async getOlderVisibleChunk(
@@ -578,7 +592,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .reverse()
             .filter((record) => matchesVisibleUntil(record, visibleUntil))
             .limit(limit)
-            .toArray();
+            .toArray().then(rows => eventRecords(this.db, "postHistory").hydrate(rows));
     }
 
     async hasOlderVisiblePosts(options: PostHistoryOlderVisiblePostsOptions): Promise<boolean> {
@@ -622,7 +636,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .between(cursorKey, bounds.upper, false, true)
             .filter((record) => matchesVisibleUntil(record, visibleUntil))
             .limit(limit)
-            .toArray();
+            .toArray().then(rows => eventRecords(this.db, "postHistory").hydrate(rows));
 
         return records.reverse();
     }
@@ -645,7 +659,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                     [options.pubkeyHex, visibleUntil],
                     [options.pubkeyHex, Dexie.maxKey],
                 )
-                .toArray();
+                .toArray().then(rows => eventRecords(this.db, "postHistory").hydrate(rows));
 
             return visibleRecords.filter(isSupportedPost)
                 .sort(comparePostHistoryTimelineOrder)
@@ -657,7 +671,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .between(bounds.lower, bounds.upper)
             .filter(isSupportedPost)
             .limit(limit)
-            .toArray();
+            .toArray().then(rows => eventRecords(this.db, "postHistory").hydrate(rows));
 
         return oldestRecords.reverse();
     }
@@ -675,7 +689,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             : null;
         const bounds = getTimelineBounds(options.pubkeyHex);
 
-        return this.db.transaction("r", this.db.postHistory, async () => {
+        return this.db.transaction("r", this.db.events, this.db.postHistory, async () => {
             const anchor = await this.db.postHistory
                 .where(POST_HISTORY_TIMELINE_INDEX)
                 .between(bounds.lower, bounds.upper)
@@ -684,7 +698,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                     matchesVisibleUntil(record, visibleUntil)
                     && record.createdAt <= targetCreatedAt
                 )
-                .first();
+                .first().then(async row => row ? (await eventRecords(this.db, "postHistory").hydrate([row]))[0] : undefined);
 
             if (!anchor) {
                 const oldestRecords = await this.db.postHistory
@@ -692,7 +706,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                     .between(bounds.lower, bounds.upper)
                     .filter((record) => matchesVisibleUntil(record, visibleUntil))
                     .limit(limit)
-                    .toArray();
+                    .toArray().then(rows => eventRecords(this.db, "postHistory").hydrate(rows));
 
                 return oldestRecords.reverse();
             }
@@ -707,7 +721,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                 .reverse()
                 .filter((record) => matchesVisibleUntil(record, visibleUntil))
                 .limit(limit - 1)
-                .toArray();
+                .toArray().then(rows => eventRecords(this.db, "postHistory").hydrate(rows));
 
             return [anchor, ...olderRecords];
         });
@@ -725,8 +739,8 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         const visibleUntil = normalizeVisibleUntil(options.visibleUntil);
         const bounds = getTimelineBounds(options.pubkeyHex);
 
-        return this.db.transaction("r", this.db.postHistory, async () => {
-            const anchor = await this.db.postHistory.get(options.eventId);
+        return this.db.transaction("r", this.db.events, this.db.postHistory, async () => {
+            const anchor = await eventRecords(this.db, "postHistory").get(options.eventId);
             if (
                 !anchor
                 || anchor.pubkeyHex !== options.pubkeyHex
@@ -743,7 +757,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                     .between(anchorKey, bounds.upper, false, true)
                     .filter((record) => matchesVisibleUntil(record, visibleUntil))
                     .limit(keepAbove)
-                    .toArray();
+                    .toArray().then(rows => eventRecords(this.db, "postHistory").hydrate(rows));
             const olderLimit = limit - 1 - newerAscending.length;
             const olderRecords = olderLimit === 0
                 ? []
@@ -753,7 +767,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                     .reverse()
                     .filter((record) => matchesVisibleUntil(record, visibleUntil))
                     .limit(olderLimit)
-                    .toArray();
+                    .toArray().then(rows => eventRecords(this.db, "postHistory").hydrate(rows));
             const missingCount = limit - 1 - newerAscending.length - olderRecords.length;
 
             if (missingCount > 0) {
@@ -768,7 +782,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                     )
                     .filter((record) => matchesVisibleUntil(record, visibleUntil))
                     .limit(missingCount)
-                    .toArray();
+                    .toArray().then(rows => eventRecords(this.db, "postHistory").hydrate(rows));
                 newerAscending.push(...additionalNewer);
             }
 
@@ -813,7 +827,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         }
 
         const cursor = options.cursor;
-        const matchesSparseRange = (record: PostHistoryRecord): boolean =>
+        const matchesSparseRange = (record: Pick<PostHistoryRecord, "kind" | "createdAt" | "eventId" | "postedAt">): boolean =>
             isSupportedPost(record) && record.createdAt < visibleUntil
             && (
                 options.direction === "latest"
@@ -852,7 +866,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         )
             .filter(matchesSparseRange)
             .limit(limit)
-            .toArray();
+            .toArray().then(rows => eventRecords(this.db, "postHistory").hydrate(rows));
 
         // The timeline index already contains the complete tie-breaker. Keep
         // the display order (newest first) while avoiding a second same-
@@ -901,10 +915,10 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         if (input.localWriteScope && input.localWriteScope.ownerPubkeyHex !== verified.event.pubkey) {
             throw new Error("invalid_post_history_owner");
         }
-        await this.db.transaction("rw", this.db.postHistory, this.db.postHistoryWriteGeneration, async () => {
+        await this.db.transaction("rw", this.db.events, this.db.postHistory, this.db.postHistoryWriteGeneration, async () => {
             await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
-            const existing = await this.db.postHistory.get(verified.event.id);
-            await this.db.postHistory.put({ ...toRecord({ ...input, event: verified.event }, this.now),
+            const existing = await eventRecords(this.db, "postHistory").get(verified.event.id);
+            await eventRecords(this.db, "postHistory").put({ ...toRecord({ ...input, event: verified.event }, this.now),
                 ...(isRepostOuterKind(verified.event.kind) && existing ? {
                     postedAt: existing.postedAt, fetchedRelays: existing.fetchedRelays,
                     deletedAt: existing.deletedAt, deletionEventId: existing.deletionEventId,
@@ -923,9 +937,9 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
     async attachRepostTarget(input: { outerEventId: string; target: NostrEvent; relayHints?: string[]; localWriteScope: PostHistoryLocalWriteScope }): Promise<boolean> {
         let changed = false;
-        await this.db.transaction("rw", this.db.postHistory, this.db.postHistoryWriteGeneration, async () => {
+        await this.db.transaction("rw", this.db.events, this.db.postHistory, this.db.postHistoryWriteGeneration, async () => {
             await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
-            const outer = await this.db.postHistory.get(input.outerEventId);
+            const outer = await eventRecords(this.db, "postHistory").get(input.outerEventId);
             if (!outer || outer.pubkeyHex !== input.localWriteScope.ownerPubkeyHex || outer.deletedAt !== undefined) return;
             if (!isPostHistoryRawEventConsistent(outer.rawEvent, outer) || !attestFullyVerifiedPostHistoryRawEvent(outer.rawEvent)) return;
             const reference = getRepostReference(outer);
@@ -934,7 +948,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             if (!target) throw new Error("invalid_repost_target");
             if (outer.repostTarget && isSameSignedNostrEvent(outer.repostTarget.rawEvent, target.rawEvent)
                 && areStringArraysEqual(outer.repostTarget.relayHints, target.relayHints)) return;
-            await this.db.postHistory.update(outer.id, { repostTarget: target, updatedAt: this.now() });
+            await eventRecords(this.db, "postHistory").update(outer.id, { repostTarget: target, updatedAt: this.now() });
             await assertPostHistoryLocalWriteCurrent(this.db, input.localWriteScope);
             changed = true;
         });
@@ -973,8 +987,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         const coverageRepository = new DexiePostHistoryRelayCoverageRepository(this.db, this.now);
         try {
             await this.db.transaction(
-                "rw",
-                [this.db.postHistory, this.db.postHistoryDeletionRequests, this.db.sensitivePayloads,
+                "rw", [this.db.events, this.db.postHistory, this.db.postHistoryDeletionRequests, this.db.sensitivePayloads,
                     ...(input.relayFetchCoverage || input.localWriteScope || input.localBrowsingWrite
                         ? postHistoryEvidenceTables(this.db) : [])],
                 async () => {
@@ -983,7 +996,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                     if (input.relayFetchCoverage && !await coverageRepository.isCurrent(input.relayFetchCoverage)) {
                         throw new PostHistoryCoverageStaleError();
                     }
-                    const existingRecords = await this.db.postHistory.bulkGet(eventIds);
+                    const existingRecords = await eventRecords(this.db, "postHistory").bulkGet(eventIds);
                     const existingMap = new Map<string, PostHistoryRecord>();
                     const deletionRequestsByTargetEventId = await getDeletionRequestsByTargetEventIds(
                         this.db,
@@ -1126,9 +1139,9 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                     });
 
                     if (verifiedRequestUpdates.length > 0) {
-                        await this.db.postHistoryDeletionRequests.bulkPut(verifiedRequestUpdates);
+                        await eventRecords(this.db, "postHistoryDeletionRequests").bulkPut(verifiedRequestUpdates);
                     }
-                    await this.db.postHistory.bulkPut(nextRecords);
+                    await eventRecords(this.db, "postHistory").bulkPut(nextRecords);
                     if (input.relayFetchCoverage) {
                         await coverageRepository.record(input.relayFetchCoverage);
                         if (!await coverageRepository.isCurrent(input.relayFetchCoverage)) throw new PostHistoryCoverageStaleError();
@@ -1187,8 +1200,8 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
     async markDeleted(eventId: string, deletionEventId: string, deletedAt: number = this.now()): Promise<void> {
         let changedPubkeyHex: string | null = null;
-        await this.db.transaction("rw", this.db.postHistory, async () => {
-            const record = await this.db.postHistory.get(eventId);
+        await this.db.transaction("rw", this.db.events, this.db.postHistory, async () => {
+            const record = await eventRecords(this.db, "postHistory").get(eventId);
             if (
                 !record
                 || (
@@ -1199,7 +1212,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                 return;
             }
 
-            await this.db.postHistory.put({
+            await eventRecords(this.db, "postHistory").put({
                 ...record,
                 deletedAt,
                 deletionEventId,
@@ -1216,7 +1229,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     async deleteForPubkey(pubkeyHex: string | null | undefined): Promise<void> {
         if (!pubkeyHex) return;
 
-        const deletedCount = await this.db.transaction("rw", [this.db.postHistory, ...postHistoryEvidenceTables(this.db)], async () => {
+        const deletedCount = await this.db.transaction("rw", [this.db.events, this.db.postHistory, ...postHistoryEvidenceTables(this.db)], async () => {
             await new DexiePostHistoryRelayCoverageRepository(this.db, this.now).clearForPubkey(pubkeyHex);
             return this.db.postHistory.where("pubkeyHex").equals(pubkeyHex).delete();
         });

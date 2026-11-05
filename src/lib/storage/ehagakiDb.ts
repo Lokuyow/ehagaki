@@ -1,3 +1,6 @@
+import { upgradeEhagakiDatabase } from "./ehagakiDbMigration";
+import type { StoredEvent, EventProjection } from "./eventStorageModel";
+import type { NotificationRecord, NotificationSyncState } from './notificationRepository';
 import Dexie, { type Table } from "dexie";
 import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem, UploadDestination } from "../types";
@@ -342,6 +345,7 @@ export interface ChannelImageCacheMetaRecord {
 }
 
 export class EHagakiDB extends Dexie {
+    private opening: ReturnType<Dexie['open']> | null = null;
     emojiItems!: Table<EmojiItemRecord, string>;
     emojiCacheMeta!: Table<EmojiCacheMetaRecord, string>;
     drafts!: Table<DraftRecord, string>;
@@ -352,10 +356,10 @@ export class EHagakiDB extends Dexie {
     customEmojiUsage!: Table<CustomEmojiUsageRecord, string>;
     customEmojiImageMeta!: Table<CustomEmojiImageMetaRecord, string>;
     uploadDestinations!: Table<UploadDestinationRecord, string>;
-    postHistory!: Table<PostHistoryRecord, string>;
-    sensitivePayloads!: Table<SensitivePayloadRecord, string>;
-    postHistoryChildInteractions!: Table<PostHistoryChildInteractionRecord, string>;
-    postHistoryDeletionRequests!: Table<PostHistoryDeletionRequestRecord, string>;
+    postHistory!: Table<EventProjection<PostHistoryRecord>, string, EventProjection<PostHistoryRecord> | PostHistoryRecord>;
+    sensitivePayloads!: Table<EventProjection<SensitivePayloadRecord>, string, EventProjection<SensitivePayloadRecord> | SensitivePayloadRecord>;
+    postHistoryChildInteractions!: Table<EventProjection<PostHistoryChildInteractionRecord>, string, EventProjection<PostHistoryChildInteractionRecord> | PostHistoryChildInteractionRecord>;
+    postHistoryDeletionRequests!: Table<EventProjection<PostHistoryDeletionRequestRecord>, string, EventProjection<PostHistoryDeletionRequestRecord> | PostHistoryDeletionRequestRecord>;
     postMediaCache!: Table<PostMediaCacheEntryRecord, string>;
     channelMetadata!: Table<ChannelMetadataRecord, string>;
     channelImageCacheMeta!: Table<ChannelImageCacheMetaRecord, string>;
@@ -371,6 +375,10 @@ export class EHagakiDB extends Dexie {
     postHistoryChildWriteGeneration!: Table<EhagakiScopedRecord, string>;
     postHistoryReactionDeletionAttempts!: Table<EhagakiScopedRecord, string>;
     postHistoryReplyDeletionAttempts!: Table<EhagakiScopedRecord, string>;
+    events!: Table<StoredEvent, string>;
+    eventStoreMigration!: Table<{ id: string; tableIndex: number; lastKey: string; done: boolean }, string>;
+    notifications!: Table<EventProjection<NotificationRecord>, string, EventProjection<NotificationRecord> | NotificationRecord>;
+    notificationSyncState!: Table<NotificationSyncState, string>;
     legacyImportState!: Table<LegacyImportStateRecord, string>;
 
     constructor(databaseName = EHAGAKI_DB_NAME) {
@@ -382,6 +390,8 @@ export class EHagakiDB extends Dexie {
         this.on("ready", () => setEHagakiDbUpgradeBlocked(false));
 
         this.version(EHAGAKI_DB_VERSION).stores({
+            events: "id",
+            eventStoreMigration: "id",
             emojiItems: "id, pubkeyHex, identityKey, shortcodeLower, sortIndex, sourceType, sourceAddress, fetchedAt, updatedAt, [pubkeyHex+sortIndex], [pubkeyHex+identityKey]",
             emojiCacheMeta: "pubkeyHex, fetchedAt, updatedAt, schemaVersion",
             drafts: "id, scopeKey, pubkeyHex, updatedAt, timestamp, [scopeKey+updatedAt]",
@@ -411,12 +421,20 @@ export class EHagakiDB extends Dexie {
             postHistoryChildWriteGeneration: "id, updatedAt",
             postHistoryReactionDeletionAttempts: "id, parentEventId, updatedAt",
             postHistoryReplyDeletionAttempts: "id, parentEventId, updatedAt",
+            notifications: "id, ownerPubkeyHex, [ownerPubkeyHex+createdAt+eventId], [ownerPubkeyHex+unread]",
+            notificationSyncState: "id, ownerPubkeyHex, updatedAt",
             legacyImportState: "id, updatedAt",
         });
     }
 
     override open(): ReturnType<Dexie["open"]> {
-        return Dexie.Promise.resolve(waitForEhagakiDbOpenGate()).then(() => super.open());
+        if (this.opening) return this.opening;
+        if (this.isOpen()) return Dexie.Promise.resolve(this);
+        this.opening = Dexie.Promise.resolve(waitForEhagakiDbOpenGate())
+            .then(() => upgradeEhagakiDatabase(Dexie.dependencies.indexedDB!, { databaseName: this.name }))
+            .then(() => super.open())
+            .finally(() => { this.opening = null; });
+        return this.opening;
     }
 }
 

@@ -25,7 +25,7 @@ async function openNative(version: number): Promise<void> {
 
 describe("eHagaki database upgrade controller", () => {
     it("does not report completion when the database is newer than this build", async () => {
-        await openNative(180);
+        await openNative(200);
         const messages: string[] = [];
         const controller = createEhagakiDbUpgradeController({
             indexedDb: indexedDB,
@@ -41,11 +41,11 @@ describe("eHagaki database upgrade controller", () => {
         });
         await expect(controller.requestUpgrade()).resolves.toBe(false);
         expect(messages).not.toContain(EHAGAKI_DB_UPGRADE_COMPLETE);
-        expect(await readVersion()).toBe(180);
+        expect(await readVersion()).toBe(200);
     });
 
     it("reports completion for a Dexie patch inside the current version slot", async () => {
-        await openNative(171);
+        await openNative(191);
         const messages: string[] = [];
         const controller = createEhagakiDbUpgradeController({
             indexedDb: indexedDB,
@@ -61,7 +61,7 @@ describe("eHagaki database upgrade controller", () => {
         });
         await expect(controller.requestUpgrade()).resolves.toBe(true);
         expect(messages).toContain(EHAGAKI_DB_UPGRADE_COMPLETE);
-        expect(await readVersion()).toBe(171);
+        expect(await readVersion()).toBe(191);
     });
 });
 

@@ -431,6 +431,8 @@
     "mediaNotCached": "Not cached",
     "mediaFetchAndCache": "Fetch and cache",
     "mediaOpen": "Open",
+    "showAllImages": "Show all {count} images",
+    "hideExtraImages": "Show fewer images",
     "mediaLoading": "Loading...",
     "mediaLoadFailed": "Failed to load",
     "expand": "Show more",
@@ -930,5 +932,24 @@
     "retry": "The database update did not finish. You can try again.",
     "retryButton": "Try again",
     "versionError": "This database is newer than this page. Reload the page. The database will not be deleted."
+  },
+  "notifications": {
+    "close": "Close",
+    "title": "Notifications",
+    "description": "Mentions, replies, quotes, reactions and reposts addressed to you.",
+    "open": "Notifications",
+    "openUnread": "Notifications (unread)",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "empty": "No notifications",
+    "more": "Load more",
+    "retry": "Retry",
+    "partialFailure": "Notifications could not be fully loaded. Please try again.",
+    "targetUnavailable": "The original post is unavailable",
+    "mention": "Mention",
+    "reply": "Reply",
+    "quote": "Quote",
+    "reaction": "Reaction",
+    "repost": "Repost"
   }
 }

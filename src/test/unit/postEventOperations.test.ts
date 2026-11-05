@@ -1,0 +1,34 @@
+import { render, cleanup } from '@testing-library/svelte';
+import { afterEach, expect, it, vi } from 'vitest';
+import Harness from './fixtures/PostEventOperationsHarness.svelte';
+import type { usePostEventOperations } from '../../lib/hooks/usePostEventOperations.svelte';
+import type { PostHistoryRecord } from '../../lib/storage/ehagakiDb';
+const { broadcast, requestDeletion } = vi.hoisted(() => ({ broadcast: vi.fn(), requestDeletion: vi.fn() }));
+vi.mock('../../lib/postBroadcastService', () => ({ postBroadcastService: { broadcast } }));
+vi.mock('../../lib/postDeletionService', () => ({ postDeletionService: { requestDeletion } }));
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
+const post = { eventId: 'public-fixture' } as PostHistoryRecord;
+it('suppresses concurrent commands for the same target and permits retry after settlement', async () => {
+    let release!: (value: { success: boolean }) => void;
+    broadcast.mockReturnValue(new Promise(resolve => release = resolve));
+    let operations!: ReturnType<typeof usePostEventOperations>;
+    render(Harness, { active: () => true, ready: value => operations = value });
+    const first = operations.broadcast(post);
+    await expect(operations.broadcast(post)).resolves.toBeNull();
+    expect(broadcast).toHaveBeenCalledTimes(1);
+    release({ success: false }); await expect(first).resolves.toEqual({ success: false });
+    broadcast.mockResolvedValue({ success: true });
+    await expect(operations.broadcast(post)).resolves.toEqual({ success: true });
+});
+it('ignores a command completion after the owning dialog is invalidated', async () => {
+    let release!: (value: { success: boolean }) => void;
+    requestDeletion.mockReturnValue(new Promise(resolve => release = resolve));
+    let active = true;
+    let operations!: ReturnType<typeof usePostEventOperations>;
+    render(Harness, { active: () => active, ready: value => operations = value });
+    const task = operations.deletePost(post);
+    active = false; operations.reset(); release({ success: true });
+    await expect(task).resolves.toBeNull();
+    await expect(operations.deletePost(post)).resolves.toBeNull();
+    expect(requestDeletion).toHaveBeenCalledTimes(1);
+});

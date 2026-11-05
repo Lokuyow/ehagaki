@@ -33,6 +33,7 @@
             PostContentEmojiImageMeta | undefined
         >;
         scrollRoot?: HTMLElement | null;
+        maxVisibleImages?: number;
         previewContentId?: string;
         isTextCollapsed?: boolean;
         previewCollapseAction?: PreviewRefAction;
@@ -59,6 +60,7 @@
         emojiLoadStateByUrl = {},
         emojiImageMetaByUrl = {},
         scrollRoot = null,
+        maxVisibleImages = undefined,
         previewContentId = undefined,
         isTextCollapsed = false,
         previewCollapseAction = (() => ({})) as PreviewRefAction,
@@ -279,6 +281,7 @@
                         media={displayModel.media}
                         mediaLayout={displayModel.mediaLayout}
                         {scrollRoot}
+                        {maxVisibleImages}
                         {onImageOpen}
                     />
                 </div>
