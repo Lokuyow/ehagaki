@@ -398,7 +398,7 @@
         height: 100%;
         object-fit: cover;
     }
-    .notification-kind-icon { --icon-size: 22px; --svg: currentColor; width: 22px; height: 22px; flex: 0 0 22px; }
+    .notification-kind-icon { --icon-size: 22px; --svg: currentColor; --icon-hover-color: var(--svg); --icon-selected-hover-color: var(--svg); width: 22px; height: 22px; flex: 0 0 22px; }
     .notification-reply-label .notification-kind-icon { --icon-size: 26px; --svg: var(--accent-color); width: 26px; height: 26px; flex-basis: 26px; }
     .notification-repost-icon { --svg: var(--accent-color); mask-image: url('/icons/repost.svg'); }
     .notification-reply-icon { mask-image: url('/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg'); }
