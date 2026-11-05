@@ -28,6 +28,8 @@
             <svelte:element this={onSelectActor && single ? 'button' : 'div'}
                 type={onSelectActor && single ? 'button' : undefined} role={onSelectActor && single ? 'button' : undefined}
                 data-notification-event={single?.eventId} class="post-preview-reaction-chip" class:selectable={!!onSelectActor && !!single}
+                title={single ? formatPostHistoryReactionActorLabel(single) : undefined}
+                aria-label={onSelectActor && single ? formatPostHistoryReactionActorLabel(single) : undefined}
                 onclick={onSelectActor && single ? () => onSelectActor?.(single.eventId) : undefined}>
                 <div class="post-preview-reaction-summary">
                     {#if isPostHistoryFavoriteReactionContent(reactionGroup.content)}
@@ -95,7 +97,7 @@
     :global(.post-preview-reaction-chip) {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         min-height: 32px;
         padding: 4px 8px;
         border-radius: 18px;
@@ -107,7 +109,7 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 2px;
+        gap: 4px;
         row-gap: 4px;
         flex-wrap: wrap;
     }
