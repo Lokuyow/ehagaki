@@ -34,10 +34,9 @@
     interface Props extends NotificationDialogProps {
         presentationReady?: boolean;
         onInitialReady?: () => void;
-        onBusyChange?: (busy: boolean) => void;
     }
     let { show = $bindable(false), pubkeyHex, rxNostr, relayConfig, returnFocus = null,
-        onClose, onReplyPost, onReactionPost, onOpenTarget, reconcileDirectReplyCandidates, onQuotePost, onRepostPost, repostPending, repostSaveFailure, onRetryRepostSave, presentationReady = false, onInitialReady, onBusyChange }: Props = $props();
+        onClose, onReplyPost, onReactionPost, onOpenTarget, reconcileDirectReplyCandidates, onQuotePost, onRepostPost, repostPending, repostSaveFailure, onRetryRepostSave, presentationReady = false, onInitialReady }: Props = $props();
     let listElement = $state<HTMLElement | null>(null);
     const viewport = useNotificationViewport(() => listElement, () => show && visible && !invalidated);
     let records = $state.raw<NotificationRecord[]>([]);
@@ -94,7 +93,6 @@
             readyReported = true; onInitialReady?.();
         });
     });
-    $effect(() => { onBusyChange?.(busy); });
     $effect(() => { if (!show || !visible || invalidated) untrack(() => viewport.reset()); });
     onMount(() => {
         const sync = () => { visible = document.visibilityState === 'visible'; };
@@ -189,7 +187,7 @@
         }));
         return () => { active = false; };
     });
-    export async function refresh(older = false) {
+    async function refresh(older = false) {
         if (localReadFailed) { localReadFailed = false; listRevision++; }
         if (busy || !show || !visible || invalidated || !pubkeyHex || !rxNostr) return;
         const epoch = generation, owner = pubkeyHex, runtime = rxNostr;

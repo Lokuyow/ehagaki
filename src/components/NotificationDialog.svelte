@@ -16,12 +16,12 @@
     let { show = $bindable(false), onClose, returnFocus = null, isStaleAssetReloadRequired = () => false, onLoadFailure, ...contentProps }: Props = $props();
     const closeIconUrl = resolveAppAssetUrl('icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg');
     let Content = $state<typeof import('./NotificationDialogContent.svelte').default | null>(null);
-    let contentRef = $state<{ invalidateSession(): void; isFullscreen(): boolean; refresh(older?: boolean): Promise<void> } | null>(null);
-    let ready = $state(false), busy = $state(false), failed = $state(false), invalidated = $state(false);
+    let contentRef = $state<{ invalidateSession(): void; isFullscreen(): boolean } | null>(null);
+    let ready = $state(false), failed = $state(false), invalidated = $state(false);
     let epoch = $state(0), destroyed = false;
     const load = createComponentLoader('notifications-content', importNotificationContent, { isStale: () => destroyed || isStaleAssetReloadRequired() });
     export function invalidateSession() {
-        contentRef?.invalidateSession(); invalidated = true; epoch++; ready = false; busy = false;
+        contentRef?.invalidateSession(); invalidated = true; epoch++; ready = false;
     }
     function close(restoreFocus = true) {
         if (contentRef?.isFullscreen()) return false;
@@ -34,7 +34,7 @@
     let scope = $derived({ owner: contentProps.pubkeyHex, runtime: contentProps.rxNostr, relays: contentProps.relayConfig });
     $effect.pre(() => {
         const current = scope;
-        untrack(() => { contentRef?.invalidateSession(); epoch++; ready = false; busy = false; invalidated = false; failed = false; });
+        untrack(() => { contentRef?.invalidateSession(); epoch++; ready = false; invalidated = false; failed = false; });
     });
     $effect(() => {
         if (!show || invalidated) return;
@@ -52,15 +52,12 @@
     contentClass="notification-dialog" footerVariant="close-button" initialFocus="content" trapFocus={false}
     onEscapeKeydown={(event) => { if (contentRef?.isFullscreen()) event.preventDefault(); }}
     onInteractOutside={(event) => { if (contentRef?.isFullscreen()) event.preventDefault(); }}>
-    <div class="notification-toolbar">
-        <Button variant="default" shape="pill" onClick={() => contentRef?.refresh()} disabled={!ready || busy}>{$_('notifications.refresh')}</Button>
-    </div>
     <div class="notification-viewport" aria-busy={!ready && !failed}>
         <div inert={!ready} aria-hidden={!ready ? 'true' : undefined} class:hidden={!ready}>
             {#key epoch}
                 {#if Content && show && !invalidated}
                     <Content {...contentProps} show={true} bind:this={contentRef} presentationReady={ready}
-                        onClose={() => close(false)} onInitialReady={() => ready = true} onBusyChange={(value) => busy = value} />
+                        onClose={() => close(false)} onInitialReady={() => ready = true} />
                 {/if}
             {/key}
         </div>
@@ -93,7 +90,6 @@
     :global(.notification-dialog.dialog[data-state="open"]) { animation: notification-open 250ms ease-out; }
     @keyframes notification-open { from { opacity: 0; } to { opacity: 1; } }
     @media (prefers-reduced-motion: reduce) { :global(.notification-dialog.dialog[data-state="open"]) { animation: none; } }
-    .notification-toolbar { width: 100%; display: flex; justify-content: flex-end; align-items: center; }
     .notification-viewport { position: relative; width: 100%; min-width: 0; }
     .hidden { visibility: hidden; }
     .notification-opening-placeholder { position: absolute; inset: 0; min-height: 420px; overflow: hidden; pointer-events: none; }

@@ -52,16 +52,16 @@ test('opening shows a noninteractive skeleton until local data renders without w
     expect(bounds.y).toBeCloseTo(0, 0);
     expect(bounds.height).toBeCloseTo(844, 0);
     await expect(dialog.locator('.notification-opening-placeholder')).toBeVisible();
-    await expect(dialog.getByRole('button', { name: '更新', exact: true })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: '更新', exact: true })).toHaveCount(0);
     await expect(dialog.locator('.notification-viewport')).toHaveAttribute('aria-busy', 'true');
     expect(await dialog.evaluate(node => getComputedStyle(node).animationDuration)).toBe('0.25s');
     await page.screenshot({ path: info.outputPath('notification-skeleton-360.png') });
-    const toolbarTop = (await dialog.locator('.notification-toolbar').boundingBox())!.y;
+    const viewportTop = (await dialog.locator('.notification-viewport').boundingBox())!.y;
     await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').releaseInitialList());
     await expect(dialog.locator('.notification-opening-placeholder')).toHaveCount(0);
     await expect(dialog.getByText('A mention addressed to you', { exact: true })).toBeVisible();
     await expect(dialog.locator('.notification-viewport')).toHaveAttribute('aria-busy', 'false');
-    expect((await dialog.locator('.notification-toolbar').boundingBox())!.y).toBeCloseTo(toolbarTop, 0);
+    expect((await dialog.locator('.notification-viewport').boundingBox())!.y).toBeCloseTo(viewportTop, 0);
     expect(await dialog.locator('.notification-list').evaluate(node => getComputedStyle(node).animationName)).toBe('none');
     await page.goBack();
     await expect(dialog).toHaveCount(0);
@@ -128,7 +128,7 @@ test('post footers keep actions on their own events without related counts or li
     await expect(page.getByTestId('applied')).toHaveText('quote:Original notification target');
 });
 
-test('opening, scrolling, refreshing and reopening never read or fetch post replies or reactions', async ({ page }) => {
+test('opening, scrolling and reopening never read or fetch post replies or reactions', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1');
     await page.locator('.notification-btn').waitFor({ state: 'attached' });
@@ -139,8 +139,6 @@ test('opening, scrolling, refreshing and reopening never read or fetch post repl
         const dialog = page.getByRole('dialog');
         await expect(dialog.locator('.notification-entry')).toHaveCount(3);
         await dialog.locator('.notification-entry').last().scrollIntoViewIfNeeded();
-        await dialog.getByRole('button', { name: '更新', exact: true }).click();
-        await expect(dialog.getByRole('button', { name: '更新', exact: true })).toBeEnabled();
         await expect(dialog.getByRole('button', { name: /返信 .*件を表示|リアクション .*件を表示/ })).toHaveCount(0);
         await expect(dialog.getByText('関連イベントを取得できませんでした', { exact: true })).toHaveCount(0);
         await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
