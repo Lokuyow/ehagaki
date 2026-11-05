@@ -53,7 +53,6 @@
     onEscapeKeydown={(event) => { if (contentRef?.isFullscreen()) event.preventDefault(); }}
     onInteractOutside={(event) => { if (contentRef?.isFullscreen()) event.preventDefault(); }}>
     <div class="notification-toolbar">
-        <h2>{$_('notifications.title')}</h2>
         <Button variant="default" shape="pill" onClick={() => contentRef?.refresh()} disabled={!ready || busy}>{$_('notifications.refresh')}</Button>
     </div>
     <div class="notification-viewport" aria-busy={!ready && !failed}>
@@ -94,8 +93,7 @@
     :global(.notification-dialog.dialog[data-state="open"]) { animation: notification-open 250ms ease-out; }
     @keyframes notification-open { from { opacity: 0; } to { opacity: 1; } }
     @media (prefers-reduced-motion: reduce) { :global(.notification-dialog.dialog[data-state="open"]) { animation: none; } }
-    .notification-toolbar { width: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-    h2 { margin: 0; margin-inline-end: auto; font-size: 1.1rem; }
+    .notification-toolbar { width: 100%; display: flex; justify-content: flex-end; align-items: center; }
     .notification-viewport { position: relative; width: 100%; min-width: 0; }
     .hidden { visibility: hidden; }
     .notification-opening-placeholder { position: absolute; inset: 0; min-height: 420px; overflow: hidden; pointer-events: none; }
