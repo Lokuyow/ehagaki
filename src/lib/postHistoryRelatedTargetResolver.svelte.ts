@@ -538,22 +538,6 @@ export function createPostHistoryRelatedTargetResolver({
                     });
                 }
 
-                const repostLocal = repostPreparation
-                    ? { event: repostPreparation.target, relayHints: mergedSnapshot.relayHints }
-                    : descriptor.relationKind === "repost" ? await loadRepostTarget?.(descriptor) : null;
-                if (!canPersist()) return null;
-                const localVerified = repostLocal && verifyRepostTarget(repostLocal.event, {
-                    eventId: descriptor.targetEventId, authorHint: null, relayHints: descriptor.relayHints ?? [],
-                });
-                if (localVerified && (!options.requireRelayHint || repostLocal!.relayHints.length > 0)) {
-                    const hints = sanitizeRelayHints([...repostLocal!.relayHints, ...mergedSnapshot.relayHints]);
-                    const snapshot = applySnapshotUpdate(descriptor.targetEventId, { status: "resolved",
-                        event: localVerified.event, authorPubkey: localVerified.event.pubkey, relayHints: hints,
-                        errorCode: null, updatedAt: Date.now() });
-                    ensureProfileForTarget(localVerified.event.pubkey, hints);
-                    if (!repostPreparation) void runDeletionCheck(localVerified.event, hints, { background: true });
-                    return snapshot;
-                }
                 const cached = await eventRepositoryImpl?.get(descriptor.targetEventId);
                 if (!canPersist()) return null;
                 if (cached && (!options.requireRelayHint || cached.relayUrls.length)
@@ -572,6 +556,22 @@ export function createPostHistoryRelatedTargetResolver({
                         errorCode: null, updatedAt: Date.now() });
                     ensureProfileForTarget(cached.rawEvent.pubkey, hints);
                     if (!repostPreparation) void runDeletionCheck(cached.rawEvent, hints, { background: true });
+                    return snapshot;
+                }
+                const repostLocal = repostPreparation
+                    ? { event: repostPreparation.target, relayHints: mergedSnapshot.relayHints }
+                    : descriptor.relationKind === "repost" ? await loadRepostTarget?.(descriptor) : null;
+                if (!canPersist()) return null;
+                const localVerified = repostLocal && verifyRepostTarget(repostLocal.event, {
+                    eventId: descriptor.targetEventId, authorHint: null, relayHints: descriptor.relayHints ?? [],
+                });
+                if (localVerified && (!options.requireRelayHint || repostLocal!.relayHints.length > 0)) {
+                    const hints = sanitizeRelayHints([...repostLocal!.relayHints, ...mergedSnapshot.relayHints]);
+                    const snapshot = applySnapshotUpdate(descriptor.targetEventId, { status: "resolved",
+                        event: localVerified.event, authorPubkey: localVerified.event.pubkey, relayHints: hints,
+                        errorCode: null, updatedAt: Date.now() });
+                    ensureProfileForTarget(localVerified.event.pubkey, hints);
+                    if (!repostPreparation) void runDeletionCheck(localVerified.event, hints, { background: true });
                     return snapshot;
                 }
                 const existingRecord = await postHistoryRepositoryImpl.getByEventId(

@@ -33,6 +33,7 @@ import type {
     PostHistoryDeletionRequestRecord,
     PostHistoryRecord,
     PostHistoryMediaRecord,
+    PostHistoryRepostTarget,
     EHagakiDB,
 } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
@@ -152,6 +153,7 @@ export interface PostHistorySearchScanChunk {
 
 export interface PostHistoryRepository {
     getByEventId(eventId: string): Promise<PostHistoryRecord | null>;
+    findRepostTargetSnapshot(pubkeyHex: string, targetEventId: string): Promise<PostHistoryRepostTarget | null>;
     getExistingEventIdsForPubkey(input: {
         pubkeyHex: string | null | undefined;
         eventIds: string[];
@@ -467,6 +469,17 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
         const record = await eventRecords(this.db, "postHistory").get(eventId);
         return record && isSupportedPost(record) ? record : null;
+    }
+
+    async findRepostTargetSnapshot(pubkeyHex: string, targetEventId: string): Promise<PostHistoryRepostTarget | null> {
+        if (!pubkeyHex || !targetEventId) return null;
+        const row = await this.db.postHistory.where('pubkeyHex').equals(pubkeyHex).filter(record => {
+            const target = record.repostTarget as { eventId?: string; rawEvent?: NostrEvent } | undefined;
+            return isRepostOuterKind(record.kind) && (target?.eventId ?? target?.rawEvent?.id) === targetEventId;
+        }).first();
+        if (!row) return null;
+        const [record] = await eventRecords(this.db, 'postHistory').hydrate([row]);
+        return record.repostTarget ?? null;
     }
 
     async getExistingEventIdsForPubkey(input: {

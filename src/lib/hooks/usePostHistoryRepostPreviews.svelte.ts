@@ -11,8 +11,7 @@ export async function loadStoredRepostTarget(descriptor: RelatedTargetDescriptor
     const outer = await postHistoryRepository.getByEventId(descriptor.sourceEventId);
     const reference = outer && getRepostReference(outer);
     const target = outer?.repostTarget ?? (outer && reference
-        ? (await postHistoryRepository.getAll({ pubkeyHex: outer.pubkeyHex }))
-            .find(record => isRepostOuterKind(record.kind) && record.repostTarget?.rawEvent.id === reference.eventId)?.repostTarget
+        ? await postHistoryRepository.findRepostTargetSnapshot(outer.pubkeyHex, reference.eventId)
         : undefined);
     const verified = reference && reference.eventId === descriptor.targetEventId && target
         // The resolver shares raw events by ID. Each outer's constraints and
