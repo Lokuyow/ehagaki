@@ -62,20 +62,27 @@
     let trigger = $state<HTMLElement | null>(null);
     let liveSequence = 0;
     const liveReceivers = new Set<(event: NostrEvent) => void>();
+    const performanceTargets = new Map<string, NostrEvent>();
+    let holdTargets = false;
+    const heldTargets = new Set<() => void>();
     const requests: Array<Array<{ kinds?: number[]; ids?: string[] }>> = [];
     const runtime = { use: (req: { strategy?: string; getReqPacketObservable: () => Observable<{ filters: Array<{ ids?: string[] }> }> }) => new Observable(observer => {
+        const ownedDeliveries = new Set<() => void>();
         let currentFilters: Array<{ ids?: string[] }> = [];
         const receive = (event: NostrEvent) => { if (currentFilters.some(filter => matchFilter(filter, event))) observer.next({ event, from: relay }); };
         if (req.strategy === 'forward') liveReceivers.add(receive);
         const subscription = req.getReqPacketObservable().subscribe(({ filters }) => {
             currentFilters = filters;
             requests.push(filters);
-            queueMicrotask(() => {
+            const deliver = () => {
                 if (!new URLSearchParams(location.search).has('missing') && filters.some(filter => filter.ids?.includes(original.id))) observer.next({ event: original, from: relay });
+                for (const target of performanceTargets.values()) if (filters.some(filter => filter.ids?.includes(target.id))) observer.next({ event: target, from: relay });
                 if (req.strategy !== 'forward') observer.complete();
-            });
+            };
+            if (holdTargets && filters.some(filter => filter.ids?.some(id => performanceTargets.has(id)))) { heldTargets.add(deliver); ownedDeliveries.add(deliver); }
+            else queueMicrotask(deliver);
         });
-        return () => { subscription.unsubscribe(); liveReceivers.delete(receive); };
+        return () => { subscription.unsubscribe(); liveReceivers.delete(receive); ownedDeliveries.forEach(deliver => heldTargets.delete(deliver)); };
     }) } as unknown as RxNostr;
     if (new URLSearchParams(location.search).has('container')) configureAppRuntimeEnvironment({ layoutMode: 'container' });
     useNotifications({ getEnabled: () => footerSettingShortcutsStore.notificationsEnabled, getOwner: () => ready ? owner : null, getRxNostr: () => runtime, getRelayConfig: () => config });
@@ -94,6 +101,27 @@
             .then(() => ready = true);
         Reflect.set(window, '__NOTIFICATIONS__', {
             releaseInitialList,
+            releaseTargets: () => { holdTargets = false; heldTargets.forEach(deliver => deliver()); heldTargets.clear(); },
+            performanceActivity: () => ({ held: heldTargets.size,
+                targetRequests: requests.flatMap(filters => filters.flatMap(filter => filter.ids ?? [])).filter(id => performanceTargets.has(id)),
+                targetIds: [...performanceTargets.keys()] }),
+            seedPerformance: async (cached = true) => {
+                holdTargets = !cached;
+                const events: NostrEvent[] = [];
+                const rows = [];
+                for (let index = 0; index < 120; index++) {
+                    const target = finalizeEvent({ kind: 1, content: `Performance target ${index}\n` + 'Long line\n'.repeat(24) + Array.from({ length: 8 }, (_, n) => `https://profiles.example/perf-${index}-${n}.png`).join('\n'), tags: [], created_at: now - 300 - index }, authorKey);
+                    performanceTargets.set(target.id, target);
+                    if (cached) await new EventRepository(ehagakiDb).save(target, [relay], () => true);
+                    const kind = index % 3 === 0 ? 1 : index % 3 === 1 ? 7 : 6;
+                    const tags = [['p', owner], ['p', target.pubkey], [kind === 1 ? 'q' : 'e', target.id, relay]];
+                    const event = finalizeEvent({ kind, content: kind === 1 ? `Performance quote ${index}` : kind === 7 ? '+' : '', tags, created_at: now - index }, authorKey);
+                    events.push(event); rows.push({ event, relayUrls: [relay] });
+                }
+                await ehagakiDb.notifications.clear();
+                await notificationRepository.upsert(owner, rows);
+                return events.map(event => event.id);
+            },
             liveSubscriptions: () => liveReceivers.size,
             addLive: async (count = 1, reaction = false) => {
                 const events = Array.from({ length: count }, () => finalizeEvent({ kind: reaction ? 7 : 1,
@@ -119,9 +147,12 @@
                 await postHistoryChildInteractionsRepository.upsertChildInteractions({ parentEventId: original.id, events: [child, reaction].map(event => ({ event, relayUrls: [relay] })),
                     reactionTarget: { eventId: original.id, targetAuthorPubkey: original.pubkey, targetKind: 1 }, fetchedAt: Date.now() });
             },
-            addOlder: async (count: number) => notificationRepository.upsert(owner, Array.from({ length: count }, (_, index) => ({
+            addOlder: async (count: number, reset = false) => {
+                if (reset) await ehagakiDb.notifications.clear();
+                return notificationRepository.upsert(owner, Array.from({ length: count }, (_, index) => ({
                 event: finalizeEvent({ kind: 1, content: `Older notification ${index}`, tags: [['p', owner]], created_at: now - index - 100 }, authorKey),
-            }))),
+                })));
+            },
             add: async () => notificationRepository.upsert(owner, [{ event: sign('New incoming notification') }]),
             addReply: async () => notificationRepository.upsert(owner, [{ event: finalizeEvent({ kind: 1, content: 'Reply notification text', tags: [['p', owner], ['e', original.id, relay, 'reply']], created_at: now + 1 }, authorKey) }]),
             addReplyWithParent: async (missing = false) => {

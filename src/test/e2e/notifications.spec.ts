@@ -14,6 +14,20 @@ test.beforeEach(async ({ context, page }) => {
 });
 test.afterEach(() => expect(pageErrors).toEqual([]));
 
+async function renderThrough(dialog: Locator, expectedCount: number) {
+    while (await dialog.locator('.notification-entry').count() < expectedCount) {
+        const before = await dialog.locator('.notification-entry').count();
+        if (before >= expectedCount) break;
+        // Targets and images may still change the sentinel's position. Scroll
+        // the actual root rather than waiting for that moving element to settle.
+        await expect.poll(async () => {
+            await dialog.locator('.dialog-content').evaluate(node => { node.scrollTop = node.scrollHeight; });
+            const count = await dialog.locator('.notification-entry').count();
+            return count > before || count >= expectedCount;
+        }).toBe(true);
+    }
+}
+
 for (const width of [360, 280]) test(`reply title toggles the direct parent from the shared DB at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1&container=1');
@@ -481,7 +495,8 @@ for (const width of [360, 280]) test(`live notifications preserve reading positi
     await content.locator('body').evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').addOlder(100));
     await content.locator('.notification-btn').click();
     const dialog = content.getByRole('dialog');
-    await expect(dialog.locator('.notification-entry')).toHaveCount(99);
+    await expect(dialog.locator('.notification-entry')).toHaveCount(10);
+    await renderThrough(dialog, 99);
     const anchor = dialog.locator('.notification-entry').filter({ hasText: 'Older notification 95' });
     await anchor.scrollIntoViewIfNeeded();
     const top = (await anchor.boundingBox())!.y;
@@ -504,14 +519,17 @@ test('new reactions retain a visible grouped card even when its newest notificat
     await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addOlder(30));
     await page.locator('.notification-btn').click();
     const dialog = page.getByRole('dialog');
-    await expect(dialog.getByText('Older notification 29', { exact: true })).toHaveCount(1);
+    await expect(dialog.locator('.notification-entry')).toHaveCount(10);
+    await expect(dialog.getByText('Older notification 29', { exact: true })).toHaveCount(0);
     const card = dialog.locator('.notification-entry:has(.notification-reaction)');
     await card.scrollIntoViewIfNeeded();
     await card.evaluate(node => { const root = node.closest('.dialog-content')!; root.scrollTop += node.getBoundingClientRect().top - root.getBoundingClientRect().top + 4; });
     const top = (await card.boundingBox())!.y;
     const oldKey = await card.getAttribute('data-notification-id');
+    await card.evaluate(node => { node.dataset.retained = 'yes'; });
     await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addLive(1, true));
     await expect(card).not.toHaveAttribute('data-notification-id', oldKey!);
+    await expect(card).toHaveAttribute('data-retained', 'yes');
     // Scroll offsets may be rounded to physical pixels in WebKit.
     await expect.poll(async () => Math.abs((await card.boundingBox())!.y - top)).toBeLessThanOrEqual(1);
     await expect.poll(() => page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').unread())).toBe(false);
@@ -823,7 +841,7 @@ test('opening notifications clears unread saved beyond the first local page with
     await page.waitForFunction(() => Reflect.has(window, '__NOTIFICATIONS__'));
     await page.evaluate(() => (window as any).__NOTIFICATIONS__.addOlder(101));
     await page.getByRole('button', { name: '通知（未読あり）', exact: true }).click();
-    await expect(page.getByRole('dialog').locator('.notification-entry')).toHaveCount(99);
+    await expect(page.getByRole('dialog').locator('.notification-entry')).toHaveCount(10);
     await expect(page.locator('.notification-badge')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => (window as any).__NOTIFICATIONS__.unread())).toBe(false);
     // Even an older event arriving while the inbox is open must not leave the badge on.
@@ -866,4 +884,89 @@ test('notification slots control traffic, persist removal, and close an open dia
     await set({ left: null, right: 'video-quality' });
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.locator('.notification-btn')).toHaveCount(0);
+});
+
+test('measures fixed notification opening workload', async ({ page }, info) => {
+    await page.setViewportSize({ width: 360, height: 844 });
+    await page.route('https://profiles.example/**', route => route.fulfill({ contentType: 'image/png', path: fileURLToPath(new URL('../../../public/ehagaki_icon_x512.png', import.meta.url)) }));
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await expect(page.locator('.notification-btn')).toBeVisible();
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').seedPerformance());
+    const start = Date.now();
+    await page.locator('.notification-btn').click();
+    await expect(page.getByRole('dialog').getByText('Performance quote 0', { exact: true })).toBeVisible();
+    const firstPostMs = Date.now() - start;
+    await expect(page.locator('.notification-opening-placeholder')).toHaveCount(0);
+    const metrics = await page.locator('.notification-list').evaluate(node => ({ cards: node.querySelectorAll('.notification-entry').length, posts: node.querySelectorAll('.notification-post').length, images: node.querySelectorAll('img').length, nodes: node.querySelectorAll('*').length }));
+    expect(metrics.cards).toBe(10);
+    console.log(JSON.stringify({ engine: info.project.name, firstPostMs, ...metrics }));
+    await expect(page.locator('.notification-target-placeholder, .post-history-quote-status-card')).toHaveCount(0);
+    console.log(JSON.stringify({ engine: info.project.name, prepared: await page.locator('.notification-post').count(), requests: await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').requests().length) }));
+    await page.screenshot({ path: info.outputPath('notification-initial-ten.png') });
+});
+
+for (const width of [360, 280]) test(`stages cached notification cards and retains expanded content at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 844 });
+    const imageRequests: string[] = [];
+    await page.route('https://profiles.example/**', route => { imageRequests.push(route.request().url()); return route.fulfill({ contentType: 'image/png', path: fileURLToPath(new URL('../../../public/ehagaki_icon_x512.png', import.meta.url)) }); });
+    await page.goto('post-history-dialog-playwright.html?notifications=1&container=1');
+    await expect(page.locator('.notification-btn')).toBeVisible();
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').seedPerformance());
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('.notification-entry')).toHaveCount(10);
+    await expect(dialog.locator('.notification-target-placeholder, .post-history-quote-status-card')).toHaveCount(0);
+    const target = dialog.locator('.notification-entry').first().locator('.notification-reply-label + .notification-post + .notification-post');
+    await expect(target).toContainText('Performance target 0');
+    await target.getByRole('button', { name: 'もっと見る', exact: true }).click();
+    await target.getByRole('button', { name: /画像をすべて表示/ }).click();
+    await target.evaluate(node => { node.dataset.retained = 'yes'; });
+    await expect(dialog.getByRole('button', { name: 'もっと読み込む', exact: true })).toHaveCount(0);
+    const activity = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').performanceActivity());
+    expect(activity.targetRequests).toEqual([]);
+    expect(imageRequests.filter(url => /perf-(?:[1-9]\d|\d{3})-/.test(url))).toEqual([]);
+    await dialog.locator('.notification-render-sentinel').scrollIntoViewIfNeeded();
+    await expect(dialog.locator('.notification-entry')).toHaveCount(20);
+    await expect(target).toHaveAttribute('data-retained', 'yes');
+    await expect(target.getByRole('button', { name: '画像を収納', exact: true })).toBeAttached();
+    await renderThrough(dialog, 100);
+    const more = dialog.getByRole('button', { name: 'もっと読み込む', exact: true });
+    await expect(more).toBeVisible();
+    expect((await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').performanceActivity())).targetRequests).toEqual([]);
+    await page.screenshot({ path: info.outputPath(`notification-staging-${width}.png`) });
+});
+
+test('local more pages continue staged rendering without fetching older notifications', async ({ page }) => {
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await expect(page.locator('.notification-btn')).toBeVisible();
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addOlder(101, true));
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('.notification-entry')).toHaveCount(10);
+    await expect(page.locator('.notification-badge')).toHaveCount(0);
+    await renderThrough(dialog, 100);
+    await dialog.getByRole('button', { name: 'もっと読み込む', exact: true }).click();
+    await renderThrough(dialog, 101);
+    await expect(dialog.getByText('Older notification 100', { exact: true })).toBeAttached();
+    expect(await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').requests().flat().some((filter: { since?: number }) => filter.since === 0))).toBe(false);
+});
+
+test('target queue bounds cold resolution and drops queued work when notifications are disabled', async ({ page }) => {
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await expect(page.locator('.notification-btn')).toBeVisible();
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').seedPerformance(false));
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('.notification-entry')).toHaveCount(10);
+    await expect(dialog.locator('.notification-opening-placeholder')).toHaveCount(0);
+    const activity = () => page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').performanceActivity());
+    await expect.poll(async () => (await activity()).held).toBe(4);
+    const before = await activity();
+    expect(before.targetRequests).toHaveLength(4);
+    expect(before.targetRequests.every((id: string) => before.targetIds.slice(0, 10).includes(id))).toBe(true);
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').setShortcuts({ left: null, right: null }));
+    await expect(dialog).toHaveCount(0);
+    await expect.poll(async () => (await activity()).held).toBe(0);
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').releaseTargets());
+    expect((await activity()).targetRequests).toEqual(before.targetRequests);
 });

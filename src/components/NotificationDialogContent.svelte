@@ -2,6 +2,8 @@
     import { onDestroy, onMount, tick, untrack } from 'svelte';
     import { resolveAppAssetUrl } from '../lib/appAssetUrl';
     import { useNotificationViewport } from '../lib/hooks/useNotificationViewport.svelte';
+    import { useNotificationRendering, notificationGroupSourceIds } from '../lib/hooks/useNotificationRendering.svelte';
+    import { createNotificationTargetQueue } from '../lib/notificationTargetQueue';
     import { liveQuery } from 'dexie';
     import { _ } from 'svelte-i18n';
     import type { RxNostr } from 'rx-nostr';
@@ -67,23 +69,31 @@
             kind: event.kind, content: event.content, tags: event.tags, createdAt: event.created_at })), profiles);
     }
     const reactionEmoji = usePostHistoryEmojiState({ getShow: () => show && !invalidated,
-        getEmojiUrls: () => records.filter(record => record.event.kind === 7)
+        getEmojiUrls: () => preparedRecords.filter(record => record.event.kind === 7)
             .flatMap(record => reactionModel([record]).groups.flatMap(group => group.emojiUrl ? [group.emojiUrl] : [])) });
-    const profileSync = createPostHistoryProfileSyncCoordinator({ getShow: () => show && !invalidated, getRxNostr: () => rxNostr });
+    const profileSync = createPostHistoryProfileSyncCoordinator({ getShow: () => show && visible && !invalidated, getRxNostr: () => rxNostr });
     const unsubscribeProfile = profileSync.subscribe((key, profile) => { profiles = { ...profiles, [key]: profile }; });
-    const resolver = createPostHistoryRelatedTargetResolver({ getShow: () => show && !invalidated,
+    const resolver = createNotificationTargetQueue(createPostHistoryRelatedTargetResolver({ getShow: () => show && visible && !invalidated,
         getOwner: () => pubkeyHex,
-        getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig, profileSyncCoordinator: profileSync, requireFullVerification: true });
+        getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig, profileSyncCoordinator: profileSync, requireFullVerification: true }), () => show && visible && !invalidated);
     const notificationGroups = $derived(groupNotifications(records, id => resolver.getTargetSnapshot(id)?.event ?? null));
+    const rendering = useNotificationRendering(() => notificationGroups, () => show && visible && presentationReady && !invalidated);
+    let previousPreparedRecords: NotificationRecord[] = [];
+    const preparedRecords = $derived.by(() => {
+        const ids = new Set(rendering.cards.flatMap(({ group }) => notificationGroupSourceIds(group)));
+        const next = records.filter(record => ids.has(record.eventId));
+        if (next.length !== previousPreparedRecords.length || next.some((record, index) => record !== previousPreparedRecords[index])) previousPreparedRecords = next;
+        return previousPreparedRecords;
+    });
     $effect(() => { if (listElement) viewport.observe(listElement); });
     $effect.pre(() => { notificationGroups; listElement; untrack(() => viewport.preserve()); });
-    const posts = $derived(records.filter(record => [1, 42, 1111].includes(record.event.kind))
+    const posts = $derived(preparedRecords.filter(record => [1, 42, 1111].includes(record.event.kind))
         .map(record => repostTargetToPost(record.event, record.relayUrls)));
-    const quotes = usePostHistoryQuotePreviews({ getShow: () => show && !invalidated, getPosts: () => posts,
+    const quotes = usePostHistoryQuotePreviews({ getShow: () => show && visible && !invalidated, getPosts: () => posts,
         getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig, profileSyncCoordinator: profileSync, relatedTargetResolver: resolver });
 
     export function invalidateSession() {
-        viewport.reset(); invalidated = true; generation++; task?.cancel(); task = null; busy = false;
+        viewport.reset(); invalidated = true; rendering.reset(); generation++; task?.cancel(); task = null; busy = false;
         records = []; profiles = {}; media = []; mediaIndex = -1;
         expandedReplyTargets = {};
         resolver.reset(); profileSync.reset();
@@ -148,7 +158,8 @@
         return () => { active = false; subscription.unsubscribe(); };
     });
     $effect(() => {
-        for (const record of records) profileSync.ensureProfile(record.event.pubkey, record.relayUrls);
+        if (!show || !visible || invalidated) return;
+        for (const record of preparedRecords) profileSync.ensureProfile(record.event.pubkey, record.relayUrls);
     });
     function descriptor(record: NotificationRecord): RelatedTargetDescriptor | null {
         const reference = notificationTargetReference(record);
@@ -186,8 +197,8 @@
         return kindValid && verifyRelatedEvent(snapshot.event, reference) ? snapshot : { ...snapshot, event: null, status: 'error' as const };
     }
     $effect(() => {
-        if (!show || invalidated) return;
-        const currentRecords = records;
+        if (!show || !visible || invalidated) return;
+        const currentRecords = preparedRecords;
         const targets = untrack(() => groupNotifications(currentRecords, id => resolver.getTargetSnapshot(id)?.event ?? null).flatMap(group => {
             const record = group.record;
             if (![6, 7, 16].includes(record.event.kind)) return [];
@@ -232,7 +243,7 @@
         getPostHistoryAuthoredRelayScopeKey(relayConfig);
         if (!open || !owner || !foreground || invalidated) return;
         untrack(() => { generation++; task?.cancel(); task = null; busy = false; void refresh(); });
-        return () => { generation++; task?.cancel(); task = null; busy = false; expandedReplyTargets = {}; resolver.reset(); };
+        return () => { generation++; task?.cancel(); task = null; busy = false; expandedReplyTargets = {}; resolver.reset(); profileSync.reset(); };
     });
     async function apply(post: PostHistoryRecord, reaction: boolean) {
         const epoch = generation;
@@ -250,7 +261,8 @@
     <PostRepostFeedback result={null} saveFailure={repostSaveFailure} pending={repostPending} onRetrySave={onRetryRepostSave} />
     <div class="notification-list" bind:this={listElement} aria-busy={busy}>
         {#if loaded && !records.length}<p>{$_('notifications.empty')}</p>{/if}
-        {#each notificationGroups as group (group.id)}
+        {#each rendering.cards as card (card.key)}
+            {@const group = card.group}
             {@const record = group.record}
             {@const type = notificationType(record.event)}
             <article class="notification-entry" data-notification-id={group.id} data-notification-target={group.targetId} data-notification-events={JSON.stringify([...group.reactions, ...group.reposts].length ? [...group.reactions, ...group.reposts].map(item => item.eventId) : [record.eventId])}>
@@ -355,7 +367,9 @@
                 {/if}
             </article>
         {/each}
-        {#if localMore || !exhausted}<Button className="notification-load-more" variant="default" shape="pill" disabled={busy} onClick={() => { if (localMore) limit += 100; else void refresh(true); }}>{$_('notifications.more')}</Button>{/if}
+        {#if rendering.hasMore}
+            {#key rendering.cards.length}<div class="notification-render-sentinel" use:rendering.sentinel aria-hidden="true"></div>{/key}
+        {:else if localMore || !exhausted}<Button className="notification-load-more" variant="default" shape="pill" disabled={busy} onClick={() => { if (localMore) limit += 100; else void refresh(true); }}>{$_('notifications.more')}</Button>{/if}
     </div>
 
 {#if mediaIndex >= 0}
@@ -365,6 +379,7 @@
 <style>
     .notification-target-placeholder { height: 100px; border-radius: 4px; background: var(--text); opacity: .05; }
     .notification-list { width: 100%; display: grid; min-width: 0; overflow-wrap: anywhere; }
+    .notification-render-sentinel { height: 1px; }
     .notification-list :global(.notification-load-more) { margin-top: 8px; }
     .notification-entry { display: grid; min-width: 0; gap: 6px; padding-block: 8px; border-bottom: 1px solid var(--border-hr); }
     .notification-entry :global(.notification-post), .notification-entry :global(.post-history-quote-status-card), .notification-target-placeholder { margin-inline-start: 16px; }
