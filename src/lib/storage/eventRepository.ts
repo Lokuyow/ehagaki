@@ -1,4 +1,4 @@
-import { EVENT_RECORD_TABLES, splitEventRecord, type StoredEvent, type RecordValue, type VerifiedEventInput, type EventRecordTableName } from "./eventStorageModel";
+import { EVENT_RECORD_TABLES, eventRecordId as eventId, splitEventRecord, type StoredEvent, type RecordValue, type VerifiedEventInput, type EventRecordTableName } from "./eventStorageModel";
 export type { StoredEvent } from "./eventStorageModel";
 import type { Table } from 'dexie';
 import type { EHagakiDB, PostHistoryRecord, PostHistoryChildInteractionRecord, PostHistoryDeletionRequestRecord, SensitivePayloadRecord } from './ehagakiDb';
@@ -53,11 +53,7 @@ export async function hydrateEventRecords<T>(db: EHagakiDB, records: T[], name: 
     }) as T[];
 }
 
-function eventId(row: RecordValue, name: EventRecordTableName): string {
-    return name === 'postHistoryDeletionRequests' ? row.deletionEventId : row.eventId ?? row.id;
-}
-
-/** Projection codecs live at the repository boundary; raw Dexie tables contain metadata only. */
+/** Projection codecs live at the repository boundary; unverifiable legacy snapshots remain readable. */
 export function eventRecords<N extends EventRecordTableName>(db: EHagakiDB, name: N) {
     type Rows = { postHistory: PostHistoryRecord; postHistoryChildInteractions: PostHistoryChildInteractionRecord;
         postHistoryDeletionRequests: PostHistoryDeletionRequestRecord; sensitivePayloads: SensitivePayloadRecord; notifications: NotificationRecord };

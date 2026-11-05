@@ -1,5 +1,5 @@
 import { RelayConfigUtils } from '../relayConfigUtils';
-import { EVENT_RECORD_TABLES, splitEventRecord, type StoredEvent } from './eventStorageModel';
+import { EVENT_RECORD_TABLES, eventRecordId, splitEventRecord, type StoredEvent } from './eventStorageModel';
 import { RAW_EVENT_VERIFICATION_RULE_VERSION } from '../rawEventVerificationState';
 import { validateEvent, verifyEvent } from 'nostr-tools';
 import { getEventHash } from '@rx-nostr/crypto';
@@ -66,7 +66,18 @@ export async function migrateEventStore(db: IDBDatabase): Promise<void> {
                     relatedEventIds: [...new Set([...old.relatedEventIds, ...item.relatedEventIds])],
                     deletedAt: old.deletedAt ?? item.deletedAt, deletionEventId: old.deletionEventId ?? item.deletionEventId } : {}) });
             }
-            for (const row of split) writing.objectStore(name).put(row.metadata);
+            for (let index = 0; index < split.length; index++) {
+                const row = split[index];
+                const id = eventRecordId(row.metadata, name);
+                const hasWire = incoming.has(id) || (id && await request(events.get(id)));
+                // Unverifiable legacy rows still need their display fields and original
+                // wire value. Never replace them with an unhydratable projection.
+                const legacy = { ...rows[index], ...(name === 'postHistory' || name === 'sensitivePayloads'
+                    || name === 'postHistoryDeletionRequests' ? { rawEventVerification: {
+                        status: 'invalid', ruleVersion: RAW_EVENT_VERIFICATION_RULE_VERSION,
+                    } } : {}) };
+                writing.objectStore(name).put(hasWire ? row.metadata : legacy);
+            }
             const finishedTable = rows.length < BATCH_SIZE;
             checkpoints.put({ id: MIGRATION_ID, tableIndex: progress.tableIndex + (finishedTable ? 1 : 0),
                 lastKey: finishedTable ? '' : String(rows.at(-1)!.id),

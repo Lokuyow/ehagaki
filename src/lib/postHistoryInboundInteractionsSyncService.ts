@@ -234,7 +234,7 @@ export class PostHistoryInboundInteractionsSyncService {
                 ? Math.max(0, Math.trunc(params.since ?? 0))
                 : this.resolveSince(state?.lastSeenCreatedAt ?? null);
             const eventsById = new Map<string, EventAccumulator>();
-            const relayEvents = new Map<string, Map<string, number>>();
+            const requestEvents = new Map<string, Map<string, number>>();
             let rawCount = 0;
             let resolved = false;
 
@@ -272,12 +272,13 @@ export class PostHistoryInboundInteractionsSyncService {
                         source: (req, on) => usePostHistoryRelayEvents(rxNostr, req, on),
                         setTimeoutFn: this.setTimeoutFn, clearTimeoutFn: this.clearTimeoutFn,
                         onEnd: result => { querySummary = result; } }).subscribe({
-                        next: (packet: { event?: NostrEvent; from?: string }) => {
+                        next: (packet: { event?: NostrEvent; from?: string; subId?: string }) => {
                             rawCount = this.handlePacket(eventsById, rawCount, packet);
                             if (packet.event) {
-                                const key = packet.from ?? '';
-                                const events = relayEvents.get(key) ?? new Map<string, number>();
-                                events.set(packet.event.id, packet.event.created_at); relayEvents.set(key, events);
+                                // Each backward REQ has its own limit, including #p and #P on one relay.
+                                const key = JSON.stringify([packet.from ?? '', packet.subId ?? '']);
+                                const events = requestEvents.get(key) ?? new Map<string, number>();
+                                events.set(packet.event.id, packet.event.created_at); requestEvents.set(key, events);
                             }
                         },
                         complete: () => safeResolve(querySummary && !querySummary.complete ? "timeout" : "success"),
@@ -320,9 +321,9 @@ export class PostHistoryInboundInteractionsSyncService {
                 });
             }
 
-            const saturatedRelays = [...relayEvents.values()].filter(events => events.size >= limit);
-            const pageBoundary = saturatedRelays.length
-                ? Math.max(...saturatedRelays.map(events => Math.min(...events.values())))
+            const saturatedRequests = [...requestEvents.values()].filter(events => events.size >= limit);
+            const pageBoundary = saturatedRequests.length
+                ? Math.max(...saturatedRequests.map(events => Math.min(...events.values())))
                 : eventsById.size ? Math.min(...[...eventsById.values()].map(item => item.event.created_at)) : null;
             return this.processFetchedEvents({
                 ownerPubkeyHex: params.ownerPubkeyHex,
@@ -336,7 +337,7 @@ export class PostHistoryInboundInteractionsSyncService {
                 events: toResultEvents(eventsById),
                 reconcileDirectReplyCandidates: params.reconcileDirectReplyCandidates,
                 pageBoundary,
-                saturated: saturatedRelays.length > 0,
+                saturated: saturatedRequests.length > 0,
                 expectedChildGeneration: await generationReady,
                 includeNotifications: params.includeNotifications,
                 isActive: () => !cancelled && params.isActive?.() !== false,

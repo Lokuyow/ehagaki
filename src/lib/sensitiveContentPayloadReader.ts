@@ -132,7 +132,7 @@ export function createSensitivePayloadBodyLoader(params: {
     loader.loadEmoji = preloadCustomEmojiImageWithMeta;
     loader.observe = (onChange) => {
         const subscription = liveQuery(async (): Promise<SensitiveBodyCacheStatus> => {
-            const record = await eventRecords(ehagakiDb, "sensitivePayloads").get(reference.eventId);
+            const [record] = await sensitivePayloadRepository.getByIds([reference.eventId]);
             if (record?.deletedAt !== undefined || await isPairDeleted(structure, reference.eventId)) return "deleted";
             if (!record) return "missing";
             return verifySensitivePayloadLink(structure, record.rawEvent as NostrEvent, reference.eventId)

@@ -55,3 +55,16 @@ test('scope cancellation drops its waiting jobs without canceling another consum
     await vi.waitFor(() => expect(f.ensureTarget).toHaveBeenCalledTimes(5));
     f.tasks[4].resolve(null); await kept;
 });
+
+test('a quote scope can immediately resubmit canceled queued work on a new page', async () => {
+    const f = fixture();
+    const active = Array.from({ length: 4 }, (_, index) => f.queue.ensureTarget(descriptor(String(index))));
+    const old = f.queue.ensureTarget(descriptor('quote', 'quote'));
+    f.queue.invalidateScope('quote');
+    const replacement = f.queue.ensureTarget(descriptor('quote', 'quote'));
+    await expect(old).resolves.toBeNull();
+    f.tasks.slice(0, 4).forEach(task => task.resolve(null));
+    await Promise.all(active);
+    await vi.waitFor(() => expect(f.ensureTarget).toHaveBeenCalledTimes(5));
+    f.tasks[4].resolve(null); await replacement;
+});

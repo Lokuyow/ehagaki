@@ -27,6 +27,155 @@ async function renderThrough(dialog: Locator, expectedCount: number) {
         }).toBe(true);
     }
 }
+test('quote-only notification previews resume from the shared DB after visibility changes without new events', async ({ page }) => {
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await page.locator('.notification-btn').waitFor({ state: 'visible' });
+    const targetId = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addConflictingQuotes(false));
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    const quote = dialog.locator('.notification-entry').filter({ hasText: 'Quote with a valid author hint' });
+    const target = quote.getByText('Shared quote with independent author hints', { exact: true });
+    await expect(target).toBeVisible();
+    await expect.poll(() => page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').unread())).toBe(false);
+    await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
+    const targetRequests = () => page.evaluate(id => Reflect.get(window, '__NOTIFICATIONS__').requests().flat()
+        .filter((filter: { ids?: string[] }) => filter.ids?.includes(id)).length, targetId);
+    const fetched = await targetRequests();
+    expect(fetched).toBe(1);
+    const count = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').count());
+    for (let cycle = 0; cycle < 2; cycle++) {
+        await page.evaluate(() => {
+            Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+            document.dispatchEvent(new Event('visibilitychange'));
+        });
+        await expect(target).toHaveCount(0);
+        const before = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests().length);
+        await page.evaluate(() => {
+            Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+            document.dispatchEvent(new Event('visibilitychange'));
+        });
+        await expect.poll(() => page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests().length)).toBeGreaterThan(before);
+        await expect(target).toBeVisible();
+        await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
+        expect(await targetRequests()).toBe(fetched);
+        expect(await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').count())).toBe(count);
+    }
+});
+
+for (const cached of [false, true]) test(`conflicting quote author hints preserve the valid notification preview (cached=${cached})`, async ({ page }) => {
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await page.locator('.notification-btn').waitFor({ state: 'visible' });
+    await page.evaluate(includeInvalid => Reflect.get(window, '__NOTIFICATIONS__').addConflictingQuotes(includeInvalid), !cached);
+    await page.locator('.notification-btn').click();
+    const entries = page.getByRole('dialog').locator('.notification-entry');
+    const valid = entries.filter({ hasText: 'Quote with a valid author hint' });
+    const invalid = entries.filter({ hasText: 'Quote with an invalid author hint' });
+    const target = 'Shared quote with independent author hints';
+    await expect(valid.getByText(target, { exact: true })).toBeVisible();
+    if (cached) await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addConflictingQuotes());
+    await expect(invalid.locator('.post-history-quote-status-error')).toBeVisible();
+    await expect(invalid.getByText(target, { exact: true })).toHaveCount(0);
+    await invalid.getByRole('button', { name: '再試行', exact: true }).click();
+    await expect(valid.getByText(target, { exact: true })).toBeVisible();
+    await expect(invalid.locator('.post-history-quote-status-error')).toBeVisible();
+    await expect(invalid.getByText(target, { exact: true })).toHaveCount(0);
+});
+
+for (const width of [360, 280]) test(`notification fetch failures retry the recent interval at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('post-history-dialog-playwright.html?notifications=1&container=1&sync-fail=1');
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    const error = dialog.locator('.notification-load-error');
+    await expect(error.getByRole('status')).toBeVisible();
+    await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
+    await expect(dialog.locator('.notification-load-more')).toHaveCount(0);
+    await expect(dialog.getByText('通知はありません', { exact: true })).toHaveCount(0);
+    const before = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests());
+    expect(before.at(-1).since).toBeGreaterThan(0);
+    const retry = error.getByRole('button', { name: '再試行', exact: true });
+    await expect(retry).toBeVisible();
+    expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`notification-fetch-retry-${width}.png`) });
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').setNotificationFetchFailure(false));
+    await retry.click();
+    await expect(error).toHaveCount(0);
+    await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
+    await expect(dialog.getByText('A mention addressed to you', { exact: true })).toBeVisible();
+    const after = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests());
+    expect(after.length).toBe(before.length + 1);
+    expect(after.at(-1).since).toBe(before.at(-1).since);
+    expect(after.some((filter: { since: number }) => filter.since === 0)).toBe(false);
+});
+
+test('notification fetch failures retry the same older interval', async ({ page }) => {
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('.notification-load-more')).toBeEnabled();
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').setNotificationFetchFailure(true));
+    await dialog.locator('.notification-load-more').click();
+    const error = dialog.locator('.notification-load-error');
+    await expect(error.getByRole('status')).toBeVisible();
+    const before = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests());
+    expect(before.at(-1).since).toBe(0);
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').setNotificationFetchFailure(false));
+    await error.getByRole('button', { name: '再試行', exact: true }).click();
+    await expect(error).toHaveCount(0);
+    await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
+    const after = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests());
+    expect(after.at(-1)).toMatchObject({ since: 0, until: before.at(-1).until });
+});
+
+test('notification local read failures offer a working retry without an empty state', async ({ page }) => {
+    await page.goto('post-history-dialog-playwright.html?notifications=1&opening=fail');
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    const error = dialog.locator('.notification-load-error');
+    await expect(error.getByRole('status')).toBeVisible();
+    await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
+    await expect(dialog.getByText('通知はありません', { exact: true })).toHaveCount(0);
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').recoverLocalList());
+    await error.getByRole('button', { name: '再試行', exact: true }).click();
+    await expect(error).toHaveCount(0);
+    await expect(dialog.getByText('A mention addressed to you', { exact: true })).toBeVisible();
+});
+
+test('a saturated notification page retries its pending interval instead of repeating the newest page', async ({ page }) => {
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await page.locator('.notification-btn').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('.notification-load-more')).toBeEnabled();
+    await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await page.waitForFunction(() => !history.state?.modalId);
+    const requestCount = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests().length);
+    const boundary = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').saturateNextNotificationFetch());
+    await page.locator('.notification-btn').click();
+    const error = dialog.locator('.notification-load-error');
+    await expect.poll(() => page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests().length)).toBe(requestCount + 1);
+    await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false', { timeout: 15_000 });
+    await expect(error.getByRole('status')).toBeVisible();
+    const before = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests());
+    await error.getByRole('button', { name: '再試行', exact: true }).click();
+    await expect(error).toHaveCount(0);
+    await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
+    const after = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').notificationRequests());
+    expect(after.at(-1)).toMatchObject({ since: before.at(-1).since, until: boundary });
+});
+
+test('a conflicting kind-16 notification does not block a valid cold-cache kind-6 target', async ({ page }) => {
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    await expect(page.locator('.notification-btn')).toBeVisible();
+    const ids = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addConflictingReposts());
+    await page.locator('.notification-btn').click();
+    const entries = page.getByRole('dialog').locator('.notification-entry');
+    const valid = entries.filter({ has: page.locator(`[data-notification-event="${ids.validId}"]`) });
+    const invalid = entries.filter({ has: page.locator(`[data-notification-event="${ids.invalidId}"]`) });
+    await expect(valid.getByText('Cold-cache valid repost target', { exact: true })).toBeVisible();
+    await expect(invalid.getByText('元の投稿を表示できません', { exact: true })).toBeVisible();
+    await expect(invalid.getByText('Cold-cache valid repost target', { exact: true })).toHaveCount(0);
+});
 
 for (const width of [360, 280]) test(`reply title toggles the direct parent from the shared DB at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 844 });
@@ -507,7 +656,8 @@ for (const width of [360, 280]) test(`live notifications preserve reading positi
     await expect(anchor).toBeVisible();
     await expect.poll(async () => Math.abs((await anchor.boundingBox())!.y - top)).toBeLessThanOrEqual(1);
     expect(await dialog.locator('.notification-entry').count()).toBeGreaterThan(99);
-    expect(await content.locator('body').evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').requests().length)).toBe(requests);
+    const afterRequests = await content.locator('body').evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').requests());
+    expect(afterRequests.length, JSON.stringify(afterRequests.map((filters: any[]) => filters.map(filter => ({ kinds: filter.kinds, ids: filter.ids?.length }))))).toBe(requests);
     await page.screenshot({ path: info.outputPath(`live-scroll-${width}.png`) });
 });
 

@@ -1,4 +1,4 @@
-import { onDestroy } from "svelte";
+import { onDestroy, untrack } from "svelte";
 import type { RxNostr } from "rx-nostr";
 import {
     createPostHistoryRelatedTargetResolver,
@@ -6,6 +6,7 @@ import {
     type PostHistoryRelatedTargetErrorCode,
     type PostHistoryRelatedTargetSnapshot,
     type PostHistoryRelatedTargetStatus,
+    type RelatedTargetDescriptor,
 } from "../postHistoryRelatedTargetResolver.svelte";
 import {
     postHistoryContextFetchService,
@@ -18,6 +19,7 @@ import {
 import {
     EMPTY_POST_HISTORY_QUOTE_TARGET_INDEX,
     postHistoryQuoteTargetDiscoveryAdapter,
+    type PostHistoryQuoteTargetIndex,
 } from "../postHistoryRelatedTargetDiscoveryAdapter";
 import {
     postHistoryDeletionRequestsRepository,
@@ -195,6 +197,7 @@ export function usePostHistoryQuotePreviews({
     let resolverRevision = $state(0);
     let indexedPosts: PostHistoryRecord[] | null = null;
     let quoteIndex = EMPTY_POST_HISTORY_QUOTE_TARGET_INDEX;
+    let loadGeneration = 0;
 
     function getCurrentQuoteIndex() {
         const posts = getPosts();
@@ -217,39 +220,43 @@ export function usePostHistoryQuotePreviews({
         return (getCurrentQuoteIndex().byPostId[post.eventId] ?? []).map((reference) => {
             return toQuotePreviewState(
                 reference.eventId,
-                resolver.getTargetSnapshot(reference.eventId),
+                resolver.getTargetSnapshot(reference.eventId, reference),
             );
         });
     }
 
     function retryQuotePreview(eventId: string): void {
         if (!getShow()) return;
-        const context = getCurrentQuoteIndex().contextsByEventId[eventId];
-        if (!context) {
-            return;
-        }
+        void resolveQuoteTargets(getCurrentQuoteIndex(), true, eventId);
+    }
 
-        void resolver.retryTarget(
-            postHistoryQuoteTargetDiscoveryAdapter.toDescriptor(context, scopeKey),
-        );
+    async function resolveQuoteTargets(index: PostHistoryQuoteTargetIndex, force = false, eventId?: string): Promise<void> {
+        const generation = loadGeneration;
+        const byTarget = new Map<string, RelatedTargetDescriptor[]>();
+        for (const [sourceEventId, references] of Object.entries(index.byPostId)) {
+            for (const reference of references) {
+                if (eventId && reference.eventId !== eventId) continue;
+                const context = index.contextsByEventId[reference.eventId];
+                const descriptor = postHistoryQuoteTargetDiscoveryAdapter.toDescriptor({ ...context,
+                    sourceEventId, authorHint: reference.authorHint }, scopeKey);
+                byTarget.set(reference.eventId, [...(byTarget.get(reference.eventId) ?? []), descriptor]);
+            }
+        }
+        await Promise.all([...byTarget.values()].map(async candidates => {
+            for (let attempt = 0; attempt < candidates.length; attempt++) {
+                if (!getShow() || generation !== loadGeneration) return;
+                const descriptor = candidates[attempt];
+                const snapshot = resolver.getTargetSnapshot(descriptor.targetEventId);
+                const result = await resolver.ensureTarget(descriptor, { force: attempt === 0 ? force : snapshot?.status !== 'resolved' });
+                if (result?.status === 'resolved' || result?.status === 'deleted') return;
+                if (result?.status !== 'not-found' && result?.errorCode !== 'invalid_event') return;
+            }
+        }));
     }
 
     async function refreshQuotePreviews(posts: PostHistoryRecord[]): Promise<void> {
         if (!getShow()) return;
-        const index = postHistoryQuoteTargetDiscoveryAdapter.buildIndex(posts);
-        const contexts = Object.values(index.contextsByEventId);
-        if (contexts.length === 0) {
-            return;
-        }
-
-        await resolver.ensureTargets(
-            contexts.map((context) =>
-                postHistoryQuoteTargetDiscoveryAdapter.toDescriptor(context, scopeKey),
-            ),
-            {
-                force: true,
-            },
-        );
+        await resolveQuoteTargets(postHistoryQuoteTargetDiscoveryAdapter.buildIndex(posts), true);
     }
 
     $effect(() => {
@@ -267,19 +274,14 @@ export function usePostHistoryQuotePreviews({
 
         getRxNostr();
         getRelayConfig();
-        const contexts = Object.values(getCurrentQuoteIndex().contextsByEventId);
-        if (contexts.length === 0) {
-            return;
-        }
-
-        void resolver.ensureTargets(
-            contexts.map((context) =>
-                postHistoryQuoteTargetDiscoveryAdapter.toDescriptor(context, scopeKey),
-            ),
-        );
+        const index = getCurrentQuoteIndex();
+        loadGeneration++;
+        untrack(() => { void resolveQuoteTargets(index); });
+        return () => { loadGeneration++; resolver.invalidateScope(scopeKey); };
     });
 
     onDestroy(() => {
+        loadGeneration++;
         resolver.invalidateScope(scopeKey);
         resetState();
     });
@@ -288,6 +290,6 @@ export function usePostHistoryQuotePreviews({
         getQuotePreviews,
         retryQuotePreview,
         refreshQuotePreviews,
-        suspend: () => resolver.invalidateScope(scopeKey),
+        suspend: () => { loadGeneration++; resolver.invalidateScope(scopeKey); },
     };
 }

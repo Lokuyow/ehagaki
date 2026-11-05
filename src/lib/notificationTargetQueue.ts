@@ -7,7 +7,7 @@ type Job = { scope: string; run: () => Promise<Result>; finish: (value: Result) 
 export function createNotificationTargetQueue(base: PostHistoryRelatedTargetResolver, active: () => boolean): PostHistoryRelatedTargetResolver {
     const groups = new Map<string, Job[]>();
     const running = new Set<string>();
-    const pending = new Map<string, Promise<Result>>();
+    const pending = new Map<string, { scope: string; task: Promise<Result> }>();
     let generation = 0;
 
     function pump() {
@@ -34,14 +34,14 @@ export function createNotificationTargetQueue(base: PostHistoryRelatedTargetReso
         if (!active()) return Promise.resolve(null);
         const key = JSON.stringify([descriptor, mode]);
         const existing = pending.get(key);
-        if (existing) return existing;
+        if (existing) return existing.task;
         const task = new Promise<Result>((finish, fail) => {
             const jobs = groups.get(descriptor.targetEventId) ?? [];
             jobs.push({ scope: descriptor.scopeKey, run, finish, fail });
             groups.set(descriptor.targetEventId, jobs); pump();
         });
-        pending.set(key, task);
-        const clear = () => { if (pending.get(key) === task) pending.delete(key); };
+        pending.set(key, { scope: descriptor.scopeKey, task });
+        const clear = () => { if (pending.get(key)?.task === task) pending.delete(key); };
         void task.then(clear, clear);
         return task;
     }
@@ -52,6 +52,7 @@ export function createNotificationTargetQueue(base: PostHistoryRelatedTargetReso
         retryTarget: (descriptor, options) => schedule(descriptor, () => base.retryTarget(descriptor, options), `retry:${JSON.stringify(options)}`),
         prepareRepostTarget: (descriptor, target) => schedule(descriptor, () => base.prepareRepostTarget(descriptor, target), 'prepare'),
         invalidateScope(scope) {
+            for (const [key, entry] of pending) if (entry.scope === scope) pending.delete(key);
             for (const jobs of groups.values()) for (let index = jobs.length - 1; index >= 0; index--) {
                 if (jobs[index].scope === scope) jobs.splice(index, 1)[0].finish(null);
             }
