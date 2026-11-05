@@ -215,6 +215,10 @@ test('notification headers omit labels and times and identify reposts and replie
     await expect(dialog.getByText('返信', { exact: true })).toHaveCount(0);
     const repost = dialog.getByRole('img', { name: 'リポスト', exact: true });
     const reply = dialog.locator('.notification-reply-icon');
+    const heart = dialog.locator('.notification-reaction .favorite-icon').first();
+    const heartColor = await heart.evaluate(node => getComputedStyle(node).backgroundColor);
+    await heart.locator('xpath=ancestor::button[1]').hover();
+    await expect(heart).toHaveCSS('background-color', heartColor);
     await expect(repost).toBeVisible(); await expect(reply).toBeVisible();
     expect(await repost.evaluate(node => getComputedStyle(node).maskImage)).toContain('repost.svg');
     expect(await reply.evaluate(node => getComputedStyle(node).maskImage)).toContain('chat_bubble_');

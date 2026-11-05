@@ -384,6 +384,7 @@
     .notification-reaction { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
     .notification-actor + .notification-reaction { margin-top: -2px; }
     .notification-reaction :global(.post-preview-reactions-panel) { padding: 0; }
+    .notification-reaction :global(.post-preview-reaction-symbol) { --icon-hover-color: rgb(249, 24, 128); --icon-selected-hover-color: rgb(249, 24, 128); }
     .notification-actor :global(.notification-avatar) {
         display: block;
         width: 100%;
