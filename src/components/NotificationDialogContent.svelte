@@ -302,7 +302,7 @@
                     {:else}
                         <span class="notification-type">{$_(`notifications.${type}`)}</span>
                     {/if}
-                    <NotificationPost plain={type === 'reply'} event={record.event} profile={profiles[record.event.pubkey]} relayUrls={record.relayUrls} loadSensitiveBody={sensitiveBody(record.event, record.relayUrls)}
+                    <NotificationPost plain={true} event={record.event} profile={profiles[record.event.pubkey]} relayUrls={record.relayUrls} loadSensitiveBody={sensitiveBody(record.event, record.relayUrls)}
                         onImageOpen={openImage} />
                     {#each quotes.getQuotePreviews(repostTargetToPost(record.event, record.relayUrls)) as preview (preview.eventId)}
                         {#if preview.status === 'resolved'}
