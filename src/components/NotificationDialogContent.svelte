@@ -338,6 +338,7 @@
     .notification-repost-name { min-width: 0; max-inline-size: 16ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .notification-actor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
     .notification-reaction { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+    .notification-actor + .notification-reaction { margin-top: -2px; }
     .notification-reaction :global(.post-preview-reactions-panel) { padding: 0; }
     .notification-actor :global(.notification-avatar) {
         display: block;
