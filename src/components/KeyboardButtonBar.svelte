@@ -412,7 +412,7 @@
                                         customClass="post-button-loading"
                                     />
                                 {:else}
-                                    <div class="plane-icon svg-icon"></div>
+                                    <div class="svg-icon" class:plane-icon={editorState.submitIcon !== 'favorite'} class:favorite-icon={editorState.submitIcon === 'favorite'}></div>
                                 {/if}
                             </Button>
                         {/snippet}
@@ -547,6 +547,12 @@
             &:active {
                 scale: 0.9;
                 transition: scale 0.1s ease-in-out;
+            }
+
+            .favorite-icon {
+                mask-image: url("/icons/favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+                width: 34px;
+                height: 34px;
             }
 
             .plane-icon {

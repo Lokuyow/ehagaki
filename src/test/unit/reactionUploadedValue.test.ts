@@ -41,8 +41,8 @@ describe('Uploaded custom emoji reaction value', () => {
         for (const invalid of [{ ...context, ownedItemIds: new Set<string>() }, { ...context, items: [...context.items, { ...context.items[0], id: 'other' }] },
             { ...context, items: [{ ...context.items[0], type: 'video' as const }] }]) expect(inspectReactionDocument(doc('cat'), invalid).value).toBeNull();
     });
-    it('still requires one grapheme without an image', () => {
-        expect(inspectReactionDocument(doc(''), { ...context, items: [] }).value).toBeNull();
+    it('defaults empty input to like and otherwise requires one grapheme without an image', () => {
+        expect(inspectReactionDocument(doc(''), { ...context, items: [] }).value).toEqual({ type: 'text', text: '+' });
         expect(inspectReactionDocument(doc('cat'), { items: [], ownedItemIds: new Set(), originalFileNames: new Map() }).value).toBeNull();
         expect(inspectReactionDocument(doc('👍🏽'), { items: [], ownedItemIds: new Set(), originalFileNames: new Map() }).value).toEqual({ type: 'text', text: '👍🏽' });
     });

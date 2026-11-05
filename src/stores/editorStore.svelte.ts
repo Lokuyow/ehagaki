@@ -21,6 +21,7 @@ export let editorState = $state<EditorState>({
     isSubmitPending: false,
     content: '',
     canPost: false,
+    submitIcon: 'plane',
     isUploading: false,
     uploadErrorMessage: '',
     postStatus: {
@@ -61,7 +62,8 @@ export function updateEditorContent(content: string, hasMedia: boolean = false):
     editorState.hasImage = hasMedia;
 }
 
-export function updateEditorPostEligibility(editor: TipTapEditor | null, hasGalleryMedia: boolean, eligibility?: boolean): void {
+export function updateEditorPostEligibility(editor: TipTapEditor | null, hasGalleryMedia: boolean, eligibility?: boolean, submitIcon: EditorState['submitIcon'] = 'plane'): void {
+    editorState.submitIcon = submitIcon;
     editorState.canPost = eligibility ?? resolveLivePostEligibility(editor, hasGalleryMedia);
 }
 
@@ -76,6 +78,7 @@ export function updateUploadState(isUploading: boolean, errorMessage: string = '
 
 export function resetEditorState(): void {
     editorState.content = '';
+    editorState.submitIcon = 'plane';
     editorState.canPost = false;
     editorState.uploadErrorMessage = '';
     editorState.postStatus = {
