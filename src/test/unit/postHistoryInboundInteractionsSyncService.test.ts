@@ -143,6 +143,32 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
             reason: 'notification-older', since: 0, until: 500, limit: 2 }).promise;
         expect(result).toMatchObject({ saturated: true, maybeIncomplete: true, oldestSeenCreatedAt: 100 });
     });
+    it.each([false, true])("keeps a sparse #P request from moving a saturated #p boundary on the same relay (overlap=%s)", async overlap => {
+        rxNostrMock.use.mockReturnValue({ subscribe: ({ next, complete }: any) => {
+            next({ event: createEvent({ id: '3'.repeat(64), created_at: 300 }), from: 'wss://relay.example/', subId: 'inbound:0' });
+            next({ event: createEvent({ id: '4'.repeat(64), created_at: 200 }), from: 'wss://relay.example/', subId: 'inbound:0' });
+            next({ event: createEvent({ id: '5'.repeat(64), kind: 1111, created_at: 10,
+                tags: [['P', OWNER_PUBKEY], ...(overlap ? [['p', OWNER_PUBKEY]] : [])] }),
+                from: 'wss://relay.example/', subId: 'inbound:1' });
+            complete(); return { unsubscribe: vi.fn() };
+        } });
+        const { service } = createService({ notificationRepository: { upsert: vi.fn() } });
+        const result = await service.syncRecent(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY,
+            reason: 'notification-older', since: 0, until: 500, limit: 2 }).promise;
+        expect(result).toMatchObject({ saturated: true, maybeIncomplete: true, oldestSeenCreatedAt: 200 });
+    });
+    it("does not infer saturation by adding the results of individually sparse requests", async () => {
+        rxNostrMock.use.mockReturnValue({ subscribe: ({ next, complete }: any) => {
+            next({ event: createEvent({ id: '3'.repeat(64), created_at: 300 }), from: 'wss://relay.example/', subId: 'inbound:0' });
+            next({ event: createEvent({ id: '4'.repeat(64), kind: 1111, created_at: 10, tags: [['P', OWNER_PUBKEY]] }),
+                from: 'wss://relay.example/', subId: 'inbound:1' });
+            complete(); return { unsubscribe: vi.fn() };
+        } });
+        const { service } = createService({ notificationRepository: { upsert: vi.fn() } });
+        const result = await service.syncRecent(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY,
+            reason: 'notification-older', since: 0, until: 500, limit: 2 }).promise;
+        expect(result).toMatchObject({ saturated: false, oldestSeenCreatedAt: 10 });
+    });
     it("persists mention-only notifications before classifying history relations", async () => {
         const upsert = vi.fn(async () => undefined);
         const mention = createEvent({ tags: [["p", OWNER_PUBKEY]], content: "mention only" });

@@ -16,7 +16,10 @@ export interface StoredEvent {
 export const EVENT_RECORD_TABLES = ['postHistory', 'postHistoryChildInteractions', 'sensitivePayloads', 'postHistoryDeletionRequests', 'notifications'] as const;
 export type EventRecordTableName = typeof EVENT_RECORD_TABLES[number];
 export type RecordValue = Record<string, any>;
-/** Persisted projections exclude wire bodies. Repositories hydrate their DTOs. */
+export function eventRecordId(row: RecordValue, name: EventRecordTableName): string {
+    return name === 'postHistoryDeletionRequests' ? row.deletionEventId : row.eventId ?? row.id;
+}
+/** Verified projections exclude wire bodies; unverifiable legacy rows retain their display snapshots. */
 export type EventProjection<T> = Omit<T, 'rawEvent' | 'event' | 'content' | 'tags' | 'rawEventVerification' | 'fetchedRelays' | 'relayUrls' | 'repostTarget'> & {
     repostTarget?: { eventId: string; relayHints: string[] };
 };

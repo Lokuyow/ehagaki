@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
 import { EHagakiDB } from '../../lib/storage/ehagakiDb';
-import { EventRepository } from '../../lib/storage/eventRepository';
+import { EventRepository, eventRecords } from '../../lib/storage/eventRepository';
 import { NotificationRepository } from '../../lib/storage/notificationRepository';
 import { DexiePostHistoryRepository } from '../../lib/storage/postHistoryRepository';
 import { DexiePostHistoryChildInteractionsRepository } from '../../lib/storage/postHistoryChildInteractionsRepository';
@@ -14,6 +14,10 @@ import { migrateEventStore } from '../../lib/storage/eventStoreMigration';
 import { createPostHistoryRelatedTargetResolver } from '../../lib/postHistoryRelatedTargetResolver.svelte';
 import type { NostrEvent } from '../../lib/types';
 import type { RxNostr } from 'rx-nostr';
+import { parsePostHistoryQuoteReferences } from '../../lib/postHistoryQuoteUtils';
+import { createPlainNostrEventSnapshot } from '../../lib/postHistoryEventUtils';
+import { runPostHistoryJsonlExportEngine } from '../../lib/postHistoryJsonlExportEngine';
+import { RAW_EVENT_VERIFICATION_RULE_VERSION } from '../../lib/rawEventVerificationState';
 
 const key = generateSecretKey(), owner = getPublicKey(key), sender = generateSecretKey();
 const sign = (content: string, tags: string[][] = [], kind = 1, author = key) => finalizeEvent({ kind, content, tags, created_at: 100 }, author);
@@ -145,6 +149,43 @@ describe('shared event storage', () => {
         expect(await new NotificationRepository(db).list(owner)).toMatchObject([{ event: incoming, receivedAt: 456, unread: 0 }]);
         expect(await db.notifications.get(`${owner}:${incoming.id}`)).not.toHaveProperty('event');
         expect(await db.eventStoreMigration.get('shared-events-v19')).toMatchObject({ done: true });
+    });
+
+    it.each(['missing', 'malformed', 'invalid-signature'] as const)('preserves readable legacy history when its wire event is %s', async failure => {
+        const db = createDb(), target = sign('legacy display body', [['q', 'f'.repeat(64)]]);
+        const rawEvent = failure === 'missing' ? undefined : failure === 'malformed' ? 'legacy malformed wire'
+            : { ...createPlainNostrEventSnapshot(target), content: 'changed after signing' };
+        const legacy = { id: target.id, eventId: target.id, pubkeyHex: owner, kind: 1,
+            content: target.content, tags: target.tags, rawEvent, acceptedRelays: [], fetchedRelays: [], relayHints: [],
+            createdAt: 100, postedAt: 12345, media: [], updatedAt: 1, schemaVersion: 1 };
+        const old = await new Promise<IDBDatabase>((resolve, reject) => {
+            const opening = indexedDB.open(db.name, 180);
+            opening.onupgradeneeded = () => {
+                ensureCurrentEHagakiDbSchema(opening.result, 'sharedMedia', opening.transaction);
+                opening.result.deleteObjectStore('events'); opening.result.deleteObjectStore('eventStoreMigration');
+            };
+            opening.onsuccess = () => resolve(opening.result); opening.onerror = () => reject(opening.error);
+        });
+        await new Promise<void>((resolve, reject) => {
+            const tx = old.transaction('postHistory', 'readwrite');
+            tx.objectStore('postHistory').put(legacy);
+            tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+        });
+        old.close();
+        await upgradeEhagakiDatabase(indexedDB, { databaseName: db.name });
+        await db.open();
+        const [record] = await new DexiePostHistoryRepository(db).getAll({ pubkeyHex: owner });
+        expect(record).toMatchObject({ content: target.content, tags: target.tags, postedAt: 12345 });
+        expect(parsePostHistoryQuoteReferences(record)).toMatchObject([{ eventId: 'f'.repeat(64) }]);
+        expect(await db.postHistory.get(target.id)).toEqual({ ...legacy,
+            rawEventVerification: { status: 'invalid', ruleVersion: RAW_EVENT_VERIFICATION_RULE_VERSION } });
+        const exported = await runPostHistoryJsonlExportEngine({ pubkeyHex: owner, postRecords: [record], deletionRecords: [],
+            verificationStores: { post: eventRecords(db, 'postHistory'), deletion: eventRecords(db, 'postHistoryDeletionRequests') } });
+        expect(exported.result).toMatchObject({ exportedEventCount: 0, skippedPostCount: 1, isPartial: true });
+        expect(await db.events.count()).toBe(0);
+        expect(await db.eventStoreMigration.get('shared-events-v19')).toMatchObject({ done: true });
+        db.close(); await db.open();
+        expect(await new DexiePostHistoryRepository(db).getByEventId(target.id)).toMatchObject({ content: target.content, tags: target.tags });
     });
 
     it('rolls back a failed migration batch and resumes from the last committed checkpoint', async () => {
