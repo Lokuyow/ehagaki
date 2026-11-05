@@ -28,6 +28,9 @@ for (const width of [360, 280]) test(`reply title toggles the direct parent from
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(entry.getByText('Direct reply parent', { exact: true })).toBeVisible();
+    const parentBounds = (await entry.locator('.notification-reply-parent').boundingBox())!;
+    const toggleBounds = (await toggle.boundingBox())!;
+    expect(parentBounds.y + parentBounds.height).toBeLessThanOrEqual(toggleBounds.y);
     await expect(entry.getByText('Original notification target', { exact: true })).toHaveCount(0);
     expect(await entry.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath(`notification-reply-parent-${width}.png`) });

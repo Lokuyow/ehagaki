@@ -303,6 +303,23 @@
                         {/if}
                     {/if}
                 {:else}
+                    {#if type === 'reply' && expandedReplyTargets[record.eventId]}
+                        {@const parent = replyParentDescriptor(record)}
+                        {@const snapshot = parent ? resolver.getTargetSnapshot(parent.targetEventId) : null}
+                        <div class="notification-reply-parent" id={`${replyTargetPrefix}-${record.eventId}`}>
+                            {#if snapshot?.status === 'resolved' && snapshot.event}
+                                <NotificationPost event={snapshot.event} profile={snapshot.profile} relayUrls={snapshot.relayHints}
+                                    loadSensitiveBody={sensitiveBody(snapshot.event, snapshot.relayHints)} onImageOpen={openImage} />
+                            {:else if snapshot?.status === 'deleted'}
+                                <p role="status">{$_('postHistory.replyTargetDeleted')}</p>
+                            {:else if snapshot?.status === 'not-found' || snapshot?.status === 'error'}
+                                <p role="status">{$_(snapshot.status === 'not-found' ? 'postHistory.contextNotFound' : 'postHistory.contextFetchFailed')}</p>
+                                {#if parent}<Button className="notification-reply-retry" variant="default" shape="pill" onClick={() => resolver.retryTarget(parent)}>{$_('postHistory.contextRetry')}</Button>{/if}
+                            {:else}
+                                <p role="status">{$_('postHistory.contextLoading')}</p>
+                            {/if}
+                        </div>
+                    {/if}
                     {#if type === 'reply'}
                         <button type="button" class="notification-reply-label notification-reply-toggle"
                             aria-expanded={!!expandedReplyTargets[record.eventId]} aria-controls={`${replyTargetPrefix}-${record.eventId}`}
@@ -324,23 +341,6 @@
                         </div>
                     {:else}
                         <span class="notification-type">{$_(`notifications.${type}`)}</span>
-                    {/if}
-                    {#if type === 'reply' && expandedReplyTargets[record.eventId]}
-                        {@const parent = replyParentDescriptor(record)}
-                        {@const snapshot = parent ? resolver.getTargetSnapshot(parent.targetEventId) : null}
-                        <div class="notification-reply-parent" id={`${replyTargetPrefix}-${record.eventId}`}>
-                            {#if snapshot?.status === 'resolved' && snapshot.event}
-                                <NotificationPost event={snapshot.event} profile={snapshot.profile} relayUrls={snapshot.relayHints}
-                                    loadSensitiveBody={sensitiveBody(snapshot.event, snapshot.relayHints)} onImageOpen={openImage} />
-                            {:else if snapshot?.status === 'deleted'}
-                                <p role="status">{$_('postHistory.replyTargetDeleted')}</p>
-                            {:else if snapshot?.status === 'not-found' || snapshot?.status === 'error'}
-                                <p role="status">{$_(snapshot.status === 'not-found' ? 'postHistory.contextNotFound' : 'postHistory.contextFetchFailed')}</p>
-                                {#if parent}<Button className="notification-reply-retry" variant="default" shape="pill" onClick={() => resolver.retryTarget(parent)}>{$_('postHistory.contextRetry')}</Button>{/if}
-                            {:else}
-                                <p role="status">{$_('postHistory.contextLoading')}</p>
-                            {/if}
-                        </div>
                     {/if}
                     <NotificationPost plain={true} event={record.event} profile={profiles[record.event.pubkey]} relayUrls={record.relayUrls} loadSensitiveBody={sensitiveBody(record.event, record.relayUrls)}
                         onImageOpen={openImage} />
