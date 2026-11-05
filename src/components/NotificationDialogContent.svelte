@@ -294,6 +294,11 @@
                             <span class="notification-kind-icon notification-mention-icon svg-icon" style:mask-image={`url("${resolveAppAssetUrl('icons/alternate_email_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg')}")`} aria-hidden="true"></span>
                             <span>{$_('notifications.mention')}</span>
                         </div>
+                    {:else if type === 'quote'}
+                        <div class="notification-reply-label">
+                            <span class="notification-kind-icon notification-quote-icon svg-icon" style:mask-image={`url("${resolveAppAssetUrl('icons/format_quote_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg')}")`} aria-hidden="true"></span>
+                            <span>{$_('notifications.quote')}</span>
+                        </div>
                     {:else}
                         <span class="notification-type">{$_(`notifications.${type}`)}</span>
                     {/if}
