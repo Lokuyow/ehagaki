@@ -241,9 +241,19 @@ describe('エディター・URLペースト統合テスト', () => {
             expect(getParagraphText(editor)).toBe('**first**\n\nsecond');
         });
 
-        it('file clipboardを消費せず既存media処理へ委譲すること', () => {
+        it('画像file付きclipboardは消費し、付随するHTMLの<img>を挿入しないこと', () => {
+            // Webページから画像をコピーすると、ファイルと一緒に <img src="元URL"> のHTMLも付く。
+            // アップロードはpasteActionが担うため、ここで消費しないと元URLの画像が二重に入る。
             const image = new File(['image'], 'image.png', { type: 'image/png' });
-            expect(invokePasteHandler(editor, createClipboardData('image', '<p>image</p>', [image]))).toBe(false);
+            const html = '<img src="https://example.com/original.jpg">';
+            expect(invokePasteHandler(editor, createClipboardData('', html, [image]))).toBe(true);
+            expect(editor.getHTML()).not.toContain('original.jpg');
+            expect(editor.getText()).toBe('');
+        });
+
+        it('画像以外のfile clipboardは既定処理へ委譲すること', () => {
+            const pdf = new File(['pdf'], 'doc.pdf', { type: 'application/pdf' });
+            expect(invokePasteHandler(editor, createClipboardData('doc', '<p>doc</p>', [pdf]))).toBe(false);
             expect(editor.getText()).toBe('');
         });
     });

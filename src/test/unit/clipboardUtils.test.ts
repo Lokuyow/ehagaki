@@ -4,6 +4,7 @@
 
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { 
+    getClipboardImageFiles,
     normalizeClipboardText, 
     serializeParagraphs, 
     tryCopyToClipboard,
@@ -162,6 +163,28 @@ describe('clipboardUtils', () => {
             const result = serializeParagraphs(paragraphs);
             
             expect(result).toBe('');
+        });
+    });
+
+    describe('getClipboardImageFiles', () => {
+        const image = new File(['image'], 'image.png', { type: 'image/png' });
+        const pdf = new File(['pdf'], 'doc.pdf', { type: 'application/pdf' });
+        const fileItem = (file: File) => ({ kind: 'file', type: file.type, getAsFile: () => file });
+        const textItem = { kind: 'string', type: 'text/html', getAsFile: () => null };
+
+        it('itemsから画像ファイルだけを取り出す', () => {
+            const clipboardData = { items: [textItem, fileItem(image), fileItem(pdf)] } as unknown as DataTransfer;
+            expect(getClipboardImageFiles(clipboardData)).toEqual([image]);
+        });
+
+        it('itemsが無い場合はfilesにフォールバックする', () => {
+            const clipboardData = { files: [image, pdf] } as unknown as DataTransfer;
+            expect(getClipboardImageFiles(clipboardData)).toEqual([image]);
+        });
+
+        it('clipboardDataが無い、または画像が無い場合は空配列を返す', () => {
+            expect(getClipboardImageFiles(null)).toEqual([]);
+            expect(getClipboardImageFiles({ items: [textItem], files: [] } as unknown as DataTransfer)).toEqual([]);
         });
     });
 

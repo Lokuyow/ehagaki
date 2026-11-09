@@ -25,7 +25,7 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from 'prosemirror-state';
 import { Slice, Fragment } from 'prosemirror-model';
 import type { Node as PMNode, Schema } from 'prosemirror-model';
-import { normalizeClipboardText, serializeParagraphs } from '../utils/clipboardUtils';
+import { getClipboardImageFiles, normalizeClipboardText, serializeParagraphs } from '../utils/clipboardUtils';
 import { normalizeEmojiShortcode } from '../customEmoji';
 import { cleanupExternalRichPasteLines } from './clipboardTextCleanup';
 
@@ -132,7 +132,7 @@ export const ClipboardExtension = Extension.create({
                      * - falseを返すとデフォルト処理に委譲
                      * 
                      * 処理フロー:
-                     * 1. file/media clipboard は既存の経路へ委譲
+                     * 1. 画像ファイル付きclipboardは消費する（アップロードはpasteActionが担当）
                      * 2. HTML付き通常pasteだけplain textのmarkup cleanupを適用
                      * 3. plain textがなければHTMLの既定ProseMirror処理へ委譲
                      * 4. 1つのpaste transactionで選択範囲へ挿入
@@ -150,10 +150,17 @@ export const ClipboardExtension = Extension.create({
                             return false;
                         }
 
-                        // 画像ファイルのペーストは別処理に委譲
-                        const hasFiles = clipboardData.files && clipboardData.files.length > 0;
-                        if (hasFiles) {
-                            return false; // MediaPasteExtensionが処理
+                        // 画像ファイルはエディタコンテナのpasteActionがアップロードする。
+                        // Webページから画像をコピーすると text/html に <img src="元URL"> も付くため、
+                        // ここで消費しないと既定のpasteが元URLの画像ノードも挿入して二重になる。
+                        if (getClipboardImageFiles(clipboardData).length > 0) {
+                            event.preventDefault();
+                            return true;
+                        }
+
+                        // その他のファイルは既定処理に委譲
+                        if (clipboardData.files && clipboardData.files.length > 0) {
+                            return false;
                         }
 
                         // プレーンテキストを取得
