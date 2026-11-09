@@ -834,6 +834,22 @@
   const addAccountDialog = createDialogVisibilityHandlers(
     showAddAccountDialogStore,
   );
+  function invalidatePendingAccountScopedAsyncState(): void {
+    notificationDialogRef?.invalidateSession();
+    showNotificationDialogStore.set(false);
+    postHistoryDialogRef?.invalidateSession();
+    customEmojiStore.invalidatePendingLoads();
+    uploadDestinationStore.invalidatePendingOperations();
+    invalidatePendingRelayConfigOperations();
+  }
+  function clearAccountScopedAsyncState(): void {
+    notificationDialogRef?.invalidateSession();
+    showNotificationDialogStore.set(false);
+    postHistoryDialogRef?.invalidateSession();
+    customEmojiStore.reset();
+    uploadDestinationStore.reset();
+    resetRelayConfigStore();
+  }
   const appAccountSessionController = createAppAccountSessionController({
     getIsSwitchingAccount: () => isSwitchingAccount,
     setIsSwitchingAccount: (next) => {
@@ -860,22 +876,8 @@
       authService.restoreAccount(pubkeyHex, type),
     handlePostAuth,
     resetUploadDisplayState,
-    invalidatePendingAccountScopedAsyncState: () => {
-      notificationDialogRef?.invalidateSession();
-      showNotificationDialogStore.set(false);
-      postHistoryDialogRef?.invalidateSession();
-      customEmojiStore.invalidatePendingLoads();
-      uploadDestinationStore.invalidatePendingOperations();
-      invalidatePendingRelayConfigOperations();
-    },
-    clearAccountScopedAsyncState: () => {
-      notificationDialogRef?.invalidateSession();
-      showNotificationDialogStore.set(false);
-      postHistoryDialogRef?.invalidateSession();
-      customEmojiStore.reset();
-      uploadDestinationStore.reset();
-      resetRelayConfigStore();
-    },
+    invalidatePendingAccountScopedAsyncState,
+    clearAccountScopedAsyncState,
     logoutAccountFromAuthService: (pubkeyHex, options) =>
       authService.logoutAccount(pubkeyHex, {
         notifyParentClient: options.notifyParentClient,
@@ -923,22 +925,8 @@
       showLastAccountLogoutConfirm = next;
     },
     resetUploadDisplayState,
-    invalidatePendingAccountScopedAsyncState: () => {
-      notificationDialogRef?.invalidateSession();
-      showNotificationDialogStore.set(false);
-      postHistoryDialogRef?.invalidateSession();
-      customEmojiStore.invalidatePendingLoads();
-      uploadDestinationStore.invalidatePendingOperations();
-      invalidatePendingRelayConfigOperations();
-    },
-    clearAccountScopedAsyncState: () => {
-      notificationDialogRef?.invalidateSession();
-      showNotificationDialogStore.set(false);
-      postHistoryDialogRef?.invalidateSession();
-      customEmojiStore.reset();
-      uploadDestinationStore.reset();
-      resetRelayConfigStore();
-    },
+    invalidatePendingAccountScopedAsyncState,
+    clearAccountScopedAsyncState,
     getCurrentRxNostr: () => rxNostr,
     setCurrentRxNostr: (next) => {
       rxNostr = next;

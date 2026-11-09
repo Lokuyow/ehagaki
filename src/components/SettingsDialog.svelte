@@ -139,12 +139,11 @@
     });
 
     // 圧縮設定候補（$locale変更時にラベルも更新）
+    // 画像・動画で同じ候補を使う
     let compressionLevels = $derived(getCompressionLevels($_));
-    let videoCompressionLevels = $derived(getCompressionLevels($_));
 
     // 圧縮レベルを2つずつペアにグループ化
     let compressionPairs = $derived(chunkArray(compressionLevels, 2));
-    let videoCompressionPairs = $derived(chunkArray(videoCompressionLevels, 2));
 
     let clientTagEnabled = $state(settingsStore.clientTagEnabled);
     let externalNostrClient = $state<ExternalNostrClient>(
@@ -522,7 +521,7 @@
             selectedCompression={settingsStore.imageQualityLevel}
             onCompressionChange={(value) =>
                 (settingsStore.imageQualityLevel = value)}
-            {videoCompressionPairs}
+            videoCompressionPairs={compressionPairs}
             selectedVideoCompression={settingsStore.videoQualityLevel}
             onVideoCompressionChange={(value) =>
                 (settingsStore.videoQualityLevel = value)}

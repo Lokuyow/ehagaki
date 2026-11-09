@@ -15,7 +15,7 @@ import { buildClientTag } from "./tags/clientTag";
 import { extractPostContentWithEmojiTags, type ExtractedPostContent } from "./utils/editorDocumentUtils";
 import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
 import { resetEditorState, resetPostStatus } from "../stores/editorStore.svelte";
-import type { PostDeliveryClassResult, PostDeliverySummary, RelayRejection, ImageImetaMetadataMap, PostResult, PostManagerDeps, HashtagStore, NostrEvent, PostManagerSigner } from "./types";
+import type { PostDeliveryClassResult, PostDeliverySummary, RelayRejection, ImageImetaMetadataMap, PostResult, PostManagerDeps, HashtagStore, NostrEvent, PostManagerSigner, ReplyQuoteComposerState } from "./types";
 import { iframeMessageService } from "./iframeMessageService";
 import { saveHashtagsToHistory } from "./utils/hashtagHistory";
 import { mediaGalleryStore } from "../stores/mediaGalleryStore.svelte";
@@ -69,6 +69,15 @@ interface Nip65RelayRoles {
 interface ActiveNip65Operation {
   acknowledged(): boolean;
   cancel(): void;
+}
+
+function serializeReplyQuoteIdentity(
+  state: Pick<ReplyQuoteComposerState, "reply" | "quotes">,
+): string {
+  return JSON.stringify({
+    reply: state.reply?.eventId ?? null,
+    quotes: state.quotes.map((quote) => quote.eventId),
+  });
 }
 
 function createRelayRoles(): Nip65RelayRoles {
@@ -221,11 +230,7 @@ export class PostManager {
   }
 
   private getReplyQuoteIdentity(): string {
-    const state = this.deps.replyQuoteState!.value;
-    return JSON.stringify({
-      reply: state.reply?.eventId ?? null,
-      quotes: state.quotes.map((quote) => quote.eventId),
-    });
+    return serializeReplyQuoteIdentity(this.deps.replyQuoteState!.value);
   }
 
   private notifyPostFailure(error: string): PostResult {
@@ -1223,7 +1228,7 @@ export class PostManager {
             splitSensitiveContent: failClosedContentWarning,
             authorWriteRelaySnapshot,
             writeRelayHintSnapshot,
-            replyQuoteIdentity: JSON.stringify({ reply: rqState.reply?.eventId ?? null, quotes: rqState.quotes.map((quote) => quote.eventId) }),
+            replyQuoteIdentity: serializeReplyQuoteIdentity(rqState),
           });
         } catch (err) {
           return this.handleSubmissionError('window.nostrでの投稿エラー:');
@@ -1275,7 +1280,7 @@ export class PostManager {
             splitSensitiveContent: failClosedContentWarning,
             authorWriteRelaySnapshot,
             writeRelayHintSnapshot,
-            replyQuoteIdentity: JSON.stringify({ reply: rqState.reply?.eventId ?? null, quotes: rqState.quotes.map((quote) => quote.eventId) }),
+            replyQuoteIdentity: serializeReplyQuoteIdentity(rqState),
           });
         } catch (err) {
           return this.handleSubmissionError('NIP-46での投稿エラー:');
@@ -1321,7 +1326,7 @@ export class PostManager {
             splitSensitiveContent: failClosedContentWarning,
             authorWriteRelaySnapshot,
             writeRelayHintSnapshot,
-            replyQuoteIdentity: JSON.stringify({ reply: rqState.reply?.eventId ?? null, quotes: rqState.quotes.map((quote) => quote.eventId) }),
+            replyQuoteIdentity: serializeReplyQuoteIdentity(rqState),
           });
         } catch (err) {
           return this.handleSubmissionError('親クライアント連携での投稿エラー:');
@@ -1363,7 +1368,7 @@ export class PostManager {
         splitSensitiveContent: failClosedContentWarning,
         authorWriteRelaySnapshot,
         writeRelayHintSnapshot,
-        replyQuoteIdentity: JSON.stringify({ reply: rqState.reply?.eventId ?? null, quotes: rqState.quotes.map((quote) => quote.eventId) }),
+        replyQuoteIdentity: serializeReplyQuoteIdentity(rqState),
       });
 
     } catch (err) {

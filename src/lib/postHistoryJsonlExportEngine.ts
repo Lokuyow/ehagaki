@@ -261,18 +261,6 @@ function isLightweightValidNostrEvent(
     }
 }
 
-function toExportableSignedEvent(event: NostrEvent): NostrEvent {
-    return {
-        id: event.id,
-        pubkey: event.pubkey,
-        created_at: event.created_at,
-        kind: event.kind,
-        tags: event.tags.map((tag) => [...tag]),
-        content: event.content,
-        sig: event.sig,
-    };
-}
-
 function compareExportEvents(left: NostrEvent, right: NostrEvent): number {
     if (left.created_at !== right.created_at) {
         return left.created_at - right.created_at;
@@ -385,7 +373,7 @@ export async function exportPostHistoryRecords(
             continue;
         }
 
-        postEvents.push(toExportableSignedEvent(record.rawEvent));
+        postEvents.push(createPlainNostrEventSnapshot(record.rawEvent));
         exportablePostEventIds.add(record.eventId);
         result.exportedPostEventCount += 1;
         const structure = record.rawEvent as NostrEvent;
@@ -399,7 +387,7 @@ export async function exportPostHistoryRecords(
         }
         if (!exportedPayloadIds.has(payload.id)) {
             exportedPayloadIds.add(payload.id);
-            postEvents.push(toExportableSignedEvent(payload));
+            postEvents.push(createPlainNostrEventSnapshot(payload));
             result.exportedPayloadEventCount += 1;
         }
     }
@@ -414,7 +402,7 @@ export async function exportPostHistoryRecords(
         const validRecord = records.find((record) =>
             isConsistentDeletionEvent(record, record.rawEvent, pubkeyHex));
         if (validRecord) {
-            const deletionEvent = toExportableSignedEvent(validRecord.rawEvent as NostrEvent);
+            const deletionEvent = createPlainNostrEventSnapshot(validRecord.rawEvent as NostrEvent);
             deletionEvents.push(deletionEvent);
             for (const targetEventId of extractDeletionTargetEventIds(deletionEvent)) {
                 validDeletionTargetEventIds.add(targetEventId);
