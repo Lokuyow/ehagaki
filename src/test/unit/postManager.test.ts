@@ -2412,6 +2412,155 @@ describe('PostManager統合テスト', () => {
         expect(manager.getEventSender()).toBeInstanceOf(PostEventSender);
     });
 
+    describe('signer selection per auth type', () => {
+        const sessionPubkey = 'a'.repeat(64);
+
+        function useAuth(type: AuthState['type'], options: { windowNostr?: boolean } = {}) {
+            mockAuthState.type = type;
+            mockAuthState.pubkey = sessionPubkey;
+            mockKeyManager = new MockKeyManager(null, null, options.windowNostr ?? false);
+            mockDeps.keyManager = mockKeyManager;
+        }
+
+        it('NIP-07 signs with window.nostr', async () => {
+            useAuth('nip07', { windowNostr: true });
+            const signEvent = vi.fn().mockRejectedValue(new Error('extension failed'));
+            mockDeps.window = { nostr: { signEvent } } as any;
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const result = await manager.submitPost('Test content');
+
+            expect(result).toEqual({ success: false, error: 'post_error' });
+            expect(signEvent).toHaveBeenCalledOnce();
+            expect(signEvent.mock.calls[0][0]).toMatchObject({ pubkey: sessionPubkey });
+            expect(mockDeps.seckeySignerFn).not.toHaveBeenCalled();
+        });
+
+        it('NIP-07 labels unexpected build errors', async () => {
+            useAuth('nip07', { windowNostr: true });
+            const signEvent = vi.fn();
+            mockDeps.window = { nostr: { signEvent } } as any;
+            mockDeps.getClientTagFn = vi.fn(() => { throw new Error('client tag failed'); });
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const result = await manager.submitPost('Test content');
+
+            expect(result).toEqual({ success: false, error: 'post_error' });
+            expect(signEvent).not.toHaveBeenCalled();
+            expect(mockDeps.console!.error).toHaveBeenCalledWith('window.nostrでの投稿エラー:', expect.anything());
+        });
+
+        it('NIP-07 without window.nostr falls through to the stored key path', async () => {
+            useAuth('nip07', { windowNostr: false });
+            mockDeps.window = { nostr: { signEvent: vi.fn() } } as any;
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const result = await manager.submitPost('Test content');
+
+            expect(result).toEqual({ success: false, error: 'key_not_found' });
+        });
+
+        it('NIP-46 labels signer lookup failures', async () => {
+            useAuth('nip46');
+            mockDeps.getNip46SignerForSessionFn = vi.fn().mockRejectedValue(new Error('bunker down'));
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const result = await manager.submitPost('Test content');
+
+            expect(result).toEqual({ success: false, error: 'post_error' });
+            expect(mockDeps.console!.error).toHaveBeenCalledWith('NIP-46での投稿エラー:', expect.anything());
+            expect(mockRxNostr.send).not.toHaveBeenCalled();
+        });
+
+        it('NIP-46 labels unexpected build errors', async () => {
+            useAuth('nip46');
+            const signEvent = vi.fn();
+            mockDeps.getNip46SignerForSessionFn = vi.fn().mockResolvedValue({ signEvent });
+            mockDeps.getClientTagFn = vi.fn(() => { throw new Error('client tag failed'); });
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const result = await manager.submitPost('Test content');
+
+            expect(result).toEqual({ success: false, error: 'post_error' });
+            expect(signEvent).not.toHaveBeenCalled();
+            expect(mockDeps.console!.error).toHaveBeenCalledWith('NIP-46での投稿エラー:', expect.anything());
+        });
+
+        it('parent client without a signer fails before building the event', async () => {
+            useAuth('parentClient');
+            mockDeps.getParentClientSignerFn = vi.fn().mockReturnValue(null);
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const result = await manager.submitPost('Test content');
+
+            expect(result).toEqual({ success: false, error: 'parent_client_signer_not_available' });
+            expect(mockRxNostr.send).not.toHaveBeenCalled();
+        });
+
+        it('parent client signs with the session pubkey', async () => {
+            useAuth('parentClient');
+            const signEvent = vi.fn().mockRejectedValue(new Error('parent refused'));
+            mockDeps.getParentClientSignerFn = vi.fn().mockReturnValue({ signEvent });
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const result = await manager.submitPost('Test content');
+
+            expect(result).toEqual({ success: false, error: 'post_error' });
+            expect(signEvent.mock.calls[0][0]).toMatchObject({ pubkey: sessionPubkey });
+        });
+
+        it('parent client labels unexpected build errors', async () => {
+            useAuth('parentClient');
+            mockDeps.getParentClientSignerFn = vi.fn().mockReturnValue({ signEvent: vi.fn() });
+            mockDeps.getClientTagFn = vi.fn(() => { throw new Error('client tag failed'); });
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const result = await manager.submitPost('Test content');
+
+            expect(result).toEqual({ success: false, error: 'post_error' });
+            expect(mockDeps.console!.error).toHaveBeenCalledWith('親クライアント連携での投稿エラー:', expect.anything());
+        });
+
+        it('parent client signer lookup errors use the generic label', async () => {
+            useAuth('parentClient');
+            mockDeps.getParentClientSignerFn = vi.fn(() => { throw new Error('lookup failed'); });
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const result = await manager.submitPost('Test content');
+
+            expect(result).toEqual({ success: false, error: 'post_error' });
+            expect(mockDeps.console!.error).toHaveBeenCalledWith('投稿エラー:', expect.anything());
+        });
+
+        it('stored key signs with the session pubkey', async () => {
+            useAuth('nsec');
+            mockKeyManager = new MockKeyManager('stored-secret', null, false);
+            mockDeps.keyManager = mockKeyManager;
+            const signEvent = vi.fn().mockRejectedValue(new Error('bad key'));
+            mockDeps.seckeySignerFn = vi.fn().mockReturnValue({ signEvent });
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const result = await manager.submitPost('Test content');
+
+            expect(result).toEqual({ success: false, error: 'post_error' });
+            expect(mockDeps.seckeySignerFn).toHaveBeenCalledWith('stored-secret');
+            expect(signEvent.mock.calls[0][0]).toMatchObject({ pubkey: sessionPubkey });
+        });
+
+        it('stored key labels unexpected build errors generically', async () => {
+            useAuth('nsec');
+            mockKeyManager = new MockKeyManager('stored-secret', null, false);
+            mockDeps.keyManager = mockKeyManager;
+            mockDeps.getClientTagFn = vi.fn(() => { throw new Error('client tag failed'); });
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const result = await manager.submitPost('Test content');
+
+            expect(result).toEqual({ success: false, error: 'post_error' });
+            expect(mockDeps.console!.error).toHaveBeenCalledWith('投稿エラー:', expect.anything());
+        });
+    });
+
     describe('iframe postMessage統合', () => {
         it('投稿成功時にnotifyPostSuccessが呼ばれる', async () => {
             const mockIframeService = {
