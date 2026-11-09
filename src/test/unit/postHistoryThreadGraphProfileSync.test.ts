@@ -105,6 +105,7 @@ function createGraph(profileSyncCoordinator: PostHistoryProfileSyncCoordinator) 
         },
         postHistoryRepositoryImpl: {
             getByEventId: vi.fn().mockResolvedValue(null),
+            markDeleted: vi.fn().mockResolvedValue(undefined),
         },
         relatedTargetResolver: {
             getScopeRevision: vi.fn(() => 0),
