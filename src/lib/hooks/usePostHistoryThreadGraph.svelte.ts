@@ -169,7 +169,7 @@ interface UsePostHistoryThreadGraphParams {
     getPubkeyHex: () => string | null | undefined;
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
-    postHistoryRepositoryImpl?: Pick<PostHistoryRepository, "getByEventId">;
+    postHistoryRepositoryImpl?: Pick<PostHistoryRepository, "getByEventId" | "markDeleted">;
     directReplyRecordsAdapterImpl?: PostHistoryDirectReplyRecordsAdapter;
     reactionRecordsAdapterImpl?: PostHistoryReactionRecordsAdapter;
     childInteractionsRepositoryImpl?: Pick<
@@ -409,7 +409,7 @@ export function usePostHistoryThreadGraph({
                 for (const target of result.targets) {
                     const deletion = result.deletions.find(item => isValidDeletionRequestForTarget(item.event, target));
                     if (!deletion) continue;
-                    await postHistoryRepository.markDeleted(target.id, deletion.event.id, deletion.event.created_at * 1000);
+                    await postHistoryRepositoryImpl.markDeleted(target.id, deletion.event.id, deletion.event.created_at * 1000);
                     if (!isActive()) return;
                     onDeletedPost?.(target.id, deletion.event.created_at * 1000, deletion.event.id);
                 }
@@ -3135,6 +3135,7 @@ export function usePostHistoryThreadGraph({
         reactionSummaryByParentId = {};
         reactionRecordsByParentId = {};
         reactionProfilesByPubkey = {};
+        reactionReadModelByParentId = {};
         replyBadgePreloadKeys.clear();
         childReplyCountPrefetchKeys.clear();
     }

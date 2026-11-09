@@ -18,7 +18,10 @@
     import type { RepostPostHandler } from "../lib/hooks/usePostRepostOperation.svelte";
     import type { PostRepostResult } from "../lib/postRepostService";
     import { isRepostOuterKind, isRepostTargetKind, repostTargetToPost } from "../lib/postRepostUtils";
-    import { isPostHistoryRawEventConsistent } from "../lib/postHistoryEventUtils";
+    import {
+        createTransientPostHistoryRecord,
+        isPostHistoryRawEventConsistent,
+    } from "../lib/postHistoryEventUtils";
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
     import PostHistoryRecordActionItems from "./PostHistoryRecordActionItems.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
@@ -2024,51 +2027,16 @@
     function buildPostRecordFromNodeState(
         nodeState: PostHistoryThreadGraphNodeState,
     ): PostHistoryRecord {
-        const now = Date.now();
-        const postedAt = nodeState.node.event.created_at * 1000;
-
-        return {
-            id: nodeState.node.eventId,
-            eventId: nodeState.node.eventId,
-            pubkeyHex: nodeState.node.authorPubkey,
-            kind: nodeState.node.event.kind,
-            content: nodeState.node.event.content,
-            tags: nodeState.node.event.tags.map((tag) => [...tag]),
-            createdAt: postedAt,
-            postedAt,
-            relayHints: [...nodeState.node.relayUrls],
-            acceptedRelays: [...nodeState.node.relayUrls],
-            fetchedRelays: [...nodeState.node.relayUrls],
-            media: [],
-            rawEvent: nodeState.node.event,
-            updatedAt: now,
-            schemaVersion: 1,
-        };
+        return createTransientPostHistoryRecord(
+            nodeState.node.event,
+            nodeState.node.relayUrls,
+        );
     }
 
     function buildPostRecordFromQuoteEvent(
         event: NostrEvent,
     ): PostHistoryRecord {
-        const now = Date.now();
-        const postedAt = event.created_at * 1000;
-
-        return {
-            id: event.id,
-            eventId: event.id,
-            pubkeyHex: event.pubkey,
-            kind: event.kind,
-            content: event.content,
-            tags: event.tags.map((tag) => [...tag]),
-            createdAt: postedAt,
-            postedAt,
-            relayHints: [],
-            acceptedRelays: [],
-            fetchedRelays: [],
-            media: [],
-            rawEvent: event,
-            updatedAt: now,
-            schemaVersion: 1,
-        };
+        return createTransientPostHistoryRecord(event);
     }
 
     function buildQuotePreviewMenuKey(
@@ -3174,7 +3142,7 @@
                                                 >
                                                     <DropdownMenu.Trigger
                                                         class="menu-trigger post-history-menu-trigger"
-                                                        aria-label="アクションを表示"
+                                                        aria-label={$_("common.showActions")}
                                                     >
                                                         <div
                                                             class="more-icon svg-icon"

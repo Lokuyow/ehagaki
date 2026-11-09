@@ -19,7 +19,7 @@ beforeEach(async () => {
     await postHistoryRepository.upsertFetchedEvents({ events: [{ event: parent }] });
 });
 afterEach(() => { dispose?.(); dispose = undefined; });
-async function setup() {
+async function setup(overrides: Partial<Parameters<typeof createPostHistoryThreadGraphHookHarness>[0]> = {}) {
     const post = (await postHistoryRepository.getByEventId(parent.id))!;
     let resolve!: (result: RelatedEventsResult) => void;
     const pending = new Promise<RelatedEventsResult>(r => { resolve = r; });
@@ -31,6 +31,7 @@ async function setup() {
         getShow: () => true, getPubkeyHex: () => parent.pubkey, getRxNostr: () => rx, getRelayConfig: () => null,
         relatedEventsFetch: fetch, onDeletedPost,
         profileSyncCoordinator: { subscribe: () => () => {}, ensureProfile: () => null } as any,
+        ...overrides,
     });
     dispose = harness.dispose;
     return { ...harness, post, resolve, fetch, cancel, onDeletedPost };
@@ -72,6 +73,24 @@ describe("manual related event refresh", () => {
         h.resolve(result({ deletions: [{ event: deletion, relayUrls: [] }] })); await task;
         expect((await postHistoryRepository.getByEventId(parent.id))?.deletedAt).toBe(104_000);
         expect(h.onDeletedPost).toHaveBeenCalledWith(parent.id, 104_000, deletion.id);
+    });
+    it("marks the original post deleted through the injected repository", async () => {
+        const markDeleted = vi.fn(async () => {});
+        const h = await setup({ postHistoryRepositoryImpl: { getByEventId: postHistoryRepository.getByEventId.bind(postHistoryRepository), markDeleted } });
+        const task = h.graph.refreshRelatedEvents(h.post);
+        await vi.waitFor(() => expect(h.fetch).toHaveBeenCalled());
+        const deletion = finalizeEvent({ kind: 5, content: "", tags: [["e", parent.id]], created_at: 105 }, key);
+        h.resolve(result({ deletions: [{ event: deletion, relayUrls: [] }] })); await task;
+        expect(markDeleted).toHaveBeenCalledWith(parent.id, deletion.id, 105_000);
+        expect(h.onDeletedPost).toHaveBeenCalledWith(parent.id, 105_000, deletion.id);
+    });
+    it("clears reaction read models on reset", async () => {
+        const h = await setup(); const task = h.graph.refreshRelatedEvents(h.post);
+        await vi.waitFor(() => expect(h.fetch).toHaveBeenCalled());
+        h.resolve(result()); await task;
+        expect(h.graph.getAnchorState(h.post).reactionReadModel.totalCount).toBe(1);
+        h.graph.resetState();
+        expect(h.graph.getAnchorState(h.post).reactionReadModel).toEqual({ totalCount: 0, groups: [] });
     });
     it("releases the request on close and does not save late results", async () => {
         const h = await setup(); const task = h.graph.refreshRelatedEvents(h.post);
