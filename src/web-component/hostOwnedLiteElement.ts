@@ -1,13 +1,10 @@
+import { isRecord } from "../lib/utils/typeGuards";
 import { EHagakiComposerElement } from "./element";
 import {
     type EHagakiCustomEmojiCatalogItem,
     type EHagakiHostOwnedComposerOptions,
 } from "./types";
 import { validateHostOwnedOptions } from "./hostOwnedLiteOptions";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isHttpUrl(value: unknown): value is string {
     if (typeof value !== "string") return false;

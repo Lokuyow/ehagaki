@@ -1,3 +1,4 @@
+import { isHex64 } from "./utils/nostrHexUtils";
 import { followPostHistoryDelivery } from "./storage/postHistoryDeliveryReceipt";
 import { RelayOperation } from "./relay/operation";
 import { ownRelayOperation } from "./relay/publish";
@@ -415,7 +416,7 @@ export class PostManager {
       (params.sensitive?.structureTemplate.tags ?? params.event.tags ?? []).flatMap((tag: unknown) => {
         if (!Array.isArray(tag) || tag[0] !== "p") return [];
         const pubkey = tag[1];
-        return typeof pubkey === "string" && /^[0-9a-f]{64}$/i.test(pubkey) ? [pubkey] : [];
+        return isHex64(pubkey) ? [pubkey] : [];
       }),
     ));
     const rolesByRelay = new Map<string, Nip65RelayRoles>();

@@ -1,3 +1,4 @@
+import { isLowerHex64 } from './utils/nostrHexUtils';
 import { kinds, nip44 } from 'nostr-tools';
 import type { VerifiedEvent } from 'nostr-tools';
 import * as ipaddr from 'ipaddr.js';
@@ -716,7 +717,7 @@ function createLiveIdentityAuthChallenge(): LiveIdentityAuthChallenge {
 }
 
 function isValidNip46UserPubkey(value: unknown): value is string {
-    return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+    return isLowerHex64(value);
 }
 
 async function readLiveNip46UserPubkey(

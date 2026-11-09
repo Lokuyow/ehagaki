@@ -1,3 +1,4 @@
+import { isRecord } from "./utils/typeGuards";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { RelayConfig } from "./types";
 
@@ -15,10 +16,6 @@ export class HostRelayConfigError extends TypeError {
         super(message);
         this.name = "HostRelayConfigError";
     }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**

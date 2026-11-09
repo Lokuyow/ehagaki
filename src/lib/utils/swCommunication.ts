@@ -1,11 +1,8 @@
+import { isRecord } from "./typeGuards";
 import type { SharedMediaData } from "../types";
 import { SHARE_HANDLER_CONFIG } from '../constants';
 import { sharedMediaRepository } from "../storage/sharedMediaRepository";
 import { getAppRuntimeEnvironment } from "../appRuntimeEnvironment";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function isSharedMediaMetadata(value: unknown): boolean {
     return isRecord(value)

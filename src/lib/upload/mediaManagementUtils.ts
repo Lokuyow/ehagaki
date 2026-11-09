@@ -1,3 +1,4 @@
+import { isHex64 } from "../utils/nostrHexUtils";
 import { inferPostMediaKind } from "../postMediaCacheUtils";
 import { AuthenticationRequiredError } from "../sessionLiveness";
 import { throwIfUploadAborted } from "./uploadOperation";
@@ -15,12 +16,9 @@ import {
 } from "./mediaManagementTypes";
 
 export const UPLOAD_MEDIA_PAGE_SIZE = 24;
-export function mediaRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+export { isRecord as mediaRecord } from "../utils/typeGuards";
 export function normalizeMediaHash(value: unknown): string | null {
-    return typeof value === "string" && /^[a-f0-9]{64}$/i.test(value)
-        ? value.toLowerCase() : null;
+    return isHex64(value) ? value.toLowerCase() : null;
 }
 export function mediaInteger(value: unknown): number | undefined {
     return typeof value === "number" && Number.isSafeInteger(value) && value >= 0

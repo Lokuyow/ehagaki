@@ -1,3 +1,4 @@
+import { isHex64 } from './utils/nostrHexUtils';
 import { nip19 } from 'nostr-tools';
 import { buildManagedRestoreCandidates } from './authManagedRestoreUtils';
 import { restoreManagedSessionAccount } from './authManagedSessionRestoreUtils';
@@ -368,7 +369,7 @@ export async function restoreManagedAccount(
     dependencies: ManagedAuthRestoreDependencies,
     nip07Identity?: PublicKeyData,
 ): Promise<ManagedRestoreResult> {
-    if (!/^[0-9a-fA-F]{64}$/.test(pubkeyHex)) {
+    if (!isHex64(pubkeyHex)) {
         return { hasAuth: false, reason: 'invalid-requested-pubkey' };
     }
 

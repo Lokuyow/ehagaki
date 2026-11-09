@@ -1,3 +1,5 @@
+import { isRecord } from "./utils/typeGuards";
+import { isLowerHex64 } from "./utils/nostrHexUtils";
 import { getEventHash, validateEvent, verifyEvent } from "nostr-tools";
 import type {
     EmbedComposerSetContextPayload,
@@ -23,12 +25,8 @@ function invalid(): never {
     throw new EmbedComposerContextValidationError();
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isLowercaseHexPubkey(value: string): boolean {
-    return /^[0-9a-f]{64}$/.test(value);
+    return isLowerHex64(value);
 }
 
 function validateReference(value: unknown): void {

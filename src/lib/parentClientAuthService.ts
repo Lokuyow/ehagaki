@@ -1,3 +1,5 @@
+import { isRecord } from "./utils/typeGuards";
+import { isHex64 } from "./utils/nostrHexUtils";
 import { getParentClientSessionStorageKey } from "./authStorageKeys";
 import {
     EMBED_MESSAGE_NAMESPACE,
@@ -10,7 +12,6 @@ import {
 import type { ParentClientCapability, ParentClientSessionData } from "./types";
 
 const DEFAULT_TIMEOUT_MS = 10000;
-const PUBKEY_HEX_PATTERN = /^[0-9a-f]{64}$/i;
 const VALID_PARENT_CLIENT_CAPABILITIES = new Set<string>([
     'signEvent',
     'nip44.encrypt',
@@ -98,10 +99,6 @@ function dedupeCapabilities(
     return [...new Set(source)].filter(isParentClientCapability);
 }
 
-function isHex64(value: unknown): value is string {
-    return typeof value === 'string' && PUBKEY_HEX_PATTERN.test(value);
-}
-
 function isStringArray(value: unknown): value is string[] {
     return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
@@ -111,10 +108,6 @@ function isCapabilityArray(value: unknown): value is ParentClientCapability[] {
         && value.every((item): item is ParentClientCapability =>
             typeof item === 'string' && VALID_PARENT_CLIENT_CAPABILITIES.has(item),
         );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isValidParentOrigin(value: unknown): value is string {

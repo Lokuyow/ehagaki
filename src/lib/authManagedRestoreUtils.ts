@@ -1,3 +1,4 @@
+import { isHex64 } from './utils/nostrHexUtils';
 import type { StoredAccount } from './types';
 
 type AccountAuthType = StoredAccount['type'];
@@ -19,7 +20,7 @@ export function buildManagedRestoreCandidates({
 }): ManagedRestoreCandidate[] {
     const candidates: ManagedRestoreCandidate[] = [];
 
-    if (activePubkey && /^[0-9a-fA-F]{64}$/.test(activePubkey)
+    if (isHex64(activePubkey)
         && activeType && activeType !== 'parentClient'
         && accounts.some(account => account.pubkeyHex === activePubkey && account.type === activeType)) {
         // A saved selection is not invalidated by an unavailable credential or signer.

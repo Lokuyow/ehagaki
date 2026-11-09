@@ -1,3 +1,4 @@
+import { isRecord } from "../utils/typeGuards";
 import { UPLOAD_POLLING_CONFIG } from "../constants";
 import {
     UploadedMediaAvailabilityError,
@@ -52,10 +53,6 @@ function toNip96UploadError(
 
 function getNip96UploadUrl(destination: UploadDestination): string {
     return destination.resolvedUploadUrl || destination.serverUrl;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isUnknownArray(value: unknown): value is unknown[] {

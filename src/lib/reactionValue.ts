@@ -1,3 +1,4 @@
+import { isHex64 } from './utils/nostrHexUtils';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { normalizeCustomEmojiSelection, type CustomEmojiSelection } from './customEmojiUsage';
 import { normalizeEmojiShortcode, parseEmojiSetAddress } from './customEmoji';
@@ -52,7 +53,7 @@ export function normalizeReactionValue(value: ReactionValue): { content: string;
     if (!emoji || !/^[a-zA-Z0-9_-]+$/.test(emoji.shortcode)) throw new Error('invalid_reaction_value');
     const tag = ['emoji', emoji.shortcode, emoji.src];
     const set = parseEmojiSetAddress(emoji.setAddress);
-    if (set && /^[0-9a-f]{64}$/i.test(set.pubkey)) tag.push(set.address);
+    if (set && isHex64(set.pubkey)) tag.push(set.address);
     return { content: `:${emoji.shortcode}:`, emojiTag: tag };
 }
 

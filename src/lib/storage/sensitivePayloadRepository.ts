@@ -1,3 +1,4 @@
+import { isLowerHex64 } from "../utils/nostrHexUtils";
 import { eventRecords } from "./eventRepository";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import { attestFullyVerifiedPostHistoryRawEvent, isCurrentPostHistoryRawEventAttestation, type PostHistoryRawEventAttestation, RAW_EVENT_VERIFICATION_RULE_VERSION } from "../postHistoryRawEventVerification";
@@ -90,7 +91,7 @@ export class DexieSensitivePayloadRepository implements SensitivePayloadReposito
     }
 
     async getByIds(ids: string[]): Promise<SensitivePayloadRecord[]> {
-        const uniqueIds = [...new Set(ids.filter((id) => /^[0-9a-f]{64}$/.test(id)))];
+        const uniqueIds = [...new Set(ids.filter((id) => isLowerHex64(id)))];
         if (uniqueIds.length === 0) return [];
         const records = await this.db.sensitivePayloads.where("id").anyOf(uniqueIds).toArray()
             .then(rows => eventRecords(this.db, "sensitivePayloads").hydrate(rows));

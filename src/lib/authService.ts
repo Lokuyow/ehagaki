@@ -1,3 +1,4 @@
+import { isHex64 } from './utils/nostrHexUtils';
 import { setAuthInitialized } from '../stores/authStore.svelte';
 import type { AuthResult, AuthServiceDependencies } from './types';
 import type { AccountManager } from './accountManager';
@@ -414,7 +415,7 @@ export class AuthService {
             return { hasAuth: false, reason: 'local-nsec-auth-disabled' };
         }
 
-        if (!/^[0-9a-fA-F]{64}$/.test(pubkeyHex)) {
+        if (!isHex64(pubkeyHex)) {
             return { hasAuth: false, reason: 'invalid-requested-pubkey' };
         }
 

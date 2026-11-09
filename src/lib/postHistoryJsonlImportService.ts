@@ -1,3 +1,4 @@
+import { isLowerHex64 } from "./utils/nostrHexUtils";
 import { validateEvent } from "nostr-tools";
 import { POST_HISTORY_FETCH_KINDS } from "./postHistoryRelayFetchService";
 import { isPostHistoryAuthoredKind } from "./postHistoryKinds";
@@ -31,7 +32,6 @@ export const POST_HISTORY_JSONL_IMPORT_QUEUE_SIZE = 32;
 
 const POST_HISTORY_JSONL_IMPORT_PROGRESS_INTERVAL_MS = 250;
 
-const NOSTR_EVENT_ID_PATTERN = /^[0-9a-f]{64}$/;
 
 export type PostHistoryJsonlImportStatus =
     | "completed"
@@ -144,8 +144,7 @@ function copyResult(result: PostHistoryJsonlImportResult): PostHistoryJsonlImpor
 function getValidDeletionETagCount(event: NostrEvent): number {
     return event.tags.filter((tag) =>
         tag[0] === "e"
-        && typeof tag[1] === "string"
-        && NOSTR_EVENT_ID_PATTERN.test(tag[1])
+        && isLowerHex64(tag[1])
     ).length;
 }
 
