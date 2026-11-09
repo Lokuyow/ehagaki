@@ -13,7 +13,6 @@ let relayManagerInstance: RelayManager | null = null;
 let writeRelays = $state<string[]>([]);
 let relayConfig = $state<RelayConfig | null>(null);
 let relayConfigSource = $state<'user' | 'host' | null>(null);
-let showRelays = $state(false);
 let isSwUpdating = $state(false);
 let relayListUpdated = $state<number>(0);
 
@@ -52,11 +51,6 @@ export const relayConfigStore = {
 export const relayConfigSourceStore = {
     get value() { return relayConfigSource; },
     set: (value: 'user' | 'host' | null) => { relayConfigSource = value; },
-};
-
-export const showRelaysStore = {
-    get value() { return showRelays; },
-    set: (value: boolean) => { showRelays = value; }
 };
 
 export const isSwUpdatingStore = {

@@ -19,10 +19,6 @@ export const defaultStorageAdapter: StorageAdapter = {
   setItem: (key: string, value: string) => getAppStorage().setItem(key, value)
 };
 
-export const defaultNavigatorAdapter: NavigatorAdapter = {
-  language: navigator.language
-};
-
 export const defaultTimeoutAdapter: TimeoutAdapter = {
   setTimeout: (callback: () => void, delay: number) => setTimeout(callback, delay)
 };

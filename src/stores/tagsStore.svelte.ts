@@ -1,6 +1,6 @@
 // tags専用のSvelteランストア
 
-import type { HashtagData, ImageImetaMetadataMap } from '../lib/types';
+import type { HashtagData } from '../lib/types';
 
 // --- ハッシュタグデータストア ---
 
@@ -17,9 +17,6 @@ export function getHashtagDataSnapshot(): HashtagData {
     return $state.snapshot(svelteHashtagDataStore);
 }
 
-// --- imeta情報の一時保存ストア ---
-export type ImageImetaMap = ImageImetaMetadataMap;
-
 // 画像サイズ情報マップストア
 export interface ImageSizeMap {
     [url: string]: {
@@ -31,17 +28,7 @@ export interface ImageSizeMap {
 }
 
 // 画像ストアの実装（$stateを直接使用）
-let svelteImageImetaMap = $state<ImageImetaMap>({});
 let svelteImageSizeMap = $state<ImageSizeMap>({});
-
-export const imageImetaMapStore = {
-    get value() { return svelteImageImetaMap; },
-    set: (value: ImageImetaMap) => { Object.assign(svelteImageImetaMap, value); },
-    update: (updater: (value: ImageImetaMap) => ImageImetaMap) => {
-        const newValue = updater(svelteImageImetaMap);
-        Object.assign(svelteImageImetaMap, newValue);
-    }
-};
 
 export const imageSizeMapStore = {
     get value() { return svelteImageSizeMap; },

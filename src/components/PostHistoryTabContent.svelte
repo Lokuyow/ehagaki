@@ -15,7 +15,6 @@
     import PostHistoryRepostPreview from "./PostHistoryRepostPreview.svelte";
     import PostRepostFeedback from "./PostRepostFeedback.svelte";
     import { usePostHistoryRepostPreviews, loadStoredRepostTarget } from "../lib/hooks/usePostHistoryRepostPreviews.svelte";
-    import type { RepostPostHandler } from "../lib/hooks/usePostRepostOperation.svelte";
     import type { PostRepostResult } from "../lib/postRepostService";
     import { isRepostOuterKind, isRepostTargetKind, repostTargetToPost } from "../lib/postRepostUtils";
     import {
@@ -55,10 +54,6 @@
     import { usePostHistoryRelatedReactions, type PostHistoryRelatedReactionCardTarget } from "../lib/hooks/usePostHistoryRelatedReactions.svelte";
     import { usePostHistoryInboundInteractionsSync } from "../lib/hooks/usePostHistoryInboundInteractionsSync.svelte";
     import type { PostHistoryThreadGraphNodeState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
-    import type {
-        PostHistoryInboundDirectReplyCandidate,
-        PostHistoryInboundReplyReconciliationResult,
-    } from "../lib/postHistoryInboundReplyReconciliationService";
     import {
         canRequestPostDeletion,
     } from "../lib/postDeletionService";
@@ -73,7 +68,6 @@
         type PostContentRenderModel,
     } from "../lib/postContentPreview";
     import {
-        isPostHistoryFavoriteReactionContent,
         resolvePostHistoryCountSummaryState,
         resolvePostHistoryNavigationLabelKey,
         resolvePostHistoryReactionsActionLabelState,

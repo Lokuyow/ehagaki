@@ -40,7 +40,6 @@ import {
     collectPostHistoryMediaUrls,
     resolveSafePage,
     canContinueRelayHistory,
-    resolveSyncStatusAfterFetch,
 } from "../postHistoryDialogUtils";
 import { postMediaCacheService } from "../postMediaCacheService";
 import {
@@ -810,16 +809,8 @@ export function usePostHistoryListing({
     const posts = $derived(
         isSearchMode ? state.searchPosts : state.loadedPosts,
     );
-    const displayPage = $derived(
-        isSearchMode ? state.searchPage : 1,
-    );
     const displayTotalCount = $derived(
         isSearchMode ? state.searchTotalCount : state.totalCount,
-    );
-    const totalPages = $derived(
-        isSearchMode
-            ? Math.max(1, Math.ceil(state.searchTotalCount / pageSize))
-            : 1,
     );
     const canGoPrevious = $derived(
         !isRefetchingAroundCurrentView && isSearchMode && state.searchPage > 1,
@@ -831,8 +822,6 @@ export function usePostHistoryListing({
         && isSearchMode
         && state.searchHasNext,
     );
-    const canGoLast = $derived(canGoNext);
-    const showPaging = $derived(false);
     const canLoadOlder = $derived(
         !isRefetchingAroundCurrentView
         && (isSearchMode
@@ -847,7 +836,6 @@ export function usePostHistoryListing({
         && !isRefetchingAroundCurrentView
         && (state.listingMode === "sparse" || state.hasNewerLocal),
     );
-    const visibleNewestCreatedAt = $derived(posts[0]?.createdAt ?? null);
     const visibleOldestCreatedAt = $derived(
         posts.length > 0 ? posts[posts.length - 1]?.createdAt ?? null : null,
     );
@@ -899,7 +887,6 @@ export function usePostHistoryListing({
         && !state.hasOlderLocal
         && state.hasSavedPostsOutsideVisibleRange,
     );
-    const visiblePostCount = $derived(posts.length);
     const canRefetchAroundCurrentView = $derived(
         !!getPubkeyHex() &&
         !!getRxNostr() &&
@@ -3997,15 +3984,6 @@ export function usePostHistoryListing({
         return loadSearchPage(nextPage, state.searchQuery);
     }
 
-    async function goToLastPage(): Promise<boolean> {
-        if (!isSearchMode || !canGoLast) {
-            return false;
-        }
-
-        state.searchPage = totalPages;
-        return true;
-    }
-
     async function loadOlder(
         autoLoadViewportCommit?: AutoLoadViewportCommit,
     ): Promise<boolean> {
@@ -5588,27 +5566,6 @@ export function usePostHistoryListing({
                     : searchResultStatus === "failed" ? "failed" : "loading"
                 : state.totalCountStatus;
         },
-        get displayPage() {
-            return displayPage;
-        },
-        get totalPages() {
-            return totalPages;
-        },
-        get canGoPrevious() {
-            return canGoPrevious;
-        },
-        get canGoFirst() {
-            return canGoFirst;
-        },
-        get canGoNext() {
-            return canGoNext;
-        },
-        get canGoLast() {
-            return canGoLast;
-        },
-        get showPaging() {
-            return showPaging;
-        },
         get canLoadOlder() {
             return canLoadOlder;
         },
@@ -5642,15 +5599,6 @@ export function usePostHistoryListing({
         get isShowingSavedOlderPosts() {
             return state.listingMode === "sparse" && state.sparseSource === "saved";
         },
-        get visibleNewestCreatedAt() {
-            return visibleNewestCreatedAt;
-        },
-        get visibleOldestCreatedAt() {
-            return visibleOldestCreatedAt;
-        },
-        get visiblePostCount() {
-            return visiblePostCount;
-        },
         get latestOlderBackfillUiResult() {
             return state.latestOlderBackfillUiResult;
         },
@@ -5662,9 +5610,6 @@ export function usePostHistoryListing({
         },
         get syncStatusMessageKey() {
             return syncStatusMessageKey;
-        },
-        get showSyncLoader() {
-            return showSyncLoader;
         },
         get showStatusLoader() {
             return showStatusLoader;
@@ -5689,8 +5634,6 @@ export function usePostHistoryListing({
         },
         prepareForClose,
         suspend,
-        cancelCurrentSync,
-        cancelCurrentViewRefetch,
         loadOlder,
         loadNewer,
         returnToLatest,
@@ -5699,10 +5642,6 @@ export function usePostHistoryListing({
         jumpToCreatedAt,
         jumpToEventId,
         fetchOlderFromRelays,
-        goFirstPage,
-        goPreviousPage,
-        goToNextPage,
-        goToLastPage,
         refetchAroundCurrentView,
         resetSearchState,
         refreshAfterLocalImport,
