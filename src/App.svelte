@@ -1141,94 +1141,47 @@
     onInitialized();
   });
 
-  $effect(() => {
-    if (showLoginDialogStore.value || showAddAccountDialogStore.value) {
-      if (
-        blockUnloadedComponentWhileStale(LoginDialogComponent, () => {
-          showLoginDialogStore.set(false);
-          showAddAccountDialogStore.set(false);
-        })
-      ) return;
-      void loadLoginDialog();
-    }
-  });
+  // Lazy-load each dialog surface when it opens; while stale assets are pending,
+  // an unloaded surface is closed and the reload prompt is shown instead.
+  const lazyDialogSurfaces: ReadonlyArray<{
+    isOpen: () => boolean;
+    getComponent: () => unknown;
+    close: () => void;
+    load: () => Promise<unknown>;
+  }> = [
+    {
+      isOpen: () => showLoginDialogStore.value || showAddAccountDialogStore.value,
+      getComponent: () => LoginDialogComponent,
+      close: () => {
+        showLoginDialogStore.set(false);
+        showAddAccountDialogStore.set(false);
+      },
+      load: loadLoginDialog,
+    },
+    { isOpen: () => showLogoutDialogStore.value, getComponent: () => ProfileComponent, close: () => showLogoutDialogStore.set(false), load: loadProfileDialog },
+    { isOpen: () => showSettingsDialogStore.value, getComponent: () => SettingsDialogComponent, close: () => showSettingsDialogStore.set(false), load: loadSettingsDialog },
+    { isOpen: () => showWelcomeDialogStore.value, getComponent: () => WelcomeDialogComponent, close: () => showWelcomeDialogStore.set(false), load: loadWelcomeDialog },
+    { isOpen: () => showDraftListDialogStore.value, getComponent: () => DraftListDialogComponent, close: () => showDraftListDialogStore.set(false), load: loadDraftListDialog },
+    { isOpen: () => showPostHistoryDialogStore.value, getComponent: () => PostHistoryDialogComponent, close: () => showPostHistoryDialogStore.set(false), load: loadPostHistoryDialog },
+    { isOpen: () => showComposerTargetDialogStore.value, getComponent: () => ComposerTargetDialogComponent, close: () => showComposerTargetDialogStore.set(false), load: loadComposerTargetDialog },
+    {
+      isOpen: () => customEmojiPickerOpen,
+      getComponent: () => CustomEmojiPickerComponent,
+      close: () => {
+        customEmojiPickerOpen = false;
+      },
+      load: loadCustomEmojiPicker,
+    },
+  ];
 
-  $effect(() => {
-    if (showLogoutDialogStore.value) {
-      if (
-        blockUnloadedComponentWhileStale(ProfileComponent, () =>
-          showLogoutDialogStore.set(false),
-        )
-      ) return;
-      void loadProfileDialog();
-    }
-  });
-
-  $effect(() => {
-    if (showSettingsDialogStore.value) {
-      if (
-        blockUnloadedComponentWhileStale(SettingsDialogComponent, () =>
-          showSettingsDialogStore.set(false),
-        )
-      ) return;
-      void loadSettingsDialog();
-    }
-  });
-
-  $effect(() => {
-    if (showWelcomeDialogStore.value) {
-      if (
-        blockUnloadedComponentWhileStale(WelcomeDialogComponent, () =>
-          showWelcomeDialogStore.set(false),
-        )
-      ) return;
-      void loadWelcomeDialog();
-    }
-  });
-
-  $effect(() => {
-    if (showDraftListDialogStore.value) {
-      if (
-        blockUnloadedComponentWhileStale(DraftListDialogComponent, () =>
-          showDraftListDialogStore.set(false),
-        )
-      ) return;
-      void loadDraftListDialog();
-    }
-  });
-
-  $effect(() => {
-    if (showPostHistoryDialogStore.value) {
-      if (
-        blockUnloadedComponentWhileStale(PostHistoryDialogComponent, () =>
-          showPostHistoryDialogStore.set(false),
-        )
-      ) return;
-      void loadPostHistoryDialog();
-    }
-  });
-
-  $effect(() => {
-    if (showComposerTargetDialogStore.value) {
-      if (
-        blockUnloadedComponentWhileStale(ComposerTargetDialogComponent, () =>
-          showComposerTargetDialogStore.set(false),
-        )
-      ) return;
-      void loadComposerTargetDialog();
-    }
-  });
-
-  $effect(() => {
-    if (customEmojiPickerOpen) {
-      if (
-        blockUnloadedComponentWhileStale(CustomEmojiPickerComponent, () => {
-          customEmojiPickerOpen = false;
-        })
-      ) return;
-      void loadCustomEmojiPicker();
-    }
-  });
+  // One effect per surface keeps each dependency set independent, as before.
+  for (const surface of lazyDialogSurfaces) {
+    $effect(() => {
+      if (!surface.isOpen()) return;
+      if (blockUnloadedComponentWhileStale(surface.getComponent(), surface.close)) return;
+      void surface.load();
+    });
+  }
 
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     await runInitializeNostrSession({
