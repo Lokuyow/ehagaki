@@ -1,11 +1,10 @@
 <script lang="ts">
     import { _ } from 'svelte-i18n';
-    import { nip19 } from 'nostr-tools';
     import type { ReactionComposerState } from '../stores/reactionComposerStore.svelte';
     import { buildComposerInteractionRenderModel } from '../lib/composerTargetRelatedPreview';
     import { buildPostContentRenderModel } from '../lib/postContentPreview';
     import { formatPostedAt } from '../lib/postHistoryDialogUtils';
-    import { shortenMiddle } from '../lib/utils/textDisplayUtils';
+    import { formatShortNpub } from '../lib/utils/nostrUtils';
     import ComposerContextPreviewShell from './ComposerContextPreviewShell.svelte';
     import PostContentPreview from './PostContentPreview.svelte';
     import type { PostContentEmojiLoadState, PostContentEmojiImageMeta } from '../lib/postContentPreview';
@@ -18,7 +17,7 @@
     let expanded = $state(false);
     const author = useReactionTargetProfile({ getTarget: () => target, getProfileService: () => profileService });
     let authorDisplay = $derived(author.profile?.displayName?.trim() || author.profile?.name?.trim()
-        || shortenMiddle(nip19.npubEncode(target.authorPubkey), 12, 4));
+        || formatShortNpub(target.authorPubkey));
     let model = $derived([6, 7, 16].includes(target.kind) ? buildComposerInteractionRenderModel(target.event)
         : buildPostContentRenderModel({ kind: target.kind, sourceContent: target.event.content, tags: target.event.tags }));
     $effect(() => { target.ownerToken; expanded = false; });

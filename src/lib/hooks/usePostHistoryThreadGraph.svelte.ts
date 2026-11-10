@@ -1,3 +1,4 @@
+import { chunkArray } from "../utils/arrayUtils";
 import { fetchPostHistoryRelatedEvents, type RelatedEventsTask, type RelatedEventsStatus } from "../postHistoryRelatedEventsFetchService";
 import { isValidDeletionRequestForTarget } from "../postHistoryDeletionUtils";
 import { onDestroy, untrack } from "svelte";
@@ -2099,10 +2100,7 @@ export function usePostHistoryThreadGraph({
             return;
         }
 
-        const batches: string[][] = [];
-        for (let index = 0; index < remainingEventIds.length; index += POST_HISTORY_CHILD_REPLY_PREFETCH_BATCH_SIZE) {
-            batches.push(remainingEventIds.slice(index, index + POST_HISTORY_CHILD_REPLY_PREFETCH_BATCH_SIZE));
-        }
+        const batches = chunkArray(remainingEventIds, POST_HISTORY_CHILD_REPLY_PREFETCH_BATCH_SIZE);
 
         let nextBatchIndex = 0;
         const workerCount = Math.min(POST_HISTORY_CHILD_REPLY_PREFETCH_CONCURRENCY, batches.length);

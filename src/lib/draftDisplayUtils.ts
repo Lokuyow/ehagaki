@@ -1,4 +1,4 @@
-import { nip19 } from 'nostr-tools';
+import { formatShortNpub } from './utils/nostrUtils';
 import { DRAFT_PREVIEW_LENGTH } from './constants';
 import { extractDraftPreviewParts } from './draftPreviewUtils';
 import { sanitizePlainText } from './utils/domSanitizer';
@@ -55,12 +55,7 @@ function formatPubkey(pubkey: string | null): string {
         return '';
     }
 
-    try {
-        const npub = nip19.npubEncode(pubkey);
-        return shortenMiddle(npub, 12, 4);
-    } catch {
-        return shortenIdentifier(pubkey);
-    }
+    return formatShortNpub(pubkey);
 }
 
 function getReplyQuoteName(entry: DraftReplyQuoteEntryData): string {

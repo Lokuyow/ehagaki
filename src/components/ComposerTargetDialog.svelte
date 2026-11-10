@@ -3,7 +3,6 @@
     import { onDestroy, untrack } from "svelte";
     import { _, locale } from "svelte-i18n";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
-    import { nip19 } from "nostr-tools";
     import type { RxNostr } from "rx-nostr";
     import { Dialog, DropdownMenu } from "bits-ui";
     import Button from "./Button.svelte";
@@ -84,6 +83,7 @@
     import { calculateContextMenuPosition } from "../lib/utils/appUtils";
     import { sanitizePlainText } from "../lib/utils/domSanitizer";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
+    import { formatShortNpub } from "../lib/utils/nostrUtils";
     import { createSensitivePayloadBodyLoader } from "../lib/sensitiveContentPayloadReader";
 
     type DialogPhase =
@@ -265,7 +265,7 @@
         return (
             authorProfile?.displayName?.trim() ||
             authorProfile?.name?.trim() ||
-            shortenMiddle(nip19.npubEncode(pubkey), 12, 4)
+            formatShortNpub(pubkey)
         );
     });
     let rawPreviewContent = $derived.by(() => {
@@ -434,7 +434,7 @@
         return (
             target?.channelCreatorProfile?.displayName?.trim() ||
             target?.channelCreatorProfile?.name?.trim() ||
-            shortenMiddle(nip19.npubEncode(pubkey), 12, 4)
+            formatShortNpub(pubkey)
         );
     });
     let statusText = $derived(resolveStatusText());

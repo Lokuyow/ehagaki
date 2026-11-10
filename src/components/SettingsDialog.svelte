@@ -31,9 +31,9 @@
     import { getCompressionLevels } from "../lib/constants";
     import {
         handleServiceWorkerRefresh,
-        chunkArray,
         generateSimpleUUID,
     } from "../lib/utils/appUtils";
+    import { chunkArray } from "../lib/utils/arrayUtils";
     import type { SettingsDialogProps } from "../lib/types";
     import { resolveAppAssetUrl } from "../lib/appAssetUrl";
     import { nostrZapView } from "nostr-zap-view";
