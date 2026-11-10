@@ -1,4 +1,5 @@
 import { getAppRuntimeEnvironment } from "./appRuntimeEnvironment";
+import { requestServiceWorker } from "./utils/serviceWorkerRequest";
 import {
     UPLOAD_MEDIA_IMAGE_CACHE_VERSION, UPLOAD_MEDIA_IMAGE_EVICT_MESSAGE,
     UPLOAD_MEDIA_IMAGE_SUPPORT_MESSAGE,
@@ -9,15 +10,9 @@ function getController(): ServiceWorker | null {
     const runtime = getAppRuntimeEnvironment();
     return runtime.serviceWorkerEnabled ? runtime.window?.navigator.serviceWorker?.controller ?? null : null;
 }
-function message(controller: ServiceWorker, data: Record<string, unknown>): Promise<unknown> {
-    const channel = new MessageChannel();
-    return new Promise((resolve) => {
-        const finish = (value: unknown) => { clearTimeout(timer); channel.port1.close(); resolve(value); };
-        const timer = setTimeout(() => finish(null), 1500);
-        channel.port1.onmessage = (event: MessageEvent<unknown>) => finish(event.data);
-        channel.port1.onmessageerror = () => finish(null);
-        try { controller.postMessage(data, [channel.port2]); } catch { finish(null); }
-    });
+async function message(controller: ServiceWorker, data: Record<string, unknown>): Promise<unknown> {
+    const reply = await requestServiceWorker(controller, data, 1500);
+    return reply.status === "reply" ? reply.data : null;
 }
 function record(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null;

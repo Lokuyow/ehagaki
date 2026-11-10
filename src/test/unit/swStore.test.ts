@@ -173,4 +173,57 @@ describe("swStore DB upgrade blocked state", () => {
         expect(staleStore.staleAssetReloadState.required).toBe(true);
         expect(staleStore.staleAssetReloadState.promptRevision).toBe(1);
     });
+
+    describe("fetchSwVersion", () => {
+        class FakeChannel {
+            static last: FakeChannel | null = null;
+            port1 = {
+                onmessage: null as ((event: { data: unknown }) => void) | null,
+                onmessageerror: null,
+                close: vi.fn(),
+            };
+            port2 = {};
+            constructor() {
+                FakeChannel.last = this;
+            }
+        }
+
+        beforeEach(() => {
+            vi.stubGlobal("MessageChannel", FakeChannel);
+            vi.useFakeTimers();
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it("stores the reported version and closes the channel", async () => {
+            const store = await import("../../stores/swStore.svelte");
+            store.enableServiceWorkerStore();
+            const postMessage = vi.fn();
+            Reflect.set(serviceWorkerEvents, "controller", { postMessage });
+
+            const pending = store.fetchSwVersion();
+            expect(postMessage).toHaveBeenCalledWith({ type: "GET_VERSION" }, [FakeChannel.last!.port2]);
+            FakeChannel.last!.port1.onmessage?.({ data: { version: "v123" } });
+
+            await expect(pending).resolves.toBe("v123");
+            expect(store.swVersionStore.value).toBe("v123");
+            expect(FakeChannel.last!.port1.close).toHaveBeenCalledOnce();
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it("resolves null on timeout without leaving the timer or port open", async () => {
+            const store = await import("../../stores/swStore.svelte");
+            store.enableServiceWorkerStore();
+            Reflect.set(serviceWorkerEvents, "controller", { postMessage: vi.fn() });
+
+            const pending = store.fetchSwVersion();
+            vi.advanceTimersByTime(2000);
+
+            await expect(pending).resolves.toBeNull();
+            expect(FakeChannel.last!.port1.close).toHaveBeenCalledOnce();
+            expect(vi.getTimerCount()).toBe(0);
+        });
+    });
 });

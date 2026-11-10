@@ -1,4 +1,5 @@
 import { isRecord } from "./typeGuards";
+import { requestServiceWorker } from "./serviceWorkerRequest";
 import type { SharedMediaData } from "../types";
 import { SHARE_HANDLER_CONFIG } from '../constants';
 import { sharedMediaRepository } from "../storage/sharedMediaRepository";
@@ -54,43 +55,18 @@ async function sendMessageToServiceWorker(
         throw new Error('No ServiceWorker controller available');
     }
 
-    const messageChannel = new MessageChannel();
-    const requestId = generateRequestId();
-
-    return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            messageChannel.port1.close();
-            reject(new Error('ServiceWorker communication timeout'));
-        }, timeoutMs);
-
-        messageChannel.port1.onmessage = (event: MessageEvent<unknown>) => {
-            clearTimeout(timeout);
-            messageChannel.port1.close();
-            const data = isRecord(event.data) ? event.data.data : undefined;
-            resolve(data);
-        };
-
-        messageChannel.port1.addEventListener('error', (error) => {
-            clearTimeout(timeout);
-            messageChannel.port1.close();
-            reject(error);
-        });
-
-        try {
-            if (navigator.serviceWorker.controller) {
-                navigator.serviceWorker.controller.postMessage(
-                    { ...message, requestId },
-                    [messageChannel.port2]
-                );
-            } else {
-                throw new Error('ServiceWorker controller became unavailable');
-            }
-        } catch (error) {
-            clearTimeout(timeout);
-            messageChannel.port1.close();
-            reject(error);
-        }
-    });
+    const reply = await requestServiceWorker(
+        navigator.serviceWorker.controller,
+        { ...message, requestId: generateRequestId() },
+        timeoutMs,
+    );
+    if (reply.status === 'timeout') {
+        throw new Error('ServiceWorker communication timeout');
+    }
+    if (reply.status === 'error') {
+        throw reply.error;
+    }
+    return isRecord(reply.data) ? reply.data.data : undefined;
 }
 
 export async function acknowledgeSharedMedia(shareId: string): Promise<boolean> {

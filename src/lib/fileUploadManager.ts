@@ -1,3 +1,4 @@
+import { requestServiceWorker } from './utils/serviceWorkerRequest';
 import { createFileSizeInfo } from "./utils/fileSizeUtils";
 import { getImageDimensions } from "./utils/fileUtils";
 import { setImageSizeInfoFromFileSize } from "../stores/uploadStore.svelte";
@@ -487,24 +488,15 @@ export class FileUploadManager implements FileUploadManagerInterface {
     ) return null;
 
     try {
-      const channel = new MessageChannel();
-      const promise = new Promise<SharedMediaData | null>((resolve) => {
-        channel.port1.onmessage = (event) => {
-          if (event.data?.type === 'SHARED_MEDIA') {
-            resolve(event.data.data);
-          } else {
-            resolve(null);
-          }
-        };
-        setTimeout(() => resolve(null), 3000);
-      });
-
-      this.dependencies.navigator.serviceWorker.controller.postMessage(
+      const reply = await requestServiceWorker(
+        this.dependencies.navigator.serviceWorker.controller,
         { action: 'getSharedMedia' },
-        [channel.port2]
+        3000,
       );
-
-      return await promise;
+      if (reply.status === 'error') throw reply.error;
+      if (reply.status !== 'reply') return null;
+      const data = reply.data as { type?: unknown; data?: SharedMediaData } | null | undefined;
+      return data?.type === 'SHARED_MEDIA' ? data.data ?? null : null;
     } catch {
       console.error('Service Workerからの共有メディア取得に失敗', {
         stage: 'shared-media',
