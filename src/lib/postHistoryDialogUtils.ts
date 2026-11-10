@@ -114,21 +114,6 @@ export function canContinueRelayHistory(
         : result.events.length > 0;
 }
 
-export function resolveSyncStatusAfterFetch(
-    result: PostHistoryRelayFetchResult,
-    didMateriallyChange: boolean,
-): "idle" | "synced" | "failed" {
-    if (result.status === "error") {
-        return "failed";
-    }
-
-    if (result.status === "timeout") {
-        return "idle";
-    }
-
-    return didMateriallyChange ? "synced" : "idle";
-}
-
 export function toChannelDisplayState(
     cachedRecord: ChannelMetadataCache | null,
     canLoad: boolean,

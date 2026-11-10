@@ -1,3 +1,8 @@
+import {
+    formatNip46RelayConnectionFailure,
+    NIP46_ERROR_MESSAGES,
+} from './nip46ErrorMessages';
+import { isLowerHex64 } from './utils/nostrHexUtils';
 import { kinds, nip44 } from 'nostr-tools';
 import type { VerifiedEvent } from 'nostr-tools';
 import * as ipaddr from 'ipaddr.js';
@@ -45,16 +50,11 @@ const LOCAL_NETWORK_PERMISSION_FEATURES = [
     'local-network',
     'local-network-access',
 ] as const;
-const NIP46_FINAL_RELAY_LIST_MISSING_MESSAGE =
-    'Remote signer did not return final relay list';
-const NIP46_FINAL_RELAY_LIST_INVALID_MESSAGE =
-    'Remote signer returned an invalid final relay list';
-const NIP46_FINAL_RELAY_NO_USABLE_MESSAGE =
-    'Remote signer did not return any usable connection relay';
-const NIP46_FINAL_LOCAL_RELAY_UNREACHABLE_MESSAGE =
-    'Could not connect to the local relay specified by the remote signer';
-const NIP46_FINAL_RELAY_VERIFICATION_FAILED_MESSAGE =
-    'Communication could not be verified on the relay selected by the remote signer';
+const NIP46_FINAL_RELAY_LIST_MISSING_MESSAGE = NIP46_ERROR_MESSAGES.finalRelayListMissing;
+const NIP46_FINAL_RELAY_LIST_INVALID_MESSAGE = NIP46_ERROR_MESSAGES.finalRelayListInvalid;
+const NIP46_FINAL_RELAY_NO_USABLE_MESSAGE = NIP46_ERROR_MESSAGES.finalRelayNoUsable;
+const NIP46_FINAL_LOCAL_RELAY_UNREACHABLE_MESSAGE = NIP46_ERROR_MESSAGES.finalLocalRelayUnreachable;
+const NIP46_FINAL_RELAY_VERIFICATION_FAILED_MESSAGE = NIP46_ERROR_MESSAGES.finalRelayVerificationFailed;
 const NIP46_CLIENT_METADATA = {
     name: EHAGAKI_APP_NAME,
     url: 'https://lokuyow.github.io/ehagaki/',
@@ -468,7 +468,7 @@ async function createConnectedPoolReadyOnFirstReachable(
 ): Promise<{ pool: SimplePool; connectedRelays: string[] }> {
     const uniqueRelays = [...new Set(sanitizeNip46NostrConnectRelays(relays))];
     if (uniqueRelays.length === 0) {
-        throw new Error('Relay connection failed: no reachable relays');
+        throw new Error(formatNip46RelayConnectionFailure('no reachable relays'));
     }
 
     const origWs = globalThis.WebSocket;
@@ -514,8 +514,8 @@ async function createConnectedPoolReadyOnFirstReachable(
         rejectAllFailed?.(
             new Error(
                 hint
-                    ? `Relay connection failed: ${message}. ${hint}`
-                    : `Relay connection failed: ${message}`,
+                    ? formatNip46RelayConnectionFailure(`${message}. ${hint}`)
+                    : formatNip46RelayConnectionFailure(message),
             ),
         );
         resolveFirstReachable = null;
@@ -716,7 +716,7 @@ function createLiveIdentityAuthChallenge(): LiveIdentityAuthChallenge {
 }
 
 function isValidNip46UserPubkey(value: unknown): value is string {
-    return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+    return isLowerHex64(value);
 }
 
 async function readLiveNip46UserPubkey(
@@ -995,6 +995,25 @@ export class Nip46Service {
     private persistenceBinding: SessionPersistenceBinding | null = null;
     private operationPromise: Promise<boolean> | null = null;
     private retiredRuntimeClosers = new Set<() => Promise<void>>();
+
+    /** Installs a verified runtime and publishes its session in one step. */
+    private adoptRuntime(
+        runtime: {
+            pool: SimplePool | null;
+            clientSecretKeyHex: string;
+            userPubkey: string;
+            bunkerSigner: BunkerSigner;
+            signerAdapter: Nip46SignerAdapter;
+        },
+        session: Nip46SessionData,
+    ): void {
+        this.pool = runtime.pool;
+        this.clientSecretKeyHex = runtime.clientSecretKeyHex;
+        this.userPubkey = runtime.userPubkey;
+        this.bunkerSigner = runtime.bunkerSigner;
+        this.signerAdapter = runtime.signerAdapter;
+        this.setCurrentSession(session);
+    }
 
     private setCurrentSession(session: Nip46SessionData | null): void {
         this.currentSession = session
@@ -1280,12 +1299,13 @@ export class Nip46Service {
                 );
             }
 
-            this.pool = candidatePool;
-            this.clientSecretKeyHex = session.clientSecretKeyHex;
-            this.userPubkey = session.userPubkey;
-            this.bunkerSigner = candidateBunkerSigner;
-            this.signerAdapter = candidateSignerAdapter;
-            this.setCurrentSession(nextSession);
+            this.adoptRuntime({
+                pool: candidatePool,
+                clientSecretKeyHex: session.clientSecretKeyHex,
+                userPubkey: session.userPubkey,
+                bunkerSigner: candidateBunkerSigner,
+                signerAdapter: candidateSignerAdapter,
+            }, nextSession);
             candidatePool = null;
             candidateBunkerSigner = null;
             await this.retireRuntimeSnapshot(runtime);
@@ -1460,12 +1480,13 @@ export class Nip46Service {
                 resolvedUserPubkey,
             );
             await this.closeRuntimeResources();
-            this.pool = candidatePool;
-            this.clientSecretKeyHex = clientSecretKeyHex;
-            this.userPubkey = resolvedUserPubkey;
-            this.bunkerSigner = candidateBunkerSigner;
-            this.signerAdapter = candidateSignerAdapter;
-            this.setCurrentSession({
+            this.adoptRuntime({
+                pool: candidatePool,
+                clientSecretKeyHex,
+                userPubkey: resolvedUserPubkey,
+                bunkerSigner: candidateBunkerSigner,
+                signerAdapter: candidateSignerAdapter,
+            }, {
                 clientSecretKeyHex,
                 remoteSignerPubkey: bunkerPointer.pubkey,
                 relays: [...supportedRelays],
@@ -1486,7 +1507,7 @@ export class Nip46Service {
     ): Promise<Nip46PendingNostrConnectSession> {
         const sanitizedRelays = sanitizeNip46NostrConnectRelays(relays);
         if (sanitizedRelays.length === 0) {
-            throw new Error('At least one public wss relay is required for nostrconnect');
+            throw new Error(NIP46_ERROR_MESSAGES.nostrConnectRelayRequired);
         }
 
         const clientSecretKey = generateSecretKey();
@@ -1514,7 +1535,7 @@ export class Nip46Service {
         let rejectReadinessRetryDelay: ((reason?: unknown) => void) | null = null;
 
         const createNostrConnectCancellationError = (): Error =>
-            new Error('Nostr Connect connection was cancelled');
+            new Error(NIP46_ERROR_MESSAGES.nostrConnectCancelled);
 
         const closeHandshakeResources = async (): Promise<void> => {
             if (handshakeClosed) {
@@ -1944,7 +1965,7 @@ export class Nip46Service {
 
                                 const activePool = pendingPool;
                                 if (!activePool) {
-                                    throw new Error('Nostr Connect handshake pool is unavailable');
+                                    throw new Error(NIP46_ERROR_MESSAGES.handshakePoolUnavailable);
                                 }
 
                                 const readiness = await establishReadyRelaySigner(
@@ -2031,14 +2052,24 @@ export class Nip46Service {
                                 ensurePendingActive();
 
                                 await this.closeRuntimeResources();
-                                this.pool = finalPool;
-                                this.clientSecretKeyHex = clientSecretKeyHex;
-                                this.bunkerSigner = finalSigner;
-                                this.userPubkey = resolvedUserPubkey;
-                                this.signerAdapter = new Nip46SignerAdapter(
-                                    finalSigner,
-                                    resolvedUserPubkey,
-                                );
+                                this.adoptRuntime({
+                                    pool: finalPool,
+                                    clientSecretKeyHex,
+                                    userPubkey: resolvedUserPubkey,
+                                    bunkerSigner: finalSigner,
+                                    signerAdapter: new Nip46SignerAdapter(
+                                        finalSigner,
+                                        resolvedUserPubkey,
+                                    ),
+                                }, {
+                                    clientSecretKeyHex,
+                                    remoteSignerPubkey: event.pubkey,
+                                    relays: [...finalSessionRelays],
+                                    userPubkey: resolvedUserPubkey,
+                                    relayResolution:
+                                        relayResolution.sessionRelayResolution,
+                                });
+                                // The adopted signer is owned by the service now; keep it out of cleanup.
                                 if (finalSigner === fallbackSigner) {
                                     fallbackSigner = null;
                                 }
@@ -2048,14 +2079,6 @@ export class Nip46Service {
                                 if (finalSigner === interimSigner) {
                                     interimSigner = null;
                                 }
-                                this.setCurrentSession({
-                                    clientSecretKeyHex,
-                                    remoteSignerPubkey: event.pubkey,
-                                    relays: [...finalSessionRelays],
-                                    userPubkey: resolvedUserPubkey,
-                                    relayResolution:
-                                        relayResolution.sessionRelayResolution,
-                                });
 
                                 console.debug('[NIP-46] auth completed after identity verification');
                                 settled = true;
@@ -2083,7 +2106,7 @@ export class Nip46Service {
                             settled = true;
                             await closeHandshakeResources();
                             const timeoutError = new Error(
-                                'Nostr Connect timed out before the remote signer connected',
+                                NIP46_ERROR_MESSAGES.nostrConnectTimeout,
                             );
                             settleHandshakeStartedFailure(timeoutError);
                             rejectCompletion?.(timeoutError);
@@ -2206,12 +2229,13 @@ export class Nip46Service {
             };
 
             await this.closeRuntimeResources();
-            this.pool = candidatePool;
-            this.clientSecretKeyHex = sessionSnapshot.clientSecretKeyHex;
-            this.userPubkey = sessionSnapshot.userPubkey;
-            this.bunkerSigner = candidateBunkerSigner;
-            this.signerAdapter = candidateSignerAdapter;
-            this.setCurrentSession(nextSession);
+            this.adoptRuntime({
+                pool: candidatePool,
+                clientSecretKeyHex: sessionSnapshot.clientSecretKeyHex,
+                userPubkey: sessionSnapshot.userPubkey,
+                bunkerSigner: candidateBunkerSigner,
+                signerAdapter: candidateSignerAdapter,
+            }, nextSession);
             candidatePool = null;
             candidateBunkerSigner = null;
 

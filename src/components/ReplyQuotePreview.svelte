@@ -1,7 +1,6 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
     import { Tooltip } from "bits-ui";
-    import { nip19 } from "nostr-tools";
     import Button from "./Button.svelte";
     import ComposerContextPreviewShell from "./ComposerContextPreviewShell.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
@@ -18,7 +17,7 @@
         ReplyQuoteMode,
         ReplyQuoteState,
     } from "../lib/types";
-    import { shortenMiddle } from "../lib/utils/textDisplayUtils";
+    import { formatShortNpub } from "../lib/utils/nostrUtils";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
     interface Props {
@@ -75,8 +74,7 @@
     let authorDisplay = $derived.by(() => {
         if (!reference.authorPubkey) return "";
         if (reference.authorDisplayName) return reference.authorDisplayName;
-        const npub = nip19.npubEncode(reference.authorPubkey);
-        return shortenMiddle(npub, 12, 4);
+        return formatShortNpub(reference.authorPubkey);
     });
 
     let resolvedModel = $derived.by(() => {
@@ -166,7 +164,7 @@
         displayName: string | null;
     }): string {
         if (recipient.displayName) return recipient.displayName;
-        return shortenMiddle(nip19.npubEncode(recipient.pubkey), 12, 4);
+        return formatShortNpub(recipient.pubkey);
     }
 
     function getReplyNotificationAriaLabel(recipient: {

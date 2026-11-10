@@ -31,9 +31,9 @@
     import { getCompressionLevels } from "../lib/constants";
     import {
         handleServiceWorkerRefresh,
-        chunkArray,
         generateSimpleUUID,
     } from "../lib/utils/appUtils";
+    import { chunkArray } from "../lib/utils/arrayUtils";
     import type { SettingsDialogProps } from "../lib/types";
     import { resolveAppAssetUrl } from "../lib/appAssetUrl";
     import { nostrZapView } from "nostr-zap-view";
@@ -139,27 +139,17 @@
     });
 
     // 圧縮設定候補（$locale変更時にラベルも更新）
+    // 画像・動画で同じ候補を使う
     let compressionLevels = $derived(getCompressionLevels($_));
-    let videoCompressionLevels = $derived(getCompressionLevels($_));
 
     // 圧縮レベルを2つずつペアにグループ化
     let compressionPairs = $derived(chunkArray(compressionLevels, 2));
-    let videoCompressionPairs = $derived(chunkArray(videoCompressionLevels, 2));
 
-    let clientTagEnabled = $state(settingsStore.clientTagEnabled);
-    let externalNostrClient = $state<ExternalNostrClient>(
-        settingsStore.externalNostrClient,
-    );
+    // Raw text while typing; settingsStore keeps only the last valid (normalized) template.
     let externalNostrClientCustomUrl = $state(
         settingsStore.externalNostrClientCustomUrl,
     );
     let externalNostrClientCustomUrlError = $state<string | null>(null);
-    let quoteNotificationEnabled = $state(
-        settingsStore.quoteNotificationEnabled,
-    );
-    let replyNotificationEnabled = $state(
-        settingsStore.replyNotificationEnabled,
-    );
     const defaultAccentColor = "#1dbf73";
     const defaultBaseColorPickerValue = "#808080";
     let accentColorInput = $state(themeColorStore.accentColor ?? defaultAccentColor);
@@ -197,71 +187,13 @@
 
     onMount(() => {
         settingsStore.reload();
-        clientTagEnabled = settingsStore.clientTagEnabled;
-        externalNostrClient = settingsStore.externalNostrClient;
         externalNostrClientCustomUrl = settingsStore.externalNostrClientCustomUrl;
-        quoteNotificationEnabled = settingsStore.quoteNotificationEnabled;
-        replyNotificationEnabled = settingsStore.replyNotificationEnabled;
         themeColorStore.reload();
         accentColorInput = themeColorStore.accentColor ?? defaultAccentColor;
         baseColorInput = themeColorStore.baseColor ?? "";
         fetchSwVersion();
         if (!hostRelayConfigActive && authState.value?.pubkey && authState.value?.isAuthenticated) {
             loadRelayConfigFromStorage(authState.value.pubkey);
-        }
-    });
-
-    $effect(() => {
-        clientTagEnabled = settingsStore.clientTagEnabled;
-    });
-
-    $effect(() => {
-        if (externalNostrClient !== settingsStore.externalNostrClient) {
-            settingsStore.externalNostrClient = externalNostrClient;
-        }
-    });
-
-    $effect(() => {
-        if (
-            externalNostrClientCustomUrl !==
-            settingsStore.externalNostrClientCustomUrl
-        ) {
-            const normalizedUrl = normalizeExternalNostrClientUrlTemplate(
-                externalNostrClientCustomUrl,
-            );
-            if (normalizedUrl) {
-                settingsStore.externalNostrClientCustomUrl = normalizedUrl;
-            }
-        }
-    });
-
-    $effect(() => {
-        quoteNotificationEnabled = settingsStore.quoteNotificationEnabled;
-    });
-
-    $effect(() => {
-        replyNotificationEnabled = settingsStore.replyNotificationEnabled;
-    });
-
-    $effect(() => {
-        if (clientTagEnabled !== settingsStore.clientTagEnabled) {
-            settingsStore.clientTagEnabled = clientTagEnabled;
-        }
-    });
-
-    $effect(() => {
-        if (
-            replyNotificationEnabled !== settingsStore.replyNotificationEnabled
-        ) {
-            settingsStore.replyNotificationEnabled = replyNotificationEnabled;
-        }
-    });
-
-    $effect(() => {
-        if (
-            quoteNotificationEnabled !== settingsStore.quoteNotificationEnabled
-        ) {
-            settingsStore.quoteNotificationEnabled = quoteNotificationEnabled;
         }
     });
 
@@ -522,7 +454,7 @@
             selectedCompression={settingsStore.imageQualityLevel}
             onCompressionChange={(value) =>
                 (settingsStore.imageQualityLevel = value)}
-            {videoCompressionPairs}
+            videoCompressionPairs={compressionPairs}
             selectedVideoCompression={settingsStore.videoQualityLevel}
             onVideoCompressionChange={(value) =>
                 (settingsStore.videoQualityLevel = value)}
@@ -719,7 +651,7 @@
                 <div class="setting-control">
                     <Switch.Root
                         class="bui-switch"
-                        bind:checked={clientTagEnabled}
+                        bind:checked={settingsStore.clientTagEnabled}
                         aria-labelledby="client-tag-label"
                     >
                         <Switch.Thumb class="bui-switch-thumb" />
@@ -760,7 +692,7 @@
                     <div class="setting-control">
                         <Switch.Root
                             class="bui-switch"
-                            bind:checked={quoteNotificationEnabled}
+                            bind:checked={settingsStore.quoteNotificationEnabled}
                             aria-labelledby="quote-notification-label"
                         >
                             <Switch.Thumb class="bui-switch-thumb" />
@@ -799,7 +731,7 @@
                     <div class="setting-control">
                         <Switch.Root
                             class="bui-switch"
-                            bind:checked={replyNotificationEnabled}
+                            bind:checked={settingsStore.replyNotificationEnabled}
                             aria-labelledby="reply-notification-label"
                         >
                             <Switch.Thumb class="bui-switch-thumb" />
@@ -1018,10 +950,10 @@
                 <select
                     class="setting-control external-nostr-client-select"
                     id="external-nostr-client-select"
-                    value={externalNostrClient}
+                    value={settingsStore.externalNostrClient}
                     aria-labelledby="external-nostr-client-label"
                     onchange={(event) => {
-                        externalNostrClient = (event.currentTarget as HTMLSelectElement)
+                        settingsStore.externalNostrClient = (event.currentTarget as HTMLSelectElement)
                             .value as ExternalNostrClient;
                         externalNostrClientCustomUrlError = null;
                     }}
@@ -1039,7 +971,7 @@
                     {/each}
                 </select>
             </div>
-            {#if externalNostrClient === "custom"}
+            {#if settingsStore.externalNostrClient === "custom"}
                 <div class="external-nostr-client-custom-url">
                     <label
                         for="external-nostr-client-custom-url-input"

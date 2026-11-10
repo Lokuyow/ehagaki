@@ -1,6 +1,7 @@
 /**
  * URLクエリパラメータからコンテンツを取得する
  */
+import { isRecord } from './utils/typeGuards';
 import { RelayConfigUtils } from './relayConfigUtils';
 import { normalizeLineBreaks } from './utils/editorUrlUtils';
 import type { EmbedComposerSetContextPayload } from './embedProtocol';
@@ -9,10 +10,6 @@ import { decodeEventPointerValue } from './eventPointerUtils';
 import { normalizeChannelPictureUrl } from './channelPictureUrlUtils';
 
 export { decodeEventPointerValue } from './eventPointerUtils';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function trimToNull(value: unknown): string | null {
   if (typeof value !== 'string') {

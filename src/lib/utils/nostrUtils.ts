@@ -1,6 +1,7 @@
 import { getPublicKey, nip19 } from "nostr-tools";
 import type { PublicKeyData } from "../types";
 import { NSEC_PATTERN, NSEC_FULL_PATTERN } from "../constants";
+import { shortenMiddle } from "./textDisplayUtils";
 
 // =============================================================================
 // Nostr Key Utilities (Pure Functions)
@@ -140,5 +141,17 @@ export function toNevent(params: {
         });
     } catch {
         return "";
+    }
+}
+
+/**
+ * Short npub label (e.g. "npub1abcdefg...wxyz") for showing an author without a
+ * profile name. Never throws: invalid input falls back to the shortened value.
+ */
+export function formatShortNpub(pubkeyHex: string): string {
+    try {
+        return shortenMiddle(nip19.npubEncode(pubkeyHex), 12, 4);
+    } catch {
+        return shortenMiddle(pubkeyHex, 10, 4);
     }
 }

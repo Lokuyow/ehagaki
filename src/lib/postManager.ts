@@ -1,3 +1,5 @@
+import { resolvePostSigner, type PostSignerResolution } from "./postSignerResolver";
+import { isHex64 } from "./utils/nostrHexUtils";
 import { followPostHistoryDelivery } from "./storage/postHistoryDeliveryReceipt";
 import { RelayOperation } from "./relay/operation";
 import { ownRelayOperation } from "./relay/publish";
@@ -15,7 +17,7 @@ import { buildClientTag } from "./tags/clientTag";
 import { extractPostContentWithEmojiTags, type ExtractedPostContent } from "./utils/editorDocumentUtils";
 import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
 import { resetEditorState, resetPostStatus } from "../stores/editorStore.svelte";
-import type { PostDeliveryClassResult, PostDeliverySummary, RelayRejection, ImageImetaMetadataMap, PostResult, PostManagerDeps, HashtagStore, NostrEvent, PostManagerSigner } from "./types";
+import type { PostDeliveryClassResult, PostDeliverySummary, RelayRejection, ImageImetaMetadataMap, PostResult, PostManagerDeps, HashtagStore, NostrEvent, PostManagerSigner, ReplyQuoteComposerState } from "./types";
 import { iframeMessageService } from "./iframeMessageService";
 import { saveHashtagsToHistory } from "./utils/hashtagHistory";
 import { mediaGalleryStore } from "../stores/mediaGalleryStore.svelte";
@@ -69,6 +71,24 @@ interface Nip65RelayRoles {
 interface ActiveNip65Operation {
   acknowledged(): boolean;
   cancel(): void;
+}
+
+type SubmissionSignerCredentials =
+  { signEvent: (event: EventTemplate) => Promise<unknown>; logSignedEvent?: true };
+
+interface ResolvedSubmissionSigner {
+  pubkey: string;
+  errorLabel: string;
+  credentials: SubmissionSignerCredentials;
+}
+
+function serializeReplyQuoteIdentity(
+  state: Pick<ReplyQuoteComposerState, "reply" | "quotes">,
+): string {
+  return JSON.stringify({
+    reply: state.reply?.eventId ?? null,
+    quotes: state.quotes.map((quote) => quote.eventId),
+  });
 }
 
 function createRelayRoles(): Nip65RelayRoles {
@@ -221,11 +241,7 @@ export class PostManager {
   }
 
   private getReplyQuoteIdentity(): string {
-    const state = this.deps.replyQuoteState!.value;
-    return JSON.stringify({
-      reply: state.reply?.eventId ?? null,
-      quotes: state.quotes.map((quote) => quote.eventId),
-    });
+    return serializeReplyQuoteIdentity(this.deps.replyQuoteState!.value);
   }
 
   private notifyPostFailure(error: string): PostResult {
@@ -410,7 +426,7 @@ export class PostManager {
       (params.sensitive?.structureTemplate.tags ?? params.event.tags ?? []).flatMap((tag: unknown) => {
         if (!Array.isArray(tag) || tag[0] !== "p") return [];
         const pubkey = tag[1];
-        return typeof pubkey === "string" && /^[0-9a-f]{64}$/i.test(pubkey) ? [pubkey] : [];
+        return isHex64(pubkey) ? [pubkey] : [];
       }),
     ));
     const rolesByRelay = new Map<string, Nip65RelayRoles>();
@@ -943,6 +959,99 @@ export class PostManager {
     );
   }
 
+  /**
+   * Picks the signer for the current auth type, or the failure that stops the
+   * submission. The signer choice itself is shared with post deletion
+   * (resolvePostSigner); this adds posting's pubkey checks, the NIP-46 fetch
+   * and re-check, and the log label used for unexpected build/send errors.
+   */
+  private async resolveSubmissionSigner(params: {
+    auth: NonNullable<PostManagerDeps['authStateStore']>['value'];
+    sessionPubkey: string;
+    keyManager: NonNullable<PostManagerDeps['keyManager']>;
+    windowObj: PostManagerDeps['window'];
+  }): Promise<ResolvedSubmissionSigner | { failure: PostResult }> {
+    const { auth, sessionPubkey, keyManager: keyMgr, windowObj } = params;
+    const resolve = (nip46Signer?: PostManagerSigner | null) => resolvePostSigner({
+      authType: auth.type,
+      pubkey: auth.pubkey,
+      window: windowObj,
+      nip46Signer,
+      getParentClientSigner: () => this.deps.getParentClientSignerFn?.(),
+      getStoredSecretKey: (pubkey) => keyMgr.getFromStore() || keyMgr.loadFromStorage(pubkey),
+      createSecretKeySigner: (secretKey) => this.deps.seckeySignerFn
+        ? this.deps.seckeySignerFn(secretKey)
+        : seckeySigner(secretKey),
+    });
+    const toResolved = (
+      resolution: PostSignerResolution,
+      pubkey: string,
+      errorLabel: string,
+    ): ResolvedSubmissionSigner | { failure: PostResult } => resolution.ok
+      ? {
+        pubkey,
+        errorLabel,
+        credentials: resolution.source === 'nip07'
+          ? { signEvent: resolution.signEvent, logSignedEvent: true }
+          : { signEvent: resolution.signEvent },
+      }
+      : { failure: this.notifyPostFailure(resolution.error) };
+
+    // 拡張機能認証（NIP-07）: window.nostrのみで署名し、保存済み秘密鍵へはフォールバックしない
+    if (auth.type === 'nip07') {
+      const errorLabel = 'window.nostrでの投稿エラー:';
+      try {
+        if (!auth.pubkey) {
+          return { failure: this.notifyPostFailure('pubkey_not_found') };
+        }
+        return toResolved(resolve(), auth.pubkey, errorLabel);
+      } catch (err) {
+        return { failure: this.handleSubmissionError(errorLabel) };
+      }
+    }
+
+    // NIP-46リモートサイナーの場合
+    if (auth.type === 'nip46') {
+      const errorLabel = 'NIP-46での投稿エラー:';
+      try {
+        const pubkey = auth.pubkey;
+        if (!pubkey) {
+          return { failure: this.notifyPostFailure('pubkey_not_found') };
+        }
+
+        const nip46Signer = await this.deps.getNip46SignerForSessionFn?.(pubkey);
+        const currentAuth = this.deps.authStateStore!.value;
+        if (
+          !nip46Signer
+          || !currentAuth.isAuthenticated
+          || currentAuth.type !== 'nip46'
+          || currentAuth.pubkey !== pubkey
+        ) {
+          return { failure: this.notifyPostFailure('nip46_signer_not_available') };
+        }
+
+        return toResolved(resolve(nip46Signer), pubkey, errorLabel);
+      } catch (err) {
+        return { failure: this.handleSubmissionError(errorLabel) };
+      }
+    }
+
+    // 親クライアント連携の場合（signer取得の例外は呼び出し側の汎用ハンドラへ）
+    if (auth.type === 'parentClient') {
+      const resolution = resolve();
+      if (!resolution.ok) {
+        return { failure: this.notifyPostFailure(resolution.error) };
+      }
+      if (!auth.pubkey) {
+        return { failure: this.notifyPostFailure('pubkey_not_found') };
+      }
+      return toResolved(resolution, auth.pubkey, '親クライアント連携での投稿エラー:');
+    }
+
+    // ローカルキーを使用（秘密鍵直入れの場合）
+    return toResolved(resolve(), sessionPubkey, '投稿エラー:');
+  }
+
   async submitPost(
     content: string,
     imageImetaMap?: ImageImetaMetadataMap,
@@ -1177,195 +1286,48 @@ export class PostManager {
         }
       }
 
-      const auth = authStateStore.value;
-      const isExtensionAuth = auth.type === 'nip07';
-
-      // 拡張機能認証（NIP-07）の場合はwindow.nostrを使用
-      if (isExtensionAuth && keyMgr.isWindowNostrAvailable() && windowObj?.nostr) {
-        try {
-          const pubkey = auth.pubkey;
-          if (!pubkey) {
-            return this.notifyPostFailure('pubkey_not_found');
-          }
-
-          const signEvent = typeof windowObj.nostr.signEvent === 'function'
-            ? windowObj.nostr.signEvent.bind(windowObj.nostr)
-            : undefined;
-
-          if (!signEvent) {
-            return this.notifyPostFailure('nostr_sign_event_not_supported');
-          }
-
-          const event = await this.buildSubmissionEvent({
-            processedContent,
-            hashtags,
-            tags,
-            pubkey,
-            imageImetaMap,
-            contentWarningEnabled,
-            contentWarningReason,
-            failClosedContentWarning,
-            publicationKind,
-            replyQuoteTags,
-            channelContext,
-            emojiTags,
-          });
-
-          return await this.sendPreparedEvent({
-            event,
-            sessionPubkey,
-            hashtags,
-            rqNotifyOptions,
-            signEvent,
-            logSignedEvent: true,
-            additionalWriteRelays,
-            discoveryRelaysByRecipient,
-            splitSensitiveContent: failClosedContentWarning,
-            authorWriteRelaySnapshot,
-            writeRelayHintSnapshot,
-            replyQuoteIdentity: JSON.stringify({ reply: rqState.reply?.eventId ?? null, quotes: rqState.quotes.map((quote) => quote.eventId) }),
-          });
-        } catch (err) {
-          return this.handleSubmissionError('window.nostrでの投稿エラー:');
-        }
-      }
-
-      // NIP-46リモートサイナーの場合
-      if (auth.type === 'nip46') {
-        try {
-          const pubkey = auth.pubkey;
-          if (!pubkey) {
-            return this.notifyPostFailure('pubkey_not_found');
-          }
-
-          const nip46Signer = await this.deps.getNip46SignerForSessionFn?.(pubkey);
-          const currentAuth = this.deps.authStateStore!.value;
-          if (
-            !nip46Signer
-            || !currentAuth.isAuthenticated
-            || currentAuth.type !== 'nip46'
-            || currentAuth.pubkey !== pubkey
-          ) {
-            return this.notifyPostFailure('nip46_signer_not_available');
-          }
-
-          const event = await this.buildSubmissionEvent({
-            processedContent,
-            hashtags,
-            tags,
-            pubkey,
-            imageImetaMap,
-            contentWarningEnabled,
-            contentWarningReason,
-            failClosedContentWarning,
-            publicationKind,
-            replyQuoteTags,
-            channelContext,
-            emojiTags,
-          });
-
-          return await this.sendPreparedEvent({
-            event,
-            sessionPubkey,
-            hashtags,
-            rqNotifyOptions,
-            signer: nip46Signer,
-            additionalWriteRelays,
-            discoveryRelaysByRecipient,
-            splitSensitiveContent: failClosedContentWarning,
-            authorWriteRelaySnapshot,
-            writeRelayHintSnapshot,
-            replyQuoteIdentity: JSON.stringify({ reply: rqState.reply?.eventId ?? null, quotes: rqState.quotes.map((quote) => quote.eventId) }),
-          });
-        } catch (err) {
-          return this.handleSubmissionError('NIP-46での投稿エラー:');
-        }
-      }
-
-      // 親クライアント連携の場合
-      if (auth.type === 'parentClient') {
-        const parentClientSigner = this.deps.getParentClientSignerFn?.();
-        if (!parentClientSigner) {
-          return this.notifyPostFailure('parent_client_signer_not_available');
-        }
-
-        const pubkey = auth.pubkey;
-        if (!pubkey) {
-          return this.notifyPostFailure('pubkey_not_found');
-        }
-
-        try {
-          const event = await this.buildSubmissionEvent({
-            processedContent,
-            hashtags,
-            tags,
-            pubkey,
-            imageImetaMap,
-            contentWarningEnabled,
-            contentWarningReason,
-            failClosedContentWarning,
-            publicationKind,
-            replyQuoteTags,
-            channelContext,
-            emojiTags,
-          });
-
-          return await this.sendPreparedEvent({
-            event,
-            sessionPubkey,
-            hashtags,
-            rqNotifyOptions,
-            signer: parentClientSigner,
-            additionalWriteRelays,
-            discoveryRelaysByRecipient,
-            splitSensitiveContent: failClosedContentWarning,
-            authorWriteRelaySnapshot,
-            writeRelayHintSnapshot,
-            replyQuoteIdentity: JSON.stringify({ reply: rqState.reply?.eventId ?? null, quotes: rqState.quotes.map((quote) => quote.eventId) }),
-          });
-        } catch (err) {
-          return this.handleSubmissionError('親クライアント連携での投稿エラー:');
-        }
-      }
-
-      // ローカルキーを使用（秘密鍵直入れの場合）
-      const storedKey = keyMgr.getFromStore() || keyMgr.loadFromStorage(auth.pubkey);
-      if (!storedKey) {
-        return this.notifyPostFailure('key_not_found');
-      }
-
-      const event = await this.buildSubmissionEvent({
-        processedContent,
-        hashtags,
-        tags,
-        pubkey: sessionPubkey,
-        imageImetaMap,
-        contentWarningEnabled,
-        contentWarningReason,
-        failClosedContentWarning,
-        publicationKind,
-        replyQuoteTags,
-        channelContext,
-        emojiTags,
-      });
-
-      const signer = this.deps.seckeySignerFn
-        ? this.deps.seckeySignerFn(storedKey)
-        : seckeySigner(storedKey);
-      return await this.sendPreparedEvent({
-        event,
+      const resolvedSigner = await this.resolveSubmissionSigner({
+        auth: authStateStore.value,
         sessionPubkey,
-        hashtags,
-        rqNotifyOptions,
-        signer,
-        additionalWriteRelays,
-        discoveryRelaysByRecipient,
-        splitSensitiveContent: failClosedContentWarning,
-        authorWriteRelaySnapshot,
-        writeRelayHintSnapshot,
-        replyQuoteIdentity: JSON.stringify({ reply: rqState.reply?.eventId ?? null, quotes: rqState.quotes.map((quote) => quote.eventId) }),
+        keyManager: keyMgr,
+        windowObj,
       });
+      if ('failure' in resolvedSigner) {
+        return resolvedSigner.failure;
+      }
 
+      try {
+        const event = await this.buildSubmissionEvent({
+          processedContent,
+          hashtags,
+          tags,
+          pubkey: resolvedSigner.pubkey,
+          imageImetaMap,
+          contentWarningEnabled,
+          contentWarningReason,
+          failClosedContentWarning,
+          publicationKind,
+          replyQuoteTags,
+          channelContext,
+          emojiTags,
+        });
+
+        return await this.sendPreparedEvent({
+          event,
+          sessionPubkey,
+          hashtags,
+          rqNotifyOptions,
+          ...resolvedSigner.credentials,
+          additionalWriteRelays,
+          discoveryRelaysByRecipient,
+          splitSensitiveContent: failClosedContentWarning,
+          authorWriteRelaySnapshot,
+          writeRelayHintSnapshot,
+          replyQuoteIdentity: serializeReplyQuoteIdentity(rqState),
+        });
+      } catch (err) {
+        return this.handleSubmissionError(resolvedSigner.errorLabel);
+      }
     } catch (err) {
       return this.handleSubmissionError('投稿エラー:');
     }

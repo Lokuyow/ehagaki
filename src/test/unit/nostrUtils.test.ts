@@ -384,3 +384,20 @@ describe('toNevent', () => {
         expect((decoded.data as any).relays).toHaveLength(3);
     });
 });
+
+describe('formatShortNpub', () => {
+    it('shortens a valid pubkey to its npub head and tail', async () => {
+        const { formatShortNpub } = await import('../../lib/utils/nostrUtils');
+        const pubkey = '79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798';
+        const npub = nip19.npubEncode(pubkey);
+
+        expect(formatShortNpub(pubkey)).toBe(`${npub.slice(0, 12)}...${npub.slice(-4)}`);
+    });
+
+    it('falls back to the shortened input instead of throwing', async () => {
+        const { formatShortNpub } = await import('../../lib/utils/nostrUtils');
+
+        expect(formatShortNpub('not-a-pubkey-but-long-enough')).toBe('not-a-pubk...ough');
+        expect(formatShortNpub('short')).toBe('short');
+    });
+});

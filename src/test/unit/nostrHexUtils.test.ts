@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isHex64 } from "../../lib/utils/nostrHexUtils";
+import { isHex64, isLowerHex64 } from "../../lib/utils/nostrHexUtils";
 
 describe("isHex64", () => {
     it("accepts lowercase 64-character hex strings", () => {
@@ -25,5 +25,23 @@ describe("isHex64", () => {
         expect(isHex64(null)).toBe(false);
         expect(isHex64(undefined)).toBe(false);
         expect(isHex64({ value: "a".repeat(64) })).toBe(false);
+    });
+});
+
+describe("isLowerHex64", () => {
+    it("accepts lowercase 64-character hex strings", () => {
+        expect(isLowerHex64("0123456789abcdef".repeat(4))).toBe(true);
+    });
+
+    it("rejects uppercase characters", () => {
+        expect(isLowerHex64("A".repeat(64))).toBe(false);
+        expect(isLowerHex64("a".repeat(63) + "F")).toBe(false);
+    });
+
+    it("rejects wrong lengths and non-string values", () => {
+        expect(isLowerHex64("a".repeat(63))).toBe(false);
+        expect(isLowerHex64("a".repeat(65))).toBe(false);
+        expect(isLowerHex64(undefined)).toBe(false);
+        expect(isLowerHex64(["a".repeat(64)])).toBe(false);
     });
 });

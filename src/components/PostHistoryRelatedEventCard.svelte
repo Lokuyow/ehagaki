@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { nip19 } from "nostr-tools";
     import type { Snippet } from "svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
@@ -17,7 +16,7 @@
         NostrEvent,
         ProfileData,
     } from "../lib/types";
-    import { shortenMiddle } from "../lib/utils/textDisplayUtils";
+    import { formatShortNpub } from "../lib/utils/nostrUtils";
 
     interface Props {
         event: NostrEvent;
@@ -81,7 +80,7 @@
             return displayName;
         }
 
-        return shortenMiddle(nip19.npubEncode(event.pubkey), 12, 4);
+        return formatShortNpub(event.pubkey);
     });
     let previewModel = $derived.by(() =>
         model ??

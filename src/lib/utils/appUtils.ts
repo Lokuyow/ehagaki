@@ -19,10 +19,6 @@ export const defaultStorageAdapter: StorageAdapter = {
   setItem: (key: string, value: string) => getAppStorage().setItem(key, value)
 };
 
-export const defaultNavigatorAdapter: NavigatorAdapter = {
-  language: navigator.language
-};
-
 export const defaultTimeoutAdapter: TimeoutAdapter = {
   setTimeout: (callback: () => void, delay: number) => setTimeout(callback, delay)
 };
@@ -140,17 +136,3 @@ export function calculateContextMenuPosition(
 // =============================================================================
 // Array Utilities
 // =============================================================================
-
-/**
- * 配列を指定サイズのチャンクに分割する
- * @param array 分割する配列
- * @param size 各チャンクのサイズ
- * @returns チャンクの配列
- */
-export function chunkArray<T>(array: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < array.length; i += size) {
-    chunks.push(array.slice(i, i + size));
-  }
-  return chunks;
-}

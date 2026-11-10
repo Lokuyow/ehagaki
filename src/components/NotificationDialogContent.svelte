@@ -34,13 +34,12 @@
     import { getPostHistoryAuthoredRelayScopeKey } from '../lib/postHistoryRelayResolver';
     import type { FullscreenMediaItem, ProfileData, RelayConfig } from '../lib/types';
     import type { PostHistoryRecord } from '../lib/storage/ehagakiDb';
-    import type { PostHistoryInboundInteractionsSyncRequest } from '../lib/postHistoryInboundInteractionsSyncService';
 
     interface Props extends NotificationDialogProps {
         presentationReady?: boolean;
         onInitialReady?: () => void;
     }
-    let { show = $bindable(false), pubkeyHex, rxNostr, relayConfig, returnFocus = null,
+    let { show = $bindable(false), pubkeyHex, rxNostr, relayConfig,
         onClose, onReplyPost, onReactionPost, onOpenTarget, reconcileDirectReplyCandidates, onQuotePost, onRepostPost, repostPending, repostSaveFailure, onRetryRepostSave, presentationReady = false, onInitialReady }: Props = $props();
     let listElement = $state<HTMLElement | null>(null);
     const replyTargetPrefix = $props.id();

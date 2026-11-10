@@ -1,3 +1,4 @@
+import { isHex64 } from "./utils/nostrHexUtils";
 import { RelayOperation } from "./relay/operation";
 import { useRelayQuery, type RelayQuerySummary } from "./relay/query";
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
@@ -67,8 +68,7 @@ function isKind10002Event(value: unknown, pubkey: string): value is Kind10002Eve
     const event = value as Partial<Kind10002Event>;
     return event.kind === 10002
         && event.pubkey === pubkey
-        && typeof event.id === "string"
-        && /^[0-9a-f]{64}$/i.test(event.id)
+        && isHex64(event.id)
         && typeof event.created_at === "number"
         && Number.isSafeInteger(event.created_at)
         && event.created_at >= 0

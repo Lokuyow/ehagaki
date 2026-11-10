@@ -451,6 +451,69 @@ describe('SettingsDialog accessibility', () => {
 
     });
 
+    it('投稿設定スイッチはsettingsStoreと双方向に同期する', async () => {
+        settingsStore.locale = 'ja';
+        settingsStore.clientTagEnabled = false;
+        settingsStore.quoteNotificationEnabled = false;
+        settingsStore.replyNotificationEnabled = false;
+        render(SettingsDialog, {
+            props: { show: true, onClose: () => {} },
+        });
+        await tick();
+        await openSettingsCategory('投稿');
+
+        const cases = [
+            ['client-tag-label', 'clientTagEnabled'],
+            ['quote-notification-label', 'quoteNotificationEnabled'],
+            ['reply-notification-label', 'replyNotificationEnabled'],
+        ] as const;
+        for (const [labelId, key] of cases) {
+            const toggle = document.body.querySelector<HTMLElement>(
+                `[role="switch"][aria-labelledby="${labelId}"]`,
+            )!;
+            expect(toggle.getAttribute('aria-checked')).toBe('false');
+
+            await fireEvent.click(toggle);
+            await tick();
+            expect(settingsStore[key]).toBe(true);
+            expect(localStorage.getItem(key)).toBe('true');
+
+            settingsStore[key] = false;
+            await tick();
+            expect(toggle.getAttribute('aria-checked')).toBe('false');
+        }
+    });
+
+    it('不正なカスタムURLは入力欄に残し、保存済みURLを上書きしない', async () => {
+        settingsStore.locale = 'ja';
+        settingsStore.externalNostrClient = 'custom';
+        settingsStore.externalNostrClientCustomUrl = 'https://saved.example/{nevent}';
+        render(SettingsDialog, {
+            props: { show: true, onClose: () => {} },
+        });
+        await tick();
+        await openSettingsCategory('Nostr');
+
+        const customUrlInput = screen.getByLabelText('カスタムURL') as HTMLInputElement;
+        expect(customUrlInput.value).toBe('https://saved.example/{nevent}');
+
+        await fireEvent.input(customUrlInput, {
+            target: { value: 'http://bad.example/{nevent}' },
+        });
+        await tick();
+        expect(customUrlInput.value).toBe('http://bad.example/{nevent}');
+        expect(screen.getByRole('alert')).toBeTruthy();
+        expect(settingsStore.externalNostrClientCustomUrl).toBe('https://saved.example/{nevent}');
+
+        const clientSelect = screen.getByRole('combobox', {
+            name: '投稿を開くクライアント',
+        }) as HTMLSelectElement;
+        await fireEvent.change(clientSelect, { target: { value: 'njump' } });
+        await tick();
+        expect(settingsStore.externalNostrClient).toBe('njump');
+        expect(screen.queryByLabelText('カスタムURL')).toBeNull();
+    });
+
     it('テーマと設定スイッチが表示ラベルをアクセシブルネームとして持つ', async () => {
         render(SettingsDialog, {
             props: {

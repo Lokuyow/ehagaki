@@ -739,7 +739,8 @@
       "post_error": "Post error",
       "post_rejected": "Rejected by relays",
       "post_timeout": "Timed out before submit",
-      "post_network_error": "Network error"
+      "post_network_error": "Network error",
+      "sign_extension_unavailable": "Signing extension unavailable. Enable it or log in again."
     },
     "flavor": [
       "Yo.",

@@ -1,3 +1,4 @@
+import { isHex64 } from "./utils/nostrHexUtils";
 import { createImetaTag } from "./tags/imetaTag";
 import type {
     ChannelContextState,
@@ -150,7 +151,7 @@ export async function buildHostOwnedComposerOutput(params: {
 }
 
 export function isHostSubmissionEventId(value: unknown): value is string {
-    return typeof value === "string" && /^[0-9a-f]{64}$/i.test(value);
+    return isHex64(value);
 }
 
 /** Accepts the documented void or `{ eventId }` success shape only. */

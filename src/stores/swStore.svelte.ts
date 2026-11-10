@@ -1,3 +1,5 @@
+import { requestServiceWorker } from '../lib/utils/serviceWorkerRequest';
+import { isRecord } from '../lib/utils/typeGuards';
 import {
     createAcceptedServiceWorkerUpdateReloadController,
     type SwUpdateStatus,
@@ -127,25 +129,16 @@ export function handleSwUpdate() {
 export function fetchSwVersion(): Promise<string | null> {
     if (!serviceWorkerEnabled) return Promise.resolve(null);
     if (!navigator.serviceWorker?.controller) return Promise.resolve(null);
-    return new Promise((resolve) => {
-        const messageChannel = new MessageChannel();
-        messageChannel.port1.onmessage = (event) => {
-            if (event.data?.version) {
-                swVersionStore.set(event.data.version);
-                resolve(event.data.version);
-            } else {
-                resolve(null);
-            }
-        };
-        if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage(
-                { type: 'GET_VERSION' },
-                [messageChannel.port2]
-            );
-        } else {
-            resolve(null);
-            return;
-        }
-        setTimeout(() => resolve(null), 2000);
+    return requestServiceWorker(
+        navigator.serviceWorker.controller,
+        { type: 'GET_VERSION' },
+        2000,
+    ).then((reply) => {
+        const version = reply.status === 'reply' && isRecord(reply.data)
+            ? reply.data.version
+            : undefined;
+        if (!version) return null;
+        swVersionStore.set(version as string);
+        return version as string;
     });
 }

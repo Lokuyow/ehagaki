@@ -117,3 +117,46 @@ describe('nip46ConnectUiUtils', () => {
         );
     });
 });
+describe('resolveNip46NostrConnectErrorDisplay', () => {
+    const flatten = (value: unknown, prefix = ''): string[] =>
+        value && typeof value === 'object'
+            ? Object.entries(value as Record<string, unknown>).flatMap(([key, child]) =>
+                flatten(child, prefix ? `${prefix}.${key}` : key))
+            : [prefix];
+
+    it('maps every message nip46Service throws to a key present in both locales', async () => {
+        const { resolveNip46NostrConnectErrorDisplay } = await import('../../lib/nip46ConnectUiUtils');
+        const { NIP46_ERROR_MESSAGES } = await import('../../lib/nip46ErrorMessages');
+        const ja = new Set(flatten((await import('../../lib/i18n/ja.json')).default));
+        const en = new Set(flatten((await import('../../lib/i18n/en.json')).default));
+
+        for (const [name, message] of Object.entries(NIP46_ERROR_MESSAGES)) {
+            const display = resolveNip46NostrConnectErrorDisplay(message);
+            if (name === 'nostrConnectCancelled') {
+                expect(display).toEqual({ kind: 'hidden' });
+                continue;
+            }
+            expect(display.kind, name).toBe('key');
+            if (display.kind !== 'key') continue;
+            expect(ja.has(display.key), `ja ${display.key}`).toBe(true);
+            expect(en.has(display.key), `en ${display.key}`).toBe(true);
+        }
+    });
+
+    it('treats any relay connection failure detail as a connection failure', async () => {
+        const { resolveNip46NostrConnectErrorDisplay } = await import('../../lib/nip46ConnectUiUtils');
+        const { formatNip46RelayConnectionFailure } = await import('../../lib/nip46ErrorMessages');
+
+        expect(resolveNip46NostrConnectErrorDisplay(formatNip46RelayConnectionFailure('no reachable relays')))
+            .toEqual({ kind: 'key', key: 'loginDialog.nostrconnect_connection_failed' });
+        expect(resolveNip46NostrConnectErrorDisplay('Relay connection failed'))
+            .toEqual({ kind: 'key', key: 'loginDialog.nostrconnect_connection_failed' });
+    });
+
+    it('passes unknown messages through unchanged', async () => {
+        const { resolveNip46NostrConnectErrorDisplay } = await import('../../lib/nip46ConnectUiUtils');
+
+        expect(resolveNip46NostrConnectErrorDisplay('Something else'))
+            .toEqual({ kind: 'raw', message: 'Something else' });
+    });
+});

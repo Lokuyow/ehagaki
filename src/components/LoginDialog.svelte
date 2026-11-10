@@ -9,6 +9,7 @@
         ensureNip46ConnectionRelayDraftRows,
         getDefaultNip46ConnectionRelayCandidates,
         openNip46ConnectionUri,
+        resolveNip46NostrConnectErrorDisplay,
         validateNip46ConnectionRelayDrafts,
     } from "../lib/nip46ConnectUiUtils";
     import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
@@ -372,40 +373,12 @@
     }
 
     function resolveNostrConnectErrorMessage(errorMessage: string): string {
-        switch (errorMessage) {
-            case "At least one public wss relay is required for nostrconnect":
-                return $_("loginDialog.nostrconnect_relay_required");
-            case "Nostr Connect timed out before the remote signer connected":
-                return $_("loginDialog.nostrconnect_timeout");
-            case "Timed out waiting for switch_relays response":
-            case "Relay connection failed":
-            case "Nostr Connect handshake pool is unavailable":
-                return $_("loginDialog.nostrconnect_connection_failed");
-            case "Timed out waiting for final relay list":
-            case "Remote signer did not return final relay list":
-            case "Remote signer returned an invalid final relay list":
-            case "Remote signer returned an unsupported final relay":
-                return $_(
-                    "loginDialog.nostrconnect_relay_reconciliation_failed",
-                );
-            case "Remote signer did not return any usable connection relay":
-                return $_("loginDialog.nostrconnect_no_usable_final_relay");
-            case "Could not connect to the local relay specified by the remote signer":
-                return $_(
-                    "loginDialog.nostrconnect_local_final_relay_unreachable",
-                );
-            case "Communication could not be verified on the relay selected by the remote signer":
-                return $_(
-                    "loginDialog.nostrconnect_final_relay_verification_failed",
-                );
-            case "Nostr Connect connection was cancelled":
-                return "";
-            default:
-                if (errorMessage.startsWith("Relay connection failed:")) {
-                    return $_("loginDialog.nostrconnect_connection_failed");
-                }
-                return errorMessage;
-        }
+        const display = resolveNip46NostrConnectErrorDisplay(errorMessage);
+        return display.kind === "key"
+            ? $_(display.key)
+            : display.kind === "hidden"
+              ? ""
+              : display.message;
     }
 
     async function handleNip07Login() {

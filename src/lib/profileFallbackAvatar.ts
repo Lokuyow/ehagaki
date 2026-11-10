@@ -1,3 +1,4 @@
+import { isLowerHex64 } from "./utils/nostrHexUtils";
 import { nip19 } from "nostr-tools";
 import { getAppStorage } from "./appStorage";
 import { firstGrapheme } from "./utils/graphemeUtils";
@@ -27,7 +28,7 @@ const escapeXml = (value: string): string => Array.from(value, char => {
 
 export function resolveProfileAvatarAppearance(identity: ProfileAvatarIdentity) {
     const pubkey = identity.pubkeyHex?.trim().toLowerCase() ?? "";
-    const validPubkey = /^[0-9a-f]{64}$/.test(pubkey);
+    const validPubkey = isLowerHex64(pubkey);
     const name = identity.displayName?.trim() || identity.name?.trim() || "";
     const initial = firstGrapheme(name)
         || (validPubkey ? nip19.npubEncode(pubkey).slice(5, 6) : "");

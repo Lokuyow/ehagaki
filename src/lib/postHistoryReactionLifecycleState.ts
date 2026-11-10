@@ -1,31 +1,25 @@
-const inFlightPostHistoryReactionLifecycleRequestKeys = new Set<string>();
+import { createRelationLifecycleInFlightRegistry } from "./postHistoryRelationDeletionLifecycle";
+
+const inFlightPostHistoryReactionLifecycleRequests = createRelationLifecycleInFlightRegistry();
 
 export function hasInFlightPostHistoryReactionLifecycleRequest(
     requestKey: string,
 ): boolean {
-    return inFlightPostHistoryReactionLifecycleRequestKeys.has(requestKey);
+    return inFlightPostHistoryReactionLifecycleRequests.has(requestKey);
 }
 
 export function addInFlightPostHistoryReactionLifecycleRequests(
     requestKeys: string[],
 ): void {
-    for (const requestKey of requestKeys) {
-        if (!requestKey) {
-            continue;
-        }
-
-        inFlightPostHistoryReactionLifecycleRequestKeys.add(requestKey);
-    }
+    inFlightPostHistoryReactionLifecycleRequests.add(requestKeys);
 }
 
 export function removeInFlightPostHistoryReactionLifecycleRequests(
     requestKeys: string[],
 ): void {
-    for (const requestKey of requestKeys) {
-        inFlightPostHistoryReactionLifecycleRequestKeys.delete(requestKey);
-    }
+    inFlightPostHistoryReactionLifecycleRequests.remove(requestKeys);
 }
 
 export function resetInFlightPostHistoryReactionLifecycleRequests(): void {
-    inFlightPostHistoryReactionLifecycleRequestKeys.clear();
+    inFlightPostHistoryReactionLifecycleRequests.reset();
 }

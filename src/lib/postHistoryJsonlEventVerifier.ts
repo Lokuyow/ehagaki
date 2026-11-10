@@ -1,14 +1,14 @@
+import { isLowerHex64 } from "./utils/nostrHexUtils";
 import { getEventHash, schnorr, type EventVerifier } from "@rx-nostr/crypto";
 import { validateEvent } from "nostr-tools";
 import { isSignedNostrEvent } from "./postHistoryEventUtils";
 
-const HEX_64 = /^[0-9a-f]{64}$/;
 const SIGNATURE_HEX = /^[0-9a-fA-F]{128}$/;
 
 /** Full NIP-01 verification; malformed crypto input is an event rejection. */
 export const verifyPostHistoryJsonlEvent: EventVerifier = async (event) => {
     if (!isSignedNostrEvent(event) || !validateEvent(event)
-        || !HEX_64.test(event.id) || !HEX_64.test(event.pubkey)
+        || !isLowerHex64(event.id) || !isLowerHex64(event.pubkey)
         || !SIGNATURE_HEX.test(event.sig)) return false;
 
     const hash = getEventHash(event);

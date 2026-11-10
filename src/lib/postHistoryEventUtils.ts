@@ -1,5 +1,6 @@
 import { parseKind42ThreadReferences } from "./postHistoryNip10Utils";
 import type { NostrEvent } from "./types";
+import type { PostHistoryRecord } from "./storage/ehagakiDb";
 
 export interface PostHistoryChannelReference {
     channelEventId?: string;
@@ -120,4 +121,33 @@ export function isPostHistoryRawEventConsistent(
         && rawEvent.content === record.content
         && rawEvent.created_at === record.createdAt
         && isSameTagList(rawEvent.tags, record.tags);
+}
+
+/**
+ * Builds an in-memory history record for an event shown in the dialog
+ * (thread graph node, quote preview). It is an action/render adapter only and
+ * is never persisted.
+ */
+export function createTransientPostHistoryRecord(
+    event: NostrEvent,
+    relayUrls: readonly string[] = [],
+    now: number = Date.now(),
+): PostHistoryRecord {
+    return {
+        id: event.id,
+        eventId: event.id,
+        pubkeyHex: event.pubkey,
+        kind: event.kind,
+        content: event.content,
+        tags: cloneTags(event.tags),
+        createdAt: event.created_at,
+        postedAt: event.created_at * 1000,
+        relayHints: [...relayUrls],
+        acceptedRelays: [...relayUrls],
+        fetchedRelays: [...relayUrls],
+        media: [],
+        rawEvent: event,
+        updatedAt: now,
+        schemaVersion: 1,
+    };
 }

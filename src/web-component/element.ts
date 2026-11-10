@@ -1,3 +1,4 @@
+import { isRecord } from "../lib/utils/typeGuards";
 import { mount, unmount } from "svelte";
 import type { AppEmbedAppliedSettingKey } from "../lib/appEmbedController";
 import { configureAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
@@ -51,10 +52,6 @@ function createNamedError(name: string, message: string): Error {
     const error = new Error(message);
     error.name = name;
     return error;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Captures only the mutable preview-only profile input at the public boundary. */

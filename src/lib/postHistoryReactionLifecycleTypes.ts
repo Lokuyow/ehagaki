@@ -1,6 +1,5 @@
 import {
     buildPostHistoryRelationLifecycleRequestKey,
-    isActivePostHistoryRelationLifecycleStateStatus,
     parsePostHistoryRelationLifecycleRequestKey,
     type PostHistoryRelationLifecycleSource,
     type PostHistoryRelationLifecycleStateStatus,
@@ -70,12 +69,6 @@ export function parsePostHistoryReactionLifecycleRequestKey(
         reactionEventId: parsed.targetEventId,
         kind: POST_HISTORY_REACTION_LIFECYCLE_KIND,
     };
-}
-
-export function isActivePostHistoryReactionLifecycleStateStatus(
-    status: PostHistoryReactionLifecycleStateStatus,
-): boolean {
-    return isActivePostHistoryRelationLifecycleStateStatus(status);
 }
 
 export function canRetryPostHistoryReactionLifecycle(

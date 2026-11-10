@@ -1,3 +1,4 @@
+import { isLowerHex64 } from "../utils/nostrHexUtils";
 import { eventRecords } from "./eventRepository";
 import {
     buildPostHistoryDeletionRequestRecordId,
@@ -90,7 +91,6 @@ export interface PostHistoryDeletionRequestsRepository {
     saveLocalDeletion(input: SaveLocalPostHistoryDeletionInput): Promise<void>;
 }
 
-const NOSTR_EVENT_ID_PATTERN = /^[0-9a-f]{64}$/;
 const NOSTR_KIND_TAG_PATTERN = /^(0|[1-9]\d{0,4})$/;
 
 const VALID_RAW_EVENT_VERIFICATION: RawEventVerificationState = {
@@ -278,7 +278,7 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
         if (
             targetEventIds.length === 0
             || deletionEvent.kind !== 5
-            || !NOSTR_EVENT_ID_PATTERN.test(deletionEvent.id)
+            || !isLowerHex64(deletionEvent.id)
         ) {
             throw new Error("invalid_local_deletion_event");
         }
@@ -522,7 +522,7 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
             if (
                 verifiedDeletionEvent.kind !== 5
                 || verifiedDeletionEvent.pubkey !== input.ownerPubkeyHex
-                || !NOSTR_EVENT_ID_PATTERN.test(verifiedDeletionEvent.id)
+                || !isLowerHex64(verifiedDeletionEvent.id)
             ) {
                 ignoredCount += 1;
                 continue;
@@ -531,7 +531,7 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
             const targetEventIds = verifiedDeletionEvent.tags
                 .filter((tag) => tag[0] === "e"
                     && typeof tag[1] === "string"
-                    && NOSTR_EVENT_ID_PATTERN.test(tag[1]))
+                    && isLowerHex64(tag[1]))
                 .map((tag) => tag[1]);
             const uniqueTargetEventIds = Array.from(new Set(targetEventIds));
             if (uniqueTargetEventIds.length === 0) {

@@ -32,7 +32,6 @@ export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;
 export const ALLOWED_PROTOCOLS = ['http:', 'https:'];
 export const ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
 export const ALLOWED_VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv'];
-export const ALLOWED_VIDEO_MIMETYPES = ['video/mp4', 'video/webm', 'video/quicktime', 'video/mpeg'];
 
 // --- SvelteImageNode用定数 ---
 export const LONG_PRESS_DELAY = 400; // ms
@@ -101,8 +100,6 @@ export const VALID_COMPRESSION_LEVELS = ["none", "low", "medium", "high"] as con
 export const MAX_DRAFTS = 100; // 下書きの最大保存数
 export const DRAFT_PREVIEW_LENGTH = 50; // 下書きプレビューの最大文字数
 
-export const RELAY_LIST_REFRESH_DELAY = 0;
-
 export const uploadEndpoints = [
     { label: "share.yabu.me", url: "https://share.yabu.me/api/v2/media" },
     { label: "nostpic.com", url: "https://nostpic.com/api/v2/media" },
@@ -128,10 +125,6 @@ export function getCompressionLevels($_: (key: string) => string | undefined) {
         { label: $_("settingsDialog.quality_low"), value: "low" },
     ];
 }
-
-export const SELECTORS = {
-    EDITOR: ".tiptap-editor",
-} as const;
 
 // --- ContentTracking Extension用定数 ---
 export const CONTENT_TRACKING_CONFIG = {
@@ -165,6 +158,7 @@ export const BALLOON_MESSAGE_ERROR_KEY = "balloonMessage.error.post_error";
 export const BALLOON_MESSAGE_REJECTED_KEY = "balloonMessage.error.post_rejected";
 export const BALLOON_MESSAGE_TIMEOUT_KEY = "balloonMessage.error.post_timeout";
 export const BALLOON_MESSAGE_NETWORK_ERROR_KEY = "balloonMessage.error.post_network_error";
+export const BALLOON_MESSAGE_SIGN_EXTENSION_UNAVAILABLE_KEY = "balloonMessage.error.sign_extension_unavailable";
 
 // アプリの使い方Tips(tipsカテゴリ)
 export const BALLOON_MESSAGE_TIPS_KEYS: readonly string[] = [
@@ -172,14 +166,6 @@ export const BALLOON_MESSAGE_TIPS_KEYS: readonly string[] = [
 ];
 
 // --- fileUploadManager.ts から移動した定数 ---
-export const BLURHASH_CONFIG = {
-    COMPONENT_X: 4,
-    COMPONENT_Y: 4,
-    CANVAS_SIZE: 100
-} as const;
-
-export const MIME_TYPE_SUPPORT_CACHE_TIMEOUT = 5 * 60 * 1000; // 5分
-
 export const UPLOAD_POLLING_CONFIG = {
     MAX_WAIT_TIME: 15000,     // 15秒
     RETRY_INTERVAL: 1000,     // 1秒

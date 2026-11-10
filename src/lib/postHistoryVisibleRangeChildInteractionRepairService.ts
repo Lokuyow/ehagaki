@@ -1,3 +1,4 @@
+import { chunkArray } from "./utils/arrayUtils";
 import { RelayOperation } from "./relay/operation";
 import { ehagakiDb } from "./storage/ehagakiDb";
 import { getPostHistoryChildWriteGeneration } from "./storage/postHistoryLocalWriteScope";
@@ -231,27 +232,19 @@ function toUniqueDirectReplyOwnerPosts(
     return Array.from(postsByEventId.values());
 }
 
-function chunkPosts(posts: PostHistoryRecord[], chunkSize: number): PostHistoryRecord[][] {
-    const chunks: PostHistoryRecord[][] = [];
-    for (let index = 0; index < posts.length; index += chunkSize) {
-        chunks.push(posts.slice(index, index + chunkSize));
-    }
-    return chunks;
-}
-
 function buildInitialParentChunks(
     posts: PostHistoryRecord[],
     options: VisibleRangeRepairInclusionOptions,
 ): ParentChunk[] {
     if (!options.includeDirectReplies) {
-        return chunkPosts(
+        return chunkArray(
             posts,
             POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CHUNK_SIZE,
         ).map((chunk) => ({ posts: chunk, depth: 0 }));
     }
 
     return ([1, 42, 1111] as const).flatMap((kind) =>
-        chunkPosts(
+        chunkArray(
             posts.filter((post) => post.kind === kind),
             POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CHUNK_SIZE,
         ).map((chunk) => ({ posts: chunk, depth: 0 as const }))
@@ -527,7 +520,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                             saturatedChunkCount += 1;
                             if (chunk.depth === 0) {
                                 fallbackChunks.push(
-                                    ...chunkPosts(
+                                    ...chunkArray(
                                         chunk.posts,
                                         POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FALLBACK_CHUNK_SIZE,
                                     ).map((posts) => ({ posts, depth: 1 as const })),

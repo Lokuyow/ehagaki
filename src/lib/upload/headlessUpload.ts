@@ -1,3 +1,4 @@
+import { isHex64 } from "../utils/nostrHexUtils";
 import { FileUploadManager } from "../fileUploadManager";
 import { decode as decodeBlurhash } from "blurhash";
 import { ImageCompressionService } from "../imageCompressionService";
@@ -122,7 +123,7 @@ function createHeadlessMetadata(
             ? validateCustomHttpResultUrl(result.url)
             : result.url;
         const nip94 = destination.protocol === "custom-http" ? {} : result.nip94 ?? {};
-        const sha256 = typeof nip94.x === "string" && /^[0-9a-f]{64}$/i.test(nip94.x)
+        const sha256 = isHex64(nip94.x)
             ? nip94.x.toLowerCase()
             : undefined;
         const mimeType = isValidMimeType(nip94.m) ? nip94.m : undefined;

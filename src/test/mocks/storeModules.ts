@@ -175,10 +175,6 @@ export const mockRelayStoreModule = {
         value: null,
         set: vi.fn(),
     },
-    showRelaysStore: {
-        value: false,
-        set: vi.fn(),
-    },
     isSwUpdatingStore: {
         value: false,
         set: vi.fn(),

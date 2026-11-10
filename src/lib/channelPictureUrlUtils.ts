@@ -1,3 +1,4 @@
+import { isLowerHex64 } from "./utils/nostrHexUtils";
 import { normalizeProfilePictureUrl } from "./profilePictureUrlUtils";
 
 export interface ChannelPictureUrlOptions {
@@ -12,7 +13,7 @@ export function normalizeChannelPictureUrl(
 }
 
 export function isChannelEventId(value: string): boolean {
-    return /^[0-9a-f]{64}$/.test(value);
+    return isLowerHex64(value);
 }
 
 export function buildChannelPictureProxyUrl({

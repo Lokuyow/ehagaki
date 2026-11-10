@@ -21,6 +21,7 @@ import { onMount } from "svelte";
 import { BalloonMessageManager } from "../balloonMessageManager";
 import type { BalloonMessage, I18nFunction } from "../types";
 import { editorState, updatePostStatus } from "../../stores/editorStore.svelte";
+import { authState } from "../../stores/authStore.svelte";
 import { shouldShowDevLog } from "../debug";
 
 declare global {
@@ -108,7 +109,9 @@ export function useBalloonMessage(
     // 投稿エラーメッセージ（postStatusから自動更新）
     const errorMessage = $derived(
         editorState.postStatus.error && balloonManager
-            ? balloonManager.createErrorMessage(editorState.postStatus.message)
+            ? balloonManager.createErrorMessage(editorState.postStatus.message, {
+                authType: authState.value.type,
+            })
             : null
     );
 

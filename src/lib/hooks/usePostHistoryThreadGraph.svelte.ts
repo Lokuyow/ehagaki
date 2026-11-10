@@ -1,3 +1,4 @@
+import { chunkArray } from "../utils/arrayUtils";
 import { fetchPostHistoryRelatedEvents, type RelatedEventsTask, type RelatedEventsStatus } from "../postHistoryRelatedEventsFetchService";
 import { isValidDeletionRequestForTarget } from "../postHistoryDeletionUtils";
 import { onDestroy, untrack } from "svelte";
@@ -169,7 +170,7 @@ interface UsePostHistoryThreadGraphParams {
     getPubkeyHex: () => string | null | undefined;
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
-    postHistoryRepositoryImpl?: Pick<PostHistoryRepository, "getByEventId">;
+    postHistoryRepositoryImpl?: Pick<PostHistoryRepository, "getByEventId" | "markDeleted">;
     directReplyRecordsAdapterImpl?: PostHistoryDirectReplyRecordsAdapter;
     reactionRecordsAdapterImpl?: PostHistoryReactionRecordsAdapter;
     childInteractionsRepositoryImpl?: Pick<
@@ -409,7 +410,7 @@ export function usePostHistoryThreadGraph({
                 for (const target of result.targets) {
                     const deletion = result.deletions.find(item => isValidDeletionRequestForTarget(item.event, target));
                     if (!deletion) continue;
-                    await postHistoryRepository.markDeleted(target.id, deletion.event.id, deletion.event.created_at * 1000);
+                    await postHistoryRepositoryImpl.markDeleted(target.id, deletion.event.id, deletion.event.created_at * 1000);
                     if (!isActive()) return;
                     onDeletedPost?.(target.id, deletion.event.created_at * 1000, deletion.event.id);
                 }
@@ -2099,10 +2100,7 @@ export function usePostHistoryThreadGraph({
             return;
         }
 
-        const batches: string[][] = [];
-        for (let index = 0; index < remainingEventIds.length; index += POST_HISTORY_CHILD_REPLY_PREFETCH_BATCH_SIZE) {
-            batches.push(remainingEventIds.slice(index, index + POST_HISTORY_CHILD_REPLY_PREFETCH_BATCH_SIZE));
-        }
+        const batches = chunkArray(remainingEventIds, POST_HISTORY_CHILD_REPLY_PREFETCH_BATCH_SIZE);
 
         let nextBatchIndex = 0;
         const workerCount = Math.min(POST_HISTORY_CHILD_REPLY_PREFETCH_CONCURRENCY, batches.length);
@@ -3135,6 +3133,7 @@ export function usePostHistoryThreadGraph({
         reactionSummaryByParentId = {};
         reactionRecordsByParentId = {};
         reactionProfilesByPubkey = {};
+        reactionReadModelByParentId = {};
         replyBadgePreloadKeys.clear();
         childReplyCountPrefetchKeys.clear();
     }

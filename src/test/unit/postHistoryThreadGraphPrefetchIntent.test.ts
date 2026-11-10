@@ -215,6 +215,7 @@ function createGraph(
         },
         postHistoryRepositoryImpl: {
             getByEventId: vi.fn().mockResolvedValue(null),
+            markDeleted: vi.fn().mockResolvedValue(undefined),
         },
         profileSyncCoordinator: {
             ensureProfile: vi.fn(() => null),

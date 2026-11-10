@@ -1,3 +1,4 @@
+import { isRecord } from "./utils/typeGuards";
 import { useRelayQuery } from "./relay/query";
 import type { createRxNostr } from 'rx-nostr';
 import { createRxBackwardReq } from 'rx-nostr';
@@ -14,10 +15,6 @@ import {
   normalizeProfilePictureUrl,
 } from './profilePictureUrlUtils';
 import { getAppStorage } from './appStorage';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 // --- URL処理の純粋関数（依存性なし） ---
 export class ProfileUrlUtils {

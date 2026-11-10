@@ -1,3 +1,5 @@
+import { isLowerHex64 } from "./utils/nostrHexUtils";
+
 export interface ProfileEventIdentity {
     sourceEventId: string;
     updatedAtFromEvent: number;
@@ -10,12 +12,10 @@ export type ProfileEventComparison =
     | "candidate-wins-tie-break"
     | "candidate-loses-tie-break";
 
-const NOSTR_EVENT_ID_PATTERN = /^[0-9a-f]{64}$/;
-
 export function isValidProfileEventIdentity(
     identity: ProfileEventIdentity,
 ): boolean {
-    return NOSTR_EVENT_ID_PATTERN.test(identity.sourceEventId)
+    return isLowerHex64(identity.sourceEventId)
         && Number.isSafeInteger(identity.updatedAtFromEvent)
         && identity.updatedAtFromEvent >= 0;
 }

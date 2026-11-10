@@ -1,3 +1,4 @@
+import { chunkArray } from "./utils/arrayUtils";
 import { useRelayQuery } from "./relay/query";
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import type { Filter } from "nostr-tools";
@@ -558,11 +559,7 @@ export function getCustomEmojiCacheBatches(
         uniqueUrls.push(url);
     }
 
-    const batches: string[][] = [];
-    for (let index = 0; index < uniqueUrls.length; index += batchSize) {
-        batches.push(uniqueUrls.slice(index, index + batchSize));
-    }
-    return batches;
+    return chunkArray(uniqueUrls, batchSize);
 }
 
 function scheduleBackgroundTask(task: () => void): void {

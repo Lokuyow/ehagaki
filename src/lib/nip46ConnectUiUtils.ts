@@ -1,5 +1,9 @@
 import { getNip46ConnectRelaysStorageKey } from './authStorageKeys';
 import { sanitizeNip46NostrConnectRelays } from './nip46Service';
+import {
+    NIP46_ERROR_MESSAGES,
+    NIP46_RELAY_CONNECTION_FAILED_PREFIX,
+} from './nip46ErrorMessages';
 
 // Default relay candidates for the initial NIP-46 connection attempt.
 // The published nostrconnect URI is rebuilt from the ready relay subset,
@@ -188,4 +192,50 @@ export function openNip46ConnectionUri(
     } catch {
         return false;
     }
+}
+
+export type Nip46NostrConnectErrorDisplay =
+    | { kind: 'key'; key: string }
+    | { kind: 'hidden' }
+    | { kind: 'raw'; message: string };
+
+// No longer thrown by nip46Service; kept so stale messages still read well.
+const LEGACY_CONNECTION_FAILED_MESSAGES = [
+    'Timed out waiting for switch_relays response',
+];
+const LEGACY_RELAY_RECONCILIATION_FAILED_MESSAGES = [
+    'Timed out waiting for final relay list',
+    'Remote signer returned an unsupported final relay',
+];
+
+const NIP46_NOSTR_CONNECT_ERROR_KEYS = new Map<string, string>([
+    [NIP46_ERROR_MESSAGES.nostrConnectRelayRequired, 'loginDialog.nostrconnect_relay_required'],
+    [NIP46_ERROR_MESSAGES.nostrConnectTimeout, 'loginDialog.nostrconnect_timeout'],
+    [NIP46_RELAY_CONNECTION_FAILED_PREFIX, 'loginDialog.nostrconnect_connection_failed'],
+    [NIP46_ERROR_MESSAGES.handshakePoolUnavailable, 'loginDialog.nostrconnect_connection_failed'],
+    ...LEGACY_CONNECTION_FAILED_MESSAGES.map(
+        (message) => [message, 'loginDialog.nostrconnect_connection_failed'] as const,
+    ),
+    [NIP46_ERROR_MESSAGES.finalRelayListMissing, 'loginDialog.nostrconnect_relay_reconciliation_failed'],
+    [NIP46_ERROR_MESSAGES.finalRelayListInvalid, 'loginDialog.nostrconnect_relay_reconciliation_failed'],
+    ...LEGACY_RELAY_RECONCILIATION_FAILED_MESSAGES.map(
+        (message) => [message, 'loginDialog.nostrconnect_relay_reconciliation_failed'] as const,
+    ),
+    [NIP46_ERROR_MESSAGES.finalRelayNoUsable, 'loginDialog.nostrconnect_no_usable_final_relay'],
+    [NIP46_ERROR_MESSAGES.finalLocalRelayUnreachable, 'loginDialog.nostrconnect_local_final_relay_unreachable'],
+    [NIP46_ERROR_MESSAGES.finalRelayVerificationFailed, 'loginDialog.nostrconnect_final_relay_verification_failed'],
+]);
+
+/** Maps a Nostr Connect error message to the login dialog's display. */
+export function resolveNip46NostrConnectErrorDisplay(
+    errorMessage: string,
+): Nip46NostrConnectErrorDisplay {
+    if (errorMessage === NIP46_ERROR_MESSAGES.nostrConnectCancelled) {
+        return { kind: 'hidden' };
+    }
+    const key = NIP46_NOSTR_CONNECT_ERROR_KEYS.get(errorMessage)
+        ?? (errorMessage.startsWith(`${NIP46_RELAY_CONNECTION_FAILED_PREFIX}:`)
+            ? 'loginDialog.nostrconnect_connection_failed'
+            : undefined);
+    return key ? { kind: 'key', key } : { kind: 'raw', message: errorMessage };
 }

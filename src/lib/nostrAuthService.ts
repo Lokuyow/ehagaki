@@ -1,3 +1,4 @@
+import { isRecord } from "./utils/typeGuards";
 import { seckeySigner } from "@rx-nostr/crypto";
 import type { Authenticator } from "rx-nostr";
 import type { EventTemplate } from "nostr-tools";
@@ -293,10 +294,6 @@ function getAuthTagValue(tags: unknown, name: string): string {
         throw new Error('Invalid NIP-42 authentication event');
     }
     return tag[1];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function validateAuthEvent(
