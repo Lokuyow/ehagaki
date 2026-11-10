@@ -411,6 +411,55 @@ describe("keydownAction", () => {
         expect(() => node.dispatchEvent(event)).not.toThrow();
     });
 
+    it.each([
+        { name: "isComposing", isComposing: true },
+        { name: "229 keyCode", keyCode: 229 },
+    ])("does not submit or preventDefault during composition ($name)", ({ isComposing, keyCode }) => {
+        mockedExtractContentWithImages.mockReturnValue("content");
+        const event = new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: true,
+            key: "Enter",
+            ...(isComposing !== undefined ? { isComposing } : {}),
+        });
+        if (keyCode !== undefined) {
+            Object.defineProperty(event, "keyCode", { configurable: true, value: keyCode });
+        }
+
+        node.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(node.__submitPost).not.toHaveBeenCalled();
+    });
+
+    it("does not submit while the editor view is composing and submits after it ends", () => {
+        mockedExtractContentWithImages.mockReturnValue("content");
+        const view = { composing: true };
+        node.__currentEditor = { view };
+
+        const during = new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: true,
+            key: "Enter",
+        });
+        node.dispatchEvent(during);
+        expect(during.defaultPrevented).toBe(false);
+        expect(node.__submitPost).not.toHaveBeenCalled();
+
+        view.composing = false;
+        const after = new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            metaKey: true,
+            key: "NumpadEnter",
+        });
+        node.dispatchEvent(after);
+        expect(after.defaultPrevented).toBe(true);
+        expect(node.__submitPost).toHaveBeenCalledOnce();
+    });
+
     it("does not intercept keyboard shortcuts when disabled", () => {
         destroy();
         destroy = keydownAction(node, false).destroy;
