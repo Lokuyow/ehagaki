@@ -86,6 +86,7 @@ function createController(overrides: Record<string, unknown> = {}) {
         resetUploadDisplayState: vi.fn(),
         invalidatePendingAccountScopedAsyncState: vi.fn(),
         clearAccountScopedAsyncState: vi.fn(),
+        clearPersistedPostHistoryListingSnapshots: vi.fn(),
         logoutAccountFromAuthService: vi.fn(async () => null),
         resolveLogoutAccountAction: vi.fn((nextPubkey: string | null | undefined) => {
             if (typeof nextPubkey === 'string') {
@@ -191,6 +192,7 @@ describe('createAppAccountSessionController', () => {
         expect(deps.parentClientService.disconnect).toHaveBeenCalledWith(false);
         expect(deps.nip46Service.disconnect).not.toHaveBeenCalled();
         expect(deps.clearAccountScopedAsyncState).toHaveBeenCalledOnce();
+        expect(deps.clearPersistedPostHistoryListingSnapshots).not.toHaveBeenCalled();
     });
 
     it('current NIP-46 runtimeをcleanupする', async () => {
@@ -364,6 +366,11 @@ describe('createAppAccountSessionController', () => {
         expect(deps.accountManager.clearActiveAccount).toHaveBeenCalledOnce();
         expect(getActivePubkey()).toBeNull();
         expect(deps.initializeNostr).toHaveBeenCalledOnce();
+        expect(deps.reloadWindow).not.toHaveBeenCalled();
+        expect(deps.clearPersistedPostHistoryListingSnapshots).toHaveBeenCalledOnce();
+        expect(deps.initializeNostr.mock.invocationCallOrder[0]).toBeLessThan(
+            deps.clearPersistedPostHistoryListingSnapshots.mock.invocationCallOrder[0],
+        );
     });
 
     it('rollback不能時はguestへ収束する', async () => {
@@ -405,6 +412,8 @@ describe('createAppAccountSessionController', () => {
         expect(deps.disposeNostrSession).toHaveBeenLastCalledWith(guestRuntime);
         expect(deps.setSecretKey).toHaveBeenCalledWith('');
         expect(deps.setErrorMessage).toHaveBeenCalledWith('');
+        expect(deps.clearPersistedPostHistoryListingSnapshots).toHaveBeenCalledOnce();
+        expect(deps.reloadWindow).not.toHaveBeenCalled();
     });
 
     it('cleanup失敗後も残りcleanupを続け、再帰せずguestへ収束する', async () => {
@@ -428,21 +437,56 @@ describe('createAppAccountSessionController', () => {
         expect(deps.restoreManagedAccountSession).toHaveBeenCalledOnce();
     });
 
-    it('logoutAccount guest 分岐では認証情報を初期化する', async () => {
+    it('logoutAccount guest 分岐では認証情報を初期化し、リロードせず一覧スナップショットを捨てる', async () => {
+        const events: string[] = [];
         const { deps, controller } = createController({
             logoutAccountFromAuthService: vi.fn(async () => null),
+            initializeNostr: vi.fn(async () => {
+                events.push('init');
+            }),
+            clearPersistedPostHistoryListingSnapshots: vi.fn(() => {
+                events.push('clear');
+            }),
+            reloadWindow: vi.fn(() => {
+                events.push('reload');
+            }),
         });
 
         await controller.logoutAccount(CURRENT_PUBKEY);
 
+        expect(events).toEqual(['init', 'clear']);
         expect(deps.resetUploadDisplayState).toHaveBeenCalledOnce();
         expect(deps.invalidatePendingAccountScopedAsyncState).toHaveBeenCalledOnce();
         expect(deps.clearAccountScopedAsyncState).toHaveBeenCalledOnce();
         expect(deps.clearAuthState).toHaveBeenCalledOnce();
         expect(deps.setGuestProfile).toHaveBeenCalledOnce();
         expect(deps.initializeNostr).toHaveBeenCalledOnce();
+        expect(deps.reloadWindow).not.toHaveBeenCalled();
         expect(deps.refreshAccountList).toHaveBeenCalledOnce();
         expect(deps.closeLogoutDialog).toHaveBeenCalledOnce();
+        expect(deps.setSecretKey).toHaveBeenCalledWith('');
+        expect(deps.setErrorMessage).toHaveBeenCalledWith('');
+    });
+
+    it('logoutAccount guest 分岐は initializeNostr 失敗後も一覧スナップショットを捨て、リロードしない', async () => {
+        const { deps, controller } = createController({
+            logoutAccountFromAuthService: vi.fn(async () => null),
+            initializeNostr: vi.fn(async () => {
+                throw new Error('guest initialization failed');
+            }),
+        });
+
+        await controller.logoutAccount(CURRENT_PUBKEY);
+
+        expect(deps.initializeNostr).toHaveBeenCalledOnce();
+        expect(deps.clearPersistedPostHistoryListingSnapshots).toHaveBeenCalledOnce();
+        expect(deps.reloadWindow).not.toHaveBeenCalled();
+        expect(deps.setSecretKey).not.toHaveBeenCalled();
+        expect(deps.setErrorMessage).not.toHaveBeenCalled();
+        expect(deps.logger.error).toHaveBeenCalledWith('ログアウト処理中にエラー', {
+            stage: 'logout-account',
+            reason: 'unexpected',
+        });
     });
 
     it('cleanup完了までlogout actionとreloadを実行せず、isLoggingOutを維持する', async () => {
@@ -513,16 +557,38 @@ describe('createAppAccountSessionController', () => {
         expect(deps.refreshAccountList).toHaveBeenCalledOnce();
     });
 
-    it('logoutAccount のswitch分岐では再読み込みする', async () => {
+    it('logoutAccount のswitch分岐では再読み込み前に一覧スナップショットを捨てる', async () => {
+        const events: string[] = [];
         const { deps, controller } = createController({
             logoutAccountFromAuthService: vi.fn(async () => TARGET_PUBKEY),
+            clearPersistedPostHistoryListingSnapshots: vi.fn(() => {
+                events.push('clear');
+            }),
+            reloadWindow: vi.fn(() => {
+                events.push('reload');
+            }),
         });
 
         await controller.logoutAccount(CURRENT_PUBKEY);
 
-        expect(deps.reloadWindow).toHaveBeenCalledOnce();
+        expect(events).toEqual(['clear', 'reload']);
         expect(deps.restoreManagedAccountSession).not.toHaveBeenCalled();
         expect(deps.closeLogoutDialog).not.toHaveBeenCalled();
+        expect(deps.initializeNostr).not.toHaveBeenCalled();
+    });
+
+    it('非アクティブアカウントのlogoutでは一覧スナップショットを捨てない', async () => {
+        const { deps, controller } = createController({
+            logoutAccountFromAuthService: vi.fn(async () => undefined),
+        });
+
+        await controller.logoutAccount(OTHER_PUBKEY);
+
+        expect(deps.clearPersistedPostHistoryListingSnapshots).not.toHaveBeenCalled();
+        expect(deps.initializeNostr).not.toHaveBeenCalled();
+        expect(deps.reloadWindow).not.toHaveBeenCalled();
+        expect(deps.clearAccountScopedAsyncState).not.toHaveBeenCalled();
+        expect(deps.refreshAccountList).toHaveBeenCalledOnce();
     });
 
     it('remote Parent client logoutもcleanup await後に完了する', async () => {
@@ -564,6 +630,7 @@ describe('createAppAccountSessionController', () => {
         });
         expect(deps.invalidatePendingAccountScopedAsyncState).toHaveBeenCalledOnce();
         expect(deps.clearAccountScopedAsyncState).not.toHaveBeenCalled();
+        expect(deps.clearPersistedPostHistoryListingSnapshots).not.toHaveBeenCalled();
         expect(loggingOutStateHistory).toEqual([true, false]);
     });
 });

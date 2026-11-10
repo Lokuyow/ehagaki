@@ -47,6 +47,7 @@ import {
     readPersistedPostHistoryViewState,
     writePersistedPostHistoryViewState,
 } from "../postHistoryDialogViewState";
+import { registerClearPersistedPostHistoryListingSnapshots } from "../postHistoryListingSnapshotCleanup";
 import { resolvePostHistoryDialogOpenRefreshDecision } from "../postHistoryDialogOpenRefreshDecision";
 import type { PostHistoryDialogScrollState } from "../postHistoryDialogScrollState";
 import {
@@ -636,6 +637,10 @@ function writePersistedListingSnapshot(
 export function clearPersistedPostHistoryListingSnapshots(): void {
     persistedListingSnapshotByPubkey.clear();
 }
+
+registerClearPersistedPostHistoryListingSnapshots(
+    clearPersistedPostHistoryListingSnapshots,
+);
 
 export function clearPersistedPostHistoryListingSnapshotForPubkey(
     pubkeyHex: string | null | undefined,
