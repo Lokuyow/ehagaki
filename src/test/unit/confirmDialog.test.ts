@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { readable } from 'svelte/store';
 
 // svelte-i18nのモック（vi.hoistedで先に定義）
@@ -393,5 +394,62 @@ describe('ConfirmDialog', () => {
         // デフォルトのタイトル"確認"が使用される
         const title = screen.getByText('確認');
         expect(title).toBeTruthy();
+    });
+
+    it('キーボードで開いて閉じると、開いたボタンへ一度だけ戻る', async () => {
+        const opener = document.createElement('button');
+        opener.type = 'button';
+        opener.textContent = 'confirm-opener';
+        let activations = 0;
+        opener.addEventListener('click', () => {
+            activations += 1;
+        });
+        document.body.appendChild(opener);
+        opener.focus();
+
+        render(ConfirmDialog, {
+            props: {
+                open: true,
+                description: 'テストメッセージ',
+                onConfirm: mockOnConfirm,
+                onCancel: mockOnCancel,
+            },
+        });
+        await tick();
+        const focus = vi.spyOn(opener, 'focus');
+
+        await fireEvent.keyDown(document, { key: 'Escape' });
+        await tick();
+
+        expect(activations).toBe(0);
+        expect(focus).toHaveBeenCalledTimes(1);
+        expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+        expect(document.activeElement).toBe(opener);
+        opener.remove();
+    });
+
+    it('戻り先が DOM から消えていても要素を起こし直さない', async () => {
+        const opener = document.createElement('button');
+        opener.type = 'button';
+        document.body.appendChild(opener);
+        opener.focus();
+
+        render(ConfirmDialog, {
+            props: {
+                open: true,
+                description: 'テストメッセージ',
+                onConfirm: mockOnConfirm,
+            },
+        });
+        await tick();
+        opener.remove();
+        const focus = vi.spyOn(opener, 'focus');
+
+        await fireEvent.keyDown(document, { key: 'Escape' });
+        await tick();
+
+        expect(opener.isConnected).toBe(false);
+        expect(document.body.contains(opener)).toBe(false);
+        expect(focus).not.toHaveBeenCalled();
     });
 });

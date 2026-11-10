@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { tick, onDestroy, untrack } from 'svelte';
+    import { onDestroy, untrack } from 'svelte';
     import { _ } from 'svelte-i18n';
     import DialogWrapper from './DialogWrapper.svelte';
     import Button from './Button.svelte';
@@ -14,6 +14,7 @@
         onLoadFailure?: (failure: AppComponentLoadFailure) => void;
     }
     let { show = $bindable(false), onClose, returnFocus = null, isStaleAssetReloadRequired = () => false, onLoadFailure, ...contentProps }: Props = $props();
+    let restoreFocusOnClose = $state(true);
     const closeIconUrl = resolveAppAssetUrl('icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg');
     let Content = $state<typeof import('./NotificationDialogContent.svelte').default | null>(null);
     let contentRef = $state<{ invalidateSession(): void; isFullscreen(): boolean } | null>(null);
@@ -25,9 +26,10 @@
     }
     function close(restoreFocus = true) {
         if (contentRef?.isFullscreen()) return false;
+        // bits-ui は onOpenChange より先に open を false にする。
+        // その再入では、先に close(false) が決めた戻り先を上書きしない。
+        if (show) restoreFocusOnClose = restoreFocus;
         invalidateSession(); show = false; onClose();
-        const trigger = returnFocus;
-        void tick().then(() => restoreFocus && trigger?.isConnected && trigger.focus({ preventScroll: true }));
         return true;
     }
     useDialogHistory(() => show, () => close());
@@ -51,7 +53,8 @@
     title={$_('notifications.title')} description={$_('notifications.description')}
     contentClass="notification-dialog" footerVariant="close-button" initialFocus="content" trapFocus={false}
     onEscapeKeydown={(event) => { if (contentRef?.isFullscreen()) event.preventDefault(); }}
-    onInteractOutside={(event) => { if (contentRef?.isFullscreen()) event.preventDefault(); }}>
+    onInteractOutside={(event) => { if (contentRef?.isFullscreen()) event.preventDefault(); }}
+    returnFocus={returnFocus} bind:restoreFocusOnClose>
     <div class="notification-viewport" aria-busy={!ready && !failed}>
         <div inert={!ready} aria-hidden={!ready ? 'true' : undefined} class:hidden={!ready}>
             {#key epoch}

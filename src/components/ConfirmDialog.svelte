@@ -3,6 +3,11 @@
     import { _ } from "svelte-i18n";
     import { AlertDialog } from "bits-ui";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
+    import {
+        applyDialogCloseAutoFocus,
+        readDialogOpener,
+        rememberDialogOpener,
+    } from "../lib/dialogCloseFocus";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
@@ -68,6 +73,8 @@
 
     let isConfirming = $state(false);
     let isCancelling = $state(false);
+    let contentRef: HTMLElement | null = $state(null);
+    let opener: HTMLElement | null = null;
     let closeLocked = $derived(
         preventCloseWhileConfirming && isConfirming,
     );
@@ -94,8 +101,20 @@
         }
     }
 
+    function handleOpenAutoFocus() {
+        opener = rememberDialogOpener(
+            opener,
+            readDialogOpener(getAppRuntimeEnvironment().document),
+            contentRef,
+        );
+    }
+
     function handleCloseAutoFocus(event: Event) {
-        event.preventDefault();
+        applyDialogCloseAutoFocus(event, {
+            restore: true,
+            opener,
+            container: contentRef,
+        });
     }
 
     function handleCancel() {
@@ -150,10 +169,12 @@
     <AlertDialog.Portal to={overlayTarget}>
         <AlertDialog.Overlay class="confirm-dialog-overlay" />
         <AlertDialog.Content
+            bind:ref={contentRef}
             class={`confirm-dialog-shell ${contentClass}`}
             preventScroll={false}
             interactOutsideBehavior={closeLocked ? "ignore" : "close"}
             onEscapeKeydown={handleEscapeKeydown}
+            onOpenAutoFocus={handleOpenAutoFocus}
             onCloseAutoFocus={handleCloseAutoFocus}
         >
             <AlertDialog.Title class="visually-hidden">
