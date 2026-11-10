@@ -377,18 +377,6 @@ export class RelayManager {
         return this.storage.get(pubkeyHex);
     }
 
-    setBootstrapRelays(): void {
-        try {
-            this.rxNostr.use(createRxBackwardReq(), {
-                on: {
-                    relays: BOOTSTRAP_RELAYS,
-                },
-            }).subscribe();
-        } catch (error) {
-            this.console.error("Bootstrap relays設定エラー:", error);
-        }
-    }
-
     async useRelaysFromLocalStorageIfExists(pubkeyHex: string, signal?: AbortSignal): Promise<boolean> {
         const savedRelays = await this.storage.get(pubkeyHex);
         if (signal?.aborted) return false;

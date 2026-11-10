@@ -20,7 +20,6 @@ const readRelayUrl = 'wss://read.relay.com/';
 function createMockRelayManager(): RelayManager {
     return {
         useRelaysFromLocalStorageIfExists: vi.fn().mockResolvedValue(false),
-        setBootstrapRelays: vi.fn(),
         getFromLocalStorage: vi.fn().mockResolvedValue(null),
         fetchUserRelays: vi.fn().mockResolvedValue({
             success: true,
@@ -85,7 +84,7 @@ describe('RelayProfileService', () => {
     });
 
     describe('initializeRelays', () => {
-        it('Host Relay Configではstorage/bootstrapに触れずにhost configだけを適用する', async () => {
+        it('Host Relay Configではstorageに触れずにhost configだけを適用する', async () => {
             (mockRelayManager as any).useHostRelayConfig = vi.fn(() => true);
             (mockRelayManager as any).hasHostRelayConfig = vi.fn(() => true);
 
@@ -95,7 +94,8 @@ describe('RelayProfileService', () => {
 
             expect((mockRelayManager as any).useHostRelayConfig).toHaveBeenCalled();
             expect(mockRelayManager.useRelaysFromLocalStorageIfExists).not.toHaveBeenCalled();
-            expect(mockRelayManager.setBootstrapRelays).not.toHaveBeenCalled();
+            expect(mockRxNostr.use).not.toHaveBeenCalled();
+            expect(mockRxNostr.setDefaultRelays).not.toHaveBeenCalled();
             expect(mockRelayManager.getFromLocalStorage).not.toHaveBeenCalled();
             expect(mockRelayManager.fetchUserRelays).not.toHaveBeenCalled();
             expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', expect.objectContaining({
@@ -109,29 +109,34 @@ describe('RelayProfileService', () => {
             await service.initializeRelays('pubkey123');
 
             expect(mockRelayManager.useRelaysFromLocalStorageIfExists).toHaveBeenCalledWith('pubkey123', undefined);
-            expect(mockRelayManager.setBootstrapRelays).not.toHaveBeenCalled();
+            expect(mockRxNostr.use).not.toHaveBeenCalled();
+            expect(mockRxNostr.setDefaultRelays).not.toHaveBeenCalled();
         });
 
-        it('pubkeyHexが指定され、ローカルストレージにリレーがない場合はブートストラップリレーを設定する', async () => {
+        it('pubkeyHexが指定され、ローカルストレージにリレーがない場合は購読も既定リレー設定もしない', async () => {
             vi.mocked(mockRelayManager.useRelaysFromLocalStorageIfExists).mockResolvedValue(false);
 
             await service.initializeRelays('pubkey123');
 
             expect(mockRelayManager.useRelaysFromLocalStorageIfExists).toHaveBeenCalledWith('pubkey123', undefined);
-            expect(mockRelayManager.setBootstrapRelays).toHaveBeenCalled();
+            expect(mockRxNostr.use).not.toHaveBeenCalled();
+            expect(mockRxNostr.setDefaultRelays).not.toHaveBeenCalled();
         });
 
-        it('pubkeyHexが未指定の場合はブートストラップリレーを設定する', async () => {
+        it('pubkeyHexが未指定の場合は保存済みリレーを探さず、購読も既定リレー設定もしない', async () => {
             await service.initializeRelays();
 
             expect(mockRelayManager.useRelaysFromLocalStorageIfExists).not.toHaveBeenCalled();
-            expect(mockRelayManager.setBootstrapRelays).toHaveBeenCalled();
+            expect(mockRxNostr.use).not.toHaveBeenCalled();
+            expect(mockRxNostr.setDefaultRelays).not.toHaveBeenCalled();
         });
 
-        it('pubkeyHexが空文字の場合はブートストラップリレーを設定する', async () => {
+        it('pubkeyHexが空文字の場合は保存済みリレーを探さず、購読も既定リレー設定もしない', async () => {
             await service.initializeRelays('');
 
-            expect(mockRelayManager.setBootstrapRelays).toHaveBeenCalled();
+            expect(mockRelayManager.useRelaysFromLocalStorageIfExists).not.toHaveBeenCalled();
+            expect(mockRxNostr.use).not.toHaveBeenCalled();
+            expect(mockRxNostr.setDefaultRelays).not.toHaveBeenCalled();
         });
     });
 

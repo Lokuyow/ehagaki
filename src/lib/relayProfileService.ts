@@ -117,20 +117,15 @@ export class RelayProfileService {
 
     /**
      * 初期化時のリレー設定
-     * 保存済みリレー情報があれば使用、なければBOOTSTRAP_RELAYSを設定
+     * 保存済みリレー情報があれば使用する。未保存なら、次の fetch が BOOTSTRAP_RELAYS を使う。
      */
     async initializeRelays(pubkeyHex?: string, signal?: AbortSignal): Promise<void> {
         if (signal?.aborted) return;
         if (this.relayManager.useHostRelayConfig?.()) {
             return;
         }
-        if (pubkeyHex) {
-            if (!await this.relayManager.useRelaysFromLocalStorageIfExists(pubkeyHex, signal) && !signal?.aborted) {
-                this.relayManager.setBootstrapRelays();
-            }
-        } else {
-            this.relayManager.setBootstrapRelays();
-        }
+        if (!pubkeyHex) return;
+        await this.relayManager.useRelaysFromLocalStorageIfExists(pubkeyHex, signal);
     }
 
     /**
