@@ -28,6 +28,8 @@ import { getPostHistoryChildWriteGeneration } from "./storage/postHistoryLocalWr
 
 export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_RELAY_LIMIT = 6;
 export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_SINCE_OVERLAP_SECONDS = 60;
+/** Queued updates after same-event replacement and same-target coalescing. */
+export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_QUEUE_LIMIT = 32;
 
 export interface PostHistoryInboundInteractionsRealtimeSubscribeRequest {
     includeNotifications?: boolean;
@@ -44,6 +46,8 @@ export interface PostHistoryInboundInteractionsRealtimeSubscribeRequest {
 export interface PostHistoryInboundInteractionsRealtimeSubscription {
     stop: () => void;
     waitForIdle: () => Promise<void>;
+    /** Queued updates. Same event id and same target do not each add a slot. */
+    pendingCount: () => number;
 }
 
 export interface PostHistoryInboundInteractionsRealtimeServiceDeps {
@@ -63,6 +67,32 @@ function normalizeRelayLimit(relayLimit: number | undefined): number {
     return Number.isFinite(relayLimit)
         ? Math.max(1, Math.trunc(relayLimit ?? POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_RELAY_LIMIT))
         : POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_RELAY_LIMIT;
+}
+
+const NO_CONFIRMED_OWNER_POSTS: ReadonlySet<string> = new Set();
+
+interface PendingInboundPacket {
+    packet: { event: NostrEvent; from?: string };
+    expectedChildGeneration: Promise<number>;
+}
+
+interface PendingInboundBatch {
+    key: string;
+    packets: PendingInboundPacket[];
+}
+
+function inboundRealtimeQueueKey(event: NostrEvent, ownerPubkeyHex: string): string {
+    const preliminary = classifyPostHistoryInboundInteraction({
+        event,
+        ownerPubkeyHex,
+        ownerPostEventIds: NO_CONFIRMED_OWNER_POSTS,
+    });
+    const targetEventId = preliminary.type === "reaction"
+        ? preliminary.targetEventId
+        : preliminary.type === "direct-reply" || preliminary.type === "direct-reply-candidate"
+            ? preliminary.parentEventId
+            : null;
+    return targetEventId ? `target:${targetEventId}` : `event:${event.id}`;
 }
 
 export class PostHistoryInboundInteractionsRealtimeService {
@@ -93,7 +123,10 @@ export class PostHistoryInboundInteractionsRealtimeService {
         let active = true;
         const isActive = () => active && params.isActive?.() !== false;
         let subscription: SubscriptionLike | undefined;
-        let workQueue: Promise<void> = Promise.resolve();
+        let chain: Promise<void> = Promise.resolve();
+        let draining = false;
+        const queue: PendingInboundBatch[] = [];
+        const pendingByEventId = new Map<string, PendingInboundPacket>();
         const relayUrls = resolvePostHistoryRelayUrls(
             params.relayConfig,
             normalizeRelayLimit(params.relayLimit),
@@ -102,13 +135,95 @@ export class PostHistoryInboundInteractionsRealtimeService {
             0,
             Math.floor(this.now() / 1000) - POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_SINCE_OVERLAP_SECONDS,
         );
+        const clearQueue = () => {
+            queue.length = 0;
+            pendingByEventId.clear();
+        };
+        const scheduleDrain = () => {
+            if (draining) return;
+            draining = true;
+            chain = chain.then(async () => {
+                try {
+                    while (queue.length > 0) {
+                        if (!isActive()) {
+                            clearQueue();
+                            return;
+                        }
+                        const batch = queue.shift();
+                        if (!batch) return;
+                        for (const item of batch.packets) {
+                            pendingByEventId.delete(item.packet.event.id);
+                        }
+                        for (const item of batch.packets) {
+                            if (!isActive()) {
+                                clearQueue();
+                                return;
+                            }
+                            try {
+                                await this.processPacket(
+                                    item.packet,
+                                    params,
+                                    isActive,
+                                    item.expectedChildGeneration,
+                                );
+                            } catch (error) {
+                                this.console.error(
+                                    "post_history_inbound_interactions_realtime_packet_error",
+                                    error,
+                                );
+                            }
+                        }
+                    }
+                } finally {
+                    draining = false;
+                    if (queue.length > 0 && isActive()) scheduleDrain();
+                }
+            });
+        };
+        const enqueuePacket = (packet: { event?: NostrEvent; from?: string }) => {
+            if (!isActive()) return;
+            const event = packet.event;
+            if (!event?.id) return;
+            const existing = pendingByEventId.get(event.id);
+            if (existing) {
+                // Same event from another relay. Keep the generation captured at
+                // the first receipt so a later history clear cannot accept it.
+                existing.packet = { event, from: packet.from };
+                return;
+            }
+
+            const key = inboundRealtimeQueueKey(event, params.ownerPubkeyHex);
+            let batch = queue.find((item) => item.key === key);
+            if (!batch) {
+                if (queue.length >= POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_QUEUE_LIMIT) {
+                    batch = queue[queue.length - 1];
+                } else {
+                    batch = { key, packets: [] };
+                    queue.push(batch);
+                }
+            }
+            if (!batch) return;
+            // Start the generation read before this packet waits to be processed.
+            // A history clear that commits after receipt must not become the
+            // generation used to accept this packet.
+            const expectedChildGeneration = this.getChildWriteGeneration();
+            void expectedChildGeneration.catch(() => undefined);
+            const pending = {
+                packet: { event, from: packet.from },
+                expectedChildGeneration,
+            };
+            batch.packets.push(pending);
+            pendingByEventId.set(event.id, pending);
+            scheduleDrain();
+        };
 
         try {
             if (typeof (rxNostr as { use?: unknown }).use !== "function") {
                 active = false;
                 return {
                     stop: () => undefined,
-                    waitForIdle: () => workQueue,
+                    waitForIdle: () => chain,
+                    pendingCount: () => 0,
                 };
             }
 
@@ -119,21 +234,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
                     : { defaultReadRelays: true },
             }).subscribe({
                 next: (packet: { event?: NostrEvent; from?: string }) => {
-                    if (!isActive()) return;
-                    // Start the generation read before this packet waits on workQueue.
-                    // A history clear that commits after receipt must not become the
-                    // generation used to accept this packet.
-                    const expectedChildGeneration = this.getChildWriteGeneration();
-                    workQueue = workQueue
-                        .then(() => this.processPacket(
-                            packet,
-                            params,
-                            isActive,
-                            expectedChildGeneration,
-                        ))
-                        .catch((error) => {
-                            this.console.error("post_history_inbound_interactions_realtime_packet_error", error);
-                        });
+                    enqueuePacket(packet);
                 },
                 error: (error: unknown) => {
                     this.console.error("post_history_inbound_interactions_realtime_subscription_error", error);
@@ -158,11 +259,15 @@ export class PostHistoryInboundInteractionsRealtimeService {
 
         return {
             stop: () => {
+                // This flag belongs to this subscription only. A later subscribe()
+                // has its own queue and must still be able to write.
                 active = false;
+                clearQueue();
                 subscription?.unsubscribe?.();
                 subscription = undefined;
             },
-            waitForIdle: () => workQueue,
+            waitForIdle: () => chain,
+            pendingCount: () => queue.length,
         };
     }
 
@@ -172,6 +277,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
         isActive: () => boolean,
         expectedChildGenerationReady: Promise<number>,
     ): Promise<void> {
+        if (!isActive()) return;
         const expectedChildGeneration = await expectedChildGenerationReady;
         const event = packet.event;
         if (!isActive() || !event?.id) {

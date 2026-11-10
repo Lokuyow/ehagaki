@@ -27,13 +27,33 @@ vi.mock("../../lib/postHistoryRawEventVerification", () => ({
         rxNostr.use(rxReq, options),
 }));
 
-import { PostHistoryInboundInteractionsRealtimeService } from "../../lib/postHistoryInboundInteractionsRealtimeService";
+import {
+    POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_QUEUE_LIMIT,
+    PostHistoryInboundInteractionsRealtimeService,
+} from "../../lib/postHistoryInboundInteractionsRealtimeService";
 import type { NostrEvent } from "../../lib/types";
 import { createEvent as createPostHistoryEvent } from "../postHistoryEventTestUtils";
 
 const OWNER_PUBKEY = "a".repeat(64);
 const PARENT_ID = "1".repeat(64);
 const OTHER_PARENT_ID = "2".repeat(64);
+
+function hexId(prefix: string, value: number): string {
+    return `${prefix}${value.toString(16)}`.padStart(64, "0");
+}
+
+function reactionEvent(id: string, parentId: string, content = "+"): NostrEvent {
+    return createEvent({
+        id,
+        kind: 7,
+        content,
+        tags: [
+            ["e", parentId],
+            ["p", OWNER_PUBKEY],
+            ["k", "1"],
+        ],
+    });
+}
 
 function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
     return createPostHistoryEvent({
@@ -427,5 +447,168 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         dbA.close();
         dbB.close();
         await Dexie.delete(name);
+    });
+
+    it("coalesces a target flood and keeps the latest packet for one event id", async () => {
+        let next!: (packet: unknown) => void;
+        const upsert = vi.fn(async () => undefined);
+        let generationReads = 0;
+        rxNostrMock.use.mockReturnValue({
+            subscribe: (observer: { next: (packet: unknown) => void }) => {
+                next = observer.next;
+                return { unsubscribe: vi.fn() };
+            },
+        });
+        const { service, postHistoryChildInteractionsRepository } = createService({
+            notificationRepository: { upsert },
+            getChildWriteGeneration: () => {
+                const generation = generationReads;
+                generationReads += 1;
+                return Promise.resolve(generation);
+            },
+        });
+        const subscription = service.subscribe(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY });
+        const floodCount = POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_QUEUE_LIMIT + 5;
+        const events = Array.from({ length: floodCount }, (_, index) =>
+            reactionEvent(hexId("a", index + 1), PARENT_ID),
+        );
+        for (const event of events) {
+            next({ event, from: "wss://relay.example.com" });
+        }
+        const latest = reactionEvent(events[floodCount - 1].id, PARENT_ID, "latest");
+        next({ event: latest, from: "wss://latest.example.com" });
+
+        expect(subscription.pendingCount()).toBe(1);
+        expect(generationReads).toBe(floodCount);
+
+        await subscription.waitForIdle();
+
+        expect(upsert).toHaveBeenCalledTimes(floodCount);
+        expect(upsert).toHaveBeenCalledWith(
+            OWNER_PUBKEY,
+            [{ event: latest, relayUrls: ["wss://latest.example.com"] }],
+            expect.any(Function),
+        );
+        expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledTimes(floodCount);
+        expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledWith({
+            parentEventId: PARENT_ID,
+            events: [{
+                event: latest,
+                relayUrls: ["wss://latest.example.com/"],
+            }],
+            expectedChildGeneration: floodCount - 1,
+            fetchedAt: 1_700_000_000_000,
+        });
+        subscription.stop();
+    });
+
+    it("caps the pending queue when distinct targets exceed the limit and still upserts each event", async () => {
+        let next!: (packet: unknown) => void;
+        const upsert = vi.fn(async () => undefined);
+        rxNostrMock.use.mockReturnValue({
+            subscribe: (observer: { next: (packet: unknown) => void }) => {
+                next = observer.next;
+                return { unsubscribe: vi.fn() };
+            },
+        });
+        const postHistoryRepository = {
+            getExistingEventIdsForPubkey: vi.fn(async ({ eventIds }: { eventIds: string[] }) => eventIds),
+            getByEventId: vi.fn(async (eventId: string) => ({
+                eventId,
+                kind: 1,
+                tags: [] as string[][],
+                createdAt: 90,
+                relayHints: [] as string[],
+                acceptedRelays: [] as string[],
+            })),
+        };
+        const { service, postHistoryChildInteractionsRepository } = createService({
+            notificationRepository: { upsert },
+            postHistoryRepository,
+        });
+        const subscription = service.subscribe(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY });
+        const floodCount = POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_QUEUE_LIMIT + 10;
+        for (let index = 0; index < floodCount; index += 1) {
+            next({
+                event: reactionEvent(hexId("b", index + 1), hexId("c", index + 1)),
+                from: "wss://relay.example.com",
+            });
+            if (index === 2) expect(subscription.pendingCount()).toBe(3);
+        }
+
+        expect(subscription.pendingCount()).toBe(
+            POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_QUEUE_LIMIT,
+        );
+        next({
+            event: reactionEvent(hexId("b", floodCount + 1), hexId("c", floodCount + 1)),
+            from: "wss://relay.example.com",
+        });
+        expect(subscription.pendingCount()).toBe(
+            POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_QUEUE_LIMIT,
+        );
+
+        await subscription.waitForIdle();
+
+        expect(upsert).toHaveBeenCalledTimes(floodCount + 1);
+        expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledTimes(
+            floodCount + 1,
+        );
+        subscription.stop();
+    });
+
+    it("does not upsert queued packets after stop, while a new subscription still can", async () => {
+        const gates: Array<(value: number) => void> = [];
+        let hangGenerations = true;
+        const upsert = vi.fn(async () => undefined);
+        const observers: Array<{ next?: (packet: unknown) => void }> = [];
+        const unsubscribe = vi.fn();
+        rxNostrMock.use.mockReturnValue({
+            subscribe: (observer: { next?: (packet: unknown) => void }) => {
+                observers.push(observer);
+                return { unsubscribe };
+            },
+        });
+        const { service, postHistoryChildInteractionsRepository } = createService({
+            notificationRepository: { upsert },
+            getChildWriteGeneration: () => hangGenerations
+                ? new Promise<number>((resolve) => {
+                    gates.push(resolve);
+                })
+                : Promise.resolve(0),
+        });
+        const subscription = service.subscribe(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY });
+        observers[0]?.next?.({
+            event: reactionEvent(hexId("d", 1), hexId("e", 1)),
+            from: "wss://relay.example.com",
+        });
+        await Promise.resolve();
+        expect(upsert).not.toHaveBeenCalled();
+
+        for (let index = 0; index < POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_QUEUE_LIMIT + 5; index += 1) {
+            observers[0]?.next?.({
+                event: reactionEvent(hexId("d", index + 2), hexId("e", index + 2)),
+                from: "wss://relay.example.com",
+            });
+        }
+        expect(subscription.pendingCount()).toBe(POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_QUEUE_LIMIT);
+
+        subscription.stop();
+        expect(unsubscribe).toHaveBeenCalledTimes(1);
+        expect(subscription.pendingCount()).toBe(0);
+        hangGenerations = false;
+        for (const resolve of gates) resolve(0);
+        await subscription.waitForIdle();
+
+        expect(upsert).not.toHaveBeenCalled();
+        expect(postHistoryChildInteractionsRepository.upsertChildInteractions).not.toHaveBeenCalled();
+
+        const restarted = service.subscribe(rxNostrMock as any, { ownerPubkeyHex: OWNER_PUBKEY });
+        const reply = createEvent({ id: hexId("f", 1) });
+        observers[1]?.next?.({ event: reply, from: "wss://relay.example.com" });
+        await restarted.waitForIdle();
+
+        expect(upsert).toHaveBeenCalledTimes(1);
+        expect(postHistoryChildInteractionsRepository.upsertChildInteractions).toHaveBeenCalledTimes(1);
+        restarted.stop();
     });
 });
