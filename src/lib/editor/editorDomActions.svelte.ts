@@ -7,6 +7,7 @@
 import { extractContentWithImages } from "../utils/editorDocumentUtils";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { domUtils } from "../utils/appDomUtils";
+import { getClipboardUploadFiles } from "../utils/clipboardUtils";
 import type { Node as PMNode } from "prosemirror-model"; // 追加
 import { NodeSelection } from "prosemirror-state";
 import type {
@@ -182,7 +183,7 @@ export function fileDropActionWithDragState(
 }
 
 // pasteAction
-// 画像ファイルのペーストのみを処理（テキストペーストはClipboardExtensionで処理）
+// ファイルのペーストをアップロード経路へ渡す（テキストはClipboardExtension）
 export function pasteAction(node: HTMLElement) {
     function handlePaste(event: ClipboardEvent) {
         if (isPostSending(node)) {
@@ -191,25 +192,13 @@ export function pasteAction(node: HTMLElement) {
         }
 
         if (!event.clipboardData) return;
-        if (!canUploadFiles(node)) {
-            const hasMediaFile = Array.from(event.clipboardData.items).some(
-                (item) => item.kind === "file" && item.type.startsWith("image/"),
-            );
-            if (hasMediaFile) event.preventDefault();
-            return;
-        }
-        const files: File[] = [];
-        for (const item of event.clipboardData.items) {
-            if (item.kind === "file" && item.type.startsWith("image/")) {
-                const file = item.getAsFile();
-                if (file) files.push(file);
-            }
-        }
-        if (files.length > 0) {
-            event.preventDefault();
-            (node as EditorDomActionContainer).__uploadFiles?.(files);
-        }
-        // テキストペーストはClipboardExtensionに委譲
+        const files = getClipboardUploadFiles(event.clipboardData);
+        if (files.length === 0) return;
+        // ファイル名や付随HTMLを本文へ入れない。アップロードできないときも止める。
+        event.preventDefault();
+        if (!canUploadFiles(node)) return;
+        // リアクション中の画像MIME制限は、アップロード側の既存判定に任せる。
+        (node as EditorDomActionContainer).__uploadFiles?.(files);
     }
     node.addEventListener("paste", handlePaste as EventListener);
     return {

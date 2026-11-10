@@ -241,9 +241,25 @@ describe('エディター・URLペースト統合テスト', () => {
             expect(getParagraphText(editor)).toBe('**first**\n\nsecond');
         });
 
-        it('file clipboardを消費せず既存media処理へ委譲すること', () => {
+        it('画像file付きclipboardは消費し、付随するHTMLのimgを挿入しないこと', () => {
             const image = new File(['image'], 'image.png', { type: 'image/png' });
-            expect(invokePasteHandler(editor, createClipboardData('image', '<p>image</p>', [image]))).toBe(false);
+            const html = '<img src="https://example.com/original.jpg">';
+            expect(invokePasteHandler(editor, createClipboardData('', html, [image]))).toBe(true);
+            expect(editor.getHTML()).not.toContain('original.jpg');
+            expect(editor.getText()).toBe('');
+        });
+
+        it('動画file付きclipboardは消費し、付随するHTMLを挿入しないこと', () => {
+            const video = new File(['video'], 'clip.mp4', { type: 'video/mp4' });
+            const html = '<video src="https://example.com/original.mp4"></video>';
+            expect(invokePasteHandler(editor, createClipboardData('clip.mp4', html, [video]))).toBe(true);
+            expect(editor.getHTML()).not.toContain('original.mp4');
+            expect(editor.getText()).toBe('');
+        });
+
+        it('画像でも動画でもないfile clipboardは消費し、ファイル名を挿入しないこと', () => {
+            const pdf = new File(['pdf'], 'doc.pdf', { type: 'application/pdf' });
+            expect(invokePasteHandler(editor, createClipboardData('doc.pdf', '<p>doc.pdf</p>', [pdf]))).toBe(true);
             expect(editor.getText()).toBe('');
         });
     });
