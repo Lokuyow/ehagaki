@@ -102,6 +102,8 @@ npm run dev
 npm run validate
 ```
 
+`npm run validate`はVitest、`npm run check`、`npm run build`、`git diff --check`です。Playwrightは含みません。pull requestの[Test reliability](https://github.com/Lokuyow/ehagaki/actions/workflows/test-reliability.yml)は、UbuntuのVitest、`npm run check`、`npm run build`に加え、desktop Chromiumの貼り付け・埋め込み・レイアウトのsmokeと、Service Workerの更新・共有メディアだけを実行します。全ブラウザ、local relay、Windowsのユニットとビルドは`main`へのpushと手動実行です。pull requestの成功は、`main`の全件E2Eが成功したことではありません。
+
 依存関係の固定理由、残る監査警告、ブラウザー検証については[依存関係の更新](docs/DEPENDENCY_UPDATES.md)を参照してください。
 
 GitHub Pagesへ公開する場合は、`npm run build`の後に`npm run deploy`を実行します。公開ブランチに`.nojekyll`を生成し、Viteが生成する先頭`_`のファイルも配信します。Jekyllがこれらを除外すると、Service Workerのインストールが失敗して旧版から更新できなくなります。

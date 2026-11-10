@@ -121,6 +121,34 @@ jobs:
       - run: npm run check
       - run: npm run build
 
+  # Pull requests run this Chromium subset. The full browser matrix, local relay,
+  # Service Worker matrix, and Windows unit/build stay on main and manual runs.
+  pr-browser-smoke:
+    if: github.event_name == 'pull_request'
+    name: Chromium smoke and Service Worker subset (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install project npm
+        shell: bash
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+      - run: npm ci
+      - name: Install Chromium for pull request smoke
+        run: |
+          # Prefer the runner's existing Ubuntu archive/security mirrors for APT.
+          sudo sed -i '\|azure\.archive\.ubuntu\.com|d' /etc/apt/apt-mirrors.txt
+          npx playwright install --with-deps chromium
+      - name: Run pull request browser smoke
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/pullRequestBrowserSmoke.ts 2>&1 | node scripts/filterTestOutput.mjs
+
+  # Full browser projects and local relay. Pull requests use pr-browser-smoke instead.
   browser-e2e:
     needs: [prepare-manual-e2e]
     if: >-
@@ -219,6 +247,7 @@ jobs:
           set -o pipefail
           npm run test:e2e:local-relay -- --reporter=dot --retries=0 2>&1 | node scripts/filterTestOutput.mjs
 
+  # Full Service Worker matrix. Pull requests use the update and share-target subset.
   service-worker-e2e:
     needs: [prepare-manual-e2e]
     if: >-

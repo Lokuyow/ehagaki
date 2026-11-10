@@ -21,7 +21,7 @@ Use Node 24.22.1 from `.node-version` and npm 12.2.1 from `package.json`'s `pack
 | Production Service Worker Playwright | `npm run test:e2e:sw -- --reporter=dot` |
 | Explicitly authorized deployment, after build | `npm run deploy` |
 
-`npm test`, `test:unit`, and focused `npm run test -- ...` include the thread-graph complexity check. `validate` runs the full Vitest suite and build; it is an available combined command, not a requirement for every edit, and does not include Playwright.
+`npm test`, `test:unit`, and focused `npm run test -- ...` include the thread-graph complexity check. `validate` runs the full Vitest suite and build; it is an available combined command, not a requirement for every edit, and does not include Playwright. Pull request CI on Ubuntu adds a desktop Chromium smoke for paste, embed, and layout, plus the Service Worker update and share-target subset. Pushes to `main`, and manual runs, keep the full browser matrix, local relay E2E, Service Worker E2E, and Windows unit/build. A green pull request does not mean that full matrix passed.
 
 `npm run dev` uses `vite --host` (default port 5173). Without `VERCEL`, the app URL is `http://127.0.0.1:5173/ehagaki/`; `/` is not the app. Build includes `prebuild` (`npx rimraf dist`). In non-interactive environments use `CI=true` to avoid npx confirmation prompts; note the browser-selection effect below if reusing that environment for Playwright.
 
