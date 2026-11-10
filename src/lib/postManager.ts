@@ -1,3 +1,4 @@
+import { resolvePostSigner, type PostSignerResolution } from "./postSignerResolver";
 import { isHex64 } from "./utils/nostrHexUtils";
 import { followPostHistoryDelivery } from "./storage/postHistoryDeliveryReceipt";
 import { RelayOperation } from "./relay/operation";
@@ -73,8 +74,7 @@ interface ActiveNip65Operation {
 }
 
 type SubmissionSignerCredentials =
-  | { signEvent: (event: EventTemplate) => Promise<unknown>; logSignedEvent: true }
-  | { signer: PostManagerSigner };
+  { signEvent: (event: EventTemplate) => Promise<unknown>; logSignedEvent?: true };
 
 interface ResolvedSubmissionSigner {
   pubkey: string;
@@ -961,9 +961,9 @@ export class PostManager {
 
   /**
    * Picks the signer for the current auth type, or the failure that stops the
-   * submission. NIP-07 without an available window.nostr falls through to the
-   * stored-key path, as before. errorLabel is the log label for unexpected
-   * errors while building and sending the event.
+   * submission. The signer choice itself is shared with post deletion
+   * (resolvePostSigner); this adds posting's pubkey checks, the NIP-46 fetch
+   * and re-check, and the log label used for unexpected build/send errors.
    */
   private async resolveSubmissionSigner(params: {
     auth: NonNullable<PostManagerDeps['authStateStore']>['value'];
@@ -972,24 +972,39 @@ export class PostManager {
     windowObj: PostManagerDeps['window'];
   }): Promise<ResolvedSubmissionSigner | { failure: PostResult }> {
     const { auth, sessionPubkey, keyManager: keyMgr, windowObj } = params;
+    const resolve = (nip46Signer?: PostManagerSigner | null) => resolvePostSigner({
+      authType: auth.type,
+      pubkey: auth.pubkey,
+      window: windowObj,
+      nip46Signer,
+      getParentClientSigner: () => this.deps.getParentClientSignerFn?.(),
+      getStoredSecretKey: (pubkey) => keyMgr.getFromStore() || keyMgr.loadFromStorage(pubkey),
+      createSecretKeySigner: (secretKey) => this.deps.seckeySignerFn
+        ? this.deps.seckeySignerFn(secretKey)
+        : seckeySigner(secretKey),
+    });
+    const toResolved = (
+      resolution: PostSignerResolution,
+      pubkey: string,
+      errorLabel: string,
+    ): ResolvedSubmissionSigner | { failure: PostResult } => resolution.ok
+      ? {
+        pubkey,
+        errorLabel,
+        credentials: resolution.source === 'nip07'
+          ? { signEvent: resolution.signEvent, logSignedEvent: true }
+          : { signEvent: resolution.signEvent },
+      }
+      : { failure: this.notifyPostFailure(resolution.error) };
 
-    // 拡張機能認証（NIP-07）の場合はwindow.nostrを使用
-    if (auth.type === 'nip07' && keyMgr.isWindowNostrAvailable() && windowObj?.nostr) {
+    // 拡張機能認証（NIP-07）: window.nostrのみで署名し、保存済み秘密鍵へはフォールバックしない
+    if (auth.type === 'nip07') {
       const errorLabel = 'window.nostrでの投稿エラー:';
       try {
-        const pubkey = auth.pubkey;
-        if (!pubkey) {
+        if (!auth.pubkey) {
           return { failure: this.notifyPostFailure('pubkey_not_found') };
         }
-
-        const signEvent = typeof windowObj.nostr.signEvent === 'function'
-          ? windowObj.nostr.signEvent.bind(windowObj.nostr)
-          : undefined;
-        if (!signEvent) {
-          return { failure: this.notifyPostFailure('nostr_sign_event_not_supported') };
-        }
-
-        return { pubkey, errorLabel, credentials: { signEvent, logSignedEvent: true } };
+        return toResolved(resolve(), auth.pubkey, errorLabel);
       } catch (err) {
         return { failure: this.handleSubmissionError(errorLabel) };
       }
@@ -1015,7 +1030,7 @@ export class PostManager {
           return { failure: this.notifyPostFailure('nip46_signer_not_available') };
         }
 
-        return { pubkey, errorLabel, credentials: { signer: nip46Signer } };
+        return toResolved(resolve(nip46Signer), pubkey, errorLabel);
       } catch (err) {
         return { failure: this.handleSubmissionError(errorLabel) };
       }
@@ -1023,33 +1038,18 @@ export class PostManager {
 
     // 親クライアント連携の場合（signer取得の例外は呼び出し側の汎用ハンドラへ）
     if (auth.type === 'parentClient') {
-      const parentClientSigner = this.deps.getParentClientSignerFn?.();
-      if (!parentClientSigner) {
-        return { failure: this.notifyPostFailure('parent_client_signer_not_available') };
+      const resolution = resolve();
+      if (!resolution.ok) {
+        return { failure: this.notifyPostFailure(resolution.error) };
       }
-
-      const pubkey = auth.pubkey;
-      if (!pubkey) {
+      if (!auth.pubkey) {
         return { failure: this.notifyPostFailure('pubkey_not_found') };
       }
-
-      return {
-        pubkey,
-        errorLabel: '親クライアント連携での投稿エラー:',
-        credentials: { signer: parentClientSigner },
-      };
+      return toResolved(resolution, auth.pubkey, '親クライアント連携での投稿エラー:');
     }
 
     // ローカルキーを使用（秘密鍵直入れの場合）
-    const storedKey = keyMgr.getFromStore() || keyMgr.loadFromStorage(auth.pubkey);
-    if (!storedKey) {
-      return { failure: this.notifyPostFailure('key_not_found') };
-    }
-
-    const signer = this.deps.seckeySignerFn
-      ? this.deps.seckeySignerFn(storedKey)
-      : seckeySigner(storedKey);
-    return { pubkey: sessionPubkey, errorLabel: '投稿エラー:', credentials: { signer } };
+    return toResolved(resolve(), sessionPubkey, '投稿エラー:');
   }
 
   async submitPost(

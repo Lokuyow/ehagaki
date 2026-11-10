@@ -1,3 +1,4 @@
+import { resolvePostSigner } from "./postSignerResolver";
 import { seckeySigner } from "@rx-nostr/crypto";
 import type { RxNostr } from "rx-nostr";
 import type { EventTemplate } from "nostr-tools";
@@ -259,8 +260,17 @@ export class PostDeletionService {
             }
         }
 
-        const signerResolution = this.resolveSigner(auth, nip46Signer);
-        if (signerResolution.error) {
+        const signerResolution = resolvePostSigner({
+            authType: auth.type,
+            pubkey: currentPubkey,
+            window: this.deps.window,
+            nip46Signer,
+            getParentClientSigner: () => this.deps.getParentClientSignerFn(),
+            getStoredSecretKey: (pubkey) => this.deps.keyManager.getFromStore()
+                || this.deps.keyManager.loadFromStorage(pubkey),
+            createSecretKeySigner: (secretKey) => this.deps.seckeySignerFn(secretKey),
+        });
+        if (!signerResolution.ok) {
             return { success: false, error: signerResolution.error };
         }
 
@@ -283,7 +293,7 @@ export class PostDeletionService {
         try {
             assertSession();
             const prepared = prepareSignedEventTemplate(deletionEvent);
-            const signerResult = await signerResolution.signEvent!(prepared.signerTemplate);
+            const signerResult = await signerResolution.signEvent(prepared.signerTemplate);
             assertSession();
             signedEvent = validateSignedEventResult(
                 prepared.expectedTemplate,
@@ -443,60 +453,6 @@ export class PostDeletionService {
             acceptedRelays: record.acceptedRelays,
             fetchedRelays: record.fetchedRelays,
         };
-    }
-
-    private resolveSigner(
-        auth: AuthState,
-        nip46Signer?: DeletionSigner | null,
-    ): {
-        signEvent?: DeletionSigner["signEvent"];
-        error?: string;
-    } {
-        if (auth.type === "nip07") {
-            const signEvent = this.deps.window.nostr?.signEvent;
-            return typeof signEvent === "function"
-                ? { signEvent: signEvent.bind(this.deps.window.nostr) }
-                : { error: "nostr_sign_event_not_supported" };
-        }
-
-        if (auth.type === "nip46") {
-            return this.resolveExternalSigner(
-                nip46Signer,
-                "nip46_signer_not_available",
-            );
-        }
-
-        if (auth.type === "parentClient") {
-            return this.resolveExternalSigner(
-                this.deps.getParentClientSignerFn(),
-                "parent_client_signer_not_available",
-            );
-        }
-
-        const storedKey = this.deps.keyManager.getFromStore()
-            || this.deps.keyManager.loadFromStorage(auth.pubkey);
-
-        if (!storedKey) {
-            return { error: "key_not_found" };
-        }
-
-        return this.resolveExternalSigner(
-            this.deps.seckeySignerFn(storedKey),
-            "nostr_sign_event_not_supported",
-        );
-    }
-
-    private resolveExternalSigner(
-        signer: DeletionSigner | null | undefined,
-        missingSignerError: string,
-    ): { signEvent?: DeletionSigner["signEvent"]; error?: string } {
-        if (!signer) {
-            return { error: missingSignerError };
-        }
-
-        return typeof signer.signEvent === "function"
-            ? { signEvent: signer.signEvent.bind(signer) }
-            : { error: "nostr_sign_event_not_supported" };
     }
 }
 

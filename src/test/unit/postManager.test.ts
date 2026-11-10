@@ -2450,14 +2450,18 @@ describe('PostManager統合テスト', () => {
             expect(mockDeps.console!.error).toHaveBeenCalledWith('window.nostrでの投稿エラー:', expect.anything());
         });
 
-        it('NIP-07 without window.nostr falls through to the stored key path', async () => {
+        it('NIP-07 without window.nostr fails instead of using a stored key', async () => {
             useAuth('nip07', { windowNostr: false });
-            mockDeps.window = { nostr: { signEvent: vi.fn() } } as any;
+            mockKeyManager = new MockKeyManager('stored-secret', 'stored-secret', false);
+            mockDeps.keyManager = mockKeyManager;
+            mockDeps.window = {} as any;
             manager = new PostManager(mockRxNostr, mockDeps);
 
             const result = await manager.submitPost('Test content');
 
-            expect(result).toEqual({ success: false, error: 'key_not_found' });
+            expect(result).toEqual({ success: false, error: 'nostr_sign_event_not_supported' });
+            expect(mockDeps.seckeySignerFn).not.toHaveBeenCalled();
+            expect(mockRxNostr.send).not.toHaveBeenCalled();
         });
 
         it('NIP-46 labels signer lookup failures', async () => {
