@@ -1,4 +1,4 @@
-import { BALLOON_MESSAGE_SUCCESS_KEYS, BALLOON_MESSAGE_TIPS_KEYS, BALLOON_MESSAGE_ERROR_KEY, BALLOON_MESSAGE_REJECTED_KEY, BALLOON_MESSAGE_TIMEOUT_KEY, BALLOON_MESSAGE_NETWORK_ERROR_KEY } from "./constants";
+import { BALLOON_MESSAGE_SUCCESS_KEYS, BALLOON_MESSAGE_TIPS_KEYS, BALLOON_MESSAGE_ERROR_KEY, BALLOON_MESSAGE_REJECTED_KEY, BALLOON_MESSAGE_TIMEOUT_KEY, BALLOON_MESSAGE_NETWORK_ERROR_KEY, BALLOON_MESSAGE_SIGN_EXTENSION_UNAVAILABLE_KEY } from "./constants";
 import type { BalloonMessageType, BalloonMessage, I18nFunction } from "./types";
 import { json } from "svelte-i18n";
 import { get } from "svelte/store";
@@ -142,9 +142,14 @@ export class BalloonMessageManager {
     /**
      * 投稿エラー種別に応じたメッセージを作成（デバウンスをスキップ）
      * @param errorType エラー種別 ("post_rejected" | "post_timeout" | "post_network_error" | "post_error")
+     * @param context.authType 現在のログイン方式。NIP-07で署名拡張が使えない場合に復帰方法を案内する
      */
-    createErrorMessage(errorType: string): BalloonMessage {
+    createErrorMessage(errorType: string, context: { authType?: string } = {}): BalloonMessage {
         switch (errorType) {
+            case "nostr_sign_event_not_supported":
+                return context.authType === "nip07"
+                    ? { type: "error", message: this.$_(BALLOON_MESSAGE_SIGN_EXTENSION_UNAVAILABLE_KEY) ?? "" }
+                    : { type: "error", message: this.getErrorMessage() };
             case "post_timeout":
                 return { type: "warning", message: this.$_(BALLOON_MESSAGE_TIMEOUT_KEY) ?? "" };
             case "post_rejected":

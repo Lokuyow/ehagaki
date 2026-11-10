@@ -158,6 +158,7 @@ export const BALLOON_MESSAGE_ERROR_KEY = "balloonMessage.error.post_error";
 export const BALLOON_MESSAGE_REJECTED_KEY = "balloonMessage.error.post_rejected";
 export const BALLOON_MESSAGE_TIMEOUT_KEY = "balloonMessage.error.post_timeout";
 export const BALLOON_MESSAGE_NETWORK_ERROR_KEY = "balloonMessage.error.post_network_error";
+export const BALLOON_MESSAGE_SIGN_EXTENSION_UNAVAILABLE_KEY = "balloonMessage.error.sign_extension_unavailable";
 
 // アプリの使い方Tips(tipsカテゴリ)
 export const BALLOON_MESSAGE_TIPS_KEYS: readonly string[] = [

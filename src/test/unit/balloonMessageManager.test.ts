@@ -5,6 +5,7 @@ import {
     BALLOON_MESSAGE_REJECTED_KEY,
     BALLOON_MESSAGE_TIMEOUT_KEY,
     BALLOON_MESSAGE_NETWORK_ERROR_KEY,
+    BALLOON_MESSAGE_SIGN_EXTENSION_UNAVAILABLE_KEY,
     BALLOON_MESSAGE_SUCCESS_KEYS,
     BALLOON_MESSAGE_TIPS_KEYS,
 } from '../../lib/constants';
@@ -190,6 +191,19 @@ describe('BalloonMessageManager', () => {
             const result = manager.createErrorMessage('post_network_error');
             expect(result.type).toBe('error');
             expect(result.message).toBe(`t:${BALLOON_MESSAGE_NETWORK_ERROR_KEY}`);
+        });
+
+        it('NIP-07で署名拡張が使えない場合は拡張機能の確認を案内する', () => {
+            const result = manager.createErrorMessage('nostr_sign_event_not_supported', { authType: 'nip07' });
+            expect(result.type).toBe('error');
+            expect(result.message).toBe(`t:${BALLOON_MESSAGE_SIGN_EXTENSION_UNAVAILABLE_KEY}`);
+        });
+
+        it('NIP-07以外でsignEventが無い場合は通常の投稿エラーのまま', () => {
+            for (const authType of ['nsec', 'nip46', 'parentClient', undefined]) {
+                const result = manager.createErrorMessage('nostr_sign_event_not_supported', { authType });
+                expect(result.message).toBe(`t:${BALLOON_MESSAGE_ERROR_KEY}`);
+            }
         });
 
         it('その他のエラー種別はデフォルトerror型を返す', () => {
