@@ -27,6 +27,7 @@ function createController(overrides: Record<string, unknown> = {}) {
         resetUploadDisplayState: vi.fn(),
         invalidatePendingAccountScopedAsyncState: vi.fn(),
         clearAccountScopedAsyncState: vi.fn(),
+        clearPersistedPostHistoryListingSnapshots: vi.fn(),
         getCurrentRxNostr: vi.fn(() => ({ dispose: vi.fn() })),
         setCurrentRxNostr: vi.fn(),
         disposeNostrSession: vi.fn(() => undefined),
@@ -79,19 +80,26 @@ describe('createAppAccountDialogController', () => {
         expect(deps.setShowTransitionOverlay).toHaveBeenNthCalledWith(2, false);
     });
 
-    it('confirm は logoutLastAccount 成功時に reload する', async () => {
+    it('confirm は logoutLastAccount 成功時に一覧スナップショットを捨ててから reload する', async () => {
+        const events: string[] = [];
         const { deps, controller } = createController({
             getPendingLastLogoutPubkey: () => 'ab'.repeat(32),
+            clearPersistedPostHistoryListingSnapshots: vi.fn(() => {
+                events.push('clear');
+            }),
+            reloadWindow: vi.fn(() => {
+                events.push('reload');
+            }),
         });
 
         await controller.confirmLastAccountLogout();
 
+        expect(events).toEqual(['clear', 'reload']);
         expect(deps.resetUploadDisplayState).toHaveBeenCalledTimes(1);
         expect(deps.invalidatePendingAccountScopedAsyncState).toHaveBeenCalledTimes(1);
         expect(deps.clearAccountScopedAsyncState).toHaveBeenCalledTimes(1);
         expect(deps.disposeNostrSession).toHaveBeenCalledTimes(1);
         expect(deps.logoutLastAccount).toHaveBeenCalledWith('ab'.repeat(32));
-        expect(deps.reloadWindow).toHaveBeenCalledTimes(1);
     });
 
     it('last-account logout失敗時はpending operationだけをinvalidateし、表示state clearを行わない', async () => {
@@ -106,6 +114,7 @@ describe('createAppAccountDialogController', () => {
 
         expect(deps.invalidatePendingAccountScopedAsyncState).toHaveBeenCalledTimes(1);
         expect(deps.clearAccountScopedAsyncState).not.toHaveBeenCalled();
+        expect(deps.clearPersistedPostHistoryListingSnapshots).not.toHaveBeenCalled();
         expect(deps.reloadWindow).not.toHaveBeenCalled();
     });
 

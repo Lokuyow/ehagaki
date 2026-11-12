@@ -80,6 +80,7 @@ export interface AppAccountSessionControllerDependencies {
     resetUploadDisplayState(): void;
     invalidatePendingAccountScopedAsyncState?(): void;
     clearAccountScopedAsyncState?(): void;
+    clearPersistedPostHistoryListingSnapshots(): void;
     logoutAccountFromAuthService(
         pubkeyHex: string,
         options: { notifyParentClient?: boolean },
@@ -163,6 +164,7 @@ export function createAppAccountSessionController(
         } finally {
             deps.setSecretKey('');
             deps.setErrorMessage('');
+            deps.clearPersistedPostHistoryListingSnapshots();
         }
     }
 
@@ -296,6 +298,7 @@ export function createAppAccountSessionController(
                     deps.disposeNostrSession(deps.getCurrentRxNostr()),
                 );
                 deps.setProfileLoading(false);
+                deps.clearPersistedPostHistoryListingSnapshots();
                 deps.reloadWindow();
                 return;
             } else if (nextAction.kind === 'guest') {
@@ -312,7 +315,11 @@ export function createAppAccountSessionController(
                     nprofile: '',
                 });
                 deps.setProfileLoaded(false);
-                await deps.initializeNostr();
+                try {
+                    await deps.initializeNostr();
+                } finally {
+                    deps.clearPersistedPostHistoryListingSnapshots();
+                }
                 deps.setSecretKey('');
                 deps.setErrorMessage('');
             }

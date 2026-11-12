@@ -209,6 +209,7 @@
     restoreManagedAccountSession,
   } from "./lib/appAuthUtils";
   import { createAppAccountSessionController } from "./lib/appAccountSessionController";
+  import { clearRegisteredPersistedPostHistoryListingSnapshots } from "./lib/postHistoryListingSnapshotCleanup";
   import { createAppAuthLoginController } from "./lib/appAuthLoginController";
   import { createAppParentClientSyncController } from "./lib/appParentClientSyncController";
   import { createAppAuthInteractionController } from "./lib/appAuthInteractionController";
@@ -878,6 +879,8 @@
     resetUploadDisplayState,
     invalidatePendingAccountScopedAsyncState,
     clearAccountScopedAsyncState,
+    clearPersistedPostHistoryListingSnapshots:
+      clearRegisteredPersistedPostHistoryListingSnapshots,
     logoutAccountFromAuthService: (pubkeyHex, options) =>
       authService.logoutAccount(pubkeyHex, {
         notifyParentClient: options.notifyParentClient,
@@ -927,6 +930,8 @@
     resetUploadDisplayState,
     invalidatePendingAccountScopedAsyncState,
     clearAccountScopedAsyncState,
+    clearPersistedPostHistoryListingSnapshots:
+      clearRegisteredPersistedPostHistoryListingSnapshots,
     getCurrentRxNostr: () => rxNostr,
     setCurrentRxNostr: (next) => {
       rxNostr = next;
