@@ -816,3 +816,43 @@ test.describe('post editor sending state', () => {
         expect(await pickerRegion.evaluate((element, picker) => element.querySelector('.custom-emoji-picker') === picker, pickerIdentity)).toBe(true);
     });
 });
+
+for (const modifier of ['Control', 'Meta']) {
+    test(`${modifier}+Enter only submits after IME composition ends`, async ({ page, browserName, isMobile }) => {
+        test.skip(browserName !== 'chromium' || isMobile, 'This regression uses desktop Chromium CDP IME input.');
+        await page.goto('post-editor-sending-playwright.html?withSubmit=1');
+        const editor = page.locator('.tiptap-editor');
+        await editor.click();
+        await observeFocus(editor);
+
+        const session = await page.context().newCDPSession(page);
+        await session.send('Input.imeSetComposition', {
+            text: '変換候補', selectionStart: 4, selectionEnd: 4,
+        });
+        await expect(editor).toHaveText('変換候補');
+        await expect.poll(() => page.evaluate(() => window.__currentEditor!.view.composing)).toBe(true);
+
+        await editor.press(`${modifier}+Enter`);
+        const submissions = () => page.evaluate(() =>
+            (window as any).__postSubmitHarness.submissions.map((post: { content: string }) => post.content));
+        expect(await submissions()).toEqual([]);
+        await expect(editor).toBeFocused();
+        expect(await page.evaluate(() => (window as any).__focusObservation.blurs)).toBe(0);
+
+        // Some IMEs use the shortcut themselves. Complete preedit through the
+        // browser if it is still active, then press the posting shortcut again.
+        if (await page.evaluate(() => window.__currentEditor!.view.composing)) {
+            await session.send('Input.insertText', { text: '変換候補' });
+        }
+        await expect.poll(() => page.evaluate(() => window.__currentEditor!.view.composing)).toBe(false);
+        await expect(editor).toHaveText('変換候補');
+        expect(await submissions()).toEqual([]);
+
+        await editor.press(`${modifier}+Enter`);
+        await expect.poll(submissions).toEqual(['変換候補']);
+        await finishSubmission(page, true);
+        await expect(editor).toHaveText('');
+        expect(await submissions()).toEqual(['変換候補']);
+        await session.detach();
+    });
+}

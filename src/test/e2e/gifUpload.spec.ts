@@ -26,6 +26,51 @@ test('reaction rejects an undecodable GIF before transport', async ({ page }) =>
     expect((await read(page)).isUploading).toBe(false);
 });
 
+const originalImageUrl = 'https://example.com/original.gif';
+for (const { name, htmlCaption, plainText, expectedCaption, plainPaste, midParagraph } of [
+    { name: 'image and HTML', htmlCaption: '', plainText: '', expectedCaption: '' },
+    { name: 'image URL in plain text', htmlCaption: '', plainText: originalImageUrl, expectedCaption: '' },
+    { name: 'caption and image URL in plain text', htmlCaption: '<p>Copied caption</p>', plainText: `Copied caption ${originalImageUrl}`, expectedCaption: 'Copied caption' },
+    { name: 'caption in HTML only', htmlCaption: '<p>Copied caption</p>', plainText: '', expectedCaption: 'Copied caption' },
+    { name: 'HTML-only caption in the middle of a paragraph', htmlCaption: '<p>Cap</p>', plainText: '', expectedCaption: ['abCap', 'cd'], midParagraph: true },
+    { name: 'plain paste of an image URL', htmlCaption: '', plainText: originalImageUrl, expectedCaption: '', plainPaste: true },
+]) {
+    test(`normal post uploads a copied web image once with ${name}`, async ({ page }) => {
+        await page.route('**/original.gif', route => route.fulfill({ contentType: 'image/gif', body: gif }));
+        await page.route('**/gif-fixture.gif', route => route.fulfill({ contentType: 'image/gif', body: gif }));
+        await page.route('**/reaction-fixture-upload', route => route.fulfill({ json: { url: new URL('gif-fixture.gif', route.request().url()).href } }));
+        await page.goto('post-reaction-playwright.html?uploaded&free');
+        await page.waitForFunction(() => !!(window as unknown as HarnessWindow).__REACTION__);
+
+        const editor = page.locator('.tiptap-editor');
+        await editor.focus();
+        if (midParagraph) {
+            await editor.fill('abcd');
+            await editor.press('ArrowLeft');
+            await editor.press('ArrowLeft');
+        }
+        if (plainPaste) await page.keyboard.down('Shift');
+        await editor.evaluate((element, { bytes, htmlCaption, plainText, originalImageUrl }) => {
+            const transfer = new DataTransfer();
+            transfer.items.add(new File([new Uint8Array(bytes)], 'copied.gif', { type: 'image/gif' }));
+            transfer.setData('text/html', `${htmlCaption}<img src="${originalImageUrl}">`);
+            if (plainText) transfer.setData('text/plain', plainText);
+            const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
+            Object.defineProperty(event, 'clipboardData', { value: transfer });
+            element.dispatchEvent(event);
+        }, { bytes: [...gif], htmlCaption, plainText, originalImageUrl });
+        if (plainPaste) await page.keyboard.up('Shift');
+
+        await expect.poll(async () => (await read(page)).uploads.length).toBe(1);
+        await expect.poll(async () => (await read(page)).isUploading).toBe(false);
+        const images = editor.locator('img');
+        await expect(images).toHaveCount(1);
+        await expect(images).toHaveAttribute('src', new URL('gif-fixture.gif', page.url()).href);
+        await expect(midParagraph ? editor.locator(':scope > p') : editor).toHaveText(expectedCaption);
+        expect((await read(page)).gallery).toEqual([]);
+    });
+}
+
 for (const reaction of [false, true]) for (const input of ['picker', 'paste', 'drop'] as const) {
     test(`${reaction ? 'reaction' : 'normal post'} preserves animated GIF through ${input}`, async ({ page }, testInfo) => {
         const pageErrors: string[] = [];
