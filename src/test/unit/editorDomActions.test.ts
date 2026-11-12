@@ -199,10 +199,59 @@ describe("pasteAction", () => {
         };
         const event = createClipboardEvent("paste", clipboardData);
         node.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(true);
         expect(node.__uploadFiles).toHaveBeenCalledWith([file]);
     });
 
-    it("does not call __uploadFiles if no image files", () => {
+    it("calls __uploadFiles with pasted video files", () => {
+        const file = new File(["video"], "clip.mp4", { type: "video/mp4" });
+        const event = createClipboardEvent("paste", {
+            items: [{
+                kind: "file",
+                type: "video/mp4",
+                getAsFile: () => file,
+            }],
+        });
+
+        node.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(node.__uploadFiles).toHaveBeenCalledWith([file]);
+    });
+
+    it("passes image and video files together, in clipboard order", () => {
+        const image = new File(["image"], "photo.png", { type: "image/png" });
+        const video = new File(["video"], "clip.webm", { type: "video/webm" });
+        const event = createClipboardEvent("paste", {
+            items: [
+                { kind: "file", type: image.type, getAsFile: () => image },
+                { kind: "string", type: "text/html", getAsFile: () => null },
+                { kind: "file", type: video.type, getAsFile: () => video },
+            ],
+        });
+
+        node.dispatchEvent(event);
+
+        expect(node.__uploadFiles).toHaveBeenCalledWith([image, video]);
+    });
+
+    it("passes non-media files to the upload path and blocks text insertion", () => {
+        const pdf = new File(["pdf"], "doc.pdf", { type: "application/pdf" });
+        const event = createClipboardEvent("paste", {
+            items: [{
+                kind: "file",
+                type: "application/pdf",
+                getAsFile: () => pdf,
+            }],
+        });
+
+        node.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(node.__uploadFiles).toHaveBeenCalledWith([pdf]);
+    });
+
+    it("does not call __uploadFiles if no files", () => {
         const item = {
             kind: "string",
             type: "text/plain",
@@ -213,7 +262,24 @@ describe("pasteAction", () => {
         };
         const event = createClipboardEvent("paste", clipboardData);
         node.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(false);
         expect(node.__uploadFiles).not.toHaveBeenCalled();
+    });
+
+    it("blocks a file paste when upload is unavailable", () => {
+        delete (node as Partial<EditorDomActionTestElement>).__uploadFiles;
+        const file = new File(["video"], "clip.mp4", { type: "video/mp4" });
+        const event = createClipboardEvent("paste", {
+            items: [{
+                kind: "file",
+                type: "video/mp4",
+                getAsFile: () => file,
+            }],
+        });
+
+        node.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(true);
     });
 
     it("rejects image paste while a post is sending", () => {
@@ -223,6 +289,23 @@ describe("pasteAction", () => {
             items: [{
                 kind: "file",
                 type: "image/png",
+                getAsFile: () => file,
+            }],
+        });
+
+        node.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(node.__uploadFiles).not.toHaveBeenCalled();
+    });
+
+    it("rejects video paste while a post is sending", () => {
+        node.__postStatus = { sending: true };
+        const file = new File(["video"], "clip.mp4", { type: "video/mp4" });
+        const event = createClipboardEvent("paste", {
+            items: [{
+                kind: "file",
+                type: "video/mp4",
                 getAsFile: () => file,
             }],
         });
@@ -409,6 +492,55 @@ describe("keydownAction", () => {
             key: "Enter",
         });
         expect(() => node.dispatchEvent(event)).not.toThrow();
+    });
+
+    it.each([
+        { name: "isComposing", isComposing: true },
+        { name: "229 keyCode", keyCode: 229 },
+    ])("does not submit or preventDefault during composition ($name)", ({ isComposing, keyCode }) => {
+        mockedExtractContentWithImages.mockReturnValue("content");
+        const event = new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: true,
+            key: "Enter",
+            ...(isComposing !== undefined ? { isComposing } : {}),
+        });
+        if (keyCode !== undefined) {
+            Object.defineProperty(event, "keyCode", { configurable: true, value: keyCode });
+        }
+
+        node.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(node.__submitPost).not.toHaveBeenCalled();
+    });
+
+    it("does not submit while the editor view is composing and submits after it ends", () => {
+        mockedExtractContentWithImages.mockReturnValue("content");
+        const view = { composing: true };
+        node.__currentEditor = { view };
+
+        const during = new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: true,
+            key: "Enter",
+        });
+        node.dispatchEvent(during);
+        expect(during.defaultPrevented).toBe(false);
+        expect(node.__submitPost).not.toHaveBeenCalled();
+
+        view.composing = false;
+        const after = new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            metaKey: true,
+            key: "NumpadEnter",
+        });
+        node.dispatchEvent(after);
+        expect(after.defaultPrevented).toBe(true);
+        expect(node.__submitPost).toHaveBeenCalledOnce();
     });
 
     it("does not intercept keyboard shortcuts when disabled", () => {

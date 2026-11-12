@@ -20,6 +20,7 @@
     }
     let { show = $bindable(false), onClose, returnFocus = null,
         isStaleAssetReloadRequired = () => false, onLoadFailure, ...postProps }: Props = $props();
+    let restoreFocusOnClose = $state(true);
     let activeTab = $state<HistoryTab>(untrack(() => historyTabStore.restore()));
     const closeIconUrl = resolveAppAssetUrl("icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     let Posts = $state<typeof import("./PostHistoryTabContent.svelte").default | null>(null);
@@ -74,6 +75,9 @@
     }
     function close(restoreFocus = true): boolean {
         if (busy()) return false;
+        // bits-ui は onOpenChange より先に open を false にする。
+        // その再入では、先に close(false) が決めた戻り先を上書きしない。
+        if (show) restoreFocusOnClose = restoreFocus;
         closePrepared = true;
         postsRef?.prepareClose();
         postsRef?.suspend();
@@ -81,8 +85,6 @@
         loadGeneration++;
         show = false;
         onClose();
-        const trigger = returnFocus;
-        void tick().then(() => restoreFocus && trigger?.isConnected && trigger.focus({ preventScroll: true }));
         return true;
     }
     useDialogHistory(() => show, () => close());
@@ -150,7 +152,8 @@
 <DialogWrapper bind:open={show} onOpenChange={(open) => { if (!open && !close()) show = true; }}
     title={$_("postHistory.title")} description={$_("postHistory.description")}
     contentClass="post-history-dialog" footerVariant="close-button" initialFocus="content" trapFocus={false}
-    onEscapeKeydown={escape} onInteractOutside={outside}>
+    onEscapeKeydown={escape} onInteractOutside={outside}
+    returnFocus={returnFocus} bind:restoreFocusOnClose>
     <Tabs.Root value={activeTab} onValueChange={selectTab} activationMode="manual" class="history-tabs">
         <div class={["history-tab-gesture", { "is-swiping": tabSwipe.dragging, "is-offset": tabSwipe.dragPx !== 0 }]}
             {@attach tabSwipe.attachment} style:--history-tab-drag="{tabSwipe.dragPx}px">

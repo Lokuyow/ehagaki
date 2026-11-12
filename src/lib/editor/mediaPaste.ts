@@ -2,6 +2,7 @@ import { Extension } from '@tiptap/core';
 import type { Node as PMNode, ResolvedPos, Schema } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
+import { getClipboardUploadFiles } from '../utils/clipboardUtils';
 import { validateAndNormalizeImageUrl, validateAndNormalizeVideoUrl } from '../utils/editorUrlUtils';
 import { mediaFreePlacementStore } from '../../stores/uploadStore.svelte';
 import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
@@ -147,6 +148,9 @@ export const MediaPasteExtension = Extension.create<{
                             event.preventDefault();
                             return true;
                         }
+
+                        // ClipboardExtension and pasteAction handle pastes that include files.
+                        if (getClipboardUploadFiles(event.clipboardData).length > 0) return false;
 
                         const text = event.clipboardData?.getData('text/plain') || '';
                         const mediaUrls = extractMediaUrls(text);

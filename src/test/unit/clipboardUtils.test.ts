@@ -4,6 +4,7 @@
 
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { 
+    getClipboardUploadFiles,
     normalizeClipboardText, 
     serializeParagraphs, 
     tryCopyToClipboard,
@@ -280,6 +281,39 @@ describe('clipboardUtils', () => {
             const result = normalizeClipboardText(vscodeText);
             
             expect(result.lines).toEqual(['const x = 1;', 'const y = 2;']);
+        });
+    });
+
+    describe('getClipboardUploadFiles', () => {
+        const image = new File(['image'], 'image.png', { type: 'image/png' });
+        const video = new File(['video'], 'clip.mp4', { type: 'video/mp4' });
+        const pdf = new File(['pdf'], 'doc.pdf', { type: 'application/pdf' });
+        const fileItem = (file: File) => ({ kind: 'file', type: file.type, getAsFile: () => file });
+        const textItem = { kind: 'string', type: 'text/html', getAsFile: () => null };
+
+        it('itemsから画像・動画・非対応ファイルを順に取り出す', () => {
+            const clipboardData = {
+                items: [textItem, fileItem(video), fileItem(image), fileItem(pdf)],
+            } as unknown as DataTransfer;
+            expect(getClipboardUploadFiles(clipboardData)).toEqual([video, image, pdf]);
+        });
+
+        it('ファイル項目が無い場合はfilesにフォールバックする', () => {
+            const clipboardData = {
+                items: [textItem],
+                files: [video, pdf],
+            } as unknown as DataTransfer;
+            expect(getClipboardUploadFiles(clipboardData)).toEqual([video, pdf]);
+        });
+
+        it('itemsが無い場合はfilesにフォールバックする', () => {
+            const clipboardData = { files: [image, video] } as unknown as DataTransfer;
+            expect(getClipboardUploadFiles(clipboardData)).toEqual([image, video]);
+        });
+
+        it('clipboardDataが無い、またはファイルが無い場合は空配列を返す', () => {
+            expect(getClipboardUploadFiles(null)).toEqual([]);
+            expect(getClipboardUploadFiles({ items: [textItem], files: [] } as unknown as DataTransfer)).toEqual([]);
         });
     });
 });

@@ -25,7 +25,8 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from 'prosemirror-state';
 import { Slice, Fragment } from 'prosemirror-model';
 import type { Node as PMNode, Schema } from 'prosemirror-model';
-import { normalizeClipboardText, serializeParagraphs } from '../utils/clipboardUtils';
+import { getClipboardUploadFiles, normalizeClipboardText, serializeParagraphs } from '../utils/clipboardUtils';
+import { isValidProtocol } from '../utils/editorUrlUtils';
 import { normalizeEmojiShortcode } from '../customEmoji';
 import { cleanupExternalRichPasteLines } from './clipboardTextCleanup';
 
@@ -101,6 +102,57 @@ function isFromCurrentEditorClipboard(html: string): boolean {
     return parsed.querySelector('p.editor-paragraph[data-pm-slice]') !== null;
 }
 
+function resolveClipboardHttpUrl(value: string, base?: string): string | undefined {
+    try {
+        const url = new URL(value, base);
+        return isValidProtocol(url.protocol) ? url.href : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+function removeCopiedImageUrls(text: string, html: string, document: Document): string {
+    if (!text || !html) return text;
+
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    // Resolve relative sources only when the copied HTML supplies its own base URL.
+    const baseHref = template.content.querySelector('base[href]')?.getAttribute('href');
+    const base = baseHref ? resolveClipboardHttpUrl(baseHref) : undefined;
+    const imageSources = new Set<string>();
+    for (const image of template.content.querySelectorAll('img[src]')) {
+        const source = image.getAttribute('src')?.trim();
+        if (!source) continue;
+        imageSources.add(source);
+        const absoluteSource = resolveClipboardHttpUrl(source, base);
+        if (absoluteSource) imageSources.add(absoluteSource);
+    }
+    if (!imageSources.size) return text;
+
+    return text.split(/\r\n?|\n/).flatMap(line => {
+        const remaining = line.replace(/\S+[ \t]*/g, token => {
+            const value = token.trimEnd();
+            if (imageSources.has(value)) return '';
+            const url = /^https?:\/\//i.test(value) ? resolveClipboardHttpUrl(value) : undefined;
+            return url && imageSources.has(url) ? '' : token;
+        });
+        if (remaining === line) return [line];
+        return remaining.trim() ? [remaining.trimEnd()] : [];
+    }).join('\n');
+}
+
+function withoutPastedImages(slice: Slice): Slice {
+    const nodes: PMNode[] = [];
+    // Images are block nodes at the document level in the composer schema.
+    slice.content.forEach(node => {
+        if (node.type.name !== 'image') nodes.push(node);
+    });
+    if (nodes.length === slice.content.childCount) return slice;
+
+    // Removing an image at either edge can expose a paragraph that now joins the surrounding text.
+    return Slice.maxOpen(Fragment.from(nodes), false);
+}
+
 // ================================================================================
 // ClipboardExtension 定義
 // ================================================================================
@@ -132,7 +184,7 @@ export const ClipboardExtension = Extension.create({
                      * - falseを返すとデフォルト処理に委譲
                      * 
                      * 処理フロー:
-                     * 1. file/media clipboard は既存の経路へ委譲
+                     * 1. 画像ファイルだけなら本文を残して重複する画像を除き、動画・非対応ファイルを含む場合は消費する
                      * 2. HTML付き通常pasteだけplain textのmarkup cleanupを適用
                      * 3. plain textがなければHTMLの既定ProseMirror処理へ委譲
                      * 4. 1つのpaste transactionで選択範囲へ挿入
@@ -150,23 +202,26 @@ export const ClipboardExtension = Extension.create({
                             return false;
                         }
 
-                        // 画像ファイルのペーストは別処理に委譲
-                        const hasFiles = clipboardData.files && clipboardData.files.length > 0;
-                        if (hasFiles) {
-                            return false; // MediaPasteExtensionが処理
+                        const files = getClipboardUploadFiles(clipboardData);
+                        // 動画・非対応ファイルはpasteActionに任せ、付随するHTMLやファイル名を挿入しない。
+                        if (files.some(file => !file.type.startsWith('image/'))) {
+                            event.preventDefault();
+                            return true;
                         }
-
-                        // プレーンテキストを取得
-                        const text = clipboardData.getData('text/plain');
+                        const hasImageFiles = files.length > 0;
 
                         // HTMLはrich pasteのsignalとして扱い、本文はtext/plainから取得する。
                         // 自Editor clipboardだけは従来の空行正規化を維持する。
                         const hasHtml = clipboardData.types.includes('text/html');
+                        const html = hasHtml ? clipboardData.getData('text/html') : '';
+                        const plainText = clipboardData.getData('text/plain');
+                        const text = hasImageFiles
+                            ? removeCopiedImageUrls(plainText, html, view.dom.ownerDocument)
+                            : plainText;
                         let collapseEmptyLines = false;
                         let isSelfCopy = false;
 
                         if (hasHtml) {
-                            const html = clipboardData.getData('text/html');
                             // Preserve this editor's own ProseMirror clipboard payloads.
                             const isFromCurrentEditor = isFromCurrentEditorClipboard(html);
                             const isFromLegacyEditor =
@@ -175,11 +230,6 @@ export const ClipboardExtension = Extension.create({
                             isSelfCopy = isFromCurrentEditor || isFromLegacyEditor;
                             collapseEmptyLines = isFromCurrentEditor || isFromLegacyEditor;
 
-                        }
-
-                        if (!text) {
-                            // HTMLのみのclipboardは独自変換せず、既定のProseMirror pasteへ委譲する。
-                            return false;
                         }
 
                         // HTML付きclipboardも、既存plain-text pasteと同じ改行正規化・段落化を使う。
@@ -193,17 +243,18 @@ export const ClipboardExtension = Extension.create({
                             lines = cleanupExternalRichPasteLines(lines);
                         }
 
-                        // 空のテキストの場合はデフォルト処理に委譲
-                        if (lines.length === 0) {
-                            return false;
-                        }
+                        let customSlice: Slice;
+                        if (hasImageFiles && !lines.some(line => line.trim())) {
+                            if (!hasHtml || pastedAsPlainText) return true;
+                            // If the caption is only in HTML, keep the parsed content besides the image nodes.
+                            customSlice = withoutPastedImages(slice);
+                            if (customSlice.size === 0) return true;
+                        } else {
+                            if (lines.length === 0) return false;
 
-                        // 段落ノードベースで挿入（改行を段落境界として扱う）
-                        // openStart=1, openEnd=1: 先頭段落はカーソル前テキストとマージ、
-                        // 末尾段落はカーソル後テキストとマージ（標準エディタ動作）
-                        const paragraphNodes = createParagraphNodes(lines, state.schema);
-                        const fragment = Fragment.from(paragraphNodes);
-                        const customSlice = new Slice(fragment, 1, 1);
+                            // Open paragraphs at both ends so the pasted text joins the current paragraph.
+                            customSlice = new Slice(Fragment.from(createParagraphNodes(lines, state.schema)), 1, 1);
+                        }
 
                         // トランザクションを作成
                         // 

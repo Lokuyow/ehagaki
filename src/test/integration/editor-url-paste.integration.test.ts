@@ -241,11 +241,42 @@ describe('エディター・URLペースト統合テスト', () => {
             expect(getParagraphText(editor)).toBe('**first**\n\nsecond');
         });
 
-        it('file clipboardを消費せず既存media処理へ委譲すること', () => {
+        it('画像file付きclipboardは消費し、付随するHTMLの<img>を挿入しないこと', () => {
+            // Webページから画像をコピーすると、ファイルと一緒に <img src="元URL"> のHTMLも付く。
+            // アップロードはpasteActionが担うため、ここで消費しないと元URLの画像が二重に入る。
             const image = new File(['image'], 'image.png', { type: 'image/png' });
-            expect(invokePasteHandler(editor, createClipboardData('image', '<p>image</p>', [image]))).toBe(false);
+            const html = '<img src="https://example.com/original.jpg">';
+            expect(invokePasteHandler(editor, createClipboardData('', html, [image]))).toBe(true);
+            expect(editor.getHTML()).not.toContain('original.jpg');
             expect(editor.getText()).toBe('');
         });
+
+        it('動画file付きclipboardは消費し、付随するHTMLを挿入しないこと', () => {
+            const video = new File(['video'], 'clip.mp4', { type: 'video/mp4' });
+            const html = '<video src="https://example.com/original.mp4"></video>';
+            expect(invokePasteHandler(editor, createClipboardData('clip.mp4', html, [video]))).toBe(true);
+            expect(editor.getHTML()).not.toContain('original.mp4');
+            expect(editor.getText()).toBe('');
+        });
+
+        it('画像でも動画でもないfile clipboardは消費し、ファイル名を挿入しないこと', () => {
+            const pdf = new File(['pdf'], 'doc.pdf', { type: 'application/pdf' });
+            expect(invokePasteHandler(editor, createClipboardData('doc.pdf', '<p>doc.pdf</p>', [pdf]))).toBe(true);
+            expect(editor.getText()).toBe('');
+        });
+
+        it.each([
+            { html: '<img src="https://EXAMPLE.com:443/media/../original.jpg">', removeOriginal: true },
+            { html: '<base href="https://example.com/gallery/"><img src="../original.jpg">', removeOriginal: true },
+            { html: '<img src="/original.jpg">', removeOriginal: false },
+        ])('画像file付きclipboardの元URLを照合する: $html', ({ html, removeOriginal }) => {
+            const image = new File(['image'], 'image.png', { type: 'image/png' });
+            const original = 'https://example.com/original.jpg';
+            const other = `${original}?size=small`;
+            expect(invokePasteHandler(editor, createClipboardData(`Caption\n${original}\n${other}`, html, [image]))).toBe(true);
+            expect(getParagraphText(editor)).toBe(removeOriginal ? `Caption\n${other}` : `Caption\n${original}\n${other}`);
+        });
+
     });
 
     describe('plain-text paste transaction and history', () => {

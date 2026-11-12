@@ -187,3 +187,21 @@ async function fallbackCopy(text: string, type: string = "", windowObj?: Window)
         textarea.remove();
     }
 }
+
+/**
+ * クリップボード上のファイルを、貼り付け順で返す。
+ *
+ * 画像と動画はファイル選択と同じアップロード経路へ渡し、
+ * それ以外は既存の非対応エラーへ渡す。MIMEでは絞り込まない。
+ * ファイル項目が取れない環境では `files` にフォールバックする。
+ */
+export function getClipboardUploadFiles(clipboardData: DataTransfer | null | undefined): File[] {
+    if (!clipboardData) return [];
+    const items = Array.from(clipboardData.items ?? []);
+    const fromItems = items
+        .filter((item) => item.kind === 'file')
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => !!file);
+    if (fromItems.length > 0) return fromItems;
+    return Array.from(clipboardData.files ?? []);
+}
