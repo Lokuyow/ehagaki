@@ -100,6 +100,21 @@ export function serializeParagraphs(paragraphs: string[]): string {
     return paragraphs.join('\n');
 }
 
+/**
+ * クリップボード上の画像ファイルを取得
+ *
+ * スクリーンショットのペーストや、Webページ上の画像のコピーで付与されるファイルを返す。
+ * `items` が無い環境（テスト等）では `files` にフォールバックする。
+ */
+export function getClipboardImageFiles(clipboardData: DataTransfer | null | undefined): File[] {
+    if (!clipboardData) return [];
+    const items = Array.from(clipboardData.items ?? []);
+    const files = items.length > 0
+        ? items.filter((item) => item.kind === 'file').map((item) => item.getAsFile())
+        : Array.from(clipboardData.files ?? []);
+    return files.filter((file): file is File => !!file && file.type.startsWith('image/'));
+}
+
 // ================================================================================
 // クリップボードコピー機能
 // ================================================================================

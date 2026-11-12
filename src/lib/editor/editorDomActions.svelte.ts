@@ -7,6 +7,7 @@
 import { extractContentWithImages } from "../utils/editorDocumentUtils";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { domUtils } from "../utils/appDomUtils";
+import { getClipboardImageFiles } from "../utils/clipboardUtils";
 import type { Node as PMNode } from "prosemirror-model"; // 追加
 import { NodeSelection } from "prosemirror-state";
 import type {
@@ -191,19 +192,10 @@ export function pasteAction(node: HTMLElement) {
         }
 
         if (!event.clipboardData) return;
+        const files = getClipboardImageFiles(event.clipboardData);
         if (!canUploadFiles(node)) {
-            const hasMediaFile = Array.from(event.clipboardData.items).some(
-                (item) => item.kind === "file" && item.type.startsWith("image/"),
-            );
-            if (hasMediaFile) event.preventDefault();
+            if (files.length > 0) event.preventDefault();
             return;
-        }
-        const files: File[] = [];
-        for (const item of event.clipboardData.items) {
-            if (item.kind === "file" && item.type.startsWith("image/")) {
-                const file = item.getAsFile();
-                if (file) files.push(file);
-            }
         }
         if (files.length > 0) {
             event.preventDefault();
