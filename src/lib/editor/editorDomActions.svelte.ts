@@ -8,7 +8,7 @@ import { extractContentWithImages } from "../utils/editorDocumentUtils";
 import { isImeCompositionKeydown } from "./imeCompositionKey";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { domUtils } from "../utils/appDomUtils";
-import { getClipboardImageFiles } from "../utils/clipboardUtils";
+import { getClipboardUploadFiles } from "../utils/clipboardUtils";
 import type { Node as PMNode } from "prosemirror-model"; // 追加
 import { NodeSelection } from "prosemirror-state";
 import type {
@@ -184,7 +184,7 @@ export function fileDropActionWithDragState(
 }
 
 // pasteAction
-// 画像ファイルのペーストのみを処理（テキストペーストはClipboardExtensionで処理）
+// ファイルのペーストをアップロード経路へ渡す（テキストはClipboardExtension）
 export function pasteAction(node: HTMLElement) {
     function handlePaste(event: ClipboardEvent) {
         if (isPostSending(node)) {
@@ -193,16 +193,13 @@ export function pasteAction(node: HTMLElement) {
         }
 
         if (!event.clipboardData) return;
-        const files = getClipboardImageFiles(event.clipboardData);
-        if (!canUploadFiles(node)) {
-            if (files.length > 0) event.preventDefault();
-            return;
-        }
-        if (files.length > 0) {
-            event.preventDefault();
-            (node as EditorDomActionContainer).__uploadFiles?.(files);
-        }
-        // テキストペーストはClipboardExtensionに委譲
+        const files = getClipboardUploadFiles(event.clipboardData);
+        if (files.length === 0) return;
+        // ブラウザ既定の挿入は止める。本文を残すかはClipboardExtensionが判断する。
+        event.preventDefault();
+        if (!canUploadFiles(node)) return;
+        // リアクション中の画像MIME制限は、アップロード側の既存判定に任せる。
+        (node as EditorDomActionContainer).__uploadFiles?.(files);
     }
     node.addEventListener("paste", handlePaste as EventListener);
     return {

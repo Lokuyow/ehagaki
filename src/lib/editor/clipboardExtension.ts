@@ -25,7 +25,7 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from 'prosemirror-state';
 import { Slice, Fragment } from 'prosemirror-model';
 import type { Node as PMNode, Schema } from 'prosemirror-model';
-import { getClipboardImageFiles, normalizeClipboardText, serializeParagraphs } from '../utils/clipboardUtils';
+import { getClipboardUploadFiles, normalizeClipboardText, serializeParagraphs } from '../utils/clipboardUtils';
 import { isValidProtocol } from '../utils/editorUrlUtils';
 import { normalizeEmojiShortcode } from '../customEmoji';
 import { cleanupExternalRichPasteLines } from './clipboardTextCleanup';
@@ -184,7 +184,7 @@ export const ClipboardExtension = Extension.create({
                      * - falseを返すとデフォルト処理に委譲
                      * 
                      * 処理フロー:
-                     * 1. 画像ファイル付きclipboardは本文を残し、重複する画像を除く（アップロードはpasteActionが担当）
+                     * 1. 画像ファイルだけなら本文を残して重複する画像を除き、動画・非対応ファイルを含む場合は消費する
                      * 2. HTML付き通常pasteだけplain textのmarkup cleanupを適用
                      * 3. plain textがなければHTMLの既定ProseMirror処理へ委譲
                      * 4. 1つのpaste transactionで選択範囲へ挿入
@@ -202,10 +202,13 @@ export const ClipboardExtension = Extension.create({
                             return false;
                         }
 
-                        const hasImageFiles = getClipboardImageFiles(clipboardData).length > 0;
-                        if (!hasImageFiles && clipboardData.files?.length) {
-                            return false;
+                        const files = getClipboardUploadFiles(clipboardData);
+                        // 動画・非対応ファイルはpasteActionに任せ、付随するHTMLやファイル名を挿入しない。
+                        if (files.some(file => !file.type.startsWith('image/'))) {
+                            event.preventDefault();
+                            return true;
                         }
+                        const hasImageFiles = files.length > 0;
 
                         // HTMLはrich pasteのsignalとして扱い、本文はtext/plainから取得する。
                         // 自Editor clipboardだけは従来の空行正規化を維持する。

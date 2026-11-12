@@ -251,6 +251,20 @@ describe('エディター・URLペースト統合テスト', () => {
             expect(editor.getText()).toBe('');
         });
 
+        it('動画file付きclipboardは消費し、付随するHTMLを挿入しないこと', () => {
+            const video = new File(['video'], 'clip.mp4', { type: 'video/mp4' });
+            const html = '<video src="https://example.com/original.mp4"></video>';
+            expect(invokePasteHandler(editor, createClipboardData('clip.mp4', html, [video]))).toBe(true);
+            expect(editor.getHTML()).not.toContain('original.mp4');
+            expect(editor.getText()).toBe('');
+        });
+
+        it('画像でも動画でもないfile clipboardは消費し、ファイル名を挿入しないこと', () => {
+            const pdf = new File(['pdf'], 'doc.pdf', { type: 'application/pdf' });
+            expect(invokePasteHandler(editor, createClipboardData('doc.pdf', '<p>doc.pdf</p>', [pdf]))).toBe(true);
+            expect(editor.getText()).toBe('');
+        });
+
         it.each([
             { html: '<img src="https://EXAMPLE.com:443/media/../original.jpg">', removeOriginal: true },
             { html: '<base href="https://example.com/gallery/"><img src="../original.jpg">', removeOriginal: true },
@@ -263,11 +277,6 @@ describe('エディター・URLペースト統合テスト', () => {
             expect(getParagraphText(editor)).toBe(removeOriginal ? `Caption\n${other}` : `Caption\n${original}\n${other}`);
         });
 
-        it('画像以外のfile clipboardは既定処理へ委譲すること', () => {
-            const pdf = new File(['pdf'], 'doc.pdf', { type: 'application/pdf' });
-            expect(invokePasteHandler(editor, createClipboardData('doc', '<p>doc</p>', [pdf]))).toBe(false);
-            expect(editor.getText()).toBe('');
-        });
     });
 
     describe('plain-text paste transaction and history', () => {

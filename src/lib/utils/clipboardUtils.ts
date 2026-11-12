@@ -100,21 +100,6 @@ export function serializeParagraphs(paragraphs: string[]): string {
     return paragraphs.join('\n');
 }
 
-/**
- * クリップボード上の画像ファイルを取得
- *
- * スクリーンショットのペーストや、Webページ上の画像のコピーで付与されるファイルを返す。
- * `items` が無い環境（テスト等）では `files` にフォールバックする。
- */
-export function getClipboardImageFiles(clipboardData: DataTransfer | null | undefined): File[] {
-    if (!clipboardData) return [];
-    const items = Array.from(clipboardData.items ?? []);
-    const files = items.length > 0
-        ? items.filter((item) => item.kind === 'file').map((item) => item.getAsFile())
-        : Array.from(clipboardData.files ?? []);
-    return files.filter((file): file is File => !!file && file.type.startsWith('image/'));
-}
-
 // ================================================================================
 // クリップボードコピー機能
 // ================================================================================
@@ -201,4 +186,22 @@ async function fallbackCopy(text: string, type: string = "", windowObj?: Window)
     } finally {
         textarea.remove();
     }
+}
+
+/**
+ * クリップボード上のファイルを、貼り付け順で返す。
+ *
+ * 画像と動画はファイル選択と同じアップロード経路へ渡し、
+ * それ以外は既存の非対応エラーへ渡す。MIMEでは絞り込まない。
+ * ファイル項目が取れない環境では `files` にフォールバックする。
+ */
+export function getClipboardUploadFiles(clipboardData: DataTransfer | null | undefined): File[] {
+    if (!clipboardData) return [];
+    const items = Array.from(clipboardData.items ?? []);
+    const fromItems = items
+        .filter((item) => item.kind === 'file')
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => !!file);
+    if (fromItems.length > 0) return fromItems;
+    return Array.from(clipboardData.files ?? []);
 }
