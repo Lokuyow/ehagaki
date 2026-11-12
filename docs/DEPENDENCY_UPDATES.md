@@ -61,4 +61,4 @@ Windowsの並列E2Eではビルド記録の`rename`が`EPERM`になったため�
 | 本番Service Worker E2E | Chromium・Firefox・WebKitで42件成功 |
 | 表示 | 360px/1100pxの履歴画面、320pxの宛先ダイアログを目視確認。Reduced Motionは既存E2Eで確認 |
 
-通常E2Eは、デスクトップ/モバイルのChromium、Android相当のChromium、モバイル相当のWebKit、Firefoxの構成を含みます。上表はWindowsローカルでの結果です。同じ全件は、`main`へのpushと手動実行の[Test reliability](https://github.com/Lokuyow/ehagaki/actions/workflows/test-reliability.yml)で、Ubuntuの全エンジンとWindowsのChromiumとして確認できます。pull requestではUbuntuのVitest、`npm run check`、`npm run build`に加え、desktop Chromiumの貼り付け・埋め込み・レイアウトのsmokeと、Service Workerの更新・共有メディアだけが走ります。`npm run validate`はこのPlaywrightを含みません。pull requestの成功は、`main`の全件E2Eが成功したことではありません。実端末での確認は未実施です。
+通常E2Eは、デスクトップ/モバイルのChromium、Android相当のChromium、モバイル相当のWebKit、Firefoxの構成を含みます。上表はWindowsローカルでの結果です。Ubuntu/WindowsのCI結果は[GitHub Actions](https://github.com/Lokuyow/ehagaki/actions/workflows/test-reliability.yml)で確認できます。実端末での確認は未実施です。
