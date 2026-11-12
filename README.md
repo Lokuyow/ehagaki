@@ -108,7 +108,7 @@ npm run validate
 
 ## デプロイ前のE2E確認
 
-公開担当者は、GitHub Pages・Vercel のどちらでも、公開する `main` のコミットで以下を実行します。Vercel は `main` への push からの自動デプロイを無効にしているため、確認後に手動で公開します。
+本番の GitHub Pages へ公開する前に、公開対象の `main` のコミットで以下を実行します。
 
 1. クリーンな作業ツリーで `git fetch origin main` を実行し、`git switch --detach origin/main` で公開対象をチェックアウトします。`git rev-parse HEAD` でコミット SHA を記録します。
 2. `npm ci` と `npx playwright install chromium firefox webkit` を実行します。Linux でブラウザーのシステム依存関係が必要なら、インストールに `--with-deps` を追加します。全ブラウザープロジェクトを選ぶため、以下のコマンドを実行するシェルに `EHAGAKI_E2E_ALL_BROWSERS=1` を設定します（PowerShell: `$env:EHAGAKI_E2E_ALL_BROWSERS = '1'`、Bash: `export EHAGAKI_E2E_ALL_BROWSERS=1`）。
@@ -123,8 +123,6 @@ npm run validate
 4. すべて成功したら、再度 `git fetch origin main` を実行し、`git rev-parse HEAD origin/main` の2行が手順1で記録した SHA と一致し、`git status --short` が空であることを確認します。SHA が一致しなければ手順1からやり直し、一致していれば検証した作業ツリーから公開します。
 
 GitHub Pages へは `npm run build` の成功後に `npm run deploy` を実行します。公開ブランチに `.nojekyll` を生成し、Vite が生成する先頭 `_` のファイルも配信します。Jekyll がこれらを除外すると、Service Worker のインストールが失敗して旧版から更新できなくなります。
-
-Vercel へは、対象の本番プロジェクトにリンクした作業ツリーから [`vercel deploy --prod`](https://vercel.com/docs/cli/deploy) を実行します。
 
 Windowsで公開済みファイルが多い場合の`spawn ENAMETOOLONG`を防ぐため、`gh-pages`の削除コマンドを分割する[パッチ](patches/gh-pages+6.3.0.patch)を`npm ci`時に適用します。依存の更新後は`npm ci`を実行してから公開してください。
 
