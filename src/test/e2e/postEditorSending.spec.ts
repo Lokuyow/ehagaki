@@ -818,60 +818,41 @@ test.describe('post editor sending state', () => {
 });
 
 for (const modifier of ['Control', 'Meta']) {
-    for (const success of [true, false]) {
-        test(`${modifier}+Enter posts the IME candidate once (success=${success})`, async ({ page, browserName }) => {
-            test.skip(browserName !== 'chromium', 'CDP composition is Chromium only');
-            await page.goto('post-editor-sending-playwright.html?withSubmit=1');
-            const editor = page.locator('.tiptap-editor');
-            await editor.click();
-            const session = await page.context().newCDPSession(page);
-            await session.send('Input.imeSetComposition', {
-                text: '変換候補', selectionStart: 4, selectionEnd: 4,
-            });
-            await expect(editor).toHaveText('変換候補');
-            await editor.press(`${modifier}+Enter`);
-            const count = () => page.evaluate(() => (window as any).__postSubmitHarness.submissions.length);
-            await expect.poll(count).toBe(1);
-            await expect(editor).toBeFocused();
-            const content = await page.evaluate(() => (window as any).__postSubmitHarness.submissions[0].content);
-            expect(content).toBe('変換候補');
-            await finishSubmission(page, success);
-            await expect(editor).toHaveText(success ? '' : '変換候補');
-            await expect(editor).toBeFocused();
-            await editor.dispatchEvent('compositionend', { data: '変換候補', bubbles: true });
-            await page.evaluate(() => new Promise(requestAnimationFrame));
-            expect(await count()).toBe(1);
-            await session.detach();
+    test(`${modifier}+Enter only submits after IME composition ends`, async ({ page, browserName, isMobile }) => {
+        test.skip(browserName !== 'chromium' || isMobile, 'This regression uses desktop Chromium CDP IME input.');
+        await page.goto('post-editor-sending-playwright.html?withSubmit=1');
+        const editor = page.locator('.tiptap-editor');
+        await editor.click();
+        await observeFocus(editor);
+
+        const session = await page.context().newCDPSession(page);
+        await session.send('Input.imeSetComposition', {
+            text: '変換候補', selectionStart: 4, selectionEnd: 4,
         });
-    }
+        await expect(editor).toHaveText('変換候補');
+        await expect.poll(() => page.evaluate(() => window.__currentEditor!.view.composing)).toBe(true);
+
+        await editor.press(`${modifier}+Enter`);
+        const submissions = () => page.evaluate(() =>
+            (window as any).__postSubmitHarness.submissions.map((post: { content: string }) => post.content));
+        expect(await submissions()).toEqual([]);
+        await expect(editor).toBeFocused();
+        expect(await page.evaluate(() => (window as any).__focusObservation.blurs)).toBe(0);
+
+        // Some IMEs use the shortcut themselves. Complete preedit through the
+        // browser if it is still active, then press the posting shortcut again.
+        if (await page.evaluate(() => window.__currentEditor!.view.composing)) {
+            await session.send('Input.insertText', { text: '変換候補' });
+        }
+        await expect.poll(() => page.evaluate(() => window.__currentEditor!.view.composing)).toBe(false);
+        await expect(editor).toHaveText('変換候補');
+        expect(await submissions()).toEqual([]);
+
+        await editor.press(`${modifier}+Enter`);
+        await expect.poll(submissions).toEqual(['変換候補']);
+        await finishSubmission(page, true);
+        await expect(editor).toHaveText('');
+        expect(await submissions()).toEqual(['変換候補']);
+        await session.detach();
+    });
 }
-
-test('Control+Enter commits an IME candidate beside an image with upload metadata', async ({ page, browserName, isMobile }) => {
-    test.skip(browserName !== 'chromium' || isMobile, 'This regression uses desktop Chromium CDP IME input.');
-    await page.goto('post-editor-sending-playwright.html?withSubmit=1');
-    const editor = page.locator('.tiptap-editor');
-    await editor.click();
-    const image = {
-        id: 'ime-image', src: 'https://example.invalid/ime.png', alt: '添付画像',
-        m: 'image/png', dim: '640x480', size: 1024,
-    };
-    await page.evaluate((attrs) => {
-        const ed = window.__currentEditor!;
-        ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }, { type: 'image', attrs }] });
-        ed.commands.setTextSelection(1);
-    }, image);
-    const readImage = () => page.evaluate(() => window.__currentEditor!.state.doc.child(1).attrs);
-    const originalAttrs = await readImage();
-    expect(originalAttrs).toMatchObject(image);
-
-    const session = await page.context().newCDPSession(page);
-    await session.send('Input.imeSetComposition', { text: '変換候補', selectionStart: 4, selectionEnd: 4 });
-    await expect(editor.locator('p').first()).toHaveText('変換候補');
-    await editor.press('Control+Enter');
-    await expect.poll(() => page.evaluate(() => (window as any).__postSubmitHarness.submissions.map((post: any) => post.content)))
-        .toEqual([`変換候補\n${image.src}\n`]);
-    await finishSubmission(page, false);
-    await expect(editor).toBeFocused();
-    expect(await readImage()).toEqual(originalAttrs);
-    await session.detach();
-});

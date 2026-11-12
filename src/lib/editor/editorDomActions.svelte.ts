@@ -5,7 +5,7 @@
  */
 
 import { extractContentWithImages } from "../utils/editorDocumentUtils";
-import { submitEditorShortcut } from "./imeSubmit";
+import { isImeCompositionKeydown } from "./imeCompositionKey";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { domUtils } from "../utils/appDomUtils";
 import type { Node as PMNode } from "prosemirror-model"; // 追加
@@ -287,24 +287,27 @@ export function keydownAction(node: HTMLElement, enabled = true) {
             const rawCurrentEditor = editorContainer.__currentEditor;
             const currentEditor = typeof rawCurrentEditor === 'function' ? rawCurrentEditor() : rawCurrentEditor;
 
-            submitEditorShortcut(event, currentEditor?.view, () => {
-                const rawHasPostingCapability = editorContainer.__hasPostingCapability;
-                const hasPostingCapability = typeof rawHasPostingCapability === 'function'
-                    ? rawHasPostingCapability()
-                    : rawHasPostingCapability;
-                const rawHasStoredKey = editorContainer.__hasStoredKey;
-                const hasStoredKey = typeof rawHasStoredKey === 'function'
-                    ? rawHasStoredKey()
-                    : rawHasStoredKey;
+            // 変換中は IME の確定を残す。preventDefault も投稿もしない。
+            if (isImeCompositionKeydown(event, currentEditor?.view)) return;
 
-                const rawPostStatus = editorContainer.__postStatus;
-                const postStatus = typeof rawPostStatus === 'function' ? rawPostStatus() : rawPostStatus;
+            event.preventDefault();
 
-                const content = currentEditor ? extractContentWithImages(currentEditor) : "";
-                if (!postStatus?.sending && content.trim() && (hasPostingCapability ?? hasStoredKey)) {
-                    void editorContainer.__submitPost?.();
-                }
-            });
+            const rawHasPostingCapability = editorContainer.__hasPostingCapability;
+            const hasPostingCapability = typeof rawHasPostingCapability === 'function'
+                ? rawHasPostingCapability()
+                : rawHasPostingCapability;
+            const rawHasStoredKey = editorContainer.__hasStoredKey;
+            const hasStoredKey = typeof rawHasStoredKey === 'function'
+                ? rawHasStoredKey()
+                : rawHasStoredKey;
+
+            const rawPostStatus = editorContainer.__postStatus;
+            const postStatus = typeof rawPostStatus === 'function' ? rawPostStatus() : rawPostStatus;
+
+            const content = currentEditor ? extractContentWithImages(currentEditor) : "";
+            if (!postStatus?.sending && content.trim() && (hasPostingCapability ?? hasStoredKey)) {
+                void editorContainer.__submitPost?.();
+            }
         }
     }
     node.addEventListener("keydown", handleEditorKeydown);

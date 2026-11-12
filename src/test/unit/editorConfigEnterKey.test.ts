@@ -163,7 +163,7 @@ describe("editorConfig submit-on-plain-Enter", () => {
     it.each([
         { name: "isComposing", isComposing: true },
         { name: "229 keyCode", keyCode: 229 },
-    ])("consumes non-Lite Ctrl+Enter during $name without posting uncommitted input", ({ isComposing, keyCode }) => {
+    ])("does not submit non-Lite Ctrl+Enter during $name", ({ isComposing, keyCode }) => {
         const { editor, onSubmitPost } = createEditor("newline", undefined, false);
         const event = new KeyboardEvent("keydown", {
             key: "Enter",
@@ -175,12 +175,12 @@ describe("editorConfig submit-on-plain-Enter", () => {
             Object.defineProperty(event, "keyCode", { configurable: true, value: keyCode });
         }
 
-        expect(runKeydown(editor, event)).toBe(true);
-        expect(event.defaultPrevented).toBe(true);
+        expect(runKeydown(editor, event)).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
         expect(onSubmitPost).not.toHaveBeenCalled();
     });
 
-    it("consumes non-Lite Cmd+Enter while composing and submits after it ends", async () => {
+    it("does not submit non-Lite Cmd+Enter while composing and submits after it ends", () => {
         const { editor, onSubmitPost } = createEditor("newline", undefined, false);
         Object.defineProperty(editor.view, "composing", { configurable: true, value: true });
         const during = new KeyboardEvent("keydown", {
@@ -189,11 +189,10 @@ describe("editorConfig submit-on-plain-Enter", () => {
             cancelable: true,
         });
 
-        expect(runKeydown(editor, during)).toBe(true);
-        expect(during.defaultPrevented).toBe(true);
+        expect(runKeydown(editor, during)).toBe(false);
+        expect(during.defaultPrevented).toBe(false);
         expect(onSubmitPost).not.toHaveBeenCalled();
 
-        await new Promise(resolve => setTimeout(resolve, 0));
         Object.defineProperty(editor.view, "composing", { configurable: true, value: false });
         const after = new KeyboardEvent("keydown", {
             key: "Enter",

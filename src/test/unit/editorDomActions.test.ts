@@ -414,7 +414,7 @@ describe("keydownAction", () => {
     it.each([
         { name: "isComposing", isComposing: true },
         { name: "229 keyCode", keyCode: 229 },
-    ])("consumes composition shortcuts without submitting an unavailable document ($name)", ({ isComposing, keyCode }) => {
+    ])("does not submit or preventDefault during composition ($name)", ({ isComposing, keyCode }) => {
         mockedExtractContentWithImages.mockReturnValue("content");
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
@@ -429,7 +429,7 @@ describe("keydownAction", () => {
 
         node.dispatchEvent(event);
 
-        expect(event.defaultPrevented).toBe(true);
+        expect(event.defaultPrevented).toBe(false);
         expect(node.__submitPost).not.toHaveBeenCalled();
     });
 
@@ -445,7 +445,7 @@ describe("keydownAction", () => {
             key: "Enter",
         });
         node.dispatchEvent(during);
-        expect(during.defaultPrevented).toBe(true);
+        expect(during.defaultPrevented).toBe(false);
         expect(node.__submitPost).not.toHaveBeenCalled();
 
         view.composing = false;
