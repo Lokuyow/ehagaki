@@ -1,13 +1,34 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Editor } from '@tiptap/core';
+import { Editor, Node } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { submitEditorShortcut } from '../../lib/editor/imeSubmit';
 
 const editors: Editor[] = [];
 afterEach(() => { editors.splice(0).forEach(editor => editor.destroy()); vi.useRealTimers(); });
-function setup() {
+const UploadPlaceholder = Node.create({
+    name: 'uploadPlaceholder',
+    group: 'block',
+    addAttributes: () => ({ uploadId: { default: null } }),
+    addNodeView: () => () => {
+        const dom = document.createElement('div');
+        dom.textContent = 'Uploading…';
+        return { dom };
+    },
+});
+const InlinePlaceholder = UploadPlaceholder.extend({ name: 'inlinePlaceholder', inline: true, group: 'inline' });
+
+function setup(placeholder?: 'block' | 'inline') {
     vi.useFakeTimers();
-    const editor = new Editor({ extensions: [StarterKit], content: '<p>既存</p>' });
+    const editor = new Editor({
+        extensions: [StarterKit, UploadPlaceholder, InlinePlaceholder],
+        content: { type: 'doc', content: [
+            { type: 'paragraph', content: [
+                { type: 'text', text: '既存' },
+                ...(placeholder === 'inline' ? [{ type: 'inlinePlaceholder', attrs: { uploadId: 'pending-upload' } }] : []),
+            ] },
+            ...(placeholder === 'block' ? [{ type: 'uploadPlaceholder', attrs: { uploadId: 'pending-upload' } }] : []),
+        ] },
+    });
     editors.push(editor);
     vi.spyOn(editor.view.dom, "focus").mockImplementation(() => undefined);
     const text = editor.view.dom.querySelector('p')!.firstChild!;
@@ -38,16 +59,23 @@ describe('IME submit safety', () => {
         expect(submit).not.toHaveBeenCalled();
         expect(editor.view.dom.textContent).toBe('既存変換候補');
     });
-    it('retains the visible candidate when blur cancels it', async () => {
-        const { editor, event, submit } = setup();
+    it.each(['block', 'inline'] as const)('restores a cancelled preedit without changing a %s placeholder', async (placement) => {
+        const { editor, event, submit } = setup(placement);
+        const paragraph = editor.view.dom.querySelector('p')!;
+        const placeholder = () => (placement === 'block' ? editor.state.doc : editor.state.doc.firstChild!).child(1);
+        const placeholderDOM = () => (placement === 'block' ? editor.view.dom : paragraph).childNodes[1];
+        const original = placeholder();
+        const originalDOM = placeholderDOM();
         vi.spyOn(editor.view.dom, 'blur').mockImplementation(() => {
-            editor.view.dom.querySelector('p')!.textContent = '既存';
+            paragraph.firstChild!.textContent = '既存';
             editor.view.dom.dispatchEvent(new CompositionEvent('compositionend'));
         });
         submitEditorShortcut(event, editor.view, submit);
         await vi.runAllTimersAsync();
         expect(submit).not.toHaveBeenCalled();
-        expect(editor.getText()).toBe('既存変換候補');
+        expect(editor.state.doc.firstChild?.textContent).toBe('既存変換候補');
+        expect(placeholder()).toBe(original);
+        expect(placeholderDOM()).toBe(originalDOM);
     });
     it('does not submit after editor destruction', async () => {
         const { editor, event, submit } = setup();
