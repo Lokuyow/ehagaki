@@ -28,7 +28,7 @@ import { getPostHistoryChildWriteGeneration } from "./storage/postHistoryLocalWr
 
 export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_RELAY_LIMIT = 6;
 export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_SINCE_OVERLAP_SECONDS = 60;
-/** Queued updates after same-event replacement and same-target coalescing. */
+/** Maximum distinct events waiting per subscription, excluding the active packet. */
 export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_QUEUE_LIMIT = 32;
 
 export interface PostHistoryInboundInteractionsRealtimeSubscribeRequest {
@@ -46,7 +46,7 @@ export interface PostHistoryInboundInteractionsRealtimeSubscribeRequest {
 export interface PostHistoryInboundInteractionsRealtimeSubscription {
     stop: () => void;
     waitForIdle: () => Promise<void>;
-    /** Queued updates. Same event id and same target do not each add a slot. */
+    /** Number of distinct events waiting to be processed. */
     pendingCount: () => number;
 }
 
@@ -69,30 +69,10 @@ function normalizeRelayLimit(relayLimit: number | undefined): number {
         : POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_RELAY_LIMIT;
 }
 
-const NO_CONFIRMED_OWNER_POSTS: ReadonlySet<string> = new Set();
-
 interface PendingInboundPacket {
-    packet: { event: NostrEvent; from?: string };
+    event: NostrEvent;
+    relayUrls: string[];
     expectedChildGeneration: Promise<number>;
-}
-
-interface PendingInboundBatch {
-    key: string;
-    packets: PendingInboundPacket[];
-}
-
-function inboundRealtimeQueueKey(event: NostrEvent, ownerPubkeyHex: string): string {
-    const preliminary = classifyPostHistoryInboundInteraction({
-        event,
-        ownerPubkeyHex,
-        ownerPostEventIds: NO_CONFIRMED_OWNER_POSTS,
-    });
-    const targetEventId = preliminary.type === "reaction"
-        ? preliminary.targetEventId
-        : preliminary.type === "direct-reply" || preliminary.type === "direct-reply-candidate"
-            ? preliminary.parentEventId
-            : null;
-    return targetEventId ? `target:${targetEventId}` : `event:${event.id}`;
 }
 
 export class PostHistoryInboundInteractionsRealtimeService {
@@ -125,7 +105,6 @@ export class PostHistoryInboundInteractionsRealtimeService {
         let subscription: SubscriptionLike | undefined;
         let chain: Promise<void> = Promise.resolve();
         let draining = false;
-        const queue: PendingInboundBatch[] = [];
         const pendingByEventId = new Map<string, PendingInboundPacket>();
         const relayUrls = resolvePostHistoryRelayUrls(
             params.relayConfig,
@@ -135,48 +114,28 @@ export class PostHistoryInboundInteractionsRealtimeService {
             0,
             Math.floor(this.now() / 1000) - POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_SINCE_OVERLAP_SECONDS,
         );
-        const clearQueue = () => {
-            queue.length = 0;
-            pendingByEventId.clear();
-        };
         const scheduleDrain = () => {
             if (draining) return;
             draining = true;
             chain = chain.then(async () => {
                 try {
-                    while (queue.length > 0) {
+                    for (const [eventId, item] of pendingByEventId) {
                         if (!isActive()) {
-                            clearQueue();
+                            pendingByEventId.clear();
                             return;
                         }
-                        const batch = queue.shift();
-                        if (!batch) return;
-                        for (const item of batch.packets) {
-                            pendingByEventId.delete(item.packet.event.id);
-                        }
-                        for (const item of batch.packets) {
-                            if (!isActive()) {
-                                clearQueue();
-                                return;
-                            }
-                            try {
-                                await this.processPacket(
-                                    item.packet,
-                                    params,
-                                    isActive,
-                                    item.expectedChildGeneration,
-                                );
-                            } catch (error) {
-                                this.console.error(
-                                    "post_history_inbound_interactions_realtime_packet_error",
-                                    error,
-                                );
-                            }
+                        pendingByEventId.delete(eventId);
+                        try {
+                            await this.processPacket(item, params, isActive);
+                        } catch (error) {
+                            this.console.error(
+                                "post_history_inbound_interactions_realtime_packet_error",
+                                error,
+                            );
                         }
                     }
                 } finally {
                     draining = false;
-                    if (queue.length > 0 && isActive()) scheduleDrain();
                 }
             });
         };
@@ -185,35 +144,31 @@ export class PostHistoryInboundInteractionsRealtimeService {
             const event = packet.event;
             if (!event?.id) return;
             const existing = pendingByEventId.get(event.id);
+            // Keep accepted events in arrival order. Drop new IDs at capacity
+            // before starting any DB work; a later receipt may be admitted.
+            if (!existing && pendingByEventId.size >= POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_QUEUE_LIMIT) {
+                return;
+            }
+            const relayUrls = typeof packet.from === "string"
+                ? RelayConfigUtils.sanitizeExternalRelayUrls(
+                    [...(existing?.relayUrls ?? []), packet.from],
+                    { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
+                )
+                : existing?.relayUrls ?? [];
             if (existing) {
                 // Same event from another relay. Keep the generation captured at
                 // the first receipt so a later history clear cannot accept it.
-                existing.packet = { event, from: packet.from };
+                existing.event = event;
+                existing.relayUrls = relayUrls;
                 return;
             }
 
-            const key = inboundRealtimeQueueKey(event, params.ownerPubkeyHex);
-            let batch = queue.find((item) => item.key === key);
-            if (!batch) {
-                if (queue.length >= POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_QUEUE_LIMIT) {
-                    batch = queue[queue.length - 1];
-                } else {
-                    batch = { key, packets: [] };
-                    queue.push(batch);
-                }
-            }
-            if (!batch) return;
             // Start the generation read before this packet waits to be processed.
             // A history clear that commits after receipt must not become the
             // generation used to accept this packet.
             const expectedChildGeneration = this.getChildWriteGeneration();
             void expectedChildGeneration.catch(() => undefined);
-            const pending = {
-                packet: { event, from: packet.from },
-                expectedChildGeneration,
-            };
-            batch.packets.push(pending);
-            pendingByEventId.set(event.id, pending);
+            pendingByEventId.set(event.id, { event, relayUrls, expectedChildGeneration });
             scheduleDrain();
         };
 
@@ -252,6 +207,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
             }]);
         } catch (error) {
             active = false;
+            pendingByEventId.clear();
             subscription?.unsubscribe?.();
             subscription = undefined;
             this.console.error("post_history_inbound_interactions_realtime_request_error", error);
@@ -262,30 +218,30 @@ export class PostHistoryInboundInteractionsRealtimeService {
                 // This flag belongs to this subscription only. A later subscribe()
                 // has its own queue and must still be able to write.
                 active = false;
-                clearQueue();
+                pendingByEventId.clear();
                 subscription?.unsubscribe?.();
                 subscription = undefined;
             },
             waitForIdle: () => chain,
-            pendingCount: () => queue.length,
+            pendingCount: () => pendingByEventId.size,
         };
     }
 
     private async processPacket(
-        packet: { event?: NostrEvent; from?: string },
+        packet: PendingInboundPacket,
         params: PostHistoryInboundInteractionsRealtimeSubscribeRequest,
         isActive: () => boolean,
-        expectedChildGenerationReady: Promise<number>,
     ): Promise<void> {
         if (!isActive()) return;
-        const expectedChildGeneration = await expectedChildGenerationReady;
-        const event = packet.event;
-        if (!isActive() || !event?.id) {
+        const expectedChildGeneration = await packet.expectedChildGeneration;
+        const { event, relayUrls } = packet;
+        if (!isActive()) {
             return;
         }
 
-        if (params.includeNotifications !== false) await this.notificationRepository.upsert(params.ownerPubkeyHex, [{ event,
-            relayUrls: packet.from ? [packet.from] : [] }], isActive);
+        if (params.includeNotifications !== false) {
+            await this.notificationRepository.upsert(params.ownerPubkeyHex, [{ event, relayUrls }], isActive);
+        }
         if (!isActive()) return;
         const preliminary = classifyPostHistoryInboundInteraction({
             event,
@@ -320,15 +276,11 @@ export class PostHistoryInboundInteractionsRealtimeService {
                 eventId: parent.eventId, targetAuthorPubkey: params.ownerPubkeyHex, targetKind: parent.kind,
             })) return;
 
-            const relayUrl = RelayConfigUtils.sanitizeExternalRelayUrls(
-                typeof packet.from === "string" ? [packet.from] : [],
-                { limit: 1 },
-            )[0];
             const result = await this.postHistoryChildInteractionsRepository.upsertChildInteractions({
                 parentEventId: preliminary.targetEventId,
                 events: [{
                     event,
-                    ...(relayUrl ? { relayUrls: [relayUrl] } : {}),
+                    ...(relayUrls.length > 0 ? { relayUrls } : {}),
                 }],
                 fetchedAt: this.now(),
                 expectedChildGeneration,
@@ -356,7 +308,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
             await params.reconcileDirectReplyCandidates([{
                 classification: preliminary,
                 event,
-                ...(packet.from ? { relayUrls: [packet.from] } : {}),
+                ...(relayUrls.length > 0 ? { relayUrls } : {}),
                 expectedChildGeneration,
             }]);
             return;
@@ -384,6 +336,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
         const parentRecord = await this.postHistoryRepository.getByEventId(
             classification.parentEventId,
         );
+        if (!isActive()) return;
         const parentContext = parentRecord
             ? buildPostHistoryDirectReplyParentContext({
                 event: {
@@ -406,15 +359,11 @@ export class PostHistoryInboundInteractionsRealtimeService {
             return;
         }
 
-        const relayUrl = RelayConfigUtils.sanitizeExternalRelayUrls(
-            typeof packet.from === "string" ? [packet.from] : [],
-            { limit: 1 },
-        )[0];
         const result = await this.postHistoryChildInteractionsRepository.upsertChildInteractions({
             parentEventId: classification.parentEventId,
             events: [{
                 event,
-                ...(relayUrl ? { relayUrls: [relayUrl] } : {}),
+                ...(relayUrls.length > 0 ? { relayUrls } : {}),
             }],
             fetchedAt: this.now(),
             expectedChildGeneration,

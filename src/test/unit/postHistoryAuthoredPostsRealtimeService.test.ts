@@ -189,6 +189,7 @@ describe("PostHistoryAuthoredPostsRealtimeService", () => {
         });
 
         observers[0]?.next({ event: replyEvent, from: "wss://reply.example.com" });
+        observers[0]?.next({ event: replyEvent, from: "wss://backup.example.com" });
         await inboundSubscription.waitForIdle();
         expect(replyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
 
@@ -200,7 +201,7 @@ describe("PostHistoryAuthoredPostsRealtimeService", () => {
 
         expect(replyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
             parentEventId,
-            events: [{ event: replyEvent, relayUrls: ["wss://reply.example.com"] }],
+            events: [{ event: replyEvent, relayUrls: ["wss://reply.example.com/", "wss://backup.example.com/"] }],
             expectedChildGeneration: 0,
             fetchedAt: 1_700_000_000_000,
         });
