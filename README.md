@@ -102,9 +102,29 @@ npm run dev
 npm run validate
 ```
 
-依存関係の固定理由、残る監査警告、ブラウザー検証については[依存関係の更新](docs/DEPENDENCY_UPDATES.md)を参照してください。
+`npm run validate` は Vitest、型チェック、ビルド、差分チェックを実行します。Playwright は含みません。GitHub Actions の Test reliability は PR では Ubuntu の Vitest・型チェック・ビルドを実行し、Playwright は実行しません。
 
-GitHub Pagesへ公開する場合は、`npm run build`の後に`npm run deploy`を実行します。公開ブランチに`.nojekyll`を生成し、Viteが生成する先頭`_`のファイルも配信します。Jekyllがこれらを除外すると、Service Workerのインストールが失敗して旧版から更新できなくなります。
+依存関係の固定理由と監査警告は[依存関係の更新](docs/DEPENDENCY_UPDATES.md)を参照してください。
+
+## デプロイ前のE2E確認
+
+公開担当者は、GitHub Pages・Vercel のどちらでも、公開する `main` のコミットで以下を実行します。Vercel は `main` への push からの自動デプロイを無効にしているため、確認後に手動で公開します。
+
+1. クリーンな作業ツリーで `git fetch origin main` を実行し、`git switch --detach origin/main` で公開対象をチェックアウトします。`git rev-parse HEAD` でコミット SHA を記録します。
+2. `npm ci` と `npx playwright install chromium firefox webkit` を実行します。Linux でブラウザーのシステム依存関係が必要なら、インストールに `--with-deps` を追加します。全ブラウザープロジェクトを選ぶため、以下のコマンドを実行するシェルに `EHAGAKI_E2E_ALL_BROWSERS=1` を設定します（PowerShell: `$env:EHAGAKI_E2E_ALL_BROWSERS = '1'`、Bash: `export EHAGAKI_E2E_ALL_BROWSERS=1`）。
+3. 以下を順に実行します。失敗・中断・未実行の試験があれば公開を保留し、対象 SHA と失敗した試験を記録します。修正後は新しい SHA で確認し直します。
+
+   ```sh
+   npm run test:e2e:agent
+   npm run test:e2e:local-relay
+   npm run test:e2e:sw
+   ```
+
+4. すべて成功したら、再度 `git fetch origin main` を実行し、`git rev-parse HEAD origin/main` の2行が手順1で記録した SHA と一致し、`git status --short` が空であることを確認します。SHA が一致しなければ手順1からやり直し、一致していれば検証した作業ツリーから公開します。
+
+GitHub Pages へは `npm run build` の成功後に `npm run deploy` を実行します。公開ブランチに `.nojekyll` を生成し、Vite が生成する先頭 `_` のファイルも配信します。Jekyll がこれらを除外すると、Service Worker のインストールが失敗して旧版から更新できなくなります。
+
+Vercel へは、対象の本番プロジェクトにリンクした作業ツリーから [`vercel deploy --prod`](https://vercel.com/docs/cli/deploy) を実行します。
 
 Windowsで公開済みファイルが多い場合の`spawn ENAMETOOLONG`を防ぐため、`gh-pages`の削除コマンドを分割する[パッチ](patches/gh-pages+6.3.0.patch)を`npm ci`時に適用します。依存の更新後は`npm ci`を実行してから公開してください。
 

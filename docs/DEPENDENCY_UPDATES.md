@@ -45,6 +45,8 @@ Windowsの並列E2Eではビルド記録の`rename`が`EPERM`になったため�
 
 依存更新時には`npm ci`、`npm ls --depth=0`、`npm run validate`を実行します。ブラウザーに広く影響する更新では二段階の`npm run test:e2e:agent`、HTTPSの`npm run test:e2e:local-relay`、別の本番ビルドを使う`npm run test:e2e:sw`も実行します。全エンジンを選ぶ場合は`EHAGAKI_E2E_ALL_BROWSERS=1`を設定します。詳細は[開発・検証ガイド](../.agents/guides/development.md)を参照してください。
 
+GitHub Actions の Test reliability は PR では Ubuntu の Vitest・型チェック・ビルドを実行し、`main` への push と手動実行では Windows でも実行します。PR の CI と `npm run validate` のどちらにも Playwright は含まれません。公開前に、[デプロイ前のE2E確認](../README.md#デプロイ前のe2e確認)に従って公開対象の `main` のコミットで Playwright を実行してください。
+
 通常E2Eの`videoCompression.spec.ts`は一時ディレクトリへ本番ビルドし、生成した短い動画で、圧縮・映像/音声のデコード・進捗・AAC fallback・キャンセル・エンコード未対応時の原本保持を検証します。実機のキーボード、PWA UI、各OS固有の動作はエミュレーションとは区別して報告します。
 
 ## 今回の検証結果

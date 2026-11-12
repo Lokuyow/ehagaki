@@ -23,6 +23,8 @@ Use Node 24.22.1 from `.node-version` and npm 12.2.1 from `package.json`'s `pack
 
 `npm test`, `test:unit`, and focused `npm run test -- ...` include the thread-graph complexity check. `validate` runs the full Vitest suite and build; it is an available combined command, not a requirement for every edit, and does not include Playwright.
 
+The Test reliability workflow runs Vitest, type checks, and builds on Ubuntu for pull requests, and on Ubuntu and Windows for pushes to `main` and manual runs. GitHub Actions does not run Playwright. Before publishing to GitHub Pages or Vercel, follow the [pre-deployment E2E procedure](../../README.md#デプロイ前のe2e確認) for the exact `main` commit and hold the deployment if any suite fails or has not run.
+
 `npm run dev` uses `vite --host` (default port 5173). Without `VERCEL`, the app URL is `http://127.0.0.1:5173/ehagaki/`; `/` is not the app. Build includes `prebuild` (`npx rimraf dist`). In non-interactive environments use `CI=true` to avoid npx confirmation prompts; note the browser-selection effect below if reusing that environment for Playwright.
 
 ## Select verification by impact
