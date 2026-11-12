@@ -27,11 +27,12 @@ test('reaction rejects an undecodable GIF before transport', async ({ page }) =>
 });
 
 const originalImageUrl = 'https://example.com/original.gif';
-for (const { name, htmlCaption, plainText, expectedCaption, plainPaste } of [
+for (const { name, htmlCaption, plainText, expectedCaption, plainPaste, midParagraph } of [
     { name: 'image and HTML', htmlCaption: '', plainText: '', expectedCaption: '' },
     { name: 'image URL in plain text', htmlCaption: '', plainText: originalImageUrl, expectedCaption: '' },
     { name: 'caption and image URL in plain text', htmlCaption: '<p>Copied caption</p>', plainText: `Copied caption ${originalImageUrl}`, expectedCaption: 'Copied caption' },
     { name: 'caption in HTML only', htmlCaption: '<p>Copied caption</p>', plainText: '', expectedCaption: 'Copied caption' },
+    { name: 'HTML-only caption in the middle of a paragraph', htmlCaption: '<p>Cap</p>', plainText: '', expectedCaption: ['abCap', 'cd'], midParagraph: true },
     { name: 'plain paste of an image URL', htmlCaption: '', plainText: originalImageUrl, expectedCaption: '', plainPaste: true },
 ]) {
     test(`normal post uploads a copied web image once with ${name}`, async ({ page }) => {
@@ -43,6 +44,11 @@ for (const { name, htmlCaption, plainText, expectedCaption, plainPaste } of [
 
         const editor = page.locator('.tiptap-editor');
         await editor.focus();
+        if (midParagraph) {
+            await editor.fill('abcd');
+            await editor.press('ArrowLeft');
+            await editor.press('ArrowLeft');
+        }
         if (plainPaste) await page.keyboard.down('Shift');
         await editor.evaluate((element, { bytes, htmlCaption, plainText, originalImageUrl }) => {
             const transfer = new DataTransfer();
@@ -60,7 +66,7 @@ for (const { name, htmlCaption, plainText, expectedCaption, plainPaste } of [
         const images = editor.locator('img');
         await expect(images).toHaveCount(1);
         await expect(images).toHaveAttribute('src', new URL('gif-fixture.gif', page.url()).href);
-        await expect(editor).toHaveText(expectedCaption);
+        await expect(midParagraph ? editor.locator(':scope > p') : editor).toHaveText(expectedCaption);
         expect((await read(page)).gallery).toEqual([]);
     });
 }

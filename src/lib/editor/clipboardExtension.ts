@@ -125,9 +125,8 @@ function withoutPastedImages(slice: Slice): Slice {
     });
     if (nodes.length === slice.content.childCount) return slice;
 
-    const content = Fragment.from(nodes);
-    const maxOpen = Slice.maxOpen(content, false);
-    return new Slice(content, Math.min(slice.openStart, maxOpen.openStart), Math.min(slice.openEnd, maxOpen.openEnd));
+    // Removing an image at either edge can expose a paragraph that now joins the surrounding text.
+    return Slice.maxOpen(Fragment.from(nodes), false);
 }
 
 // ================================================================================
