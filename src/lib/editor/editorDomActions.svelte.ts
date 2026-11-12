@@ -5,7 +5,7 @@
  */
 
 import { extractContentWithImages } from "../utils/editorDocumentUtils";
-import { isImeCompositionKeydown } from "./imeCompositionKey";
+import { submitEditorShortcut } from "./imeSubmit";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { domUtils } from "../utils/appDomUtils";
 import type { Node as PMNode } from "prosemirror-model"; // 追加
@@ -276,7 +276,7 @@ export function touchAction(node: HTMLElement) {
 // keydownAction
 export function keydownAction(node: HTMLElement, enabled = true) {
     function handleEditorKeydown(event: KeyboardEvent) {
-        if (!enabled) return;
+        if (!enabled || event.defaultPrevented) return;
         if (
             (event.ctrlKey || event.metaKey) &&
             (event.key === "Enter" || event.key === "NumpadEnter")
@@ -287,27 +287,24 @@ export function keydownAction(node: HTMLElement, enabled = true) {
             const rawCurrentEditor = editorContainer.__currentEditor;
             const currentEditor = typeof rawCurrentEditor === 'function' ? rawCurrentEditor() : rawCurrentEditor;
 
-            // 変換中は IME の確定を残す。preventDefault も投稿もしない。
-            if (isImeCompositionKeydown(event, currentEditor?.view)) return;
+            submitEditorShortcut(event, currentEditor?.view, () => {
+                const rawHasPostingCapability = editorContainer.__hasPostingCapability;
+                const hasPostingCapability = typeof rawHasPostingCapability === 'function'
+                    ? rawHasPostingCapability()
+                    : rawHasPostingCapability;
+                const rawHasStoredKey = editorContainer.__hasStoredKey;
+                const hasStoredKey = typeof rawHasStoredKey === 'function'
+                    ? rawHasStoredKey()
+                    : rawHasStoredKey;
 
-            event.preventDefault();
+                const rawPostStatus = editorContainer.__postStatus;
+                const postStatus = typeof rawPostStatus === 'function' ? rawPostStatus() : rawPostStatus;
 
-            const rawHasPostingCapability = editorContainer.__hasPostingCapability;
-            const hasPostingCapability = typeof rawHasPostingCapability === 'function'
-                ? rawHasPostingCapability()
-                : rawHasPostingCapability;
-            const rawHasStoredKey = editorContainer.__hasStoredKey;
-            const hasStoredKey = typeof rawHasStoredKey === 'function'
-                ? rawHasStoredKey()
-                : rawHasStoredKey;
-
-            const rawPostStatus = editorContainer.__postStatus;
-            const postStatus = typeof rawPostStatus === 'function' ? rawPostStatus() : rawPostStatus;
-
-            const content = currentEditor ? extractContentWithImages(currentEditor) : "";
-            if (!postStatus?.sending && content.trim() && (hasPostingCapability ?? hasStoredKey)) {
-                void editorContainer.__submitPost?.();
-            }
+                const content = currentEditor ? extractContentWithImages(currentEditor) : "";
+                if (!postStatus?.sending && content.trim() && (hasPostingCapability ?? hasStoredKey)) {
+                    void editorContainer.__submitPost?.();
+                }
+            });
         }
     }
     node.addEventListener("keydown", handleEditorKeydown);

@@ -18,6 +18,7 @@ import type { EHagakiHostSubmitShortcut, EHagakiHostSubmitShortcutModifier } fro
 import type { EditorSubmitTrigger } from '../types/editor';
 import { EditorInputGuard } from './editorInputGuard';
 import { isImeCompositionKeydown } from './imeCompositionKey';
+import { submitEditorShortcut } from './imeSubmit';
 import { ReactionInput } from './reactionInput';
 import type { ReactionInputMode } from '../reactionValue';
 import type { SubmittedCompositionController } from './submittedComposition';
@@ -413,6 +414,16 @@ export function createEditorStore(options: EditorConfigOptions) {
                 }
                 return false;
             },
+            handleDOMEvents: {
+                // ProseMirror skips handleKeyDown while composing. This hook
+                // receives shortcuts before that guard, including keyCode 229.
+                keydown: (view, event) => {
+                    if (hostOwnedLite || !(event.ctrlKey || event.metaKey) ||
+                        (event.key !== 'Enter' && event.key !== 'NumpadEnter')) return false;
+                    submitEditorShortcut(event, view, () => onSubmitPost());
+                    return true;
+                },
+            },
             handleKeyDown: (view, event) => {
                 if (hostOwnedLite) {
                     if (event.key !== 'Enter' && event.key !== 'NumpadEnter') return false;
@@ -443,9 +454,7 @@ export function createEditorStore(options: EditorConfigOptions) {
                     return false;
                 }
                 if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key === 'NumpadEnter')) {
-                    if (isImeCompositionKeydown(event, view)) return false;
-                    event.preventDefault();
-                    onSubmitPost();
+                    submitEditorShortcut(event, view, () => onSubmitPost());
                     return true;
                 }
                 return false;

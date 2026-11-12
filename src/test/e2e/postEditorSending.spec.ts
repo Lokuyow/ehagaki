@@ -816,3 +816,30 @@ test.describe('post editor sending state', () => {
         expect(await pickerRegion.evaluate((element, picker) => element.querySelector('.custom-emoji-picker') === picker, pickerIdentity)).toBe(true);
     });
 });
+
+for (const modifier of ['Control', 'Meta']) {
+    for (const success of [true, false]) {
+        test(`${modifier}+Enter posts the IME candidate once (success=${success})`, async ({ page, browserName }) => {
+            test.skip(browserName !== 'chromium', 'CDP composition is Chromium only');
+            await page.goto('post-editor-sending-playwright.html?withSubmit=1');
+            const editor = page.locator('.tiptap-editor');
+            await editor.click();
+            const session = await page.context().newCDPSession(page);
+            await session.send('Input.imeSetComposition', {
+                text: '変換候補', selectionStart: 4, selectionEnd: 4,
+            });
+            await expect(editor).toHaveText('変換候補');
+            await editor.press(`${modifier}+Enter`);
+            const count = () => page.evaluate(() => (window as any).__postSubmitHarness.submissions.length);
+            await expect.poll(count).toBe(1);
+            const content = await page.evaluate(() => (window as any).__postSubmitHarness.submissions[0].content);
+            expect(content).toBe('変換候補');
+            await finishSubmission(page, success);
+            await expect(editor).toHaveText(success ? '' : '変換候補');
+            await editor.dispatchEvent('compositionend', { data: '変換候補', bubbles: true });
+            await page.evaluate(() => new Promise(requestAnimationFrame));
+            expect(await count()).toBe(1);
+            await session.detach();
+        });
+    }
+}
