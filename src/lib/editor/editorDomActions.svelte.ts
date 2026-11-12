@@ -5,6 +5,7 @@
  */
 
 import { extractContentWithImages } from "../utils/editorDocumentUtils";
+import { isImeCompositionKeydown } from "./imeCompositionKey";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { domUtils } from "../utils/appDomUtils";
 import { getClipboardImageFiles } from "../utils/clipboardUtils";
@@ -267,18 +268,21 @@ export function touchAction(node: HTMLElement) {
 // keydownAction
 export function keydownAction(node: HTMLElement, enabled = true) {
     function handleEditorKeydown(event: KeyboardEvent) {
-        if (!enabled) return;
+        if (!enabled || event.defaultPrevented) return;
         if (
             (event.ctrlKey || event.metaKey) &&
             (event.key === "Enter" || event.key === "NumpadEnter")
         ) {
-            event.preventDefault();
-
             // node.__currentEditor 等はコンポーネント側で関数ラッパーとして渡されることがあるため、
             // 関数なら実行して実体を取得する
             const editorContainer = node as EditorDomActionContainer;
             const rawCurrentEditor = editorContainer.__currentEditor;
             const currentEditor = typeof rawCurrentEditor === 'function' ? rawCurrentEditor() : rawCurrentEditor;
+
+            // 変換中は IME の確定を残す。preventDefault も投稿もしない。
+            if (isImeCompositionKeydown(event, currentEditor?.view)) return;
+
+            event.preventDefault();
 
             const rawHasPostingCapability = editorContainer.__hasPostingCapability;
             const hasPostingCapability = typeof rawHasPostingCapability === 'function'

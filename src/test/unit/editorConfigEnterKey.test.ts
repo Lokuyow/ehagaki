@@ -160,6 +160,63 @@ describe("editorConfig submit-on-plain-Enter", () => {
         expect(onSubmitPost).toHaveBeenCalledWith({ shortcutId: id });
     });
 
+    it.each([
+        { name: "isComposing", isComposing: true },
+        { name: "229 keyCode", keyCode: 229 },
+    ])("does not submit non-Lite Ctrl+Enter during $name", ({ isComposing, keyCode }) => {
+        const { editor, onSubmitPost } = createEditor("newline", undefined, false);
+        const event = new KeyboardEvent("keydown", {
+            key: "Enter",
+            ctrlKey: true,
+            cancelable: true,
+            ...(isComposing !== undefined ? { isComposing } : {}),
+        });
+        if (keyCode !== undefined) {
+            Object.defineProperty(event, "keyCode", { configurable: true, value: keyCode });
+        }
+
+        expect(runKeydown(editor, event)).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
+        expect(onSubmitPost).not.toHaveBeenCalled();
+    });
+
+    it("does not submit non-Lite Cmd+Enter while composing and submits after it ends", () => {
+        const { editor, onSubmitPost } = createEditor("newline", undefined, false);
+        Object.defineProperty(editor.view, "composing", { configurable: true, value: true });
+        const during = new KeyboardEvent("keydown", {
+            key: "Enter",
+            metaKey: true,
+            cancelable: true,
+        });
+
+        expect(runKeydown(editor, during)).toBe(false);
+        expect(during.defaultPrevented).toBe(false);
+        expect(onSubmitPost).not.toHaveBeenCalled();
+
+        Object.defineProperty(editor.view, "composing", { configurable: true, value: false });
+        const after = new KeyboardEvent("keydown", {
+            key: "Enter",
+            ctrlKey: true,
+            cancelable: true,
+        });
+        expect(runKeydown(editor, after)).toBe(true);
+        expect(after.defaultPrevented).toBe(true);
+        expect(onSubmitPost).toHaveBeenCalledOnce();
+    });
+
+    it.each([false, true])("does not submit non-Lite plain Enter (isComposing=%s)", (isComposing) => {
+        const { editor, onSubmitPost } = createEditor("newline", undefined, false);
+        const event = new KeyboardEvent("keydown", {
+            key: "Enter",
+            cancelable: true,
+            isComposing,
+        });
+
+        runKeydown(editor, event);
+        expect(event.defaultPrevented).toBe(false);
+        expect(onSubmitPost).not.toHaveBeenCalled();
+    });
+
     it("keeps the non-Lite Ctrl/Meta submit path separate from Host-owned shortcuts", () => {
         const { editor, onSubmitPost } = createEditor("newline", [
             { id: "alt-submit", modifiers: ["alt"] },

@@ -17,6 +17,7 @@ import type { CustomEmojiItem } from '../customEmoji';
 import type { EHagakiHostSubmitShortcut, EHagakiHostSubmitShortcutModifier } from '../../web-component/types';
 import type { EditorSubmitTrigger } from '../types/editor';
 import { EditorInputGuard } from './editorInputGuard';
+import { isImeCompositionKeydown } from './imeCompositionKey';
 import { ReactionInput } from './reactionInput';
 import type { ReactionInputMode } from '../reactionValue';
 import type { SubmittedCompositionController } from './submittedComposition';
@@ -415,7 +416,7 @@ export function createEditorStore(options: EditorConfigOptions) {
             handleKeyDown: (view, event) => {
                 if (hostOwnedLite) {
                     if (event.key !== 'Enter' && event.key !== 'NumpadEnter') return false;
-                    if (event.isComposing || event.keyCode === 229 || view.composing) return false;
+                    if (isImeCompositionKeydown(event, view)) return false;
 
                     const configuredShortcuts: readonly HostOwnedSubmitShortcut[] =
                         submitShortcuts === undefined
@@ -442,6 +443,7 @@ export function createEditorStore(options: EditorConfigOptions) {
                     return false;
                 }
                 if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key === 'NumpadEnter')) {
+                    if (isImeCompositionKeydown(event, view)) return false;
                     event.preventDefault();
                     onSubmitPost();
                     return true;
