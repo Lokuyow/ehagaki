@@ -26,6 +26,7 @@ import { Plugin, PluginKey } from 'prosemirror-state';
 import { Slice, Fragment } from 'prosemirror-model';
 import type { Node as PMNode, Schema } from 'prosemirror-model';
 import { getClipboardImageFiles, normalizeClipboardText, serializeParagraphs } from '../utils/clipboardUtils';
+import { isValidProtocol } from '../utils/editorUrlUtils';
 import { normalizeEmojiShortcode } from '../customEmoji';
 import { cleanupExternalRichPasteLines } from './clipboardTextCleanup';
 
@@ -101,17 +102,40 @@ function isFromCurrentEditorClipboard(html: string): boolean {
     return parsed.querySelector('p.editor-paragraph[data-pm-slice]') !== null;
 }
 
+function resolveClipboardHttpUrl(value: string, base?: string): string | undefined {
+    try {
+        const url = new URL(value, base);
+        return isValidProtocol(url.protocol) ? url.href : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 function removeCopiedImageUrls(text: string, html: string, document: Document): string {
     if (!text || !html) return text;
 
     const template = document.createElement('template');
     template.innerHTML = html;
-    const imageSources = new Set(Array.from(template.content.querySelectorAll('img[src]'),
-        image => image.getAttribute('src')!.trim()));
+    // Resolve relative sources only when the copied HTML supplies its own base URL.
+    const baseHref = template.content.querySelector('base[href]')?.getAttribute('href');
+    const base = baseHref ? resolveClipboardHttpUrl(baseHref) : undefined;
+    const imageSources = new Set<string>();
+    for (const image of template.content.querySelectorAll('img[src]')) {
+        const source = image.getAttribute('src')?.trim();
+        if (!source) continue;
+        imageSources.add(source);
+        const absoluteSource = resolveClipboardHttpUrl(source, base);
+        if (absoluteSource) imageSources.add(absoluteSource);
+    }
     if (!imageSources.size) return text;
 
     return text.split(/\r\n?|\n/).flatMap(line => {
-        const remaining = line.replace(/\S+[ \t]*/g, token => imageSources.has(token.trimEnd()) ? '' : token);
+        const remaining = line.replace(/\S+[ \t]*/g, token => {
+            const value = token.trimEnd();
+            if (imageSources.has(value)) return '';
+            const url = /^https?:\/\//i.test(value) ? resolveClipboardHttpUrl(value) : undefined;
+            return url && imageSources.has(url) ? '' : token;
+        });
         if (remaining === line) return [line];
         return remaining.trim() ? [remaining.trimEnd()] : [];
     }).join('\n');

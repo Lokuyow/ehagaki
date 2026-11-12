@@ -251,6 +251,18 @@ describe('エディター・URLペースト統合テスト', () => {
             expect(editor.getText()).toBe('');
         });
 
+        it.each([
+            { html: '<img src="https://EXAMPLE.com:443/media/../original.jpg">', removeOriginal: true },
+            { html: '<base href="https://example.com/gallery/"><img src="../original.jpg">', removeOriginal: true },
+            { html: '<img src="/original.jpg">', removeOriginal: false },
+        ])('画像file付きclipboardの元URLを照合する: $html', ({ html, removeOriginal }) => {
+            const image = new File(['image'], 'image.png', { type: 'image/png' });
+            const original = 'https://example.com/original.jpg';
+            const other = `${original}?size=small`;
+            expect(invokePasteHandler(editor, createClipboardData(`Caption\n${original}\n${other}`, html, [image]))).toBe(true);
+            expect(getParagraphText(editor)).toBe(removeOriginal ? `Caption\n${other}` : `Caption\n${original}\n${other}`);
+        });
+
         it('画像以外のfile clipboardは既定処理へ委譲すること', () => {
             const pdf = new File(['pdf'], 'doc.pdf', { type: 'application/pdf' });
             expect(invokePasteHandler(editor, createClipboardData('doc', '<p>doc</p>', [pdf]))).toBe(false);
