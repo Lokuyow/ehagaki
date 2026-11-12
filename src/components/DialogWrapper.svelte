@@ -2,6 +2,11 @@
     import type { Snippet } from "svelte";
     import { Dialog } from "bits-ui";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
+    import {
+        applyDialogCloseAutoFocus,
+        readDialogOpener,
+        rememberDialogOpener,
+    } from "../lib/dialogCloseFocus";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
 
@@ -58,6 +63,10 @@
         initialFocus?: "default" | "content";
         /** Dialog.Contentの自動フォーカスを呼び出し側で処理する */
         onOpenAutoFocus?: (event: Event) => void;
+        /** 閉じたあと、開いたコントロールへフォーカスを戻す */
+        restoreFocusOnClose?: boolean;
+        /** 明示的なフォーカス戻り先。未指定なら開いたときの要素 */
+        returnFocus?: HTMLElement | null;
         /** ダイアログのメインコンテンツ */
         children?: Snippet;
         /** ダイアログのフッター（閉じるボタン等） */
@@ -91,11 +100,14 @@
         onLastPage,
         initialFocus = "default",
         onOpenAutoFocus = undefined,
+        restoreFocusOnClose = $bindable(true),
+        returnFocus = null,
         children,
         footer,
     }: Props = $props();
 
     let contentRef: HTMLElement | null = $state(null);
+    let opener: HTMLElement | null = null;
     const runtimeEnvironment = getAppRuntimeEnvironment();
     const overlayTarget = runtimeEnvironment.overlayTarget;
     const isContainerLayout = runtimeEnvironment.layoutMode === "container";
@@ -108,6 +120,12 @@
     }
 
     function handleOpenAutoFocus(e: Event) {
+        restoreFocusOnClose = true;
+        opener = rememberDialogOpener(
+            opener,
+            readDialogOpener(getAppRuntimeEnvironment().document),
+            contentRef,
+        );
         if (onOpenAutoFocus) {
             onOpenAutoFocus(e);
             return;
@@ -118,9 +136,13 @@
         contentRef?.focus({ preventScroll: true });
     }
 
-    // ダイアログを閉じる際のフォーカス復元を防ぐ
-    function handleCloseAutoFocus(e: Event) {
-        e.preventDefault();
+    function handleCloseAutoFocus(event: Event) {
+        applyDialogCloseAutoFocus(event, {
+            restore: restoreFocusOnClose,
+            explicit: returnFocus,
+            opener,
+            container: contentRef,
+        });
     }
 </script>
 
