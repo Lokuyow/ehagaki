@@ -101,6 +101,35 @@ function isFromCurrentEditorClipboard(html: string): boolean {
     return parsed.querySelector('p.editor-paragraph[data-pm-slice]') !== null;
 }
 
+function removeCopiedImageUrls(text: string, html: string, document: Document): string {
+    if (!text || !html) return text;
+
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    const imageSources = new Set(Array.from(template.content.querySelectorAll('img[src]'),
+        image => image.getAttribute('src')!.trim()));
+    if (!imageSources.size) return text;
+
+    return text.split(/\r\n?|\n/).flatMap(line => {
+        const remaining = line.replace(/\S+[ \t]*/g, token => imageSources.has(token.trimEnd()) ? '' : token);
+        if (remaining === line) return [line];
+        return remaining.trim() ? [remaining.trimEnd()] : [];
+    }).join('\n');
+}
+
+function withoutPastedImages(slice: Slice): Slice {
+    const nodes: PMNode[] = [];
+    // Images are block nodes at the document level in the composer schema.
+    slice.content.forEach(node => {
+        if (node.type.name !== 'image') nodes.push(node);
+    });
+    if (nodes.length === slice.content.childCount) return slice;
+
+    const content = Fragment.from(nodes);
+    const maxOpen = Slice.maxOpen(content, false);
+    return new Slice(content, Math.min(slice.openStart, maxOpen.openStart), Math.min(slice.openEnd, maxOpen.openEnd));
+}
+
 // ================================================================================
 // ClipboardExtension 定義
 // ================================================================================
@@ -132,7 +161,7 @@ export const ClipboardExtension = Extension.create({
                      * - falseを返すとデフォルト処理に委譲
                      * 
                      * 処理フロー:
-                     * 1. 画像ファイル付きclipboardは消費する（アップロードはpasteActionが担当）
+                     * 1. 画像ファイル付きclipboardは本文を残し、重複する画像を除く（アップロードはpasteActionが担当）
                      * 2. HTML付き通常pasteだけplain textのmarkup cleanupを適用
                      * 3. plain textがなければHTMLの既定ProseMirror処理へ委譲
                      * 4. 1つのpaste transactionで選択範囲へ挿入
@@ -150,30 +179,23 @@ export const ClipboardExtension = Extension.create({
                             return false;
                         }
 
-                        // 画像ファイルはエディタコンテナのpasteActionがアップロードする。
-                        // Webページから画像をコピーすると text/html に <img src="元URL"> も付くため、
-                        // ここで消費しないと既定のpasteが元URLの画像ノードも挿入して二重になる。
-                        if (getClipboardImageFiles(clipboardData).length > 0) {
-                            event.preventDefault();
-                            return true;
-                        }
-
-                        // その他のファイルは既定処理に委譲
-                        if (clipboardData.files && clipboardData.files.length > 0) {
+                        const hasImageFiles = getClipboardImageFiles(clipboardData).length > 0;
+                        if (!hasImageFiles && clipboardData.files?.length) {
                             return false;
                         }
-
-                        // プレーンテキストを取得
-                        const text = clipboardData.getData('text/plain');
 
                         // HTMLはrich pasteのsignalとして扱い、本文はtext/plainから取得する。
                         // 自Editor clipboardだけは従来の空行正規化を維持する。
                         const hasHtml = clipboardData.types.includes('text/html');
+                        const html = hasHtml ? clipboardData.getData('text/html') : '';
+                        const plainText = clipboardData.getData('text/plain');
+                        const text = hasImageFiles
+                            ? removeCopiedImageUrls(plainText, html, view.dom.ownerDocument)
+                            : plainText;
                         let collapseEmptyLines = false;
                         let isSelfCopy = false;
 
                         if (hasHtml) {
-                            const html = clipboardData.getData('text/html');
                             // Preserve this editor's own ProseMirror clipboard payloads.
                             const isFromCurrentEditor = isFromCurrentEditorClipboard(html);
                             const isFromLegacyEditor =
@@ -182,11 +204,6 @@ export const ClipboardExtension = Extension.create({
                             isSelfCopy = isFromCurrentEditor || isFromLegacyEditor;
                             collapseEmptyLines = isFromCurrentEditor || isFromLegacyEditor;
 
-                        }
-
-                        if (!text) {
-                            // HTMLのみのclipboardは独自変換せず、既定のProseMirror pasteへ委譲する。
-                            return false;
                         }
 
                         // HTML付きclipboardも、既存plain-text pasteと同じ改行正規化・段落化を使う。
@@ -200,17 +217,18 @@ export const ClipboardExtension = Extension.create({
                             lines = cleanupExternalRichPasteLines(lines);
                         }
 
-                        // 空のテキストの場合はデフォルト処理に委譲
-                        if (lines.length === 0) {
-                            return false;
-                        }
+                        let customSlice: Slice;
+                        if (hasImageFiles && !lines.some(line => line.trim())) {
+                            if (!hasHtml || pastedAsPlainText) return true;
+                            // If the caption is only in HTML, keep the parsed content besides the image nodes.
+                            customSlice = withoutPastedImages(slice);
+                            if (customSlice.size === 0) return true;
+                        } else {
+                            if (lines.length === 0) return false;
 
-                        // 段落ノードベースで挿入（改行を段落境界として扱う）
-                        // openStart=1, openEnd=1: 先頭段落はカーソル前テキストとマージ、
-                        // 末尾段落はカーソル後テキストとマージ（標準エディタ動作）
-                        const paragraphNodes = createParagraphNodes(lines, state.schema);
-                        const fragment = Fragment.from(paragraphNodes);
-                        const customSlice = new Slice(fragment, 1, 1);
+                            // Open paragraphs at both ends so the pasted text joins the current paragraph.
+                            customSlice = new Slice(Fragment.from(createParagraphNodes(lines, state.schema)), 1, 1);
+                        }
 
                         // トランザクションを作成
                         // 
