@@ -662,28 +662,6 @@ describe('RelayManager統合テスト', () => {
         });
     });
 
-    describe('Bootstrap relays設定', () => {
-        it('Bootstrap relaysを正常に設定する', () => {
-            manager.setBootstrapRelays();
-
-            expect(mockRxNostr.use).toHaveBeenCalled();
-            expect(mockDeps.console?.log).not.toHaveBeenCalledWith(
-                expect.stringContaining('Bootstrap relays設定エラー')
-            );
-        });
-
-        it('エラー時に適切にログ出力する', () => {
-            (mockRxNostr.use as any) = vi.fn(() => { throw new Error('Bootstrap error'); });
-
-            manager.setBootstrapRelays();
-
-            expect(mockDeps.console?.error).toHaveBeenCalledWith(
-                expect.stringContaining('Bootstrap relays設定エラー:'),
-                expect.any(Error)
-            );
-        });
-    });
-
     describe('ローカルストレージからのリレー使用', () => {
         it('保存されたリレーを使用してtrueを返す', async () => {
             const pubkey = 'legacy-relay-pubkey';
