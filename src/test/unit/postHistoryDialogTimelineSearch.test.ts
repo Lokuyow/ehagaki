@@ -17,6 +17,7 @@ import {
     repositoryMock,
     replyRepairServiceMock,
     resetPostHistoryDialogHarness,
+    usePostHistoryDialogFakeTimers,
     visibleRangeRepositoryMock,
     waitForSearchDebounce,
 } from './postHistoryDialogTestHarness';
@@ -81,6 +82,7 @@ async function persistSearchSnapshot(
 describe('PostHistoryDialog timeline search', () => {
     beforeEach(() => {
         resetPostHistoryDialogHarness();
+        usePostHistoryDialogFakeTimers();
     });
 
     it('renders and permits actions on partial results while keeping the count and paging pending', async () => {
@@ -94,8 +96,10 @@ describe('PostHistoryDialog timeline search', () => {
         render(PostHistoryDialog, { props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX } });
         const input = await openSearchBar();
         await fireEvent.input(input, { target: { value: 'alpha' } });
-        await waitForSearchDebounce();
-        await waitFor(() => expect(searchOptions?.onProgress).toBeTypeOf('function'));
+        await vi.advanceTimersByTimeAsync(249);
+        expect(localSearchServiceMock.searchLocalPosts).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(searchOptions?.onProgress).toBeTypeOf('function');
         await searchOptions.onProgress?.({ phase: 'partial', items: [post] });
         expect(screen.getByText(post.content)).toBeTruthy();
         expect(await readPostHistoryCountLabel()).toBe('件数を確認中...');
@@ -507,7 +511,7 @@ describe('PostHistoryDialog timeline search', () => {
             total: 1,
             hasNext: false,
         });
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await vi.advanceTimersByTimeAsync(0);
 
         expect(searchInput.getAttribute('aria-busy')).toBe('true');
         expect(screen.queryByText('alpha-result')).toBeNull();
@@ -666,6 +670,7 @@ describe('PostHistoryDialog timeline search', () => {
         });
 
         await fireEvent.input(searchInput, { target: { value: '' } });
+        await waitForSearchDebounce();
         await waitFor(() => {
             expect(getHistoryContainer().querySelector('.post-history-search-bottom-spacer')).toBeNull();
         });
@@ -1337,27 +1342,28 @@ describe('PostHistoryDialog timeline search', () => {
         const view = render(PostHistoryDialog, {
             props: { show: true, onClose, pubkeyHex: PUBKEY_HEX },
         });
-        await waitFor(() => expect(screen.getByText(normal.content)).toBeTruthy());
+        await vi.waitFor(() => expect(screen.getByText(normal.content)).toBeTruthy());
 
         const searchInput = await openSearchBar();
         await fireEvent.input(searchInput, { target: { value: 'close' } });
         await waitForSearchDebounce();
-        await waitFor(() => expect(screen.getByText(target.content)).toBeTruthy());
+        await vi.waitFor(() => expect(screen.getByText(target.content)).toBeTruthy());
         await fireEvent.click(screen.getByRole('button', { name: 'アクションを表示' }));
         await fireEvent.click(await screen.findByRole('menuitem', { name: '前後の投稿を表示' }));
-        await waitFor(() => {
+        await vi.waitFor(() => {
             expect(repositoryMock.getVisibleChunkAroundEventId).toHaveBeenCalledTimes(1);
         });
 
         await fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
-        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+        await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
         targetWindow.resolve([target]);
         await Promise.resolve();
         await Promise.resolve();
 
         await view.rerender({ show: false, onClose, pubkeyHex: PUBKEY_HEX });
         await view.rerender({ show: true, onClose, pubkeyHex: PUBKEY_HEX });
-        await waitFor(() => {
+        await waitForSearchDebounce();
+        await vi.waitFor(() => {
             expect(screen.getByText(normal.content)).toBeTruthy();
             expect(screen.queryByText(target.content)).toBeNull();
             expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
@@ -1747,7 +1753,7 @@ describe('PostHistoryDialog timeline search', () => {
             total: 100,
             hasNext: false,
         });
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await vi.advanceTimersByTimeAsync(0);
         expect(screen.queryByText('遅延検索結果2')).toBeNull();
         expect(screen.getByText('通常の最新投稿')).toBeTruthy();
 
@@ -1803,7 +1809,7 @@ describe('PostHistoryDialog timeline search', () => {
             total: 100,
             hasNext: false,
         });
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await vi.advanceTimersByTimeAsync(0);
         expect(screen.queryByText('適用されない遅延結果')).toBeNull();
         expect(screen.getByText('空検索の通常最新投稿')).toBeTruthy();
 
