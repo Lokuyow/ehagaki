@@ -32,11 +32,22 @@ jobs:
         shell: bash
         run: npm install --global "$(node -p 'require("./package.json").packageManager')"
       - run: npm ci
+      - name: Record Linux runner CPU
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          printf 'Logical CPUs: %s\n' "$(nproc)"
+          LC_ALL=C lscpu | sed -n '/^Model name:/p'
+      - name: Record Windows runner CPU
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfLogicalProcessors | Format-List
       - name: Run Vitest with sanitized output
         shell: bash
         run: |
           set -o pipefail
-          npm test 2>&1 | node scripts/filterTestOutput.mjs
+          npm test -- --reporter=default --reporter=./scripts/vitestMetricsReporter.mjs 2>&1 | node scripts/filterTestOutput.mjs
 
   check-and-build:
     name: Check and build (${{ matrix.os }})
