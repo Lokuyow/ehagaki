@@ -69,7 +69,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npm test -- --shard="$SHARD/2" --reporter=default --reporter=./scripts/vitestShardMetrics.mjs 2>&1 | node scripts/filterTestOutput.mjs
+          npm test -- --shard="$SHARD/2" --pool=threads --reporter=default --reporter=./scripts/vitestShardMetrics.mjs 2>&1 | node scripts/filterTestOutput.mjs
       - name: Publish validated shard metrics
         id: metrics
         env:
