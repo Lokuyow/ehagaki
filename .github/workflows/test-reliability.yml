@@ -14,14 +14,26 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  vitest:
-    name: Vitest (${{ matrix.os }})
+  vitest-shards:
+    name: Vitest shard ${{ matrix.shard }}/2 (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         # PR feedback uses one OS; main/manual runs retain platform coverage.
         os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","windows-latest"]') }}
+        shard: [1, 2]
     runs-on: ${{ matrix.os }}
+    outputs:
+      linux_1: ${{ steps.metrics.outputs.linux_1 }}
+      linux_2: ${{ steps.metrics.outputs.linux_2 }}
+      windows_1: ${{ steps.metrics.outputs.windows_1 }}
+      windows_2: ${{ steps.metrics.outputs.windows_2 }}
+      linux_1_result: ${{ runner.os == 'Linux' && matrix.shard == 1 && job.status || '' }}
+      linux_2_result: ${{ runner.os == 'Linux' && matrix.shard == 2 && job.status || '' }}
+      windows_1_result: ${{ runner.os == 'Windows' && matrix.shard == 1 && job.status || '' }}
+      windows_2_result: ${{ runner.os == 'Windows' && matrix.shard == 2 && job.status || '' }}
+    env:
+      SHARD: ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -43,11 +55,51 @@ jobs:
         shell: pwsh
         run: |
           Get-CimInstance Win32_Processor | Select-Object Name, NumberOfLogicalProcessors | Format-List
-      - name: Run Vitest with sanitized output
+      - name: List complete Vitest file inventory
+        if: matrix.shard == 1
+        env:
+          VITEST_ALL_FILES_PATH: ${{ runner.temp }}/vitest-all-files.json
         shell: bash
         run: |
           set -o pipefail
-          npm test -- --reporter=default --reporter=./scripts/vitestMetricsReporter.mjs 2>&1 | node scripts/filterTestOutput.mjs
+          npx vitest list --filesOnly --json="$VITEST_ALL_FILES_PATH" 2>&1 | node scripts/filterTestOutput.mjs
+      - name: Run Vitest with sanitized output
+        env:
+          VITEST_SHARD_METRICS_PATH: ${{ runner.temp }}/vitest-shard-metrics.json
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test -- --shard="$SHARD/2" --reporter=default --reporter=./scripts/vitestShardMetrics.mjs 2>&1 | node scripts/filterTestOutput.mjs
+      - name: Publish validated shard metrics
+        id: metrics
+        env:
+          VITEST_SHARD_METRICS_PATH: ${{ runner.temp }}/vitest-shard-metrics.json
+          VITEST_ALL_FILES_PATH: ${{ runner.temp }}/vitest-all-files.json
+        shell: bash
+        run: node scripts/vitestShardMetrics.mjs publish "$RUNNER_OS" "$SHARD"
+
+  vitest:
+    name: Vitest (${{ matrix.os }})
+    needs: [vitest-shards]
+    if: always()
+    strategy:
+      matrix:
+        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"os":"ubuntu-latest","key":"linux","runtime":"Linux"}]' || '[{"os":"ubuntu-latest","key":"linux","runtime":"Linux"},{"os":"windows-latest","key":"windows","runtime":"Windows"}]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: Verify both shards and complete file coverage
+        env:
+          VITEST_SHARD_1: ${{ needs.vitest-shards.outputs[format('{0}_1', matrix.key)] }}
+          VITEST_SHARD_2: ${{ needs.vitest-shards.outputs[format('{0}_2', matrix.key)] }}
+          VITEST_SHARD_1_RESULT: ${{ needs.vitest-shards.outputs[format('{0}_1_result', matrix.key)] }}
+          VITEST_SHARD_2_RESULT: ${{ needs.vitest-shards.outputs[format('{0}_2_result', matrix.key)] }}
+          VITEST_OS: ${{ matrix.runtime }}
+        shell: bash
+        run: node scripts/vitestShardMetrics.mjs aggregate "$VITEST_OS"
 
   check-and-build:
     name: Check and build (${{ matrix.os }})
