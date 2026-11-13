@@ -44,6 +44,17 @@ jobs:
         shell: bash
         run: npm install --global "$(node -p 'require("./package.json").packageManager')"
       - run: npm ci
+      - name: Record Linux runner CPU
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          printf 'Logical CPUs: %s\n' "$(nproc)"
+          LC_ALL=C lscpu | sed -n '/^Model name:/p'
+      - name: Record Windows runner CPU
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfLogicalProcessors | Format-List
       - name: List complete Vitest file inventory
         if: matrix.shard == 1
         env:
