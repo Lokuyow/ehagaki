@@ -55,6 +55,34 @@ jobs:
         shell: pwsh
         run: |
           Get-CimInstance Win32_Processor | Select-Object Name, NumberOfLogicalProcessors | Format-List
+      - name: Stabilize Vitest patch metadata
+        if: vars.VITEST_FS_CACHE != 'off'
+        env:
+          PATCHES_HASH: ${{ hashFiles('patches/**') }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { utimesSync } from 'node:fs';
+          const hash = process.env.PATCHES_HASH;
+          if (!/^[a-f0-9]{64}$/.test(hash || '')) throw new Error('Missing patch content hash');
+          // Content-derived seconds are stable even with a shallow checkout.
+          const seconds = 946684800 + Number.parseInt(hash.slice(0, 8), 16) % 31536000;
+          utimesSync('patches', seconds, seconds);
+          NODE
+      - name: Restore Vitest module cache
+        if: vars.VITEST_FS_CACHE != 'off'
+        id: vitest-cache
+        continue-on-error: true
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/vitest-fs-cache
+          key: vitest-fs-v1-${{ runner.os }}-shard${{ matrix.shard }}-${{ hashFiles('package.json', 'package-lock.json', 'patches/**', 'vitest.config.ts', 'svelte.config.js', 'tsconfig*.json', '.node-version', '.github/workflows/test-reliability.yml') }}
+      - name: Discard a missed or failed cache restore
+        if: vars.VITEST_FS_CACHE != 'off' && steps.vitest-cache.outputs.cache-hit != 'true'
+        env:
+          VITEST_FS_CACHE_PATH: ${{ runner.temp }}/vitest-fs-cache
+        shell: bash
+        run: node --input-type=module -e "import { rmSync } from 'node:fs'; rmSync(process.env.VITEST_FS_CACHE_PATH, { recursive:true, force:true });"
       - name: List complete Vitest file inventory
         if: matrix.shard == 1
         env:
@@ -66,10 +94,11 @@ jobs:
       - name: Run Vitest with sanitized output
         env:
           VITEST_SHARD_METRICS_PATH: ${{ runner.temp }}/vitest-shard-metrics.json
+          VITEST_FS_CACHE_PATH: ${{ runner.temp }}/vitest-fs-cache
         shell: bash
         run: |
           set -o pipefail
-          npm test -- --shard="$SHARD/2" --pool=threads --reporter=default --reporter=./scripts/vitestShardMetrics.mjs 2>&1 | node scripts/filterTestOutput.mjs
+          npm test -- --shard="$SHARD/2" --pool=threads --fsModuleCachePath="$VITEST_FS_CACHE_PATH" --reporter=default --reporter=./scripts/vitestShardMetrics.mjs 2>&1 | node scripts/filterTestOutput.mjs
       - name: Publish validated shard metrics
         id: metrics
         env:
@@ -77,6 +106,13 @@ jobs:
           VITEST_ALL_FILES_PATH: ${{ runner.temp }}/vitest-all-files.json
         shell: bash
         run: node scripts/vitestShardMetrics.mjs publish "$RUNNER_OS" "$SHARD"
+      - name: Save Vitest module cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.VITEST_FS_CACHE != 'off' && steps.vitest-cache.outputs.cache-hit != 'true' && steps.vitest-cache.outputs.cache-primary-key != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/vitest-fs-cache
+          key: ${{ steps.vitest-cache.outputs.cache-primary-key }}
 
   vitest:
     name: Vitest (${{ matrix.os }})
