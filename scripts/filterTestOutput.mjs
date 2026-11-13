@@ -2,11 +2,32 @@ import { existsSync } from 'node:fs';
 
 const passedWithDuration = /^\s*(\d+) (passed|failed|skipped)(?: \(([\d.]+(?:ms|s|m|h))\))?\s*$/;
 const skippedWithDuration = /^\s*(\d+) skipped(?: \(([\d.]+(?:ms|s|m|h))\))?\s*$/;
-const vitestSummary = /^\s*(Test Files|Tests)\s+\d+\s+(?:passed|failed|skipped)(?:\s+\|\s+\d+\s+(?:passed|failed|skipped)){0,2}\s+\(\d+\)\s*$/;
+const vitestSummary = /^\s*(Test Files|Tests)\s+\d+\s+(?:passed|failed|skipped|todo)(?:\s+\|\s+\d+\s+(?:passed|failed|skipped|todo)){0,3}\s+\(\d+\)\s*$/;
+const vitestDuration = /^\s*Duration\s+\d+(?:\.\d+)?(?:ms|s)(?: \((?:transform|setup|import|tests|environment|worker|typecheck) \d+%(?:, (?:transform|setup|import|tests|environment|worker|typecheck) \d+%)*\))?\s*$/;
+const vitestFile = /^\s*([✓✔❯↓-]) (src\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(?:test|spec)\.[jt]s) (\(\d+ tests?(?: \| \d+ (?:failed|skipped|todo))*\) \d+(?:\.\d+)?ms)\s*$/;
+const vitestIsolate = /^\s*Isolate\s+\d+ workers spawned · ~\d+(?:\.\d+)?(?:ms|s) startup each \(spawn \+ environment, per file\)\s*$/;
+const vitestEnvironment = /^\s*Environment\s+(?:jsdom|node) was created \d+ times · \d+(?:\.\d+)?(?:ms|s) total, \d+% of tracked time\s*$/;
+const vitestUnhandledErrors = /^\s*Unhandled errors: \d+\s*$/;
+const vitestCacheCleared = /^\s*(?:\d{1,2}:\d{2}:\d{2}(?: [AP]M)? )?(?:\[vitest\] )?fs cache was cleared because lockfile has changed\s*$/;
 const reported = new Set();
 
 function printSummary(line) {
     line = line.replace(/\x1b\[[0-9;]*m/g, '');
+    // Match whole reporter lines so titles and diagnostic values cannot be
+    // carried through alongside the new performance metrics.
+    const file = vitestFile.exec(line.replaceAll('\\', '/'));
+    if (file && existsSync(file[2])) {
+        process.stdout.write(`${file[1]} ${file[2]} ${file[3]}\n`);
+        return;
+    }
+    if ([vitestDuration, vitestIsolate, vitestEnvironment, vitestUnhandledErrors].some(pattern => pattern.test(line))) {
+        process.stdout.write(`${line.trim()}\n`);
+        return;
+    }
+    if (vitestCacheCleared.test(line)) {
+        process.stdout.write('fs cache was cleared because lockfile has changed\n');
+        return;
+    }
     const metricMatch = line.match(/CI_METRICS\s+(\{[^{}]*\})/);
     if (metricMatch) {
         try {
