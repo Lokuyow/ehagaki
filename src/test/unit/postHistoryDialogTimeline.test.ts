@@ -25,6 +25,7 @@ import {
     replyRepairServiceMock,
     repositoryMock,
     resetPostHistoryDialogHarness,
+    usePostHistoryDialogFakeTimers,
     relayFetchServiceMock,
     visibleRangeRepositoryMock,
     waitForSearchDebounce,
@@ -1538,6 +1539,7 @@ describe('PostHistoryDialog timeline navigation', () => {
     });
 
     it('古すぎる日付ジャンプで contiguous miss したら sparse relay 取得して anchor を保存する', async () => {
+        usePostHistoryDialogFakeTimers();
         const relayDeferred = createDeferred<ReturnType<typeof createRelayFetchResult>>();
         const saveDeferred = createDeferred<{ insertedCount: number; updatedCount: number; unchangedCount: number }>();
         const datePostsDeferred = createDeferred<ReturnType<typeof createRecord>[]>();
@@ -1621,32 +1623,32 @@ describe('PostHistoryDialog timeline navigation', () => {
             },
         });
 
-        await waitFor(() => {
+        await vi.waitFor(() => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
         });
 
-        await waitFor(() => expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled());
-        await waitFor(() => expect(document.querySelector('.floating-message.anchor-center')).toBeNull(), { timeout: 2500 });
+        await vi.waitFor(() => expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled());
+        await vi.waitFor(() => expect(document.querySelector('.floating-message.anchor-center')).toBeNull(), { timeout: 2500 });
         await openJumpDatePanel();
         await setJumpDateValue('2023-10-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
         const syncToast = () => document.querySelector('.floating-message.anchor-center');
-        await waitFor(() => expect(syncToast()?.textContent).toContain('リレーと同期中...'));
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await vi.waitFor(() => expect(syncToast()?.textContent).toContain('リレーと同期中...'));
+        await vi.advanceTimersByTimeAsync(1500);
         expect(syncToast()?.textContent).toContain('リレーと同期中...');
         relayDeferred.resolve(relayResult);
-        await waitFor(() => expect(repositoryMock.upsertFetchedEvents).toHaveBeenCalled());
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await vi.waitFor(() => expect(repositoryMock.upsertFetchedEvents).toHaveBeenCalled());
+        await vi.advanceTimersByTimeAsync(1500);
         expect(syncToast()?.textContent).toContain('リレーと同期中...');
         saveDeferred.resolve({ insertedCount: 1, updatedCount: 0, unchangedCount: 0 });
 
-        await waitFor(() => expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenCalledTimes(2));
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await vi.waitFor(() => expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenCalledTimes(2));
+        await vi.advanceTimersByTimeAsync(1500);
         expect(syncToast()?.textContent).toContain('リレーと同期中...');
         datePostsDeferred.resolve([fetchedAroundTarget]);
 
-        await waitFor(() => {
+        await vi.waitFor(() => {
             expect(screen.getByText('日付周辺で取得した投稿')).toBeTruthy();
             expect(jumpCacheAnchorRepositoryMock.addForPubkey).toHaveBeenCalledWith(
                 expect.objectContaining({

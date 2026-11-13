@@ -22,6 +22,7 @@ import {
     repairServiceMock,
     repositoryMock,
     resetPostHistoryDialogHarness,
+    usePostHistoryDialogFakeTimers,
     visibleRangeRepositoryMock,
     seedPostHistoryCoverage,
     completedRelayCoverage,
@@ -1764,6 +1765,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
     });
 
     it('追加なし のメッセージが自動で消える', async () => {
+        usePostHistoryDialogFakeTimers();
         const initialPosts = [createRecord({ eventId: 'repair-none', content: '既存投稿', createdAt: 1_704_326_400, postedAt: Date.UTC(2024, 0, 2, 3, 4, 0) })];
 
         repositoryMock.countForPubkey.mockResolvedValue(1);
@@ -1798,11 +1800,11 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.getByText('追加なし')).toBeTruthy();
         });
 
-        await new Promise((resolve) => setTimeout(resolve, 4000));
+        await vi.advanceTimersByTimeAsync(3499);
+        expect(screen.getByText('追加なし')).toBeTruthy();
+        await vi.advanceTimersByTimeAsync(1);
 
-        await waitFor(() => {
-            expect(screen.queryByText('追加なし')).toBeNull();
-        });
+        expect(screen.queryByText('追加なし')).toBeNull();
 
         view.unmount();
     });
@@ -1902,6 +1904,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
     });
 
     it('internal partial でも authored 追加件数を優先し、メッセージが自動で消える', async () => {
+        usePostHistoryDialogFakeTimers();
         const initialPosts = [createRecord({ eventId: 'repair-added', content: '既存投稿', createdAt: 1_704_326_400, postedAt: Date.UTC(2024, 0, 2, 3, 4, 0) })];
 
         repositoryMock.countForPubkey.mockResolvedValue(1);
@@ -1950,17 +1953,17 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.getByText('1件追加')).toBeTruthy();
         });
 
-        await new Promise((resolve) => setTimeout(resolve, 4000));
+        await vi.advanceTimersByTimeAsync(3499);
+        expect(screen.getByText('1件追加')).toBeTruthy();
+        await vi.advanceTimersByTimeAsync(1);
 
-        await waitFor(() => {
-            expect(screen.queryByText('1件追加')).toBeNull();
-        });
+        expect(screen.queryByText('1件追加')).toBeNull();
 
         view.unmount();
     });
 
     it('同期完了メッセージは自動で消える', async () => {
-        vi.useFakeTimers();
+        usePostHistoryDialogFakeTimers();
         repositoryMock.countForPubkey.mockResolvedValue(0);
         repositoryMock.getLatestVisibleChunk.mockResolvedValue([]);
         repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
@@ -1996,16 +1999,17 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
         });
 
-        await vi.advanceTimersByTimeAsync(3500);
+        await vi.advanceTimersByTimeAsync(3499);
+        expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
+        await vi.advanceTimersByTimeAsync(1);
 
-        await waitFor(() => {
-            expect(screen.queryByText('リレーとの同期が完了しました')).toBeNull();
-        });
+        expect(screen.queryByText('リレーとの同期が完了しました')).toBeNull();
 
         view.unmount();
     });
 
     it('同期失敗メッセージは自動で消える', async () => {
+        usePostHistoryDialogFakeTimers();
         repositoryMock.countForPubkey.mockResolvedValue(0);
         repositoryMock.getLatestVisibleChunk.mockResolvedValue([]);
         repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
@@ -2036,16 +2040,17 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.getByText('リレーから取得できませんでした')).toBeTruthy();
         });
 
-        await new Promise((resolve) => setTimeout(resolve, 4000));
+        await vi.advanceTimersByTimeAsync(3499);
+        expect(screen.getByText('リレーから取得できませんでした')).toBeTruthy();
+        await vi.advanceTimersByTimeAsync(1);
 
-        await waitFor(() => {
-            expect(screen.queryByText('リレーから取得できませんでした')).toBeNull();
-        });
+        expect(screen.queryByText('リレーから取得できませんでした')).toBeNull();
 
         view.unmount();
     });
 
     it('internal partial は追加なしとして自動で消える', async () => {
+        usePostHistoryDialogFakeTimers();
         const initialPosts = [createRecord({ eventId: 'repair-failure', content: '既存投稿', createdAt: 1_704_326_400, postedAt: Date.UTC(2024, 0, 2, 3, 4, 0) })];
 
         repositoryMock.countForPubkey.mockResolvedValue(1);
@@ -2093,11 +2098,11 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.getByText('追加なし')).toBeTruthy();
         });
 
-        await new Promise((resolve) => setTimeout(resolve, 4000));
+        await vi.advanceTimersByTimeAsync(3499);
+        expect(screen.getByText('追加なし')).toBeTruthy();
+        await vi.advanceTimersByTimeAsync(1);
 
-        await waitFor(() => {
-            expect(screen.queryByText('追加なし')).toBeNull();
-        });
+        expect(screen.queryByText('追加なし')).toBeNull();
 
         view.unmount();
     });

@@ -750,7 +750,18 @@ export function getHistoryContainer(): HTMLDivElement {
     return historyContainer;
 }
 
+export function usePostHistoryDialogFakeTimers(): void {
+    // Preserve the harness's immediate animation frames and asynchronous IO tasks.
+    vi.useFakeTimers({
+        toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    });
+}
+
 export async function waitForSearchDebounce(): Promise<void> {
+    if (vi.isFakeTimers()) {
+        await vi.advanceTimersByTimeAsync(300);
+        return;
+    }
     await new Promise((resolve) => setTimeout(resolve, 300));
 }
 
