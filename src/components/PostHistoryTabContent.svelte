@@ -1912,6 +1912,50 @@
             buildRecordActionItemProps(post, { externalClient: false }),
     };
 
+    type ThreadGraphPanelProps = ComponentProps<typeof PostHistoryThreadGraphPanel>;
+
+    /** Props both thread sections (parents above, replies below) of a post share. */
+    function buildThreadGraphPanelProps(post: PostHistoryRecord) {
+        return {
+            onRefreshRelatedEvents: (nodeEventId) =>
+                void handleRefreshRelatedEvents(post, nodeEventId),
+            onReactionPost: onReactionPost ? handleReactionPost : undefined,
+            previewModelByEventId: relatedPreviewModelByEventId,
+            getSensitiveBodyLoader,
+            emojiLoadStateByUrl: emojiState.emojiLoadStateByUrl,
+            emojiImageMetaByUrl: emojiState.emojiImageMetaByUrl,
+            scrollRoot: historyContainer,
+            onImageOpen: handleImageOpen,
+            buildPostRecordForNode: buildPostRecordFromNodeState,
+            onReplyPost: onReplyPost ? handleReplyPost : undefined,
+            onQuotePost: onQuotePost ? handleQuotePost : undefined,
+            onToggleNodeParent: (nodeEventId) =>
+                historyViewport.preserveThreadParentToggleScroll(
+                    post.eventId,
+                    nodeEventId,
+                    () => postHistoryThreadGraph.toggleNodeParent(post, nodeEventId),
+                ),
+            onRetryNodeParent: (nodeEventId) =>
+                postHistoryThreadGraph.retryNodeParent(post, nodeEventId),
+            onToggleNodeChildren: (nodeEventId) =>
+                postHistoryThreadGraph.toggleNodeChildren(post, nodeEventId),
+            onRetryNodeChildren: (nodeEventId) =>
+                postHistoryThreadGraph.retryNodeChildren(post, nodeEventId),
+            onCopyPointerDown: handleNodeCopyPointerPosition,
+            onCopyNevent: handleNodeCopyNevent,
+            externalClientLabel: getExternalClientOpenLabel(),
+            onOpenExternalClient: handleNodeOpenExternalClient,
+            isCopyFailed: isNodeCopyFailed,
+            onShowRawJson: handleNodeShowRawJson,
+            onBroadcastPointerDown: handleNodeBroadcastPointerPosition,
+            onBroadcastPost: handleNodeBroadcastPost,
+            isBroadcastSending: isNodeBroadcastSending,
+            canDeleteNodePost,
+            isDeletionSending: isNodeDeletionSending,
+            onOpenDeleteConfirm: openNodeDeleteConfirm,
+        } satisfies Partial<ThreadGraphPanelProps>;
+    }
+
     function getRepliesActionLabel(post: PostHistoryRecord): string {
         const state =
             postHistoryThreadGraph.getAnchorState(post).repliesActionState;
@@ -2881,6 +2925,7 @@
                 {#each history.posts as post (post.eventId)}
                     {@const graphState =
                         postHistoryThreadGraph.getAnchorState(post)}
+                    {@const threadPanelProps = buildThreadGraphPanelProps(post)}
                     <li
                         class="post-history-item"
                         data-post-history-event-id={post.eventId}
@@ -2912,22 +2957,10 @@
                                         getActionItems={() => buildRecordActionItemProps(post, { externalClient: true })}
                                     />
                                 {/if}
-                                <PostHistoryThreadGraphPanel onRefreshRelatedEvents={(nodeEventId) => void handleRefreshRelatedEvents(post, nodeEventId)} onReactionPost={onReactionPost ? handleReactionPost : undefined}
+                                <PostHistoryThreadGraphPanel
                                     state={graphState}
                                     section="parent"
-                                    previewModelByEventId={relatedPreviewModelByEventId}
-                                    getSensitiveBodyLoader={getSensitiveBodyLoader}
-                                    emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
-                                    emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
-                                    scrollRoot={historyContainer}
-                                    onImageOpen={handleImageOpen}
-                                    buildPostRecordForNode={buildPostRecordFromNodeState}
-                                    onReplyPost={onReplyPost
-                                        ? handleReplyPost
-                                        : undefined}
-                                    onQuotePost={onQuotePost
-                                        ? handleQuotePost
-                                        : undefined}
+                                    {...threadPanelProps}
                                     onToggleParent={() =>
                                         historyViewport.preserveThreadParentToggleScroll(
                                             post.eventId,
@@ -2941,43 +2974,6 @@
                                         postHistoryThreadGraph.retryParent(
                                             post,
                                         )}
-                                    onToggleNodeParent={(nodeEventId) =>
-                                        historyViewport.preserveThreadParentToggleScroll(
-                                            post.eventId,
-                                            nodeEventId,
-                                            () =>
-                                                postHistoryThreadGraph.toggleNodeParent(
-                                                    post,
-                                                    nodeEventId,
-                                                ),
-                                        )}
-                                    onRetryNodeParent={(nodeEventId) =>
-                                        postHistoryThreadGraph.retryNodeParent(
-                                            post,
-                                            nodeEventId,
-                                        )}
-                                    onToggleNodeChildren={(nodeEventId) =>
-                                        postHistoryThreadGraph.toggleNodeChildren(
-                                            post,
-                                            nodeEventId,
-                                        )}
-                                    onRetryNodeChildren={(nodeEventId) =>
-                                        postHistoryThreadGraph.retryNodeChildren(
-                                            post,
-                                            nodeEventId,
-                                        )}
-                                    onCopyPointerDown={handleNodeCopyPointerPosition}
-                                    onCopyNevent={handleNodeCopyNevent}
-                                    externalClientLabel={getExternalClientOpenLabel()}
-                                    onOpenExternalClient={handleNodeOpenExternalClient}
-                                    isCopyFailed={isNodeCopyFailed}
-                                    onShowRawJson={handleNodeShowRawJson}
-                                    onBroadcastPointerDown={handleNodeBroadcastPointerPosition}
-                                    onBroadcastPost={handleNodeBroadcastPost}
-                                    isBroadcastSending={isNodeBroadcastSending}
-                                    {canDeleteNodePost}
-                                    isDeletionSending={isNodeDeletionSending}
-                                    onOpenDeleteConfirm={openNodeDeleteConfirm}
                                 />
                                 <div
                                     class="post-history-thread-anchor-post"
@@ -3044,63 +3040,14 @@
                                         emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                         view={recordFooterView}
                                     />
-                                    <PostHistoryThreadGraphPanel onRefreshRelatedEvents={(nodeEventId) => void handleRefreshRelatedEvents(post, nodeEventId)} onReactionPost={onReactionPost ? handleReactionPost : undefined}
+                                    <PostHistoryThreadGraphPanel
                                         state={graphState}
                                         section="children"
-                                        previewModelByEventId={relatedPreviewModelByEventId}
-                                        getSensitiveBodyLoader={getSensitiveBodyLoader}
-                                        emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
-                                        emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
-                                        scrollRoot={historyContainer}
-                                        onImageOpen={handleImageOpen}
-                                        buildPostRecordForNode={buildPostRecordFromNodeState}
-                                        onReplyPost={onReplyPost
-                                            ? handleReplyPost
-                                            : undefined}
-                                        onQuotePost={onQuotePost
-                                            ? handleQuotePost
-                                            : undefined}
+                                        {...threadPanelProps}
                                         getReactionReadModel={getRelatedReactionReadModel}
                                         isReactionExpanded={isReactionExpandedByEventId}
                                         getReactionLabel={getRelatedReactionLabel}
                                         onToggleReaction={toggleReactionsByEventId}
-                                        onToggleNodeParent={(nodeEventId) =>
-                                            historyViewport.preserveThreadParentToggleScroll(
-                                                post.eventId,
-                                                nodeEventId,
-                                                () =>
-                                                    postHistoryThreadGraph.toggleNodeParent(
-                                                        post,
-                                                        nodeEventId,
-                                                    ),
-                                            )}
-                                        onRetryNodeParent={(nodeEventId) =>
-                                            postHistoryThreadGraph.retryNodeParent(
-                                                post,
-                                                nodeEventId,
-                                            )}
-                                        onToggleNodeChildren={(nodeEventId) =>
-                                            postHistoryThreadGraph.toggleNodeChildren(
-                                                post,
-                                                nodeEventId,
-                                            )}
-                                        onRetryNodeChildren={(nodeEventId) =>
-                                            postHistoryThreadGraph.retryNodeChildren(
-                                                post,
-                                                nodeEventId,
-                                            )}
-                                        onCopyPointerDown={handleNodeCopyPointerPosition}
-                                        onCopyNevent={handleNodeCopyNevent}
-                                        externalClientLabel={getExternalClientOpenLabel()}
-                                        onOpenExternalClient={handleNodeOpenExternalClient}
-                                        isCopyFailed={isNodeCopyFailed}
-                                        onShowRawJson={handleNodeShowRawJson}
-                                        onBroadcastPointerDown={handleNodeBroadcastPointerPosition}
-                                        onBroadcastPost={handleNodeBroadcastPost}
-                                        isBroadcastSending={isNodeBroadcastSending}
-                                        {canDeleteNodePost}
-                                        isDeletionSending={isNodeDeletionSending}
-                                        onOpenDeleteConfirm={openNodeDeleteConfirm}
                                     />
                                 </div>
                                 {/if}
