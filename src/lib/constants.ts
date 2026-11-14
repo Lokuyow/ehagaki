@@ -180,6 +180,9 @@ export const UPLOADED_MEDIA_AVAILABILITY_CONFIG = {
 
 // --- appUtils.ts から移動した定数 ---
 // Nostr Key パターン
+/** Returned when a login result arrives after the user started another login. */
+export const AUTH_SUPERSEDED_ERROR = 'auth_superseded';
+
 export const NSEC_PATTERN = /nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{10,}/;
 export const NSEC_FULL_PATTERN = /^nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58}$/;
 

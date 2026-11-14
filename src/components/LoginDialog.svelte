@@ -27,7 +27,7 @@
         show: boolean;
         secretKey: string;
         onClose: () => void;
-        onSave: () => void;
+        onSave: () => Promise<string | undefined> | void;
         onParentClientLogin?: () => Promise<string | undefined>;
         onNip07Login: () => Promise<string | undefined>;
         onNip46Login: (bunkerUrl: string) => Promise<string | undefined>;
@@ -110,6 +110,8 @@
     let parentClientErrorMessage = $state("");
     let nip07ErrorMessage = $state("");
     let nip46ErrorMessage = $state("");
+    let secretKeyErrorMessage = $state("");
+    let isSavingSecretKey = $state(false);
     let hasCopiedNostrConnectUri = $state(false);
     let showNostrConnectDirectOpenHint = $state(false);
     let isNostrConnectOpeningSigner = $state(false);
@@ -159,6 +161,7 @@
             parentClientErrorMessage = "";
             nip07ErrorMessage = "";
             nip46ErrorMessage = "";
+            secretKeyErrorMessage = "";
             hasCopiedNostrConnectUri = false;
             resetNostrConnectDraftState();
             queueMicrotask(() => {
@@ -294,12 +297,23 @@
             return;
         }
         secretKey = "";
+        secretKeyErrorMessage = "";
         inputEl?.setCustomValidity("");
         inputEl?.focus({ preventScroll: true });
     }
 
-    function handleSave() {
+    function resolveSecretKeyErrorMessage(errorMessage: string): string {
+        return errorMessage === "invalid_secret"
+            ? $_("loginDialog.invalid_secret")
+            : $_("loginDialog.secret_login_failed");
+    }
+
+    async function handleSave() {
+        if (isSavingSecretKey) {
+            return;
+        }
         cleanupNostrConnectDirectOpenState();
+        secretKeyErrorMessage = "";
         if (inputEl) {
             const validity = inputEl.validity;
             const value = inputEl.value ?? "";
@@ -346,7 +360,19 @@
 
             inputEl.setCustomValidity("");
         }
-        onSave?.();
+
+        isSavingSecretKey = true;
+        try {
+            const errorMessage = await onSave?.();
+            if (errorMessage) {
+                secretKeyErrorMessage =
+                    resolveSecretKeyErrorMessage(errorMessage);
+            }
+        } catch {
+            secretKeyErrorMessage = $_("loginDialog.secret_login_failed");
+        } finally {
+            isSavingSecretKey = false;
+        }
     }
     function resolveNip07ErrorMessage(errorMessage: string): string {
         switch (errorMessage) {
@@ -584,7 +610,7 @@
     function handleFormSubmit(event: Event) {
         cleanupNostrConnectDirectOpenState();
         event.preventDefault();
-        handleSave();
+        void handleSave();
     }
 </script>
 
@@ -1078,7 +1104,10 @@
                             maxlength="63"
                             bind:this={inputEl}
                             title={$_("loginDialog.hint_input_secret")}
-                            oninput={() => inputEl?.setCustomValidity("")}
+                            oninput={() => {
+                                secretKeyErrorMessage = "";
+                                inputEl?.setCustomValidity("");
+                            }}
                         />
                         {#if secretKey.length > 0}
                             <Button
@@ -1102,11 +1131,28 @@
                         variant="primary"
                         shape="square"
                         type="submit"
-                        className="save-btn u-control"
+                        disabled={isSavingSecretKey}
+                        className="save-btn u-control {isSavingSecretKey
+                            ? 'loading'
+                            : ''}"
                     >
-                        {$_("loginDialog.save")}
+                        {#if isSavingSecretKey}
+                            <LoadingPlaceholder showLoader={true} />
+                        {:else}
+                            {$_("loginDialog.save")}
+                        {/if}
                     </Button>
                 </div>
+
+                {#if secretKeyErrorMessage}
+                    <div
+                        class="section-feedback error"
+                        aria-live="polite"
+                        role="alert"
+                    >
+                        {secretKeyErrorMessage}
+                    </div>
+                {/if}
             </form>
         </div>
     {/if}

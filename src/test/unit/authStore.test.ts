@@ -161,6 +161,29 @@ describe('authStore', () => {
         });
     });
 
+    describe('secretKeyStore lifetime', () => {
+        it('nsec セッション中は秘密鍵を保持する', () => {
+            secretKeyStore.set('nsec1test');
+            setNsecAuth('pubkey', 'npub', 'nprofile');
+            setAuthInitialized();
+            expect(secretKeyStore.value).toBe('nsec1test');
+        });
+
+        it('nsec 以外の認証方式へ切り替わると秘密鍵を破棄する', () => {
+            secretKeyStore.set('nsec1test');
+            setNsecAuth('pubkey', 'npub', 'nprofile');
+            setNip07Auth('pubkey', 'npub', 'nprofile');
+            expect(secretKeyStore.value).toBeNull();
+        });
+
+        it('認証状態のクリアで秘密鍵を破棄する', () => {
+            secretKeyStore.set('nsec1test');
+            setNsecAuth('pubkey', 'npub', 'nprofile');
+            clearAuthState();
+            expect(secretKeyStore.value).toBeNull();
+        });
+    });
+
     describe('accountListStore', () => {
         it('getter/setter動作', () => {
             expect(accountListStore.value).toEqual([]);
