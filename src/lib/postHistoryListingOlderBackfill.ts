@@ -297,3 +297,159 @@ export function resolveOldestCreatedAtFromFetchResult(
             : oldest;
     }, null);
 }
+
+interface ResolveOlderBackfillEffectiveFetchUntilParams {
+    previousVisibleUntil: number | null;
+    resolvedFetchUntil: number | null;
+    usingBatchCursor: boolean;
+    isSparseListing: () => boolean;
+}
+
+export function resolveOlderBackfillEffectiveFetchUntil({
+    previousVisibleUntil,
+    resolvedFetchUntil,
+    usingBatchCursor,
+    isSparseListing,
+}: ResolveOlderBackfillEffectiveFetchUntilParams): number | null {
+    if (typeof previousVisibleUntil === "number" && !isSparseListing()) {
+        return previousVisibleUntil;
+    }
+    if (typeof resolvedFetchUntil === "number") {
+        if (usingBatchCursor) {
+            return resolvedFetchUntil;
+        }
+        return typeof previousVisibleUntil === "number"
+            ? Math.min(resolvedFetchUntil, previousVisibleUntil)
+            : resolvedFetchUntil;
+    }
+
+    return previousVisibleUntil;
+}
+
+export function resolveOlderBackfillWindowSeconds(batchWindowIndex: number): number {
+    const windowIndex = Math.min(
+        batchWindowIndex,
+        POST_HISTORY_OLDER_BACKFILL_WINDOW_SEQUENCE.length - 1,
+    );
+    return POST_HISTORY_OLDER_BACKFILL_WINDOW_SEQUENCE[windowIndex];
+}
+
+export function resolveNextOlderBackfillWindowIndex(batchWindowIndex: number): number {
+    return Math.min(
+        batchWindowIndex + 1,
+        POST_HISTORY_OLDER_BACKFILL_WINDOW_SEQUENCE.length - 1,
+    );
+}
+
+interface OlderBackfillContinuation {
+    hitLimit: boolean;
+    canContinueWithinWindow: boolean;
+    nextUntilCursor: number | null;
+    nextContinuationSince: number | null;
+}
+
+/**
+ * Decide where the next older query starts. A limit-hit window with enough
+ * time left continues inside the same window; otherwise the cursor moves to
+ * the window's lower bound.
+ */
+export function resolveOlderBackfillContinuation(
+    result: PostHistoryRelayFetchResult,
+    fetchRange: Pick<OlderBackfillSearchRange, "since">,
+    limit: number,
+): OlderBackfillContinuation {
+    const hitLimitReasons = resolveOlderBackfillLimitHitReasons(result, limit);
+    const hitLimit = hitLimitReasons.length > 0;
+    const oldestCreatedAt = resolveOldestCreatedAtFromFetchResult(result);
+    const remainingWindowSeconds =
+        typeof oldestCreatedAt === "number" && oldestCreatedAt > fetchRange.since
+            ? oldestCreatedAt - fetchRange.since
+            : 0;
+    const canContinueWithinWindow =
+        result.status === "success" &&
+        hitLimit &&
+        typeof oldestCreatedAt === "number" &&
+        oldestCreatedAt > fetchRange.since &&
+        remainingWindowSeconds >=
+        POST_HISTORY_OLDER_BACKFILL_MIN_CONTINUATION_SECONDS;
+
+    let nextUntilCursor = fetchRange.since > 0 ? fetchRange.since : null;
+    let nextContinuationSince: number | null = null;
+    if (canContinueWithinWindow && typeof oldestCreatedAt === "number") {
+        nextUntilCursor = oldestCreatedAt;
+        nextContinuationSince = fetchRange.since;
+    }
+
+    return {
+        hitLimit,
+        canContinueWithinWindow,
+        nextUntilCursor,
+        nextContinuationSince,
+    };
+}
+
+interface ResolveOlderBackfillAttemptProgressParams {
+    nextUntilCursor: number | null;
+    effectiveFetchUntil: number;
+    currentVisibleCount: number;
+    clickStartVisibleCount: number | null;
+    exploredSeconds: number;
+}
+
+interface OlderBackfillAttemptProgress {
+    didCursorAdvanceOlder: boolean;
+    totalVisibleAdded: number;
+    nextExploredSeconds: number;
+}
+
+export function resolveOlderBackfillAttemptProgress({
+    nextUntilCursor,
+    effectiveFetchUntil,
+    currentVisibleCount,
+    clickStartVisibleCount,
+    exploredSeconds,
+}: ResolveOlderBackfillAttemptProgressParams): OlderBackfillAttemptProgress {
+    const didCursorAdvanceOlder =
+        typeof nextUntilCursor === "number" &&
+        nextUntilCursor < effectiveFetchUntil;
+    const totalVisibleAdded = Math.max(
+        0,
+        currentVisibleCount - (clickStartVisibleCount ?? currentVisibleCount),
+    );
+    const cursorAdvancedSeconds = typeof nextUntilCursor === "number"
+        ? Math.max(0, effectiveFetchUntil - nextUntilCursor)
+        : Math.max(0, effectiveFetchUntil);
+
+    return {
+        didCursorAdvanceOlder,
+        totalVisibleAdded,
+        nextExploredSeconds: exploredSeconds + cursorAdvancedSeconds,
+    };
+}
+
+interface ResolveOlderBackfillCoverageProgressParams {
+    nextExternalFloor: number | null;
+    previousVisibleUntil: number | null;
+    rangesBeforeFetch: Array<{ since: number; until: number }>;
+}
+
+/**
+ * coverageAdvanced: the certified floor moved older than before the query.
+ * connectedSavedRange: that floor now reaches a range already saved below the
+ * previous floor, so saved posts are available without another relay query.
+ */
+export function resolveOlderBackfillCoverageProgress({
+    nextExternalFloor,
+    previousVisibleUntil,
+    rangesBeforeFetch,
+}: ResolveOlderBackfillCoverageProgressParams): {
+    connectedSavedRange: boolean;
+    coverageAdvanced: boolean;
+} {
+    const connectedSavedRange = typeof nextExternalFloor === "number" && typeof previousVisibleUntil === "number"
+        && rangesBeforeFetch.some((range) => range.until < previousVisibleUntil && nextExternalFloor <= range.since);
+    const coverageAdvanced = typeof nextExternalFloor === "number" && typeof previousVisibleUntil === "number"
+        && nextExternalFloor < previousVisibleUntil;
+
+    return { connectedSavedRange, coverageAdvanced };
+}
