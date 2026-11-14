@@ -98,6 +98,7 @@
   import { themeColorStore } from "./stores/themeColorStore.svelte";
   import { sharedMediaRepository } from "./lib/storage/sharedMediaRepository";
   import { composeSharedText } from "./lib/sharedContentUtils";
+  import { createAppSharedContentController } from "./lib/appSharedContentController";
   import { acknowledgeSharedMedia } from "./lib/utils/swCommunication";
   import type {
     AuthResult,
@@ -1850,121 +1851,19 @@
     };
   });
 
-  let isProcessingSharedContent = false;
-
-  function clearSharedMediaStoreForShare(shareId: string): void {
-    if (sharedMediaStore.shareId === shareId) {
-      clearSharedMediaStore();
-    }
-  }
-
-  async function deleteSharedMediaForShare(shareId: string): Promise<void> {
-    // Clear the mirror first. If that acknowledgement fails, retain the
-    // authoritative IndexedDB record to prevent the stale mirror being used.
-    if (!(await acknowledgeSharedMedia(shareId))) {
-      return;
-    }
-    await sharedMediaRepository.deleteLatestForShare(shareId);
-  }
-
-  async function consumeSharedContent(): Promise<void> {
-    if (
-      isProcessingSharedContent ||
-      !sharedMediaStore.received ||
-      !sharedMediaStore.shareId ||
-      !postComponentRef
-    ) {
-      return;
-    }
-
-    isProcessingSharedContent = true;
-    const shareId = sharedMediaStore.shareId;
-    const mediaFiles = [...sharedMediaStore.files];
-    const metadata = sharedMediaStore.metadata;
-    let bodyStatus = sharedMediaStore.bodyStatus;
-
-    try {
-      if (bodyStatus === "pending") {
-        const content = composeSharedText(sharedMediaStore);
-        if (content && !postComponentRef.appendSharedTextContent(content)) {
-          throw new Error("Failed to apply shared text to the editor");
-        }
-
-        bodyStatus = "applied";
-        const updateResult = await sharedMediaRepository.updateLatestForShare(
-          shareId,
-          {
-            images: mediaFiles,
-            metadata,
-            bodyStatus,
-            automaticRetryCount: sharedMediaStore.automaticRetryCount,
-          },
-        );
-        if (updateResult === "stale") {
-          clearSharedMediaStoreForShare(shareId);
-          return;
-        }
-      }
-
-      if (mediaFiles.length === 0) {
-        await deleteSharedMediaForShare(shareId);
-        clearSharedMediaStoreForShare(shareId);
-        return;
-      }
-
-      const uploadResult = await postComponentRef.uploadFiles(mediaFiles);
-      const uploadedAllFiles =
-        uploadResult !== null &&
-        uploadResult.failedResults.length === 0 &&
-        uploadResult.results !== null;
-
-      if (uploadedAllFiles) {
-        await deleteSharedMediaForShare(shareId);
-      } else if (sharedMediaStore.automaticRetryCount < 1) {
-        await sharedMediaRepository.updateLatestForShare(shareId, {
-          images: mediaFiles,
-          metadata,
-          bodyStatus,
-          automaticRetryCount: sharedMediaStore.automaticRetryCount + 1,
-        });
-        setSharedMediaError(
-          "共有メディアのアップロードに失敗しました。次回起動時に一度だけ再試行します。",
-          5000,
-        );
-      } else {
-        await deleteSharedMediaForShare(shareId);
-        setSharedMediaError(
-          "共有メディアのアップロードに失敗しました。元のアプリからもう一度共有してください。",
-          5000,
-        );
-      }
-
-      clearSharedMediaStoreForShare(shareId);
-    } catch (error) {
-      console.error("Failed to consume shared content:", error);
-      setSharedMediaError("共有コンテンツの取り込みに失敗しました", 5000);
-      // Keep the persistent record unchanged so a later startup can recover it.
-      clearSharedMediaStoreForShare(shareId);
-    } finally {
-      isProcessingSharedContent = false;
-
-      // A newer share can arrive while the current one is awaiting upload.
-      // Its effect run returns while this guard is true, so explicitly resume
-      // consumption after the current share has released the guard.
-      if (
-        sharedMediaStore.received &&
-        sharedMediaStore.shareId &&
-        sharedMediaStore.shareId !== shareId
-      ) {
-        queueMicrotask(() => {
-          void consumeSharedContent();
-        });
-      }
-    }
-  }
+  const appSharedContentController = createAppSharedContentController({
+    sharedMediaStore,
+    clearSharedMediaStore,
+    setSharedMediaError,
+    acknowledgeSharedMedia,
+    sharedMediaRepository,
+    composeSharedText,
+    getComposer: () => postComponentRef,
+    logger: console,
+  });
 
   $effect(() => {
-    void consumeSharedContent();
+    void appSharedContentController.consumeSharedContent();
   });
 
   // URLクエリコンテンツをエディターに挿入
