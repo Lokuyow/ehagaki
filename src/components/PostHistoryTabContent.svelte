@@ -25,7 +25,7 @@
     import PostHistoryRecordActionItems from "./PostHistoryRecordActionItems.svelte";
     import PostHistoryRecordHeader from "./PostHistoryRecordHeader.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
-    import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
+    import PostHistoryRecordFooter from "./PostHistoryRecordFooter.svelte";
     import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
     import PostHistoryImportDialog from "./PostHistoryImportDialog.svelte";
     import PostHistoryRelayFullScanDialog from "./PostHistoryRelayFullScanDialog.svelte";
@@ -33,7 +33,6 @@
     import type { PostHistoryFullScanResult } from "../lib/postHistoryRelayFullScanService";
     import type { PostHistoryJsonlImportResult } from "../lib/postHistoryJsonlImportService";
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
-    import PostHistoryRepliesBadgeButton from "./PostHistoryRepliesBadgeButton.svelte";
     import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
     import { verifyRelatedEvent } from '../lib/relatedEventVerification';
     import PostHistoryReactionDetails from "./PostHistoryReactionDetails.svelte";
@@ -1853,6 +1852,34 @@
         return resolveBroadcastEvent(post) !== null;
     }
 
+    const recordFooterView: ComponentProps<typeof PostHistoryRecordFooter>["view"] = {
+        get onReactionPost() {
+            return onReactionPost ? handleReactionPost : undefined;
+        },
+        get onReplyPost() {
+            return onReplyPost ? handleReplyPost : undefined;
+        },
+        get onQuotePost() {
+            return onQuotePost ? handleQuotePost : undefined;
+        },
+        getRepliesActionLabel: (post) => getRepliesActionLabel(post),
+        onRepliesAction: (post) => handleRepliesAction(post),
+        isReactionsExpanded: (post) => isReactionsExpanded(post),
+        getReactionsActionLabel: (post) => getReactionsActionLabel(post),
+        toggleReactions: (post) => toggleReactions(post),
+        isMenuOpen: (menuKey) => postActionUi.isPostMenuOpen(menuKey),
+        setMenuOpen: (menuKey, open) => setExclusivePostMenuOpen(menuKey, open),
+        getExternalClientOpenLabel: () => getExternalClientOpenLabel(),
+        onOpenExternalClient: (post) => handleOpenExternalClient(post),
+        onRefreshRelatedEvents: (post) => void handleRefreshRelatedEvents(post),
+        get isSearchMode() {
+            return history.isSearchMode;
+        },
+        onShowSurroundingPosts: (post) => void handleShowSurroundingPosts(post),
+        getActionItems: (post) =>
+            buildRecordActionItemProps(post, { externalClient: false }),
+    };
+
     function getRepliesActionLabel(post: PostHistoryRecord): string {
         const state =
             postHistoryThreadGraph.getAnchorState(post).repliesActionState;
@@ -3136,133 +3163,13 @@
                                         </PostContentPreview>
 
                                     </div>
-                                    <PostHistoryPreviewFooter
-                                            formattedDate={onReplyPost || onQuotePost ? formatPostedAt(
-                                                post.postedAt,
-                                            ) : ""}
-                                            dimmed={!!post.deletedAt}
-                                        >
-                                            {#snippet actions()}
-                                                <PostHistoryPostActions onReactionPost={onReactionPost ? handleReactionPost : undefined}
-                                                    {post}
-                                                    onReplyPost={onReplyPost
-                                                        ? handleReplyPost
-                                                        : undefined}
-                                                    onQuotePost={onQuotePost
-                                                        ? handleQuotePost
-                                                        : undefined}
-                                                >
-                                                    {#snippet replyExtras()}
-                                                        {#if graphState.repliesActionState.status === "loaded" && graphState.repliesActionState.replyCount > 0}
-                                                            <PostHistoryRepliesBadgeButton
-                                                                count={graphState.repliesActionState.replyCount}
-                                                                selected={graphState.repliesActionState.visible}
-                                                                ariaLabel={getRepliesActionLabel(post)}
-                                                                tooltipContent={getRepliesActionLabel(post)}
-                                                                onClick={() => handleRepliesAction(post)}
-                                                            />
-                                                        {/if}
-                                                    {/snippet}
-                                                    {#snippet reactionExtras()}
-                                                        {#if graphState.reactionSummary.totalCount > 0}
-                                                            <PostHistoryReactionActionButton
-                                                                count={graphState.reactionSummary.totalCount}
-                                                                expanded={isReactionsExpanded(post)}
-                                                                ariaLabel={getReactionsActionLabel(post)}
-                                                                onToggle={() => toggleReactions(post)}
-                                                            />
-                                                        {/if}
-                                                    {/snippet}
-                                                </PostHistoryPostActions>
-                                            {/snippet}
-                                            {#snippet trailing()}
-                                                {@const actionsLabel =
-                                                    $_("common.showActions")}
-                                                {#if onReplyPost || onQuotePost}
-                                                  <PostHistoryActionMenu
-                                                    lazy={true}
-                                                    open={postActionUi.isPostMenuOpen(
-                                                        post.eventId,
-                                                    )}
-                                                    onOpenChange={(
-                                                        open: boolean,
-                                                    ) =>
-                                                        setExclusivePostMenuOpen(
-                                                            post.eventId,
-                                                            open,
-                                                        )}
-                                                    triggerAriaLabel={actionsLabel}
-                                                    tooltipContent={actionsLabel}
-                                                    enableTooltip={true}
-                                                    timestamp={formatPostedAtExact(
-                                                        post.postedAt,
-                                                        $locale,
-                                                    )}
-                                                >
-                                                    {#snippet items()}
-                                                        <DropdownMenu.Item
-                                                            class="menu-action-button"
-                                                            onSelect={() =>
-                                                                handleOpenExternalClient(
-                                                                    post,
-                                                                )}
-                                                        >
-                                                            <div
-                                                                class="open-in-new-icon svg-icon"
-                                                                aria-hidden="true"
-                                                            ></div>
-                                                            <span>{getExternalClientOpenLabel()}</span>
-                                                        </DropdownMenu.Item>
-                                                        <DropdownMenu.Separator
-                                                            class="post-history-menu-separator"
-                                                        />
-                                                        <DropdownMenu.Item
-                                                            class="menu-action-button"
-                                                            disabled={graphState.relatedEventsStatus === "loading"}
-                                                            onSelect={() => void handleRefreshRelatedEvents(post)}
-                                                        >
-                                                            <div class="find_in_page-icon svg-icon" aria-hidden="true"></div>
-                                                            <span>{$_("postHistory.checkRelatedEvents")}</span>
-                                                        </DropdownMenu.Item>
-                                                        {#if history.isSearchMode}
-                                                            <DropdownMenu.Item
-                                                                class="menu-action-button"
-                                                                onSelect={() =>
-                                                                    void handleShowSurroundingPosts(
-                                                                        post,
-                                                                    )}
-                                                            >
-                                                                <div
-                                                                    class="calendar-icon svg-icon"
-                                                                    aria-hidden="true"
-                                                                ></div>
-                                                                <span>
-                                                                    {$_(
-                                                                        "postHistory.showSurroundingPosts",
-                                                                    )}
-                                                                </span>
-                                                            </DropdownMenu.Item>
-                                                        {/if}
-                                                        <PostHistoryRecordActionItems
-                                                            order="standard"
-                                                            showDeleteSeparator={!!(onReplyPost || onQuotePost)}
-                                                            {...buildRecordActionItemProps(post, { externalClient: false })}
-                                                        />
-                                                    {/snippet}
-                                                  </PostHistoryActionMenu>
-                                                {/if}
-                                            {/snippet}
-                                        </PostHistoryPreviewFooter>
-                                        {#if graphState.relatedEventsStatus === "failed"}
-                                            <p role="status">{$_("postHistory.relatedEventsFailed")}</p>
-                                        {/if}
-                                        {#if graphState.reactionSummary.totalCount > 0 && isReactionsExpanded(post)}
-                                            <PostHistoryReactionDetails
-                                                readModel={graphState.reactionReadModel}
-                                                emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
-                                                emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
-                                            />
-                                        {/if}
+                                    <PostHistoryRecordFooter
+                                        {post}
+                                        {graphState}
+                                        emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                                        emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                                        view={recordFooterView}
+                                    />
                                     <PostHistoryThreadGraphPanel onRefreshRelatedEvents={(nodeEventId) => void handleRefreshRelatedEvents(post, nodeEventId)} onReactionPost={onReactionPost ? handleReactionPost : undefined}
                                         state={graphState}
                                         section="children"
