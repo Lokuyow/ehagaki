@@ -1,7 +1,7 @@
 <script lang="ts">
     import { parseDate, type DateValue } from "@internationalized/date";
     import type { RxNostr } from "rx-nostr";
-    import { flushSync, onDestroy, tick, untrack } from "svelte";
+    import { flushSync, onDestroy, tick, untrack, type ComponentProps } from "svelte";
     import { _, locale } from "svelte-i18n";
     import { Dialog, DropdownMenu } from "bits-ui";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
@@ -23,6 +23,7 @@
     } from "../lib/postHistoryEventUtils";
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
     import PostHistoryRecordActionItems from "./PostHistoryRecordActionItems.svelte";
+    import PostHistoryRecordHeader from "./PostHistoryRecordHeader.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
     import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
@@ -252,6 +253,46 @@
         show; pubkeyHex; repostUiGeneration++; repostResult = null;
         return () => relatedTargetResolver.invalidateScope("post-history-repost-operation");
     });
+    type RecordActionItemProps = Omit<
+        ComponentProps<typeof PostHistoryRecordActionItems>,
+        "order" | "showDeleteSeparator"
+    >;
+
+    function buildRecordActionItemProps(
+        post: PostHistoryRecord,
+        options: { externalClient: boolean },
+    ): RecordActionItemProps {
+        return {
+            onRepost: canRepost(post) ? () => void handleRepost(post) : undefined,
+            repostPending,
+            copyFailed: copyNeventUi.copyState[post.eventId] === "failed",
+            showBroadcast: canBroadcastPost(post),
+            broadcastSending: isBroadcastSending(post),
+            showDelete: canDeletePost(post),
+            deletionSending: isDeletionSending(post),
+            onCopyPointerDown: (event) =>
+                copyNeventUi.captureCopyPointerPosition(post, event),
+            onCopyNevent: (event) =>
+                void copyNeventUi.handleCopyNevent(post, event),
+            ...(options.externalClient
+                ? {
+                    externalClientLabel: getExternalClientOpenLabel(),
+                    onOpenExternalClient: () => handleOpenExternalClient(post),
+                }
+                : {}),
+            onShowRawJson: () =>
+                openRawJson(post.rawEvent, [
+                    ...post.relayHints,
+                    ...post.acceptedRelays,
+                    ...(post.fetchedRelays ?? []),
+                ]),
+            onBroadcastPointerDown: (event) =>
+                captureBroadcastPointerPosition(post, event),
+            onBroadcastPost: (event) => void handleBroadcastPost(post, event),
+            onOpenDeleteConfirm: () => openDeleteConfirm(post),
+        };
+    }
+
     function canRepost(post: PostHistoryRecord): boolean {
         return !!onRepostPost && isRepostTargetKind(post.kind) && post.deletedAt === undefined
             && isPostHistoryRawEventConsistent(post.rawEvent, post);
@@ -2800,183 +2841,17 @@
                                         emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} />
                                 {:else}
                                 {#if post.kind === 42 || post.deletedAt || hasDeletionFailed(post) || !(onReplyPost || onQuotePost)}
-                                    <div class="post-preview-header">
-                                        {#if post.kind === 42}
-                                            <div
-                                                class="post-history-channel-row"
-                                            >
-                                                <span
-                                                    class="channel-icon svg-icon"
-                                                    aria-hidden="true"
-                                                ></span>
-                                                <span class="channel-label"
-                                                    >{$_(
-                                                        "postHistory.channel",
-                                                    )}</span
-                                                >
-                                                <span class="channel-name"
-                                                    >{channelDisplay.getChannelText(
-                                                        post,
-                                                        $_,
-                                                    )}</span
-                                                >
-                                            </div>
-                                        {/if}
-                                        <div class="post-preview-header-right">
-                                            {#if post.deletedAt || hasDeletionFailed(post)}
-                                                <div class="post-meta-inline">
-                                                    {#if post.deletedAt}
-                                                        <span
-                                                            class="deleted-badge"
-                                                            >{$_(
-                                                                "postHistory.deletedBadge",
-                                                            )}</span
-                                                        >
-                                                    {/if}
-                                                    {#if hasDeletionFailed(post)}
-                                                        <span
-                                                            class="delete-failed"
-                                                            >{$_(
-                                                                "postHistory.deleteFailed",
-                                                            )}</span
-                                                        >
-                                                    {/if}
-                                                </div>
-                                            {/if}
-                                            {#if !(onReplyPost || onQuotePost)}
-                                                <span
-                                                    >{formatPostedAt(
-                                                        post.postedAt,
-                                                    )}</span
-                                                >
-                                                <DropdownMenu.Root
-                                                    open={postActionUi.isPostMenuOpen(
-                                                        post.eventId,
-                                                    )}
-                                                    onOpenChange={(
-                                                        open: boolean,
-                                                    ) =>
-                                                        setExclusivePostMenuOpen(
-                                                            post.eventId,
-                                                            open,
-                                                        )}
-                                                >
-                                                    <DropdownMenu.Trigger
-                                                        class="menu-trigger post-history-menu-trigger"
-                                                        aria-label={$_("common.showActions")}
-                                                    >
-                                                        <div
-                                                            class="more-icon svg-icon"
-                                                        ></div>
-                                                    </DropdownMenu.Trigger>
-                                                    <DropdownMenu.Portal to={overlayTarget}>
-                                                        <DropdownMenu.Content
-                                                            side="bottom"
-                                                            align="start"
-                                                            sideOffset={8}
-                                                            class="post-history-menu-content"
-                                                            trapFocus={false}
-                                                            preventScroll={false}
-                                                            onCloseAutoFocus={(
-                                                                event: Event,
-                                                            ) =>
-                                                                event.preventDefault()}
-                                                        >
-                                                            <div
-                                                                class="post-history-menu-body"
-                                                            >
-                                                                <div
-                                                                    class="post-history-menu-timestamp"
-                                                                >
-                                                                    {formatPostedAtExact(
-                                                                        post.postedAt,
-                                                                        $locale,
-                                                                    )}
-                                                                </div>
-                                                                <DropdownMenu.Separator
-                                                                    class="post-history-menu-separator"
-                                                                />
-                                                                {#if history.isSearchMode}
-                                                                    <DropdownMenu.Item
-                                                                        class="menu-action-button"
-                                                                        onSelect={() =>
-                                                                            void handleShowSurroundingPosts(
-                                                                                post,
-                                                                            )}
-                                                                    >
-                                                                        <div
-                                                                            class="calendar-icon svg-icon"
-                                                                            aria-hidden="true"
-                                                                        ></div>
-                                                                        <span>
-                                                                            {$_(
-                                                                                "postHistory.showSurroundingPosts",
-                                                                            )}
-                                                                        </span>
-                                                                    </DropdownMenu.Item>
-                                                                    <DropdownMenu.Separator
-                                                                        class="post-history-menu-separator"
-                                                                    />
-                                                                {/if}
-                                                                <PostHistoryRecordActionItems
-                                                                    order="standard"
-                                                                    onRepost={canRepost(post) ? () => void handleRepost(post) : undefined}
-                                                                    {repostPending}
-                                                                    copyFailed={copyNeventUi.copyState[
-                                                                        post.eventId
-                                                                    ] === "failed"}
-                                                                    showBroadcast={canBroadcastPost(
-                                                                        post,
-                                                                    )}
-                                                                    broadcastSending={isBroadcastSending(
-                                                                        post,
-                                                                    )}
-                                                                    showDelete={canDeletePost(post)}
-                                                                    showDeleteSeparator={false}
-                                                                    deletionSending={isDeletionSending(
-                                                                        post,
-                                                                    )}
-                                                                    onCopyPointerDown={(event) =>
-                                                                        copyNeventUi.captureCopyPointerPosition(
-                                                                            post,
-                                                                            event,
-                                                                        )}
-                                                                    onCopyNevent={(event) =>
-                                                                        void copyNeventUi.handleCopyNevent(
-                                                                            post,
-                                                                            event,
-                                                                        )}
-                                                                    externalClientLabel={getExternalClientOpenLabel()}
-                                                                    onOpenExternalClient={() =>
-                                                                        handleOpenExternalClient(
-                                                                            post,
-                                                                        )}
-                                                                    onShowRawJson={() =>
-                                                                        openRawJson(post.rawEvent, [
-                                                                            ...post.relayHints,
-                                                                            ...post.acceptedRelays,
-                                                                            ...(post.fetchedRelays ?? []),
-                                                                        ])}
-                                                                    onBroadcastPointerDown={(event) =>
-                                                                        captureBroadcastPointerPosition(
-                                                                            post,
-                                                                            event,
-                                                                        )}
-                                                                    onBroadcastPost={(event) =>
-                                                                        void handleBroadcastPost(
-                                                                            post,
-                                                                            event,
-                                                                        )}
-                                                                    onOpenDeleteConfirm={() =>
-                                                                        openDeleteConfirm(post)}
-                                                                />
-                                                            </div>
-                                                        </DropdownMenu.Content>
-                                                    </DropdownMenu.Portal>
-                                                </DropdownMenu.Root>
-                                            {/if}
-                                        </div>
-                                    </div>
+                                    <PostHistoryRecordHeader
+                                        {post}
+                                        channelText={post.kind === 42 ? channelDisplay.getChannelText(post, $_) : null}
+                                        deletionFailed={hasDeletionFailed(post)}
+                                        showTimestampMenu={!(onReplyPost || onQuotePost)}
+                                        menuOpen={postActionUi.isPostMenuOpen(post.eventId)}
+                                        onMenuOpenChange={(open) => setExclusivePostMenuOpen(post.eventId, open)}
+                                        showSurroundingPostsAction={history.isSearchMode}
+                                        onShowSurroundingPosts={() => void handleShowSurroundingPosts(post)}
+                                        getActionItems={() => buildRecordActionItemProps(post, { externalClient: true })}
+                                    />
                                 {/if}
                                 <PostHistoryThreadGraphPanel onRefreshRelatedEvents={(nodeEventId) => void handleRefreshRelatedEvents(post, nodeEventId)} onReactionPost={onReactionPost ? handleReactionPost : undefined}
                                     state={graphState}
@@ -3370,50 +3245,8 @@
                                                         {/if}
                                                         <PostHistoryRecordActionItems
                                                             order="standard"
-                                                            onRepost={canRepost(post) ? () => void handleRepost(post) : undefined}
-                                                            {repostPending}
-                                                            copyFailed={copyNeventUi.copyState[
-                                                                post.eventId
-                                                            ] === "failed"}
-                                                            showBroadcast={canBroadcastPost(
-                                                                post,
-                                                            )}
-                                                            broadcastSending={isBroadcastSending(
-                                                                post,
-                                                            )}
-                                                            showDelete={canDeletePost(post)}
                                                             showDeleteSeparator={!!(onReplyPost || onQuotePost)}
-                                                            deletionSending={isDeletionSending(
-                                                                post,
-                                                            )}
-                                                            onCopyPointerDown={(event) =>
-                                                                copyNeventUi.captureCopyPointerPosition(
-                                                                    post,
-                                                                    event,
-                                                                )}
-                                                            onCopyNevent={(event) =>
-                                                                void copyNeventUi.handleCopyNevent(
-                                                                    post,
-                                                                    event,
-                                                                )}
-                                                            onShowRawJson={() =>
-                                                                openRawJson(post.rawEvent, [
-                                                                    ...post.relayHints,
-                                                                    ...post.acceptedRelays,
-                                                                    ...(post.fetchedRelays ?? []),
-                                                                ])}
-                                                            onBroadcastPointerDown={(event) =>
-                                                                captureBroadcastPointerPosition(
-                                                                    post,
-                                                                    event,
-                                                                )}
-                                                            onBroadcastPost={(event) =>
-                                                                void handleBroadcastPost(
-                                                                    post,
-                                                                    event,
-                                                                )}
-                                                            onOpenDeleteConfirm={() =>
-                                                                openDeleteConfirm(post)}
+                                                            {...buildRecordActionItemProps(post, { externalClient: false })}
                                                         />
                                                     {/snippet}
                                                   </PostHistoryActionMenu>
@@ -4206,7 +4039,6 @@
         border-bottom: none;
     }
 
-    .post-history-item-deleted .post-meta-inline > :not(.deleted-badge),
     .post-history-item-deleted .post-preview-body {
         opacity: 0.65;
     }
@@ -4217,28 +4049,6 @@
         flex: 1 1 0;
         min-width: 0;
         gap: 2px;
-    }
-
-    .post-preview-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        color: var(--text-muted);
-        font-size: 0.875rem;
-        line-height: 1.3;
-    }
-
-    .post-preview-header-right {
-        display: flex;
-        align-items: center;
-        gap: 2px;
-        flex-shrink: 0;
-        margin-inline-start: auto;
-    }
-
-    .post-preview-header-right > span {
-        white-space: nowrap;
     }
 
     :global(.post-history-menu-content .menu-action-button .calendar-icon) {
@@ -4334,35 +4144,6 @@
         min-width: 0;
     }
 
-    .post-history-channel-row {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        min-width: 0;
-        color: var(--text-muted);
-        font-size: 0.875rem;
-        line-height: 1.3;
-    }
-
-    .channel-icon {
-        width: 18px;
-        height: 18px;
-        flex-shrink: 0;
-        mask-image: url("/icons/forum_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
-        background-color: currentColor;
-    }
-
-    .channel-label {
-        flex-shrink: 0;
-    }
-
-    .channel-name {
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
     .post-preview-body {
         display: flex;
         flex-direction: column;
@@ -4396,25 +4177,6 @@
                 color-mix(in srgb, var(--text), white 30%)
             );
         }
-    }
-
-    .post-meta-inline {
-        margin-inline-start: auto;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-
-    .deleted-badge {
-        padding: 2px 6px;
-        border-radius: 999px;
-        background: color-mix(in srgb, var(--danger), transparent 82%);
-        color: var(--danger);
-        font-weight: 600;
-    }
-
-    .delete-failed {
-        color: var(--danger);
     }
 
     .delete-confirm-body {
