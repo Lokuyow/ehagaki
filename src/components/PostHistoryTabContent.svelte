@@ -89,11 +89,7 @@
     import {
         resolveBroadcastEvent,
     } from "../lib/postBroadcastService";
-    import {
-        postHistoryJsonlExportService,
-        type PostHistoryJsonlExportResult,
-    } from "../lib/postHistoryJsonlExportService";
-    import type { PostHistoryJsonlExportProgress } from "../lib/postHistoryJsonlExportWorkerProtocol";
+    import { usePostHistoryJsonlExport } from "../lib/hooks/usePostHistoryJsonlExport.svelte";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import { calculateContextMenuPosition } from "../lib/utils/appUtils";
     import {
@@ -183,9 +179,9 @@
         jumpDatePickerOpen = false;
         copyNeventUi.resetState();
         hideBroadcastFloatingMessage();
-        hideExportFloatingMessage();
+        jsonlExport.hideMessage();
         hideRelatedEventsResultMessage();
-        cancelExport();
+        jsonlExport.cancel();
         showImageFullscreen = false;
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
@@ -410,12 +406,12 @@
         getScope: () => ({ ownerPubkeyHex: pubkeyHex, rxNostr, relayConfig }),
         onSettled: handleFullScanSettled,
     });
-    let exportRunning = $state(false);
-    let exportProgress = $state<PostHistoryJsonlExportProgress>({
-        phase: "loading",
+    const jsonlExport = usePostHistoryJsonlExport({
+        getShow: () => show,
+        getPubkeyHex: () => pubkeyHex,
+        downloadContainer: overlayTarget,
+        onStart: () => { headingMenuOpen = false; },
     });
-    let exportAbortController: AbortController | undefined;
-    let exportPubkeyHex: string | undefined;
     let showRelatedEventsResult = $state(false);
     let relatedEventsMessageKey = $state<"postHistory.relatedEventsChecking" | "postHistory.relatedEventsApplied">("postHistory.relatedEventsApplied");
     let relatedEventsResultTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -449,16 +445,6 @@
         }
     }
 
-    let showExportFloatingMessage = $state(false);
-    let exportFloatingMessageKey = $state<
-        | "postHistory.exportComplete"
-        | "postHistory.exportPartial"
-        | "postHistory.exportFailed"
-    >("postHistory.exportComplete");
-    let exportFloatingMessageValues = $state<Record<string, number>>({});
-    let exportFloatingMessageTimeout:
-        | ReturnType<typeof setTimeout>
-        | undefined;
     let rawJsonDialogOpen = $state(false);
     let selectedRawEvent = $state<unknown>(null);
     let selectedRawRelayHints = $state<string[]>([]);
@@ -643,7 +629,7 @@
     );
     let syncToastExpired = $state(false);
     const canAutoHideSyncToast = $derived(
-        show && !fullScan.state.open && !exportRunning &&
+        show && !fullScan.state.open && !jsonlExport.running &&
             history.isDialogOpenSyncing &&
             headingStatusMessageKey === "postHistory.syncing" &&
             history.posts.length > 0,
@@ -792,7 +778,7 @@
         profileSyncCoordinator.reset();
         copyNeventUi.resetState();
         hideBroadcastFloatingMessage();
-        hideExportFloatingMessage();
+        jsonlExport.hideMessage();
         hideRelatedEventsResultMessage();
         postActionUi.resetDeleteConfirmation();
         importDialogOpen = false;
@@ -814,10 +800,6 @@
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
         showImageFullscreen = false;
-    }
-
-    function cancelExport(): void {
-        exportAbortController?.abort();
     }
 
     export function prepareClose() {
@@ -846,9 +828,9 @@
         headingMenuOpen = false;
         copyNeventUi.hideCopyFloatingMessage();
         hideBroadcastFloatingMessage();
-        hideExportFloatingMessage();
+        jsonlExport.hideMessage();
         hideRelatedEventsResultMessage();
-        cancelExport();
+        jsonlExport.cancel();
         showImageFullscreen = false;
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
@@ -894,12 +876,12 @@
 
     $effect(() => {
         if (sessionOpen ?? active) return;
-        untrack(() => { cancelExport(); resetDialogState(); });
+        untrack(() => { jsonlExport.cancel(); resetDialogState(); });
     });
 
     $effect(() => {
-        if (exportRunning && exportPubkeyHex && pubkeyHex !== exportPubkeyHex) {
-            cancelExport();
+        if (jsonlExport.running && jsonlExport.ownerPubkeyHex && pubkeyHex !== jsonlExport.ownerPubkeyHex) {
+            jsonlExport.cancel();
         }
     });
 
@@ -1371,10 +1353,10 @@
         destroyed = true;
         activationEpoch++;
         surroundingPostsNavigationRequestId += 1;
-        cancelExport();
+        jsonlExport.cancel();
         resetPendingDeletionRequests();
         profileSyncCoordinator.dispose();
-        hideExportFloatingMessage();
+        jsonlExport.hideMessage();
         hideRelatedEventsResultMessage();
     });
 
@@ -2311,99 +2293,6 @@
         headingMenuOpen = false;
     }
 
-    function hideExportFloatingMessage(): void {
-        if (exportFloatingMessageTimeout) {
-            clearTimeout(exportFloatingMessageTimeout);
-            exportFloatingMessageTimeout = undefined;
-        }
-        showExportFloatingMessage = false;
-    }
-
-    function getLocalExportDate(): string {
-        const now = new Date();
-        return [
-            String(now.getFullYear()).padStart(4, "0"),
-            String(now.getMonth() + 1).padStart(2, "0"),
-            String(now.getDate()).padStart(2, "0"),
-        ].join("-");
-    }
-
-    function showExportResultMessage(
-        result: Omit<PostHistoryJsonlExportResult, "jsonl">,
-    ): void {
-        hideExportFloatingMessage();
-        exportFloatingMessageKey = result.isPartial
-            ? "postHistory.exportPartial"
-            : "postHistory.exportComplete";
-        exportFloatingMessageValues = {
-            exported: result.exportedEventCount,
-            skipped: result.skippedPostCount
-                + result.missingDeletionRawEventCount
-                + result.invalidDeletionRawEventCount,
-        };
-        showExportFloatingMessage = true;
-        exportFloatingMessageTimeout = setTimeout(() => {
-            showExportFloatingMessage = false;
-            exportFloatingMessageTimeout = undefined;
-        }, 5000);
-    }
-
-    async function handleExportPostHistory(): Promise<void> {
-        if (!pubkeyHex || exportRunning) {
-            return;
-        }
-
-        exportRunning = true;
-        exportProgress = { phase: "loading" };
-        const controller = new AbortController();
-        exportAbortController = controller;
-        exportPubkeyHex = pubkeyHex;
-        headingMenuOpen = false;
-        hideExportFloatingMessage();
-        try {
-            const { result, blob } = await postHistoryJsonlExportService
-                .exportForPubkeyInWorker(pubkeyHex, {
-                    signal: controller.signal,
-                    onProgress: (progress) => {
-                        if (!controller.signal.aborted && show && exportAbortController === controller) exportProgress = progress;
-                    },
-                });
-            if (controller.signal.aborted) {
-                return;
-            }
-            const objectUrl = URL.createObjectURL(blob);
-            const anchor = document.createElement("a");
-            anchor.href = objectUrl;
-            anchor.download = `ehagaki-post-history-${getLocalExportDate()}.jsonl`;
-            anchor.style.display = "none";
-            overlayTarget.appendChild(anchor);
-            anchor.click();
-            setTimeout(() => {
-                anchor.remove();
-                URL.revokeObjectURL?.(objectUrl);
-            }, 1000);
-            showExportResultMessage(result);
-        } catch (error) {
-            if (controller.signal.aborted || (error instanceof DOMException
-                && error.name === "AbortError")) {
-                return;
-            }
-            exportFloatingMessageKey = "postHistory.exportFailed";
-            exportFloatingMessageValues = {};
-            showExportFloatingMessage = true;
-            exportFloatingMessageTimeout = setTimeout(() => {
-                showExportFloatingMessage = false;
-                exportFloatingMessageTimeout = undefined;
-            }, 5000);
-        } finally {
-            if (exportAbortController === controller) {
-                exportAbortController = undefined;
-                exportPubkeyHex = undefined;
-                exportRunning = false;
-            }
-        }
-    }
-
     async function handleFullScanSettled(result: PostHistoryFullScanResult): Promise<void> {
         const owned = captureOperation();
         if (!owned()) return;
@@ -2627,15 +2516,15 @@
             </Button>
         </div>
         <div class="post-history-heading-actions">
-            {#if exportRunning}
+            {#if jsonlExport.running}
                 <LoadingPlaceholder
-                    text={exportProgress.phase === "loading"
+                    text={jsonlExport.progress.phase === "loading"
                         ? $_("postHistory.exportLoading")
-                        : exportProgress.phase === "verifying"
+                        : jsonlExport.progress.phase === "verifying"
                           ? $_("postHistory.exportVerifying", {
                               values: {
-                                  processed: exportProgress.processed ?? 0,
-                                  total: exportProgress.total ?? 0,
+                                  processed: jsonlExport.progress.processed ?? 0,
+                                  total: jsonlExport.progress.total ?? 0,
                               },
                           })
                           : $_("postHistory.exportCreating")}
@@ -2731,8 +2620,8 @@
                             />
                             <DropdownMenu.Item
                                 class="menu-action-button"
-                                disabled={!pubkeyHex || exportRunning}
-                                onSelect={handleExportPostHistory}
+                                disabled={!pubkeyHex || jsonlExport.running}
+                                onSelect={jsonlExport.start}
                             >
                                 <div
                                     class="export-icon svg-icon"
@@ -3914,7 +3803,7 @@
         {#if
             !history.isSearchMode &&
             history.syncStatus === "syncing" &&
-            (history.posts.length > 0 || exportRunning)}
+            (history.posts.length > 0 || jsonlExport.running)}
             <div class="post-history-nav-row post-history-sync-footer" role="status">
                 <LoadingPlaceholder
                     text={$_("postHistory.syncing")}
@@ -3973,7 +3862,7 @@
 
 
 <FloatingMessage
-    show={show && !fullScan.state.open && !exportRunning && !!headingStatusMessageKey && !syncToastExpired}
+    show={show && !fullScan.state.open && !jsonlExport.running && !!headingStatusMessageKey && !syncToastExpired}
     fadeOutDuration={canAutoHideSyncToast ? 200 : 0}
     variant="anchor-center"
     anchor={postHistoryHeadingElement}
@@ -4075,10 +3964,10 @@
     <div>{$_(broadcastFloatingMessageKey)}</div>
 </FloatingMessage>
 
-<FloatingMessage show={showExportFloatingMessage} variant="top-right">
+<FloatingMessage show={jsonlExport.showMessage} variant="top-right">
     <div>
-        {$_(exportFloatingMessageKey, {
-            values: exportFloatingMessageValues,
+        {$_(jsonlExport.messageKey, {
+            values: jsonlExport.messageValues,
         })}
     </div>
 </FloatingMessage>
