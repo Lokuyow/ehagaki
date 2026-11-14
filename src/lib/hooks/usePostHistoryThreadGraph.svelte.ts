@@ -78,6 +78,13 @@ import {
     type PostHistoryThreadGraphNode,
     type PostHistoryThreadGraphSource,
 } from "../postHistoryThreadGraphUtils";
+import {
+    addDeletedThreadGraphTargets,
+    collectThreadGraphChildrenOfDeletedParent,
+    isDeletedThreadGraphEvent,
+    keepVisibleThreadGraphItems,
+    removeThreadGraphEventFromRelations,
+} from "../postHistoryThreadGraphDeletionState";
 import { createPostHistoryThreadGraphTaskTracker } from "../postHistoryThreadGraphTaskTracker";
 import { createPostHistoryThreadGraphParentLoadingIndicator } from "../postHistoryThreadGraphParentLoadingIndicator";
 import {
@@ -912,11 +919,7 @@ export function usePostHistoryThreadGraph({
     }
 
     function isDeletedEvent(authorPubkey: string | null | undefined, eventId: string | null | undefined): boolean {
-        if (!authorPubkey || !eventId) {
-            return false;
-        }
-
-        return !!deletedEventIdsByPubkey[authorPubkey]?.[eventId];
+        return isDeletedThreadGraphEvent(deletedEventIdsByPubkey, authorPubkey, eventId);
     }
 
     function isDeletedNodeEventId(eventId: string): boolean {
@@ -943,19 +946,12 @@ export function usePostHistoryThreadGraph({
         authorPubkey: string | null | undefined,
         options: { revealKnownParent?: boolean } = {},
     ): void {
-        const affectedChildEventIds = new Set<string>();
-        for (const [childEventId, parentEventId] of Object.entries(parentByChildId)) {
-            if (parentEventId !== eventId) {
-                continue;
-            }
-
-            const node = nodesById[eventId];
-            if (authorPubkey && node && node.authorPubkey !== authorPubkey) {
-                continue;
-            }
-
-            affectedChildEventIds.add(childEventId);
-        }
+        const affectedChildEventIds = collectThreadGraphChildrenOfDeletedParent({
+            parentByChildId,
+            nodesById,
+            eventId,
+            authorPubkey,
+        });
 
         if (affectedChildEventIds.size === 0) {
             return;
@@ -999,55 +995,29 @@ export function usePostHistoryThreadGraph({
     }
 
     function hideDeletedTargets(deletedTargets: Map<string, Set<string>>): void {
-        let nextDeletedEventIdsByPubkey = deletedEventIdsByPubkey;
-        let changed = false;
-        for (const [authorPubkey, eventIds] of deletedTargets.entries()) {
-            const currentEventIds = nextDeletedEventIdsByPubkey[authorPubkey] ?? {};
-            let nextEventIds = currentEventIds;
-            for (const eventId of eventIds) {
-                if (nextEventIds[eventId]) {
-                    continue;
-                }
+        const nextDeletedEventIdsByPubkey = addDeletedThreadGraphTargets(
+            deletedEventIdsByPubkey,
+            deletedTargets,
+        );
 
-                nextEventIds = {
-                    ...nextEventIds,
-                    [eventId]: true,
-                };
-                changed = true;
-            }
-
-            if (nextEventIds !== currentEventIds) {
-                nextDeletedEventIdsByPubkey = {
-                    ...nextDeletedEventIdsByPubkey,
-                    [authorPubkey]: nextEventIds,
-                };
-            }
-        }
-
-        if (changed) {
+        if (nextDeletedEventIdsByPubkey !== deletedEventIdsByPubkey) {
             deletedEventIdsByPubkey = nextDeletedEventIdsByPubkey;
             markParentDeletedForTargets(deletedTargets);
         }
     }
 
     function removeEventIdFromChildren(eventId: string): void {
-        const nextChildrenByParentId: Record<string, string[]> = {};
-        let changedChildren = false;
-        for (const [parentEventId, childEventIds] of Object.entries(childrenByParentId)) {
-            const nextChildEventIds = childEventIds.filter((childEventId) => childEventId !== eventId);
-            nextChildrenByParentId[parentEventId] = nextChildEventIds;
-            if (nextChildEventIds.length !== childEventIds.length) {
-                changedChildren = true;
-            }
+        const next = removeThreadGraphEventFromRelations(
+            { childrenByParentId, parentByChildId },
+            eventId,
+        );
+
+        if (next.childrenByParentId !== childrenByParentId) {
+            childrenByParentId = next.childrenByParentId;
         }
 
-        if (changedChildren) {
-            childrenByParentId = nextChildrenByParentId;
-        }
-
-        if (parentByChildId[eventId]) {
-            const { [eventId]: _removed, ...nextParentByChildId } = parentByChildId;
-            parentByChildId = nextParentByChildId;
+        if (next.parentByChildId !== parentByChildId) {
+            parentByChildId = next.parentByChildId;
         }
     }
 
@@ -1189,16 +1159,11 @@ export function usePostHistoryThreadGraph({
         const events = records.map((record) => toEventFromReplyRecord(record));
         const visibleEvents = await filterVisibleReplyEvents(events);
         const visibleEventIds = new Set(visibleEvents.map((event) => event.id));
-        const visibleRecords: import("../storage/ehagakiDb").PostHistoryChildInteractionRecord[] = [];
-        for (const record of records) {
-            if (!visibleEventIds.has(record.eventId)) {
-                continue;
-            }
-
-            visibleRecords.push(record);
-        }
-
-        return visibleRecords;
+        return keepVisibleThreadGraphItems(
+            records,
+            visibleEventIds,
+            (record) => record.eventId,
+        );
     }
 
     async function filterVisibleReplyItems(
@@ -1206,16 +1171,11 @@ export function usePostHistoryThreadGraph({
     ): Promise<Array<{ event: NostrEvent; relayUrls?: string[] }>> {
         const visibleEvents = await filterVisibleReplyEvents(items.map((item) => item.event));
         const visibleEventIds = new Set(visibleEvents.map((event) => event.id));
-        const visibleItems: Array<{ event: NostrEvent; relayUrls?: string[] }> = [];
-        for (const item of items) {
-            if (!visibleEventIds.has(item.event.id)) {
-                continue;
-            }
-
-            visibleItems.push(item);
-        }
-
-        return visibleItems;
+        return keepVisibleThreadGraphItems(
+            items,
+            visibleEventIds,
+            (item) => item.event.id,
+        );
     }
 
     async function isVisibleParentEvent(input: {
