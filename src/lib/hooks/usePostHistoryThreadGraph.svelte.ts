@@ -85,6 +85,15 @@ import {
     keepVisibleThreadGraphItems,
     removeThreadGraphEventFromRelations,
 } from "../postHistoryThreadGraphDeletionState";
+import {
+    applyCachedChildInteractionBatch,
+    groupCachedChildInteractionRecords,
+    resolveCachedReplyFetchedAt,
+    resolveEffectiveDirectReplyFetchedAt,
+    sanitizeRelayUrls,
+    uniqueEventIds,
+    type CachedChildInteractionBatchInput,
+} from "../postHistoryThreadGraphCachedChildren";
 import { createPostHistoryThreadGraphTaskTracker } from "../postHistoryThreadGraphTaskTracker";
 import { createPostHistoryThreadGraphParentLoadingIndicator } from "../postHistoryThreadGraphParentLoadingIndicator";
 import {
@@ -199,14 +208,6 @@ interface UsePostHistoryThreadGraphParams {
     relatedTargetResolver?: PostHistoryRelatedTargetResolver;
 }
 
-function sanitizeRelayUrls(urls: string[]): string[] {
-    return RelayConfigUtils.sanitizeExternalRelayUrls(urls, { limit: 8 });
-}
-
-function uniqueEventIds(eventIds: string[]): string[] {
-    return Array.from(new Set(eventIds));
-}
-
 const POST_HISTORY_THREAD_GRAPH_MAX_PARENT_DEPTH = 20;
 const POST_HISTORY_THREAD_GRAPH_MAX_CHILD_DEPTH = 20;
 const POST_HISTORY_CHILD_REPLY_PREFETCH_LIMIT = 12;
@@ -257,11 +258,6 @@ function resolveDirectReplyFetchCompleteness(
     return status === "partial" ? "partial" : "complete";
 }
 
-function resolveEffectiveDirectReplyFetchedAt(
-    metadata: { completeness: "complete" | "partial"; fetchedAt: number } | null,
-): number | null {
-    return metadata?.completeness === "complete" ? metadata.fetchedAt : null;
-}
 const POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS = 5 * 60 * 1_000;
 let nextThreadGraphParentResolverScopeId = 0;
 
@@ -1573,15 +1569,6 @@ export function usePostHistoryThreadGraph({
         void loadParentForNode(post, nodeEventId, { force: true });
     }
 
-    function resolveCachedReplyFetchedAt(records: PostHistoryChildInteractionRecord[]): number | null {
-        const fetchedAtValues = records
-            .map((record) => record.fetchedAt)
-            .filter((value) => Number.isFinite(value));
-        return fetchedAtValues.length > 0
-            ? Math.max(...fetchedAtValues)
-            : null;
-    }
-
     async function readDirectReplyFetchMetadata(parentEventId: string) {
         try {
             return {
@@ -2125,31 +2112,6 @@ export function usePostHistoryThreadGraph({
         return true;
     }
 
-    function groupCachedChildInteractionRecords(
-        records: PostHistoryChildInteractionRecord[],
-        parentEventIds: string[],
-    ): Map<string, PostHistoryChildInteractionRecord[]> {
-        const targetParentIds = new Set(parentEventIds);
-        const recordsByParentId = new Map<string, PostHistoryChildInteractionRecord[]>();
-        for (const record of records) {
-            if (!targetParentIds.has(record.parentEventId)) {
-                continue;
-            }
-            const parentRecords = recordsByParentId.get(record.parentEventId) ?? [];
-            parentRecords.push(record);
-            recordsByParentId.set(record.parentEventId, parentRecords);
-        }
-        for (const parentRecords of recordsByParentId.values()) {
-            parentRecords.sort((left, right) => {
-                if (left.createdAt !== right.createdAt) {
-                    return left.createdAt - right.createdAt;
-                }
-                return left.eventId.localeCompare(right.eventId);
-            });
-        }
-        return recordsByParentId;
-    }
-
     function markEmptyChildrenIncompleteIfNeeded(input: {
         anchorEventId: string;
         nodeEventId: string;
@@ -2170,184 +2132,37 @@ export function usePostHistoryThreadGraph({
         return true;
     }
 
-    function applyCachedChildInteractionStateBatch(input: {
-        postsByParentId: Map<string, PostHistoryRecord>;
-        targetParentIds: string[];
-        anchorNodesByParentId: Map<string, PostHistoryThreadGraphNode>;
-        reactionRecordsByParentId: Map<string, PostHistoryChildInteractionRecord[]>;
-        directReplyRecordsByParentId: Map<string, PostHistoryChildInteractionRecord[]>;
-        metadataByParentId: Map<string, PostHistoryDirectReplyFetchMetadata>;
-        metadataReadFailedParentIds: Set<string>;
-        cachedReactionProfilesByPubkey: Record<string, ProfileData | null>;
-        knownNodeProfilesByPubkey: Map<string, ProfileData | null>;
-    }): void {
-        const nextNodesById = { ...nodesById };
-        const nextParentByChildId = { ...parentByChildId };
-        const nextChildrenByParentId = { ...childrenByParentId };
-        const nextExpansionByAnchorNodeKey = { ...expansionByAnchorNodeKey };
-        const nextReactionSummaryByParentId = { ...reactionSummaryByParentId };
-        const nextReactionRecordsByParentId = { ...reactionRecordsByParentId };
-        const nextReactionProfilesByPubkey = { ...reactionProfilesByPubkey };
-        const nextReactionReadModelByParentId = { ...reactionReadModelByParentId };
-        let nodesChanged = false;
-        let parentEdgesChanged = false;
-        let childrenChanged = false;
-        let expansionsChanged = false;
-        const childIdsByParentId = new Map<string, string[]>();
+    function applyCachedChildInteractionStateBatch(
+        input: CachedChildInteractionBatchInput,
+    ): void {
+        const next = applyCachedChildInteractionBatch({
+            nodesById,
+            parentByChildId,
+            childrenByParentId,
+            expansionByAnchorNodeKey,
+            reactionSummaryByParentId,
+            reactionRecordsByParentId,
+            reactionProfilesByPubkey,
+            reactionReadModelByParentId,
+            deletedEventIdsByPubkey,
+        }, input);
 
-        const upsertDraftNode = (nextNode: PostHistoryThreadGraphNode) => {
-            const mergedNode = mergeThreadGraphNode(
-                nextNodesById[nextNode.eventId],
-                nextNode,
-            );
-            nextNodesById[mergedNode.eventId] = mergedNode;
-            nodesChanged = true;
-            return mergedNode;
-        };
-        const upsertDraftParentEdge = (
-            childEventId: string,
-            parentEventId: string | null,
-        ) => {
-            if (!parentEventId) {
-                return;
-            }
-            nextParentByChildId[childEventId] = parentEventId;
-            parentEdgesChanged = true;
-        };
-
-        for (const parentEventId of input.targetParentIds) {
-            const anchorNode = input.anchorNodesByParentId.get(parentEventId);
-            if (!anchorNode) {
-                continue;
-            }
-            const mergedAnchorNode = upsertDraftNode(anchorNode);
-            upsertDraftParentEdge(
-                mergedAnchorNode.eventId,
-                mergedAnchorNode.parentEventId,
-            );
-
-            const reactionRecords = input.reactionRecordsByParentId.get(parentEventId) ?? [];
-            nextReactionSummaryByParentId[parentEventId] =
-                summarizePostHistoryReactionRecords(reactionRecords);
-            nextReactionRecordsByParentId[parentEventId] = reactionRecords;
+        if (next.nodesById !== nodesById) {
+            nodesById = next.nodesById;
         }
-
-        for (const [pubkey, profile] of Object.entries(
-            input.cachedReactionProfilesByPubkey,
-        )) {
-            nextReactionProfilesByPubkey[pubkey] = profile;
+        if (next.parentByChildId !== parentByChildId) {
+            parentByChildId = next.parentByChildId;
         }
-
-        for (const parentEventId of input.targetParentIds) {
-            const anchorNode = input.anchorNodesByParentId.get(parentEventId);
-            if (!anchorNode) {
-                continue;
-            }
-            const acceptedRecords: PostHistoryChildInteractionRecord[] = [];
-            const childEventIds: string[] = [];
-            for (const record of input.directReplyRecordsByParentId.get(parentEventId) ?? []) {
-                const event = toEventFromReplyRecord(record);
-                if (isDeletedEvent(event.pubkey, event.id)) {
-                    continue;
-                }
-                const childNode = upsertDraftNode(buildThreadGraphNode({
-                    event,
-                    relayUrls: sanitizeRelayUrls(record.relayUrls),
-                    sources: ["reply-db", "inbound-sync"],
-                }));
-                if (childNode.eventId === parentEventId) {
-                    continue;
-                }
-                upsertDraftParentEdge(childNode.eventId, parentEventId);
-                childEventIds.push(childNode.eventId);
-                acceptedRecords.push(record);
-            }
-            childIdsByParentId.set(parentEventId, childEventIds);
-
-            const metadata = input.metadataByParentId.get(parentEventId) ?? null;
-            const metadataReadFailed = input.metadataReadFailedParentIds.has(parentEventId);
-            if (acceptedRecords.length === 0 && !metadata) {
-                continue;
-            }
-            const post = input.postsByParentId.get(parentEventId);
-            if (!post) {
-                continue;
-            }
-            const expansionKey = buildAnchorNodeKey(post.eventId, parentEventId);
-            const currentExpansion = nextExpansionByAnchorNodeKey[expansionKey]
-                ?? buildInitialExpansionState();
-            nextExpansionByAnchorNodeKey[expansionKey] =
-                metadata?.completeness === "partial" && acceptedRecords.length === 0
-                    ? {
-                        ...currentExpansion,
-                        loadedChildren: false,
-                        loadingChildren: false,
-                        revalidatingChildren: false,
-                        childrenError: null,
-                        lastFetchedChildrenAt: null,
-                    }
-                    : buildChildrenLoadedExpansionState(currentExpansion, {
-                        lastFetchedChildrenAt: metadataReadFailed
-                            ? null
-                            : metadata
-                                ? resolveEffectiveDirectReplyFetchedAt(metadata)
-                                : resolveCachedReplyFetchedAt(acceptedRecords),
-                    });
-            expansionsChanged = true;
+        if (next.childrenByParentId !== childrenByParentId) {
+            childrenByParentId = next.childrenByParentId;
         }
-
-        for (const [parentEventId, childEventIds] of childIdsByParentId) {
-            const currentChildEventIds = nextChildrenByParentId[parentEventId] ?? [];
-            nextChildrenByParentId[parentEventId] = sortEventIdsByEvent(
-                uniqueEventIds([...currentChildEventIds, ...childEventIds]).filter(
-                    (eventId) =>
-                        eventId !== parentEventId
-                        && !isDeletedNodeEventId(eventId),
-                ),
-                nextNodesById,
-            );
-            childrenChanged = true;
+        if (next.expansionByAnchorNodeKey !== expansionByAnchorNodeKey) {
+            expansionByAnchorNodeKey = next.expansionByAnchorNodeKey;
         }
-
-        for (const [pubkey, profile] of input.knownNodeProfilesByPubkey) {
-            if (!profile) {
-                continue;
-            }
-            for (const [eventId, node] of Object.entries(nextNodesById)) {
-                if (node.authorPubkey === pubkey) {
-                    nextNodesById[eventId] = mergeThreadGraphNode(node, {
-                        ...node,
-                        profile,
-                    });
-                    nodesChanged = true;
-                }
-            }
-        }
-
-        for (const parentEventId of input.targetParentIds) {
-            nextReactionReadModelByParentId[parentEventId] =
-                buildPostHistoryReactionReadModel(
-                    nextReactionRecordsByParentId[parentEventId] ?? [],
-                    nextReactionProfilesByPubkey,
-                );
-        }
-
-        if (nodesChanged) {
-            nodesById = nextNodesById;
-        }
-        if (parentEdgesChanged) {
-            parentByChildId = nextParentByChildId;
-        }
-        if (childrenChanged) {
-            childrenByParentId = nextChildrenByParentId;
-        }
-        if (expansionsChanged) {
-            expansionByAnchorNodeKey = nextExpansionByAnchorNodeKey;
-        }
-        reactionSummaryByParentId = nextReactionSummaryByParentId;
-        reactionRecordsByParentId = nextReactionRecordsByParentId;
-        reactionProfilesByPubkey = nextReactionProfilesByPubkey;
-        reactionReadModelByParentId = nextReactionReadModelByParentId;
+        reactionSummaryByParentId = next.reactionSummaryByParentId;
+        reactionRecordsByParentId = next.reactionRecordsByParentId;
+        reactionProfilesByPubkey = next.reactionProfilesByPubkey;
+        reactionReadModelByParentId = next.reactionReadModelByParentId;
     }
 
     async function loadCachedChildInteractionStateForPosts(
