@@ -150,6 +150,7 @@
     "secret_too_short": "秘密鍵が短すぎます（63文字必要です）",
     "secret_too_long": "秘密鍵が長すぎます（63文字以内で入力してください）",
     "invalid_secret": "無効な秘密鍵です",
+    "secret_login_failed": "秘密鍵でのログインに失敗しました",
     "bunker_connect": "接続",
     "bunker_input_title": "バンカーURLを入力",
     "bunker_url_required": "バンカーURLを入力してください",

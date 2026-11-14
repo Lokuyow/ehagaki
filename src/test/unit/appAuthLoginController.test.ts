@@ -30,7 +30,7 @@ function createController(overrides: Record<string, unknown> = {}) {
         cancelPendingNip46Auth: vi.fn(async () => undefined),
         authenticateWithNsec: vi.fn(async () => ({ success: true, pubkeyHex: 'ef'.repeat(32) })),
         handleSuccessfulAuthResult: vi.fn(async () => true),
-        setErrorMessage: vi.fn(),
+        clearSecretKeyInput: vi.fn(),
         setProfileLoading: vi.fn(),
         logger: { error: vi.fn() },
         ...overrides,
@@ -120,28 +120,90 @@ describe('createAppAuthLoginController', () => {
         expect(deps.finishParentClientTransition).toHaveBeenCalledTimes(2);
     });
 
-    it('saveSecretKey failure はエラーを設定する', async () => {
-        const setErrorMessage = vi.fn();
+    it('saveSecretKey failure はエラーコードを返し、入力を保持する', async () => {
         const { deps, controller } = createController({
-            authenticateWithNsec: vi.fn(async () => ({ success: false, error: 'authentication_error' })),
-            setErrorMessage,
+            authenticateWithNsec: vi.fn(async () => ({ success: false, error: 'error_saving' })),
+        });
+
+        await expect(controller.saveSecretKey('nsec1...')).resolves.toBe('error_saving');
+
+        expect(deps.cancelPendingNip46Auth).toHaveBeenCalledTimes(1);
+        expect(deps.clearSecretKeyInput).not.toHaveBeenCalled();
+        expect(deps.handleSuccessfulAuthResult).not.toHaveBeenCalled();
+    });
+
+    it('saveSecretKey success は入力を消去して auth result を処理する', async () => {
+        const { deps, controller } = createController();
+
+        await expect(controller.saveSecretKey('nsec1...')).resolves.toBeUndefined();
+
+        expect(deps.clearSecretKeyInput).toHaveBeenCalledTimes(1);
+        expect(deps.clearNip46RuntimeForAuthChange).toHaveBeenCalledTimes(1);
+        expect(deps.handleSuccessfulAuthResult).toHaveBeenCalledTimes(1);
+    });
+
+    it('saveSecretKey は認証で置き換わる前のセッションを NIP-46 runtime 解放に渡す', async () => {
+        let authType = 'nip46';
+        let pubkeyHex = 'cd'.repeat(32);
+        const { deps, controller } = createController({
+            getCurrentAuthType: () => authType,
+            getCurrentPubkeyHex: () => pubkeyHex,
+            authenticateWithNsec: vi.fn(async () => {
+                authType = 'nsec';
+                pubkeyHex = 'ef'.repeat(32);
+                return { success: true, pubkeyHex };
+            }),
         });
 
         await controller.saveSecretKey('nsec1...');
 
-        expect(deps.cancelPendingNip46Auth).toHaveBeenCalledTimes(1);
-        expect(setErrorMessage).toHaveBeenCalledWith('authentication_error');
-        expect(deps.handleSuccessfulAuthResult).not.toHaveBeenCalled();
+        expect(deps.clearNip46RuntimeForAuthChange).toHaveBeenCalledWith(expect.objectContaining({
+            currentAuthType: 'nip46',
+            currentPubkeyHex: 'cd'.repeat(32),
+            nextAuthType: 'nsec',
+            nextPubkeyHex: 'ef'.repeat(32),
+        }));
     });
 
-    it('saveSecretKey success は auth result を処理する', async () => {
-        const { deps, controller } = createController();
+    it('saveSecretKey は実行中の二重送信を無視する', async () => {
+        let finishAuth!: (value: { success: boolean; pubkeyHex: string }) => void;
+        const { deps, controller } = createController({
+            authenticateWithNsec: vi.fn()
+                .mockImplementationOnce(() => new Promise(resolve => { finishAuth = resolve; }))
+                .mockResolvedValue({ success: true, pubkeyHex: 'ef'.repeat(32) }),
+        });
+
+        const first = controller.saveSecretKey('nsec1...');
+        await vi.waitFor(() => expect(deps.authenticateWithNsec).toHaveBeenCalledTimes(1));
+        await expect(controller.saveSecretKey('nsec1...')).resolves.toBeUndefined();
+        finishAuth({ success: true, pubkeyHex: 'ef'.repeat(32) });
+        await first;
+
+        expect(deps.authenticateWithNsec).toHaveBeenCalledTimes(1);
+        expect(deps.handleSuccessfulAuthResult).toHaveBeenCalledTimes(1);
 
         await controller.saveSecretKey('nsec1...');
+        expect(deps.authenticateWithNsec).toHaveBeenCalledTimes(2);
+    });
 
-        expect(deps.setErrorMessage).toHaveBeenCalledWith('');
-        expect(deps.clearNip46RuntimeForAuthChange).toHaveBeenCalledTimes(1);
-        expect(deps.handleSuccessfulAuthResult).toHaveBeenCalledTimes(1);
+    it('親クライアント認証で置き換わる前のセッションを NIP-46 runtime 解放に渡す', async () => {
+        let authType = 'nip46';
+        const { deps, controller } = createController({
+            getCurrentAuthType: () => authType,
+            parentClientAuthCoordinator: {
+                synchronizeParentClientAuth: vi.fn(async () => {
+                    authType = 'parentClient';
+                    return { success: true, pubkeyHex: 'ab'.repeat(32) };
+                }),
+            },
+        });
+
+        await controller.activateParentClientAuth();
+
+        expect(deps.clearNip46RuntimeForAuthChange).toHaveBeenCalledWith(expect.objectContaining({
+            currentAuthType: 'nip46',
+            nextAuthType: 'parentClient',
+        }));
     });
 
     it('handleParentClientLogin は pending auth を cancel して activate する', async () => {

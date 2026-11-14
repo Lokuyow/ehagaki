@@ -7,7 +7,7 @@ import { AuthService } from '../../lib/authService';
 import { createMockAccountManager, createMockDependencies, createMockNip07Dependencies, createMockParentClientSession } from './authServiceTestUtils';
 import { expectConsoleCallsNotToContain } from '../logAssertions';
 import { AccountManager } from '../../lib/accountManager';
-import { getNip46SessionStorageKey } from '../../lib/authStorageKeys';
+import { getNip46SessionStorageKey, getNsecStorageKey } from '../../lib/authStorageKeys';
 import { STORAGE_KEYS } from '../../lib/constants';
 
 describe('AuthService.authenticateWithNsec', () => {
@@ -70,12 +70,108 @@ describe('AuthService.authenticateWithNsec', () => {
             npub: 'npub123',
             nprofile: 'nprofile123',
         });
-        mockKeyManager.saveToStorage.mockReturnValue({ success: false });
+        mockKeyManager.writeStoredKeyForMigration.mockReturnValue({ status: 'error' } as never);
 
         const result = await authService.authenticateWithNsec('valid-nsec');
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('error_saving');
+        expect(mockKeyManager.setCurrentSecretKey).not.toHaveBeenCalled();
+        expect(mockDependencies.setNsecAuth).not.toHaveBeenCalled();
+    });
+
+    it('鍵の永続化・アカウント記録の後にランタイムの鍵と認証状態を確定する', async () => {
+        const order: string[] = [];
+        mockKeyManager.isValidNsec.mockReturnValue(true);
+        mockKeyManager.derivePublicKey.mockReturnValue({
+            hex: 'test-pubkey',
+            npub: 'npub123',
+            nprofile: 'nprofile123',
+        });
+        mockKeyManager.writeStoredKeyForMigration.mockImplementation(() => {
+            order.push('persist-key');
+            return { status: 'saved' as const };
+        });
+        mockKeyManager.setCurrentSecretKey.mockImplementation(() => { order.push('runtime-key'); });
+        vi.mocked(mockDependencies.setNsecAuth!).mockImplementation(() => { order.push('auth-state'); });
+        const accountManager = createMockAccountManager({
+            addAccount: vi.fn(() => { order.push('account-record'); }),
+        });
+        authService.setAccountManager(accountManager as any);
+
+        await expect(authService.authenticateWithNsec('valid-nsec')).resolves.toEqual({
+            success: true,
+            pubkeyHex: 'test-pubkey',
+        });
+
+        expect(order).toEqual(['persist-key', 'account-record', 'runtime-key', 'auth-state']);
+        expect(mockKeyManager.writeStoredKeyForMigration).toHaveBeenCalledWith('test-pubkey', 'valid-nsec');
+    });
+
+    it('アカウント記録に失敗した場合は新規保存した鍵を削除し、認証状態を変えない', async () => {
+        mockKeyManager.isValidNsec.mockReturnValue(true);
+        mockKeyManager.derivePublicKey.mockReturnValue({
+            hex: 'test-pubkey',
+            npub: 'npub123',
+            nprofile: 'nprofile123',
+        });
+        authService.setAccountManager(createMockAccountManager({
+            addAccount: vi.fn(() => { throw new Error('quota exceeded'); }),
+        }) as any);
+
+        await expect(authService.authenticateWithNsec('valid-nsec')).resolves.toEqual({
+            success: false,
+            error: 'error_saving',
+        });
+
+        expect(mockKeyManager.removeStoredKeyForMigration).toHaveBeenCalledWith('test-pubkey');
+        expect(mockKeyManager.setCurrentSecretKey).not.toHaveBeenCalled();
+        expect(mockDependencies.setNsecAuth).not.toHaveBeenCalled();
+    });
+
+    it('アカウント記録に失敗しても、既に保存済みだった鍵は削除しない', async () => {
+        mockKeyManager.isValidNsec.mockReturnValue(true);
+        mockKeyManager.derivePublicKey.mockReturnValue({
+            hex: 'test-pubkey',
+            npub: 'npub123',
+            nprofile: 'nprofile123',
+        });
+        mockKeyManager.readStoredKey.mockReturnValue({ status: 'found', secretKey: 'valid-nsec' });
+        authService.setAccountManager(createMockAccountManager({
+            addAccount: vi.fn(() => { throw new Error('quota exceeded'); }),
+        }) as any);
+
+        await expect(authService.authenticateWithNsec('valid-nsec')).resolves.toEqual({
+            success: false,
+            error: 'error_saving',
+        });
+
+        expect(mockKeyManager.writeStoredKeyForMigration).not.toHaveBeenCalled();
+        expect(mockKeyManager.removeStoredKeyForMigration).not.toHaveBeenCalled();
+    });
+
+    it('同一pubkeyのNIP-46アカウントをnsecへ置換すると旧sessionを削除する', async () => {
+        const pubkeyHex = 'ab'.repeat(32);
+        const storage = new MockStorage();
+        const deps = createMockDependencies();
+        deps.localStorage = storage;
+        const keyManager = deps.keyManager as any as MockKeyManager;
+        keyManager.isValidNsec.mockReturnValue(true);
+        keyManager.derivePublicKey.mockReturnValue({ hex: pubkeyHex, npub: 'npub1', nprofile: 'nprofile1' });
+        const accountManager = new AccountManager({ localStorage: storage, console: deps.console });
+        accountManager.addAccount(pubkeyHex, 'nip46');
+        storage.setItem(getNip46SessionStorageKey(pubkeyHex), 'session');
+        const { Nip46Service } = await import('../../lib/nip46Service');
+        vi.mocked(Nip46Service.clearSession).mockImplementation((targetStorage, targetPubkey) => {
+            targetStorage.removeItem(getNip46SessionStorageKey(targetPubkey));
+        });
+        const service = new AuthService(deps);
+        service.setAccountManager(accountManager);
+
+        await expect(service.authenticateWithNsec('valid-nsec')).resolves.toEqual({ success: true, pubkeyHex });
+
+        expect(accountManager.getAccountType(pubkeyHex)).toBe('nsec');
+        expect(storage.getItem(getNip46SessionStorageKey(pubkeyHex))).toBeNull();
     });
 
     it('公開鍵の導出に失敗した場合にエラーを返す', async () => {
@@ -171,6 +267,7 @@ describe('AuthService.isNip07Available', () => {
 });
 
 describe('AuthService.authenticateWithNip07', () => {
+    const NIP07_PUBKEY = '12'.repeat(32);
     let authService: AuthService;
     let mockDependencies: AuthServiceDependencies;
 
@@ -190,18 +287,18 @@ describe('AuthService.authenticateWithNip07', () => {
     });
 
     it('認証成功でsetNip07Auth呼出', async () => {
-        const nip07Deps = createMockNip07Dependencies('abcdef1234567890');
+        const nip07Deps = createMockNip07Dependencies(NIP07_PUBKEY);
         const service = new AuthService(nip07Deps);
 
         const result = await service.authenticateWithNip07();
 
         expect(result.success).toBe(true);
-        expect(result.pubkeyHex).toBe('abcdef1234567890');
+        expect(result.pubkeyHex).toBe(NIP07_PUBKEY);
         expect(nip07Deps.setNip07Auth).toHaveBeenCalled();
     });
 
     it('認証成功でaccountManager.addAccount呼出', async () => {
-        const nip07Deps = createMockNip07Dependencies('abcdef1234567890');
+        const nip07Deps = createMockNip07Dependencies(NIP07_PUBKEY);
         const service = new AuthService(nip07Deps);
         const mockAccountManager = createMockAccountManager();
         service.setAccountManager(mockAccountManager as any);
@@ -209,7 +306,67 @@ describe('AuthService.authenticateWithNip07', () => {
         const result = await service.authenticateWithNip07();
 
         expect(result.success).toBe(true);
-        expect(mockAccountManager.addAccount).toHaveBeenCalledWith('abcdef1234567890', 'nip07');
+        expect(mockAccountManager.addAccount).toHaveBeenCalledWith(NIP07_PUBKEY, 'nip07');
+    });
+
+    it('拡張が64桁hexでない公開鍵を返した場合はアカウントを作らない', async () => {
+        const nip07Deps = createMockNip07Dependencies('abcdef1234567890');
+        const service = new AuthService(nip07Deps);
+        const mockAccountManager = createMockAccountManager();
+        service.setAccountManager(mockAccountManager as any);
+
+        await expect(service.authenticateWithNip07()).resolves.toEqual({
+            success: false,
+            error: 'nip07_invalid_pubkey',
+        });
+        expect(nip07Deps.setNip07Auth).not.toHaveBeenCalled();
+        expect(mockAccountManager.addAccount).not.toHaveBeenCalled();
+    });
+
+    it('応答前に別のログインが始まっていた場合は何も確定しない', async () => {
+        const nip07Deps = createMockNip07Dependencies(NIP07_PUBKEY);
+        const service = new AuthService(nip07Deps);
+        const mockAccountManager = createMockAccountManager();
+        service.setAccountManager(mockAccountManager as any);
+
+        await expect(service.authenticateWithNip07({ isCurrent: () => false })).resolves.toEqual({
+            success: false,
+            error: 'auth_superseded',
+        });
+        expect(nip07Deps.setNip07Auth).not.toHaveBeenCalled();
+        expect(mockAccountManager.addAccount).not.toHaveBeenCalled();
+    });
+
+    it('アカウント記録に失敗した場合は認証状態を変えずエラーを返す', async () => {
+        const nip07Deps = createMockNip07Dependencies(NIP07_PUBKEY);
+        const service = new AuthService(nip07Deps);
+        service.setAccountManager(createMockAccountManager({
+            addAccount: vi.fn(() => { throw new Error('quota exceeded'); }),
+        }) as any);
+
+        await expect(service.authenticateWithNip07()).resolves.toEqual({
+            success: false,
+            error: 'nip07_auth_error',
+        });
+        expect(nip07Deps.setNip07Auth).not.toHaveBeenCalled();
+    });
+
+    it('同一pubkeyのnsecアカウントをNIP-07へ置換すると保存済みの秘密鍵を削除する', async () => {
+        const storage = new MockStorage();
+        const deps = createMockNip07Dependencies(NIP07_PUBKEY);
+        deps.localStorage = storage;
+        const accountManager = new AccountManager({ localStorage: storage, console: deps.console });
+        accountManager.addAccount(NIP07_PUBKEY, 'nsec');
+        storage.setItem(getNsecStorageKey(NIP07_PUBKEY), 'nsec1stored');
+        storage.setItem(STORAGE_KEYS.NOSTR_PROFILE + NIP07_PUBKEY, 'profile');
+        const service = new AuthService(deps);
+        service.setAccountManager(accountManager);
+
+        await expect(service.authenticateWithNip07()).resolves.toEqual({ success: true, pubkeyHex: NIP07_PUBKEY });
+
+        expect(accountManager.getAccountType(NIP07_PUBKEY)).toBe('nip07');
+        expect(storage.getItem(getNsecStorageKey(NIP07_PUBKEY))).toBeNull();
+        expect(storage.getItem(STORAGE_KEYS.NOSTR_PROFILE + NIP07_PUBKEY)).toBe('profile');
     });
 
     it('authenticate失敗でエラーを返す', async () => {
@@ -278,7 +435,7 @@ describe('AuthService.authenticateWithNip07', () => {
         expect(accountManager.getActiveAccountPubkey()).toBe(pubkeyHex);
         expect(deps.console?.error).toHaveBeenCalledWith(
             '認証方式固有データの削除に失敗しました',
-            expect.objectContaining({ stage: 'auto-login-auth-replacement' }),
+            expect.objectContaining({ stage: 'auth-replacement' }),
         );
     });
 });

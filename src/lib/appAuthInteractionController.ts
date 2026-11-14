@@ -7,7 +7,9 @@ interface Nip46DisconnectController {
 export interface AppAuthInteractionControllerDependencies {
     getCurrentAuthType(): string | undefined;
     getCurrentPubkeyHex(): string | undefined;
-    authenticateWithNip07(): Promise<{ success: boolean; pubkeyHex?: string; error?: string }>;
+    authenticateWithNip07(
+        options?: { isCurrent?: () => boolean },
+    ): Promise<{ success: boolean; pubkeyHex?: string; error?: string }>;
     authenticateWithNip46(
         bunkerUrl: string,
     ): Promise<{ success: boolean; pubkeyHex?: string; error?: string }>;
@@ -27,14 +29,15 @@ export interface AppAuthInteractionControllerDependencies {
 }
 
 export interface AppAuthInteractionController {
-    handleNip07Login(): Promise<string | undefined>;
+    /** `isCurrent` lets the caller drop an answer that arrives after another login started. */
+    handleNip07Login(isCurrent?: () => boolean): Promise<string | undefined>;
     handleNip46Login(bunkerUrl: string): Promise<string | undefined>;
 }
 
 export function createAppAuthInteractionController(
     deps: AppAuthInteractionControllerDependencies,
 ): AppAuthInteractionController {
-    async function handleNip07Login(): Promise<string | undefined> {
+    async function handleNip07Login(isCurrent?: () => boolean): Promise<string | undefined> {
         return runNip07Login({
             currentAuthType: deps.getCurrentAuthType(),
             currentPubkeyHex: deps.getCurrentPubkeyHex(),
@@ -45,7 +48,7 @@ export function createAppAuthInteractionController(
             setLoading: deps.setNip07Loading,
             nip46Service: deps.nip46Service,
             console: deps.logger,
-        });
+        }, isCurrent);
     }
 
     async function handleNip46Login(
