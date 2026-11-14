@@ -86,8 +86,13 @@ import {
     POST_HISTORY_OLDER_BACKFILL_MAX_ATTEMPTS_PER_CLICK,
     POST_HISTORY_OLDER_BACKFILL_MAX_AUTO_EXPLORE_SECONDS,
     POST_HISTORY_OLDER_BACKFILL_MIN_CONTINUATION_SECONDS,
-    POST_HISTORY_OLDER_BACKFILL_WINDOW_SEQUENCE,
     mergeOlderVisiblePosts,
+    resolveNextOlderBackfillWindowIndex,
+    resolveOlderBackfillAttemptProgress,
+    resolveOlderBackfillContinuation,
+    resolveOlderBackfillCoverageProgress,
+    resolveOlderBackfillEffectiveFetchUntil,
+    resolveOlderBackfillWindowSeconds,
     resolveFetchedAuthoredEventIds,
     resolveNewlyVisibleOlderPosts,
     resolveOlderBackfillAutoRetryDecision,
@@ -3830,22 +3835,14 @@ export function usePostHistoryListing({
                 return batchChanged;
             }
 
-            const effectiveFetchUntil = (() => {
-                if (typeof previousVisibleUntil === "number" && !(localBrowsingRanges.length
-                    ? isSparseListingContext(state.visibleUntil) : isSparseListingContext(previousVisibleUntil))) {
-                    return previousVisibleUntil;
-                }
-                if (typeof resolvedFetchUntil === "number") {
-                    if (usingBatchCursor) {
-                        return resolvedFetchUntil;
-                    }
-                    return typeof previousVisibleUntil === "number"
-                        ? Math.min(resolvedFetchUntil, previousVisibleUntil)
-                        : resolvedFetchUntil;
-                }
-
-                return previousVisibleUntil;
-            })();
+            const effectiveFetchUntil = resolveOlderBackfillEffectiveFetchUntil({
+                previousVisibleUntil,
+                resolvedFetchUntil,
+                usingBatchCursor,
+                isSparseListing: () => localBrowsingRanges.length
+                    ? isSparseListingContext(state.visibleUntil)
+                    : isSparseListingContext(previousVisibleUntil),
+            });
 
             if (typeof effectiveFetchUntil !== "number") {
                 return batchChanged;
@@ -3854,12 +3851,7 @@ export function usePostHistoryListing({
             const rangesBeforeFetch = await readExternalContinuity(pubkeyHex);
             if (!isActive()) return batchChanged;
 
-            const windowIndex = Math.min(
-                batchWindowIndex,
-                POST_HISTORY_OLDER_BACKFILL_WINDOW_SEQUENCE.length - 1,
-            );
-            const windowSeconds =
-                POST_HISTORY_OLDER_BACKFILL_WINDOW_SEQUENCE[windowIndex];
+            const windowSeconds = resolveOlderBackfillWindowSeconds(batchWindowIndex);
             const uncovered = getPostHistoryOlderUncoveredRange(rangesBeforeFetch, Math.trunc(effectiveFetchUntil), windowSeconds, batchContinuationSince);
             if (!uncovered) {
                 setOlderBackfillNextCursor(null, null);
@@ -3967,30 +3959,13 @@ export function usePostHistoryListing({
             }
 
             const didVisibleCountIncrease = nextCount > previousCount;
-            const hitLimitReasons = resolveOlderBackfillLimitHitReasons(
+            const continuation = resolveOlderBackfillContinuation(
                 result,
+                fetchRange,
                 POST_HISTORY_OLDER_FETCH_LIMIT,
             );
-            const hitLimit = hitLimitReasons.length > 0;
-            const oldestCreatedAt = resolveOldestCreatedAtFromFetchResult(result);
-            const remainingWindowSeconds =
-                typeof oldestCreatedAt === "number" && oldestCreatedAt > fetchRange.since
-                    ? oldestCreatedAt - fetchRange.since
-                    : 0;
-            const canContinueWithinWindow =
-                result.status === "success" &&
-                hitLimit &&
-                typeof oldestCreatedAt === "number" &&
-                oldestCreatedAt > fetchRange.since &&
-                remainingWindowSeconds >=
-                POST_HISTORY_OLDER_BACKFILL_MIN_CONTINUATION_SECONDS;
-
-            let nextUntilCursor = fetchRange.since > 0 ? fetchRange.since : null;
-            let nextContinuationSince: number | null = null;
-            if (canContinueWithinWindow && typeof oldestCreatedAt === "number") {
-                nextUntilCursor = oldestCreatedAt;
-                nextContinuationSince = fetchRange.since;
-            }
+            const { hitLimit, canContinueWithinWindow, nextContinuationSince } = continuation;
+            let nextUntilCursor = continuation.nextUntilCursor;
 
             olderBackfillSearch.windowSeconds = windowSeconds;
             olderBackfillSearch.lastRange = {
@@ -4073,18 +4048,15 @@ export function usePostHistoryListing({
                 didMateriallyChange;
             const nextBatchChanged: boolean =
                 batchChanged || attemptChanged;
-            const didCursorAdvanceOlder =
-                typeof nextUntilCursor === "number" &&
-                nextUntilCursor < effectiveFetchUntil;
             const currentVisibleCount = nextCount;
-            const totalVisibleAdded = Math.max(
-                0,
-                currentVisibleCount - (clickStartVisibleCount ?? currentVisibleCount),
-            );
-            const cursorAdvancedSeconds = typeof nextUntilCursor === "number"
-                ? Math.max(0, effectiveFetchUntil - nextUntilCursor)
-                : Math.max(0, effectiveFetchUntil);
-            const nextExploredSeconds = exploredSeconds + cursorAdvancedSeconds;
+            const { didCursorAdvanceOlder, totalVisibleAdded, nextExploredSeconds } =
+                resolveOlderBackfillAttemptProgress({
+                    nextUntilCursor,
+                    effectiveFetchUntil,
+                    currentVisibleCount,
+                    clickStartVisibleCount,
+                    exploredSeconds,
+                });
             const retryDecision = resolveOlderBackfillAutoRetryDecision({
                 status: result.status,
                 changed: attemptChanged,
@@ -4098,10 +4070,12 @@ export function usePostHistoryListing({
                 exploredSeconds: nextExploredSeconds,
                 maxExploreSeconds,
             });
-            const connectedSavedRange = typeof nextExternalFloor === "number" && typeof previousVisibleUntil === "number"
-                && rangesBeforeFetch.some((range) => range.until < previousVisibleUntil && nextExternalFloor <= range.since);
-            const coverageAdvanced = typeof nextExternalFloor === "number" && typeof previousVisibleUntil === "number"
-                && nextExternalFloor < previousVisibleUntil;
+            const { connectedSavedRange, coverageAdvanced } =
+                resolveOlderBackfillCoverageProgress({
+                    nextExternalFloor,
+                    previousVisibleUntil,
+                    rangesBeforeFetch,
+                });
             const shouldContinueForSmallBatch = retryDecision.shouldContinue && coverageAdvanced
                 && !state.hasOlderLocal && !connectedSavedRange;
             const nextAutoRetryCount = shouldContinueForSmallBatch
@@ -4138,10 +4112,7 @@ export function usePostHistoryListing({
                 batchNextUntil = nextUntilCursor;
                 batchContinuationSince = nextContinuationSince;
                 if (!canContinueWithinWindow) {
-                    batchWindowIndex = Math.min(
-                        batchWindowIndex + 1,
-                        POST_HISTORY_OLDER_BACKFILL_WINDOW_SEQUENCE.length - 1,
-                    );
+                    batchWindowIndex = resolveNextOlderBackfillWindowIndex(batchWindowIndex);
                 }
                 continue;
             }
