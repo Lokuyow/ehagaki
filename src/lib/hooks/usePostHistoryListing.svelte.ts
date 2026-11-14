@@ -106,7 +106,11 @@ import {
     writePersistedListingSnapshot,
 } from "../postHistoryListingSnapshot";
 import {
+    buildPostHistoryManualRepairRelationPhases,
     buildPostHistoryRepairPreferredRanges,
+    resolvePostHistoryManualRepairFailure,
+    resolvePostHistoryManualRepairResultMessage,
+    summarizePostHistoryManualRepairFetchCounts,
     reportPostHistoryManualRepairPhase,
     type PostHistoryManualRepairPhase,
 } from "../postHistoryListingRepair";
@@ -4258,25 +4262,7 @@ export function usePostHistoryListing({
                 phase: "primary-fetch",
                 startedAt: primaryFetchStartedAt,
                 durationMs: result.timing?.primaryFetchDurationMs ?? 0,
-                counts: {
-                    processedRangeCount: result.processedRangeCount,
-                    rawCount: result.processedRanges.reduce(
-                        (count, range) => count + (range.rawCount ?? 0),
-                        0,
-                    ),
-                    uniqueCount: result.processedRanges.reduce(
-                        (count, range) => count + (range.uniqueCount ?? 0),
-                        0,
-                    ),
-                    requestedRelayCount: result.processedRanges.reduce(
-                        (count, range) => count + (range.requestedRelayUrls?.length ?? 0),
-                        0,
-                    ),
-                    eoseRelayCount: result.processedRanges.reduce(
-                        (count, range) => count + (range.eoseRelayUrls?.length ?? 0),
-                        0,
-                    ),
-                },
+                counts: summarizePostHistoryManualRepairFetchCounts(result),
             });
             if ((result.timing?.primaryPersistAttemptCount ?? 0) > 0) {
                 reportPostHistoryManualRepairPhase({
@@ -4377,34 +4363,11 @@ export function usePostHistoryListing({
                 ) {
                     return;
                 }
-                reportPostHistoryManualRepairPhase({
-                    phase: "relation-repair",
-                    startedAt: relationRepairStartedAt,
-                    durationMs: childInteractionRepairResult.relationRepairDurationMs
-                        ?? (childInteractionRepairResult.failurePhase === "relation-repair"
-                            ? childInteractionRepairResult.failureDurationMs
-                            : undefined),
-                    errorClass: childInteractionRepairResult.failurePhase === "relation-repair"
-                        ? childInteractionRepairResult.failureErrorClass
-                        : undefined,
-                    counts: {
-                        savedDirectReplyCount:
-                            childInteractionRepairResult.savedDirectReplyCount,
-                    },
-                });
-                if (
-                    typeof childInteractionRepairResult.badgeRefreshDurationMs === "number"
-                    || childInteractionRepairResult.failurePhase === "badge-refresh"
-                ) {
-                    reportPostHistoryManualRepairPhase({
-                        phase: "badge-refresh",
-                        startedAt: relationRepairStartedAt,
-                        durationMs: childInteractionRepairResult.badgeRefreshDurationMs
-                            ?? childInteractionRepairResult.failureDurationMs,
-                        errorClass: childInteractionRepairResult.failurePhase === "badge-refresh"
-                            ? childInteractionRepairResult.failureErrorClass
-                            : undefined,
-                    });
+                for (const phase of buildPostHistoryManualRepairRelationPhases(
+                    childInteractionRepairResult,
+                    relationRepairStartedAt,
+                )) {
+                    reportPostHistoryManualRepairPhase(phase);
                 }
             }
 
@@ -4424,28 +4387,12 @@ export function usePostHistoryListing({
             currentViewRefetchTask = null;
             state.currentViewRefetchStatus = "idle";
 
-            if (result.addedCount > 0) {
-                state.currentViewRefetchMessageKey = "postHistory.repairAdded";
-                state.currentViewRefetchMessageValues = {
-                    count: result.addedCount,
-                    processedRangeCount: result.processedRangeCount,
-                    updatedCount: result.updatedCount,
-                };
-            } else if ((childInteractionRepairResult?.savedDirectReplyCount ?? 0) > 0) {
-                state.currentViewRefetchMessageKey = "postHistory.repairChildInteractionsAdded";
-                state.currentViewRefetchMessageValues = {
-                    count: childInteractionRepairResult?.savedDirectReplyCount ?? 0,
-                };
-            } else if (result.fetchFailed) {
-                state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
-                state.currentViewRefetchMessageValues = null;
-            } else {
-                state.currentViewRefetchMessageKey = "postHistory.repairNoChanges";
-                state.currentViewRefetchMessageValues = {
-                    processedRangeCount: result.processedRangeCount,
-                    updatedCount: result.updatedCount,
-                };
-            }
+            const message = resolvePostHistoryManualRepairResultMessage(
+                result,
+                childInteractionRepairResult?.savedDirectReplyCount ?? 0,
+            );
+            state.currentViewRefetchMessageKey = message.key;
+            state.currentViewRefetchMessageValues = message.values;
 
             scheduleCurrentViewRefetchMessageClearIfNeeded();
         } catch (error) {
@@ -4453,29 +4400,17 @@ export function usePostHistoryListing({
                 return;
             }
 
-            const taggedPhase = typeof error === "object" && error !== null
-                ? (error as { phase?: unknown }).phase
-                : undefined;
-            const taggedPhaseStartedAt = typeof error === "object" && error !== null
-                && typeof (error as { phaseStartedAt?: unknown }).phaseStartedAt === "number"
-                ? (error as { phaseStartedAt: number }).phaseStartedAt
-                : activePhaseStartedAt;
-            const taggedErrorClass = typeof error === "object" && error !== null
-                && typeof (error as { errorClass?: unknown }).errorClass === "string"
-                ? (error as { errorClass: string }).errorClass
-                : undefined;
-            const phase = reportedFailurePhase ?? (taggedPhase === "primary-fetch"
-                || taggedPhase === "primary-persist"
-                ? taggedPhase
-                : primaryRefetchReloadCompleted
-                    ? "relation-repair"
-                    : "primary-fetch");
             if (!reportedFailurePhase) {
-                reportPostHistoryManualRepairPhase({
-                    phase,
-                    startedAt: taggedPhaseStartedAt,
+                const failure = resolvePostHistoryManualRepairFailure({
                     error,
-                    errorClass: taggedErrorClass,
+                    activePhaseStartedAt,
+                    primaryRefetchReloadCompleted,
+                });
+                reportPostHistoryManualRepairPhase({
+                    phase: failure.phase,
+                    startedAt: failure.startedAt,
+                    error,
+                    errorClass: failure.errorClass,
                 });
             }
 
