@@ -58,17 +58,14 @@ import {
     type PendingPostHistoryLatestRequest,
 } from "../postHistoryLatestRequest";
 import {
-    postHistoryCurrentViewRefetchService,
-    type PostHistoryCurrentViewRefetchTask,
-} from "../postHistoryCurrentViewRefetchService";
+    createPostHistoryListingRepairController,
+    type PostHistoryCurrentViewRefetchMessageValues,
+} from "../postHistoryListingRepairController";
 import { getPostHistorySearchRevision } from "../postHistoryLocalSearchRevision";
 import {
     type PostHistoryVisibleRangeRelationRepairRequest,
 } from "../postHistoryVisibleRangeChildInteractionRepairService";
-import {
-    createPostHistoryVisibleRangeRelationRepairCoordinator,
-    type PostHistoryRelationRepairSummary,
-} from "../postHistoryVisibleRangeRelationRepairCoordinator";
+import { createPostHistoryVisibleRangeRelationRepairCoordinator } from "../postHistoryVisibleRangeRelationRepairCoordinator";
 import {
     postHistoryRepository,
     type PostHistoryTimelineCursor,
@@ -110,15 +107,6 @@ import {
     resolveListingSnapshotKey,
     writePersistedListingSnapshot,
 } from "../postHistoryListingSnapshot";
-import {
-    buildPostHistoryManualRepairRelationPhases,
-    buildPostHistoryRepairPreferredRanges,
-    resolvePostHistoryManualRepairFailure,
-    resolvePostHistoryManualRepairResultMessage,
-    summarizePostHistoryManualRepairFetchCounts,
-    reportPostHistoryManualRepairPhase,
-    type PostHistoryManualRepairPhase,
-} from "../postHistoryListingRepair";
 import {
     applyDeletedStateToPostHistoryRecords,
     clearPersistedPostHistoryListingStateAfterLocalDelete,
@@ -164,10 +152,6 @@ export type PostHistoryLocalLoadStatus =
 type PostHistoryListingMode = "contiguous" | "sparse";
 type PostHistorySparseSource = "jump" | "saved" | null;
 
-type PostHistoryCurrentViewRefetchMessageValues = Record<
-    string,
-    string | number | boolean | Date | null | undefined
->;
 
 interface UsePostHistoryListingParams {
     getShow: () => boolean;
@@ -394,9 +378,7 @@ export function usePostHistoryListing({
     } | null = null;
     let dialogOpenSync = $state(false);
     let fetchRequestId = 0;
-    let currentViewRefetchTask: PostHistoryCurrentViewRefetchTask | null = null;
     let contiguousProgress: ContiguousProgressSnapshot | null = null;
-    let currentViewRefetchMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let syncStatusMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let activeOlderRevealChildInteractionRepairRxNostr = getRxNostr();
     let appliedSearchQuery = restoredSearchState
@@ -425,6 +407,35 @@ export function usePostHistoryListing({
         });
 
     const isSearchMode = $derived(state.searchQuery.length > 0);
+    const {
+        cancelCurrentViewRefetch,
+        clearCurrentViewRefetchFeedback,
+        scheduleCurrentViewRefetchMessageClearIfNeeded,
+        refetchAroundCurrentView,
+    } = createPostHistoryListingRepairController({
+        state,
+        getShow,
+        getPubkeyHex,
+        getRxNostr,
+        getRelayConfig,
+        canRefetchAroundCurrentView: () => canRefetchAroundCurrentView,
+        clearContiguousProgress,
+        refreshVisibleUntil: (pubkeyHex) => refreshVisibleUntil(pubkeyHex),
+        startLocalRepairRead: (bounds) =>
+            startLocalHistoryRead("repair-visible-range", bounds),
+        extendVisibleUntilAfterRefetch:
+            maybeExtendVisibleUntilFromCurrentViewRefetchResult,
+        rebuildSearchResultsThroughPage: (page, query) =>
+            rebuildSearchResultsThroughPage(page, query),
+        loadLatestVisiblePosts: (options) => loadLatestVisiblePosts(options),
+        reloadVisibleWindowFromCurrentNewest: (options) =>
+            reloadVisibleWindowFromCurrentNewest(options),
+        repairCurrentViewRelations: (request) =>
+            relationRepairCoordinator.repairCurrentView(request),
+        cancelCurrentViewRelationRepair: () =>
+            relationRepairCoordinator.cancelCurrentViewRepair(),
+        refreshTotalCount: (options) => refreshTotalCountFromRepository(options),
+    });
     const isRefetchingAroundCurrentView = $derived(
         state.currentViewRefetchStatus === "refetching",
     );
@@ -755,23 +766,6 @@ export function usePostHistoryListing({
         return true;
     }
 
-    function cancelCurrentViewRefetch(): void {
-        currentViewRefetchTask?.cancel();
-        currentViewRefetchTask = null;
-        relationRepairCoordinator.cancelCurrentViewRepair();
-        if (state.currentViewRefetchStatus === "refetching") {
-            state.currentViewRefetchStatus = "idle";
-        }
-        clearCurrentViewRefetchMessageClearTimeout();
-    }
-
-    function clearCurrentViewRefetchMessageClearTimeout(): void {
-        if (currentViewRefetchMessageClearTimeout !== null) {
-            clearTimeout(currentViewRefetchMessageClearTimeout);
-            currentViewRefetchMessageClearTimeout = null;
-        }
-    }
-
     function clearSyncStatusMessageClearTimeout(): void {
         if (syncStatusMessageClearTimeout !== null) {
             clearTimeout(syncStatusMessageClearTimeout);
@@ -787,35 +781,6 @@ export function usePostHistoryListing({
         olderBackfillSearch.lastRange = null;
         olderBackfillSearch.continuationSince = null;
         olderBackfillSearch.exhausted = false;
-    }
-
-    function clearCurrentViewRefetchFeedback(): void {
-        state.currentViewRefetchMessageKey = null;
-        state.currentViewRefetchMessageValues = null;
-        clearCurrentViewRefetchMessageClearTimeout();
-    }
-
-    function scheduleCurrentViewRefetchMessageClearIfNeeded(): void {
-        clearCurrentViewRefetchMessageClearTimeout();
-
-        const autoHideMessageKeys = new Set([
-            "postHistory.repairNoChanges",
-            "postHistory.repairAdded",
-            "postHistory.repairChildInteractionsAdded",
-            "postHistory.repairFetchFailed",
-        ]);
-
-        if (!autoHideMessageKeys.has(state.currentViewRefetchMessageKey ?? "")) {
-            return;
-        }
-
-        currentViewRefetchMessageClearTimeout = setTimeout(() => {
-            if (state.currentViewRefetchMessageKey !== null && autoHideMessageKeys.has(state.currentViewRefetchMessageKey)) {
-                state.currentViewRefetchMessageKey = null;
-                state.currentViewRefetchMessageValues = null;
-            }
-            currentViewRefetchMessageClearTimeout = null;
-        }, 3500);
     }
 
     function scheduleSyncStatusMessageClearIfNeeded(): void {
@@ -1185,14 +1150,6 @@ export function usePostHistoryListing({
         });
     }
 
-    function buildCurrentPagePreferredRanges() {
-        if (state.searchQuery) {
-            return [];
-        }
-
-        return buildPostHistoryRepairPreferredRanges(state.loadedPosts);
-    }
-
     async function readContinuityRecords(pubkeyHex: string) {
         // One snapshot also keeps every source observable by liveQuery.
         const url = getLocalBrowsingUrl();
@@ -1357,13 +1314,12 @@ export function usePostHistoryListing({
     }
 
     async function maybeExtendVisibleUntilFromCurrentViewRefetchResult(
-        pubkeyHex: string, _previousVisibleUntil: number | null,
-        _processedRanges: Array<{ source: string; status: string; since?: number; until?: number }>,
+        pubkeyHex: string,
+        isCurrentRepairTask: () => boolean,
     ): Promise<number | null> {
         const generation = coverageGeneration;
-        const task = currentViewRefetchTask;
         const next = await readVisibleUntil(pubkeyHex);
-        if (!isDestroyed && generation === coverageGeneration && task === currentViewRefetchTask
+        if (!isDestroyed && generation === coverageGeneration && isCurrentRepairTask()
             && getShow() && getPubkeyHex() === pubkeyHex) state.visibleUntil = next;
         return next;
     }
@@ -4152,256 +4108,6 @@ export function usePostHistoryListing({
             onCompleted(true);
 
             return batchChanged;
-        }
-    }
-
-    async function refetchAroundCurrentView(): Promise<void> {
-        clearContiguousProgress();
-        const pubkeyHex = getPubkeyHex();
-        const rxNostr = getRxNostr();
-        if (!pubkeyHex || !rxNostr || !canRefetchAroundCurrentView) {
-            return;
-        }
-
-        const preferredRanges = buildCurrentPagePreferredRanges();
-        if (preferredRanges.length === 0) {
-            return;
-        }
-
-        clearCurrentViewRefetchFeedback();
-        state.currentViewRefetchStatus = "refetching";
-        let reportedFailurePhase: PostHistoryManualRepairPhase | null = null;
-        let previousVisibleUntil: number | null;
-        const initialVisibleRangeStateStartedAt = Date.now();
-        try {
-            previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
-            reportPostHistoryManualRepairPhase({
-                phase: "visible-range-state",
-                startedAt: initialVisibleRangeStateStartedAt,
-            });
-        } catch (error) {
-            reportPostHistoryManualRepairPhase({
-                phase: "visible-range-state",
-                startedAt: initialVisibleRangeStateStartedAt,
-                error,
-            });
-            state.currentViewRefetchStatus = "idle";
-            state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
-            state.currentViewRefetchMessageValues = null;
-            scheduleCurrentViewRefetchMessageClearIfNeeded();
-            return;
-        }
-
-        let task: PostHistoryCurrentViewRefetchTask;
-        const primaryFetchStartedAt = Date.now();
-        try {
-            task = postHistoryCurrentViewRefetchService.refetchAroundCurrentView(rxNostr, {
-                pubkeyHex,
-                relayConfig: getRelayConfig(),
-                preferredRanges,
-                getRelayConfig,
-                isActive: () => getShow() && getPubkeyHex() === pubkeyHex && getRxNostr() === rxNostr,
-                onProgress: async () => undefined,
-            });
-        } catch (error) {
-            reportPostHistoryManualRepairPhase({
-                phase: "primary-fetch",
-                startedAt: primaryFetchStartedAt,
-                error,
-            });
-            state.currentViewRefetchStatus = "idle";
-            state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
-            state.currentViewRefetchMessageValues = null;
-            scheduleCurrentViewRefetchMessageClearIfNeeded();
-            return;
-        }
-        currentViewRefetchTask = task;
-        startLocalHistoryRead("repair-visible-range", {
-            since: Math.min(...preferredRanges.map((range) => range.since)),
-            until: Math.max(...preferredRanges.map((range) => range.until)),
-        });
-        let primaryRefetchReloadCompleted = false;
-        let activePhaseStartedAt = primaryFetchStartedAt;
-
-        try {
-            const result = await task.promise;
-            if (currentViewRefetchTask !== task) {
-                return;
-            }
-
-            reportPostHistoryManualRepairPhase({
-                phase: "primary-fetch",
-                startedAt: primaryFetchStartedAt,
-                durationMs: result.timing?.primaryFetchDurationMs ?? 0,
-                counts: summarizePostHistoryManualRepairFetchCounts(result),
-            });
-            if ((result.timing?.primaryPersistAttemptCount ?? 0) > 0) {
-                reportPostHistoryManualRepairPhase({
-                    phase: "primary-persist",
-                    startedAt: primaryFetchStartedAt,
-                    durationMs: result.timing?.primaryPersistDurationMs ?? 0,
-                    counts: {
-                        persistedRangeCount: result.timing?.primaryPersistAttemptCount ?? 0,
-                    },
-                });
-            }
-
-            if (!getShow() || result.status === "cancelled") {
-                currentViewRefetchTask = null;
-                state.currentViewRefetchStatus = "idle";
-                return;
-            }
-
-            const visibleRangeStateStartedAt = Date.now();
-            activePhaseStartedAt = visibleRangeStateStartedAt;
-            try {
-                await maybeExtendVisibleUntilFromCurrentViewRefetchResult(
-                    pubkeyHex,
-                    previousVisibleUntil,
-                    result.processedRanges,
-                );
-                reportPostHistoryManualRepairPhase({
-                    phase: "visible-range-state",
-                    startedAt: visibleRangeStateStartedAt,
-                    counts: { processedRangeCount: result.processedRangeCount },
-                });
-            } catch (error) {
-                reportedFailurePhase = "visible-range-state";
-                reportPostHistoryManualRepairPhase({
-                    phase: "visible-range-state",
-                    startedAt: visibleRangeStateStartedAt,
-                    error,
-                    counts: { processedRangeCount: result.processedRangeCount },
-                });
-                throw error;
-            }
-
-            const visibleWindowReloadStartedAt = Date.now();
-            activePhaseStartedAt = visibleWindowReloadStartedAt;
-            try {
-                if (state.searchQuery) {
-                    await rebuildSearchResultsThroughPage(
-                        state.searchPage,
-                        state.searchQuery,
-                    );
-                } else if (state.loadedPosts.length === 0 || !state.hasNewerLocal) {
-                    await loadLatestVisiblePosts({ skipTotalCountRefresh: true });
-                } else {
-                    await reloadVisibleWindowFromCurrentNewest({ skipTotalCountRefresh: true });
-                }
-                reportPostHistoryManualRepairPhase({
-                    phase: "visible-window-reload",
-                    startedAt: visibleWindowReloadStartedAt,
-                    counts: { processedRangeCount: result.processedRangeCount },
-                });
-            } catch (error) {
-                reportedFailurePhase = "visible-window-reload";
-                reportPostHistoryManualRepairPhase({
-                    phase: "visible-window-reload",
-                    startedAt: visibleWindowReloadStartedAt,
-                    error,
-                    counts: { processedRangeCount: result.processedRangeCount },
-                });
-                throw error;
-            }
-            primaryRefetchReloadCompleted = true;
-
-            let childInteractionRepairResult: PostHistoryRelationRepairSummary | null = null;
-            if (
-                currentViewRefetchTask === task
-                && getShow()
-                && getPubkeyHex() === pubkeyHex
-                && getRxNostr() === rxNostr
-                && state.loadedPosts.length > 0
-            ) {
-                const relationRepairStartedAt = Date.now();
-                activePhaseStartedAt = relationRepairStartedAt;
-                childInteractionRepairResult =
-                    await relationRepairCoordinator.repairCurrentView({
-                        ownerPubkeyHex: pubkeyHex,
-                        rxNostr,
-                        visiblePosts: state.loadedPosts,
-                        isActive: () =>
-                            currentViewRefetchTask === task
-                            && getShow()
-                            && getPubkeyHex() === pubkeyHex
-                            && getRxNostr() === rxNostr,
-                    });
-                if (
-                    currentViewRefetchTask !== task
-                    || childInteractionRepairResult.status === "cancelled"
-                    || !getShow()
-                ) {
-                    return;
-                }
-                for (const phase of buildPostHistoryManualRepairRelationPhases(
-                    childInteractionRepairResult,
-                    relationRepairStartedAt,
-                )) {
-                    reportPostHistoryManualRepairPhase(phase);
-                }
-            }
-
-            if (
-                currentViewRefetchTask !== task
-                || !getShow()
-                || getPubkeyHex() !== pubkeyHex
-                || getRxNostr() !== rxNostr
-            ) {
-                return;
-            }
-
-            if (!state.searchQuery) {
-                refreshTotalCountFromRepository({ force: true });
-            }
-
-            currentViewRefetchTask = null;
-            state.currentViewRefetchStatus = "idle";
-
-            const message = resolvePostHistoryManualRepairResultMessage(
-                result,
-                childInteractionRepairResult?.savedDirectReplyCount ?? 0,
-            );
-            state.currentViewRefetchMessageKey = message.key;
-            state.currentViewRefetchMessageValues = message.values;
-
-            scheduleCurrentViewRefetchMessageClearIfNeeded();
-        } catch (error) {
-            if (currentViewRefetchTask !== task) {
-                return;
-            }
-
-            if (!reportedFailurePhase) {
-                const failure = resolvePostHistoryManualRepairFailure({
-                    error,
-                    activePhaseStartedAt,
-                    primaryRefetchReloadCompleted,
-                });
-                reportPostHistoryManualRepairPhase({
-                    phase: failure.phase,
-                    startedAt: failure.startedAt,
-                    error,
-                    errorClass: failure.errorClass,
-                });
-            }
-
-            if (
-                primaryRefetchReloadCompleted
-                && !state.searchQuery
-                && getShow()
-                && getPubkeyHex() === pubkeyHex
-                && getRxNostr() === rxNostr
-            ) {
-                refreshTotalCountFromRepository({ force: true });
-            }
-
-            currentViewRefetchTask = null;
-            state.currentViewRefetchStatus = "idle";
-            state.currentViewRefetchMessageKey = primaryRefetchReloadCompleted
-                ? "postHistory.repairNoChanges"
-                : "postHistory.repairFetchFailed";
-            state.currentViewRefetchMessageValues = null;
-            scheduleCurrentViewRefetchMessageClearIfNeeded();
         }
     }
 
