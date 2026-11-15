@@ -1,4 +1,8 @@
 import {
+    buildPostHistoryDirectReplyParentContext,
+    validatePostHistoryDirectReplyRelation,
+} from "./postHistoryDirectReplyRelationUtils";
+import {
     buildPostHistoryReactionReadModel,
     type PostHistoryReactionReadModel,
 } from "./postHistoryReactionReadModel";
@@ -85,6 +89,92 @@ export function groupCachedChildInteractionRecords(
         });
     }
     return recordsByParentId;
+}
+
+export function isValidPostHistoryCachedDirectReply(input: {
+    parentNode: PostHistoryThreadGraphNode;
+    record: PostHistoryChildInteractionRecord;
+}): boolean {
+    const parentContext = buildPostHistoryDirectReplyParentContext({
+        event: input.parentNode.event,
+        relayHints: input.parentNode.relayUrls,
+    });
+    return !!parentContext
+        && validatePostHistoryDirectReplyRelation({
+            child: toEventFromReplyRecord(input.record),
+            parent: parentContext,
+        }).valid;
+}
+
+export interface CachedChildInteractionPartition {
+    reactionRecordsByParentId: Map<string, PostHistoryChildInteractionRecord[]>;
+    directReplyRecordsByParentId: Map<string, PostHistoryChildInteractionRecord[]>;
+    /** Cached direct replies whose relation to the parent no longer validates. */
+    invalidDirectReplyRecordIds: string[];
+    reactionAuthorPubkeys: Set<string>;
+    profileRelayUrlsByPubkey: Map<string, string[]>;
+}
+
+/**
+ * Split each parent's visible cached child records into reactions and valid
+ * direct replies, and collect the profiles (with relay hints) the batch needs.
+ * Parents without an anchor node are skipped.
+ */
+export function partitionCachedChildInteractionRecords(input: {
+    parentEventIds: string[];
+    anchorNodesByParentId: Map<string, PostHistoryThreadGraphNode>;
+    visibleRecordsByParentId: Map<string, PostHistoryChildInteractionRecord[]>;
+}): CachedChildInteractionPartition {
+    const reactionRecordsByParentId = new Map<string, PostHistoryChildInteractionRecord[]>();
+    const directReplyRecordsByParentId = new Map<string, PostHistoryChildInteractionRecord[]>();
+    const invalidDirectReplyRecordIds: string[] = [];
+    const reactionAuthorPubkeys = new Set<string>();
+    const profileRelayUrlsByPubkey = new Map<string, string[]>();
+    const rememberProfileRelayUrls = (pubkey: string, relayUrls: string[]) => {
+        profileRelayUrlsByPubkey.set(pubkey, sanitizeRelayUrls([
+            ...(profileRelayUrlsByPubkey.get(pubkey) ?? []),
+            ...relayUrls,
+        ]));
+    };
+
+    for (const parentEventId of input.parentEventIds) {
+        const anchorNode = input.anchorNodesByParentId.get(parentEventId);
+        if (!anchorNode) {
+            continue;
+        }
+        rememberProfileRelayUrls(anchorNode.authorPubkey, anchorNode.relayUrls);
+        const reactionRecords: PostHistoryChildInteractionRecord[] = [];
+        const directReplyRecords: PostHistoryChildInteractionRecord[] = [];
+        for (const record of input.visibleRecordsByParentId.get(parentEventId) ?? []) {
+            if (record.kind === 7) {
+                reactionRecords.push(record);
+                if (record.authorPubkey) {
+                    reactionAuthorPubkeys.add(record.authorPubkey);
+                    rememberProfileRelayUrls(record.authorPubkey, anchorNode.relayUrls);
+                }
+            } else if ([1, 42, 1111].includes(record.kind)) {
+                if (!isValidPostHistoryCachedDirectReply({
+                    parentNode: anchorNode,
+                    record,
+                })) {
+                    invalidDirectReplyRecordIds.push(record.eventId);
+                } else {
+                    directReplyRecords.push(record);
+                    rememberProfileRelayUrls(record.authorPubkey, record.relayUrls);
+                }
+            }
+        }
+        reactionRecordsByParentId.set(parentEventId, reactionRecords);
+        directReplyRecordsByParentId.set(parentEventId, directReplyRecords);
+    }
+
+    return {
+        reactionRecordsByParentId,
+        directReplyRecordsByParentId,
+        invalidDirectReplyRecordIds,
+        reactionAuthorPubkeys,
+        profileRelayUrlsByPubkey,
+    };
 }
 
 export interface CachedChildInteractionBatchInput {
