@@ -60,7 +60,9 @@
     const isLongRawJsonScenario = new URLSearchParams(window.location.search).has("long-raw-json");
     const isCwLayoutScenario = new URLSearchParams(window.location.search).has("cw-layout");
     const isSelfQuoteTransitionScenario = new URLSearchParams(window.location.search).has("self-quote-transition");
-    const isSparseOldestScenario = new URLSearchParams(window.location.search).has("sparse-oldest");
+    // Omits the reply/quote handlers so the header owns the timestamp and menu.
+    const isNoActionsScenario = new URLSearchParams(window.location.search).has("no-actions");
+    const isSparseOldestScenario =new URLSearchParams(window.location.search).has("sparse-oldest");
     const TOTAL_POSTS = isInfiniteScrollScenario
         ? 251
         : isSparseOldestScenario
@@ -822,7 +824,7 @@
                 pubkeyHex={HARNESS_PUBKEY}
                 relayConfig={fullScanHarness?.relayConfig ?? coverageHarness?.relayConfig}
                 rxNostr={isHistoryTabsScenario ? tabRuntime : fullScanHarness?.runtime ?? coverageHarness?.rxNostr ?? defaultRuntime}
-                onReplyPost={(post) => {
+                onReplyPost={isNoActionsScenario ? undefined : (post) => {
                     (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__!.replyEventId =
                         post.eventId;
                     return (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__!
@@ -830,7 +832,7 @@
                         ? false
                         : true;
                 }}
-                onQuotePost={(post) => {
+                onQuotePost={isNoActionsScenario ? undefined : (post) => {
                     (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__!.quoteEventId =
                         post.eventId;
                 }}
