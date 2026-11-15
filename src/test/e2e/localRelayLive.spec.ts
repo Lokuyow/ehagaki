@@ -305,7 +305,8 @@ test("external-only saved coverage survives reload and the next older REQ advanc
         await browseSavedThrough(page, corpus, 148); await expect(relayOlder(page)).toBeEnabled();
         await relayOlder(page).click(); await expect.poll(async () => (await posts(page)).length).toBe(299);
         await browseSavedThrough(page, corpus, 297);
-        const older = () => f.externalRequests.filter(filter => filter.kinds?.includes(1) && filter.until !== undefined && filter.limit === 150);
+        // Authored history only; notification REQs use #p with the same kinds and limit.
+        const older = () => f.externalRequests.filter(filter => filter.authors?.includes(f.pubkey) && filter.kinds?.includes(1) && filter.until !== undefined && filter.limit === 150);
         const first = older().at(-1)!; expect(first.until).toBe(f.now - 149 * 60);
         const coverageBefore = await readRelayCoverage(page, f.pubkey);
         await page.reload(); await page.locator(".post-history-btn").click();

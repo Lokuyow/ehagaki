@@ -3023,7 +3023,7 @@ test("Full self-publish does not expose Host-owned methods", async ({ page }) =>
 test("Full Web Component restores left and right footer shortcuts in its storage namespace at 320px", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin, componentStoragePrefix }) => {
-        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"left":"image-quality","right":"video-quality"}');
+        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"version":1,"left":"image-quality","right":"video-quality"}');
         localStorage.setItem(`${componentStoragePrefix}imageQualityLevel`, "none");
         localStorage.setItem(`${componentStoragePrefix}videoQualityLevel`, "none");
         localStorage.setItem(`${componentStoragePrefix}locale`, "en");
@@ -3153,7 +3153,8 @@ test("Full Web Component restores left and right footer shortcuts in its storage
     expect(result.postHistoryCount).toBe(0);
     expect(result.popoverCount).toBe(0);
     expect(result.shortcutRects).toHaveLength(2);
-    expect(result.shortcutGaps).toBeGreaterThanOrEqual(5.5);
+    // The compact footer (<= 320px) uses a 4px gap.
+    expect(result.shortcutGaps).toBeGreaterThanOrEqual(3.5);
     for (const rect of result.shortcutRects) {
         expect(rect.left).toBeGreaterThanOrEqual(result.footerLeft - 0.5);
         expect(rect.right).toBeLessThanOrEqual(result.footerRight + 0.5);
@@ -3162,10 +3163,10 @@ test("Full Web Component restores left and right footer shortcuts in its storage
     }
 });
 
-test("Full Web Component contains 72px quote and reply pair pills at 320px", async ({ page }) => {
+test("Full Web Component contains compact quote and reply pair pills at 320px", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin, componentStoragePrefix }) => {
-        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"left":"quote-notification","right":"reply-notification"}');
+        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"version":1,"left":"quote-notification","right":"reply-notification"}');
         localStorage.setItem(`${componentStoragePrefix}quoteNotificationEnabled`, "false");
         localStorage.setItem(`${componentStoragePrefix}replyNotificationEnabled`, "false");
         await import(`${componentOrigin}/ehagaki-composer.js`);
@@ -3208,14 +3209,15 @@ test("Full Web Component contains 72px quote and reply pair pills at 320px", asy
     expect(geometry.host.width).toBe(320);
     expect(geometry.host.scrollWidth).toBeLessThanOrEqual(320);
     expect(geometry.footer.scrollWidth).toBeLessThanOrEqual(320);
-    expect(geometry.gap).toBeGreaterThanOrEqual(5.5);
+    // The compact footer (<= 320px) shrinks the pair pills and their gaps.
+    expect(geometry.gap).toBeGreaterThanOrEqual(3.5);
     for (const rect of geometry.rects) {
         expect(rect.left).toBeGreaterThanOrEqual(geometry.footer.left - 0.5);
         expect(rect.right).toBeLessThanOrEqual(geometry.footer.right + 0.5);
-        expect(rect.width).toBe(72);
+        expect(rect.width).toBe(49);
         expect(rect.height).toBe(50);
         expect(rect.main).toEqual({ width: 24, height: 24 });
         expect(rect.notification).toEqual({ width: 24, height: 24 });
-        expect(rect.iconGap).toBe(4);
+        expect(rect.iconGap).toBe(2);
     }
 });

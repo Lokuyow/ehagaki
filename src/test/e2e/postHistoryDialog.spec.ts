@@ -483,7 +483,7 @@ async function readExportVerificationStates(page: Page): Promise<Array<{
         });
         try {
             const transaction = database.transaction(
-                ['postHistory', 'postHistoryDeletionRequests'],
+                ['postHistory', 'postHistoryDeletionRequests', 'events'],
                 'readonly',
             );
             const getAll = (storeName: string) => new Promise<any[]>((resolve, reject) => {
@@ -491,11 +491,17 @@ async function readExportVerificationStates(page: Page): Promise<Array<{
                 request.onsuccess = () => resolve(request.result);
                 request.onerror = () => reject(request.error);
             });
-            const [posts, deletions] = await Promise.all([
+            const [posts, deletions, events] = await Promise.all([
                 getAll('postHistory'),
                 getAll('postHistoryDeletionRequests'),
+                getAll('events'),
             ]);
-            return [...posts, ...deletions].map((record) => record.rawEventVerification);
+            // Verification is stored with the signed event, keyed by its ID.
+            const verificationById = new Map(events.map((event) => [event.id, event.verification]));
+            return [
+                ...posts.map((record) => record.eventId),
+                ...deletions.map((record) => record.deletionEventId),
+            ].map((id) => verificationById.get(id));
         } finally {
             database.close();
         }
