@@ -33,10 +33,8 @@ import {
     type PostHistoryRelayFetchTask,
 } from "./postHistoryRelayFetchService";
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
-import {
-    postHistoryRepository,
-    type PostHistoryTimelineCursor,
-} from "./storage/postHistoryRepository";
+import { postHistoryRepository } from "./storage/postHistoryRepository";
+import { sameTimelineCursor, toTimelineCursor } from "./postHistoryTimelineCursor";
 import type { RelayConfig } from "./types";
 
 export interface LoadOlderVisiblePostsMetrics {
@@ -110,47 +108,51 @@ export interface PostHistoryListingOlderBackfillControllerDeps {
     pageSize: number;
     maxVisiblePosts: number;
     getRelayConfig: () => RelayConfig | null | undefined;
-    getVisibleOldestCreatedAt: () => number | null;
-    hasLocalBrowsingRanges: () => boolean;
-    getLoadRequestId: () => number;
-    /** The external fetch slot is shared with the hook's other relay fetches. */
-    getCurrentFetchTask: () => PostHistoryListingFetchTask | null;
-    setCurrentFetchTask: (task: PostHistoryListingFetchTask | null) => void;
-    isSparseListingContext: (visibleUntil: number | null) => boolean;
-    toTimelineCursor: (
-        post: PostHistoryRecord | null | undefined,
-    ) => PostHistoryTimelineCursor | null;
-    sameTimelineCursor: (
-        left: PostHistoryTimelineCursor | null | undefined,
-        right: PostHistoryTimelineCursor | null | undefined,
-    ) => boolean;
-    clearContiguousProgress: () => void;
-    commitHistoryViewport: (apply: () => Promise<void>) => Promise<void>;
-    readExternalVisibleUntil: (pubkeyHex: string) => Promise<number | null>;
-    readExternalContinuity: (pubkeyHex: string) => Promise<PostHistoryCoverageRange[]>;
-    countVisiblePosts: (pubkeyHex: string, visibleUntil: number | null) => Promise<number>;
     createAuthoredScope: (
         pubkeyHex: string,
         rxNostr: RxNostr,
         requestId: number,
     ) => ReturnType<typeof createPostHistoryAuthoredFetchScope>;
-    updateVisibleUntilFromOlderBackfillFetch: (
+    fetchSlot: PostHistoryListingFetchSlot;
+    coverage: PostHistoryListingOlderBackfillCoverage;
+    contiguousProgress: PostHistoryListingOlderBackfillContiguousProgress;
+    reveal: PostHistoryListingOlderBackfillReveal;
+}
+
+/** The external fetch slot, shared with the hook's other relay fetches. */
+export interface PostHistoryListingFetchSlot {
+    get: () => PostHistoryListingFetchTask | null;
+    set: (task: PostHistoryListingFetchTask | null) => void;
+}
+
+/** Reads of the visible range: how far external coverage reaches and what is on screen. */
+export interface PostHistoryListingOlderBackfillCoverage {
+    readExternalVisibleUntil: (pubkeyHex: string) => Promise<number | null>;
+    readExternalContinuity: (pubkeyHex: string) => Promise<PostHistoryCoverageRange[]>;
+    /** Re-reads the visible floor after a fetch was persisted and applies it to the listing. */
+    updateVisibleUntilFromFetch: (
         pubkeyHex: string,
         result: PostHistoryRelayFetchResult,
     ) => Promise<number | null>;
-    reconcileContiguousProgressAfterDatabaseChange: (
+    hasLocalBrowsingRanges: () => boolean;
+    isSparseListingContext: (visibleUntil: number | null) => boolean;
+    getVisibleOldestCreatedAt: () => number | null;
+}
+
+/** Progress of the contiguous listing, which a database change can invalidate. */
+export interface PostHistoryListingOlderBackfillContiguousProgress {
+    clear: () => void;
+    reconcileAfterDatabaseChange: (
         pubkeyHex: string,
         visibleUntil: number | null,
         options: { preserveReachedVisibleCount: boolean },
     ) => Promise<boolean>;
-    refreshSavedPostsOutsideVisibleRange: (
-        pubkeyHex: string,
-        visibleUntil: number | null,
-        expectedRequestId: number | null,
-        expectedFetchRequestId: number | null,
-    ) => Promise<void>;
-    rebuildSearchResultsThroughPage: (page: number, query: string) => Promise<unknown>;
-    refreshTotalCount: (options: { force: boolean }) => void;
+}
+
+/** Applies fetched rows to the listing the user sees. */
+export interface PostHistoryListingOlderBackfillReveal {
+    getLoadRequestId: () => number;
+    commitViewport: (apply: () => Promise<void>) => Promise<void>;
     loadOlderVisiblePosts: (options: LoadOlderVisiblePostsOptions) => Promise<boolean>;
     loadOlderSavedPosts: (
         pubkeyHex: string,
@@ -162,7 +164,24 @@ export interface PostHistoryListingOlderBackfillControllerDeps {
         requestId: number,
         options: LoadOlderVisiblePostsOptions,
     ) => Promise<boolean>;
+    rebuildSearchResultsThroughPage: (page: number, query: string) => Promise<unknown>;
+    refreshTotalCount: (options: { force: boolean }) => void;
     refreshTimelineAvailability: (pubkeyHex: string) => Promise<void>;
+    refreshSavedPostsOutsideVisibleRange: (
+        pubkeyHex: string,
+        visibleUntil: number | null,
+        expectedRequestId: number | null,
+        expectedFetchRequestId: number | null,
+    ) => Promise<void>;
+}
+
+function countVisiblePosts(
+    pubkeyHex: string,
+    visibleUntil: number | null,
+): Promise<number> {
+    return typeof visibleUntil === "number"
+        ? postHistoryRepository.countVisibleForPubkey(pubkeyHex, visibleUntil)
+        : postHistoryRepository.countForPubkey(pubkeyHex);
 }
 
 /**
@@ -190,9 +209,9 @@ export function createPostHistoryListingOlderBackfillController(
         pubkeyHex: string,
         planningFloor = state.visibleUntil,
     ): Promise<number | null> {
-        const visibleOldestCreatedAt = deps.getVisibleOldestCreatedAt();
+        const visibleOldestCreatedAt = deps.coverage.getVisibleOldestCreatedAt();
         if (
-            (!deps.hasLocalBrowsingRanges() || deps.isSparseListingContext(state.visibleUntil))
+            (!deps.coverage.hasLocalBrowsingRanges() || deps.coverage.isSparseListingContext(state.visibleUntil))
             &&
             typeof visibleOldestCreatedAt === "number"
             && (
@@ -321,27 +340,27 @@ export function createPostHistoryListingOlderBackfillController(
         // Check only the older side, without publishing availability against the
         // old rows before the local page and its viewport anchor are committed.
         while (state.listingMode === "contiguous") {
-            const externalFloor = await deps.readExternalVisibleUntil(pubkeyHex);
+            const externalFloor = await deps.coverage.readExternalVisibleUntil(pubkeyHex);
             if (!isActive()) return false;
-            const cursor = deps.toTimelineCursor(state.loadedPosts.at(-1));
+            const cursor = toTimelineCursor(state.loadedPosts.at(-1));
             const hasOlderLocal = cursor ? await postHistoryRepository.hasOlderVisiblePosts({
                 pubkeyHex, visibleUntil: externalFloor, cursor,
             }) : false;
             if (!isActive()) return false;
             // The DB check may outlive a background external coverage update.
             // Compare external floors; state.visibleUntil also includes local browsing.
-            const nextExternalFloor = await deps.readExternalVisibleUntil(pubkeyHex);
+            const nextExternalFloor = await deps.coverage.readExternalVisibleUntil(pubkeyHex);
             if (!isActive()) return false;
             if (state.listingMode !== "contiguous") break;
             if (nextExternalFloor !== externalFloor
-                || (cursor && !deps.sameTimelineCursor(cursor, deps.toTimelineCursor(state.loadedPosts.at(-1))))) continue;
+                || (cursor && !sameTimelineCursor(cursor, toTimelineCursor(state.loadedPosts.at(-1))))) continue;
             preparedVisibleUntil = externalFloor;
             if (hasOlderLocal) {
-                deps.clearContiguousProgress();
+                deps.contiguousProgress.clear();
                 let changed = false;
-                await deps.commitHistoryViewport(async () => {
+                await deps.reveal.commitViewport(async () => {
                     if (!isActive()) return;
-                    changed = await deps.loadOlderVisiblePosts({
+                    changed = await deps.reveal.loadOlderVisiblePosts({
                         anchorEventId: options.anchorEventId,
                         relayFetchViewportCommit: options.viewportCommit,
                         useContiguousProgress: false,
@@ -367,7 +386,7 @@ export function createPostHistoryListingOlderBackfillController(
 
         while (true) {
             attemptIndex += 1;
-            const planningFloor = await deps.readExternalVisibleUntil(pubkeyHex);
+            const planningFloor = await deps.coverage.readExternalVisibleUntil(pubkeyHex);
             const resolvedFetchUntil =
                 batchNextUntil ?? await resolveOlderRelayFetchUntil(pubkeyHex, planningFloor);
             const usingBatchCursor = typeof batchNextUntil === "number";
@@ -383,16 +402,16 @@ export function createPostHistoryListingOlderBackfillController(
                 previousVisibleUntil,
                 resolvedFetchUntil,
                 usingBatchCursor,
-                isSparseListing: () => deps.hasLocalBrowsingRanges()
-                    ? deps.isSparseListingContext(state.visibleUntil)
-                    : deps.isSparseListingContext(previousVisibleUntil),
+                isSparseListing: () => deps.coverage.hasLocalBrowsingRanges()
+                    ? deps.coverage.isSparseListingContext(state.visibleUntil)
+                    : deps.coverage.isSparseListingContext(previousVisibleUntil),
             });
 
             if (typeof effectiveFetchUntil !== "number") {
                 return batchChanged;
             }
 
-            const rangesBeforeFetch = await deps.readExternalContinuity(pubkeyHex);
+            const rangesBeforeFetch = await deps.coverage.readExternalContinuity(pubkeyHex);
             if (!isActive()) return batchChanged;
 
             const windowSeconds = resolveOlderBackfillWindowSeconds(batchWindowIndex);
@@ -406,7 +425,7 @@ export function createPostHistoryListingOlderBackfillController(
                 windowSeconds,
             };
 
-            const previousCount = await deps.countVisiblePosts(pubkeyHex, previousVisibleUntil);
+            const previousCount = await countVisiblePosts(pubkeyHex, previousVisibleUntil);
             if (!isActive()) {
                 return batchChanged;
             }
@@ -434,14 +453,14 @@ export function createPostHistoryListingOlderBackfillController(
                 since: fetchRange.since,
                 until: fetchRange.until,
             });
-            deps.setCurrentFetchTask(task);
+            deps.fetchSlot.set(task);
 
             const result = await task.promise;
-            if (!isActive() || deps.getCurrentFetchTask() !== task) {
+            if (!isActive() || deps.fetchSlot.get() !== task) {
                 return batchChanged;
             }
 
-            deps.setCurrentFetchTask(null);
+            deps.fetchSlot.set(null);
             if (!authoredScope.isActive() || result.status === "cancelled") {
                 return batchChanged;
             }
@@ -457,7 +476,7 @@ export function createPostHistoryListingOlderBackfillController(
                 return batchChanged;
             }
 
-            const visibleOldestCreatedAt = deps.getVisibleOldestCreatedAt();
+            const visibleOldestCreatedAt = deps.coverage.getVisibleOldestCreatedAt();
             const isSparseBackfillContext =
                 typeof visibleOldestCreatedAt === "number"
                 && (
@@ -468,7 +487,7 @@ export function createPostHistoryListingOlderBackfillController(
 
             const nextVisibleUntil = isSparseBackfillContext
                 ? previousVisibleUntil
-                : await deps.updateVisibleUntilFromOlderBackfillFetch(
+                : await deps.coverage.updateVisibleUntilFromFetch(
                     pubkeyHex,
                     result,
                 );
@@ -478,7 +497,7 @@ export function createPostHistoryListingOlderBackfillController(
 
             const effectiveVisibleUntil = nextVisibleUntil;
 
-            const nextCount = await deps.countVisiblePosts(pubkeyHex, effectiveVisibleUntil);
+            const nextCount = await countVisiblePosts(pubkeyHex, effectiveVisibleUntil);
             if (!isActive()) {
                 return batchChanged;
             }
@@ -486,14 +505,14 @@ export function createPostHistoryListingOlderBackfillController(
             let canPreserveContiguousProgress = false;
             if (!isSparseBackfillContext) {
                 canPreserveContiguousProgress =
-                    await deps.reconcileContiguousProgressAfterDatabaseChange(
+                    await deps.contiguousProgress.reconcileAfterDatabaseChange(
                         pubkeyHex,
                         effectiveVisibleUntil,
                         { preserveReachedVisibleCount: true },
                     );
             }
 
-            await deps.refreshSavedPostsOutsideVisibleRange(
+            await deps.reveal.refreshSavedPostsOutsideVisibleRange(
                 pubkeyHex,
                 effectiveVisibleUntil,
                 null,
@@ -522,7 +541,7 @@ export function createPostHistoryListingOlderBackfillController(
             } else if (result.events.length > 0) {
                 olderBackfillSearch.consecutiveEmptyCount = 0;
             }
-            const nextExternalFloor = await deps.readExternalVisibleUntil(pubkeyHex);
+            const nextExternalFloor = await deps.coverage.readExternalVisibleUntil(pubkeyHex);
             if (!isActive()) return batchChanged;
             if (typeof nextExternalFloor === "number" && !isSparseBackfillContext) nextUntilCursor = nextExternalFloor;
             setOlderBackfillNextCursor(nextUntilCursor, nextContinuationSince);
@@ -551,27 +570,27 @@ export function createPostHistoryListingOlderBackfillController(
                 maxVisiblePosts: deps.maxVisiblePosts,
             };
 
-            await deps.commitHistoryViewport(async () => {
+            await deps.reveal.commitViewport(async () => {
                 if (!isActive()) return;
                 if (state.searchQuery) {
-                    await deps.rebuildSearchResultsThroughPage(
+                    await deps.reveal.rebuildSearchResultsThroughPage(
                         state.searchPage,
                         state.searchQuery,
                     );
                 } else {
-                    deps.refreshTotalCount({ force: didMateriallyChange });
+                    deps.reveal.refreshTotalCount({ force: didMateriallyChange });
                     if (didVisibleCountIncrease || didMateriallyChange) {
                         didLoadFetchedOlderPosts = state.sparseSource === "saved"
-                            ? await deps.loadOlderSavedPosts(pubkeyHex, deps.getLoadRequestId(), {
+                            ? await deps.reveal.loadOlderSavedPosts(pubkeyHex, deps.reveal.getLoadRequestId(), {
                                 anchorEventId: options.anchorEventId,
                                 relayFetchViewportCommit: options.viewportCommit,
                             })
                             : isSparseBackfillContext
-                                ? await deps.loadOlderSparsePosts(pubkeyHex, deps.getLoadRequestId(), {
+                                ? await deps.reveal.loadOlderSparsePosts(pubkeyHex, deps.reveal.getLoadRequestId(), {
                                     anchorEventId: options.anchorEventId,
                                     relayFetchViewportCommit: options.viewportCommit,
                                 })
-                                : await deps.loadOlderVisiblePosts({
+                                : await deps.reveal.loadOlderVisiblePosts({
                                     anchorEventId: options.anchorEventId,
                                     relayFetchViewportCommit: options.viewportCommit,
                                     metrics: olderLoadMetrics,
@@ -581,7 +600,7 @@ export function createPostHistoryListingOlderBackfillController(
                                         canPreserveContiguousProgress,
                                 });
                     } else {
-                        await deps.refreshTimelineAvailability(pubkeyHex);
+                        await deps.reveal.refreshTimelineAvailability(pubkeyHex);
                     }
                 }
             });
