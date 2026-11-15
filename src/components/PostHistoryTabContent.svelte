@@ -302,33 +302,6 @@
         };
     }
 
-    const quotePreviewView: ComponentProps<typeof PostHistoryRecordQuotePreviews>["view"] = {
-        getSensitiveBodyLoader: (event) => getSensitiveBodyLoader(event),
-        getModel: (eventId) => relatedPreviewModelByEventId[eventId],
-        onImageOpen: (params) => handleImageOpen(params),
-        retry: (eventId) => quotePreviews.retryQuotePreview(eventId),
-        get onReactionPost() {
-            return onReactionPost ? handleReactionPost : undefined;
-        },
-        get onReplyPost() {
-            return onReplyPost ? handleReplyPost : undefined;
-        },
-        get onQuotePost() {
-            return onQuotePost ? handleQuotePost : undefined;
-        },
-        getReactionReadModel: (eventId) => getRelatedReactionReadModel(eventId),
-        isReactionExpanded: (eventId) => isReactionExpandedByEventId(eventId),
-        getReactionLabel: (eventId) => getRelatedReactionLabel(eventId),
-        toggleReactions: (eventId) => toggleReactionsByEventId(eventId),
-        buildRecord: (event) => buildPostRecordFromQuoteEvent(event),
-        buildMenuKey: (parentEventId, quoteEventId) =>
-            buildQuotePreviewMenuKey(parentEventId, quoteEventId),
-        isMenuOpen: (menuKey) => postActionUi.isPostMenuOpen(menuKey),
-        setMenuOpen: (menuKey, open) => setExclusivePostMenuOpen(menuKey, open),
-        getActionItems: (record) =>
-            buildRecordActionItemProps(record, { externalClient: true, repost: false }),
-    };
-
     function canRepost(post: PostHistoryRecord): boolean {
         return !!onRepostPost && isRepostTargetKind(post.kind) && post.deletedAt === undefined
             && isPostHistoryRawEventConsistent(post.rawEvent, post);
@@ -1558,34 +1531,6 @@
         return resolveBroadcastEvent(post) !== null;
     }
 
-    const recordFooterView: ComponentProps<typeof PostHistoryRecordFooter>["view"] = {
-        get onReactionPost() {
-            return onReactionPost ? handleReactionPost : undefined;
-        },
-        get onReplyPost() {
-            return onReplyPost ? handleReplyPost : undefined;
-        },
-        get onQuotePost() {
-            return onQuotePost ? handleQuotePost : undefined;
-        },
-        getRepliesActionLabel: (post) => getRepliesActionLabel(post),
-        onRepliesAction: (post) => handleRepliesAction(post),
-        isReactionsExpanded: (post) => isReactionsExpanded(post),
-        getReactionsActionLabel: (post) => getReactionsActionLabel(post),
-        toggleReactions: (post) => toggleReactions(post),
-        isMenuOpen: (menuKey) => postActionUi.isPostMenuOpen(menuKey),
-        setMenuOpen: (menuKey, open) => setExclusivePostMenuOpen(menuKey, open),
-        getExternalClientOpenLabel: () => getExternalClientOpenLabel(),
-        onOpenExternalClient: (post) => handleOpenExternalClient(post),
-        onRefreshRelatedEvents: (post) => void handleRefreshRelatedEvents(post),
-        get isSearchMode() {
-            return history.isSearchMode;
-        },
-        onShowSurroundingPosts: (post) => void handleShowSurroundingPosts(post),
-        getActionItems: (post) =>
-            buildRecordActionItemProps(post, { externalClient: false }),
-    };
-
     type ThreadGraphPanelProps = ComponentProps<typeof PostHistoryThreadGraphPanel>;
 
     /** Props both thread sections (parents above, replies below) of a post share. */
@@ -2701,7 +2646,23 @@
                                                 emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                                                 emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                                 scrollRoot={historyContainer}
-                                                view={quotePreviewView}
+                                                getSensitiveBodyLoader={getSensitiveBodyLoader}
+                                                getModel={(eventId) => relatedPreviewModelByEventId[eventId]}
+                                                onImageOpen={handleImageOpen}
+                                                onRetry={(eventId) => quotePreviews.retryQuotePreview(eventId)}
+                                                onReactionPost={onReactionPost ? handleReactionPost : undefined}
+                                                onReplyPost={onReplyPost ? handleReplyPost : undefined}
+                                                onQuotePost={onQuotePost ? handleQuotePost : undefined}
+                                                getReactionReadModel={getRelatedReactionReadModel}
+                                                isReactionExpanded={isReactionExpandedByEventId}
+                                                getReactionLabel={getRelatedReactionLabel}
+                                                onToggleReaction={toggleReactionsByEventId}
+                                                buildRecord={buildPostRecordFromQuoteEvent}
+                                                buildMenuKey={buildQuotePreviewMenuKey}
+                                                isMenuOpen={(menuKey) => postActionUi.isPostMenuOpen(menuKey)}
+                                                onMenuOpenChange={setExclusivePostMenuOpen}
+                                                getActionItems={(record) =>
+                                                    buildRecordActionItemProps(record, { externalClient: true, repost: false })}
                                             />
                                         {/snippet}
                                         </PostContentPreview>
@@ -2712,7 +2673,22 @@
                                         {graphState}
                                         emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                                         emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
-                                        view={recordFooterView}
+                                        onReactionPost={onReactionPost ? handleReactionPost : undefined}
+                                        onReplyPost={onReplyPost ? handleReplyPost : undefined}
+                                        onQuotePost={onQuotePost ? handleQuotePost : undefined}
+                                        repliesActionLabel={getRepliesActionLabel(post)}
+                                        onRepliesAction={() => handleRepliesAction(post)}
+                                        reactionsExpanded={isReactionsExpanded(post)}
+                                        reactionsActionLabel={getReactionsActionLabel(post)}
+                                        onToggleReactions={() => toggleReactions(post)}
+                                        menuOpen={postActionUi.isPostMenuOpen(post.eventId)}
+                                        onMenuOpenChange={(open) => setExclusivePostMenuOpen(post.eventId, open)}
+                                        externalClientLabel={getExternalClientOpenLabel()}
+                                        onOpenExternalClient={() => handleOpenExternalClient(post)}
+                                        onRefreshRelatedEvents={() => void handleRefreshRelatedEvents(post)}
+                                        isSearchMode={history.isSearchMode}
+                                        onShowSurroundingPosts={() => void handleShowSurroundingPosts(post)}
+                                        getActionItems={() => buildRecordActionItemProps(post, { externalClient: false })}
                                     />
                                     <PostHistoryThreadGraphPanel
                                         state={graphState}
