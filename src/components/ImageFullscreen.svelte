@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onDestroy, onMount, tick } from "svelte";
-    import PhotoSwipe from "photoswipe";
+    import type PhotoSwipeType from "photoswipe";
     import { _ } from "svelte-i18n";
     import type { FullscreenMediaItem } from "../lib/types";
     import {
@@ -38,7 +38,7 @@
         openingFocusOrigin = null,
     }: Props = $props();
 
-    let activePhotoSwipe: PhotoSwipe | null = null;
+    let activePhotoSwipe: PhotoSwipeType | null = null;
     let historyPushed = false;
     let closeMode: CloseMode = null;
     let closeFinalizing = false;
@@ -127,7 +127,7 @@
         void finalizeClose();
     }
 
-    function bindCustomContentEvents(instance: PhotoSwipe) {
+    function bindCustomContentEvents(instance: PhotoSwipeType) {
         instance.on("contentLoad", (event) => {
             const data = event.content.data;
             if (data.type !== "video" || typeof data.src !== "string") {
@@ -189,7 +189,21 @@
         targetIndex: number,
         requestToken: number,
     ) {
-        const dataSource = await buildFullscreenViewerDataSource(items);
+        // PhotoSwipe is only needed once a viewer opens, so keep it out of the
+        // startup graph and fetch it alongside the data source.
+        let dataSource: Awaited<ReturnType<typeof buildFullscreenViewerDataSource>>;
+        let PhotoSwipe: typeof PhotoSwipeType;
+        try {
+            [dataSource, { default: PhotoSwipe }] = await Promise.all([
+                buildFullscreenViewerDataSource(items),
+                import("photoswipe"),
+            ]);
+        } catch {
+            if (requestToken === openRequestToken && show && !activePhotoSwipe) {
+                requestClose("internal");
+            }
+            return;
+        }
 
         if (
             requestToken !== openRequestToken ||
