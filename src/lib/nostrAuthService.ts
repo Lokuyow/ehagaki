@@ -57,17 +57,18 @@ export class NostrAuthService implements AuthService {
         }
 
         if (auth.type === 'nsec') {
-            const currentStoredKey = keyManager.getFromStore();
-            const storedKey = currentStoredKey
-                && keyManager.derivePublicKey(currentStoredKey).hex === sessionPubkey
-                ? currentStoredKey
-                : keyManager.loadFromStorage(sessionPubkey);
-            if (!storedKey || keyManager.derivePublicKey(storedKey).hex !== sessionPubkey) {
-                throw new AuthenticationRequiredError();
+            // Each candidate key is verified against the session exactly once.
+            const matchesSession = (key: string | null): key is string =>
+                !!key && keyManager.derivePublicKey(key).hex === sessionPubkey;
+            let storedKey = keyManager.getFromStore();
+            if (!matchesSession(storedKey)) {
+                storedKey = keyManager.loadFromStorage(sessionPubkey);
+                if (!matchesSession(storedKey)) throw new AuthenticationRequiredError();
             }
+            const signer = seckeySigner(storedKey);
             return {
                 getPublicKey: async () => sessionPubkey,
-                signEvent: async (event) => seckeySigner(storedKey).signEvent(event),
+                signEvent: async (event) => signer.signEvent(event),
             };
         }
 

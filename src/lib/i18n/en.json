@@ -150,6 +150,7 @@
     "secret_too_short": "Secret key is too short (must be 63 characters)",
     "secret_too_long": "Secret key is too long (must be 63 characters or less)",
     "invalid_secret": "Invalid secret key",
+    "secret_login_failed": "Failed to log in with the secret key",
     "bunker_connect": "Connect",
     "bunker_input_title": "Enter bunker URL",
     "bunker_url_required": "Please enter a bunker URL",

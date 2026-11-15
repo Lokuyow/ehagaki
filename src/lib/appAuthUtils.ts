@@ -2,6 +2,7 @@ import { cancelRelayOperations } from "./relay/publish";
 import type { RxNostr } from "rx-nostr";
 import type { RestoreResult } from './authRestoreUtils';
 import type { AuthResult } from './types';
+import { AUTH_SUPERSEDED_ERROR } from './constants';
 
 type DisposableSession = {
     dispose: () => void;
@@ -16,7 +17,7 @@ interface Nip46RuntimeController {
 export interface Nip07LoginDependencies {
     currentAuthType?: string;
     currentPubkeyHex?: string | null;
-    authenticateWithNip07: () => Promise<AuthResult>;
+    authenticateWithNip07: (options?: { isCurrent?: () => boolean }) => Promise<AuthResult>;
     cancelPendingNip46Auth: () => Promise<void>;
     clearNip46RuntimeForAuthChange: (params: {
         currentAuthType?: string;
@@ -82,12 +83,17 @@ export async function clearNip46RuntimeForAuthChange(params: {
 
 export async function runNip07Login(
     deps: Nip07LoginDependencies,
+    isCurrent?: () => boolean,
 ): Promise<string | undefined> {
     try {
         await deps.cancelPendingNip46Auth();
         deps.setLoading(true);
 
-        const result = await deps.authenticateWithNip07();
+        const result = await deps.authenticateWithNip07(isCurrent ? { isCurrent } : undefined);
+        if (!result.success && result.error === AUTH_SUPERSEDED_ERROR) {
+            // The user moved on to another login; nothing was committed.
+            return undefined;
+        }
         if (!result.success) {
             deps.console.error('NIP-07認証失敗', {
                 stage: 'result',

@@ -14,6 +14,10 @@ const initialAuthState: AuthState = {
 
 let authStateValue = $state<AuthState>({ ...initialAuthState });
 
+// The secret key is kept in memory only while an nsec session is active.
+// Signing falls back to per-account storage when it is absent.
+let secretKey = $state<string | null>(null);
+
 export const authState = {
     get value() {
         return authStateValue || initialAuthState;
@@ -27,6 +31,9 @@ export function updateAuthState(newState: Partial<AuthState>): void {
     updated.isExtensionLogin = updated.type === 'nip07';
 
     authStateValue = updated;
+    if (updated.type !== 'nsec') {
+        secretKey = null;
+    }
 
     console.log('[updateAuthState] 認証状態を更新:', {
         type: updated.type,
@@ -40,6 +47,7 @@ export function clearAuthState(preserveInitialized: boolean = true): void {
         ...initialAuthState,
         isInitialized: preserveInitialized ? authStateValue.isInitialized : false
     };
+    secretKey = null;
 }
 
 export function setNsecAuth(pubkey: string, npub: string, nprofile: string): void {
@@ -79,8 +87,6 @@ export function setAuthInitialized(): void {
 }
 
 // --- 秘密鍵管理 ---
-let secretKey = $state<string | null>(null);
-
 export const secretKeyStore = {
     get value() { return secretKey; },
     set: (value: string | null) => { secretKey = value; }

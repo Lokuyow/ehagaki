@@ -104,7 +104,6 @@ function createController(overrides: Record<string, unknown> = {}) {
         setProfileLoaded: vi.fn(),
         initializeNostr: vi.fn(async () => undefined),
         setSecretKey: vi.fn(),
-        setErrorMessage: vi.fn(),
         refreshAccountList: vi.fn(),
         reloadWindow: vi.fn(),
         closeLogoutDialog: vi.fn(),
@@ -411,7 +410,6 @@ describe('createAppAccountSessionController', () => {
 
         expect(deps.disposeNostrSession).toHaveBeenLastCalledWith(guestRuntime);
         expect(deps.setSecretKey).toHaveBeenCalledWith('');
-        expect(deps.setErrorMessage).toHaveBeenCalledWith('');
         expect(deps.clearPersistedPostHistoryListingSnapshots).toHaveBeenCalledOnce();
         expect(deps.reloadWindow).not.toHaveBeenCalled();
     });
@@ -465,7 +463,6 @@ describe('createAppAccountSessionController', () => {
         expect(deps.refreshAccountList).toHaveBeenCalledOnce();
         expect(deps.closeLogoutDialog).toHaveBeenCalledOnce();
         expect(deps.setSecretKey).toHaveBeenCalledWith('');
-        expect(deps.setErrorMessage).toHaveBeenCalledWith('');
     });
 
     it('logoutAccount guest 分岐は initializeNostr 失敗後も一覧スナップショットを捨て、リロードしない', async () => {
@@ -482,7 +479,6 @@ describe('createAppAccountSessionController', () => {
         expect(deps.clearPersistedPostHistoryListingSnapshots).toHaveBeenCalledOnce();
         expect(deps.reloadWindow).not.toHaveBeenCalled();
         expect(deps.setSecretKey).not.toHaveBeenCalled();
-        expect(deps.setErrorMessage).not.toHaveBeenCalled();
         expect(deps.logger.error).toHaveBeenCalledWith('ログアウト処理中にエラー', {
             stage: 'logout-account',
             reason: 'unexpected',

@@ -91,7 +91,6 @@ export interface AppAccountSessionControllerDependencies {
     setProfileLoaded(next: boolean): void;
     initializeNostr(): Promise<void>;
     setSecretKey(next: string): void;
-    setErrorMessage(next: string): void;
     refreshAccountList(): void;
     reloadWindow(): void;
     closeLogoutDialog(): void;
@@ -163,7 +162,6 @@ export function createAppAccountSessionController(
             await disposeSession(deps.getCurrentRxNostr());
         } finally {
             deps.setSecretKey('');
-            deps.setErrorMessage('');
             deps.clearPersistedPostHistoryListingSnapshots();
         }
     }
@@ -321,7 +319,6 @@ export function createAppAccountSessionController(
                     deps.clearPersistedPostHistoryListingSnapshots();
                 }
                 deps.setSecretKey('');
-                deps.setErrorMessage('');
             }
 
             deps.refreshAccountList();

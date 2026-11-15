@@ -225,6 +225,33 @@ describe('runNip07Login', () => {
     });
 });
 
+describe('runNip07Login superseded', () => {
+    it('別のログインに追い越された応答は後続処理もエラー表示も行わない', async () => {
+        const isCurrent = () => false;
+        const authenticateWithNip07 = vi.fn().mockResolvedValue({ success: false, error: 'auth_superseded' });
+        const clearNip46RuntimeForAuthChange = vi.fn();
+        const handlePostAuth = vi.fn();
+        const consoleError = vi.fn();
+        const setLoading = vi.fn();
+
+        await expect(runNip07Login({
+            authenticateWithNip07,
+            cancelPendingNip46Auth: vi.fn().mockResolvedValue(undefined),
+            clearNip46RuntimeForAuthChange,
+            handlePostAuth,
+            setLoading,
+            nip46Service: { disconnect: vi.fn().mockResolvedValue(undefined) },
+            console: { error: consoleError },
+        }, isCurrent)).resolves.toBeUndefined();
+
+        expect(authenticateWithNip07).toHaveBeenCalledWith({ isCurrent });
+        expect(clearNip46RuntimeForAuthChange).not.toHaveBeenCalled();
+        expect(handlePostAuth).not.toHaveBeenCalled();
+        expect(consoleError).not.toHaveBeenCalled();
+        expect(setLoading).toHaveBeenLastCalledWith(false);
+    });
+});
+
 describe('runNip46Login', () => {
     it('成功時は後続処理を呼ぶ', async () => {
         const authenticateWithNip46 = vi.fn().mockResolvedValue({

@@ -168,6 +168,53 @@ describe('LoginDialog', () => {
         expect(onSave).toHaveBeenCalledTimes(1);
     });
 
+    it('秘密鍵ログインの失敗をダイアログ内に表示し、再入力で消す', async () => {
+        const onSave = vi.fn().mockResolvedValue('error_saving');
+
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                onSave,
+            },
+        });
+
+        const secretInput = screen.getByPlaceholderText('nsec1...') as HTMLInputElement;
+        setInputValue(secretInput, validSecret);
+        await screen.findByText(/npub1/);
+        await fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+        expect((await screen.findByText('秘密鍵でのログインに失敗しました')).getAttribute('role')).toBe('alert');
+
+        setInputValue(secretInput, validSecret.slice(0, -1));
+        await waitFor(() => expect(screen.queryByText('秘密鍵でのログインに失敗しました')).toBeNull());
+    });
+
+    it('秘密鍵の保存処理中は保存ボタンを無効化し、二重送信しない', async () => {
+        let finishSave!: (value: string | undefined) => void;
+        const onSave = vi.fn(() => new Promise<string | undefined>((resolve) => { finishSave = resolve; }));
+
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                onSave,
+            },
+        });
+
+        const secretInput = screen.getByPlaceholderText('nsec1...') as HTMLInputElement;
+        const form = secretInput.closest('form') as HTMLFormElement;
+        const saveButton = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+        setInputValue(secretInput, validSecret);
+        await screen.findByText(/npub1/);
+        await fireEvent.submit(form);
+
+        await waitFor(() => expect(saveButton.disabled).toBe(true));
+        await fireEvent.submit(form);
+        expect(onSave).toHaveBeenCalledTimes(1);
+
+        finishSave(undefined);
+        await waitFor(() => expect(saveButton.disabled).toBe(false));
+    });
+
     it('bunker URLが空のときクリアボタンが表示されない', () => {
         render(LoginDialog, {
             props: defaultProps,

@@ -22,6 +22,7 @@ import {
     migrateLegacyNsec,
 } from './legacyNsecMigration';
 import { getNsecStorageKey } from './authStorageKeys';
+import { AUTH_SUPERSEDED_ERROR } from './constants';
 import type { PublicKeyData, StoredAccount } from './types';
 
 type ParentClientAuthOptions = Pick<ParentClientConnectOptions, 'silent' | 'timeoutMs'>;
@@ -70,14 +71,40 @@ export class AuthService {
                 return { success: false, error: 'derivation_failed' };
             }
 
-            // per-accountストレージに保存
-            const { success } = this.runtime.keyManager.saveToStorage(secretKey, derived.hex) as { success?: boolean };
-            if (!success) {
+            // Persist the credential first without touching the runtime key or
+            // auth state, so a later failure cannot leave another account's
+            // session signing with this key.
+            const existingKey = this.runtime.keyManager.readStoredKey(derived.hex);
+            if (existingKey.status === 'error') {
+                return { success: false, error: 'error_saving' };
+            }
+            const keyAlreadyStored = existingKey.status === 'found'
+                && existingKey.secretKey === secretKey;
+            if (
+                !keyAlreadyStored
+                && this.runtime.keyManager.writeStoredKeyForMigration(derived.hex, secretKey).status !== 'saved'
+            ) {
                 return { success: false, error: 'error_saving' };
             }
 
+            let previousType: StoredAccount['type'] | null;
+            try {
+                previousType = this.recordAccount(derived.hex, 'nsec');
+            } catch {
+                // Never leave a secret key in storage without an account record.
+                if (existingKey.status === 'missing') {
+                    this.runtime.keyManager.removeStoredKeyForMigration(derived.hex);
+                }
+                this.runtime.console.error('nsec認証処理中にエラー', {
+                    stage: 'account-record',
+                    reason: 'unexpected',
+                });
+                return { success: false, error: 'error_saving' };
+            }
+
+            this.runtime.keyManager.setCurrentSecretKey(secretKey);
             this.runtime.setNsecAuthFn(derived.hex, derived.npub, derived.nprofile);
-            this.accountManager?.addAccount(derived.hex, 'nsec');
+            await this.cleanupReplacedAuthData(derived.hex, previousType, 'nsec');
             return { success: true, pubkeyHex: derived.hex };
         } catch {
             this.runtime.console.error('nsec認証処理中にエラー', {
@@ -94,7 +121,14 @@ export class AuthService {
         return this.runtime.nip07Service.isAvailable();
     }
 
-    async authenticateWithNip07(): Promise<AuthResult> {
+    /**
+     * @param options.isCurrent Checked after the extension answers and before
+     * anything is committed, so an answer that arrives after the user started
+     * another login cannot replace that login.
+     */
+    async authenticateWithNip07(
+        options: { isCurrent?: () => boolean } = {},
+    ): Promise<AuthResult> {
         const available = await this.runtime.nip07Service.waitForExtension(3000);
         if (!available) {
             return { success: false, error: 'nip07_not_available' };
@@ -104,10 +138,11 @@ export class AuthService {
         if (!result.success || !result.pubkeyHex || !result.pubkeyData) {
             return { success: false, error: result.error || 'nip07_auth_error' };
         }
+        if (options.isCurrent && !options.isCurrent()) {
+            return { success: false, error: AUTH_SUPERSEDED_ERROR };
+        }
 
-        this.runtime.setNip07AuthFn(result.pubkeyData.hex, result.pubkeyData.npub, result.pubkeyData.nprofile);
-        this.accountManager?.addAccount(result.pubkeyHex, 'nip07');
-        return { success: true, pubkeyHex: result.pubkeyHex };
+        return this.commitNip07Identity(result.pubkeyData);
     }
 
     async authenticateWithNip07ForAutoLogin(
@@ -130,19 +165,24 @@ export class AuthService {
             resolvedIdentity = result.pubkeyData;
         }
 
-        const previousType = this.accountManager?.getAccountType(resolvedIdentity.hex);
-        this.accountManager?.addAccount(resolvedIdentity.hex, 'nip07');
-        this.runtime.setNip07AuthFn(
-            resolvedIdentity.hex,
-            resolvedIdentity.npub,
-            resolvedIdentity.nprofile,
-        );
+        return this.commitNip07Identity(resolvedIdentity);
+    }
 
-        if (previousType && previousType !== 'nip07') {
-            await this.cleanupReplacedAuthData(resolvedIdentity.hex, previousType);
+    private async commitNip07Identity(identity: PublicKeyData): Promise<AuthResult> {
+        let previousType: StoredAccount['type'] | null;
+        try {
+            previousType = this.recordAccount(identity.hex, 'nip07');
+            this.runtime.setNip07AuthFn(identity.hex, identity.npub, identity.nprofile);
+        } catch {
+            this.runtime.console.error('NIP-07認証の確定に失敗しました', {
+                stage: 'commit',
+                reason: 'unexpected',
+            });
+            return { success: false, error: 'nip07_auth_error' };
         }
 
-        return { success: true, pubkeyHex: resolvedIdentity.hex };
+        await this.cleanupReplacedAuthData(identity.hex, previousType, 'nip07');
+        return { success: true, pubkeyHex: identity.hex };
     }
 
     /** Reads the NIP-07 identity without changing auth, account, or active state. */
@@ -370,14 +410,26 @@ export class AuthService {
     async finalizeNip46Authentication(
         pubkeyHex: string,
     ): Promise<AuthResult> {
+        // Credential, then account record, then runtime state.
+        this.runtime.nip46Svc.saveSession(this.runtime.localStorage, pubkeyHex);
+        const previousType = this.recordAccount(pubkeyHex, 'nip46');
         applyPublicKeyAuth('nip46', pubkeyHex, {
             setNip07AuthFn: this.runtime.setNip07AuthFn,
             setNip46AuthFn: this.runtime.setNip46AuthFn,
             setParentClientAuthFn: this.runtime.setParentClientAuthFn,
         });
-        this.runtime.nip46Svc.saveSession(this.runtime.localStorage, pubkeyHex);
-        this.accountManager?.addAccount(pubkeyHex, 'nip46');
+        await this.cleanupReplacedAuthData(pubkeyHex, previousType, 'nip46');
         return { success: true, pubkeyHex };
+    }
+
+    /** Records the account as active and returns the auth type it replaces. */
+    private recordAccount(
+        pubkeyHex: string,
+        type: StoredAccount['type'],
+    ): StoredAccount['type'] | null {
+        const previousType = this.accountManager?.getAccountType(pubkeyHex) ?? null;
+        this.accountManager?.addAccount(pubkeyHex, type);
+        return previousType;
     }
 
     private async wrapPendingNip46Connection(
@@ -454,10 +506,17 @@ export class AuthService {
         };
     }
 
+    /**
+     * Removes the credentials of the auth method an account just stopped using,
+     * so a secret key or remote-signer session does not outlive the switch.
+     */
     private async cleanupReplacedAuthData(
         pubkeyHex: string,
-        previousType: StoredAccount['type'],
+        previousType: StoredAccount['type'] | null,
+        nextType: StoredAccount['type'],
     ): Promise<void> {
+        if (!previousType || previousType === nextType) return;
+
         const cleanupActions: Array<{ target: string; run: () => void | Promise<void> }> = [];
         if (previousType === 'nsec') {
             cleanupActions.push({
@@ -476,7 +535,12 @@ export class AuthService {
             cleanupActions.push(
                 {
                     target: 'parent-client-runtime',
-                    run: () => this.runtime.parentClientSvc.disconnect(false),
+                    run: () => {
+                        // Another account may own the live parent-client session.
+                        if (this.runtime.parentClientSvc.getUserPubkey() === pubkeyHex) {
+                            this.runtime.parentClientSvc.disconnect(false);
+                        }
+                    },
                 },
                 {
                     target: 'parent-client-session',
@@ -490,7 +554,7 @@ export class AuthService {
                 await action.run();
             } catch {
                 this.runtime.console.error('認証方式固有データの削除に失敗しました', {
-                    stage: 'auto-login-auth-replacement',
+                    stage: 'auth-replacement',
                     target: action.target,
                     reason: 'unexpected',
                 });

@@ -53,7 +53,8 @@ export interface AppAuthLoginControllerDependencies {
         result: AuthResult,
         onAuthenticated: (pubkeyHex: string) => Promise<void>,
     ): Promise<boolean>;
-    setErrorMessage(next: string): void;
+    /** Drops the typed secret key once it is no longer needed. */
+    clearSecretKeyInput(): void;
     setProfileLoading(next: boolean): void;
     logger: Pick<Console, 'error'>;
 }
@@ -61,7 +62,8 @@ export interface AppAuthLoginControllerDependencies {
 export interface AppAuthLoginController {
     activateParentClientAuth(options?: ParentClientAuthOptions): Promise<string | undefined>;
     hasPendingParentClientTransition(): boolean;
-    saveSecretKey(secretKey: string): Promise<void>;
+    /** Resolves with an error code, or undefined when the login succeeded or was ignored. */
+    saveSecretKey(secretKey: string): Promise<string | undefined>;
     handleParentClientLogin(): Promise<string | undefined>;
 }
 
@@ -96,6 +98,9 @@ export function createAppAuthLoginController(
         generation: number,
         isCurrent: () => boolean,
     ): Promise<string | undefined> {
+        // Authentication replaces the auth state, so read the outgoing session first.
+        const previousAuthType = deps.getCurrentAuthType();
+        const previousPubkeyHex = deps.getCurrentPubkeyHex();
         const result = await deps.parentClientAuthCoordinator
             .synchronizeParentClientAuth(options, isCurrent);
         if (!isCurrent()) return;
@@ -105,8 +110,8 @@ export function createAppAuthLoginController(
         }
 
         await deps.clearNip46RuntimeForAuthChange({
-            currentAuthType: deps.getCurrentAuthType(),
-            currentPubkeyHex: deps.getCurrentPubkeyHex(),
+            currentAuthType: previousAuthType,
+            currentPubkeyHex: previousPubkeyHex,
             nextAuthType: 'parentClient',
             nextPubkeyHex: result.pubkeyHex,
             nip46Service: deps.nip46Service,
@@ -118,28 +123,41 @@ export function createAppAuthLoginController(
         return undefined;
     }
 
-    async function saveSecretKey(secretKey: string): Promise<void> {
-        await deps.cancelPendingNip46Auth();
+    let isSavingSecretKey = false;
 
-        const result = await deps.authenticateWithNsec(secretKey);
-        if (!result.success) {
-            deps.setErrorMessage(result.error || 'authentication_error');
-            return;
-        }
-
-        deps.setErrorMessage('');
+    async function saveSecretKey(secretKey: string): Promise<string | undefined> {
+        // A second submit while the first is still running would authenticate twice.
+        if (isSavingSecretKey) return undefined;
+        isSavingSecretKey = true;
 
         try {
-            await deps.clearNip46RuntimeForAuthChange({
-                currentAuthType: deps.getCurrentAuthType(),
-                currentPubkeyHex: deps.getCurrentPubkeyHex(),
-                nextAuthType: 'nsec',
-                nextPubkeyHex: result.pubkeyHex,
-                nip46Service: deps.nip46Service,
-            });
-            await deps.handleSuccessfulAuthResult(result, deps.handlePostAuth);
-        } catch {
-            deps.setProfileLoading(false);
+            await deps.cancelPendingNip46Auth();
+
+            // Authentication replaces the auth state, so read the outgoing session first.
+            const previousAuthType = deps.getCurrentAuthType();
+            const previousPubkeyHex = deps.getCurrentPubkeyHex();
+            const result = await deps.authenticateWithNsec(secretKey);
+            if (!result.success) {
+                return result.error || 'authentication_error';
+            }
+
+            deps.clearSecretKeyInput();
+
+            try {
+                await deps.clearNip46RuntimeForAuthChange({
+                    currentAuthType: previousAuthType,
+                    currentPubkeyHex: previousPubkeyHex,
+                    nextAuthType: 'nsec',
+                    nextPubkeyHex: result.pubkeyHex,
+                    nip46Service: deps.nip46Service,
+                });
+                await deps.handleSuccessfulAuthResult(result, deps.handlePostAuth);
+            } catch {
+                deps.setProfileLoading(false);
+            }
+            return undefined;
+        } finally {
+            isSavingSecretKey = false;
         }
     }
 

@@ -456,12 +456,7 @@
   });
 
   // --- 秘密鍵入力・保存・認証 ---
-  let errorMessage = $state("");
   let secretKey = $state("");
-  const publicKeyState = authService.getPublicKeyState();
-  $effect(() => {
-    publicKeyState.setNsec(secretKey);
-  });
 
   let isAuthenticated = $derived(authState.value?.isAuthenticated === true);
   let isAuthInitialized = $derived(authState.value?.isInitialized ?? false);
@@ -656,7 +651,7 @@
   const appAuthInteractionController = createAppAuthInteractionController({
     getCurrentAuthType: () => authState.value?.type,
     getCurrentPubkeyHex: () => authState.value?.pubkey,
-    authenticateWithNip07: () => authService.authenticateWithNip07(),
+    authenticateWithNip07: (options) => authService.authenticateWithNip07(options),
     authenticateWithNip46: (bunkerUrl) =>
       authService.authenticateWithNip46(bunkerUrl),
     cancelPendingNip46Auth,
@@ -700,8 +695,8 @@
     authenticateWithNsec: (targetSecretKey) =>
       authService.authenticateWithNsec(targetSecretKey),
     handleSuccessfulAuthResult,
-    setErrorMessage: (next) => {
-      errorMessage = next;
+    clearSecretKeyInput: () => {
+      secretKey = "";
     },
     setProfileLoading: (next) => {
       isLoadingProfileStore.set(next);
@@ -897,9 +892,6 @@
     initializeNostr: () => initializeNostr(),
     setSecretKey: (next) => {
       secretKey = next;
-    },
-    setErrorMessage: (next) => {
-      errorMessage = next;
     },
     refreshAccountList,
     reloadWindow: () => window.location.reload(),
@@ -1588,9 +1580,9 @@
   }
 
   // --- 秘密鍵認証・保存処理 ---
-  async function saveSecretKey() {
+  async function saveSecretKey(): Promise<string | undefined> {
     beginAuthTransition();
-    await appAuthLoginController.saveSecretKey(secretKey);
+    return appAuthLoginController.saveSecretKey(secretKey);
   }
 
   /**
@@ -1638,7 +1630,10 @@
 
   async function handleNip07Login(): Promise<string | undefined> {
     beginAuthTransition();
-    return appAuthInteractionController.handleNip07Login();
+    const generation = authTransitionGeneration;
+    return appAuthInteractionController.handleNip07Login(
+      () => !appDisposed && authTransitionGeneration === generation,
+    );
   }
 
   async function handleParentClientLogin(): Promise<string | undefined> {

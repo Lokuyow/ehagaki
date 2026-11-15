@@ -174,7 +174,18 @@ export class AccountManager {
         }
     }
 
+    /**
+     * Records the account and makes it active. If the active pointer cannot be
+     * saved, the account list is restored so a failed login never leaves an
+     * account with a changed auth type.
+     */
     addAccount(pubkeyHex: string, type: StoredAccount['type']): void {
+        let previousAccountsRaw: string | null | undefined;
+        try {
+            previousAccountsRaw = this.localStorage.getItem(STORAGE_KEYS.NOSTR_ACCOUNTS);
+        } catch {
+            previousAccountsRaw = undefined;
+        }
         const accounts = this.getAccounts();
         const existing = accounts.find(a => a.pubkeyHex === pubkeyHex);
         if (existing) {
@@ -185,7 +196,25 @@ export class AccountManager {
             accounts.push({ pubkeyHex, type, addedAt: Date.now() });
             this.saveAccounts(accounts);
         }
-        this.saveActiveAccountPubkey(pubkeyHex);
+        try {
+            this.saveActiveAccountPubkey(pubkeyHex);
+        } catch (error) {
+            try {
+                if (previousAccountsRaw === undefined) {
+                    // The previous list could not be read, so there is nothing to restore.
+                } else if (previousAccountsRaw === null) {
+                    this.localStorage.removeItem(STORAGE_KEYS.NOSTR_ACCOUNTS);
+                } else {
+                    this.localStorage.setItem(STORAGE_KEYS.NOSTR_ACCOUNTS, previousAccountsRaw);
+                }
+            } catch {
+                this.console.error('アカウント記録の巻き戻しに失敗しました', {
+                    stage: 'account-records',
+                    reason: 'unexpected',
+                });
+            }
+            throw error;
+        }
     }
 
     /**

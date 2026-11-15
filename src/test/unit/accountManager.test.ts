@@ -64,6 +64,36 @@ describe('AccountManager', () => {
             expect(accounts[0].type).toBe('nsec');
         });
 
+        it('アクティブ指定の保存に失敗した場合は認証タイプの変更を巻き戻す', () => {
+            manager.addAccount('pubkey1', 'nip46');
+            manager.addAccount('pubkey2', 'nip07');
+            const before = storage.getItem(STORAGE_KEYS.NOSTR_ACCOUNTS);
+            const setItem = storage.setItem.bind(storage);
+            vi.spyOn(storage, 'setItem').mockImplementation((key, value) => {
+                if (key === STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT) throw new Error('quota exceeded');
+                setItem(key, value);
+            });
+
+            expect(() => manager.addAccount('pubkey1', 'nsec')).toThrow('quota exceeded');
+
+            expect(storage.getItem(STORAGE_KEYS.NOSTR_ACCOUNTS)).toBe(before);
+            expect(manager.getAccountType('pubkey1')).toBe('nip46');
+            expect(manager.getActiveAccountPubkey()).toBe('pubkey2');
+        });
+
+        it('アクティブ指定の保存に失敗した場合は新規アカウントの記録を残さない', () => {
+            const setItem = storage.setItem.bind(storage);
+            vi.spyOn(storage, 'setItem').mockImplementation((key, value) => {
+                if (key === STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT) throw new Error('quota exceeded');
+                setItem(key, value);
+            });
+
+            expect(() => manager.addAccount('pubkey1', 'nsec')).toThrow('quota exceeded');
+
+            expect(storage.getItem(STORAGE_KEYS.NOSTR_ACCOUNTS)).toBeNull();
+            expect(manager.getActiveAccountPubkey()).toBeNull();
+        });
+
         it('アクティブアカウントに設定する', () => {
             manager.addAccount('pubkey1', 'nsec');
             expect(manager.getActiveAccountPubkey()).toBe('pubkey1');

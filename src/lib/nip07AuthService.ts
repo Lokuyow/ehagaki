@@ -2,6 +2,7 @@ import { nip19 } from "nostr-tools";
 import type { EventTemplate } from "nostr-tools";
 import { waitNostr } from "nip07-awaiter";
 import type { AuthResult, NostrEvent, PublicKeyData } from "./types";
+import { isHex64 } from "./utils/nostrHexUtils";
 
 type Nip07Extension = {
     getPublicKey: () => Promise<string>;
@@ -97,7 +98,7 @@ export class Nip07AuthService {
                 () => nostr.getPublicKey(),
             );
             const timeoutMs = options.timeoutMs;
-            const pubkeyHex: string = typeof timeoutMs === 'number' && timeoutMs > 0
+            const rawPubkey: unknown = typeof timeoutMs === 'number' && timeoutMs > 0
                 ? await Promise.race([
                     readPromise,
                     new Promise<never>((_, reject) => {
@@ -108,9 +109,15 @@ export class Nip07AuthService {
                 ])
                 : await readPromise;
 
-            if (!pubkeyHex) {
+            if (!rawPubkey) {
                 return { success: false, error: 'nip07_no_pubkey' };
             }
+            // The extension is outside our trust boundary: only a 64-hex key
+            // may become an account identity.
+            if (!isHex64(rawPubkey)) {
+                return { success: false, error: 'nip07_invalid_pubkey' };
+            }
+            const pubkeyHex = rawPubkey.toLowerCase();
 
             const npub = nip19.npubEncode(pubkeyHex);
             const nprofile = nip19.nprofileEncode({ pubkey: pubkeyHex, relays: [] });

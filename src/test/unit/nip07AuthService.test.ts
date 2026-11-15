@@ -26,6 +26,36 @@ describe('Nip07AuthService', () => {
         vi.useRealTimers();
     });
 
+    describe('authenticate identity validation', () => {
+        const createService = (pubkey: unknown) => new Nip07AuthService(
+            createMockWindow({
+                getPublicKey: vi.fn().mockResolvedValue(pubkey),
+                signEvent: vi.fn(),
+            }),
+            mockConsole,
+        );
+
+        it.each([
+            ['短いhex', 'abcdef1234567890'],
+            ['hex以外の文字', 'zz'.repeat(32)],
+            ['npub形式', 'npub1' + 'q'.repeat(58)],
+            ['文字列以外', { hex: 'ab'.repeat(32) }],
+        ])('%s は公開鍵として受け付けない', async (_label, pubkey) => {
+            await expect(createService(pubkey).authenticate()).resolves.toEqual({
+                success: false,
+                error: 'nip07_invalid_pubkey',
+            });
+        });
+
+        it('大文字hexは小文字へ正規化して受け付ける', async () => {
+            const result = await createService('AB'.repeat(32)).authenticate();
+
+            expect(result.success).toBe(true);
+            expect(result.pubkeyHex).toBe('ab'.repeat(32));
+            expect(result.pubkeyData?.hex).toBe('ab'.repeat(32));
+        });
+    });
+
     describe('isAvailable', () => {
         it('window.nostrが存在しない場合はfalseを返す', () => {
             const service = new Nip07AuthService(createMockWindow(), mockConsole);
