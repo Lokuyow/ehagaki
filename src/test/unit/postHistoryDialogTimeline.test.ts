@@ -492,7 +492,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
-    it.each([true, false])('older rebase retains only an approach received while loading (pending: %s)', async (pending) => {
+    it.each([true, false])('older rebase loads the next chunk once while the sentinel stays near (pending: %s)', async (pending) => {
         MockIntersectionObserver.reset();
         vi.stubGlobal('IntersectionObserver', MockIntersectionObserver as unknown as typeof IntersectionObserver);
         vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
@@ -526,19 +526,16 @@ describe('PostHistoryDialog timeline navigation', () => {
         observer.trigger(sentinel, true);
         await waitFor(() => expect(chunkRequests).toBe(1));
         // A background adoption invalidates the snapshot after the bounded read
-        // starts. Rebase remains mandatory; no exit/reentry is manufactured.
+        // starts. Rebase remains mandatory. The rebased window leaves the
+        // sentinel in the prefetch region without a new intersection, so the
+        // next chunk is requested once whether or not an approach arrived.
         bumpPostHistorySearchRevision(PUBKEY_HEX);
         if (pending) observer.trigger(sentinel, true);
         firstChunk.resolve(posts.slice(50, 100));
         await waitFor(() => expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(2));
-        if (pending) {
-            await screen.findByText('rebase approach 99');
-            expect(chunkRequests).toBe(2);
-        } else {
-            await waitFor(() => expect(container.getAttribute('aria-busy')).toBe('false'));
-            expect(screen.queryByText('rebase approach 50')).toBeNull();
-            expect(chunkRequests).toBe(1);
-        }
+        await screen.findByText('rebase approach 99');
+        await waitFor(() => expect(container.getAttribute('aria-busy')).toBe('false'));
+        expect(chunkRequests).toBe(2);
         view.unmount();
     });
 

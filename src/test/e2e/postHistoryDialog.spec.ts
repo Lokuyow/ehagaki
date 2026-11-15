@@ -714,23 +714,23 @@ async function waitForIntersectionObserverSettle(page: Page) {
     });
 }
 
-async function waitForAutoLoadIdle(page: Page, direction: 'older' | 'newer') {
+async function waitForAutoLoadIdle(page: Page, direction: 'older' | 'newer', options: { timeout?: number } = {}) {
     const root = page.locator('.post-history-container');
     const sentinelSelector = direction === 'older'
         ? '.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)'
         : '.post-history-auto-load-newer-sentinel';
     if (direction === 'older') {
-        await expect(root).toHaveAttribute('aria-busy', 'false');
+        await expect(root).toHaveAttribute('aria-busy', 'false', options);
     }
-    await expect(root.locator(`${sentinelSelector} .inline-spinner`)).toHaveCount(0);
+    await expect(root.locator(`${sentinelSelector} .inline-spinner`)).toHaveCount(0, options);
 }
 
-async function waitForAutoLoadExit(page: Page, direction: 'older' | 'newer') {
+async function waitForAutoLoadExit(page: Page, direction: 'older' | 'newer', options: { timeout?: number } = {}) {
     const root = page.locator('.post-history-container');
     const sentinelSelector = direction === 'older'
         ? '.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)'
         : '.post-history-auto-load-newer-sentinel';
-    await waitForAutoLoadIdle(page, direction);
+    await waitForAutoLoadIdle(page, direction, options);
     await expect.poll(() => root.evaluate((element, args) => {
         const container = element as HTMLDivElement;
         const sentinel = container.querySelector<HTMLElement>(args.sentinelSelector);
@@ -746,7 +746,7 @@ async function waitForAutoLoadExit(page: Page, direction: 'older' | 'newer') {
             : sentinelRect.bottom >= rootRect.top - container.clientHeight * 2
                 && sentinelRect.top <= rootRect.bottom;
         return !overlapsHorizontally || !isInPrefetchRegion;
-    }, { direction, sentinelSelector })).toBe(true);
+    }, { direction, sentinelSelector }), options).toBe(true);
 }
 
 async function loadOneOlderChunk(page: Page, expectedEventIds: string[]) {
@@ -1317,6 +1317,9 @@ test.describe('PostHistoryDialog Playwright', () => {
     test('Citrine backup replans an active open catchup and stops at the restored head', async ({ page }) => {
         // The 250-event signed import, catchup rebase, scroll, and reload take 34.2s on focused mobile WebKit.
         test.setTimeout(60_000);
+        // Playwright's Windows WebKit spends about 15ms per IndexedDB request, so saving
+        // the catchup and reloading each 50-row chunk takes seconds instead of milliseconds.
+        const storageBound = { timeout: 15_000 };
         await page.goto('post-history-dialog-playwright.html?relay-coverage=citrine-head');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
         await expect.poll(
@@ -1330,22 +1333,22 @@ test.describe('PostHistoryDialog Playwright', () => {
             { timeout: 15_000 },
         ).toBe(restored.until + 1);
         await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.release());
-        await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+        await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0, storageBound);
         const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
         // Keep the existing open-refresh rebase and viewport autoload behavior.
-        await expect.poll(async () => (await historyEventIds(page)).slice(0, 50)).toEqual(ids.slice(0, 50));
+        await expect.poll(async () => (await historyEventIds(page)).slice(0, 50), storageBound).toEqual(ids.slice(0, 50));
         await waitForIntersectionObserverSettle(page);
-        await waitForAutoLoadExit(page, 'older');
+        await waitForAutoLoadExit(page, 'older', storageBound);
         const entryRows = await historyEventIds(page);
         expect(entryRows).toEqual(ids.slice(0, entryRows.length));
         expect(entryRows.length % 50).toBe(0);
         expect(entryRows.length).toBeLessThanOrEqual(150);
         await scrollHistoryToBottom(page);
-        await expect.poll(() => historyEventIds(page)).toEqual(ids.slice(0, Math.min(150, entryRows.length + 50)));
+        await expect.poll(() => historyEventIds(page), storageBound).toEqual(ids.slice(0, Math.min(150, entryRows.length + 50)));
         await expect(page.getByRole('button', { name: 'リレーから続きを取得' })).toHaveCount(0);
         await page.reload();
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
-        await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+        await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0, storageBound);
         expect(await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.catchupRequests.length)).toBe(0);
     });
 

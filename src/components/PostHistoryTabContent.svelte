@@ -567,6 +567,7 @@
               scrollTop: number;
               reconcileAfterCommit: () => void;
               resumeAfterLoad: () => void;
+              reconcileAfterWindowChange: () => void;
           }
         | null = null;
     let autoLoadNewerObserverContext:
@@ -1117,6 +1118,20 @@
                 }
                 requestApproach();
             },
+            // A rebase can replace the window while the sentinel stays in the
+            // prefetch region. No intersection change follows, so request the
+            // next chunk here instead of waiting for the user to scroll.
+            reconcileAfterWindowChange: () => {
+                if (!isObserverActive || !receivedInitialEntry || awaitingResizeApproach) {
+                    return;
+                }
+                if (!isOlderSentinelInPrefetchRegion()) {
+                    recordExit();
+                    return;
+                }
+                autoLoadOlderSentinelIsIntersecting = true;
+                requestApproach();
+            },
         };
 
         const handleScrollApproach = () => {
@@ -1207,6 +1222,12 @@
             root.removeEventListener("scroll", handleScrollApproach);
             observer.disconnect();
         };
+    });
+
+    $effect(() => {
+        // Track window replacements (rebase, reload) rather than their contents.
+        void history.state.loadedPosts;
+        untrack(() => autoLoadOlderObserverContext?.reconcileAfterWindowChange());
     });
 
     $effect(() => {
