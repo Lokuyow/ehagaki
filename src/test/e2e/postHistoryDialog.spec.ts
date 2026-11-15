@@ -3289,6 +3289,28 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(quoteCard.locator('.post-preview-reaction-count')).toHaveText('1');
     });
 
+    test('without reply and quote handlers the header shows the timestamp and menu and the footer has no actions', async ({ page }) => {
+        await page.goto('post-history-dialog-playwright.html?no-actions=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate<HarnessState>(() =>
+            (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState,
+        );
+        const post = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.plainPostEventId}"]`,
+        );
+
+        await expect(post).toBeVisible();
+        const header = post.locator('.post-preview-header').first();
+        await expect(header.locator('.post-preview-header-right > span')).toBeVisible();
+        const trigger = header.locator('.post-history-menu-trigger');
+        await expect(trigger).toBeVisible();
+        await expect(post.getByRole('button', { name: /^(リプライ|Reply)$/ })).toHaveCount(0);
+        await expect(post.getByRole('button', { name: /^(引用|Quote)$/ })).toHaveCount(0);
+
+        await trigger.click();
+        await expect(page.locator('.post-history-menu-timestamp')).toBeVisible();
+    });
+
     test('Content Warning fits post, quote, reply, and narrow nested previews independently of viewport width', async ({ page }) => {
         await page.setViewportSize({ width: 360, height: 820 });
         await page.goto('post-history-dialog-playwright.html?sensitive-preview=1&cw-layout=1');
