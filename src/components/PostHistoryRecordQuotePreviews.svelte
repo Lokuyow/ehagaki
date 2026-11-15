@@ -17,28 +17,28 @@
     type PostActionsProps = ComponentProps<typeof PostHistoryPostActions>;
     type ReactionReadModel = ComponentProps<typeof PostHistoryReactionDetails>["readModel"];
 
-    /**
-     * What the quote previews need from the history tab. The tab owns the
-     * state behind these; they are read here while rendering, so they stay
-     * reactive.
-     */
-    interface QuotePreviewView {
+    interface Props {
+        parentEventId: string;
+        previews: PostHistoryQuotePreviewState[];
+        emojiLoadStateByUrl: QuotePreviewProps["emojiLoadStateByUrl"];
+        emojiImageMetaByUrl: QuotePreviewProps["emojiImageMetaByUrl"];
+        scrollRoot: QuotePreviewProps["scrollRoot"];
         getSensitiveBodyLoader: (event: NostrEvent) => QuotePreviewProps["loadSensitiveBody"];
         getModel: (eventId: string) => PostContentRenderModel | undefined;
         onImageOpen: QuotePreviewProps["onImageOpen"];
-        retry: (eventId: string) => void;
-        readonly onReactionPost: PostActionsProps["onReactionPost"];
-        readonly onReplyPost: PostActionsProps["onReplyPost"];
-        readonly onQuotePost: PostActionsProps["onQuotePost"];
+        onRetry: (eventId: string) => void;
+        onReactionPost: PostActionsProps["onReactionPost"];
+        onReplyPost: PostActionsProps["onReplyPost"];
+        onQuotePost: PostActionsProps["onQuotePost"];
         getReactionReadModel: (eventId: string) => ReactionReadModel | null | undefined;
         isReactionExpanded: (eventId: string) => boolean;
         getReactionLabel: (eventId: string) => string;
-        toggleReactions: (eventId: string) => void;
+        onToggleReaction: (eventId: string) => void;
         /** Record used for the quoted event's actions and menu. */
         buildRecord: (event: NostrEvent) => PostHistoryRecord;
         buildMenuKey: (parentEventId: string, quoteEventId: string) => string;
         isMenuOpen: (menuKey: string) => boolean;
-        setMenuOpen: (menuKey: string, open: boolean) => void;
+        onMenuOpenChange: (menuKey: string, open: boolean) => void;
         getActionItems: (
             record: PostHistoryRecord,
         ) => Omit<
@@ -47,22 +47,28 @@
         >;
     }
 
-    interface Props {
-        parentEventId: string;
-        previews: PostHistoryQuotePreviewState[];
-        emojiLoadStateByUrl: QuotePreviewProps["emojiLoadStateByUrl"];
-        emojiImageMetaByUrl: QuotePreviewProps["emojiImageMetaByUrl"];
-        scrollRoot: QuotePreviewProps["scrollRoot"];
-        view: QuotePreviewView;
-    }
-
     let {
         parentEventId,
         previews,
         emojiLoadStateByUrl,
         emojiImageMetaByUrl,
         scrollRoot,
-        view,
+        getSensitiveBodyLoader,
+        getModel,
+        onImageOpen,
+        onRetry,
+        onReactionPost,
+        onReplyPost,
+        onQuotePost,
+        getReactionReadModel,
+        isReactionExpanded,
+        getReactionLabel,
+        onToggleReaction,
+        buildRecord,
+        buildMenuKey,
+        isMenuOpen,
+        onMenuOpenChange,
+        getActionItems,
     }: Props = $props();
 </script>
 
@@ -72,47 +78,47 @@
             <PostHistoryQuotePreview
                 preview={quotePreview}
                 loadSensitiveBody={quotePreview.status === "resolved"
-                    ? view.getSensitiveBodyLoader(quotePreview.event)
+                    ? getSensitiveBodyLoader(quotePreview.event)
                     : undefined}
                 model={quotePreview.status ===
                 "resolved"
-                    ? view.getModel(quotePreview.event.id)
+                    ? getModel(quotePreview.event.id)
                     : undefined}
                 {emojiLoadStateByUrl}
                 {emojiImageMetaByUrl}
                 {scrollRoot}
-                onImageOpen={view.onImageOpen}
-                onRetry={() => view.retry(quotePreview.eventId)}
+                {onImageOpen}
+                onRetry={() => onRetry(quotePreview.eventId)}
             >
                 {#snippet footerActions()}
                     {#if quotePreview.status === "resolved" &&
                         (quotePreview.event.kind !== 42 ||
-                            view.onReactionPost ||
-                            (view.getReactionReadModel(quotePreview.event.id)?.totalCount ?? 0) > 0)}
-                        {@const quoteActionPost = view.buildRecord(
+                            onReactionPost ||
+                            (getReactionReadModel(quotePreview.event.id)?.totalCount ?? 0) > 0)}
+                        {@const quoteActionPost = buildRecord(
                             quotePreview.event,
                         )}
-                        <PostHistoryPostActions onReactionPost={view.onReactionPost}
+                        <PostHistoryPostActions {onReactionPost}
                             post={quoteActionPost}
                             onReplyPost={
                                 quotePreview.event.kind !== 42
-                                    ? view.onReplyPost
+                                    ? onReplyPost
                                     : undefined
                             }
                             onQuotePost={
                                 quotePreview.event.kind !== 42
-                                    ? view.onQuotePost
+                                    ? onQuotePost
                                     : undefined
                             }
                         >
                             {#snippet reactionExtras()}
-                                {@const reactionModel = view.getReactionReadModel(quotePreview.event.id)}
+                                {@const reactionModel = getReactionReadModel(quotePreview.event.id)}
                                 {#if reactionModel && reactionModel.totalCount > 0}
                                     <PostHistoryReactionActionButton
                                         count={reactionModel.totalCount}
-                                        expanded={view.isReactionExpanded(quotePreview.event.id)}
-                                        ariaLabel={view.getReactionLabel(quotePreview.event.id)}
-                                        onToggle={() => view.toggleReactions(quotePreview.event.id)}
+                                        expanded={isReactionExpanded(quotePreview.event.id)}
+                                        ariaLabel={getReactionLabel(quotePreview.event.id)}
+                                        onToggle={() => onToggleReaction(quotePreview.event.id)}
                                     />
                                 {/if}
                             {/snippet}
@@ -121,8 +127,8 @@
                 {/snippet}
                 {#snippet footerDetails()}
                     {#if quotePreview.status === "resolved"}
-                        {@const reactionModel = view.getReactionReadModel(quotePreview.event.id)}
-                        {#if reactionModel && reactionModel.totalCount > 0 && view.isReactionExpanded(quotePreview.event.id)}
+                        {@const reactionModel = getReactionReadModel(quotePreview.event.id)}
+                        {#if reactionModel && reactionModel.totalCount > 0 && isReactionExpanded(quotePreview.event.id)}
                             <PostHistoryReactionDetails readModel={reactionModel} {emojiLoadStateByUrl} {emojiImageMetaByUrl} />
                         {/if}
                     {/if}
@@ -130,24 +136,24 @@
                 {#snippet footerMenu()}
                     {#if quotePreview.status === "resolved"}
                         {@const quotePreviewPost =
-                            view.buildRecord(
+                            buildRecord(
                                 quotePreview.event,
                             )}
                         {@const quotePreviewMenuKey =
-                            view.buildMenuKey(
+                            buildMenuKey(
                                 parentEventId,
                                 quotePreviewPost.eventId,
                             )}
                         {@const actionsLabel =
                             $_("common.showActions")}
                         <PostHistoryActionMenu
-                            open={view.isMenuOpen(
+                            open={isMenuOpen(
                                 quotePreviewMenuKey,
                             )}
                             onOpenChange={(
                                 open: boolean,
                             ) =>
-                                view.setMenuOpen(
+                                onMenuOpenChange(
                                     quotePreviewMenuKey,
                                     open,
                                 )}
@@ -163,7 +169,7 @@
                                 <PostHistoryRecordActionItems
                                     order="standard"
                                     showDeleteSeparator={true}
-                                    {...view.getActionItems(quotePreviewPost)}
+                                    {...getActionItems(quotePreviewPost)}
                                 />
                             {/snippet}
                         </PostHistoryActionMenu>
