@@ -6,6 +6,11 @@ import { getImageCompressionLevelPreference } from './utils/settingsStorage';
 import { showCompressedImagePreview } from './debug';
 import { isDefaultUploadAborted } from './uploadAbortUtils';
 import { awaitUploadOperation, createUploadAbortError } from './upload/uploadOperation';
+import {
+    encodeWebpInWorker,
+    getDefaultImageWebpEncodeWorkerFactory,
+    type ImageWebpEncodeWorkerFactory,
+} from './imageWebpWorkerEncoder';
 
 /** Bounds generated images, not originals returned by skip/failure/size comparison. */
 export function calculateImageResizeDimensions(width: number, height: number, maxShortEdge: number) {
@@ -24,6 +29,7 @@ export class ImageCompressionService implements CompressionService {
         private mimeSupport: MimeTypeSupportInterface,
         private localStorage: Storage,
         private isUploadAborted: () => boolean = isDefaultUploadAborted,
+        private webpWorkerFactory: ImageWebpEncodeWorkerFactory | null = getDefaultImageWebpEncodeWorkerFactory(),
     ) {}
 
     public abort(): void { this.onProgress?.(0); }
@@ -95,10 +101,24 @@ export class ImageCompressionService implements CompressionService {
                 ? await encodeNative('image/webp') : null;
             if (!encoded) {
                 try {
-                    const { encode } = await import('@jsquash/webp');
+                    const quality = Math.round(options.quality * 100);
+                    const readPixels = () => context.getImageData(0, 0, canvas!.width, canvas!.height);
+                    let bytes: ArrayBuffer | undefined;
+                    if (this.webpWorkerFactory) {
+                        // WASM encoding is synchronous CPU work; keep it off the main thread.
+                        try {
+                            bytes = await encodeWebpInWorker(this.webpWorkerFactory, readPixels(), quality, operation?.signal);
+                        } catch (error) {
+                            check();
+                            // Worker unavailable (cross-origin host, no module workers) or failed.
+                        }
+                    }
                     check();
-                    const data = context.getImageData(0, 0, canvas.width, canvas.height);
-                    const bytes = await awaitUploadOperation(encode(data, { quality: Math.round(options.quality * 100) }), operation?.signal);
+                    if (!bytes) {
+                        const { encode } = await import('@jsquash/webp');
+                        check();
+                        bytes = await awaitUploadOperation(encode(readPixels(), { quality }), operation?.signal);
+                    }
                     check();
                     if (bytes.byteLength) encoded = new Blob([bytes], { type: 'image/webp' });
                 } catch (error) {

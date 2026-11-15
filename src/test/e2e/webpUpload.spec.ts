@@ -87,13 +87,21 @@ test('static document keeps text resolution through native and WASM encoding', a
         source.width = source.height = 0;
         const results = [];
         for (const native of [true, false]) {
-            const service = new ImageCompressionService({ canEncodeMimeType: () => native }, { getItem: () => 'medium' }, () => false);
+            // Observe the real worker so a silent main-thread fallback cannot pass as worker encoding.
+            const workerEvents: string[] = [];
+            const workerFactory = () => {
+                const worker = new Worker(new URL('src/lib/imageWebpEncodeWorker.ts', location.href), { type: 'module' });
+                worker.addEventListener('message', event => workerEvents.push(event.data.type));
+                worker.addEventListener('error', () => workerEvents.push('load-error'));
+                return worker;
+            };
+            const service = new ImageCompressionService({ canEncodeMimeType: () => native }, { getItem: () => 'medium' }, () => false, workerFactory);
             const start = performance.now(); const output = await service.compress(file);
             const url = URL.createObjectURL(output.file);
             const image = new Image(); image.src = url; await image.decode();
             const crop = document.createElement('canvas'); crop.width = 600; crop.height = 100;
             crop.getContext('2d')!.drawImage(image, 0, 0);
-            results.push({ native, compressed: output.wasCompressed, width: image.naturalWidth, height: image.naturalHeight,
+            results.push({ native, workerEvents, compressed: output.wasCompressed, width: image.naturalWidth, height: image.naturalHeight,
                 size: output.file.size, type: output.file.type, ms: performance.now() - start, preview: crop.toDataURL() });
             URL.revokeObjectURL(url);
         }
@@ -101,6 +109,7 @@ test('static document keeps text resolution through native and WASM encoding', a
     });
     for (const output of result) {
         expect(output).toMatchObject({ compressed: true, width: 1024, height: 3603, type: 'image/webp' });
+        expect(output.workerEvents).toEqual(output.native ? [] : ['complete']);
         const previewPath = testInfo.outputPath(`${output.native ? 'native' : 'wasm'}-text.png`);
         await writeFile(previewPath, Buffer.from(output.preview.split(',')[1], 'base64'));
         await testInfo.attach('text-preview', { path: previewPath, contentType: 'image/png' });
