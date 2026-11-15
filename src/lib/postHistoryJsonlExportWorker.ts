@@ -19,16 +19,20 @@ function createVerificationStores(): PostHistoryVerificationStores {
     return {
         post: eventRecords(ehagakiDb, "postHistory"),
         deletion: eventRecords(ehagakiDb, "postHistoryDeletionRequests"),
+        // Dexie keeps the transaction across native awaits only when the scope
+        // is an async function. `run` returns a promise from another module, so
+        // passing it directly runs the store operations outside the transaction
+        // and Dexie reports PrematureCommitError.
         transaction: {
             post: (run) => ehagakiDb.transaction(
                 "rw", ehagakiDb.events,
                 ehagakiDb.postHistory,
-                run,
+                async () => { await run(); },
             ),
             deletion: (run) => ehagakiDb.transaction(
                 "rw", ehagakiDb.events,
                 ehagakiDb.postHistoryDeletionRequests,
-                run,
+                async () => { await run(); },
             ),
         },
     };

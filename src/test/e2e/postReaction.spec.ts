@@ -440,7 +440,10 @@ for (const input of ['', '+', 'deleted']) test(`like send icon and wire for ${in
     await editor.fill('A'); await expect(button.locator('.plane-icon')).toBeVisible();
     await editor.fill(' '); await expect(button).toBeDisabled();
     await expect(button.locator('.plane-icon')).toBeVisible();
-    await editor.fill(input === '+' ? '+' : '');
+    if (input === '+') await editor.fill('+');
+    // Playwright's WebKit leaves contenteditable text in place for fill('') and
+    // maps Control+A to line start, so delete the single space from its end.
+    else { await editor.press('End'); await editor.press('Backspace'); }
     await expect(button).toBeEnabled(); await expect(button.locator('.favorite-icon')).toBeVisible();
     const mask = await button.locator('.favorite-icon').evaluate(element => getComputedStyle(element).maskImage);
     expect(mask).toContain('favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg');

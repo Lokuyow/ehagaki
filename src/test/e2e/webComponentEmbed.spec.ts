@@ -3023,7 +3023,7 @@ test("Full self-publish does not expose Host-owned methods", async ({ page }) =>
 test("Full Web Component restores left and right footer shortcuts in its storage namespace at 320px", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin, componentStoragePrefix }) => {
-        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"left":"image-quality","right":"video-quality"}');
+        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"version":1,"left":"image-quality","right":"video-quality"}');
         localStorage.setItem(`${componentStoragePrefix}imageQualityLevel`, "none");
         localStorage.setItem(`${componentStoragePrefix}videoQualityLevel`, "none");
         localStorage.setItem(`${componentStoragePrefix}locale`, "en");
@@ -3165,7 +3165,7 @@ test("Full Web Component restores left and right footer shortcuts in its storage
 test("Full Web Component contains 72px quote and reply pair pills at 320px", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin, componentStoragePrefix }) => {
-        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"left":"quote-notification","right":"reply-notification"}');
+        localStorage.setItem(`${componentStoragePrefix}footerSettingShortcuts`, '{"version":1,"left":"quote-notification","right":"reply-notification"}');
         localStorage.setItem(`${componentStoragePrefix}quoteNotificationEnabled`, "false");
         localStorage.setItem(`${componentStoragePrefix}replyNotificationEnabled`, "false");
         await import(`${componentOrigin}/ehagaki-composer.js`);
