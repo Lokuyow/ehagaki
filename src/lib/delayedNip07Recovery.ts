@@ -30,6 +30,28 @@ export interface DelayedNip07RecoveryController {
     dispose(): void;
 }
 
+/**
+ * After startup, retry a NIP-07 account only when restore completed, kept the
+ * selected NIP-07 account, and still left the app unauthenticated.
+ */
+export function shouldStartDelayedNip07RecoveryAfterStartup(input: {
+    startupAuthResult: {
+        activeSelectionPreserved?: true;
+        restoreOutcome?: 'completed' | 'infrastructure-failure';
+    } | null;
+    activePubkey: string | null;
+    getAccountType(pubkeyHex: string): string | null;
+    isAuthenticated: boolean;
+}): input is typeof input & { activePubkey: string } {
+    return !!(
+        input.startupAuthResult?.activeSelectionPreserved
+        && input.startupAuthResult.restoreOutcome === 'completed'
+        && input.activePubkey
+        && input.getAccountType(input.activePubkey) === 'nip07'
+        && !input.isAuthenticated
+    );
+}
+
 export function createDelayedNip07RecoveryController(
     deps: DelayedNip07RecoveryDependencies,
 ): DelayedNip07RecoveryController {

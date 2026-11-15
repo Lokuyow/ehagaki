@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createDelayedNip07RecoveryController } from '../../lib/delayedNip07Recovery';
+import {
+    createDelayedNip07RecoveryController,
+    shouldStartDelayedNip07RecoveryAfterStartup,
+} from '../../lib/delayedNip07Recovery';
 
 const ACTIVE = 'aa'.repeat(32);
 const OTHER = 'bb'.repeat(32);
@@ -154,5 +157,38 @@ describe('delayed NIP-07 recovery', () => {
         expect(h2.restoreAccount).not.toHaveBeenCalled();
         expect(h2.window.removeEventListener).toHaveBeenCalled();
         expect(h2.document.removeEventListener).toHaveBeenCalled();
+    });
+});
+
+describe('shouldStartDelayedNip07RecoveryAfterStartup', () => {
+    const PUBKEY = 'a'.repeat(64);
+    const base = {
+        startupAuthResult: {
+            hasAuth: false,
+            activeSelectionPreserved: true as const,
+            restoreOutcome: 'completed' as const,
+        },
+        activePubkey: PUBKEY,
+        getAccountType: (pubkey: string) => (pubkey === PUBKEY ? 'nip07' : null),
+        isAuthenticated: false,
+    };
+
+    it('選択を保ったまま復元が完了し、未認証の NIP-07 アカウントなら開始する', () => {
+        expect(shouldStartDelayedNip07RecoveryAfterStartup(base)).toBe(true);
+    });
+
+    it('条件のどれかが欠ければ開始しない', () => {
+        expect(shouldStartDelayedNip07RecoveryAfterStartup({ ...base, startupAuthResult: null })).toBe(false);
+        expect(shouldStartDelayedNip07RecoveryAfterStartup({
+            ...base,
+            startupAuthResult: { restoreOutcome: 'completed' },
+        })).toBe(false);
+        expect(shouldStartDelayedNip07RecoveryAfterStartup({
+            ...base,
+            startupAuthResult: { ...base.startupAuthResult, restoreOutcome: 'infrastructure-failure' },
+        })).toBe(false);
+        expect(shouldStartDelayedNip07RecoveryAfterStartup({ ...base, activePubkey: null })).toBe(false);
+        expect(shouldStartDelayedNip07RecoveryAfterStartup({ ...base, getAccountType: () => 'nip46' })).toBe(false);
+        expect(shouldStartDelayedNip07RecoveryAfterStartup({ ...base, isAuthenticated: true })).toBe(false);
     });
 });

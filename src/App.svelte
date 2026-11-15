@@ -170,6 +170,7 @@
     registerNip46VisibilityHandler,
   } from "./lib/bootstrap/appInitializationBootstrap";
   import { resolveNip07AutoLoginSession } from "./lib/bootstrap/nip07AutoLoginBootstrap";
+  import { initializeEmbedRuntimeServices } from "./lib/bootstrap/embedRuntimeServicesBootstrap";
   import {
     applyReplyQuoteQuery,
     applyReplyQuoteSelection,
@@ -205,6 +206,7 @@
   import {
     clearNip46RuntimeForAuthChange,
     disposeNostrSession,
+    disposeNostrSessionIfDisposable,
     handleSuccessfulAuthResult,
     resolveLogoutAccountAction,
     restoreManagedAccountSession,
@@ -217,7 +219,10 @@
   import { createAppAccountDialogController } from "./lib/appAccountDialogController";
   import { setupAppRuntimeBindings } from "./lib/appRuntimeBindings";
   import { createAppAuthEffectController } from "./lib/appAuthEffectController";
-  import { createDelayedNip07RecoveryController } from "./lib/delayedNip07Recovery";
+  import {
+    createDelayedNip07RecoveryController,
+    shouldStartDelayedNip07RecoveryAfterStartup,
+  } from "./lib/delayedNip07Recovery";
   import type { AuthInitializationResult } from "./lib/authRestoreUtils";
   import { createParentClientAuthCoordinator } from "./lib/parentClientAuthCoordinator";
   import { focusEditor as focusEditorElement } from "./lib/utils/appDomUtils";
@@ -1664,23 +1669,17 @@
     }
 
     if (appRuntimeEnvironment.externalInputEnabled) {
-      parentClientAvailable = parentClientAuthService.initialize({
+      ({ parentClientAvailable } = initializeEmbedRuntimeServices({
         locationSearch: window.location.search,
-      });
-      embedComposerContextService.initialize({
-        locationSearch: window.location.search,
-      });
-      embedSettingsService.initialize({
-        locationSearch: window.location.search,
-      });
-      if (
-        embedStorageService.initialize({ locationSearch: window.location.search })
-      ) {
-        void appEmbedController.initializeEmbedStorageSync();
-      }
-      embedIndexedDbService.initialize({
-        locationSearch: window.location.search,
-      });
+        parentClientAuthService,
+        embedComposerContextService,
+        embedSettingsService,
+        embedStorageService,
+        embedIndexedDbService,
+        onEmbedStorageReady: () => {
+          void appEmbedController.initializeEmbedStorageSync();
+        },
+      }));
     }
 
     const cleanupRuntimeBindings = setupAppRuntimeBindings({
@@ -1692,28 +1691,15 @@
       onChannelContextChanged,
       handleRemoteParentClientLogin,
       handleRemoteParentClientLogout,
-      handleRemoteComposerSetContext: (payload, requestId) => {
-        if (!requestId) {
-          return;
-        }
-
-        return appEmbedController.handleRemoteComposerSetContext(
-          payload,
-          requestId,
-        );
-      },
-      handleRemoteSettingsSet: (payload, requestId) => {
-        if (!requestId) {
-          return;
-        }
-
-        return appEmbedController.handleRemoteSettingsSet(
+      handleRemoteComposerSetContext: (payload, requestId) =>
+        appEmbedController.handleRemoteComposerSetContext(payload, requestId),
+      handleRemoteSettingsSet: (payload, requestId) =>
+        appEmbedController.handleRemoteSettingsSet(
           payload as Parameters<
             typeof appEmbedController.handleRemoteSettingsSet
           >[0],
           requestId,
-        );
-      },
+        ),
       notifySettingsError: (error, requestId) =>
         notificationPort.notifySettingsError(
           typeof error === "string"
@@ -1796,15 +1782,14 @@
       if (appRuntimeEnvironment.autoLoginNip07Enabled) {
         startupAuthenticationSettled = true;
       }
-      const activePubkey = accountManager.getActiveAccountPubkey();
-      if (
-        startupAuthResult?.activeSelectionPreserved
-        && startupAuthResult.restoreOutcome === 'completed'
-        && activePubkey
-        && accountManager.getAccountType(activePubkey) === 'nip07'
-        && !isAuthenticated
-      ) {
-        delayedNip07Recovery.start(activePubkey);
+      const recoveryCheck = {
+        startupAuthResult,
+        activePubkey: accountManager.getActiveAccountPubkey(),
+        getAccountType: (pubkey: string) => accountManager.getAccountType(pubkey),
+        isAuthenticated,
+      };
+      if (shouldStartDelayedNip07RecoveryAfterStartup(recoveryCheck)) {
+        delayedNip07Recovery.start(recoveryCheck.activePubkey);
       }
       void flushPendingRemoteParentClientAndEmbedActions().finally(() => {
         void flushPendingReplyQuoteHydrationWhenRuntimeReady();
@@ -1831,15 +1816,7 @@
       if (hostRelayConfig) {
         clearHostRelayConfig();
       }
-      if (
-        rxNostr &&
-        "dispose" in rxNostr &&
-        typeof rxNostr.dispose === "function"
-      ) {
-        rxNostr = disposeNostrSession(rxNostr);
-      } else {
-        rxNostr = undefined;
-      }
+      rxNostr = disposeNostrSessionIfDisposable(rxNostr);
       void cancelPendingNip46Auth(undefined, { preserveError: true });
       void nip46Service.disconnect();
       delayedNip07Recovery.dispose();

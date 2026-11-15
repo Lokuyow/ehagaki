@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
     clearNip46RuntimeForAuthChange,
     disposeNostrSession,
+    disposeNostrSessionIfDisposable,
     handleSuccessfulAuthResult,
     resolveLogoutAccountAction,
     restoreManagedAccountSession,
@@ -20,6 +21,21 @@ describe('disposeNostrSession', () => {
 
     it('session がない場合も安全に undefined を返す', () => {
         expect(disposeNostrSession(undefined)).toBeUndefined();
+    });
+});
+
+describe('disposeNostrSessionIfDisposable', () => {
+    it('dispose を持つ session は dispose して undefined を返す', () => {
+        const dispose = vi.fn();
+
+        expect(disposeNostrSessionIfDisposable({ dispose })).toBeUndefined();
+        expect(dispose).toHaveBeenCalledOnce();
+    });
+
+    it('dispose を持たない値や undefined は何もせず undefined を返す', () => {
+        expect(disposeNostrSessionIfDisposable(undefined)).toBeUndefined();
+        expect(disposeNostrSessionIfDisposable({ dispose: 'not a function' })).toBeUndefined();
+        expect(disposeNostrSessionIfDisposable({})).toBeUndefined();
     });
 });
 
