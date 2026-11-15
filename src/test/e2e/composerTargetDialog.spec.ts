@@ -634,10 +634,14 @@ test.describe("composer target dialog fixture", () => {
             expect(geometry.structure.reactionActionCount).toBe(1);
             expect(geometry.footer.left).toBeGreaterThanOrEqual(geometry.card.left);
             expect(geometry.footer.right).toBeLessThanOrEqual(geometry.card.right);
-            expect(geometry.footer.bottom - geometry.footer.top).toBe(36);
+            // Below a 320px footer the date takes its own row above the actions.
+            const twoRowFooter = geometry.footer.width < 320;
+            expect(twoRowFooter).toBe(width === 320);
+            expect(geometry.footer.bottom - geometry.footer.top).toBe(twoRowFooter ? 72 : 36);
             expect(geometry.horizontalOverflow).toBeLessThanOrEqual(0);
             expect(geometry.previewOverflow).toBeLessThanOrEqual(1);
-            expect(geometry.date.right).toBeLessThanOrEqual(geometry.actions.left);
+            if (twoRowFooter) expect(geometry.date.bottom).toBeLessThanOrEqual(geometry.actions.top);
+            else expect(geometry.date.right).toBeLessThanOrEqual(geometry.actions.left);
             expect(geometry.actions.right).toBeLessThanOrEqual(geometry.menu.left);
             for (const button of [geometry.reply, geometry.quote, geometry.reaction]) {
                 expect(button.width).toBeGreaterThanOrEqual(35);
