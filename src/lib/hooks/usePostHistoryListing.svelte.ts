@@ -80,6 +80,7 @@ import {
     type LoadOlderVisiblePostsOptions,
 } from "../postHistoryListingOlderBackfillController";
 import { createPostHistoryListingJumpController } from "../postHistoryListingJumpController";
+import { sameTimelineCursor, toTimelineCursor } from "../postHistoryTimelineCursor";
 import { createPostHistoryListingSearchController } from "../postHistoryListingSearchController";
 import {
     POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS,
@@ -329,31 +330,37 @@ export function usePostHistoryListing({
         pageSize,
         maxVisiblePosts,
         getRelayConfig,
-        getVisibleOldestCreatedAt: () => visibleOldestCreatedAt,
-        hasLocalBrowsingRanges: () => localBrowsingRanges.length > 0,
-        getLoadRequestId: () => loadRequestId,
-        getCurrentFetchTask: () => currentFetchTask,
-        setCurrentFetchTask: (task) => { currentFetchTask = task; },
-        isSparseListingContext: (visibleUntil) => isSparseListingContext(visibleUntil),
-        toTimelineCursor,
-        sameTimelineCursor,
-        clearContiguousProgress,
-        commitHistoryViewport,
-        readExternalVisibleUntil,
-        readExternalContinuity,
-        countVisiblePosts,
         createAuthoredScope: (pubkeyHex, rxNostr, requestId) =>
             createAuthoredScope(pubkeyHex, rxNostr, requestId),
-        updateVisibleUntilFromOlderBackfillFetch,
-        reconcileContiguousProgressAfterDatabaseChange,
-        refreshSavedPostsOutsideVisibleRange,
-        rebuildSearchResultsThroughPage: (page, query) =>
-            rebuildSearchResultsThroughPage(page, query),
-        refreshTotalCount: (options) => refreshTotalCountFromRepository(options),
-        loadOlderVisiblePosts,
-        loadOlderSavedPosts,
-        loadOlderSparsePosts,
-        refreshTimelineAvailability: (pubkeyHex) => refreshTimelineAvailability(pubkeyHex),
+        fetchSlot: {
+            get: () => currentFetchTask,
+            set: (task) => { currentFetchTask = task; },
+        },
+        coverage: {
+            readExternalVisibleUntil,
+            readExternalContinuity,
+            updateVisibleUntilFromFetch: (pubkeyHex, result) =>
+                updateVisibleUntilFromFetch(pubkeyHex, result),
+            hasLocalBrowsingRanges: () => localBrowsingRanges.length > 0,
+            isSparseListingContext: (visibleUntil) => isSparseListingContext(visibleUntil),
+            getVisibleOldestCreatedAt: () => visibleOldestCreatedAt,
+        },
+        contiguousProgress: {
+            clear: clearContiguousProgress,
+            reconcileAfterDatabaseChange: reconcileContiguousProgressAfterDatabaseChange,
+        },
+        reveal: {
+            getLoadRequestId: () => loadRequestId,
+            commitViewport: commitHistoryViewport,
+            loadOlderVisiblePosts,
+            loadOlderSavedPosts,
+            loadOlderSparsePosts,
+            rebuildSearchResultsThroughPage: (page, query) =>
+                rebuildSearchResultsThroughPage(page, query),
+            refreshTotalCount: (options) => refreshTotalCountFromRepository(options),
+            refreshTimelineAvailability: (pubkeyHex) => refreshTimelineAvailability(pubkeyHex),
+            refreshSavedPostsOutsideVisibleRange,
+        },
     });
     const relationRepairCoordinator =
         createPostHistoryVisibleRangeRelationRepairCoordinator({
@@ -702,16 +709,6 @@ export function usePostHistoryListing({
 
     function clearContiguousProgress(): void {
         contiguousProgress = null;
-    }
-
-    function sameTimelineCursor(
-        left: PostHistoryTimelineCursor | null | undefined,
-        right: PostHistoryTimelineCursor | null | undefined,
-    ): boolean {
-        return !!left && !!right
-            && left.postedAt === right.postedAt
-            && left.createdAt === right.createdAt
-            && left.eventId === right.eventId;
     }
 
     function isCurrentFetchRequest(requestId: number): boolean {
@@ -1181,10 +1178,6 @@ export function usePostHistoryListing({
         return next;
     }
 
-    async function updateVisibleUntilFromOlderBackfillFetch(pubkeyHex: string, result: PostHistoryRelayFetchResult) {
-        return updateVisibleUntilFromFetch(pubkeyHex, result);
-    }
-
     async function maybeExtendVisibleUntilFromCurrentViewRefetchResult(
         pubkeyHex: string,
         isCurrentRepairTask: () => boolean,
@@ -1194,15 +1187,6 @@ export function usePostHistoryListing({
         if (!isDestroyed && generation === coverageGeneration && isCurrentRepairTask()
             && getShow() && getPubkeyHex() === pubkeyHex) state.visibleUntil = next;
         return next;
-    }
-
-    async function countVisiblePosts(
-        pubkeyHex: string,
-        visibleUntil: number | null,
-    ): Promise<number> {
-        return typeof visibleUntil === "number"
-            ? postHistoryRepository.countVisibleForPubkey(pubkeyHex, visibleUntil)
-            : postHistoryRepository.countForPubkey(pubkeyHex);
     }
 
     async function countVisiblePostsForProgress(
@@ -1552,20 +1536,6 @@ export function usePostHistoryListing({
         }
 
         state.hasSavedPostsOutsideVisibleRange = hasSavedPostsOutsideVisibleRange;
-    }
-
-    function toTimelineCursor(
-        post: PostHistoryRecord | null | undefined,
-    ): PostHistoryTimelineCursor | null {
-        if (!post) {
-            return null;
-        }
-
-        return {
-            eventId: post.eventId,
-            postedAt: post.postedAt,
-            createdAt: post.createdAt,
-        };
     }
 
     function trimVisiblePosts(
