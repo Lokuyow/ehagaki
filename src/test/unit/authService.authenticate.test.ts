@@ -150,6 +150,36 @@ describe('AuthService.authenticateWithNsec', () => {
         expect(mockKeyManager.removeStoredKeyForMigration).not.toHaveBeenCalled();
     });
 
+    it('NIP-46アカウントのnsec化が記録の途中で失敗しても、元の認証方式とsessionを保つ', async () => {
+        const pubkeyHex = 'ab'.repeat(32);
+        const storage = new MockStorage();
+        const deps = createMockDependencies();
+        deps.localStorage = storage;
+        const keyManager = deps.keyManager as any as MockKeyManager;
+        keyManager.isValidNsec.mockReturnValue(true);
+        keyManager.derivePublicKey.mockReturnValue({ hex: pubkeyHex, npub: 'npub1', nprofile: 'nprofile1' });
+        const accountManager = new AccountManager({ localStorage: storage, console: deps.console });
+        accountManager.addAccount(pubkeyHex, 'nip46');
+        storage.setItem(getNip46SessionStorageKey(pubkeyHex), 'session');
+        const setItem = storage.setItem.bind(storage);
+        vi.spyOn(storage, 'setItem').mockImplementation((key, value) => {
+            if (key === STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT) throw new Error('quota exceeded');
+            setItem(key, value);
+        });
+        const service = new AuthService(deps);
+        service.setAccountManager(accountManager);
+
+        await expect(service.authenticateWithNsec('valid-nsec')).resolves.toEqual({
+            success: false,
+            error: 'error_saving',
+        });
+
+        expect(accountManager.getAccountType(pubkeyHex)).toBe('nip46');
+        expect(storage.getItem(getNip46SessionStorageKey(pubkeyHex))).toBe('session');
+        expect(keyManager.removeStoredKeyForMigration).toHaveBeenCalledWith(pubkeyHex);
+        expect(deps.setNsecAuth).not.toHaveBeenCalled();
+    });
+
     it('同一pubkeyのNIP-46アカウントをnsecへ置換すると旧sessionを削除する', async () => {
         const pubkeyHex = 'ab'.repeat(32);
         const storage = new MockStorage();
