@@ -88,12 +88,20 @@ import {
 import {
     applyCachedChildInteractionBatch,
     groupCachedChildInteractionRecords,
+    isValidPostHistoryCachedDirectReply,
+    partitionCachedChildInteractionRecords,
     resolveCachedReplyFetchedAt,
     resolveEffectiveDirectReplyFetchedAt,
     sanitizeRelayUrls,
     uniqueEventIds,
     type CachedChildInteractionBatchInput,
 } from "../postHistoryThreadGraphCachedChildren";
+import {
+    buildChildrenPrefetchFetchRequest,
+    groupVisibleDirectReplyItemsByParent,
+    resolvePrefetchedChildrenLoaded,
+    selectBatchDirectReplyItems,
+} from "../postHistoryThreadGraphChildPrefetch";
 import { createPostHistoryThreadGraphTaskTracker } from "../postHistoryThreadGraphTaskTracker";
 import { createPostHistoryThreadGraphParentLoadingIndicator } from "../postHistoryThreadGraphParentLoadingIndicator";
 import {
@@ -273,20 +281,7 @@ export function resolvePostHistoryReplyBadgePreloadParentIds(
         .filter((eventId) => currentPostIds.has(eventId));
 }
 
-export function isValidPostHistoryCachedDirectReply(input: {
-    parentNode: PostHistoryThreadGraphNode;
-    record: PostHistoryChildInteractionRecord;
-}): boolean {
-    const parentContext = buildPostHistoryDirectReplyParentContext({
-        event: input.parentNode.event,
-        relayHints: input.parentNode.relayUrls,
-    });
-    return !!parentContext
-        && validatePostHistoryDirectReplyRelation({
-            child: toEventFromReplyRecord(input.record),
-            parent: parentContext,
-        }).valid;
-}
+export { isValidPostHistoryCachedDirectReply };
 
 export function resolveValidPostHistoryParentNode(input: {
     childNode: PostHistoryThreadGraphNode;
@@ -2279,54 +2274,17 @@ export function usePostHistoryThreadGraph({
                         buildAnchorNodeFromPost(post),
                     ]),
                 );
-                const reactionRecordsByParentId = new Map<
-                    string,
-                    PostHistoryChildInteractionRecord[]
-                >();
-                const directReplyRecordsByParentId = new Map<
-                    string,
-                    PostHistoryChildInteractionRecord[]
-                >();
-                const invalidDirectReplyRecordIds: string[] = [];
-                const reactionAuthorPubkeys = new Set<string>();
-                const profileRelayUrlsByPubkey = new Map<string, string[]>();
-                const rememberProfileRelayUrls = (pubkey: string, relayUrls: string[]) => {
-                    profileRelayUrlsByPubkey.set(pubkey, sanitizeRelayUrls([
-                        ...(profileRelayUrlsByPubkey.get(pubkey) ?? []),
-                        ...relayUrls,
-                    ]));
-                };
-
-                for (const parentEventId of preloadParentIds) {
-                    const anchorNode = anchorNodesByParentId.get(parentEventId);
-                    if (!anchorNode) {
-                        continue;
-                    }
-                    rememberProfileRelayUrls(anchorNode.authorPubkey, anchorNode.relayUrls);
-                    const reactionRecords: PostHistoryChildInteractionRecord[] = [];
-                    const directReplyRecords: PostHistoryChildInteractionRecord[] = [];
-                    for (const record of visibleRecordsByParentId.get(parentEventId) ?? []) {
-                        if (record.kind === 7) {
-                            reactionRecords.push(record);
-                            if (record.authorPubkey) {
-                                reactionAuthorPubkeys.add(record.authorPubkey);
-                                rememberProfileRelayUrls(record.authorPubkey, anchorNode.relayUrls);
-                            }
-                        } else if ([1, 42, 1111].includes(record.kind)) {
-                            if (!isValidPostHistoryCachedDirectReply({
-                                parentNode: anchorNode,
-                                record,
-                            })) {
-                                invalidDirectReplyRecordIds.push(record.eventId);
-                            } else {
-                                directReplyRecords.push(record);
-                                rememberProfileRelayUrls(record.authorPubkey, record.relayUrls);
-                            }
-                        }
-                    }
-                    reactionRecordsByParentId.set(parentEventId, reactionRecords);
-                    directReplyRecordsByParentId.set(parentEventId, directReplyRecords);
-                }
+                const {
+                    reactionRecordsByParentId,
+                    directReplyRecordsByParentId,
+                    invalidDirectReplyRecordIds,
+                    reactionAuthorPubkeys,
+                    profileRelayUrlsByPubkey,
+                } = partitionCachedChildInteractionRecords({
+                    parentEventIds: preloadParentIds,
+                    anchorNodesByParentId,
+                    visibleRecordsByParentId,
+                });
 
                 if (invalidDirectReplyRecordIds.length > 0) {
                     await Promise.all(invalidDirectReplyRecordIds.map((eventId) =>
@@ -2441,10 +2399,10 @@ export function usePostHistoryThreadGraph({
                 for (const eventId of batchEventIds) {
                     updateExpansion(post.eventId, eventId, (state) => ({
                         ...buildChildrenLoadedExpansionState(state, {
-                            loadedChildren: loadedChildren && (
-                                (effectiveFetchedAtByParentId.get(eventId) ?? null) !== null
-                                || toVisibleChildEventIds(eventId).length > 0
-                            ),
+                            loadedChildren: loadedChildren && resolvePrefetchedChildrenLoaded({
+                                effectiveFetchedAt: effectiveFetchedAtByParentId.get(eventId) ?? null,
+                                visibleChildCount: toVisibleChildEventIds(eventId).length,
+                            }),
                             revalidatingChildren: false,
                             lastFetchedChildrenAt:
                                 effectiveFetchedAtByParentId.get(eventId) ?? null,
@@ -2482,22 +2440,15 @@ export function usePostHistoryThreadGraph({
 
                 const generationReady = getPostHistoryChildWriteGeneration(ehagakiDb);
                 const relayHints = getChildrenPrefetchRelayHints(post, batchNodes);
-                const task = replyFetchService.fetchDirectReplies(rxNostr, {
-                    eventId: batchEventIds[0] ?? "",
-                    eventIds: batchEventIds,
-                    createdAt: Math.min(...batchNodes.map((node) => node.event.created_at)),
-                    relayHints,
-                    parents: batchNodes
-                        .map((node) => buildPostHistoryDirectReplyParentContext({
-                            event: node.event,
-                            relayHints: [
-                                ...node.relayUrls,
-                                ...parsePostHistoryThreadReferences(node.event).relayHints,
-                            ],
-                        }))
-                        .filter((context) => context !== null),
-                    relayConfig: getRelayConfig(),
-                });
+                const task = replyFetchService.fetchDirectReplies(
+                    rxNostr,
+                    buildChildrenPrefetchFetchRequest({
+                        batchEventIds,
+                        batchNodes,
+                        relayHints,
+                        relayConfig: getRelayConfig(),
+                    }),
+                );
                 taskTracker.replaceChildrenFetchTask(taskKey, task);
 
                 const result = await task.promise;
@@ -2518,11 +2469,7 @@ export function usePostHistoryThreadGraph({
                 }
                 assertPostHistoryReplyFetchCanApply(result.status);
 
-                const batchEventIdSet = new Set(batchEventIds);
-                const directReplyItems = result.events.filter((item) => {
-                    return batchEventIdSet.has(item.parentEventId)
-                        && item.event.id !== item.parentEventId;
-                });
+                const directReplyItems = selectBatchDirectReplyItems(result.events, batchEventIds);
                 if (directReplyItems.length > 0) {
                     await fetchAndStoreDeletionRequests(
                         post.eventId,
@@ -2536,20 +2483,11 @@ export function usePostHistoryThreadGraph({
                     return;
                 }
 
-                const itemsByParentId = new Map<string, typeof visibleItems>();
-                const parentIdByEventId = new Map(
-                    directReplyItems.map((item) => [item.event.id, item.parentEventId]),
-                );
-                for (const item of visibleItems) {
-                    const parentId = parentIdByEventId.get(item.event.id);
-                    if (!parentId || !batchEventIdSet.has(parentId)) {
-                        continue;
-                    }
-
-                    const items = itemsByParentId.get(parentId) ?? [];
-                    items.push(item);
-                    itemsByParentId.set(parentId, items);
-                }
+                const itemsByParentId = groupVisibleDirectReplyItemsByParent({
+                    batchEventIds,
+                    directReplyItems,
+                    visibleItems,
+                });
 
                 for (const eventId of batchEventIds) {
                     const items = itemsByParentId.get(eventId) ?? [];

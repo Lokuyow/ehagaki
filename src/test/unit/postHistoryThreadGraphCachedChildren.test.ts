@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     applyCachedChildInteractionBatch,
     groupCachedChildInteractionRecords,
+    partitionCachedChildInteractionRecords,
     resolveCachedReplyFetchedAt,
     resolveEffectiveDirectReplyFetchedAt,
     uniqueEventIds,
@@ -284,5 +285,51 @@ describe('applyCachedChildInteractionBatch', () => {
 
         expect(next.nodesById[reply.eventId]?.profile).toEqual(profile);
         expect(next.nodesById[PARENT_ID]?.profile).toBeNull();
+    });
+});
+
+describe('partitionCachedChildInteractionRecords', () => {
+    const RELAY_A = 'wss://relay-a.example.com/';
+    const RELAY_B = 'wss://relay-b.example.com/';
+    const anchorNode = buildThreadGraphNode({
+        event: createEvent(PARENT_ID, OWNER, 100),
+        relayUrls: [RELAY_A],
+        sources: ['anchor'],
+    });
+
+    it('リアクション、有効な返信、無効な返信に振り分け、それ以外の kind は無視する', () => {
+        const reaction = createReplyRecord(eventId('2'), 10, { kind: 7, tags: [['e', PARENT_ID]] });
+        const reply = createReplyRecord(eventId('3'), 11, { relayUrls: [RELAY_B] });
+        const invalidReply = createReplyRecord(eventId('4'), 12, { tags: [['e', eventId('9'), '', 'reply']] });
+        const other = createReplyRecord(eventId('5'), 13, { kind: 6 });
+
+        const result = partitionCachedChildInteractionRecords({
+            parentEventIds: [PARENT_ID],
+            anchorNodesByParentId: new Map([[PARENT_ID, anchorNode]]),
+            visibleRecordsByParentId: new Map([[PARENT_ID, [reaction, reply, invalidReply, other]]]),
+        });
+
+        expect(result.reactionRecordsByParentId.get(PARENT_ID)).toEqual([reaction]);
+        expect(result.directReplyRecordsByParentId.get(PARENT_ID)).toEqual([reply]);
+        expect(result.invalidDirectReplyRecordIds).toEqual([invalidReply.eventId]);
+        expect(Array.from(result.reactionAuthorPubkeys)).toEqual([REPLIER]);
+        expect(result.profileRelayUrlsByPubkey.get(OWNER)).toEqual([RELAY_A]);
+        expect(result.profileRelayUrlsByPubkey.get(REPLIER)).toEqual([RELAY_A, RELAY_B]);
+    });
+
+    it('記録がない親には空配列を設定し、アンカーノードがない親は読み飛ばす', () => {
+        const missingParentId = eventId('8');
+
+        const result = partitionCachedChildInteractionRecords({
+            parentEventIds: [PARENT_ID, missingParentId],
+            anchorNodesByParentId: new Map([[PARENT_ID, anchorNode]]),
+            visibleRecordsByParentId: new Map(),
+        });
+
+        expect(result.reactionRecordsByParentId.get(PARENT_ID)).toEqual([]);
+        expect(result.directReplyRecordsByParentId.get(PARENT_ID)).toEqual([]);
+        expect(result.reactionRecordsByParentId.has(missingParentId)).toBe(false);
+        expect(result.directReplyRecordsByParentId.has(missingParentId)).toBe(false);
+        expect(Array.from(result.profileRelayUrlsByPubkey.keys())).toEqual([OWNER]);
     });
 });
