@@ -24,13 +24,15 @@ export interface AppRuntimeBindingsDependencies {
     onChannelContextChanged(handler: () => void): Cleanup;
     handleRemoteParentClientLogin(pubkeyHex: string | null): Promise<void> | void;
     handleRemoteParentClientLogout(pubkeyHex: string | null): Promise<void> | void;
+    /** Called only for requests that carry a requestId. */
     handleRemoteComposerSetContext(
         payload: unknown,
-        requestId: string | undefined,
+        requestId: string,
     ): Promise<void> | void;
+    /** Called only for requests that carry a requestId. */
     handleRemoteSettingsSet(
         payload: unknown,
-        requestId: string | undefined,
+        requestId: string,
     ): Promise<void> | void;
     notifySettingsError(error: unknown, requestId: string): void;
     notifyComposerContextUpdatedIfChanged(): void;
@@ -51,11 +53,19 @@ export function setupAppRuntimeBindings(
 
     const cleanupRemoteComposerSetContextHandler =
         deps.embedComposerContextService.onRemoteSetContext((payload, requestId) => {
+            if (!requestId) {
+                return;
+            }
+
             void deps.handleRemoteComposerSetContext(payload, requestId);
         });
 
     const cleanupRemoteSettingsSetHandler =
         deps.embedSettingsService.onRemoteSetSettings((payload, requestId) => {
+            if (!requestId) {
+                return;
+            }
+
             void deps.handleRemoteSettingsSet(payload, requestId);
         });
 

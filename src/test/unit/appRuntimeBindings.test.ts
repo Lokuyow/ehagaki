@@ -122,4 +122,47 @@ describe('setupAppRuntimeBindings', () => {
 
         expect(notifySettingsError).not.toHaveBeenCalled();
     });
+
+    it('composer context と settings set は requestId が無い場合 handler を呼ばない', () => {
+        let remoteComposerHandler: (payload: unknown, requestId: string | undefined) => void = () => undefined;
+        let remoteSettingsSetHandler: (payload: unknown, requestId: string | undefined) => void = () => undefined;
+        const handleRemoteComposerSetContext = vi.fn();
+        const handleRemoteSettingsSet = vi.fn();
+
+        setupAppRuntimeBindings({
+            parentClientAvailable: false,
+            parentClientAuthService: {
+                onRemoteLogin: () => () => undefined,
+                onRemoteLogout: () => () => undefined,
+                announceReady: vi.fn(),
+            },
+            embedComposerContextService: {
+                onRemoteSetContext: (handler) => {
+                    remoteComposerHandler = handler;
+                    return () => undefined;
+                },
+            },
+            embedSettingsService: {
+                onRemoteSetSettings: (handler) => {
+                    remoteSettingsSetHandler = handler;
+                    return () => undefined;
+                },
+                onRemoteSettingsError: () => () => undefined,
+            },
+            onReplyQuoteChanged: () => () => undefined,
+            onChannelContextChanged: () => () => undefined,
+            handleRemoteParentClientLogin: vi.fn(),
+            handleRemoteParentClientLogout: vi.fn(),
+            handleRemoteComposerSetContext,
+            handleRemoteSettingsSet,
+            notifySettingsError: vi.fn(),
+            notifyComposerContextUpdatedIfChanged: vi.fn(),
+        });
+
+        remoteComposerHandler({ content: 'hello' }, undefined);
+        remoteSettingsSetHandler({ locale: 'ja' }, '');
+
+        expect(handleRemoteComposerSetContext).not.toHaveBeenCalled();
+        expect(handleRemoteSettingsSet).not.toHaveBeenCalled();
+    });
 });

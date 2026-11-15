@@ -47,6 +47,22 @@ export function disposeNostrSession<T extends DisposableSession | undefined>(
     return undefined;
 }
 
+/**
+ * Dispose the session when it exposes `dispose`; otherwise just drop it.
+ * Always returns `undefined` so callers can clear their reference.
+ */
+export function disposeNostrSessionIfDisposable(session: unknown): undefined {
+    if (
+        session
+        && typeof session === "object"
+        && "dispose" in session
+        && typeof session.dispose === "function"
+    ) {
+        return disposeNostrSession(session as DisposableSession);
+    }
+    return undefined;
+}
+
 export async function handleSuccessfulAuthResult(
     result: AuthResult,
     onAuthenticated: (pubkeyHex: string) => Promise<void>,
