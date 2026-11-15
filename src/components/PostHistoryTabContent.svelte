@@ -51,6 +51,11 @@
     import { usePostHistoryQuotePreviews } from "../lib/hooks/usePostHistoryQuotePreviews.svelte";
     import { usePostHistoryListing } from "../lib/hooks/usePostHistoryListing.svelte";
     import { usePostHistoryDialogViewport } from "../lib/hooks/usePostHistoryDialogViewport.svelte";
+    import { usePostHistoryAutoLoadRootHeight } from "../lib/hooks/usePostHistoryAutoLoadRootHeight.svelte";
+    import {
+        observePostHistoryAutoLoadSentinel,
+        type PostHistoryAutoLoadSentinelObserverContext,
+    } from "../lib/postHistoryAutoLoadSentinelObserver";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { usePostHistoryThreadGraph } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import { usePostHistoryRelatedReactions, type PostHistoryRelatedReactionCardTarget } from "../lib/hooks/usePostHistoryRelatedReactions.svelte";
@@ -550,36 +555,12 @@
     let autoLoadOlderSentinel = $state<HTMLDivElement | null>(null);
     let isAutoLoadingOlder = $state(false);
     let isAutoLoadingNewer = $state(false);
-    let autoLoadRootHeight = $state<number | null>(null);
-    let autoLoadRootResizeGeneration = $state(0);
     let autoLoadOlderAwaitingExit = false;
     let autoLoadNewerAwaitingExit = false;
     let autoLoadOlderSentinelIsIntersecting = false;
     let autoLoadNewerSentinelIsIntersecting = false;
-    let autoLoadRootForHeight: HTMLDivElement | null = null;
-    let observedAutoLoadRootHeight: number | null = null;
-    let nextAutoLoadRootResizeGeneration = 0;
-    let autoLoadOlderObserverContext:
-        | {
-              root: HTMLDivElement;
-              sentinel: HTMLDivElement;
-              resizeGeneration: number;
-              scrollTop: number;
-              reconcileAfterCommit: () => void;
-              resumeAfterLoad: () => void;
-              reconcileAfterWindowChange: () => void;
-          }
-        | null = null;
-    let autoLoadNewerObserverContext:
-        | {
-              root: HTMLDivElement;
-              sentinel: HTMLDivElement;
-              resizeGeneration: number;
-              scrollTop: number;
-              reconcileAfterCommit: () => void;
-              resumeAfterLoad: () => void;
-          }
-        | null = null;
+    let autoLoadOlderObserverContext: PostHistoryAutoLoadSentinelObserverContext | null = null;
+    let autoLoadNewerObserverContext: PostHistoryAutoLoadSentinelObserverContext | null = null;
     const supportsAutoLoadOlder = typeof IntersectionObserver !== "undefined";
     let hasNewerAutoLoadTopReservation = $state(false);
     let pendingNewerAutoLoadTopReservationRestore: {
@@ -977,57 +958,15 @@
         };
     });
 
-    $effect(() => {
-        const root = historyContainer;
-        if (!root) {
-            autoLoadRootForHeight = null;
-            observedAutoLoadRootHeight = null;
-            autoLoadRootHeight = null;
-            return;
-        }
-
-        const syncAutoLoadRootHeight = () => {
-            const nextHeight = Math.max(0, root.clientHeight);
-            if (autoLoadRootForHeight !== root) {
-                autoLoadRootForHeight = root;
-                observedAutoLoadRootHeight = nextHeight;
-                autoLoadRootHeight = nextHeight;
-                return;
-            }
-
-            if (observedAutoLoadRootHeight === nextHeight) {
-                return;
-            }
-
-            observedAutoLoadRootHeight = nextHeight;
-            autoLoadRootHeight = nextHeight;
-            nextAutoLoadRootResizeGeneration += 1;
-            autoLoadRootResizeGeneration = nextAutoLoadRootResizeGeneration;
-        };
-
-        syncAutoLoadRootHeight();
-        if (typeof ResizeObserver === "undefined") {
-            return;
-        }
-
-        const resizeObserver = new ResizeObserver(syncAutoLoadRootHeight);
-        resizeObserver.observe(root);
-
-        return () => {
-            resizeObserver.disconnect();
-            if (autoLoadRootForHeight === root) {
-                autoLoadRootForHeight = null;
-                observedAutoLoadRootHeight = null;
-                autoLoadRootHeight = null;
-            }
-        };
+    const autoLoadRootSize = usePostHistoryAutoLoadRootHeight({
+        getRoot: () => historyContainer,
     });
 
     $effect(() => {
         const sentinel = autoLoadOlderSentinel;
         const root = historyContainer;
-        const rootHeight = autoLoadRootHeight;
-        const resizeGeneration = autoLoadRootResizeGeneration;
+        const rootHeight = autoLoadRootSize.height;
+        const resizeGeneration = autoLoadRootSize.resizeGeneration;
         const enabled =
             show
             && !!sentinel
@@ -1046,181 +985,30 @@
             return;
         }
 
-        const previousObserverContext = autoLoadOlderObserverContext;
-        const previousScrollTop = previousObserverContext?.scrollTop;
-        const suppressInitialIntersectionForResize =
-            previousObserverContext?.root === root
-            && previousObserverContext.sentinel === sentinel
-            && previousObserverContext.resizeGeneration !== resizeGeneration;
-        let receivedInitialEntry = false;
-        let isObserverActive = true;
-        let awaitingResizeApproach = false;
-        let hasPendingApproach = false;
-        let lastScrollTop = root.scrollTop;
-
-        const isOlderSentinelInPrefetchRegion = () => {
-            const rootRect = root.getBoundingClientRect();
-            const sentinelRect = sentinel.getBoundingClientRect();
-            return sentinelRect.left < rootRect.right
-                && sentinelRect.right > rootRect.left
-                && sentinelRect.top <= rootRect.bottom + rootHeight * 2
-                && sentinelRect.bottom >= rootRect.top;
-        };
-
-        const recordExit = () => {
-            autoLoadOlderSentinelIsIntersecting = false;
-            autoLoadOlderAwaitingExit = false;
-            awaitingResizeApproach = false;
-            hasPendingApproach = false;
-        };
-
-        const requestApproach = () => {
-            if (
-                !isObserverActive
-                || awaitingResizeApproach
-                || !canAutoLoadOlderPosts()
-            ) {
-                return;
-            }
-            if (isAutoLoadingOlder) {
-                hasPendingApproach = true;
-                return;
-            }
-            if (autoLoadOlderAwaitingExit) return;
-            hasPendingApproach = false;
-            void handleAutoLoadOlder();
-        };
-
-        autoLoadOlderObserverContext = {
+        const observation = observePostHistoryAutoLoadSentinel({
+            direction: "older",
             root,
             sentinel,
+            rootHeight,
             resizeGeneration,
-            scrollTop: root.scrollTop,
-            reconcileAfterCommit: () => {
-                if (!isObserverActive) {
-                    return;
-                }
-                // Observe the exit before a fast scroll can return to the new
-                // tail between IntersectionObserver notifications.
-                lastScrollTop = root.scrollTop;
-                if (!isOlderSentinelInPrefetchRegion()) {
-                    recordExit();
-                }
+            previousContext: autoLoadOlderObserverContext,
+            isAutoLoading: () => isAutoLoadingOlder,
+            isAwaitingExit: () => autoLoadOlderAwaitingExit,
+            clearAwaitingExit: () => {
+                autoLoadOlderAwaitingExit = false;
             },
-            resumeAfterLoad: () => {
-                if (!isObserverActive || !hasPendingApproach) {
-                    return;
-                }
-                hasPendingApproach = false;
-                if (!isOlderSentinelInPrefetchRegion()) {
-                    recordExit();
-                    return;
-                }
-                requestApproach();
+            setSentinelIntersecting: (isIntersecting) => {
+                autoLoadOlderSentinelIsIntersecting = isIntersecting;
             },
-            // A rebase can replace the window while the sentinel stays in the
-            // prefetch region. No intersection change follows, so request the
-            // next chunk here instead of waiting for the user to scroll.
-            reconcileAfterWindowChange: () => {
-                if (!isObserverActive || !receivedInitialEntry || awaitingResizeApproach) {
-                    return;
-                }
-                if (!isOlderSentinelInPrefetchRegion()) {
-                    recordExit();
-                    return;
-                }
-                autoLoadOlderSentinelIsIntersecting = true;
-                requestApproach();
+            canAutoLoad: canAutoLoadOlderPosts,
+            load: () => {
+                void handleAutoLoadOlder();
             },
-        };
-
-        const handleScrollApproach = () => {
-            if (!isObserverActive) {
-                return;
-            }
-
-            const scrollTop = root.scrollTop;
-            const movedTowardOlder = scrollTop > lastScrollTop;
-            lastScrollTop = scrollTop;
-
-            if (!isOlderSentinelInPrefetchRegion()) {
-                recordExit();
-                return;
-            }
-            if (!movedTowardOlder) {
-                return;
-            }
-
-            awaitingResizeApproach = false;
-            autoLoadOlderSentinelIsIntersecting = true;
-            requestApproach();
-        };
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (!isObserverActive) {
-                    return;
-                }
-
-                const currentEntries = entries.filter((entry) => entry.target === sentinel);
-                for (const [index, entry] of currentEntries.entries()) {
-                    const isInitialEntry = !receivedInitialEntry;
-                    receivedInitialEntry = true;
-                    const rootRect = root.getBoundingClientRect();
-                    const isCurrentlyInPrefetchRegion = rootRect.width > 0 && rootRect.height > 0
-                        ? isOlderSentinelInPrefetchRegion()
-                        : entry.isIntersecting;
-                    const hasLaterIntersection = currentEntries.slice(index + 1)
-                        .some((laterEntry) => laterEntry.isIntersecting);
-
-                    // Ignore a queued exit if the sentinel has already
-                    // returned, while preserving a real exit/re-entry pair
-                    // delivered together in one callback.
-                    if (!entry.isIntersecting && isCurrentlyInPrefetchRegion && !hasLaterIntersection) {
-                        continue;
-                    }
-                    if (entry.isIntersecting && !isCurrentlyInPrefetchRegion) {
-                        continue;
-                    }
-                    autoLoadOlderSentinelIsIntersecting = entry.isIntersecting;
-
-                    if (!entry.isIntersecting) {
-                        recordExit();
-                        continue;
-                    }
-
-                    if (
-                        isInitialEntry
-                        && suppressInitialIntersectionForResize
-                        && typeof previousScrollTop === "number"
-                        && root.scrollTop <= previousScrollTop
-                    ) {
-                        awaitingResizeApproach = true;
-                        continue;
-                    }
-
-                    awaitingResizeApproach = false;
-                    requestApproach();
-                }
-            },
-            {
-                root,
-                rootMargin: `0px 0px ${rootHeight * 2}px 0px`,
-                threshold: 0,
-            },
-        );
-        if (!isOlderSentinelInPrefetchRegion()) {
-            recordExit();
-        }
-        observer.observe(sentinel);
-        root.addEventListener("scroll", handleScrollApproach, { passive: true });
+        });
+        autoLoadOlderObserverContext = observation.context;
 
         return () => {
-            isObserverActive = false;
-            awaitingResizeApproach = false;
-            hasPendingApproach = false;
-            root.removeEventListener("scroll", handleScrollApproach);
-            observer.disconnect();
+            observation.dispose();
         };
     });
 
@@ -1232,8 +1020,8 @@
 
     $effect(() => {
         const root = historyContainer;
-        const rootHeight = autoLoadRootHeight;
-        const resizeGeneration = autoLoadRootResizeGeneration;
+        const rootHeight = autoLoadRootSize.height;
+        const resizeGeneration = autoLoadRootSize.resizeGeneration;
         const enabled =
             show
             && !!root
@@ -1253,7 +1041,6 @@
         }
 
         const previousObserverContext = autoLoadNewerObserverContext;
-        const previousScrollTop = previousObserverContext?.scrollTop;
         let isObserverActive = true;
         let cleanupObserver = () => {};
         let setupFrame: number | null = null;
@@ -1275,162 +1062,28 @@
                     return;
                 }
 
-                const suppressInitialIntersectionForResize =
-                    previousObserverContext?.root === root
-                    && previousObserverContext.sentinel === sentinel
-                    && previousObserverContext.resizeGeneration !== resizeGeneration;
-
-                let receivedInitialEntry = false;
-                let awaitingResizeApproach = false;
-                let hasPendingApproach = false;
-                let lastScrollTop = root.scrollTop;
-
-                const isNewerSentinelInPrefetchRegion = () => {
-                    const rootRect = root.getBoundingClientRect();
-                    const sentinelRect = sentinel.getBoundingClientRect();
-                    return sentinelRect.left < rootRect.right
-                        && sentinelRect.right > rootRect.left
-                        && sentinelRect.bottom >= rootRect.top - rootHeight * 2
-                        && sentinelRect.top <= rootRect.bottom;
-                };
-
-                const recordExit = () => {
-                    autoLoadNewerSentinelIsIntersecting = false;
-                    autoLoadNewerAwaitingExit = false;
-                    awaitingResizeApproach = false;
-                    hasPendingApproach = false;
-                };
-
-                const requestApproach = () => {
-                    if (
-                        !isObserverActive
-                        || awaitingResizeApproach
-                        || autoLoadNewerAwaitingExit
-                        || !canAutoLoadNewerPosts()
-                    ) {
-                        return;
-                    }
-                    if (isAutoLoadingNewer) {
-                        hasPendingApproach = true;
-                        return;
-                    }
-                    hasPendingApproach = false;
-                    void handleAutoLoadNewer();
-                };
-
-                autoLoadNewerObserverContext = {
+                const observation = observePostHistoryAutoLoadSentinel({
+                    direction: "newer",
                     root,
                     sentinel,
+                    rootHeight,
                     resizeGeneration,
-                    scrollTop: root.scrollTop,
-                    reconcileAfterCommit: () => {
-                        if (!isObserverActive) {
-                            return;
-                        }
-                        lastScrollTop = root.scrollTop;
-                        if (!isNewerSentinelInPrefetchRegion()) {
-                            recordExit();
-                        }
+                    previousContext: previousObserverContext,
+                    isAutoLoading: () => isAutoLoadingNewer,
+                    isAwaitingExit: () => autoLoadNewerAwaitingExit,
+                    clearAwaitingExit: () => {
+                        autoLoadNewerAwaitingExit = false;
                     },
-                    resumeAfterLoad: () => {
-                        if (!isObserverActive || !hasPendingApproach) {
-                            return;
-                        }
-                        hasPendingApproach = false;
-                        if (!isNewerSentinelInPrefetchRegion()) {
-                            recordExit();
-                            return;
-                        }
-                        requestApproach();
+                    setSentinelIntersecting: (isIntersecting) => {
+                        autoLoadNewerSentinelIsIntersecting = isIntersecting;
                     },
-                };
-
-                const handleScrollApproach = () => {
-                    if (!isObserverActive) {
-                        return;
-                    }
-
-                    const scrollTop = root.scrollTop;
-                    const movedTowardNewer = scrollTop < lastScrollTop;
-                    lastScrollTop = scrollTop;
-
-                    if (!isNewerSentinelInPrefetchRegion()) {
-                        recordExit();
-                        return;
-                    }
-                    if (!movedTowardNewer) {
-                        return;
-                    }
-
-                    awaitingResizeApproach = false;
-                    autoLoadNewerSentinelIsIntersecting = true;
-                    requestApproach();
-                };
-
-                const observer = new IntersectionObserver(
-                    (entries) => {
-                        if (!isObserverActive) {
-                            return;
-                        }
-
-                        const currentEntries = entries.filter((entry) => entry.target === sentinel);
-                        for (const [index, entry] of currentEntries.entries()) {
-                            const isInitialEntry = !receivedInitialEntry;
-                            receivedInitialEntry = true;
-                            const rootRect = root.getBoundingClientRect();
-                            const isCurrentlyInPrefetchRegion = rootRect.width > 0 && rootRect.height > 0
-                                ? isNewerSentinelInPrefetchRegion()
-                                : entry.isIntersecting;
-                            const hasLaterIntersection = currentEntries.slice(index + 1)
-                                .some((laterEntry) => laterEntry.isIntersecting);
-
-                            // Ignore a queued exit if the sentinel has already
-                            // returned, while preserving a real exit/re-entry
-                            // pair delivered together in one callback.
-                            if (!entry.isIntersecting && isCurrentlyInPrefetchRegion && !hasLaterIntersection) {
-                                continue;
-                            }
-                            if (entry.isIntersecting && !isCurrentlyInPrefetchRegion) {
-                                continue;
-                            }
-                            autoLoadNewerSentinelIsIntersecting = entry.isIntersecting;
-
-                            if (!entry.isIntersecting) {
-                                recordExit();
-                                continue;
-                            }
-
-                            if (
-                                isInitialEntry
-                                && suppressInitialIntersectionForResize
-                                && typeof previousScrollTop === "number"
-                                && root.scrollTop >= previousScrollTop
-                            ) {
-                                awaitingResizeApproach = true;
-                                continue;
-                            }
-
-                            awaitingResizeApproach = false;
-                            requestApproach();
-                        }
+                    canAutoLoad: canAutoLoadNewerPosts,
+                    load: () => {
+                        void handleAutoLoadNewer();
                     },
-                    {
-                        root,
-                        rootMargin: `${rootHeight * 2}px 0px 0px 0px`,
-                        threshold: 0,
-                    },
-                );
-                if (!isNewerSentinelInPrefetchRegion()) {
-                    recordExit();
-                }
-                observer.observe(sentinel);
-                root.addEventListener("scroll", handleScrollApproach, { passive: true });
-                cleanupObserver = () => {
-                    hasPendingApproach = false;
-                    awaitingResizeApproach = false;
-                    root.removeEventListener("scroll", handleScrollApproach);
-                    observer.disconnect();
-                };
+                });
+                autoLoadNewerObserverContext = observation.context;
+                cleanupObserver = observation.dispose;
             });
         });
 
