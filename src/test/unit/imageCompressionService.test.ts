@@ -84,6 +84,37 @@ describe('ImageCompressionService', () => {
     it('keeps stage progress within 0..100', async () => {
         const progress:number[]=[];service.setProgressCallback(p=>progress.push(p));await service.compress(input());expect(progress).toEqual([5,40,100]);
     });
+    describe('WASM encode worker', () => {
+        const createWorker = () => ({ postMessage: vi.fn(), terminate: vi.fn(), onmessage: null as any, onerror: null as any, onmessageerror: null as any });
+        const withWorker = (worker: ReturnType<typeof createWorker>) => { mime.canEncodeMimeType.mockReturnValue(false); return new ImageCompressionService(mime,storage,()=>false,()=>worker); };
+        it('encodes in the worker without loading the encoder on the main thread', async () => {
+            const worker=createWorker();const promise=withWorker(worker).compress(input());
+            await vi.waitFor(() => expect(worker.postMessage).toHaveBeenCalledOnce());
+            expect(worker.postMessage.mock.calls[0][0]).toMatchObject({type:'encode',width:1,height:1,quality:80});
+            worker.onmessage({data:{type:'complete',bytes:new Uint8Array(900).buffer}});
+            const result=await promise;expect(result.file.type).toBe('image/webp');expect(result.wasCompressed).toBe(true);
+            expect(encode).not.toHaveBeenCalled();expect(worker.terminate).toHaveBeenCalledOnce();
+        });
+        it('falls back to the main thread with fresh pixels when the worker fails', async () => {
+            const worker=createWorker();const promise=withWorker(worker).compress(input());
+            await vi.waitFor(() => expect(worker.postMessage).toHaveBeenCalledOnce());
+            worker.onerror({preventDefault:vi.fn()});
+            expect((await promise).file.type).toBe('image/webp');expect(encode).toHaveBeenCalledWith(expect.anything(),{quality:80});
+            expect(mock.canvases[0].context.getImageData).toHaveBeenCalledTimes(2);
+        });
+        it('falls back to the main thread when the worker cannot be constructed', async () => {
+            mime.canEncodeMimeType.mockReturnValue(false);
+            const blocked=new ImageCompressionService(mime,storage,()=>false,()=>{throw new Error('SecurityError');});
+            expect((await blocked.compress(input())).file.type).toBe('image/webp');expect(encode).toHaveBeenCalledOnce();
+        });
+        it('terminates the worker on abort without falling back', async () => {
+            const worker=createWorker();const controller=new AbortController();
+            const promise=withWorker(worker).compress(input(),{signal:controller.signal});
+            await vi.waitFor(() => expect(worker.postMessage).toHaveBeenCalledOnce());
+            controller.abort();
+            expect((await promise).aborted).toBe(true);expect(worker.terminate).toHaveBeenCalledOnce();expect(encode).not.toHaveBeenCalled();
+        });
+    });
     it('returns original if all encoders fail', async () => {
         mock.state.failNative=true;vi.mocked(encode).mockRejectedValue(new Error('failed'));const file=input();expect(await service.compress(file)).toMatchObject({file,wasSkipped:true});
     });
