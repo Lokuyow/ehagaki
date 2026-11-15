@@ -83,6 +83,7 @@ import {
     type FetchOlderFromRelaysOptions,
     type LoadOlderVisiblePostsOptions,
 } from "../postHistoryListingOlderBackfillController";
+import { createPostHistoryListingJumpController } from "../postHistoryListingJumpController";
 import {
     POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS,
     mergeOlderVisiblePosts,
@@ -182,24 +183,6 @@ interface ContiguousProgressSnapshot {
 const POST_HISTORY_VISIBLE_KINDS_KEY = buildPostHistoryVisibleKindsKey([
     ...POST_HISTORY_FETCH_KINDS,
 ]);
-const POST_HISTORY_JUMP_FETCH_RADIUS_SECONDS = 3 * 24 * 60 * 60;
-const POST_HISTORY_JUMP_FETCH_LIMIT = 100;
-function didDateChunkMissTarget(
-    chunk: PostHistoryRecord[],
-    targetCreatedAt: number,
-): boolean {
-    if (chunk.length === 0) {
-        return true;
-    }
-
-    const oldestChunkCreatedAt = chunk[chunk.length - 1]?.createdAt;
-    if (!Number.isFinite(oldestChunkCreatedAt)) {
-        return true;
-    }
-
-    return (oldestChunkCreatedAt ?? 0) > targetCreatedAt;
-}
-
 export function usePostHistoryListing({
     getShow,
     getSessionOpen = getShow,
@@ -386,6 +369,32 @@ export function usePostHistoryListing({
             onQuoteVisibleRangeRefreshRequested,
             quoteVisibleRangeRepairExecutor,
         });
+    const { jumpToCreatedAt, jumpToEventId } = createPostHistoryListingJumpController({
+        state,
+        pageSize,
+        maxVisiblePosts,
+        getShow,
+        getPubkeyHex,
+        getRxNostr,
+        getRelayConfig,
+        getLoadRequestId: () => loadRequestId,
+        beginLoadRequest: () => ++loadRequestId,
+        beginFetchRequest: () => ++fetchRequestId,
+        isCurrentFetchRequest,
+        getCurrentFetchTask: () => currentFetchTask,
+        setCurrentFetchTask: (task) => { currentFetchTask = task; },
+        cancelCurrentSync,
+        clearContiguousProgress,
+        refreshVisibleUntil: (pubkeyHex, expectedRequestId) =>
+            refreshVisibleUntil(pubkeyHex, expectedRequestId),
+        createAuthoredScope: (pubkeyHex, rxNostr, requestId) =>
+            createAuthoredScope(pubkeyHex, rxNostr, requestId),
+        refreshTotalCount: (options) => refreshTotalCountFromRepository(options),
+        resetOlderBackfillSearchState,
+        refreshTimelineAvailability: (pubkeyHex, currentPosts, expectedRequestId) =>
+            refreshTimelineAvailability(pubkeyHex, currentPosts, expectedRequestId),
+        repairJump: (request) => relationRepairCoordinator.repairJump(request),
+    });
 
     const isSearchMode = $derived(state.searchQuery.length > 0);
     const {
@@ -2527,247 +2536,6 @@ export function usePostHistoryListing({
         if (!getShow() || requestId !== loadRequestId) {
             return false;
         }
-        return true;
-    }
-
-    async function jumpToCreatedAt(createdAt: number): Promise<boolean> {
-        clearContiguousProgress();
-        const pubkeyHex = getPubkeyHex();
-        if (!pubkeyHex) {
-            return false;
-        }
-
-        const requestId = ++loadRequestId;
-        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
-        const contiguousDatePosts = await postHistoryRepository.getVisibleChunkFromCreatedAt({
-                pubkeyHex,
-                visibleUntil,
-                createdAt,
-                limit: pageSize,
-            });
-
-        if (!getShow() || requestId !== loadRequestId) {
-            return false;
-        }
-
-        if (contiguousDatePosts.length === 0) {
-            refreshTotalCountFromRepository();
-            state.loadedPosts = [];
-            state.hasOlderLocal = false;
-            state.hasNewerLocal = false;
-            return false;
-        }
-
-        if (!didDateChunkMissTarget(contiguousDatePosts, createdAt)) {
-            refreshTotalCountFromRepository();
-            state.listingMode = "contiguous";
-            state.sparseSource = null;
-            state.loadedPosts = contiguousDatePosts;
-            resetOlderBackfillSearchState();
-            await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
-            return true;
-        }
-
-        if (createdAt <= 0) {
-            refreshTotalCountFromRepository();
-            state.listingMode = "contiguous";
-            state.sparseSource = null;
-            state.loadedPosts = contiguousDatePosts;
-            resetOlderBackfillSearchState();
-            await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
-            return true;
-        }
-
-        const hasNearbyJumpCacheAnchor =
-            await postHistoryJumpCacheAnchorRepository.hasNearbyAnchorForPubkey({
-                pubkeyHex,
-                targetCreatedAt: createdAt,
-            });
-        if (!getShow() || requestId !== loadRequestId) {
-            return false;
-        }
-
-        if (hasNearbyJumpCacheAnchor) {
-            const sparseDatePosts =
-                await postHistoryRepository.getVisibleChunkFromCreatedAt({
-                    pubkeyHex,
-                    visibleUntil,
-                    createdAt,
-                    limit: pageSize,
-                    query: {
-                        contiguous: false,
-                    },
-                });
-
-            if (!getShow() || requestId !== loadRequestId) {
-                return false;
-            }
-
-            if (!didDateChunkMissTarget(sparseDatePosts, createdAt)) {
-                refreshTotalCountFromRepository();
-                state.listingMode = "sparse";
-                state.sparseSource = "jump";
-                state.loadedPosts = sparseDatePosts;
-                resetOlderBackfillSearchState();
-                await refreshTimelineAvailability(pubkeyHex, sparseDatePosts, requestId);
-                return true;
-            }
-        }
-
-        const rxNostr = getRxNostr();
-        if (!rxNostr) {
-            refreshTotalCountFromRepository();
-            state.listingMode = "contiguous";
-            state.sparseSource = null;
-            state.loadedPosts = contiguousDatePosts;
-            resetOlderBackfillSearchState();
-            await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
-            return true;
-        }
-
-        cancelCurrentSync();
-        const syncRequestId = ++fetchRequestId;
-        state.syncStatus = "syncing";
-
-        const repairSince = Math.max(
-            0,
-            createdAt - POST_HISTORY_JUMP_FETCH_RADIUS_SECONDS,
-        );
-        const repairUntil = createdAt;
-
-        const expectedJumpRevision = await getPostHistoryLocalRevision(ehagakiDb, pubkeyHex);
-        const authoredScope = await createAuthoredScope(pubkeyHex, rxNostr, syncRequestId);
-        if (!authoredScope.isActive()) return false;
-        const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
-            pubkeyHex,
-            relayConfig: getRelayConfig(),
-            reason: "repair-visible-range",
-            limit: POST_HISTORY_JUMP_FETCH_LIMIT,
-            since: repairSince,
-            until: repairUntil,
-        });
-        currentFetchTask = task;
-        const relayResult = await task.promise;
-        if (!isCurrentFetchRequest(syncRequestId) || currentFetchTask !== task) {
-            return false;
-        }
-
-        currentFetchTask = null;
-        if (!authoredScope.isActive() || relayResult.status === "cancelled") {
-            state.syncStatus = "idle";
-            return false;
-        }
-
-        if (relayResult.events.length > 0 || relayResult.relayFetchCoverage?.length) {
-            const saved = await persistPostHistoryAuthoredFetch(relayResult, authoredScope);
-            if (saved.applied === false || !authoredScope.isActive()) return false;
-            await postHistoryJumpCacheAnchorRepository.addForPubkey({
-                pubkeyHex,
-                centerCreatedAt: createdAt,
-                radiusSec: POST_HISTORY_JUMP_FETCH_RADIUS_SECONDS,
-                fetchedAt: relayResult.fetchedAt,
-                localWriteScope: {
-                    ownerPubkeyHex: pubkeyHex,
-                    expectedRevision: expectedJumpRevision,
-                    isActive: () => authoredScope.isActive(),
-                },
-            });
-            state.hasJumpCacheAnchors = true;
-        }
-
-        if (!getShow() || requestId !== loadRequestId) {
-            state.syncStatus = "idle";
-            return false;
-        }
-
-        const sparseDatePosts = await postHistoryRepository.getVisibleChunkFromCreatedAt({
-            pubkeyHex,
-            visibleUntil,
-            createdAt,
-            limit: pageSize,
-            query: {
-                contiguous: false,
-            },
-        });
-
-        if (!getShow() || requestId !== loadRequestId) {
-            state.syncStatus = "idle";
-            return false;
-        }
-
-        state.syncStatus = "idle";
-        if (didDateChunkMissTarget(sparseDatePosts, createdAt)) {
-            return false;
-        }
-
-        refreshTotalCountFromRepository({ force: relayResult.events.length > 0 });
-        state.listingMode = "sparse";
-        state.sparseSource = "jump";
-        state.loadedPosts = sparseDatePosts;
-        resetOlderBackfillSearchState();
-        await refreshTimelineAvailability(pubkeyHex, sparseDatePosts, requestId);
-        void relationRepairCoordinator.repairJump({
-            ownerPubkeyHex: pubkeyHex,
-            rxNostr,
-            visiblePosts: sparseDatePosts,
-            isActive: () => (
-                getShow()
-                && getPubkeyHex() === pubkeyHex
-                && getRxNostr() === rxNostr
-                && requestId === loadRequestId
-            ),
-        }).catch(() => undefined);
-        return true;
-    }
-
-    async function jumpToEventId(eventId: string): Promise<boolean> {
-        clearContiguousProgress();
-        const pubkeyHex = getPubkeyHex();
-        if (!pubkeyHex || !eventId) {
-            return false;
-        }
-
-        const requestId = ++loadRequestId;
-        const visibleUntil = await refreshVisibleUntil(pubkeyHex, requestId);
-        const getPostsAroundEvent = (range: number | null) =>
-            postHistoryRepository.getVisibleChunkAroundEventId({
-                pubkeyHex,
-                visibleUntil: range,
-                eventId,
-                limit: maxVisiblePosts,
-                keepAbove: pageSize,
-            });
-
-        let targetPosts = await getPostsAroundEvent(visibleUntil);
-        if (!getShow() || requestId !== loadRequestId) {
-            return false;
-        }
-
-        const targetWasInVisibleRange = targetPosts.some(
-            (post) => post.eventId === eventId,
-        );
-        let isSparseJump = false;
-        if (!targetWasInVisibleRange && typeof visibleUntil === "number") {
-            targetPosts = await getPostsAroundEvent(null);
-            isSparseJump = true;
-            if (!getShow() || requestId !== loadRequestId) {
-                return false;
-            }
-        }
-
-        if (!targetPosts.some((post) => post.eventId === eventId)) {
-            return false;
-        }
-
-        refreshTotalCountFromRepository();
-        state.listingMode = isSparseJump ? "sparse" : "contiguous";
-        state.sparseSource = isSparseJump ? "jump" : null;
-        state.loadedPosts = targetPosts;
-        state.hasOlderLocal = false;
-        state.hasNewerLocal = false;
-        resetOlderBackfillSearchState();
-        void refreshTimelineAvailability(pubkeyHex, targetPosts, requestId)
-            .catch(() => undefined);
         return true;
     }
 
