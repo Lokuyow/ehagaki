@@ -22,6 +22,7 @@
         shape?: "square" | "rounded" | "pill" | "circle";
         contentLayout?: "text" | "icon" | "iconText";
         children?: import("svelte").Snippet;
+        ref?: HTMLButtonElement | null;
         onClick?: (event: MouseEvent) => unknown | Promise<unknown>;
         selected?: boolean;
         floatingMessage?: string;
@@ -40,6 +41,7 @@
         shape = undefined,
         contentLayout = undefined,
         children,
+        ref = $bindable(null),
         onClick = undefined,
         selected = false,
         floatingMessage = "",
@@ -116,6 +118,7 @@
 </script>
 
 <button
+    bind:this={ref}
     {type}
     class={`${computedClassName} ${variantClass} ${shapeClass} ${contentLayoutClass} ${selected ? "selected" : ""}`}
     {disabled}
