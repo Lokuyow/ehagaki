@@ -211,6 +211,10 @@ NIP-07 ログインを行う opt-in です。既定は無効で、指定しな�
   認証基盤異常が起きても残りの保存済み候補を試し、どれも復元できなかった場合は NIP-07 を開始せず、
   ゲスト起動へ進みます。legacy nsec migration の異常時も、安全な strict snapshot を取得できる限り
   保存済み候補の復元を続けます。
+- 保存済み NIP-46 account は、remote signer の応答を待たずに復元済みとして扱います。signer への接続と
+  identity の検証は起動後に行い、検証が終わるまで署名は行いません。そのため signer がオフラインでも
+  復元成功となり、NIP-07 fallback や後続候補の復元へは進みません。検証で signer が別の identity を
+  返した場合は、その session を終了してゲスト状態へ移行します（account と保存データは残ります）。
 - 保存済み NIP-07 の identity mismatch で現在の identity を取得済みなら、残りの保存済み候補を
   最後まで試し、すべて失敗した場合だけ同じ identity を再問い合わせせず fallback に使います。
 - 再利用できる identity がない場合、`window.nostr` の注入を最大 3 秒待ちます。拡張未検出、ユーザー拒否、

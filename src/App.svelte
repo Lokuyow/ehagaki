@@ -1602,6 +1602,13 @@
     await appAccountSessionController.logoutAccount(pubkeyHex, options);
   }
 
+  async function handleNip46IdentityMismatch(pubkeyHex: string): Promise<void> {
+    if (appDisposed) return;
+    await appAccountSessionController.handleNip46IdentityMismatch(pubkeyHex, {
+      beforeConverge: () => beginAuthTransition({ invalidateSession: true }),
+    });
+  }
+
   function requestLogoutAccount(pubkeyHex: string) {
     appAccountDialogController.requestLogoutAccount(pubkeyHex);
   }
@@ -1804,12 +1811,15 @@
       console,
     });
 
+    nip46Service.setIdentityMismatchHandler(handleNip46IdentityMismatch);
+
     return () => {
       beginAuthTransition({ invalidateSession: true });
       appDisposed = true;
       readyAuthSession = null;
       overlayScopeTarget.classList.remove("ehagaki-app-root");
       cleanupVisibilityHandler();
+      nip46Service.setIdentityMismatchHandler(null);
       cleanupRuntimeBindings();
       composerTargetApplyController.dispose();
       channelContextApplyController.dispose();

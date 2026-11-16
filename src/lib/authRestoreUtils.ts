@@ -80,7 +80,10 @@ interface LegacyNsecDependencies extends NsecRestoreDependencies {
 export interface ManagedAuthRestoreDependencies extends NsecRestoreDependencies, PublicKeyAuthDependencies {
     localStorage: Storage;
     nip07Service: Pick<Nip07AuthService, 'waitForExtension' | 'authenticate'>;
-    nip46Svc: Pick<Nip46Service, 'reconnect' | 'bindSessionPersistence' | 'disconnect'>;
+    nip46Svc: Pick<
+        Nip46Service,
+        'restoreSessionInBackground' | 'bindSessionPersistence' | 'disconnect'
+    >;
     parentClientSvc: Pick<ParentClientAuthService, 'reconnect' | 'getSessionData' | 'disconnect'>;
     isExpectedAccount(pubkeyHex: string, type: AccountAuthType): boolean;
     console: Console;
@@ -281,9 +284,14 @@ export async function restoreManagedNip46Account(
             Nip46Storage.loadSession(dependencies.localStorage, targetPubkeyHex),
         validateStoredIdentity: (session, targetPubkeyHex) =>
             session.userPubkey === targetPubkeyHex,
-        // NIP-46 reconnect returns the saved session user pubkey. This only
-        // checks the service contract; it does not verify a live signer identity.
-        reconnect: (session) => dependencies.nip46Svc.reconnect(session),
+        // The saved session is adopted without waiting for the remote signer.
+        // The service verifies the live signer identity in the background and
+        // withholds the signer until that check passes, so this only checks
+        // the service contract.
+        reconnect: (session) => dependencies.nip46Svc.restoreSessionInBackground(
+            session,
+            { storage: dependencies.localStorage, pubkeyHex },
+        ),
         isExpectedAccount: () => dependencies.isExpectedAccount(pubkeyHex, 'nip46'),
         finalize: (targetPubkeyHex) => {
             try {

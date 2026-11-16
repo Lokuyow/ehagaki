@@ -259,7 +259,7 @@ describe('AuthService.restoreAccount', () => {
         expect(nip07Deps.setNip07Auth).not.toHaveBeenCalled();
         const { nip46Service } = await import('../../lib/nip46Service');
         const { parentClientAuthService } = await import('../../lib/parentClientAuthService');
-        expect(nip46Service.reconnect).not.toHaveBeenCalled();
+        expect(nip46Service.restoreSessionInBackground).not.toHaveBeenCalled();
         expect(parentClientAuthService.reconnect).not.toHaveBeenCalled();
     });
 
@@ -274,14 +274,14 @@ describe('AuthService.restoreAccount', () => {
             hasAuth: false,
             reason: 'identity-mismatch',
         });
-        expect(nip46Service.reconnect).not.toHaveBeenCalled();
+        expect(nip46Service.restoreSessionInBackground).not.toHaveBeenCalled();
         expect(mockDependencies.setNip46Auth).not.toHaveBeenCalled();
     });
 
     it('NIP-46: reconnect失敗ではpartial runtimeをcleanupする', async () => {
         const { nip46Service, Nip46Service: Nip46ServiceClass } = await import('../../lib/nip46Service');
         vi.mocked(Nip46ServiceClass.loadSession).mockReturnValue(createMockNip46Session(NIP46_PUBKEY));
-        vi.mocked(nip46Service.reconnect).mockRejectedValue(new Error('reconnect failed'));
+        vi.mocked(nip46Service.restoreSessionInBackground).mockRejectedValue(new Error('reconnect failed'));
         const service = createManagedService(mockDependencies, NIP46_PUBKEY, 'nip46');
 
         await expect(service.restoreAccount(NIP46_PUBKEY, 'nip46')).resolves.toEqual({
@@ -295,7 +295,7 @@ describe('AuthService.restoreAccount', () => {
     it('NIP-46: reconnect戻り値の契約不一致ではpartial runtimeをcleanupする', async () => {
         const { nip46Service, Nip46Service: Nip46ServiceClass } = await import('../../lib/nip46Service');
         vi.mocked(Nip46ServiceClass.loadSession).mockReturnValue(createMockNip46Session(NIP46_PUBKEY));
-        vi.mocked(nip46Service.reconnect).mockResolvedValue(NIP07_PUBKEY);
+        vi.mocked(nip46Service.restoreSessionInBackground).mockResolvedValue(NIP07_PUBKEY);
         const service = createManagedService(mockDependencies, NIP46_PUBKEY, 'nip46');
 
         await expect(service.restoreAccount(NIP46_PUBKEY, 'nip46')).resolves.toEqual({
@@ -310,7 +310,7 @@ describe('AuthService.restoreAccount', () => {
     it('NIP-46: late account record不一致ではpartial runtimeをcleanupする', async () => {
         const { nip46Service, Nip46Service: Nip46ServiceClass } = await import('../../lib/nip46Service');
         vi.mocked(Nip46ServiceClass.loadSession).mockReturnValue(createMockNip46Session(NIP46_PUBKEY));
-        vi.mocked(nip46Service.reconnect).mockResolvedValue(NIP46_PUBKEY);
+        vi.mocked(nip46Service.restoreSessionInBackground).mockResolvedValue(NIP46_PUBKEY);
         let checks = 0;
         const service = createManagedService(
             mockDependencies,
@@ -331,7 +331,7 @@ describe('AuthService.restoreAccount', () => {
         const { nip46Service, Nip46Service: Nip46ServiceClass } = await import('../../lib/nip46Service');
         const session = createMockNip46Session(NIP46_PUBKEY);
         vi.mocked(Nip46ServiceClass.loadSession).mockReturnValue(session);
-        vi.mocked(nip46Service.reconnect).mockResolvedValue(NIP46_PUBKEY);
+        vi.mocked(nip46Service.restoreSessionInBackground).mockResolvedValue(NIP46_PUBKEY);
         const service = createManagedService(mockDependencies, NIP46_PUBKEY, 'nip46');
 
         await expect(service.restoreAccount(NIP46_PUBKEY, 'nip46')).resolves.toEqual({
@@ -345,10 +345,28 @@ describe('AuthService.restoreAccount', () => {
         expect(mockDependencies.setNip46Auth).toHaveBeenCalled();
     });
 
+    it('NIP-46: signerの応答を待たないbackground restoreへ保存先を渡して復元する', async () => {
+        const { nip46Service, Nip46Service: Nip46ServiceClass } = await import('../../lib/nip46Service');
+        const session = createMockNip46Session(NIP46_PUBKEY);
+        vi.mocked(Nip46ServiceClass.loadSession).mockReturnValue(session);
+        vi.mocked(nip46Service.restoreSessionInBackground).mockResolvedValue(NIP46_PUBKEY);
+        const service = createManagedService(mockDependencies, NIP46_PUBKEY, 'nip46');
+
+        await expect(service.restoreAccount(NIP46_PUBKEY, 'nip46')).resolves.toEqual({
+            hasAuth: true,
+            pubkeyHex: NIP46_PUBKEY,
+        });
+        expect(nip46Service.restoreSessionInBackground).toHaveBeenCalledWith(session, {
+            storage: mockDependencies.localStorage,
+            pubkeyHex: NIP46_PUBKEY,
+        });
+        expect(nip46Service.reconnect).not.toHaveBeenCalled();
+    });
+
     it('NIP-46: persistence失敗ではpartial runtimeをcleanupしauth stateを反映しない', async () => {
         const { nip46Service, Nip46Service: Nip46ServiceClass } = await import('../../lib/nip46Service');
         vi.mocked(Nip46ServiceClass.loadSession).mockReturnValue(createMockNip46Session(NIP46_PUBKEY));
-        vi.mocked(nip46Service.reconnect).mockResolvedValue(NIP46_PUBKEY);
+        vi.mocked(nip46Service.restoreSessionInBackground).mockResolvedValue(NIP46_PUBKEY);
         vi.mocked(nip46Service.bindSessionPersistence).mockImplementation(() => {
             throw new Error('persistence failed');
         });
