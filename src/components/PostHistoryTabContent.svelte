@@ -369,11 +369,23 @@
         relatedTargetResolver,
         profileSyncCoordinator,
     });
+    // One pass over the thread graph per change, shared by every reader below and in the list.
+    let threadAnchorStateByEventId = $derived(
+        new Map(history.posts.map((post) => [
+            post.eventId,
+            postHistoryThreadGraph.getAnchorState(post),
+        ])),
+    );
+    function getThreadAnchorState(post: PostHistoryRecord) {
+        return threadAnchorStateByEventId.get(post.eventId)
+            ?? postHistoryThreadGraph.getAnchorState(post);
+    }
     function getRelatedReactionTargets() {
         const targets = new Map<string, PostHistoryRelatedReactionCardTarget>();
+        const listedPostIds = new Set(history.posts.filter((post) => ![6, 16].includes(post.kind)).map((post) => post.eventId));
         const addTarget = (event: NostrEvent, relayHints: string[]) => {
             const eventId = event.id;
-            if (!eventId || history.posts.some((post) => post.eventId === eventId && ![6, 16].includes(post.kind))) return;
+            if (!eventId || listedPostIds.has(eventId)) return;
             targets.set(eventId, { eventId, targetAuthorPubkey: event.pubkey, targetKind: event.kind,
                 relayHints: Array.from(new Set([...(targets.get(eventId)?.relayHints ?? []), ...relayHints])) });
         };
@@ -388,7 +400,7 @@
             if (outer) addTarget(outer.event, [...(post.fetchedRelays ?? []), ...post.acceptedRelays, ...post.relayHints]);
             const repost = repostPreviews.getPreview(post);
             if (repost.status === 'resolved' && repost.event) addTarget(repost.event, repost.relayHints);
-            const anchorState = postHistoryThreadGraph.getAnchorState(post);
+            const anchorState = getThreadAnchorState(post);
             visitNode(anchorState.parentNodeState);
             anchorState.replyNodeStates.forEach(visitNode);
             for (const quote of quotePreviews.getQuotePreviews(post)) {
@@ -722,6 +734,11 @@
         }
     });
 
+    // A model depends on its event alone, so an unchanged event keeps its model and
+    // the cards showing it are left alone when another part of the graph changes.
+    const relatedPreviewModelByEvent = new WeakMap<NostrEvent, PostContentRenderModel>();
+    let lastRelatedPreviewModelByEventId: Record<string, PostContentRenderModel> = {};
+
     function addRelatedPreviewModel(
         event: NostrEvent,
         models: Record<string, PostContentRenderModel>,
@@ -730,11 +747,16 @@
             return;
         }
 
-        models[event.id] = buildPostContentRenderModel({
-            kind: event.kind,
-            sourceContent: event.content,
-            tags: event.tags,
-        });
+        let model = relatedPreviewModelByEvent.get(event);
+        if (!model) {
+            model = buildPostContentRenderModel({
+                kind: event.kind,
+                sourceContent: event.content,
+                tags: event.tags,
+            });
+            relatedPreviewModelByEvent.set(event, model);
+        }
+        models[event.id] = model;
     }
 
     function addThreadNodePreviewModels(
@@ -769,7 +791,7 @@
                 }
             }
 
-            const graphState = postHistoryThreadGraph.getAnchorState(post);
+            const graphState = getThreadAnchorState(post);
             if (graphState.parentNode) {
                 addRelatedPreviewModel(graphState.parentNode.event, models);
             }
@@ -787,7 +809,15 @@
             }
         }
 
-        return models;
+        const eventIds = Object.keys(models);
+        if (
+            eventIds.length !== Object.keys(lastRelatedPreviewModelByEventId).length
+            || eventIds.some((eventId) =>
+                models[eventId] !== lastRelatedPreviewModelByEventId[eventId])
+        ) {
+            lastRelatedPreviewModelByEventId = models;
+        }
+        return lastRelatedPreviewModelByEventId;
     });
 
     let dialogEmojiUrls = $derived.by(() => {
@@ -803,7 +833,7 @@
         }
 
         for (const post of history.posts) {
-            const graphState = postHistoryThreadGraph.getAnchorState(post);
+            const graphState = getThreadAnchorState(post);
             if (!reactionsExpandedByEventId[post.eventId]) {
                 continue;
             }
@@ -1604,7 +1634,7 @@
 
     function getRepliesActionLabel(post: PostHistoryRecord): string {
         const state =
-            postHistoryThreadGraph.getAnchorState(post).repliesActionState;
+            getThreadAnchorState(post).repliesActionState;
         return (
             translateDialogMessage(
                 resolvePostHistoryRepliesActionLabelState(state),
@@ -1630,7 +1660,7 @@
     function getRelatedReactionReadModel(eventId: string) {
         const ownerPost = history.posts.find((post) => post.eventId === eventId);
         if (ownerPost && ![6, 16].includes(ownerPost.kind)) {
-            return postHistoryThreadGraph.getAnchorState(ownerPost).reactionReadModel;
+            return getThreadAnchorState(ownerPost).reactionReadModel;
         }
 
         return relatedReactions.getReadModel(eventId);
@@ -1646,7 +1676,7 @@
 
     function getReactionsActionLabel(post: PostHistoryRecord): string {
         const reactionCount =
-            postHistoryThreadGraph.getAnchorState(post).reactionSummary
+            getThreadAnchorState(post).reactionSummary
                 .totalCount;
         return (
             translateDialogMessage(
@@ -1659,7 +1689,7 @@
     }
 
     function getDisplayedReactionGroups(post: PostHistoryRecord) {
-        return postHistoryThreadGraph.getAnchorState(post).reactionReadModel
+        return getThreadAnchorState(post).reactionReadModel
             .groups;
     }
 
@@ -1676,7 +1706,7 @@
 
     function handleRepliesAction(post: PostHistoryRecord): void {
         const state =
-            postHistoryThreadGraph.getAnchorState(post).repliesActionState;
+            getThreadAnchorState(post).repliesActionState;
         if (
             state.status === "failed" ||
             (state.status === "loaded" && state.replyCount === 0)
@@ -2570,7 +2600,7 @@
             <ul class="post-history-list">
                 {#each history.posts as post (post.eventId)}
                     {@const graphState =
-                        postHistoryThreadGraph.getAnchorState(post)}
+                        getThreadAnchorState(post)}
                     {@const threadPanelNodeHandlers = buildThreadPanelNodeHandlers(post)}
                     <li
                         class="post-history-item"
