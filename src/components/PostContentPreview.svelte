@@ -102,9 +102,13 @@
     }
     let previousEventId: string | undefined;
     let previousLoader: SensitiveBodyLoader | undefined;
+    // Read through deriveds so the subscription below is rebuilt only when the
+    // event or the loader itself changes, not whenever a parent re-evaluates them.
+    const observedEventId = $derived(contentWarningEventId);
+    const observedLoader = $derived(loadSensitiveBody);
     $effect(() => {
-        const eventId = contentWarningEventId;
-        const loader = loadSensitiveBody;
+        const eventId = observedEventId;
+        const loader = observedLoader;
         const sameLoaderScope = loader === previousLoader || (!!loader?.scope && !!previousLoader?.scope
             && loader.scope.runtime === previousLoader.scope.runtime
             && loader.scope.ownerPubkey === previousLoader.scope.ownerPubkey);
