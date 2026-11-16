@@ -157,55 +157,86 @@ export function resolveSafePage(
     return totalCount === 0 ? 1 : Math.min(page, nextTotalPages);
 }
 
+const MINUTE_TIME_FORMAT: Intl.DateTimeFormatOptions = {
+    hour: "numeric",
+    minute: "2-digit",
+};
+const MONTH_DAY_TIME_FORMAT: Intl.DateTimeFormatOptions = {
+    month: "numeric",
+    day: "numeric",
+    ...MINUTE_TIME_FORMAT,
+};
+const YEAR_MONTH_DAY_FORMAT: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+};
+const EXACT_TIMESTAMP_FORMAT: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+};
+
+// Constructing Intl.DateTimeFormat dominates the cost of formatting, and a
+// history page formats two timestamps per post. Options are module constants,
+// so the options object identity plus the locale identifies a formatter.
+const dateTimeFormatCache = new Map<
+    Intl.DateTimeFormatOptions,
+    Map<string, Intl.DateTimeFormat>
+>();
+
+function getDateTimeFormat(
+    localeValue: string | null | undefined,
+    options: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormat {
+    let byLocale = dateTimeFormatCache.get(options);
+    if (!byLocale) {
+        byLocale = new Map();
+        dateTimeFormatCache.set(options, byLocale);
+    }
+    const localeKey = localeValue ?? "";
+    let format = byLocale.get(localeKey);
+    if (!format) {
+        format = new Intl.DateTimeFormat(localeValue ?? undefined, options);
+        byLocale.set(localeKey, format);
+    }
+    return format;
+}
+
 export function formatPostedAt(
     postedAt: number,
     now: number = Date.now(),
 ): string {
     const postedDate = new Date(postedAt);
     const nowDate = new Date(now);
-    const minuteTimeFormat: Intl.DateTimeFormatOptions = {
-        hour: "numeric",
-        minute: "2-digit",
-    };
 
     if (isSameLocalDate(postedDate, nowDate)) {
-        return new Intl.DateTimeFormat(undefined, minuteTimeFormat).format(
+        return getDateTimeFormat(undefined, MINUTE_TIME_FORMAT).format(
             postedDate,
         );
     }
 
-    const monthDayTimeFormat: Intl.DateTimeFormatOptions = {
-        month: "numeric",
-        day: "numeric",
-        ...minuteTimeFormat,
-    };
-
     if (postedDate.getFullYear() === nowDate.getFullYear()) {
-        return new Intl.DateTimeFormat(
-            undefined,
-            monthDayTimeFormat,
-        ).format(postedDate);
+        return getDateTimeFormat(undefined, MONTH_DAY_TIME_FORMAT).format(
+            postedDate,
+        );
     }
 
-    return new Intl.DateTimeFormat(undefined, {
-        year: "numeric",
-        month: "numeric",
-        day: "numeric",
-    }).format(postedDate);
+    return getDateTimeFormat(undefined, YEAR_MONTH_DAY_FORMAT).format(
+        postedDate,
+    );
 }
 
 export function formatPostedAtExact(
     postedAt: number,
     localeValue?: string | null,
 ): string {
-    return new Intl.DateTimeFormat(localeValue ?? undefined, {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-    }).format(new Date(postedAt));
+    return getDateTimeFormat(localeValue, EXACT_TIMESTAMP_FORMAT).format(
+        new Date(postedAt),
+    );
 }
 
 export function formatPostHistoryMonthLabel(
