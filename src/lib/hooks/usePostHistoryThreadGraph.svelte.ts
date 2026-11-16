@@ -134,6 +134,7 @@ import {
     type PostHistoryProfileSyncCoordinator,
 } from "../postHistoryProfileSync";
 import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
+import { sharePostHistoryThreadGraphState } from "../postHistoryThreadGraphStateSharing";
 
 export type PostHistoryThreadGraphRepliesStatus =
     | "unloaded"
@@ -367,6 +368,9 @@ export function usePostHistoryThreadGraph({
     const taskTracker = createPostHistoryThreadGraphTaskTracker();
     let relatedEventsStatuses = $state<Record<string, RelatedEventsStatus | "loading">>({});
     const relatedTasks = new Map<string, { cancel(): void; promise: Promise<void> }>();
+    // Last state handed out per anchor. Every graph write recomputes every anchor, so an
+    // anchor whose data did not change must keep its object or all cards update with it.
+    const anchorStateByEventId = new Map<string, PostHistoryThreadGraphAnchorState>();
 
     function refreshRelatedEvents(post: PostHistoryRecord, nodeEventId = post.eventId): Promise<void> {
         const existing = relatedTasks.get(nodeEventId);
@@ -842,6 +846,15 @@ export function usePostHistoryThreadGraph({
     }
 
     function getAnchorState(post: PostHistoryRecord): PostHistoryThreadGraphAnchorState {
+        const state = sharePostHistoryThreadGraphState(
+            anchorStateByEventId.get(post.eventId),
+            buildAnchorState(post),
+        );
+        anchorStateByEventId.set(post.eventId, state);
+        return state;
+    }
+
+    function buildAnchorState(post: PostHistoryRecord): PostHistoryThreadGraphAnchorState {
         parentResolverRevision;
 
         const anchorNode = resolveNodeWithParentTargetSnapshot(nodesById[post.eventId])
@@ -2850,6 +2863,7 @@ export function usePostHistoryThreadGraph({
             resolver.reset();
         }
         taskTracker.incrementRequestId();
+        anchorStateByEventId.clear();
         nodesById = {};
         parentByChildId = {};
         childrenByParentId = {};
