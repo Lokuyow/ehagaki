@@ -1533,21 +1533,35 @@
 
     type ThreadGraphPanelProps = ComponentProps<typeof PostHistoryThreadGraphPanel>;
 
-    /** Props both thread sections (parents above, replies below) of a post share. */
-    function buildThreadGraphPanelProps(post: PostHistoryRecord) {
+    /**
+     * Handlers both thread sections of every post share. They never change, so
+     * spreading them does not make the panels depend on anything reactive.
+     * Props that do change (preview models, emoji state, scroll root, labels,
+     * reply/quote/reaction handlers) are passed one by one at the call sites:
+     * bundling them here would re-evaluate every panel when any one changes.
+     */
+    const threadPanelSharedHandlers = {
+        getSensitiveBodyLoader,
+        onImageOpen: handleImageOpen,
+        buildPostRecordForNode: buildPostRecordFromNodeState,
+        onCopyPointerDown: handleNodeCopyPointerPosition,
+        onCopyNevent: handleNodeCopyNevent,
+        onOpenExternalClient: handleNodeOpenExternalClient,
+        isCopyFailed: isNodeCopyFailed,
+        onShowRawJson: handleNodeShowRawJson,
+        onBroadcastPointerDown: handleNodeBroadcastPointerPosition,
+        onBroadcastPost: handleNodeBroadcastPost,
+        isBroadcastSending: isNodeBroadcastSending,
+        canDeleteNodePost,
+        isDeletionSending: isNodeDeletionSending,
+        onOpenDeleteConfirm: openNodeDeleteConfirm,
+    } satisfies Partial<ThreadGraphPanelProps>;
+
+    /** Per-post node handlers both thread sections share. Depends on the post only. */
+    function buildThreadPanelNodeHandlers(post: PostHistoryRecord) {
         return {
             onRefreshRelatedEvents: (nodeEventId) =>
                 void handleRefreshRelatedEvents(post, nodeEventId),
-            onReactionPost: onReactionPost ? handleReactionPost : undefined,
-            previewModelByEventId: relatedPreviewModelByEventId,
-            getSensitiveBodyLoader,
-            emojiLoadStateByUrl: emojiState.emojiLoadStateByUrl,
-            emojiImageMetaByUrl: emojiState.emojiImageMetaByUrl,
-            scrollRoot: historyContainer,
-            onImageOpen: handleImageOpen,
-            buildPostRecordForNode: buildPostRecordFromNodeState,
-            onReplyPost: onReplyPost ? handleReplyPost : undefined,
-            onQuotePost: onQuotePost ? handleQuotePost : undefined,
             onToggleNodeParent: (nodeEventId) =>
                 historyViewport.preserveThreadParentToggleScroll(
                     post.eventId,
@@ -1560,18 +1574,6 @@
                 postHistoryThreadGraph.toggleNodeChildren(post, nodeEventId),
             onRetryNodeChildren: (nodeEventId) =>
                 postHistoryThreadGraph.retryNodeChildren(post, nodeEventId),
-            onCopyPointerDown: handleNodeCopyPointerPosition,
-            onCopyNevent: handleNodeCopyNevent,
-            externalClientLabel: getExternalClientOpenLabel(),
-            onOpenExternalClient: handleNodeOpenExternalClient,
-            isCopyFailed: isNodeCopyFailed,
-            onShowRawJson: handleNodeShowRawJson,
-            onBroadcastPointerDown: handleNodeBroadcastPointerPosition,
-            onBroadcastPost: handleNodeBroadcastPost,
-            isBroadcastSending: isNodeBroadcastSending,
-            canDeleteNodePost,
-            isDeletionSending: isNodeDeletionSending,
-            onOpenDeleteConfirm: openNodeDeleteConfirm,
         } satisfies Partial<ThreadGraphPanelProps>;
     }
 
@@ -2544,7 +2546,7 @@
                 {#each history.posts as post (post.eventId)}
                     {@const graphState =
                         postHistoryThreadGraph.getAnchorState(post)}
-                    {@const threadPanelProps = buildThreadGraphPanelProps(post)}
+                    {@const threadPanelNodeHandlers = buildThreadPanelNodeHandlers(post)}
                     <li
                         class="post-history-item"
                         data-post-history-event-id={post.eventId}
@@ -2579,7 +2581,16 @@
                                 <PostHistoryThreadGraphPanel
                                     state={graphState}
                                     section="parent"
-                                    {...threadPanelProps}
+                                    {...threadPanelSharedHandlers}
+                                    {...threadPanelNodeHandlers}
+                                    previewModelByEventId={relatedPreviewModelByEventId}
+                                    emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                                    emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                                    scrollRoot={historyContainer}
+                                    externalClientLabel={getExternalClientOpenLabel()}
+                                    onReactionPost={onReactionPost ? handleReactionPost : undefined}
+                                    onReplyPost={onReplyPost ? handleReplyPost : undefined}
+                                    onQuotePost={onQuotePost ? handleQuotePost : undefined}
                                     onToggleParent={() =>
                                         historyViewport.preserveThreadParentToggleScroll(
                                             post.eventId,
@@ -2693,7 +2704,16 @@
                                     <PostHistoryThreadGraphPanel
                                         state={graphState}
                                         section="children"
-                                        {...threadPanelProps}
+                                        {...threadPanelSharedHandlers}
+                                        {...threadPanelNodeHandlers}
+                                        previewModelByEventId={relatedPreviewModelByEventId}
+                                        emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                                        emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                                        scrollRoot={historyContainer}
+                                        externalClientLabel={getExternalClientOpenLabel()}
+                                        onReactionPost={onReactionPost ? handleReactionPost : undefined}
+                                        onReplyPost={onReplyPost ? handleReplyPost : undefined}
+                                        onQuotePost={onQuotePost ? handleQuotePost : undefined}
                                         getReactionReadModel={getRelatedReactionReadModel}
                                         isReactionExpanded={isReactionExpandedByEventId}
                                         getReactionLabel={getRelatedReactionLabel}
