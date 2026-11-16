@@ -127,14 +127,17 @@
     {@render children?.()}
 </button>
 
-<FloatingMessage
-    show={showFloatingMessage}
-    x={floatingMessageX}
-    y={floatingMessageY}
-    variant={floatingMessageVariant}
->
-    <div>{floatingMessage}</div>
-</FloatingMessage>
+<!-- Most buttons never show a message; skip the instance and its effects. -->
+{#if floatingMessage}
+    <FloatingMessage
+        show={showFloatingMessage}
+        x={floatingMessageX}
+        y={floatingMessageY}
+        variant={floatingMessageVariant}
+    >
+        <div>{floatingMessage}</div>
+    </FloatingMessage>
+{/if}
 
 <style>
     button {
