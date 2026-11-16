@@ -471,6 +471,7 @@ async function createConnectedPoolReadyOnFirstReachable(
         throw new Error(formatNip46RelayConnectionFailure('no reachable relays'));
     }
 
+    const startedAt = Date.now();
     const origWs = globalThis.WebSocket;
     useWebSocketImplementation(Nip46WebSocket);
     const pool = new SimplePool();
@@ -557,6 +558,7 @@ async function createConnectedPoolReadyOnFirstReachable(
     try {
         await firstReachable;
     } catch (error) {
+        logNip46PhaseDuration('relay-connect', startedAt, 'failure');
         pool.destroy();
         throw error;
     }
@@ -596,6 +598,7 @@ async function createConnectedPoolReadyOnFirstReachable(
         });
     }
 
+    logNip46PhaseDuration('relay-connect', startedAt, 'success');
     return {
         pool,
         connectedRelays: finalizedConnectedRelays,
@@ -694,6 +697,32 @@ function withTimeout<T>(
     });
 }
 
+type Nip46TimedPhase =
+    | 'relay-connect'
+    | 'handshake-wait'
+    | 'post-handshake'
+    | 'get_public_key'
+    | 'switch_relays'
+    | 'bunker-connect'
+    | 'reconnect'
+    | 'rebuild';
+
+/**
+ * Reports how long one phase took so slow logins can be attributed to a relay
+ * or signer round trip. Only the phase name, outcome and duration are logged.
+ */
+function logNip46PhaseDuration(
+    phase: Nip46TimedPhase,
+    startedAt: number,
+    outcome: 'success' | 'failure' | 'timeout',
+): void {
+    console.debug('[NIP-46] phase timing', {
+        phase,
+        outcome,
+        durationMs: Date.now() - startedAt,
+    });
+}
+
 function createLiveIdentityAuthChallenge(): LiveIdentityAuthChallenge {
     let rejected = false;
     let rejectChallenge: ((reason?: unknown) => void) | null = null;
@@ -724,14 +753,29 @@ async function readLiveNip46UserPubkey(
     authChallenge: LiveIdentityAuthChallenge,
     timeoutMs: number = NIP46_LIVE_IDENTITY_TIMEOUT_MS,
 ): Promise<string> {
-    const response = await withTimeout(
-        Promise.race([
-            signer.sendRequest('get_public_key', []),
-            authChallenge.promise,
-        ]),
-        timeoutMs,
-        NIP46_GET_PUBLIC_KEY_TIMEOUT_MESSAGE,
-    );
+    const startedAt = Date.now();
+    let response: string;
+    try {
+        response = await withTimeout(
+            Promise.race([
+                signer.sendRequest('get_public_key', []),
+                authChallenge.promise,
+            ]),
+            timeoutMs,
+            NIP46_GET_PUBLIC_KEY_TIMEOUT_MESSAGE,
+        );
+    } catch (error) {
+        logNip46PhaseDuration(
+            'get_public_key',
+            startedAt,
+            error instanceof Error
+                && error.message === NIP46_GET_PUBLIC_KEY_TIMEOUT_MESSAGE
+                ? 'timeout'
+                : 'failure',
+        );
+        throw error;
+    }
+    logNip46PhaseDuration('get_public_key', startedAt, 'success');
 
     if (!isValidNip46UserPubkey(response)) {
         throw new Error(NIP46_LIVE_IDENTITY_INVALID_MESSAGE);
@@ -914,6 +958,7 @@ async function resolveNostrConnectRelayResolution(
     signer: BunkerSigner,
     fallbackRelays: string[],
 ): Promise<Nip46RelayResolutionResult> {
+    const startedAt = Date.now();
     const reconciliationResult = await Promise.race([
         signer.sendRequest('switch_relays', []).then((value) => ({
             type: 'response' as const,
@@ -928,6 +973,16 @@ async function resolveNostrConnectRelayResolution(
             }, NIP46_RELAY_RECONCILIATION_TIMEOUT_MS);
         }),
     ]);
+
+    logNip46PhaseDuration(
+        'switch_relays',
+        startedAt,
+        reconciliationResult.type === 'response'
+            ? 'success'
+            : reconciliationResult.type === 'timeout'
+                ? 'timeout'
+                : 'failure',
+    );
 
     if (reconciliationResult.type === 'timeout') {
         return {
@@ -1216,6 +1271,7 @@ export class Nip46Service {
             : null;
         let candidatePool: SimplePool | null = null;
         let candidateBunkerSigner: BunkerSigner | null = null;
+        const startedAt = Date.now();
 
         const closeCandidateResources = async (): Promise<void> => {
             if (candidateBunkerSigner) {
@@ -1309,9 +1365,11 @@ export class Nip46Service {
             candidatePool = null;
             candidateBunkerSigner = null;
             await this.retireRuntimeSnapshot(runtime);
+            logNip46PhaseDuration('rebuild', startedAt, 'success');
             console.debug('[NIP-46] rebuildConnection: pool + BunkerSigner rebuilt');
             return true;
         } catch {
+            logNip46PhaseDuration('rebuild', startedAt, 'failure');
             await failCandidate();
             console.warn('[NIP-46] rebuildConnection candidate verification failed');
             return false;
@@ -1361,6 +1419,7 @@ export class Nip46Service {
             throw new Error('No relays specified in bunker URL');
         }
 
+        const startedAt = Date.now();
         let candidatePool: SimplePool | null = null;
         let candidateBunkerSigner: BunkerSigner | null = null;
 
@@ -1494,8 +1553,10 @@ export class Nip46Service {
             });
             candidatePool = null;
             candidateBunkerSigner = null;
+            logNip46PhaseDuration('bunker-connect', startedAt, 'success');
             return resolvedUserPubkey;
         } catch (error) {
+            logNip46PhaseDuration('bunker-connect', startedAt, 'failure');
             await closeCandidateResources();
             throw error;
         }
@@ -1533,6 +1594,8 @@ export class Nip46Service {
         let connectedRelays: string[] = [];
         let readinessRetryDelayTimer: ReturnType<typeof setTimeout> | null = null;
         let rejectReadinessRetryDelay: ((reason?: unknown) => void) | null = null;
+        let handshakeSubscribedAt: number | null = null;
+        let handshakeAcceptedAt: number | null = null;
 
         const createNostrConnectCancellationError = (): Error =>
             new Error(NIP46_ERROR_MESSAGES.nostrConnectCancelled);
@@ -1886,6 +1949,7 @@ export class Nip46Service {
                     return;
                 }
 
+                handshakeSubscribedAt = Date.now();
                 handshakeSubscription = pendingPool.subscribe(
                     connectedRelays,
                     {
@@ -1960,6 +2024,14 @@ export class Nip46Service {
                                     stage: 'accepted',
                                 });
                                 handshakeAccepted = true;
+                                handshakeAcceptedAt = Date.now();
+                                if (handshakeSubscribedAt !== null) {
+                                    logNip46PhaseDuration(
+                                        'handshake-wait',
+                                        handshakeSubscribedAt,
+                                        'success',
+                                    );
+                                }
                                 handshakeSubscription?.close();
                                 handshakeSubscription = null;
 
@@ -2080,6 +2152,13 @@ export class Nip46Service {
                                     interimSigner = null;
                                 }
 
+                                if (handshakeAcceptedAt !== null) {
+                                    logNip46PhaseDuration(
+                                        'post-handshake',
+                                        handshakeAcceptedAt,
+                                        'success',
+                                    );
+                                }
                                 console.debug('[NIP-46] auth completed after identity verification');
                                 settled = true;
                                 resolveCompletion?.(resolvedUserPubkey);
@@ -2089,6 +2168,13 @@ export class Nip46Service {
                                     return;
                                 }
 
+                                if (handshakeAcceptedAt !== null) {
+                                    logNip46PhaseDuration(
+                                        'post-handshake',
+                                        handshakeAcceptedAt,
+                                        'failure',
+                                    );
+                                }
                                 console.debug('[NIP-46] Nostr Connect candidate verification failed');
                                 settled = true;
                                 await closeHandshakeResources();
@@ -2143,6 +2229,7 @@ export class Nip46Service {
         };
         let candidatePool: SimplePool | null = null;
         let candidateBunkerSigner: BunkerSigner | null = null;
+        const startedAt = Date.now();
 
         const closeCandidateResources = async (): Promise<void> => {
             if (candidateBunkerSigner) {
@@ -2239,9 +2326,11 @@ export class Nip46Service {
             candidatePool = null;
             candidateBunkerSigner = null;
 
+            logNip46PhaseDuration('reconnect', startedAt, 'success');
             console.debug('[NIP-46] reconnect: session restored after live identity verification');
             return sessionSnapshot.userPubkey;
         } catch (error) {
+            logNip46PhaseDuration('reconnect', startedAt, 'failure');
             await closeCandidateResources();
             throw error;
         }
