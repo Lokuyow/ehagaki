@@ -1351,8 +1351,11 @@ export function usePostHistoryThreadGraph({
             return;
         }
 
-        const activeRequestId = taskTracker.incrementRequestId();
+        // A parent load only supersedes an earlier load of the same node. Other
+        // nodes' loads stay current, so opening two reply targets in a row shows both.
         const key = buildAnchorNodeKey(post.eventId, nodeEventId);
+        const activeGraphRequestId = taskTracker.getRequestId();
+        const parentRequestToken = taskTracker.createParentRequestToken(key);
         updateExpansion(post.eventId, nodeEventId, (state) => ({
             ...buildParentLoadingExpansionState(state, {
                 showInitialLoading: !!options.showInitialLoading,
@@ -1363,9 +1366,17 @@ export function usePostHistoryThreadGraph({
         }
 
         await coordinateThreadGraphRevalidateTemplate({
-            isActive: () => activeRequestId === taskTracker.getRequestId() && getShow(),
+            isActive: () =>
+                activeGraphRequestId === taskTracker.getRequestId()
+                && parentRequestToken === taskTracker.getParentRequestToken(key)
+                && getShow(),
             cleanup: () => {
+                // A superseding load of this node owns the timer and the token now.
+                if (parentRequestToken !== taskTracker.getParentRequestToken(key)) {
+                    return;
+                }
                 clearParentLoadingDelayTimer(key);
+                taskTracker.deleteParentRequestToken(key, parentRequestToken);
             },
             onError: () => {
                 applyParentRevalidateErrorState({
@@ -2813,6 +2824,7 @@ export function usePostHistoryThreadGraph({
         resolver.invalidateScope(parentResolverScopeKey);
         taskTracker.cancelAndClearFetchTasks();
         taskTracker.clearChildRequestTokens();
+        taskTracker.clearParentRequestTokens();
         childPrefetchReservationKeys.clear();
         childManualLoadIntentKeys.clear();
         if (ownsProfileSync) {

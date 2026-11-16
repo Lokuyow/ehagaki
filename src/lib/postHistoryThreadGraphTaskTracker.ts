@@ -8,6 +8,12 @@ export interface PostHistoryThreadGraphTaskTracker {
     getChildRequestToken(key: string): number | undefined;
     deleteChildRequestToken(key: string): void;
     clearChildRequestTokens(): void;
+    /** Supersedes an earlier parent load of the same node, and only that one. */
+    createParentRequestToken(key: string): number;
+    getParentRequestToken(key: string): number | undefined;
+    /** Deletes the token only while it is still the current one for the key. */
+    deleteParentRequestToken(key: string, token: number): void;
+    clearParentRequestTokens(): void;
     replaceChildrenFetchTask(key: string, task: PostHistoryReplyFetchTask): void;
     deleteChildrenFetchTask(key: string): void;
     replaceDeletionFetchTask(key: string, task: PostHistoryDeletionFetchTask): void;
@@ -19,6 +25,8 @@ export function createPostHistoryThreadGraphTaskTracker(): PostHistoryThreadGrap
     let requestId = 0;
     let childRequestId = 0;
     const childRequestTokensByKey = new Map<string, number>();
+    let parentRequestId = 0;
+    const parentRequestTokensByKey = new Map<string, number>();
     const childrenFetchTasksByKey = new Map<string, PostHistoryReplyFetchTask>();
     const deletionFetchTasksByKey = new Map<string, PostHistoryDeletionFetchTask>();
 
@@ -48,6 +56,26 @@ export function createPostHistoryThreadGraphTaskTracker(): PostHistoryThreadGrap
 
         clearChildRequestTokens(): void {
             childRequestTokensByKey.clear();
+        },
+
+        createParentRequestToken(key: string): number {
+            parentRequestId += 1;
+            parentRequestTokensByKey.set(key, parentRequestId);
+            return parentRequestId;
+        },
+
+        getParentRequestToken(key: string): number | undefined {
+            return parentRequestTokensByKey.get(key);
+        },
+
+        deleteParentRequestToken(key: string, token: number): void {
+            if (parentRequestTokensByKey.get(key) === token) {
+                parentRequestTokensByKey.delete(key);
+            }
+        },
+
+        clearParentRequestTokens(): void {
+            parentRequestTokensByKey.clear();
         },
 
         replaceChildrenFetchTask(key: string, task: PostHistoryReplyFetchTask): void {
