@@ -3,6 +3,7 @@
     import type { Snippet } from "svelte";
     import Button from "./Button.svelte";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
+    import { useLazyTooltipActivation } from "../lib/hooks/useLazyTooltipActivation.svelte";
 
     interface Props {
         tooltipContent: string;
@@ -36,8 +37,11 @@
         ...buttonProps
     }: Props = $props();
     const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
+    let buttonElement = $state<HTMLButtonElement | null>(null);
+    const tooltip = useLazyTooltipActivation(() => buttonElement);
 </script>
 
+{#if tooltip.active}
 <Tooltip.Provider>
     <Tooltip.Root delayDuration={500}>
         <Tooltip.Trigger>
@@ -46,6 +50,7 @@
                 <Button
                     {...buttonProps}
                     {...restProps}
+                    bind:ref={buttonElement}
                     ariaLabel={ariaLabel}
                     onClick={(event) => {
                         const result = onClick?.(event);
@@ -69,3 +74,16 @@
         </Tooltip.Portal>
     </Tooltip.Root>
 </Tooltip.Provider>
+{:else}
+    <Button
+        {...buttonProps}
+        bind:ref={buttonElement}
+        ariaLabel={ariaLabel}
+        onClick={onClick}
+        onpointerenter={tooltip.onpointerenter}
+        onpointerdown={tooltip.onpointerdown}
+        onfocus={tooltip.onfocus}
+    >
+        {@render children?.()}
+    </Button>
+{/if}

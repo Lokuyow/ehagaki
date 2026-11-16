@@ -2,6 +2,7 @@
     import { DropdownMenu, Tooltip } from "bits-ui";
     import { tick, type Snippet } from "svelte";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
+    import { useLazyTooltipActivation } from "../lib/hooks/useLazyTooltipActivation.svelte";
 
     interface Props {
         open?: boolean;
@@ -36,6 +37,10 @@
     let tooltipOpen = $state(false);
     let triggerElement = $state<HTMLElement | null>(null);
     let shouldRenderMenu = $derived(!lazy || menuInitialized || open);
+    // The deferred trigger also defers its tooltip until first hover or focus.
+    let deferredTriggerElement = $state<HTMLButtonElement | null>(null);
+    const deferredTooltip = useLazyTooltipActivation(() => deferredTriggerElement);
+    let hasTooltip = $derived(enableTooltip && Boolean(tooltipContent));
     let previousOpenProp = false;
 
     $effect(() => {
@@ -176,7 +181,7 @@
             </DropdownMenu.Content>
         </DropdownMenu.Portal>
     </DropdownMenu.Root>
-{:else if enableTooltip && tooltipContent}
+{:else if hasTooltip && deferredTooltip.active}
     <Tooltip.Provider>
         <Tooltip.Root
             bind:open={getTooltipOpen, setTooltipOpen}
@@ -187,6 +192,7 @@
                 {#snippet child({ props })}
                     {@const { onclick: tooltipOnclick, ...restProps } = props}
                     <button
+                        bind:this={deferredTriggerElement}
                         type="button"
                         class={`menu-trigger post-history-menu-trigger ${triggerClassName}`.trim()}
                         aria-label={triggerAriaLabel}
@@ -213,6 +219,7 @@
     </Tooltip.Provider>
 {:else}
     <button
+        bind:this={deferredTriggerElement}
         type="button"
         class={`menu-trigger post-history-menu-trigger ${triggerClassName}`.trim()}
         aria-label={triggerAriaLabel}
@@ -220,6 +227,9 @@
         aria-expanded={menuOpen}
         onclick={(event) => void initializeAndOpenMenu(event)}
         onkeydown={handleDeferredTriggerKeydown}
+        onpointerenter={hasTooltip ? deferredTooltip.onpointerenter : undefined}
+        onpointerdown={hasTooltip ? deferredTooltip.onpointerdown : undefined}
+        onfocus={hasTooltip ? deferredTooltip.onfocus : undefined}
     >
         <div class="more-icon svg-icon"></div>
     </button>
