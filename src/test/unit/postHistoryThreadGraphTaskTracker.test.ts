@@ -29,6 +29,28 @@ describe("postHistoryThreadGraphTaskTracker", () => {
         expect(tracker.getChildRequestToken("b")).toBeUndefined();
     });
 
+    it("parent request token は key ごとに独立し、同じ key の再発行だけが前の token を無効にする", () => {
+        const tracker = createPostHistoryThreadGraphTaskTracker();
+
+        const firstToken = tracker.createParentRequestToken("a");
+        const otherToken = tracker.createParentRequestToken("b");
+        expect(tracker.getParentRequestToken("a")).toBe(firstToken);
+        expect(tracker.getParentRequestToken("b")).toBe(otherToken);
+
+        const secondToken = tracker.createParentRequestToken("a");
+        expect(secondToken).not.toBe(firstToken);
+        expect(tracker.getParentRequestToken("a")).toBe(secondToken);
+        expect(tracker.getParentRequestToken("b")).toBe(otherToken);
+
+        tracker.deleteParentRequestToken("a", firstToken);
+        expect(tracker.getParentRequestToken("a")).toBe(secondToken);
+        tracker.deleteParentRequestToken("a", secondToken);
+        expect(tracker.getParentRequestToken("a")).toBeUndefined();
+
+        tracker.clearParentRequestTokens();
+        expect(tracker.getParentRequestToken("b")).toBeUndefined();
+    });
+
     it("children/deletion task は key 単位で置換時に前回 task を cancel する", () => {
         const tracker = createPostHistoryThreadGraphTaskTracker();
         const firstChildrenCancel = { called: false };
