@@ -2690,6 +2690,75 @@ describe('Nip46Service', () => {
             expect(JSON.parse(mockStorage.getItem(`nostr-nip46-session-${TEST_RECONNECT_PUBKEY}`)!)).toEqual(sessionData);
         });
 
+        it('フェーズ別の所要時間をphase・outcome・durationMsだけでログに出す', async () => {
+            const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => { });
+
+            try {
+                const { sessionData } = await reconnectService();
+
+                const timingCalls = debugSpy.mock.calls.filter(
+                    ([message]) => message === '[NIP-46] phase timing',
+                );
+                expect(timingCalls.map(([, detail]) => detail.phase)).toEqual([
+                    'relay-connect',
+                    'get_public_key',
+                    'reconnect',
+                ]);
+                for (const [, detail] of timingCalls) {
+                    expect(Object.keys(detail).sort()).toEqual([
+                        'durationMs',
+                        'outcome',
+                        'phase',
+                    ]);
+                    expect(detail.outcome).toBe('success');
+                    expect(detail.durationMs).toEqual(expect.any(Number));
+                }
+                expectConsoleCallsNotToContain([debugSpy], [
+                    sessionData.clientSecretKeyHex,
+                    sessionData.remoteSignerPubkey,
+                    sessionData.userPubkey,
+                    sessionData.relays[0],
+                ]);
+            } finally {
+                debugSpy.mockRestore();
+            }
+        });
+
+        it('get_public_keyのtimeoutはtimeoutとして計測ログに残す', async () => {
+            vi.useFakeTimers();
+            const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => { });
+
+            try {
+                const reconnect = reconnectService({
+                    signerOverrides: {
+                        sendRequest: vi.fn().mockImplementation((method: string) =>
+                            method === 'connect'
+                                ? Promise.resolve('ack')
+                                : new Promise<string>(() => { }),
+                        ),
+                    },
+                });
+                const reconnectFailure = expect(reconnect).rejects.toThrow(
+                    'Timed out waiting for get_public_key response',
+                );
+                await vi.advanceTimersByTimeAsync(5000);
+                await reconnectFailure;
+
+                expect(debugSpy).toHaveBeenCalledWith('[NIP-46] phase timing', {
+                    phase: 'get_public_key',
+                    outcome: 'timeout',
+                    durationMs: 5000,
+                });
+                expect(debugSpy).toHaveBeenCalledWith('[NIP-46] phase timing', {
+                    phase: 'reconnect',
+                    outcome: 'failure',
+                    durationMs: 5000,
+                });
+            } finally {
+                debugSpy.mockRestore();
+            }
+        });
+
         it('reconnectは先頭の遅延relayを待たず全session candidateをruntime signerへ渡す', async () => {
             const slowConnection = createDeferred<unknown>();
             const relays = ['wss://slow.example.com', 'wss://fast.example.com'];
