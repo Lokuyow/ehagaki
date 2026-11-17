@@ -9,6 +9,8 @@ import { startServiceWorkerRegistration } from './lib/bootstrap/serviceWorkerBoo
 import { installAppOriginEhagakiDatabaseGate } from './lib/storage/ehagakiDbPageGate'
 import { bootstrapIframeHostRelayConfig } from './lib/iframeHostRelayConfigBootstrap'
 
+const runtimeKind = window.top === window ? 'standalone' : 'iframe'
+
 configureAppRuntimeEnvironment({
   storage: window.localStorage,
   window,
@@ -19,7 +21,7 @@ configureAppRuntimeEnvironment({
   overlayTarget: document.body,
   themeTarget: document.documentElement,
   layoutMode: 'viewport',
-  runtimeKind: window.top === window ? 'standalone' : 'iframe',
+  runtimeKind,
   appHomeHref: import.meta.env.BASE_URL,
   assetBase: new URL(import.meta.env.BASE_URL, window.location.href),
   serviceWorkerEnabled: true,
@@ -76,9 +78,10 @@ const app = hostRelayBootstrap.enabled && 'error' in hostRelayBootstrap
       const { default: App } = await import('./App.svelte')
       return mount(App, {
         target: document.getElementById('app')!,
-        props: hostRelayBootstrap.enabled
-          ? { hostRelayConfig: hostRelayBootstrap.relayConfig }
-          : undefined,
+        props: {
+          showTestLabel: __EHAGAKI_TEST_BUILD__ && runtimeKind === 'standalone',
+          hostRelayConfig: hostRelayBootstrap.enabled ? hostRelayBootstrap.relayConfig : undefined,
+        },
       })
     })()
 

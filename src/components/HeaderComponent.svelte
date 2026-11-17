@@ -23,6 +23,7 @@
         deliveryProgress?: RelayDeliveryToast;
         showMascot?: boolean;
         showFlavorText?: boolean;
+        showTestLabel?: boolean;
     }
 
     let {
@@ -35,6 +36,7 @@
         deliveryProgress = undefined,
         showMascot = true,
         showFlavorText = true,
+        showTestLabel = false,
     }: Props = $props();
     const runtimeEnvironment = getAppRuntimeEnvironment();
     const overlayTarget = runtimeEnvironment.overlayTarget;
@@ -67,7 +69,7 @@
     class="header-container"
     class:container-layout={isContainerLayout}
 >
-    <div class="header-left">
+    <div class={["header-left", { "test-build-with-mascot": showTestLabel && showMascot }]}>
         {#if showMascot}
             <a
                 href={siteIconHref}
@@ -136,6 +138,9 @@
                     aria-valuemin={0} aria-valuemax={100}
                     aria-valuenow={deliveryProgress.progress.discovering ? undefined : Math.round(deliveryRatio * 100)}></span>
             {/if}
+        {/if}
+        {#if showTestLabel}
+            <span class="test-build-label">{$_("testBuildLabel")}</span>
         {/if}
         {#if showFlavorText && balloonMessage}
             <BalloonMessage
@@ -299,6 +304,19 @@
         height: 100%;
     }
 
+    .test-build-label {
+        flex: none;
+        margin-inline: 4px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: #682540;
+        color: white;
+        font-size: 0.75rem;
+        font-weight: 700;
+        line-height: 1.4;
+        white-space: nowrap;
+    }
+
     .site-icon {
         --mascot-accent-color: var(--accent-color-custom, #3FB57E);
         --mascot-inner-color: var(--accent-color-custom-inner, #EDFCF5);
@@ -306,6 +324,35 @@
         width: 52px;
         height: 52px;
         margin-top: auto;
+    }
+
+    @media (width <= 420px) {
+        .test-build-with-mascot {
+            position: relative;
+        }
+
+        .test-build-with-mascot .site-icon-link {
+            justify-content: center;
+            width: 52px;
+            flex: none;
+        }
+
+        .test-build-with-mascot .site-icon {
+            width: 36px;
+            height: 36px;
+            margin: 1px 0 0;
+        }
+
+        .test-build-with-mascot .test-build-label {
+            position: absolute;
+            inset-inline-start: 0;
+            bottom: 2px;
+            box-sizing: border-box;
+            width: 52px;
+            margin: 0;
+            padding-inline: 0;
+            text-align: center;
+        }
     }
 
     .compact-message {
