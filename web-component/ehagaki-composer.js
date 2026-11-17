@@ -249,7 +249,7 @@ var w = class extends HTMLElement {
 				childList: !0,
 				subtree: !0
 			});
-			let { installEhagakiDatabaseGateForRuntime: f } = await import("./assets/ehagakiDbPageGate-DtAx6e45.js");
+			let { installEhagakiDatabaseGateForRuntime: f } = await import("./assets/ehagakiDbPageGate-Cbigdnbn.js");
 			r({
 				storage: i(window.localStorage),
 				window,
@@ -423,7 +423,7 @@ var k = class extends w {
 		}
 	}
 	loadApp() {
-		return import("./assets/App-B2GhfviI.js").then((e) => e.t);
+		return import("./assets/App-D7-eoDXE.js").then((e) => e.t);
 	}
 	getConnectionError() {
 		return this.#t ? {
