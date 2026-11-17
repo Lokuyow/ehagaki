@@ -14,8 +14,11 @@ const isPreview = process.argv.some(arg => arg.includes('preview')) ||
   process.env.VITE_PREVIEW === 'true' ||
   process.env.NODE_ENV === 'preview';
 
-// Vercel環境ではルートパス、それ以外では /ehagaki/ を使用
-const baseUrl = process.env.VERCEL ? '/' : '/ehagaki/';
+// GitHub Pages is the production app. All Vercel deployments are test builds.
+const isTestBuild = Boolean(process.env.VERCEL);
+const baseUrl = isTestBuild ? '/' : '/ehagaki/';
+const appName = isTestBuild ? 'eHagaki Test' : 'eHagaki';
+const pwaIconDirectory = isTestBuild ? 'pwa-test/' : '';
 const webComponentDevProxyEnabled = process.env.EHAGAKI_WEB_COMPONENT_DEV_PROXY === 'true';
 const webComponentDevServerPort = process.env.EHAGAKI_WEB_COMPONENT_DEV_PORT;
 const webComponentDevProxyPath = `${baseUrl}web-component/`;
@@ -38,6 +41,7 @@ export default defineConfig({
   base: baseUrl,
   define: {
     __EHAGAKI_COMPOSER_LITE__: 'false',
+    __EHAGAKI_TEST_BUILD__: JSON.stringify(isTestBuild),
   },
   optimizeDeps: {
     exclude: ['@jsquash/webp']
@@ -87,6 +91,15 @@ export default defineConfig({
   plugins: [
     fixedLegacyBridgeEmitPlugin(fixedLegacyBridgeManifest),
     svelte(),
+    {
+      name: 'ehagaki-pwa-branding',
+      transformIndexHtml: {
+        order: 'pre',
+        handler: html => html
+          .replaceAll('%EHAGAKI_APP_NAME%', appName)
+          .replaceAll('%EHAGAKI_PWA_ICON_DIRECTORY%', pwaIconDirectory),
+      },
+    },
     VitePWA({
       registerType: 'prompt',
       strategies: 'injectManifest',
@@ -96,33 +109,33 @@ export default defineConfig({
       },
       scope: baseUrl,
       manifest: {
-        name: 'eHagaki',
-        short_name: 'eHagaki',
+        name: appName,
+        short_name: appName,
         description: '投稿専用Nostrクライアント。デバイス上で画像・動画を圧縮してからアップロード。エディター内に直接コンテンツを表示。',
         display: 'standalone',
         theme_color: '#2b664b',
         background_color: '#364029',
         icons: [
           {
-            src: `${baseUrl}ehagaki_icon_x192.png`,
+            src: `${baseUrl}${pwaIconDirectory}ehagaki_icon_x192.png`,
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any'
           },
           {
-            src: `${baseUrl}ehagaki_icon_x512.png`,
+            src: `${baseUrl}${pwaIconDirectory}ehagaki_icon_x512.png`,
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any'
           },
           {
-            src: `${baseUrl}maskable_icon_x192.png`,
+            src: `${baseUrl}${pwaIconDirectory}maskable_icon_x192.png`,
             sizes: "192x192",
             type: "image/png",
             purpose: "maskable"
           },
           {
-            src: `${baseUrl}maskable_icon_x512.png`,
+            src: `${baseUrl}${pwaIconDirectory}maskable_icon_x512.png`,
             sizes: "512x512",
             type: "image/png",
             purpose: "maskable"
@@ -156,7 +169,8 @@ export default defineConfig({
           '**/*.{js,css,html}',
           'assets/**/*.{js,css,png,jpg,jpeg,svg,gif,webp,ico}',
           '*.{png,jpg,jpeg,svg,gif,webp,ico}',
-          'icons/**/*.{png,jpg,jpeg,svg,gif,webp,ico}'
+          'icons/**/*.{png,jpg,jpeg,svg,gif,webp,ico}',
+          ...(isTestBuild ? ['pwa-test/*.png'] : []),
         ],
         // Vercel環境での追加設定
         globIgnores: [

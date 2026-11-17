@@ -260,6 +260,7 @@
     hostRelayConfig?: RelayConfig;
     onEditorEmptyChange?: (isEmpty: boolean) => void;
     onPostComponentLoadFailure?: () => void;
+    showTestLabel?: boolean;
   }
 
   const iframeNotificationPort: AppPostNotificationPort & AppEmbedNotificationPort = {
@@ -282,6 +283,7 @@
     hostRelayConfig = undefined,
     onEditorEmptyChange = undefined,
     onPostComponentLoadFailure = undefined,
+    showTestLabel = false,
   }: Props = $props();
 
   type PostComponent =
@@ -2050,6 +2052,7 @@
             ? null
             : balloon.compactMessage}
           showMascot={settingsStore.showMascot}
+          {showTestLabel}
           showFlavorText={showHeaderBalloonMessage}
         />
         <div
