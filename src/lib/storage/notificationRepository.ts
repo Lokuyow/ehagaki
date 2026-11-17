@@ -37,19 +37,24 @@ export class NotificationRepository {
                 return result ? [{ ...item, event: result.event }] : [];
             });
         if (!verified.length || !isActive()) return;
+        // A replayed event in the same batch merges its relays into one row.
+        const unique = new Map<string, { event: NostrEvent; relayUrls: string[] }>();
+        for (const item of verified) {
+            const previous = unique.get(item.event.id);
+            unique.set(item.event.id, { event: previous?.event ?? item.event,
+                relayUrls: [...(previous?.relayUrls ?? []), ...(item.relayUrls ?? [])] });
+        }
+        const rows = [...unique.values()];
         await this.db.transaction('rw', this.db.events, this.db.notifications, async tx => {
-            for (const item of verified) {
-                if (!isActive()) { tx.abort(); return; }
-                const id = `${owner}:${item.event.id}`;
-                const previous = await this.db.notifications.get(id);
-                const relayUrls = RelayConfigUtils.sanitizeExternalRelayUrls([
-                    ...(item.relayUrls ?? []),
-                ]);
-                if (!isActive()) { tx.abort(); return; }
-                await eventRecords(this.db, 'notifications').put({ id, ownerPubkeyHex: owner, eventId: item.event.id,
-                    createdAt: item.event.created_at, event: item.event, relayUrls,
-                    receivedAt: previous?.receivedAt ?? this.now(), unread: previous?.unread ?? 1 });
-            }
+            if (!isActive()) { tx.abort(); return; }
+            const ids = rows.map(item => `${owner}:${item.event.id}`);
+            const previous = await this.db.notifications.bulkGet(ids);
+            if (!isActive()) { tx.abort(); return; }
+            const now = this.now();
+            await eventRecords(this.db, 'notifications').bulkPut(rows.map((item, index) => ({ id: ids[index],
+                ownerPubkeyHex: owner, eventId: item.event.id, createdAt: item.event.created_at, event: item.event,
+                relayUrls: RelayConfigUtils.sanitizeExternalRelayUrls(item.relayUrls),
+                receivedAt: previous[index]?.receivedAt ?? now, unread: previous[index]?.unread ?? 1 })));
             if (!isActive()) tx.abort();
         });
     }

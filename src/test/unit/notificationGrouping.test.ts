@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupNotifications } from '../../lib/notificationGrouping';
+import { groupNotifications, notificationGroupSourceIds, notificationTargetReference, reuseNotificationRecords, shareNotificationGroups } from '../../lib/notificationGrouping';
 import type { NotificationRecord } from '../../lib/storage/notificationRepository';
 import type { NostrEvent } from '../../lib/types';
 
@@ -95,4 +95,50 @@ describe('groupNotifications', () => {
         expect(resolved[1]!.reactions).toEqual([wrong]);
     });
 
+});
+
+describe('notification identity across recomputation', () => {
+    const copy = (value: NotificationRecord, changes: Partial<NotificationRecord> = {}): NotificationRecord =>
+        ({ ...value, event: { ...value.event }, relayUrls: [...value.relayUrls], ...changes });
+
+    it('reuses unchanged records from a fresh local read, including after a read-state write', () => {
+        const first = record('first'), second = record('second', 1);
+        const previous = [first, second];
+        expect(reuseNotificationRecords(previous, [copy(first, { unread: 0 }), copy(second, { unread: 0 })])).toBe(previous);
+
+        const moved = reuseNotificationRecords(previous, [copy(second), copy(first, { relayUrls: ['wss://relay.example/'] })]);
+        expect(moved).not.toBe(previous);
+        expect(moved[0]).toBe(second);
+        expect(moved[1]).not.toBe(first);
+        expect(moved[1]!.relayUrls).toEqual(['wss://relay.example/']);
+    });
+
+    it('keeps unchanged groups when another target resolves and replaces only regrouped ones', () => {
+        const otherId = 'e'.repeat(64);
+        const other: NostrEvent = { ...target, id: otherId };
+        const reaction = record('reaction'), older = record('older'), mention = record('mention', 1),
+            unrelated = record('unrelated', 7, [['p', owner], ['e', otherId]]);
+        const records = [reaction, mention, unrelated, older];
+        const before = groupNotifications(records, () => null);
+        expect(shareNotificationGroups(before, groupNotifications(records, () => null))).toBe(before);
+
+        const after = shareNotificationGroups(before, groupNotifications(records, id => id === otherId ? other : null));
+        expect(after).toBe(before);
+
+        const mismatched: NostrEvent = { ...target, pubkey: author };
+        const regrouped = shareNotificationGroups(before, groupNotifications(records,
+            id => id === targetId ? mismatched : id === otherId ? other : null));
+        expect(regrouped).not.toBe(before);
+        expect(regrouped.find(group => group.id === 'mention')).toBe(before.find(group => group.id === 'mention'));
+        expect(regrouped.find(group => group.id === 'unrelated')).toBe(before.find(group => group.id === 'unrelated'));
+        expect(regrouped.find(group => group.id === 'reaction')).not.toBe(before.find(group => group.id === 'reaction'));
+    });
+
+    it('computes source IDs and target references once per group and event', () => {
+        const reaction = record('reaction'), older = record('older');
+        const [group] = groupNotifications([reaction, older], () => target);
+        expect(notificationGroupSourceIds(group!)).toEqual(['reaction', 'older']);
+        expect(notificationGroupSourceIds(group!)).toBe(notificationGroupSourceIds(group!));
+        expect(notificationTargetReference(reaction)).toBe(notificationTargetReference(copy(reaction, { event: reaction.event })));
+    });
 });

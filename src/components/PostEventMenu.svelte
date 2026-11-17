@@ -32,15 +32,19 @@
     const copy = usePostHistoryCopyNevent();
     let raw = $state(false), confirm = $state(false), refreshing = $state(false);
     let message = $state('');
+    // Mounted on first copy so idle menus do not each carry a portal and effects.
+    let copyMessageMounted = $state(false);
     const preference = $derived({ client: settingsStore.externalNostrClient, customUrlTemplate: settingsStore.externalNostrClientCustomUrl });
     const externalLabel = $derived(getExternalNostrClientDisplayName(preference));
     const deletePending = $derived(operations.isPending(`delete:${post.eventId}`));
     async function refresh() { if (!onRefresh || refreshing) return; refreshing = true; try { await onRefresh(); } finally { refreshing = false; } }
     async function broadcast() { const result = await operations.broadcast(post); if (result && isActive()) message = result.success ? 'postHistory.broadcastSent' : 'postHistory.broadcastFailed'; }
     async function remove() { const result = await operations.deletePost(post); if (!result || !isActive()) return; message = result.success ? '' : 'postHistory.deleteFailed'; if (result.success) { onDeleted?.(post.eventId, result.deletedAt ?? Date.now(), result.deletionEventId ?? ''); confirm = false; } }
-    const resolver = createPostHistoryRelatedTargetResolver({ getShow: () => isActive(), getOwner: () => owner, getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig });
-    async function repost() { if (onRequestRepost) { onRequestRepost(); return; } if (!onRepost || repostPending) return; const result = await onRepost(post, (event, relayHints) => resolver.prepareRepostTarget({ targetEventId: event.id, authorHint: event.pubkey, relayHints, relationKind: 'repost', scopeKey: 'event-menu' }, event)); if (isActive()) message = result.success ? 'repost.sent' : 'repost.failed'; }
-    onDestroy(() => { copy.resetState(); resolver.reset(); });
+    // Created on the first repost: idle menus in long lists need no resolver or profile sync.
+    let resolver: ReturnType<typeof createPostHistoryRelatedTargetResolver> | null = null;
+    const getResolver = () => resolver ??= createPostHistoryRelatedTargetResolver({ getShow: () => isActive(), getOwner: () => owner, getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig });
+    async function repost() { if (onRequestRepost) { onRequestRepost(); return; } if (!onRepost || repostPending) return; const result = await onRepost(post, (event, relayHints) => getResolver().prepareRepostTarget({ targetEventId: event.id, authorHint: event.pubkey, relayHints, relationKind: 'repost', scopeKey: 'event-menu' }, event)); if (isActive()) message = result.success ? 'repost.sent' : 'repost.failed'; }
+    onDestroy(() => { copy.resetState(); resolver?.reset(); });
 </script>
 <PostHistoryActionMenu {open} {onOpenChange} lazy={true} restoreFocusOnClose={true} triggerAriaLabel={triggerLabel ?? $_('common.showActions')} timestamp={formatPostedAtExact(post.postedAt, $locale)}>
     {#snippet items()}
@@ -48,7 +52,7 @@
         <PostHistoryRecordActionItems order="standard" copyFailed={copy.copyState[post.eventId] === 'failed'}
             showBroadcast={!!resolveBroadcastEvent(post)} broadcastSending={operations.isPending(`broadcast:${post.eventId}`)}
             showDelete={canRequestPostDeletion(post, owner)} showDeleteSeparator={true} deletionSending={deletePending}
-            onCopyPointerDown={(event) => copy.captureCopyPointerPosition(post, event)} onCopyNevent={(event) => void copy.handleCopyNevent(post, event)}
+            onCopyPointerDown={(event) => { copyMessageMounted = true; copy.captureCopyPointerPosition(post, event); }} onCopyNevent={(event) => { copyMessageMounted = true; void copy.handleCopyNevent(post, event); }}
             externalClientLabel={externalLabel ? $_('postHistory.openInExternalClient', { values: { client: externalLabel } }) : $_('postHistory.openInExternalClientFallback')}
             onOpenExternalClient={() => { const url = buildPostHistoryExternalClientUrl(post, preference, writeRelaysStore.value); if (url) window.open(url, '_blank', 'noopener,noreferrer'); }}
             onShowRawJson={() => raw = true} onRepost={onRepost && !post.deletedAt && isRepostTargetKind(post.kind) && isPostHistoryRawEventConsistent(post.rawEvent, post) ? () => void repost() : undefined} {repostPending}
@@ -61,4 +65,4 @@
     confirmLabel={$_('postHistory.deleteConfirm')} cancelLabel={$_('postHistory.deleteCancel')} confirmDisabled={deletePending} preventCloseWhileConfirming={true}
     closeOnConfirm={false} onConfirm={remove} />{/if}
 {#if message}<p role="status">{$_(message)}</p>{/if}
-<FloatingMessage show={copy.showCopyFloatingMessage} x={copy.copyFloatingMessageX} y={copy.copyFloatingMessageY}>{$_('postHistory.copied')}</FloatingMessage>
+{#if copyMessageMounted}<FloatingMessage show={copy.showCopyFloatingMessage} x={copy.copyFloatingMessageX} y={copy.copyFloatingMessageY}>{$_('postHistory.copied')}</FloatingMessage>{/if}

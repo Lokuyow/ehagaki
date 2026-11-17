@@ -86,10 +86,8 @@
     import { createPostHistoryProfileSyncCoordinator } from "../lib/postHistoryProfileSync";
     import { postHistoryQuoteTargetDiscoveryAdapter } from "../lib/postHistoryRelatedTargetDiscoveryAdapter";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
-    import {
-        createSensitivePayloadBodyLoader,
-        loadVerifiedSensitivePayloadEvent,
-    } from "../lib/sensitiveContentPayloadReader";
+    import { loadVerifiedSensitivePayloadEvent } from "../lib/sensitiveContentPayloadReader";
+    import { createSensitiveBodyLoaderCache } from "../lib/sensitiveBodyLoaderCache";
     import { reconcilePendingDeletionRequestsForParentEventIds } from "../lib/postHistoryPendingDeletionRequestsReconcile";
     import { triggerPostHistoryChildInteractionDeletionLifecycle } from "../lib/postHistoryChildInteractionDeletionLifecycleTrigger";
     import { formatPostHistoryReactionActorLabel } from "../lib/postHistoryReactionReadModel";
@@ -597,38 +595,19 @@
         });
     }
 
-    type SensitiveBodyLoader = ReturnType<typeof createSensitivePayloadBodyLoader>;
-
     /**
      * One loader per event for the current account, runtime and relay config.
      * PostContentPreview resubscribes to the payload whenever it is handed a
      * new loader, and the thread cards re-read theirs on every graph change.
      */
-    const sensitiveBodyLoaderByEvent = $derived.by(() => {
-        pubkeyHex;
-        rxNostr;
-        relayConfig;
-        return new WeakMap<NostrEvent, { loader: SensitiveBodyLoader }>();
-    });
+    const sensitiveBodyLoaders = createSensitiveBodyLoaderCache();
 
     function getSensitiveBodyLoader(event: NostrEvent | null | undefined) {
-        if (!event) {
-            return undefined;
-        }
-
-        const cached = sensitiveBodyLoaderByEvent.get(event);
-        if (cached) {
-            return cached.loader;
-        }
-
-        const loader = createSensitivePayloadBodyLoader({
+        return sensitiveBodyLoaders.get(event, {
             ownerPubkey: pubkeyHex,
-            structure: event,
             rxNostr,
             relayConfig,
         });
-        sensitiveBodyLoaderByEvent.set(event, { loader });
-        return loader;
     }
 
     function isReactionEmojiReady(url: string): boolean {
