@@ -9,7 +9,6 @@ import { DexiePostHistoryChildInteractionsRepository } from '../../lib/storage/p
 import { clearPostHistoryDisplayForPubkey } from '../../lib/storage/postHistoryPersistenceCoordinator';
 import { DexieSensitivePayloadRepository } from '../../lib/storage/sensitivePayloadRepository';
 import { ensureCurrentEHagakiDbSchema } from '../../lib/swIndexedDbSchema';
-import { upgradeEhagakiDatabase } from '../../lib/storage/ehagakiDbMigration';
 import { migrateEventStore } from '../../lib/storage/eventStoreMigration';
 import { createPostHistoryRelatedTargetResolver } from '../../lib/postHistoryRelatedTargetResolver.svelte';
 import type { NostrEvent } from '../../lib/types';
@@ -142,8 +141,12 @@ describe('shared event storage', () => {
                 eventId: incoming.id, event: incoming, relayUrls: ['wss://received.example/'], createdAt: 100, receivedAt: 456, unread: 0 });
             tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
         }); old.close();
-        await Promise.all([upgradeEhagakiDatabase(indexedDB, { databaseName: db.name }), upgradeEhagakiDatabase(indexedDB, { databaseName: db.name })]);
-        await db.open();
+        const otherTab = new EHagakiDB(db.name);
+        try {
+            await Promise.all([db.open(), otherTab.open()]);
+        } finally {
+            otherTab.close();
+        }
         expect(await db.events.count()).toBe(2);
         expect(await new DexiePostHistoryRepository(db).getByEventId(target.id)).toMatchObject({ rawEvent: target, postedAt: 12345, acceptedRelays: ['wss://accepted.example/'] });
         expect(await new NotificationRepository(db).list(owner)).toMatchObject([{ event: incoming, receivedAt: 456, unread: 0 }]);
@@ -172,7 +175,6 @@ describe('shared event storage', () => {
             tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
         });
         old.close();
-        await upgradeEhagakiDatabase(indexedDB, { databaseName: db.name });
         await db.open();
         const [record] = await new DexiePostHistoryRepository(db).getAll({ pubkeyHex: owner });
         expect(record).toMatchObject({ content: target.content, tags: target.tags, postedAt: 12345 });

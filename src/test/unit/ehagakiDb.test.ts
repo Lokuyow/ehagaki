@@ -16,7 +16,7 @@ import { DexieProfilesRepository } from "../../lib/storage/profilesRepository";
 import { DexieRelayConfigsRepository } from "../../lib/storage/relayConfigsRepository";
 import { createCustomEmojiItem, EMOJIS_CACHE_SCHEMA_VERSION } from "../../lib/customEmoji";
 import { ensureCurrentEHagakiDbSchema } from "../../lib/swIndexedDbSchema";
-import { migrateEhagakiIndexedDb, upgradeEhagakiDatabase } from "../../lib/storage/ehagakiDbMigration";
+import { migrateEhagakiIndexedDb, upgradeEhagakiDatabaseSchema } from "../../lib/storage/ehagakiDbMigration";
 import { LEGACY_DRAFTS_IMPORT_ID } from "../../lib/storage/legacyImportMarkers";
 
 const testDbNames = new Set<string>();
@@ -54,7 +54,7 @@ function createV14Db(name: string): Dexie {
 }
 
 function upgradeWithSharedMigrator(name: string): Promise<void> {
-    return upgradeEhagakiDatabase(indexedDB, { databaseName: name });
+    return upgradeEhagakiDatabaseSchema(indexedDB, { databaseName: name });
 }
 
 function indexedDbWithReportedDatabases(
@@ -299,7 +299,7 @@ describe("EHagakiDB", () => {
         await v14.table("postHistory").put(V14_FIXTURES.postHistory);
         v14.close();
 
-        await upgradeEhagakiDatabase(indexedDbWithReportedDatabases(() => databasesFor(name)), {
+        await upgradeEhagakiDatabaseSchema(indexedDbWithReportedDatabases(() => databasesFor(name)), {
             databaseName: name,
         });
         const upgraded = new EHagakiDB(name);

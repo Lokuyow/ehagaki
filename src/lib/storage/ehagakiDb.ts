@@ -1,4 +1,5 @@
-import { upgradeEhagakiDatabase } from "./ehagakiDbMigration";
+import { upgradeEhagakiDatabaseSchema } from "./ehagakiDbMigration";
+import { migrateEventStore } from "./eventStoreMigration";
 import type { StoredEvent, EventProjection } from "./eventStorageModel";
 import type { NotificationRecord, NotificationSyncState } from './notificationRepository';
 import Dexie, { type Table } from "dexie";
@@ -369,13 +370,17 @@ export class EHagakiDB extends Dexie {
     notificationSyncState!: Table<NotificationSyncState, string>;
     legacyImportState!: Table<LegacyImportStateRecord, string>;
 
-    constructor(databaseName = EHAGAKI_DB_NAME) {
+    constructor(databaseName = EHAGAKI_DB_NAME, { migrateEvents = true } = {}) {
         super(databaseName);
 
         this.on("blocked", () => {
             setEHagakiDbUpgradeBlocked(true);
         });
         this.on("ready", () => setEHagakiDbUpgradeBlocked(false));
+        if (migrateEvents) {
+            // Hold this connection's queries through conversion, including on reopen.
+            this.on("ready", () => migrateEventStore(this.backendDB()), true);
+        }
 
         this.version(EHAGAKI_DB_VERSION).stores({
             events: "id",
@@ -419,7 +424,7 @@ export class EHagakiDB extends Dexie {
         if (this.opening) return this.opening;
         if (this.isOpen()) return Dexie.Promise.resolve(this);
         this.opening = Dexie.Promise.resolve(waitForEhagakiDbOpenGate())
-            .then(() => upgradeEhagakiDatabase(Dexie.dependencies.indexedDB!, { databaseName: this.name }))
+            .then(() => upgradeEhagakiDatabaseSchema(Dexie.dependencies.indexedDB!, { databaseName: this.name }))
             .then(() => super.open())
             .finally(() => { this.opening = null; });
         return this.opening;
@@ -427,3 +432,8 @@ export class EHagakiDB extends Dexie {
 }
 
 export const ehagakiDb = new EHagakiDB();
+
+// Startup reads and writes these stores independently of the history and notification data conversion.
+export const ehagakiStartupDb: Pick<EHagakiDB,
+    "profiles" | "relayConfigs" | "uploadDestinations" | "legacyImportState" | "transaction" | "open" | "close"
+> = new EHagakiDB(EHAGAKI_DB_NAME, { migrateEvents: false });

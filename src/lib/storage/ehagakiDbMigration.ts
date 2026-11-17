@@ -1,4 +1,3 @@
-import { migrateEventStore } from "./eventStoreMigration";
 import { ensureCurrentEHagakiDbSchema } from "../swIndexedDbSchema";
 import {
     EHAGAKI_DB_NAME,
@@ -87,7 +86,7 @@ export function openEhagakiIndexedDb({
     });
 }
 
-export async function upgradeEhagakiDatabase(
+export async function upgradeEhagakiDatabaseSchema(
     indexedDb: IDBFactory,
     hooks: {
         databaseName?: string;
@@ -97,17 +96,11 @@ export async function upgradeEhagakiDatabase(
 ): Promise<void> {
     const databaseName = hooks.databaseName ?? EHAGAKI_DB_NAME;
     const reported = await readReportedNativeVersion(indexedDb, databaseName);
-    if (reported !== null && !needsNativeUpgrade(reported)) {
-        const current = await openEhagakiIndexedDb({ indexedDb, version: null, databaseName });
-        try { await migrateEventStore(current); } finally { current.close(); }
-        return;
-    }
+    if (reported !== null && !needsNativeUpgrade(reported)) return;
+
     const snapshot = await readDatabaseSnapshot(indexedDb, databaseName, hooks);
-    if (!needsNativeUpgrade(snapshot.version)) {
-        const current = await openEhagakiIndexedDb({ indexedDb, version: null, databaseName });
-        try { await migrateEventStore(current); } finally { current.close(); }
-        return;
-    }
+    if (!needsNativeUpgrade(snapshot.version)) return;
+
     const db = await openEhagakiIndexedDb({
         indexedDb,
         version: EHAGAKI_DB_NATIVE_VERSION,
@@ -116,7 +109,7 @@ export async function upgradeEhagakiDatabase(
         onBlocked: hooks.onBlocked,
         onBlockedResolved: hooks.onBlockedResolved,
     });
-    try { await migrateEventStore(db); } finally { db.close(); }
+    db.close();
 }
 
 function needsNativeUpgrade(version: number): boolean {

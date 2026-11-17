@@ -7,7 +7,7 @@ import {
 import { RelayConfigUtils } from "../relayConfigUtils";
 import type { ProfileData } from "../types";
 import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
-import { ehagakiDb, type EHagakiDB, type ProfileRecord } from "./ehagakiDb";
+import { ehagakiStartupDb, type EHagakiDB, type ProfileRecord } from "./ehagakiDb";
 import { getAppStorage } from "../appStorage";
 import { legacyProfileImportId } from "./legacyImportMarkers";
 
@@ -176,7 +176,7 @@ function readLegacyProfile(
 
 export class DexieProfilesRepository implements ProfilesRepository {
     constructor(
-        private db: EHagakiDB = ehagakiDb,
+        private db: Pick<EHagakiDB, "profiles" | "legacyImportState" | "transaction"> = ehagakiStartupDb,
         private now: () => number = Date.now,
         private getStorage: () => Pick<Storage, "getItem" | "removeItem"> = () => getAppStorage(),
     ) { }

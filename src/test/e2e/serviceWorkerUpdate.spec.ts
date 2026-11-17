@@ -7,6 +7,7 @@ import type { AddressInfo } from 'node:net';
 import { build as buildBrowserProbe } from 'esbuild';
 import { HASHED_PRECACHE_ASSET_PATTERN } from '../../lib/swPrecacheInstall';
 import { finalizeEvent, generateSecretKey } from 'nostr-tools';
+import { EHAGAKI_DB_NAME } from '../../lib/storage/ehagakiDbConstants';
 import type { runJsonlImportWorkerProbe } from './jsonlImportWorkerProbe';
 
 const manifestPattern = /\[\{"revision":(?:null|"[^"]*"),"url":"[^"]+"\}(?:,\{"revision":(?:null|"[^"]*"),"url":"[^"]+"\})*\]/;
@@ -169,7 +170,7 @@ async function cacheKeys(page: Page) {
 }
 
 test.beforeEach(async ({ context }) => {
-    // No accounts, relays, or external destinations are involved.
+    // Use only synthetic accounts and no external network services.
     // Network interception can bypass native SW navigation in Firefox/WebKit.
     // Block external app fetches without intercepting same-origin SW requests.
     await context.addInitScript(() => {
@@ -181,6 +182,84 @@ test.beforeEach(async ({ context }) => {
         };
     });
     await context.routeWebSocket('**/*', (socket) => socket.close());
+});
+
+test('restores the saved account while v1.32.0 history conversion is still pending', async ({ page }) => {
+    const fixture = await createFixture('/ehagaki/');
+    const event = finalizeEvent({ kind: 1, content: 'saved history', tags: [], created_at: 123 }, generateSecretKey());
+    const cachedName = 'Saved migration test profile';
+    try {
+        await page.goto(`${fixture.url}sw-monitor.html`);
+        await page.evaluate(async ({ name, version, event, cachedName }) => {
+            localStorage.setItem('firstVisit', '1');
+            localStorage.setItem('nostr-accounts', JSON.stringify([{ pubkeyHex: event.pubkey, type: 'nip07', addedAt: 1 }]));
+            localStorage.setItem('nostr-active-account', event.pubkey);
+            await new Promise<void>((resolve, reject) => {
+                const request = indexedDB.open(name, version);
+                request.onupgradeneeded = () => {
+                    const db = request.result;
+                    db.createObjectStore('postHistory', { keyPath: 'id' }).put({
+                        id: event.id, eventId: event.id, pubkeyHex: event.pubkey, rawEvent: event,
+                        content: event.content, tags: event.tags, createdAt: event.created_at,
+                    });
+                    db.createObjectStore('profiles', { keyPath: 'pubkeyHex' }).put({
+                        pubkeyHex: event.pubkey, displayName: cachedName,
+                        pictureUrl: new URL('ehagaki_ogp.webp', location.href).href,
+                        fetchedAt: Date.now(),
+                    });
+                    db.createObjectStore('relayConfigs', { keyPath: 'pubkeyHex' }).put({
+                        pubkeyHex: event.pubkey, config: { 'wss://migration-test.example/': { read: true, write: true } },
+                    });
+                };
+                request.onsuccess = () => { request.result.close(); resolve(); };
+                request.onerror = () => reject(request.error);
+            });
+        }, { name: EHAGAKI_DB_NAME, version: 170, event, cachedName });
+        await page.addInitScript((pubkey) => {
+            Reflect.set(window, 'nostr', {
+                getPublicKey: async () => pubkey,
+                signEvent: async () => { throw new Error('unexpected fixture signing request'); },
+            });
+            const getAll = IDBObjectStore.prototype.getAll;
+            IDBObjectStore.prototype.getAll = function (...args) {
+                const request = getAll.apply(this, args);
+                if (this.name === 'postHistory' && this.transaction.objectStoreNames.contains('eventStoreMigration')) {
+                    // Pause delivery of the migration's read result. Its readonly
+                    // transaction can finish, so unrelated stores stay accessible.
+                    Object.defineProperty(request, 'onsuccess', {
+                        set(handler: EventListener) {
+                            request.addEventListener('success', (event) => {
+                                Reflect.set(window, '__resumeHistoryMigration', () => handler.call(request, event));
+                            }, { once: true });
+                        },
+                    });
+                    IDBObjectStore.prototype.getAll = getAll;
+                }
+                return request;
+            };
+        }, event.pubkey);
+
+        await page.goto(fixture.url);
+        await page.waitForFunction(() => typeof Reflect.get(window, '__resumeHistoryMigration') === 'function');
+        await expect(page.locator('.footer-bar .profile-display')).not.toHaveClass(/\bloading\b/);
+        await expect(page.locator('.footer-bar').getByRole('img', { name: cachedName })).toBeVisible();
+
+        await page.evaluate(() => Reflect.get(window, '__resumeHistoryMigration')());
+        await expect.poll(() => page.evaluate(async ({ name, id }) => {
+            const db = await new Promise<IDBDatabase>((resolve, reject) => {
+                const request = indexedDB.open(name);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+            try {
+                return await new Promise<string | undefined>((resolve, reject) => {
+                    const request = db.transaction('events').objectStore('events').get(id);
+                    request.onsuccess = () => resolve(request.result?.rawEvent?.content);
+                    request.onerror = () => reject(request.error);
+                });
+            } finally { db.close(); }
+        }, { name: EHAGAKI_DB_NAME, id: event.id })).toBe(event.content);
+    } finally { await fixture.close(); }
 });
 
 for (const basePath of ['/ehagaki/', '/'] as const) {
