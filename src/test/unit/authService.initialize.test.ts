@@ -32,11 +32,12 @@ describe('startup active selection persistence', () => {
         vi.useRealTimers();
     });
 
-    it('preserves active NIP-46 when reconnect fails instead of restoring B', async () => {
+    it('preserves active NIP-46 when its session cannot be restored instead of restoring B', async () => {
         const { Nip46Service, nip46Service } = await import('../../lib/nip46Service');
         const loadSession = vi.spyOn(Nip46Service, 'loadSession')
             .mockReturnValue(createMockNip46Session(ACTIVE_PUBKEY));
-        vi.spyOn(nip46Service, 'reconnect').mockRejectedValue(new Error('offline'));
+        vi.spyOn(nip46Service, 'restoreSessionInBackground')
+            .mockRejectedValue(new Error('no usable relays'));
         const deps = createMockDependencies();
         const manager = new AccountManager({ localStorage: deps.localStorage! });
         manager.addAccount(FALLBACK_PUBKEY, 'nsec');
@@ -47,7 +48,7 @@ describe('startup active selection persistence', () => {
             hasAuth: false, activeSelectionPreserved: true, restoreOutcome: 'completed',
         });
         expect(loadSession).toHaveBeenCalled();
-        expect(nip46Service.reconnect).toHaveBeenCalled();
+        expect(nip46Service.restoreSessionInBackground).toHaveBeenCalled();
         expect((deps.keyManager as MockKeyManager).readStoredKey).not.toHaveBeenCalledWith(FALLBACK_PUBKEY);
         expect(manager.getActiveAccountPubkey()).toBe(ACTIVE_PUBKEY);
         loadSession.mockReturnValue(null);

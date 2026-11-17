@@ -11,6 +11,8 @@ vi.mock('../../lib/nip46Service', () => ({
         connect: vi.fn(),
         startNostrConnect: vi.fn(),
         reconnect: vi.fn(),
+        restoreSessionInBackground: vi.fn(),
+        setIdentityMismatchHandler: vi.fn(),
         bindSessionPersistence: vi.fn(),
         disconnect: vi.fn().mockResolvedValue(undefined),
         isConnected: vi.fn().mockReturnValue(false),

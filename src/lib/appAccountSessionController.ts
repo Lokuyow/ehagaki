@@ -101,6 +101,14 @@ export interface AppAccountSessionController {
     switchAccount(pubkeyHex: string): Promise<boolean>;
     logoutAccount(pubkeyHex: string, options?: LogoutAccountOptions): Promise<void>;
     handleRemoteParentClientLogout(pubkeyHex: string | null): Promise<void>;
+    /**
+     * Ends the NIP-46 session whose signer now reports a different user. The
+     * account and its saved data are kept; only the running session is dropped.
+     */
+    handleNip46IdentityMismatch(
+        pubkeyHex: string,
+        options?: { beforeConverge?: () => void },
+    ): Promise<void>;
 }
 
 export function createAppAccountSessionController(
@@ -181,11 +189,26 @@ export function createAppAccountSessionController(
         }
     }
 
-    async function switchAccount(pubkeyHex: string): Promise<boolean> {
+    // The account transition that currently owns the runtime: a switch, or
+    // the convergence to guest after a NIP-46 identity mismatch.
+    let activeSwitch: Promise<unknown> | null = null;
+
+    function switchAccount(pubkeyHex: string): Promise<boolean> {
         if (deps.getIsSwitchingAccount()) {
-            return false;
+            return Promise.resolve(false);
         }
 
+        const switching = runSwitchAccount(pubkeyHex);
+        activeSwitch = switching;
+        void switching.finally(() => {
+            if (activeSwitch === switching) {
+                activeSwitch = null;
+            }
+        });
+        return switching;
+    }
+
+    async function runSwitchAccount(pubkeyHex: string): Promise<boolean> {
         deps.setIsSwitchingAccount(true);
         deps.setProfileLoading(false);
         let transactionStarted = false;
@@ -368,9 +391,67 @@ export function createAppAccountSessionController(
         });
     }
 
+    function isCurrentNip46Session(pubkeyHex: string): boolean {
+        const auth = deps.getAuthStateSnapshot();
+        return auth?.type === 'nip46' && auth.pubkey === pubkeyHex;
+    }
+
+    async function handleNip46IdentityMismatch(
+        pubkeyHex: string,
+        options: { beforeConverge?: () => void } = {},
+    ): Promise<void> {
+        // A transition in progress owns the runtime; let it settle before
+        // judging whether the mismatched session is still the current one.
+        while (activeSwitch) {
+            await activeSwitch;
+        }
+        if (!isCurrentNip46Session(pubkeyHex) || deps.getIsSwitchingAccount()) {
+            return;
+        }
+
+        const converging = convergeAfterNip46IdentityMismatch(options);
+        activeSwitch = converging;
+        try {
+            await converging;
+        } finally {
+            if (activeSwitch === converging) {
+                activeSwitch = null;
+            }
+        }
+    }
+
+    async function convergeAfterNip46IdentityMismatch(
+        options: { beforeConverge?: () => void },
+    ): Promise<void> {
+        deps.logger.error('NIP-46 signerのidentityが保存済みセッションと一致しません', {
+            stage: 'nip46-identity-mismatch',
+            reason: 'identity-mismatch',
+        });
+        // Held for the whole convergence so switchAccount() rejects a switch
+        // that would otherwise have its runtime replaced by the guest runtime.
+        deps.setIsSwitchingAccount(true);
+        try {
+            options.beforeConverge?.();
+            // beforeConverge may abort a profile bootstrap that would otherwise
+            // have cleared this flag; a guest left "loading" cannot log in.
+            deps.setProfileLoading(false);
+            deps.resetUploadDisplayState();
+            await convergeToGuest();
+            deps.refreshAccountList();
+        } catch {
+            deps.logger.error('NIP-46 identity不一致後のセッション終了に失敗しました', {
+                stage: 'nip46-identity-mismatch',
+                reason: 'unexpected',
+            });
+        } finally {
+            deps.setIsSwitchingAccount(false);
+        }
+    }
+
     return {
         switchAccount,
         logoutAccount,
         handleRemoteParentClientLogout,
+        handleNip46IdentityMismatch,
     };
 }

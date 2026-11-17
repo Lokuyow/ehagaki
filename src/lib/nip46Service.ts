@@ -784,6 +784,78 @@ async function readLiveNip46UserPubkey(
     return response;
 }
 
+function isSignerErrorResponse(error: unknown): boolean {
+    const message = error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+            ? error
+            : '';
+
+    return message !== NIP46_GET_PUBLIC_KEY_TIMEOUT_MESSAGE
+        && message !== NIP46_LIVE_IDENTITY_AUTH_CHALLENGE_MESSAGE
+        && message !== NIP46_LIVE_IDENTITY_INVALID_MESSAGE;
+}
+
+async function sendSessionConnectRequest(
+    signer: BunkerSigner,
+    authChallenge: LiveIdentityAuthChallenge,
+    remoteSignerPubkey: string,
+): Promise<void> {
+    const connectParamCandidates = [
+        [
+            remoteSignerPubkey,
+            '',
+            NIP46_REQUESTED_PERMS,
+            JSON.stringify(NIP46_CLIENT_METADATA),
+        ],
+        [remoteSignerPubkey, '', NIP46_REQUESTED_PERMS],
+        [remoteSignerPubkey, ''],
+    ];
+
+    let connectError: unknown = null;
+    for (const params of connectParamCandidates) {
+        try {
+            await withTimeout(
+                Promise.race([
+                    signer.sendRequest('connect', params),
+                    authChallenge.promise,
+                ]),
+                NIP46_LIVE_IDENTITY_TIMEOUT_MS,
+                'Timed out waiting for reconnect connect response',
+            );
+            return;
+        } catch (error) {
+            connectError = error;
+        }
+    }
+
+    throw connectError;
+}
+
+/**
+ * Verifies a saved session with a single get_public_key round trip. A signer
+ * that answers with an error may require `connect` for each new connection, so
+ * only that case pays for the extra round trips. A signer that does not answer
+ * at all is treated as offline: `connect` would wait just as long.
+ */
+async function readSessionLiveNip46UserPubkey(
+    signer: BunkerSigner,
+    authChallenge: LiveIdentityAuthChallenge,
+    remoteSignerPubkey: string,
+): Promise<string> {
+    try {
+        return await readLiveNip46UserPubkey(signer, authChallenge);
+    } catch (error) {
+        if (!isSignerErrorResponse(error)) {
+            throw error;
+        }
+    }
+
+    console.debug('[NIP-46] get_public_key rejected; retrying after connect');
+    await sendSessionConnectRequest(signer, authChallenge, remoteSignerPubkey);
+    return await readLiveNip46UserPubkey(signer, authChallenge);
+}
+
 export function sanitizeNip46NostrConnectRelays(relays: string[]): string[] {
     const seen = new Set<string>();
     const sanitized: string[] = [];
@@ -1050,6 +1122,15 @@ export class Nip46Service {
     private persistenceBinding: SessionPersistenceBinding | null = null;
     private operationPromise: Promise<boolean> | null = null;
     private retiredRuntimeClosers = new Set<() => Promise<void>>();
+    private identityMismatchHandler:
+        | ((userPubkey: string) => void | Promise<void>)
+        | null = null;
+    /**
+     * Advances whenever the session is replaced, ended or re-verified. Saved
+     * credentials alone cannot tell an obsolete verification from the current
+     * one, because restoring the same account again yields identical fields.
+     */
+    private sessionEpoch = 0;
 
     /** Installs a verified runtime and publishes its session in one step. */
     private adoptRuntime(
@@ -1067,6 +1148,7 @@ export class Nip46Service {
         this.userPubkey = runtime.userPubkey;
         this.bunkerSigner = runtime.bunkerSigner;
         this.signerAdapter = runtime.signerAdapter;
+        this.sessionEpoch += 1;
         this.setCurrentSession(session);
     }
 
@@ -1269,6 +1351,7 @@ export class Nip46Service {
         const binding = this.persistenceBinding
             ? { ...this.persistenceBinding }
             : null;
+        const sessionEpoch = this.sessionEpoch;
         let candidatePool: SimplePool | null = null;
         let candidateBunkerSigner: BunkerSigner | null = null;
         const startedAt = Date.now();
@@ -1291,7 +1374,8 @@ export class Nip46Service {
             await closeCandidateResources();
 
             if (
-                !this.isCurrentSessionSnapshot(session)
+                sessionEpoch !== this.sessionEpoch
+                || !this.isCurrentSessionSnapshot(session)
                 || !this.isCurrentRuntime(runtime)
             ) {
                 return false;
@@ -1326,9 +1410,10 @@ export class Nip46Service {
                 session.userPubkey,
             );
 
-            const liveUserPubkey = await readLiveNip46UserPubkey(
+            const liveUserPubkey = await readSessionLiveNip46UserPubkey(
                 candidateBunkerSigner,
                 authChallenge,
+                session.remoteSignerPubkey,
             );
             if (liveUserPubkey !== session.userPubkey) {
                 throw new Error(NIP46_LIVE_IDENTITY_MISMATCH_MESSAGE);
@@ -1339,8 +1424,12 @@ export class Nip46Service {
                 relays: supportedRelays,
             };
 
+            // The epoch is checked as well as the snapshots: restoring the
+            // same account again makes every snapshot match an obsolete
+            // candidate, which must not replace the verification in progress.
             if (
-                !this.isCurrentSessionSnapshot(session)
+                sessionEpoch !== this.sessionEpoch
+                || !this.isCurrentSessionSnapshot(session)
                 || !this.isCurrentRuntime(runtime)
                 || !this.isCurrentPersistenceBinding(binding)
             ) {
@@ -1368,12 +1457,50 @@ export class Nip46Service {
             logNip46PhaseDuration('rebuild', startedAt, 'success');
             console.debug('[NIP-46] rebuildConnection: pool + BunkerSigner rebuilt');
             return true;
-        } catch {
+        } catch (error) {
             logNip46PhaseDuration('rebuild', startedAt, 'failure');
             await failCandidate();
             console.warn('[NIP-46] rebuildConnection candidate verification failed');
+            if (
+                error instanceof Error
+                && error.message === NIP46_LIVE_IDENTITY_MISMATCH_MESSAGE
+                && sessionEpoch === this.sessionEpoch
+                && this.isCurrentSessionSnapshot(session)
+            ) {
+                this.notifyIdentityMismatch(session.userPubkey);
+            }
             return false;
         }
+    }
+
+    private notifyIdentityMismatch(userPubkey: string): void {
+        const handler = this.identityMismatchHandler;
+        if (!handler) {
+            return;
+        }
+
+        console.warn('[NIP-46] saved session identity mismatch', {
+            reason: 'identity-mismatch' satisfies Nip46LogFailureReason,
+        });
+        void (async () => {
+            try {
+                await handler(userPubkey);
+            } catch {
+                console.error('[NIP-46] identity mismatch handler failed', {
+                    reason: 'unexpected' satisfies Nip46LogFailureReason,
+                });
+            }
+        })();
+    }
+
+    /**
+     * Registers the owner to notify when the signer of the current session
+     * reports a different user than the one the session was saved for.
+     */
+    setIdentityMismatchHandler(
+        handler: ((userPubkey: string) => void | Promise<void>) | null,
+    ): void {
+        this.identityMismatchHandler = handler;
     }
 
     private async runOperation(
@@ -2265,42 +2392,10 @@ export class Nip46Service {
                 onauth: authChallenge.reject,
             });
 
-            const reconnectConnectParamCandidates = [
-                [
-                    bunkerPointer.pubkey,
-                    '',
-                    NIP46_REQUESTED_PERMS,
-                    JSON.stringify(NIP46_CLIENT_METADATA),
-                ],
-                [bunkerPointer.pubkey, '', NIP46_REQUESTED_PERMS],
-                [bunkerPointer.pubkey, ''],
-            ];
-
-            let reconnectConnectError: unknown = null;
-            for (const params of reconnectConnectParamCandidates) {
-                try {
-                    await withTimeout(
-                        Promise.race([
-                            candidateBunkerSigner.sendRequest('connect', params),
-                            authChallenge.promise,
-                        ]),
-                        NIP46_LIVE_IDENTITY_TIMEOUT_MS,
-                        'Timed out waiting for reconnect connect response',
-                    );
-                    reconnectConnectError = null;
-                    break;
-                } catch (error) {
-                    reconnectConnectError = error;
-                }
-            }
-
-            if (reconnectConnectError) {
-                throw reconnectConnectError;
-            }
-
-            const liveUserPubkey = await readLiveNip46UserPubkey(
+            const liveUserPubkey = await readSessionLiveNip46UserPubkey(
                 candidateBunkerSigner,
                 authChallenge,
+                bunkerPointer.pubkey,
             );
             if (liveUserPubkey !== sessionSnapshot.userPubkey) {
                 throw new Error(NIP46_LIVE_IDENTITY_MISMATCH_MESSAGE);
@@ -2336,8 +2431,46 @@ export class Nip46Service {
         }
     }
 
+    /**
+     * Adopts a saved session without waiting for the remote signer, so startup
+     * is not blocked on a round trip through it. The connection and the live
+     * identity check run as the current operation: getSignerForSession() waits
+     * for it and never returns a signer that has not passed that check.
+     *
+     * @param persistence Where the verified session is written back. It has to
+     * be bound before the operation starts, because the operation rejects a
+     * candidate whose binding changed while it was being verified.
+     */
+    async restoreSessionInBackground(
+        session: Nip46SessionData,
+        persistence?: { storage: Storage; pubkeyHex?: string },
+    ): Promise<string> {
+        const relays = sanitizeNip46NostrConnectRelays(session.relays);
+        if (relays.length === 0) {
+            throw new Error(formatNip46RelayConnectionFailure('no reachable relays'));
+        }
+
+        // Detach the previous runtime, swap the session and start verifying in
+        // one synchronous step, so no caller can observe the new session paired
+        // with the previous runtime or persistence binding.
+        this.operationPromise = null;
+        this.sessionEpoch += 1;
+        const closingPreviousRuntime = this.closeRuntimeResources();
+        this.setCurrentSession({ ...session, relays });
+        this.persistenceBinding = persistence ? { ...persistence } : null;
+
+        void this.runOperation(() => this.rebuildConnection()).catch(() => {
+            console.warn('[NIP-46] background session restore failed', {
+                reason: 'unexpected' satisfies Nip46LogFailureReason,
+            });
+        });
+        await closingPreviousRuntime;
+        return session.userPubkey;
+    }
+
     async disconnect(): Promise<void> {
         this.operationPromise = null;
+        this.sessionEpoch += 1;
         this.setCurrentSession(null);
         this.persistenceBinding = null;
         await this.closeRuntimeResources();

@@ -629,4 +629,98 @@ describe('createAppAccountSessionController', () => {
         expect(deps.clearPersistedPostHistoryListingSnapshots).not.toHaveBeenCalled();
         expect(loggingOutStateHistory).toEqual([true, false]);
     });
+
+    describe('handleNip46IdentityMismatch', () => {
+        it('現在のNIP-46 sessionを終了してゲストへ移行し、アカウントと保存データは残す', async () => {
+            const { controller, deps, accounts, getActivePubkey, setAuthSnapshot } = createController();
+            accounts.set(CURRENT_PUBKEY, 'nip46');
+            setAuthSnapshot({ type: 'nip46', pubkey: CURRENT_PUBKEY });
+            const beforeConverge = vi.fn();
+
+            await controller.handleNip46IdentityMismatch(CURRENT_PUBKEY, { beforeConverge });
+
+            expect(beforeConverge).toHaveBeenCalledOnce();
+            expect(deps.setProfileLoading).toHaveBeenCalledWith(false);
+            expect(deps.nip46Service.disconnect).toHaveBeenCalledOnce();
+            expect(deps.clearAuthState).toHaveBeenCalledOnce();
+            expect(deps.initializeNostr).toHaveBeenCalledOnce();
+            expect(deps.refreshAccountList).toHaveBeenCalledOnce();
+            expect(getActivePubkey()).toBeNull();
+            expect(accounts.has(CURRENT_PUBKEY)).toBe(true);
+            expect(deps.logoutAccountFromAuthService).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            ['別のNIP-46アカウント', { type: 'nip46', pubkey: OTHER_PUBKEY }],
+            ['同じpubkeyの別の認証方式', { type: 'nip07', pubkey: CURRENT_PUBKEY }],
+        ])('現在のsessionが%sなら何もしない', async (_label, authSnapshot) => {
+            const { controller, deps, getActivePubkey, setAuthSnapshot } = createController();
+            setAuthSnapshot(authSnapshot);
+            const beforeConverge = vi.fn();
+
+            await controller.handleNip46IdentityMismatch(CURRENT_PUBKEY, { beforeConverge });
+
+            expect(beforeConverge).not.toHaveBeenCalled();
+            expect(deps.nip46Service.disconnect).not.toHaveBeenCalled();
+            expect(deps.clearAuthState).not.toHaveBeenCalled();
+            expect(getActivePubkey()).toBe(CURRENT_PUBKEY);
+        });
+
+        it('ゲストへの移行中はアカウント切替を受け付けず、移行後のruntimeを上書きさせない', async () => {
+            let finishGuestInit: (() => void) | undefined;
+            const {
+                controller,
+                deps,
+                accounts,
+                setAuthSnapshot,
+                switchingAccountStateHistory,
+            } = createController({
+                initializeNostr: vi.fn(() => new Promise<void>((resolve) => {
+                    finishGuestInit = resolve;
+                })),
+            });
+            accounts.set(CURRENT_PUBKEY, 'nip46');
+            setAuthSnapshot({ type: 'nip46', pubkey: CURRENT_PUBKEY });
+
+            const mismatch = controller.handleNip46IdentityMismatch(CURRENT_PUBKEY);
+            await vi.waitFor(() => {
+                expect(finishGuestInit).toBeDefined();
+            });
+
+            await expect(controller.switchAccount(TARGET_PUBKEY)).resolves.toBe(false);
+            expect(deps.restoreManagedAccountSession).not.toHaveBeenCalled();
+
+            finishGuestInit?.();
+            await mismatch;
+
+            expect(switchingAccountStateHistory).toEqual([true, false]);
+            await expect(controller.switchAccount(TARGET_PUBKEY)).resolves.toBe(true);
+        });
+
+        it('進行中のアカウント切替が完了してから現在のsessionを判定する', async () => {
+            let resolveRestore: ((value: { success: true; pubkeyHex: string }) => void) | undefined;
+            const { controller, deps, accounts, setAuthSnapshot, getActivePubkey } = createController({
+                restoreManagedAccountSession: vi.fn(() => new Promise((resolve) => {
+                    resolveRestore = resolve;
+                })),
+            });
+            accounts.set(TARGET_PUBKEY, 'nip46');
+
+            const switching = controller.switchAccount(TARGET_PUBKEY);
+            await vi.waitFor(() => {
+                expect(resolveRestore).toBeDefined();
+            });
+            setAuthSnapshot({ type: 'nip46', pubkey: TARGET_PUBKEY });
+            const mismatch = controller.handleNip46IdentityMismatch(TARGET_PUBKEY);
+            await Promise.resolve();
+            expect(deps.initializeNostr).not.toHaveBeenCalled();
+
+            resolveRestore?.({ success: true, pubkeyHex: TARGET_PUBKEY });
+            await expect(switching).resolves.toBe(true);
+            await mismatch;
+
+            expect(deps.initializeNostr).toHaveBeenCalledOnce();
+            expect(getActivePubkey()).toBeNull();
+        });
+    });
 });

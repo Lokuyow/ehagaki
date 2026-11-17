@@ -374,6 +374,7 @@ vi.mock('../../lib/nip46Service', () => ({
         getSigner: vi.fn().mockReturnValue(null),
         hasRecoverableSession: vi.fn().mockReturnValue(false),
         ensureConnection: vi.fn().mockResolvedValue(true),
+        setIdentityMismatchHandler: vi.fn(),
     },
     BUNKER_REGEX: /^bunker:\/\/.+$/,
 }));
