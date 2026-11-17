@@ -1,7 +1,7 @@
 import { STORAGE_KEYS } from "../constants";
 import type { NavigatorAdapter, UploadDestination, UploadDestinationCapabilities } from "../types";
 import { embedIndexedDbService } from "../embedIndexedDbService";
-import { ehagakiDb, type EHagakiDB, type UploadDestinationRecord } from "./ehagakiDb";
+import { ehagakiStartupDb, type EHagakiDB, type UploadDestinationRecord } from "./ehagakiDb";
 import {
     UPLOAD_DESTINATION_GLOBAL_SCOPE,
     UPLOAD_DESTINATION_SCHEMA_VERSION,
@@ -219,7 +219,7 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
     private parentMissingScopes = new Set<string>();
 
     constructor(
-        private db: EHagakiDB = ehagakiDb,
+        private db: Pick<EHagakiDB, "uploadDestinations" | "legacyImportState" | "transaction"> = ehagakiStartupDb,
         private now: () => number = Date.now,
         private getStorage: () => Pick<Storage, "getItem" | "setItem" | "removeItem"> = () => getAppStorage(),
         private parentSync: UploadDestinationsParentSync | null = uploadDestinationsParentSync,

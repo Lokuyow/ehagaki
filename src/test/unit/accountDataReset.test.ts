@@ -3,7 +3,7 @@ import Dexie from "dexie";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { STORAGE_KEYS } from "../../lib/constants";
 import { resetManagedAccountData } from "../../lib/accountDataReset";
-import { EHAGAKI_DB_NAME, ehagakiDb } from "../../lib/storage/ehagakiDb";
+import { EHAGAKI_DB_NAME, ehagakiDb, ehagakiStartupDb } from "../../lib/storage/ehagakiDb";
 import { MockStorage } from "../helpers";
 
 function createCachesMock() {
@@ -14,6 +14,7 @@ function createCachesMock() {
 
 afterEach(async () => {
     ehagakiDb.close();
+    ehagakiStartupDb.close();
     await Dexie.delete(EHAGAKI_DB_NAME);
     vi.clearAllMocks();
 });
@@ -55,6 +56,7 @@ describe("resetManagedAccountData", () => {
         const caches = createCachesMock();
 
         await ehagakiDb.open();
+        await ehagakiStartupDb.open();
         await ehagakiDb.drafts.put({
             id: "draft",
             scopeKey: "owner",

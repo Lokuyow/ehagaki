@@ -3,7 +3,7 @@ import en from "../i18n/en.json";
 import ja from "../i18n/ja.json";
 import { setEHagakiDbUpgradeBlocked } from "./ehagakiDb";
 import { EHAGAKI_DB_NAME, EHAGAKI_DB_NATIVE_VERSION } from "./ehagakiDbConstants";
-import { upgradeEhagakiDatabase } from "./ehagakiDbMigration";
+import { upgradeEhagakiDatabaseSchema } from "./ehagakiDbMigration";
 import { installEhagakiDbOpenGate } from "./ehagakiDbOpenGate";
 import {
     EHAGAKI_DB_CAPABILITY_PROBE,
@@ -37,7 +37,7 @@ export function installExternalHostEhagakiDatabaseGate(
     indexedDb: IDBFactory = indexedDB,
     databaseName = EHAGAKI_DB_NAME,
 ): void {
-    installEhagakiDbOpenGate(() => upgradeEhagakiDatabase(indexedDb, { databaseName }));
+    installEhagakiDbOpenGate(() => upgradeEhagakiDatabaseSchema(indexedDb, { databaseName }));
 }
 
 export async function installEhagakiDatabaseGateForRuntime(assetBase: URL): Promise<void> {
@@ -83,7 +83,7 @@ function runAppOriginDatabaseGate(
         const migrateFromPage = () => {
             if (settled || newerDatabase) return;
             if (attempt) return;
-            attempt = upgradeEhagakiDatabase(indexedDb, {
+            attempt = upgradeEhagakiDatabaseSchema(indexedDb, {
                 databaseName,
                 onBlocked: () => {
                     showEhagakiDatabaseGateNotice(target, "blocked");

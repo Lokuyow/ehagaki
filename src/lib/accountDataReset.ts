@@ -1,6 +1,6 @@
 import Dexie from "dexie";
 import { STORAGE_KEYS } from "./constants";
-import { EHAGAKI_DB_NAME, ehagakiDb } from "./storage/ehagakiDb";
+import { EHAGAKI_DB_NAME, ehagakiDb, ehagakiStartupDb } from "./storage/ehagakiDb";
 import { getAppStorage } from "./appStorage";
 import { UPLOAD_MEDIA_IMAGE_CACHE_NAMES, UPLOAD_MEDIA_IMAGE_LEGACY_CACHE_NAMES } from "./uploadMediaImageCachePolicy";
 
@@ -63,6 +63,7 @@ export async function resetManagedAccountData(
     removeManagedLocalStorageKeys(localStorage);
 
     ehagakiDb.close();
+    ehagakiStartupDb.close();
     await Dexie.delete(EHAGAKI_DB_NAME);
 
     await Promise.all(

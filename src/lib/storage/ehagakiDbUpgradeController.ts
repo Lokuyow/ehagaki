@@ -3,7 +3,7 @@ import {
     EHAGAKI_DB_NATIVE_VERSION,
     NEXT_EHAGAKI_DB_NATIVE_VERSION,
 } from "./ehagakiDbConstants";
-import { migrateEhagakiIndexedDb, upgradeEhagakiDatabase } from "./ehagakiDbMigration";
+import { migrateEhagakiIndexedDb, upgradeEhagakiDatabaseSchema } from "./ehagakiDbMigration";
 
 export const EHAGAKI_DB_CAPABILITY_PROBE = "EHAGAKI_DB_CAPABILITY_PROBE";
 export const EHAGAKI_DB_CAPABILITY_REPORT = "EHAGAKI_DB_CAPABILITY_REPORT";
@@ -93,7 +93,7 @@ export function createEhagakiDbUpgradeController(deps: {
             await notify("EHAGAKI_DB_UPGRADE_BLOCKED");
             return false;
         }
-        await upgradeEhagakiDatabase(deps.indexedDb, {
+        await upgradeEhagakiDatabaseSchema(deps.indexedDb, {
             onBlocked: deps.onBlocked,
             onBlockedResolved: deps.onBlockedResolved,
         });

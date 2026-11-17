@@ -1,7 +1,7 @@
 import { STORAGE_KEYS } from "../constants";
 import { RelayConfigParser, RelayConfigUtils } from "../relayConfigUtils";
 import type { RelayConfig } from "../types";
-import { ehagakiDb, type EHagakiDB, type RelayConfigRecord } from "./ehagakiDb";
+import { ehagakiStartupDb, type EHagakiDB, type RelayConfigRecord } from "./ehagakiDb";
 import { getAppStorage } from "../appStorage";
 import { legacyRelayConfigImportId } from "./legacyImportMarkers";
 
@@ -84,7 +84,7 @@ function readLegacyRelayConfig(
 
 export class DexieRelayConfigsRepository implements RelayConfigsRepository {
     constructor(
-        private db: EHagakiDB = ehagakiDb,
+        private db: Pick<EHagakiDB, "relayConfigs" | "legacyImportState" | "transaction"> = ehagakiStartupDb,
         private now: () => number = Date.now,
         private getStorage: () => Pick<Storage, "getItem" | "removeItem"> = () => getAppStorage(),
     ) { }
