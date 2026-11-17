@@ -2,6 +2,7 @@
     import { untrack } from 'svelte';
     import { _ } from 'svelte-i18n';
     import { getNotificationPostInteractions } from '../lib/hooks/useNotificationPostInteractions.svelte';
+    import { inViewportAction } from '../lib/hooks/inViewportAction.svelte';
     import PostEventMenu from './PostEventMenu.svelte';
     import type { FullscreenMediaItem, NostrEvent, ProfileData } from '../lib/types';
     import PostHistoryRelatedEventCard from './PostHistoryRelatedEventCard.svelte';
@@ -10,8 +11,6 @@
     import { buildComposerInteractionRenderModel } from '../lib/composerTargetRelatedPreview';
     import { buildPostContentRenderModel, type SensitiveBodyLoader } from '../lib/postContentPreview';
     import { stripPostHistoryInlineQuoteUrisForDisplay } from '../lib/postHistoryQuoteUtils';
-    import { usePostHistoryEmojiState } from '../lib/hooks/usePostHistoryEmojiState.svelte';
-    import { usePostHistoryPreviewCollapse } from '../lib/hooks/usePostHistoryPreviewCollapse.svelte';
     import PostPreviewToggleButton from './PostPreviewToggleButton.svelte';
     interface Props {
         event: NostrEvent;
@@ -24,41 +23,42 @@
     let { event, profile = null, relayUrls = [], plain = false, loadSensitiveBody, onImageOpen }: Props = $props();
     const componentId = $props.id();
     const previewId = `notification-preview-${componentId}`;
-    let container = $state<HTMLElement | null>(null);
-    const collapsePost = $derived({ eventId: previewId, content: event.content });
-    const collapse = usePostHistoryPreviewCollapse({ getShow: () => true,
-        getPosts: () => [collapsePost], getContainer: () => container });
     const interactions = getNotificationPostInteractions();
-    const post = $derived({ ...repostTargetToPost(event, relayUrls), ...(interactions.isDeleted(event.id) ? { deletedAt: 1 } : {}) });
-    const model = $derived(post.deletedAt ? buildPostContentRenderModel({ kind: event.kind, sourceContent: $_('postHistory.deleted'), tags: [] }) : [6, 7, 16].includes(event.kind) ? buildComposerInteractionRenderModel(event) : buildPostContentRenderModel({ kind: event.kind, sourceContent: event.content,
+    // Collapse measurement and emoji loading are owned by the list, as in post history.
+    const preview = interactions.preview!;
+    const collapsePost = $derived({ eventId: previewId, content: event.content });
+    const basePost = $derived(repostTargetToPost(event, relayUrls));
+    const deleted = $derived(interactions.isDeleted(event.id));
+    const post = $derived(deleted ? { ...basePost, deletedAt: 1 } : basePost);
+    const model = $derived(deleted ? buildPostContentRenderModel({ kind: event.kind, sourceContent: $_('postHistory.deleted'), tags: [] }) : [6, 7, 16].includes(event.kind) ? buildComposerInteractionRenderModel(event) : buildPostContentRenderModel({ kind: event.kind, sourceContent: event.content,
         tags: event.tags, displayContent: stripPostHistoryInlineQuoteUrisForDisplay(event) }));
+    const emojiUrls = $derived(model.previewContent.segments.flatMap(segment => segment.type === 'emoji' ? [segment.url] : []));
+    $effect(() => {
+        const entry = { eventId: previewId, content: event.content, emojiUrls };
+        untrack(() => interactions.registerPreview(entry));
+    });
+    $effect(() => () => untrack(() => interactions.unregisterPreview(previewId)));
     let entered = $state(false);
+    // Deletion is watched once a card has been near the viewport; leaving it keeps the watch.
     $effect(() => {
         if (!entered) return;
-        const current = post;
-        untrack(() => interactions.register(previewId, current));
-        return () => untrack(() => interactions.unregister(previewId));
+        const target = { eventId: event.id, pubkeyHex: event.pubkey };
+        untrack(() => interactions.register(previewId, target));
     });
-    function observe(node: HTMLElement) {
-        const observer = new IntersectionObserver(entries => { entered = entries.some(entry => entry.isIntersecting); }, { rootMargin: '160px' });
-        observer.observe(node);
-        return { destroy: () => observer.disconnect() };
-    }
+    $effect(() => () => untrack(() => interactions.unregister(previewId)));
     const callbacks = $derived(interactions.props());
-    const emoji = usePostHistoryEmojiState({ getShow: () => true, getEmojiUrls: () => model.previewContent.segments
-        .flatMap(segment => segment.type === 'emoji' ? [segment.url] : []), onStateChanged: () => collapse.remeasure() });
 </script>
 
-<div class="notification-post" use:observe bind:this={container} class:plain>
+<div class="notification-post" use:inViewportAction={{ enabled: true, once: true, rootMargin: '160px', onEnterView: () => { entered = true; } }} class:plain>
 <PostHistoryRelatedEventCard {event} {profile} {model} {onImageOpen} {loadSensitiveBody}
     maxVisibleImages={3}
-    previewCollapseAction={collapse.previewRef} previewCollapseEventId={previewId} previewContentId={previewId}
-    isTextCollapsed={!collapse.isPostExpanded(collapsePost)}
-    emojiLoadStateByUrl={emoji.emojiLoadStateByUrl} emojiImageMetaByUrl={emoji.emojiImageMetaByUrl}>
+    previewCollapseAction={preview.previewRef} previewCollapseEventId={previewId} previewContentId={previewId}
+    isTextCollapsed={!preview.isPostExpanded(collapsePost)}
+    emojiLoadStateByUrl={preview.emojiLoadStateByUrl} emojiImageMetaByUrl={preview.emojiImageMetaByUrl}>
     {#snippet textOverlay()}
-        <PostPreviewToggleButton placement="overlay" visible={collapse.shouldCollapsePost(collapsePost)}
-            expanded={collapse.isPostExpanded(collapsePost)} controls={previewId}
-            onToggle={() => collapse.togglePostExpanded(previewId)} />
+        <PostPreviewToggleButton placement="overlay" visible={preview.shouldCollapsePost(collapsePost)}
+            expanded={preview.isPostExpanded(collapsePost)} controls={previewId}
+            onToggle={() => preview.togglePostExpanded(previewId)} />
     {/snippet}
     {#snippet footerActions()}
         <PostHistoryPostActions {post} onReplyPost={!post.deletedAt && event.kind !== 42 ? callbacks.onReplyPost : undefined}

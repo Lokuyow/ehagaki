@@ -1,8 +1,9 @@
 <script lang="ts">
     import { onDestroy, onMount, tick, untrack } from 'svelte';
+    import { SvelteMap } from 'svelte/reactivity';
     import { resolveAppAssetUrl } from '../lib/appAssetUrl';
     import { useNotificationViewport } from '../lib/hooks/useNotificationViewport.svelte';
-    import { useNotificationRendering, notificationGroupSourceIds } from '../lib/hooks/useNotificationRendering.svelte';
+    import { useNotificationRendering } from '../lib/hooks/useNotificationRendering.svelte';
     import { createNotificationTargetQueue } from '../lib/notificationTargetQueue';
     import { liveQuery } from 'dexie';
     import { _ } from 'svelte-i18n';
@@ -16,23 +17,26 @@
     import ImageFullscreen from './ImageFullscreen.svelte';
     import ProfileAvatar from './ProfileAvatar.svelte';
     import PostHistoryReactionDetails from './PostHistoryReactionDetails.svelte';
-    import { buildPostHistoryReactionReadModel } from '../lib/postHistoryReactionReadModel';
+    import { buildPostHistoryReactionReadModel, type PostHistoryReactionReadModel } from '../lib/postHistoryReactionReadModel';
     import { usePostHistoryEmojiState } from '../lib/hooks/usePostHistoryEmojiState.svelte';
+    import { usePostHistoryPreviewCollapse } from '../lib/hooks/usePostHistoryPreviewCollapse.svelte';
     import { notificationRepository, type NotificationRecord } from '../lib/storage/notificationRepository';
     import { notificationType } from '../lib/notification';
     import { postHistoryReplyParentTargetDiscoveryAdapter } from '../lib/postHistoryRelatedTargetDiscoveryAdapter';
     import { buildThreadGraphNode } from '../lib/postHistoryThreadGraphUtils';
-    import { groupNotifications, notificationTargetReference, type NotificationGroup } from '../lib/notificationGrouping';
+    import { groupNotifications, notificationGroupSourceIds, notificationTargetReference, reuseNotificationRecords, shareNotificationGroups, type NotificationGroup } from '../lib/notificationGrouping';
     import { syncNotifications } from '../lib/notificationSyncService';
     import { createPostHistoryProfileSyncCoordinator } from '../lib/postHistoryProfileSync';
     import { createPostHistoryRelatedTargetResolver, type RelatedTargetDescriptor } from '../lib/postHistoryRelatedTargetResolver.svelte';
     import { usePostHistoryQuotePreviews } from '../lib/hooks/usePostHistoryQuotePreviews.svelte';
-    import { createSensitivePayloadBodyLoader } from '../lib/sensitiveContentPayloadReader';
+    import { createSensitiveBodyLoaderCache } from '../lib/sensitiveBodyLoaderCache';
+    import { shareStructure } from '../lib/utils/structuralSharing';
+    import type { PostHistoryRelatedTargetSnapshot } from '../lib/postHistoryRelatedTargetResolver.svelte';
     import { verifyRelatedEvent } from '../lib/relatedEventVerification';
     import { repostTargetToPost } from '../lib/postRepostUtils';
     import { shortenMiddle } from '../lib/utils/textDisplayUtils';
     import { getPostHistoryAuthoredRelayScopeKey } from '../lib/postHistoryRelayResolver';
-    import type { FullscreenMediaItem, ProfileData, RelayConfig } from '../lib/types';
+    import type { FullscreenMediaItem, NostrEvent, ProfileData } from '../lib/types';
     import type { PostHistoryRecord } from '../lib/storage/ehagakiDb';
 
     interface Props extends NotificationDialogProps {
@@ -49,7 +53,9 @@
     let limit = $state(100), localMore = $state(false), exhausted = $state(false);
     let loaded = $state(false), busy = $state(false), failed = $state(false), visible = $state(false);
     let retryOlder = $state(false);
-    let invalidated = $state(false), profiles = $state.raw<Record<string, ProfileData>>({});
+    let invalidated = $state(false);
+    // Keyed reactivity: a profile arriving re-renders only the cards showing that author.
+    const profiles = new SvelteMap<string, ProfileData>();
     let media = $state.raw<FullscreenMediaItem[]>([]), mediaIndex = $state(-1);
     let task: ReturnType<typeof syncNotifications> | null = null;
     let generation = $state(0);
@@ -64,20 +70,47 @@
         const post = repostTargetToPost(record.event, record.relayUrls);
         if (close()) onOpenTarget(post);
     }
-    function reactionModel(items: NotificationRecord[]) {
-        return buildPostHistoryReactionReadModel(items.map(({ event }) => ({ eventId: event.id, authorPubkey: event.pubkey,
-            kind: event.kind, content: event.content, tags: event.tags, createdAt: event.created_at })), profiles);
+    const reactionInput = (items: NotificationRecord[]) => items.map(({ event }) => ({ eventId: event.id, authorPubkey: event.pubkey,
+        kind: event.kind, content: event.content, tags: event.tags, createdAt: event.created_at }));
+    const reactionModelByGroup = new WeakMap<NotificationGroup, PostHistoryReactionReadModel>();
+    /** Unchanged data keeps the previous model, so the reaction details are left alone. */
+    function reactionModel(group: NotificationGroup) {
+        const model = shareStructure(reactionModelByGroup.get(group), buildPostHistoryReactionReadModel(reactionInput(group.reactions), profiles));
+        reactionModelByGroup.set(group, model);
+        return model;
     }
-    const reactionEmoji = usePostHistoryEmojiState({ getShow: () => show && !invalidated,
-        getEmojiUrls: () => preparedRecords.filter(record => record.event.kind === 7)
-            .flatMap(record => reactionModel([record]).groups.flatMap(group => group.emojiUrl ? [group.emojiUrl] : [])) });
+    const reactionEmojiUrlsByGroup = new WeakMap<NotificationGroup, string[]>();
+    function reactionEmojiUrls(group: NotificationGroup) {
+        let urls = reactionEmojiUrlsByGroup.get(group);
+        if (!urls) {
+            urls = buildPostHistoryReactionReadModel(reactionInput(group.reactions)).groups.flatMap(item => item.emojiUrl ? [item.emojiUrl] : []);
+            reactionEmojiUrlsByGroup.set(group, urls);
+        }
+        return urls;
+    }
     const profileSync = createPostHistoryProfileSyncCoordinator({ getShow: () => show && visible && !invalidated, getRxNostr: () => rxNostr });
-    const unsubscribeProfile = profileSync.subscribe((key, profile) => { profiles = { ...profiles, [key]: profile }; });
+    const unsubscribeProfile = profileSync.subscribe((key, profile) => { if (profiles.get(key) !== profile) profiles.set(key, profile); });
     const resolver = createNotificationTargetQueue(createPostHistoryRelatedTargetResolver({ getShow: () => show && visible && !invalidated,
         getOwner: () => pubkeyHex,
         getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig, profileSyncCoordinator: profileSync, requireFullVerification: true }), () => show && visible && !invalidated);
-    const notificationGroups = $derived(groupNotifications(records, id => resolver.getTargetSnapshot(id)?.event ?? null));
+    let previousGroups: NotificationGroup[] = [];
+    const notificationGroups = $derived.by(() => previousGroups = shareNotificationGroups(previousGroups,
+        groupNotifications(records, id => resolver.getTargetSnapshot(id)?.event ?? null)));
     const rendering = useNotificationRendering(() => notificationGroups, () => show && visible && presentationReady && !invalidated);
+    // One collapse measurement and one emoji state for the whole list, as in post history.
+    const previewCollapse = usePostHistoryPreviewCollapse<{ eventId: string; content: string }>({ getShow: () => show && !invalidated,
+        getPosts: () => Object.values(interactions.previews), getContainer: () => listElement });
+    // A string key, so a card mounting with already known emoji does not restart the loads.
+    const emojiUrlKey = $derived([...new Set([
+        ...rendering.cards.flatMap(({ group }) => reactionEmojiUrls(group)),
+        ...Object.values(interactions.previews).flatMap(entry => entry.emojiUrls),
+    ])].join('\n'));
+    const emojiUrls = $derived(emojiUrlKey ? emojiUrlKey.split('\n') : []);
+    const emoji = usePostHistoryEmojiState({ getShow: () => show && !invalidated, getEmojiUrls: () => emojiUrls,
+        onStateChanged: () => previewCollapse.remeasure() });
+    interactions.setPreviewSupport({ previewRef: previewCollapse.previewRef, isPostExpanded: previewCollapse.isPostExpanded,
+        shouldCollapsePost: previewCollapse.shouldCollapsePost, togglePostExpanded: previewCollapse.togglePostExpanded,
+        get emojiLoadStateByUrl() { return emoji.emojiLoadStateByUrl; }, get emojiImageMetaByUrl() { return emoji.emojiImageMetaByUrl; } });
     let previousPreparedRecords: NotificationRecord[] = [];
     const preparedRecords = $derived.by(() => {
         const ids = new Set(rendering.cards.flatMap(({ group }) => notificationGroupSourceIds(group)));
@@ -87,14 +120,24 @@
     });
     $effect(() => { if (listElement) viewport.observe(listElement); });
     $effect.pre(() => { notificationGroups; listElement; untrack(() => viewport.preserve()); });
-    const posts = $derived(preparedRecords.filter(record => [1, 42, 1111].includes(record.event.kind))
-        .map(record => repostTargetToPost(record.event, record.relayUrls)));
+    const postByRecord = new WeakMap<NotificationRecord, PostHistoryRecord>();
+    function recordPost(record: NotificationRecord) {
+        let post = postByRecord.get(record);
+        if (!post) { post = repostTargetToPost(record.event, record.relayUrls); postByRecord.set(record, post); }
+        return post;
+    }
+    let previousPosts: PostHistoryRecord[] = [];
+    const posts = $derived.by(() => {
+        const next = preparedRecords.filter(record => [1, 42, 1111].includes(record.event.kind)).map(recordPost);
+        if (next.length !== previousPosts.length || next.some((post, index) => post !== previousPosts[index])) previousPosts = next;
+        return previousPosts;
+    });
     const quotes = usePostHistoryQuotePreviews({ getShow: () => show && visible && !invalidated, getPosts: () => posts,
         getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig, profileSyncCoordinator: profileSync, relatedTargetResolver: resolver });
 
     export function invalidateSession() {
         viewport.reset(); invalidated = true; rendering.reset(); generation++; task?.cancel(); task = null; busy = false;
-        records = []; profiles = {}; media = []; mediaIndex = -1;
+        records = []; profiles.clear(); media = []; mediaIndex = -1; sensitiveBodies.clear();
         expandedReplyTargets = {};
         resolver.reset(); profileSync.reset();
     }
@@ -125,9 +168,12 @@
                 if (!active) return;
                 const version = ++readVersion;
                 const owned = () => active && version === readVersion;
-                const apply = () => { if (owned()) { localReadFailed = false; records = value.slice(0, pageSize); localMore = value.length > pageSize; loaded = true; } };
-                const anchors = viewport.visibleSourceIds();
-                if (value.length > pageSize && anchors.length && !anchors.every(id => value.slice(0, pageSize).some(item => item.eventId === id))) {
+                const page = value.slice(0, pageSize);
+                // Unchanged records keep their objects, so a read-state write re-renders nothing.
+                const apply = () => { if (owned()) { localReadFailed = false; records = reuseNotificationRecords(records, page); localMore = value.length > pageSize; loaded = true; } };
+                const anchors = value.length > pageSize ? viewport.visibleSourceIds() : [];
+                const pageIds = anchors.length ? new Set(page.map(item => item.eventId)) : null;
+                if (pageIds && !anchors.every(id => pageIds.has(id))) {
                     const oldestAnchor = records.filter(item => anchors.includes(item.eventId)).at(-1)?.eventId ?? anchors.at(-1)!;
                     void notificationRepository.requiredLimitForEvent(owner, oldestAnchor).then(required => {
                         if (!owned()) return;
@@ -169,11 +215,14 @@
             relayHints: [...reference.relayHints, ...record.relayUrls], relationKind: 'notification',
             scopeKey: 'notifications', sourceEventId: record.eventId } : null;
     }
+    const replyParentByRecord = new WeakMap<NotificationRecord, RelatedTargetDescriptor | null>();
     function replyParentDescriptor(record: NotificationRecord): RelatedTargetDescriptor | null {
-        const post = repostTargetToPost(record.event, record.relayUrls);
+        if (replyParentByRecord.has(record)) return replyParentByRecord.get(record)!;
         const node = buildThreadGraphNode({ event: record.event, relayUrls: record.relayUrls, sources: ['inbound-sync'] });
-        const context = postHistoryReplyParentTargetDiscoveryAdapter.buildContext(post, record.eventId, node);
-        return context ? postHistoryReplyParentTargetDiscoveryAdapter.toDescriptor(context, 'notification-reply-parents') : null;
+        const context = postHistoryReplyParentTargetDiscoveryAdapter.buildContext(recordPost(record), record.eventId, node);
+        const result = context ? postHistoryReplyParentTargetDiscoveryAdapter.toDescriptor(context, 'notification-reply-parents') : null;
+        replyParentByRecord.set(record, result);
+        return result;
     }
     function toggleReplyParent(record: NotificationRecord) {
         if (!show || invalidated) return;
@@ -183,23 +232,47 @@
         expandedReplyTargets = { ...expandedReplyTargets, [record.eventId]: expanded };
         if (expanded) void resolver.ensureTarget(target);
     }
+    const groupDescriptorByGroup = new WeakMap<NotificationGroup, RelatedTargetDescriptor | null>();
     function groupDescriptor(group: NotificationGroup): RelatedTargetDescriptor | null {
+        if (groupDescriptorByGroup.has(group)) return groupDescriptorByGroup.get(group)!;
         const value = descriptor(group.record);
-        if (!value) return null;
-        return { ...value, relayHints: [...new Set([...group.reactions, ...group.reposts].flatMap(record => descriptor(record)?.relayHints ?? []))] };
+        const result = value ? { ...value, relayHints: [...new Set([...group.reactions, ...group.reposts].flatMap(record => descriptor(record)?.relayHints ?? []))] } : null;
+        groupDescriptorByGroup.set(group, result);
+        return result;
     }
+    // Verification hashes the event, so its outcome is kept per snapshot and record.
+    const checkedSnapshots = new WeakMap<PostHistoryRelatedTargetSnapshot, WeakMap<NotificationRecord, PostHistoryRelatedTargetSnapshot>>();
     function targetSnapshot(record: NotificationRecord) {
         const reference = notificationTargetReference(record);
         const snapshot = reference ? resolver.getTargetSnapshot(reference.eventId) : null;
         if (!snapshot?.event || !reference) return snapshot;
+        let byRecord = checkedSnapshots.get(snapshot);
+        const cached = byRecord?.get(record);
+        if (cached) return cached;
         const kindValid = record.event.kind === 6 ? snapshot.event.kind === 1
             : record.event.kind === 16 ? snapshot.event.kind !== 1 : true;
-        return kindValid && verifyRelatedEvent(snapshot.event, reference) ? snapshot : { ...snapshot, event: null, status: 'error' as const };
+        const result = kindValid && verifyRelatedEvent(snapshot.event, reference) ? snapshot : { ...snapshot, event: null, status: 'error' as const };
+        if (!byRecord) { byRecord = new WeakMap(); checkedSnapshots.set(snapshot, byRecord); }
+        byRecord.set(record, result);
+        return result;
+    }
+    const sourceIdsJsonByGroup = new WeakMap<NotificationGroup, string>();
+    function sourceIdsJson(group: NotificationGroup) {
+        let value = sourceIdsJsonByGroup.get(group);
+        if (value === undefined) { value = JSON.stringify(notificationGroupSourceIds(group)); sourceIdsJsonByGroup.set(group, value); }
+        return value;
+    }
+    const typeByEvent = new WeakMap<NostrEvent, ReturnType<typeof notificationType>>();
+    function recordType(record: NotificationRecord) {
+        let value = typeByEvent.get(record.event);
+        if (value === undefined) { value = notificationType(record.event); typeByEvent.set(record.event, value); }
+        return value;
     }
     $effect(() => {
         if (!show || !visible || invalidated) return;
-        const currentRecords = preparedRecords;
-        const targets = untrack(() => groupNotifications(currentRecords, id => resolver.getTargetSnapshot(id)?.event ?? null).flatMap(group => {
+        preparedRecords;
+        // The rendered cards already hold the groups of these records.
+        const targets = untrack(() => rendering.cards.map(card => card.group).flatMap(group => {
             const record = group.record;
             if (![6, 7, 16].includes(record.event.kind)) return [];
             const value = groupDescriptor(group);
@@ -252,8 +325,9 @@
         if (applied && epoch === generation && !invalidated) close();
         return applied;
     }
-    function sensitiveBody(structure: NotificationRecord['event'], relayHints: string[] = []) {
-        return createSensitivePayloadBodyLoader({ structure, relayHints, rxNostr, relayConfig, ownerPubkey: pubkeyHex });
+    const sensitiveBodies = createSensitiveBodyLoaderCache();
+    function sensitiveBody(structure: NostrEvent, relayHints: string[] = []) {
+        return sensitiveBodies.get(structure, { ownerPubkey: pubkeyHex, rxNostr, relayConfig }, relayHints);
     }
     function openImage(value: { index: number; mediaList: FullscreenMediaItem[] }) { media = value.mediaList; mediaIndex = value.index; }
     onDestroy(() => { invalidateSession(); unsubscribeProfile(); profileSync.dispose(); });
@@ -265,8 +339,8 @@
         {#each rendering.cards as card (card.key)}
             {@const group = card.group}
             {@const record = group.record}
-            {@const type = notificationType(record.event)}
-            <article class="notification-entry" data-notification-id={group.id} data-notification-target={group.targetId} data-notification-events={JSON.stringify([...group.reactions, ...group.reposts].length ? [...group.reactions, ...group.reposts].map(item => item.eventId) : [record.eventId])}>
+            {@const type = recordType(record)}
+            <article class="notification-entry" data-notification-id={group.id} data-notification-target={group.targetId} data-notification-events={sourceIdsJson(group)}>
                 {#if type === 'reaction' || type === 'repost'}
                     {#if group.reposts.length}
                         <div class="notification-actor">
@@ -278,28 +352,30 @@
                                 <span class="notification-kind-icon notification-repost-icon svg-icon" role="img" aria-label={$_('notifications.repost')}></span>
                                 <div class="post-preview-reaction-actors">
                                     {#each group.reposts as repost (repost.eventId)}
-                                        {@const label = profiles[repost.event.pubkey]?.displayName || profiles[repost.event.pubkey]?.name || shortenMiddle(repost.event.pubkey, 12, 4)}
+                                        {@const reposter = profiles.get(repost.event.pubkey)}
+                                        {@const label = reposter?.displayName || reposter?.name || shortenMiddle(repost.event.pubkey, 12, 4)}
                                         <svelte:element this={group.reposts.length > 1 ? 'button' : 'span'}
                                             type={group.reposts.length > 1 ? 'button' : undefined} role={group.reposts.length > 1 ? 'button' : undefined}
                                             data-notification-event={repost.eventId} class="notification-reposter post-preview-reaction-actor" title={label} aria-label={label}
                                             onclick={group.reposts.length > 1 ? () => openNotificationTarget(repost.eventId) : undefined}>
-                                            <ProfileAvatar pubkeyHex={repost.event.pubkey} displayName={profiles[repost.event.pubkey]?.displayName}
-                                                src={profiles[repost.event.pubkey]?.picture} alt={label} rootClassName="notification-avatar"
+                                            <ProfileAvatar pubkeyHex={repost.event.pubkey} displayName={reposter?.displayName}
+                                                src={reposter?.picture} alt={label} rootClassName="notification-avatar"
                                                 imageClassName="notification-avatar-image" fallbackDelayMs={0} />
                                         </svelte:element>
                                     {/each}
                                 </div>
                                 {#if group.reposts.length === 1}
                                     {@const repost = group.reposts[0]}
-                                    <span class="notification-repost-name" title={profiles[repost.event.pubkey]?.displayName || profiles[repost.event.pubkey]?.name}>{profiles[repost.event.pubkey]?.displayName || profiles[repost.event.pubkey]?.name || shortenMiddle(repost.event.pubkey, 12, 4)}</span>
+                                    {@const reposter = profiles.get(repost.event.pubkey)}
+                                    <span class="notification-repost-name" title={reposter?.displayName || reposter?.name}>{reposter?.displayName || reposter?.name || shortenMiddle(repost.event.pubkey, 12, 4)}</span>
                                 {/if}
                             </svelte:element>
                         </div>
                     {/if}
                     {#if group.reactions.length}
                         <div class="notification-reaction">
-                            <PostHistoryReactionDetails readModel={reactionModel(group.reactions)} onSelectActor={openNotificationTarget} showSingleActorName={group.reactions.length === 1}
-                                emojiLoadStateByUrl={reactionEmoji.emojiLoadStateByUrl} emojiImageMetaByUrl={reactionEmoji.emojiImageMetaByUrl} />
+                            <PostHistoryReactionDetails readModel={reactionModel(group)} onSelectActor={openNotificationTarget} showSingleActorName={group.reactions.length === 1}
+                                emojiLoadStateByUrl={emoji.emojiLoadStateByUrl} emojiImageMetaByUrl={emoji.emojiImageMetaByUrl} />
                         </div>
                     {/if}
                     {@const target = groupDescriptor(group)}
@@ -355,9 +431,9 @@
                     {:else}
                         <span class="notification-type">{$_(`notifications.${type}`)}</span>
                     {/if}
-                    <NotificationPost plain={true} event={record.event} profile={profiles[record.event.pubkey]} relayUrls={record.relayUrls} loadSensitiveBody={sensitiveBody(record.event, record.relayUrls)}
+                    <NotificationPost plain={true} event={record.event} profile={profiles.get(record.event.pubkey)} relayUrls={record.relayUrls} loadSensitiveBody={sensitiveBody(record.event, record.relayUrls)}
                         onImageOpen={openImage} />
-                    {#each quotes.getQuotePreviews(repostTargetToPost(record.event, record.relayUrls)) as preview (preview.eventId)}
+                    {#each quotes.getQuotePreviews(recordPost(record)) as preview (preview.eventId)}
                         {#if preview.status === 'resolved'}
                             <NotificationPost relayUrls={preview.relayHints} event={preview.event} profile={preview.profile} onImageOpen={openImage}
                                 loadSensitiveBody={sensitiveBody(preview.event, preview.relayHints)} />

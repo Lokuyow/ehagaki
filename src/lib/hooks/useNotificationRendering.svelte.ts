@@ -1,27 +1,38 @@
 import { onDestroy, untrack } from 'svelte';
-import type { NotificationGroup } from '../notificationGrouping';
+import { notificationGroupSourceIds, type NotificationGroup } from '../notificationGrouping';
 
-export function notificationGroupSourceIds(group: NotificationGroup): string[] {
-    return [...group.reactions, ...group.reposts].length
-        ? [...group.reactions, ...group.reposts].map(item => item.eventId) : [group.record.eventId];
-}
+export { notificationGroupSourceIds };
+type Card = { group: NotificationGroup; key: string };
 
 /** Retain mounted cards when arrivals move them beyond the current page. */
 export function useNotificationRendering(getGroups: () => NotificationGroup[], isActive: () => boolean) {
     let count = $state(10);
     let mountedSources = new Map<string, string>();
     let nextKey = 0;
+    let previousCards: Card[] = [];
     const cards = $derived.by(() => {
         const groups = getGroups();
         let end = count;
         groups.forEach((group, index) => { if (notificationGroupSourceIds(group).some(id => mountedSources.has(id))) end = Math.max(end, index + 1); });
         const used = new Set<string>();
-        return groups.slice(0, end).map(group => {
-            const previous = notificationGroupSourceIds(group).map(id => mountedSources.get(id)).find(key => key && !used.has(key));
-            const key = previous ?? `notification-card-${++nextKey}`;
+        const previousByKey = new Map(previousCards.map(card => [card.key, card]));
+        let changed = previousCards.length !== Math.min(end, groups.length);
+        const next = groups.slice(0, end).map((group, index) => {
+            let key: string | undefined;
+            for (const id of notificationGroupSourceIds(group)) {
+                const candidate = mountedSources.get(id);
+                if (candidate && !used.has(candidate)) { key = candidate; break; }
+            }
+            key ??= `notification-card-${++nextKey}`;
             used.add(key);
-            return { group, key };
+            // An unchanged card keeps its object so its block is left alone.
+            const old = previousByKey.get(key);
+            const card = old && old.group === group ? old : { group, key };
+            changed ||= card !== previousCards[index];
+            return card;
         });
+        if (changed) previousCards = next;
+        return previousCards;
     });
     $effect.pre(() => {
         const current = cards;
@@ -50,7 +61,7 @@ export function useNotificationRendering(getGroups: () => NotificationGroup[], i
         sentinelNode = node;
         return { destroy() { if (sentinelNode === node) sentinelNode = null; } };
     }
-    function reset() { disconnect(); count = 10; mountedSources.clear(); }
+    function reset() { disconnect(); count = 10; mountedSources.clear(); previousCards = []; }
     onDestroy(disconnect);
     return { get cards() { return cards; }, get hasMore() { return hasMore; }, sentinel, reset };
 }

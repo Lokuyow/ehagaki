@@ -39,6 +39,17 @@ describe('notification persistence', () => {
         await repository.upsert(owner, [{ event: quote }]);
         expect((await repository.list(owner))[0]?.eventId).toBe(quote.id);
     });
+    it('saves a batch in one pass, merging an event replayed within it', async () => {
+        const known = event(1, [['p', owner]], 100, 'known'), fresh = event(1, [['p', owner]], 101, 'fresh');
+        await repository.upsert(owner, [{ event: known, relayUrls: ['wss://one.example'] }]);
+        await repository.markRead(owner, [known.id]);
+        await new NotificationRepository(db, () => 5678).upsert(owner, [{ event: fresh, relayUrls: ['wss://one.example'] },
+            { event: known, relayUrls: ['wss://two.example'] }, { event: fresh, relayUrls: ['wss://two.example'] }]);
+        expect(await repository.list(owner)).toMatchObject([
+            { eventId: fresh.id, unread: 1, receivedAt: 5678, relayUrls: ['wss://one.example/', 'wss://two.example/'] },
+            { eventId: known.id, unread: 0, receivedAt: 1234, relayUrls: ['wss://one.example/', 'wss://two.example/'] },
+        ]);
+    });
     it('deduplicates relays and preserves read state and first receipt on repeat delivery', async () => {
         const incoming = event();
         await repository.upsert(owner, [{ event: incoming, relayUrls: ['wss://one.example'] }]);

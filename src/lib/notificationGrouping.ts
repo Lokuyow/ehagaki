@@ -8,11 +8,79 @@ export interface NotificationTargetReference extends RelatedEventReference {
     excludedKinds?: number[];
 }
 
+const targetReferenceByEvent = new WeakMap<NostrEvent, NotificationTargetReference | null>();
+
+/** Parsed once per event; callers must not mutate the returned reference. */
 export function notificationTargetReference(record: NotificationRecord): NotificationTargetReference | null {
-    if (record.event.kind === 7) return parseReactionReference(record.event).reference;
-    const reference = getRepostReference(record.event);
-    return reference ? { ...reference, targetKindHint: record.event.kind === 6 ? 1 : reference.targetKindHint,
-        excludedKinds: record.event.kind === 16 ? [1] : undefined } : null;
+    const event = record.event;
+    if (targetReferenceByEvent.has(event)) return targetReferenceByEvent.get(event)!;
+    let value: NotificationTargetReference | null;
+    if (event.kind === 7) value = parseReactionReference(event).reference;
+    else {
+        const reference = getRepostReference(event);
+        value = reference ? { ...reference, targetKindHint: event.kind === 6 ? 1 : reference.targetKindHint,
+            excludedKinds: event.kind === 16 ? [1] : undefined } : null;
+    }
+    targetReferenceByEvent.set(event, value);
+    return value;
+}
+
+function sameStrings(left: readonly string[], right: readonly string[]) {
+    return left === right || left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+/**
+ * Reuse unchanged records from the previous local read. Every read hydrates new
+ * objects, so without this a read-state write re-renders every mounted card.
+ * Only fields the list renders are compared; `unread` and `receivedAt` are not.
+ */
+export function reuseNotificationRecords(previous: readonly NotificationRecord[], next: NotificationRecord[]): NotificationRecord[] {
+    if (!previous.length) return next;
+    const byId = new Map(previous.map(record => [record.id, record]));
+    let changed = previous.length !== next.length;
+    const result = next.map((record, index) => {
+        const old = byId.get(record.id);
+        const reused = old && old.eventId === record.eventId && old.createdAt === record.createdAt
+            && old.event.id === record.event.id && sameStrings(old.relayUrls, record.relayUrls) ? old : record;
+        changed ||= reused !== previous[index];
+        return reused;
+    });
+    return changed ? result : previous as NotificationRecord[];
+}
+
+function sameRecords(left: readonly NotificationRecord[], right: readonly NotificationRecord[]) {
+    return left.length === right.length && left.every((record, index) => record === right[index]);
+}
+
+/**
+ * Keep the previous group object when it holds the same records, so resolving
+ * one target re-renders only the cards whose grouping actually changed.
+ */
+export function shareNotificationGroups(previous: readonly NotificationGroup[], next: NotificationGroup[]): NotificationGroup[] {
+    if (!previous.length) return next;
+    const byId = new Map(previous.map(group => [group.id, group]));
+    let changed = previous.length !== next.length;
+    const result = next.map((group, index) => {
+        const old = byId.get(group.id);
+        const reused = old && old.record === group.record && old.targetId === group.targetId
+            && sameRecords(old.reactions, group.reactions) && sameRecords(old.reposts, group.reposts) ? old : group;
+        changed ||= reused !== previous[index];
+        return reused;
+    });
+    return changed ? result : previous as NotificationGroup[];
+}
+
+const sourceIdsByGroup = new WeakMap<NotificationGroup, string[]>();
+
+/** Event IDs a card stands for: its reactions and reposts, or the record itself. */
+export function notificationGroupSourceIds(group: NotificationGroup): string[] {
+    let ids = sourceIdsByGroup.get(group);
+    if (!ids) {
+        const sources = [...group.reactions, ...group.reposts];
+        ids = sources.length ? sources.map(item => item.eventId) : [group.record.eventId];
+        sourceIdsByGroup.set(group, ids);
+    }
+    return ids;
 }
 
 export interface NotificationGroup {
