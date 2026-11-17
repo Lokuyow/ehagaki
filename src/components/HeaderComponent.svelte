@@ -308,12 +308,12 @@
         flex: none;
         margin-inline: 4px;
         padding: 2px 6px;
-        border-radius: 4px;
         background: #682540;
         color: white;
+        font-family: Arial, sans-serif;
         font-size: 0.75rem;
         font-weight: 700;
-        line-height: 1.4;
+        line-height: 1.1;
         white-space: nowrap;
     }
 
@@ -326,33 +326,19 @@
         margin-top: auto;
     }
 
-    @media (width <= 420px) {
-        .test-build-with-mascot {
-            position: relative;
-        }
+    .test-build-with-mascot {
+        position: relative;
+    }
 
-        .test-build-with-mascot .site-icon-link {
-            justify-content: center;
-            width: 52px;
-            flex: none;
-        }
-
-        .test-build-with-mascot .site-icon {
-            width: 36px;
-            height: 36px;
-            margin: 1px 0 0;
-        }
-
-        .test-build-with-mascot .test-build-label {
-            position: absolute;
-            inset-inline-start: 0;
-            bottom: 2px;
-            box-sizing: border-box;
-            width: 52px;
-            margin: 0;
-            padding-inline: 0;
-            text-align: center;
-        }
+    .test-build-with-mascot .test-build-label {
+        position: absolute;
+        inset-inline-start: 8px;
+        bottom: 4px;
+        width: 36px;
+        margin: 0;
+        padding-inline: 0;
+        text-align: center;
+        pointer-events: none;
     }
 
     .compact-message {

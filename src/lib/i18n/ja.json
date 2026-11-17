@@ -1,5 +1,5 @@
 {
-  "testBuildLabel": "テスト版",
+  "testBuildLabel": "TEST",
   "relayDelivery": {
     "dismiss": "配送状況の表示を閉じる",
     "discovering": "配送先の探索中",
