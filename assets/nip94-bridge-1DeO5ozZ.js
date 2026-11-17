@@ -1,1 +1,0 @@
-export{x as generateEventTemplate}from"./vendor-nostr-bridge-Ca93cgHQ.js";

@@ -1,0 +1,1 @@
+import{Rt as e,Xt as t,Yt as n,Zt as r}from"./vendor-editor-bridge-Cwno29XV.js";var i=r(n({name:``,displayName:``,picture:``,npub:``,nprofile:``})),a=r(!1),o=r(!1),s={get value(){return e(i)},set:e=>{t(i,e,!0)}},c={get value(){return e(a)},set:e=>{t(a,e,!0)}},l={get value(){return e(o)},set:e=>{t(o,e,!0)}};export{s as n,c as r,l as t};

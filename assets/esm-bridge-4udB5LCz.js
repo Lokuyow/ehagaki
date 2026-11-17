@@ -1,0 +1,1 @@
+export{t as encode}from"./vendor-image-bridge-BaE_2xOK.js";

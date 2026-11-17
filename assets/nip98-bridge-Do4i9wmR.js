@@ -1,0 +1,1 @@
+export{h as getToken}from"./vendor-nostr-bridge-BIQgG3AW.js";

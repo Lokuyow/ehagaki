@@ -1,1 +1,0 @@
-export{n as encode}from"./vendor-image-bridge-iWQ16iFY.js";
