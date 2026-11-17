@@ -1125,6 +1125,12 @@ export class Nip46Service {
     private identityMismatchHandler:
         | ((userPubkey: string) => void | Promise<void>)
         | null = null;
+    /**
+     * Advances whenever the session is replaced, ended or re-verified. Saved
+     * credentials alone cannot tell an obsolete verification from the current
+     * one, because restoring the same account again yields identical fields.
+     */
+    private sessionEpoch = 0;
 
     /** Installs a verified runtime and publishes its session in one step. */
     private adoptRuntime(
@@ -1142,6 +1148,7 @@ export class Nip46Service {
         this.userPubkey = runtime.userPubkey;
         this.bunkerSigner = runtime.bunkerSigner;
         this.signerAdapter = runtime.signerAdapter;
+        this.sessionEpoch += 1;
         this.setCurrentSession(session);
     }
 
@@ -1344,6 +1351,7 @@ export class Nip46Service {
         const binding = this.persistenceBinding
             ? { ...this.persistenceBinding }
             : null;
+        const sessionEpoch = this.sessionEpoch;
         let candidatePool: SimplePool | null = null;
         let candidateBunkerSigner: BunkerSigner | null = null;
         const startedAt = Date.now();
@@ -1451,6 +1459,7 @@ export class Nip46Service {
             if (
                 error instanceof Error
                 && error.message === NIP46_LIVE_IDENTITY_MISMATCH_MESSAGE
+                && sessionEpoch === this.sessionEpoch
                 && this.isCurrentSessionSnapshot(session)
             ) {
                 this.notifyIdentityMismatch(session.userPubkey);
@@ -2440,6 +2449,7 @@ export class Nip46Service {
         // one synchronous step, so no caller can observe the new session paired
         // with the previous runtime or persistence binding.
         this.operationPromise = null;
+        this.sessionEpoch += 1;
         const closingPreviousRuntime = this.closeRuntimeResources();
         this.setCurrentSession({ ...session, relays });
         this.persistenceBinding = persistence ? { ...persistence } : null;
@@ -2455,6 +2465,7 @@ export class Nip46Service {
 
     async disconnect(): Promise<void> {
         this.operationPromise = null;
+        this.sessionEpoch += 1;
         this.setCurrentSession(null);
         this.persistenceBinding = null;
         await this.closeRuntimeResources();

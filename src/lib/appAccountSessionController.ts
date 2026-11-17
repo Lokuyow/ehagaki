@@ -411,6 +411,9 @@ export function createAppAccountSessionController(
         });
         try {
             options.beforeConverge?.();
+            // beforeConverge may abort a profile bootstrap that would otherwise
+            // have cleared this flag; a guest left "loading" cannot log in.
+            deps.setProfileLoading(false);
             deps.resetUploadDisplayState();
             await convergeToGuest();
             deps.refreshAccountList();

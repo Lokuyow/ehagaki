@@ -640,6 +640,7 @@ describe('createAppAccountSessionController', () => {
             await controller.handleNip46IdentityMismatch(CURRENT_PUBKEY, { beforeConverge });
 
             expect(beforeConverge).toHaveBeenCalledOnce();
+            expect(deps.setProfileLoading).toHaveBeenCalledWith(false);
             expect(deps.nip46Service.disconnect).toHaveBeenCalledOnce();
             expect(deps.clearAuthState).toHaveBeenCalledOnce();
             expect(deps.initializeNostr).toHaveBeenCalledOnce();

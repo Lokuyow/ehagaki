@@ -3049,6 +3049,41 @@ describe('Nip46Service', () => {
             expect(mockStorage.getItem(`nostr-nip46-session-${session.userPubkey}`)).toBeNull();
         });
 
+        it('同じsessionを復元し直した後は、古い検証の不一致をhandlerへ通知しない', async () => {
+            const onMismatch = vi.fn();
+            service.setIdentityMismatchHandler(onMismatch);
+            const { BunkerSigner } = await import('nostr-tools/nip46');
+            const staleIdentity = createDeferred<string>();
+            const staleSigner = createMockNostrConnectSigner({
+                getPublicKeyPromise: staleIdentity.promise,
+            });
+            const currentSigner = createMockNostrConnectSigner({
+                getPublicKeyResult: session.userPubkey,
+            });
+            vi.mocked(BunkerSigner.fromBunker)
+                .mockReturnValueOnce(staleSigner as any)
+                .mockReturnValue(currentSigner as any);
+            const persistence = { storage: mockStorage, pubkeyHex: session.userPubkey };
+
+            await service.restoreSessionInBackground(session, persistence);
+            await vi.waitFor(() => {
+                expect(staleSigner.sendRequest).toHaveBeenCalledWith('get_public_key', []);
+            });
+            await service.disconnect();
+            await service.restoreSessionInBackground(session, persistence);
+            const verifiedSigner = await service.getSignerForSession(session.userPubkey);
+            expect(verifiedSigner).not.toBeNull();
+
+            staleIdentity.resolve(TEST_USER_PUBKEY);
+            await vi.waitFor(() => {
+                expect(staleSigner.close).toHaveBeenCalled();
+            });
+            await Promise.resolve();
+
+            expect(onMismatch).not.toHaveBeenCalled();
+            expect(service.getSigner()).toBe(verifiedSigner);
+        });
+
         it('前のsessionのruntimeを切り離し、前のbindingへ新しいsessionを書き込まない', async () => {
             const { mockSigner: previousSigner, pubkey: previousPubkey } = await connectService();
             service.saveSession(mockStorage, previousPubkey);
