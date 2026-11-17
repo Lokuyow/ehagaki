@@ -307,7 +307,8 @@
     .test-build-label {
         flex: none;
         margin-inline: 4px;
-        padding: 2px 6px;
+        /* Center the visible Arial capitals within the band. */
+        padding: 3px 6px 1px;
         background: #682540;
         color: white;
         font-family: Arial, sans-serif;
