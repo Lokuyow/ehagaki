@@ -189,7 +189,9 @@ export function createAppAccountSessionController(
         }
     }
 
-    let activeSwitch: Promise<boolean> | null = null;
+    // The account transition that currently owns the runtime: a switch, or
+    // the convergence to guest after a NIP-46 identity mismatch.
+    let activeSwitch: Promise<unknown> | null = null;
 
     function switchAccount(pubkeyHex: string): Promise<boolean> {
         if (deps.getIsSwitchingAccount()) {
@@ -398,17 +400,36 @@ export function createAppAccountSessionController(
         pubkeyHex: string,
         options: { beforeConverge?: () => void } = {},
     ): Promise<void> {
-        // A switch in progress owns the runtime; let it settle before judging
-        // whether the mismatched session is still the current one.
-        await activeSwitch;
-        if (!isCurrentNip46Session(pubkeyHex)) {
+        // A transition in progress owns the runtime; let it settle before
+        // judging whether the mismatched session is still the current one.
+        while (activeSwitch) {
+            await activeSwitch;
+        }
+        if (!isCurrentNip46Session(pubkeyHex) || deps.getIsSwitchingAccount()) {
             return;
         }
 
+        const converging = convergeAfterNip46IdentityMismatch(options);
+        activeSwitch = converging;
+        try {
+            await converging;
+        } finally {
+            if (activeSwitch === converging) {
+                activeSwitch = null;
+            }
+        }
+    }
+
+    async function convergeAfterNip46IdentityMismatch(
+        options: { beforeConverge?: () => void },
+    ): Promise<void> {
         deps.logger.error('NIP-46 signerのidentityが保存済みセッションと一致しません', {
             stage: 'nip46-identity-mismatch',
             reason: 'identity-mismatch',
         });
+        // Held for the whole convergence so switchAccount() rejects a switch
+        // that would otherwise have its runtime replaced by the guest runtime.
+        deps.setIsSwitchingAccount(true);
         try {
             options.beforeConverge?.();
             // beforeConverge may abort a profile bootstrap that would otherwise
@@ -422,6 +443,8 @@ export function createAppAccountSessionController(
                 stage: 'nip46-identity-mismatch',
                 reason: 'unexpected',
             });
+        } finally {
+            deps.setIsSwitchingAccount(false);
         }
     }
 

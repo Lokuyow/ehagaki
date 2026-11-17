@@ -666,6 +666,37 @@ describe('createAppAccountSessionController', () => {
             expect(getActivePubkey()).toBe(CURRENT_PUBKEY);
         });
 
+        it('ゲストへの移行中はアカウント切替を受け付けず、移行後のruntimeを上書きさせない', async () => {
+            let finishGuestInit: (() => void) | undefined;
+            const {
+                controller,
+                deps,
+                accounts,
+                setAuthSnapshot,
+                switchingAccountStateHistory,
+            } = createController({
+                initializeNostr: vi.fn(() => new Promise<void>((resolve) => {
+                    finishGuestInit = resolve;
+                })),
+            });
+            accounts.set(CURRENT_PUBKEY, 'nip46');
+            setAuthSnapshot({ type: 'nip46', pubkey: CURRENT_PUBKEY });
+
+            const mismatch = controller.handleNip46IdentityMismatch(CURRENT_PUBKEY);
+            await vi.waitFor(() => {
+                expect(finishGuestInit).toBeDefined();
+            });
+
+            await expect(controller.switchAccount(TARGET_PUBKEY)).resolves.toBe(false);
+            expect(deps.restoreManagedAccountSession).not.toHaveBeenCalled();
+
+            finishGuestInit?.();
+            await mismatch;
+
+            expect(switchingAccountStateHistory).toEqual([true, false]);
+            await expect(controller.switchAccount(TARGET_PUBKEY)).resolves.toBe(true);
+        });
+
         it('進行中のアカウント切替が完了してから現在のsessionを判定する', async () => {
             let resolveRestore: ((value: { success: true; pubkeyHex: string }) => void) | undefined;
             const { controller, deps, accounts, setAuthSnapshot, getActivePubkey } = createController({

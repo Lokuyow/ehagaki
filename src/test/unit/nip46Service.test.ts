@@ -3084,6 +3084,46 @@ describe('Nip46Service', () => {
             expect(service.getSigner()).toBe(verifiedSigner);
         });
 
+        it('同じsessionを復元し直した後は、古い検証が成功してもそのruntimeを採用しない', async () => {
+            const { BunkerSigner } = await import('nostr-tools/nip46');
+            const staleIdentity = createDeferred<string>();
+            const currentIdentity = createDeferred<string>();
+            const staleSigner = createMockNostrConnectSigner({
+                getPublicKeyPromise: staleIdentity.promise,
+            });
+            const currentSigner = createMockNostrConnectSigner({
+                getPublicKeyPromise: currentIdentity.promise,
+            });
+            vi.mocked(BunkerSigner.fromBunker)
+                .mockReturnValueOnce(staleSigner as any)
+                .mockReturnValue(currentSigner as any);
+            const persistence = { storage: mockStorage, pubkeyHex: session.userPubkey };
+
+            await service.restoreSessionInBackground(session, persistence);
+            await vi.waitFor(() => {
+                expect(staleSigner.sendRequest).toHaveBeenCalledWith('get_public_key', []);
+            });
+            await service.disconnect();
+            await service.restoreSessionInBackground(session, persistence);
+            await vi.waitFor(() => {
+                expect(currentSigner.sendRequest).toHaveBeenCalledWith('get_public_key', []);
+            });
+
+            staleIdentity.resolve(session.userPubkey);
+            await vi.waitFor(() => {
+                expect(staleSigner.close).toHaveBeenCalled();
+            });
+            expect(service.getSigner()).toBeNull();
+            expect(currentSigner.close).not.toHaveBeenCalled();
+
+            currentIdentity.resolve(session.userPubkey);
+            const verifiedSigner = await service.getSignerForSession(session.userPubkey);
+
+            expect(verifiedSigner).not.toBeNull();
+            expect(verifiedSigner).toBe(service.getSigner());
+            expect(currentSigner.close).not.toHaveBeenCalled();
+        });
+
         it('前のsessionのruntimeを切り離し、前のbindingへ新しいsessionを書き込まない', async () => {
             const { mockSigner: previousSigner, pubkey: previousPubkey } = await connectService();
             service.saveSession(mockStorage, previousPubkey);

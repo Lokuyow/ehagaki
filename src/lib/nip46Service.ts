@@ -1374,7 +1374,8 @@ export class Nip46Service {
             await closeCandidateResources();
 
             if (
-                !this.isCurrentSessionSnapshot(session)
+                sessionEpoch !== this.sessionEpoch
+                || !this.isCurrentSessionSnapshot(session)
                 || !this.isCurrentRuntime(runtime)
             ) {
                 return false;
@@ -1423,8 +1424,12 @@ export class Nip46Service {
                 relays: supportedRelays,
             };
 
+            // The epoch is checked as well as the snapshots: restoring the
+            // same account again makes every snapshot match an obsolete
+            // candidate, which must not replace the verification in progress.
             if (
-                !this.isCurrentSessionSnapshot(session)
+                sessionEpoch !== this.sessionEpoch
+                || !this.isCurrentSessionSnapshot(session)
                 || !this.isCurrentRuntime(runtime)
                 || !this.isCurrentPersistenceBinding(binding)
             ) {
