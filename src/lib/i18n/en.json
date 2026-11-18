@@ -1,5 +1,5 @@
 {
-  "testBuildLabel": "Test",
+  "testBuildLabel": "TEST",
   "relayDelivery": {
     "dismiss": "Dismiss delivery progress",
     "discovering": "Discovering delivery relays",
