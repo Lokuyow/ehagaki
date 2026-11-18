@@ -21,7 +21,7 @@ const appName = isTestBuild ? 'eHagaki Test' : 'eHagaki';
 const pwaIconDirectory = isTestBuild ? 'pwa-test/' : '';
 const vercelPreviewHost = process.env.VERCEL_ENV === 'preview' ? process.env.VERCEL_URL : undefined;
 const socialSiteUrl = isTestBuild
-  ? new URL(`https://${vercelPreviewHost || 'ehagaki.vercel.app'}/`).href
+  ? new URL(`https://${vercelPreviewHost || 'ehagaki-test.vercel.app'}/`).href
   : 'https://lokuyow.github.io/ehagaki/';
 const socialImageUrl = new URL(isTestBuild ? 'ehagaki_ogp_test.png' : 'ehagaki_ogp.webp', socialSiteUrl).href;
 const webComponentDevProxyEnabled = process.env.EHAGAKI_WEB_COMPONENT_DEV_PROXY === 'true';

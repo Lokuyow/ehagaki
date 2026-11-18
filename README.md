@@ -147,7 +147,7 @@ Windowsで公開済みファイルが多い場合の`spawn ENAMETOOLONG`を防�
 
 ### PWA
 - [vite-plugin-pwa](https://github.com/vite-pwa/vite-plugin-pwa) - Progressive Web App対応
-- GitHub Pagesが本番版です。Vercelのテスト版は、ホーム画面で「eHagaki Test」と `TEST` 入りのアイコンが表示され、起動後もヘッダーに `TEST` が表示されます。すでに追加済みの場合、名前やアイコンの反映時期はブラウザやOSによって異なります。
+- GitHub Pagesが本番版です。[Vercelのテスト版](https://ehagaki-test.vercel.app/)は、ホーム画面で「eHagaki Test」と `TEST` 入りのアイコンが表示され、起動後もヘッダーに `TEST` が表示されます。すでに追加済みの場合、名前やアイコンの反映時期はブラウザやOSによって異なります。
 
 ## 対応NIPs
 
