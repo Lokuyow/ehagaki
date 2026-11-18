@@ -36,6 +36,6 @@ describe("fixed legacy bridge", () => {
             resolve("legacy-bridge", "manifest.json"),
             "utf8",
         );
-        expect(rawManifest).not.toContain("ehagaki.vercel.app/assets/");
+        expect(rawManifest).not.toContain("ehagaki-test.vercel.app/assets/");
     });
 });
