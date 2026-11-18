@@ -19,6 +19,11 @@ const isTestBuild = Boolean(process.env.VERCEL);
 const baseUrl = isTestBuild ? '/' : '/ehagaki/';
 const appName = isTestBuild ? 'eHagaki Test' : 'eHagaki';
 const pwaIconDirectory = isTestBuild ? 'pwa-test/' : '';
+const vercelPreviewHost = process.env.VERCEL_ENV === 'preview' ? process.env.VERCEL_URL : undefined;
+const socialSiteUrl = isTestBuild
+  ? new URL(`https://${vercelPreviewHost || 'ehagaki-test.vercel.app'}/`).href
+  : 'https://lokuyow.github.io/ehagaki/';
+const socialImageUrl = new URL(isTestBuild ? 'ehagaki_ogp_test.png' : 'ehagaki_ogp.webp', socialSiteUrl).href;
 const webComponentDevProxyEnabled = process.env.EHAGAKI_WEB_COMPONENT_DEV_PROXY === 'true';
 const webComponentDevServerPort = process.env.EHAGAKI_WEB_COMPONENT_DEV_PORT;
 const webComponentDevProxyPath = `${baseUrl}web-component/`;
@@ -92,11 +97,13 @@ export default defineConfig({
     fixedLegacyBridgeEmitPlugin(fixedLegacyBridgeManifest),
     svelte(),
     {
-      name: 'ehagaki-pwa-branding',
+      name: 'ehagaki-branding',
       transformIndexHtml: {
         order: 'pre',
         handler: html => html
           .replaceAll('%EHAGAKI_APP_NAME%', appName)
+          .replaceAll('%EHAGAKI_SOCIAL_SITE_URL%', socialSiteUrl)
+          .replaceAll('%EHAGAKI_SOCIAL_IMAGE_URL%', socialImageUrl)
           .replaceAll('%EHAGAKI_PWA_ICON_DIRECTORY%', pwaIconDirectory),
       },
     },
@@ -177,6 +184,7 @@ export default defineConfig({
           '**/node_modules/**/*',
           'sw.js',
           'workbox-*.js',
+          'ehagaki_ogp_test.png',
           'host-owned-composer-lite-example.html',
           'web-component-parent-client-example.html',
           'web-component-parent-client-example.js',
