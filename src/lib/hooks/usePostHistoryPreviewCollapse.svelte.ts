@@ -118,9 +118,9 @@ export function usePostHistoryPreviewCollapse<
 
             lineHeight ??= getLineHeight(previewEl);
             const maxHeight = lineHeight * maxLines;
-            const useRenderedHeight = previewEl.scrollHeight > 0;
-            nextCollapsiblePosts[post.eventId] = useRenderedHeight
-                ? previewEl.scrollHeight > maxHeight + 0.5
+            const renderedHeight = previewEl.scrollHeight;
+            nextCollapsiblePosts[post.eventId] = renderedHeight > 0
+                ? renderedHeight > maxHeight + 0.5
                 : post.content.split("\n").length > maxLines;
         }
 

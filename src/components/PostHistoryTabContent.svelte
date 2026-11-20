@@ -556,7 +556,7 @@
         getShow: () => !destroyed && show,
         getSessionOpen: () => sessionOpen ?? active,
         getPosts: () => history.posts.map((post) => ({
-            ...post,
+            eventId: post.eventId,
             content: resolveEventContentBody(post.content, post.tags),
         })),
         getContainer: () => historyContainer,
@@ -578,21 +578,29 @@
         onStateChanged: () => previewCollapse.remeasure(),
     });
 
-    function buildDisplayPreviewModel(
+    // Listing updates retain existing records when paging and replace changed records.
+    const displayPreviewModelByPost = new WeakMap<PostHistoryRecord, PostContentRenderModel>();
+
+    function getDisplayPreviewModel(
         post: PostHistoryRecord,
     ): PostContentRenderModel {
+        const cached = displayPreviewModelByPost.get(post);
+        if (cached) return cached;
+
         const content = isRepostOuterKind(post.kind) ? "" : resolveEventContentBody(post.content, post.tags);
         const displayContent = stripPostHistoryInlineQuoteUrisForDisplay({
-            ...post,
             content,
+            tags: post.tags,
         });
-        return buildPostContentRenderModel({
+        const model = buildPostContentRenderModel({
             kind: post.kind,
             sourceContent: content,
             displayContent,
             tags: post.tags,
             media: post.media,
         });
+        displayPreviewModelByPost.set(post, model);
+        return model;
     }
 
     /**
@@ -652,7 +660,7 @@
         const nextContent: Record<string, PostContentRenderModel> = {};
 
         for (const post of history.posts) {
-            nextContent[post.eventId] = buildDisplayPreviewModel(post);
+            nextContent[post.eventId] = getDisplayPreviewModel(post);
         }
 
         return nextContent;
@@ -1537,7 +1545,7 @@
     ): PostContentRenderModel {
         return (
             previewModelByEventId[post.eventId] ??
-            buildDisplayPreviewModel(post)
+            getDisplayPreviewModel(post)
         );
     }
     function hasRenderablePostPreviewContent(post: PostHistoryRecord): boolean {
