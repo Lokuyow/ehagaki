@@ -575,7 +575,7 @@ for (const width of [360, 280]) test(`combines reposts and reactions in one targ
     await expect(combined).toHaveCount(1);
     await expect(combined.locator('.notification-reposter')).toHaveCount(2);
     await expect(combined.locator('.notification-repost-icon')).toHaveCount(1);
-    await expect(combined.locator('.notification-actor')).toHaveText('');
+    await expect(combined.locator('.notification-actor')).toHaveText('2');
     await expect(combined.locator('.single-actor-name')).toHaveCount(0);
     const repostStyle = await combined.locator('.notification-repost-chip').evaluate(node => ({ radius: getComputedStyle(node).borderRadius, background: getComputedStyle(node).backgroundColor }));
     const reactionStyle = await combined.locator('.notification-reaction .post-preview-reaction-chip').first().evaluate(node => ({ radius: getComputedStyle(node).borderRadius, background: getComputedStyle(node).backgroundColor }));
@@ -711,6 +711,7 @@ for (const kind of [6, 7]) for (const multiple of [false, true]) test(`actor sel
     await page.locator('.notification-btn').click();
     const prefix = kind === 6 ? '.notification-actor' : '.notification-reaction';
     const chip = page.locator(`${prefix} .post-preview-reaction-chip`).first();
+    if (kind === 6 && !multiple) await expect(chip.locator('.post-preview-reaction-count')).toHaveCount(0);
     if (!multiple) await expect(chip).toContainText('Fixture sender');
     const button = multiple ? chip.locator('button[data-notification-event]').first() : chip;
     const id = await button.getAttribute('data-notification-event');
