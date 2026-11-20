@@ -549,7 +549,7 @@ test('groups reactions to the same target with actor icons, counts, custom emoji
     await expect(custom).toHaveCount(1);
     await expect(custom.locator('.notification-reaction .post-preview-reaction-avatar-image')).toHaveCount(3);
     await expect(custom.locator('.notification-reaction time')).toHaveCount(0);
-    await expect(custom.locator('.notification-reaction .post-preview-reaction-count')).toHaveText(['2', '1']);
+    await expect(custom.locator('.notification-reaction .post-preview-reaction-count')).toHaveText(['2']);
     await expect(custom.getByText('Original notification target', { exact: true })).toBeVisible();
     await expect(custom.getByRole('button', { name: 'リアクションする' })).toHaveCount(1);
     await page.screenshot({ path: info.outputPath('reaction-360.png') });

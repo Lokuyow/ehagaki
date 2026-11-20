@@ -985,7 +985,7 @@
     {@const model = relatedReactions.getReadModel(post.eventId)}
     {#if model && model.totalCount > 0 && expandedReactionEventId === post.eventId}
         <PostHistoryReactionDetails readModel={model} emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
-            emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} />
+            emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} showSingleCount />
     {/if}
 {/snippet}
 {#snippet interactionFooter()}
@@ -1332,6 +1332,7 @@
                         readModel={targetReactionReadModel}
                         emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                         emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                        showSingleCount
                     />
                 {/if}
             </section>
