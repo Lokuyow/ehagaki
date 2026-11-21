@@ -19,6 +19,7 @@ import { DexiePostHistoryVisibleRangeRepository } from "../../lib/storage/postHi
 import { DexiePostHistoryImportedRangesRepository } from "../../lib/storage/postHistoryImportedRangesRepository";
 import { DexiePostHistoryRelayCoverageRepository } from "../../lib/storage/postHistoryRelayCoverageRepository";
 import { EventRepository } from "../../lib/storage/eventRepository";
+import { migrateEventStore } from "../../lib/storage/eventStoreMigration";
 
 const relay = "wss://relay.example.com/";
 const sign = (kind = 1, content = "original searchable post", tags: string[][] = []) =>
@@ -27,8 +28,8 @@ const confirmedTarget: PrepareRepostTarget = async (event, relayHints) => ({ tar
     status: "resolved", event, profile: null, authorPubkey: event.pubkey, relayHints, errorCode: null, updatedAt: 0 });
 const dbs: EHagakiDB[] = [];
 afterEach(async () => { await Promise.all(dbs.splice(0).map((db) => db.delete())); });
-function repository() {
-    const db = new EHagakiDB(`repost-test-${crypto.randomUUID()}`); dbs.push(db);
+function repository(options?: { migrateEvents?: boolean }) {
+    const db = new EHagakiDB(`repost-test-${crypto.randomUUID()}`, options); dbs.push(db);
     return { db, repo: new DexiePostHistoryRepository(db) };
 }
 function outer(target: NostrEvent, content = "") { return sign(6, content, [["e", target.id, relay], ["p", target.pubkey]]); }
@@ -481,6 +482,44 @@ describe("Repost signing, publishing and save retry", () => {
 });
 
 describe("single related-target resolver for Reposts", () => {
+    it("skips the history cursor when a target is absent after migration", async () => {
+        const { repo } = repository();
+        const target = sign();
+        const event = outer(target);
+        await repo.putPostedEvent({ event });
+
+        const openCursor = vi.spyOn(IDBIndex.prototype, "openCursor");
+        try {
+            expect(await repo.findRepostTargetSnapshot(event.pubkey, target.id)).toBeNull();
+            expect(openCursor).not.toHaveBeenCalled();
+        } finally {
+            openCursor.mockRestore();
+        }
+    });
+
+    it("reads an inline target both before and after shared event migration", async () => {
+        const { db, repo } = repository({ migrateEvents: false });
+        const target = sign();
+        const event = outer(target);
+        await repo.putPostedEvent({ event });
+        const record = (await repo.getByEventId(event.id))!;
+        const repostTarget = createRepostTargetSnapshot(target, [relay], getRepostReference(event))!;
+        await db.postHistory.put({ ...record, repostTarget });
+
+        expect(await db.events.get(target.id)).toBeUndefined();
+        expect(await repo.findRepostTargetSnapshot(event.pubkey, target.id)).toMatchObject({
+            rawEvent: target,
+            relayHints: [relay],
+        });
+
+        await migrateEventStore(db.backendDB());
+        expect(await db.events.get(target.id)).toMatchObject({ rawEvent: target });
+        expect(await repo.findRepostTargetSnapshot(event.pubkey, target.id)).toMatchObject({
+            rawEvent: target,
+            relayHints: [relay],
+        });
+    });
+
     it("hydrates only the matching snapshot in a large account history", async () => {
         const { db, repo } = repository();
         const target = sign(), event = outer(target);
