@@ -195,6 +195,36 @@ describe('postHistoryAutoLoadSentinelObserver', () => {
         expect(flags.intersecting).toBe(true);
     });
 
+    it('下向きのスクロールは早めに一度だけ読み込み、通常の範囲外に追加できたら再開する', () => {
+        const elements = createElements(601);
+        const flags = createFlags();
+        const { observation, observer, load } = observe('older', elements, flags);
+        observer.trigger(elements.sentinel, [false]);
+        elements.scrollTo(100);
+        expect(load).not.toHaveBeenCalled();
+
+        elements.moveSentinel(400);
+        elements.scrollTo(100);
+        elements.scrollTo(50);
+        expect(load).not.toHaveBeenCalled();
+        elements.scrollTo(100);
+        expect(load).toHaveBeenCalledTimes(1);
+
+        flags.loading = true;
+        flags.awaitingExit = true;
+        elements.scrollTo(110);
+        expect(load).toHaveBeenCalledTimes(1);
+        elements.moveSentinel(480);
+        observation.context.reconcileAfterCommit();
+        flags.loading = false;
+        observation.context.resumeAfterLoad();
+        expect(flags.awaitingExit).toBe(false);
+        expect(load).toHaveBeenCalledTimes(1);
+
+        elements.scrollTo(120);
+        expect(load).toHaveBeenCalledTimes(2);
+    });
+
     it('リサイズで作り直したとき、戻る方向へスクロールしていなければ最初の交差を保留する', () => {
         const elements = createElements(150);
         const flags = createFlags();
