@@ -1681,22 +1681,19 @@ test.describe('PostHistoryDialog Playwright', () => {
         const heading = page.locator('.post-history-heading');
         const refetch = heading.getByRole('button', { name: '表示中の投稿付近を再取得' });
         const refetchSpinner = refetch.locator('.inline-spinner');
-        const statusToast = page.locator('.floating-message.anchor-bottom-right[role="status"]');
+        const statusToast = page.locator('.floating-message .post-history-heading-status-placeholder');
         await expect.poll(
             () => page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.headRequests),
             { timeout: 15_000 },
         ).toBe(4);
-        await expect(statusToast).toContainText('リレーと同期中...', { timeout: 15_000 });
+        await expect(statusToast).toHaveCount(0);
         await expect(heading.locator('.status-loading-placeholder')).toHaveCount(0);
         await expect(refetch).toBeDisabled();
         await expect(refetch).toHaveCSS('opacity', '1');
         await expect(refetchSpinner).toBeVisible();
         const refetchBounds = await refetch.boundingBox();
         const headingBounds = await heading.boundingBox();
-        const toastBounds = await statusToast.boundingBox();
         expect(headingBounds).not.toBeNull();
-        expect(toastBounds).not.toBeNull();
-        expect(toastBounds!.y).toBeGreaterThanOrEqual(headingBounds!.y + headingBounds!.height);
 
         const ids = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.eventIds);
         await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_COVERAGE__!.releaseHead());
@@ -1720,7 +1717,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(refetch.locator('.repair-icon')).toBeVisible();
         await expect(refetchSpinner).toHaveCount(0);
         expect(await refetch.boundingBox()).toEqual(refetchBounds);
-        await expect(page.locator('.status-loading-placeholder .loader-container')).toHaveCount(0);
+        await expect(statusToast).toHaveCount(0);
         const headingAfterSync = await heading.boundingBox();
         expect(headingAfterSync?.height).toBe(headingBounds?.height);
         await expect(page.locator('.post-history-list li')).not.toHaveCount(0);

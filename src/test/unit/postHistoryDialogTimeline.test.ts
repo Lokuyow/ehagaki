@@ -1625,24 +1625,32 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await vi.waitFor(() => expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled());
-        await vi.waitFor(() => expect(document.querySelector('.floating-message.anchor-bottom-right')).toBeNull(), { timeout: 2500 });
+        const refetchButton = screen.getByRole('button', { name: '表示中の投稿付近を再取得' });
         await openJumpDatePanel();
         await setJumpDateValue('2023-10-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
-        const syncToast = () => document.querySelector('.floating-message.anchor-bottom-right');
-        await vi.waitFor(() => expect(syncToast()?.textContent).toContain('リレーと同期中...'));
+        await vi.waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledWith(
+                {} as any,
+                expect.objectContaining({
+                    reason: 'repair-visible-range',
+                    pubkeyHex: PUBKEY_HEX,
+                }),
+            );
+            expect(refetchButton.getAttribute('aria-busy')).toBe('true');
+        });
         await vi.advanceTimersByTimeAsync(1500);
-        expect(syncToast()?.textContent).toContain('リレーと同期中...');
+        expect(refetchButton.getAttribute('aria-busy')).toBe('true');
         relayDeferred.resolve(relayResult);
         await vi.waitFor(() => expect(repositoryMock.upsertFetchedEvents).toHaveBeenCalled());
         await vi.advanceTimersByTimeAsync(1500);
-        expect(syncToast()?.textContent).toContain('リレーと同期中...');
+        expect(refetchButton.getAttribute('aria-busy')).toBe('true');
         saveDeferred.resolve({ insertedCount: 1, updatedCount: 0, unchangedCount: 0 });
 
         await vi.waitFor(() => expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenCalledTimes(2));
         await vi.advanceTimersByTimeAsync(1500);
-        expect(syncToast()?.textContent).toContain('リレーと同期中...');
+        expect(refetchButton.getAttribute('aria-busy')).toBe('true');
         datePostsDeferred.resolve([fetchedAroundTarget]);
 
         await vi.waitFor(() => {
@@ -1661,13 +1669,6 @@ describe('PostHistoryDialog timeline navigation', () => {
                     },
                 }),
             );
-            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledWith(
-                {} as any,
-                expect.objectContaining({
-                    reason: 'repair-visible-range',
-                    pubkeyHex: PUBKEY_HEX,
-                }),
-            );
             expect(replyRepairServiceMock.repairVisibleRangeRelations).toHaveBeenCalledWith(
                 expect.any(Object),
                 expect.objectContaining({
@@ -1677,7 +1678,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             );
         });
 
-        expect(syncToast()).toBeNull();
+        expect(refetchButton.getAttribute('aria-busy')).toBe('false');
         view.unmount();
     });
 

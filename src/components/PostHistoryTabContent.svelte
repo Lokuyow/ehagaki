@@ -738,20 +738,6 @@
             history.currentViewRefetchStatusMessageKey ===
                 "postHistory.repairFetchFailed",
     );
-    let syncToastExpired = $state(false);
-    const canAutoHideSyncToast = $derived(
-        show && !fullScan.state.open && !jsonlExport.running &&
-            history.isDialogOpenSyncing &&
-            headingStatusMessageKey === "postHistory.syncing" &&
-            history.posts.length > 0,
-    );
-    $effect(() => {
-        syncToastExpired = false;
-        if (!canAutoHideSyncToast) return;
-
-        const timeout = setTimeout(() => { syncToastExpired = true; }, 1000);
-        return () => clearTimeout(timeout);
-    });
     let canUseReturnToLatest = $derived(
         history.canReturnToLatest || !historyViewport.isHistoryScrolledToTop,
     );
@@ -3057,8 +3043,7 @@
 
 
 <FloatingMessage
-    show={show && !fullScan.state.open && !jsonlExport.running && !!headingStatusMessageKey && !syncToastExpired}
-    fadeOutDuration={canAutoHideSyncToast ? 200 : 0}
+    show={show && !fullScan.state.open && !jsonlExport.running && !!headingStatusMessageKey}
     variant={history.showStatusLoader ? "anchor-bottom-right" : "anchor-center"}
     anchor={postHistoryHeadingElement}
     anchorRightOffset={16}

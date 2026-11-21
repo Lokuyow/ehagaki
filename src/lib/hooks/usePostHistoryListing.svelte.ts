@@ -542,16 +542,9 @@ export function usePostHistoryListing({
         state.syncStatus !== "older-syncing",
     );
     const syncStatusMessageKey = $derived(
-        isSearchMode || state.syncStatus === "idle"
-            ? null
-            : state.syncStatus === "syncing" ||
-                state.syncStatus === "older-syncing"
-                ? "postHistory.syncing"
-                : state.syncStatus === "synced"
-                    ? "postHistory.synced"
-                    : state.syncStatus === "no-more"
-                        ? null
-                        : "postHistory.syncFailed",
+        !isSearchMode && state.syncStatus === "failed"
+            ? "postHistory.syncFailed"
+            : null,
     );
     const showSyncLoader = $derived(
         !isSearchMode &&
@@ -3767,9 +3760,6 @@ export function usePostHistoryListing({
         },
         get latestOlderBackfillUiResult() {
             return state.latestOlderBackfillUiResult;
-        },
-        get isDialogOpenSyncing() {
-            return dialogOpenSync && state.syncStatus === "syncing";
         },
         get syncStatus() {
             return state.syncStatus;
