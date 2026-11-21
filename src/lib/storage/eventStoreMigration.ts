@@ -4,6 +4,7 @@ import { RAW_EVENT_VERIFICATION_RULE_VERSION } from '../rawEventVerificationStat
 import { validateEvent, verifyEvent } from 'nostr-tools';
 import { getEventHash } from '@rx-nostr/crypto';
 import { createPlainNostrEventSnapshot, isSignedNostrEvent } from '../postHistoryEventUtils';
+import { EVENT_STORE_MIGRATION_ID } from './ehagakiDbConstants';
 
 function verifiedSnapshot(input: unknown) {
     try {
@@ -13,10 +14,9 @@ function verifiedSnapshot(input: unknown) {
     } catch { return null; }
 }
 
-const MIGRATION_ID = 'shared-events-v19';
 const BATCH_SIZE = 100;
 interface Progress { id: string; tableIndex: number; lastKey: string; done: boolean }
-const initial = (): Progress => ({ id: MIGRATION_ID, tableIndex: 0, lastKey: '', done: false });
+const initial = (): Progress => ({ id: EVENT_STORE_MIGRATION_ID, tableIndex: 0, lastKey: '', done: false });
 const request = <T>(req: IDBRequest<T>) => new Promise<T>((resolve, reject) => {
     req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error);
 });
@@ -28,7 +28,7 @@ const completed = (tx: IDBTransaction) => new Promise<void>((resolve, reject) =>
 export async function migrateEventStore(db: IDBDatabase): Promise<void> {
     for (;;) {
         const reading = db.transaction(['eventStoreMigration', ...EVENT_RECORD_TABLES], 'readonly');
-        const progress = await request(reading.objectStore('eventStoreMigration').get(MIGRATION_ID)) as Progress | undefined ?? initial();
+        const progress = await request(reading.objectStore('eventStoreMigration').get(EVENT_STORE_MIGRATION_ID)) as Progress | undefined ?? initial();
         if (progress.done) return;
         const name = EVENT_RECORD_TABLES[progress.tableIndex];
         const rows = await request(reading.objectStore(name).getAll(progress.lastKey ? IDBKeyRange.lowerBound(progress.lastKey, true) : undefined, BATCH_SIZE));
@@ -52,7 +52,7 @@ export async function migrateEventStore(db: IDBDatabase): Promise<void> {
         const done = completed(writing);
         try {
             const checkpoints = writing.objectStore('eventStoreMigration');
-            const current = await request(checkpoints.get(MIGRATION_ID)) as Progress | undefined ?? initial();
+            const current = await request(checkpoints.get(EVENT_STORE_MIGRATION_ID)) as Progress | undefined ?? initial();
             // Concurrent tabs may verify the same batch, but only one commits it.
             if (current.tableIndex !== progress.tableIndex || current.lastKey !== progress.lastKey || current.done) {
                 await done; continue;
@@ -79,7 +79,7 @@ export async function migrateEventStore(db: IDBDatabase): Promise<void> {
                 writing.objectStore(name).put(hasWire ? row.metadata : legacy);
             }
             const finishedTable = rows.length < BATCH_SIZE;
-            checkpoints.put({ id: MIGRATION_ID, tableIndex: progress.tableIndex + (finishedTable ? 1 : 0),
+            checkpoints.put({ id: EVENT_STORE_MIGRATION_ID, tableIndex: progress.tableIndex + (finishedTable ? 1 : 0),
                 lastKey: finishedTable ? '' : String(rows.at(-1)!.id),
                 done: finishedTable && progress.tableIndex === EVENT_RECORD_TABLES.length - 1 } satisfies Progress);
             await done;

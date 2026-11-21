@@ -37,7 +37,7 @@ import type {
     EHagakiDB,
 } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
-import { POST_HISTORY_TIMELINE_INDEX } from "./ehagakiDbConstants";
+import { EVENT_STORE_MIGRATION_ID, POST_HISTORY_TIMELINE_INDEX } from "./ehagakiDbConstants";
 import { DexiePostHistoryRelayCoverageRepository, PostHistoryCoverageStaleError, type PostHistoryCoverageWrite } from "./postHistoryRelayCoverageRepository";
 import { reconcileSensitivePayloadDeletionForStructure } from "./sensitivePayloadDeletionReconciler";
 import { assertPostHistoryLocalWriteCurrent, PostHistoryLocalWriteStaleError, type PostHistoryLocalWriteScope } from "./postHistoryLocalWriteScope";
@@ -473,12 +473,24 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
     async findRepostTargetSnapshot(pubkeyHex: string, targetEventId: string): Promise<PostHistoryRepostTarget | null> {
         if (!pubkeyHex || !targetEventId) return null;
-        const row = await this.db.postHistory.where('pubkeyHex').equals(pubkeyHex).filter(record => {
+
+        const { events, eventStoreMigration, postHistory } = this.db;
+        const [migration, storedTarget] = await this.db.transaction("r", [events, eventStoreMigration], () =>
+            Promise.all([
+                eventStoreMigration.get(EVENT_STORE_MIGRATION_ID),
+                events.get(targetEventId),
+            ]),
+        );
+        // Migration copies verified inline targets into the shared store.
+        // Later snapshot writes store the target and projection atomically.
+        if (migration?.done === true && !storedTarget) return null;
+
+        const row = await postHistory.where("pubkeyHex").equals(pubkeyHex).filter((record) => {
             const target = record.repostTarget as { eventId?: string; rawEvent?: NostrEvent } | undefined;
             return isRepostOuterKind(record.kind) && (target?.eventId ?? target?.rawEvent?.id) === targetEventId;
         }).first();
         if (!row) return null;
-        const [record] = await eventRecords(this.db, 'postHistory').hydrate([row]);
+        const [record] = await eventRecords(this.db, "postHistory").hydrate([row]);
         return record.repostTarget ?? null;
     }
 
