@@ -9,6 +9,7 @@ import { HASHED_PRECACHE_ASSET_PATTERN } from '../../lib/swPrecacheInstall';
 import { finalizeEvent, generateSecretKey } from 'nostr-tools';
 import { EHAGAKI_DB_NAME } from '../../lib/storage/ehagakiDbConstants';
 import type { runJsonlImportWorkerProbe } from './jsonlImportWorkerProbe';
+import { CUSTOM_EMOJI_IMAGE_CACHE_POLICY, PROFILE_IMAGE_CACHE_POLICY } from '../../lib/swImageCachePolicy';
 
 const manifestPattern = /\[\{"revision":(?:null|"[^"]*"),"url":"[^"]+"\}(?:,\{"revision":(?:null|"[^"]*"),"url":"[^"]+"\})*\]/;
 interface Entry { url: string; revision: string | null }
@@ -263,6 +264,69 @@ test('restores the saved account while v1.32.0 history conversion is still pendi
 });
 
 for (const basePath of ['/ehagaki/', '/'] as const) {
+    test(`${basePath} keeps bounded image caches across a Service Worker update and offline display`, async ({ page, context }) => {
+        const fixture = await createFixture(basePath);
+        try {
+            await enterApp(page, fixture.url);
+            const monitor = await context.newPage();
+            await monitor.goto(`${fixture.url}sw-monitor.html`);
+            const retained = await monitor.evaluate(async policies => {
+                Reflect.set(window, '__previousController', navigator.serviceWorker.controller);
+                const urls = [];
+                for (const [index, policy] of policies.entries()) {
+                    await caches.delete(policy.metadataName);
+                    const cache = await caches.open(policy.bodyName);
+                    const publicUrl = new URL(`cache-probe-${index}.svg`, location.href);
+                    if (index === 1) publicUrl.searchParams.set('raw', 'true');
+                    const oversizeUrl = new URL(`cache-probe-${index}-oversize.svg`, location.href);
+                    await cache.put(oversizeUrl.href, new Response(new Uint8Array(policy.maxImageBytes + 1)));
+                    await cache.put(publicUrl.href, new Response(
+                        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="7"/>',
+                        { headers: { 'Content-Type': 'image/svg+xml' } },
+                    ));
+                    const key = publicUrl.href;
+                    if (index === 0) publicUrl.searchParams.set('profile', 'true');
+                    urls.push({ request: publicUrl.href, key, oversize: oversizeUrl.href, cacheName: policy.bodyName });
+                }
+                return urls;
+            }, [PROFILE_IMAGE_CACHE_POLICY, CUSTOM_EMOJI_IMAGE_CACHE_POLICY]);
+            fixture.update();
+            await startUpdate(page);
+            await waitForWaiting(page);
+            await Promise.all([
+                page.waitForNavigation({ waitUntil: 'load' }),
+                page.getByRole('button', { name: 'アプリを更新' }).click(),
+            ]);
+            await monitor.waitForFunction(() => navigator.serviceWorker.controller !== null
+                && navigator.serviceWorker.controller !== Reflect.get(window, '__previousController'));
+
+            fixture.setOffline(true);
+            for (const entry of retained) {
+                const result = await monitor.evaluate(async entry => {
+                    const cache = await caches.open(entry.cacheName);
+                    const urls = (await cache.keys()).map(key => key.url);
+                    return {
+                        cached: urls.includes(entry.key),
+                        oversized: urls.includes(entry.oversize),
+                    };
+                }, entry);
+                expect(result).toEqual({ cached: true, oversized: false });
+                await monitor.evaluate(url => {
+                    document.querySelector('[data-testid="offline-cache-probe"]')?.remove();
+                    const image = document.createElement('img');
+                    image.dataset.testid = 'offline-cache-probe';
+                    image.src = url;
+                    document.body.append(image);
+                }, entry.request);
+                await expect.poll(() => monitor.getByTestId('offline-cache-probe').evaluate(
+                    image => (image as HTMLImageElement).naturalWidth,
+                )).toBe(13);
+            }
+        } finally {
+            await fixture.close();
+        }
+    });
+
     test(`${basePath} loads the production JSONL verifier Worker online and offline`, async ({page}) => {
         const fixture = await createFixture(basePath);
         try {

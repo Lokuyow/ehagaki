@@ -7,9 +7,17 @@ import {
     postMediaCacheRepository,
     type PostMediaCacheRepository,
 } from './storage/postMediaCacheRepository';
+import {
+    OPAQUE_CACHE_RETENTION_MS,
+    selectCacheEvictions,
+    type CacheRetentionEntry,
+} from './cacheRetention';
 
 export const POST_MEDIA_CACHE_NAME = 'ehagaki-post-media-v1';
 export const POST_MEDIA_CACHE_MAX_TOTAL_SIZE = 128 * 1024 * 1024;
+const POST_MEDIA_CACHE_MAX_ENTRIES = 256;
+const POST_MEDIA_CACHE_MAX_OPAQUE_ENTRIES = 8;
+const POST_MEDIA_CACHE_MAINTENANCE_INTERVAL_MS = 60 * 60 * 1000;
 export const POST_MEDIA_DESCRIPTOR_SNAPSHOT_TTL_MS = 60_000;
 export const POST_MEDIA_DESCRIPTOR_SNAPSHOT_MAX_ENTRIES = 256;
 export const POST_MEDIA_SHORT_LIVED_OBJECT_URL_TTL_MS = 45_000;
@@ -23,6 +31,7 @@ type FetchLike = (
 ) => Promise<Response>;
 
 interface CacheLike {
+    keys(): Promise<readonly Request[]>;
     put(request: RequestInfo | URL, response: Response): Promise<void>;
     match(request: RequestInfo | URL): Promise<Response | undefined>;
     delete(request: RequestInfo | URL): Promise<boolean>;
@@ -32,11 +41,16 @@ interface CacheStorageLike {
     open(cacheName: string): Promise<CacheLike>;
 }
 
+interface RetainedPostMedia extends CacheRetentionEntry {
+    cacheKey: string;
+}
+
 interface PostMediaCacheServiceRuntime {
     cacheStorage?: CacheStorageLike;
     fetch?: FetchLike;
     createObjectUrl?: (blob: Blob) => string;
     revokeObjectUrl?: (url: string) => void;
+    locks?: Pick<LockManager, 'request'>;
 }
 
 export interface CachedPostMediaDescriptor {
@@ -99,6 +113,7 @@ function createDefaultRuntime(): PostMediaCacheServiceRuntime {
 
     return {
         cacheStorage: typeof caches === 'undefined' ? undefined : caches,
+        locks: typeof navigator === 'undefined' ? undefined : navigator.locks,
         fetch: typeof globalThis.fetch === 'function'
             ? globalThis.fetch.bind(globalThis)
             : undefined,
@@ -151,6 +166,8 @@ async function runWithConcurrencyLimit<T>(
 }
 
 export class PostMediaCacheService {
+    private mutationQueue: Promise<unknown> = Promise.resolve();
+    private nextReconcileAt = 0;
     private readonly descriptorSnapshotTtlMs: number;
     private readonly descriptorSnapshotMaxEntries: number;
     private readonly objectUrlTtlMs: number;
@@ -314,29 +331,15 @@ export class PostMediaCacheService {
 
         try {
             const response = await fetchFn(params.url);
-
             if (response.type === 'opaque') {
-                return await this.persistOpaqueMediaResponse({
-                    url: params.url,
-                    response,
-                    mimeType: params.mimeType,
-                    source: 'network',
-                });
+                return this.persistOpaqueMediaResponse(params.url, response, params.mimeType);
             }
-
-            if (!response.ok) {
-                return null;
-            }
-
+            if (!response.ok) return null;
             const blob = await response.blob();
-            return await this.persistMediaBlob({
+            return this.persistMediaBlob({
                 url: params.url,
                 file: blob,
-                mimeType:
-                    params.mimeType ||
-                    response.headers.get('Content-Type') ||
-                    blob.type ||
-                    undefined,
+                mimeType: params.mimeType || response.headers.get('Content-Type') || blob.type || undefined,
                 source: 'network',
             });
         } catch (error) {
@@ -351,6 +354,7 @@ export class PostMediaCacheService {
 
             throw error;
         }
+
     }
 
     async getCachedMediaDescriptor(
@@ -393,7 +397,7 @@ export class PostMediaCacheService {
         if (!resolved) {
             if (cacheKey) {
                 this.writeDescriptorSnapshot(cacheKey, null);
-                this.revokeSharedObjectUrl(cacheKey);
+                this.retireSharedObjectUrl(cacheKey);
             }
             return null;
         }
@@ -403,8 +407,6 @@ export class PostMediaCacheService {
             record,
             mimeType: record.mimeType || response.headers.get('Content-Type') || undefined,
         });
-        this.writeDescriptorSnapshot(record.cacheKey, descriptor);
-
         if (response.type === 'opaque') {
             await this.repository.touch(record.cacheKey);
 
@@ -504,20 +506,13 @@ export class PostMediaCacheService {
         this.cleanupTransientState();
 
         const cacheStorage = this.runtime.cacheStorage;
-        const record = await this.repository.getByUrl(url);
-        const cacheKey = record?.cacheKey ?? resolveTransientCacheKey(url);
-        if (cacheKey) {
-            this.writeDescriptorSnapshot(cacheKey, null);
-            this.revokeSharedObjectUrl(cacheKey);
-        }
-
-        if (!cacheStorage || !record) {
-            return;
-        }
-
-        const cache = await cacheStorage.open(POST_MEDIA_CACHE_NAME);
-        await cache.delete(record.cacheKey);
-        await this.repository.deleteByCacheKey(record.cacheKey);
+        if (!cacheStorage) return;
+        await this.serialize(async () => {
+            const cache = await cacheStorage.open(POST_MEDIA_CACHE_NAME);
+            await this.reconcile(cache);
+            const cacheKey = normalizePostMediaUrl(url);
+            if (cacheKey) await this.remove(cache, cacheKey);
+        });
     }
 
     private async persistMediaBlob(params: {
@@ -526,43 +521,17 @@ export class PostMediaCacheService {
         mimeType?: string;
         source: 'uploaded' | 'network';
     }): Promise<CachedPostMediaDescriptor | null> {
-        const cacheStorage = this.runtime.cacheStorage;
-        const normalizedUrl = normalizePostMediaUrl(params.url);
-        if (!cacheStorage || !normalizedUrl) {
-            return null;
-        }
-
         if (params.file.size > this.maxTotalSize) {
             return null;
         }
 
-        const cache = await cacheStorage.open(POST_MEDIA_CACHE_NAME);
-        const timestamp = Date.now();
         const response = new Response(params.file, {
             headers: params.mimeType
                 ? { 'Content-Type': params.mimeType }
                 : undefined,
         });
 
-        await cache.put(normalizedUrl, response);
-        const record = await this.repository.upsert({
-            cacheKey: normalizedUrl,
-            url: params.url,
-            normalizedUrl,
-            size: params.file.size,
-            mimeType: params.mimeType,
-            createdAt: timestamp,
-            lastAccessedAt: timestamp,
-            source: params.source,
-        });
-        await this.evictOverflowEntries(normalizedUrl);
-
-        const descriptor = this.toCachedMediaDescriptor({
-            record,
-            mimeType: record.mimeType,
-        });
-        this.writeDescriptorSnapshot(record.cacheKey, descriptor);
-        return descriptor;
+        return this.persistResponse(params.url, response, params.file.size, params.mimeType, params.source);
     }
 
     private async fetchOpaqueMediaResponse(params: {
@@ -574,66 +543,69 @@ export class PostMediaCacheService {
             return null;
         }
 
+        let response: Response;
         try {
-            const response = await fetchFn(new Request(params.url, {
+            response = await fetchFn(new Request(params.url, {
                 mode: 'no-cors',
                 cache: 'reload',
             }));
 
-            if (response.type !== 'opaque') {
-                return null;
-            }
-
-            return await this.persistOpaqueMediaResponse({
-                url: params.url,
-                response,
-                mimeType: params.mimeType,
-                source: 'network',
-            });
         } catch {
             return null;
         }
+        return response.type === 'opaque'
+            ? this.persistOpaqueMediaResponse(params.url, response, params.mimeType)
+            : null;
     }
 
-    private async persistOpaqueMediaResponse(params: {
-        url: string;
-        response: Response;
-        mimeType?: string;
-        source: 'uploaded' | 'network';
-    }): Promise<CachedPostMediaDescriptor | null> {
+    private persistOpaqueMediaResponse(url: string, response: Response, mimeType?: string) {
+        return this.persistResponse(url, response, null, mimeType, 'network');
+    }
+
+    private async persistResponse(
+        url: string,
+        response: Response,
+        size: number | null,
+        mimeType: string | undefined,
+        source: CachedPostMediaRecord['source'],
+    ): Promise<CachedPostMediaDescriptor | null> {
         const cacheStorage = this.runtime.cacheStorage;
-        const normalizedUrl = normalizePostMediaUrl(params.url);
-        if (!cacheStorage || !normalizedUrl) {
-            return null;
-        }
+        const cacheKey = normalizePostMediaUrl(url);
+        if (!cacheStorage || !cacheKey) return null;
 
-        const cache = await cacheStorage.open(POST_MEDIA_CACHE_NAME);
-        const timestamp = Date.now();
-        await cache.put(
-            normalizedUrl,
-            typeof params.response.clone === 'function'
-                ? params.response.clone()
-                : params.response,
-        );
-
-        const record = await this.repository.upsert({
-            cacheKey: normalizedUrl,
-            url: params.url,
-            normalizedUrl,
-            size: 0,
-            mimeType: params.mimeType,
-            createdAt: timestamp,
-            lastAccessedAt: timestamp,
-            source: params.source,
+        return this.serialize(async () => {
+            const cache = await cacheStorage.open(POST_MEDIA_CACHE_NAME);
+            await this.reconcile(cache);
+            const now = Date.now();
+            await this.prune(cache, { cacheKey, size, lastAccessedAt: now, expiresAt: Infinity });
+            // Remove the old commit record before replacing the body.
+            const previous = await this.repository.getByUrl(url);
+            if (previous) {
+                await this.repository.deleteByCacheKey(cacheKey);
+                this.descriptorSnapshotByCacheKey.delete(cacheKey);
+                this.retireSharedObjectUrl(cacheKey);
+            }
+            try {
+                await cache.put(cacheKey, response);
+                const record = await this.repository.upsert({
+                    cacheKey, url, normalizedUrl: cacheKey, size: size ?? 0, mimeType,
+                    createdAt: now, lastAccessedAt: now, source,
+                    ...(previous && { eventIds: previous.eventIds, mimeType: mimeType ?? previous.mimeType }),
+                });
+                if (!this.runtime.locks) await this.prune(cache);
+                const descriptor = this.toCachedMediaDescriptor({ record, mimeType: record.mimeType });
+                if (size === null) {
+                    this.descriptorSnapshotByCacheKey.delete(cacheKey);
+                } else {
+                    this.writeDescriptorSnapshot(cacheKey, descriptor);
+                }
+                return descriptor;
+            } catch (error) {
+                this.nextReconcileAt = 0;
+                await this.remove(cache, cacheKey).catch(() => undefined);
+                throw error;
+            }
         });
-        await this.evictOverflowEntries(normalizedUrl);
-
-        const descriptor = this.toCachedMediaDescriptor({
-            record,
-            mimeType: record.mimeType,
-        });
-        this.writeDescriptorSnapshot(record.cacheKey, descriptor);
-        return descriptor;
     }
 
     private async resolveCachedMediaDescriptor(
@@ -641,7 +613,7 @@ export class PostMediaCacheService {
         cacheKey = resolveTransientCacheKey(url),
     ): Promise<CachedPostMediaDescriptor | null> {
         if (!cacheKey) {
-            return this.loadCachedMediaDescriptor(url);
+            return this.loadCachedMediaDescriptor(url, cacheKey);
         }
 
         const pending = this.descriptorLookupPromises.get(cacheKey);
@@ -649,11 +621,7 @@ export class PostMediaCacheService {
             return pending;
         }
 
-        const promise = (async () => {
-            const descriptor = await this.loadCachedMediaDescriptor(url);
-            this.writeDescriptorSnapshot(cacheKey, descriptor);
-            return descriptor;
-        })().finally(() => {
+        const promise = this.loadCachedMediaDescriptor(url, cacheKey).finally(() => {
             this.descriptorLookupPromises.delete(cacheKey);
         });
 
@@ -663,17 +631,21 @@ export class PostMediaCacheService {
 
     private async loadCachedMediaDescriptor(
         url: string,
+        cacheKey: string,
     ): Promise<CachedPostMediaDescriptor | null> {
         const resolved = await this.getCachedRecordAndResponse(url);
         if (!resolved) {
+            this.writeDescriptorSnapshot(cacheKey, null);
             return null;
         }
 
         const { record, response } = resolved;
-        return this.toCachedMediaDescriptor({
+        const descriptor = this.toCachedMediaDescriptor({
             record,
             mimeType: record.mimeType || response.headers.get('Content-Type') || undefined,
         });
+        if (response.type !== 'opaque') this.writeDescriptorSnapshot(cacheKey, descriptor);
+        return descriptor;
     }
 
     private toCachedMediaDescriptor(params: {
@@ -870,33 +842,70 @@ export class PostMediaCacheService {
         this.runtime.revokeObjectUrl?.(entry.objectUrl);
     }
 
-    private async evictOverflowEntries(protectedCacheKey: string): Promise<void> {
-        const cacheStorage = this.runtime.cacheStorage;
-        if (!cacheStorage) {
-            return;
+    private serialize<T>(operation: () => Promise<T>): Promise<T> {
+        const task = this.mutationQueue.then(async () => this.runtime.locks
+            ? this.runtime.locks.request(POST_MEDIA_CACHE_NAME, operation)
+            : operation());
+        this.mutationQueue = task.catch(() => undefined);
+        return task;
+    }
+
+    private async remove(cache: CacheLike, cacheKey: string): Promise<void> {
+        await cache.delete(cacheKey);
+        await this.repository.deleteByCacheKey(cacheKey);
+        this.descriptorSnapshotByCacheKey.delete(cacheKey);
+        this.retireSharedObjectUrl(cacheKey);
+    }
+
+    private retireSharedObjectUrl(cacheKey: string): void {
+        const objectUrl = this.sharedObjectUrlByCacheKey.get(cacheKey);
+        if (!objectUrl) return;
+        if (objectUrl.activeLeases === 0) this.revokeSharedObjectUrl(cacheKey);
+        // Existing display leases remain valid until released, but cannot be reused.
+        objectUrl.expiresAt = 0;
+    }
+
+    private async reconcile(cache: CacheLike): Promise<void> {
+        if (Date.now() < this.nextReconcileAt) return;
+        const [keys, records] = await Promise.all([cache.keys(), this.repository.listByLastAccessed()]);
+        const stored = new Set(keys.map(key => key.url));
+        const indexed = new Set(records.map(record => record.cacheKey));
+        for (const key of stored) {
+            if (!indexed.has(key)) await cache.delete(key);
         }
-
-        const entries = await this.repository.listByLastAccessed();
-        let totalSize = entries.reduce((sum, entry) => sum + entry.size, 0);
-        if (totalSize <= this.maxTotalSize) {
-            return;
+        for (const key of indexed) {
+            if (!stored.has(key)) await this.repository.deleteByCacheKey(key);
         }
+        await this.prune(cache);
+        this.nextReconcileAt = Date.now() + POST_MEDIA_CACHE_MAINTENANCE_INTERVAL_MS;
+    }
 
-        const cache = await cacheStorage.open(POST_MEDIA_CACHE_NAME);
-        for (const entry of entries) {
-            if (entry.cacheKey === protectedCacheKey) {
-                continue;
+    private async prune(
+        cache: CacheLike,
+        incoming?: RetainedPostMedia,
+    ): Promise<void> {
+        const records = (await this.repository.listByLastAccessed())
+            .filter(record => record.cacheKey !== incoming?.cacheKey);
+        const entries = records.map((record): RetainedPostMedia & { createdAt: number } => ({
+            cacheKey: record.cacheKey,
+            size: record.size,
+            lastAccessedAt: record.lastAccessedAt,
+            expiresAt: Infinity,
+            createdAt: record.createdAt,
+        }));
+        await runWithConcurrencyLimit(entries.filter(entry => entry.size === 0), 4, async entry => {
+            if ((await cache.match(entry.cacheKey))?.type === 'opaque') {
+                entry.size = null;
+                entry.expiresAt = entry.createdAt + OPAQUE_CACHE_RETENTION_MS;
             }
-
-            await cache.delete(entry.cacheKey);
-            await this.repository.deleteByCacheKey(entry.cacheKey);
-            this.writeDescriptorSnapshot(entry.cacheKey, null);
-            this.revokeSharedObjectUrl(entry.cacheKey);
-            totalSize -= entry.size;
-
-            if (totalSize <= this.maxTotalSize) {
-                return;
-            }
+        });
+        const limits = {
+            maxEntries: POST_MEDIA_CACHE_MAX_ENTRIES,
+            maxReadableBytes: this.maxTotalSize,
+            maxOpaqueEntries: POST_MEDIA_CACHE_MAX_OPAQUE_ENTRIES,
+        };
+        for (const entry of selectCacheEvictions(entries, limits, Date.now(), incoming)) {
+            await this.remove(cache, entry.cacheKey);
         }
     }
 
@@ -909,21 +918,18 @@ export class PostMediaCacheService {
             return null;
         }
 
-        const record = await this.repository.getByUrl(url);
-        if (!record) {
-            return null;
-        }
-
-        const cache = await cacheStorage.open(POST_MEDIA_CACHE_NAME);
-        const response = await cache.match(record.cacheKey);
-        if (!response) {
-            await this.repository.deleteByCacheKey(record.cacheKey);
-            this.writeDescriptorSnapshot(record.cacheKey, null);
-            this.revokeSharedObjectUrl(record.cacheKey);
-            return null;
-        }
-
-        return { record, response };
+        return this.serialize(async () => {
+            const cache = await cacheStorage.open(POST_MEDIA_CACHE_NAME);
+            await this.reconcile(cache);
+            const record = await this.repository.getByUrl(url);
+            if (!record) return null;
+            const response = await cache.match(record.cacheKey);
+            if (!response || (response.type === 'opaque' && record.createdAt + OPAQUE_CACHE_RETENTION_MS <= Date.now())) {
+                await this.remove(cache, record.cacheKey);
+                return null;
+            }
+            return { record, response };
+        });
     }
 }
 
