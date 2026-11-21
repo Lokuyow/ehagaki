@@ -3,14 +3,17 @@ import { STORAGE_KEYS } from "./constants";
 import { EHAGAKI_DB_NAME, ehagakiDb, ehagakiStartupDb } from "./storage/ehagakiDb";
 import { getAppStorage } from "./appStorage";
 import { UPLOAD_MEDIA_IMAGE_CACHE_NAMES, UPLOAD_MEDIA_IMAGE_LEGACY_CACHE_NAMES } from "./uploadMediaImageCachePolicy";
+import { CUSTOM_EMOJI_IMAGE_CACHE_POLICY, PROFILE_IMAGE_CACHE_POLICY } from "./swImageCachePolicy";
 
 const PROFILE_CACHE_NAMES = [
-    "ehagaki-profile-images-v2",
+    PROFILE_IMAGE_CACHE_POLICY.bodyName,
+    PROFILE_IMAGE_CACHE_POLICY.metadataName,
     "ehagaki-profile-images",
 ] as const;
 
 const CUSTOM_EMOJI_CACHE_NAMES = [
-    "ehagaki-custom-emoji-images-v3",
+    CUSTOM_EMOJI_IMAGE_CACHE_POLICY.bodyName,
+    CUSTOM_EMOJI_IMAGE_CACHE_POLICY.metadataName,
     "ehagaki-custom-emoji-images-v2",
     "ehagaki-custom-emoji-images",
 ] as const;

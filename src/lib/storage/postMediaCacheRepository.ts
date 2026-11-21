@@ -117,15 +117,9 @@ implements PostMediaCacheRepository {
             return;
         }
 
-        const existing = await this.db.postMediaCache.get(cacheKey);
-        if (!existing) {
-            return;
-        }
-
-        await this.db.postMediaCache.put({
-            ...existing,
-            lastAccessedAt: accessedAt,
-            updatedAt: accessedAt,
+        await this.db.postMediaCache.where(':id').equals(cacheKey).modify(record => {
+            record.lastAccessedAt = Math.max(record.lastAccessedAt, accessedAt);
+            record.updatedAt = Math.max(record.updatedAt, accessedAt);
         });
     }
 

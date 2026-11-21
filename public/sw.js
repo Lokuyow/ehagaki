@@ -31,6 +31,8 @@ import {
 } from "../src/lib/swListenerUtils";
 import { resolveServiceWorkerFetchRoute } from "../src/lib/swRoutingUtils";
 import { UploadMediaImageCacheController } from "../src/lib/swUploadMediaImageCacheUtils";
+import { ServiceWorkerBoundedImageCache } from "../src/lib/swBoundedImageCache";
+import { CUSTOM_EMOJI_IMAGE_CACHE_POLICY, PROFILE_IMAGE_CACHE_POLICY } from "../src/lib/swImageCachePolicy";
 import { isUploadMediaImageProxyUrl } from "../src/lib/uploadMediaImageUrl";
 import { UPLOAD_MEDIA_IMAGE_CACHE_VERSION, UPLOAD_MEDIA_IMAGE_SUPPORT_MESSAGE, UPLOAD_MEDIA_IMAGE_EVICT_MESSAGE } from "../src/lib/uploadMediaImageCachePolicy";
 import {
@@ -85,11 +87,11 @@ import { registerRoute } from "workbox-routing";
 import { CacheFirst } from "workbox-strategies";
 
 // 定数定義
-const SW_VERSION = '1.33.0';
+const SW_VERSION = '1.34.0';
 const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
-const PROFILE_CACHE_NAME = 'ehagaki-profile-images-v2';
+const PROFILE_CACHE_NAME = PROFILE_IMAGE_CACHE_POLICY.bodyName;
 const LEGACY_PROFILE_CACHE_NAMES = ['ehagaki-profile-images'];
-const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images-v3';
+const CUSTOM_EMOJI_CACHE_NAME = CUSTOM_EMOJI_IMAGE_CACHE_POLICY.bodyName;
 const LEGACY_CUSTOM_EMOJI_CACHE_NAMES = [
     'ehagaki-custom-emoji-images-v2',
     'ehagaki-custom-emoji-images',
@@ -101,7 +103,6 @@ const INDEXEDDB_VERSION = EHAGAKI_DB_OPEN_VERSION;
 const SHARED_MEDIA_STORE_NAME = 'sharedMedia';
 const SHARED_MEDIA_RECORD_ID = 'latest';
 const SHARED_MEDIA_SCHEMA_VERSION = 1;
-const CUSTOM_EMOJI_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 // IndexedDB永続化時のファイルサイズ上限（100MB）
 const MAX_INDEXEDDB_FILE_SIZE = 100 * 1024 * 1024;
@@ -333,6 +334,19 @@ class CacheManager {
         this.caches = dependencies.caches;
         this.fetch = dependencies.fetch;
         this.console = dependencies.console;
+        this.profileImages = new ServiceWorkerBoundedImageCache(
+            this.caches, PROFILE_IMAGE_CACHE_POLICY, (url) => Boolean(Utilities.getBaseUrl(url)),
+        );
+        this.customEmojiImages = new ServiceWorkerBoundedImageCache(
+            this.caches, CUSTOM_EMOJI_IMAGE_CACHE_POLICY, (url) => Boolean(Utilities.getCustomEmojiBaseUrl(url)),
+        );
+    }
+
+    async reconcileImageCaches() {
+        const results = await Promise.allSettled([this.profileImages.reconcile(), this.customEmojiImages.reconcile()]);
+        for (const result of results) {
+            if (result.status === 'rejected') this.console.warn('画像キャッシュの整理に失敗:', result.reason);
+        }
     }
 
     // Workbox移行前のプリキャッシュだけを削除
@@ -355,7 +369,6 @@ class CacheManager {
     // プロフィール画像キャッシュの処理
     async handleProfileImageCache(request) {
         try {
-            const cache = await this.caches.open(PROFILE_CACHE_NAME);
             const baseUrl = Utilities.getBaseUrl(request.url);
             if (!baseUrl) {
                 return null;
@@ -363,7 +376,7 @@ class CacheManager {
 
             const cachedMatch = await findProfileImageCacheMatch({
                 request,
-                cache,
+                cache: this.profileImages,
                 getBaseUrl: Utilities.getBaseUrl,
                 createRequest: Utilities.createCorsRequest,
             });
@@ -393,7 +406,7 @@ class CacheManager {
     async fetchAndCacheOpaqueProfileImage(baseUrl) {
         return await fetchAndCacheOpaqueProfileImageResponse({
             baseUrl,
-            cacheStorage: this.caches,
+            cacheStorage: { open: async () => this.profileImages },
             cacheName: PROFILE_CACHE_NAME,
             fetchRequest: (request) => this.fetch(request),
             createRequest: Utilities.createCorsRequest,
@@ -410,7 +423,7 @@ class CacheManager {
             getBaseUrl: Utilities.getBaseUrl,
             createRequest: Utilities.createCorsRequest,
             fetchRequest: (targetRequest) => this.fetch(targetRequest),
-            cacheStorage: this.caches,
+            cacheStorage: { open: async () => this.profileImages },
             cacheName: PROFILE_CACHE_NAME,
             fetchOpaqueProfileImage: (baseUrl) => this.fetchAndCacheOpaqueProfileImage(baseUrl),
             logger: this.console,
@@ -419,10 +432,9 @@ class CacheManager {
 
     async handleCustomEmojiImageRequest(request) {
         try {
-            const cache = await this.caches.open(CUSTOM_EMOJI_CACHE_NAME);
             return await resolveCustomEmojiImageRequestResponse({
                 request,
-                cache,
+                cache: this.customEmojiImages,
                 getBaseUrl: Utilities.getCustomEmojiBaseUrl,
                 createRequest: Utilities.createCorsRequest,
                 fetchRequest: (targetRequest) => this.fetch(targetRequest),
@@ -446,12 +458,12 @@ class CacheManager {
     async cacheCustomEmojiImages(urls) {
         return await cacheCustomEmojiImagesBatch({
             urls,
-            cacheStorage: this.caches,
+            cacheStorage: { open: async () => this.customEmojiImages },
             cacheName: CUSTOM_EMOJI_CACHE_NAME,
             fetchRequest: (request) => this.fetch(request),
             createRequest: Utilities.createCorsRequest,
             getBaseUrl: Utilities.getCustomEmojiBaseUrl,
-            maxImageBytes: CUSTOM_EMOJI_MAX_IMAGE_BYTES,
+            maxImageBytes: CUSTOM_EMOJI_IMAGE_CACHE_POLICY.maxImageBytes,
             cacheOpaqueImage: (cache, baseUrl) => this.cacheOpaqueCustomEmojiImage(cache, baseUrl),
             logger: this.console,
         });
@@ -460,7 +472,7 @@ class CacheManager {
     // プロフィール画像キャッシュをクリア
     async clearProfileCache() {
         return await clearServiceWorkerProfileCache({
-            cacheStorage: this.caches,
+            cacheStorage: { delete: () => this.profileImages.clear() },
             cacheName: PROFILE_CACHE_NAME,
             logger: this.console,
         });
@@ -469,7 +481,7 @@ class CacheManager {
     // 重複プロフィール画像キャッシュのクリーンアップ
     async cleanupDuplicateProfileCache() {
         return await cleanupServiceWorkerDuplicateProfileCache({
-            cacheStorage: this.caches,
+            cacheStorage: { open: async () => this.profileImages },
             cacheName: PROFILE_CACHE_NAME,
             logger: this.console,
             getBaseUrl: Utilities.getBaseUrl,
@@ -723,6 +735,7 @@ class ServiceWorkerCore {
             cleanupOldCaches: async () => {
                 await precacheController.activate(event);
                 await this.cacheManager.cleanupOldCaches();
+                await this.cacheManager.reconcileImageCaches();
                 try {
                     await this.uploadMediaImageCacheController.reconcile();
                 } catch {

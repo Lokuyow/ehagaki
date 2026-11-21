@@ -1,4 +1,8 @@
+import 'fake-indexeddb/auto';
 import { describe, expect, it, vi } from 'vitest';
+import { EHagakiDB } from '../../lib/storage/ehagakiDb';
+import { DexiePostMediaCacheRepository } from '../../lib/storage/postMediaCacheRepository';
+import { OPAQUE_CACHE_RETENTION_MS } from '../../lib/cacheRetention';
 import {
     PostMediaCacheService,
     POST_MEDIA_CACHE_NAME,
@@ -7,6 +11,10 @@ import {
 
 class FakeCache {
     private store = new Map<string, Response>();
+
+    async keys(): Promise<Request[]> {
+        return [...this.store.keys()].map(url => new Request(url));
+    }
 
     async put(request: RequestInfo | URL, response: Response): Promise<void> {
         this.store.set(resolveRequestKey(request), response.clone());
@@ -48,6 +56,68 @@ function resolveRequestKey(request: RequestInfo | URL): string {
 }
 
 describe('PostMediaCacheService', () => {
+    it('cleans a failed write without fetching a second time and can cache on retry', async () => {
+        const db = new EHagakiDB('test-post-cache-failed-write');
+        const repository = new DexiePostMediaCacheRepository(db);
+        const cacheStorage = new FakeCacheStorage();
+        const url = 'https://example.com/retry.webp';
+        const fetch = vi.fn(async () => new Response(new Uint8Array([1])));
+        const service = new PostMediaCacheService(repository, { cacheStorage, fetch });
+        const upsert = vi.spyOn(repository, 'upsert');
+        upsert.mockRejectedValueOnce(new DOMException('quota', 'QuotaExceededError'));
+        try {
+            await expect(service.fetchAndCacheMedia({ url })).rejects.toThrow('quota');
+            expect(fetch).toHaveBeenCalledTimes(1);
+            expect(cacheStorage.cache.has(url)).toBe(false);
+            await expect(repository.getByUrl(url)).resolves.toBeNull();
+            await expect(service.fetchAndCacheMedia({ url })).resolves.toMatchObject({ size: 1 });
+        } finally {
+            await db.delete();
+        }
+    });
+
+    it('cleans orphaned bodies and metadata and limits legacy and new opaque entries', async () => {
+        const db = new EHagakiDB('test-post-cache-reconcile');
+        const repository = new DexiePostMediaCacheRepository(db);
+        const cacheStorage = new FakeCacheStorage();
+        const opaque = (): Response => ({ type: 'opaque', clone: opaque }) as Response;
+        const url = (name: string) => `https://example.com/${name}.webp`;
+        const seed = (name: string, createdAt: number) => repository.upsert({
+            cacheKey: url(name), url: url(name), size: 0, source: 'network', createdAt,
+        });
+        const now = Date.now();
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(now);
+        try {
+            await cacheStorage.cache.put(url('orphan-body'), opaque());
+            await seed('orphan-metadata', now);
+            await cacheStorage.cache.put(url('expired'), opaque());
+            await seed('expired', now - OPAQUE_CACHE_RETENTION_MS);
+            await cacheStorage.cache.put(url('empty-readable'), new Response());
+            await seed('empty-readable', now - OPAQUE_CACHE_RETENTION_MS);
+            for (let index = 0; index < 8; index++) {
+                await cacheStorage.cache.put(url(`legacy-${index}`), opaque());
+                await seed(`legacy-${index}`, now - 8 + index);
+            }
+            const service = new PostMediaCacheService(repository, { cacheStorage, fetch: async () => opaque() });
+            await service.getCachedMediaDescriptor(url('empty-readable'));
+            expect(cacheStorage.cache.has(url('orphan-body'))).toBe(false);
+            expect(await repository.getByUrl(url('orphan-metadata'))).toBeNull();
+            expect(cacheStorage.cache.has(url('expired'))).toBe(false);
+            expect(cacheStorage.cache.has(url('empty-readable'))).toBe(true);
+
+            await Promise.all([service.fetchAndCacheMedia({ url: url('new-1') }), service.fetchAndCacheMedia({ url: url('new-2') })]);
+            expect(await cacheStorage.cache.keys()).toHaveLength(9);
+            expect(await repository.getByUrl(url('legacy-0'))).toBeNull();
+            expect(await repository.getByUrl(url('legacy-1'))).toBeNull();
+            vi.setSystemTime(now + OPAQUE_CACHE_RETENTION_MS);
+            await expect(service.getCachedMediaDescriptor(url('new-1'))).resolves.toBeNull();
+        } finally {
+            vi.useRealTimers();
+            await db.delete();
+        }
+    });
+
     it('persists uploaded media in dedicated cache and creates object urls from cached content', async () => {
         const cacheStorage = new FakeCacheStorage();
         const repository = {
@@ -119,6 +189,7 @@ describe('PostMediaCacheService', () => {
             createdAt: expect.any(Number),
             lastAccessedAt: expect.any(Number),
             source: 'uploaded',
+            eventIds: ['event-1'],
         });
         expect(descriptor).toMatchObject({
             cacheKey: 'https://example.com/media/test.webp',
@@ -155,28 +226,22 @@ describe('PostMediaCacheService', () => {
             })),
         );
 
+        const record = {
+            cacheKey: 'https://example.com/media/hit.webp',
+            url: 'https://example.com/media/hit.webp#saved',
+            normalizedUrl: 'https://example.com/media/hit.webp',
+            size: 3,
+            mimeType: 'image/webp',
+            createdAt: 10,
+            lastAccessedAt: 10,
+            source: 'uploaded' as const,
+            eventIds: [],
+            updatedAt: 10,
+            schemaVersion: 1,
+        };
         const repository = {
-            getByUrl: vi.fn(async (url: string) => {
-                const normalized = url.replace(/#.*$/, '');
-                if (normalized !== 'https://example.com/media/hit.webp') {
-                    return null;
-                }
-
-                return {
-                    cacheKey: 'https://example.com/media/hit.webp',
-                    url: 'https://example.com/media/hit.webp#saved',
-                    normalizedUrl: 'https://example.com/media/hit.webp',
-                    size: 3,
-                    mimeType: 'image/webp',
-                    createdAt: 10,
-                    lastAccessedAt: 10,
-                    source: 'uploaded' as const,
-                    eventIds: [],
-                    updatedAt: 10,
-                    schemaVersion: 1,
-                };
-            }),
-            listByLastAccessed: vi.fn(async () => []),
+            getByUrl: vi.fn(async (url: string) => url.replace(/#.*$/, '') === record.cacheKey ? record : null),
+            listByLastAccessed: vi.fn(async () => [record]),
             upsert: vi.fn(async () => {
                 throw new Error('upsert should not be called');
             }),
@@ -247,28 +312,22 @@ describe('PostMediaCacheService', () => {
             })),
         );
 
+        const record = {
+            cacheKey: 'https://example.com/media/shared.webp',
+            url: 'https://example.com/media/shared.webp',
+            normalizedUrl: 'https://example.com/media/shared.webp',
+            size: 4,
+            mimeType: 'image/webp',
+            createdAt: 10,
+            lastAccessedAt: 10,
+            source: 'uploaded' as const,
+            eventIds: [],
+            updatedAt: 10,
+            schemaVersion: 1,
+        };
         const repository = {
-            getByUrl: vi.fn(async (url: string) => {
-                const normalized = url.replace(/#.*$/, '');
-                if (normalized !== 'https://example.com/media/shared.webp') {
-                    return null;
-                }
-
-                return {
-                    cacheKey: 'https://example.com/media/shared.webp',
-                    url: 'https://example.com/media/shared.webp',
-                    normalizedUrl: 'https://example.com/media/shared.webp',
-                    size: 4,
-                    mimeType: 'image/webp',
-                    createdAt: 10,
-                    lastAccessedAt: 10,
-                    source: 'uploaded' as const,
-                    eventIds: [],
-                    updatedAt: 10,
-                    schemaVersion: 1,
-                };
-            }),
-            listByLastAccessed: vi.fn(async () => []),
+            getByUrl: vi.fn(async (url: string) => url.replace(/#.*$/, '') === record.cacheKey ? record : null),
+            listByLastAccessed: vi.fn(async () => [record]),
             upsert: vi.fn(async () => {
                 throw new Error('upsert should not be called');
             }),

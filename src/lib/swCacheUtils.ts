@@ -74,7 +74,7 @@ export async function matchCacheByPriority(
 }
 
 export function getDuplicateProfileCacheRequests<TRequest extends RequestLike>(
-    requests: TRequest[],
+    requests: readonly TRequest[],
     getBaseUrl: (url: string) => string | null,
 ): TRequest[] {
     const baseUrls = new Set<string>();

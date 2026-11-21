@@ -14,7 +14,7 @@ interface RequestLike {
 }
 
 interface ProfileCache<TRequest extends RequestLike> {
-    keys: () => Promise<TRequest[]>;
+    keys: () => Promise<readonly TRequest[]>;
     delete: (request: TRequest) => Promise<boolean>;
 }
 
