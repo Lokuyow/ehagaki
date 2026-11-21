@@ -229,6 +229,9 @@
     "sensitivePayloadUnavailable": "Content could not be loaded. Try again.",
     "retrySensitivePayload": "Retry"
   },
+  "mediaGallery": {
+    "aria_label": "Media gallery"
+  },
   "postHistory": {
     "postsTab": "Posts",
     "mediaTab": "Media",
@@ -432,8 +435,6 @@
     "mediaNotCached": "Not cached",
     "mediaFetchAndCache": "Fetch and cache",
     "mediaOpen": "Open",
-    "showAllImages": "Show all {count} images",
-    "hideExtraImages": "Show fewer images",
     "mediaLoading": "Loading...",
     "mediaLoadFailed": "Failed to load",
     "expand": "Show more",

@@ -34,7 +34,7 @@
   } from "../lib/postUploadUtils";
   import FloatingMessage from "./FloatingMessage.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
-  import MediaGallery from "./MediaGallery.svelte";
+  import ComposerMediaGallery from "./ComposerMediaGallery.svelte";
   import { mediaGalleryStore } from "../stores/mediaGalleryStore.svelte";
   import {
     fileDropAction as _fileDropAction,
@@ -1558,7 +1558,7 @@
   </div>
 
   {#if galleryVisible}
-    <MediaGallery />
+    <ComposerMediaGallery />
   {/if}
 
   {#if mediaEnabled}

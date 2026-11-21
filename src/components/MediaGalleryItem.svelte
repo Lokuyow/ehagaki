@@ -129,7 +129,7 @@
     ondragover={handleDragOverEvent}
     ondrop={handleDropEvent}
     ondragend={() => onDragEnd()}
-    role="listitem"
+    role="group"
 >
     <!-- メディア表示エリア -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->

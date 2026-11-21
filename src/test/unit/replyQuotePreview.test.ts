@@ -168,7 +168,7 @@ describe('ReplyQuotePreview', () => {
         expect(onClear).not.toHaveBeenCalled();
     });
 
-    it('共通表示で4画像を2x2にまとめ、動画は自動再生しない別カードとして表示する', async () => {
+    it('共通ギャラリーで4画像と動画を表示する', async () => {
         const imageUrls = Array.from(
             { length: 4 },
             (_, index) => `https://example.com/${index + 1}.jpg`,
@@ -188,12 +188,10 @@ describe('ReplyQuotePreview', () => {
 
         await fireEvent.click(screen.getByRole('button', { name: '展開する' }));
 
-        const rows = document.querySelectorAll('.post-history-image-row');
-        expect(rows).toHaveLength(2);
-        expect(Array.from(rows).map((row) =>
-            row.querySelectorAll('.post-history-image-cell').length,
-        )).toEqual([2, 2]);
-        expect(document.querySelectorAll('.post-history-video-card')).toHaveLength(1);
+        const gallery = document.querySelector('.media-gallery');
+        expect(gallery?.querySelectorAll('.media-gallery-cell')).toHaveLength(5);
+        expect(gallery?.querySelectorAll('.post-history-image-cell')).toHaveLength(4);
+        expect(gallery?.querySelectorAll('.post-history-video-media-frame')).toHaveLength(1);
         expect(document.querySelector('video')?.hasAttribute('autoplay') ?? false)
             .toBe(false);
     });

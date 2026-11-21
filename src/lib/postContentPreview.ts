@@ -82,7 +82,15 @@ export function buildPostContentRenderModel(
         tags: input.tags,
         media,
     });
-    const mediaLayout = buildPostHistoryMediaLayout(media);
+    const mediaSegments = resolvedDisplayContent === resolvedSourceContent
+        ? previewContent.segments
+        : buildPreviewContent({ content: resolvedSourceContent, tags: input.tags, media }).segments;
+    const mediaLayout = buildPostHistoryMediaLayout([
+        ...mediaSegments.flatMap((segment) =>
+            segment.type === "media" ? [segment.media] : [],
+        ),
+        ...media,
+    ]);
 
     return {
         previewContent,

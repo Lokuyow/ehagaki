@@ -30,7 +30,9 @@ export function isTabSwipeScreenEdge(clientX: number, viewportWidth: number): bo
 
 export function swipeTargetBlocksTabSwipe(target: EventTarget | null): boolean {
     if (!(target instanceof Element)) return false;
-    return target.closest(BLOCKED_SWIPE_TARGET) !== null;
+    if (target.closest(BLOCKED_SWIPE_TARGET)) return true;
+    const gallery = target.closest("[data-media-gallery]");
+    return gallery !== null && gallery.scrollWidth > gallery.clientWidth + 1;
 }
 
 export function isTabSwipeOverlayOpen(root: ParentNode | null | undefined): boolean {

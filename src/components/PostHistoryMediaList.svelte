@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { SvelteSet } from "svelte/reactivity";
+    import MediaGallery from "./MediaGallery.svelte";
     import BlurhashPlaceholder from "./BlurhashPlaceholder.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import Button from "./Button.svelte";
@@ -9,11 +11,9 @@
         buildPostHistoryMediaLayout,
         type PostHistoryMediaLayout,
         type PostHistoryDisplayMediaKind,
-        type PostHistoryMediaDimensionHints,
         type PostHistoryMediaRenderState,
         type PostHistoryResolvedMedia,
         resolvePostHistoryMediaDimensionHints,
-        resolvePostHistoryMediaAspectRatio,
         resolvePostHistoryMediaRenderState,
     } from "../lib/postHistoryDialogUtils";
     import type { PostHistoryMediaRecord } from "../lib/storage/ehagakiDb";
@@ -29,7 +29,6 @@
             focusOrigin: HTMLElement | null;
         }) => void;
         mediaLayout?: PostHistoryMediaLayout;
-        maxVisibleImages?: number;
     }
 
     type DisplayMediaItem = PostHistoryResolvedMedia & {
@@ -41,38 +40,21 @@
         hasFetchFailed: boolean;
     };
 
-    type ImagePresentation = {
-        aspectRatio: string;
-        dimensionHints: PostHistoryMediaDimensionHints;
-        isSingleImage: boolean;
-        frameStyle?: string;
-        surfaceStyle: string;
-        layoutFrameStyle?: string;
-        imageStyle?: string;
-    };
-
     const AUTO_FETCH_ROOT_MARGIN = "160px 0px";
-    const SINGLE_IMAGE_MAX_HEIGHT = 300;
-    const SINGLE_IMAGE_MIN_SIZE = 100;
-    const SINGLE_IMAGE_MIN_STAGE_ASPECT_RATIO =
-        SINGLE_IMAGE_MIN_SIZE / SINGLE_IMAGE_MAX_HEIGHT;
 
     let {
         media,
         scrollRoot = null,
         onImageOpen = undefined,
         mediaLayout = undefined,
-        maxVisibleImages = undefined,
     }: Props = $props();
 
     let copyStateByUrl = $state<
         Record<string, "copied" | "failed" | undefined>
     >({});
     const autoRequestedUrls = new Set<string>();
-    const layoutAspectRatioByItemId = new Map<string, string>();
-    const layoutHasKnownDimensionsByItemId = new Map<string, boolean>();
-    let imagesExpanded = $state(false);
-
+    const visibleUrls = new SvelteSet<string>();
+    const initialImageRatios = new Map<string, number>();
     const resolvedMediaLayout = $derived.by(
         () => mediaLayout ?? buildPostHistoryMediaLayout(media),
     );
@@ -88,18 +70,26 @@
             ),
     );
 
-    const canCollapseImages = $derived(maxVisibleImages !== undefined && resolvedMediaLayout.images.length > maxVisibleImages);
-    const imageRows = $derived.by(() => {
-        let remaining = canCollapseImages && !imagesExpanded ? maxVisibleImages! : Infinity;
-        return resolvedMediaLayout.imageRows.flatMap((row) => {
-            const items = row.items.slice(0, remaining).map((item) => toDisplayMediaItem(item));
-            remaining -= items.length;
-            return items.length ? [{ ...row, items }] : [];
-        });
-    });
-    const videoItems = $derived.by(() =>
-        resolvedMediaLayout.videos.map((item) => toDisplayMediaItem(item)),
+    const visualItems = $derived.by(() =>
+        resolvedMediaLayout.items
+            .filter((item) => item.kind === "image" || item.kind === "video")
+            .map((item) => {
+                return {
+                    ...toDisplayMediaItem(item),
+                    aspectRatio: item.kind === "image" ? getInitialImageRatio(item) : undefined,
+                };
+            }),
     );
+
+    function getInitialImageRatio(item: PostHistoryResolvedMedia): number {
+        const initialRatio = initialImageRatios.get(item.id);
+        if (initialRatio !== undefined) return initialRatio;
+
+        const { width, height } = resolvePostHistoryMediaDimensionHints(item);
+        const ratio = width && height ? width / height : 1;
+        initialImageRatios.set(item.id, ratio);
+        return ratio;
+    }
     const otherItems = $derived.by(() =>
         resolvedMediaLayout.others.map((item) => toDisplayMediaItem(item)),
     );
@@ -178,99 +168,11 @@
         return `${$_("postHistory.mediaOpen")} ${getLinkLabel(item)}`;
     }
 
-    function getAspectRatioValue(aspectRatio: string): number {
-        const [widthText, heightText] = aspectRatio.split("/");
-        const width = Number(widthText?.trim());
-        const height = Number(heightText?.trim());
-
-        if (
-            !Number.isFinite(width) ||
-            !Number.isFinite(height) ||
-            height <= 0
-        ) {
-            return 1;
-        }
-
-        return width / height;
-    }
-
-    function formatPixelValue(value: number): string {
-        return Number.isInteger(value)
-            ? `${value}`
-            : value
-                  .toFixed(6)
-                  .replace(/\.0+$/, "")
-                  .replace(/(\.\d*?)0+$/, "$1");
-    }
-
-    function getSingleImageWidth(aspectRatio: string): string {
-        const maxWidth =
-            SINGLE_IMAGE_MAX_HEIGHT * getAspectRatioValue(aspectRatio);
-
-        return `min(100%, ${formatPixelValue(maxWidth)}px)`;
-    }
-
-    function getSingleImageMinimumWidth(aspectRatio: string): string {
-        const minimumWidth = Math.max(
-            SINGLE_IMAGE_MIN_SIZE,
-            SINGLE_IMAGE_MIN_SIZE * getAspectRatioValue(aspectRatio),
-        );
-
-        return `min(100%, ${formatPixelValue(minimumWidth)}px)`;
-    }
-
-    function getSingleImageFrameStyle(aspectRatio: string): string {
-        return `width: max(${getSingleImageWidth(aspectRatio)}, ${getSingleImageMinimumWidth(aspectRatio)});`;
-    }
-
-    function getSingleImageSurfaceStyle(): string {
-        return ["width: 100%;", `min-height: ${SINGLE_IMAGE_MIN_SIZE}px;`].join(
-            " ",
-        );
-    }
-
-    function getSingleImageLayoutAspectRatio(aspectRatio: string): string {
-        return getAspectRatioValue(aspectRatio) <
-            SINGLE_IMAGE_MIN_STAGE_ASPECT_RATIO
-            ? `${SINGLE_IMAGE_MIN_SIZE} / ${SINGLE_IMAGE_MAX_HEIGHT}`
-            : aspectRatio;
-    }
-
-    function getSingleImageLayoutFrameStyle(aspectRatio: string): string {
-        const stageAspectRatio = getSingleImageLayoutAspectRatio(aspectRatio);
-
-        return [
-            `aspect-ratio: ${stageAspectRatio};`,
-            "width: 100%;",
-            `max-height: ${SINGLE_IMAGE_MAX_HEIGHT}px;`,
-            `min-height: ${SINGLE_IMAGE_MIN_SIZE}px;`,
-            "padding: 0;",
-        ].join(" ");
-    }
-
-    function getSingleImageLayoutImageStyle(
-        objectFit: "cover" | "contain",
-    ): string {
-        return [
-            "position: absolute;",
-            "inset: 0;",
-            "width: 100%;",
-            "height: 100%;",
-            "max-width: 100%;",
-            `object-fit: ${objectFit};`,
-            "object-position: center;",
-        ].join(" ");
-    }
-
-    function getMediaSurfaceStyle(aspectRatio: string): string {
-        return [`aspect-ratio: ${aspectRatio};`, "width: 100%;"].join(" ");
-    }
-
     function hasMetadataHint(item: DisplayMediaItem): boolean {
         return Boolean(item.blurhash?.trim() || item.dim?.trim());
     }
 
-    function getImageRenderState(
+    function getRenderState(
         item: DisplayMediaItem,
     ): PostHistoryMediaRenderState {
         return resolvePostHistoryMediaRenderState({
@@ -282,100 +184,6 @@
             hasFetchFailed: item.hasFetchFailed,
             hasMetadataHint: hasMetadataHint(item),
         });
-    }
-
-    function getImagePresentation(params: {
-        item: DisplayMediaItem;
-        slotCount: number;
-        isSingleImage: boolean;
-    }): ImagePresentation {
-        const aspectRatio = getStableImageAspectRatio(
-            params.item,
-            params.slotCount,
-        );
-        const objectFit = getStableHasKnownDimensions(params.item)
-            ? "cover"
-            : "contain";
-        const dimensionHints = resolvePostHistoryMediaDimensionHints({
-            dim: params.item.dim,
-            kind: params.item.kind,
-        });
-
-        if (!params.isSingleImage) {
-            const surfaceStyle = getMediaSurfaceStyle(aspectRatio);
-
-            return {
-                aspectRatio,
-                dimensionHints,
-                isSingleImage: false,
-                surfaceStyle,
-                imageStyle: `object-fit: ${objectFit};`,
-            };
-        }
-
-        return {
-            aspectRatio,
-            dimensionHints,
-            isSingleImage: true,
-            frameStyle: getSingleImageFrameStyle(aspectRatio),
-            surfaceStyle: getSingleImageSurfaceStyle(),
-            layoutFrameStyle: getSingleImageLayoutFrameStyle(aspectRatio),
-            imageStyle: getSingleImageLayoutImageStyle(objectFit),
-        };
-    }
-
-    function getStableImageAspectRatio(
-        item: DisplayMediaItem,
-        slotCount: number,
-    ): string {
-        const existing = layoutAspectRatioByItemId.get(item.id);
-        if (existing) {
-            return existing;
-        }
-
-        const aspectRatio = resolvedMediaLayout.images.length === 4
-            ? "4 / 3"
-            : slotCount !== 1
-              ? "1 / 1"
-              : resolvePostHistoryMediaAspectRatio({
-                    dim: item.dim,
-                    kind: item.kind,
-                });
-        layoutAspectRatioByItemId.set(item.id, aspectRatio);
-        return aspectRatio;
-    }
-
-    function getStableHasKnownDimensions(item: DisplayMediaItem): boolean {
-        const existing = layoutHasKnownDimensionsByItemId.get(item.id);
-        if (existing !== undefined) {
-            return existing;
-        }
-
-        const known = Boolean(item.dim?.trim());
-        layoutHasKnownDimensionsByItemId.set(item.id, known);
-        return known;
-    }
-
-    function shouldShowInlinePlaceholderLoader(
-        item: DisplayMediaItem,
-        presentation: ImagePresentation,
-        renderState: PostHistoryMediaRenderState,
-    ): boolean {
-        return (
-            !presentation.isSingleImage &&
-            shouldShowPlaceholderLoader(item, renderState)
-        );
-    }
-
-    function shouldShowFloatingPlaceholderLoader(
-        item: DisplayMediaItem,
-        presentation: ImagePresentation,
-        renderState: PostHistoryMediaRenderState,
-    ): boolean {
-        return (
-            presentation.isSingleImage &&
-            shouldShowPlaceholderLoader(item, renderState)
-        );
     }
 
     function requestAutoFetch(url: string): void {
@@ -442,6 +250,10 @@
         });
     }
 
+    function isDirectPreview(item: DisplayMediaItem): boolean {
+        return item.previewObjectUrl === item.url;
+    }
+
     function shouldAutoFetch(item: DisplayMediaItem): boolean {
         return (
             item.hasResolvedCache &&
@@ -474,43 +286,8 @@
         );
     }
 
-    function shouldRenderReadyMedia(
-        renderState: PostHistoryMediaRenderState,
-    ): boolean {
-        return renderState === "ready" || renderState === "cache-materializing";
-    }
-
-    function getImagePlaceholderVariantClass(
-        renderState: PostHistoryMediaRenderState,
-    ): string {
-        if (renderState === "error") {
-            return "post-history-media-placeholder-failed";
-        }
-
-        return "post-history-media-placeholder-uncached";
-    }
-
     function getPlaceholderAriaLabel(item: DisplayMediaItem): string {
         return `${getMediaStatusLabel(item)} ${getLinkLabel(item)}`;
-    }
-
-    function getVideoAspectRatio(item: DisplayMediaItem): string {
-        const existing = layoutAspectRatioByItemId.get(item.id);
-        if (existing) {
-            return existing;
-        }
-
-        const aspectRatio = resolvePostHistoryMediaAspectRatio({
-            dim: item.dim,
-            kind: item.kind,
-        });
-        layoutAspectRatioByItemId.set(item.id, aspectRatio);
-        layoutHasKnownDimensionsByItemId.set(item.id, Boolean(item.dim?.trim()));
-        return aspectRatio;
-    }
-
-    function getVideoTypeHint(item: DisplayMediaItem): string {
-        return item.mimeType?.trim() || "video";
     }
 
     function getMediaStatusLabel(item: DisplayMediaItem): string {
@@ -546,296 +323,89 @@
     </Button>
 {/snippet}
 
-{#snippet imagePlaceholder(
-    item: DisplayMediaItem,
-    presentation: ImagePresentation,
-    variantClassName: string,
-    showBlurhashPlaceholder: boolean,
-    showRetry: boolean,
-)}
-    <div
-        class={`post-history-media-placeholder ${variantClassName}`}
-        class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
-        class:post-history-image-placeholder-single={presentation.isSingleImage}
-        style={presentation.isSingleImage
-            ? undefined
-            : presentation.surfaceStyle}
-        aria-label={getPlaceholderAriaLabel(item)}
-        title={getLinkLabel(item)}
-    >
-        {#if showBlurhashPlaceholder}
-            <BlurhashPlaceholder blurhash={item.blurhash} />
-        {/if}
-        {#if showRetry}
-            <div class="post-history-media-placeholder-content">
-                <button
-                    type="button"
-                    class="post-history-media-retry-button"
-                    onclick={() => handleRetry(item)}
-                >
-                    {$_("postHistory.mediaFetchAndCache")}
-                </button>
-            </div>
-        {/if}
-        {#if shouldShowInlinePlaceholderLoader(item, presentation, getImageRenderState(item))}
-            <div class="post-history-media-placeholder-loader">
-                <LoadingPlaceholder
-                    showLoader={true}
-                    text={false}
-                    loaderSize={34}
-                />
-            </div>
-        {/if}
-    </div>
-{/snippet}
-
 {#if resolvedMediaLayout.items.length > 0}
     <div class="post-history-media-section">
-        {#if imageRows.length > 0}
-            <div
-                class="post-history-image-grid"
-                class:post-history-image-grid-single={resolvedMediaLayout.images
-                    .length === 1}
-            >
-                {#each imageRows as row, rowIndex (rowIndex)}
-                    <div
-                        class="post-history-image-row"
-                        style={`--post-history-image-columns: ${row.slotCount};`}
-                    >
-                        {#each row.items as item (item.id)}
-                            {@const isSingleImage =
-                                resolvedMediaLayout.images.length === 1}
-                            {@const imagePresentation = getImagePresentation({
-                                item,
-                                slotCount: row.slotCount,
-                                isSingleImage,
-                            })}
-                            {@const imageRenderState =
-                                getImageRenderState(item)}
-                            {@const showBlurhashPlaceholder =
-                                shouldShowBlurhashPlaceholder(
-                                    item,
-                                    imageRenderState,
-                                )}
-                            <div
-                                class="post-history-image-cell"
-                                use:inViewportAction={{
-                                    enabled: shouldAutoFetch(item),
-                                    once: true,
-                                    root: scrollRoot,
-                                    rootMargin: AUTO_FETCH_ROOT_MARGIN,
-                                    onEnterView: () =>
-                                        requestAutoFetch(item.url),
-                                }}
+        <MediaGallery items={visualItems} preview>
+            {#snippet renderItem(item)}
+                {@const renderState = getRenderState(item)}
+                {@const source = isDirectPreview(item) && !visibleUrls.has(item.url)
+                    ? undefined
+                    : item.previewObjectUrl}
+                {@const showBlurhash = shouldShowBlurhashPlaceholder(item, renderState)}
+                <div
+                    class={[
+                        "post-preview-gallery-card",
+                        item.kind === "image" ? "post-history-image-cell" : "post-history-video-media-frame",
+                    ]}
+                    style:--post-preview-gallery-aspect-ratio={item.aspectRatio}
+                    use:inViewportAction={{
+                        enabled: shouldAutoFetch(item) || (isDirectPreview(item) && !visibleUrls.has(item.url)),
+                        once: true,
+                        root: scrollRoot,
+                        rootMargin: AUTO_FETCH_ROOT_MARGIN,
+                        onEnterView: () => {
+                            visibleUrls.add(item.url);
+                            if (shouldAutoFetch(item)) requestAutoFetch(item.url);
+                        },
+                    }}
+                >
+                    {#if source && item.kind === "image"}
+                        {#if onImageOpen}
+                            <button
+                                type="button"
+                                class="post-history-media-surface"
+                                aria-label={getImageSurfaceAriaLabel(item)}
+                                title={getLinkLabel(item)}
+                                onclick={(event) => handleImageOpen(item, event.currentTarget)}
                             >
-                                <div
-                                    class="post-history-image-surface-frame"
-                                    class:post-history-image-surface-frame-single={isSingleImage}
-                                    style={isSingleImage
-                                        ? imagePresentation.frameStyle
-                                        : undefined}
-                                >
-                                    {#if shouldRenderReadyMedia(imageRenderState)}
-                                        <button
-                                            type="button"
-                                            class="post-history-media-surface post-history-image-surface"
-                                            class:post-history-image-surface-single={isSingleImage}
-                                            style={imagePresentation.surfaceStyle}
-                                            aria-label={getImageSurfaceAriaLabel(
-                                                item,
-                                            )}
-                                            title={getLinkLabel(item)}
-                                            onclick={(event) =>
-                                                handleImageOpen(
-                                                    item,
-                                                    event.currentTarget instanceof HTMLElement
-                                                        ? event.currentTarget
-                                                        : null,
-                                                )}
-                                        >
-                                            {#if isSingleImage}
-                                                <div
-                                                    class="post-history-media-layout-frame post-history-single-image-layout-frame"
-                                                    style={imagePresentation.layoutFrameStyle}
-                                                >
-                                                    {#if item.previewObjectUrl}
-                                                        <img
-                                                            src={item.previewObjectUrl}
-                                                            alt={item.alt ||
-                                                                getLinkLabel(
-                                                                    item,
-                                                                )}
-                                                            class="post-history-media-image post-history-media-image-single-stage"
-                                                            style={imagePresentation.imageStyle}
-                                                            width={imagePresentation
-                                                                .dimensionHints
-                                                                .width}
-                                                            height={imagePresentation
-                                                                .dimensionHints
-                                                                .height}
-                                                            loading="lazy"
-                                                            decoding="async"
-                                                        />
-                                                    {/if}
-                                                </div>
-                                            {:else if item.previewObjectUrl}
-                                                <img
-                                                    src={item.previewObjectUrl}
-                                                    alt={item.alt ||
-                                                        getLinkLabel(item)}
-                                                    class="post-history-media-image"
-                                                    style={imagePresentation.imageStyle}
-                                                    width={imagePresentation
-                                                        .dimensionHints.width}
-                                                    height={imagePresentation
-                                                        .dimensionHints.height}
-                                                    loading="lazy"
-                                                    decoding="async"
-                                                />
-                                            {/if}
-                                        </button>
-                                    {:else if isSingleImage}
-                                        <div
-                                            class="post-history-media-layout-frame post-history-single-image-layout-frame"
-                                            style={imagePresentation.layoutFrameStyle}
-                                        >
-                                            {@render imagePlaceholder(
-                                                item,
-                                                imagePresentation,
-                                                getImagePlaceholderVariantClass(
-                                                    imageRenderState,
-                                                ),
-                                                showBlurhashPlaceholder,
-                                                imageRenderState === "error",
-                                            )}
-                                        </div>
-                                    {:else}
-                                        {@render imagePlaceholder(
-                                            item,
-                                            imagePresentation,
-                                            getImagePlaceholderVariantClass(
-                                                imageRenderState,
-                                            ),
-                                            showBlurhashPlaceholder,
-                                            imageRenderState === "error",
-                                        )}
-                                    {/if}
-
-                                    {#if shouldShowFloatingPlaceholderLoader(item, imagePresentation, imageRenderState)}
-                                        <div
-                                            class="post-history-media-placeholder-loader post-history-media-placeholder-loader-single"
-                                        >
-                                            <LoadingPlaceholder
-                                                showLoader={true}
-                                                text={false}
-                                                loaderSize={34}
-                                            />
-                                        </div>
-                                    {/if}
-
-                                    {@render mediaCopyButton(
-                                        item,
-                                        "post-history-media-copy-button-image",
-                                    )}
-                                </div>
-                            </div>
-                        {/each}
-                    </div>
-                {/each}
-            </div>
-        {/if}
-
-        {#if canCollapseImages}
-            <button type="button" class="post-history-image-toggle" aria-expanded={imagesExpanded}
-                onclick={() => imagesExpanded = !imagesExpanded}>
-                {imagesExpanded ? $_("postHistory.hideExtraImages") : $_("postHistory.showAllImages", { values: { count: resolvedMediaLayout.images.length } })}
-            </button>
-        {/if}
-
-        {#if videoItems.length > 0}
-            <div class="post-history-video-list">
-                {#each videoItems as item (item.id)}
-                    {@const videoAspectRatio = getVideoAspectRatio(item)}
-                    {@const videoRenderState = getImageRenderState(item)}
-                    {@const showBlurhashPlaceholder =
-                        shouldShowBlurhashPlaceholder(item, videoRenderState)}
-                    <article
-                        class="post-history-video-card"
-                        use:inViewportAction={{
-                            enabled: shouldAutoFetch(item),
-                            once: true,
-                            root: scrollRoot,
-                            rootMargin: AUTO_FETCH_ROOT_MARGIN,
-                            onEnterView: () => requestAutoFetch(item.url),
-                        }}
-                    >
-                        <div class="post-history-video-card-header">
-                            <span class="post-history-video-card-label"
-                                >{getLinkLabel(item)}</span
-                            >
-                            {@render mediaCopyButton(
-                                item,
-                                "post-history-video-copy-button",
-                            )}
-                        </div>
-
+                                <img src={source} alt={item.alt || getLinkLabel(item)} draggable="false" />
+                            </button>
+                        {:else}
+                            <img src={source} alt={item.alt || getLinkLabel(item)} draggable="false" />
+                        {/if}
+                    {:else if source && item.kind === "video"}
+                        <video src={source} controls playsinline preload="metadata" aria-label={getLinkLabel(item)}>
+                            <track kind="captions" />
+                        </video>
+                    {:else if renderState !== "cache-materializing"}
                         <div
-                            class="post-history-video-media-frame"
-                            style={`${getMediaSurfaceStyle(videoAspectRatio)} max-height: ${SINGLE_IMAGE_MAX_HEIGHT}px;`}
+                            class={[
+                                "post-history-media-placeholder",
+                                {
+                                    "post-history-media-placeholder-failed": item.hasFetchFailed,
+                                    "post-history-media-placeholder-blurhash": showBlurhash,
+                                },
+                            ]}
+                            aria-label={getPlaceholderAriaLabel(item)}
+                            title={getLinkLabel(item)}
                         >
-                            {#if item.cached && item.previewObjectUrl}
-                                <video
-                                    src={item.previewObjectUrl}
-                                    class="post-history-media-video"
-                                    controls
-                                    playsinline
-                                    preload="metadata"
+                            {#if showBlurhash}
+                                <BlurhashPlaceholder blurhash={item.blurhash} />
+                            {/if}
+                            {#if item.hasFetchFailed}
+                                <button
+                                    type="button"
+                                    class="post-history-media-retry-button"
+                                    onclick={() => handleRetry(item)}
                                 >
-                                    <track kind="captions" />
-                                </video>
-                            {:else}
-                                <div
-                                    class="post-history-media-placeholder post-history-video-placeholder"
-                                    class:post-history-media-placeholder-cached={item.cached}
-                                    class:post-history-media-placeholder-uncached={!item.cached &&
-                                        !item.hasFetchFailed}
-                                    class:post-history-media-placeholder-failed={item.hasFetchFailed}
-                                    class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
-                                    aria-label={getPlaceholderAriaLabel(item)}
-                                    title={getLinkLabel(item)}
-                                >
-                                    {#if showBlurhashPlaceholder}
-                                        <BlurhashPlaceholder
-                                            blurhash={item.blurhash}
-                                        />
-                                    {/if}
-                                    <div
-                                        class="post-history-media-placeholder-content"
-                                    >
-                                        {#if item.hasFetchFailed}
-                                            <button
-                                                type="button"
-                                                class="post-history-media-retry-button"
-                                                onclick={() => handleRetry(item)}
-                                            >
-                                                {$_(
-                                                    "postHistory.mediaFetchAndCache",
-                                                )}
-                                            </button>
-                                        {/if}
-                                    </div>
+                                    {$_("postHistory.mediaFetchAndCache")}
+                                </button>
+                            {:else if shouldShowPlaceholderLoader(item, renderState)}
+                                <div class="post-history-media-placeholder-loader">
+                                    <LoadingPlaceholder showLoader={true} text={false} loaderSize={34} />
                                 </div>
                             {/if}
                         </div>
-                    </article>
-                {/each}
-            </div>
-        {/if}
+                    {/if}
+                    {@render mediaCopyButton(item, "post-preview-gallery-copy")}
+                </div>
+            {/snippet}
+        </MediaGallery>
 
         {#if otherItems.length > 0}
             <div class="post-history-other-media-list">
                 {#each otherItems as item (item.id)}
-                    {@const otherRenderState = getImageRenderState(item)}
+                    {@const otherRenderState = getRenderState(item)}
                     <div
                         class="post-history-other-media-card"
                         use:inViewportAction={{
@@ -852,7 +422,7 @@
                             >
                             {@render mediaCopyButton(
                                 item,
-                                "post-history-video-copy-button",
+                                "",
                             )}
                         </div>
 
@@ -899,160 +469,56 @@
     .post-history-media-section {
         display: flex;
         flex-direction: column;
+        min-width: 0;
         gap: 10px;
     }
 
-    .post-history-image-toggle {
-        align-self: flex-start;
-        padding: 4px 10px;
-        border: 1px solid var(--border-hr);
-        border-radius: 999px;
-        background: var(--bg-input);
-        color: var(--text);
-        font: inherit;
-        cursor: pointer;
-    }
-
-    .post-history-image-grid {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        border-radius: 12px;
-        overflow: hidden;
-        gap: 2px;
-    }
-
-    .post-history-image-row {
-        display: grid;
-        grid-template-columns: repeat(
-            var(--post-history-image-columns),
-            minmax(0, 1fr)
+    .post-preview-gallery-card {
+        position: relative;
+        width: clamp(
+            100px,
+            calc(var(--media-gallery-preview-height) * var(--post-preview-gallery-aspect-ratio, 1)),
+            var(--media-gallery-preview-width)
         );
-        width: 100%;
-        gap: 2px;
-    }
-
-    .post-history-image-cell {
-        position: relative;
-        min-width: 0;
-    }
-
-    .post-history-image-surface-frame {
-        position: relative;
-        width: 100%;
-
-        .post-history-media-surface {
-            font-size: 0;
-            display: block;
-            width: 100%;
-            padding: 0;
-            border: 0;
-            background-color: transparent;
-            text-align: start;
-            cursor: pointer;
-            margin-inline: auto;
-
-            &:active:not(:disabled) {
-                scale: 1;
-            }
-        }
-    }
-
-    /* 単体画像のときグリッド側のボーダーを無効化 */
-    .post-history-image-grid-single {
-        border: none;
-        border-radius: 0;
-        overflow: visible;
-    }
-
-    .post-history-image-surface-frame-single {
         max-width: 100%;
-        margin-inline: 0;
-        border-radius: 12px;
-        overflow: hidden;
-    }
-
-    .post-history-image-surface {
-        overflow: hidden;
-    }
-
-    .post-history-image-surface-single {
-        display: block;
-        min-height: 100px;
-    }
-
-    .post-history-media-layout-frame {
-        position: relative;
-        width: 100%;
-        max-width: 100%;
-        overflow: hidden;
-        background: transparent;
-    }
-
-    .post-history-single-image-layout-frame {
-        position: relative;
-        padding: 0;
-        display: grid;
-        place-items: center;
-        justify-self: stretch;
-        align-self: stretch;
-        overflow: hidden;
-        background: transparent;
-    }
-
-    .post-history-image-placeholder-single {
-        position: absolute;
-        inset: 0;
-        display: grid;
-        place-items: center;
-        width: 100%;
         height: 100%;
-        min-height: 0;
+        overflow: hidden;
+        border-radius: 6px;
     }
 
-    .post-history-media-image,
-    .post-history-media-placeholder,
-    .post-history-media-layout-frame {
-        width: 100%;
-        max-width: 100%;
-    }
-
-    .post-history-media-image {
-        display: block;
-        height: 100%;
-        object-fit: cover;
-    }
-
-    .post-history-media-image-single {
-        height: auto;
-        margin-inline: auto;
-    }
-
-    .post-history-media-image-single-stage {
-        position: relative;
-        z-index: 1;
-    }
-
-    .post-history-media-video {
+    .post-preview-gallery-card :is(img, video, .post-history-media-surface) {
         display: block;
         width: 100%;
-        max-height: 300px;
         height: 100%;
         object-fit: contain;
-        border-radius: 10px;
-        background: color-mix(
-            in srgb,
-            var(--background-color, #fff) 92%,
-            #000 8%
-        );
     }
 
-    .post-history-video-media-frame {
-        width: 100%;
-        max-height: 300px;
-        overflow: hidden;
-        border-radius: 10px;
+    .post-history-media-surface {
+        padding: 0;
+        border: 0;
+        border-radius: inherit;
+        background: transparent;
+        cursor: zoom-in;
+    }
+
+    .post-history-media-surface:focus-visible,
+    .post-history-media-retry-button:focus-visible {
+        outline: 2px solid var(--theme);
+        outline-offset: -2px;
+    }
+
+    .post-preview-gallery-card .post-history-media-placeholder {
+        display: grid;
+        height: 100%;
+        place-items: center;
+        padding: 6px;
+    }
+
+    :global(button.post-preview-gallery-copy) {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        z-index: 2;
     }
 
     .post-history-media-placeholder {
@@ -1087,10 +553,6 @@
         pointer-events: none;
     }
 
-    .post-history-media-placeholder-loader-single {
-        z-index: 3;
-    }
-
     .post-history-media-placeholder-uncached {
         --post-history-placeholder-stripe-soft: light-dark(
             color-mix(in srgb, var(--background-color, #fff) 94%, #000 6%),
@@ -1108,12 +570,6 @@
             var(--post-history-placeholder-stripe-strong) 10px,
             var(--post-history-placeholder-stripe-strong) 20px
         );
-    }
-
-    .post-history-image-placeholder-single.post-history-media-placeholder {
-        height: 100%;
-        margin-inline: 0;
-        aspect-ratio: auto;
     }
 
     .post-history-media-placeholder-blurhash {
@@ -1135,14 +591,12 @@
         cursor: pointer;
     }
 
-    .post-history-video-list,
     .post-history-other-media-list {
         display: flex;
         flex-direction: column;
         gap: 10px;
     }
 
-    .post-history-video-card,
     .post-history-other-media-card {
         display: flex;
         flex-direction: column;
@@ -1153,14 +607,12 @@
         overflow: hidden;
     }
 
-    .post-history-video-card-header,
     .post-history-other-media-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
     }
 
-    .post-history-video-card-label,
     .post-history-other-media-label {
         min-width: 0;
         padding: 4px 8px;
@@ -1168,13 +620,6 @@
         color: var(--text-muted);
         font-size: 0.875rem;
         line-height: 1.2;
-    }
-
-    .post-history-video-placeholder {
-        width: 100%;
-        height: 100%;
-        aspect-ratio: auto;
-        padding: 0 12px;
     }
 
     :global(button.post-history-media-copy-button.circle.copy) {
@@ -1185,28 +630,4 @@
         z-index: 2;
     }
 
-    :global(button.post-history-media-copy-button-image.circle.copy) {
-        position: absolute;
-        inset: 8px 8px auto auto;
-    }
-
-    :global(button.post-history-video-copy-button.circle.copy) {
-        position: relative;
-        top: auto;
-        right: auto;
-        flex-shrink: 0;
-    }
-
-    @keyframes post-history-media-loading {
-        0% {
-            background-position: 100% 50%;
-        }
-        100% {
-            background-position: -100% 50%;
-        }
-    }
-
-    :global(.post-history-media-video) {
-        background-color: light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.3));
-    }
 </style>

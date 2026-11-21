@@ -51,7 +51,6 @@
 
 <div class="notification-post" use:inViewportAction={{ enabled: true, once: true, rootMargin: '160px', onEnterView: () => { entered = true; } }} class:plain>
 <PostHistoryRelatedEventCard {event} {profile} {model} {onImageOpen} {loadSensitiveBody}
-    maxVisibleImages={3}
     previewCollapseAction={preview.previewRef} previewCollapseEventId={previewId} previewContentId={previewId}
     isTextCollapsed={!preview.isPostExpanded(collapsePost)}
     emojiLoadStateByUrl={preview.emojiLoadStateByUrl} emojiImageMetaByUrl={preview.emojiImageMetaByUrl}>

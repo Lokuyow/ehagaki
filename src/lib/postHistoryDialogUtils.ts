@@ -56,17 +56,11 @@ export type PostHistoryResolvedMedia = PostHistoryRecord["media"][number] & {
     kind: PostHistoryDisplayMediaKind;
 };
 
-export type PostHistoryImageGridRow = {
-    items: PostHistoryResolvedMedia[];
-    slotCount: 1 | 2 | 3;
-};
-
 export type PostHistoryMediaLayout = {
     items: PostHistoryResolvedMedia[];
     images: PostHistoryResolvedMedia[];
     videos: PostHistoryResolvedMedia[];
     others: PostHistoryResolvedMedia[];
-    imageRows: PostHistoryImageGridRow[];
     fullscreenMediaItems: FullscreenMediaItem[];
 };
 
@@ -329,31 +323,6 @@ export function resolvePostHistoryMedia(
     return items;
 }
 
-export function buildPostHistoryImageGridRows(
-    images: PostHistoryResolvedMedia[],
-): PostHistoryImageGridRow[] {
-    const pattern = resolvePostHistoryImageRowPattern(images.length);
-    const rows: PostHistoryImageGridRow[] = [];
-    let startIndex = 0;
-
-    for (let rowIndex = 0; rowIndex < pattern.length; rowIndex += 1) {
-        const rowLength = pattern[rowIndex];
-        const items = images.slice(startIndex, startIndex + rowLength);
-        startIndex += rowLength;
-
-        rows.push({
-            items,
-            slotCount: resolvePostHistoryImageRowSlotCount({
-                totalCount: images.length,
-                rowLength: items.length,
-                isFinalRow: rowIndex === pattern.length - 1,
-            }),
-        });
-    }
-
-    return rows;
-}
-
 export function buildPostHistoryFullscreenMediaItems(
     images: PostHistoryResolvedMedia[],
 ): FullscreenMediaItem[] {
@@ -444,7 +413,6 @@ export function buildPostHistoryMediaLayout(
         images,
         videos,
         others,
-        imageRows: buildPostHistoryImageGridRows(images),
         fullscreenMediaItems: buildPostHistoryFullscreenMediaItems(images),
     };
 }
@@ -555,54 +523,6 @@ export function buildPreviewContent(
         segments,
         emojiUrls: [...emojiUrls],
     };
-}
-
-function resolvePostHistoryImageRowPattern(count: number): number[] {
-    const normalizedCount = Number.isFinite(count)
-        ? Math.max(0, Math.trunc(count))
-        : 0;
-
-    if (normalizedCount === 0) {
-        return [];
-    }
-
-    const predefinedPattern = IMAGE_ROW_PATTERNS[normalizedCount];
-    if (predefinedPattern) {
-        return [...predefinedPattern];
-    }
-
-    const rows = Array.from(
-        { length: Math.floor(normalizedCount / 3) },
-        () => 3,
-    );
-    const remainder = normalizedCount % 3;
-    if (remainder > 0) {
-        rows.push(remainder);
-    }
-
-    return rows;
-}
-
-function resolvePostHistoryImageRowSlotCount(params: {
-    totalCount: number;
-    rowLength: number;
-    isFinalRow: boolean;
-}): 1 | 2 | 3 {
-    const { totalCount, rowLength, isFinalRow } = params;
-
-    if (isFinalRow && totalCount >= 7 && rowLength < 3) {
-        return 3;
-    }
-
-    if (rowLength >= 3) {
-        return 3;
-    }
-
-    if (rowLength === 2) {
-        return 2;
-    }
-
-    return 1;
 }
 
 function buildPostMediaMap(

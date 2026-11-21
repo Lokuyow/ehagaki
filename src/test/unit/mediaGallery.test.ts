@@ -3,7 +3,7 @@ import { fireEvent, cleanup, render } from "@testing-library/svelte";
 import { readable } from "svelte/store";
 import { tick } from "svelte";
 import type { MediaGalleryItem } from "../../lib/types";
-import MediaGallery from "../../components/MediaGallery.svelte";
+import MediaGallery from "../../components/ComposerMediaGallery.svelte";
 import {
     editorState,
     resetPostStatus,
