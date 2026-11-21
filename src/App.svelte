@@ -2559,8 +2559,8 @@
 
   .composer-post-block.responsive-gallery {
     /* Scale between the 360px and 560px viewport widths. */
-    --post-gallery-height: clamp(180px, 50vw, 280px);
-    --post-gallery-media-max-width: clamp(160px, calc(40vw + 16px), 240px);
+    --post-gallery-height: clamp(180px, calc(70vw - 72px), 320px);
+    --post-gallery-media-max-width: clamp(160px, calc(60vw - 56px), 280px);
     --post-gallery-item-height: 100%;
   }
 
