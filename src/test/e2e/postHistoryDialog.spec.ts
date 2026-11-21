@@ -3313,6 +3313,30 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(quoteCard.locator('.post-preview-reaction-count')).toHaveCount(0);
     });
 
+    test('channel reply target cards offer reply and quote for the displayed event', async ({ page }) => {
+        await page.setViewportSize({ width: 360, height: 800 });
+        await page.goto('post-history-dialog-playwright.html?kind42-quote=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__!);
+        const threadHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.threadParentPostEventId}"]`,
+        );
+        const parentCard = threadHost.locator('.post-history-related-card')
+            .filter({ hasText: harness.quoteContent });
+        const reopen = page.getByTestId('post-history-reopen');
+
+        for (const [label, action] of [['リプライ', 'replyEventId'], ['引用', 'quoteEventId']] as const) {
+            await threadHost.getByRole('button', { name: '返信先を見る', exact: true }).click();
+            await expect(parentCard.getByRole('button', { name: 'アクションを表示', exact: true })).toBeVisible();
+            await parentCard.getByRole('button', { name: label, exact: true }).click();
+            expect(await page.evaluate(key =>
+                (window as HarnessWindow).__POST_HISTORY_ACTION_TARGETS__?.[key], action,
+            )).toBe(harness.quoteEventId);
+            await expect(reopen).toBeVisible();
+            await reopen.click();
+        }
+    });
+
     test('without reply and quote handlers the header shows the timestamp and menu and the footer has no actions', async ({ page }) => {
         await page.goto('post-history-dialog-playwright.html?no-actions=1');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));

@@ -383,6 +383,13 @@
         ? posts[60].content
         : `playwright quote source ${linkTargetUrl}`;
     const quoteParentPost = posts[2];
+    const channelRootTags = isKind42QuoteScenario
+        ? [["e", "c".repeat(64), "wss://relay.example.com/", "root"]]
+        : [];
+    const quoteTags = [
+        ...channelRootTags,
+        ...(isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : []),
+    ];
     const quoteRecord: PostHistoryRecord = isSelfQuoteTransitionScenario
         ? { ...posts[60] }
         : {
@@ -391,7 +398,7 @@
             pubkeyHex: "e".repeat(64),
             kind: isKind42QuoteScenario ? 42 : 1,
             content: quoteContent,
-            tags: isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : [],
+            tags: quoteTags,
             createdAt: quoteParentPost.createdAt - 60,
             postedAt: quoteParentPost.postedAt - 60_000,
             relayHints: [],
@@ -402,7 +409,7 @@
                 pubkey: "e".repeat(64),
                 kind: isKind42QuoteScenario ? 42 : 1,
                 content: quoteContent,
-                tags: isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : [],
+                tags: quoteTags,
                 created_at: quoteParentPost.createdAt - 60,
                 sig: "a".repeat(128),
             },
@@ -433,16 +440,18 @@
         sig: "b".repeat(128),
     };
     const threadParentPost = posts[3];
+    threadParentPost.kind = quoteRecord.kind;
     threadParentPost.tags = isLayoutStabilityScenario
         ? []
         : [
+              ...channelRootTags,
               ["e", resolvedQuoteEventId, "", "reply"],
               ["p", quoteRecord.pubkeyHex],
           ];
     threadParentPost.rawEvent = {
         id: threadParentPost.eventId,
         pubkey: HARNESS_PUBKEY,
-        kind: 1,
+        kind: threadParentPost.kind,
         content: threadParentPost.content,
         tags: threadParentPost.tags,
         created_at: threadParentPost.createdAt,

@@ -316,14 +316,8 @@
 
             {#snippet footerActions()}
                 {#if buildPostRecordForNode}
-                    <PostHistoryPostActions {onReactionPost}
+                    <PostHistoryPostActions {onReplyPost} {onQuotePost} {onReactionPost}
                         post={buildPostRecordForNode(state)}
-                        onReplyPost={state.node.event.kind !== 42
-                            ? onReplyPost
-                            : undefined}
-                        onQuotePost={state.node.event.kind !== 42
-                            ? onQuotePost
-                            : undefined}
                     >
                         {#snippet replyExtras()}
                             {#if showRepliesBadge}
