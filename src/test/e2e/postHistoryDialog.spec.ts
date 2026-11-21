@@ -3305,6 +3305,32 @@ test.describe('PostHistoryDialog Playwright', () => {
         }
     });
 
+    test('earlier reply targets step back toward the left without clipping', async ({ page }) => {
+        await page.setViewportSize({ width: 360, height: 800 });
+        await page.goto('post-history-dialog-playwright.html?nested-parents=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__!);
+        const threadHost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.threadParentPostEventId}"]`,
+        );
+        const parent = threadHost.locator('.post-history-related-card').filter({ hasText: harness.quoteContent });
+        const ancestor = threadHost.locator('.post-history-related-card').filter({ hasText: 'playwright earlier reply target' });
+        await threadHost.getByRole('button', { name: '返信先を見る', exact: true }).click();
+        await parent.getByRole('button', { name: '返信先を見る', exact: true }).click();
+        await expect(ancestor).toBeVisible();
+
+        const [parentBounds, ancestorBounds, hostBounds] = await Promise.all([
+            parent.boundingBox(), ancestor.boundingBox(), threadHost.boundingBox(),
+        ]);
+        expect(parentBounds!.x - ancestorBounds!.x).toBeCloseTo(8, 0);
+        expect(ancestorBounds!.x).toBeGreaterThan(hostBounds!.x);
+        expect(ancestorBounds!.y + ancestorBounds!.height).toBeLessThanOrEqual(parentBounds!.y);
+        for (const card of [ancestor, parent]) {
+            const layout = await getFooterLayout(card);
+            expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth + 1);
+        }
+    });
+
     test('without reply and quote handlers the header shows the timestamp and menu and the footer has no actions', async ({ page }) => {
         await page.goto('post-history-dialog-playwright.html?no-actions=1');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));

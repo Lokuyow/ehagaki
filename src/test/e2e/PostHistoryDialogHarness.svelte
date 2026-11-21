@@ -334,7 +334,7 @@
         tags: [["e", exportPostEvent.id]],
         created_at: Math.floor(Date.now() / 1000) - 10,
     }, HARNESS_SECRET_KEY);
-    function buildExportPostRecord(event: NostrEvent): PostHistoryRecord {
+    function buildFixturePostRecord(event: NostrEvent): PostHistoryRecord {
         return {
             id: event.id,
             eventId: event.id,
@@ -353,8 +353,8 @@
         };
     }
     const exportPostRecords = [
-        buildExportPostRecord(exportPostEvent),
-        buildExportPostRecord(exportChannelEvent),
+        buildFixturePostRecord(exportPostEvent),
+        buildFixturePostRecord(exportChannelEvent),
     ];
     const exportDeletionRecord = toPostHistoryDeletionRequestReferenceRecord({
         deletionEvent: exportDeletionEvent,
@@ -383,11 +383,20 @@
         ? posts[60].content
         : `playwright quote source ${linkTargetUrl}`;
     const quoteParentPost = posts[2];
+    const threadAncestor = new URLSearchParams(window.location.search).has("nested-parents")
+        ? finalizeEvent({
+            kind: 1,
+            content: "playwright earlier reply target",
+            tags: [],
+            created_at: quoteParentPost.createdAt - 120,
+        }, generateSecretKey())
+        : null;
     const channelRootTags = isKind42QuoteScenario
         ? [["e", "c".repeat(64), "wss://relay.example.com/", "root"]]
         : [];
     const quoteTags = [
         ...channelRootTags,
+        ...(threadAncestor ? [["e", threadAncestor.id, "", "reply"]] : []),
         ...(isCwLayoutScenario ? [["content-warning", CW_LAYOUT_REASON]] : []),
     ];
     const quoteRecord: PostHistoryRecord = isSelfQuoteTransitionScenario
@@ -683,7 +692,11 @@
             .delete();
         await ehagakiDb.postHistoryChildInteractions.clear();
         await ehagakiDb.postHistory.bulkPut(
-            isExportScenario ? exportPostRecords : [...posts, quoteRecord],
+            isExportScenario ? exportPostRecords : [
+                ...posts,
+                quoteRecord,
+                ...(threadAncestor ? [buildFixturePostRecord(threadAncestor)] : []),
+            ],
         );
         if (SENSITIVE_PREVIEW_PAYLOAD) {
             await sensitivePayloadRepository.putCandidate({
