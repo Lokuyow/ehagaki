@@ -3,6 +3,7 @@ import { installPostHistoryWakeLockProbe, readPostHistoryWakeLockProbe, type Pos
 
 type ScanWindow = Window & { __POST_HISTORY_HARNESS__?: { ready: boolean }; __POST_HISTORY_FULL_SCAN__?: {
     held: number; releasedHeld: number; relayUrls: string[]; closeParent: () => void; readCount: () => Promise<number>;
+    negentropyFixtureIds: string[];
     hasPendingReply: (url: string) => boolean; releaseRelay: (url: string) => void; authenticateRelay: (url: string) => void;
 } };
 async function releasePendingRelay(page: Page, relayIndex: number) {
@@ -53,6 +54,36 @@ test("full scan: completes with actual summary and preserves the displayed windo
     await dialog.getByRole("button", { name: "閉じる", exact: true }).click();
     await expect(dialog).not.toBeVisible();
     expect(await page.locator(".post-history-item").evaluateAll((items) => items.map((item) => item.getAttribute("data-post-history-event-id")))).toEqual(ids);
+});
+test("full scan: NIP-77 reuses verified local posts and shows zero received as complete", async ({ page }) => {
+    let remoteIds: string[] = [];
+    const initialMessages: string[] = [];
+    await page.routeWebSocket(/^wss:\/\/full-scan-[ab]\.example\/?$/, (socket) => {
+        const ids = socket.url().includes("full-scan-a") ? remoteIds : [];
+        socket.onMessage((message) => {
+            const [type, subId, , initial] = JSON.parse(String(message));
+            if (type !== "NEG-OPEN") return;
+            if (ids.length) initialMessages.push(initial);
+            socket.send(JSON.stringify(["NEG-MSG", subId, `610000020${ids.length}${ids.join("")}`]));
+        });
+    });
+    const { before, dialog } = await open(page, "negentropy");
+    remoteIds = await page.evaluate(() => (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!.negentropyFixtureIds);
+    await dialog.getByRole("button", { name: "取得開始", exact: true }).click();
+    await expect(dialog.getByRole("status")).toContainText("対象リレーの走査が終了しました");
+    await expect(dialog.locator(".scan-relay-count").first()).toHaveText("2");
+    await expect.poll(() => page.evaluate(() => (window as ScanWindow).__POST_HISTORY_FULL_SCAN__!.readCount())).toBe(before + 2);
+
+    await dialog.getByRole("button", { name: "閉じる", exact: true }).click();
+    const repeated = await openDialog(page);
+    await repeated.getByRole("button", { name: "取得開始", exact: true }).click();
+    await expect(repeated.getByRole("status")).toContainText("対象リレーの走査が終了しました");
+    const rows = repeated.locator(".scan-relay-row");
+    await expect(rows.nth(0).locator(".scan-relay-state")).toHaveText("完了");
+    await expect(rows.nth(1).locator(".scan-relay-state")).toHaveText("投稿なし");
+    await expect(repeated.locator(".scan-relay-count")).toHaveText(["0", "0"]);
+    expect(initialMessages[0]).toBe("6100000200");
+    expect(remoteIds.every((id) => initialMessages[1].includes(id))).toBe(true);
 });
 test("full scan: wake lock follows visibility and ends on cancel or dialog close", async ({ page }) => {
     await installPostHistoryWakeLockProbe(page);

@@ -34,7 +34,10 @@
     }
     function relayStatus(relay: PostHistoryFullScanRelayProgress) {
         if (relay.status === "running") return relay.phase;
-        if (relay.status === "completed") return relay.receivedCount === 0 && !hasOnlyPostHistoryFullScanAmbiguity(relay) ? "empty" : "completed";
+        if (relay.status === "completed") {
+            return relay.receivedCount === 0 && !relay.hasMatchedLocalEvents && !hasOnlyPostHistoryFullScanAmbiguity(relay)
+                ? "empty" : "completed";
+        }
         if (relay.status === "cancelled") return "cancelled";
         const issues = Object.entries(relay.issueCounts).filter(([, count]) => (count ?? 0) > 0).map(([issue]) => issue);
         if (issues.length && issues.every((issue) => issue === "timeout" || issue === "auth-timeout")) return "timeout";
@@ -87,7 +90,7 @@
                     {#if result}
                         <div><dt>{$_("postHistory.fullScanCompletedRelays")}</dt><dd>{result.relays.filter((relay) => relay.status === "completed").length}</dd></div>
                         <div><dt>{$_("postHistory.fullScanIncompleteRelays")}</dt><dd>{result.relays.filter((relay) => relay.status !== "completed").length}</dd></div>
-                        {#each issueCounts as [issue, count]}
+                        {#each issueCounts as [issue, count] (issue)}
                             <div><dt>{$_(`postHistory.fullScanIssue.${issue}`)}</dt><dd>{count}</dd></div>
                         {/each}
                     {/if}

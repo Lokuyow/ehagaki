@@ -19,6 +19,7 @@ describe("full relay scan dialog", () => {
         { expected: "auth", relay: { status: "running", phase: "auth", receivedCount: 4 } },
         { expected: "completed", relay: { status: "completed", receivedCount: 8 } },
         { expected: "empty", relay: { status: "completed", receivedCount: 0 } },
+        { expected: "completed", relay: { status: "completed", receivedCount: 0, hasMatchedLocalEvents: true } },
         { expected: "timeout", relay: { status: "partial", receivedCount: 0, issueCounts: { timeout: 1 } } },
         { expected: "timeout", relay: { status: "partial", issueCounts: { "auth-timeout": 1 } } },
         { expected: "error", relay: { status: "partial", receivedCount: 0, issueCounts: { error: 2 } } },

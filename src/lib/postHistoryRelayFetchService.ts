@@ -235,11 +235,12 @@ export class PostHistoryRelayFetchService {
         return this.fetch(rxNostr, params);
     }
 
-    fetchRelayPage(rxNostr: RxNostr, params: PostHistoryRelayFetchRequest & { relayUrl: string }): PostHistoryRelayFetchTask {
-        return this.fetch(rxNostr, params, params.relayUrl);
+    fetchRelayPage(rxNostr: RxNostr, params: PostHistoryRelayFetchRequest & { relayUrl: string; ids?: string[] }): PostHistoryRelayFetchTask {
+        return this.fetch(rxNostr, params, params.relayUrl, params.ids);
     }
 
-    private fetch(rxNostr: RxNostr, params: PostHistoryRelayFetchRequest, pageRelayUrl?: string): PostHistoryRelayFetchTask {
+    private fetch(rxNostr: RxNostr, params: PostHistoryRelayFetchRequest, pageRelayUrl?: string, ids?: string[]): PostHistoryRelayFetchTask {
+        const requestedIds = ids && new Set(ids);
         const startedAt = this.now();
         const kinds = params.kinds ?? [...POST_HISTORY_FETCH_KINDS];
         const limit = resolveFetchLimit(params.reason, params.limit);
@@ -293,7 +294,7 @@ export class PostHistoryRelayFetchService {
                 rawCount: state.rawCount, oldestCreatedAt: state.oldestCreatedAt,
                 saturated: state.rawCount >= limit,
             }));
-            const relayFetchCoverage = derivePostHistoryRelayFetchCoverage({
+            const relayFetchCoverage = requestedIds ? [] : derivePostHistoryRelayFetchCoverage({
                 since: params.since, until: coverageUntil, oldestCreatedAt,
                 outcomes: relayOutcomes, cancelled: status === "cancelled",
             });
@@ -357,7 +358,7 @@ export class PostHistoryRelayFetchService {
             detachOperation = operation.add(() => end(operation.reason ?? "cancelled"));
             tryFinish = createRelayQueryCompletion(operation, states, !pageRelayUrl && params.reason !== "repair-visible-range", end);
             if (resolved) return;
-            if (!states.length) {
+            if (!states.length || requestedIds && !requestedIds.size) {
                 finish("error");
                 return;
             }
@@ -420,7 +421,8 @@ export class PostHistoryRelayFetchService {
                             const event = packet.event;
                             if (event.pubkey !== params.pubkeyHex || !kinds.includes(event.kind)
                                 || (params.since !== undefined && event.created_at < params.since)
-                                || (params.until !== undefined && event.created_at > params.until)) return;
+                                || (params.until !== undefined && event.created_at > params.until)
+                                || (requestedIds && (!requestedIds.has(event.id) || readState(packet.from) !== state))) return;
                             eventRelayUrls.add(state.relayUrl);
                             state.eventIds.add(event.id);
                             state.oldestCreatedAt = Math.min(state.oldestCreatedAt ?? event.created_at, event.created_at);
@@ -447,6 +449,7 @@ export class PostHistoryRelayFetchService {
                     if (resolved) { state.subscription?.unsubscribe?.(); break; }
                     if (!state.finished) {
                         state.request.emit({ authors: [params.pubkeyHex], kinds, limit,
+                            ...(ids ? { ids } : {}),
                             ...(params.since === undefined ? {} : { since: params.since }),
                             ...(params.until === undefined ? {} : { until: params.until }) });
                         state.request.over();
