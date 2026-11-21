@@ -23,6 +23,7 @@ export function findProfileMentionSuggestionMatch({ $position }: Trigger): Sugge
     for (let at = text.lastIndexOf("@"); at >= limit; at = text.lastIndexOf("@", at - 1)) {
         if (at === 0 || /[ \t\u3000]/.test(text[at - 1]!)) {
             const query = text.slice(at + 1);
+            if (!query.trim()) return null;
             const from = $position.pos - text.length + at;
             return { range: { from, to: $position.pos }, query, text: text.slice(at) };
         }

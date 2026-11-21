@@ -298,8 +298,11 @@ test('refreshes the mention candidates from Settings after a follow is removed',
     const editor = page.locator('.tiptap-editor');
     const popup = page.locator('.profile-mention-suggestion-popover');
     await editor.fill('@');
+    await expect(popup).toHaveCount(0);
+    await editor.fill('@npub');
     await expect(popup.locator('[role="option"]').first()).toBeVisible();
-    await editor.press('Escape');
+    await editor.fill('@');
+    await expect(popup).toHaveCount(0);
 
     app.removeFollowedProfile();
     const earlierRequests = app.counts().legacyRequests;

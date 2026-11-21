@@ -185,13 +185,14 @@ export function createFollowListSession(
     function getSuggestions(query: string): ProfileMentionCandidate[] {
         if (signal.aborted) return [];
         const normalized = normalizeSearch(query);
+        if (!normalized) return [];
         const ranked: ProfileMentionCandidate[][] = [[], [], []];
         for (const contact of contacts) {
             const profile = profileMetadataCache.getReactiveEntry(contact.pubkey)?.profile;
             const npub = normalized.startsWith("npub") ? nip19.npubEncode(contact.pubkey) : undefined;
             const fields = [profile?.name, profile?.displayName, profile?.nip05, contact.petname, npub]
                 .filter((field): field is string => Boolean(field)).map(normalizeSearch);
-            const rank = !normalized || fields.includes(normalized) ? 0
+            const rank = fields.includes(normalized) ? 0
                 : fields.some(field => field.startsWith(normalized)) ? 1
                 : fields.some(field => field.includes(normalized)) ? 2 : -1;
             if (rank < 0 || ranked[rank]!.length >= SUGGESTION_LIMIT) continue;

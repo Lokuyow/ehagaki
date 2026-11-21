@@ -78,6 +78,8 @@ describe("follow list", () => {
             expect(service.getSuggestions(query)).toMatchObject([{ pubkey: expectedContact, label: "アリス Example" }]);
         }
         expect(service.getSuggestions("someone else")).toEqual([]);
+        expect(service.getSuggestions("")).toEqual([]);
+        expect(service.getSuggestions(" \u3000")).toEqual([]);
         const restored = session(owner, db).service;
         await expect(restored.refresh(false)).resolves.toBe("updated");
         expect(transport).toHaveBeenCalledTimes(calls);
