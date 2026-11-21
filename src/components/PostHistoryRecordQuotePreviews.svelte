@@ -91,26 +91,11 @@
                 onRetry={() => onRetry(quotePreview.eventId)}
             >
                 {#snippet footerActions()}
-                    {#if quotePreview.status === "resolved" &&
-                        (quotePreview.event.kind !== 42 ||
-                            onReactionPost ||
-                            (getReactionReadModel(quotePreview.event.id)?.totalCount ?? 0) > 0)}
+                    {#if quotePreview.status === "resolved"}
                         {@const quoteActionPost = buildRecord(
                             quotePreview.event,
                         )}
-                        <PostHistoryPostActions {onReactionPost}
-                            post={quoteActionPost}
-                            onReplyPost={
-                                quotePreview.event.kind !== 42
-                                    ? onReplyPost
-                                    : undefined
-                            }
-                            onQuotePost={
-                                quotePreview.event.kind !== 42
-                                    ? onQuotePost
-                                    : undefined
-                            }
-                        >
+                        <PostHistoryPostActions post={quoteActionPost} {onReplyPost} {onQuotePost} {onReactionPost}>
                             {#snippet reactionExtras()}
                                 {@const reactionModel = getReactionReadModel(quotePreview.event.id)}
                                 {#if reactionModel && reactionModel.totalCount > 0}

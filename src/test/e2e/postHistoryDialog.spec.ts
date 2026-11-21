@@ -3290,7 +3290,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(quoteCard.locator('.post-preview-reaction-count')).toHaveText('2');
     });
 
-    test('kind 42 quote cards show reaction details while reply and quote actions remain unavailable', async ({ page }) => {
+    test('channel quote cards show reply and quote alongside reaction details', async ({ page }) => {
         await page.goto('post-history-dialog-playwright.html?kind42-quote=1');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
         const harness = await page.evaluate<HarnessState>(() =>
@@ -3305,8 +3305,8 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(quoteCard).toBeVisible();
         const reactionButton = quoteCard.locator('.post-preview-reactions-button');
         await expect(reactionButton).toHaveText(/1/);
-        await expect(quoteCard.locator('.post-preview-reply-action-cell button')).toHaveCount(0);
-        await expect(quoteCard.locator('.post-preview-quote-action-cell button')).toHaveCount(0);
+        await expect(quoteCard.getByRole('button', { name: 'リプライ', exact: true })).toBeVisible();
+        await expect(quoteCard.getByRole('button', { name: '引用', exact: true })).toBeVisible();
         await expect(quoteCard.locator('.post-preview-footer-right button', { hasText: '' })).toHaveCount(1);
         await reactionButton.click();
         await expect(quoteCard.locator('.post-preview-reaction-chip')).toHaveCount(1);

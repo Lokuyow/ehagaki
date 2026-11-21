@@ -1280,6 +1280,7 @@
                                 {#if targetPost}
                                     <PostHistoryPostActions onReactionPost={() => handleApply("reaction")}
                                         post={targetPost}
+                                        resolvedChannelEventId={target.channelContext?.eventId}
                                         onReplyPost={targetActions.includes("reply")
                                             ? () => handleApply("reply")
                                             : undefined}
