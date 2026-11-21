@@ -87,6 +87,7 @@ type AttestationEntry = {
 
 const attestations = new WeakMap<object, AttestationEntry>();
 const eventAttestations = new WeakMap<object, PostHistoryRawEventAttestation>();
+const verifiedInputFingerprints = new WeakMap<object, string>();
 const relaySources = new WeakMap<object, PostHistoryRelayEventSource>();
 type EventVerifier = (event: NostrEvent) => boolean | Promise<boolean>;
 const scanVerifierCaches = new WeakMap<RxNostr, ReturnType<typeof createPostHistoryScanVerifier>>();
@@ -203,8 +204,11 @@ export function attestFullyVerifiedPostHistoryRawEvent(
         // Persisted flags and relay-signature capabilities do not grant this path.
         const fullyAttested = prior?.evidence === 'full'
             && prior.ruleVersion === RAW_EVENT_VERIFICATION_RULE_VERSION && prior.fingerprint === fingerprint;
-        if (!fullyAttested && !verifyEvent(snapshot as never)) {
-            return null;
+        if (!fullyAttested && verifiedInputFingerprints.get(event) !== fingerprint) {
+            if (!verifyEvent(snapshot as never)) return null;
+            // Display code can keep verifying the same input across renders.
+            // Reuse this proof only here, after cloning and checking the fingerprint.
+            verifiedInputFingerprints.set(event, fingerprint);
         }
 
         const token: PostHistoryRawEventAttestation = {};

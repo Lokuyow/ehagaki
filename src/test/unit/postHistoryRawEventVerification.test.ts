@@ -6,8 +6,9 @@ import {
     createRxForwardReq,
     createRxNostr,
 } from "rx-nostr";
-import { finalizeEvent, generateSecretKey, verifyEvent } from "nostr-tools";
-import { afterEach, describe, expect, it } from "vitest";
+import { finalizeEvent, generateSecretKey } from "nostr-tools";
+import * as nostrTools from "nostr-tools";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     attestFullyVerifiedPostHistoryRawEvent,
     createPostHistoryRelayEventSource,
@@ -16,6 +17,8 @@ import {
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
 import type { NostrEvent } from "../../lib/types";
+
+vi.mock("nostr-tools", { spy: true });
 
 const testDbNames = new Set<string>();
 
@@ -208,8 +211,28 @@ describe("post-history raw event verification", () => {
         staleCachedEvent.sig = "0".repeat(128);
         // finalizeEvent marked the source object as verified before its sig
         // changed, so direct nostr-tools verification demonstrates the cache.
-        expect(verifyEvent(staleCachedEvent as never)).toBe(true);
+        expect(nostrTools.verifyEvent(staleCachedEvent as never)).toBe(true);
         expect(attestFullyVerifiedPostHistoryRawEvent(staleCachedEvent)).toBeNull();
+    });
+
+    it("reuses a full signature check only for the same unchanged input", () => {
+        const event = createEvent();
+        const verify = vi.mocked(nostrTools.verifyEvent).mockClear();
+        const first = attestFullyVerifiedPostHistoryRawEvent(event);
+        const second = attestFullyVerifiedPostHistoryRawEvent(event);
+        expect(first).not.toBeNull();
+        expect(second?.event).toMatchObject({ id: event.id, sig: event.sig });
+        expect(second?.event).not.toBe(first?.event);
+        expect(verify).toHaveBeenCalledTimes(1);
+        expect(isCurrentPostHistoryRawEventAttestation(event, undefined)).toBe(false);
+        expect(isCurrentPostHistoryRawEventAttestation(second!.event, undefined)).toBe(true);
+
+        expect(attestFullyVerifiedPostHistoryRawEvent({ ...event })).not.toBeNull();
+        expect(verify).toHaveBeenCalledTimes(2);
+
+        event.sig = "0".repeat(128);
+        expect(attestFullyVerifiedPostHistoryRawEvent(event)).toBeNull();
+        expect(verify).toHaveBeenCalledTimes(3);
     });
 
     it.each([
