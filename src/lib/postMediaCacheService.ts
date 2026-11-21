@@ -167,6 +167,8 @@ async function runWithConcurrencyLimit<T>(
 
 export class PostMediaCacheService {
     private mutationQueue: Promise<unknown> = Promise.resolve();
+    private readonly entryQueues = new Map<string, Promise<unknown>>();
+    private reconciliation?: Promise<void>;
     private nextReconcileAt = 0;
     private readonly descriptorSnapshotTtlMs: number;
     private readonly descriptorSnapshotMaxEntries: number;
@@ -578,33 +580,41 @@ export class PostMediaCacheService {
             await this.reconcile(cache);
             const now = Date.now();
             await this.prune(cache, { cacheKey, size, lastAccessedAt: now, expiresAt: Infinity });
-            // Remove the old commit record before replacing the body.
-            const previous = await this.repository.getByUrl(url);
-            if (previous) {
-                await this.repository.deleteByCacheKey(cacheKey);
-                this.descriptorSnapshotByCacheKey.delete(cacheKey);
-                this.retireSharedObjectUrl(cacheKey);
-            }
-            try {
-                await cache.put(cacheKey, response);
-                const record = await this.repository.upsert({
-                    cacheKey, url, normalizedUrl: cacheKey, size: size ?? 0, mimeType,
-                    createdAt: now, lastAccessedAt: now, source,
-                    ...(previous && { eventIds: previous.eventIds, mimeType: mimeType ?? previous.mimeType }),
-                });
-                if (!this.runtime.locks) await this.prune(cache);
-                const descriptor = this.toCachedMediaDescriptor({ record, mimeType: record.mimeType });
-                if (size === null) {
+            const descriptor = await this.withEntryLock(cacheKey, 'exclusive', async () => {
+                // Remove the old commit record before replacing the body.
+                const previous = await this.repository.getByUrl(url);
+                if (previous) {
+                    await this.repository.deleteByCacheKey(cacheKey);
                     this.descriptorSnapshotByCacheKey.delete(cacheKey);
-                } else {
-                    this.writeDescriptorSnapshot(cacheKey, descriptor);
+                    this.retireSharedObjectUrl(cacheKey);
                 }
-                return descriptor;
-            } catch (error) {
-                this.nextReconcileAt = 0;
-                await this.remove(cache, cacheKey).catch(() => undefined);
-                throw error;
+                try {
+                    await cache.put(cacheKey, response);
+                    const record = await this.repository.upsert({
+                        cacheKey, url, normalizedUrl: cacheKey, size: size ?? 0, mimeType,
+                        createdAt: now, lastAccessedAt: now, source,
+                        ...(previous && { eventIds: previous.eventIds, mimeType: mimeType ?? previous.mimeType }),
+                    });
+                    const descriptor = this.toCachedMediaDescriptor({ record, mimeType: record.mimeType });
+                    if (size === null) this.descriptorSnapshotByCacheKey.delete(cacheKey);
+                    else this.writeDescriptorSnapshot(cacheKey, descriptor);
+                    return descriptor;
+                } catch (error) {
+                    this.nextReconcileAt = 0;
+                    await this.removeEntry(cache, cacheKey).catch(() => undefined);
+                    throw error;
+                }
+            });
+            if (!this.runtime.locks) {
+                try {
+                    await this.prune(cache);
+                } catch (error) {
+                    this.nextReconcileAt = 0;
+                    await this.remove(cache, cacheKey).catch(() => undefined);
+                    throw error;
+                }
             }
+            return descriptor;
         });
     }
 
@@ -850,7 +860,24 @@ export class PostMediaCacheService {
         return task;
     }
 
-    private async remove(cache: CacheLike, cacheKey: string): Promise<void> {
+    private withEntryLock<T>(cacheKey: string, mode: LockMode, operation: () => Promise<T>): Promise<T> {
+        if (this.runtime.locks) {
+            return this.runtime.locks.request(`${POST_MEDIA_CACHE_NAME}:entry:${cacheKey}`, { mode }, operation);
+        }
+        const task = (this.entryQueues.get(cacheKey) ?? Promise.resolve()).then(operation);
+        const tail = task.catch(() => undefined);
+        this.entryQueues.set(cacheKey, tail);
+        void tail.then(() => {
+            if (this.entryQueues.get(cacheKey) === tail) this.entryQueues.delete(cacheKey);
+        });
+        return task;
+    }
+
+    private remove(cache: CacheLike, cacheKey: string): Promise<void> {
+        return this.withEntryLock(cacheKey, 'exclusive', () => this.removeEntry(cache, cacheKey));
+    }
+
+    private async removeEntry(cache: CacheLike, cacheKey: string): Promise<void> {
         await cache.delete(cacheKey);
         await this.repository.deleteByCacheKey(cacheKey);
         this.descriptorSnapshotByCacheKey.delete(cacheKey);
@@ -871,13 +898,28 @@ export class PostMediaCacheService {
         const stored = new Set(keys.map(key => key.url));
         const indexed = new Set(records.map(record => record.cacheKey));
         for (const key of stored) {
-            if (!indexed.has(key)) await cache.delete(key);
+            if (!indexed.has(key)) await this.remove(cache, key);
         }
         for (const key of indexed) {
-            if (!stored.has(key)) await this.repository.deleteByCacheKey(key);
+            if (!stored.has(key)) await this.remove(cache, key);
         }
         await this.prune(cache);
         this.nextReconcileAt = Date.now() + POST_MEDIA_CACHE_MAINTENANCE_INTERVAL_MS;
+    }
+
+    private scheduleReconciliation(cache: CacheLike): void {
+        if (Date.now() < this.nextReconcileAt || this.reconciliation) return;
+        this.reconciliation = this.serialize(() => this.reconcile(cache))
+            .catch(() => undefined)
+            .finally(() => { this.reconciliation = undefined; });
+    }
+
+    private async readEntry(cache: CacheLike, url: string) {
+        const record = await this.repository.getByUrl(url);
+        if (!record) return null;
+        const response = await cache.match(record.cacheKey);
+        const expired = response?.type === 'opaque' && record.createdAt + OPAQUE_CACHE_RETENTION_MS <= Date.now();
+        return { record, response: expired ? undefined : response };
     }
 
     private async prune(
@@ -914,22 +956,22 @@ export class PostMediaCacheService {
         response: Response;
     } | null> {
         const cacheStorage = this.runtime.cacheStorage;
-        if (!cacheStorage) {
-            return null;
-        }
+        const cacheKey = normalizePostMediaUrl(url);
+        if (!cacheStorage || !cacheKey) return null;
 
-        return this.serialize(async () => {
-            const cache = await cacheStorage.open(POST_MEDIA_CACHE_NAME);
-            await this.reconcile(cache);
-            const record = await this.repository.getByUrl(url);
-            if (!record) return null;
-            const response = await cache.match(record.cacheKey);
-            if (!response || (response.type === 'opaque' && record.createdAt + OPAQUE_CACHE_RETENTION_MS <= Date.now())) {
-                await this.remove(cache, record.cacheKey);
-                return null;
-            }
-            return { record, response };
-        });
+        const cache = await cacheStorage.open(POST_MEDIA_CACHE_NAME);
+        const entry = await this.withEntryLock(cacheKey, 'shared', () => this.readEntry(cache, url));
+        this.scheduleReconciliation(cache);
+        if (!entry) return null;
+        if (entry.response) return { record: entry.record, response: entry.response };
+
+        // A save may complete between the miss and cleanup. Recheck under the
+        // entry lock while holding the writer lock, in the same order as a save.
+        void this.serialize(() => this.withEntryLock(cacheKey, 'exclusive', async () => {
+            const current = await this.readEntry(cache, url);
+            if (current && !current.response) await this.removeEntry(cache, current.record.cacheKey);
+        })).catch(() => undefined);
+        return null;
     }
 }
 

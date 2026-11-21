@@ -56,6 +56,70 @@ function resolveRequestKey(request: RequestInfo | URL): string {
 }
 
 describe('PostMediaCacheService', () => {
+    it('reads an unrelated preview while a write is held and keeps same-URL reads behind the commit', async () => {
+        const db = new EHagakiDB('test-post-cache-entry-lock');
+        const repository = new DexiePostMediaCacheRepository(db);
+        const cacheStorage = new FakeCacheStorage();
+        const service = new PostMediaCacheService(repository, {
+            cacheStorage, createObjectUrl: () => 'blob:stable',
+        }, POST_MEDIA_CACHE_MAX_TOTAL_SIZE, { descriptorSnapshotMaxEntries: 0 });
+        const stable = 'https://example.com/stable.webp';
+        const updating = 'https://example.com/updating.webp';
+        const file = new Blob([new Uint8Array([1])], { type: 'image/webp' });
+        await service.persistUploadedMedia({ url: stable, file });
+        await service.persistUploadedMedia({ url: updating, file });
+
+        const put = cacheStorage.cache.put.bind(cacheStorage.cache);
+        const started = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        vi.spyOn(cacheStorage.cache, 'put').mockImplementationOnce(async (key, response) => {
+            started.resolve();
+            await release.promise;
+            await put(key, response);
+        });
+        const replacement = service.persistUploadedMedia({ url: updating, file: new Blob([file, file]) });
+        try {
+            await started.promise;
+            const sameUrl = service.getCachedMediaDescriptor(updating + '#same-normalized-url');
+            await expect(service.createCachedMediaObjectUrl(stable)).resolves.toMatchObject({ objectUrl: 'blob:stable' });
+            release.resolve();
+            await expect(sameUrl).resolves.toMatchObject({ size: 2 });
+        } finally {
+            release.resolve();
+            await replacement;
+            await db.delete();
+        }
+    });
+
+    it('lets the first descriptor read finish during a full inventory', async () => {
+        const db = new EHagakiDB('test-post-cache-background-inventory');
+        const repository = new DexiePostMediaCacheRepository(db);
+        const cacheStorage = new FakeCacheStorage();
+        const url = 'https://example.com/previous.webp';
+        await cacheStorage.cache.put(url, new Response(new Uint8Array([1])));
+        await repository.upsert({ cacheKey: url, url, size: 1, source: 'uploaded' });
+
+        const keys = cacheStorage.cache.keys.bind(cacheStorage.cache);
+        const started = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        vi.spyOn(cacheStorage.cache, 'keys').mockImplementationOnce(async () => {
+            started.resolve();
+            await release.promise;
+            return keys();
+        });
+        const service = new PostMediaCacheService(repository, { cacheStorage });
+        const firstRead = service.getCachedMediaDescriptor(url);
+        try {
+            await started.promise;
+            await expect(firstRead).resolves.toMatchObject({ size: 1 });
+        } finally {
+            release.resolve();
+            // The queued write joins the outstanding cleanup before using the database.
+            await service.deleteCachedMedia(url);
+            await db.delete();
+        }
+    });
+
     it('cleans a failed write without fetching a second time and can cache on retry', async () => {
         const db = new EHagakiDB('test-post-cache-failed-write');
         const repository = new DexiePostMediaCacheRepository(db);
@@ -101,12 +165,11 @@ describe('PostMediaCacheService', () => {
             }
             const service = new PostMediaCacheService(repository, { cacheStorage, fetch: async () => opaque() });
             await service.getCachedMediaDescriptor(url('empty-readable'));
+            await Promise.all([service.fetchAndCacheMedia({ url: url('new-1') }), service.fetchAndCacheMedia({ url: url('new-2') })]);
             expect(cacheStorage.cache.has(url('orphan-body'))).toBe(false);
             expect(await repository.getByUrl(url('orphan-metadata'))).toBeNull();
             expect(cacheStorage.cache.has(url('expired'))).toBe(false);
             expect(cacheStorage.cache.has(url('empty-readable'))).toBe(true);
-
-            await Promise.all([service.fetchAndCacheMedia({ url: url('new-1') }), service.fetchAndCacheMedia({ url: url('new-2') })]);
             expect(await cacheStorage.cache.keys()).toHaveLength(9);
             expect(await repository.getByUrl(url('legacy-0'))).toBeNull();
             expect(await repository.getByUrl(url('legacy-1'))).toBeNull();
