@@ -52,27 +52,12 @@
         !item.isPlaceholder && item.type === "video" && !!item.src,
     );
 
-    // プレースホルダーの表示サイズをアップロード後のメディア表示サイズに合わせる
-    // ギャラリーの実メディアはheight:180px, min-width:100px, max-width:180px, object-fit:cover
-    const GALLERY_HEIGHT = 180;
-    const GALLERY_MIN_WIDTH = 100;
-    const GALLERY_MAX_WIDTH = 180;
-
-    let placeholderStyle = $derived.by(() => {
-        if (!item.isPlaceholder) return undefined;
+    let placeholderAspectRatio = $derived.by(() => {
         const dims = item.dimensions;
-        if (dims && dims.width > 0 && dims.height > 0) {
-            // アスペクト比から幅を計算し、ギャラリー制約に収める
-            const aspectRatio = dims.width / dims.height;
-            const w = Math.round(GALLERY_HEIGHT * aspectRatio);
-            const clampedWidth = Math.max(
-                GALLERY_MIN_WIDTH,
-                Math.min(GALLERY_MAX_WIDTH, w),
-            );
-            return `width: ${clampedWidth}px; height: ${GALLERY_HEIGHT}px;`;
+        if (item.isPlaceholder && dims && dims.width > 0 && dims.height > 0) {
+            return dims.width / dims.height;
         }
-        // 寸法情報がない場合はデフォルト
-        return `width: ${GALLERY_MAX_WIDTH}px; height: ${GALLERY_HEIGHT}px;`;
+        return undefined;
     });
 
     function handleImageClick() {
@@ -149,8 +134,11 @@
     <!-- メディア表示エリア -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div
-        class="gallery-item-media"
-        style={placeholderStyle}
+        class={[
+            "gallery-item-media",
+            { "has-placeholder-dimensions": placeholderAspectRatio !== undefined },
+        ]}
+        style:--gallery-placeholder-aspect-ratio={placeholderAspectRatio}
         onclick={item.type === "image" && !item.isPlaceholder
             ? handleImageClick
             : undefined}
@@ -272,6 +260,7 @@
     .gallery-item {
         display: inline-flex;
         flex-shrink: 0;
+        height: var(--post-gallery-item-height, 180px);
         overflow: visible;
         transition:
             transform 0.15s ease,
@@ -284,6 +273,7 @@
     }
 
     .gallery-item-media {
+        height: 100%;
         border-radius: 6px;
         overflow: hidden;
         display: flex;
@@ -300,12 +290,24 @@
     .gallery-video {
         object-fit: cover;
         display: block;
+        height: 100%;
+    }
+
+    .gallery-image,
+    .is-placeholder .gallery-item-media {
+        min-width: 100px;
+        max-width: var(--post-gallery-media-max-width, 180px);
+    }
+
+    .is-placeholder .gallery-item-media {
+        aspect-ratio: var(--gallery-placeholder-aspect-ratio, auto);
+    }
+
+    .is-placeholder .gallery-item-media:not(.has-placeholder-dimensions) {
+        width: var(--post-gallery-media-max-width, 180px);
     }
 
     .gallery-image {
-        min-width: 100px;
-        max-width: 180px;
-        height: 180px;
         -webkit-drag: none;
 
         &.image-loading {
@@ -313,10 +315,13 @@
         }
     }
 
-    .video-wrapper,
+    .video-wrapper {
+        width: var(--post-gallery-media-max-width, 180px);
+        height: 100%;
+    }
+
     .gallery-video {
-        width: 180px;
-        height: 180px;
+        width: 100%;
     }
 
     .video-drag-overlay {

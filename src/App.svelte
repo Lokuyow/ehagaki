@@ -2120,7 +2120,10 @@
               </div>
             {/if}
             <div
-              class="composer-block composer-post-block"
+              class={[
+                "composer-block composer-post-block",
+                { "responsive-gallery": appRuntimeEnvironment.runtimeKind === "standalone" },
+              ]}
               data-composer-block="post"
             >
               <div class="composer-post-layout">
@@ -2552,6 +2555,13 @@
   .composer-post-block {
     flex: 1 1 auto;
     min-height: 0;
+  }
+
+  .composer-post-block.responsive-gallery {
+    /* Scale between the 360px and 560px viewport widths. */
+    --post-gallery-height: clamp(180px, 50vw, 280px);
+    --post-gallery-media-max-width: clamp(160px, calc(40vw + 16px), 240px);
+    --post-gallery-item-height: 100%;
   }
 
   .composer-post-layout {
