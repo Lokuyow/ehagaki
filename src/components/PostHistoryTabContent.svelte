@@ -2408,15 +2408,25 @@
                 />
             {/if}
             <Button
-                className="post-history-heading-action-button post-history-heading-refetch-button"
+                className={`post-history-heading-action-button post-history-heading-refetch-button ${history.showStatusLoader ? "loading" : ""}`}
                 variant="default"
                 shape="square"
                 contentLayout="icon"
                 ariaLabel={$_("postHistory.repair")}
+                aria-busy={history.showStatusLoader}
                 disabled={!history.canRefetchAroundCurrentView}
                 onClick={handleRefetchAroundCurrentView}
             >
-                <div class="repair-icon svg-icon" aria-hidden="true"></div>
+                {#if history.showStatusLoader}
+                    <LoadingPlaceholder
+                        variant="spinner"
+                        showLoader={true}
+                        loaderSize={24}
+                        ariaHidden={true}
+                    />
+                {:else}
+                    <div class="repair-icon svg-icon" aria-hidden="true"></div>
+                {/if}
             </Button>
             <Button
                 className="post-history-heading-action-button post-history-heading-search-button"
@@ -3049,8 +3059,9 @@
 <FloatingMessage
     show={show && !fullScan.state.open && !jsonlExport.running && !!headingStatusMessageKey && !syncToastExpired}
     fadeOutDuration={canAutoHideSyncToast ? 200 : 0}
-    variant="anchor-center"
+    variant={history.showStatusLoader ? "anchor-bottom-right" : "anchor-center"}
     anchor={postHistoryHeadingElement}
+    anchorRightOffset={16}
     showInfoIcon={!history.showStatusLoader}
 >
     {#if headingStatusMessageKey}
@@ -3246,7 +3257,7 @@
         mask-image: url("/icons/calendar_today_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
-    :global(.post-history-heading-refetch-button:disabled) {
+    :global(.post-history-heading-refetch-button:disabled:not(.loading)) {
         opacity: 0.45;
     }
 

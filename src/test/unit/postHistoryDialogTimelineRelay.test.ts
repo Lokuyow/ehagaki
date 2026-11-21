@@ -213,14 +213,14 @@ describe('PostHistoryDialog timeline relay flows', () => {
             }),
         );
 
-        await waitFor(() => expect(document.querySelector('.floating-message.anchor-center')).toBeNull(), { timeout: 2500 });
+        await waitFor(() => expect(document.querySelector('.floating-message.anchor-bottom-right')).toBeNull(), { timeout: 2500 });
         expect(within(footer!).getByText('リレーと同期中...')).toBeTruthy();
 
         view.unmount();
         expect(cancel).toHaveBeenCalledOnce();
     });
 
-    it('空の投稿履歴では同期中表示を見出し中央の通知だけにする', async () => {
+    it('空の投稿履歴では見出しの下に同期中通知を表示する', async () => {
         relayFetchServiceMock.fetchLatest.mockReturnValue({
             promise: new Promise(() => undefined),
             cancel: vi.fn(),
@@ -238,7 +238,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled();
-            expect(document.querySelector('.floating-message.anchor-center')?.textContent)
+            expect(document.querySelector('.floating-message.anchor-bottom-right')?.textContent)
                 .toContain('リレーと同期中...');
         });
 

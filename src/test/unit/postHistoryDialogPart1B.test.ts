@@ -75,7 +75,7 @@ describe('PostHistoryDialog', () => {
         cleanupPostHistoryDialogHarness();
     });
 
-    it('[repair-disabled] 修復中は repair button を disabled にする', async () => {
+    it('[repair-disabled] 再取得中はヘッダーにスピナーを表示してボタンを無効にする', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
             createRecord({ eventId: 'repair-disabled-page', content: '一覧の投稿' }),
@@ -138,7 +138,7 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByText('再取得中...')).toBeTruthy();
         });
 
-        const statusToast = document.querySelector('.floating-message.anchor-center[role="status"]');
+        const statusToast = document.querySelector('.floating-message.anchor-bottom-right[role="status"]');
         expect(statusToast?.textContent).toContain('再取得中...');
         expect(statusToast?.querySelector('.info-icon')).toBeNull();
         expect(statusToast?.querySelector('.status-loading-placeholder .loader-container')).toBeTruthy();
@@ -146,7 +146,10 @@ describe('PostHistoryDialog', () => {
         expect(statusToast?.closest('.post-history-heading')).toBeNull();
         expect(document.querySelector('.post-history-heading .status-loading-placeholder')).toBeNull();
 
-        expect((await findRepairButton()).hasAttribute('disabled')).toBe(true);
+        expect(repairButton.hasAttribute('disabled')).toBe(true);
+        expect(repairButton.getAttribute('aria-busy')).toBe('true');
+        expect(repairButton.querySelector('.inline-spinner')).toBeTruthy();
+        expect(repairButton.querySelector('.repair-icon')).toBeNull();
 
         repairTask.resolve({
             status: 'success',
@@ -157,6 +160,11 @@ describe('PostHistoryDialog', () => {
             processedRanges: [],
             attemptedRangeCount: 1,
             hadFailures: false,
+        });
+        await waitFor(() => {
+            expect(repairButton.hasAttribute('disabled')).toBe(false);
+            expect(repairButton.querySelector('.repair-icon')).toBeTruthy();
+            expect(repairButton.querySelector('.inline-spinner')).toBeNull();
         });
     });
 

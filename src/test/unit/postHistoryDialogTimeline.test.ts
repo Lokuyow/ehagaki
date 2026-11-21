@@ -1625,12 +1625,12 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await vi.waitFor(() => expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled());
-        await vi.waitFor(() => expect(document.querySelector('.floating-message.anchor-center')).toBeNull(), { timeout: 2500 });
+        await vi.waitFor(() => expect(document.querySelector('.floating-message.anchor-bottom-right')).toBeNull(), { timeout: 2500 });
         await openJumpDatePanel();
         await setJumpDateValue('2023-10-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
-        const syncToast = () => document.querySelector('.floating-message.anchor-center');
+        const syncToast = () => document.querySelector('.floating-message.anchor-bottom-right');
         await vi.waitFor(() => expect(syncToast()?.textContent).toContain('リレーと同期中...'));
         await vi.advanceTimersByTimeAsync(1500);
         expect(syncToast()?.textContent).toContain('リレーと同期中...');
