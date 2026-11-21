@@ -16,6 +16,16 @@ normalized, deduplicated and fixed at operation start. Failed relays do not redu
 the denominator. Each relay has a separate subscription ID when quorum collection
 needs independent verification completion. All terminal sources can finish sooner.
 
+Manual authored-history full scans try [NIP-77](https://github.com/nostr-protocol/nips/blob/master/77.md)
+per external relay. The download-only negotiation uses IDs from verified local
+history previously fetched from that relay and a dedicated socket with a five-second
+first-response and 35-second total deadline, within the scan budget. The rx-nostr
+session fetches relay-only IDs and verifies their events in bounded batches.
+Coverage for the negotiated range is recorded after every batch reaches EOSE
+and supplies every requested, verified event. Unavailable negotiation, AUTH
+requests and incomplete ID retrieval switch that relay to the existing time-window
+scan, which continues to handle NIP-42 authentication.
+
 Exact-event lookups still return as soon as the requested verified event is found.
 Existing bootstrap first-valid-result paths also retain their early successful return.
 Deletion checks, coverage repair and full scans keep their stricter evidence and

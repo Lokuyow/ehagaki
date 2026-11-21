@@ -68,6 +68,7 @@
     "@tiptap/extensions": "^3.32.0",
     "@tiptap/starter-kit": "^3.32.0",
     "@tiptap/suggestion": "^3.32.0",
+    "applesauce-relay": "7.0.0",
     "bits-ui": "^2.20.2",
     "blurhash": "^2.0.5",
     "dexie": "^4.4.6",
@@ -90,6 +91,9 @@
     "serialize-javascript": "^7.1.3",
     "svelte-i18n": {
       "esbuild": "$esbuild"
+    },
+    "applesauce-relay": {
+      "applesauce-core": "7.0.0"
     }
   }
 }

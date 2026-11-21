@@ -1,4 +1,4 @@
-import type { RxNostr } from "rx-nostr";
+import { Nip11Registry, type RxNostr } from "rx-nostr";
 import type { RelayConfig } from "./types";
 import { POST_HISTORY_AUTHORED_KINDS } from "./postHistoryKinds";
 import { getPostHistoryAuthoredRelayScopeKey, resolvePostHistoryAuthoredRelayUrls } from "./postHistoryRelayResolver";
@@ -15,6 +15,7 @@ export interface PostHistoryFullScanRelayProgress {
     status: "running" | "completed" | "partial" | "cancelled";
     phase: "pending" | "fetching" | "auth";
     receivedCount: number;
+    hasMatchedLocalEvents?: boolean;
     issueCounts: Partial<Record<PostHistoryFullScanIssue, number>>;
 }
 export function hasOnlyPostHistoryFullScanAmbiguity(relay: Pick<PostHistoryFullScanRelayProgress, "issueCounts">): boolean {
@@ -60,12 +61,21 @@ export const POST_HISTORY_FULL_SCAN_DEFAULTS = {
 };
 export interface PostHistoryFullScanDeps {
     fetchRelayPage?: typeof postHistoryRelayFetchService.fetchRelayPage;
+    loadNegentropy?: () => Promise<typeof import("./postHistoryFullScanNegentropy")>;
     createScope?: typeof createPostHistoryAuthoredFetchScope;
     persistBatch?: typeof persistPostHistoryAuthoredBatch;
     now?: () => number;
     options?: Partial<typeof POST_HISTORY_FULL_SCAN_DEFAULTS>;
 }
 type RangeWork = PostHistoryCoverageRange & { authRetried: boolean };
+const EXACT_ID_BATCH_SIZE = 100;
+
+function isCleanRelayPage(page: PostHistoryRelayFetchResult): boolean {
+    const outcome = page.relayOutcomes?.[0];
+    return page.status === "success" && outcome?.termination === "eose"
+        && outcome.eoseReceived && outcome.verificationDrained
+        && !page.errorRelayUrls.length && !page.downRelayUrls.length && !page.page?.bufferLimited;
+}
 
 export class PostHistoryRelayFullScanService {
     private activeRuntimes = new WeakSet<RxNostr>();
@@ -97,8 +107,8 @@ export class PostHistoryRelayFullScanService {
             progress.phase = relays.some((relay) => relay.status === "running" && relay.phase === "auth") ? "auth" : "fetching";
             progress.elapsedMs = Math.max(0, now() - startedAt);
             progress.finishedRelayCount = relays.filter((relay) => relay.status !== "running").length;
-            progress.relays = relays.map(({ relayUrl, status, phase, receivedCount, issueCounts }) => ({
-                relayUrl, status, phase, receivedCount, issueCounts: { ...issueCounts },
+            progress.relays = relays.map(({ relayUrl, status, phase, receivedCount, hasMatchedLocalEvents, issueCounts }) => ({
+                relayUrl, status, phase, receivedCount, hasMatchedLocalEvents, issueCounts: { ...issueCounts },
             }));
             input.onProgress?.({ ...progress });
         };
@@ -131,49 +141,114 @@ export class PostHistoryRelayFullScanService {
                     kinds, getRelayConfig: () => input.getCurrentScope().relayConfig, isActive: isCurrent,
                 });
                 localRevision = scope.expectedRevision;
-                const save = async (page: PostHistoryRelayFetchResult, coverage: PostHistoryRelayCoverage[]) => {
+                const persistBatch = this.deps.persistBatch ?? persistPostHistoryAuthoredBatch;
+                const fetchRelayPage = this.deps.fetchRelayPage ?? postHistoryRelayFetchService.fetchRelayPage.bind(postHistoryRelayFetchService);
+                const save = async (events: PostHistoryRelayFetchResult["events"], fetchedAt: number, coverage: PostHistoryRelayCoverage[]) => {
                     if (!isCurrent() || storageFailed) return;
-                    const result = await (this.deps.persistBatch ?? persistPostHistoryAuthoredBatch)(page.events, page.fetchedAt, coverage, scope);
+                    const result = await persistBatch(events, fetchedAt, coverage, scope);
                     if (result.applied === false) { if (!cancellation && !storageFailed) cancel(true); return; }
                     committedResponse = true;
                     progress.insertedCount += result.insertedCount; progress.updatedCount += result.updatedCount;
                     notify();
                 };
+                const savePage = (page: PostHistoryRelayFetchResult, coverage: PostHistoryRelayCoverage[]) => save(page.events, page.fetchedAt, coverage);
+                const checkRevision = async () => {
+                    const result = await persistBatch([], now(), [], scope);
+                    if (result.applied === false && !cancellation && !storageFailed) cancel(true);
+                    return isCurrent() && result.applied !== false;
+                };
+                const prepareNegentropy = async () => {
+                    try {
+                        const transport = await this.deps.loadNegentropy?.();
+                        if (!transport || !isCurrent()) return null;
+                        const seeds = await transport.readPostHistoryNegentropySeeds({
+                            owner: input.ownerPubkeyHex, kinds, until: upperBound, relayUrls, isActive: isCurrent,
+                        });
+                        return { transport, seeds };
+                    } catch {
+                        // A failed optional preparation leaves the regular scan available.
+                        return null;
+                    }
+                };
+                let negentropyPreparation: ReturnType<typeof prepareNegentropy> | undefined;
                 const runRelay = async (relay: PostHistoryFullScanRelayResult) => {
                     const relayDeadline = now() + options.relayTimeoutMs;
                     const remainingMs = () => Math.min(relayDeadline, startedAt + options.operationTimeoutMs) - now();
+                    const requestPage = async (range: PostHistoryCoverageRange, ids?: string[]) => {
+                        relay.requestCount += 1; relay.phase = "fetching"; notify();
+                        const task = fetchRelayPage(input.rxNostr, {
+                            relayUrl: relay.relayUrl, pubkeyHex: input.ownerPubkeyHex, kinds, limit: ids?.length ?? options.limit,
+                            since: range.since, until: range.until, timeoutMs: Math.max(1, Math.min(options.pageTimeoutMs, remainingMs())),
+                            ...(ids ? { ids } : {}),
+                        });
+                        activeTasks.add(task);
+                        let page: PostHistoryRelayFetchResult;
+                        try { page = await task.promise; } finally { activeTasks.delete(task); }
+                        if (!isCurrent() || storageFailed) return null;
+                        relay.requestCount += Math.max(0, (page.page?.requestCount ?? 1) - 1);
+                        progress.receivedCount += page.rawCount;
+                        relay.receivedCount += page.rawCount;
+                        notify();
+                        usableResponse ||= page.events.length > 0 || page.eoseRelayUrls.length > 0;
+                        return page;
+                    };
+                    const tryNegentropy = async () => {
+                        if (!this.deps.loadNegentropy || !isCurrent()) return false;
+                        relay.phase = "fetching"; notify();
+                        const prepared = await (negentropyPreparation ??= prepareNegentropy());
+                        if (!prepared || !isCurrent() || remainingMs() <= 0 || !await checkRevision()) return false;
+
+                        const range = { since: 0, until: upperBound };
+                        const result = await prepared.transport.reconcilePostHistoryRelay({
+                            relayUrl: relay.relayUrl,
+                            filter: { authors: [input.ownerPubkeyHex], kinds, ...range },
+                            seed: prepared.seeds.get(relay.relayUrl) ?? [],
+                            timeoutMs: Math.min(options.pageTimeoutMs, remainingMs()),
+                            signal: controller.signal,
+                        });
+                        if (!result || !isCurrent() || !await checkRevision()) return false;
+
+                        const maxLimit = Nip11Registry.get(relay.relayUrl)?.limitation?.max_limit;
+                        const batchSize = maxLimit && Number.isSafeInteger(maxLimit) && maxLimit > 0
+                            ? Math.min(EXACT_ID_BATCH_SIZE, maxLimit) : EXACT_ID_BATCH_SIZE;
+                        for (let offset = 0; offset < result.ids.length; offset += batchSize) {
+                            if (!isCurrent() || remainingMs() <= 0 || relay.requestCount >= options.maxRequests) return false;
+                            const ids = result.ids.slice(offset, offset + batchSize);
+                            let page: PostHistoryRelayFetchResult | null;
+                            try { page = await requestPage(range, ids); }
+                            catch { return false; }
+                            if (!page) return false;
+                            if (page.events.length) await savePage(page, []);
+                            if (!isCleanRelayPage(page) || page.closedRelayUrls.length || page.page?.hints.includes("auth")
+                                || relay.requestCount > options.maxRequests) return false;
+                            const verifiedIds = new Set(page.events.map(({ event }) => event.id));
+                            if (!ids.every((id) => verifiedIds.has(id))) return false;
+                        }
+                        if (!isCurrent() || remainingMs() <= 0) return false;
+                        await save([], now(), [{ relayUrl: relay.relayUrl, ranges: [range] }]);
+                        if (!isCurrent()) return false;
+                        relay.hasMatchedLocalEvents = result.hasMatchedLocalEvents;
+                        usableResponse = true;
+                        return true;
+                    };
                     const fetchPage = async (range: RangeWork): Promise<PostHistoryRelayFetchResult | null> => {
                         for (let attempt = 0; attempt < 2 && isCurrent() && !storageFailed; attempt++) {
                             if (remainingMs() <= 0 || relay.requestCount >= options.maxRequests) {
                                 issue(relay, "safety-limit", range); return null;
                             }
-                            relay.requestCount += 1; relay.phase = "fetching"; notify();
-                            let page: PostHistoryRelayFetchResult;
+                            let page: PostHistoryRelayFetchResult | null;
                             try {
-                                const task = (this.deps.fetchRelayPage ?? postHistoryRelayFetchService.fetchRelayPage.bind(postHistoryRelayFetchService))(input.rxNostr, {
-                                    relayUrl: relay.relayUrl, pubkeyHex: input.ownerPubkeyHex, kinds, limit: options.limit,
-                                    since: range.since, until: range.until, timeoutMs: Math.max(1, Math.min(options.pageTimeoutMs, remainingMs())),
-                                });
-                                activeTasks.add(task);
-                                try { page = await task.promise; } finally { activeTasks.delete(task); }
+                                page = await requestPage(range);
                             } catch {
                                 if (attempt === 1) { issue(relay, "error", range); return null; }
                                 continue;
                             }
-                            if (!isCurrent() || storageFailed) return null;
-                            relay.requestCount += Math.max(0, (page.page?.requestCount ?? 1) - 1);
-                            progress.receivedCount += page.rawCount;
-                            relay.receivedCount += page.rawCount;
-                            notify();
-                            usableResponse ||= page.events.length > 0 || page.eoseRelayUrls.length > 0;
+                            if (!page) return null;
                             if (relay.requestCount > options.maxRequests) {
-                                await save(page, []); issue(relay, "safety-limit", range); return null;
+                                await savePage(page, []); issue(relay, "safety-limit", range); return null;
                             }
-                            const clean = page.status === "success" && page.relayOutcomes?.[0]?.termination === "eose"
-                                && page.relayOutcomes[0].eoseReceived && page.relayOutcomes[0].verificationDrained
-                                && !page.errorRelayUrls.length && !page.downRelayUrls.length && !page.page?.bufferLimited;
-                            if (clean) return page;
-                            await save(page, []);
+                            if (isCleanRelayPage(page)) return page;
+                            await savePage(page, []);
                             if (page.page?.bufferLimited) { issue(relay, "safety-limit", range); return null; }
                             if (page.page?.authRequired) { issue(relay, "auth-unresolved", range); return null; }
                             if (attempt === 1) { issue(relay, page.status === "timeout" || !page.eoseRelayUrls.length && !page.allRelaysFailed ? "timeout" : "error", range); return null; }
@@ -181,6 +256,10 @@ export class PostHistoryRelayFullScanService {
                         return null;
                     };
                     try {
+                        if (await tryNegentropy()) {
+                            relay.status = "completed";
+                            return;
+                        }
                         for (let windowUntil = upperBound; windowUntil >= 0 && isCurrent() && !storageFailed;) {
                             const windowSince = Math.max(0, windowUntil - options.windowSeconds + 1);
                             const stack: RangeWork[] = [{ since: windowSince, until: windowUntil, authRetried: false }];
@@ -195,7 +274,7 @@ export class PostHistoryRelayFullScanService {
                                     if (page.page?.hints.includes("auth")) {
                                         const authDeadline = Math.min(Math.min(now(), page.page.eoseReceivedAt ?? now()) + options.authTimeoutMs,
                                             now() + remainingMs());
-                                        await save(page, []);
+                                        await savePage(page, []);
                                         if (!isCurrent()) return;
                                         if (range.authRetried) { issue(relay, "auth-unresolved", range); relay.status = "partial"; return; }
                                         page = null; // Release the committed page before waiting or holding its replacement.
@@ -207,7 +286,7 @@ export class PostHistoryRelayFullScanService {
                                         page = await fetchPage(range);
                                         if (!page) { relay.status = cancellation ? "cancelled" : "partial"; return; }
                                         if (page.page?.hints.includes("auth")) {
-                                            await save(page, []); issue(relay, "auth-unresolved", range); relay.status = "partial"; return;
+                                            await savePage(page, []); issue(relay, "auth-unresolved", range); relay.status = "partial"; return;
                                         }
                                     }
                                     const more = page.page?.hints.includes("more") === true;
@@ -221,7 +300,7 @@ export class PostHistoryRelayFullScanService {
                                             saturated: outcome.saturated || !finished && !empty,
                                         })),
                                     });
-                                    await save(page, coverage);
+                                    await savePage(page, coverage);
                                     if (!isCurrent()) return;
                                     if (finished || empty) break;
                                     if (oldest !== null && oldest < range.until) {
@@ -263,8 +342,7 @@ export class PostHistoryRelayFullScanService {
                 }));
                 if (!scope.isActive() && !cancellation && !storageFailed) cancel(true);
                 if (!cancellation && !storageFailed) {
-                    const current = await (this.deps.persistBatch ?? persistPostHistoryAuthoredBatch)([], now(), [], scope);
-                    if (current.applied === false && !cancellation) cancel(true);
+                    await checkRevision();
                 }
             } catch {
                 storageFailed = true;
@@ -284,4 +362,6 @@ export class PostHistoryRelayFullScanService {
         return { promise, cancel };
     }
 }
-export const postHistoryRelayFullScanService = new PostHistoryRelayFullScanService();
+export const postHistoryRelayFullScanService = new PostHistoryRelayFullScanService({
+    loadNegentropy: () => import("./postHistoryFullScanNegentropy"),
+});

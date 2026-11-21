@@ -17,6 +17,7 @@ export function createPostHistoryFullScanHarness(secret: Uint8Array, scenario: s
     const events = [50, 40].map((created_at) => finalizeEvent({ kind: 1, created_at, content: `full scan imported ${created_at}`, tags: [] }, secret));
     const control = { requests: 0, held: 0, releasedHeld: 0, relayUrls,
         readCount: () => postHistoryRepository.countForPubkey(owner),
+        negentropyFixtureIds: events.map(({ id }) => id),
         hasPendingReply: (relayUrl: string) => pendingReplies.has(relayUrl),
         releaseRelay: (relayUrl: string) => { const reply = pendingReplies.get(relayUrl); pendingReplies.delete(relayUrl); reply?.(); },
         authenticateRelay: (from: string) => {
@@ -35,11 +36,11 @@ export function createPostHistoryFullScanHarness(secret: Uint8Array, scenario: s
             let held = false;
             let pendingReply: (() => void) | undefined;
             const subscription = req.getReqPacketObservable().subscribe(({ filters }) => {
-                const filter = filters[0] as { authors?: string[]; kinds?: number[]; since?: number; until?: number; limit?: number };
+                const filter = filters[0] as { authors?: string[]; kinds?: number[]; since?: number; until?: number; limit?: number; ids?: string[] };
                 if (!filter) return;
                 queueMicrotask(() => {
                     if (subscriber.closed) return;
-                    const full = filter.limit === 250 && filter.authors?.[0] === owner;
+                    const full = (filter.limit === 250 || scenario === "negentropy" && filter.ids) && filter.authors?.[0] === owner;
                     // Keep the original harness's quiet normal synchronization.
                     if (!full) return;
                     control.requests++;
@@ -54,6 +55,10 @@ export function createPostHistoryFullScanHarness(secret: Uint8Array, scenario: s
                         messages.next({ type: "EOSE", from, subId,
                             message: ["EOSE", subId, hints] as unknown as Extract<MessagePacket, { type: "EOSE" }>["message"] });
                     };
+                    if (scenario === "negentropy" && filter.ids) {
+                        respond(events.filter(({ id }) => filter.ids?.includes(id)), ["finish"]);
+                        return;
+                    }
                     if (scenario === "relay-progress") {
                         if (from === relayUrls[1] && count > 1) { respond([events[0]], ["finish"]); return; }
                         pendingReply = () => {
@@ -87,7 +92,8 @@ export function createPostHistoryFullScanHarness(secret: Uint8Array, scenario: s
     } as unknown as RxNostr;
     // Deterministic operation clock/window; production retains the 30-day default.
     const service = new PostHistoryRelayFullScanService({ now: () => 100_000, options: { windowSeconds: 101,
-        ...(scenario === "timeout" ? { pageTimeoutMs: 100 } : {}) } });
+        ...(scenario === "timeout" ? { pageTimeoutMs: 100 } : {}) },
+        ...(scenario === "negentropy" ? { loadNegentropy: () => import("../../lib/postHistoryFullScanNegentropy") } : {}) });
     postHistoryRelayFullScanService.start = service.start.bind(service);
     return { runtime, control, relayConfig: Object.fromEntries(relayUrls.map((url) => [url, { read: true, write: true }])) };
 }
