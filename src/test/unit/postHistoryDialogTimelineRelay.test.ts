@@ -194,7 +194,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(screen.getByText('ローカル履歴')).toBeTruthy();
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled();
-            expect(screen.getAllByText('リレーと同期中...')).toHaveLength(2);
+            expect(screen.getByText('リレーと同期中...')).toBeTruthy();
         });
 
         const footer = document.querySelector<HTMLElement>('.post-history-sync-footer');
@@ -213,14 +213,11 @@ describe('PostHistoryDialog timeline relay flows', () => {
             }),
         );
 
-        await waitFor(() => expect(document.querySelector('.floating-message.anchor-center')).toBeNull(), { timeout: 2500 });
-        expect(within(footer!).getByText('リレーと同期中...')).toBeTruthy();
-
         view.unmount();
         expect(cancel).toHaveBeenCalledOnce();
     });
 
-    it('空の投稿履歴では同期中表示を見出し中央の通知だけにする', async () => {
+    it('空の投稿履歴では同期中にヘッダーのスピナーを表示する', async () => {
         relayFetchServiceMock.fetchLatest.mockReturnValue({
             promise: new Promise(() => undefined),
             cancel: vi.fn(),
@@ -238,11 +235,11 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled();
-            expect(document.querySelector('.floating-message.anchor-center')?.textContent)
-                .toContain('リレーと同期中...');
+            expect(screen.getByRole('button', { name: '表示中の投稿付近を再取得' })
+                .querySelector('.inline-spinner')).toBeTruthy();
         });
 
-        expect(screen.getAllByText('リレーと同期中...')).toHaveLength(1);
+        expect(screen.queryByText('リレーと同期中...')).toBeNull();
         expect(document.querySelector('.post-history-sync-footer')).toBeNull();
         view.unmount();
     });
@@ -1962,8 +1959,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
-    it('同期完了メッセージは自動で消える', async () => {
-        usePostHistoryDialogFakeTimers();
+    it('同期完了時はスピナーが消え、トーストは表示されない', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(0);
         repositoryMock.getLatestVisibleChunk.mockResolvedValue([]);
         repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
@@ -1973,12 +1969,9 @@ describe('PostHistoryDialog timeline relay flows', () => {
             updatedCount: 0,
             unchangedCount: 0,
         });
+        const sync = createDeferred<ReturnType<typeof createRelayFetchResult>>();
         relayFetchServiceMock.fetchLatest.mockReturnValue({
-            promise: Promise.resolve(createRelayFetchResult({
-                status: 'success',
-                events: [{ event: { id: 'sync-success'.padEnd(64, '0'), pubkey: PUBKEY_HEX, kind: 1, content: '同期成功', tags: [], created_at: 100, sig: 'c'.repeat(128) }, relayUrls: [] }],
-                fetchedAt: 1000,
-            })),
+            promise: sync.promise,
             cancel: vi.fn(),
         });
 
@@ -1991,18 +1984,15 @@ describe('PostHistoryDialog timeline relay flows', () => {
             },
         });
 
-        await waitFor(() => {
-            expect(screen.queryByText('リレーと同期中...')).toBeNull();
-        });
+        const refetchButton = await screen.findByRole('button', { name: '表示中の投稿付近を再取得' });
+        await waitFor(() => expect(refetchButton.getAttribute('aria-busy')).toBe('true'));
+        sync.resolve(createRelayFetchResult({
+            status: 'success',
+            events: [{ event: { id: 'sync-success'.padEnd(64, '0'), pubkey: PUBKEY_HEX, kind: 1, content: '同期成功', tags: [], created_at: 100, sig: 'c'.repeat(128) }, relayUrls: [] }],
+            fetchedAt: 1000,
+        }));
 
-        await waitFor(() => {
-            expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
-        });
-
-        await vi.advanceTimersByTimeAsync(3499);
-        expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
-        await vi.advanceTimersByTimeAsync(1);
-
+        await waitFor(() => expect(refetchButton.getAttribute('aria-busy')).toBe('false'));
         expect(screen.queryByText('リレーとの同期が完了しました')).toBeNull();
 
         view.unmount();
@@ -4088,8 +4078,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(screen.getByRole('button', { name: 'リレーから取得中...' }).hasAttribute('disabled')).toBe(true);
             expect(document.querySelector('.post-history-nav-loading-placeholder .loader-container')).toBeTruthy();
-            expect(screen.getByText('リレーと同期中...')).toBeTruthy();
-            expect(document.querySelector('.status-loading-placeholder .loader-container')).toBeTruthy();
+            expect(screen.queryByText('リレーと同期中...')).toBeNull();
+            expect(document.querySelector('.post-history-heading-refetch-button .inline-spinner')).toBeTruthy();
             expect(screen.queryByText('これ以上古い投稿はありません')).toBeNull();
         });
 

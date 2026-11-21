@@ -1165,17 +1165,13 @@ describe('PostHistoryDialog', () => {
                 },
             });
 
-            await waitFor(() => {
-                expect(document.querySelector('.floating-message.anchor-center')?.textContent)
-                    .toContain('リレーと同期中...');
-            });
+            const refetchButton = await findRepairButton();
+            await waitFor(() => expect(refetchButton.getAttribute('aria-busy')).toBe('true'));
             await openPostHistoryMenu();
             await fireEvent.click(await screen.findByRole('menuitem', { name: 'エクスポート' }));
             await waitFor(() => {
                 expect(document.querySelector('.post-history-heading .status-loading-placeholder'))
                     .toBeTruthy();
-                expect(document.querySelector('.floating-message.anchor-center'))
-                    .toBeNull();
             });
             expect(document.querySelector('.post-history-sync-footer')?.textContent)
                 .toContain('リレーと同期中...');
@@ -1195,10 +1191,7 @@ describe('PostHistoryDialog', () => {
                 blob: new Blob([], { type: 'application/x-ndjson;charset=utf-8' }),
             });
             await new Promise((resolve) => setTimeout(resolve, 0));
-            await waitFor(() => {
-                expect(document.querySelector('.floating-message.anchor-center')?.textContent)
-                    .toContain('リレーと同期中...');
-            });
+            expect(refetchButton.getAttribute('aria-busy')).toBe('true');
         } finally {
             click.mockRestore();
         }
@@ -3857,7 +3850,7 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(screen.getByText('open refresh中の親投稿')).toBeTruthy();
-            expect(screen.getAllByText('リレーと同期中...')).toHaveLength(2);
+            expect(screen.getByText('リレーと同期中...')).toBeTruthy();
         });
         await openPostActionMenu();
         await waitFor(() => {
@@ -3882,7 +3875,7 @@ describe('PostHistoryDialog', () => {
         });
         expect(screen.getAllByText('open refresh中の親投稿')).toHaveLength(1);
         expect(screen.queryByText('open refresh中に保存された返信')).toBeNull();
-        expect(screen.getAllByText('リレーと同期中...')).toHaveLength(2);
+        expect(screen.getByText('リレーと同期中...')).toBeTruthy();
     });
 
     it('[inbound-realtime] closed dialog ignores saved reply and authored post UI signals', async () => {

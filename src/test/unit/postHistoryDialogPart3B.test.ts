@@ -270,7 +270,6 @@ describe('PostHistoryDialog', () => {
                     relays: expect.any(Array), isActive: expect.any(Function),
                 }),
             });
-            expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
             expectDefaultMediaReplacement();
         });
     });
