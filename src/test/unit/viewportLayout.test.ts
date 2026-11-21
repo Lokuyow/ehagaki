@@ -6,6 +6,7 @@ import {
     getLayoutViewportHeight,
     getVirtualKeyboardLayoutInset,
     isNonPwaAndroidChrome,
+    isPwaAndroidChrome,
     isIPhoneSafari,
 } from '../../lib/utils/viewportLayout';
 
@@ -99,9 +100,10 @@ describe('viewportLayout', () => {
         expect(isIPhoneSafari()).toBe(false);
     });
 
-    it('非PWA Android Chrome だけを true にする', () => {
+    it('Android Chrome の通常タブとインストール済み PWA を区別する', () => {
         setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
         expect(isNonPwaAndroidChrome()).toBe(true);
+        expect(isPwaAndroidChrome()).toBe(false);
 
         setUserAgent('Mozilla/5.0 (Linux; Android 15; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/27.0 Chrome/125.0.0.0 Mobile Safari/537.36');
         expect(isNonPwaAndroidChrome()).toBe(false);
@@ -110,8 +112,10 @@ describe('viewportLayout', () => {
             configurable: true,
             value: vi.fn().mockReturnValue({ matches: true }),
         });
+        expect(isPwaAndroidChrome()).toBe(false);
         setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
         expect(isNonPwaAndroidChrome()).toBe(false);
+        expect(isPwaAndroidChrome()).toBe(true);
     });
 
     it('正常な VirtualKeyboard 矩形では高さをそのままレイアウト inset にする', () => {

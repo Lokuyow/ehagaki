@@ -152,9 +152,10 @@ describe('Playwright config connection values', () => {
                 'desktop-firefox',
                 'desktop-firefox-editor-paste',
             ]);
-            expect(config.projects?.[2]?.testMatch).toBe(
+            expect(config.projects?.[2]?.testMatch).toEqual([
                 '**/webComponentLite.spec.ts',
-            );
+                '**/loginLatency.spec.ts',
+            ]);
             expect(config.projects?.[2]?.grep).toEqual(/@android-chrome/);
             expect(config.projects?.[2]?.use).toMatchObject({
                 browserName: 'chromium',

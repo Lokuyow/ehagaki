@@ -9,6 +9,7 @@ import {
     getLayoutViewportHeight,
     getVirtualKeyboardLayoutInset,
     isNonPwaAndroidChrome,
+    isPwaAndroidChrome,
     isIPhoneSafari,
 } from "../lib/utils/viewportLayout";
 import { createKeyboardTouchScrollLock } from "../lib/utils/keyboardTouchScrollLock";
@@ -115,8 +116,8 @@ function syncLayoutCssVariables(
         lastUsesVirtualKeyboardGeometry = viewportMetrics.usesKeyboardOverlay;
     }
 
-    const isContainerLayout =
-        getAppRuntimeEnvironment().layoutMode === "container";
+    const { layoutMode, runtimeKind } = getAppRuntimeEnvironment();
+    const isContainerLayout = layoutMode === "container";
     const footerReservedHeight = getFooterReservedHeight(
         isComposerKeyboardActive,
         layoutCapabilities.hasFooter,
@@ -126,6 +127,8 @@ function syncLayoutCssVariables(
         isComposerKeyboardActive &&
         !usesKeyboardOverlay &&
         lastViewportHeight !== undefined;
+    const anchorMainToKeyboard = !isContainerLayout && runtimeKind === "standalone" &&
+        shouldUseKeyboardViewportHeight && isPwaAndroidChrome();
     const shouldUseKeyboardOverlay =
         isComposerKeyboardActive && usesKeyboardOverlay;
     const containerKeyboardInset = getContainerKeyboardInset(
@@ -168,12 +171,18 @@ function syncLayoutCssVariables(
         "visible",
     );
     setRootStyleProperty(
+        "--app-main-position",
+        anchorMainToKeyboard ? "fixed" : "relative",
+    );
+    setRootStyleProperty(
         "--app-main-height",
-        isContainerLayout
-            ? "100%"
-            : shouldUseKeyboardViewportHeight
-                ? `${lastViewportHeight}px`
-                : "100svh",
+        anchorMainToKeyboard
+            ? "auto"
+            : isContainerLayout
+                ? "100%"
+                : shouldUseKeyboardViewportHeight
+                    ? `${lastViewportHeight}px`
+                    : "100svh",
     );
     setRootStyleProperty(
         "--app-body-position",
