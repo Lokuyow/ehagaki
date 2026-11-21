@@ -38,10 +38,10 @@
 <style>
     .mention-avatar {
         display: inline-block;
-        width: 1em;
-        height: 1em;
+        width: var(--post-editor-line-height, 1.5em);
+        height: var(--post-editor-line-height, 1.5em);
         margin-inline-end: 0.25em;
-        vertical-align: -0.12em;
+        vertical-align: top;
         pointer-events: none;
     }
 

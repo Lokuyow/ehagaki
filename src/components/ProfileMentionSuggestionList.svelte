@@ -53,12 +53,13 @@
 
 <style>
     :global(.profile-mention-suggestion) {
-        --suggestion-command-item-columns: 24px minmax(0, 1fr) auto;
+        --profile-mention-avatar-size: 48px;
+        --suggestion-command-item-columns: var(--profile-mention-avatar-size) minmax(0, 1fr) auto;
     }
 
     .profile-mention-avatar {
-        width: 24px;
-        height: 24px;
+        width: var(--profile-mention-avatar-size);
+        height: var(--profile-mention-avatar-size);
         pointer-events: none;
     }
 

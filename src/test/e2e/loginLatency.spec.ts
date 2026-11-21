@@ -366,7 +366,8 @@ test('keeps long mention names compact in the suggestions and editor', async ({ 
             const key = row.querySelector('small')!.getBoundingClientRect();
             const icon = row.querySelector('.suggestion-mention-avatar-image')!.getBoundingClientRect();
             return bounds.left >= 0 && bounds.right <= window.innerWidth
-                && icon.width === 24 && key.width > 0 && key.right <= bounds.right && row.scrollWidth <= row.clientWidth;
+                && icon.width === 48 && icon.height === 48 && icon.bottom <= bounds.bottom
+                && key.width > 0 && key.right <= bounds.right && row.scrollWidth <= row.clientWidth;
         })).toBe(true);
     }
 
@@ -376,7 +377,20 @@ test('keeps long mention names compact in the suggestions and editor', async ({ 
     await expect(choice).toContainText(`@${prefix}…`);
     await editor.press('Enter');
     await expect(editor.locator('.editor-profile-mention')).toHaveText(`@${prefix}…`);
-    await expect(editor.locator('.inline-mention-avatar-image')).toBeVisible();
+    const inlineAvatar = editor.locator('.inline-mention-avatar-image');
+    await expect(inlineAvatar).toBeVisible();
+    for (const width of [360, 1103]) {
+        await page.setViewportSize({ width, height: 844 });
+        await expect.poll(() => inlineAvatar.evaluate(img => {
+            const paragraph = img.closest('p')!;
+            const lineHeight = Number.parseFloat(getComputedStyle(paragraph).lineHeight);
+            const icon = img.getBoundingClientRect();
+            const bounds = paragraph.getBoundingClientRect();
+            return icon.width === lineHeight && icon.height === lineHeight
+                && icon.top >= bounds.top && icon.right <= bounds.right && icon.bottom <= bounds.bottom
+                && Math.abs(bounds.height / lineHeight - Math.round(bounds.height / lineHeight)) < 0.01;
+        })).toBe(true);
+    }
     expect(app.counts().followedProfileRequests).toBe(requests);
 });
 
