@@ -3,6 +3,7 @@ import { setAuthInitialized } from '../stores/authStore.svelte';
 import type { AuthResult, AuthServiceDependencies } from './types';
 import type { AccountManager } from './accountManager';
 import {
+    ACTIVE_NIP07_STARTUP_IDENTITY_READ_TIMEOUT_MS,
     applyPublicKeyAuth,
     createManagedAuthRestoreDependencies,
     restoreManagedAccount,
@@ -390,6 +391,9 @@ export class AuthService {
                         this.restoreAccount(pubkeyHex, type, {
                             nip07Identity,
                             expectedAccounts: restoreSnapshotResult.snapshot.accounts,
+                            nip07IdentityReadTimeoutMs: type === 'nip07' && pubkeyHex === restoreSnapshotResult.snapshot.activePubkey
+                                ? ACTIVE_NIP07_STARTUP_IDENTITY_READ_TIMEOUT_MS
+                                : undefined,
                         }),
                 });
             }
@@ -460,6 +464,7 @@ export class AuthService {
         type: 'nsec' | 'nip07' | 'nip46' | 'parentClient',
         options: {
             nip07Identity?: PublicKeyData;
+            nip07IdentityReadTimeoutMs?: number;
             expectedAccounts?: Array<Pick<StoredAccount, 'pubkeyHex' | 'type'>>;
         } = {},
     ): Promise<ManagedRestoreResult> {
@@ -487,6 +492,7 @@ export class AuthService {
             createManagedAuthRestoreDependencies({
                 ...this.createRestoreDependencies(),
                 isExpectedAccount,
+                nip07IdentityReadTimeoutMs: options.nip07IdentityReadTimeoutMs,
             }),
             options.nip07Identity,
         );
