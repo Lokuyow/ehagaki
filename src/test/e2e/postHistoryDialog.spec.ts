@@ -3295,7 +3295,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(quoteCard.locator('.post-preview-footer-right button', { hasText: '' })).toHaveCount(1);
         await reactionButton.click();
         await expect(quoteCard.locator('.post-preview-reaction-chip')).toHaveCount(1);
-        await expect(quoteCard.locator('.post-preview-reaction-count')).toHaveText('1');
+        await expect(quoteCard.locator('.post-preview-reaction-count')).toHaveCount(0);
     });
 
     test('without reply and quote handlers the header shows the timestamp and menu and the footer has no actions', async ({ page }) => {

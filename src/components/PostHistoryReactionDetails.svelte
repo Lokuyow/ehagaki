@@ -9,10 +9,11 @@
         emojiLoadStateByUrl?: Record<string, PostContentEmojiLoadState | undefined>;
         emojiImageMetaByUrl?: Record<string, PostContentEmojiImageMeta | undefined>;
         showCount?: boolean;
+        showSingleCount?: boolean;
         onSelectActor?: (eventId: string) => void;
         showSingleActorName?: boolean;
     }
-    let { readModel, emojiLoadStateByUrl = {}, emojiImageMetaByUrl = {}, showCount = true, onSelectActor, showSingleActorName = false }: Props = $props();
+    let { readModel, emojiLoadStateByUrl = {}, emojiImageMetaByUrl = {}, showCount = true, showSingleCount = false, onSelectActor, showSingleActorName = false }: Props = $props();
 
     function slotStyle(url: string): string {
         const ratio = emojiImageMetaByUrl[url]?.aspectRatio;
@@ -48,7 +49,9 @@
                     {:else}
                         <span class="post-preview-reaction-content">{reactionGroup.content}</span>
                     {/if}
-                    {#if showCount}<span class="post-preview-reaction-count">{reactionGroup.count}</span>{/if}
+                    {#if showCount && (showSingleCount || reactionGroup.count > 1)}
+                        <span class="post-preview-reaction-count">{reactionGroup.count}</span>
+                    {/if}
                 </div>
                 <div class="post-preview-reaction-actors">
                     {#each reactionGroup.reactors as actor (actor.eventId)}

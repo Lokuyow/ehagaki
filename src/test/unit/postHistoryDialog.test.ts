@@ -3582,7 +3582,7 @@ describe('PostHistoryDialog', () => {
         expect(document.body.querySelectorAll('.post-preview-reaction-chip')).toHaveLength(2);
         expect(Array.from(document.body.querySelectorAll('.post-preview-reaction-count')).map((node) =>
             node.textContent?.trim(),
-        )).toEqual(['2', '1']);
+        )).toEqual(['2']);
         await waitFor(() => {
             expect(Array.from(document.body.querySelectorAll('.post-preview-reaction-actor')).map((node) =>
                 node.getAttribute('title'),

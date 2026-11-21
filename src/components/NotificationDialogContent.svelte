@@ -350,6 +350,9 @@
                                 class="notification-repost-chip post-preview-reaction-chip"
                                 onclick={group.reposts.length === 1 ? () => openNotificationTarget(group.reposts[0].eventId) : undefined}>
                                 <span class="notification-kind-icon notification-repost-icon svg-icon" role="img" aria-label={$_('notifications.repost')}></span>
+                                {#if group.reposts.length > 1}
+                                    <span class="post-preview-reaction-count">{group.reposts.length}</span>
+                                {/if}
                                 <div class="post-preview-reaction-actors">
                                     {#each group.reposts as repost (repost.eventId)}
                                         {@const reposter = profiles.get(repost.event.pubkey)}
