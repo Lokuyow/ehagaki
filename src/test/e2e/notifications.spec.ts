@@ -472,6 +472,16 @@ test('notification gallery reaches every image and loads offscreen images when s
     await expect(viewer.locator('.pswp__counter')).toHaveText('2 / 8');
     await page.keyboard.press('Escape');
     await expect(viewer).toHaveCount(0);
+
+    for (const [width, galleryHeight, imageWidth] of [
+        [460, '250px', '220px'],
+        [560, '320px', '280px'],
+        [900, '320px', '280px'],
+    ] as const) {
+        await page.setViewportSize({ width, height: 844 });
+        await expect(gallery).toHaveCSS('height', galleryHeight);
+        await expect(gallery.locator('.post-history-image-cell').first()).toHaveCSS('width', imageWidth);
+    }
 });
 
 test('image controls fit inside a 280px embedded notification dialog', async ({ page }) => {

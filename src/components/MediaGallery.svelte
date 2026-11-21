@@ -52,7 +52,7 @@
         width: 100%;
         min-width: 0;
         min-height: 180px;
-        height: var(--post-gallery-height, auto);
+        height: var(--media-gallery-height, auto);
         overflow-x: auto;
         overflow-y: hidden;
         scrollbar-width: thin;
@@ -60,12 +60,17 @@
         background-color: var(--window);
     }
 
+    :global(.responsive-gallery) .media-gallery,
     .media-gallery-preview {
-        height: var(--media-gallery-preview-height);
+        /* Scale between the 360px and 560px viewport widths. */
+        --media-gallery-height: clamp(180px, calc(70vw - 72px), 320px);
+        --media-gallery-max-width: clamp(160px, calc(60vw - 56px), 280px);
+        --media-gallery-item-height: 100%;
+    }
+
+    .media-gallery-preview {
         background-color: transparent;
         overscroll-behavior-x: contain;
-        --media-gallery-preview-height: 180px;
-        --media-gallery-preview-width: 160px;
     }
 
     .media-gallery-preview:focus-visible {

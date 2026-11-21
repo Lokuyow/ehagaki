@@ -477,8 +477,8 @@
         position: relative;
         width: clamp(
             100px,
-            calc(var(--media-gallery-preview-height) * var(--post-preview-gallery-aspect-ratio, 1)),
-            var(--media-gallery-preview-width)
+            calc(var(--media-gallery-height) * var(--post-preview-gallery-aspect-ratio, 1)),
+            var(--media-gallery-max-width)
         );
         max-width: 100%;
         height: 100%;
