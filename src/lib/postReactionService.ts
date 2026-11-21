@@ -57,7 +57,7 @@ export class PostReactionService {
         try {
             const auth = this.deps.authStateStore.value;
             const pubkey = auth.pubkey;
-            if (!auth.isAuthenticated || !pubkey) return { success: false, error: 'nostr_not_ready' };
+            if (!auth.isAuthenticated || auth.type === 'npub' || !pubkey) return { success: false, error: 'nostr_not_ready' };
             const isCurrent = () => this.deps.authStateStore.value === auth && auth.isAuthenticated
                 && auth.pubkey === pubkey && params.isCurrent();
             const assertCurrent = () => { if (!isCurrent()) throw new Error('reaction_stale'); };

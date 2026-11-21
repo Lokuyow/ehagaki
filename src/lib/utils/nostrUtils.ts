@@ -1,6 +1,7 @@
 import { getPublicKey, nip19 } from "nostr-tools";
 import type { PublicKeyData } from "../types";
 import { NSEC_PATTERN, NSEC_FULL_PATTERN } from "../constants";
+import { isLowerHex64 } from "./nostrHexUtils";
 import { shortenMiddle } from "./textDisplayUtils";
 
 // =============================================================================
@@ -12,6 +13,26 @@ import { shortenMiddle } from "./textDisplayUtils";
  */
 export function containsSecretKey(text: string): boolean {
     return NSEC_PATTERN.test(text);
+}
+
+export function isPublicKeyLoginInput(input: string): boolean {
+    return /^(npub|nprofile)1/i.test(input.trim());
+}
+
+export function parsePublicKeyLogin(input: string): { pubkeyHex: string; relayHints: string[] } | null {
+    if (!isPublicKeyLoginInput(input)) return null;
+    try {
+        const decoded = nip19.decode(input.trim());
+        if (decoded.type === "npub" && isLowerHex64(decoded.data)) {
+            return { pubkeyHex: decoded.data, relayHints: [] };
+        }
+        if (decoded.type === "nprofile" && isLowerHex64(decoded.data.pubkey)) {
+            return { pubkeyHex: decoded.data.pubkey, relayHints: decoded.data.relays ?? [] };
+        }
+    } catch {
+        // Invalid Bech32 or TLV input.
+    }
+    return null;
 }
 
 /**

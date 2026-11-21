@@ -42,6 +42,7 @@ interface BooleanStoreLike {
 
 interface InitializeNostrSessionParams {
     pubkeyHex?: string;
+    allowRelayAuth?: boolean;
     relayListUpdatedStore: RelayListUpdatedStoreLike;
     setRelayManager: (relayManager: RelayManager) => void;
     onRelayConfigSaved?: (pubkeyHex: string, relayConfig: RelayConfig | null) => void | Promise<void>;
@@ -68,6 +69,7 @@ interface CompletePostAuthBootstrapParams extends SyncAccountStoresParams, Initi
     profileLoadedStore: BooleanStoreLike;
     isLoadingProfileStore: BooleanStoreLike;
     isCurrent?: () => boolean;
+    profileRelayHints?: string[];
     profileLoadMode?: 'blocking' | 'background';
     onProfileFetchStatusChange?: (pending: boolean) => void;
 }
@@ -91,6 +93,7 @@ interface RefreshRelaysAndProfileForAccountParams {
 
 export async function initializeNostrSession({
     pubkeyHex,
+    allowRelayAuth = true,
     relayListUpdatedStore,
     setRelayManager,
     onRelayConfigSaved,
@@ -104,7 +107,7 @@ export async function initializeNostrSession({
         // The post-history relay source relies on this documented rx-nostr
         // boundary. Keep it explicit rather than depending on the default.
         skipVerify: false,
-        ...(pubkeyHex ? { authenticator: createNip42Authenticator(pubkeyHex) } : {}),
+        ...(pubkeyHex && allowRelayAuth ? { authenticator: createNip42Authenticator(pubkeyHex) } : {}),
     });
     registerPostHistoryRelayEventSource(rxNostr);
     registerPostHistoryScanVerifier(rxNostr, scanVerifier);
@@ -240,6 +243,8 @@ export async function completePostAuthBootstrap({
     onRelayConfigSaved,
     hostRelayConfig,
     isCurrent = () => true,
+    allowRelayAuth,
+    profileRelayHints,
     profileLoadMode = 'blocking',
     onProfileFetchStatusChange,
     signal,
@@ -270,6 +275,7 @@ export async function completePostAuthBootstrap({
     try {
         session = await initializeNostrSession({
             pubkeyHex,
+            allowRelayAuth,
             relayListUpdatedStore,
             setRelayManager,
             onRelayConfigSaved,
@@ -283,7 +289,7 @@ export async function completePostAuthBootstrap({
         if (background) {
             await session.relayProfileService.fetchRelays(pubkeyHex, false, signal);
             if (!current()) return session;
-            void session.relayProfileService.fetchProfile(pubkeyHex, false, signal).then(profile => {
+            void session.relayProfileService.fetchProfile(pubkeyHex, false, signal, profileRelayHints).then(profile => {
                 if (profile) {
                     profileResolved = true;
                     apply(profile);
@@ -291,7 +297,7 @@ export async function completePostAuthBootstrap({
             }).catch(() => undefined).finally(() => setProfilePending(false));
             return session;
         }
-        const fetchedProfile = await session.relayProfileService.initializeForLogin(pubkeyHex, signal);
+        const fetchedProfile = await session.relayProfileService.initializeForLogin(pubkeyHex, signal, profileRelayHints);
         if (!current()) return session;
         const profile = fetchedProfile ?? createDefaultProfileForAccount(pubkeyHex);
 

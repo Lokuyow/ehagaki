@@ -1,4 +1,5 @@
 import type { RxNostr } from "rx-nostr";
+import { authState } from "../stores/authStore.svelte";
 import { writeRelaysStore } from "../stores/relayStore.svelte";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import { PostEventSender } from "./postEventBuilder";
@@ -62,7 +63,7 @@ export class PostBroadcastService {
         post: PostHistoryRecord;
         rxNostr?: RxNostr;
     }): Promise<PostResult> {
-        if (!params.rxNostr) {
+        if (!params.rxNostr || authState.value.type === "npub") {
             return { success: false, error: "nostr_not_ready" };
         }
 

@@ -130,6 +130,7 @@
         sessionOpen = undefined,
         onInitialReady = undefined,
         onClose,
+        readOnly = false,
         onReplyPost = undefined,
         onQuotePost = undefined,
         onReactionPost = undefined,
@@ -280,7 +281,7 @@
             onRepost: canRepost(post) ? () => void handleRepost(post) : undefined,
             repostPending,
             copyFailed: copyNeventUi.copyState[post.eventId] === "failed",
-            showBroadcast: canBroadcastPost(post),
+            showBroadcast: !readOnly && canBroadcastPost(post),
             broadcastSending: isBroadcastSending(post),
             showDelete: canDeletePost(post),
             deletionSending: isDeletionSending(post),
@@ -1754,7 +1755,7 @@
     }
 
     function canDeletePost(post: PostHistoryRecord): boolean {
-        return canRequestPostDeletion(post, pubkeyHex);
+        return !readOnly && canRequestPostDeletion(post, pubkeyHex);
     }
 
     function openDeleteConfirm(post: PostHistoryRecord): void {
@@ -3053,7 +3054,7 @@
 
 
 {#snippet repostRecordMenu(record: PostHistoryRecord, menuKey: string)}
-    <PostEventMenu open={postActionUi.isPostMenuOpen(menuKey)} onOpenChange={(open) => setExclusivePostMenuOpen(menuKey, open)} post={record} owner={pubkeyHex} {rxNostr} {relayConfig} operations={eventOperations} active={() => show && !destroyed}
+    <PostEventMenu {readOnly} open={postActionUi.isPostMenuOpen(menuKey)} onOpenChange={(open) => setExclusivePostMenuOpen(menuKey, open)} post={record} owner={pubkeyHex} {rxNostr} {relayConfig} operations={eventOperations} active={() => show && !destroyed}
         triggerLabel={$_(isRepostOuterKind(record.kind) ? "repost.outerActions" : "repost.targetActions")} onDelete={() => openDeleteConfirm(record)} onRequestRepost={() => void handleRepost(record)} onRefresh={() => postHistoryThreadGraph.refreshRelatedEvents(record)}
         onBroadcastPointerDown={(event) => captureBroadcastPointerPosition(record, event)}
         onBroadcastPost={(event) => void handleBroadcastPost(record, event)}

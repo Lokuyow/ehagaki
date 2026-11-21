@@ -1,3 +1,4 @@
+import { nip19 } from 'nostr-tools';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { AuthServiceDependencies } from '../../lib/types';
 import { MockStorage, type MockKeyManager } from '../helpers';
@@ -9,6 +10,59 @@ import { expectConsoleCallsNotToContain } from '../logAssertions';
 import { AccountManager } from '../../lib/accountManager';
 import { getNip46SessionStorageKey, getNsecStorageKey } from '../../lib/authStorageKeys';
 import { STORAGE_KEYS } from '../../lib/constants';
+
+describe('AuthService.authenticateWithPublicKey', () => {
+    const pubkeyHex = '3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d';
+    const npub = nip19.npubEncode(pubkeyHex);
+
+    function setup() {
+        const deps = createMockDependencies();
+        const accounts = new AccountManager({ localStorage: deps.localStorage!, console: deps.console });
+        const service = new AuthService(deps);
+        service.setAccountManager(accounts);
+        return { accounts, deps, service };
+    }
+
+    it('stores either format as one public-key account and restores it without loading a signer', async () => {
+        const { accounts, deps, service } = setup();
+        const nprofile = nip19.nprofileEncode({ pubkey: pubkeyHex, relays: [
+            'https://invalid.example', 'wss://one.example/', 'wss://one.example',
+            'wss://two.example', 'wss://three.example', 'wss://excluded.example',
+        ] });
+        expect(nprofile.length).toBeGreaterThan(63);
+        expect(service.authenticateWithPublicKey(npub)).toEqual({ success: true, pubkeyHex, profileRelayHints: [] });
+        expect(service.authenticateWithPublicKey(nprofile)).toEqual({
+            success: true, pubkeyHex,
+            profileRelayHints: ['wss://one.example/', 'wss://two.example/', 'wss://three.example/'],
+        });
+        expect(accounts.getAccounts()).toEqual([{ pubkeyHex, type: 'npub', addedAt: expect.any(Number) }]);
+        expect(accounts.getActiveAccountPubkey()).toBe(pubkeyHex);
+        expect(deps.localStorage!.getItem(getNsecStorageKey(pubkeyHex))).toBeNull();
+
+        await expect(service.initializeAuth()).resolves.toMatchObject({ hasAuth: true, pubkeyHex });
+        expect(deps.setPublicKeyAuth).toHaveBeenLastCalledWith(pubkeyHex, npub,
+            nip19.nprofileEncode({ pubkey: pubkeyHex, relays: [] }));
+        expect(deps.setNsecAuth).not.toHaveBeenCalled();
+        expect(deps.setNip07Auth).not.toHaveBeenCalled();
+    });
+
+    it('rejects malformed pointers and preserves an existing signing account', () => {
+        const { accounts, deps, service } = setup();
+        const other = 'ab'.repeat(32);
+        accounts.addAccount(pubkeyHex, 'nip07');
+        accounts.addAccount(other, 'nsec');
+
+        for (const input of ['npub1invalid', 'nprofile1invalid', nip19.npubEncode('ab')]) {
+            expect(service.authenticateWithPublicKey(input)).toEqual({ success: false, error: 'invalid_public_key' });
+        }
+        expect(service.authenticateWithPublicKey(npub)).toEqual({
+            success: false, error: 'public_key_account_already_registered',
+        });
+        expect(accounts.getAccountType(pubkeyHex)).toBe('nip07');
+        expect(accounts.getActiveAccountPubkey()).toBe(other);
+        expect(deps.setPublicKeyAuth).not.toHaveBeenCalled();
+    });
+});
 
 describe('AuthService.authenticateWithNsec', () => {
     let authService: AuthService;

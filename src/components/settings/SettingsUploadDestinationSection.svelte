@@ -8,7 +8,7 @@
     import InfoPopoverButton from "../InfoPopoverButton.svelte";
     import { getAppRuntimeEnvironment } from "../../lib/appRuntimeEnvironment";
     import { uploadDestinationStore } from "../../stores/uploadDestinationStore.svelte";
-    import { authState } from "../../stores/authStore.svelte";
+    import { getCurrentUploadIdentity } from "../../lib/upload/resolveCurrentUploadDestination";
     import type {
         UploadDestination,
         UploadPresetId,
@@ -61,7 +61,7 @@
     let destinationState = $derived(uploadDestinationStore.value);
     let currentScope = $state<string | null>(null);
     let pubkeyHex = $derived(
-        authState.value.isAuthenticated ? authState.value.pubkey || null : null,
+        getCurrentUploadIdentity().pubkeyHex,
     );
     let canUseRelaySync = $derived(Boolean(rxNostr && pubkeyHex));
 

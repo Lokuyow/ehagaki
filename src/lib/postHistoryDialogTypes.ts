@@ -5,6 +5,7 @@ import type { PostHistoryRecord } from "./storage/ehagakiDb";
 import type { NostrEvent, RelayConfig } from "./types";
 import type { PostHistoryInboundDirectReplyCandidate, PostHistoryInboundReplyReconciliationResult } from "./postHistoryInboundReplyReconciliationService";
 export interface PostHistoryDialogProps {
+        readOnly?: boolean;
         show: boolean;
         onClose: () => void;
         onReplyPost?: (

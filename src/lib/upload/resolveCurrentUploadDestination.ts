@@ -3,10 +3,15 @@ import { uploadDestinationsRepository } from "../storage/uploadDestinationsRepos
 import { resolveUploadDestinationForUse } from "./uploadDestinationResolver";
 import type { UploadDestination } from "../types";
 
-export async function resolveCurrentUploadDestination(): Promise<UploadDestination> {
-    const identity = authState.value.isAuthenticated
-        ? { pubkeyHex: authState.value.pubkey || null, npub: authState.value.npub || null }
+export function getCurrentUploadIdentity(): { pubkeyHex: string | null; npub: string | null } {
+    const auth = authState.value;
+    return auth.isAuthenticated && auth.type !== "npub"
+        ? { pubkeyHex: auth.pubkey || null, npub: auth.npub || null }
         : { pubkeyHex: null, npub: null };
+}
+
+export async function resolveCurrentUploadDestination(): Promise<UploadDestination> {
+    const identity = getCurrentUploadIdentity();
     return resolveUploadDestinationForUse(
         await uploadDestinationsRepository.getDefault(identity.pubkeyHex),
         identity,

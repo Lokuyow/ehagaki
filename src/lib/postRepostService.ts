@@ -73,7 +73,7 @@ export class PostRepostService {
         try {
             const auth = this.deps.authStateStore.value;
             const pubkey = auth.pubkey;
-            if (!auth.isAuthenticated || !pubkey || !params.rxNostr) return { success: false, error: "nostr_not_ready" };
+            if (!auth.isAuthenticated || auth.type === "npub" || !pubkey || !params.rxNostr) return { success: false, error: "nostr_not_ready" };
             const assertCurrent = () => {
                 assertActiveSession(this.deps.authStateStore, pubkey);
                 if (this.deps.authStateStore.value.type !== auth.type || params.isCurrent?.() === false) throw new Error("session_changed");

@@ -9,8 +9,10 @@ import type { AppPostNotificationPort } from "../appNotificationPort";
 import type { PostHistoryRawEventAttestation } from "../postHistoryRawEventVerification";
 
 // App Store types
+export type AccountAuthType = 'nsec' | 'nip07' | 'nip46' | 'parentClient' | 'npub';
+
 export interface AuthState {
-    type: 'none' | 'nsec' | 'nip07' | 'nip46' | 'parentClient';
+    type: 'none' | AccountAuthType;
     isAuthenticated: boolean;
     pubkey: string;
     npub: string;
@@ -78,6 +80,7 @@ export interface AuthServiceDependencies {
     serviceWorkerEnabled?: boolean;
     localNsecAuthEnabled?: boolean;
     console?: Console;
+    setPublicKeyAuth?: (pubkey: string, npub: string, nprofile: string) => void;
     setNsecAuth?: (pubkey: string, npub: string, nprofile: string) => void;
     setNip07Auth?: (pubkey: string, npub: string, nprofile: string) => void;
     setNip46Auth?: (pubkey: string, npub: string, nprofile: string) => void;
@@ -251,7 +254,7 @@ export interface PostManagerSigner {
 // マルチアカウント管理
 export interface StoredAccount {
     pubkeyHex: string;
-    type: 'nsec' | 'nip07' | 'nip46' | 'parentClient';
+    type: AccountAuthType;
     addedAt: number;
 }
 

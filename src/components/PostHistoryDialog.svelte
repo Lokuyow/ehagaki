@@ -19,9 +19,10 @@
         onLoadFailure?: (failure: AppComponentLoadFailure) => void;
     }
     let { show = $bindable(false), onClose, returnFocus = null,
-        isStaleAssetReloadRequired = () => false, onLoadFailure, ...postProps }: Props = $props();
+        isStaleAssetReloadRequired = () => false, onLoadFailure, readOnly = false, ...postProps }: Props = $props();
     let restoreFocusOnClose = $state(true);
-    let activeTab = $state<HistoryTab>(untrack(() => historyTabStore.restore()));
+    let selectedTab = $state<HistoryTab>(untrack(() => historyTabStore.restore()));
+    const activeTab = $derived(readOnly ? "posts" : selectedTab);
     const closeIconUrl = resolveAppAssetUrl("icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     let Posts = $state<typeof import("./PostHistoryTabContent.svelte").default | null>(null);
     let Media = $state<typeof import("./UploadedMediaTabContent.svelte").default | null>(null);
@@ -65,11 +66,11 @@
         accountEpoch++;
     }
     function selectTab(value: string) {
-        if (invalidated || (value !== "posts" && value !== "media") || value === activeTab || busy()) return;
+        if (readOnly || invalidated || (value !== "posts" && value !== "media") || value === activeTab || busy()) return;
         // Invalidate the old owner synchronously, before publishing the selection.
         if (activeTab === "posts") postsRef?.suspend(); else mediaRef?.suspend();
         loadGeneration++;
-        activeTab = value;
+        selectedTab = value;
         historyTabStore.select(value);
         if (value === "posts") postsRef?.activate(); else mediaRef?.activate();
     }
@@ -138,7 +139,7 @@
     const tabSwipe = usePostHistoryTabSwipe({
         getOpen: () => show,
         getTab: () => activeTab,
-        getGestureBlocked: () => invalidated || busy() || !!postsRef?.isFullscreen() || !!mediaRef?.isFullscreen(),
+        getGestureBlocked: () => readOnly || invalidated || busy() || !!postsRef?.isFullscreen() || !!mediaRef?.isFullscreen(),
         onCommit: (tab) => selectTab(tab),
     });
     function escape(event: KeyboardEvent) {
@@ -157,23 +158,29 @@
     <Tabs.Root value={activeTab} onValueChange={selectTab} activationMode="manual" class="history-tabs">
         <div class={["history-tab-gesture", { "is-swiping": tabSwipe.dragging, "is-offset": tabSwipe.dragPx !== 0 }]}
             {@attach tabSwipe.attachment} style:--history-tab-drag="{tabSwipe.dragPx}px">
-            <div class="history-tab-switcher">
+            <div class={["history-tab-switcher", { "single-tab": readOnly }]}>
                 <Tabs.List class="history-tab-list" aria-label={$_("postHistory.title")}>
                     <Tabs.Trigger value="posts" disabled={mediaBusy}>{$_("postHistory.postsTab")}</Tabs.Trigger>
-                    <Tabs.Trigger value="media" disabled={mediaBusy}>{$_("postHistory.mediaTab")}</Tabs.Trigger>
+                    {#if !readOnly}
+                        <Tabs.Trigger value="media" disabled={mediaBusy}>{$_("postHistory.mediaTab")}</Tabs.Trigger>
+                    {/if}
                 </Tabs.List>
-                <span class="history-tab-indicator" style:transform="translateX({tabSwipe.indicatorProgress * 100}%)" aria-hidden="true"></span>
+                {#if !readOnly}
+                    <span class="history-tab-indicator" style:transform="translateX({tabSwipe.indicatorProgress * 100}%)" aria-hidden="true"></span>
+                {/if}
             </div>
             <div class="history-tab-viewport" aria-busy={!contentReady} data-opening-pending={!contentReady}>
                 <div class="history-tab-panels"
                     inert={!contentReady} aria-hidden={!contentReady ? "true" : undefined}>
                     {#key accountEpoch}
                         <Tabs.Content value="posts" class="history-tab-panel">
-                        {#if Posts && postsVisited}<Posts {...postProps} bind:this={postsRef} show={show && !invalidated && activeTab === "posts"} sessionOpen={show} onClose={() => close(false)} onInitialReady={onPostsReady} />{/if}
+                        {#if Posts && postsVisited}<Posts {...postProps} {readOnly} bind:this={postsRef} show={show && !invalidated && activeTab === "posts"} sessionOpen={show} onClose={() => close(false)} onInitialReady={onPostsReady} />{/if}
                         </Tabs.Content>
-                        <Tabs.Content value="media" class="history-tab-panel">
-                        {#if Media && mediaVisited}<Media bind:this={mediaRef} show={show && !invalidated && activeTab === "media"} onBusyChange={(value) => mediaBusy = value} onInitialReady={onMediaReady} />{/if}
-                        </Tabs.Content>
+                        {#if !readOnly}
+                            <Tabs.Content value="media" class="history-tab-panel">
+                                {#if Media && mediaVisited}<Media bind:this={mediaRef} show={show && !invalidated && activeTab === "media"} onBusyChange={(value) => mediaBusy = value} onInitialReady={onMediaReady} />{/if}
+                            </Tabs.Content>
+                        {/if}
                     {/key}
                     {#if loadFailed}
                         <Button onClick={() => { invalidateSession(); invalidated = false; }}>{$_("uploadedMedia.refresh")}</Button>
@@ -251,6 +258,7 @@
     :global(.post-history-dialog.dialog.dialog-container-layout) { height: 100%; max-height: 100%; }
     :global(.post-history-dialog .dialog-content) { position: relative; display: flex; flex: 1; min-height: 0; max-height: none; overflow: hidden; padding: 0; }
     :global(.post-history-dialog .dialog-footer) { flex: none; }
+    .single-tab :global(.history-tab-list) { grid-template-columns: 1fr; }
     :global(.history-tabs) { display: flex; flex-direction: column; width: 100%; min-width: 0; min-height: 0; flex: 1; }
     :global(.history-tab-list) {
         display: grid;

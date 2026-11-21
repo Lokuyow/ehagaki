@@ -125,6 +125,7 @@
         resolver?: ComposerTargetResolver;
         relatedResolver?: PostHistoryRelatedTargetResolver;
         pubkeyHex?: string | null;
+        readOnly?: boolean;
         onRepostPost?: RepostPostHandler;
         repostPending?: boolean;
         onRetryRepostSave?: (result: PostRepostResult) => Promise<boolean>;
@@ -145,6 +146,7 @@
         resolver = createComposerTargetResolver(),
         relatedResolver = undefined,
         pubkeyHex = null,
+        readOnly = false,
         onRepostPost = undefined,
         repostPending = false,
         onRetryRepostSave = undefined,
@@ -264,10 +266,10 @@
         target ? buildTargetPostHistoryRecord(target) : null,
     );
     let canBroadcastTargetPost = $derived(
-        targetPost ? resolveBroadcastEvent(targetPost) !== null : false,
+        !readOnly && targetPost !== null && resolveBroadcastEvent(targetPost) !== null,
     );
     let canDeleteTargetPost = $derived(
-        targetPost ? canRequestPostDeletion(targetPost, pubkeyHex) : false,
+        !readOnly && targetPost !== null && canRequestPostDeletion(targetPost, pubkeyHex),
     );
     let authorProfile = $derived(target?.authorProfile ?? partialAuthorProfile);
     let authorDisplay = $derived.by(() => {
@@ -598,7 +600,7 @@
     }
 
     async function handleApply(action: ComposerTargetAction): Promise<boolean> {
-        if (!target) return false;
+        if (readOnly || !target) return false;
         const startedTarget = target;
         const startedGeneration = generation;
         const applied = await onApply(action, {
@@ -616,6 +618,7 @@
     }
 
     async function handleRelatedReaction(post: PostHistoryRecord): Promise<boolean> {
+        if (readOnly) return false;
         const startedGeneration = generation;
         const startedTarget = target;
         const applied = await onApply('reaction', {
@@ -939,7 +942,7 @@
             )}
         >
             {#snippet items()}
-                {#if onRepostPost && isRepostTargetKind(post.kind)}
+                {#if !readOnly && onRepostPost && isRepostTargetKind(post.kind)}
                     <PostRepostMenuItem pending={repostPending} onSelect={() => void handleRepost(post)} />
                 {/if}
                 <DropdownMenu.Item
@@ -1022,9 +1025,9 @@
     {#if targetPost}
         <PostHistoryPreviewFooter formattedDate={formatPostedAt(targetPost.postedAt)}>
             {#snippet actions()}
-                <PostHistoryPostActions post={targetPost} onReactionPost={() => handleApply('reaction')}
-                    onReplyPost={targetActions.includes('reply') ? () => handleApply('reply') : undefined}
-                    onQuotePost={targetActions.includes('quote') ? () => { void handleApply('quote'); } : undefined}>
+                <PostHistoryPostActions post={targetPost} onReactionPost={readOnly ? undefined : () => handleApply('reaction')}
+                    onReplyPost={!readOnly && targetActions.includes('reply') ? () => handleApply('reply') : undefined}
+                    onQuotePost={!readOnly && targetActions.includes('quote') ? () => { void handleApply('quote'); } : undefined}>
                     {#snippet reactionExtras()}{@render reactionCount(targetPost)}{/snippet}
                 </PostHistoryPostActions>
             {/snippet}
@@ -1159,7 +1162,7 @@
         {#if repostPreview && targetPost}
             <section class="composer-target-repost-preview" aria-label={$_("composerTarget.preview")}>
                 <PostHistoryRepostPreview post={targetPost}
-                    onReactionPost={post => post.eventId === targetPost?.eventId ? handleApply('reaction') : handleRelatedReaction(post)}
+                    onReactionPost={readOnly ? undefined : post => post.eventId === targetPost?.eventId ? handleApply('reaction') : handleRelatedReaction(post)}
                     reactionExtras={reactionCount} reactionDetails={reactionDetails} preview={repostPreview}
                     author={interactionAuthor}
                     footerMenu={mainTargetMenu} channelText={relatedChannelText} model={relatedRenderModel ?? undefined}
@@ -1204,7 +1207,7 @@
                             {/if}
                         {/snippet}
                         {#snippet footerActions()}
-                            <PostHistoryPostActions post={repostTargetToPost(relatedEvent, relatedPreview.relayHints)} onReactionPost={handleRelatedReaction}>
+                            <PostHistoryPostActions post={repostTargetToPost(relatedEvent, relatedPreview.relayHints)} onReactionPost={readOnly ? undefined : handleRelatedReaction}>
                                 {#snippet reactionExtras()}{@render reactionCount(repostTargetToPost(relatedEvent, relatedPreview.relayHints))}{/snippet}
                             </PostHistoryPostActions>
                         {/snippet}
@@ -1315,7 +1318,7 @@
                 >
                     {#snippet actions()}
                         {#if target}
-                            {#if targetActions.includes("reply") || targetActions.includes("quote")}
+                            {#if !readOnly && (targetActions.includes("reply") || targetActions.includes("quote"))}
                                 {#if targetPost}
                                     <PostHistoryPostActions onReactionPost={() => handleApply("reaction")}
                                         post={targetPost}
@@ -1339,11 +1342,11 @@
                                         {/snippet}
                                     </PostHistoryPostActions>
                                 {/if}
-                            {:else if targetActions.includes('reaction') && targetPost}
+                            {:else if !readOnly && targetActions.includes('reaction') && targetPost}
                                 <PostHistoryPostActions post={targetPost} onReactionPost={() => handleApply('reaction')}>
                                     {#snippet reactionExtras()}{@render reactionCount(targetPost)}{/snippet}
                                 </PostHistoryPostActions>
-                            {:else if targetActions.includes("channel")}
+                            {:else if !readOnly && targetActions.includes("channel")}
                                 <div class="composer-target-channel-action">
                                     <PostPreviewFooterActionButton
                                         type="button"

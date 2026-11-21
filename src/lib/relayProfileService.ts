@@ -167,7 +167,12 @@ export class RelayProfileService {
      * @param forceRemote 強制的にリモート取得するか
      * @returns プロフィールデータ
      */
-    async fetchProfile(pubkeyHex: string, forceRemote: boolean = false, signal?: AbortSignal): Promise<ProfileData | null> {
+    async fetchProfile(
+        pubkeyHex: string,
+        forceRemote = false,
+        signal?: AbortSignal,
+        additionalRelays: string[] = [],
+    ): Promise<ProfileData | null> {
         if (!pubkeyHex || signal?.aborted) return null;
 
         if (!forceRemote) {
@@ -180,10 +185,10 @@ export class RelayProfileService {
         if (signal?.aborted) return null;
         const initialRequest = profileMetadataCache.getProfile(
             pubkeyHex,
-            { ...this.profileOptions(relayLists, [], forceRemote, false), ...(signal ? { signal } : {}) },
+            { ...this.profileOptions(relayLists, additionalRelays, forceRemote, false), ...(signal ? { signal } : {}) },
         );
         void this.refreshWithDiscoveredAuthorRelays(
-            pubkeyHex, relayLists, [], forceRemote, false, initialRequest, signal,
+            pubkeyHex, relayLists, additionalRelays, forceRemote, false, initialRequest, signal,
         );
         return initialRequest;
     }
@@ -350,7 +355,7 @@ export class RelayProfileService {
      * @param pubkeyHex 公開鍵
      * @returns プロフィールデータ
      */
-    async initializeForLogin(pubkeyHex: string, signal?: AbortSignal): Promise<ProfileData | null> {
+    async initializeForLogin(pubkeyHex: string, signal?: AbortSignal, additionalRelays?: string[]): Promise<ProfileData | null> {
         console.log(`ログイン初期化開始: ${pubkeyHex}`);
 
         // 1. リレーリスト取得（キャッシュがない場合のみリモート取得）
@@ -359,7 +364,7 @@ export class RelayProfileService {
         }
 
         // 2. プロフィール取得
-        const profile = await this.fetchProfile(pubkeyHex, false, signal);
+        const profile = await this.fetchProfile(pubkeyHex, false, signal, additionalRelays);
 
         console.log(`ログイン初期化完了: ${pubkeyHex}`);
         return profile;

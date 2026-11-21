@@ -46,7 +46,7 @@
         onInitialReady?: () => void;
     }
     let { show = $bindable(false), pubkeyHex, rxNostr, relayConfig,
-        onClose, onReplyPost, onReactionPost, onOpenTarget, reconcileDirectReplyCandidates, onQuotePost, onRepostPost, repostPending, repostSaveFailure, onRetryRepostSave, presentationReady = false, onInitialReady }: Props = $props();
+        readOnly = false, onClose, onReplyPost, onReactionPost, onOpenTarget, reconcileDirectReplyCandidates, onQuotePost, onRepostPost, repostPending, repostSaveFailure, onRetryRepostSave, presentationReady = false, onInitialReady }: Props = $props();
     let listElement = $state<HTMLElement | null>(null);
     const replyTargetPrefix = $props.id();
     let expandedReplyTargets = $state<Record<string, boolean>>({});
@@ -63,7 +63,7 @@
     let task: ReturnType<typeof syncNotifications> | null = null;
     let generation = $state(0);
     let listRevision = $state(0), localReadFailed = $state(false);
-    const interactions = useNotificationPostInteractions(() => ({ show, pubkeyHex, rxNostr, relayConfig, onClose,
+    const interactions = useNotificationPostInteractions(() => ({ show, pubkeyHex, rxNostr, relayConfig, onClose, readOnly,
         onReplyPost: post => apply(post, false), onReactionPost: post => apply(post, true),
         onQuotePost: post => { const applied = onQuotePost?.(post) ?? false; if (applied) close(); return applied; },
         onRepostPost, repostPending }), () => show && visible && !invalidated);

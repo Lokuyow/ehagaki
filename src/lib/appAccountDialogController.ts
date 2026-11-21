@@ -1,5 +1,5 @@
 interface AccountManagerLike {
-    getAccounts(): Array<{ pubkeyHex: string }>;
+    getAccounts(): Array<{ pubkeyHex: string; type?: string }>;
 }
 
 export interface AppAccountDialogControllerDependencies {
@@ -44,7 +44,7 @@ export function createAppAccountDialogController(
     function requestLogoutAccount(pubkeyHex: string): void {
         const accounts = deps.accountManager.getAccounts();
         const isLastAccount =
-            accounts.length === 1 && accounts[0]?.pubkeyHex === pubkeyHex;
+            accounts.length === 1 && accounts[0]?.pubkeyHex === pubkeyHex && accounts[0].type !== 'npub';
 
         if (!isLastAccount) {
             void deps.requestLogoutAccount(pubkeyHex);

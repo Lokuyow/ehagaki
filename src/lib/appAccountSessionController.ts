@@ -1,6 +1,5 @@
+import type { AccountAuthType } from './types';
 import type { ManagedAccountSessionRestoreResult } from './appAuthUtils';
-
-type ManagedAccountType = 'nsec' | 'nip07' | 'nip46' | 'parentClient';
 
 type LogoutAccountOptions = {
     closeDialog?: boolean;
@@ -21,7 +20,7 @@ interface ParentClientRuntimeController {
 }
 
 interface AccountManagerLike {
-    getAccountType: (pubkeyHex: string) => ManagedAccountType | null;
+    getAccountType: (pubkeyHex: string) => AccountAuthType | null;
     hasAccount: (pubkeyHex: string) => boolean;
     setActiveAccount: (pubkeyHex: string) => void;
     getActiveAccountPubkey: () => string | null;
@@ -41,10 +40,11 @@ interface AuthStateSnapshot {
     pubkey?: string;
 }
 
-function isManagedAccountType(
+function isAccountAuthType(
     type: string | undefined,
-): type is ManagedAccountType {
-    return type === 'nsec'
+): type is AccountAuthType {
+    return type === 'npub'
+        || type === 'nsec'
         || type === 'nip07'
         || type === 'nip46'
         || type === 'parentClient';
@@ -65,16 +65,16 @@ export interface AppAccountSessionControllerDependencies {
     accountManager: AccountManagerLike;
     restoreManagedAccountSession(params: {
         requestedPubkeyHex: string;
-        accountType: ManagedAccountType;
+        accountType: AccountAuthType;
         restoreAccount: (
             pubkeyHex: string,
-            type: ManagedAccountType,
+            type: AccountAuthType,
         ) => Promise<{ hasAuth: boolean; pubkeyHex?: string }>;
         handlePostAuth: (pubkeyHex: string) => Promise<void>;
     }): Promise<ManagedAccountSessionRestoreResult>;
     restoreAccount(
         pubkeyHex: string,
-        type: ManagedAccountType,
+        type: AccountAuthType,
     ): Promise<{ hasAuth: boolean; pubkeyHex?: string }>;
     handlePostAuth(pubkeyHex: string): Promise<void>;
     resetUploadDisplayState(): void;
@@ -217,7 +217,7 @@ export function createAppAccountSessionController(
             const currentAuth = deps.getAuthStateSnapshot();
             const currentRuntime = deps.getCurrentRxNostr();
             const targetAccountType = deps.accountManager.getAccountType(pubkeyHex);
-            const rollbackPubkeyHex = isManagedAccountType(currentAuth?.type)
+            const rollbackPubkeyHex = isAccountAuthType(currentAuth?.type)
                 && currentAuth?.pubkey
                 ? currentAuth.pubkey
                 : null;

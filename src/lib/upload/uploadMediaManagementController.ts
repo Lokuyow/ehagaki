@@ -129,7 +129,7 @@ export class UploadMediaManagementController {
     async configureSaved(pubkey: string | null): Promise<void> {
         if (!this.active) return;
         const auth = (this.deps.auth ?? authState).value;
-        if (pubkey && (!auth.isAuthenticated || auth.pubkey !== pubkey)) return;
+        if (pubkey && (!auth.isAuthenticated || auth.type === "npub" || auth.pubkey !== pubkey)) return;
         if (pubkey !== this.pubkey) { this.invalidate(); this.pubkey = pubkey; }
         if (!pubkey) { this.emit(); return; }
         if (this.savedDestinationsRead) {
@@ -140,6 +140,7 @@ export class UploadMediaManagementController {
         const epoch = this.epoch, generation = ++this.configurationGeneration;
         const current = () => this.active && epoch === this.epoch && generation === this.configurationGeneration
             && this.pubkey === pubkey && (this.deps.auth ?? authState).value.isAuthenticated
+            && (this.deps.auth ?? authState).value.type !== "npub"
             && (this.deps.auth ?? authState).value.pubkey === pubkey;
         this.configuring = true; this.configurationError = null; this.emit();
         try {
@@ -219,6 +220,7 @@ export class UploadMediaManagementController {
         // Snapshot the destination before any signer/discovery wait.
         const destination = { ...state.destination };
         const current = () => this.active && (this.deps.auth ?? authState).value.isAuthenticated
+            && (this.deps.auth ?? authState).value.type !== "npub"
             && (this.deps.auth ?? authState).value.pubkey === pubkey
             && this.epoch === epoch && this.pubkey === pubkey
             && this.states.get(destination.id) === state && state.generation === generation
@@ -243,7 +245,7 @@ export class UploadMediaManagementController {
         if (state.error?.retryAt && Date.now() < state.error.retryAt) return;
         if (append && !state.needsRefresh && state.localSnapshot !== null) {
             const auth = (this.deps.auth ?? authState).value;
-            if (!auth.isAuthenticated || auth.pubkey !== this.pubkey || !state.localSnapshot.length) return;
+            if (!auth.isAuthenticated || auth.type === "npub" || auth.pubkey !== this.pubkey || !state.localSnapshot.length) return;
             state.error = null;
             state.notice = null;
             state.items.push(...state.localSnapshot.splice(0, UPLOAD_MEDIA_PAGE_SIZE));
