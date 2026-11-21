@@ -1120,6 +1120,7 @@ async function getFooterLayout(container: ReturnType<Page['locator']>) {
         )).map((cell) => rect(cell));
         return {
             footer: rect(footer)!,
+            containerWidth: rect(footer.parentElement)!.width,
             date: rect(footer.querySelector('.post-preview-date')),
             cells,
             buttons,
@@ -2969,7 +2970,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(Math.abs(scrolledReactionPositions.menuX - scrolledPlainPositions.menuX)).toBeLessThanOrEqual(1);
     });
 
-    test('post history action columns align across posts and related cards without clipping', async ({ page }, testInfo) => {
+    test('post history aligns top-level actions and indents related cards without clipping', async ({ page }, testInfo) => {
         test.setTimeout(120_000);
         const harness = await gotoHarness(page);
         const initialViewport = page.viewportSize();
@@ -3020,16 +3021,6 @@ test.describe('PostHistoryDialog Playwright', () => {
             const quoteCard = quoteHost.locator('.post-history-related-card')
                 .filter({ hasText: harness.quoteContent });
             await expect(quoteCard).toBeVisible();
-            const quoteCenters = await getActionColumnCenters(quoteCard);
-            const quoteButtonCenters = await getReplyAndQuoteButtonCenters(quoteCard);
-            expect(Math.abs(plainButtonCenters.reply - quoteButtonCenters.reply))
-                .toBeLessThanOrEqual(5);
-            expect(Math.abs(plainButtonCenters.quote - quoteButtonCenters.quote))
-                .toBeLessThanOrEqual(5);
-            for (let index = 0; index < 3; index += 1) {
-                expect(Math.abs(plainCenters[index].centerX - quoteCenters[index].centerX))
-                    .toBeLessThanOrEqual(5);
-            }
 
             const threadHost = page.locator(
                 `.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"]`,
@@ -3041,16 +3032,6 @@ test.describe('PostHistoryDialog Playwright', () => {
                 await threadHost.getByRole('button', { name: /返信 1件を表示/ }).click();
             }
             await expect(replyCard).toBeVisible();
-            const childCenters = await getActionColumnCenters(replyCard);
-            const childButtonCenters = await getReplyAndQuoteButtonCenters(replyCard);
-            expect(Math.abs(plainButtonCenters.reply - childButtonCenters.reply))
-                .toBeLessThanOrEqual(5);
-            expect(Math.abs(plainButtonCenters.quote - childButtonCenters.quote))
-                .toBeLessThanOrEqual(5);
-            for (let index = 0; index < 3; index += 1) {
-                expect(Math.abs(plainCenters[index].centerX - childCenters[index].centerX))
-                    .toBeLessThanOrEqual(5);
-            }
 
             const nestedToggle = replyCard.getByRole('button', { name: /返信 1件を表示/ });
             const grandchildCard = threadHost.locator('.post-history-related-card')
@@ -3059,22 +3040,25 @@ test.describe('PostHistoryDialog Playwright', () => {
                 await nestedToggle.click();
             }
             await expect(grandchildCard).toBeVisible();
-            const grandchildCenters = await getActionColumnCenters(grandchildCard);
-            const grandchildButtonCenters = await getReplyAndQuoteButtonCenters(grandchildCard);
-            expect(Math.abs(plainButtonCenters.reply - grandchildButtonCenters.reply))
-                .toBeLessThanOrEqual(5);
-            expect(Math.abs(plainButtonCenters.quote - grandchildButtonCenters.quote))
-                .toBeLessThanOrEqual(5);
-            for (let index = 0; index < 3; index += 1) {
-                expect(Math.abs(plainCenters[index].centerX - grandchildCenters[index].centerX))
-                    .toBeLessThanOrEqual(5);
-            }
+
+            const [quoteAnchor, quote, threadAnchor, reply, grandchild] = await Promise.all([
+                quoteHost.locator('.post-history-thread-anchor-post').boundingBox(),
+                quoteCard.boundingBox(),
+                threadHost.locator('.post-history-thread-anchor-post').boundingBox(),
+                replyCard.boundingBox(),
+                grandchildCard.boundingBox(),
+            ]);
+            expect(quote!.x).toBeGreaterThan(quoteAnchor!.x);
+            expect(quote!.x + quote!.width).toBeLessThanOrEqual(quoteAnchor!.x + quoteAnchor!.width + 1);
+            expect(reply!.x).toBeGreaterThan(threadAnchor!.x);
+            expect(grandchild!.x - reply!.x).toBeCloseTo(8, 0);
+            expect(grandchild!.x + grandchild!.width).toBeLessThanOrEqual(threadAnchor!.x + threadAnchor!.width + 1);
 
             const layoutCards = [plainPost, quoteCard, replyCard, grandchildCard];
             const footerLayouts = await Promise.all(layoutCards.map(getFooterLayout));
             for (const layout of footerLayouts) {
-                expect(layout.footer.height).toBeGreaterThanOrEqual(35);
-                expect(layout.footer.height).toBeLessThanOrEqual(37);
+                const expectedHeight = layout.containerWidth < 320 ? 72 : 36;
+                expect(layout.footer.height).toBeCloseTo(expectedHeight, 0);
                 expect(layout.cells).toHaveLength(3);
                 expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth + 1);
                 for (const button of layout.buttons) {
@@ -3106,25 +3090,9 @@ test.describe('PostHistoryDialog Playwright', () => {
                     }
                 }
             }
-            for (const index of [1, 2, 3]) {
-                expect(Math.abs(footerLayouts[0].footer.width - footerLayouts[index].footer.width))
-                    .toBeLessThanOrEqual(2);
-                for (let cell = 0; cell < 3; cell += 1) {
-                    expect(Math.abs(footerLayouts[0].cells[cell]!.x - footerLayouts[index].cells[cell]!.x))
-                        .toBeLessThanOrEqual(3);
-                    expect(Math.abs(footerLayouts[0].cells[cell]!.width - footerLayouts[index].cells[cell]!.width))
-                        .toBeLessThanOrEqual(3);
-                }
-            }
-
             for (const card of [reactionPost, quoteCard, replyCard, grandchildCard]) {
                 await expectReactionContentsVerticallyCentered(card, false);
             }
-
-            const relatedWidths = await Promise.all([quoteCard, replyCard, grandchildCard].map((card) =>
-                card.evaluate((element) => (element as HTMLElement).getBoundingClientRect().width),
-            ));
-            expect(Math.max(...relatedWidths) - Math.min(...relatedWidths)).toBeLessThanOrEqual(2);
 
             const layoutState = await page.evaluate(() => {
                 const dialog = document.querySelector('.post-history-dialog');

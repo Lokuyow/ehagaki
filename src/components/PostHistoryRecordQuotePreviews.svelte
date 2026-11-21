@@ -169,6 +169,6 @@
         display: flex;
         flex-direction: column;
         gap: 4px;
-        margin-inline-start: -1rem;
+        margin-inline-start: -0.5rem;
     }
 </style>
