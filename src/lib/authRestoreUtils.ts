@@ -46,6 +46,7 @@ export type ManagedRestoreResult =
 
 export const MANAGED_NIP07_EXTENSION_DISCOVERY_TIMEOUT_MS = 1_000;
 export const MANAGED_NIP07_IDENTITY_READ_TIMEOUT_MS = 3_000;
+export const ACTIVE_NIP07_STARTUP_IDENTITY_READ_TIMEOUT_MS = 10_000;
 const MANAGED_RESTORE_INFRASTRUCTURE_FAILURES = new Set<ManagedRestoreFailureReason>([
     'credential-read-failed',
     'persistence-failed',
@@ -80,6 +81,7 @@ interface LegacyNsecDependencies extends NsecRestoreDependencies {
 export interface ManagedAuthRestoreDependencies extends NsecRestoreDependencies, PublicKeyAuthDependencies {
     localStorage: Storage;
     nip07Service: Pick<Nip07AuthService, 'waitForExtension' | 'authenticate'>;
+    nip07IdentityReadTimeoutMs?: number;
     nip46Svc: Pick<
         Nip46Service,
         'restoreSessionInBackground' | 'bindSessionPersistence' | 'disconnect'
@@ -242,7 +244,7 @@ export async function restoreManagedNip07Account(
         }
 
         result = await dependencies.nip07Service.authenticate({
-            timeoutMs: MANAGED_NIP07_IDENTITY_READ_TIMEOUT_MS,
+            timeoutMs: dependencies.nip07IdentityReadTimeoutMs ?? MANAGED_NIP07_IDENTITY_READ_TIMEOUT_MS,
         });
     }
     if (!result.success || !result.pubkeyHex || !result.pubkeyData) {

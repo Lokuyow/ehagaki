@@ -45,6 +45,9 @@ async function setup(page: Page, options: {
             window.nostr = {
                 getPublicKey: async () => {
                     if (reject) throw new Error('Login declined');
+                    if (sessionStorage.getItem('fixtureDelayNip07OnReload') === '1') {
+                        await new Promise<void>(resolve => setTimeout(resolve, 4_000));
+                    }
                     return pubkey;
                 },
                 signEvent: (template: EventTemplate) => (window as unknown as { fixtureSignEvent(event: EventTemplate): Promise<NostrEvent> }).fixtureSignEvent(template),
@@ -170,6 +173,21 @@ test('uses a retained kind 3 response after one three-second discovery timeout',
     await post(page).click();
     await expect.poll(() => app.posts.length).toBeGreaterThan(0);
     expect(app.posts.every(sent => /^wss:\/\/legacy\.example\/?$/.test(sent.relay))).toBe(true);
+});
+
+test('restores the selected NIP-07 account on reload after a four-second extension response', async ({ page }) => {
+    const app = await setup(page, { extension: true });
+    await app.login();
+    app.releaseRelays();
+    app.releaseProfiles();
+    await expect(account(page)).toBeVisible();
+    await page.evaluate(() => sessionStorage.setItem('fixtureDelayNip07OnReload', '1'));
+
+    await page.reload();
+
+    await expect(account(page)).toBeVisible({ timeout: 15_000 });
+    await account(page).click();
+    await expect(page.getByText('Delayed profile', { exact: true }).first()).toBeVisible();
 });
 
 test('restores a saved secret-key account without waiting for its profile or rediscovering its relays', async ({ page }) => {

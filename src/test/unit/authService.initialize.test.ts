@@ -4,7 +4,7 @@ import { MockStorage, type MockKeyManager } from '../helpers';
 import './authServiceModuleMocks';
 
 import { AuthService } from '../../lib/authService';
-import { MANAGED_NIP07_IDENTITY_READ_TIMEOUT_MS } from '../../lib/authRestoreUtils';
+import { ACTIVE_NIP07_STARTUP_IDENTITY_READ_TIMEOUT_MS } from '../../lib/authRestoreUtils';
 import { AccountManager } from '../../lib/accountManager';
 import { resolveNip07AutoLoginSession } from '../../lib/bootstrap/nip07AutoLoginBootstrap';
 import { getNsecStorageKey } from '../../lib/authStorageKeys';
@@ -101,7 +101,7 @@ describe('startup active selection persistence', () => {
             const service = new AuthService(deps);
             service.setAccountManager(manager);
             const initialize = service.initializeAuth();
-            if (failure === 'timeout') await vi.advanceTimersByTimeAsync(MANAGED_NIP07_IDENTITY_READ_TIMEOUT_MS);
+            if (failure === 'timeout') await vi.advanceTimersByTimeAsync(ACTIVE_NIP07_STARTUP_IDENTITY_READ_TIMEOUT_MS);
             const result = await initialize;
             expect(result).toMatchObject({ hasAuth: false, activeSelectionPreserved: true });
             const autoLogin = vi.spyOn(service, 'authenticateWithNip07ForAutoLogin');
@@ -138,6 +138,26 @@ describe('startup active selection persistence', () => {
             expect(storage.getItem(STORAGE_KEYS.NOSTR_ACCOUNTS)).toBe(accountsBefore);
         },
     );
+
+    it('restores the selected NIP-07 account after a four-second identity response', async () => {
+        vi.useFakeTimers();
+        const deps = createMockNip07Dependencies(NIP07_PUBKEY);
+        const manager = new AccountManager({ localStorage: deps.localStorage! });
+        manager.addAccount(NIP07_PUBKEY, 'nip07');
+        const getPublicKey = vi.fn(() => new Promise<string>(resolve => {
+            setTimeout(() => resolve(NIP07_PUBKEY), 4_000);
+        }));
+        deps.window = { nostr: { getPublicKey, signEvent: vi.fn() } } as unknown as Window;
+        const service = new AuthService(deps);
+        service.setAccountManager(manager);
+
+        const initialize = service.initializeAuth();
+        await vi.advanceTimersByTimeAsync(4_000);
+
+        await expect(initialize).resolves.toEqual({ hasAuth: true, pubkeyHex: NIP07_PUBKEY });
+        expect(getPublicKey).toHaveBeenCalledOnce();
+        expect(deps.setNip07Auth).toHaveBeenCalledExactlyOnceWith(NIP07_PUBKEY, expect.any(String), expect.any(String));
+    });
 
     it.each([null, '', 'dd'.repeat(32), 'invalid-pubkey'])(
         'recovers and persists B without a valid selection: %s', async pointer => {
@@ -352,7 +372,7 @@ describe('AuthService.initializeAuth', () => {
             nprofile: 'nprofile1fallback',
         });
 
-        const deferred = new Promise<string>(() => undefined);
+        const { promise: deferred, resolve: respond } = Promise.withResolvers<string>();
         mockDependencies.window = {
             nostr: {
                 getPublicKey: vi.fn(() => deferred),
@@ -363,12 +383,19 @@ describe('AuthService.initializeAuth', () => {
         service.setAccountManager(mockAccountManager as any);
 
         const initialize = service.initializeAuth();
-        await vi.advanceTimersByTimeAsync(MANAGED_NIP07_IDENTITY_READ_TIMEOUT_MS);
+        await vi.advanceTimersByTimeAsync(9_999);
+        const settled = vi.fn();
+        void initialize.then(settled);
+        await Promise.resolve();
+        expect(settled).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
 
         await expect(initialize).resolves.toMatchObject({
             hasAuth: false,
             activeSelectionPreserved: true,
         });
+        respond(NIP07_PUBKEY);
+        await vi.advanceTimersByTimeAsync(0);
         expect(mockDependencies.setNip07Auth).not.toHaveBeenCalled();
         expect(mockAccountManager.setActiveAccount).not.toHaveBeenCalled();
         expect(mockDependencies.setNsecAuth).not.toHaveBeenCalled();
