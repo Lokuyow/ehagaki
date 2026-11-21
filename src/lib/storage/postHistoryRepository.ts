@@ -1,6 +1,6 @@
 import { eventRecords } from "./eventRepository";
 import Dexie, { cmp } from "dexie";
-import { isPostHistoryAuthoredKind } from "../postHistoryKinds";
+import { isPostHistoryAuthoredKind, POST_HISTORY_AUTHORED_KINDS } from "../postHistoryKinds";
 import { createRepostTargetSnapshot, getRepostReference, isRepostOuterKind } from "../postRepostUtils";
 import {
     cloneNostrEvent,
@@ -879,26 +879,33 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     async countForPubkey(pubkeyHex: string | null | undefined): Promise<number> {
         if (!pubkeyHex) return 0;
 
-        return this.db.postHistory
-            .where("pubkeyHex")
-            .equals(pubkeyHex)
-            .filter(isSupportedPost)
-            .count();
+        return this.countAuthoredPosts(pubkeyHex, null);
     }
 
     async countVisibleForPubkey(pubkeyHex: string | null | undefined, visibleUntil?: number | null): Promise<number> {
         if (!pubkeyHex) return 0;
 
-        const normalizedVisibleUntil = normalizeVisibleUntil(visibleUntil);
-        if (normalizedVisibleUntil === null) {
-            return this.countForPubkey(pubkeyHex);
-        }
+        return this.countAuthoredPosts(pubkeyHex, normalizeVisibleUntil(visibleUntil));
+    }
 
-        return this.db.postHistory
-            .where("[pubkeyHex+createdAt]")
-            .between([pubkeyHex, normalizedVisibleUntil], [pubkeyHex, Dexie.maxKey])
-            .filter(isSupportedPost)
-            .count();
+    private async countAuthoredPosts(pubkeyHex: string, visibleUntil: number | null): Promise<number> {
+        const posts = this.db.postHistory;
+        return this.db.transaction("r", posts, async () => {
+            const [total, ...authoredCounts] = await Promise.all([
+                posts.count(),
+                ...POST_HISTORY_AUTHORED_KINDS.map((kind) => posts.where("kind").equals(kind).count()),
+            ]);
+            const candidates = visibleUntil === null
+                ? posts.where("pubkeyHex").equals(pubkeyHex)
+                : posts.where("[pubkeyHex+createdAt]")
+                    .between([pubkeyHex, visibleUntil], [pubkeyHex, Dexie.maxKey]);
+
+            // The kind index omits rows without an indexable kind. Compare with
+            // the store count in the same snapshot before skipping the filter.
+            return authoredCounts.reduce((sum, count) => sum + count, 0) === total
+                ? candidates.count()
+                : candidates.filter(isSupportedPost).count();
+        });
     }
 
     async putPostedEvent(input: PostHistorySaveInput): Promise<void> {
