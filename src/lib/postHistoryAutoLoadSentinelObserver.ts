@@ -8,6 +8,9 @@
  */
 export type PostHistoryAutoLoadDirection = "older" | "newer";
 
+const PREFETCH_VIEWPORTS = 2;
+const OLDER_SCROLL_PREFETCH_VIEWPORTS = 5;
+
 export interface PostHistoryAutoLoadSentinelObserverContext {
     root: HTMLElement;
     sentinel: HTMLElement;
@@ -50,17 +53,19 @@ export function isPostHistoryAutoLoadSentinelInPrefetchRegion(input: {
     rootRect: Pick<DOMRect, "left" | "right" | "top" | "bottom">;
     sentinelRect: Pick<DOMRect, "left" | "right" | "top" | "bottom">;
     rootHeight: number;
+    prefetchViewports?: number;
 }): boolean {
     const { rootRect, sentinelRect, rootHeight } = input;
+    const prefetchDistance = rootHeight * (input.prefetchViewports ?? PREFETCH_VIEWPORTS);
     const overlapsHorizontally = sentinelRect.left < rootRect.right
         && sentinelRect.right > rootRect.left;
     if (input.direction === "older") {
         return overlapsHorizontally
-            && sentinelRect.top <= rootRect.bottom + rootHeight * 2
+            && sentinelRect.top <= rootRect.bottom + prefetchDistance
             && sentinelRect.bottom >= rootRect.top;
     }
     return overlapsHorizontally
-        && sentinelRect.bottom >= rootRect.top - rootHeight * 2
+        && sentinelRect.bottom >= rootRect.top - prefetchDistance
         && sentinelRect.top <= rootRect.bottom;
 }
 
@@ -69,8 +74,8 @@ export function buildPostHistoryAutoLoadRootMargin(
     rootHeight: number,
 ): string {
     return direction === "older"
-        ? `0px 0px ${rootHeight * 2}px 0px`
-        : `${rootHeight * 2}px 0px 0px 0px`;
+        ? `0px 0px ${rootHeight * PREFETCH_VIEWPORTS}px 0px`
+        : `${rootHeight * PREFETCH_VIEWPORTS}px 0px 0px 0px`;
 }
 
 export function observePostHistoryAutoLoadSentinel(
@@ -88,11 +93,12 @@ export function observePostHistoryAutoLoadSentinel(
     let hasPendingApproach = false;
     let lastScrollTop = root.scrollTop;
 
-    const isSentinelInPrefetchRegion = () => isPostHistoryAutoLoadSentinelInPrefetchRegion({
+    const isSentinelInPrefetchRegion = (prefetchViewports?: number) => isPostHistoryAutoLoadSentinelInPrefetchRegion({
         direction,
         rootRect: root.getBoundingClientRect(),
         sentinelRect: sentinel.getBoundingClientRect(),
         rootHeight,
+        prefetchViewports,
     });
 
     const recordExit = () => {
@@ -179,7 +185,12 @@ export function observePostHistoryAutoLoadSentinel(
         const movedToward = movedTowardTarget(scrollTop);
         lastScrollTop = scrollTop;
 
-        if (!isSentinelInPrefetchRegion()) {
+        // Only downward scrolling gets the longer lead. Observer callbacks and
+        // rearming after a commit still use the usual two-viewport region.
+        const prefetchViewports = direction === "older" && movedToward
+            ? OLDER_SCROLL_PREFETCH_VIEWPORTS
+            : PREFETCH_VIEWPORTS;
+        if (!isSentinelInPrefetchRegion(prefetchViewports)) {
             recordExit();
             return;
         }

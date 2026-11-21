@@ -609,7 +609,7 @@ async function scrollHistoryNearBottom(page: Page) {
         const remaining = Math.max(
             1,
             Math.min(
-                container.clientHeight * 2 - 24,
+                container.clientHeight * 3,
                 container.scrollHeight - container.clientHeight,
             ),
         );
@@ -667,7 +667,7 @@ async function scrollHistoryAwayFromBottom(page: Page) {
     await page.locator('.post-history-container').evaluate((element) => {
         const container = element as HTMLDivElement;
         const remaining = Math.min(
-            container.clientHeight * 3 + 64,
+            container.clientHeight * 6,
             container.scrollHeight - container.clientHeight,
         );
         container.scrollTop = container.scrollHeight - container.clientHeight - remaining;
@@ -1013,11 +1013,12 @@ function expectPreviewSettledOnFirstRenderedFrame(
 function expectPostPositionStableAcrossFrames(
     frameSamples: Awaited<ReturnType<typeof startPostPositionFrameSampling>['samples']>,
     anchor: { offsetTop: number },
-    options: { topSlotHeights?: number[] } = {},
+    options: { topSlotHeights?: number[]; initialSpinnerVisible?: boolean } = {},
 ) {
     const expectedTopSlotHeights = options.topSlotHeights ?? [24];
     expect(frameSamples.length).toBeGreaterThanOrEqual(25);
-    expect(frameSamples[0].topSpinnerVisible || frameSamples[0].bottomSpinnerVisible).toBe(true);
+    expect(frameSamples[0].topSpinnerVisible || frameSamples[0].bottomSpinnerVisible)
+        .toBe(options.initialSpinnerVisible ?? true);
     expect(frameSamples.at(-1)?.topSpinnerVisible || frameSamples.at(-1)?.bottomSpinnerVisible).toBe(false);
 
     for (const sample of frameSamples) {
@@ -2192,10 +2193,14 @@ test.describe('PostHistoryDialog Playwright', () => {
         await scrollHistoryAwayFromBottom(page);
         await waitForIntersectionObserverSettle(page);
         await waitForHistoryContainerHeightToSettle(page);
+        await armScrollLoadGate(page, 'older');
         const olderApproach = await scrollHistoryNearBottom(page);
-        expect(olderApproach.remaining).toBeGreaterThan(1);
-        expect(olderApproach.remaining).toBeLessThan(olderApproach.clientHeight * 2);
-        expect(olderApproach.remaining).toBeGreaterThan(olderApproach.clientHeight);
+        expect(olderApproach.remaining).toBeGreaterThan(olderApproach.clientHeight * 2);
+        expect(olderApproach.remaining).toBeLessThan(olderApproach.clientHeight * 5);
+        await waitForScrollLoadGate(page);
+        await expect(page.locator('.post-history-container')).toHaveAttribute('aria-busy', 'true');
+        await expect(page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel) .inline-spinner')).toHaveCount(0);
+        await releaseScrollLoadGate(page);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
         await waitForAutoLoadIdle(page, 'older');
         await waitForIntersectionObserverSettle(page);
@@ -2273,6 +2278,7 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         await scrollHistoryToTop(page);
         await waitForIntersectionObserverSettle(page);
+        await expect(page.locator('.post-history-container')).toHaveAttribute('aria-busy', 'true');
         const userSelectedAnchor = await getFirstVisiblePostSnapshot(page);
         expect(userSelectedAnchor).not.toBeNull();
         expect(userSelectedAnchor!.eventId).toBe(windowBeforeDeferredLoad[0]);
@@ -2288,6 +2294,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         const frameSamples = await frameSampling.samples;
         expectPostPositionStableAcrossFrames(frameSamples, userSelectedAnchor!, {
             topSlotHeights: [0],
+            initialSpinnerVisible: false,
         });
         expect(frameSamples.every((sample) => Number.isFinite(sample.scrollTop))).toBe(true);
         expect(frameSamples.every((sample) => Number.isFinite(sample.scrollHeight))).toBe(true);
@@ -2497,6 +2504,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel) .inline-spinner')).toBeVisible();
         await scrollPostIntoViewByEventId(page, expectedEventIds[100]);
         await waitForIntersectionObserverSettle(page);
+        await expect(page.locator('.post-history-container')).toHaveAttribute('aria-busy', 'true');
         await expect(page.locator('.post-history-auto-load-newer-slot'))
             .toHaveCSS('height', '0px');
 
@@ -2531,6 +2539,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         );
         expectPostPositionStableAcrossFrames(frameSamples, userSelectedAnchor!, {
             topSlotHeights: [0, 24],
+            initialSpinnerVisible: false,
         });
         expectPreviewSettledOnFirstRenderedFrame(frameSamples, expectedEventIds[150]);
         await expectVisiblePostCount(page, 150);

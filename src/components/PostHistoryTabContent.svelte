@@ -548,6 +548,8 @@
     let historyContainer = $state<HTMLDivElement | null>(null);
     let autoLoadOlderSentinel = $state<HTMLDivElement | null>(null);
     let isAutoLoadingOlder = $state(false);
+    let showOlderAutoLoadSpinner = $state(false);
+    const OLDER_AUTO_LOAD_SPINNER_DELAY_MS = 150;
     let isAutoLoadingNewer = $state(false);
     let autoLoadOlderAwaitingExit = false;
     let autoLoadNewerAwaitingExit = false;
@@ -1032,6 +1034,21 @@
 
     const autoLoadRootSize = usePostHistoryAutoLoadRootHeight({
         getRoot: () => historyContainer,
+    });
+
+    $effect(() => {
+        if (!show || !autoLoadOlderSentinel || !isAutoLoadingOlder
+            || !historyViewport.isHistoryScrolledToBottom || history.syncStatus === "syncing") {
+            return;
+        }
+        const owned = captureOperation();
+        const timer = setTimeout(() => {
+            if (owned()) showOlderAutoLoadSpinner = true;
+        }, OLDER_AUTO_LOAD_SPINNER_DELAY_MS);
+        return () => {
+            clearTimeout(timer);
+            showOlderAutoLoadSpinner = false;
+        };
     });
 
     $effect(() => {
@@ -2833,7 +2850,7 @@
                             bind:this={autoLoadOlderSentinel}
                             class="post-history-auto-load-sentinel"
                         >
-                            {#if isAutoLoadingOlder && history.syncStatus !== "syncing"}
+                            {#if showOlderAutoLoadSpinner && isAutoLoadingOlder && history.syncStatus !== "syncing"}
                                 <LoadingPlaceholder
                                     variant="spinner"
                                     showLoader={true}
