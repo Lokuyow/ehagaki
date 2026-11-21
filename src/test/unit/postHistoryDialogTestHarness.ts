@@ -59,7 +59,6 @@ const hoisted = vi.hoisted(() => {
             'postHistory.savedOlderPostsShowing': '保存済みの古い投稿を表示中です。',
             'postHistory.savedOlderPostsGapNotice': '最近の投稿との間に未取得の期間がある可能性があります。',
             'postHistory.repair': '表示中の投稿付近を再取得',
-            'postHistory.repairing': '再取得中...',
             'postHistory.empty': '投稿履歴はありません',
             'postHistory.syncing': 'リレーと同期中...',
             'postHistory.synced': 'リレーとの同期が完了しました',

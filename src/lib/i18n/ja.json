@@ -306,7 +306,6 @@
     "synced": "同期完了",
     "syncFailed": "リレーから取得できませんでした",
     "repair": "表示中の投稿付近を再取得",
-    "repairing": "再取得中...",
     "repairAdded": "{count}件追加",
     "repairChildInteractionsAdded": "子インタラクションを{count}件補完",
     "repairNoChanges": "追加なし",

@@ -75,7 +75,7 @@ describe('PostHistoryDialog', () => {
         cleanupPostHistoryDialogHarness();
     });
 
-    it('[repair-disabled] 再取得中はヘッダーにスピナーを表示してボタンを無効にする', async () => {
+    it('[repair-disabled] 再取得中はボタンにスピナーを表示し、完了後に結果トーストを表示する', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
             createRecord({ eventId: 'repair-disabled-page', content: '一覧の投稿' }),
@@ -135,19 +135,11 @@ describe('PostHistoryDialog', () => {
         await activateButton(repairButton);
 
         await waitFor(() => {
-            expect(screen.getByText('再取得中...')).toBeTruthy();
+            expect(repairButton.getAttribute('aria-busy')).toBe('true');
         });
 
-        const statusToast = document.querySelector('.floating-message.anchor-bottom-right[role="status"]');
-        expect(statusToast?.textContent).toContain('再取得中...');
-        expect(statusToast?.querySelector('.info-icon')).toBeNull();
-        expect(statusToast?.querySelector('.status-loading-placeholder .loader-container')).toBeTruthy();
-        expect(statusToast?.querySelector('.post-history-heading-status-placeholder')).toBeTruthy();
-        expect(statusToast?.closest('.post-history-heading')).toBeNull();
-        expect(document.querySelector('.post-history-heading .status-loading-placeholder')).toBeNull();
-
+        expect(document.querySelector('.post-history-heading-status-placeholder')).toBeNull();
         expect(repairButton.hasAttribute('disabled')).toBe(true);
-        expect(repairButton.getAttribute('aria-busy')).toBe('true');
         expect(repairButton.querySelector('.inline-spinner')).toBeTruthy();
         expect(repairButton.querySelector('.repair-icon')).toBeNull();
 
@@ -165,6 +157,8 @@ describe('PostHistoryDialog', () => {
             expect(repairButton.hasAttribute('disabled')).toBe(false);
             expect(repairButton.querySelector('.repair-icon')).toBeTruthy();
             expect(repairButton.querySelector('.inline-spinner')).toBeNull();
+            expect(document.querySelector('.floating-message[role="status"] .post-history-heading-status-placeholder')
+                ?.textContent).toContain('1件追加');
         });
     });
 

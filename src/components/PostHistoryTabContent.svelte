@@ -720,8 +720,9 @@
         return nextContent;
     });
     let headingStatusMessageKey = $derived(
-        history.currentViewRefetchStatusMessageKey ??
-            history.syncStatusMessageKey,
+        history.isRefetchingAroundCurrentView
+            ? null
+            : history.currentViewRefetchStatusMessageKey ?? history.syncStatusMessageKey,
     );
     let headingStatusMessageValues = $derived(
         history.currentViewRefetchStatusMessageKey
