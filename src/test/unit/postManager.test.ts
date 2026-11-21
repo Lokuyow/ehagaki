@@ -1477,14 +1477,19 @@ describe('PostManager統合テスト', () => {
     });
 
     it.each([
-        { mode: 'reply', sensitive: false },
-        { mode: 'reply', sensitive: true },
-        { mode: 'quote', sensitive: false },
-    ] as const)('targets the selected kind 7 in a $mode (Sensitive: $sensitive)', async ({ mode, sensitive }) => {
+        { kind: 7, mode: 'reply', sensitive: false },
+        { kind: 7, mode: 'reply', sensitive: true },
+        { kind: 7, mode: 'quote', sensitive: false },
+        { kind: 6, mode: 'reply', sensitive: false },
+        { kind: 6, mode: 'quote', sensitive: false },
+        { kind: 16, mode: 'reply', sensitive: true },
+        { kind: 16, mode: 'quote', sensitive: false },
+    ] as const)('targets the selected kind $kind in a $mode (Sensitive: $sensitive)', async ({ kind, mode, sensitive }) => {
         const originalId = 'a'.repeat(64);
         const originalAuthor = 'b'.repeat(64);
-        const parent = finalizeEvent({ kind: 7, content: '+', created_at: 100,
-            tags: [['e', originalId], ['p', originalAuthor], ['k', '1']] }, generateSecretKey());
+        const parent = finalizeEvent({ kind, content: kind === 7 ? '+' : '', created_at: 100, tags: [
+            ['e', originalId], ['p', originalAuthor], ...(kind === 6 ? [] : [['k', kind === 16 ? '42' : '1']]),
+        ] }, generateSecretKey());
         const reference = {
             mode, eventId: parent.id, authorPubkey: parent.pubkey,
             relayHints: ['wss://parent.example.com/'], referencedEvent: parent,
@@ -1505,14 +1510,14 @@ describe('PostManager統合テスト', () => {
             return { unsubscribe: vi.fn() };
         } } as any);
         manager = new PostManager(mockRxNostr, mockDeps);
-        expect((await manager.submitPost('Response to reaction')).success).toBe(true);
+        expect((await manager.submitPost('Response to selected event')).success).toBe(true);
         const events = vi.mocked(mockRxNostr.send).mock.calls.map(([event]) => event as any);
         const published = events.at(-1);
         expect(published.kind).toBe(mode === 'reply' ? 1111 : 1);
         if (mode === 'reply') {
             expect(published.tags.filter((tag: string[]) => ['E', 'K', 'P', 'e', 'k', 'p'].includes(tag[0]))).toEqual([
-                ['E', parent.id, 'wss://parent.example.com/', parent.pubkey], ['K', '7'], ['P', parent.pubkey],
-                ['e', parent.id, 'wss://parent.example.com/', parent.pubkey], ['k', '7'], ['p', parent.pubkey],
+                ['E', parent.id, 'wss://parent.example.com/', parent.pubkey], ['K', String(kind)], ['P', parent.pubkey],
+                ['e', parent.id, 'wss://parent.example.com/', parent.pubkey], ['k', String(kind)], ['p', parent.pubkey],
             ]);
         } else {
             expect(published.tags.filter((tag: string[]) => ['e', 'q', 'p'].includes(tag[0]))).toEqual([
@@ -1523,12 +1528,12 @@ describe('PostManager統合テスト', () => {
         expect(published.tags.flat()).not.toContain(originalAuthor);
         if (sensitive) {
             expect(events).toHaveLength(2);
-            expect(events[0]).toMatchObject({ kind: 36, content: 'Response to reaction', tags: [['k', '1111']] });
+            expect(events[0]).toMatchObject({ kind: 36, content: 'Response to selected event', tags: [['k', '1111']] });
             expect(published.content).toBe('');
             expect(published.tags).toContainEqual(['c', events[0].id, 'wss://relay1.example.com/']);
         } else {
             expect(events).toHaveLength(1);
-            expect(published.content).toContain('Response to reaction');
+            expect(published.content).toContain('Response to selected event');
         }
     });
 

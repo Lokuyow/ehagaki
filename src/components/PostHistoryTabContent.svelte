@@ -3159,6 +3159,8 @@
 {#snippet repostRecordMenu(record: PostHistoryRecord, menuKey: string)}
     <PostEventMenu open={postActionUi.isPostMenuOpen(menuKey)} onOpenChange={(open) => setExclusivePostMenuOpen(menuKey, open)} post={record} owner={pubkeyHex} {rxNostr} {relayConfig} operations={eventOperations} active={() => show && !destroyed}
         triggerLabel={$_(isRepostOuterKind(record.kind) ? "repost.outerActions" : "repost.targetActions")} onDelete={() => openDeleteConfirm(record)} onRequestRepost={() => void handleRepost(record)} onRefresh={() => postHistoryThreadGraph.refreshRelatedEvents(record)}
+        onBroadcastPointerDown={(event) => captureBroadcastPointerPosition(record, event)}
+        onBroadcastPost={(event) => void handleBroadcastPost(record, event)}
         onRepost={onRepostPost} {repostPending} />
 {/snippet}
 
