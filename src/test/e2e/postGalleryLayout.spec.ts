@@ -98,6 +98,47 @@ test.describe('post gallery layout', () => {
         });
     });
 
+    test('keeps responsive dimensions while reordering and deleting gallery items', async ({ page }) => {
+        await page.setViewportSize({ width: 900, height: 800 });
+        await page.goto('/ehagaki/');
+        await expect(page.locator('.tiptap-editor')).toBeVisible();
+        const welcome = page.locator('.welcome-dialog');
+        if (await welcome.isVisible()) await welcome.getByRole('button', { name: 'はじめる' }).click();
+
+        await page.evaluate(async () => {
+            const loadModule = (path: string) => import(/* @vite-ignore */ path);
+            const [settings, gallery] = await Promise.all([
+                loadModule('/ehagaki/src/stores/settingsStore.svelte.ts'),
+                loadModule('/ehagaki/src/stores/mediaGalleryStore.svelte.ts'),
+            ]);
+            settings.settingsStore.mediaFreePlacement = false;
+            const src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+            for (const alt of ['first image', 'second image']) {
+                gallery.mediaGalleryStore.addItem({ id: alt, type: 'image', src, alt, isPlaceholder: false });
+            }
+        });
+
+        const gallery = page.locator('.media-gallery');
+        const cards = gallery.locator('.gallery-item');
+        await expect(gallery).toHaveCSS('height', '320px');
+        await expect(cards.first().locator('img')).toHaveCSS('width', '280px');
+
+        const lastCard = await cards.last().boundingBox();
+        if (!lastCard) throw new Error('Second media card is missing');
+        await cards.first().dragTo(cards.last(), {
+            sourcePosition: { x: 24, y: 24 },
+            targetPosition: { x: lastCard.width - 24, y: 24 },
+        });
+        await expect(cards.first().locator('img')).toHaveAttribute('alt', 'second image');
+        await cards.first().locator('.media-delete-btn').click();
+        await expect(cards).toHaveCount(1);
+        await expect(cards.first().locator('img')).toHaveAttribute('alt', 'first image');
+
+        await page.setViewportSize({ width: 360, height: 800 });
+        await expect(gallery).toHaveCSS('height', '180px');
+        await expect(cards.first().locator('img')).toHaveCSS('width', '160px');
+    });
+
     test('restores editor height immediately after gallery clear in the normal app', async ({ page }) => {
         await page.setViewportSize({ width: 900, height: 1600 });
         await page.goto('/ehagaki/');

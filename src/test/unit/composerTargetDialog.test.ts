@@ -453,6 +453,15 @@ describe("ComposerTargetDialog", () => {
         expect(screen.getByText("Related body")).toBeTruthy();
     });
     it("preserves the related post's CW gate and shared media/emoji rendering", async () => {
+        const observe = vi.fn();
+        let onIntersection: IntersectionObserverCallback | undefined;
+        vi.stubGlobal("IntersectionObserver", class {
+            constructor(callback: IntersectionObserverCallback) {
+                onIntersection = callback;
+            }
+            observe = observe;
+            disconnect = vi.fn();
+        });
         const related = signInteraction(1, "CW related body https://example.com/related.jpg :party:",
             [["content-warning", "Related warning"], ["emoji", "party", "https://example.com/related-party.png"]]);
         const outer = signInteraction(6, "", [["e", related.id], ["p", related.pubkey]]);
@@ -463,9 +472,14 @@ describe("ComposerTargetDialog", () => {
         expect(card.textContent).toContain("Related warning");
         expect(card.textContent).not.toContain("CW related body");
         expect(card.querySelector('img[src="https://example.com/related.jpg"]')).toBeNull();
+        expect(observe).not.toHaveBeenCalled();
         await fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "postContent.showContentWarningBody" }));
         await vi.advanceTimersByTimeAsync(0);
         expect(card.textContent).toContain("CW related body");
+        expect(observe).toHaveBeenCalledWith(card.querySelector(".post-history-image-cell"));
+        expect(card.querySelector('img[src="https://example.com/related.jpg"]')).toBeNull();
+        onIntersection?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+        await vi.advanceTimersByTimeAsync(0);
         expect(card.querySelector('img[src="https://example.com/related.jpg"]')).toBeTruthy();
         expect(card.querySelector('img[src="https://example.com/related-party.png"]')).toBeTruthy();
     });
@@ -620,6 +634,7 @@ describe("ComposerTargetDialog", () => {
     afterEach(() => {
         vi.useRealTimers();
         vi.restoreAllMocks();
+        vi.unstubAllGlobals();
     });
 
     it("入力値が空のときクリアボタンを表示しない", () => {
@@ -1047,7 +1062,7 @@ describe("ComposerTargetDialog", () => {
             .toBeLessThanOrEqual(2_000);
         expect(document.querySelectorAll(".post-history-image-cell"))
             .toHaveLength(1);
-        expect(document.querySelector(".post-history-image-grid"))
+        expect(document.querySelector(".media-gallery-preview"))
             .toBeTruthy();
     });
 

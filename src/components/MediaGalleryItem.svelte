@@ -129,7 +129,7 @@
     ondragover={handleDragOverEvent}
     ondrop={handleDropEvent}
     ondragend={() => onDragEnd()}
-    role="listitem"
+    role="group"
 >
     <!-- メディア表示エリア -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -260,7 +260,7 @@
     .gallery-item {
         display: inline-flex;
         flex-shrink: 0;
-        height: var(--post-gallery-item-height, 180px);
+        height: var(--media-gallery-item-height, 180px);
         overflow: visible;
         transition:
             transform 0.15s ease,
@@ -296,7 +296,7 @@
     .gallery-image,
     .is-placeholder .gallery-item-media {
         min-width: 100px;
-        max-width: var(--post-gallery-media-max-width, 180px);
+        max-width: var(--media-gallery-max-width, 180px);
     }
 
     .is-placeholder .gallery-item-media {
@@ -304,7 +304,7 @@
     }
 
     .is-placeholder .gallery-item-media:not(.has-placeholder-dimensions) {
-        width: var(--post-gallery-media-max-width, 180px);
+        width: var(--media-gallery-max-width, 180px);
     }
 
     .gallery-image {
@@ -316,7 +316,7 @@
     }
 
     .video-wrapper {
-        width: var(--post-gallery-media-max-width, 180px);
+        width: var(--media-gallery-max-width, 180px);
         height: 100%;
     }
 

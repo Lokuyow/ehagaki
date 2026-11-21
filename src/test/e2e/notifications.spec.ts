@@ -437,7 +437,11 @@ test('notification headers omit labels and times and identify reposts and replie
     await expect(page.locator('.notification-btn')).toBeFocused();
 });
 
-test('notification images are compact and can be expanded independently', async ({ page }, info) => {
+test('notification gallery reaches every image and loads offscreen images when scrolled', async ({ page }, info) => {
+    const requested: string[] = [];
+    page.on('request', request => {
+        if (request.url().startsWith('https://profiles.example/article-')) requested.push(request.url());
+    });
     await page.setViewportSize({ width: 360, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1');
     await expect(page.locator('.notification-btn')).toBeVisible();
@@ -446,19 +450,18 @@ test('notification images are compact and can be expanded independently', async 
     const dialog = page.getByRole('dialog');
     const article = dialog.locator('.notification-entry').filter({ hasText: 'MANY-ARTICLE-IMAGES' });
     const note = dialog.locator('.notification-entry').filter({ hasText: 'MANY-NOTE-IMAGES' });
-    await expect(article.locator('.post-history-image-cell')).toHaveCount(3);
-    await expect(note.locator('.post-history-image-cell')).toHaveCount(3);
-    const toggle = article.getByRole('button', { name: '画像をすべて表示（8枚）' });
-    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await toggle.click();
-    await expect(article.locator('.post-history-image-cell')).toHaveCount(8);
-    await expect(note.locator('.post-history-image-cell')).toHaveCount(3);
-    const hide = article.getByRole('button', { name: '画像を収納' });
-    await expect(hide).toHaveAttribute('aria-expanded', 'true');
-    await hide.focus();
-    await page.keyboard.press('Enter');
-    await expect(article.locator('.post-history-image-cell')).toHaveCount(3);
-    await expect(article.getByRole('button', { name: '画像をすべて表示（8枚）' })).toBeFocused();
+    const gallery = article.locator('.media-gallery-preview');
+    await expect(gallery.locator('.post-history-image-cell')).toHaveCount(8);
+    await expect(note.locator('.post-history-image-cell')).toHaveCount(5);
+    await expect(gallery).toHaveCSS('height', '180px');
+    await expect(gallery.locator('.post-history-image-cell').first()).toHaveCSS('width', '160px');
+    await gallery.scrollIntoViewIfNeeded();
+    await expect(gallery.locator('.post-history-media-surface').first()).toBeVisible();
+    expect(requested.some(url => url.endsWith('/article-7.png'))).toBe(false);
+    await gallery.evaluate(element => { element.scrollLeft = element.scrollWidth; });
+    await expect(gallery.locator('.post-history-image-cell').last().locator('img')).toBeInViewport();
+    expect(requested.some(url => url.endsWith('/article-7.png'))).toBe(true);
+    await gallery.evaluate(element => { element.scrollLeft = 0; });
     await expect(note.getByRole('button', { name: 'リプライ' })).toBeVisible();
     expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath('notification-images-360.png') });
@@ -469,6 +472,16 @@ test('notification images are compact and can be expanded independently', async 
     await expect(viewer.locator('.pswp__counter')).toHaveText('2 / 8');
     await page.keyboard.press('Escape');
     await expect(viewer).toHaveCount(0);
+
+    for (const [width, galleryHeight, imageWidth] of [
+        [460, '250px', '220px'],
+        [560, '320px', '280px'],
+        [900, '320px', '280px'],
+    ] as const) {
+        await page.setViewportSize({ width, height: 844 });
+        await expect(gallery).toHaveCSS('height', galleryHeight);
+        await expect(gallery.locator('.post-history-image-cell').first()).toHaveCSS('width', imageWidth);
+    }
 });
 
 test('image controls fit inside a 280px embedded notification dialog', async ({ page }) => {
@@ -480,12 +493,12 @@ test('image controls fit inside a 280px embedded notification dialog', async ({ 
     await frame.locator('.notification-btn').click();
     const dialog = frame.getByRole('dialog');
     const article = dialog.locator('.notification-entry').filter({ hasText: 'MANY-ARTICLE-IMAGES' });
-    await expect(article.locator('.post-history-image-cell')).toHaveCount(3);
-    await article.getByRole('button', { name: '画像をすべて表示（8枚）' }).click();
-    await expect(article.locator('.post-history-image-cell')).toHaveCount(8);
-    expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
-    await article.getByRole('button', { name: '画像を収納' }).click();
-    await expect(article.locator('.post-history-image-cell')).toHaveCount(3);
+    const gallery = article.locator('.media-gallery-preview');
+    await expect(gallery.locator('.post-history-image-cell')).toHaveCount(8);
+    await expect(gallery).toHaveCSS('height', '180px');
+    await gallery.scrollIntoViewIfNeeded();
+    await gallery.evaluate(element => { element.scrollLeft = element.scrollWidth; });
+    await expect(gallery.locator('.post-history-image-cell').last().locator('img')).toBeInViewport();
     expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
 });
 
@@ -1091,7 +1104,7 @@ for (const width of [360, 280]) test(`stages cached notification cards and retai
         .filter({ hasText: 'Performance target 0' });
     await expect(target).toContainText('Performance target 0');
     await target.getByRole('button', { name: 'もっと見る', exact: true }).click();
-    await target.getByRole('button', { name: /画像をすべて表示/ }).click();
+    await expect(target.locator('.media-gallery-preview .media-gallery-cell')).toHaveCount(8);
     await target.evaluate(node => { node.dataset.retained = 'yes'; });
     await expect(dialog.getByRole('button', { name: 'もっと読み込む', exact: true })).toHaveCount(0);
     const activity = await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').performanceActivity());
@@ -1100,7 +1113,7 @@ for (const width of [360, 280]) test(`stages cached notification cards and retai
     await dialog.locator('.notification-render-sentinel').scrollIntoViewIfNeeded();
     await expect(dialog.locator('.notification-entry')).toHaveCount(20);
     await expect(target).toHaveAttribute('data-retained', 'yes');
-    await expect(target.getByRole('button', { name: '画像を収納', exact: true })).toBeAttached();
+    await expect(target.locator('.media-gallery-preview .media-gallery-cell')).toHaveCount(8);
     await renderThrough(dialog, 100);
     const more = dialog.getByRole('button', { name: 'もっと読み込む', exact: true });
     await expect(more).toBeVisible();

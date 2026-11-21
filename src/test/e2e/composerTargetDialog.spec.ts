@@ -776,13 +776,11 @@ test.describe("composer target dialog fixture", () => {
         await expect(previewContent).toBeVisible();
         expect(await previewContent.textContent()).toHaveLength(2_000);
 
-        const rows = page.locator(".post-history-image-row");
-        await expect(rows).toHaveCount(2);
-        await expect(rows.nth(0).locator(".post-history-image-cell"))
-            .toHaveCount(2);
-        await expect(rows.nth(1).locator(".post-history-image-cell"))
-            .toHaveCount(2);
-        await expect(page.locator(".post-history-video-card")).toHaveCount(1);
+        const gallery = page.locator(".media-gallery-preview");
+        await expect(gallery).toHaveCount(1);
+        await expect(gallery.locator(".media-gallery-cell")).toHaveCount(5);
+        await expect(gallery.locator(".post-history-image-cell")).toHaveCount(4);
+        await expect(gallery.locator(".post-history-video-media-frame")).toHaveCount(1);
         await expect(page.locator("video[autoplay]")).toHaveCount(0);
 
         const toggleRow = page.locator(".post-preview-toggle-row");

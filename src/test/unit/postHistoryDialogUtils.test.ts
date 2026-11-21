@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-    buildPostHistoryImageGridRows,
     buildPostHistoryMediaLayout,
     buildPostHistoryFullscreenMediaItems,
     buildPreview,
@@ -460,98 +459,6 @@ describe("postHistoryDialogUtils", () => {
                 kind: "video",
             },
         ]);
-    });
-
-    it("buildPostHistoryImageGridRows keeps 5-image second row full width", () => {
-        const images = resolvePostHistoryMedia([
-            { url: "https://example.com/1.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/2.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/3.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/4.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/5.jpg", mimeType: "image/jpeg" },
-        ]);
-
-        expect(
-            buildPostHistoryImageGridRows(images).map((row) => ({
-                itemCount: row.items.length,
-                slotCount: row.slotCount,
-            })),
-        ).toEqual([
-            { itemCount: 3, slotCount: 3 },
-            { itemCount: 2, slotCount: 2 },
-        ]);
-    });
-
-    it("buildPostHistoryImageGridRows keeps 7-8 image final rows at thumbnail width", () => {
-        const sevenImages = resolvePostHistoryMedia([
-            { url: "https://example.com/1.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/2.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/3.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/4.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/5.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/6.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/7.jpg", mimeType: "image/jpeg" },
-        ]);
-        const eightImages = resolvePostHistoryMedia([
-            { url: "https://example.com/1.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/2.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/3.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/4.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/5.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/6.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/7.jpg", mimeType: "image/jpeg" },
-            { url: "https://example.com/8.jpg", mimeType: "image/jpeg" },
-        ]);
-
-        expect(
-            buildPostHistoryImageGridRows(sevenImages).map((row) => ({
-                itemCount: row.items.length,
-                slotCount: row.slotCount,
-            })),
-        ).toEqual([
-            { itemCount: 3, slotCount: 3 },
-            { itemCount: 3, slotCount: 3 },
-            { itemCount: 1, slotCount: 3 },
-        ]);
-        expect(
-            buildPostHistoryImageGridRows(eightImages).map((row) => ({
-                itemCount: row.items.length,
-                slotCount: row.slotCount,
-            })),
-        ).toEqual([
-            { itemCount: 3, slotCount: 3 },
-            { itemCount: 3, slotCount: 3 },
-            { itemCount: 2, slotCount: 3 },
-        ]);
-    });
-
-    it("buildPostHistoryImageGridRows preserves the established 1-10 image row contract", () => {
-        const expected = new Map<number, Array<{ itemCount: number; slotCount: number }>>([
-            [1, [{ itemCount: 1, slotCount: 1 }]],
-            [2, [{ itemCount: 2, slotCount: 2 }]],
-            [3, [{ itemCount: 3, slotCount: 3 }]],
-            [4, [{ itemCount: 2, slotCount: 2 }, { itemCount: 2, slotCount: 2 }]],
-            [5, [{ itemCount: 3, slotCount: 3 }, { itemCount: 2, slotCount: 2 }]],
-            [6, [{ itemCount: 3, slotCount: 3 }, { itemCount: 3, slotCount: 3 }]],
-            [9, [{ itemCount: 3, slotCount: 3 }, { itemCount: 3, slotCount: 3 }, { itemCount: 3, slotCount: 3 }]],
-            [10, [{ itemCount: 3, slotCount: 3 }, { itemCount: 3, slotCount: 3 }, { itemCount: 3, slotCount: 3 }, { itemCount: 1, slotCount: 3 }]],
-        ]);
-
-        for (const [count, expectedRows] of expected) {
-            const images = resolvePostHistoryMedia(
-                Array.from({ length: count }, (_, index) => ({
-                    url: `https://example.com/${index + 1}.jpg`,
-                    mimeType: "image/jpeg",
-                })),
-            );
-
-            expect(
-                buildPostHistoryImageGridRows(images).map((row) => ({
-                    itemCount: row.items.length,
-                    slotCount: row.slotCount,
-                })),
-            ).toEqual(expectedRows);
-        }
     });
 
     it("buildPostHistoryMediaLayout returns image-only fullscreen items", () => {

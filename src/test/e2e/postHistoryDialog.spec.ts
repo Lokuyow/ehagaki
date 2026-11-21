@@ -2560,6 +2560,40 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(Math.abs(retainedUserAnchor!.offsetTop - userSelectedAnchor!.offsetTop)).toBeLessThanOrEqual(1);
     });
 
+    test('horizontal touch scrolling in the post gallery keeps the posts tab active', async ({ browser, browserName }) => {
+        test.skip(browserName !== 'chromium', 'Native touch input uses the Chromium protocol.');
+        const context = await browser.newContext({
+            viewport: { width: 320, height: 760 },
+            isMobile: true,
+            hasTouch: true,
+            locale: 'ja-JP',
+            baseURL: test.info().project.use.baseURL,
+        });
+        try {
+            const page = await context.newPage();
+            await page.route('**/layout-stable-*', route => route.abort());
+            await gotoLayoutStabilityHarness(page);
+            const gallery = page.locator('.media-gallery-preview').first();
+            await gallery.scrollIntoViewIfNeeded();
+            await expect(gallery.locator('.media-gallery-cell')).toHaveCount(2);
+            await expect(gallery).toHaveCSS('height', '180px');
+            const box = await gallery.boundingBox();
+            if (!box) throw new Error('History gallery is missing');
+            const x = box.x + box.width - 50;
+            const y = box.y + 90;
+            const input = await context.newCDPSession(page);
+            await input.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+            for (const offset of [24, 48, 72, 96, 120]) {
+                await input.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x - offset, y }] });
+            }
+            await input.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            await expect.poll(() => gallery.evaluate(node => node.scrollLeft)).toBeGreaterThan(0);
+            await expect(page.locator('.history-tab-list [data-state="active"]')).toHaveText('ポスト');
+        } finally {
+            await context.close();
+        }
+    });
+
     test('非同期media・emoji・関連stateの解決前後で投稿寸法と可視位置を維持する', async ({ page }) => {
         const imageBody = '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
         const imageGate = await gateResponseRoute(page, '**/layout-stable-image.svg', async (route) =>
@@ -2654,7 +2688,7 @@ test.describe('PostHistoryDialog Playwright', () => {
                     }),
                     item: rect('.post-history-main'),
                     text: rect('.post-history-preview-text'),
-                    image: rect('.post-history-image-surface-frame'),
+                    image: rect('.post-history-image-cell'),
                     video: rect('.post-history-video-media-frame'),
                     footer: rect('.post-preview-footer'),
                     watchedPosts,

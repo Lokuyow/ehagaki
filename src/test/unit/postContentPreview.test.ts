@@ -35,6 +35,20 @@ describe("postContentPreview", () => {
         ]);
     });
 
+    it("orders gallery media by their first occurrence in the post before tag-only media", () => {
+        const image = "https://example.com/photo.jpg";
+        const video = "https://example.com/clip.mp4";
+        const tagOnly = "https://example.com/attachment.png";
+        const model = buildPostContentRenderModel({
+            sourceContent: `${video} ${image} ${video}`,
+            displayContent: "Short excerpt",
+            tags: [["imeta", `url ${image}`, "m image/jpeg"], ["imeta", `url ${tagOnly}`, "m image/png"]],
+        });
+
+        expect(model.mediaLayout.items.map(item => item.url)).toEqual([video, image, tagOnly]);
+        expect(model.mediaLayout.fullscreenMediaItems.map(item => item.src)).toEqual([image, tagOnly]);
+    });
+
     it("defaults displayContent to sourceContent", () => {
         const model = buildPostContentRenderModel({
             sourceContent: "before :party: after",
