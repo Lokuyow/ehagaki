@@ -89,6 +89,7 @@ export function hasRenderablePostHistoryPreviewContent(
         (segment) =>
             segment.type === "emoji" ||
             segment.type === "link" ||
+            segment.type === "mention" ||
             (segment.type === "text" && segment.text.trim().length > 0),
     );
 }

@@ -30,6 +30,7 @@ import { getClipboardUploadFiles, normalizeClipboardText, serializeParagraphs } 
 import { isValidProtocol } from '../utils/editorUrlUtils';
 import { normalizeEmojiShortcode } from '../customEmoji';
 import { cleanupExternalRichPasteLines } from './clipboardTextCleanup';
+import { PROFILE_MENTION_NODE, serializeProfileMentionText } from '../profileMention';
 
 // ================================================================================
 // 内部ヘルパー関数
@@ -72,7 +73,7 @@ function extractParagraphsFromSlice(slice: Slice): string[] {
         if (node.type.name === 'paragraph') {
             // 段落の内容をテキスト化（空の段落も空文字列として追加）
             let text = '';
-            node.content.forEach((child: PMNode) => {
+            node.content.forEach((child: PMNode, _offset, index) => {
                 if (child.isText) {
                     text += child.text || '';
                 } else if (child.type.name === 'customEmoji') {
@@ -80,6 +81,8 @@ function extractParagraphsFromSlice(slice: Slice): string[] {
                     if (shortcode) {
                         text += `:${shortcode}:`;
                     }
+                } else if (child.type.name === PROFILE_MENTION_NODE) {
+                    text += serializeProfileMentionText(child.attrs.uri, text, node.maybeChild(index + 1)?.text ?? '');
                 }
             });
             paragraphs.push(text);

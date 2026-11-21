@@ -75,6 +75,25 @@ afterEach(async () => {
 });
 
 describe("DexieProfilesRepository.upsertCandidate", () => {
+    it("backfills a NIP-05 claim from the same event and clears it when a newer profile removes it", async () => {
+        const db = createTestDb();
+        const repository = new DexieProfilesRepository(db);
+        await db.profiles.put(createRecord({
+            sourceEventId: LOWER_EVENT_ID, updatedAtFromEvent: 100, fetchedAt: 1_000,
+        }));
+
+        const backfill = await repository.upsertCandidate(PUBKEY, createCandidate({
+            profile: { nip05: "alice@example.com" },
+        }));
+        expect(backfill.decision).toBe("merged-same-event");
+        await expect(repository.get(PUBKEY)).resolves.toMatchObject({ nip05: "alice@example.com" });
+
+        await repository.upsertCandidate(PUBKEY, createCandidate({
+            sourceEventId: HIGHER_EVENT_ID, updatedAtFromEvent: 101, profile: { nip05: null },
+        }));
+        await expect(repository.get(PUBKEY)).resolves.toMatchObject({ nip05: null });
+    });
+
     it("inserts a first candidate and merges normalized profile and observed relays", async () => {
         const db = createTestDb();
         const repository = new DexieProfilesRepository(db, () => 2_000);

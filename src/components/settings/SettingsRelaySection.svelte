@@ -4,6 +4,7 @@
     import type { RelayConfig } from "../../lib/types";
     import { tryCopyToClipboard } from "../../lib/utils/clipboardUtils";
     import Button from "../Button.svelte";
+    import type { FollowListUpdateResult } from "../../lib/followListService.svelte";
 
     interface RelayListItem {
         url: string;
@@ -13,7 +14,7 @@
 
     interface Props {
         relayConfig: RelayConfig | null;
-        onRefreshRelaysAndProfile?: () => void;
+        onRefreshRelaysAndProfile?: () => void | Promise<FollowListUpdateResult | undefined>;
         hostRelayConfigActive?: boolean;
     }
 
@@ -44,6 +45,22 @@
     }
 
     let relayListItems = $derived(toRelayListItems(relayConfig));
+    let refreshing = $state(false);
+    let followListUnavailable = $state(false);
+    const refreshLabel = $derived($_(hostRelayConfigActive
+        ? "settingsDialog.refresh_profile_and_follows"
+        : "settingsDialog.refresh_relays_profile_and_follows"));
+
+    async function refreshNostrData(): Promise<void> {
+        if (refreshing) return;
+        refreshing = true;
+        followListUnavailable = false;
+        try {
+            followListUnavailable = await onRefreshRelaysAndProfile?.() === "unavailable";
+        } finally {
+            refreshing = false;
+        }
+    }
 
     async function handleCopyRelayUrl(url: string, event: MouseEvent): Promise<boolean> {
         event.stopPropagation();
@@ -60,10 +77,7 @@
                 aria-hidden="true"
             ></span>
             <span class="setting-label">
-                {hostRelayConfigActive
-                    ? ($_('settingsDialog.refresh_profile') || 'プロフィール再取得')
-                    : ($_('settingsDialog.refresh_relays_and_profile') ||
-                        'リレーリスト・プロフィール再取得')}
+                {refreshLabel}
             </span>
         </div>
         <div class="setting-control">
@@ -72,25 +86,23 @@
                 shape="rounded"
                 contentLayout="iconText"
                 className="refresh-relays-profile-btn"
-                onClick={() => onRefreshRelaysAndProfile?.()}
-                ariaLabel={hostRelayConfigActive
-                    ? ($_('settingsDialog.refresh_profile') || 'プロフィール再取得')
-                    : ($_('settingsDialog.refresh_relays_and_profile') || '再取得')}
+                onClick={refreshNostrData}
+                disabled={refreshing}
+                ariaLabel={refreshLabel}
             >
                 <div
                     class="rotate-right-icon svg-icon"
-                    aria-label={hostRelayConfigActive
-                        ? ($_('settingsDialog.refresh_profile') || 'プロフィール再取得')
-                        : ($_('settingsDialog.refresh') || '更新')}
+                    aria-hidden="true"
                 ></div>
                 <span class="btn-text">
-                    {hostRelayConfigActive
-                        ? ($_('settingsDialog.refresh_profile') || 'プロフィール再取得')
-                        : ($_('settingsDialog.refresh') || '更新')}
+                    {$_('settingsDialog.refresh')}
                 </span>
             </Button>
         </div>
     </div>
+    {#if followListUnavailable}
+        <p role="status">{$_("settingsDialog.follow_list_refresh_failed")}</p>
+    {/if}
 
     <!-- 投稿先リレー表示セクション（折りたたみ対応） -->
     <div class="setting-info">

@@ -86,6 +86,7 @@ interface RefreshRelaysAndProfileForAccountParams {
     profileDataStore: ProfileDataStoreLike;
     profileLoadedStore: BooleanStoreLike;
     accountProfileCacheStore: AccountProfileCacheStoreLike;
+    isCurrent?: () => boolean;
 }
 
 export async function initializeNostrSession({
@@ -208,8 +209,10 @@ export async function refreshRelaysAndProfileForAccount({
     profileDataStore,
     profileLoadedStore,
     accountProfileCacheStore,
+    isCurrent = () => true,
 }: RefreshRelaysAndProfileForAccountParams): Promise<ProfileData | null> {
     const fetchedProfile = await relayProfileService.refreshRelaysAndProfile(pubkeyHex);
+    if (!isCurrent()) return null;
     const profile = fetchedProfile ?? createDefaultProfileForAccount(pubkeyHex);
 
     applyProfileToStores({

@@ -5,7 +5,7 @@ import type { RxNostr } from "rx-nostr";
 export interface SettingsDialogProps {
     show?: boolean;
     onClose: () => void;
-    onRefreshRelaysAndProfile?: () => void;
+    onRefreshRelaysAndProfile?: () => void | Promise<import("../followListService.svelte").FollowListUpdateResult | undefined>;
     hostRelayConfigActive?: boolean;
     onOpenWelcomeDialog?: () => void;
     rxNostr?: RxNostr | null;

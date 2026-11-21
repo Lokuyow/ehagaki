@@ -50,6 +50,7 @@ import { sensitivePayloadRepository } from "./storage/sensitivePayloadRepository
 import { ehagakiDb } from "./storage/ehagakiDb";
 import { getPostHistoryLocalRevision } from "./storage/postHistoryLocalWriteScope";
 import { getNip65RelayDirectory, type Nip65RelayDirectoryEntry } from "./nip65RelayDirectory";
+import { scanProfileMentions } from "./profileMention";
 
 const NIP65_DISCOVERY_BUDGET_MS = 3_000;
 const NIP65_POST_OPERATION_DEADLINE_MS = 30_000;
@@ -1282,6 +1283,19 @@ export class PostManager {
             replyQuoteTags.push(tag);
             existingPPubkeys.add(tag[1]);
           }
+        }
+      }
+
+      const mentions = scanProfileMentions(processedContent);
+      if (mentions.length) {
+        replyQuoteTags ??= [];
+        const tagged = new Set([...replyQuoteTags, ...tags].filter(tag => tag[0] === "p").map(tag => tag[1]));
+        for (const { pubkey, relayHints } of mentions) {
+          if (!tagged.has(pubkey)) {
+            replyQuoteTags.push(["p", pubkey]);
+            tagged.add(pubkey);
+          }
+          addContextForTaggedAuthor(pubkey, relayHints, [["p", pubkey]]);
         }
       }
 

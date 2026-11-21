@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core';
-import type { Node as PMNode, ResolvedPos, Schema } from '@tiptap/pm/model';
+import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { getClipboardUploadFiles } from '../utils/clipboardUtils';
@@ -33,11 +33,9 @@ function extractMediaUrls(text: string): MediaUrl[] {
         .filter((item): item is MediaUrl => item !== null);
 }
 
-// 空パラグラフ判定（改善版）
-function isInEmptyParagraph($from: ResolvedPos): boolean {
-    const parent = $from.parent;
-    return parent.type.name === 'paragraph' &&
-        parent.textContent.trim().length === 0;
+function isEmptyParagraph(node: PMNode): boolean {
+    return node.type.name === 'paragraph' && node.textContent.trim().length === 0 &&
+        node.children.every(child => child.isText || child.type.name === 'hardBreak');
 }
 
 // 現在の選択位置が空のパラグラフ内かどうか判定
@@ -45,7 +43,7 @@ function getCurrentEmptyParagraphRange(state: EditorState): { start: number; end
     const { selection } = state;
     const $from = state.doc.resolve(selection.from);
 
-    if (isInEmptyParagraph($from)) {
+    if (isEmptyParagraph($from.parent)) {
         const paragraphDepth = $from.depth;
         const paragraphStart = $from.start(paragraphDepth);
         const paragraphEnd = $from.end(paragraphDepth);
@@ -83,28 +81,10 @@ function removeEmptyParagraphs(tx: Transaction): Transaction {
     const deletions: [number, number][] = [];
 
     doc.descendants((node, pos) => {
-        if (node.type.name !== 'paragraph') return;
-
-        // 空のパラグラフかつメディア（画像・動画）を含まない場合に削除対象とする
-        if (node.textContent.trim().length === 0) {
-            // ドキュメント全体が空のパラグラフ1つだけの場合は削除しない
-            if (doc.childCount === 1 && doc.firstChild === node) {
-                return;
-            }
-
-            let hasMedia = false;
-            node.descendants((n) => {
-                if (n.type && (n.type.name === 'image' || n.type.name === 'video')) {
-                    hasMedia = true;
-                    return false;
-                }
-                return true;
-            });
-
-            if (!hasMedia) {
-                deletions.push([pos, pos + node.nodeSize]);
-            }
-        }
+        if (!isEmptyParagraph(node)) return;
+        // ドキュメント全体が空のパラグラフ1つだけの場合は削除しない
+        if (doc.childCount === 1 && doc.firstChild === node) return;
+        deletions.push([pos, pos + node.nodeSize]);
     });
 
     // 逆順でソートして後ろから削除

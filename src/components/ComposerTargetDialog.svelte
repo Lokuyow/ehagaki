@@ -84,6 +84,8 @@
     import { sanitizePlainText } from "../lib/utils/domSanitizer";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
     import { formatShortNpub } from "../lib/utils/nostrUtils";
+    import { profileMetadataCache } from "../lib/profileMetadataCache.svelte";
+    import { profileMentionLabel, type ProfileMention, type ProfileMentionCandidate } from "../lib/profileMention";
     import { createSensitivePayloadBodyLoader } from "../lib/sensitiveContentPayloadReader";
 
     type DialogPhase =
@@ -114,6 +116,8 @@
             action: ComposerTargetAction,
             target: ComposerEventTarget,
         ) => boolean | Promise<boolean>;
+        onApplyMention?: (target: ProfileMentionCandidate) => boolean;
+        canApplyMention?: boolean;
         inboundInteractionSave?: { revision: number; parentEventIds: string[] } | null;
         rxNostr?: RxNostr;
         relayConfig?: RelayConfig | null;
@@ -132,6 +136,8 @@
         onClose,
         initialInput = "",
         onApply,
+        onApplyMention,
+        canApplyMention = true,
         inboundInteractionSave = null,
         rxNostr = undefined,
         relayConfig = null,
@@ -144,6 +150,11 @@
         onRetryRepostSave = undefined,
         repostSaveFailure = null,
     }: Props = $props();
+
+    let profileTarget = $state.raw<ProfileMention | null>(null);
+    const profileTargetLabel = $derived(profileTarget
+        ? profileMentionLabel(profileTarget.pubkey, profileMetadataCache.getReactiveEntry(profileTarget.pubkey)?.profile)
+        : "");
 
     let repostResolver: ReturnType<typeof createPostHistoryRelatedTargetResolver> | undefined;
     function getRepostResolver() {
@@ -495,6 +506,7 @@
         phase = "empty";
         errorReason = null;
         target = null;
+        profileTarget = null;
         partialEvent = null;
         partialAuthorProfile = null;
         retryRevision = 0;
@@ -577,6 +589,12 @@
 
     function handleRetry(): void {
         retryRevision += 1;
+    }
+
+    function handleApplyMention(): void {
+        if (profileTarget && canApplyMention && onApplyMention?.({ ...profileTarget, label: profileTargetLabel })) {
+            handleClose();
+        }
     }
 
     async function handleApply(action: ComposerTargetAction): Promise<boolean> {
@@ -842,6 +860,7 @@
         clearAsyncWork();
         resetTargetActionUiState();
         target = null;
+        profileTarget = null;
         partialEvent = null;
         partialAuthorProfile = null;
         errorReason = null;
@@ -855,6 +874,17 @@
         if (parsed.status === "unsupported") {
             phase = "error";
             errorReason = "unsupported";
+            return;
+        }
+        if (parsed.status === "profile") {
+            if (!onApplyMention) {
+                phase = "error";
+                errorReason = "unsupported";
+                return;
+            }
+            profileTarget = parsed.profile;
+            phase = "ready";
+            untrack(() => { void profileMetadataCache.getCachedProfile(parsed.profile.pubkey).catch(() => undefined); });
             return;
         }
         if (parsed.status === "secret-key") {
@@ -1050,6 +1080,15 @@
                 </Button>
             {/if}
         </div>
+
+        {#if profileTarget}
+            <div class="composer-target-profile">
+                <span>@{profileTargetLabel}</span>
+                <Button onClick={handleApplyMention} disabled={!canApplyMention}>
+                    {$_("composerTarget.mention")}
+                </Button>
+            </div>
+        {/if}
 
         {#if statusText}
             <div
@@ -1420,6 +1459,18 @@
 </FloatingMessage>
 
 <style>
+    .composer-target-profile {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin-block: 0.75rem;
+    }
+
+    .composer-target-profile span {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
     .xmark-icon {
         mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }

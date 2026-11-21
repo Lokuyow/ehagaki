@@ -7,6 +7,7 @@ import type { ReactionInputMode } from '../reactionValue';
 import type { ChannelContextState } from "./nostr";
 import type { CustomEmojiSelection } from "../customEmojiUsage";
 import type { CustomEmojiItem } from "../customEmoji";
+import type { ProfileMentionCandidate, ProfileMentionSource } from "../profileMention";
 import type { EHagakiHostSubmitShortcut } from "../../web-component/types";
 
 // Post and Editor types
@@ -161,6 +162,8 @@ export interface InitializeEditorParams {
     submitPost: (trigger?: EditorSubmitTrigger) => Promise<void>;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
     getCustomEmojiItems?: () => CustomEmojiItem[];
+    getProfileMentionItems?: (query: string) => ProfileMentionCandidate[];
+    profileMentionSource?: ProfileMentionSource;
     enterKeyBehavior?: "newline" | "submit";
     hostOwnedLite?: boolean;
     submitShortcuts?: readonly EHagakiHostSubmitShortcut[];

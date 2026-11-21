@@ -163,8 +163,10 @@ function collectBlockChanges(
     let fullText = '';
     let hasExistingLinkMark = false;
 
-    block.node.descendants((node, relativePos) => {
+    block.node.forEach((node, relativePos) => {
         if (!node.isText || !node.text) {
+            // Inline atoms occupy document positions and separate adjacent URLs.
+            fullText += ' '.repeat(node.nodeSize);
             return;
         }
 

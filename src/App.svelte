@@ -19,6 +19,12 @@
   import RelayDeliveryToasts from "./components/RelayDeliveryToasts.svelte";
   import { waitNostr } from "nip07-awaiter";
   import { AccountManager } from "./lib/accountManager";
+  import { createFollowListSession } from "./lib/followListService.svelte";
+  import type { ProfileMentionCandidate, ProfileMentionSource } from "./lib/profileMention";
+  import { mergeHostReadDefaultsWithHints } from "./lib/hostRelayRuntime";
+  import { RelayConfigUtils } from "./lib/relayConfigUtils";
+  import { profileMetadataCache } from "./lib/profileMetadataCache.svelte";
+  import { provideProfileMentionPreview } from "./lib/profileMentionPreviewContext";
   import { nip46Service } from "./lib/nip46Service";
   import { parentClientAuthService } from "./lib/parentClientAuthService";
   import { embedComposerContextService } from "./lib/embedComposerContextService";
@@ -493,6 +499,11 @@
   let authTransitionGeneration = $state(0);
   let appDisposed = false;
   let postAuthAbort: AbortController | undefined;
+  let followListSession = $state.raw<ReturnType<typeof createFollowListSession>>();
+  provideProfileMentionPreview({
+    read: pubkey => profileMetadataCache.getReactiveEntry(pubkey)?.profile,
+    load: pubkeys => { void profileMetadataCache.getCachedProfiles(pubkeys).catch(() => undefined); },
+  });
   let profileFetchPending = $state(false);
   let readyAuthSession = $state<{
     pubkeyHex: string;
@@ -1264,6 +1275,9 @@
     relayProfileService = session.relayProfileService;
     publishedSession = session;
     readyAuthSession = { pubkeyHex, authType, runtime: session.rxNostr };
+    const follows = createFollowListSession(session.rxNostr, pubkeyHex, abort.signal);
+    followListSession = follows;
+    void follows.refresh(false);
     void flushPendingReplyQuoteHydrationWhenRuntimeReady();
   }
 
@@ -1951,6 +1965,32 @@
     return composerTargetApplyController.applyChannel(target);
   }
 
+  function getProfileMentionItems(query: string): ProfileMentionCandidate[] {
+    if (!hasPostingCapability || followListSession?.ownerPubkey !== authState.value.pubkey) return [];
+    return followListSession?.getSuggestions(query) ?? [];
+  }
+
+  const profileMentionSource: ProfileMentionSource = {
+    readProfile: pubkey => profileMetadataCache.getReactiveEntry(pubkey)?.profile,
+    getInlineLoader: () => {
+      const runtime = hasPostingCapability ? rxNostr : undefined;
+      return (mention, signal) => profileMetadataCache.getProfile(mention.pubkey, {
+        rxNostr: runtime,
+        signal,
+        allowBackgroundRefresh: false,
+        additionalRelays: mergeHostReadDefaultsWithHints(
+          mention.relayHints, RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
+        ) ?? mention.relayHints,
+      });
+    },
+  };
+
+  function applyProfileMention(mention: ProfileMentionCandidate): boolean {
+    if (!hasPostingCapability || !postComponentRef?.insertProfileMention(mention)) return false;
+    focusEditorElement(".tiptap-editor", 100);
+    return true;
+  }
+
   function handlePreloadPostHistoryDialog(): void {
     void preloadPostHistoryDialog();
   }
@@ -1993,24 +2033,29 @@
     },
   });
 
-  // --- 設定ダイアログからのリレー・プロフィール再取得ハンドラ ---
+  // --- 設定ダイアログからのリレー・プロフィール・フォローリスト再取得 ---
   async function handleRefreshRelaysAndProfile() {
     if (!isAuthenticated || !authState.value.pubkey) return;
+    const auth = authState.value;
+    const pubkeyHex = auth.pubkey;
     if (!relayProfileService) {
-      await initializeNostr(authState.value.pubkey);
+      await initializeNostr(pubkeyHex);
     }
 
-    if (!relayProfileService) {
-      return;
-    }
+    if (authState.value !== auth || !relayProfileService) return;
+    const service = relayProfileService;
+    const isCurrent = () => !appDisposed && authState.value === auth && service === relayProfileService;
+    const follows = followListSession;
 
     await refreshRelaysAndProfileForAccount({
-      pubkeyHex: authState.value.pubkey,
-      relayProfileService,
+      pubkeyHex,
+      relayProfileService: service,
       profileDataStore,
       profileLoadedStore,
       accountProfileCacheStore,
-    });
+      isCurrent,
+    }).catch(() => undefined);
+    if (isCurrent() && follows?.ownerPubkey === pubkeyHex) return follows.refresh(true);
   }
 
   function recordCustomEmojiUse(emoji: CustomEmojiSelection): void {
@@ -2143,6 +2188,8 @@
                       : undefined}
                     onReactionResult={handleReactionResult}
                     onCustomEmojiSelect={recordCustomEmojiUse}
+                    {getProfileMentionItems}
+                    {profileMentionSource}
                     {onEditorEmptyChange}
                     {notificationPort}
                     {normalUploadFiles}
@@ -2414,6 +2461,8 @@
           show={showComposerTargetDialogStore.value}
           onClose={composerTargetDialog.close}
           onApply={handleComposerTargetApply}
+          onApplyMention={applyProfileMention}
+          canApplyMention={hasPostingCapability && !reactionComposerState.value && !editorState.postStatus.sending}
           inboundInteractionSave={latestInboundInteractionSave}
           {rxNostr}
           relayConfig={relayConfigStore.value}

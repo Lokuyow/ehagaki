@@ -18,6 +18,7 @@ import {
     type ProfileUpsertResult,
 } from "./storage/profilesRepository";
 import type { ProfileData } from "./types";
+import { readProfileNip05 } from "./profileMention";
 import { toNprofile, toNpub } from "./utils/nostrUtils";
 
 const PROFILE_CACHE_STALE_MS = 5 * 60 * 1_000;
@@ -325,6 +326,7 @@ function areDisplayedProfilesEqual(left: ProfileData | null, right: ProfileData)
     const rightRelays = right.profileRelays ?? [];
     return left.name === right.name
         && left.displayName === right.displayName
+        && left.nip05 === right.nip05
         && left.picture === right.picture
         && left.npub === right.npub
         && left.nprofile === right.nprofile
@@ -537,6 +539,7 @@ function toProfileFromEvent(params: {
             picture?: unknown;
             name?: unknown;
             display_name?: unknown;
+            nip05?: unknown;
         };
         const profileRelays = params.relay ? [params.relay.endsWith("/") ? params.relay : `${params.relay}/`] : [];
         const rawPicture = typeof parsed.picture === "string" ? parsed.picture : "";
@@ -549,6 +552,7 @@ function toProfileFromEvent(params: {
         const profile: ProfileData = {
             name: typeof parsed.name === "string" ? parsed.name : "",
             displayName: typeof parsed.display_name === "string" ? parsed.display_name : "",
+            nip05: readProfileNip05(parsed.nip05),
             picture,
             npub: toNpub(params.pubkey),
             nprofile: toNprofile(params.pubkey, profileRelays, params.writeRelays),
@@ -1314,6 +1318,7 @@ async function getProfiles(
             const relayOptions = options.relayOptionsByPubkey?.[pubkey];
             const profile = await getProfileInternal(pubkey, {
                 rxNostr: options.rxNostr,
+                signal: options.signal,
                 additionalRelays: normalizeRelaysPreservingOrder([
                     ...(relayOptions?.additionalRelays ?? []),
                     ...(options.additionalRelays ?? []),

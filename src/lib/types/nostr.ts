@@ -268,6 +268,7 @@ export interface ProfileManagerDeps {
 export interface ProfileData {
     name: string;
     displayName: string;
+    nip05?: string | null;
     picture: string;
     npub: string;
     nprofile: string;

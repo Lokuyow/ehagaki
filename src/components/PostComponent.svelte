@@ -84,6 +84,8 @@
   import { SubmittedCompositionController } from "../lib/editor/submittedComposition";
   import { showToolbarCaret } from "../lib/editor/toolbarCaretExtension";
   import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
+  import { insertProfileMention as insertMention } from "../lib/editor/profileMentionExtension.svelte";
+  import type { ProfileMentionCandidate, ProfileMentionSource } from "../lib/profileMention";
   import { focusEditorWithoutKeyboardForCurrentTap } from "../lib/utils/keyboardFocusUtils";
   import { isEditorElement } from "../lib/utils/appDomUtils";
   import { isIPhoneSafari } from "../lib/utils/viewportLayout";
@@ -141,6 +143,8 @@
     notificationPort?: AppPostNotificationPort;
     hostOwnedConfig?: EHagakiHostOwnedComposerOptions & { signal: AbortSignal };
     hostCustomEmojiItems?: CustomEmojiItem[];
+    getProfileMentionItems?: (query: string) => ProfileMentionCandidate[];
+    profileMentionSource?: ProfileMentionSource;
     /** The full composition root supplies the normal authenticated uploader. */
     normalUploadFiles?: UploadFilesExecutor;
     storeSignedEventsFn?: import("../lib/types").PostManagerDeps["storeSignedEventsFn"];
@@ -162,6 +166,8 @@
     notificationPort,
     hostOwnedConfig,
     hostCustomEmojiItems = [],
+    getProfileMentionItems,
+    profileMentionSource,
     normalUploadFiles,
     storeSignedEventsFn,
   }: Props = $props();
@@ -700,6 +706,8 @@
       submitPost,
       onCustomEmojiSelect,
       getCustomEmojiItems: isHostOwned ? () => hostCustomEmojiItems : undefined,
+      getProfileMentionItems,
+      profileMentionSource,
       enterKeyBehavior: isHostOwned
         ? hostOwnedConfig?.enterKeyBehavior
         : undefined,
@@ -970,6 +978,11 @@
     const before = currentEditor.state.doc;
     insertCustomEmojiWithoutUnwantedKeyboard(currentEditor, emoji);
     return !before.eq(currentEditor.state.doc);
+  }
+
+  export function insertProfileMention(mention: ProfileMentionCandidate): boolean {
+    return Boolean(currentEditor && !reactionComposerState.value
+      && !isEditorMutationBlocked() && insertMention(currentEditor, mention));
   }
 
   function revealToolbarCaret(): void {
@@ -1614,6 +1627,11 @@
 {/if}
 
 <style>
+  :global(.editor-profile-mention) {
+    color: var(--accent-color, currentColor);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
   .post-container,
   .editor-container,
   :global(.editor-content),

@@ -89,6 +89,7 @@ export function ensureCurrentEHagakiDbSchema(
         { name: 'updatedAtFromEvent', keyPath: 'updatedAtFromEvent' },
         { name: 'schemaVersion', keyPath: 'schemaVersion' },
     ]);
+    createObjectStoreIfMissing(db, 'followLists', 'ownerPubkey');
     createObjectStoreIfMissing(db, sharedMediaStoreName, 'id', [
         { name: 'createdAt', keyPath: 'createdAt' },
         { name: 'updatedAt', keyPath: 'updatedAt' },

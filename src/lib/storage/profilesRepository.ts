@@ -54,6 +54,7 @@ export function profileRecordToProfileData(record: ProfileRecord): ProfileData {
     return {
         name: record.name,
         displayName: record.displayName,
+        ...(record.nip05 !== undefined && { nip05: record.nip05 }),
         picture: record.pictureUrl,
         npub: record.npub,
         nprofile: record.nprofile,
@@ -70,6 +71,7 @@ function toRecord(pubkeyHex: string, profile: ProfileData, now: () => number): P
         pubkeyHex,
         name: profile.name || "",
         displayName: profile.displayName || "",
+        ...(profile.nip05 !== undefined && { nip05: profile.nip05 }),
         pictureUrl: profile.picture || "",
         npub: profile.npub || "",
         nprofile: profile.nprofile || "",
@@ -117,6 +119,7 @@ function toCandidateRecord(
         pubkeyHex,
         name: candidate.profile.name || "",
         displayName: candidate.profile.displayName || "",
+        ...(candidate.profile.nip05 !== undefined && { nip05: candidate.profile.nip05 }),
         pictureUrl: candidate.profile.picture || "",
         npub: candidate.profile.npub || "",
         nprofile: candidate.profile.nprofile || "",
@@ -282,7 +285,9 @@ export class DexieProfilesRepository implements ProfilesRepository {
                 candidate.observedRelays,
             );
             const fetchedAt = Math.max(existing.fetchedAt, candidate.fetchedAt);
+            const nip05 = existing.nip05 === undefined ? candidate.profile.nip05 : existing.nip05;
             const changed = fetchedAt !== existing.fetchedAt
+                || nip05 !== existing.nip05
                 || !areStringArraysEqual(existing.profileRelays, profileRelays);
 
             if (!changed) {
@@ -291,6 +296,7 @@ export class DexieProfilesRepository implements ProfilesRepository {
 
             const mergedRecord: ProfileRecord = {
                 ...existing,
+                ...(nip05 !== undefined && { nip05 }),
                 profileRelays,
                 fetchedAt,
                 updatedAt: this.now(),

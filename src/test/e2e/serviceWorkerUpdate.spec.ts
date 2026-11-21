@@ -10,6 +10,7 @@ import { finalizeEvent, generateSecretKey } from 'nostr-tools';
 import { EHAGAKI_DB_NAME } from '../../lib/storage/ehagakiDbConstants';
 import type { runJsonlImportWorkerProbe } from './jsonlImportWorkerProbe';
 import { CUSTOM_EMOJI_IMAGE_CACHE_POLICY, PROFILE_IMAGE_CACHE_POLICY } from '../../lib/swImageCachePolicy';
+import { restoreMentionDraftFixture, saveMentionDraftFixture } from './mentionAvatarDraftFixture';
 
 const manifestPattern = /\[\{"revision":(?:null|"[^"]*"),"url":"[^"]+"\}(?:,\{"revision":(?:null|"[^"]*"),"url":"[^"]+"\})*\]/;
 interface Entry { url: string; revision: string | null }
@@ -290,6 +291,42 @@ test('restores the saved account while v1.32.0 history conversion is still pendi
             } finally { db.close(); }
         }, { name: EHAGAKI_DB_NAME, id: event.id })).toBe(event.content);
     } finally { await fixture.close(); }
+});
+
+test('restores a mention avatar from the production profile image cache offline', async ({ page, context }) => {
+    const fixture = await createFixture('/ehagaki/', { holdImageWrites: true });
+    try {
+        const picture = `${fixture.url}cache-test-mention-avatar.svg`;
+        await page.addInitScript(() => {
+            localStorage.setItem('firstVisit', '1');
+            localStorage.setItem('locale', 'ja');
+        });
+        await page.goto(fixture.url);
+        await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+        const editor = page.locator('.tiptap-editor');
+        await expect(editor).toBeVisible();
+        await page.waitForFunction(async name => (await indexedDB.databases()).some(db => db.name === name && db.version),
+            EHAGAKI_DB_NAME);
+        await saveMentionDraftFixture(page, { pubkey: 'a'.repeat(64), picture });
+        await restoreMentionDraftFixture(page);
+        const avatar = editor.locator('.inline-mention-avatar-image');
+        const naturalWidth = () => avatar.evaluate(node => (node as HTMLImageElement).naturalWidth);
+        await expect.poll(naturalWidth).toBe(17);
+        await expect.poll(() => page.evaluate(async ({ name, picture }) => {
+            const cache = await caches.open(name);
+            return (await cache.keys()).some(key => key.url === picture);
+        }, { name: PROFILE_IMAGE_CACHE_POLICY.bodyName, picture })).toBe(true);
+
+        await context.setOffline(true);
+        await page.reload();
+        await expect(editor).toBeVisible();
+        await expect(avatar).toHaveCount(0);
+        await restoreMentionDraftFixture(page);
+        await expect.poll(naturalWidth).toBe(17);
+    } finally {
+        await context.setOffline(false);
+        await fixture.close();
+    }
 });
 
 for (const basePath of ['/ehagaki/', '/'] as const) {

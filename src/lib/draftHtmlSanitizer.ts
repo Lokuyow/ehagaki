@@ -1,7 +1,8 @@
 import DOMPurify from 'dompurify';
 import { normalizeUrl, validateAndNormalizeUrl } from './utils/editorUrlUtils';
+import { parseProfileMentionUri, PROFILE_MENTION_ATTRIBUTE, profileMentionUri, shortenProfileMentionLabel } from './profileMention';
 
-const ALLOWED_DRAFT_TAGS = ['a', 'img', 'p', 'video'];
+const ALLOWED_DRAFT_TAGS = ['a', 'img', 'p', 'span', 'video'];
 const ALLOWED_DRAFT_ATTR = [
     'alt',
     'blurhash',
@@ -9,6 +10,7 @@ const ALLOWED_DRAFT_ATTR = [
     'controls',
     'data-custom-emoji',
     'data-identity-key',
+    PROFILE_MENTION_ATTRIBUTE,
     'data-set-address',
     'data-shortcode',
     'dim',
@@ -62,6 +64,19 @@ function buildSanitizedDraftContainer(
     });
     const container = documentObj.createElement('div');
     container.innerHTML = sanitizedMarkup;
+
+    container.querySelectorAll('span').forEach((span) => {
+        if (!container.contains(span)) return;
+        const mention = parseProfileMentionUri(span.getAttribute(PROFILE_MENTION_ATTRIBUTE));
+        if (!mention) {
+            unwrapElement(span);
+            return;
+        }
+        const clean = documentObj.createElement('span');
+        clean.setAttribute(PROFILE_MENTION_ATTRIBUTE, profileMentionUri(mention));
+        clean.textContent = `@${shortenProfileMentionLabel(span.textContent?.replace(/^@/, '') ?? '')}`;
+        span.replaceWith(clean);
+    });
 
     container.querySelectorAll('a').forEach((anchor) => {
         const href = anchor.getAttribute('href');
