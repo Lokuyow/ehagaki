@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { eventRecords } from "../../lib/storage/eventRepository";
+    import { EventRepository, eventRecords } from "../../lib/storage/eventRepository";
     import { onDestroy, onMount } from "svelte";
     import { finalizeEvent, generateSecretKey, getPublicKey, nip19, verifyEvent } from "nostr-tools";
     import { seckeySigner } from "@rx-nostr/crypto";
@@ -27,6 +27,7 @@
     import { PostHistoryAuthoredPostsRealtimeService } from "../../lib/postHistoryAuthoredPostsRealtimeService";
 
     const query = new URLSearchParams(location.search);
+    const relatedLayout = query.get("related-layout");
     const relay = "wss://relay.example.com/";
     const slowRelay = "wss://slow-relay.example.com/";
     const realTransport = query.has("transport");
@@ -42,7 +43,8 @@
         : targetKind === 1111 ? [["E", channelRoot.id, relay], ["K", "40"], ["P", channelRoot.pubkey],
             ["e", channelRoot.id, relay], ["k", "40"], ["p", channelRoot.pubkey]] : [];
     const fixtureTarget = finalizeEvent({ kind: targetKind, created_at: Math.floor(Date.now()/1000)-100,
-        content: "original searchable post" + (query.has("cw") ? "\n" + "long fixture text ".repeat(100) + "\nhttps://media.example.com/repost.png" : ""),
+        content: "original searchable post" + (relatedLayout ? "\nfixture paragraph".repeat(16) : "")
+            + (query.has("cw") ? "\n" + "long fixture text ".repeat(100) + "\nhttps://media.example.com/repost.png" : ""),
         tags: [...targetTags, ...(query.has("protected") ? [["-"]] : []), ...(query.has("cw") ? [["content-warning", "fixture CW"]] : [])] }, targetKey);
     let target = $state<NostrEvent>(fixtureTarget);
     let owner = $state(getPublicKey(ownerKey));
@@ -62,6 +64,8 @@
     let holdDeletion = query.has("hold-deletion");
     const historyResponses = new Set<() => void>();
     const deletionResponses = new Set<() => void>();
+    let holdTarget = !!relatedLayout && !query.has("missing");
+    const targetResponses = new Set<() => void>();
     const publishResponses = new Set<() => void>();
     let lastResult: { success: boolean; error?: string; historySaved?: boolean } | null = null;
     const sentEvents: { id: string; kind: number; tags: string[][] }[] = [];
@@ -109,10 +113,14 @@
                 else if (holdDeletion && targetDeletion) {
                     heldResponses.add(respond); deletionResponses.add(respond);
                 }
+                else if (holdTarget && filter?.ids?.includes(target.id)) {
+                    heldResponses.add(respond); targetResponses.add(respond);
+                }
                 else queueMicrotask(respond);
             });
             return () => { subscription.unsubscribe(); heldResponses.forEach(respond => {
                 historyResponses.delete(respond); deletionResponses.delete(respond);
+                targetResponses.delete(respond);
             }); };
         }),
     } as unknown as RxNostr;
@@ -197,6 +205,35 @@
     async function signFixture<K extends number>(template: EventTemplate & { kind: K }) {
         return { ...finalizeEvent(template, ownerKey), kind: template.kind };
     }
+    const rememberDeletion = () => postHistoryDeletionRequestsRepository.upsertValidDeletionRequests({
+        targetEvents: [target], deletionEvents: [{ event: finalizeEvent({ kind: 5,
+            created_at: target.created_at + 1,
+            content: "", tags: [["e", target.id], ["k", String(target.kind)]] }, targetKey), relayUrls: [relay] }],
+        fetchedAt: Date.now(),
+    });
+
+    async function seedRelatedLayout() {
+        const now = Math.floor(Date.now() / 1000);
+        const tags = relatedLayout === "quote"
+            ? [["q", target.id, relay, target.pubkey]]
+            : relatedLayout === "reply"
+                ? [["e", target.id, relay, "reply"], ["p", target.pubkey]]
+                : [["e", target.id, relay], ["p", target.pubkey]];
+        const relatedCount = query.has("multiple") ? 2 : 1;
+        const posts = Array.from({ length: 32 }, (_, index) => ({
+            event: finalizeEvent({
+                kind: index < relatedCount && relatedLayout === "repost" ? 6 : 1,
+                created_at: now - index,
+                content: index < relatedCount && relatedLayout === "repost" ? "" : `Fixture row ${index}`,
+                tags: index < relatedCount ? tags : [],
+            }, ownerKey), relayUrls: [relay],
+        }));
+        await postHistoryRepository.upsertFetchedEvents({ events: posts });
+        if (query.has("cached")) {
+            await new EventRepository(ehagakiDb).save(target, [relay], () => true);
+        }
+        if (query.has("deleted")) await rememberDeletion();
+    }
     onMount(() => { void (async () => {
         if (holdHistory) {
             // Keep the deliberately held request active beyond a single E2E test;
@@ -227,7 +264,9 @@
             signEvent: signFixture };
         if (!existing.length && !query.has("external") && query.get("source") !== "target")
             await postHistoryRepository.putPostedEvent({ event: target, acceptedRelays: [relay], relayHints: [relay] });
-        if (!existing.length && query.has("external")) {
+        if (!existing.length && relatedLayout) {
+            await seedRelatedLayout();
+        } else if (!existing.length && query.has("external")) {
             const outer = finalizeEvent({ kind: query.has("outer-kind") ? Number(query.get("outer-kind")) : outerKind, created_at: Math.floor(Date.now()/1000),
                 content: "opaque content must never appear", tags: [["e", target.id, relay],
                     ...(query.has("extra-author") ? [["p", getPublicKey(generateSecretKey())]] : []), ["p", target.pubkey], ...(outerKind === 16 && !query.has("missing-k") ? [["k", query.get("k") ?? String(target.kind)]] : [])] }, ownerKey);
@@ -257,11 +296,9 @@
                     targetId: row.repostTarget?.rawEvent.id, targetKind: row.repostTarget?.rawEvent.kind, channelEventId: row.channelEventId, channelRelayHints: row.channelRelayHints })),
             }; }, allowTarget: () => { allowTarget = true; },
             deleteOnRelay: () => { deletedOnRelay = true; },
-            rememberDeletion: () => postHistoryDeletionRequestsRepository.upsertValidDeletionRequests({
-                targetEvents: [target], deletionEvents: [{ event: finalizeEvent({ kind: 5,
-                    created_at: target.created_at + 1, content: "", tags: [["e", target.id], ["k", String(target.kind)]] }, targetKey), relayUrls: [relay] }],
-                fetchedAt: Date.now(),
-            }),
+            rememberDeletion,
+            hasPendingTarget: () => targetResponses.size > 0,
+            releaseTarget: () => { holdTarget = false; [...targetResponses].forEach(respond => respond()); targetResponses.clear(); },
             export: async () => (await exportPostHistoryRecords(owner, await ehagakiDb.postHistory.toArray().then(rows => eventRecords(ehagakiDb, "postHistory").hydrate(rows)), [], { includeJsonl: true })).jsonl,
             nextTarget: () => {
                 target = finalizeEvent({ kind: targetKind, created_at: fixtureTarget.created_at + 1,

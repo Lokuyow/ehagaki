@@ -208,6 +208,7 @@
     });
     const relatedTargetResolver = createPostHistoryRelatedTargetResolver({
         loadRepostTarget: loadStoredRepostTarget,
+        getOwner: () => pubkeyHex,
         getShow: () => !destroyed && show,
         getRxNostr: () => destroyed ? undefined : rxNostr,
         getRelayConfig: () => destroyed ? null : relayConfig,
@@ -227,6 +228,16 @@
             await notifySavedAuthoredPosts?.(eventIds);
         },
         onLocalHistoryChanged: applyLocalHistoryChange,
+        prepareLocalPreviews: (posts, isCurrent) => {
+            const owned = captureOperation();
+            const descriptors = [
+                ...quotePreviews.collectLocalDescriptors(posts),
+                ...repostPreviews.collectLocalDescriptors(posts),
+            ];
+            if (descriptors.length > 0) {
+                return relatedTargetResolver.prepareLocalTargets(descriptors, () => owned() && isCurrent());
+            }
+        },
         onChildInteractionBadgeRefreshRequested: (posts, parentEventIds) =>
             postHistoryThreadGraph.loadCachedChildInteractionStateForPosts(
                 posts,
@@ -570,6 +581,52 @@
         getContainer: () => historyContainer,
         getIsSearchMode: () => history.isSearchMode,
         getSearchQuery: () => history.state.searchQuery,
+    });
+
+    // Observe the shape of related content, independently of profile and badge updates.
+    function threadLayoutKey(state: ReturnType<typeof getThreadAnchorState> | PostHistoryThreadGraphNodeState): unknown {
+        const parent = state.parentExpansion;
+        return [
+            parent.visibleParent && [
+                state.parentNodeState?.node.eventId ?? ("parentNode" in state ? state.parentNode?.eventId : null),
+                parent.parentDeleted,
+                parent.parentMissing,
+                parent.parentError,
+                state.parentNodeState && threadLayoutKey(state.parentNodeState),
+            ],
+            state.repliesActionState.visible && state.replyNodeStates.map(reply => [
+                reply.node.eventId, threadLayoutKey(reply),
+            ]),
+        ];
+    }
+
+    let previousRelatedLayout: { posts: PostHistoryRecord[]; key: string } | null = null;
+    $effect.pre(() => {
+        if (!show || !historyContainer) {
+            previousRelatedLayout = null;
+            return;
+        }
+        const posts = history.posts;
+        const key = JSON.stringify(posts.map(post => {
+            if (isRepostOuterKind(post.kind)) {
+                const preview = repostPreviews.getPreview(post);
+                return [preview.status, preview.event?.id, preview.saveFailed,
+                    preview.event?.kind === 42 ? getRepostChannelText(post) : null];
+            }
+            return [
+                quotePreviews.getQuotePreviews(post).map(quote => [quote.eventId,
+                    quote.status === "idle" ? "loading" : quote.status]),
+                threadLayoutKey(getThreadAnchorState(post)),
+            ];
+        }));
+        const previous = previousRelatedLayout;
+        previousRelatedLayout = { posts, key };
+        if (previous?.posts === posts && previous.key !== key) {
+            untrack(() => {
+                const owned = captureOperation();
+                historyViewport.preserveRelatedLayoutScroll(() => owned() && history.posts === posts);
+            });
+        }
     });
     const emojiState = usePostHistoryEmojiState({
         getShow: () => !destroyed && show,

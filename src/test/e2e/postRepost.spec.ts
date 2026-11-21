@@ -7,7 +7,8 @@ type State = { sends: number; signed: number; replyId?: string; quoteId?: string
     lastResult?: { success: boolean; error?: string }; rows: { id: string; kind: number; content: string; targetId?: string; targetKind?: number; channelEventId?: string; channelRelayHints?: string[] }[] };
 type FixtureWindow = Window & { __REPOST__: { ready: boolean; targetId: string; targetInput: string; read(): Promise<State>; allowTarget(): void;
     deleteOnRelay(): void; rememberDeletion(): Promise<unknown>; nextTarget(): string; rejectNextPublish(): void;
-    export(): Promise<string>; releaseHistory(): void; releasePublish(): void; releaseDeletion(): void } };
+    export(): Promise<string>; releaseHistory(): void; releasePublish(): void; releaseDeletion(): void;
+    hasPendingTarget(): boolean; releaseTarget(): void } };
 const read = (page: Page) => page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.read());
 async function open(page: Page, query = "") {
     const group = test.info().titlePath.find(title => /^target kind /.test(title));
@@ -17,6 +18,118 @@ async function open(page: Page, query = "") {
     await page.goto(`post-history-dialog-playwright.html?${params}`);
     await page.waitForFunction(() => (window as unknown as FixtureWindow).__REPOST__?.ready);
 }
+
+test.describe("related history layout", () => {
+    const list = ".post-history-container";
+    const row = ".post-history-item";
+    const card = ".post-history-related-card";
+
+    for (const kind of ["quote", "repost"]) {
+        for (const deleted of [false, true]) {
+            test(`${kind} uses verified local state on the first visible frame (${deleted ? "deleted" : "available"})`, async ({ page }) => {
+                await page.addInitScript(({ list, row, card }) => {
+                    function sample() {
+                        const ready = document.querySelector('[data-opening-pending="false"]');
+                        const first = ready?.querySelector(list)?.querySelector(row);
+                        if (!first) {
+                            requestAnimationFrame(sample);
+                            return;
+                        }
+                        Reflect.set(window, "firstRelatedHistoryFrame", {
+                            hasCard: !!first.querySelector(card),
+                            isDeleted: first.textContent?.includes("削除済み"),
+                        });
+                    }
+                    requestAnimationFrame(sample);
+                }, { list, row, card });
+                await open(page, `external=layout&related-layout=${kind}&cached=1${deleted ? "&deleted=1" : ""}`);
+                await expect.poll(() => page.evaluate(() => Reflect.get(window, "firstRelatedHistoryFrame")))
+                    .toEqual({ hasCard: !deleted, isDeleted: deleted });
+                expect(await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.hasPendingTarget())).toBe(false);
+            });
+        }
+    }
+
+    async function startWatchingRow(page: Page) {
+        await page.locator(list).locator(row).nth(5).waitFor();
+        return page.locator(list).evaluate(async (root, row) => {
+            const watched = root.querySelectorAll<HTMLElement>(row)[5];
+            const offset = () => watched.getBoundingClientRect().top - root.getBoundingClientRect().top;
+            root.scrollTop += offset() - 12;
+            await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+            const state = { start: offset(), offsets: [] as number[], active: true };
+            Reflect.set(window, "relatedLayoutSamples", state);
+            function sample() {
+                if (!state.active) return;
+                state.offsets.push(offset());
+                requestAnimationFrame(sample);
+            }
+            requestAnimationFrame(sample);
+            return state.start;
+        }, row);
+    }
+
+    async function expectStableRow(page: Page) {
+        const samples = await page.evaluate(async () => {
+            await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+            const state = Reflect.get(window, "relatedLayoutSamples") as { start: number; offsets: number[]; active: boolean };
+            state.active = false;
+            return state.offsets.map(offset => Math.abs(offset - state.start));
+        });
+        expect(samples.length).toBeGreaterThan(0);
+        expect(Math.max(...samples)).toBeLessThanOrEqual(1);
+    }
+
+    for (const kind of ["quote", "repost", "reply"]) {
+        for (const width of [1280, 360]) {
+            test(`${kind} keeps the reading row in place when a target arrives at ${width}px`, async ({ page }) => {
+                await page.setViewportSize({ width, height: 720 });
+                const multiple = kind === "quote";
+                await open(page, `external=layout&related-layout=${kind}${multiple ? "&multiple=1" : ""}`);
+                const root = page.locator(list);
+                if (kind === "reply") await root.getByRole("button", { name: "返信先を見る" }).click();
+                await expect.poll(() => page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.hasPendingTarget())).toBe(true);
+                expect(await startWatchingRow(page)).toBeCloseTo(12, 0);
+                await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.releaseTarget());
+                await expect(root.locator(card)).toHaveCount(multiple ? 2 : 1);
+                await expectStableRow(page);
+            });
+        }
+    }
+
+    test("repost retry and a late deletion both preserve the reading row", async ({ page }) => {
+        await open(page, "external=layout&related-layout=repost&missing=1&hold-deletion=1");
+        const root = page.locator(list);
+        const retry = root.getByRole("button", { name: "再試行", exact: true });
+        await expect(retry).toBeVisible();
+        expect(await startWatchingRow(page)).toBeCloseTo(12, 0);
+        await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.allowTarget());
+        await retry.evaluate(button => (button as HTMLButtonElement).click());
+        await expect(root.locator(card)).toHaveCount(1);
+        await expectStableRow(page);
+        await expect.poll(async () => (await read(page)).heldDeletionRequests).toBeGreaterThan(0);
+        expect(await startWatchingRow(page)).toBeCloseTo(12, 0);
+        await page.evaluate(() => {
+            const fixture = (window as unknown as FixtureWindow).__REPOST__;
+            fixture.deleteOnRelay();
+            fixture.releaseDeletion();
+        });
+        await expect(root.locator(card)).toHaveCount(0);
+        await expectStableRow(page);
+    });
+
+    test("closing history cancels the previous view's target request", async ({ page }) => {
+        await open(page, "external=layout&related-layout=quote");
+        const hasPending = () => page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.hasPendingTarget());
+        await expect.poll(hasPending).toBe(true);
+        await page.getByRole("button", { name: "閉じる", exact: true }).click();
+        await expect.poll(hasPending).toBe(false);
+        await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.releaseTarget());
+        await expect(page.locator(list).locator(card)).toHaveCount(0);
+        await page.getByRole("button", { name: "Open history" }).click();
+        await expect(page.locator(list).locator(card)).toHaveCount(1);
+    });
+});
 
 for (const targetKind of [1, 42, 1111]) {
 const outerKind = targetKind === 1 ? 6 : 16;

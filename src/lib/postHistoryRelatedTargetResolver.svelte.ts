@@ -76,7 +76,7 @@ export interface PostHistoryRelatedTargetSnapshot {
 
 interface CreatePostHistoryRelatedTargetResolverParams {
     getOwner?: () => string | null | undefined;
-    eventRepositoryImpl?: Pick<EventRepository, 'get' | 'save' | 'link'>;
+    eventRepositoryImpl?: Pick<EventRepository, 'get' | 'save' | 'link'> & Partial<Pick<EventRepository, 'getMany'>>;
     requireFullVerification?: boolean;
     loadRepostTarget?: (descriptor: RelatedTargetDescriptor) => Promise<{ event: NostrEvent; relayHints: string[] } | null>;
     getShow: () => boolean;
@@ -172,6 +172,7 @@ export function createPostHistoryRelatedTargetResolver({
     const pendingDeletionChecksByTarget = new Map<string, Promise<boolean>>();
     const deletionTasksByTarget = new Map<string, PostHistoryDeletionFetchTask>();
     const loadRequestIdsByTargetId = new Map<string, number>();
+    const preparedTargetEvents = new WeakSet<NostrEvent>();
     let nextLoadRequestId = 0;
 
     function bumpScopeRevision(scopeKey: string): void {
@@ -302,6 +303,59 @@ export function createPostHistoryRelatedTargetResolver({
         ]);
 
         return deletedTargets.get(authorPubkey)?.has(targetEventId) ?? false;
+    }
+
+    function matchesStoredTarget(event: NostrEvent, descriptor: RelatedTargetDescriptor): boolean {
+        return !!verifyRelatedEvent(event, {
+            eventId: descriptor.targetEventId,
+            authorHint: requireFullVerification ? null : descriptor.authorHint ?? null,
+            authorHints: requireFullVerification ? undefined : descriptor.authorHints,
+            targetKindHint: requireFullVerification ? undefined : descriptor.targetKindHint,
+            relayHints: [],
+        }) && (requireFullVerification || !descriptor.excludedKinds?.includes(event.kind));
+    }
+
+    /** Stage verified local targets for the same synchronous commit as the next list window. */
+    async function prepareLocalTargets(descriptors: RelatedTargetDescriptor[], isCurrent: () => boolean) {
+        if (!eventRepositoryImpl?.getMany || !descriptors.length || !isCurrent()) return;
+        const candidates = new Map<string, RelatedTargetDescriptor[]>();
+        for (const descriptor of descriptors) {
+            const id = descriptor.targetEventId;
+            const snapshot = snapshotsByTargetId[id];
+            if (snapshot?.status === "deleted") continue;
+            const group = candidates.get(id);
+            if (group) group.push(descriptor);
+            else candidates.set(id, [descriptor]);
+        }
+        if (!candidates.size) return;
+        const previous = new Map([...candidates.keys()].map(id => [id, snapshotsByTargetId[id]]));
+        const records = (await eventRepositoryImpl.getMany([...candidates.keys()]))
+            .filter(record => candidates.get(record.id)?.some(descriptor => matchesStoredTarget(record.rawEvent, descriptor)));
+        if (!records.length || !isCurrent()) return;
+        const deletions = await deletionRequestsRepositoryImpl.getDeletedTargets(records.map(record => ({
+            targetAuthorPubkey: record.rawEvent.pubkey,
+            targetEventId: record.id,
+        })));
+        if (!isCurrent()) return;
+
+        return () => {
+            if (!isCurrent()) return;
+            for (const record of records) {
+                if (snapshotsByTargetId[record.id] !== previous.get(record.id)) continue;
+                const event = record.rawEvent;
+                const deleted = record.deletedAt !== undefined || deletions.get(event.pubkey)?.has(record.id);
+                if (!deleted && previous.get(record.id)?.status === "resolved") continue;
+                if (!deleted) preparedTargetEvents.add(event);
+                applySnapshotUpdate(record.id, {
+                    status: deleted ? "deleted" : "resolved",
+                    event: deleted ? null : event,
+                    authorPubkey: event.pubkey,
+                    relayHints: sanitizeRelayHints([...record.relayUrls, ...(previous.get(record.id)?.relayHints ?? [])]),
+                    errorCode: null,
+                    updatedAt: Date.now(),
+                });
+            }
+        };
     }
 
     function mergeProfileForPubkey(pubkey: string, profile: ProfileData | null): void {
@@ -483,10 +537,20 @@ export function createPostHistoryRelatedTargetResolver({
                     );
                     // A listing refresh can replace the watching scope and cancel
                     // its background check while retaining the resolved snapshot.
-                    if (descriptor.relationKind === "repost" && !repostPreparation && existingBeforeMerge.event) {
-                        void runDeletionCheck(existingBeforeMerge.event,
+                    const event = existingBeforeMerge.event;
+                    const prepared = !!event && preparedTargetEvents.has(event);
+                    if ((descriptor.relationKind === "repost" || prepared) && !repostPreparation && event) {
+                        void runDeletionCheck(event,
                             snapshotsByTargetId[descriptor.targetEventId]?.relayHints ?? existingBeforeMerge.relayHints,
                             { background: true });
+                    }
+                    if (prepared && descriptor.sourceEventId && eventRepositoryImpl) {
+                        const generation = scopeGenerationByKey[descriptor.scopeKey];
+                        const owner = getOwner(), runtime = getRxNostr();
+                        void eventRepositoryImpl.link(descriptor.sourceEventId, event.id, () =>
+                            getShow() && owner === getOwner() && runtime === getRxNostr()
+                            && generation === scopeGenerationByKey[descriptor.scopeKey],
+                        ).catch(() => undefined);
                     }
                 }
                 return snapshotsByTargetId[descriptor.targetEventId] ?? existingBeforeMerge;
@@ -541,11 +605,7 @@ export function createPostHistoryRelatedTargetResolver({
                 const cached = await eventRepositoryImpl?.get(descriptor.targetEventId);
                 if (!canPersist()) return null;
                 if (cached && (!options.requireRelayHint || cached.relayUrls.length)
-                    && verifyRelatedEvent(cached.rawEvent, { eventId: descriptor.targetEventId,
-                        authorHint: requireFullVerification ? null : descriptor.authorHint ?? null,
-                        authorHints: requireFullVerification ? undefined : descriptor.authorHints,
-                        targetKindHint: requireFullVerification ? undefined : descriptor.targetKindHint, relayHints: [] })
-                    && (requireFullVerification || !descriptor.excludedKinds?.includes(cached.rawEvent.kind))) {
+                    && matchesStoredTarget(cached.rawEvent, descriptor)) {
                     const hints = sanitizeRelayHints([...cached.relayUrls, ...mergedSnapshot.relayHints]);
                     if (cached.deletedAt !== undefined) return applySnapshotUpdate(descriptor.targetEventId,
                         { status: 'deleted', event: null, relayHints: hints, updatedAt: Date.now() });
@@ -849,7 +909,8 @@ export function createPostHistoryRelatedTargetResolver({
     }
 
     function projectSnapshot(snapshot: PostHistoryRelatedTargetSnapshot | null, constraints?: RelatedTargetConstraints): PostHistoryRelatedTargetSnapshot | null {
-        if (!requireFullVerification || !constraints || !snapshot?.event) return snapshot;
+        if (!constraints || !snapshot?.event
+            || (!requireFullVerification && !preparedTargetEvents.has(snapshot.event))) return snapshot;
         if (!verifyRelatedEvent(snapshot.event, { eventId: snapshot.targetEventId, authorHint: constraints.authorHint ?? null,
             authorHints: constraints.authorHints, targetKindHint: constraints.targetKindHint, relayHints: [] })
             || constraints.excludedKinds?.includes(snapshot.event.kind)) {
@@ -922,6 +983,7 @@ export function createPostHistoryRelatedTargetResolver({
 
     return {
         ensureTarget,
+        prepareLocalTargets,
         prepareRepostTarget,
         ensureTargets,
         retryTarget,

@@ -99,7 +99,16 @@ export function eventRecords<N extends EventRecordTableName>(db: EHagakiDB, name
 export class EventRepository {
     constructor(private db: EHagakiDB) {}
     async get(id: string): Promise<StoredEvent | undefined> {
-        const saved = await this.db.events.get(id);
+        return this.verifyStored(await this.db.events.get(id));
+    }
+    async getMany(ids: string[]): Promise<StoredEvent[]> {
+        const rows = await this.db.events.bulkGet(ids);
+        return rows.flatMap(row => {
+            const verified = this.verifyStored(row);
+            return verified ? [verified] : [];
+        });
+    }
+    private verifyStored(saved: StoredEvent | undefined): StoredEvent | undefined {
         if (!saved || saved.deletedAt !== undefined) return saved;
         const verified = attestFullyVerifiedPostHistoryRawEvent(saved.rawEvent);
         return verified ? { ...saved, rawEvent: verified.event } : undefined;
