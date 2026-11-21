@@ -230,8 +230,7 @@ export function usePostHistoryQuotePreviews({
         void resolveQuoteTargets(getCurrentQuoteIndex(), true, eventId);
     }
 
-    async function resolveQuoteTargets(index: PostHistoryQuoteTargetIndex, force = false, eventId?: string): Promise<void> {
-        const generation = loadGeneration;
+    function groupQuoteDescriptors(index: PostHistoryQuoteTargetIndex, eventId?: string) {
         const byTarget = new Map<string, RelatedTargetDescriptor[]>();
         for (const [sourceEventId, references] of Object.entries(index.byPostId)) {
             for (const reference of references) {
@@ -239,10 +238,17 @@ export function usePostHistoryQuotePreviews({
                 const context = index.contextsByEventId[reference.eventId];
                 const descriptor = postHistoryQuoteTargetDiscoveryAdapter.toDescriptor({ ...context,
                     sourceEventId, authorHint: reference.authorHint }, scopeKey);
-                byTarget.set(reference.eventId, [...(byTarget.get(reference.eventId) ?? []), descriptor]);
+                const group = byTarget.get(reference.eventId);
+                if (group) group.push(descriptor);
+                else byTarget.set(reference.eventId, [descriptor]);
             }
         }
-        await Promise.all([...byTarget.values()].map(async candidates => {
+        return byTarget;
+    }
+
+    async function resolveQuoteTargets(index: PostHistoryQuoteTargetIndex, force = false, eventId?: string): Promise<void> {
+        const generation = loadGeneration;
+        await Promise.all([...groupQuoteDescriptors(index, eventId).values()].map(async candidates => {
             for (let attempt = 0; attempt < candidates.length; attempt++) {
                 if (!getShow() || generation !== loadGeneration) return;
                 const descriptor = candidates[attempt];
@@ -288,6 +294,8 @@ export function usePostHistoryQuotePreviews({
 
     return {
         getQuotePreviews,
+        collectLocalDescriptors: (posts: PostHistoryRecord[]) =>
+            [...groupQuoteDescriptors(postHistoryQuoteTargetDiscoveryAdapter.buildIndex(posts)).values()].flat(),
         retryQuotePreview,
         refreshQuotePreviews,
         suspend: () => { loadGeneration++; resolver.invalidateScope(scopeKey); },

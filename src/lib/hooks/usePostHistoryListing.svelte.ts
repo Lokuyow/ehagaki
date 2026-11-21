@@ -153,6 +153,7 @@ interface UsePostHistoryListingParams {
     onSessionScrollStateInvalidated?: () => void;
     onSavedAuthoredPosts?: (eventIds: string[]) => void | Promise<void>;
     onLocalHistoryChanged?: (apply: () => Promise<void>) => Promise<void>;
+    prepareLocalPreviews?: (posts: PostHistoryRecord[], isCurrent: () => boolean) => Promise<(() => void) | undefined> | undefined;
     onChildInteractionBadgeRefreshRequested?: (
         posts: PostHistoryRecord[],
         parentEventIds: string[],
@@ -191,6 +192,7 @@ export function usePostHistoryListing({
     onSessionScrollStateInvalidated = () => { },
     onSavedAuthoredPosts = () => undefined,
     onLocalHistoryChanged = (apply) => apply(),
+    prepareLocalPreviews,
     onChildInteractionBadgeRefreshRequested = () => undefined,
     onQuoteVisibleRangeRefreshRequested = () => undefined,
     quoteVisibleRangeRepairExecutor = undefined,
@@ -1750,18 +1752,18 @@ export function usePostHistoryListing({
             limit: pageSize,
             visibleUntil,
         });
+        const isCurrent = () => isCurrentPostHistoryLoad(pubkeyHex, requestId);
+        const preparation = prepareLocalPreviews?.(latestPosts, isCurrent);
+        const publishPreviews = preparation && await preparation.catch(() => undefined);
 
-        if (
-            !getShow()
-            || getPubkeyHex() !== pubkeyHex
-            || requestId !== loadRequestId
-        ) {
+        if (!isCurrent()) {
             return;
         }
 
         markStateOwner(pubkeyHex);
         state.listingMode = "contiguous";
         state.sparseSource = null;
+        publishPreviews?.();
         state.loadedPosts = latestPosts;
         state.hasNewerLocal = false;
         const nextCoverageAnchor = latestPosts.length > 0
@@ -2040,6 +2042,11 @@ export function usePostHistoryListing({
             return false;
         }
 
+        const isCurrent = () => isCurrentPostHistoryLoad(pubkeyHex, requestId);
+        const preparation = prepareLocalPreviews?.(restoredPosts, isCurrent);
+        const publishPreviews = preparation && await preparation.catch(() => undefined);
+        if (!isCurrent()) return false;
+        publishPreviews?.();
         state.loadedPosts = restoredPosts;
         if (!await waitForFirstPostPaint(
             pubkeyHex,
@@ -2149,11 +2156,15 @@ export function usePostHistoryListing({
             cursor: oldestCursor,
             limit: queryLimit,
         });
+        const isCurrent = () => isCurrentPostHistoryLoad(pubkeyHex, requestId)
+            && state.loadedPosts === currentLoadedPosts;
+        const preparation = prepareLocalPreviews?.(olderPosts, isCurrent);
+        const publishPreviews = preparation && await preparation.catch(() => undefined);
         if (metrics) {
             metrics.olderPostsLength = olderPosts.length;
         }
 
-        if (!getShow() || requestId !== loadRequestId) {
+        if (!isCurrent()) {
             return false;
         }
 
@@ -2225,6 +2236,8 @@ export function usePostHistoryListing({
         ) {
             return false;
         }
+        if (!isCurrent()) return false;
+        publishPreviews?.();
         state.loadedPosts = mergedResult.posts;
         if (newlyVisibleOlderPosts.length > 0) {
             relationRepairCoordinator.scheduleOlderRevealRepair(
@@ -2447,8 +2460,13 @@ export function usePostHistoryListing({
             cursor: newestCursor,
             limit: pageSize,
         });
+        const before = state.loadedPosts;
+        const isCurrent = () => isCurrentPostHistoryLoad(pubkeyHex, requestId)
+            && state.loadedPosts === before;
+        const preparation = prepareLocalPreviews?.(newerPosts, isCurrent);
+        const publishPreviews = preparation && await preparation.catch(() => undefined);
 
-        if (!getShow() || requestId !== loadRequestId) {
+        if (!isCurrent()) {
             return false;
         }
 
@@ -2494,6 +2512,8 @@ export function usePostHistoryListing({
         ) {
             return false;
         }
+        if (!isCurrent()) return false;
+        publishPreviews?.();
         state.loadedPosts = nextPosts;
         const removedOlderCount = Math.max(
             0,

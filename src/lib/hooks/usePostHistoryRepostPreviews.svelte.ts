@@ -27,7 +27,7 @@ export function usePostHistoryRepostPreviews(params: { getShow: () => boolean;
     let generation = 0;
     let saveErrors = $state<Record<string, boolean>>({});
     function descriptor(post: PostHistoryRecord): RelatedTargetDescriptor | null {
-        const reference = getRepostReference(post);
+        const reference = post.deletedAt === undefined ? getRepostReference(post) : null;
         return reference ? { targetEventId: reference.eventId, authorHint: reference.authorHint,
             relayHints: reference.relayHints, relationKind: "repost", sourceEventId: post.eventId, scopeKey } : null;
     }
@@ -70,6 +70,14 @@ export function usePostHistoryRepostPreviews(params: { getShow: () => boolean;
         return () => { generation++; params.resolver.invalidateScope(scopeKey); };
     });
     onDestroy(() => { generation++; params.resolver.invalidateScope(scopeKey); });
-    return { suspend: () => { generation++; params.resolver.invalidateScope(scopeKey); }, getPreview, retry: (post: PostHistoryRecord) => { void ensure(post, !saveErrors[post.eventId]).catch(() => undefined); } };
+    return {
+        suspend: () => { generation++; params.resolver.invalidateScope(scopeKey); },
+        getPreview,
+        collectLocalDescriptors: (posts: PostHistoryRecord[]) => posts.flatMap(post => {
+            const target = descriptor(post);
+            return target ? [target] : [];
+        }),
+        retry: (post: PostHistoryRecord) => { void ensure(post, !saveErrors[post.eventId]).catch(() => undefined); },
+    };
 }
 export type RepostPreviewState = ReturnType<ReturnType<typeof usePostHistoryRepostPreviews>["getPreview"]>;

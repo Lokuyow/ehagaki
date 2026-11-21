@@ -222,27 +222,17 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
 
     async getDeletedTargets(targets: PostHistoryDeletionTarget[]): Promise<Map<string, Set<string>>> {
         const deletedTargets = new Map<string, Set<string>>();
-        const uniqueTargets = new Map<string, PostHistoryDeletionTarget>();
-        for (const target of targets) {
-            if (!target.targetAuthorPubkey || !target.targetEventId) {
-                continue;
-            }
+        const keys = targets
+            .filter(target => target.targetAuthorPubkey && target.targetEventId)
+            .map(target => [target.targetAuthorPubkey, target.targetEventId]);
+        if (keys.length === 0) return deletedTargets;
 
-            uniqueTargets.set(
-                `${target.targetAuthorPubkey}:${target.targetEventId}`,
-                target,
-            );
-        }
-
-        for (const target of uniqueTargets.values()) {
-            const records = await this.db.postHistoryDeletionRequests
-                .where("[targetAuthorPubkey+targetEventId]")
-                .equals([target.targetAuthorPubkey, target.targetEventId])
-                .toArray().then(rows => eventRecords(this.db, "postHistoryDeletionRequests").hydrate(rows));
-            for (const record of records) {
-                if (isPostHistoryDeletionTargetVerified(record)) {
-                    addDeletedTarget(deletedTargets, record);
-                }
+        const rows = await this.db.postHistoryDeletionRequests
+            .where("[targetAuthorPubkey+targetEventId]").anyOf(keys).toArray();
+        const records = await eventRecords(this.db, "postHistoryDeletionRequests").hydrate(rows);
+        for (const record of records) {
+            if (isPostHistoryDeletionTargetVerified(record)) {
+                addDeletedTarget(deletedTargets, record);
             }
         }
 

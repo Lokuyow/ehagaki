@@ -63,8 +63,15 @@ export function usePostHistoryDialogViewport({
     getSearchQuery,
 }: UsePostHistoryDialogViewportParams) {
     let generation = 0;
+    let relatedLayoutRestorePending = false;
+    let threadToggle: {
+        scopeEventId: string;
+        eventId: string;
+        container: HTMLElement;
+        scrollTop: number | null;
+    } | null = null;
     const capture = () => { const epoch = generation; return () => getShow() && epoch === generation; };
-    function suspend() { generation++; cancelCurrentMonthLabelFrame(); }
+    function suspend() { generation++; threadToggle = null; cancelCurrentMonthLabelFrame(); }
     onDestroy(suspend);
     let currentMonthLabel = $state<string | null>(null);
     let isHistoryScrolledToTop = $state(true);
@@ -531,13 +538,14 @@ export function usePostHistoryDialogViewport({
 
     function restoreThreadScrollPositionAnchor(
         anchor: ThreadScrollPositionAnchor | null,
+        flushUpdates = true,
     ): boolean {
         const container = getContainer();
         if (!anchor || !getShow() || !container) {
             return false;
         }
 
-        flushSync();
+        if (flushUpdates) flushSync();
 
         const anchoredItem = findThreadScrollAnchorElement(
             anchor.scopeEventId,
@@ -564,18 +572,52 @@ export function usePostHistoryDialogViewport({
         eventId: string,
         action: () => void | Promise<void>,
     ): Promise<void> {
+        const container = getContainer();
+        if (!container) {
+            await action();
+            return;
+        }
         const owned = capture();
         const anchor = captureThreadScrollPositionAnchor(scopeEventId, eventId);
-        const actionResult = action();
+        const toggle = { scopeEventId, eventId, container, scrollTop: null as number | null };
+        threadToggle = toggle;
+        try {
+            const actionResult = action();
+            await tick();
+            if (owned() && threadToggle === toggle && getContainer() === container) {
+                restoreThreadScrollPositionAnchor(anchor);
+                toggle.scrollTop = container.scrollTop;
+            }
+            await actionResult;
+        } finally {
+            // Keep the clicked anchor available to the pre-effect for the last update.
+            await tick();
+            if (threadToggle === toggle) threadToggle = null;
+        }
+    }
 
-        await tick();
-        if (!owned()) return;
-        restoreThreadScrollPositionAnchor(anchor);
+    function preserveRelatedLayoutScroll(isCurrentWindow: () => boolean): void {
+        const container = getContainer();
+        if (!container || relatedLayoutRestorePending || threadToggle?.scrollTop === null) return;
 
-        await actionResult;
-        await tick();
-        if (!owned()) return;
-        restoreThreadScrollPositionAnchor(anchor);
+        const owned = capture();
+        const scrollTop = container.scrollTop;
+        const toggle = threadToggle;
+        const clickedAnchor = toggle?.container === container && toggle.scrollTop === scrollTop
+            ? captureThreadScrollPositionAnchor(toggle.scopeEventId, toggle.eventId) : null;
+        const rowAnchor = clickedAnchor ? null : captureHistoryScrollAnchor();
+        if (!clickedAnchor && !rowAnchor) return;
+
+        relatedLayoutRestorePending = true;
+        void tick().then(() => {
+            relatedLayoutRestorePending = false;
+            if (!owned() || !isCurrentWindow() || getContainer() !== container) return;
+            // Sync layout first so native scroll anchoring, when enabled, has run.
+            void container.scrollHeight;
+            if (Math.abs(container.scrollTop - scrollTop) >= 0.5) return;
+            if (clickedAnchor) restoreThreadScrollPositionAnchor(clickedAnchor, false);
+            else restoreHistoryScrollAnchor(rowAnchor, { flushUpdates: false });
+        });
     }
 
     $effect(() => {
@@ -670,5 +712,6 @@ export function usePostHistoryDialogViewport({
         canCommitAutoLoadWindowChange,
         restoreHistoryScrollAnchor,
         preserveThreadParentToggleScroll,
+        preserveRelatedLayoutScroll,
     };
 }
