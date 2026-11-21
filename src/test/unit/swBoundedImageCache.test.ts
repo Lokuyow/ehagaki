@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ServiceWorkerBoundedImageCache } from '../../lib/swBoundedImageCache';
 import { OPAQUE_CACHE_RETENTION_MS } from '../../lib/cacheRetention';
+import { resolveCustomEmojiImageRequestResponse } from '../../lib/swCustomEmojiRequestUtils';
 
 class MemoryCache {
     private entries = new Map<string, Response>();
@@ -26,6 +27,11 @@ function setup() {
     let now = 100;
     const storage = {
         open: async (name: string) => name === 'body' ? body : metadata,
+        delete: async (name: string) => {
+            const cache = name === 'body' ? body : metadata;
+            for (const key of await cache.keys()) await cache.delete(key);
+            return true;
+        },
     } as unknown as CacheStorage;
     const createCache = () => new ServiceWorkerBoundedImageCache(storage, {
         bodyName: 'body', metadataName: 'meta', maxEntries: 3, maxReadableBytes: 6,
@@ -35,6 +41,78 @@ function setup() {
 }
 
 describe('Service Worker image cache retention', () => {
+    it('serves other cached images and starts network fallback during an uncommitted replacement', async () => {
+        const { createCache, metadata, advance } = setup();
+        const cache = createCache();
+        await cache.put(request('stable'), readable(1));
+        await cache.put(request('replacement'), readable(1));
+        advance(1);
+
+        const put = metadata.put.bind(metadata);
+        const held = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        vi.spyOn(metadata, 'put').mockImplementationOnce(async (key, response) => {
+            held.resolve();
+            await release.promise;
+            await put(key, response);
+        });
+        const replacement = cache.put(request('replacement'), readable(2));
+        await held.promise;
+
+        try {
+            await expect(cache.match(request('replacement'))).resolves.toBeUndefined();
+            const background: Promise<unknown>[] = [];
+            await expect(cache.match(request('stable'), work => background.push(work))).resolves.toBeDefined();
+            advance(1);
+            await expect(cache.match(request('stable'), work => background.push(work))).resolves.toBeDefined();
+            expect(background).toHaveLength(2);
+            expect(background[1]).toBe(background[0]);
+
+            const network = vi.fn(async () => readable(3));
+            const response = await resolveCustomEmojiImageRequestResponse({
+                request: request('missing'), cache, getBaseUrl: url => url, createRequest: url => new Request(url),
+                fetchRequest: network,
+            });
+            expect(network).toHaveBeenCalledOnce();
+            expect((await response.arrayBuffer()).byteLength).toBe(3);
+            release.resolve();
+            await replacement;
+            await Promise.all(background);
+            const updates = await Promise.all((await metadata.matchAll()).map(async response => await response.text()));
+            expect(updates.some(value => value.includes('"lastAccessedAt":102'))).toBe(true);
+        } finally {
+            release.resolve();
+            await replacement;
+        }
+    });
+
+    it('discards a lookup that overlaps a cache clear', async () => {
+        const { createCache, body, metadata, advance } = setup();
+        const cache = createCache();
+        await cache.put(request('image'), readable(1));
+        advance(1);
+        const match = body.match.bind(body);
+        const started = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        vi.spyOn(body, 'match').mockImplementationOnce(async key => {
+            const old = await match(key);
+            started.resolve();
+            await release.promise;
+            return old;
+        });
+        const registerWork = vi.fn();
+        const lookup = cache.match(request('image'), registerWork);
+        await started.promise;
+        try {
+            await cache.clear();
+        } finally {
+            release.resolve();
+        }
+        await expect(lookup).resolves.toBeUndefined();
+        expect(registerWork).not.toHaveBeenCalled();
+        expect(await metadata.keys()).toHaveLength(0);
+    });
+
     it('adopts the newest fitting legacy bodies and resumes a partial migration', async () => {
         const { body, metadata, createCache } = setup();
         await body.put(request('old'), readable(4));
@@ -80,7 +158,9 @@ describe('Service Worker image cache retention', () => {
         await cache.put(request('readable'), readable(1));
         advance(OPAQUE_CACHE_RETENTION_MS - 1);
         expect(await cache.match(request('opaque'))).toBeDefined();
-        expect(await cache.match(request('readable'))).toBeDefined();
+        const background: Promise<unknown>[] = [];
+        expect(await cache.match(request('readable'), work => background.push(work))).toBeDefined();
+        await Promise.all(background);
         advance(1);
         expect(await cache.match(request('opaque'))).toBeUndefined();
         advance(30 * OPAQUE_CACHE_RETENTION_MS - 1);

@@ -1,3 +1,5 @@
+import type { RegisterImageCacheWork } from './swBoundedImageCache';
+
 export interface ProfileImageFetchLogger {
     log: (...args: unknown[]) => void;
     warn: (...args: unknown[]) => void;
@@ -27,6 +29,29 @@ function getErrorMessage(error: unknown): string {
     return String(error);
 }
 
+async function saveProfileImage({
+    cacheStorage,
+    cacheName,
+    key,
+    response,
+    logger,
+}: {
+    cacheStorage: CacheStorageLike;
+    cacheName: string;
+    key: Request;
+    response: ProfileImageResponseLike;
+    logger: ProfileImageFetchLogger;
+}): Promise<void> {
+    try {
+        const cacheResponse = typeof response.clone === 'function' ? response.clone() : response;
+        const cache = await cacheStorage.open(cacheName);
+        await cache.put(key, cacheResponse);
+        logger.log('プロフィール画像をキャッシュに保存完了:', key.url);
+    } catch (error) {
+        logger.warn('プロフィール画像のキャッシュ保存に失敗:', error, key.url);
+    }
+}
+
 export async function fetchAndCacheOpaqueProfileImageResponse({
     baseUrl,
     cacheStorage,
@@ -34,6 +59,7 @@ export async function fetchAndCacheOpaqueProfileImageResponse({
     fetchRequest,
     createRequest,
     logger,
+    registerWork,
 }: {
     baseUrl: string;
     cacheStorage: CacheStorageLike;
@@ -41,6 +67,7 @@ export async function fetchAndCacheOpaqueProfileImageResponse({
     fetchRequest: (request: Request) => Promise<ProfileImageResponseLike | null | undefined>;
     createRequest: (url: string, options?: RequestInit) => Request;
     logger: ProfileImageFetchLogger;
+    registerWork?: RegisterImageCacheWork;
 }): Promise<ProfileImageResponseLike | null> {
     const profileFetchRequest = createRequest(baseUrl, {
         mode: 'no-cors',
@@ -51,17 +78,11 @@ export async function fetchAndCacheOpaqueProfileImageResponse({
         return null;
     }
 
-    const cache = await cacheStorage.open(cacheName);
-    const cacheKey = createRequest(baseUrl, { mode: 'no-cors' });
-    try {
-        await cache.put(
-            cacheKey,
-            typeof response.clone === 'function' ? response.clone() : response,
-        );
-        logger.log('プロフィール画像をopaqueキャッシュに保存完了:', baseUrl);
-    } catch (cacheError) {
-        logger.warn('プロフィール画像のopaqueキャッシュ保存に失敗:', cacheError, baseUrl);
-    }
+    const work = saveProfileImage({
+        cacheStorage, cacheName, key: createRequest(baseUrl, { mode: 'no-cors' }), response, logger,
+    });
+    if (registerWork) registerWork(work);
+    else await work;
 
     return response;
 }
@@ -77,6 +98,7 @@ export async function fetchAndCacheProfileImageResponse({
     cacheName,
     fetchOpaqueProfileImage,
     logger,
+    registerWork,
 }: {
     request: Request;
     isOnline?: boolean;
@@ -88,6 +110,7 @@ export async function fetchAndCacheProfileImageResponse({
     cacheName: string;
     fetchOpaqueProfileImage: (baseUrl: string) => Promise<ProfileImageResponseLike | null>;
     logger: ProfileImageFetchLogger;
+    registerWork?: RegisterImageCacheWork;
 }): Promise<ProfileImageResponseLike | null> {
     if (isOnline === false) {
         return null;
@@ -111,18 +134,11 @@ export async function fetchAndCacheProfileImageResponse({
         const response = await fetchRequest(profileFetchRequest);
 
         if (response && response.ok && response.type !== 'opaque') {
-            const cache = await cacheStorage.open(cacheName);
-            const cacheKey = createRequest(baseUrl);
-
-            try {
-                await cache.put(
-                    cacheKey,
-                    typeof response.clone === 'function' ? response.clone() : response,
-                );
-                logger.log('プロフィール画像をキャッシュに保存完了:', baseUrl);
-            } catch (cacheError) {
-                logger.warn('プロフィール画像のキャッシュ保存に失敗:', cacheError, baseUrl);
-            }
+            const work = saveProfileImage({
+                cacheStorage, cacheName, key: createRequest(baseUrl), response, logger,
+            });
+            if (registerWork) registerWork(work);
+            else await work;
 
             return response;
         }

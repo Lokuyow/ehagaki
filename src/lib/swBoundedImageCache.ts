@@ -17,6 +17,20 @@ interface CachePair {
     metadata: Cache;
 }
 
+export type RegisterImageCacheWork = (work: Promise<unknown>) => void;
+
+interface EntryAccess {
+    readers: number;
+    version: number;
+    writing: boolean;
+}
+
+interface PendingTouch {
+    savedAt: number;
+    accessedAt: number;
+    work: Promise<void>;
+}
+
 function metadataKey(url: string): string {
     return 'https://ehagaki.invalid/image-cache/entry?url=' + encodeURIComponent(url);
 }
@@ -59,6 +73,11 @@ async function measureImage(response: Response, maxBytes: number, preserveBody: 
 export class ServiceWorkerBoundedImageCache {
     private queue: Promise<unknown> = Promise.resolve();
     private nextSweepAt = 0;
+    private reconciliation?: Promise<void>;
+    private readonly entriesInUse = new Map<string, EntryAccess>();
+    private readonly pendingTouches = new Map<string, PendingTouch>();
+    private clearVersion = 0;
+    private clearing = false;
 
     constructor(
         private readonly storage: CacheStorage,
@@ -99,7 +118,7 @@ export class ServiceWorkerBoundedImageCache {
             if (key.url === MIGRATION_KEY) return undefined;
             const entry = await this.readMetadata(values[index], key.url);
             if (!entry) await cache.delete(key);
-            return entry;
+            return entry && this.withPendingAccess(entry);
         }));
         return entries.filter(entry => entry !== undefined);
     }
@@ -108,30 +127,103 @@ export class ServiceWorkerBoundedImageCache {
         return cache.put(metadataKey(entry.url), new Response(JSON.stringify(entry)));
     }
 
-    private async remove(pair: CachePair, url: string): Promise<void> {
-        await pair.body.delete(url, { ignoreVary: true });
+    private async removePair(pair: CachePair, url: string): Promise<boolean> {
+        const deleted = await pair.body.delete(url, { ignoreVary: true });
         await pair.metadata.delete(metadataKey(url));
+        return deleted;
     }
 
-    async match(request: Request): Promise<Response | undefined> {
-        return this.serialize(async () => {
+    private access(url: string): EntryAccess {
+        let entry = this.entriesInUse.get(url);
+        if (!entry) {
+            entry = { readers: 0, version: 0, writing: false };
+            this.entriesInUse.set(url, entry);
+        }
+        return entry;
+    }
+
+    private release(url: string, entry: EntryAccess): void {
+        if (!entry.readers && !entry.writing) this.entriesInUse.delete(url);
+    }
+
+    private async mutate<T>(url: string, operation: () => Promise<T>): Promise<T> {
+        const entry = this.access(url);
+        entry.version++;
+        entry.writing = true;
+        this.pendingTouches.delete(url);
+        try {
+            return await operation();
+        } finally {
+            entry.writing = false;
+            this.release(url, entry);
+        }
+    }
+
+    private remove(pair: CachePair, url: string): Promise<boolean> {
+        return this.mutate(url, () => this.removePair(pair, url));
+    }
+
+    private withPendingAccess(entry: ImageMetadata): ImageMetadata {
+        const pending = this.pendingTouches.get(entry.url);
+        return pending?.savedAt === entry.savedAt
+            ? { ...entry, lastAccessedAt: Math.max(entry.lastAccessedAt, pending.accessedAt) }
+            : entry;
+    }
+
+    private touch(entry: ImageMetadata, now: number): Promise<void> {
+        const pending = this.pendingTouches.get(entry.url);
+        if (pending) {
+            pending.accessedAt = Math.max(pending.accessedAt, now);
+            return pending.work;
+        }
+        const touch: PendingTouch = { savedAt: entry.savedAt, accessedAt: now, work: this.serialize(async () => {
+            if (this.pendingTouches.get(entry.url) !== touch) return;
+            try {
+                const cache = await this.storage.open(this.policy.metadataName);
+                const key = metadataKey(entry.url);
+                const current = await this.readMetadata(await cache.match(key), key);
+                this.pendingTouches.delete(entry.url);
+                if (current?.savedAt === touch.savedAt && touch.accessedAt > current.lastAccessedAt) {
+                    await this.writeMetadata(cache, { ...current, lastAccessedAt: touch.accessedAt });
+                }
+            } finally {
+                if (this.pendingTouches.get(entry.url) === touch) this.pendingTouches.delete(entry.url);
+            }
+        }).catch(() => undefined) };
+        this.pendingTouches.set(entry.url, touch);
+        return touch.work;
+    }
+
+    async match(request: Request, registerWork?: RegisterImageCacheWork): Promise<Response | undefined> {
+        const url = request.url;
+        if (this.clearing || this.entriesInUse.get(url)?.writing) return undefined;
+
+        const access = this.access(url);
+        const version = access.version;
+        const clearVersion = this.clearVersion;
+        access.readers++;
+        try {
             const pair = await this.open();
-            await this.sweepIfDue(pair);
-            const key = metadataKey(request.url);
-            const [entry, response] = await Promise.all([
+            const key = metadataKey(url);
+            const [metadata, response] = await Promise.all([
                 pair.metadata.match(key).then(meta => this.readMetadata(meta, key)),
                 pair.body.match(request),
             ]);
+            if (access.writing || access.version !== version || this.clearVersion !== clearVersion) return undefined;
             const now = this.now();
-            if (!entry || expiresAt(entry) <= now) {
-                if (entry) await this.remove(pair, request.url);
-                return undefined;
+            const entry = metadata && this.withPendingAccess(metadata);
+            const expired = entry !== undefined && expiresAt(entry) <= now;
+            if (registerWork && (expired || now >= this.nextSweepAt)) {
+                if (expired) this.nextSweepAt = 0;
+                registerWork(this.reconcile().catch(() => undefined));
             }
-            if (response && now > entry.lastAccessedAt) {
-                await this.writeMetadata(pair.metadata, { ...entry, lastAccessedAt: now }).catch(() => undefined);
-            }
+            if (!entry || expired || !response) return undefined;
+            if (registerWork && now > entry.lastAccessedAt) registerWork(this.touch(entry, now));
             return response;
-        });
+        } finally {
+            access.readers--;
+            this.release(url, access);
+        }
     }
 
     async put(request: Request, response: Response): Promise<void> {
@@ -145,24 +237,33 @@ export class ServiceWorkerBoundedImageCache {
             for (const victim of selectCacheEvictions(existing.map(forRetention), this.policy, now, forRetention(entry))) {
                 await this.remove(pair, victim.url);
             }
-            await this.remove(pair, entry.url);
-            try {
-                await pair.body.put(request, response);
-                await this.writeMetadata(pair.metadata, entry);
-            } catch (error) {
-                this.nextSweepAt = 0;
-                await this.remove(pair, entry.url).catch(() => undefined);
-                throw error;
-            }
+            await this.mutate(entry.url, async () => {
+                try {
+                    await this.removePair(pair, entry.url);
+                    await pair.body.put(request, response);
+                    await this.writeMetadata(pair.metadata, entry);
+                } catch (error) {
+                    this.nextSweepAt = 0;
+                    await this.removePair(pair, entry.url).catch(() => undefined);
+                    throw error;
+                }
+            });
         });
     }
 
     async clear(): Promise<boolean> {
         return this.serialize(async () => {
             this.nextSweepAt = 0;
-            const deleted = await this.storage.delete(this.policy.bodyName);
-            await this.storage.delete(this.policy.metadataName);
-            return deleted;
+            this.clearVersion++;
+            this.clearing = true;
+            this.pendingTouches.clear();
+            try {
+                const deleted = await this.storage.delete(this.policy.bodyName);
+                await this.storage.delete(this.policy.metadataName);
+                return deleted;
+            } finally {
+                this.clearing = false;
+            }
         });
     }
 
@@ -175,16 +276,13 @@ export class ServiceWorkerBoundedImageCache {
     }
 
     async delete(request: Request): Promise<boolean> {
-        return this.serialize(async () => {
-            const pair = await this.open();
-            const deleted = await pair.body.delete(request, { ignoreVary: true });
-            await pair.metadata.delete(metadataKey(request.url));
-            return deleted;
-        });
+        return this.serialize(async () => this.remove(await this.open(), request.url));
     }
 
     reconcile(): Promise<void> {
-        return this.serialize(async () => this.sweepIfDue(await this.open()));
+        this.reconciliation ??= this.serialize(async () => this.sweepIfDue(await this.open()))
+            .finally(() => { this.reconciliation = undefined; });
+        return this.reconciliation;
     }
 
     private async sweepIfDue(pair: CachePair): Promise<void> {
@@ -256,13 +354,15 @@ export class ServiceWorkerBoundedImageCache {
         }
         // Free space from excluded legacy entries before writing new metadata.
         for (const { entry, request, hasVariants } of adopted) {
-            if (hasVariants) {
-                const response = await pair.body.match(request);
-                await pair.body.delete(entry.url, { ignoreVary: true });
-                if (!response) continue;
-                await pair.body.put(request, response);
-            }
-            await this.writeMetadata(pair.metadata, entry);
+            await this.mutate(entry.url, async () => {
+                if (hasVariants) {
+                    const response = await pair.body.match(request);
+                    await pair.body.delete(entry.url, { ignoreVary: true });
+                    if (!response) return;
+                    await pair.body.put(request, response);
+                }
+                await this.writeMetadata(pair.metadata, entry);
+            });
         }
     }
 }

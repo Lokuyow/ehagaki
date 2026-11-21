@@ -14,7 +14,30 @@ import { CUSTOM_EMOJI_IMAGE_CACHE_POLICY, PROFILE_IMAGE_CACHE_POLICY } from '../
 const manifestPattern = /\[\{"revision":(?:null|"[^"]*"),"url":"[^"]+"\}(?:,\{"revision":(?:null|"[^"]*"),"url":"[^"]+"\})*\]/;
 interface Entry { url: string; revision: string | null }
 
-async function createFixture(basePath: '/' | '/ehagaki/') {
+// Hold the metadata commit in the built worker without holding the browser's
+// Cache API itself. The network and independent reads remain available.
+const holdImageCacheWrites = `
+    const testCachePut = Cache.prototype.put;
+    const testHeldWrites = new Map();
+    Cache.prototype.put = async function(request, response) {
+        const url = new URL(request instanceof Request ? request.url : request, self.location.href);
+        const key = url.searchParams.get('url');
+        if (url.hostname === 'ehagaki.invalid' && key?.endsWith('-held.svg')) {
+            await new Promise(resolve => testHeldWrites.set(key, resolve));
+        }
+        return testCachePut.call(this, request, response);
+    };
+    self.addEventListener('message', event => {
+        if (event.data?.type !== 'TEST_HELD_IMAGE_WRITES') return;
+        if (event.data.release) {
+            for (const release of testHeldWrites.values()) release();
+            testHeldWrites.clear();
+        }
+        event.ports[0].postMessage(testHeldWrites.size);
+    });
+`;
+
+async function createFixture(basePath: '/' | '/ehagaki/', options: { holdImageWrites?: boolean } = {}) {
     const directory = resolve('node_modules/.cache/sw-update', basePath === '/' ? 'root' : 'pages');
     const worker = readFileSync(resolve(directory, 'sw.js'), 'utf8');
     const manifestText = worker.match(manifestPattern)?.[0];
@@ -49,6 +72,11 @@ async function createFixture(basePath: '/' | '/ehagaki/') {
             send(response, Buffer.from('<html><body>SW cache inspection</body></html>'), 'text/html');
             return;
         }
+        if (options.holdImageWrites && /^cache-test-[\w-]+\.svg$/.test(path)) {
+            requests.push({ url: path, bytes: 0 });
+            send(response, Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="17" height="7"/>'), 'image/svg+xml');
+            return;
+        }
         if (path === 'sw.js') {
             const manifest = entries.map((entry) => ({ ...entry }));
             if (legacy) for (const entry of manifest) {
@@ -58,7 +86,8 @@ async function createFixture(basePath: '/' | '/ehagaki/') {
             }
             if (changedHtml) manifest.find((entry) => entry.url === 'index.html')!.revision = 'changed-html';
             if (additions) manifest.push(...probes.map((url) => ({ url, revision: null })));
-            const code = worker.replace(manifestText, JSON.stringify(manifest)) + `\n// fixture version ${version}\n`;
+            const code = worker.replace(manifestText, JSON.stringify(manifest))
+                + (options.holdImageWrites ? holdImageCacheWrites : '') + `\n// fixture version ${version}\n`;
             send(response, Buffer.from(code), 'text/javascript');
             return;
         }
@@ -264,6 +293,65 @@ test('restores the saved account while v1.32.0 history conversion is still pendi
 });
 
 for (const basePath of ['/ehagaki/', '/'] as const) {
+    test(`${basePath} serves independent image hits and direct fallback while cache writes are held`, async ({ page }) => {
+        const fixture = await createFixture(basePath, { holdImageWrites: true });
+        try {
+            await page.goto(`${fixture.url}sw-monitor.html`);
+            await page.evaluate(async () => {
+                await navigator.serviceWorker.register('./sw.js');
+                await navigator.serviceWorker.ready;
+            });
+            await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+            const imageUrl = (name: string, profile = false) =>
+                `${fixture.url}cache-test-${name}.svg${profile ? '?profile=true' : ''}`;
+            const show = async (url: string, id: string) => {
+                await page.evaluate(({ url, id }) => {
+                    const image = document.createElement('img');
+                    image.dataset.testid = id;
+                    image.src = url;
+                    document.body.append(image);
+                }, { url, id });
+                await expect.poll(() => page.getByTestId(id).evaluate(
+                    image => (image as HTMLImageElement).naturalWidth,
+                )).toBe(17);
+            };
+            const heldWrites = (release = false) => page.evaluate(release => new Promise<number>(resolve => {
+                const channel = new MessageChannel();
+                channel.port1.onmessage = event => { channel.port1.close(); resolve(event.data); };
+                navigator.serviceWorker.controller!.postMessage({ type: 'TEST_HELD_IMAGE_WRITES', release }, [channel.port2]);
+            }), release);
+            const cacheEmoji = (url: string) => page.evaluate(url => new Promise<void>(resolve => {
+                const channel = new MessageChannel();
+                channel.port1.onmessage = () => { channel.port1.close(); resolve(); };
+                navigator.serviceWorker.controller!.postMessage({ action: 'cacheCustomEmojiImages', urls: [url] }, [channel.port2]);
+            }), url);
+            await cacheEmoji(imageUrl('emoji'));
+            await show(imageUrl('avatar', true), 'seed-avatar');
+            await expect.poll(() => page.evaluate(async ({ name, url }) =>
+                (await (await caches.open(name)).keys()).some(key => key.url === url),
+            { name: PROFILE_IMAGE_CACHE_POLICY.bodyName, url: imageUrl('avatar') })).toBe(true);
+            const emojiWrite = cacheEmoji(imageUrl('emoji-held'));
+            // The cold avatar itself must display before its cache write finishes.
+            await show(imageUrl('avatar-held', true), 'cold-avatar');
+            await expect.poll(() => heldWrites()).toBe(2);
+            try {
+                const before = fixture.requests.length;
+                await show(imageUrl('emoji'), 'cached-emoji');
+                await show(imageUrl('avatar', true) + '&revision=2', 'cached-avatar');
+                expect(fixture.requests.slice(before)).toEqual([]);
+                // A plain image URL also represents the media tab's direct fallback.
+                await show(imageUrl('upload-fallback'), 'direct-media');
+                expect(fixture.requests.at(-1)?.url).toBe('cache-test-upload-fallback.svg');
+                expect(await heldWrites()).toBe(2);
+            } finally {
+                await heldWrites(true);
+                await emojiWrite;
+            }
+        } finally {
+            await fixture.close();
+        }
+    });
+
     test(`${basePath} keeps bounded image caches across a Service Worker update and offline display`, async ({ page, context }) => {
         const fixture = await createFixture(basePath);
         try {
