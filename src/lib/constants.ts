@@ -30,7 +30,7 @@ export { VIDEO_COMPRESSION_OPTIONS_MAP } from './videoCompression/videoCompressi
 export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;
 
 export const ALLOWED_PROTOCOLS = ['http:', 'https:'];
-export const ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+export const ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.avif'];
 export const ALLOWED_VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv'];
 
 // --- SvelteImageNode用定数 ---

@@ -73,6 +73,7 @@
         type SensitiveBodyCacheStatus,
         type PostContentRenderModel,
     } from "../lib/postContentPreview";
+    import { restoreAvifHistoryMedia } from "../lib/postHistoryMediaUtils";
     import {
         resolvePostHistoryCountSummaryState,
         resolvePostHistoryNavigationLabelKey,
@@ -651,7 +652,7 @@
             sourceContent: content,
             displayContent,
             tags: post.tags,
-            media: post.media,
+            media: restoreAvifHistoryMedia(content, post.media),
         });
         displayPreviewModelByPost.set(post, model);
         return model;

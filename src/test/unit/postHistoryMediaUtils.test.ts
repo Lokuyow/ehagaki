@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractPostHistoryMedia } from "../../lib/postHistoryMediaUtils";
+import { extractPostHistoryMedia, restoreAvifHistoryMedia } from "../../lib/postHistoryMediaUtils";
 
 describe("postHistoryMediaUtils", () => {
     it("preserves imeta tag order, keeps unmatched imeta for compatibility, then appends new content media", () => {
@@ -201,6 +201,17 @@ describe("postHistoryMediaUtils", () => {
                 tags: [],
             }),
         ).toEqual([]);
+    });
+
+    it("recognizes AVIF paths with queries and restores missing history attachments once", () => {
+        const url = "https://example.com/frame.AVIF?token=1";
+        const content = "(" + url + "). " + url + " https://example.com/download?name=other.avif";
+        const oldMedia = [{ url: "https://example.com/previous.png", mimeType: "image/png" }];
+        const restored = restoreAvifHistoryMedia(content, oldMedia);
+
+        expect(extractPostHistoryMedia({ content: url, tags: [] })).toEqual([{ url, mimeType: "image/avif" }]);
+        expect(restored).toEqual([...oldMedia, { url, mimeType: "image/avif" }]);
+        expect(restoreAvifHistoryMedia(content, restored)).toBe(restored);
     });
 
     it("uses imeta MIME hints before extension fallback when classifying media", () => {

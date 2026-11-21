@@ -25,6 +25,7 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from 'prosemirror-state';
 import { Slice, Fragment } from 'prosemirror-model';
 import type { Node as PMNode, Schema } from 'prosemirror-model';
+import { isUntypedAvifFile } from '../utils/avifFile';
 import { getClipboardUploadFiles, normalizeClipboardText, serializeParagraphs } from '../utils/clipboardUtils';
 import { isValidProtocol } from '../utils/editorUrlUtils';
 import { normalizeEmojiShortcode } from '../customEmoji';
@@ -204,7 +205,7 @@ export const ClipboardExtension = Extension.create({
 
                         const files = getClipboardUploadFiles(clipboardData);
                         // 動画・非対応ファイルはpasteActionに任せ、付随するHTMLやファイル名を挿入しない。
-                        if (files.some(file => !file.type.startsWith('image/'))) {
+                        if (files.some(file => !file.type.startsWith('image/') && !isUntypedAvifFile(file))) {
                             event.preventDefault();
                             return true;
                         }

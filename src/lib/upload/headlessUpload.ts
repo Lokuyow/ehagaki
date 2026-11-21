@@ -8,6 +8,7 @@ import { VideoCompressionService } from "../videoCompression/videoCompressionSer
 import { getAppStorage } from "../appStorage";
 import { resolveCurrentUploadDestination } from "./resolveCurrentUploadDestination";
 import { AuthenticationRequiredError } from "../sessionLiveness";
+import { normalizeAvifFile } from "../utils/avifFile";
 import { throwIfUploadAborted } from "./uploadOperation";
 import type { EHagakiUploadResult } from "../../web-component/types";
 import type { UploadDestination } from "../types";
@@ -163,18 +164,19 @@ export async function uploadFileForHost(
     ) {
         throw createUploadError("unsupported_media", "A valid File is required.");
     }
-    const validation = manager.validateMediaFile(file);
-    if (!validation.isValid) {
-        throw createUploadError(
-            "unsupported_media",
-            validation.errorMessage || "This file type or size is not supported.",
-        );
-    }
-
     try {
+        const uploadFile = await normalizeAvifFile(file, signal);
+        const validation = manager.validateMediaFile(uploadFile);
+        if (!validation.isValid) {
+            throw createUploadError(
+                "unsupported_media",
+                validation.errorMessage || "This file type or size is not supported.",
+            );
+        }
+
         const destination = await resolveCurrentUploadDestination();
         throwIfUploadAborted(signal);
-        const result = await manager.uploadFileForHost(file, destination, signal);
+        const result = await manager.uploadFileForHost(uploadFile, destination, signal);
         throwIfUploadAborted(signal);
         return await createHeadlessMetadata(result, destination);
     } catch (error) {

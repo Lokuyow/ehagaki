@@ -32,6 +32,7 @@
     type UploadFilesExecutor,
     updateEditorUploadState,
   } from "../lib/postUploadUtils";
+  import { isUntypedAvifFile } from "../lib/utils/avifFile";
   import FloatingMessage from "./FloatingMessage.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import MediaGallery from "./MediaGallery.svelte";
@@ -487,7 +488,8 @@
       if (!isHostOwned) {
         if (isHostOwnedLiteBuild) return null;
         const reaction = reactionComposerState.value;
-        if (reaction && (params.files.length !== 1 || !params.files[0].type.startsWith('image/'))) {
+        if (reaction && (params.files.length !== 1 ||
+            (!params.files[0].type.startsWith('image/') && !isUntypedAvifFile(params.files[0])))) {
           editorState.uploadErrorMessage = $_('postComponent.reactionUnsupportedImage');
           return null;
         }
@@ -1564,7 +1566,7 @@
   {#if mediaEnabled}
     <input
       type="file"
-      accept={reactionComposerState.value ? 'image/png,image/jpeg,image/webp,image/gif' : 'image/*,video/*'}
+      accept={reactionComposerState.value ? 'image/png,image/jpeg,image/webp,image/gif,image/avif,.avif' : 'image/*,video/*,.avif'}
       multiple={!reactionComposerState.value}
       onchange={handleFileSelect}
       bind:this={fileInput}

@@ -1,18 +1,23 @@
+import { AVIF_MIME_TYPE, hasAvifBrand } from '../utils/avifFile';
 import { inspectWebp, type WebpKind } from '../utils/webpContainer';
 import type { CompressionService, VideoCompressionResult } from '../types/upload';
 import { awaitUploadOperation, throwIfUploadAborted } from './uploadOperation';
 
 export const REACTION_WEBP_OPTIONS = { lossless: 1, quality: 100, near_lossless: 100, alpha_quality: 100 } as const;
-const supported = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const supported = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', AVIF_MIME_TYPE]);
 const unsupported = () => new Error('reactionUnsupportedImage');
 
-/** GIF and animated WebP are validated and sent unchanged. */
+/** GIF, AVIF and animated WebP are validated and sent unchanged. */
 export async function validateReactionImage(file: File, signal?: AbortSignal): Promise<WebpKind | undefined> {
     if (!supported.has(file.type)) throw unsupported();
     if (file.type === 'image/webp') {
         const kind = await inspectWebp(file, signal);
         if (kind === 'invalid') throw unsupported();
         return kind;
+    }
+    if (file.type === AVIF_MIME_TYPE) {
+        if (!(await hasAvifBrand(file, signal))) throw unsupported();
+        return;
     }
     const bytes = new Uint8Array(await (file.type === 'image/gif' ? file.slice(0, 13) : file).arrayBuffer());
     const view = new DataView(bytes.buffer);
@@ -76,7 +81,7 @@ export class ReactionImageCompressionService implements CompressionService {
             image.src = url;
             await awaitUploadOperation(loaded, signal);
             check(); this.progress?.(25);
-            if (file.type === 'image/gif' || kind === 'animated') {
+            if (file.type === 'image/gif' || file.type === AVIF_MIME_TYPE || kind === 'animated') {
                 this.progress?.(100);
                 return { file, wasCompressed: false, wasSkipped: true };
             }

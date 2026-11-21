@@ -471,7 +471,8 @@ describe("active session liveness at authorization and protocol boundaries", () 
         expect(result.success).toBe(true);
         expect(signEvent).toHaveBeenCalledOnce();
         expect(signEvent).toHaveBeenCalledWith(expect.objectContaining({ kind: 24242 }));
-        expect(fetchMock).toHaveBeenCalledTimes(12);
+        expect(result.capabilities?.supportedMimeTypes).toContain("image/avif");
+        expect(fetchMock).toHaveBeenCalledTimes(1 + result.capabilities!.supportedMimeTypes.length);
         const authorizations = fetchMock.mock.calls.map((call) =>
             ((call[1] as RequestInit).headers as Record<string, string>).Authorization);
         expect(new Set(authorizations).size).toBe(1);
@@ -488,13 +489,13 @@ describe("active session liveness at authorization and protocol boundaries", () 
         const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
         const adapter = new BlossomUploadAdapter();
 
-        await adapter.testConnection({
+        const first = await adapter.testConnection({
             destination: createBlossomDestination(),
             authService: new NostrAuthService(),
             fetch: fetchMock as unknown as typeof fetch,
             sampleFile: createBlossomProbeFile(),
         });
-        await adapter.testConnection({
+        const second = await adapter.testConnection({
             destination: createBlossomDestination(),
             authService: new NostrAuthService(),
             fetch: fetchMock as unknown as typeof fetch,
@@ -502,7 +503,8 @@ describe("active session liveness at authorization and protocol boundaries", () 
         });
 
         expect(signEvent).toHaveBeenCalledTimes(2);
-        expect(fetchMock).toHaveBeenCalledTimes(24);
+        expect(first.success && second.success).toBe(true);
+        expect(fetchMock).toHaveBeenCalledTimes(2 + first.capabilities!.supportedMimeTypes.length + second.capabilities!.supportedMimeTypes.length);
     });
 
     it("does not fall back to an anonymous HEAD when the external signer rejects", async () => {

@@ -365,6 +365,19 @@ describe('PostManager editor state helpers', () => {
             });
         });
 
+        it("includes uploaded AVIF metadata for extensionless editor images without a blurhash", () => {
+            const mockEditor = createMockEditor();
+            const url = "https://cdn.example.com/blob";
+            vi.mocked(mockDeps.extractImageBlurhashMapFn!).mockReturnValue({});
+            mockEditor.editor.state.doc.descendants.mockImplementation((callback: (node: any) => void) => {
+                callback({ type: { name: "image" }, attrs: { src: url, m: "image/avif", dim: "384x256" } });
+            });
+
+            expect(manager.prepareImageBlurhashMap(mockEditor.editor, {}, {})).toMatchObject({
+                [url]: { m: "image/avif", dim: "384x256" },
+            });
+        });
+
         it('ギャラリーモードでは注入された mediaGalleryStore のblurhash mapを使う', () => {
             const mockEditor = createMockEditor();
             const galleryBlurhashMap = {

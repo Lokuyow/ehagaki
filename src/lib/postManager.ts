@@ -1395,6 +1395,7 @@ export class PostManager {
     }
 
     const imageAttributeMap: Record<string, {
+      m?: string;
       dim?: string;
       alt?: string;
       size?: number;
@@ -1410,6 +1411,7 @@ export class PostManager {
         : Number(node.attrs.size);
 
       imageAttributeMap[node.attrs.src] = {
+        m: typeof node.attrs.m === 'string' && node.attrs.m.startsWith('image/') ? node.attrs.m : undefined,
         dim: node.attrs.dim ?? undefined,
         alt: node.attrs.alt ?? undefined,
         size: Number.isFinite(rawSize) && rawSize > 0 ? rawSize : undefined,
@@ -1419,10 +1421,14 @@ export class PostManager {
 
     const rawImageBlurhashMap = this.deps.extractImageBlurhashMapFn!(editor);
     const imageBlurhashMap: ImageImetaMetadataMap = {};
-    for (const [url, blurhash] of Object.entries(rawImageBlurhashMap)) {
+    const urls = new Set(Object.keys(rawImageBlurhashMap));
+    for (const [url, attributes] of Object.entries(imageAttributeMap)) {
+      if (attributes.m) urls.add(url);
+    }
+    for (const url of urls) {
       imageBlurhashMap[url] = {
-        m: getMimeTypeFromUrl(url),
-        blurhash,
+        m: imageAttributeMap[url]?.m ?? getMimeTypeFromUrl(url),
+        blurhash: rawImageBlurhashMap[url],
         dim: imageAttributeMap[url]?.dim,
         alt: imageAttributeMap[url]?.alt,
         size: imageAttributeMap[url]?.size,

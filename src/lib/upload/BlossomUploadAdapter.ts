@@ -37,13 +37,26 @@ const BLOSSOM_MIME_PROBE_TYPES = [
     "image/jpeg",
     "image/webp",
     "image/gif",
+    "image/avif",
+    "image/bmp",
+    "image/apng",
     "image/svg+xml",
     "video/mp4",
     "video/webm",
     "video/quicktime",
+    "video/x-msvideo",
+    "video/matroska",
+    "video/x-matroska",
+    "video/x-m4v",
+    "video/ogg",
     "audio/mpeg",
     "audio/mp3",
     "audio/wav",
+    "audio/aac",
+    "audio/mp4",
+    "audio/x-m4a",
+    "audio/ogg",
+    "audio/flac",
 ];
 
 function toUploadResponse(descriptor: VerifiedBlossomDescriptor): FileUploadResponse {
@@ -205,8 +218,9 @@ async function probeSupportedMimeTypes(params: {
     sha256: string;
     contentLength: number;
     authorizationContext?: BlossomConnectionTestAuthorization;
-}): Promise<string[]> {
+}): Promise<{ supportedMimeTypes: string[]; acceptedStatus?: number }> {
     const supportedMimeTypes: string[] = [];
+    let acceptedStatus: number | undefined;
 
     for (const contentType of BLOSSOM_MIME_PROBE_TYPES) {
         const response = await probeBlossomUploadRequirement({
@@ -217,10 +231,16 @@ async function probeSupportedMimeTypes(params: {
         if (!response) break;
         if (isUploadRequirementAccepted(response.status)) {
             supportedMimeTypes.push(contentType);
+            acceptedStatus ??= response.status;
         }
     }
 
-    return supportedMimeTypes;
+    return { supportedMimeTypes, acceptedStatus };
+}
+
+function getDeclaredMimeTypes(response: Response): string[] {
+    const header = response.headers.get("X-Supported-Mime-Types") || response.headers.get("Accept");
+    return header?.split(",").map((item) => item.trim()).filter(Boolean) ?? [];
 }
 
 function buildBlossomCapabilities(
@@ -232,11 +252,9 @@ function buildBlossomCapabilities(
         || Number(response.headers.get("Max-Upload-Size"))
         || destination.capabilities.maxUploadSize
         || null;
-    const mimeHeader =
-        response.headers.get("X-Supported-Mime-Types")
-        || response.headers.get("Accept");
-    const supportedMimeTypes = mimeHeader
-        ? mimeHeader.split(",").map((item) => item.trim()).filter(Boolean)
+    const declaredMimeTypes = getDeclaredMimeTypes(response);
+    const supportedMimeTypes = declaredMimeTypes.length
+        ? declaredMimeTypes
         : inferredCapabilities?.supportedMimeTypes?.length
             ? inferredCapabilities.supportedMimeTypes
             : destination.capabilities.supportedMimeTypes;
@@ -385,24 +403,25 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
             };
         }
 
-        const canInferCapabilities = isUploadRequirementAccepted(response.status);
+        const sampleTypeRejected = response.status === 415;
+        const canInferCapabilities = (response.ok || sampleTypeRejected) && !getDeclaredMimeTypes(response).length;
         const inferredCapabilities = canInferCapabilities
-            ? {
-                supportedMimeTypes: await probeSupportedMimeTypes({
-                    destination: params.destination,
-                    fetch: params.fetch,
-                    sha256,
-                    contentLength: sampleFile.size,
-                    authorizationContext,
-                }),
-            }
+            ? await probeSupportedMimeTypes({
+                destination: params.destination,
+                fetch: params.fetch,
+                sha256,
+                contentLength: sampleFile.size,
+                authorizationContext,
+            })
             : undefined;
 
-        if (response.ok || response.status === 401 || response.status === 403) {
+        const alternativeStatus = sampleTypeRejected ? inferredCapabilities?.acceptedStatus : undefined;
+        const success = response.ok || alternativeStatus !== undefined;
+        if (success || response.status === 401 || response.status === 403) {
             return {
-                success: response.ok,
-                status: response.status,
-                message: response.ok ? undefined : "Authentication is required or was rejected",
+                success,
+                status: alternativeStatus ?? response.status,
+                message: success ? undefined : "Authentication is required or was rejected",
                 capabilities: buildBlossomCapabilities(response, params.destination, inferredCapabilities),
             };
         }

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getReactionResizeDimensions, ReactionImageCompressionService, validateReactionImage } from '../../lib/upload/reactionImageCompression';
 import { FileUploadManager } from '../../lib/fileUploadManager';
 import { Blob as NodeBlob, File as NodeFile } from 'node:buffer';
+import { readFileSync } from 'node:fs';
 import { createGifFixture } from '../gifFixture';
 const { encode, transport } = vi.hoisted(() => ({ encode: vi.fn(), transport: vi.fn() }));
 vi.mock('@jsquash/webp/encode', () => ({ default: encode }));
@@ -69,8 +70,33 @@ describe('Reaction image transformation', () => {
         expect(await setup().service.compress(file)).toMatchObject({ file, wasCompressed: false, wasSkipped: true });
         expect(encode).not.toHaveBeenCalled();
     });
-    it.each(['image/svg+xml', 'image/avif', 'image/heic', 'video/mp4'])('rejects %s before transport', async type => {
+    it.each(['image/svg+xml', 'image/heic', 'video/mp4'])('rejects %s before transport', async type => {
         await expect(validateReactionImage(new File(['x'], 'image', { type }))).rejects.toThrow('reactionUnsupportedImage');
+    });
+    it.each(['still', 'animated'])('preserves the %s AVIF without a canvas', async name => {
+        const bytes = readFileSync('src/test/fixtures/avif/' + name + '.avif');
+        const file = new File([new Uint8Array(bytes)], name + '.avif', { type: 'image/avif' });
+        const { service, progress } = setup();
+
+        expect(await service.compress(file)).toEqual({ file, wasCompressed: false, wasSkipped: true });
+        expect(document.createElement).not.toHaveBeenCalledWith('canvas');
+        expect(progress).toHaveBeenLastCalledWith(100);
+    });
+    it('rejects a mislabeled reaction image before decoding', async () => {
+        const file = fileWithBytes(png, 'image/avif');
+        await expect(setup().service.compress(file)).rejects.toThrow('reactionUnsupportedImage');
+        expect(URL.createObjectURL).not.toHaveBeenCalled();
+    });
+    it('aborts a pending AVIF reaction decode', async () => {
+        vi.stubGlobal('Image', class { set src(_value: string) {} });
+        const { controller, service } = setup();
+        const bytes = readFileSync('src/test/fixtures/avif/animated.avif');
+        const file = new File([new Uint8Array(bytes)], 'animated.avif', { type: 'image/avif' });
+        const pending = service.compress(file);
+        await vi.waitFor(() => expect(URL.createObjectURL).toHaveBeenCalled());
+        controller.abort();
+        expect(await pending).toEqual({ file, wasCompressed: false, aborted: true });
+        expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:fixture');
     });
     it('rejects APNG and animated WebP containers', async () => {
         const animatedPng = new Uint8Array(png.length + 12); animatedPng.set(png.subarray(0, 33)); animatedPng.set(new TextEncoder().encode('acTL'), 37); animatedPng.set(png.subarray(33), 45);

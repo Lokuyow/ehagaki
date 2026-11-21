@@ -312,6 +312,8 @@ GIF（`image/gif`）は静止画・アニメーションとも圧縮設定にか
 
 アニメーションWebP（`image/webp`）も通常投稿・リアクションで利用でき、圧縮設定にかかわらず原本を送信します。静止WebPは従来の画像処理を使用します。
 
+AVIF（`image/avif`）は通常投稿・画像リアクションで利用でき、静止画・アニメーションとも圧縮設定にかかわらず原本を送信します。
+
 ```ts
 const composer = document.querySelector('ehagaki-composer');
 await composer.whenReady();
