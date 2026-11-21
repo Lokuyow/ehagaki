@@ -87,7 +87,7 @@ import { registerRoute } from "workbox-routing";
 import { CacheFirst } from "workbox-strategies";
 
 // 定数定義
-const SW_VERSION = '1.34.0';
+const SW_VERSION = '1.34.1';
 const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
 const PROFILE_CACHE_NAME = PROFILE_IMAGE_CACHE_POLICY.bodyName;
 const LEGACY_PROFILE_CACHE_NAMES = ['ehagaki-profile-images'];
@@ -367,7 +367,7 @@ class CacheManager {
     }
 
     // プロフィール画像キャッシュの処理
-    async handleProfileImageCache(request) {
+    async handleProfileImageCache(request, registerWork) {
         try {
             const baseUrl = Utilities.getBaseUrl(request.url);
             if (!baseUrl) {
@@ -376,7 +376,7 @@ class CacheManager {
 
             const cachedMatch = await findProfileImageCacheMatch({
                 request,
-                cache: this.profileImages,
+                cache: { match: (key) => this.profileImages.match(key, registerWork) },
                 getBaseUrl: Utilities.getBaseUrl,
                 createRequest: Utilities.createCorsRequest,
             });
@@ -403,7 +403,7 @@ class CacheManager {
         }
     }
 
-    async fetchAndCacheOpaqueProfileImage(baseUrl) {
+    async fetchAndCacheOpaqueProfileImage(baseUrl, registerWork) {
         return await fetchAndCacheOpaqueProfileImageResponse({
             baseUrl,
             cacheStorage: { open: async () => this.profileImages },
@@ -411,11 +411,12 @@ class CacheManager {
             fetchRequest: (request) => this.fetch(request),
             createRequest: Utilities.createCorsRequest,
             logger: this.console,
+            registerWork,
         });
     }
 
     // プロフィール画像をネットワークから取得してキャッシュ
-    async fetchAndCacheProfileImage(request) {
+    async fetchAndCacheProfileImage(request, registerWork) {
         return await fetchAndCacheProfileImageResponse({
             request,
             isOnline: ServiceWorkerDependencies.navigator?.onLine,
@@ -425,16 +426,17 @@ class CacheManager {
             fetchRequest: (targetRequest) => this.fetch(targetRequest),
             cacheStorage: { open: async () => this.profileImages },
             cacheName: PROFILE_CACHE_NAME,
-            fetchOpaqueProfileImage: (baseUrl) => this.fetchAndCacheOpaqueProfileImage(baseUrl),
+            fetchOpaqueProfileImage: (baseUrl) => this.fetchAndCacheOpaqueProfileImage(baseUrl, registerWork),
             logger: this.console,
+            registerWork,
         });
     }
 
-    async handleCustomEmojiImageRequest(request) {
+    async handleCustomEmojiImageRequest(request, registerWork) {
         try {
             return await resolveCustomEmojiImageRequestResponse({
                 request,
-                cache: this.customEmojiImages,
+                cache: { match: (key) => this.customEmojiImages.match(key, registerWork) },
                 getBaseUrl: Utilities.getCustomEmojiBaseUrl,
                 createRequest: Utilities.createCorsRequest,
                 fetchRequest: (targetRequest) => this.fetch(targetRequest),
@@ -651,15 +653,15 @@ class RequestHandler {
     }
 
     // プロフィール画像リクエスト処理
-    async handleProfileImageRequest(request) {
+    async handleProfileImageRequest(request, registerWork) {
         return await processServiceWorkerProfileImageRequest({
             request,
             logger: this.console,
             normalizeProfileImageUrl: Utilities.normalizeProfileImageUrl,
             handleProfileImageCache: (profileRequest) =>
-                this.cacheManager.handleProfileImageCache(profileRequest),
+                this.cacheManager.handleProfileImageCache(profileRequest, registerWork),
             fetchAndCacheProfileImage: (profileRequest) =>
-                this.cacheManager.fetchAndCacheProfileImage(profileRequest),
+                this.cacheManager.fetchAndCacheProfileImage(profileRequest, registerWork),
             createTransparentImageResponse: Utilities.createTransparentImageResponse,
         });
     }
@@ -757,6 +759,7 @@ class ServiceWorkerCore {
 
     // フェッチイベント処理を修正
     async handleFetch(event) {
+        const registerWork = (work) => event.waitUntil(work);
         const url = new URL(event.request.url);
         const route = resolveServiceWorkerFetchRoute({
             request: event.request,
@@ -788,9 +791,9 @@ class ServiceWorkerCore {
             route,
             uploadHandler: () => this.requestHandler.handleUploadRequest(event.request),
             uploadMediaImageHandler: () => this.uploadMediaImageCacheController.handle(event),
-            profileImageHandler: () => this.requestHandler.handleProfileImageRequest(event.request),
+            profileImageHandler: () => this.requestHandler.handleProfileImageRequest(event.request, registerWork),
             channelImageHandler: () => this.channelImageCacheController.handle(event),
-            customEmojiImageHandler: () => this.cacheManager.handleCustomEmojiImageRequest(event.request),
+            customEmojiImageHandler: () => this.cacheManager.handleCustomEmojiImageRequest(event.request, registerWork),
         });
     }
 
