@@ -7,7 +7,10 @@ import { ClipboardExtension } from "../../lib/editor/clipboardExtension";
 import { insertProfileMention, ProfileMentionExtension } from "../../lib/editor/profileMentionExtension";
 import { extractPostContentFromDoc } from "../../lib/utils/editorDocumentUtils";
 
-it("restores the mention from a saved draft and copies its Nostr URI", () => {
+it.each([
+    { label: "Alice", display: "Alice" },
+    { label: `${"寿".repeat(23)}👩🏽‍💻アリス`, display: `${"寿".repeat(23)}👩🏽‍💻…` },
+])("restores the display label from a saved draft and copies its Nostr URI", ({ label, display }) => {
     const editor = new Editor({
         element: document.createElement("div"),
         extensions: [StarterKit, ProfileMentionExtension, ClipboardExtension],
@@ -17,12 +20,13 @@ it("restores the mention from a saved draft and copies its Nostr URI", () => {
         const pubkey = "a".repeat(64);
         const uri = `nostr:${nip19.npubEncode(pubkey)}`;
         editor.commands.setTextSelection(6);
-        expect(insertProfileMention(editor, { pubkey, relayHints: [], label: "Alice" })).toBe(true);
+        expect(insertProfileMention(editor, { pubkey, relayHints: [], label })).toBe(true);
         const draft = sanitizeDraftHtml(editor.getHTML());
-        expect(draft).toContain(`<span data-nostr-mention="${uri}">@Alice</span>`);
+        expect(draft).toContain(`<span data-nostr-mention="${uri}">@${display}</span>`);
         editor.commands.clearContent();
-        editor.commands.setContent(draft);
-        expect(editor.view.dom.querySelector("[data-nostr-mention]")?.textContent).toBe("@Alice");
+        const olderDraft = `<p>Hello <span data-nostr-mention="${uri}">@${label}</span></p>`;
+        editor.commands.setContent(sanitizeDraftHtml(olderDraft));
+        expect(editor.view.dom.querySelector("[data-nostr-mention]")?.textContent).toBe(`@${display}`);
         expect(extractPostContentFromDoc(editor.state.doc).content.trim()).toBe(`Hello ${uri}`);
 
         editor.commands.selectAll();

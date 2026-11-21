@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { ProfileMentionCandidate } from "../lib/profileMention";
+    import { shortenProfileMentionLabel, type ProfileMentionCandidate } from "../lib/profileMention";
     import { formatShortNpub } from "../lib/utils/nostrUtils";
     import SuggestionCommandList from "./SuggestionCommandList.svelte";
 
@@ -38,7 +38,7 @@
     itemClass="profile-mention-suggestion-item"
 >
     {#snippet children(item)}
-        <span class="profile-mention-label">@{item.label}</span>
+        <span class="profile-mention-label">@{shortenProfileMentionLabel(item.label)}</span>
         <small>{formatShortNpub(item.pubkey)}</small>
     {/snippet}
 </SuggestionCommandList>
@@ -49,6 +49,8 @@
     }
 
     .profile-mention-label {
+        min-width: 0;
+        max-width: 16rem;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;

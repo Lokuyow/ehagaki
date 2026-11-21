@@ -8,6 +8,7 @@ import {
     PROFILE_MENTION_ATTRIBUTE,
     PROFILE_MENTION_NODE,
     profileMentionUri,
+    shortenProfileMentionLabel,
     type ProfileMentionCandidate,
 } from "../profileMention";
 import { createSuggestionRenderer } from "./suggestionRenderer";
@@ -41,7 +42,7 @@ export function insertProfileMention(
     const trailingSpace = /^\s/.test(after?.text ?? "") ? [] : [{ type: "text", text: " " }];
     return editor.commands.insertContentAt(range, [
         ...(needsLeadingSpace ? [{ type: "text", text: " " }] : []),
-        { type: PROFILE_MENTION_NODE, attrs: { uri: profileMentionUri(target), label: target.label } },
+        { type: PROFILE_MENTION_NODE, attrs: { uri: profileMentionUri(target), label: shortenProfileMentionLabel(target.label) } },
         ...trailingSpace,
     ]);
 }
@@ -77,7 +78,7 @@ export const ProfileMentionExtension = Node.create<Options>({
                 if (!pointer) return false;
                 return {
                     uri: profileMentionUri(pointer),
-                    label: element.textContent?.replace(/^@/, "").trim().slice(0, 256)
+                    label: shortenProfileMentionLabel(element.textContent?.replace(/^@/, "") ?? "")
                         || profileMentionLabel(pointer.pubkey),
                 };
             },
@@ -85,7 +86,8 @@ export const ProfileMentionExtension = Node.create<Options>({
     },
 
     renderHTML({ node }) {
-        return ["span", { [PROFILE_MENTION_ATTRIBUTE]: node.attrs.uri, class: "editor-profile-mention" }, `@${node.attrs.label}`];
+        return ["span", { [PROFILE_MENTION_ATTRIBUTE]: node.attrs.uri, class: "editor-profile-mention" },
+            `@${shortenProfileMentionLabel(node.attrs.label)}`];
     },
 
     renderText({ node }) {

@@ -3,6 +3,7 @@ import { RelayConfigUtils } from "./relayConfigUtils";
 import { scanHttpUrlCandidates } from "./utils/httpUrlCandidates";
 import { isLowerHex64 } from "./utils/nostrHexUtils";
 import { formatShortNpub } from "./utils/nostrUtils";
+import { segmentGraphemes } from "./utils/graphemeUtils";
 
 export interface ProfileMention {
     pubkey: string;
@@ -102,6 +103,21 @@ export function profileMentionLabel(
     petname?: string,
 ): string {
     return profile?.displayName?.trim() || profile?.name?.trim() || petname?.trim() || formatShortNpub(pubkey);
+}
+
+export function shortenProfileMentionLabel(value: string): string {
+    const name = value.trim().replace(/\s+/g, " ");
+    const maxGraphemes = 24;
+    const maxCodeUnits = 128;
+    let label = "";
+    let count = 0;
+    // Include one extra code unit to distinguish a complete final grapheme from a clipped one.
+    for (const { segment } of segmentGraphemes(name.slice(0, maxCodeUnits + 1))) {
+        if (count === maxGraphemes || label.length + segment.length > maxCodeUnits) return `${label}…`;
+        label += segment;
+        count++;
+    }
+    return label;
 }
 
 export function readProfileNip05(value: unknown): string | null {

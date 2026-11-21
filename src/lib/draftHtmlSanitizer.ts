@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify';
 import { normalizeUrl, validateAndNormalizeUrl } from './utils/editorUrlUtils';
-import { parseProfileMentionUri, PROFILE_MENTION_ATTRIBUTE, profileMentionUri } from './profileMention';
+import { parseProfileMentionUri, PROFILE_MENTION_ATTRIBUTE, profileMentionUri, shortenProfileMentionLabel } from './profileMention';
 
 const ALLOWED_DRAFT_TAGS = ['a', 'img', 'p', 'span', 'video'];
 const ALLOWED_DRAFT_ATTR = [
@@ -74,7 +74,7 @@ function buildSanitizedDraftContainer(
         }
         const clean = documentObj.createElement('span');
         clean.setAttribute(PROFILE_MENTION_ATTRIBUTE, profileMentionUri(mention));
-        clean.textContent = span.textContent?.slice(0, 257) ?? '';
+        clean.textContent = `@${shortenProfileMentionLabel(span.textContent?.replace(/^@/, '') ?? '')}`;
         span.replaceWith(clean);
     });
 

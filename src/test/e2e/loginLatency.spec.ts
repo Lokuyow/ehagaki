@@ -23,6 +23,7 @@ async function setup(page: Page, options: {
     profilePicture?: string;
     profileMissing?: boolean;
     mentions?: boolean;
+    mentionDisplayName?: string;
 } = {}) {
     const key = generateSecretKey();
     const owner = getPublicKey(key);
@@ -106,7 +107,7 @@ async function setup(page: Page, options: {
                 if (mentionProfile) followedProfileRequests += 1;
                 const name = mentionProfile ? 'alice' : eventKey === key ? 'Delayed profile' : 'Other profile';
                 const event = finalizeEvent({ kind, created_at: createdAt, tags: [],
-                    content: JSON.stringify({ name, display_name: mentionProfile ? 'アリス Example' : name,
+                    content: JSON.stringify({ name, display_name: mentionProfile ? (options.mentionDisplayName ?? 'アリス Example') : name,
                         ...(mentionProfile ? { nip05: 'alice@example.com' } : {}), picture: options.profilePicture ?? '' }) }, eventKey);
                 const send = () => respond(subscription, options.profileMissing ? undefined : event);
                 if (options.timed) setTimeout(send, 1200);
@@ -314,6 +315,35 @@ test('refreshes the mention candidates from Settings after a follow is removed',
 
     await editor.fill('@a');
     await expect(popup).toHaveCount(0);
+});
+
+test('keeps long mention names compact in the suggestions and editor', async ({ page }) => {
+    const prefix = `${'寿'.repeat(23)}👩🏽‍💻`;
+    const app = await setup(page, { mentions: true, mentionDisplayName: `${prefix}${'限無'.repeat(300)}検索用末尾` });
+    await app.login();
+    app.releaseRelays();
+    app.releaseProfiles();
+
+    const editor = page.locator('.tiptap-editor');
+    const choice = page.locator('.profile-mention-suggestion-popover').getByRole('option');
+    await expect(async () => {
+        await editor.fill('@');
+        await editor.fill('@検索用末尾');
+        await expect(choice).toContainText(`@${prefix}…`, { timeout: 400 });
+    }).toPass({ timeout: 12_000 });
+
+    for (const width of [360, 1103]) {
+        await page.setViewportSize({ width, height: 844 });
+        await expect.poll(() => choice.evaluate(row => {
+            const bounds = row.getBoundingClientRect();
+            const key = row.querySelector('small')!.getBoundingClientRect();
+            return bounds.left >= 0 && bounds.right <= window.innerWidth
+                && key.width > 0 && key.right <= bounds.right && row.scrollWidth <= row.clientWidth;
+        })).toBe(true);
+    }
+
+    await editor.press('Enter');
+    await expect(editor.locator('.editor-profile-mention')).toHaveText(`@${prefix}…`);
 });
 
 test('records login visibility and posting latency with controlled relay and profile delays', async ({ page }, testInfo) => {
