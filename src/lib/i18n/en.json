@@ -306,7 +306,6 @@
     "synced": "Synced",
     "syncFailed": "Could not fetch from relays",
     "repair": "Refetch posts around the current view",
-    "repairing": "Refetching...",
     "repairAdded": "{count} added",
     "repairChildInteractionsAdded": "{count} child interactions repaired",
     "repairNoChanges": "No additions",

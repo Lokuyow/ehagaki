@@ -554,11 +554,6 @@ export function usePostHistoryListing({
     const showStatusLoader = $derived(
         showSyncLoader || isRefetchingAroundCurrentView,
     );
-    const currentViewRefetchStatusMessageKey = $derived(
-        state.currentViewRefetchStatus === "refetching"
-            ? "postHistory.repairing"
-            : state.currentViewRefetchMessageKey,
-    );
     const currentViewRefetchStatusMessageValues = $derived(
         state.currentViewRefetchStatus === "refetching"
             ? null
@@ -3783,7 +3778,7 @@ export function usePostHistoryListing({
             return canRefetchAroundCurrentView;
         },
         get currentViewRefetchStatusMessageKey() {
-            return currentViewRefetchStatusMessageKey;
+            return state.currentViewRefetchMessageKey;
         },
         get currentViewRefetchStatusMessageValues() {
             return currentViewRefetchStatusMessageValues;
