@@ -22,7 +22,7 @@ import { ReactionInput } from './reactionInput';
 import type { ReactionInputMode } from '../reactionValue';
 import type { SubmittedCompositionController } from './submittedComposition';
 import { ProfileMentionExtension } from './profileMentionExtension';
-import type { ProfileMentionCandidate } from '../profileMention';
+import type { ProfileMentionCandidate, ProfileMentionSource } from '../profileMention';
 
 const MEDIA_NODE_TYPES = new Set(['image', 'video', 'customEmoji']);
 const MEDIA_FOCUS_SELECTOR = '.node-image.is-node-focused, .node-video.is-node-focused, .custom-emoji-wrapper.is-node-focused';
@@ -180,6 +180,7 @@ export interface EditorConfigOptions {
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
     getCustomEmojiItems?: () => CustomEmojiItem[];
     getProfileMentionItems?: (query: string) => ProfileMentionCandidate[];
+    profileMentionSource?: ProfileMentionSource;
     enterKeyBehavior?: 'newline' | 'submit';
     hostOwnedLite?: boolean;
     submitShortcuts?: readonly EHagakiHostSubmitShortcut[];
@@ -358,6 +359,7 @@ export function createEditorStore(options: EditorConfigOptions) {
             HashtagSuggestion,
             ...(options.getProfileMentionItems && !hostOwnedLite ? [ProfileMentionExtension.configure({
                 getItems: options.getProfileMentionItems,
+                profileSource: options.profileMentionSource,
                 canSuggest: () => !options.isReactionMode?.() && !options.isInputBlocked?.(),
             })] : []),
             Video,

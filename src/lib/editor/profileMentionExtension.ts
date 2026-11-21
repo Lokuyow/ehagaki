@@ -1,7 +1,9 @@
 import { Node, type Editor, type Range } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
 import Suggestion, { type SuggestionMatch, type Trigger } from "@tiptap/suggestion";
+import { SvelteNodeViewRenderer } from "svelte-tiptap";
 import ProfileMentionSuggestionList from "../../components/ProfileMentionSuggestionList.svelte";
+import ProfileMentionNodeView from "../../components/ProfileMentionNodeView.svelte";
 import {
     parseProfileMentionUri,
     profileMentionLabel,
@@ -10,6 +12,7 @@ import {
     profileMentionUri,
     shortenProfileMentionLabel,
     type ProfileMentionCandidate,
+    type ProfileMentionSource,
 } from "../profileMention";
 import { createSuggestionRenderer } from "./suggestionRenderer";
 import { isImeCompositionKeydown } from "./imeCompositionKey";
@@ -51,6 +54,7 @@ export function insertProfileMention(
 interface Options {
     getItems: (query: string) => ProfileMentionCandidate[];
     canSuggest: () => boolean;
+    profileSource?: ProfileMentionSource;
 }
 
 export const ProfileMentionExtension = Node.create<Options>({
@@ -95,10 +99,17 @@ export const ProfileMentionExtension = Node.create<Options>({
         return node.attrs.uri;
     },
 
+    addNodeView() {
+        return SvelteNodeViewRenderer(ProfileMentionNodeView);
+    },
+
     addProseMirrorPlugins() {
         const render = createSuggestionRenderer<ProfileMentionCandidate>({
             component: ProfileMentionSuggestionList,
             className: "profile-mention-suggestion-popover",
+            getProps: ({ items, command }) => ({
+                items, onSelect: command, readProfile: this.options.profileSource?.readProfile,
+            }),
         });
         return [Suggestion<ProfileMentionCandidate>({
             editor: this.editor,

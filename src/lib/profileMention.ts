@@ -4,6 +4,7 @@ import { scanHttpUrlCandidates } from "./utils/httpUrlCandidates";
 import { isLowerHex64 } from "./utils/nostrHexUtils";
 import { formatShortNpub } from "./utils/nostrUtils";
 import { segmentGraphemes } from "./utils/graphemeUtils";
+import type { ProfileData } from "./types";
 
 export interface ProfileMention {
     pubkey: string;
@@ -12,6 +13,11 @@ export interface ProfileMention {
 
 export interface ProfileMentionCandidate extends ProfileMention {
     label: string;
+}
+
+export interface ProfileMentionSource {
+    readProfile(pubkey: string): ProfileData | null | undefined;
+    getInlineLoader(): (mention: ProfileMention, signal: AbortSignal) => Promise<ProfileData | null>;
 }
 
 export const PROFILE_MENTION_NODE = "profileMention";

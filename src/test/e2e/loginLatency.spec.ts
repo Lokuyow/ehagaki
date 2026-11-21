@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { finalizeEvent, generateSecretKey, getPublicKey, nip19, verifyEvent, type EventTemplate, type Event as NostrEvent } from 'nostr-tools';
+import { restoreMentionDraftFixture, saveMentionDraftFixture } from './mentionAvatarDraftFixture';
 
 // Generate disposable credentials per test. Never include login fields or
 // signing request bodies in traces, screenshots, videos, or attachments.
@@ -24,6 +25,7 @@ async function setup(page: Page, options: {
     profileMissing?: boolean;
     mentions?: boolean;
     mentionDisplayName?: string;
+    mentionPicture?: string;
 } = {}) {
     const key = generateSecretKey();
     const owner = getPublicKey(key);
@@ -104,11 +106,12 @@ async function setup(page: Page, options: {
             } else if (kind === 0) {
                 profileRequests += 1;
                 const mentionProfile = options.mentions && eventKey === otherKey;
-                if (mentionProfile) followedProfileRequests += 1;
+                if (eventKey === otherKey) followedProfileRequests += 1;
                 const name = mentionProfile ? 'alice' : eventKey === key ? 'Delayed profile' : 'Other profile';
                 const event = finalizeEvent({ kind, created_at: createdAt, tags: [],
                     content: JSON.stringify({ name, display_name: mentionProfile ? (options.mentionDisplayName ?? 'アリス Example') : name,
-                        ...(mentionProfile ? { nip05: 'alice@example.com' } : {}), picture: options.profilePicture ?? '' }) }, eventKey);
+                        ...(mentionProfile ? { nip05: 'alice@example.com' } : {}),
+                        picture: (eventKey === otherKey ? options.mentionPicture : undefined) ?? options.profilePicture ?? '' }) }, eventKey);
                 const send = () => respond(subscription, options.profileMissing ? undefined : event);
                 if (options.timed) setTimeout(send, 1200);
                 else if (holdProfiles) pendingProfiles.push(send);
@@ -322,7 +325,9 @@ test('refreshes the mention candidates from Settings after a follow is removed',
 
 test('keeps long mention names compact in the suggestions and editor', async ({ page }) => {
     const prefix = `${'寿'.repeat(23)}👩🏽‍💻`;
-    const app = await setup(page, { mentions: true, mentionDisplayName: `${prefix}${'限無'.repeat(300)}検索用末尾` });
+    await routeMentionAvatar(page);
+    const app = await setup(page, { mentions: true, mentionPicture: mentionAvatarUrl,
+        mentionDisplayName: `${prefix}${'限無'.repeat(300)}検索用末尾` });
     await app.login();
     app.releaseRelays();
     app.releaseProfiles();
@@ -334,20 +339,79 @@ test('keeps long mention names compact in the suggestions and editor', async ({ 
         await editor.fill('@検索用末尾');
         await expect(choice).toContainText(`@${prefix}…`, { timeout: 400 });
     }).toPass({ timeout: 12_000 });
+    const choiceAvatar = choice.locator('.suggestion-mention-avatar-image');
+    await expect(choiceAvatar).toHaveAttribute('src', mentionAvatarUrl + '?profile=true');
+    await expect.poll(() => choiceAvatar.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    const requests = app.counts().followedProfileRequests;
 
     for (const width of [360, 1103]) {
         await page.setViewportSize({ width, height: 844 });
         await expect.poll(() => choice.evaluate(row => {
             const bounds = row.getBoundingClientRect();
             const key = row.querySelector('small')!.getBoundingClientRect();
+            const icon = row.querySelector('.suggestion-mention-avatar-image')!.getBoundingClientRect();
             return bounds.left >= 0 && bounds.right <= window.innerWidth
-                && key.width > 0 && key.right <= bounds.right && row.scrollWidth <= row.clientWidth;
+                && icon.width === 24 && key.width > 0 && key.right <= bounds.right && row.scrollWidth <= row.clientWidth;
         })).toBe(true);
     }
 
     await editor.press('Enter');
     await expect(editor.locator('.editor-profile-mention')).toHaveText(`@${prefix}…`);
+    await expect(editor.locator('.inline-mention-avatar-image')).toBeVisible();
+    expect(app.counts().followedProfileRequests).toBe(requests);
 });
+
+const mentionAvatarUrl = 'https://avatar.example/mention-icon.svg';
+
+async function routeMentionAvatar(page: Page) {
+    await page.route(url => url.origin + url.pathname === mentionAvatarUrl, route => route.fulfill({
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="17" height="17"><rect width="17" height="17" fill="green"/></svg>',
+    }));
+}
+
+for (const mode of ['insertion', 'draft restoration'] as const) {
+    test(`loads and saves an uncached mention avatar after ${mode}`, async ({ page }) => {
+        await routeMentionAvatar(page);
+        const app = await setup(page, { mentionPicture: mentionAvatarUrl });
+        await app.login();
+        app.releaseRelays();
+        app.releaseProfiles();
+        await expect.poll(() => hasStoredFollowList(page, app.owner)).toBe(true);
+        await saveMentionDraftFixture(page, { owner: app.owner, pubkey: app.otherOwner });
+        expect(app.counts().followedProfileRequests).toBe(0);
+
+        if (mode === 'insertion') {
+            await page.getByRole('button', { name: '宛先を指定' }).click();
+            const target = page.getByRole('dialog', { name: '宛先を指定' });
+            await target.locator('input').fill(nip19.npubEncode(app.otherOwner));
+            await target.getByRole('button', { name: 'メンション', exact: true }).click();
+        } else {
+            await restoreMentionDraftFixture(page);
+        }
+        const editor = page.locator('.tiptap-editor');
+        const avatar = editor.locator('.inline-mention-avatar-image');
+        await expect(avatar).toHaveAttribute('src', mentionAvatarUrl + '?profile=true');
+        await expect.poll(() => avatar.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+        expect(app.counts().followedProfileRequests).toBeGreaterThan(0);
+        await expect.poll(() => page.evaluate(pubkey => new Promise<string | undefined>((resolve, reject) => {
+            const open = indexedDB.open('eHagakiDB');
+            open.onerror = () => reject(open.error);
+            open.onsuccess = () => {
+                const db = open.result;
+                const get = db.transaction('profiles').objectStore('profiles').get(pubkey);
+                get.onsuccess = () => { db.close(); resolve(get.result?.pictureUrl); };
+                get.onerror = () => { db.close(); reject(get.error); };
+            };
+        }), app.otherOwner)).toBe(mentionAvatarUrl + '?profile=true');
+
+        const requests = app.counts().followedProfileRequests;
+        await editor.fill('');
+        await restoreMentionDraftFixture(page);
+        await expect(avatar).toBeVisible();
+        expect(app.counts().followedProfileRequests).toBe(requests);
+    });
+}
 
 test('records login visibility and posting latency with controlled relay and profile delays', async ({ page }, testInfo) => {
     const app = await setup(page, { timed: true });

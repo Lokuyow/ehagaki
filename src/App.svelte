@@ -20,7 +20,9 @@
   import { waitNostr } from "nip07-awaiter";
   import { AccountManager } from "./lib/accountManager";
   import { createFollowListSession } from "./lib/followListService";
-  import type { ProfileMentionCandidate } from "./lib/profileMention";
+  import type { ProfileMentionCandidate, ProfileMentionSource } from "./lib/profileMention";
+  import { mergeHostReadDefaultsWithHints } from "./lib/hostRelayRuntime";
+  import { RelayConfigUtils } from "./lib/relayConfigUtils";
   import { profileMetadataCache } from "./lib/profileMetadataCache.svelte";
   import { provideProfileMentionPreview } from "./lib/profileMentionPreviewContext";
   import { nip46Service } from "./lib/nip46Service";
@@ -1968,6 +1970,21 @@
     return followListSession?.getSuggestions(query) ?? [];
   }
 
+  const profileMentionSource: ProfileMentionSource = {
+    readProfile: pubkey => profileMetadataCache.getReactiveEntry(pubkey)?.profile,
+    getInlineLoader: () => {
+      const runtime = hasPostingCapability ? rxNostr : undefined;
+      return (mention, signal) => profileMetadataCache.getProfile(mention.pubkey, {
+        rxNostr: runtime,
+        signal,
+        allowBackgroundRefresh: false,
+        additionalRelays: mergeHostReadDefaultsWithHints(
+          mention.relayHints, RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
+        ) ?? mention.relayHints,
+      });
+    },
+  };
+
   function applyProfileMention(mention: ProfileMentionCandidate): boolean {
     if (!hasPostingCapability || !postComponentRef?.insertProfileMention(mention)) return false;
     focusEditorElement(".tiptap-editor", 100);
@@ -2172,6 +2189,7 @@
                     onReactionResult={handleReactionResult}
                     onCustomEmojiSelect={recordCustomEmojiUse}
                     {getProfileMentionItems}
+                    {profileMentionSource}
                     {onEditorEmptyChange}
                     {notificationPort}
                     {normalUploadFiles}

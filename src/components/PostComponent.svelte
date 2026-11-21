@@ -84,7 +84,7 @@
   import { showToolbarCaret } from "../lib/editor/toolbarCaretExtension";
   import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
   import { insertProfileMention as insertMention } from "../lib/editor/profileMentionExtension";
-  import type { ProfileMentionCandidate } from "../lib/profileMention";
+  import type { ProfileMentionCandidate, ProfileMentionSource } from "../lib/profileMention";
   import { focusEditorWithoutKeyboardForCurrentTap } from "../lib/utils/keyboardFocusUtils";
   import { isEditorElement } from "../lib/utils/appDomUtils";
   import { isIPhoneSafari } from "../lib/utils/viewportLayout";
@@ -143,6 +143,7 @@
     hostOwnedConfig?: EHagakiHostOwnedComposerOptions & { signal: AbortSignal };
     hostCustomEmojiItems?: CustomEmojiItem[];
     getProfileMentionItems?: (query: string) => ProfileMentionCandidate[];
+    profileMentionSource?: ProfileMentionSource;
     /** The full composition root supplies the normal authenticated uploader. */
     normalUploadFiles?: UploadFilesExecutor;
     storeSignedEventsFn?: import("../lib/types").PostManagerDeps["storeSignedEventsFn"];
@@ -165,6 +166,7 @@
     hostOwnedConfig,
     hostCustomEmojiItems = [],
     getProfileMentionItems,
+    profileMentionSource,
     normalUploadFiles,
     storeSignedEventsFn,
   }: Props = $props();
@@ -703,6 +705,7 @@
       onCustomEmojiSelect,
       getCustomEmojiItems: isHostOwned ? () => hostCustomEmojiItems : undefined,
       getProfileMentionItems,
+      profileMentionSource,
       enterKeyBehavior: isHostOwned
         ? hostOwnedConfig?.enterKeyBehavior
         : undefined,

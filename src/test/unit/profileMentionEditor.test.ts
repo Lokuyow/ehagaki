@@ -1,7 +1,8 @@
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { nip19 } from "nostr-tools";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
+import { tick } from "svelte";
 import { sanitizeDraftHtml } from "../../lib/draftHtmlSanitizer";
 import { ClipboardExtension } from "../../lib/editor/clipboardExtension";
 import { insertProfileMention, ProfileMentionExtension } from "../../lib/editor/profileMentionExtension";
@@ -33,6 +34,31 @@ it.each([
         const clipboardText = editor.view.someProp("clipboardTextSerializer",
             serialize => serialize(editor.state.selection.content(), editor.view));
         expect(clipboardText?.trim()).toBe(`Hello ${uri}`);
+    } finally {
+        editor.destroy();
+    }
+});
+
+it("cancels the avatar lookup when the inline mention is removed", async () => {
+    const load = vi.fn(async (_mention, _signal: AbortSignal) => null);
+    const editor = new Editor({
+        element: document.createElement("div"),
+        extensions: [StarterKit, ProfileMentionExtension.configure({
+            profileSource: { readProfile: () => null, getInlineLoader: () => load },
+        })],
+    });
+    try {
+        const pubkey = "b".repeat(64);
+        expect(insertProfileMention(editor, { pubkey, relayHints: [], label: "Alice" })).toBe(true);
+        await tick();
+        expect(load).toHaveBeenCalledOnce();
+        const [target, signal] = load.mock.calls[0]!;
+        expect(target).toEqual({ pubkey, relayHints: [] });
+        expect(signal.aborted).toBe(false);
+
+        editor.commands.clearContent();
+        await tick();
+        expect(signal.aborted).toBe(true);
     } finally {
         editor.destroy();
     }
