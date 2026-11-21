@@ -212,12 +212,6 @@
                 {#if state.parentTargetId && !state.parentAlreadyInPath && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
                     <div class="post-history-thread-node-top-actions">
                         <PostHistoryThreadToggleButton
-                            ariaLabel={state.parentExpansion.visibleParent
-                                ? $_("postHistory.hideReplyTarget")
-                                : $_("postHistory.showReplyTarget")}
-                            title={state.parentExpansion.visibleParent
-                                ? $_("postHistory.hideReplyTarget")
-                                : $_("postHistory.showReplyTarget")}
                             expanded={state.parentExpansion.visibleParent}
                             loading={state.parentExpansion.visibleParent &&
                                 state.parentExpansion
@@ -339,6 +333,11 @@
 </div>
 
 <style>
+    .post-history-thread-node-top-actions {
+        width: 100%;
+        height: 28px;
+    }
+
     .post-history-thread-node-view {
         display: grid;
         gap: 1px;

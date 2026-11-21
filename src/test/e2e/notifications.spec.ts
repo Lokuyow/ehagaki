@@ -199,15 +199,21 @@ for (const width of [360, 280]) test(`reply title toggles the direct parent from
     await page.locator('.notification-btn').click();
     const dialog = page.getByRole('dialog');
     const entry = dialog.locator('.notification-entry').filter({ hasText: 'Nested reply notification' });
-    const toggle = entry.locator('.notification-reply-toggle');
+    const toggle = entry.getByRole('button', { name: /^返信先を(見る|隠す)$/ });
+    const icon = toggle.locator('.post-history-thread-toggle-icon');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(icon).toHaveCSS('mask-image', /arrow_top_right_/);
     await expect(entry.getByText('Direct reply parent', { exact: true })).toHaveCount(0);
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(icon).toHaveCSS('mask-image', /collapse_content_/);
     await expect(entry.getByText('Direct reply parent', { exact: true })).toBeVisible();
-    const parentBounds = (await entry.locator('.notification-reply-parent').boundingBox())!;
+    const parent = entry.locator('.notification-reply-parent');
+    await expect(toggle).toHaveAttribute('aria-controls', (await parent.getAttribute('id'))!);
+    const parentBounds = (await parent.boundingBox())!;
     const toggleBounds = (await toggle.boundingBox())!;
     expect(parentBounds.y + parentBounds.height).toBeLessThanOrEqual(toggleBounds.y);
+    expect(toggleBounds.height).toBeCloseTo(28, 0);
     await expect(entry.getByText('Original notification target', { exact: true })).toHaveCount(0);
     expect(await entry.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath(`notification-reply-parent-${width}.png`) });
@@ -236,7 +242,7 @@ test('reply parent missing state offers retry and closing clears expansion', asy
     await expect.poll(requests).toBe(2);
     await page.getByRole('button', { name: '閉じる', exact: true }).click();
     await page.locator('.notification-btn').click();
-    await expect(entry.locator('.notification-reply-toggle')).toHaveAttribute('aria-expanded', 'false');
+    await expect(entry.getByRole('button', { name: '返信先を見る', exact: true })).toHaveAttribute('aria-expanded', 'false');
 });
 
 test('a delayed content module leaves the 280px shell closable and reopens safely', async ({ page }, info) => {
@@ -391,18 +397,18 @@ test('notification headers omit labels and times and identify reposts and replie
     await expect(dialog.getByText('リポスト', { exact: true })).toHaveCount(0);
     await expect(dialog.getByText('返信', { exact: true })).toHaveCount(0);
     const repost = dialog.getByRole('img', { name: 'リポスト', exact: true });
-    const reply = dialog.locator('.notification-reply-icon');
+    const reply = dialog.getByRole('button', { name: '返信先を見る', exact: true });
     const heart = dialog.locator('.notification-reaction .favorite-icon').first();
     const heartColor = await heart.evaluate(node => getComputedStyle(node).backgroundColor);
     await heart.locator('xpath=ancestor::button[1]').hover();
     await expect(heart).toHaveCSS('background-color', heartColor);
     await expect(repost).toBeVisible(); await expect(reply).toBeVisible();
     expect(await repost.evaluate(node => getComputedStyle(node).maskImage)).toContain('repost.svg');
-    expect(await reply.evaluate(node => getComputedStyle(node).maskImage)).toContain('chat_bubble_');
+    await expect(reply).toHaveText('返信先');
     const mention = dialog.locator('.notification-entry').filter({ hasText: 'A mention addressed to you' });
     const mentionIcon = mention.locator('.notification-mention-icon');
     await expect(mentionIcon).toBeVisible();
-    for (const pill of await dialog.locator('.notification-reply-label, .post-preview-reaction-chip').all()) {
+    for (const pill of await dialog.locator('.notification-kind-label, .post-preview-reaction-chip').all()) {
         expect((await pill.boundingBox())!.height).toBeCloseTo(34, 0);
     }
     expect(await mention.evaluate(node => node.querySelector('.notification-post')!.getBoundingClientRect().left - node.getBoundingClientRect().left)).toBeCloseTo(16, 0);
@@ -416,7 +422,7 @@ test('notification headers omit labels and times and identify reposts and replie
     await expect(quote.getByText('引用', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Reply notification text', { exact: true })).toBeVisible();
     const replyEntry = dialog.locator('.notification-entry').filter({ hasText: 'Reply notification text' });
-    await expect(replyEntry.locator('.notification-reply-label')).toHaveText('リプライ');
+    await expect(replyEntry.getByRole('button', { name: '返信先を見る', exact: true })).toBeVisible();
     const replyCard = replyEntry.locator('.post-history-related-card');
     await expect(replyCard).toHaveCSS('border-inline-start-width', '0px');
     await expect(replyCard).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -1081,7 +1087,8 @@ for (const width of [360, 280]) test(`stages cached notification cards and retai
     const dialog = page.getByRole('dialog');
     await expect(dialog.locator('.notification-entry')).toHaveCount(10);
     await expect(dialog.locator('.notification-target-placeholder, .post-history-quote-status-card')).toHaveCount(0);
-    const target = dialog.locator('.notification-entry').first().locator('.notification-reply-label + .notification-post + .notification-post');
+    const target = dialog.locator('.notification-entry').first().locator('.notification-post')
+        .filter({ hasText: 'Performance target 0' });
     await expect(target).toContainText('Performance target 0');
     await target.getByRole('button', { name: 'もっと見る', exact: true }).click();
     await target.getByRole('button', { name: /画像をすべて表示/ }).click();

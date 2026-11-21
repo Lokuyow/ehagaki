@@ -3153,17 +3153,11 @@
         white-space: nowrap;
     }
 
-    :global(
-            .post-history-action-button,
-            .post-history-thread-toggle-button
-        ) {
+    :global(.post-history-action-button) {
         color: var(--btn-post-preview-action);
     }
 
-    :global(
-            .post-history-action-button .svg-icon,
-            .post-history-thread-toggle-button .svg-icon
-        ) {
+    :global(.post-history-action-button .svg-icon) {
         --svg: currentColor;
     }
 
@@ -3555,26 +3549,6 @@
         flex-direction: column;
         padding-inline-start: 1rem;
         gap: 4px;
-    }
-
-    :global(.post-history-thread-toggle-button.selected) {
-        --btn-bg: var(--post-history-preview-footer-surface, var(--dialog-bg));
-        color: var(--text-light);
-    }
-
-    @media (hover: hover) and (pointer: fine) {
-        :global(
-                .post-history-thread-toggle-button.selected:hover:not(:disabled)
-            ) {
-            background-color: light-dark(
-                color-mix(in srgb, var(--dialog-bg), black 20%),
-                color-mix(in srgb, var(--dialog-bg), white 30%)
-            );
-            color: light-dark(
-                color-mix(in srgb, var(--text), black 20%),
-                color-mix(in srgb, var(--text), white 30%)
-            );
-        }
     }
 
     .delete-confirm-body {

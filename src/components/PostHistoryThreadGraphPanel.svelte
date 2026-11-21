@@ -213,12 +213,6 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
         <div class="post-history-context-actions">
             {#if !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
                 <PostHistoryThreadToggleButton
-                    ariaLabel={state.parentExpansion.visibleParent
-                        ? $_("postHistory.hideReplyTarget")
-                        : $_("postHistory.showReplyTarget")}
-                    title={state.parentExpansion.visibleParent
-                        ? $_("postHistory.hideReplyTarget")
-                        : $_("postHistory.showReplyTarget")}
                     expanded={state.parentExpansion.visibleParent}
                     loading={state.parentExpansion.visibleParent &&
                         state.parentExpansion.showParentLoadingIndicator}
