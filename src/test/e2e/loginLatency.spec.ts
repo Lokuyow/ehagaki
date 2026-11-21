@@ -324,7 +324,7 @@ test('refreshes the mention candidates from Settings after a follow is removed',
 });
 
 test('keeps long mention names compact in the suggestions and editor', async ({ page }) => {
-    const prefix = `${'寿'.repeat(23)}👩🏽‍💻`;
+    const prefix = `${'寿限無'.repeat(7)}寿限👩🏽‍💻`;
     await routeMentionAvatar(page);
     const app = await setup(page, { mentions: true, mentionPicture: mentionAvatarUrl,
         mentionDisplayName: `${prefix}${'限無'.repeat(300)}検索用末尾` });
@@ -355,6 +355,10 @@ test('keeps long mention names compact in the suggestions and editor', async ({ 
         })).toBe(true);
     }
 
+    await editor.fill('＠');
+    await expect(choice).toHaveCount(0);
+    await editor.fill('＠寿限無');
+    await expect(choice).toContainText(`@${prefix}…`);
     await editor.press('Enter');
     await expect(editor.locator('.editor-profile-mention')).toHaveText(`@${prefix}…`);
     await expect(editor.locator('.inline-mention-avatar-image')).toBeVisible();

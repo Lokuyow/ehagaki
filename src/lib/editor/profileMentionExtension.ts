@@ -18,12 +18,14 @@ import { createSuggestionRenderer } from "./suggestionRenderer";
 import { isImeCompositionKeydown } from "./imeCompositionKey";
 
 const pluginKey = new PluginKey("profileMentionSuggestion");
+const MENTION_TRIGGER = /^[@＠]/u;
 
 export function findProfileMentionSuggestionMatch({ $position }: Trigger): SuggestionMatch {
     const text = $position.nodeBefore?.text;
     if (!text) return null;
     const limit = Math.max(0, text.length - 256);
-    for (let at = text.lastIndexOf("@"); at >= limit; at = text.lastIndexOf("@", at - 1)) {
+    for (let at = text.length - 1; at >= limit; at--) {
+        if (!MENTION_TRIGGER.test(text.charAt(at))) continue;
         if (at === 0 || /[ \t\u3000]/.test(text[at - 1]!)) {
             const query = text.slice(at + 1);
             if (!query.trim()) return null;
@@ -131,7 +133,7 @@ export const ProfileMentionExtension = Node.create<Options>({
                 const selection = editor.state.selection;
                 if (!selection.empty || selection.from !== range.to) return;
                 const text = editor.state.doc.textBetween(range.from, range.to);
-                if (!text.startsWith("@")) return;
+                if (!MENTION_TRIGGER.test(text)) return;
                 const current = this.options.getItems(text.slice(1)).find(item => item.pubkey === props.pubkey);
                 if (current) insertProfileMention(editor, current, range);
             },
