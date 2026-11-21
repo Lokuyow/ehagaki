@@ -159,7 +159,7 @@ export default defineConfig({
             files: [
               {
                 name: 'media',
-                accept: ['image/*', 'video/*']
+                accept: ['image/*', 'video/*', '.avif']
               }
             ]
           }

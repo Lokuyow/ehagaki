@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { encode } from "blurhash";
+import { File as NodeFile } from "node:buffer";
+import { readFileSync } from "node:fs";
 import { AuthenticationRequiredError } from "../../lib/sessionLiveness";
 
 const managerMocks = vi.hoisted(() => ({
@@ -67,6 +69,21 @@ describe("Full headless upload composition", () => {
         expect(managerMocks.instances[0].isUploadAborted?.()).toBe(false);
         controller.abort();
         expect(managerMocks.instances[0].isUploadAborted?.()).toBe(true);
+    });
+
+    it("normalizes an AVIF file with missing MIME before validation and preserves the bytes", async () => {
+        const bytes = readFileSync("src/test/fixtures/avif/animated.avif");
+        const file = new NodeFile([bytes], "animation.AVIF", { lastModified: 1234 }) as unknown as File;
+        vi.stubGlobal("File", NodeFile);
+        try {
+            await uploadFileForHost(file, new AbortController().signal);
+            const sent = managerMocks.uploadFileForHost.mock.calls[0][0] as File;
+            expect(managerMocks.validateMediaFile).toHaveBeenCalledWith(sent);
+            expect(sent).toMatchObject({ type: "image/avif", name: file.name, lastModified: file.lastModified });
+            expect(Buffer.from(await sent.arrayBuffer())).toEqual(bytes);
+        } finally {
+            vi.unstubAllGlobals();
+        }
     });
 
     it("does not construct upload processing for an already aborted signal", async () => {

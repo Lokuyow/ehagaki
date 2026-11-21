@@ -168,7 +168,7 @@ describe('Playwright config connection values', () => {
                 '**/webComponentEmbed.spec.ts',
                 '**/uploadRelaySync.spec.ts',
                 '**/iframeParentLogin.spec.ts', '**/loginLatency.spec.ts',
-                '**/gifUpload.spec.ts', '**/webpUpload.spec.ts',
+                '**/gifUpload.spec.ts', '**/webpUpload.spec.ts', '**/avifUpload.spec.ts',
                 '**/relayDeliveryProgress.spec.ts',
             ]);
             expect(config.projects?.[3]?.testMatch).toEqual([
@@ -187,7 +187,7 @@ describe('Playwright config connection values', () => {
                 '**/postHistoryJsonlWorker.spec.ts',
                 '**/postRepost.spec.ts',
                 '**/postReaction.spec.ts',
-                '**/gifUpload.spec.ts', '**/webpUpload.spec.ts',
+                '**/gifUpload.spec.ts', '**/webpUpload.spec.ts', '**/avifUpload.spec.ts',
                 '**/sensitiveContentPayload.spec.ts',
                 '**/relayDeliveryProgress.spec.ts',
             ]);

@@ -46,13 +46,26 @@ const MIME_PROBE_TYPES = [
     "image/jpeg",
     "image/webp",
     "image/gif",
+    "image/avif",
+    "image/bmp",
+    "image/apng",
     "image/svg+xml",
     "video/mp4",
     "video/webm",
     "video/quicktime",
+    "video/x-msvideo",
+    "video/matroska",
+    "video/x-matroska",
+    "video/x-m4v",
+    "video/ogg",
     "audio/mpeg",
     "audio/mp3",
     "audio/wav",
+    "audio/aac",
+    "audio/mp4",
+    "audio/x-m4a",
+    "audio/ogg",
+    "audio/flac",
 ];
 
 function createValidDescriptor(overrides: Record<string, unknown> = {}) {
@@ -471,7 +484,7 @@ describe("BlossomUploadAdapter", () => {
             const headers = init?.headers as Record<string, string>;
             const contentType = headers["X-Content-Type"];
 
-            if (contentType === "video/mp4") {
+            if (contentType === "video/mp4" || contentType === "image/apng") {
                 return new Response(null, { status: 415 });
             }
             return new Response(null, { status: 200 });
@@ -485,17 +498,48 @@ describe("BlossomUploadAdapter", () => {
         });
 
         expect(result.success).toBe(true);
-        expect(result.capabilities?.supportedMimeTypes).toContain("image/png");
-        expect(result.capabilities?.supportedMimeTypes).toContain("image/jpeg");
-        expect(result.capabilities?.supportedMimeTypes).toContain("image/svg+xml");
-        expect(result.capabilities?.supportedMimeTypes).toContain("audio/mp3");
-        expect(result.capabilities?.supportedMimeTypes).not.toContain("video/mp4");
+        expect(result.capabilities?.supportedMimeTypes).toEqual(
+            MIME_PROBE_TYPES.filter(type => type !== "video/mp4" && type !== "image/apng"),
+        );
         expect(result.capabilities?.maxUploadSize).toBeNull();
-        expect(fetchMock).toHaveBeenCalledTimes(1 + 11);
+        expect(fetchMock).toHaveBeenCalledTimes(1 + MIME_PROBE_TYPES.length);
         expect(fetchMock.mock.calls.every((call) => {
             const init = call[1] as RequestInit;
             return init.method === "HEAD" && init.body === undefined;
         })).toBe(true);
+    });
+
+    it("reports AVIF support even if the initial PNG probe is rejected", async () => {
+        const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+            const type = new Headers(init?.headers).get("X-Content-Type");
+            return new Response(null, { status: type === "image/avif" ? 200 : 415 });
+        });
+
+        const result = await new BlossomUploadAdapter().testConnection({
+            destination: createDestination(),
+            fetch: fetchMock,
+        });
+
+        expect(result).toMatchObject({
+            success: true,
+            status: 200,
+            capabilities: { supportedMimeTypes: ["image/avif"] },
+        });
+    });
+
+    it.each(["X-Supported-Mime-Types", "Accept"])("uses the %s declaration without separate format probes", async header => {
+        const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, {
+            status: 200,
+            headers: { [header]: "image/avif, video/webm" },
+        }));
+        const result = await new BlossomUploadAdapter().testConnection({
+            destination: createDestination(),
+            fetch: fetchMock,
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.capabilities?.supportedMimeTypes).toEqual(["image/avif", "video/webm"]);
+        expect(fetchMock).toHaveBeenCalledOnce();
     });
 
     it("reuses one session-bound Authorization for the initial and MIME HEAD probes", async () => {

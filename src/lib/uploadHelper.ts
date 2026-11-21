@@ -2,6 +2,7 @@ import type { Editor as TipTapEditor } from "@tiptap/core";
 import {
     mediaFreePlacementStore,
 } from '../stores/uploadStore.svelte';
+import { isUntypedAvifFile, normalizeAvifFile } from "./utils/avifFile";
 import { prepareMetadataList, processFilesForUpload } from "./utils/fileUtils";
 import type {
     UploadHelperParams,
@@ -177,7 +178,7 @@ export async function uploadHelper({
         ?? dependencies.isUploadAborted
         ?? isDefaultUploadAborted;
     const isUploadAborted = () => !!signal?.aborted || !isCurrent() || checkOperationAbort();
-    const fileArray = Array.from(files);
+    let fileArray = Array.from(files);
     const FileUploadManagerConstructor = fileUploadManagerOverride
         ?? effectiveDependencies.FileUploadManager;
     const managedUploadCallbacks = createManagedUploadCallbacks(uploadCallbacks, isCurrent);
@@ -203,12 +204,15 @@ export async function uploadHelper({
     // ファイル処理
     let fileProcessingResults;
     try {
+        if (fileArray.some(isUntypedAvifFile)) {
+            fileArray = await Promise.all(fileArray.map(file => normalizeAvifFile(file, signal)));
+        }
         fileProcessingResults = prepareFiles
             ? await prepareFiles(fileArray, effectiveDependencies)
             : await processFilesForUpload(fileArray, effectiveDependencies);
     } catch (error) {
         // 中止された場合
-        if (error instanceof Error && error.message === 'Upload aborted by user') {
+        if (isUploadAborted() || (error instanceof Error && error.message === 'Upload aborted by user')) {
             return handleAbortedUpload(
                 {
                     fileArray,

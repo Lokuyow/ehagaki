@@ -49,7 +49,8 @@
     const relayConfig = { [relay]: { read: true, write: true } };
     const original = finalizeEvent({ kind: Number(query.get('kind')) === 16 || query.has('quote-kind42') ? 42 : 1, content: 'Original fixture', tags: [], created_at: 100 }, otherKey);
     const kind = Number(query.get('kind') ?? '1');
-    const target = finalizeEvent({ kind, content: kind === 6 || kind === 16 ? JSON.stringify(original) : kind === 7 ? '+' : 'Main fixture',
+    const targetContent = query.has('old-avif-history') ? new URL('remote.AVIF?token=1', location.href).href : 'Main fixture';
+    const target = finalizeEvent({ kind, content: kind === 6 || kind === 16 ? JSON.stringify(original) : kind === 7 ? '+' : targetContent,
         tags: kind === 6 || kind === 7 || kind === 16 ? [['e', original.id, relay, original.pubkey], ['p', original.pubkey], ['k', String(original.kind)]]
             : query.has('quote-kind42') ? [['q', original.id, relay, original.pubkey]] : [], created_at: 200 }, key);
     const next = finalizeEvent({ kind: 1, content: 'Next fixture', tags: [], created_at: 201 }, key);
@@ -179,6 +180,7 @@
             await customEmojiStore.prefetchCache({ pubkey: owner });
         }
         await postHistoryRepository.putPostedEvent({ event: target, ...(kind === 6 || kind === 16 ? { repostTarget: { event: original, relayHints: [relay] } } : {}) });
+        if (query.has('old-avif-history')) await ehagakiDb.postHistory.update(target.id, { media: [] });
         if (query.has('compare-reply')) {
             const reply = finalizeEvent({ kind: 1, content: 'Reply fixture', created_at: 300,
                 tags: [['e', target.id, relay, 'reply'], ['p', target.pubkey]] }, otherKey);

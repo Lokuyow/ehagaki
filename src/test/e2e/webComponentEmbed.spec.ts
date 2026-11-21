@@ -499,7 +499,7 @@ test(`Full Reaction at 320px preserves outer identity (${uploaded ? gif ? 'uploa
         return;
     }
     if (uploaded) {
-        await expect(composer.locator('input[type=file]')).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp,image/gif');
+        await expect(composer.locator('input[type=file]')).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp,image/gif,image/avif,.avif');
         const base64 = gif || webp ? '' : await page.evaluate(() => {
             const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 256;
             const context = canvas.getContext('2d')!; context.fillStyle = '#ff8000'; context.fillRect(0, 0, 256, 256);

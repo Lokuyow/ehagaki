@@ -528,7 +528,7 @@ for (const basePath of ['/ehagaki/', '/'] as const) {
         } finally { await fixture.close(); }
     });
 
-    test(`${basePath} round-trips a share-target File through the production Service Worker MessageChannel`, async ({ page }) => {
+    for (const extension of ["png", "avif"] as const) test(`${basePath} round-trips a share-target File (${extension}) through the production Service Worker MessageChannel`, async ({ page }) => {
         const fixture = await createFixture(basePath);
         try {
             await page.addInitScript(() => {
@@ -553,12 +553,15 @@ for (const basePath of ['/ehagaki/', '/'] as const) {
             );
             expect(controllerUrl).toBe(`${new URL(fixture.url).origin}${basePath}sw.js`);
 
-            const postResult = await page.evaluate(async () => {
-                const file = new File(
-                    [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])],
-                    'service-worker-roundtrip.png',
-                    { type: 'image/png', lastModified: 1_700_000_000_000 },
-                );
+            const fileName = 'service-worker-roundtrip.' + extension;
+            const fileType = 'image/' + extension;
+            const bytes = extension === 'avif'
+                ? readFileSync(new URL('../fixtures/avif/animated.avif', import.meta.url))
+                : [137, 80, 78, 71, 13, 10, 26, 10];
+            const postResult = await page.evaluate(async ({ bytes, fileName, fileType }) => {
+                const file = new File([new Uint8Array(bytes)], fileName, {
+                    type: fileType, lastModified: 1_700_000_000_000,
+                });
                 const formData = new FormData();
                 formData.append('media', file, file.name);
                 formData.append('title', 'Service Worker File round-trip');
@@ -572,7 +575,7 @@ for (const basePath of ['/ehagaki/', '/'] as const) {
                     redirected: response.redirected,
                     url: response.url,
                 };
-            });
+            }, { bytes: [...bytes], fileName, fileType });
 
             expect(postResult.status).toBe(200);
             expect(postResult.redirected).toBe(true);
@@ -584,9 +587,9 @@ for (const basePath of ['/ehagaki/', '/'] as const) {
             expect(directResponse).toMatchObject({
                 received: true,
                 firstImageIsFile: true,
-                fileName: 'service-worker-roundtrip.png',
-                fileType: 'image/png',
-                fileSize: 8,
+                fileName,
+                fileType,
+                fileSize: bytes.length,
             });
             expect(directResponse.shareId).toBeTruthy();
             if (!directResponse.shareId) {
@@ -600,9 +603,9 @@ for (const basePath of ['/ehagaki/', '/'] as const) {
             expect(fallbackResult).toMatchObject({
                 received: true,
                 firstImageIsFile: true,
-                fileName: 'service-worker-roundtrip.png',
-                fileType: 'image/png',
-                fileSize: 8,
+                fileName,
+                fileType,
+                fileSize: bytes.length,
                 shareId: directResponse.shareId,
             });
         } finally { await fixture.close(); }

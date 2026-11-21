@@ -54,6 +54,7 @@ function inferMimeTypeFromUrl(url: string): string | undefined {
     if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) return "image/jpeg";
     if (pathname.endsWith(".png")) return "image/png";
     if (pathname.endsWith(".webp")) return "image/webp";
+    if (pathname.endsWith(".avif")) return "image/avif";
     if (pathname.endsWith(".gif")) return "image/gif";
     if (pathname.endsWith(".mp4")) return "video/mp4";
     if (pathname.endsWith(".webm")) return "video/webm";
@@ -72,12 +73,27 @@ function extractContentMedia(
         .filter((url) => url.length > 0)
         .filter((url) => {
             if (existingUrls.has(url)) return false;
-            return /\.(jpe?g|png|webp|gif|mp4|webm|mov)(?:$|[?#])/i.test(url);
+            return /\.(jpe?g|png|webp|gif|avif|mp4|webm|mov)(?:$|[?#])/i.test(url);
         })
         .map((url) => ({
             url,
             mimeType: inferMimeTypeFromUrl(url),
         }));
+}
+
+/** Recover URL-only AVIF attachments from records stored before AVIF detection. */
+export function restoreAvifHistoryMedia(
+    content: string,
+    media: PostHistoryMediaRecord[],
+): PostHistoryMediaRecord[] {
+    if (!content.toLowerCase().includes(".avif")) return media;
+    const seenUrls = new Set(media.map((item) => normalizeSafeExternalMediaUrl(item.url)));
+    const missing = extractContentMedia(content, seenUrls).filter((item) => {
+        if (item.mimeType !== "image/avif" || seenUrls.has(item.url)) return false;
+        seenUrls.add(item.url);
+        return true;
+    });
+    return missing.length ? [...media, ...missing] : media;
 }
 
 export function extractPostHistoryMedia(

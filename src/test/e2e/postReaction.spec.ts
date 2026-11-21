@@ -54,7 +54,7 @@ test('uploaded shortcode uses canonical wire, rejects whitespace and clears owne
     const editor = page.locator('.tiptap-editor');
     const selectAll = await page.evaluate(() =>
         /Mac|iP(hone|[oa]d)/.test(navigator.platform) ? 'Meta+A' : 'Control+A');
-    await expect(page.locator('input[type=file]')).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp,image/gif');
+    await expect(page.locator('input[type=file]')).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp,image/gif,image/avif,.avif');
     await expect(page.locator('input[type=file]')).not.toHaveAttribute('multiple');
     await page.locator('input[type=file]').setInputFiles(await imagePayload(page));
     await expect.poll(async () => (await read(page)).isUploading).toBe(false);

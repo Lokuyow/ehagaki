@@ -1,3 +1,4 @@
+import { AVIF_MIME_TYPE } from './utils/avifFile';
 import { inspectWebp } from './utils/webpContainer';
 import type { CompressionService, MimeTypeSupportInterface } from './types';
 import { COMPRESSION_OPTIONS_MAP, IMAGE_RESIZE_LIMITS } from './constants';
@@ -48,7 +49,7 @@ export class ImageCompressionService implements CompressionService {
         if (isAborted()) return { ...original, aborted: true };
         if (!file.type.startsWith('image/')) return original;
         const options = this.getCompressionOptions();
-        if (!options || file.type === 'image/gif' || file.size <= 20 * 1024) {
+        if (!options || file.type === 'image/gif' || file.type === AVIF_MIME_TYPE || file.size <= 20 * 1024) {
             return { ...original, wasSkipped: true };
         }
 

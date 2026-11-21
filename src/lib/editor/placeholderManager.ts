@@ -4,6 +4,8 @@ import type { PlaceholderEntry, FileUploadResponse, ImageDimensions, MediaGaller
 import { findAndExecuteOnNode, removePlaceholderNode } from '../utils/editorNodeActions';
 import { generateSimpleUUID } from '../utils/appUtils';
 import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
+import { AVIF_MIME_TYPE } from '../utils/avifFile';
+import { inferImageMimeTypeFromUrl } from '../tags/imetaTag';
 import { buildUploadFailureMessage } from '../uploadResultUtils';
 import { isDefaultUploadAborted, type UploadAbortChecker } from '../uploadAbortUtils';
 import { calculateImageDisplaySize, parseDimString } from '../utils/mediaNodeUtils';
@@ -139,6 +141,7 @@ function resolveImageDimensions(
 function resolveImageReplacementMetadata(
     result: FileUploadResponse,
     matched: PlaceholderEntry,
+    url: string,
 ): {
     serverBlurhash?: string;
     oxFromServer?: string;
@@ -156,8 +159,15 @@ function resolveImageReplacementMetadata(
     const dimensions = resolveImageDimensions(result, dimFromServer, matched);
     const isHostOwned = result.hostOwnedMedia === true;
 
+    let mimeType: string | undefined;
+    if (isHostOwned) {
+        mimeType = mFromServer ?? matched.file.type;
+    } else if (matched.file.type === AVIF_MIME_TYPE) {
+        mimeType = mFromServer?.startsWith('image/') ? mFromServer : inferImageMimeTypeFromUrl(url) ?? AVIF_MIME_TYPE;
+    }
+
     return {
-        mimeType: isHostOwned ? (mFromServer ?? matched.file.type) : undefined,
+        mimeType,
         alt: isHostOwned ? altFromServer : undefined,
         serverBlurhash,
         oxFromServer,
@@ -330,7 +340,7 @@ function createMediaReplacementSuccessHandler(
         await strategy.onImageSuccess({
             url,
             matched,
-            imageMetadata: resolveImageReplacementMetadata(result, matched),
+            imageMetadata: resolveImageReplacementMetadata(result, matched, url),
         });
     };
 }

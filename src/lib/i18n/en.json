@@ -602,7 +602,7 @@
     "about_bitcoin_tip_label": "Tip with Bitcoin"
   },
   "postComponent": {
-    "reactionUnsupportedImage": "Upload one PNG, JPEG, WebP or GIF image at a time for a reaction. GIFs and animated WebPs are sent without compression or resizing.",
+    "reactionUnsupportedImage": "Upload one PNG, JPEG, WebP, GIF or AVIF image at a time for a reaction. GIF, AVIF and animated WebP images are sent as originals.",
     "reactionImageTransformFailed": "The reaction image could not be transformed. It has not been uploaded.",
     "enter_your_text": "What's happening?",
     "editor_label": "Post editor",

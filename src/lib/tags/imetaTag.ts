@@ -186,6 +186,10 @@ export function extractImageBlurhashMap(editor: ImageBlurhashEditor | null): Rec
  * @returns MIME type文字列
  */
 export function getMimeTypeFromUrl(url: string): string {
+    return inferImageMimeTypeFromUrl(url) ?? 'image/jpeg';
+}
+
+export function inferImageMimeTypeFromUrl(url: string): string | undefined {
     const mimeMap: Record<string, string> = {
         'jpg': 'image/jpeg',
         'jpeg': 'image/jpeg',
@@ -204,8 +208,8 @@ export function getMimeTypeFromUrl(url: string): string {
         pathname = url.split(/[?#]/)[0];
     }
 
-    const extension = pathname.split('.').pop()?.toLowerCase();
-    return mimeMap[extension || ''] || 'image/jpeg'; // デフォルトはjpeg
+    const extension = pathname.split('.').pop()?.toLowerCase() ?? '';
+    return Object.hasOwn(mimeMap, extension) ? mimeMap[extension] : undefined;
 }
 
 /**

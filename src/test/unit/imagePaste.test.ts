@@ -264,12 +264,12 @@ describe('Reaction image URL paste', () => {
         props.handleTextInput({ editable: true }, 1, 1, url);
         expect(receive.mock.calls).toEqual([[[url]], [[url]]]);
     });
-    it.each(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'PNG'])('accepts %s URLs with query and fragment', ext => {
+    it.each(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'PNG', 'avif', 'AVIF'])('accepts %s URLs with query and fragment', ext => {
         const url = `https://example.com/cat.${ext}?v=1#image`;
         expect(extractReactionImageUrls(url)).toEqual([url]);
     });
     it.each(['', 'hello https://example.com/cat.png', 'https://example.com/cat.png https://example.com/movie.mp4',
-        'https://example.com/cat.png https://example.com/unknown', 'javascript:cat.png', 'data:image/png;base64,AA', 'https://example.com/cat.avif'])('rejects mixed or unsupported input %s', text => {
+        'https://example.com/cat.png https://example.com/unknown', 'javascript:cat.png', 'data:image/png;base64,AA'])('rejects mixed or unsupported input %s', text => {
         expect(extractReactionImageUrls(text)).toBeNull();
     });
     it('accepts whitespace separated images', () => {
