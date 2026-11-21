@@ -366,7 +366,7 @@ test('keeps long mention names compact in the suggestions and editor', async ({ 
             const key = row.querySelector('small')!.getBoundingClientRect();
             const icon = row.querySelector('.suggestion-mention-avatar-image')!.getBoundingClientRect();
             return bounds.left >= 0 && bounds.right <= window.innerWidth
-                && icon.width === 48 && icon.height === 48 && icon.bottom <= bounds.bottom
+                && bounds.height === 40 && icon.width === 32 && icon.height === 32 && icon.bottom <= bounds.bottom
                 && key.width > 0 && key.right <= bounds.right && row.scrollWidth <= row.clientWidth;
         })).toBe(true);
     }
