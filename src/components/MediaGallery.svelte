@@ -420,9 +420,11 @@
 <style>
     .media-gallery {
         display: flex;
-        align-items: center;
+        align-items: stretch;
+        flex-shrink: 0;
         width: 100%;
         min-height: 180px;
+        height: var(--post-gallery-height, auto);
         overflow-x: auto;
         overflow-y: visible;
         scrollbar-width: thin;
@@ -447,8 +449,7 @@
         position: relative;
         display: inline-flex;
         align-items: center;
-        width: fit-content;
-        height: fit-content;
+        flex-shrink: 0;
     }
 
     /* 挿入位置インジケーターバー */
