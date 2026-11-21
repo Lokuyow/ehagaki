@@ -773,7 +773,7 @@ describe("DexiePostHistoryRepository", () => {
         db.close();
     });
 
-    it("countVisibleForPubkey は visibleUntil 境界を inclusive に扱い他 pubkey を含めない", async () => {
+    it("counts authored rows by owner and inclusive time boundary without scanning the index", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 1000);
         const pubkey = "b".repeat(64);
@@ -788,7 +788,7 @@ describe("DexiePostHistoryRepository", () => {
             postedAt: 1000000,
         });
         await repository.putPostedEvent({
-            event: createSignedEvent({ id: "3".repeat(64), pubkey, created_at: 1100 }),
+            event: createSignedEvent({ id: "3".repeat(64), pubkey, created_at: 1000, kind: 6 }),
             postedAt: 1100000,
         });
         await repository.putPostedEvent({
@@ -800,9 +800,33 @@ describe("DexiePostHistoryRepository", () => {
             postedAt: 1500000,
         });
 
-        await expect(repository.countVisibleForPubkey(pubkey, 1000)).resolves.toBe(3);
-        await expect(repository.countVisibleForPubkey(pubkey, 1001)).resolves.toBe(2);
-        await expect(repository.countVisibleForPubkey(otherPubkey, 1000)).resolves.toBe(1);
+        const openCursor = vi.spyOn(IDBIndex.prototype, "openCursor");
+        try {
+            await expect(repository.countForPubkey(pubkey)).resolves.toBe(4);
+            await expect(repository.countVisibleForPubkey(pubkey, 1000)).resolves.toBe(3);
+            await expect(repository.countVisibleForPubkey(pubkey, 1001)).resolves.toBe(1);
+            await expect(repository.countVisibleForPubkey(otherPubkey, 1000)).resolves.toBe(1);
+            expect(openCursor).not.toHaveBeenCalled();
+        } finally {
+            openCursor.mockRestore();
+            db.close();
+        }
+    });
+
+    it.each([36, NaN])("excludes non-authored rows from both counts when kind is %s", async (kind) => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db);
+        const pubkeyHex = "b".repeat(64);
+        await db.postHistory.bulkPut([
+            createPostHistoryRecord({ pubkeyHex, eventId: "1".repeat(64), createdAt: 999, postedAt: 999000 }),
+            createPostHistoryRecord({ pubkeyHex, eventId: "2".repeat(64), createdAt: 1000, postedAt: 1000000 }),
+            { ...createPostHistoryRecord({ pubkeyHex, eventId: "3".repeat(64), createdAt: 1000, postedAt: 1000000 }), kind },
+            createPostHistoryRecord({ pubkeyHex: "c".repeat(64), eventId: "4".repeat(64), createdAt: 1000, postedAt: 1000000 }),
+        ]);
+
+        await expect(repository.countForPubkey(pubkeyHex)).resolves.toBe(2);
+        await expect(repository.countVisibleForPubkey(pubkeyHex, 1000)).resolves.toBe(1);
+        await expect(repository.countVisibleForPubkey(pubkeyHex, 1001)).resolves.toBe(0);
 
         db.close();
     });
