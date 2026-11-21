@@ -3,6 +3,7 @@
     import { EMPTY } from "rxjs";
     import { finalizeEvent, generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
     import type { RxNostr } from "rx-nostr";
+    import { setPublicKeyAuth } from "../../stores/authStore.svelte";
     import PostHistoryDialog from "../../components/PostHistoryDialog.svelte";
     import type { NostrEvent } from "../../lib/types";
     import { clearPersistedPostHistoryListingSnapshots } from "../../lib/hooks/usePostHistoryListing.svelte";
@@ -60,8 +61,11 @@
     const isLongRawJsonScenario = new URLSearchParams(window.location.search).has("long-raw-json");
     const isCwLayoutScenario = new URLSearchParams(window.location.search).has("cw-layout");
     const isSelfQuoteTransitionScenario = new URLSearchParams(window.location.search).has("self-quote-transition");
-    // Omits the reply/quote handlers so the header owns the timestamp and menu.
-    const isNoActionsScenario = new URLSearchParams(window.location.search).has("no-actions");
+    const isPublicKeyScenario = new URLSearchParams(location.search).has("public-key");
+    const isNoActionsScenario = isPublicKeyScenario || new URLSearchParams(location.search).has("no-actions");
+    if (isPublicKeyScenario) {
+        setPublicKeyAuth(HARNESS_PUBKEY, nip19.npubEncode(HARNESS_PUBKEY), nip19.nprofileEncode({ pubkey: HARNESS_PUBKEY }));
+    }
     const isSparseOldestScenario =new URLSearchParams(window.location.search).has("sparse-oldest");
     const TOTAL_POSTS = isInfiniteScrollScenario
         ? 251
@@ -840,6 +844,7 @@
     {#if ready && showDialog}
         <div data-testid="post-history-mounted">
             <PostHistoryDialog
+                readOnly={isPublicKeyScenario}
                 show={showDialog}
                 returnFocus={historyTrigger}
                 onClose={() => (showDialog = false)}

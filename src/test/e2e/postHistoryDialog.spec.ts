@@ -3365,6 +3365,34 @@ test.describe('PostHistoryDialog Playwright', () => {
         }
     });
 
+    test('public-key history labels reply and reaction counts with non-interactive icons', async ({ page }) => {
+        await page.setViewportSize({ width: 360, height: 800 });
+        await page.goto('post-history-dialog-playwright.html?public-key=1');
+        await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+        const harness = await page.evaluate(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__!);
+        const reply = page.locator(`.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"]`);
+        const reaction = page.locator(`.post-history-item[data-post-history-event-id="${harness.reactionPostEventId}"]`);
+
+        const replyIcon = reply.locator('.post-preview-reply-action-cell .count-kind-icon').first();
+        const reactionIcon = reaction.locator('.post-preview-reaction-action-cell .count-kind-icon').first();
+        await expect(replyIcon).toBeVisible();
+        await expect(replyIcon).toHaveCSS('mask-image', /chat_bubble/);
+        await expect(reactionIcon).toBeVisible();
+        await expect(reactionIcon).toHaveCSS('mask-image', /favorite/);
+        for (const icon of [replyIcon, reactionIcon]) {
+            await expect(icon).toHaveCSS('pointer-events', 'none');
+            await expect(icon).toHaveAttribute('aria-hidden', 'true');
+        }
+
+        await reply.getByRole('button', { name: /返信 1件を表示/ }).first().click();
+        const replyCard = reply.locator('.post-history-related-card').filter({ hasText: harness.replyContent });
+        await expect(replyCard).toBeVisible();
+        await expect(replyCard.locator('.post-preview-reaction-action-cell .count-kind-icon').first()).toBeVisible();
+
+        await reaction.getByRole('button', { name: 'リアクション 1件を表示' }).click();
+        await expect(reaction.locator('.post-preview-reaction-chip')).toBeVisible();
+    });
+
     test('without reply and quote handlers the header shows the timestamp and menu and the footer has no actions', async ({ page }) => {
         await page.goto('post-history-dialog-playwright.html?no-actions=1');
         await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
