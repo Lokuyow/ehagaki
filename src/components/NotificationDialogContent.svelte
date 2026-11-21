@@ -292,10 +292,10 @@
         if (value === undefined) { value = JSON.stringify(notificationGroupSourceIds(group)); sourceIdsJsonByGroup.set(group, value); }
         return value;
     }
-    const typeByEvent = new WeakMap<NostrEvent, ReturnType<typeof notificationType>>();
+    const typeByRecord = new WeakMap<NotificationRecord, ReturnType<typeof notificationType>>();
     function recordType(record: NotificationRecord) {
-        let value = typeByEvent.get(record.event);
-        if (value === undefined) { value = notificationType(record.event); typeByEvent.set(record.event, value); }
+        let value = typeByRecord.get(record);
+        if (value === undefined) { value = notificationType(record.event, record.ownerPubkeyHex); typeByRecord.set(record, value); }
         return value;
     }
     $effect(() => {

@@ -59,24 +59,23 @@ describe("composerTargetUtils", () => {
         });
     });
 
-    it.each(["npub", "nprofile", "naddr"] as const)(
-        "%sを未対応として判定する",
-        (format) => {
-            const value = format === "npub"
-                ? nip19.npubEncode(author)
-                : format === "nprofile"
-                    ? nip19.nprofileEncode({ pubkey: author })
-                    : nip19.naddrEncode({
-                        kind: 30023,
-                        pubkey: author,
-                        identifier: "article",
-                    });
-            expect(parseComposerTargetInput(value)).toEqual({
-                status: "unsupported",
-                format,
-            });
-        },
-    );
+    it("npub と nprofile をメンション先として解析する", () => {
+        expect(parseComposerTargetInput(nip19.npubEncode(author))).toEqual({
+            status: "profile", profile: { pubkey: author, relayHints: [] },
+        });
+        const pointer = nip19.nprofileEncode({
+            pubkey: author,
+            relays: ["wss://hint.example", "https://invalid.example"],
+        });
+        expect(parseComposerTargetInput(`nostr:${pointer}`)).toEqual({
+            status: "profile", profile: { pubkey: author, relayHints: ["wss://hint.example/"] },
+        });
+    });
+
+    it("naddr を未対応として判定する", () => {
+        const value = nip19.naddrEncode({ kind: 30023, pubkey: author, identifier: "article" });
+        expect(parseComposerTargetInput(value)).toEqual({ status: "unsupported", format: "naddr" });
+    });
 
     it("nsecを値を返さず拒否する", () => {
         const nsec = nip19.nsecEncode(new Uint8Array(32).fill(7));

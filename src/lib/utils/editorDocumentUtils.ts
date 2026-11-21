@@ -6,6 +6,7 @@ import {
     normalizeEmojiShortcode,
     normalizeEmojiShortcodeForLookup,
 } from '../customEmoji';
+import { PROFILE_MENTION_NODE, serializeProfileMentionText } from '../profileMention';
 
 export function isDocumentEmpty(doc: PMNode): boolean {
     if (doc.childCount === 1) {
@@ -58,6 +59,7 @@ interface CustomEmojiSerializationItem {
 
 type InlinePostFragment =
     | { type: 'text'; text: string }
+    | { type: 'mention'; uri: unknown }
     | { type: 'customEmoji'; emoji: CustomEmojiSerializationItem };
 
 type PostBlockFragment =
@@ -113,6 +115,11 @@ function extractInlineFragmentsWithEmoji(node: PMNode): InlinePostFragment[] {
             return;
         }
 
+        if (child.type.name === PROFILE_MENTION_NODE) {
+            parts.push({ type: 'mention', uri: child.attrs.uri });
+            return;
+        }
+
         parts.push({ type: 'text', text: child.textContent ?? '' });
     });
 
@@ -145,6 +152,7 @@ function collectSerializationContext(blocks: PostBlockFragment[]): {
         }
 
         for (const part of block.parts) {
+            if (part.type === 'mention') continue;
             if (part.type === 'text') {
                 reserveTextShortcodes(part.text, reservedTextShortcodes);
                 continue;
@@ -243,9 +251,14 @@ function renderPostBlocks(blocks: PostBlockFragment[]): ExtractedPostContent {
         }
 
         let text = '';
-        for (const part of block.parts) {
+        for (const [index, part] of block.parts.entries()) {
             if (part.type === 'text') {
                 text += part.text;
+                continue;
+            }
+            if (part.type === 'mention') {
+                const next = block.parts[index + 1];
+                text += serializeProfileMentionText(part.uri, text, next?.type === 'text' ? next.text : '');
                 continue;
             }
 

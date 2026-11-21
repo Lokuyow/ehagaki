@@ -31,6 +31,12 @@ eHagaki（えはがき）は、画像・動画圧縮機能付きの投稿専用N
 
 保存済みリレーがない場合はkind 10002とkind 3を並行して取得し、kind 10002を優先します。両方が無応答の場合の探索待ちは最大約3秒で、その後に既定のfallbackを使用します。Web Component Fullの初回 `whenReady()` / `ehagaki-ready` は、引き続きプロフィールを含む既存の初期化完了条件を待ちます。
 
+## メンション
+
+投稿欄で半角の `@` を入力すると、保存済みのフォロー相手を `name`、`display_name`、プロフィールに記載された NIP-05 で検索できます。フォローリストは未取得のときにバックグラウンドで取得します。設定の Nostr 項目から、フォローリストと候補のプロフィールを更新できます。
+
+「宛先を指定」からは `npub`・`nprofile` でメンションを挿入できます。本文に貼り付けた有効な `nostr:npub…`・`nostr:nprofile…` も通知対象です。投稿履歴ではプロフィールへのリンクとして表示され、受け取ったメンションは通知ダイアログで確認できます。
+
 ## ドキュメント
 
 - Sensitive Content Payload形式（実験的仕様）: [docs/SENSITIVE_CONTENT.md](docs/SENSITIVE_CONTENT.md)

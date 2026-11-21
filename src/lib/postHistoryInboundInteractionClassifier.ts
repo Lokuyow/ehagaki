@@ -4,6 +4,7 @@ import {
 } from "./postHistoryNip10Utils";
 import type { NostrEvent } from "./types";
 import { parseReactionReference } from "./reactionReference";
+import { eventMentionsProfile } from "./profileMention";
 
 export type PostHistoryInboundInteractionType =
     | "direct-reply"
@@ -88,10 +89,12 @@ export function classifyPostHistoryInboundInteraction(input: {
     ) {
         const ownerPostParentConfirmed = ownerPostEventIds.has(references.parentId);
         const isNip22Comment = event.kind === 1111;
+        const parentAuthorHint = references.replyId ? references.replyAuthorHint : references.rootAuthorHint;
         const ownerIsDirectParent = ownerPostParentConfirmed
             || (isNip22Comment
                 ? references.parentPubkey === ownerPubkeyHex
-                : includesOwnerPTag);
+                : includesOwnerPTag && (parentAuthorHint === ownerPubkeyHex
+                    || !eventMentionsProfile(event, ownerPubkeyHex)));
         if (ownerIsDirectParent) {
             return {
                 type: ownerPostParentConfirmed ? "direct-reply" : "direct-reply-candidate",

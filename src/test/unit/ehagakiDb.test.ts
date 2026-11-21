@@ -190,9 +190,32 @@ describe("EHagakiDB", () => {
         expect(await upgraded.notifications.count()).toBe(0);
         upgraded.close();
     });
-    it("uses logical v19 and native v190", () => {
-        expect(EHAGAKI_DB_VERSION).toBe(19);
-        expect(EHAGAKI_DB_NATIVE_VERSION).toBe(190);
+    it("adds the follow list store when upgrading a v19 database with existing profiles", async () => {
+        const name = `${EHAGAKI_DB_NAME}-v19-${crypto.randomUUID()}`;
+        testDbNames.add(name);
+        const previous = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open(name, 190);
+            request.onupgradeneeded = () => {
+                ensureCurrentEHagakiDbSchema(request.result, "sharedMedia", request.transaction);
+                request.result.deleteObjectStore("followLists");
+                request.transaction!.objectStore("profiles").put({ pubkeyHex: "owner", name: "Saved" });
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        previous.close();
+        await upgradeWithSharedMigrator(name);
+
+        const upgraded = new EHagakiDB(name);
+        await upgraded.open();
+        await expect(upgraded.profiles.get("owner")).resolves.toMatchObject({ name: "Saved" });
+        await upgraded.followLists.put({ ownerPubkey: "owner", event: null });
+        await expect(upgraded.followLists.count()).resolves.toBe(1);
+        upgraded.close();
+    });
+    it("uses logical v20 and native v200", () => {
+        expect(EHAGAKI_DB_VERSION).toBe(20);
+        expect(EHAGAKI_DB_NATIVE_VERSION).toBe(200);
     });
 
     it("opens one app database with currently used stores", async () => {
@@ -210,6 +233,7 @@ describe("EHagakiDB", () => {
             "emojiItems",
             "eventStoreMigration",
             "events",
+            "followLists",
             "hashtagHistory",
             "legacyImportState",
             "notificationSyncState",
@@ -263,7 +287,7 @@ describe("EHagakiDB", () => {
         await upgradeWithSharedMigrator(name);
         const upgraded = new EHagakiDB(name);
         await upgraded.open();
-        expect(upgraded.backendDB().version).toBe(190);
+        expect(upgraded.backendDB().version).toBe(EHAGAKI_DB_NATIVE_VERSION);
         expect(upgraded.backendDB().objectStoreNames.contains("meta")).toBe(false);
         expect(upgraded.postHistory.schema.idxByName[POST_HISTORY_TIMELINE_INDEX]).toBeDefined();
         await expect(upgraded.postHistory.count()).resolves.toBe(1);
@@ -285,7 +309,7 @@ describe("EHagakiDB", () => {
         ["空の一覧", () => Promise.resolve([])],
         ["version 0", (name: string) => Promise.resolve([{ name, version: 0 }])],
         ["例外", () => Promise.reject(new DOMException("databases failed", "UnknownError"))],
-    ] as const)("databases() が%sでも v14 の marker を残して 190 にする", async (_label, databasesFor) => {
+    ] as const)("databases() が%sでも v14 の marker を残して 現在のバージョンにする", async (_label, databasesFor) => {
         const name = `${EHAGAKI_DB_NAME}-unreported-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         testDbNames.add(name);
         const v14 = createV14Db(name);
@@ -304,7 +328,7 @@ describe("EHagakiDB", () => {
         });
         const upgraded = new EHagakiDB(name);
         await upgraded.open();
-        expect(upgraded.backendDB().version).toBe(190);
+        expect(upgraded.backendDB().version).toBe(EHAGAKI_DB_NATIVE_VERSION);
         expect(upgraded.backendDB().objectStoreNames.contains("meta")).toBe(false);
         await expect(upgraded.postHistory.count()).resolves.toBe(1);
         await expect(upgraded.drafts.get("draft")).resolves.toMatchObject({ id: "draft" });
@@ -315,7 +339,7 @@ describe("EHagakiDB", () => {
         upgraded.close();
     });
 
-    it("WebKit が upgradeneeded の外の schema 変更を拒否しても v14 から 190 になる", async () => {
+    it("WebKit が upgradeneeded の外の schema 変更を拒否しても v14 から現在のバージョンになる", async () => {
         const name = `${EHAGAKI_DB_NAME}-webkit-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         testDbNames.add(name);
         const v14 = createV14Db(name);
@@ -332,7 +356,7 @@ describe("EHagakiDB", () => {
         await withWebKitSchemaChangeGuard(() => upgradeWithSharedMigrator(name));
         const upgraded = new EHagakiDB(name);
         await upgraded.open();
-        expect(upgraded.backendDB().version).toBe(190);
+        expect(upgraded.backendDB().version).toBe(EHAGAKI_DB_NATIVE_VERSION);
         expect(upgraded.backendDB().objectStoreNames.contains("meta")).toBe(false);
         await expect(upgraded.postHistory.count()).resolves.toBe(1);
         await expect(upgraded.drafts.get("draft")).resolves.toMatchObject({ id: "draft" });
@@ -343,7 +367,7 @@ describe("EHagakiDB", () => {
         upgraded.close();
     });
 
-    it("versionless 作成のあと open(190) は sharedMedia を残し履歴消去を再実行しない", async () => {
+    it("versionless 作成のあと versioned open は sharedMedia を残し履歴消去を再実行しない", async () => {
         const name = `${EHAGAKI_DB_NAME}-versionless-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         testDbNames.add(name);
         const created = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -373,7 +397,7 @@ describe("EHagakiDB", () => {
         await upgradeWithSharedMigrator(name);
         const upgraded = new EHagakiDB(name);
         await upgraded.open();
-        expect(upgraded.backendDB().version).toBe(190);
+        expect(upgraded.backendDB().version).toBe(EHAGAKI_DB_NATIVE_VERSION);
         await expect(upgraded.sharedMedia.get("latest")).resolves.toMatchObject({ id: "latest" });
         await expect(upgraded.postHistory.get("kept")).resolves.toMatchObject({ eventId: "kept" });
         upgraded.close();
@@ -447,7 +471,7 @@ describe("EHagakiDB", () => {
         await opening;
         const upgraded = new EHagakiDB(name);
         await upgraded.open();
-        expect(upgraded.backendDB().version).toBe(190);
+        expect(upgraded.backendDB().version).toBe(EHAGAKI_DB_NATIVE_VERSION);
         await expect(upgraded.drafts.get("draft")).resolves.toMatchObject({ id: "draft" });
         await expect(upgraded.postHistory.count()).resolves.toBe(1);
         upgraded.close();
@@ -469,7 +493,7 @@ describe("EHagakiDB", () => {
         expect(v14.isOpen()).toBe(false);
         const upgraded = new EHagakiDB(name);
         await upgraded.open();
-        expect(upgraded.backendDB().version).toBe(190);
+        expect(upgraded.backendDB().version).toBe(EHAGAKI_DB_NATIVE_VERSION);
         upgraded.close();
     });
 
@@ -492,7 +516,7 @@ describe("EHagakiDB", () => {
 
         const reopened = new EHagakiDB(name);
         await reopened.open();
-        expect(reopened.backendDB().version).toBe(190);
+        expect(reopened.backendDB().version).toBe(EHAGAKI_DB_NATIVE_VERSION);
         await expect(reopened.drafts.get("draft")).resolves.toMatchObject({ id: "draft" });
         reopened.close();
     });

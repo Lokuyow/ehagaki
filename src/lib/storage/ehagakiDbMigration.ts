@@ -22,7 +22,7 @@ export function migrateEhagakiIndexedDb(
     const copyLegacyMarkers = oldVersion !== 0 && hadMeta && !!transaction;
     ensureCurrentEHagakiDbSchema(db, "sharedMedia", transaction);
     // Version 0 creates the final schema. Version 1 already has that schema and
-    // only needs the later open(190) to bump the version. Neither path wipes
+    // only needs the later versioned open to bump the version. Neither path wipes
     // display history or copies markers.
     if (!copyLegacyMarkers || !transaction) {
         return;
@@ -113,8 +113,8 @@ export async function upgradeEhagakiDatabaseSchema(
 }
 
 function needsNativeUpgrade(version: number): boolean {
-    // Dexie keeps schema patches at 191, 192, … inside logical version 19.
-    // Opening those databases again at exactly 190 raises VersionError.
+    // Dexie can open at a patch version above the current logical version.
+    // Opening those databases again at the lower base version raises VersionError.
     if (version >= NEXT_EHAGAKI_DB_NATIVE_VERSION) {
         throw new DOMException("The database is newer than this page.", "VersionError");
     }

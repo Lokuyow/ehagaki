@@ -1,5 +1,6 @@
 import { nip19 } from "nostr-tools";
 import { RelayConfigUtils } from "./relayConfigUtils";
+import { parseProfilePointer, type ProfileMention } from "./profileMention";
 
 export const COMPOSER_TARGET_INPUT_MAX_LENGTH = 5_000;
 export const COMPOSER_TARGET_CHANNEL_ABOUT_PREVIEW_LENGTH = 200;
@@ -22,7 +23,8 @@ export interface ComposerTargetPointer {
 export type ComposerTargetParseResult =
     | { status: "empty" }
     | { status: "supported"; pointer: ComposerTargetPointer }
-    | { status: "unsupported"; format: "npub" | "nprofile" | "naddr" }
+    | { status: "profile"; profile: ProfileMention }
+    | { status: "unsupported"; format: "naddr" }
     | { status: "secret-key" }
     | { status: "invalid"; reason: "too-long" | "invalid-format" };
 
@@ -38,12 +40,15 @@ export function parseComposerTargetInput(rawInput: string): ComposerTargetParseR
         return { status: "empty" };
     }
 
-    const value = trimmed.startsWith("nostr:")
+    const value = /^nostr:/i.test(trimmed)
         ? trimmed.slice("nostr:".length)
         : trimmed;
     if (!value) {
         return { status: "invalid", reason: "invalid-format" };
     }
+
+    const profile = parseProfilePointer(value);
+    if (profile) return { status: "profile", profile };
 
     try {
         const decoded = nip19.decode(value);
@@ -79,11 +84,7 @@ export function parseComposerTargetInput(rawInput: string): ComposerTargetParseR
             };
         }
 
-        if (
-            decoded.type === "npub"
-            || decoded.type === "nprofile"
-            || decoded.type === "naddr"
-        ) {
+        if (decoded.type === "naddr") {
             return { status: "unsupported", format: decoded.type };
         }
 

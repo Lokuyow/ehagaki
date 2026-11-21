@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
 import { afterEach, describe, expect, it } from "vitest";
-import { EHAGAKI_DB_NAME } from "../../lib/storage/ehagakiDbConstants";
+import { EHAGAKI_DB_NAME, EHAGAKI_DB_NATIVE_VERSION, NEXT_EHAGAKI_DB_NATIVE_VERSION } from "../../lib/storage/ehagakiDbConstants";
 import {
     EHAGAKI_DB_UPGRADE_COMPLETE,
     createEhagakiDbUpgradeController,
@@ -25,7 +25,7 @@ async function openNative(version: number): Promise<void> {
 
 describe("eHagaki database upgrade controller", () => {
     it("does not report completion when the database is newer than this build", async () => {
-        await openNative(200);
+        await openNative(NEXT_EHAGAKI_DB_NATIVE_VERSION);
         const messages: string[] = [];
         const controller = createEhagakiDbUpgradeController({
             indexedDb: indexedDB,
@@ -41,11 +41,11 @@ describe("eHagaki database upgrade controller", () => {
         });
         await expect(controller.requestUpgrade()).resolves.toBe(false);
         expect(messages).not.toContain(EHAGAKI_DB_UPGRADE_COMPLETE);
-        expect(await readVersion()).toBe(200);
+        expect(await readVersion()).toBe(NEXT_EHAGAKI_DB_NATIVE_VERSION);
     });
 
     it("reports completion for a Dexie patch inside the current version slot", async () => {
-        await openNative(191);
+        await openNative(EHAGAKI_DB_NATIVE_VERSION + 1);
         const messages: string[] = [];
         const controller = createEhagakiDbUpgradeController({
             indexedDb: indexedDB,
@@ -61,7 +61,7 @@ describe("eHagaki database upgrade controller", () => {
         });
         await expect(controller.requestUpgrade()).resolves.toBe(true);
         expect(messages).toContain(EHAGAKI_DB_UPGRADE_COMPLETE);
-        expect(await readVersion()).toBe(191);
+        expect(await readVersion()).toBe(EHAGAKI_DB_NATIVE_VERSION + 1);
     });
 });
 

@@ -135,7 +135,8 @@ describe('swIndexedDbSchema', () => {
 
         ensureCurrentEHagakiDbSchema(db, 'sharedMedia');
 
-        expect(db.createObjectStore).toHaveBeenCalledTimes(34);
+        expect(db.createObjectStore).toHaveBeenCalledTimes(35);
+        expect(getCreatedStore(createdStores, 'followLists').keyPath).toBe('ownerPubkey');
         expect(getCreatedStore(createdStores, 'legacyImportState').keyPath).toBe('id');
         expect(createdStores.has('meta')).toBe(false);
 

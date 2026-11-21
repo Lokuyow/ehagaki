@@ -106,7 +106,7 @@
         whitespacePost: nip19.noteEncode(ids.whitespacePost),
         namelessChannel: nip19.noteEncode(ids.namelessChannel),
         longNameChannel: nip19.noteEncode(ids.longNameChannel),
-        unsupported: nip19.npubEncode("b".repeat(64)),
+        unsupported: nip19.naddrEncode({ pubkey: "b".repeat(64), kind: 30023, identifier: "fixture" }),
         nsec: nip19.nsecEncode(Uint8Array.from({ length: 32 }, () => 7)),
     };
     const wrappingPostContent = "wrapword ".repeat(24).trim();

@@ -4,6 +4,7 @@ import type { createRxNostr } from 'rx-nostr';
 import { createRxBackwardReq } from 'rx-nostr';
 import { toNpub, toNprofile } from "./utils/nostrUtils";
 import type { ProfileManagerDeps, ProfileData } from './types';
+import { readProfileNip05 } from './profileMention';
 import { RelayConfigUtils } from './relayConfigUtils';
 import { DexieProfilesRepository, profilesRepository, type ProfilesRepository } from './storage/profilesRepository';
 import { profileMetadataCache } from './profileMetadataCache.svelte';
@@ -66,6 +67,7 @@ export class ProfileDataFactory {
     return {
       name: typeof profile.name === 'string' ? profile.name : "",
       displayName: typeof profile.display_name === 'string' ? profile.display_name : "",
+      nip05: readProfileNip05(profile.nip05),
       picture,
       npub: toNpub(pubkeyHex),
       nprofile: toNprofile(pubkeyHex, profileRelays, writeRelays),

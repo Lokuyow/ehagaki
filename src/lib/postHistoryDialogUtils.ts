@@ -16,6 +16,7 @@ import type {
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
 import { CHANNEL_TEMPORARY_READ_RELAY_LIMIT } from "./channelContextConstants";
 import { scanHttpUrlCandidates } from "./utils/httpUrlCandidates";
+import { encodeProfilePointer, scanProfileMentions, type ProfileMention } from "./profileMention";
 
 const CUSTOM_EMOJI_SHORTCODE_PATTERN = /:([^\s:]+):/g;
 
@@ -40,6 +41,11 @@ export type PostHistoryPreviewSegment =
     | {
         type: "link";
         text: string;
+        href: string;
+    }
+    | {
+        type: "mention";
+        profile: ProfileMention;
         href: string;
     };
 
@@ -476,7 +482,27 @@ export function buildPreviewContent(
     const emojiUrls = new Set<string>();
     let lastIndex = 0;
 
-    for (const match of normalizedContent.matchAll(CUSTOM_EMOJI_SHORTCODE_PATTERN)) {
+    for (const { start, end, pubkey, relayHints } of scanProfileMentions(normalizedContent)) {
+        pushContentWithEmoji(normalizedContent.slice(lastIndex, start), segments, emojiMap, mediaMap, emojiUrls);
+        const profile = { pubkey, relayHints };
+        segments.push({ type: "mention", profile, href: `https://njump.me/${encodeProfilePointer(profile)}` });
+        lastIndex = end;
+    }
+    pushContentWithEmoji(normalizedContent.slice(lastIndex), segments, emojiMap, mediaMap, emojiUrls);
+
+    if (segments.length === 0) segments.push({ type: "text", text: normalizedContent });
+    return { segments, emojiUrls: [...emojiUrls] };
+}
+
+function pushContentWithEmoji(
+    content: string,
+    segments: PostHistoryPreviewSegment[],
+    emojiMap: ReturnType<typeof buildCustomEmojiTagMap>,
+    mediaMap: Map<string, PostHistoryRecord["media"][number]>,
+    emojiUrls: Set<string>,
+): void {
+    let lastIndex = 0;
+    for (const match of content.matchAll(CUSTOM_EMOJI_SHORTCODE_PATTERN)) {
         const matchIndex = match.index ?? -1;
         const rawShortcode = match[1] ?? "";
         const rawShortcodeText = match[0] ?? "";
@@ -494,7 +520,7 @@ export function buildPreviewContent(
         if (matchIndex > lastIndex) {
             pushTextSegment(
                 segments,
-                normalizedContent.slice(lastIndex, matchIndex),
+                content.slice(lastIndex, matchIndex),
                 mediaMap,
             );
         }
@@ -511,18 +537,7 @@ export function buildPreviewContent(
         lastIndex = matchIndex + rawShortcodeText.length;
     }
 
-    if (lastIndex < normalizedContent.length) {
-        pushTextSegment(segments, normalizedContent.slice(lastIndex), mediaMap);
-    }
-
-    if (segments.length === 0) {
-        segments.push({ type: "text", text: normalizedContent });
-    }
-
-    return {
-        segments,
-        emojiUrls: [...emojiUrls],
-    };
+    pushTextSegment(segments, content.slice(lastIndex), mediaMap);
 }
 
 function buildPostMediaMap(

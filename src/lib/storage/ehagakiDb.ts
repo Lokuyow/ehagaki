@@ -4,7 +4,7 @@ import type { StoredEvent, EventProjection } from "./eventStorageModel";
 import type { NotificationRecord, NotificationSyncState } from './notificationRepository';
 import Dexie, { type Table } from "dexie";
 import type { CustomEmojiSourceType } from "../customEmoji";
-import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem, UploadDestination } from "../types";
+import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem, NostrEvent, UploadDestination } from "../types";
 import {
     EHAGAKI_DB_NAME,
     EHAGAKI_DB_VERSION,
@@ -94,6 +94,7 @@ export interface ProfileRecord {
     pubkeyHex: string;
     name: string;
     displayName: string;
+    nip05?: string | null;
     pictureUrl: string;
     npub: string;
     nprofile: string;
@@ -103,6 +104,11 @@ export interface ProfileRecord {
     sourceEventId?: string;
     updatedAt: number;
     schemaVersion: number;
+}
+
+export interface FollowListRecord {
+    ownerPubkey: string;
+    event: NostrEvent | null;
 }
 
 export interface RelayConfigRecord {
@@ -339,6 +345,7 @@ export class EHagakiDB extends Dexie {
     emojiCacheMeta!: Table<EmojiCacheMetaRecord, string>;
     drafts!: Table<DraftRecord, string>;
     profiles!: Table<ProfileRecord, string>;
+    followLists!: Table<FollowListRecord, string>;
     relayConfigs!: Table<RelayConfigRecord, string>;
     sharedMedia!: Table<SharedMediaRecord, string>;
     hashtagHistory!: Table<HashtagHistoryRecord, string>;
@@ -389,6 +396,7 @@ export class EHagakiDB extends Dexie {
             emojiCacheMeta: "pubkeyHex, fetchedAt, updatedAt, schemaVersion",
             drafts: "id, scopeKey, pubkeyHex, updatedAt, timestamp, [scopeKey+updatedAt]",
             profiles: "pubkeyHex, fetchedAt, updatedAt, updatedAtFromEvent, schemaVersion",
+            followLists: "ownerPubkey",
             relayConfigs: "pubkeyHex, fetchedAt, updatedAt, updatedAtFromEvent, schemaVersion",
             sharedMedia: "id, createdAt, updatedAt, schemaVersion",
             hashtagHistory: "tagLower, useCount, lastUsed, updatedAt, schemaVersion",

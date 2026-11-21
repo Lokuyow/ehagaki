@@ -4,6 +4,8 @@
         PostHistoryPreviewSegment,
     } from "../lib/postHistoryDialogUtils";
     import TextLinkSegments from "./TextLinkSegments.svelte";
+    import { getProfileMentionPreview } from "../lib/profileMentionPreviewContext";
+    import { profileMentionLabel } from "../lib/profileMention";
 
     type EmojiLoadState = "loading" | "ready" | "failed";
     type EmojiImageMeta = {
@@ -13,7 +15,7 @@
         node: HTMLDivElement,
         eventId: string,
     ) => { destroy?: () => void } | void;
-    import type { Snippet } from "svelte";
+    import { untrack, type Snippet } from "svelte";
 
     interface Props {
         previewContent: PostHistoryPreviewContentData;
@@ -48,6 +50,7 @@
     }: Props = $props();
 
     const emojiSlotWidthByUrl = new Map<string, number>();
+    const mentionProfiles = getProfileMentionPreview();
 
     function isTextOrEmojiSegment(
         segment: PostHistoryPreviewSegment,
@@ -59,11 +62,17 @@
         previewContent.segments.filter(isTextOrEmojiSegment),
     );
 
+    $effect(() => {
+        const pubkeys = textSegments.flatMap(segment => segment.type === "mention" ? [segment.profile.pubkey] : []);
+        if (pubkeys.length) untrack(() => mentionProfiles?.load(pubkeys));
+    });
+
     const hasRenderableText = $derived.by(() =>
         textSegments.some(
             (segment) =>
                 segment.type === "emoji" ||
                 segment.type === "link" ||
+                segment.type === "mention" ||
                 (segment.type === "text" && segment.text.trim().length > 0),
         ),
     );
@@ -127,6 +136,10 @@
             {#each textSegments as segment, index (index)}
                 {#if segment.type === "text" || segment.type === "link"}
                     <TextLinkSegments segments={[segment]} />
+                {:else if segment.type === "mention"}
+                    {@const pubkey = segment.profile.pubkey}
+                    <a class="profile-mention" href={segment.href} target="_blank" rel="noopener noreferrer"
+                        >@{profileMentionLabel(pubkey, mentionProfiles?.read(pubkey))}</a>
                 {:else if hasEmojiFailed(segment.url)}
                     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                     <span
@@ -169,6 +182,9 @@
 </div>
 
 <style>
+    .profile-mention {
+        overflow-wrap: anywhere;
+    }
     .post-history-preview-content {
         position: relative;
         display: flex;

@@ -7,6 +7,7 @@ import {
 } from './authStorageKeys';
 import { profilesRepository } from './storage/profilesRepository';
 import { relayConfigsRepository } from './storage/relayConfigsRepository';
+import { ehagakiDb } from './storage/ehagakiDb';
 import {
     captureLegacyNsecMigrationSnapshot,
     type LegacyNsecMigrationSnapshotResult,
@@ -346,9 +347,10 @@ export class AccountManager {
         const repositoryResults = await Promise.allSettled([
             Promise.resolve().then(() => profilesRepository.delete(pubkeyHex)),
             Promise.resolve().then(() => relayConfigsRepository.delete(pubkeyHex)),
+            Promise.resolve().then(() => ehagakiDb.followLists.delete(pubkeyHex)),
         ]);
 
-        const repositoryTargets = ['profile-repository', 'relay-config-repository'] as const;
+        const repositoryTargets = ['profile-repository', 'relay-config-repository', 'follow-list-repository'] as const;
         repositoryResults.forEach((result, index) => {
             if (result.status === 'rejected') {
                 this.console.error('アカウントデータ削除に失敗しました', {
