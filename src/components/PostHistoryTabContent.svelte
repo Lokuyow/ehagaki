@@ -150,6 +150,7 @@
 
     let suspended = $state(false);
     let show = $derived(active && !suspended);
+    const showFooterTimestampMenu = $derived(readOnly || Boolean(onReplyPost || onQuotePost));
     let activationEpoch = 0;
     let destroyed = false;
     let closing = false;
@@ -2576,12 +2577,12 @@
                                         emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                                         emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} />
                                 {:else}
-                                {#if post.kind === 42 || post.deletedAt || hasDeletionFailed(post) || !(onReplyPost || onQuotePost)}
+                                {#if post.kind === 42 || post.deletedAt || hasDeletionFailed(post) || !showFooterTimestampMenu}
                                     <PostHistoryRecordHeader
                                         {post}
                                         channelText={post.kind === 42 ? channelDisplay.getChannelText(post, $_) : null}
                                         deletionFailed={hasDeletionFailed(post)}
-                                        showTimestampMenu={!(onReplyPost || onQuotePost)}
+                                        showTimestampMenu={!showFooterTimestampMenu}
                                         menuOpen={postActionUi.isPostMenuOpen(post.eventId)}
                                         onMenuOpenChange={(open) => setExclusivePostMenuOpen(post.eventId, open)}
                                         showSurroundingPostsAction={history.isSearchMode}
@@ -2691,6 +2692,7 @@
                                     </div>
                                     <PostHistoryRecordFooter
                                         {post}
+                                        showTimestampMenu={showFooterTimestampMenu}
                                         {graphState}
                                         emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                                         emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}

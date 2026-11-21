@@ -212,9 +212,23 @@ for (const format of ['npub', 'nprofile'] as const) {
         await page.getByRole('dialog').getByRole('button', { name: '閉じる', exact: true }).click();
 
         await page.locator('.post-history-btn').click();
-        await expect(page.getByText('Public history fixture', { exact: true }).first()).toBeVisible();
+        const historyPost = page.locator('.post-history-item').filter({ hasText: 'Public history fixture' }).first();
+        await expect(historyPost).toBeVisible();
         await expect(page.getByRole('tab', { name: 'メディア' })).toHaveCount(0);
-        await expect(page.locator('.post-history-dialog').getByRole('button', { name: /^(返信|引用|リアクション)$/ })).toHaveCount(0);
+        await expect(historyPost.getByRole('button', { name: /^(リプライ|引用|リアクション)$/ })).toHaveCount(0);
+
+        const footer = historyPost.locator('.post-preview-footer').first();
+        const menu = footer.getByRole('button', { name: 'アクションを表示', exact: true });
+        await expect(footer.locator('.post-preview-date')).toHaveText(/\d/);
+        await expect(menu).toBeVisible();
+        await expect(historyPost.locator('.post-preview-header .post-history-menu-trigger')).toHaveCount(0);
+        await page.setViewportSize({ width: 1103, height: 1253 });
+        await expect(menu).toBeInViewport();
+        await menu.click();
+        await expect(page.getByRole('menuitem', { name: '関連イベントを確認' })).toBeVisible();
+        await expect(page.getByRole('menuitem', { name: /^(削除|ブロードキャスト)$/ })).toHaveCount(0);
+        await page.keyboard.press('Escape');
+        await page.setViewportSize({ width: 360, height: 844 });
         await page.getByRole('dialog').getByRole('button', { name: '閉じる', exact: true }).click();
 
         await page.locator('.notification-btn').click();
