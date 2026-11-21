@@ -57,6 +57,7 @@ const playwrightProjects: Project[] = [
             '**/footerSettingShortcuts.spec.ts',
             '**/postEditorSending.spec.ts',
             '**/postHistoryDialog.spec.ts',
+            '**/postMediaCacheConcurrency.spec.ts',
             '**/historyTabs.spec.ts', '**/notifications.spec.ts',
             '**/iframeParentLogin.spec.ts', '**/loginLatency.spec.ts',
             '**/postHistoryFullScan.spec.ts',
@@ -74,7 +75,7 @@ const playwrightProjects: Project[] = [
     },
     {
         name: 'desktop-firefox',
-        testMatch: ['**/notifications.spec.ts', '**/webComponentEmbed.spec.ts', '**/uploadRelaySync.spec.ts', '**/iframeParentLogin.spec.ts', '**/loginLatency.spec.ts',
+        testMatch: ['**/notifications.spec.ts', '**/postMediaCacheConcurrency.spec.ts', '**/webComponentEmbed.spec.ts', '**/uploadRelaySync.spec.ts', '**/iframeParentLogin.spec.ts', '**/loginLatency.spec.ts',
             '**/gifUpload.spec.ts', '**/webpUpload.spec.ts', '**/relayDeliveryProgress.spec.ts'],
         use: {
             ...devices['Desktop Firefox'],
