@@ -92,7 +92,7 @@
     const unsubscribeProfile = profileSync.subscribe((key, profile) => { if (profiles.get(key) !== profile) profiles.set(key, profile); });
     const resolver = createNotificationTargetQueue(createPostHistoryRelatedTargetResolver({ getShow: () => show && visible && !invalidated,
         getOwner: () => pubkeyHex,
-        getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig, profileSyncCoordinator: profileSync, requireFullVerification: true }), () => show && visible && !invalidated);
+        getRxNostr: () => rxNostr, getRelayConfig: () => relayConfig, profileSyncCoordinator: profileSync, notificationPreviews: true }), () => show && visible && !invalidated);
     let previousGroups: NotificationGroup[] = [];
     const notificationGroups = $derived.by(() => previousGroups = shareNotificationGroups(previousGroups,
         groupNotifications(records, id => resolver.getTargetSnapshot(id)?.event ?? null)));
@@ -282,13 +282,15 @@
         let active = true;
         const byTarget = new Map<string, RelatedTargetDescriptor[]>();
         for (const target of targets) byTarget.set(target.targetEventId, [...(byTarget.get(target.targetEventId) ?? []), target]);
-        void Promise.all([...byTarget.values()].map(async candidates => {
-            let result = await resolver.ensureTarget(candidates[0]);
-            for (const candidate of candidates.slice(1)) {
-                if (!active || result?.status !== 'error' || result.errorCode !== 'invalid_event') break;
-                result = await resolver.retryTarget(candidate);
-            }
-        }));
+        untrack(() => {
+            void Promise.all([...byTarget.values()].map(async candidates => {
+                let result = await resolver.ensureTarget(candidates[0]);
+                for (const candidate of candidates.slice(1)) {
+                    if (!active || result?.status !== 'error' || result.errorCode !== 'invalid_event') break;
+                    result = await resolver.retryTarget(candidate);
+                }
+            }));
+        });
         return () => { active = false; };
     });
     async function refresh(older = false) {

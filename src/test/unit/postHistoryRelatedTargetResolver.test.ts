@@ -96,6 +96,7 @@ function createDescriptor(
 
 function createResolver(options: {
     requireFullVerification?: boolean;
+    notificationPreviews?: boolean;
     profileSyncCoordinator?: PostHistoryProfileSyncCoordinator;
     deletionRequestsRepositoryImpl?: Pick<
         PostHistoryDeletionRequestsRepository,
@@ -146,6 +147,7 @@ function createResolver(options: {
         deletionFetchService,
         profileSyncCoordinator: options.profileSyncCoordinator,
         requireFullVerification: options.requireFullVerification,
+        notificationPreviews: options.notificationPreviews,
     });
 
     return {
@@ -287,21 +289,68 @@ describe("createPostHistoryRelatedTargetResolver", () => {
         } finally { resolver.reset(); archive.mockRestore(); }
     });
 
-    it("full verification ignores deletion completion after reset", async () => {
-        const target = finalizeEvent({ kind: 7, content: "+", tags: [], created_at: 1 }, generateSecretKey());
-        const { resolver, contextFetchService, deletionFetchService, deletionRequestsRepositoryImpl } = createResolver({ requireFullVerification: true });
+    it.each([false, true])("full verification ignores deletion completion after reset (notification=%s)", async notificationPreviews => {
+        const key = generateSecretKey();
+        const target = finalizeEvent({ kind: 7, content: "+", tags: [], created_at: 1 }, key);
+        const deletion = finalizeEvent({ kind: 5, content: "", tags: [["e", target.id]], created_at: 2 }, key);
+        const { resolver, contextFetchService, deletionFetchService, deletionRequestsRepositoryImpl } = createResolver({ requireFullVerification: true, notificationPreviews });
         contextFetchService.fetchEventById.mockReturnValue({ promise: Promise.resolve({ event: target, relayUrl: null }), cancel: vi.fn() });
-        const deferred = createDeferred<{ events: never[]; fetchedAt: number; relayUrls: string[] }>();
+        const deferred = createDeferred<{ events: Array<{ event: NostrEvent; relayUrls: string[] }>; fetchedAt: number; relayUrls: string[] }>();
         const cancel = vi.fn();
         deletionFetchService.fetchDeletionRequests.mockReturnValue({ promise: deferred.promise, cancel });
         const task = resolver.ensureTarget(createDescriptor({ targetEventId: target.id, relationKind: "reaction", authorHint: target.pubkey }));
-        await flushMicrotasks();
+        await vi.waitFor(() => expect(deletionFetchService.fetchDeletionRequests).toHaveBeenCalledOnce());
+        if (notificationPreviews) await expect(task).resolves.toMatchObject({ status: "resolved" });
         resolver.reset();
-        deferred.resolve({ events: [], fetchedAt: 0, relayUrls: [] });
+        deferred.resolve({ events: [{ event: deletion, relayUrls: [] }], fetchedAt: 0, relayUrls: [] });
         await task;
+        await flushMicrotasks();
         expect(cancel).toHaveBeenCalledOnce();
         expect(resolver.getTargetSnapshot(target.id)).toBeNull();
         expect(deletionRequestsRepositoryImpl.upsertValidDeletionRequests).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])("does not publish a notification target with a known local deletion (cached=%s)", async cached => {
+        const target = finalizeEvent({ kind: 1, content: "deleted post", tags: [], created_at: 1 }, generateSecretKey());
+        const f = createResolver({ notificationPreviews: true });
+        if (cached) f.postHistoryRepositoryImpl.getByEventId.mockResolvedValue(createRecord(target));
+        f.contextFetchService.fetchEventById.mockReturnValue({
+            promise: Promise.resolve({ event: target, relayUrl: null }),
+            cancel: vi.fn(),
+        });
+        vi.mocked(f.deletionRequestsRepositoryImpl.getDeletedTargets).mockResolvedValue(new Map([[target.pubkey, new Set([target.id])]]));
+        const descriptor = createDescriptor({ targetEventId: target.id, authorHint: target.pubkey, relationKind: "notification" });
+        await expect(f.resolver.ensureTarget(descriptor)).resolves.toMatchObject({ status: "deleted", event: null });
+        expect(f.contextFetchService.fetchEventById).toHaveBeenCalledTimes(cached ? 0 : 1);
+        expect(f.deletionFetchService.fetchDeletionRequests).not.toHaveBeenCalled();
+        f.resolver.reset();
+    });
+
+    it("keeps a notification preview when a different author requests deletion", async () => {
+        const db = new EHagakiDB(`${EHAGAKI_DB_NAME}-notification-wrong-deletion-author`);
+        const repository = new DexiePostHistoryDeletionRequestsRepository(db);
+        const getDeletedTargets = vi.spyOn(repository, "getDeletedTargets");
+        const f = createResolver({ notificationPreviews: true, deletionRequestsRepositoryImpl: repository });
+        const target = finalizeEvent({ kind: 1, content: "visible post", tags: [], created_at: 1 }, generateSecretKey());
+        const deletion = finalizeEvent({ kind: 5, content: "", tags: [["e", target.id]], created_at: 2 }, generateSecretKey());
+        const response = Promise.withResolvers<{ events: Array<{ event: NostrEvent; relayUrls: string[] }>; fetchedAt: number; relayUrls: string[] }>();
+        f.contextFetchService.fetchEventById.mockReturnValue({
+            promise: Promise.resolve({ event: target, relayUrl: null }),
+            cancel: vi.fn(),
+        });
+        f.deletionFetchService.fetchDeletionRequests.mockReturnValue({ promise: response.promise, cancel: vi.fn() });
+        const descriptor = createDescriptor({ targetEventId: target.id, authorHint: target.pubkey, relationKind: "notification" });
+        try {
+            await expect(f.resolver.ensureTarget(descriptor)).resolves.toMatchObject({ status: "resolved", event: target });
+            await vi.waitFor(() => expect(f.deletionFetchService.fetchDeletionRequests).toHaveBeenCalledOnce());
+            response.resolve({ events: [{ event: deletion, relayUrls: [] }], fetchedAt: 0, relayUrls: [] });
+            await vi.waitFor(() => expect(getDeletedTargets).toHaveBeenCalledTimes(3));
+            expect(await getDeletedTargets.mock.results[2].value).toEqual(new Map());
+            expect(f.resolver.getTargetSnapshot(target.id)).toMatchObject({ status: "resolved", event: target });
+        } finally {
+            f.resolver.reset();
+            await db.delete();
+        }
     });
     beforeEach(() => {
         getProfileMock.mockReset();

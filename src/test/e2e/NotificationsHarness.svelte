@@ -45,9 +45,11 @@
     // Persist public signed fixture events only, so reloads and a second tab
     // exercise the same account without storing any fixture signing keys.
     const savedFixture = localStorage.getItem('notificationPublicFixture');
+    let originalDeletion: NostrEvent | undefined;
     const fixture = savedFixture ? JSON.parse(savedFixture) as { owner: string; original: NostrEvent; incoming: NostrEvent[] } : (() => {
         const ownerKey = generateSecretKey(), owner = getPublicKey(ownerKey);
         const original = finalizeEvent({ kind: 1, created_at: now - 10, tags: [], content: 'Original notification target' }, ownerKey);
+        originalDeletion = finalizeEvent({ kind: 5, created_at: now, tags: [['e', original.id]], content: '' }, ownerKey);
         const sign = (content: string, tags: string[][], kind = 1) => finalizeEvent({ kind, content, tags, created_at: now }, authorKey);
         const incoming = [sign('A mention addressed to you', [['p', owner]]),
             sign('Quote notification text', [['p', owner], ['q', original.id, relay]]),
@@ -69,7 +71,10 @@
     const performanceTargets = new Map<string, NostrEvent>();
     let holdTargets = false;
     const heldTargets = new Set<() => void>();
-    type FixtureFilter = { kinds?: number[]; ids?: string[]; since?: number; until?: number; '#p'?: string[] };
+    let holdDeletion = new URLSearchParams(location.search).has('hold-deletion');
+    let deliveredDeletion: NostrEvent | undefined;
+    const heldDeletions = new Set<() => void>();
+    type FixtureFilter = { kinds?: number[]; ids?: string[]; since?: number; until?: number; '#p'?: string[]; '#e'?: string[] };
     const requests: FixtureFilter[][] = [];
     const messages = new Subject();
     let notificationPage: NostrEvent[] | null = null;
@@ -77,6 +82,7 @@
     const runtime = { createAllMessageObservable: () => messages,
         use: (req: { rxReqId: string; strategy?: string; getReqPacketObservable: () => Observable<{ filters: FixtureFilter[] }> }) => new Observable(observer => {
         const ownedDeliveries = new Set<() => void>();
+        const ownedDeletions = new Set<() => void>();
         let currentFilters: FixtureFilter[] = [];
         let requestIndex = 0;
         const receive = (event: NostrEvent) => { if (currentFilters.some(filter => matchFilter(filter, event))) observer.next({ event, from: relay }); };
@@ -99,15 +105,24 @@
                     if (filters.some(filter => filter.ids?.includes(target.id))) observer.next({ event: target, from: relay });
                 }
                 for (const target of performanceTargets.values()) if (filters.some(filter => filter.ids?.includes(target.id))) observer.next({ event: target, from: relay });
+                if (deliveredDeletion) receive(deliveredDeletion);
                 if (req.strategy !== 'forward') {
                     messages.next({ type: 'EOSE', from: relay, subId, message: ['EOSE', subId] });
                     observer.complete();
                 }
             };
-            if (holdTargets && filters.some(filter => filter.ids?.some(id => performanceTargets.has(id)))) { heldTargets.add(deliver); ownedDeliveries.add(deliver); }
+            if (holdDeletion && filters.some(filter => filter.kinds?.includes(5) && filter['#e']?.includes(original.id))) {
+                heldDeletions.add(deliver);
+                ownedDeletions.add(deliver);
+            } else if (holdTargets && filters.some(filter => filter.ids?.some(id => performanceTargets.has(id)))) { heldTargets.add(deliver); ownedDeliveries.add(deliver); }
             else queueMicrotask(deliver);
         });
-        return () => { subscription.unsubscribe(); liveReceivers.delete(receive); ownedDeliveries.forEach(deliver => heldTargets.delete(deliver)); };
+        return () => {
+            subscription.unsubscribe();
+            liveReceivers.delete(receive);
+            ownedDeliveries.forEach(deliver => heldTargets.delete(deliver));
+            ownedDeletions.forEach(deliver => heldDeletions.delete(deliver));
+        };
     }) } as unknown as RxNostr;
     if (new URLSearchParams(location.search).has('container')) configureAppRuntimeEnvironment({ layoutMode: 'container' });
     useNotifications({ getEnabled: () => footerSettingShortcutsStore.notificationsEnabled, getOwner: () => ready ? owner : null, getRxNostr: () => runtime, getRelayConfig: () => config });
@@ -127,17 +142,24 @@
         Reflect.set(window, '__NOTIFICATIONS__', {
             releaseInitialList,
             releaseTargets: () => { holdTargets = false; heldTargets.forEach(deliver => deliver()); heldTargets.clear(); },
+            heldDeletionCount: () => heldDeletions.size,
+            releaseDeletion: () => {
+                deliveredDeletion = originalDeletion;
+                holdDeletion = false;
+                heldDeletions.forEach(deliver => deliver());
+                heldDeletions.clear();
+            },
             performanceActivity: () => ({ held: heldTargets.size,
                 targetRequests: requests.flatMap(filters => filters.flatMap(filter => filter.ids ?? [])).filter(id => performanceTargets.has(id)),
                 targetIds: [...performanceTargets.keys()] }),
-            seedPerformance: async (cached = true) => {
+            seedPerformance: async (cached = true, mixed = false) => {
                 holdTargets = !cached;
                 const events: NostrEvent[] = [];
                 const rows = [];
                 for (let index = 0; index < 120; index++) {
                     const target = finalizeEvent({ kind: 1, content: `Performance target ${index}\n` + 'Long line\n'.repeat(24) + Array.from({ length: 8 }, (_, n) => `https://profiles.example/perf-${index}-${n}.png`).join('\n'), tags: [], created_at: now - 300 - index }, authorKey);
                     performanceTargets.set(target.id, target);
-                    if (cached) await new EventRepository(ehagakiDb).save(target, [relay], () => true);
+                    if (cached || (mixed && index === 8)) await new EventRepository(ehagakiDb).save(target, [relay], () => true);
                     const kind = index % 3 === 0 ? 1 : index % 3 === 1 ? 7 : 6;
                     const tags = [['p', owner], ['p', target.pubkey], [kind === 1 ? 'q' : 'e', target.id, relay]];
                     const event = finalizeEvent({ kind, content: kind === 1 ? `Performance quote ${index}` : kind === 7 ? '+' : '', tags, created_at: now - index }, authorKey);
