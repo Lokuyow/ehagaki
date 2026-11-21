@@ -21,7 +21,7 @@ import { isImeCompositionKeydown } from './imeCompositionKey';
 import { ReactionInput } from './reactionInput';
 import type { ReactionInputMode } from '../reactionValue';
 import type { SubmittedCompositionController } from './submittedComposition';
-import { ProfileMentionExtension } from './profileMentionExtension';
+import { ProfileMentionExtension } from './profileMentionExtension.svelte';
 import type { ProfileMentionCandidate, ProfileMentionSource } from '../profileMention';
 
 const MEDIA_NODE_TYPES = new Set(['image', 'video', 'customEmoji']);

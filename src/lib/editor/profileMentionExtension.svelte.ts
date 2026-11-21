@@ -1,6 +1,7 @@
 import { Node, type Editor, type Range } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
-import Suggestion, { type SuggestionMatch, type Trigger } from "@tiptap/suggestion";
+import Suggestion, { type SuggestionMatch, type SuggestionProps, type Trigger } from "@tiptap/suggestion";
+import { untrack } from "svelte";
 import { SvelteNodeViewRenderer } from "svelte-tiptap";
 import ProfileMentionSuggestionList from "../../components/ProfileMentionSuggestionList.svelte";
 import ProfileMentionNodeView from "../../components/ProfileMentionNodeView.svelte";
@@ -119,11 +120,36 @@ export const ProfileMentionExtension = Node.create<Options>({
             char: "@",
             findSuggestionMatch: findProfileMentionSuggestionMatch,
             allow: () => this.options.canSuggest(),
-            items: ({ query }) => this.options.getItems(query),
             render: () => {
                 const renderer = render();
+                let stopWatching: (() => void) | undefined;
+
+                const watchQuery = (props: SuggestionProps<ProfileMentionCandidate>) => {
+                    stopWatching?.();
+                    let previousItems: ProfileMentionCandidate[] | undefined;
+                    // The query is active even while the local follow list and profiles are loading.
+                    stopWatching = $effect.root(() => {
+                        $effect(() => {
+                            const items = this.options.canSuggest() ? this.options.getItems(props.query) : [];
+                            if (previousItems?.length === items.length && items.every((item, index) => {
+                                const previous = previousItems![index]!;
+                                return item.pubkey === previous.pubkey && item.label === previous.label
+                                    && item.relayHints === previous.relayHints;
+                            })) return;
+                            previousItems = items;
+                            untrack(() => renderer.onUpdate({ ...props, items }));
+                        });
+                    });
+                };
+
                 return {
-                    ...renderer,
+                    onBeforeStart: watchQuery,
+                    onBeforeUpdate: watchQuery,
+                    onExit: () => {
+                        stopWatching?.();
+                        stopWatching = undefined;
+                        renderer.onExit();
+                    },
                     onKeyDown: props => !isImeCompositionKeydown(props.event, props.view)
                         && renderer.onKeyDown(props),
                 };

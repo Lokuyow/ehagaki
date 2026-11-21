@@ -3,7 +3,7 @@ import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
 import type { EventPacket, RxNostr, RxReq } from "rx-nostr";
 import { Observable } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createFollowListSession } from "../../lib/followListService";
+import { createFollowListSession } from "../../lib/followListService.svelte";
 import type { RelayQueryPolicy } from "../../lib/relay/query";
 import { EHagakiDB } from "../../lib/storage/ehagakiDb";
 import type { NostrEvent } from "../../lib/types";

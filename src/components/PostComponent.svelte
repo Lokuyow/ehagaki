@@ -83,7 +83,7 @@
   import { SubmittedCompositionController } from "../lib/editor/submittedComposition";
   import { showToolbarCaret } from "../lib/editor/toolbarCaretExtension";
   import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
-  import { insertProfileMention as insertMention } from "../lib/editor/profileMentionExtension";
+  import { insertProfileMention as insertMention } from "../lib/editor/profileMentionExtension.svelte";
   import type { ProfileMentionCandidate, ProfileMentionSource } from "../lib/profileMention";
   import { focusEditorWithoutKeyboardForCurrentTap } from "../lib/utils/keyboardFocusUtils";
   import { isEditorElement } from "../lib/utils/appDomUtils";

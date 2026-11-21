@@ -234,17 +234,16 @@ test('searches saved mentions and delivers a tagged post to the recipient notifi
     const app = await setup(page, { mentions: true });
     await app.login();
     app.releaseRelays();
-    app.releaseProfiles();
     await expect.poll(() => hasStoredFollowList(page, app.owner)).toBe(true);
+    await expect.poll(() => app.counts().followedProfileRequests).toBeGreaterThan(0);
 
     const editor = page.locator('.tiptap-editor');
     const popup = page.locator('.profile-mention-suggestion-popover');
-    // Profile hydration can finish after the first edit. The next selection
-    // consistently reads the same stored profile and never starts a search REQ.
-    await expect(async () => {
-        await editor.fill('@alice@example.com');
-        await expect(popup.getByText('@アリス Example', { exact: true })).toBeVisible({ timeout: 400 });
-    }).toPass({ timeout: 12_000 });
+    await editor.fill('@alice@example.com');
+    await expect(editor.locator('[data-decoration-id]')).toHaveText('@alice@example.com');
+    await expect(popup).toHaveCount(0);
+    app.releaseProfiles();
+    await expect(popup.getByText('@アリス Example', { exact: true })).toBeVisible({ timeout: 12_000 });
     const requests = app.counts().followedProfileRequests;
     for (const query of ['@alice', '@アリス Example', '@alice@example.com']) {
         await editor.fill(query);
@@ -334,11 +333,9 @@ test('keeps long mention names compact in the suggestions and editor', async ({ 
 
     const editor = page.locator('.tiptap-editor');
     const choice = page.locator('.profile-mention-suggestion-popover').getByRole('option');
-    await expect(async () => {
-        await editor.fill('@');
-        await editor.fill('@検索用末尾');
-        await expect(choice).toContainText(`@${prefix}…`, { timeout: 400 });
-    }).toPass({ timeout: 12_000 });
+    await expect.poll(() => app.counts().followedProfileRequests).toBeGreaterThan(0);
+    await editor.fill('@検索用末尾');
+    await expect(choice).toContainText(`@${prefix}…`, { timeout: 12_000 });
     const choiceAvatar = choice.locator('.suggestion-mention-avatar-image');
     await expect(choiceAvatar).toHaveAttribute('src', mentionAvatarUrl + '?profile=true');
     await expect.poll(() => choiceAvatar.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);

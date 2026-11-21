@@ -4,7 +4,7 @@
     import type { RelayConfig } from "../../lib/types";
     import { tryCopyToClipboard } from "../../lib/utils/clipboardUtils";
     import Button from "../Button.svelte";
-    import type { FollowListUpdateResult } from "../../lib/followListService";
+    import type { FollowListUpdateResult } from "../../lib/followListService.svelte";
 
     interface RelayListItem {
         url: string;

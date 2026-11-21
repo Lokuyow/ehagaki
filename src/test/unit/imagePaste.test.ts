@@ -67,7 +67,7 @@ function createViewState() {
     const paragraph = {
         type: { name: 'paragraph' },
         textContent: '',
-        descendants: vi.fn(),
+        children: [],
     };
     const doc = {
         childCount: 1,

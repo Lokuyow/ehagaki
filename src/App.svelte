@@ -19,7 +19,7 @@
   import RelayDeliveryToasts from "./components/RelayDeliveryToasts.svelte";
   import { waitNostr } from "nip07-awaiter";
   import { AccountManager } from "./lib/accountManager";
-  import { createFollowListSession } from "./lib/followListService";
+  import { createFollowListSession } from "./lib/followListService.svelte";
   import type { ProfileMentionCandidate, ProfileMentionSource } from "./lib/profileMention";
   import { mergeHostReadDefaultsWithHints } from "./lib/hostRelayRuntime";
   import { RelayConfigUtils } from "./lib/relayConfigUtils";
@@ -499,7 +499,7 @@
   let authTransitionGeneration = $state(0);
   let appDisposed = false;
   let postAuthAbort: AbortController | undefined;
-  let followListSession: ReturnType<typeof createFollowListSession> | undefined;
+  let followListSession = $state.raw<ReturnType<typeof createFollowListSession>>();
   provideProfileMentionPreview({
     read: pubkey => profileMetadataCache.getReactiveEntry(pubkey)?.profile,
     load: pubkeys => { void profileMetadataCache.getCachedProfiles(pubkeys).catch(() => undefined); },

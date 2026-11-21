@@ -97,7 +97,7 @@ export function createFollowListSession(
     db: EHagakiDB = ehagakiDb,
 ) {
     let eventId: string | undefined;
-    let contacts: FollowedProfile[] = [];
+    let contacts = $state.raw<FollowedProfile[]>([]);
     let update: { manual: boolean; promise: Promise<FollowListUpdateResult> } | undefined;
     let metadata: AbortController | undefined;
     signal.addEventListener("abort", () => {
