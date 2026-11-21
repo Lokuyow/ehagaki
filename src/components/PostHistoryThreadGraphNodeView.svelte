@@ -95,8 +95,8 @@
     let postedAtExact = $derived(
         formatPostedAtExact(state.node.event.created_at * 1000),
     );
-    const replyIndent = $derived(
-        `${resolvePostHistoryThreadContextIndentRem(Math.max(0, state.depthFromAnchor))}rem`,
+    const contextIndent = $derived(
+        `${resolvePostHistoryThreadContextIndentRem(state.depthFromAnchor)}rem`,
     );
     let showRepliesBadge = $derived(
         state.repliesActionState.status === "loaded" &&
@@ -200,7 +200,7 @@
 
     <div
         class="post-history-thread-node-anchor"
-        style:--thread-reply-indent={replyIndent}
+        style:--thread-context-indent={contextIndent}
         data-post-history-thread-anchor-scope-id={state.anchorEventId}
         data-post-history-thread-anchor-event-id={state.node.eventId}
     >
@@ -361,7 +361,7 @@
     .post-history-thread-node-anchor {
         display: grid;
         min-width: 0;
-        margin-inline-start: min(var(--thread-reply-indent), 12%);
+        margin-inline-start: min(var(--thread-context-indent), 12%);
     }
 
     .post-history-thread-node-children {
