@@ -112,7 +112,9 @@ test.describe('post gallery layout', () => {
                 loadModule('/ehagaki/src/stores/mediaGalleryStore.svelte.ts'),
             ]);
             settings.settingsStore.mediaFreePlacement = false;
-            const src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+            const src = 'data:image/svg+xml,' + encodeURIComponent(
+                '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="100"><rect width="100%" height="100%" fill="teal"/></svg>',
+            );
             for (const alt of ['first image', 'second image']) {
                 gallery.mediaGalleryStore.addItem({ id: alt, type: 'image', src, alt, isPlaceholder: false });
             }
@@ -122,6 +124,7 @@ test.describe('post gallery layout', () => {
         const cards = gallery.locator('.gallery-item');
         await expect(gallery).toHaveCSS('height', '320px');
         await expect(cards.first().locator('img')).toHaveCSS('width', '280px');
+        await expect(cards.first().locator('img')).toHaveCSS('transform', 'matrix(1.5, 0, 0, 1.5, 0, 0)');
 
         const lastCard = await cards.last().boundingBox();
         if (!lastCard) throw new Error('Second media card is missing');

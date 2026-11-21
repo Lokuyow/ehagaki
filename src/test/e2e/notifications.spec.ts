@@ -442,6 +442,24 @@ test('notification gallery reaches every image and loads offscreen images when s
     page.on('request', request => {
         if (request.url().startsWith('https://profiles.example/article-')) requested.push(request.url());
     });
+    const imageSizes = [[320, 300], [240, 300], [1200, 100], [100, 1200]] as const;
+    const imageBodies = await page.evaluate(sizes => sizes.map(([width, height]) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d')!;
+        context.fillStyle = 'teal';
+        context.fillRect(0, 0, width, height);
+        return canvas.toDataURL('image/png').split(',')[1];
+    }), imageSizes);
+    await page.route(/https:\/\/profiles\.example\/article-[0-3]\.png$/, (route) => {
+        const index = Number(route.request().url().match(/article-(\d)\.png$/)?.[1]);
+        return route.fulfill({
+            contentType: 'image/png',
+            headers: { 'access-control-allow-origin': '*' },
+            body: Buffer.from(imageBodies[index]!, 'base64'),
+        });
+    });
     await page.setViewportSize({ width: 360, height: 844 });
     await page.goto('post-history-dialog-playwright.html?notifications=1');
     await expect(page.locator('.notification-btn')).toBeVisible();
@@ -457,6 +475,32 @@ test('notification gallery reaches every image and loads offscreen images when s
     await expect(gallery.locator('.post-history-image-cell').first()).toHaveCSS('width', '160px');
     await gallery.scrollIntoViewIfNeeded();
     await expect(gallery.locator('.post-history-media-surface').first()).toBeVisible();
+    for (const [index, [naturalWidth, naturalHeight]] of imageSizes.entries()) {
+        const card = gallery.locator('.post-history-image-cell').nth(index);
+        await card.scrollIntoViewIfNeeded();
+        const image = card.locator('img');
+        await expect.poll(() => image.evaluate(node => (node as HTMLImageElement).naturalWidth)).toBe(naturalWidth);
+        await expect.poll(() => image.evaluate(node => new DOMMatrixReadOnly(getComputedStyle(node).transform).a))
+            .toBeGreaterThan(1);
+        const sizes = await image.evaluate(node => {
+            const zoom = new DOMMatrixReadOnly(getComputedStyle(node).transform).a;
+            return { zoom, width: node.clientWidth, height: node.clientHeight };
+        });
+        if (index < 2) {
+            const containScale = Math.min(sizes.width / naturalWidth, sizes.height / naturalHeight);
+            const paintedWidth = naturalWidth * containScale * sizes.zoom;
+            const paintedHeight = naturalHeight * containScale * sizes.zoom;
+            if (naturalWidth < naturalHeight) {
+                expect(paintedWidth).toBeCloseTo(sizes.width, 0);
+                expect(paintedHeight).toBeGreaterThan(sizes.height);
+            } else {
+                expect(paintedHeight).toBeCloseTo(sizes.height, 0);
+                expect(paintedWidth).toBeGreaterThan(sizes.width);
+            }
+        } else {
+            expect(sizes.zoom).toBe(1.5);
+        }
+    }
     expect(requested.some(url => url.endsWith('/article-7.png'))).toBe(false);
     await gallery.evaluate(element => { element.scrollLeft = element.scrollWidth; });
     await expect(gallery.locator('.post-history-image-cell').last().locator('img')).toBeInViewport();
