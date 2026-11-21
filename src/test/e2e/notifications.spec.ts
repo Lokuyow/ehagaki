@@ -1116,17 +1116,19 @@ test('local more pages continue staged rendering without fetching older notifica
     expect(await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').requests().flat().some((filter: { since?: number }) => filter.since === 0))).toBe(false);
 });
 
-test('target queue bounds cold resolution and drops queued work when notifications are disabled', async ({ page }) => {
+test('cached targets bypass four pending relay fetches and disabling notifications cancels the queue', async ({ page }) => {
     await page.goto('post-history-dialog-playwright.html?notifications=1');
     await expect(page.locator('.notification-btn')).toBeVisible();
-    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').seedPerformance(false));
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').seedPerformance(false, true));
     await page.locator('.notification-btn').click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.locator('.notification-entry')).toHaveCount(10);
     await expect(dialog.locator('.notification-opening-placeholder')).toHaveCount(0);
     const activity = () => page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').performanceActivity());
     await expect.poll(async () => (await activity()).held).toBe(4);
+    await expect(dialog.getByText('Performance target 8', { exact: false })).toBeVisible();
     const before = await activity();
+    expect(before.held).toBe(4);
     expect(before.targetRequests).toHaveLength(4);
     expect(before.targetRequests.every((id: string) => before.targetIds.slice(0, 10).includes(id))).toBe(true);
     await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').setShortcuts({ left: null, right: null }));
@@ -1134,4 +1136,21 @@ test('target queue bounds cold resolution and drops queued work when notificatio
     await expect.poll(async () => (await activity()).held).toBe(0);
     await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').releaseTargets());
     expect((await activity()).targetRequests).toEqual(before.targetRequests);
+});
+
+test('cold notification target appears before the deletion response and is hidden once it arrives', async ({ page }) => {
+    await page.goto('post-history-dialog-playwright.html?notifications=1&hold-deletion=1');
+    await page.getByRole('button', { name: '通知（未読あり）' }).click();
+    const dialog = page.getByRole('dialog');
+    const target = dialog.getByText('Original notification target', { exact: true });
+    const held = () => page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').heldDeletionCount());
+    await expect(target).toHaveCount(2);
+    await expect.poll(held).toBe(1);
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').releaseDeletion());
+    await expect(target).toHaveCount(0);
+    await expect(dialog.getByText('元の投稿を表示できません', { exact: true })).toBeVisible();
+    await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
+    await page.getByRole('button', { name: '通知', exact: true }).click();
+    await expect(dialog.getByText('元の投稿を表示できません', { exact: true })).toBeVisible();
+    await expect(target).toHaveCount(0);
 });

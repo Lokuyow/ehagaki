@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest';
-import { createNotificationTargetQueue } from '../../lib/notificationTargetQueue';
+import { createNotificationTargetQueue, createNotificationTargetWorkQueue } from '../../lib/notificationTargetQueue';
 import type { PostHistoryRelatedTargetResolver, RelatedTargetDescriptor } from '../../lib/postHistoryRelatedTargetResolver.svelte';
 
 const descriptor = (id: string, scopeKey = 'notifications'): RelatedTargetDescriptor => ({ targetEventId: id, scopeKey, relationKind: 'notification' });
@@ -9,18 +9,37 @@ function fixture() {
     const base = { ensureTarget, retryTarget: ensureTarget, reset: vi.fn(), invalidateScope: vi.fn() } as unknown as PostHistoryRelatedTargetResolver;
     return { tasks, base, ensureTarget, queue: createNotificationTargetQueue(base, () => true) };
 }
-test('shares queued work and limits target IDs across quote and notification scopes to four', async () => {
+test('shares identical requests for a target', async () => {
     const f = fixture();
-    const results = Array.from({ length: 6 }, (_, index) => f.queue.ensureTarget(descriptor(String(index))));
-    const shared = f.queue.ensureTarget(descriptor('5'));
-    expect(f.ensureTarget).toHaveBeenCalledTimes(4);
+    const first = f.queue.ensureTarget(descriptor('a'));
+    expect(f.queue.ensureTarget(descriptor('a'))).toBe(first);
+    expect(f.ensureTarget).toHaveBeenCalledOnce();
     f.tasks[0].resolve(null);
-    await vi.waitFor(() => expect(f.ensureTarget).toHaveBeenCalledTimes(5));
-    f.tasks[1].resolve(null);
-    await vi.waitFor(() => expect(f.ensureTarget).toHaveBeenCalledTimes(6));
-    f.tasks.forEach(task => task.resolve(null));
-    await Promise.all([...results, shared]);
-    expect(f.ensureTarget).toHaveBeenCalledTimes(6);
+    await first;
+});
+
+test('a stage limits concurrent work to four, discards cancelled jobs and admits new sessions', async () => {
+    const stage = createNotificationTargetWorkQueue();
+    const running = Array.from({ length: 4 }, () => Promise.withResolvers<number>());
+    const old = running.map((task, index) => stage.run(String(index), () => task.promise));
+    const work = vi.fn(async () => 5);
+    const cancelled = stage.run('removed', work);
+    const waiting = stage.run('waiting', work);
+    expect(work).not.toHaveBeenCalled();
+    stage.cancel('removed');
+    await expect(cancelled).resolves.toBeNull();
+
+    running[0].resolve(0);
+    await expect(waiting).resolves.toBe(5);
+    expect(work).toHaveBeenCalledOnce();
+    stage.run('blocking', () => new Promise(() => {}));
+    const discarded = stage.run('discarded', work);
+    stage.reset();
+    await expect(discarded).resolves.toBeNull();
+    await expect(stage.run('new', work)).resolves.toBe(5);
+    running.slice(1).forEach(task => task.resolve(0));
+    await Promise.all(old);
+    expect(work).toHaveBeenCalledTimes(2);
 });
 test('same target in different scopes shares a slot while preserving scope registration', async () => {
     const f = fixture();
@@ -33,38 +52,31 @@ test('same target in different scopes shares a slot while preserving scope regis
 });
 test('reset discards waiting work and old completions cannot consume a new session slot', async () => {
     const f = fixture();
-    const old = Array.from({ length: 5 }, (_, index) => f.queue.ensureTarget(descriptor(String(index))));
+    const old = [f.queue.ensureTarget(descriptor('a')), f.queue.ensureTarget(descriptor('a', 'quote'))];
     f.queue.reset();
-    await expect(old[4]).resolves.toBeNull();
+    await expect(old[1]).resolves.toBeNull();
     const current = f.queue.ensureTarget(descriptor('new'));
-    f.tasks.slice(0, 4).forEach(task => task.resolve(null));
+    f.tasks[0].resolve(null);
     await Promise.all(old);
-    expect(f.ensureTarget).toHaveBeenCalledTimes(5);
-    f.tasks[4].resolve(null); await current;
+    expect(f.ensureTarget).toHaveBeenCalledTimes(2);
+    f.tasks[1].resolve(null); await current;
     expect(f.base.reset).toHaveBeenCalledOnce();
 });
-test('scope cancellation drops its waiting jobs without canceling another consumer', async () => {
+test('scope cancellation drops its waiting jobs and allows immediate resubmission', async () => {
     const f = fixture();
-    const active = Array.from({ length: 4 }, (_, index) => f.queue.ensureTarget(descriptor(String(index))));
-    const removed = f.queue.ensureTarget(descriptor('waiting', 'quote'));
-    const kept = f.queue.ensureTarget(descriptor('kept'));
+    const active = f.queue.ensureTarget(descriptor('a'));
+    const removed = f.queue.ensureTarget(descriptor('a', 'quote'));
+    const kept = f.queue.ensureTarget(descriptor('a', 'reply'));
     f.queue.invalidateScope('quote');
-    await expect(removed).resolves.toBeNull();
-    f.tasks.slice(0, 4).forEach(task => task.resolve(null));
-    await Promise.all(active);
-    await vi.waitFor(() => expect(f.ensureTarget).toHaveBeenCalledTimes(5));
-    f.tasks[4].resolve(null); await kept;
-});
+    const replacement = f.queue.ensureTarget(descriptor('a', 'quote'));
 
-test('a quote scope can immediately resubmit canceled queued work on a new page', async () => {
-    const f = fixture();
-    const active = Array.from({ length: 4 }, (_, index) => f.queue.ensureTarget(descriptor(String(index))));
-    const old = f.queue.ensureTarget(descriptor('quote', 'quote'));
-    f.queue.invalidateScope('quote');
-    const replacement = f.queue.ensureTarget(descriptor('quote', 'quote'));
-    await expect(old).resolves.toBeNull();
-    f.tasks.slice(0, 4).forEach(task => task.resolve(null));
-    await Promise.all(active);
-    await vi.waitFor(() => expect(f.ensureTarget).toHaveBeenCalledTimes(5));
-    f.tasks[4].resolve(null); await replacement;
+    await expect(removed).resolves.toBeNull();
+    f.tasks[0].resolve(null);
+    await active;
+    await vi.waitFor(() => expect(f.ensureTarget).toHaveBeenLastCalledWith(descriptor('a', 'reply'), undefined));
+    f.tasks[1].resolve(null);
+    await kept;
+    await vi.waitFor(() => expect(f.ensureTarget).toHaveBeenLastCalledWith(descriptor('a', 'quote'), undefined));
+    f.tasks[2].resolve(null);
+    await replacement;
 });
