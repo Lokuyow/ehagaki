@@ -1,12 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/svelte";
-import { readable } from "svelte/store";
+import { fromStore, readable, writable } from "svelte/store";
 import { tick } from "svelte";
 import { createDeferred } from "../deferredTestUtils";
 import { mediaDestination, mediaItem, mediaPage, mediaPubkey } from "../uploadMediaManagementTestUtils";
 import { mockAuthStoreModule } from "../mocks/storeModules";
 import type { UploadMediaManagementView } from "../../lib/upload/uploadMediaManagementController";
 import { UploadMediaError } from "../../lib/upload/mediaManagementTypes";
+import { stubListIntersections } from "../listIntersectionTestUtils";
+
+const viewUpdates = writable<UploadMediaManagementView | null>(null);
+const updatedView = fromStore(viewUpdates);
 const mocked = vi.hoisted(() => ({ view: null as unknown as UploadMediaManagementView,
     copy: vi.fn(async () => true),
     controller: { activate: vi.fn(), suspend: vi.fn(), busy: false, configure: vi.fn(), configureSaved: vi.fn(async () => undefined), invalidate: vi.fn(), select: vi.fn(), load: vi.fn(), delete: vi.fn(async () => true) },
@@ -14,7 +18,7 @@ const mocked = vi.hoisted(() => ({ view: null as unknown as UploadMediaManagemen
 vi.mock("svelte-i18n", () => ({ _: readable((key: string) => key) }));
 vi.mock("../../lib/hooks/useDialogHistory.svelte", () => ({ useDialogHistory: vi.fn() }));
 vi.mock("../../lib/utils/clipboardUtils", () => ({ tryCopyToClipboard: mocked.copy }));
-vi.mock("../../lib/hooks/useUploadMediaManagement.svelte", () => ({ useUploadMediaManagement: () => ({ get value() { return mocked.view; }, controller: mocked.controller }) }));
+vi.mock("../../lib/hooks/useUploadMediaManagement.svelte", () => ({ useUploadMediaManagement: () => ({ get value() { return updatedView.current ?? mocked.view; }, controller: mocked.controller }) }));
 vi.mock("../../lib/uploadMediaImageCacheClient", () => ({ supportsUploadMediaImageCache: vi.fn(async () => false), evictUploadMediaImages: vi.fn(async () => true) }));
 vi.mock("../../lib/hooks/inViewportAction.svelte", () => ({ inViewportAction: (_node: unknown, params: { onEnterView: () => void }) => { queueMicrotask(params.onEnterView); return {}; } }));
 vi.mock("photoswipe", () => ({
@@ -48,6 +52,7 @@ import { supportsUploadMediaImageCache } from "../../lib/uploadMediaImageCacheCl
 
 beforeEach(() => {
     vi.clearAllMocks();
+    viewUpdates.set(null);
     mocked.copy.mockResolvedValue(true);
     vi.mocked(supportsUploadMediaImageCache).mockResolvedValue(false);
     mocked.viewers.length = 0;
@@ -56,7 +61,32 @@ beforeEach(() => {
     mocked.view = { destinations: [destination], selectedId: destination.id, current: { destination, ...mediaPage(destination, [mediaItem(), mediaItem(destination, "video", "c".repeat(64))]),
         loaded: true, loading: false, error: null, support: "supported", hasMore: true, needsRefresh: false, deletingId: null, notice: null } };
 });
+afterEach(() => vi.unstubAllGlobals());
+
 describe("uploaded-media content", () => {
+    it.each(["empty", "error"] as const)("leaves a %s continuation to the manual button", async result => {
+        const intersect = stubListIntersections();
+        const view = mocked.view;
+        const current = view.current!;
+        mocked.controller.load.mockImplementationOnce(() => viewUpdates.set({ ...view, current: { ...current, loading: true } }));
+        render(UploadedMediaTabContent, { show: true });
+        const more = screen.getByRole<HTMLButtonElement>("button", { name: "uploadedMedia.loadMore" });
+        const firstEnd = document.querySelector(".media-load-sentinel")!;
+        intersect(firstEnd);
+        intersect(firstEnd);
+        await waitFor(() => expect(more.disabled).toBe(true));
+        expect(mocked.controller.load).toHaveBeenCalledExactlyOnceWith(true);
+
+        const error = result === "error" ? new UploadMediaError("network") : null;
+        viewUpdates.set({ ...view, current: { ...current, error } });
+        await waitFor(() => expect(more.disabled).toBe(false));
+        expect(document.querySelector(".media-load-sentinel")).toBeNull();
+        intersect(firstEnd);
+        expect(mocked.controller.load).toHaveBeenCalledTimes(1);
+        await fireEvent.click(more);
+        expect(mocked.controller.load).toHaveBeenCalledTimes(2);
+        expect(mocked.controller.load).toHaveBeenLastCalledWith(true);
+    });
     it.each(["https://nostr.build", "https://nostr.build/", "https://nostr.build/api/v2/nip96/upload", "https://nostr.build/api/v2/nip96/upload/"])("explains NIP-96 listing HTTP 405 for %s with actionable official links", async (serverUrl) => {
         const current = mocked.view.current!;
         current.destination = { ...mediaDestination("nip96"), serverUrl, name: "Renamed destination", presetId: "custom" };

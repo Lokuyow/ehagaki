@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { isListEdgeInPrefetchRegion } from '../../lib/listEdgeObserver';
 
 import {
-    buildPostHistoryAutoLoadRootMargin,
-    isPostHistoryAutoLoadSentinelInPrefetchRegion,
     observePostHistoryAutoLoadSentinel,
     type ObservePostHistoryAutoLoadSentinelOptions,
     type PostHistoryAutoLoadDirection,
@@ -107,15 +106,18 @@ describe('postHistoryAutoLoadSentinelObserver', () => {
     });
 
     it('先読み範囲は方向ごとに、表示領域の高さ 2 つ分だけ外側へ広がる', () => {
-        const base = { rootRect: ROOT_RECT, rootHeight: ROOT_HEIGHT };
-        expect(isPostHistoryAutoLoadSentinelInPrefetchRegion({ ...base, direction: 'older', sentinelRect: rect(300, 301) })).toBe(true);
-        expect(isPostHistoryAutoLoadSentinelInPrefetchRegion({ ...base, direction: 'older', sentinelRect: rect(301, 302) })).toBe(false);
-        expect(isPostHistoryAutoLoadSentinelInPrefetchRegion({ ...base, direction: 'older', sentinelRect: rect(-10, -1) })).toBe(false);
-        expect(isPostHistoryAutoLoadSentinelInPrefetchRegion({ ...base, direction: 'newer', sentinelRect: rect(-201, -200) })).toBe(true);
-        expect(isPostHistoryAutoLoadSentinelInPrefetchRegion({ ...base, direction: 'newer', sentinelRect: rect(-202, -201) })).toBe(false);
-        expect(isPostHistoryAutoLoadSentinelInPrefetchRegion({ ...base, direction: 'newer', sentinelRect: rect(101, 102) })).toBe(false);
-        expect(buildPostHistoryAutoLoadRootMargin('older', 100)).toBe('0px 0px 200px 0px');
-        expect(buildPostHistoryAutoLoadRootMargin('newer', 100)).toBe('200px 0px 0px 0px');
+        expect(isListEdgeInPrefetchRegion('bottom', ROOT_RECT, rect(300, 301), 200)).toBe(true);
+        expect(isListEdgeInPrefetchRegion('bottom', ROOT_RECT, rect(301, 302), 200)).toBe(false);
+        expect(isListEdgeInPrefetchRegion('bottom', ROOT_RECT, rect(-10, -1), 200)).toBe(false);
+        expect(isListEdgeInPrefetchRegion('top', ROOT_RECT, rect(-201, -200), 200)).toBe(true);
+        expect(isListEdgeInPrefetchRegion('top', ROOT_RECT, rect(-202, -201), 200)).toBe(false);
+        expect(isListEdgeInPrefetchRegion('top', ROOT_RECT, rect(101, 102), 200)).toBe(false);
+        const older = observe('older', createElements(300), createFlags());
+        const newer = observe('newer', createElements(-201), createFlags());
+        expect(older.observer.rootMargin).toBe('0px 0px 200px 0px');
+        expect(newer.observer.rootMargin).toBe('200px 0px 0px 0px');
+        older.observation.dispose();
+        newer.observation.dispose();
     });
 
     it('交差したら読み込み、離れたら交差状態と exit 待ちを解く', () => {

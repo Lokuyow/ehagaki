@@ -32,6 +32,20 @@ if (new URLSearchParams(location.search).has("notifications-host")) {
 } else if (new URLSearchParams(location.search).has("media-registration")) {
     const { default: UploadMediaRegistrationHarness } = await import("./UploadMediaRegistrationHarness.svelte");
     mount(UploadMediaRegistrationHarness, { target });
+} else if (new URLSearchParams(location.search).has("drafts")) {
+    const { default: DraftListDialog } = await import("../../components/DraftListDialog.svelte");
+    const { draftsRepository } = await import("../../lib/storage/draftsRepository");
+    await Promise.all(Array.from({ length: 45 }, (_, index) => {
+        const id = `draft-${index + 1}`;
+        return draftsRepository.put({ id, pubkeyHex: null, content: `<p>${id}</p>`, preview: id, timestamp: 100 - index });
+    }));
+    mount(DraftListDialog, {
+        target,
+        props: {
+            show: true, canSaveDraft: false, onClose: () => {}, onApplyDraft: () => {},
+            onSaveDraft: async () => ({ status: "saved" }), subscribeToDraftSaveCompleted: () => () => {},
+        },
+    });
 } else if (new URLSearchParams(location.search).has("history-opening")) {
     const { default: HistoryOpeningHarness } = await import("./HistoryOpeningHarness.svelte");
     mount(HistoryOpeningHarness, { target });

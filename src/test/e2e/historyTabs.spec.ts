@@ -1,6 +1,56 @@
 import { test, expect, type Page } from "@playwright/test";
+import { finalizeEvent, generateSecretKey, getPublicKey, type EventTemplate } from "nostr-tools";
 
 const counters = (page: Page) => page.evaluate(() => Reflect.get(window, "__HISTORY_TAB_COUNTERS__") as { localReads: number; relayRequests: number });
+
+test("scrolling the Media tab appends the hosted media page once", async ({ page }) => {
+    const key = generateSecretKey();
+    const endpoint = "https://yabu.me/api/v2/media";
+    const requests: number[] = [];
+    await page.exposeFunction("fixtureSignMediaRegistrationEvent", (event: EventTemplate) => finalizeEvent(event, key));
+    await page.route("**/.well-known/nostr/nip96.json", route => route.fulfill({ json: { api_url: endpoint } }));
+    await page.route("https://share.yabu.me/scroll-fixture.png", route => route.fulfill({
+        contentType: "image/png",
+        body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=", "base64"),
+    }));
+    await page.route(`${endpoint}?*`, route => {
+        const pageIndex = Number(new URL(route.request().url()).searchParams.get("page"));
+        requests.push(pageIndex);
+        const files = Array.from({ length: pageIndex === 0 ? 24 : 1 }, (_, offset) => ({
+            tags: [["ox", (pageIndex * 24 + offset + 1).toString(16).padStart(64, "0")],
+                ["url", "https://share.yabu.me/scroll-fixture.png"], ["m", "image/png"]],
+            created_at: 1_700_000_000 - offset,
+        }));
+        return route.fulfill({ json: { page: pageIndex, count: 24, total: 25, files } });
+    });
+    await page.setViewportSize({ width: 360, height: 650 });
+    await page.goto(`post-history-dialog-playwright.html?media-registration=1&owner=${getPublicKey(key)}`);
+    const dialog = page.getByRole("dialog", { name: "履歴", exact: true });
+    await expect(dialog.locator(".uploaded-media-content")).toBeVisible({ timeout: 15_000 });
+    const tiles = dialog.locator(".media-list article");
+    await expect(tiles).toHaveCount(24);
+    expect(requests).toEqual([0]);
+
+    await dialog.locator(".uploaded-media-content").evaluate(node => { node.scrollTop = node.scrollHeight; });
+    await expect(tiles).toHaveCount(25);
+    await expect(dialog.locator(".media-load-more-button")).toHaveCount(0);
+    expect(requests).toEqual([0, 1]);
+});
+
+test("scrolling the draft list reveals the next saved drafts", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 360 });
+    await page.goto("post-history-dialog-playwright.html?drafts=1");
+    const dialog = page.getByRole("dialog", { name: "下書き", exact: true });
+    const rows = dialog.locator(".draft-item");
+    const scrollRoot = dialog.locator(".draft-list-container");
+    await expect(rows).toHaveCount(20);
+    await scrollRoot.evaluate(node => { node.scrollTop = node.scrollHeight; });
+    await expect(rows).toHaveCount(40);
+    await expect(rows.nth(39).locator(".draft-preview")).toHaveText("draft-40");
+    await scrollRoot.evaluate(node => { node.scrollTop = node.scrollHeight; });
+    await expect(rows).toHaveCount(45);
+    await expect(dialog.locator(".draft-list-sentinel")).toHaveCount(0);
+});
 
 let dateJumpMetrics: Record<string, number> = {};
 

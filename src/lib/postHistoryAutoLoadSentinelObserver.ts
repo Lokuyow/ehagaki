@@ -1,11 +1,5 @@
-/**
- * Watches one post history auto-load sentinel (the older tail or the newer
- * head) with an IntersectionObserver plus a scroll listener, and asks the
- * owner to load the next chunk when the sentinel approaches the viewport.
- *
- * The owner keeps the loading flags; this module only keeps the per-observer
- * state (initial entry, resize suppression, pending approach, last scrollTop).
- */
+import { observeListEdge } from "./listEdgeObserver";
+
 export type PostHistoryAutoLoadDirection = "older" | "newer";
 
 const PREFETCH_VIEWPORTS = 2;
@@ -48,36 +42,7 @@ export interface PostHistoryAutoLoadSentinelObservation {
     dispose(): void;
 }
 
-export function isPostHistoryAutoLoadSentinelInPrefetchRegion(input: {
-    direction: PostHistoryAutoLoadDirection;
-    rootRect: Pick<DOMRect, "left" | "right" | "top" | "bottom">;
-    sentinelRect: Pick<DOMRect, "left" | "right" | "top" | "bottom">;
-    rootHeight: number;
-    prefetchViewports?: number;
-}): boolean {
-    const { rootRect, sentinelRect, rootHeight } = input;
-    const prefetchDistance = rootHeight * (input.prefetchViewports ?? PREFETCH_VIEWPORTS);
-    const overlapsHorizontally = sentinelRect.left < rootRect.right
-        && sentinelRect.right > rootRect.left;
-    if (input.direction === "older") {
-        return overlapsHorizontally
-            && sentinelRect.top <= rootRect.bottom + prefetchDistance
-            && sentinelRect.bottom >= rootRect.top;
-    }
-    return overlapsHorizontally
-        && sentinelRect.bottom >= rootRect.top - prefetchDistance
-        && sentinelRect.top <= rootRect.bottom;
-}
-
-export function buildPostHistoryAutoLoadRootMargin(
-    direction: PostHistoryAutoLoadDirection,
-    rootHeight: number,
-): string {
-    return direction === "older"
-        ? `0px 0px ${rootHeight * PREFETCH_VIEWPORTS}px 0px`
-        : `${rootHeight * PREFETCH_VIEWPORTS}px 0px 0px 0px`;
-}
-
+/** Apply history's window, resize, and loading rules to the shared edge observer. */
 export function observePostHistoryAutoLoadSentinel(
     options: ObservePostHistoryAutoLoadSentinelOptions,
 ): PostHistoryAutoLoadSentinelObservation {
@@ -87,19 +52,10 @@ export function observePostHistoryAutoLoadSentinel(
         previousContext?.root === root
         && previousContext.sentinel === sentinel
         && previousContext.resizeGeneration !== resizeGeneration;
-    let receivedInitialEntry = false;
     let isObserverActive = true;
     let awaitingResizeApproach = false;
     let hasPendingApproach = false;
-    let lastScrollTop = root.scrollTop;
-
-    const isSentinelInPrefetchRegion = (prefetchViewports?: number) => isPostHistoryAutoLoadSentinelInPrefetchRegion({
-        direction,
-        rootRect: root.getBoundingClientRect(),
-        sentinelRect: sentinel.getBoundingClientRect(),
-        rootHeight,
-        prefetchViewports,
-    });
+    const initialScrollTop = root.scrollTop;
 
     const recordExit = () => {
         options.setSentinelIntersecting(false);
@@ -132,23 +88,48 @@ export function observePostHistoryAutoLoadSentinel(
         options.load();
     };
 
-    const movedTowardTarget = (scrollTop: number) => direction === "older"
-        ? scrollTop > lastScrollTop
-        : scrollTop < lastScrollTop;
+    const isScrolledBackSinceResize = () => typeof previousScrollTop === "number"
+        && (direction === "older"
+            ? root.scrollTop <= previousScrollTop
+            : root.scrollTop >= previousScrollTop);
+
+    const observation = observeListEdge({
+        root,
+        sentinel,
+        edge: direction === "older" ? "bottom" : "top",
+        prefetchDistance: rootHeight * PREFETCH_VIEWPORTS,
+        // Only downward scrolling gets the longer lead.
+        scrollPrefetchDistance: rootHeight * (direction === "older" ? OLDER_SCROLL_PREFETCH_VIEWPORTS : PREFETCH_VIEWPORTS),
+        onLeaveRegion: recordExit,
+        onScrollApproach: () => {
+            awaitingResizeApproach = false;
+            options.setSentinelIntersecting(true);
+            requestApproach();
+        },
+        onIntersection: (intersecting, initial) => {
+            if (!intersecting) {
+                recordExit();
+                return;
+            }
+            options.setSentinelIntersecting(true);
+            awaitingResizeApproach = initial && suppressInitialIntersectionForResize && isScrolledBackSinceResize();
+            requestApproach();
+        },
+    });
 
     const context: PostHistoryAutoLoadSentinelObserverContext = {
         root,
         sentinel,
         resizeGeneration,
-        scrollTop: root.scrollTop,
+        scrollTop: initialScrollTop,
         reconcileAfterCommit: () => {
             if (!isObserverActive) {
                 return;
             }
             // Observe the exit before a fast scroll can return to the new
             // edge between IntersectionObserver notifications.
-            lastScrollTop = root.scrollTop;
-            if (!isSentinelInPrefetchRegion()) {
+            observation.syncScrollPosition();
+            if (!observation.isInRegion()) {
                 recordExit();
             }
         },
@@ -157,17 +138,17 @@ export function observePostHistoryAutoLoadSentinel(
                 return;
             }
             hasPendingApproach = false;
-            if (!isSentinelInPrefetchRegion()) {
+            if (!observation.isInRegion()) {
                 recordExit();
                 return;
             }
             requestApproach();
         },
         reconcileAfterWindowChange: () => {
-            if (!isObserverActive || !receivedInitialEntry || awaitingResizeApproach) {
+            if (!isObserverActive || !observation.hasReceivedEntry() || awaitingResizeApproach) {
                 return;
             }
-            if (!isSentinelInPrefetchRegion()) {
+            if (!observation.isInRegion()) {
                 recordExit();
                 return;
             }
@@ -176,104 +157,13 @@ export function observePostHistoryAutoLoadSentinel(
         },
     };
 
-    const handleScrollApproach = () => {
-        if (!isObserverActive) {
-            return;
-        }
-
-        const scrollTop = root.scrollTop;
-        const movedToward = movedTowardTarget(scrollTop);
-        lastScrollTop = scrollTop;
-
-        // Only downward scrolling gets the longer lead. Observer callbacks and
-        // rearming after a commit still use the usual two-viewport region.
-        const prefetchViewports = direction === "older" && movedToward
-            ? OLDER_SCROLL_PREFETCH_VIEWPORTS
-            : PREFETCH_VIEWPORTS;
-        if (!isSentinelInPrefetchRegion(prefetchViewports)) {
-            recordExit();
-            return;
-        }
-        if (!movedToward) {
-            return;
-        }
-
-        awaitingResizeApproach = false;
-        options.setSentinelIntersecting(true);
-        requestApproach();
-    };
-
-    const isScrolledBackSinceResize = () => typeof previousScrollTop === "number"
-        && (direction === "older"
-            ? root.scrollTop <= previousScrollTop
-            : root.scrollTop >= previousScrollTop);
-
-    const observer = new IntersectionObserver(
-        (entries) => {
-            if (!isObserverActive) {
-                return;
-            }
-
-            const currentEntries = entries.filter((entry) => entry.target === sentinel);
-            for (const [index, entry] of currentEntries.entries()) {
-                const isInitialEntry = !receivedInitialEntry;
-                receivedInitialEntry = true;
-                const rootRect = root.getBoundingClientRect();
-                const isCurrentlyInPrefetchRegion = rootRect.width > 0 && rootRect.height > 0
-                    ? isSentinelInPrefetchRegion()
-                    : entry.isIntersecting;
-                const hasLaterIntersection = currentEntries.slice(index + 1)
-                    .some((laterEntry) => laterEntry.isIntersecting);
-
-                // Ignore a queued exit if the sentinel has already returned,
-                // while preserving a real exit/re-entry pair delivered
-                // together in one callback.
-                if (!entry.isIntersecting && isCurrentlyInPrefetchRegion && !hasLaterIntersection) {
-                    continue;
-                }
-                if (entry.isIntersecting && !isCurrentlyInPrefetchRegion) {
-                    continue;
-                }
-                options.setSentinelIntersecting(entry.isIntersecting);
-
-                if (!entry.isIntersecting) {
-                    recordExit();
-                    continue;
-                }
-
-                if (
-                    isInitialEntry
-                    && suppressInitialIntersectionForResize
-                    && isScrolledBackSinceResize()
-                ) {
-                    awaitingResizeApproach = true;
-                    continue;
-                }
-
-                awaitingResizeApproach = false;
-                requestApproach();
-            }
-        },
-        {
-            root,
-            rootMargin: buildPostHistoryAutoLoadRootMargin(direction, rootHeight),
-            threshold: 0,
-        },
-    );
-    if (!isSentinelInPrefetchRegion()) {
-        recordExit();
-    }
-    observer.observe(sentinel);
-    root.addEventListener("scroll", handleScrollApproach, { passive: true });
-
     return {
         context,
         dispose: () => {
             isObserverActive = false;
             awaitingResizeApproach = false;
             hasPendingApproach = false;
-            root.removeEventListener("scroll", handleScrollApproach);
-            observer.disconnect();
+            observation.dispose();
         },
     };
 }
