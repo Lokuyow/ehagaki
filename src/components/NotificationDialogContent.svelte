@@ -4,6 +4,7 @@
     import { resolveAppAssetUrl } from '../lib/appAssetUrl';
     import { useNotificationViewport } from '../lib/hooks/useNotificationViewport.svelte';
     import { useNotificationRendering } from '../lib/hooks/useNotificationRendering.svelte';
+    import { observeListEnd } from '../lib/listEdgeObserver';
     import { createNotificationTargetQueue } from '../lib/notificationTargetQueue';
     import { liveQuery } from 'dexie';
     import { _ } from 'svelte-i18n';
@@ -51,6 +52,7 @@
     const viewport = useNotificationViewport(() => listElement, () => show && visible && !invalidated);
     let records = $state.raw<NotificationRecord[]>([]);
     let limit = $state(100), localMore = $state(false), exhausted = $state(false);
+    let appliedLimit = $state(0);
     let loaded = $state(false), busy = $state(false), failed = $state(false), visible = $state(false);
     let retryOlder = $state(false);
     let invalidated = $state(false);
@@ -96,7 +98,22 @@
     let previousGroups: NotificationGroup[] = [];
     const notificationGroups = $derived.by(() => previousGroups = shareNotificationGroups(previousGroups,
         groupNotifications(records, id => resolver.getTargetSnapshot(id)?.event ?? null)));
-    const rendering = useNotificationRendering(() => notificationGroups, () => show && visible && presentationReady && !invalidated);
+    const rendering = useNotificationRendering(() => notificationGroups);
+    const scrollRoot = $derived(listElement?.closest<HTMLElement>('.dialog-content') ?? null);
+    const canAutoLoad = $derived(show && visible && presentationReady && !invalidated && mediaIndex < 0);
+    const readingLocalPage = $derived(loaded && appliedLimit !== limit && !localReadFailed);
+
+    function loadLocalPage() {
+        if (!localMore || localReadFailed || appliedLimit !== limit) return false;
+        limit += 100;
+        return true;
+    }
+
+    function loadMore() {
+        if (failed || localReadFailed) void refresh(retryOlder);
+        else if (localMore) loadLocalPage();
+        else void refresh(true);
+    }
     // One collapse measurement and one emoji state for the whole list, as in post history.
     const previewCollapse = usePostHistoryPreviewCollapse<{ eventId: string; content: string }>({ getShow: () => show && !invalidated,
         getPosts: () => Object.values(interactions.previews), getContainer: () => listElement });
@@ -163,14 +180,22 @@
         listRevision;
         if (!show || !owner || invalidated) return;
         let active = true, readVersion = 0;
+        const ownsPage = () => active && show && !invalidated && pubkeyHex === owner && limit === pageSize;
         const subscription = liveQuery(() => notificationRepository.list(owner, pageSize + 1)).subscribe({
             next: value => {
-                if (!active) return;
+                if (!ownsPage()) return;
                 const version = ++readVersion;
-                const owned = () => active && version === readVersion;
+                const owned = () => ownsPage() && version === readVersion;
                 const page = value.slice(0, pageSize);
                 // Unchanged records keep their objects, so a read-state write re-renders nothing.
-                const apply = () => { if (owned()) { localReadFailed = false; records = reuseNotificationRecords(records, page); localMore = value.length > pageSize; loaded = true; } };
+                const apply = () => {
+                    if (!owned()) return;
+                    localReadFailed = false;
+                    records = reuseNotificationRecords(records, page);
+                    localMore = value.length > pageSize;
+                    appliedLimit = pageSize;
+                    loaded = true;
+                };
                 const anchors = value.length > pageSize ? viewport.visibleSourceIds() : [];
                 const pageIds = anchors.length ? new Set(page.map(item => item.eventId)) : null;
                 if (pageIds && !anchors.every(id => pageIds.has(id))) {
@@ -182,7 +207,11 @@
                     }).catch(() => { if (owned()) { failed = true; apply(); } });
                 } else apply();
             },
-            error: () => { if (active) { localReadFailed = true; failed = true; loaded = true; } },
+            error: () => {
+                if (ownsPage()) {
+                    localReadFailed = true; failed = true; loaded = true;
+                }
+            },
         });
         return () => { active = false; subscription.unsubscribe(); };
     });
@@ -450,8 +479,23 @@
             </article>
         {/each}
         {#if rendering.hasMore}
-            {#key rendering.cards.length}<div class="notification-render-sentinel" use:rendering.sentinel aria-hidden="true"></div>{/key}
-        {:else if failed || localReadFailed || localMore || !exhausted}<Button className="notification-load-more" variant="default" shape="pill" disabled={busy} onClick={() => { if (failed || localReadFailed) void refresh(retryOlder); else if (localMore) limit += 100; else void refresh(true); }}>{$_('notifications.more')}</Button>{/if}
+            {#if canAutoLoad}
+                {#key rendering.cards.length}
+                    <div class="notification-render-sentinel" aria-hidden="true"
+                        {@attach node => observeListEnd(scrollRoot, node, () => canAutoLoad && rendering.renderMore())}></div>
+                {/key}
+            {/if}
+        {:else}
+            {#if canAutoLoad && localMore && !readingLocalPage && !localReadFailed}
+                {#key appliedLimit}
+                    <div class="notification-local-sentinel" aria-hidden="true"
+                        {@attach node => observeListEnd(scrollRoot, node, () => canAutoLoad && !rendering.hasMore && loadLocalPage())}></div>
+                {/key}
+            {/if}
+            {#if failed || localReadFailed || localMore || !exhausted}
+                <Button className="notification-load-more" variant="default" shape="pill" disabled={busy || readingLocalPage} onClick={loadMore}>{$_('notifications.more')}</Button>
+            {/if}
+        {/if}
     </div>
 
 {#if mediaIndex >= 0}
@@ -461,7 +505,7 @@
 <style>
     .notification-target-placeholder { height: 100px; border-radius: 4px; background: var(--text); opacity: .05; }
     .notification-list { width: 100%; display: grid; min-width: 0; overflow-wrap: anywhere; }
-    .notification-render-sentinel { height: 1px; }
+    .notification-render-sentinel, .notification-local-sentinel { height: 1px; }
     .notification-list :global(.notification-load-more) { margin-top: 8px; }
     .notification-entry { display: grid; min-width: 0; gap: 6px; padding-block: 8px; border-bottom: 1px solid var(--border-hr); }
     .notification-entry :global(.notification-post), .notification-entry :global(.post-history-quote-status-card), .notification-target-placeholder { margin-inline-start: 16px; }

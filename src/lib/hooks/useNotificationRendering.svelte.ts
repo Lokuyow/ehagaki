@@ -1,18 +1,19 @@
-import { onDestroy, untrack } from 'svelte';
+import { untrack } from 'svelte';
 import { notificationGroupSourceIds, type NotificationGroup } from '../notificationGrouping';
 
 export { notificationGroupSourceIds };
 type Card = { group: NotificationGroup; key: string };
 
 /** Retain mounted cards when arrivals move them beyond the current page. */
-export function useNotificationRendering(getGroups: () => NotificationGroup[], isActive: () => boolean) {
+export function useNotificationRendering(getGroups: () => NotificationGroup[]) {
+    const staged = typeof IntersectionObserver !== 'undefined';
     let count = $state(10);
     let mountedSources = new Map<string, string>();
     let nextKey = 0;
     let previousCards: Card[] = [];
     const cards = $derived.by(() => {
         const groups = getGroups();
-        let end = count;
+        let end = staged ? count : groups.length;
         groups.forEach((group, index) => { if (notificationGroupSourceIds(group).some(id => mountedSources.has(id))) end = Math.max(end, index + 1); });
         const used = new Set<string>();
         const previousByKey = new Map(previousCards.map(card => [card.key, card]));
@@ -41,27 +42,11 @@ export function useNotificationRendering(getGroups: () => NotificationGroup[], i
         });
     });
     const hasMore = $derived(cards.length < getGroups().length);
-    let observer: IntersectionObserver | null = null;
-    function disconnect() { observer?.disconnect(); observer = null; }
-    let sentinelNode = $state<HTMLElement | null>(null);
-    $effect(() => {
-        const node = sentinelNode;
-        const enabled = isActive();
-        disconnect();
-        if (!node || !enabled) return;
-        const current = new IntersectionObserver(entries => {
-            if (observer !== current || sentinelNode !== node || !isActive() || !entries.some(entry => entry.isIntersecting)) return;
-            count = Math.max(count, cards.length) + 10;
-        }, { root: node.closest('.dialog-content'), rootMargin: '0px 0px 600px 0px' });
-        observer = current;
-        current.observe(node);
-        return disconnect;
-    });
-    function sentinel(node: HTMLElement) {
-        sentinelNode = node;
-        return { destroy() { if (sentinelNode === node) sentinelNode = null; } };
+    function renderMore() {
+        if (!hasMore) return false;
+        count = Math.max(count, cards.length) + 10;
+        return true;
     }
-    function reset() { disconnect(); count = 10; mountedSources.clear(); previousCards = []; }
-    onDestroy(disconnect);
-    return { get cards() { return cards; }, get hasMore() { return hasMore; }, sentinel, reset };
+    function reset() { count = 10; mountedSources.clear(); previousCards = []; }
+    return { get cards() { return cards; }, get hasMore() { return hasMore; }, renderMore, reset };
 }

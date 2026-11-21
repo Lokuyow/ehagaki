@@ -1101,19 +1101,28 @@ for (const width of [360, 280]) test(`stages cached notification cards and retai
     await page.screenshot({ path: info.outputPath(`notification-staging-${width}.png`) });
 });
 
-test('local more pages continue staged rendering without fetching older notifications', async ({ page }) => {
-    await page.goto('post-history-dialog-playwright.html?notifications=1');
-    await expect(page.locator('.notification-btn')).toBeVisible();
-    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addOlder(101, true));
-    await page.locator('.notification-btn').click();
-    const dialog = page.getByRole('dialog');
+for (const width of [360, 280]) test(`scrolling loads only saved notification pages at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 844 });
+    const embedded = width === 280;
+    await page.goto(`post-history-dialog-playwright.html?${embedded ? 'notifications-host' : 'notifications'}=1`);
+    const surface = embedded ? page.frameLocator('iframe[title="Notifications in a narrow host"]') : page;
+    await expect(surface.locator('.notification-btn')).toBeVisible();
+    const body = surface.locator('body');
+    await body.evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').addOlder(101, true));
+    await surface.locator('.notification-btn').click();
+    const dialog = surface.getByRole('dialog');
     await expect(dialog.locator('.notification-entry')).toHaveCount(10);
-    await expect(page.locator('.notification-badge')).toHaveCount(0);
-    await renderThrough(dialog, 100);
-    await dialog.getByRole('button', { name: 'もっと読み込む', exact: true }).click();
+    await expect(surface.locator('.notification-badge')).toHaveCount(0);
+    await expect(dialog.locator('.notification-list')).toHaveAttribute('aria-busy', 'false');
+    const requests = () => body.evaluate(node => Reflect.get(node.ownerDocument.defaultView!, '__NOTIFICATIONS__').notificationRequests());
+    const before = await requests();
+
     await renderThrough(dialog, 101);
     await expect(dialog.getByText('Older notification 100', { exact: true })).toBeAttached();
-    expect(await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').requests().flat().some((filter: { since?: number }) => filter.since === 0))).toBe(false);
+    await expect(dialog.locator('.notification-local-sentinel')).toHaveCount(0);
+    const more = dialog.getByRole('button', { name: 'もっと読み込む', exact: true });
+    await expect(more).toBeEnabled();
+    expect(await requests()).toEqual(before);
 });
 
 test('cached targets bypass four pending relay fetches and disabling notifications cancels the queue', async ({ page }) => {

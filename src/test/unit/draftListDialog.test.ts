@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 
 import type { DraftSaveCompletedEvent } from '../../lib/draftComposerController';
 import type { Draft } from '../../lib/types';
 import { editorState } from '../../stores/editorStore.svelte';
+import { stubListIntersections } from '../listIntersectionTestUtils';
 
 const mockTranslate = vi.hoisted(() => (key: string) => {
     const translations: Record<string, string> = {
@@ -110,6 +111,53 @@ describe('DraftListDialog', () => {
         };
         editorState.isUploading = false;
         editorState.canPost = false;
+    });
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('reveals one batch per approach and retains the visible count after a draft save', async () => {
+        const intersect = stubListIntersections();
+        const drafts = Array.from({ length: 45 }, (_, index) => createDraft(`Draft ${index + 1}`));
+        mockLoadDrafts.mockResolvedValue(drafts);
+        const source = createCompletionSource();
+        const props = createProps(source);
+        const { rerender } = render(DraftListDialog, { props });
+        const rows = () => document.querySelectorAll('.draft-item');
+        await waitFor(() => expect(rows()).toHaveLength(20));
+
+        const firstEnd = document.querySelector('.draft-list-sentinel')!;
+        intersect(firstEnd);
+        intersect(firstEnd);
+        await waitFor(() => expect(rows()).toHaveLength(40));
+        expect(rows()[39].textContent).toContain('Draft 40');
+        expect(mockLoadDrafts).toHaveBeenCalledTimes(1);
+
+        source.emit({ draftId: 'Draft 1', pubkeyHex: 'pubkey' });
+        await waitFor(() => expect(mockLoadDrafts).toHaveBeenCalledTimes(2));
+        await waitFor(() => expect(rows()).toHaveLength(40));
+        const previousEnd = document.querySelector('.draft-list-sentinel')!;
+        await rerender({ ...props, pubkeyHex: 'other' });
+        await waitFor(() => expect(rows()).toHaveLength(20));
+        intersect(previousEnd);
+        expect(rows()).toHaveLength(20);
+
+        const otherProps = { ...props, pubkeyHex: 'other' };
+        const otherEnd = document.querySelector('.draft-list-sentinel')!;
+        intersect(otherEnd);
+        await waitFor(() => expect(rows()).toHaveLength(40));
+        await rerender({ ...otherProps, show: false });
+        intersect(otherEnd);
+        expect(rows()).toHaveLength(0);
+        await rerender(otherProps);
+        await waitFor(() => expect(rows()).toHaveLength(20));
+    });
+
+    it('renders the complete saved list when IntersectionObserver is unavailable', async () => {
+        vi.stubGlobal('IntersectionObserver', undefined);
+        mockLoadDrafts.mockResolvedValue(Array.from({ length: 25 }, (_, index) => createDraft(`Draft ${index}`)));
+        render(DraftListDialog, { props: createProps() });
+        await waitFor(() => expect(document.querySelectorAll('.draft-item')).toHaveLength(25));
+        expect(document.querySelector('.draft-list-sentinel')).toBeNull();
     });
 
     it('primaryの保存ボタンをアイコン・ラベル付きで閉じるボタンより前に表示する', () => {

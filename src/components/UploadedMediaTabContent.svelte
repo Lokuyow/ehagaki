@@ -10,6 +10,7 @@
     import UploadServerRegistration from "./UploadServerRegistration.svelte";
     import { profileDataStore } from "../stores/profileStore.svelte";
     import { useUploadMediaManagement } from "../lib/hooks/useUploadMediaManagement.svelte";
+    import { observeListEnd } from "../lib/listEdgeObserver";
     import { supportsUploadMediaImageCache } from "../lib/uploadMediaImageCacheClient";
     import { resolveUploadedMediaImageSrc } from "../lib/uploadMediaImageUrl";
     import { authState } from "../stores/authStore.svelte";
@@ -27,6 +28,7 @@
     let show = $derived(active && !suspended);
     export function activate() { suspended = false; management.controller.activate(); }
     export function suspend() {
+        if (current?.loading) lastRequestedPage = null;
         suspended = true; supportGeneration++; uiEpoch++; pending = null; activeVideo = null;
         noticeExpired = true;
         closeFullscreen();
@@ -60,6 +62,8 @@
     let showImageFullscreen = $state(false);
     let fullscreenFocusOrigin = $state<HTMLElement | null>(null);
     let listElement: HTMLElement | undefined = $state();
+    let scrollRoot = $state<HTMLDivElement | null>(null);
+    let lastRequestedPage = $state.raw<{ owner: string; itemCount: number } | null>(null);
     let supportGeneration = 0;
     let uiEpoch = $state(0);
     let previousOwner: string | null = null;
@@ -74,6 +78,20 @@
         current?.destination.nip96ServerUrl, current?.destination.nip96UrlMode].join("\n"));
     const showFeedback = $derived(show && !pending && !deleting && !showNostrBuildHelp
         && !!((current?.error && !current.registration) || (current?.loading && current.loaded) || (mediaNotice && !noticeExpired)));
+    const canAutoLoadMore = $derived(show && authState.value.isAuthenticated && current?.loaded && current.items.length > 0 && current.hasMore
+        && !current.loading && !current.error && !current.needsRefresh && !deleting && !registering
+        && !pending && !showImageFullscreen
+        && (lastRequestedPage?.owner !== feedbackOwner || lastRequestedPage.itemCount !== current.items.length));
+
+    function loadMore(automatic = false) {
+        const page = current;
+        if (!show || !page?.hasMore || page.loading || page.needsRefresh || deleting || registering) return false;
+        if (automatic && !canAutoLoadMore) return false;
+        // Leave the next attempt to the button if a page didn't add any tiles.
+        lastRequestedPage = { owner: feedbackOwner, itemCount: page.items.length };
+        void management.controller.load(true);
+        return true;
+    }
 
     $effect(() => {
         const notice = mediaNotice;
@@ -105,6 +123,7 @@
     export function invalidateSession() {
         uiEpoch++;
         previousOwner = null;
+        lastRequestedPage = null;
         pending = null;
         activeVideo = null;
         closeFullscreen();
@@ -226,7 +245,7 @@
 </script>
 
 {#if show}
-<div class="uploaded-media-dialog uploaded-media-content">
+<div class="uploaded-media-dialog uploaded-media-content" bind:this={scrollRoot}>
     <div class="media-management">
         {#if !authState.value.isAuthenticated}
             <p class="media-status" role="status">{$_("uploadedMedia.errors.authentication")}</p>
@@ -248,7 +267,7 @@
                 {#if current}
                     <Button shape="square" contentLayout="icon" className="media-refresh-button"
                         ariaLabel={$_("uploadedMedia.refresh")} title={$_("uploadedMedia.refresh")}
-                        onClick={() => { activeVideo = null; closeFullscreen(); void management.controller.load(); }} disabled={current.loading || !!current.deletingId || registering}>
+                        onClick={() => { lastRequestedPage = null; activeVideo = null; closeFullscreen(); void management.controller.load(); }} disabled={current.loading || !!current.deletingId || registering}>
                         <span class="svg-icon" aria-hidden="true" style:mask-image={`url("${refreshIconUrl}")`}></span>
                     </Button>
                 {/if}
@@ -308,8 +327,16 @@
                     {/each}
                 </div>
                 {#if current.hasMore && !current.needsRefresh}
+                    {#if canAutoLoadMore}
+                        {#key current.items.length}
+                            <div class="media-load-sentinel" aria-hidden="true" {@attach node => {
+                                const owner = feedbackOwner;
+                                return observeListEnd(scrollRoot, node, () => feedbackOwner === owner && loadMore(true));
+                            }}></div>
+                        {/key}
+                    {/if}
                     <div class="list-end-actions">
-                        <Button className="media-load-more-button" onClick={() => management.controller.load(true)} disabled={current.loading || !!current.deletingId || registering}>{$_("uploadedMedia.loadMore")}</Button>
+                        <Button className="media-load-more-button" onClick={() => loadMore()} disabled={current.loading || !!current.deletingId || registering}>{$_("uploadedMedia.loadMore")}</Button>
                     </div>
                 {/if}
             {/if}
@@ -392,6 +419,7 @@
     }
     .list-end-actions { display: flex; width: 100%; padding: 10px; box-sizing: border-box; }
     :global(.uploaded-media-dialog button.media-load-more-button) { width: 100%; }
+    .media-load-sentinel { height: 1px; }
     :global(.uploaded-media-dialog button.media-refresh-button) { width: 44px; height: 44px; padding: 0; background: transparent; border: none; }
     :global(.uploaded-media-dialog button.media-delete-button) {
         flex: none; padding: 0; background: transparent; border: none; color: white; --text: white;

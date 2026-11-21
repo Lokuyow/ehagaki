@@ -9,6 +9,7 @@
     import FloatingMessage from "./FloatingMessage.svelte";
     import InfoPopoverButton from "./InfoPopoverButton.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
+    import { observeListEnd } from "../lib/listEdgeObserver";
     import {
         createDraftListDisplay,
         type DraftContextLabels,
@@ -48,7 +49,12 @@
     }: Props = $props();
 
     // 下書きリスト
+    const draftBatchSize = 20;
+    const staged = typeof IntersectionObserver !== "undefined";
     let drafts = $state<Draft[]>([]);
+    let visibleCount = $state(draftBatchSize);
+    let scrollRoot = $state<HTMLDivElement | null>(null);
+    const visibleDrafts = $derived(staged ? drafts.slice(0, visibleCount) : drafts);
     let operationPhase = $state<"idle" | "saving" | "mutating-list">("idle");
     let listLoadState = $state<"loading" | "ready" | "failed">("loading");
     let loadedPubkeyHex = $state<string | null | undefined>(undefined);
@@ -172,6 +178,7 @@
     // ダイアログが開かれたときに下書きを読み込む
     $effect(() => {
         const currentPubkeyHex = pubkeyHex;
+        visibleCount = draftBatchSize;
         if (!show) {
             draftLoadGeneration += 1;
             operationGeneration += 1;
@@ -268,6 +275,12 @@
         if (!show || listLoadState !== "failed") return;
         void refreshDrafts(pubkeyHex, true);
     }
+
+    function showMoreDrafts() {
+        if (!show || !isListScopeCurrent || visibleCount >= drafts.length) return false;
+        visibleCount += draftBatchSize;
+        return true;
+    }
 </script>
 
 <DialogWrapper
@@ -306,7 +319,7 @@
         </Button>
     </div>
 
-    <div class="draft-list-container">
+    <div class="draft-list-container" bind:this={scrollRoot}>
         {#if listLoadState === "failed"}
             <div class="load-error">
                 <div role="alert">
@@ -333,7 +346,7 @@
             </div>
         {:else if listLoadState === "ready" && loadedPubkeyHex === pubkeyHex}
             <ul class="draft-list">
-                {#each drafts as draft (draft.id)}
+                {#each visibleDrafts as draft (draft.id)}
                     {@const display = createDraftListDisplay(
                         draft,
                         getDraftDisplayLabels(),
@@ -414,6 +427,12 @@
                     </li>
                 {/each}
             </ul>
+            {#if show && visibleDrafts.length < drafts.length}
+                {#key visibleCount}
+                    <div class="draft-list-sentinel" aria-hidden="true"
+                        {@attach node => observeListEnd(scrollRoot, node, showMoreDrafts)}></div>
+                {/key}
+            {/if}
         {/if}
     </div>
 
@@ -495,6 +514,8 @@
         min-height: 0;
         overflow-y: auto;
     }
+
+    .draft-list-sentinel { height: 1px; }
 
     .dialog-footer-actions {
         display: flex;
