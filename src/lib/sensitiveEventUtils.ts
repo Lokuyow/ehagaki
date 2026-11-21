@@ -8,6 +8,10 @@ export const NIP22_COMMENT_KIND = 1111;
 
 export type SensitivePostKind = 1 | 42 | typeof NIP22_COMMENT_KIND;
 
+function isNip22ReplyRootKind(kind: number | undefined): boolean {
+    return kind === 6 || kind === 7 || kind === 16;
+}
+
 export function resolveSubmissionKind(input: {
     channel: boolean;
     hasReply: boolean;
@@ -16,7 +20,9 @@ export function resolveSubmissionKind(input: {
     if (input.channel) return 42;
     if (input.hasReply) {
         if (input.replyKind === 1) return 1;
-        if (input.replyKind === 7 || input.replyKind === NIP22_COMMENT_KIND) return NIP22_COMMENT_KIND;
+        if (isNip22ReplyRootKind(input.replyKind) || input.replyKind === NIP22_COMMENT_KIND) {
+            return NIP22_COMMENT_KIND;
+        }
         return null;
     }
     return 1;
@@ -30,13 +36,14 @@ export function buildNip22ReplyTags(
     const sanitizedParentHint = RelayConfigUtils.sanitizeExternalRelayUrls(
         parentRelayHint ? [parentRelayHint] : [], { limit: 1 },
     )[0] ?? "";
-    if (parent.kind === 7) {
+    if (isNip22ReplyRootKind(parent.kind)) {
+        const kind = String(parent.kind);
         return [
             ["E", parent.id, sanitizedParentHint, parent.pubkey],
-            ["K", "7"],
+            ["K", kind],
             ["P", parent.pubkey],
             ["e", parent.id, sanitizedParentHint, parent.pubkey],
-            ["k", "7"],
+            ["k", kind],
             ["p", parent.pubkey],
         ];
     }

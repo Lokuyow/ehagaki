@@ -71,6 +71,7 @@
     const sentEvents: { id: string; kind: number; tags: string[][] }[] = [];
     let replyId: string | null = null;
     let quoteId: string | null = null;
+    let reactionId: string | null = null;
     let incomingOuter: NostrEvent | null = null;
     const messages = new Subject<unknown>();
     const injectedRx = {
@@ -289,7 +290,7 @@
         (window as unknown as { __REPOST__: unknown }).__REPOST__ = {
             ready: true, targetId: target.id, targetInput: nip19.noteEncode(target.id), owner,
             read: async () => { const rows = await ehagakiDb.postHistory.toArray().then(rows => eventRecords(ehagakiDb, "postHistory").hydrate(rows)); return {
-                sends, signed, lastResult, sentEvents, replyId, quoteId, deletionRequests, deletionRequestsAtPublish,
+                sends, signed, lastResult, sentEvents, replyId, quoteId, reactionId, deletionRequests, deletionRequestsAtPublish,
                 heldDeletionRequests: deletionResponses.size,
                 deletionCount: await ehagakiDb.postHistoryDeletionRequests.count(),
                 rows: rows.map((row) => ({ id: row.eventId, kind: row.kind, content: row.content,
@@ -319,6 +320,7 @@
     <PostHistoryDialog show={historyOpen} onClose={() => historyOpen = false} pubkeyHex={owner} rxNostr={rx}
         {relayConfig} authoredSelfPostSave={saved}
         onReplyPost={post => { replyId = post.eventId; }} onQuotePost={post => { quoteId = post.eventId; }}
+        onReactionPost={post => { reactionId = post.eventId; return true; }}
         onRepostPost={execute} repostPending={operation.pending} onRetryRepostSave={operation.retrySave}
         repostSaveFailure={operation.saveFailure} />
     <ComposerTargetDialog show={targetOpen} onClose={() => targetOpen = false} onApply={() => true}

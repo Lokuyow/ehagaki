@@ -1,4 +1,5 @@
 <script lang="ts">
+    import type { ComponentProps } from "svelte";
     import { DropdownMenu } from "bits-ui";
     import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
@@ -17,6 +18,7 @@
         formatPostedAt,
         formatPostedAtExact,
     } from "../lib/postHistoryDialogUtils";
+    import { resolvePostHistoryThreadContextIndentRem } from "../lib/postHistoryThreadGraphUtils";
     import type { PostHistoryThreadGraphNodeState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import type {
@@ -60,36 +62,10 @@
         onRefreshRelatedEvents?: (nodeEventId: string) => void;
         onToggleChildren?: (nodeEventId: string) => void;
         onRetryChildren?: (nodeEventId: string) => void;
-        onCopyPointerDown?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-            event: PointerEvent,
-        ) => void;
-        onCopyNevent?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-            event: Event,
-        ) => void;
-        externalClientLabel?: string;
-        onOpenExternalClient?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-        ) => void;
-        isCopyFailed?: (nodeEventId: string) => boolean;
-        onShowRawJson?: (nodeState: PostHistoryThreadGraphNodeState) => void;
-        onBroadcastPointerDown?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-            event: PointerEvent,
-        ) => void;
-        onBroadcastPost?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-            event: Event,
-        ) => void;
-        isBroadcastSending?: (nodeEventId: string) => boolean;
-        canDeleteNodePost?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-        ) => boolean;
-        isDeletionSending?: (nodeEventId: string) => boolean;
-        onOpenDeleteConfirm?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-        ) => void;
+        getActionItems: (nodeState: PostHistoryThreadGraphNodeState) => Omit<
+            ComponentProps<typeof PostHistoryRecordActionItems>,
+            "order" | "showDeleteSeparator" | "afterExternalClient"
+        >;
     }
 
     let {
@@ -113,36 +89,19 @@
         onRefreshRelatedEvents = undefined,
         onToggleChildren = undefined,
         onRetryChildren = undefined,
-        onCopyPointerDown = undefined,
-        onCopyNevent = undefined,
-        externalClientLabel = undefined,
-        onOpenExternalClient = undefined,
-        isCopyFailed = undefined,
-        onShowRawJson = undefined,
-        onBroadcastPointerDown = undefined,
-        onBroadcastPost = undefined,
-        isBroadcastSending = undefined,
-        canDeleteNodePost = undefined,
-        isDeletionSending = undefined,
-        onOpenDeleteConfirm = undefined,
+        getActionItems,
     }: Props = $props();
 
     let postedAtExact = $derived(
         formatPostedAtExact(state.node.event.created_at * 1000),
     );
+    const replyIndent = $derived(
+        `${resolvePostHistoryThreadContextIndentRem(Math.max(0, state.depthFromAnchor))}rem`,
+    );
     let showRepliesBadge = $derived(
         state.repliesActionState.status === "loaded" &&
             state.repliesActionState.replyCount > 0,
     );
-    let copyFailed = $derived(isCopyFailed?.(state.node.eventId) ?? false);
-    let broadcastSending = $derived(
-        isBroadcastSending?.(state.node.eventId) ?? false,
-    );
-    let canDelete = $derived(canDeleteNodePost?.(state) ?? false);
-    let deletionSending = $derived(
-        isDeletionSending?.(state.node.eventId) ?? false,
-    );
-
     function getRepliesActionLabel(): string {
         const actionState = state.repliesActionState;
         if (actionState.status === "loading") {
@@ -183,30 +142,6 @@
 
         onToggleChildren?.(state.node.eventId);
     }
-
-    function handleCopyPointerDown(event: PointerEvent): void {
-        onCopyPointerDown?.(state, event);
-    }
-
-    function handleCopyNevent(event: Event): void {
-        onCopyNevent?.(state, event);
-    }
-
-    function handleShowRawJson(): void {
-        onShowRawJson?.(state);
-    }
-
-    function handleBroadcastPointerDown(event: PointerEvent): void {
-        onBroadcastPointerDown?.(state, event);
-    }
-
-    function handleBroadcastPost(event: Event): void {
-        onBroadcastPost?.(state, event);
-    }
-
-    function openDeleteConfirm(): void {
-        onOpenDeleteConfirm?.(state);
-    }
 </script>
 
 <div
@@ -236,18 +171,7 @@
                     {onRefreshRelatedEvents}
                     {onToggleChildren}
                     {onRetryChildren}
-                    {onCopyPointerDown}
-                    {onCopyNevent}
-                    {externalClientLabel}
-                    {onOpenExternalClient}
-                    {isCopyFailed}
-                    {onShowRawJson}
-                    {onBroadcastPointerDown}
-                    {onBroadcastPost}
-                    {isBroadcastSending}
-                    {canDeleteNodePost}
-                    {isDeletionSending}
-                    {onOpenDeleteConfirm}
+                    {getActionItems}
                 />
             {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted}
                 <span class="post-history-context-deleted-label">
@@ -276,6 +200,7 @@
 
     <div
         class="post-history-thread-node-anchor"
+        style:--thread-reply-indent={replyIndent}
         data-post-history-thread-anchor-scope-id={state.anchorEventId}
         data-post-history-thread-anchor-event-id={state.node.eventId}
     >
@@ -292,12 +217,6 @@
                 {#if state.parentTargetId && !state.parentAlreadyInPath && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
                     <div class="post-history-thread-node-top-actions">
                         <PostHistoryThreadToggleButton
-                            ariaLabel={state.parentExpansion.visibleParent
-                                ? $_("postHistory.hideReplyTarget")
-                                : $_("postHistory.showReplyTarget")}
-                            title={state.parentExpansion.visibleParent
-                                ? $_("postHistory.hideReplyTarget")
-                                : $_("postHistory.showReplyTarget")}
                             expanded={state.parentExpansion.visibleParent}
                             loading={state.parentExpansion.visibleParent &&
                                 state.parentExpansion
@@ -316,14 +235,8 @@
 
             {#snippet footerActions()}
                 {#if buildPostRecordForNode}
-                    <PostHistoryPostActions {onReactionPost}
+                    <PostHistoryPostActions {onReplyPost} {onQuotePost} {onReactionPost}
                         post={buildPostRecordForNode(state)}
-                        onReplyPost={state.node.event.kind !== 42
-                            ? onReplyPost
-                            : undefined}
-                        onQuotePost={state.node.event.kind !== 42
-                            ? onQuotePost
-                            : undefined}
                     >
                         {#snippet replyExtras()}
                             {#if showRepliesBadge}
@@ -367,47 +280,22 @@
                     timestamp={postedAtExact}
                 >
                     {#snippet items()}
-                        {#if externalClientLabel && onOpenExternalClient}
-                            <DropdownMenu.Item
-                                class="menu-action-button"
-                                onSelect={() => onOpenExternalClient?.(state)}
-                            >
-                                <div
-                                    class="open-in-new-icon svg-icon"
-                                    aria-hidden="true"
-                                ></div>
-                                <span>{externalClientLabel}</span>
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Separator
-                                class="post-history-menu-separator"
-                            />
-                        {/if}
-                        <DropdownMenu.Item
-                            class="menu-action-button"
-                            disabled={state.relatedEventsStatus === "loading"}
-                            onSelect={() => onRefreshRelatedEvents?.(state.node.eventId)}
-                        >
-                            <div
-                                class="find_in_page-icon svg-icon"
-                                aria-hidden="true"
-                            ></div>
-                            <span>{$_("postHistory.checkRelatedEvents")}</span>
-                        </DropdownMenu.Item>
                         <PostHistoryRecordActionItems
                             order="raw-json-first"
-                            {copyFailed}
-                            showBroadcast={true}
-                            {broadcastSending}
-                            showDelete={canDelete}
                             showDeleteSeparator={true}
-                            {deletionSending}
-                            onCopyPointerDown={handleCopyPointerDown}
-                            onCopyNevent={handleCopyNevent}
-                            onShowRawJson={handleShowRawJson}
-                            onBroadcastPointerDown={handleBroadcastPointerDown}
-                            onBroadcastPost={handleBroadcastPost}
-                            onOpenDeleteConfirm={openDeleteConfirm}
-                        />
+                            {...getActionItems(state)}
+                        >
+                            {#snippet afterExternalClient()}
+                                <DropdownMenu.Item
+                                    class="menu-action-button"
+                                    disabled={state.relatedEventsStatus === "loading"}
+                                    onSelect={() => onRefreshRelatedEvents?.(state.node.eventId)}
+                                >
+                                    <div class="find_in_page-icon svg-icon" aria-hidden="true"></div>
+                                    <span>{$_("postHistory.checkRelatedEvents")}</span>
+                                </DropdownMenu.Item>
+                            {/snippet}
+                        </PostHistoryRecordActionItems>
                     {/snippet}
                 </PostHistoryActionMenu>
             {/snippet}
@@ -442,18 +330,7 @@
                     {onRefreshRelatedEvents}
                     {onToggleChildren}
                     {onRetryChildren}
-                    {onCopyPointerDown}
-                    {onCopyNevent}
-                    {externalClientLabel}
-                    {onOpenExternalClient}
-                    {isCopyFailed}
-                    {onShowRawJson}
-                    {onBroadcastPointerDown}
-                    {onBroadcastPost}
-                    {isBroadcastSending}
-                    {canDeleteNodePost}
-                    {isDeletionSending}
-                    {onOpenDeleteConfirm}
+                    {getActionItems}
                 />
             {/each}
         </div>
@@ -461,6 +338,11 @@
 </div>
 
 <style>
+    .post-history-thread-node-top-actions {
+        width: 100%;
+        height: 28px;
+    }
+
     .post-history-thread-node-view {
         display: grid;
         gap: 1px;
@@ -479,6 +361,7 @@
     .post-history-thread-node-anchor {
         display: grid;
         min-width: 0;
+        margin-inline-start: min(var(--thread-reply-indent), 12%);
     }
 
     .post-history-thread-node-children {

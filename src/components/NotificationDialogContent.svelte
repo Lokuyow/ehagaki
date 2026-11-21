@@ -15,6 +15,7 @@
     import Button from './Button.svelte';
     import NotificationPost from './NotificationPost.svelte';
     import PostHistoryQuotePreview from './PostHistoryQuotePreview.svelte';
+    import PostHistoryThreadToggleButton from './PostHistoryThreadToggleButton.svelte';
     import ImageFullscreen from './ImageFullscreen.svelte';
     import ProfileAvatar from './ProfileAvatar.svelte';
     import PostHistoryReactionDetails from './PostHistoryReactionDetails.svelte';
@@ -444,21 +445,18 @@
                         </div>
                     {/if}
                     {#if type === 'reply'}
-                        <button type="button" class="notification-reply-label notification-reply-toggle"
-                            aria-expanded={!!expandedReplyTargets[record.eventId]} aria-controls={`${replyTargetPrefix}-${record.eventId}`}
-                            aria-label={$_(expandedReplyTargets[record.eventId] ? 'postHistory.hideReplyTarget' : 'postHistory.showReplyTarget')}
-                            title={$_(expandedReplyTargets[record.eventId] ? 'postHistory.hideReplyTarget' : 'postHistory.showReplyTarget')}
-                            onclick={() => toggleReplyParent(record)}>
-                            <span class="notification-kind-icon notification-reply-icon svg-icon" aria-hidden="true"></span>
-                            <span>{$_('notifications.reply')}</span>
-                        </button>
+                        <PostHistoryThreadToggleButton
+                            expanded={!!expandedReplyTargets[record.eventId]}
+                            controls={`${replyTargetPrefix}-${record.eventId}`}
+                            onClick={() => toggleReplyParent(record)}
+                        />
                     {:else if type === 'mention'}
-                        <div class="notification-reply-label">
+                        <div class="notification-kind-label">
                             <span class="notification-kind-icon notification-mention-icon svg-icon" style:mask-image={`url("${resolveAppAssetUrl('icons/alternate_email_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg')}")`} aria-hidden="true"></span>
                             <span>{$_('notifications.mention')}</span>
                         </div>
                     {:else if type === 'quote'}
-                        <div class="notification-reply-label">
+                        <div class="notification-kind-label">
                             <span class="notification-kind-icon notification-quote-icon svg-icon" style:mask-image={`url("${resolveAppAssetUrl('icons/format_quote_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg')}")`} aria-hidden="true"></span>
                             <span>{$_('notifications.quote')}</span>
                         </div>
@@ -510,12 +508,11 @@
     .notification-entry { display: grid; min-width: 0; gap: 6px; padding-block: 8px; border-bottom: 1px solid var(--border-hr); }
     .notification-entry :global(.notification-post), .notification-entry :global(.post-history-quote-status-card), .notification-target-placeholder { margin-inline-start: 16px; }
     .notification-type { font-size: .85rem; opacity: .8; }
-    .notification-reply-toggle { font: inherit; color: inherit; border: 0; }
     .notification-reply-parent { display: grid; gap: 6px; min-width: 0; margin-inline-start: 16px; }
     .notification-reply-parent p { margin: 0; }
     .notification-reply-parent :global(.notification-reply-retry) { height: 36px; justify-self: start; }
     .notification-reply-parent :global(.notification-post) { margin-inline-start: 0; }
-    .notification-reply-label { display: inline-flex; justify-self: start; align-items: center; gap: 6px; height: 34px; box-sizing: border-box; padding: 4px 8px; border-radius: 18px; background: color-mix(in srgb, var(--btn-bg), transparent 40%); }
+    .notification-kind-label { display: inline-flex; justify-self: start; align-items: center; gap: 6px; height: 34px; box-sizing: border-box; padding: 4px 8px; border-radius: 18px; background: color-mix(in srgb, var(--btn-bg), transparent 40%); }
     .notification-entry :global(.post-preview-reaction-chip) { height: 34px; min-height: 34px; box-sizing: border-box; }
     .notification-repost-chip { max-width: 100%; min-width: 0; font: inherit; }
     .notification-reposter { padding: 0; min-height: 0; border: 0; background: transparent; color: inherit; }
@@ -541,7 +538,6 @@
         object-fit: cover;
     }
     .notification-kind-icon { --icon-size: 22px; --svg: currentColor; --icon-hover-color: var(--svg); --icon-selected-hover-color: var(--svg); width: 22px; height: 22px; flex: 0 0 22px; }
-    .notification-reply-label .notification-kind-icon { --icon-size: 26px; --svg: var(--accent-color); width: 26px; height: 26px; flex-basis: 26px; }
+    .notification-kind-label .notification-kind-icon { --icon-size: 26px; --svg: var(--accent-color); width: 26px; height: 26px; flex-basis: 26px; }
     .notification-repost-icon { --svg: var(--accent-color); mask-image: url('/icons/repost.svg'); }
-    .notification-reply-icon { mask-image: url('/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg'); }
 </style>

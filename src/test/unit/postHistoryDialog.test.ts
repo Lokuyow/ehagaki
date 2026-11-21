@@ -1599,7 +1599,7 @@ describe('PostHistoryDialog', () => {
         });
     });
 
-    it('[related-card-footer-structure] 返信先・引用は同じ3区画フッターを使う', async () => {
+    it('[related-card-footer-structure] 返信先・引用は同じフッターを使い、各カードの投稿をリポストする', async () => {
         const { parentRecord, post, replyId } = createReplyContextRecords();
         const { quotedRecord, post: quotePost } = createQuoteContextRecords({
             postId: post.eventId,
@@ -1616,11 +1616,14 @@ describe('PostHistoryDialog', () => {
 
             return eventId === quotedRecord.eventId ? quotedRecord : null;
         });
+        setPostHistoryDialogTranslationOverrides({ 'repost.action': 'リポスト' });
+        const onRepostPost = vi.fn().mockResolvedValue({ success: true });
         render(PostHistoryDialog, {
             props: {
                 show: true,
                 onClose: vi.fn(),
                 onReplyPost: vi.fn(),
+                onRepostPost,
                 pubkeyHex: 'a'.repeat(64),
             },
         });
@@ -1629,7 +1632,7 @@ describe('PostHistoryDialog', () => {
         await screen.findByText('返信先の投稿');
         await screen.findByText('引用元の投稿');
 
-        for (const content of ['返信先の投稿', '引用元の投稿']) {
+        for (const { content, eventId } of [parentRecord, quotedRecord]) {
             const card = screen.getByText(content).closest('.post-history-related-card');
             expect(card).toBeTruthy();
 
@@ -1645,9 +1648,14 @@ describe('PostHistoryDialog', () => {
                 return element.classList.contains('post-preview-footer-right') ? 'right' : 'unknown';
             })).toEqual(['left', 'actions', 'right']);
             expect(footer!.querySelector('.post-preview-footer-left .post-preview-date')).toBeTruthy();
-            expect(within(footer!.querySelector('.post-preview-footer-right') as HTMLElement).getByRole('button', {
+            const menuTrigger = within(footer!.querySelector('.post-preview-footer-right') as HTMLElement).getByRole('button', {
                 name: 'アクションを表示',
-            })).toBeTruthy();
+            });
+            await fireEvent.click(menuTrigger);
+            await fireEvent.click(await screen.findByRole('menuitem', { name: 'リポスト' }));
+            expect(onRepostPost).toHaveBeenLastCalledWith(
+                expect.objectContaining({ eventId }), expect.any(Function),
+            );
         }
 
         expect(document.querySelector('.post-history-related-card-footer')).toBeNull();

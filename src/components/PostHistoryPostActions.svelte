@@ -5,9 +5,11 @@
     import PostPreviewFooterActionButton from "./PostPreviewFooterActionButton.svelte";
     import PostReactionActionButton from './PostReactionActionButton.svelte';
     import { isReactionTargetKind } from '../lib/postReactionUtils';
+    import { extractPostHistoryChannelReference } from '../lib/postHistoryEventUtils';
 
     interface Props {
         post: PostHistoryRecord;
+        resolvedChannelEventId?: string;
         onReactionPost?: (post: PostHistoryRecord) => boolean | Promise<boolean>;
         onReplyPost?: (
             post: PostHistoryRecord,
@@ -19,18 +21,26 @@
 
     let {
         post,
+        resolvedChannelEventId,
         onReactionPost = undefined,
         onReplyPost = undefined,
         onQuotePost = undefined,
         replyExtras = undefined,
         reactionExtras = undefined,
     }: Props = $props();
+
+    const canReplyOrQuote = $derived(
+        post.deletedAt === undefined &&
+            (post.kind !== 42 ||
+                !!resolvedChannelEventId ||
+                !!extractPostHistoryChannelReference(post).channelEventId),
+    );
 </script>
 
 <div class="post-preview-action-buttons-group">
     <div class="post-preview-action-cell post-preview-reply-action-cell">
         <div class="post-preview-reply-button-slot">
-            {#if onReplyPost}
+            {#if onReplyPost && canReplyOrQuote}
                 <PostPreviewFooterActionButton
                     type="button"
                     className="post-preview-action-button post-history-action-button"
@@ -49,7 +59,7 @@
         </div>
     </div>
     <div class="post-preview-action-cell post-preview-quote-action-cell">
-        {#if onQuotePost}
+        {#if onQuotePost && canReplyOrQuote}
             <PostPreviewFooterActionButton
                 type="button"
                 className="post-preview-action-button post-history-action-button"

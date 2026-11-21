@@ -69,4 +69,19 @@ describe("PostHistoryPostActions", () => {
             name: "replyQuote.quote_label",
         })).toBeTruthy();
     });
+
+    it.each([
+        { label: "with a channel root", tags: [["e", "c".repeat(64), "", "root"]], deletedAt: undefined, visible: true },
+        { label: "without a channel root", tags: [], deletedAt: undefined, visible: false },
+        { label: "when deleted", tags: [["e", "c".repeat(64), "", "root"]], deletedAt: 1, visible: false },
+    ])("renders channel reply and quote buttons $label", ({ tags, deletedAt, visible }) => {
+        const post = { ...createPost("3".repeat(64)), kind: 42, tags, deletedAt };
+        render(PostHistoryPostActions, {
+            props: { post, onReplyPost: vi.fn(), onQuotePost: vi.fn() },
+        });
+
+        for (const name of ["replyQuote.reply_label", "replyQuote.quote_label"]) {
+            expect(screen.queryAllByRole("button", { name })).toHaveLength(visible ? 1 : 0);
+        }
+    });
 });

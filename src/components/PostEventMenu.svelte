@@ -24,8 +24,10 @@
     import { DropdownMenu } from 'bits-ui';
     interface Props { post: PostHistoryRecord; owner?: string | null; rxNostr?: RxNostr; relayConfig?: import('../lib/types').RelayConfig | null;
         operations: ReturnType<typeof usePostEventOperations>; active?: () => boolean; onDeleted?: (id: string, deletedAt: number, deletionEventId: string) => void;
-        open?: boolean; onOpenChange?: (open: boolean) => void; triggerLabel?: string; onDelete?: () => void; onRequestRepost?: () => void; onRefresh?: () => Promise<void>; onRepost?: RepostPostHandler; repostPending?: boolean; }
-    let { post, owner, rxNostr, relayConfig, operations, active = () => true, onDeleted, open = false, onOpenChange, triggerLabel, onDelete, onRequestRepost, onRefresh, onRepost, repostPending = false }: Props = $props();
+        open?: boolean; onOpenChange?: (open: boolean) => void; triggerLabel?: string; onDelete?: () => void; onRequestRepost?: () => void; onRefresh?: () => Promise<void>; onRepost?: RepostPostHandler; repostPending?: boolean;
+        onBroadcastPointerDown?: (event: PointerEvent) => void; onBroadcastPost?: (event: Event) => void; }
+    let { post, owner, rxNostr, relayConfig, operations, active = () => true, onDeleted, open = false, onOpenChange, triggerLabel, onDelete, onRequestRepost, onRefresh, onRepost, repostPending = false,
+        onBroadcastPointerDown, onBroadcastPost }: Props = $props();
     let disposed = false;
     const isActive = () => !disposed && active();
     onDestroy(() => { disposed = true; });
@@ -56,7 +58,9 @@
             externalClientLabel={externalLabel ? $_('postHistory.openInExternalClient', { values: { client: externalLabel } }) : $_('postHistory.openInExternalClientFallback')}
             onOpenExternalClient={() => { const url = buildPostHistoryExternalClientUrl(post, preference, writeRelaysStore.value); if (url) window.open(url, '_blank', 'noopener,noreferrer'); }}
             onShowRawJson={() => raw = true} onRepost={onRepost && !post.deletedAt && isRepostTargetKind(post.kind) && isPostHistoryRawEventConsistent(post.rawEvent, post) ? () => void repost() : undefined} {repostPending}
-            onBroadcastPointerDown={() => {}} onBroadcastPost={() => void broadcast()} onOpenDeleteConfirm={() => { if (onDelete) onDelete(); else confirm = true; }} />
+            onBroadcastPointerDown={onBroadcastPointerDown ?? (() => {})}
+            onBroadcastPost={onBroadcastPost ?? (() => void broadcast())}
+            onOpenDeleteConfirm={() => { if (onDelete) onDelete(); else confirm = true; }} />
     {/snippet}
 </PostHistoryActionMenu>
 {#if raw}<PostHistoryRawJsonDialog open={true} rawEvent={post.rawEvent} onOpenChange={(value) => raw = value}

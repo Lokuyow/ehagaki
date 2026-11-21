@@ -47,7 +47,9 @@
             <span class="post-history-repost-icon svg-icon" aria-hidden="true"></span>
             <span>{$_("repost.entry")}</span>
         </span>
-        {@render menu?.(post, `repost-outer:${post.eventId}`)}
+        {#if post.deletedAt !== undefined}
+            {@render menu?.(post, `repost-outer:${post.eventId}`)}
+        {/if}
     </div>
     {#if post.deletedAt !== undefined}
         <p>{$_("postHistory.deleted")}</p>
@@ -81,14 +83,20 @@
             <Button onClick={onRetry}>{$_("postHistory.contextRetry")}</Button>
         {/if}
     {/if}
-    {#if post.deletedAt === undefined && (onReactionPost || footerMenu)}
+    {#if post.deletedAt === undefined && (onReplyPost || onQuotePost || onReactionPost || footerMenu || menu)}
         <PostHistoryPreviewFooter formattedDate={formatPostedAt(post.postedAt)}>
             {#snippet actions()}
-                <PostHistoryPostActions {post} {onReactionPost}>
+                <PostHistoryPostActions {post} {onReplyPost} {onQuotePost} {onReactionPost}>
                     {#snippet reactionExtras()}{@render renderReactionExtras?.(post)}{/snippet}
                 </PostHistoryPostActions>
             {/snippet}
-            {#snippet trailing()}{@render footerMenu?.(post)}{/snippet}
+            {#snippet trailing()}
+                {#if footerMenu}
+                    {@render footerMenu(post)}
+                {:else}
+                    {@render menu?.(post, `repost-outer:${post.eventId}`)}
+                {/if}
+            {/snippet}
         </PostHistoryPreviewFooter>
         {@render renderReactionDetails?.(post)}
     {/if}

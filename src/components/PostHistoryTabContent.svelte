@@ -34,7 +34,6 @@
     import type { PostHistoryFullScanResult } from "../lib/postHistoryRelayFullScanService";
     import type { PostHistoryJsonlImportResult } from "../lib/postHistoryJsonlImportService";
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
-    import PostHistoryPostActions from "./PostHistoryPostActions.svelte";
     import { verifyRelatedEvent } from '../lib/relatedEventVerification';
     import PostHistoryReactionDetails from "./PostHistoryReactionDetails.svelte";
     import PostHistoryReactionActionButton from "./PostHistoryReactionActionButton.svelte";
@@ -269,20 +268,16 @@
     });
     type RecordActionItemProps = Omit<
         ComponentProps<typeof PostHistoryRecordActionItems>,
-        "order" | "showDeleteSeparator"
+        "order" | "showDeleteSeparator" | "afterExternalClient"
     >;
 
     function buildRecordActionItemProps(
         post: PostHistoryRecord,
-        options: { externalClient: boolean; repost?: boolean },
+        options: { externalClient: boolean },
     ): RecordActionItemProps {
         return {
-            ...(options.repost === false
-                ? {}
-                : {
-                    onRepost: canRepost(post) ? () => void handleRepost(post) : undefined,
-                    repostPending,
-                }),
+            onRepost: canRepost(post) ? () => void handleRepost(post) : undefined,
+            repostPending,
             copyFailed: copyNeventUi.copyState[post.eventId] === "failed",
             showBroadcast: canBroadcastPost(post),
             broadcastSending: isBroadcastSending(post),
@@ -1638,7 +1633,7 @@
     /**
      * Handlers both thread sections of every post share. They never change, so
      * spreading them does not make the panels depend on anything reactive.
-     * Props that do change (preview models, emoji state, scroll root, labels,
+     * Props that do change (preview models, emoji state, scroll root,
      * reply/quote/reaction handlers) are passed one by one at the call sites:
      * bundling them here would re-evaluate every panel when any one changes.
      */
@@ -1646,17 +1641,8 @@
         getSensitiveBodyLoader,
         onImageOpen: handleImageOpen,
         buildPostRecordForNode: buildPostRecordFromNodeState,
-        onCopyPointerDown: handleNodeCopyPointerPosition,
-        onCopyNevent: handleNodeCopyNevent,
-        onOpenExternalClient: handleNodeOpenExternalClient,
-        isCopyFailed: isNodeCopyFailed,
-        onShowRawJson: handleNodeShowRawJson,
-        onBroadcastPointerDown: handleNodeBroadcastPointerPosition,
-        onBroadcastPost: handleNodeBroadcastPost,
-        isBroadcastSending: isNodeBroadcastSending,
-        canDeleteNodePost,
-        isDeletionSending: isNodeDeletionSending,
-        onOpenDeleteConfirm: openNodeDeleteConfirm,
+        getActionItems: (state) =>
+            buildRecordActionItemProps(buildPostRecordFromNodeState(state), { externalClient: true }),
     } satisfies Partial<ThreadGraphPanelProps>;
 
     /** Per-post node handlers both thread sections share. Depends on the post only. */
@@ -1877,12 +1863,6 @@
         );
     }
 
-    function buildPostRecordFromQuoteEvent(
-        event: NostrEvent,
-    ): PostHistoryRecord {
-        return createTransientPostHistoryRecord(event);
-    }
-
     function buildQuotePreviewMenuKey(
         parentEventId: string,
         quoteEventId: string,
@@ -1933,46 +1913,6 @@
         return getSensitiveBodyLoader(structure)?.observe?.(onChange) ?? (() => {});
     }
 
-    function handleNodeShowRawJson(
-        nodeState: PostHistoryThreadGraphNodeState,
-    ): void {
-        openRawJson(nodeState.node.event, nodeState.node.relayUrls);
-    }
-
-    function isNodeCopyFailed(nodeEventId: string): boolean {
-        return copyNeventUi.copyState[nodeEventId] === "failed";
-    }
-
-    function isNodeBroadcastSending(nodeEventId: string): boolean {
-        return broadcastRequestState[nodeEventId] === "sending";
-    }
-
-    function handleNodeCopyPointerPosition(
-        nodeState: PostHistoryThreadGraphNodeState,
-        event: PointerEvent,
-    ): void {
-        copyNeventUi.captureCopyPointerPosition(
-            buildPostRecordFromNodeState(nodeState),
-            event,
-        );
-    }
-
-    function handleNodeCopyNevent(
-        nodeState: PostHistoryThreadGraphNodeState,
-        event: Event,
-    ): void {
-        void copyNeventUi.handleCopyNevent(
-            buildPostRecordFromNodeState(nodeState),
-            event,
-        );
-    }
-
-    function handleNodeOpenExternalClient(
-        nodeState: PostHistoryThreadGraphNodeState,
-    ): void {
-        handleOpenExternalClient(buildPostRecordFromNodeState(nodeState));
-    }
-
     function getExternalClientPreference() {
         return {
             client: settingsStore.externalNostrClient,
@@ -2000,50 +1940,6 @@
         if (url) {
             window.open(url, "_blank", "noopener,noreferrer");
         }
-    }
-
-    function handleNodeBroadcastPointerPosition(
-        nodeState: PostHistoryThreadGraphNodeState,
-        event: PointerEvent,
-    ): void {
-        captureBroadcastPointerPosition(
-            buildPostRecordFromNodeState(nodeState),
-            event,
-        );
-    }
-
-    function handleNodeBroadcastPost(
-        nodeState: PostHistoryThreadGraphNodeState,
-        event: Event,
-    ): void {
-        void handleBroadcastPost(
-            buildPostRecordFromNodeState(nodeState),
-            event,
-        );
-    }
-
-    function canDeleteNodePost(
-        nodeState: PostHistoryThreadGraphNodeState,
-    ): boolean {
-        return canRequestPostDeletion(
-            buildPostRecordFromNodeState(nodeState),
-            pubkeyHex,
-        );
-    }
-
-    function isNodeDeletionSending(nodeEventId: string): boolean {
-        return deleteRequestState[nodeEventId] === "sending";
-    }
-
-    function openNodeDeleteConfirm(
-        nodeState: PostHistoryThreadGraphNodeState,
-    ): void {
-        const post = buildPostRecordFromNodeState(nodeState);
-        if (!canDeletePost(post)) {
-            return;
-        }
-
-        postActionUi.openDeleteConfirm(post);
     }
 
     async function handleReactionPost(post: PostHistoryRecord): Promise<boolean> {
@@ -2699,7 +2595,6 @@
                                     emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                                     emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                     scrollRoot={historyContainer}
-                                    externalClientLabel={getExternalClientOpenLabel()}
                                     onReactionPost={onReactionPost ? handleReactionPost : undefined}
                                     onReplyPost={onReplyPost ? handleReplyPost : undefined}
                                     onQuotePost={onQuotePost ? handleQuotePost : undefined}
@@ -2780,12 +2675,12 @@
                                                 isReactionExpanded={isReactionExpandedByEventId}
                                                 getReactionLabel={getRelatedReactionLabel}
                                                 onToggleReaction={toggleReactionsByEventId}
-                                                buildRecord={buildPostRecordFromQuoteEvent}
+                                                buildRecord={createTransientPostHistoryRecord}
                                                 buildMenuKey={buildQuotePreviewMenuKey}
                                                 isMenuOpen={(menuKey) => postActionUi.isPostMenuOpen(menuKey)}
                                                 onMenuOpenChange={setExclusivePostMenuOpen}
                                                 getActionItems={(record) =>
-                                                    buildRecordActionItemProps(record, { externalClient: true, repost: false })}
+                                                    buildRecordActionItemProps(record, { externalClient: true })}
                                             />
                                         {/snippet}
                                         </PostContentPreview>
@@ -2822,7 +2717,6 @@
                                         emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                                         emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                         scrollRoot={historyContainer}
-                                        externalClientLabel={getExternalClientOpenLabel()}
                                         onReactionPost={onReactionPost ? handleReactionPost : undefined}
                                         onReplyPost={onReplyPost ? handleReplyPost : undefined}
                                         onQuotePost={onQuotePost ? handleQuotePost : undefined}
@@ -3159,6 +3053,8 @@
 {#snippet repostRecordMenu(record: PostHistoryRecord, menuKey: string)}
     <PostEventMenu open={postActionUi.isPostMenuOpen(menuKey)} onOpenChange={(open) => setExclusivePostMenuOpen(menuKey, open)} post={record} owner={pubkeyHex} {rxNostr} {relayConfig} operations={eventOperations} active={() => show && !destroyed}
         triggerLabel={$_(isRepostOuterKind(record.kind) ? "repost.outerActions" : "repost.targetActions")} onDelete={() => openDeleteConfirm(record)} onRequestRepost={() => void handleRepost(record)} onRefresh={() => postHistoryThreadGraph.refreshRelatedEvents(record)}
+        onBroadcastPointerDown={(event) => captureBroadcastPointerPosition(record, event)}
+        onBroadcastPost={(event) => void handleBroadcastPost(record, event)}
         onRepost={onRepostPost} {repostPending} />
 {/snippet}
 
@@ -3257,17 +3153,11 @@
         white-space: nowrap;
     }
 
-    :global(
-            .post-history-action-button,
-            .post-history-thread-toggle-button
-        ) {
+    :global(.post-history-action-button) {
         color: var(--btn-post-preview-action);
     }
 
-    :global(
-            .post-history-action-button .svg-icon,
-            .post-history-thread-toggle-button .svg-icon
-        ) {
+    :global(.post-history-action-button .svg-icon) {
         --svg: currentColor;
     }
 
@@ -3659,26 +3549,6 @@
         flex-direction: column;
         padding-inline-start: 1rem;
         gap: 4px;
-    }
-
-    :global(.post-history-thread-toggle-button.selected) {
-        --btn-bg: var(--post-history-preview-footer-surface, var(--dialog-bg));
-        color: var(--text-light);
-    }
-
-    @media (hover: hover) and (pointer: fine) {
-        :global(
-                .post-history-thread-toggle-button.selected:hover:not(:disabled)
-            ) {
-            background-color: light-dark(
-                color-mix(in srgb, var(--dialog-bg), black 20%),
-                color-mix(in srgb, var(--dialog-bg), white 30%)
-            );
-            color: light-dark(
-                color-mix(in srgb, var(--text), black 20%),
-                color-mix(in srgb, var(--text), white 30%)
-            );
-        }
     }
 
     .delete-confirm-body {

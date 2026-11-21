@@ -1,4 +1,5 @@
 <script lang="ts">
+    import type { ComponentProps } from "svelte";
     import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
     import PostHistoryThreadToggleButton from "./PostHistoryThreadToggleButton.svelte";
@@ -54,36 +55,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
         onRefreshRelatedEvents?: (nodeEventId: string) => void;
         onToggleNodeChildren?: (nodeEventId: string) => void;
         onRetryNodeChildren?: (nodeEventId: string) => void;
-        onCopyPointerDown?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-            event: PointerEvent,
-        ) => void;
-        onCopyNevent?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-            event: Event,
-        ) => void;
-        externalClientLabel?: string;
-        onOpenExternalClient?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-        ) => void;
-        isCopyFailed?: (nodeEventId: string) => boolean;
-        onShowRawJson?: (nodeState: PostHistoryThreadGraphNodeState) => void;
-        onBroadcastPointerDown?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-            event: PointerEvent,
-        ) => void;
-        onBroadcastPost?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-            event: Event,
-        ) => void;
-        isBroadcastSending?: (nodeEventId: string) => boolean;
-        canDeleteNodePost?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-        ) => boolean;
-        isDeletionSending?: (nodeEventId: string) => boolean;
-        onOpenDeleteConfirm?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-        ) => void;
+        getActionItems: ComponentProps<typeof PostHistoryThreadGraphNodeView>["getActionItems"];
     }
 
     let {
@@ -110,18 +82,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
         onRefreshRelatedEvents = undefined,
         onToggleNodeChildren = undefined,
         onRetryNodeChildren = undefined,
-        onCopyPointerDown = undefined,
-        onCopyNevent = undefined,
-        externalClientLabel = undefined,
-        onOpenExternalClient = undefined,
-        isCopyFailed = undefined,
-        onShowRawJson = undefined,
-        onBroadcastPointerDown = undefined,
-        onBroadcastPost = undefined,
-        isBroadcastSending = undefined,
-        canDeleteNodePost = undefined,
-        isDeletionSending = undefined,
-        onOpenDeleteConfirm = undefined,
+        getActionItems,
     }: Props = $props();
 
     const directParentIndent = `${resolvePostHistoryThreadContextIndentRem(-1)}rem`;
@@ -196,18 +157,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
                 {onRefreshRelatedEvents}
                 onToggleChildren={onToggleNodeChildren}
                 onRetryChildren={onRetryNodeChildren}
-                {onCopyPointerDown}
-                {onCopyNevent}
-                {externalClientLabel}
-                {onOpenExternalClient}
-                {isCopyFailed}
-                {onShowRawJson}
-                {onBroadcastPointerDown}
-                {onBroadcastPost}
-                {isBroadcastSending}
-                {canDeleteNodePost}
-                {isDeletionSending}
-                {onOpenDeleteConfirm}
+                {getActionItems}
             />
         {:else if state.parentExpansion.visibleParent && fallbackParentNodeState}
             <PostHistoryThreadGraphNodeView
@@ -231,18 +181,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
                 {onRefreshRelatedEvents}
                 onToggleChildren={onToggleNodeChildren}
                 onRetryChildren={onRetryNodeChildren}
-                {onCopyPointerDown}
-                {onCopyNevent}
-                {externalClientLabel}
-                {onOpenExternalClient}
-                {isCopyFailed}
-                {onShowRawJson}
-                {onBroadcastPointerDown}
-                {onBroadcastPost}
-                {isBroadcastSending}
-                {canDeleteNodePost}
-                {isDeletionSending}
-                {onOpenDeleteConfirm}
+                {getActionItems}
             />
         {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted}
             <span
@@ -274,12 +213,6 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
         <div class="post-history-context-actions">
             {#if !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
                 <PostHistoryThreadToggleButton
-                    ariaLabel={state.parentExpansion.visibleParent
-                        ? $_("postHistory.hideReplyTarget")
-                        : $_("postHistory.showReplyTarget")}
-                    title={state.parentExpansion.visibleParent
-                        ? $_("postHistory.hideReplyTarget")
-                        : $_("postHistory.showReplyTarget")}
                     expanded={state.parentExpansion.visibleParent}
                     loading={state.parentExpansion.visibleParent &&
                         state.parentExpansion.showParentLoadingIndicator}
@@ -313,18 +246,7 @@ import type { PostHistoryReactionReadModel } from "../lib/postHistoryReactionRea
                     {onRefreshRelatedEvents}
                     onToggleChildren={onToggleNodeChildren}
                     onRetryChildren={onRetryNodeChildren}
-                    {onCopyPointerDown}
-                    {onCopyNevent}
-                    {externalClientLabel}
-                    {onOpenExternalClient}
-                    {isCopyFailed}
-                    {onShowRawJson}
-                    {onBroadcastPointerDown}
-                    {onBroadcastPost}
-                    {isBroadcastSending}
-                    {canDeleteNodePost}
-                    {isDeletionSending}
-                    {onOpenDeleteConfirm}
+                    {getActionItems}
                 />
             {/each}
         </div>

@@ -1,6 +1,7 @@
 <script lang="ts">
     import { DropdownMenu } from "bits-ui";
     import { _ } from "svelte-i18n";
+    import type { Snippet } from "svelte";
     import PostRepostMenuItem from "./PostRepostMenuItem.svelte";
     import { resolveAppAssetUrl } from "../lib/appAssetUrl";
 
@@ -18,6 +19,7 @@
         onCopyNevent: (event: Event) => void;
         externalClientLabel?: string;
         onOpenExternalClient?: (event: Event) => void;
+        afterExternalClient?: Snippet;
         onShowRawJson: () => void;
         onRepost?: (event: Event) => void;
         repostPending?: boolean;
@@ -38,6 +40,7 @@
         onCopyNevent,
         externalClientLabel = undefined,
         onOpenExternalClient = undefined,
+        afterExternalClient = undefined,
         onShowRawJson,
         onRepost = undefined,
         repostPending = false,
@@ -83,6 +86,8 @@
     </DropdownMenu.Item>
     <DropdownMenu.Separator class="post-history-menu-separator" />
 {/if}
+
+{@render afterExternalClient?.()}
 
 {#if order === "raw-json-first"}
     {@render rawJsonItem()}

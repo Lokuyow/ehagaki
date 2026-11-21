@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 test.describe.configure({ mode: "parallel" });
 
-type State = { sends: number; signed: number; replyId?: string; quoteId?: string; deletionCount: number; deletionRequests: number; deletionRequestsAtPublish: number | null; heldDeletionRequests: number;
+type State = { sends: number; signed: number; replyId?: string; quoteId?: string; reactionId?: string; deletionCount: number; deletionRequests: number; deletionRequestsAtPublish: number | null; heldDeletionRequests: number;
     sentEvents: { id: string; kind: number; tags: string[][] }[];
     lastResult?: { success: boolean; error?: string }; rows: { id: string; kind: number; content: string; targetId?: string; targetKind?: number; channelEventId?: string; channelRelayHints?: string[] }[] };
 type FixtureWindow = Window & { __REPOST__: { ready: boolean; targetId: string; targetInput: string; read(): Promise<State>; allowTarget(): void;
@@ -165,10 +165,9 @@ test('supported target projection keeps channel enrichment, wire tags, menu layo
         await page.locator('.post-history-search-input').fill('Generic channel');
         await expect(card).toContainText('original searchable post');
     }
-    await expect(card.locator(':scope > .post-preview-footer')).toHaveCount(0);
-    const button = card.locator('.post-history-repost-label .post-history-menu-trigger');
-    const box = await button.boundingBox();
-    expect(box?.width).toBe(28); expect(box?.height).toBe(28);
+    const footer = card.locator(':scope > .post-preview-footer-container');
+    await expect(footer.getByRole('button', { name: 'リポストの操作', exact: true })).toBeVisible();
+    await expect(card.locator('.post-history-repost-label .post-history-menu-trigger')).toHaveCount(0);
     expect(await card.locator('.post-history-repost-icon').evaluate(el => getComputedStyle(el).maskImage)).toContain('repost.svg');
     const jsonl = await page.evaluate(() => (window as unknown as FixtureWindow).__REPOST__.export());
     const events = jsonl.trim().split('\n').map(line => JSON.parse(line));
@@ -436,17 +435,22 @@ test("verified realtime outer resolves and persists its target without adding an
     expect((await read(page)).rows).toHaveLength(1);
 });
 
-test("outer and self-target raw JSON, reply, quote, resend and deletion keep their event IDs", async ({ page }) => {
+test("outer and self-target actions keep their own event IDs", async ({ page }) => {
     await open(page, '&external=import&self-target=1');
     const card = page.locator('.post-history-repost');
     await expect(card).toContainText('original searchable post');
     await expect.poll(async () => (await read(page)).rows[0]?.targetKind).toBe(targetKind);
     const outer = (await read(page)).rows[0]!;
-    await card.getByRole('button', { name: 'リプライ', exact: true }).click();
-    await page.getByRole('button', { name: 'Open history' }).click();
-    await card.getByRole('button', { name: '引用', exact: true }).click();
-    await page.getByRole('button', { name: 'Open history' }).click();
-    expect(await read(page)).toMatchObject({ replyId: outer.targetId, quoteId: outer.targetId });
+    for (const [actions, id] of [
+        [card.locator(':scope > .post-preview-footer-container'), outer.id],
+        [card.locator('.post-history-related-card'), outer.targetId],
+    ] as const) {
+        for (const action of ['リプライ', '引用', 'リアクションする']) {
+            await actions.getByRole('button', { name: action, exact: true }).click();
+            await page.getByRole('button', { name: 'Open history' }).click();
+        }
+        expect(await read(page)).toMatchObject({ replyId: id, quoteId: id, reactionId: id });
+    }
     for (const [label, id, kind] of [['リポストの操作', outer.id, outerKind], ['元投稿の操作', outer.targetId, targetKind]] as const) {
         await card.getByRole('button', { name: label, exact: true }).click();
         await page.locator('[role="menu"][data-state="open"]').getByRole('menuitem', { name: 'イベントJSONを表示', exact: true }).click();
@@ -487,6 +491,10 @@ test("360px CW and media preserve the gate, footer placement and keyboard menu f
         await expect(page.locator('html')).toHaveClass(new RegExp(theme));
         await expect(card.locator('.content-warning-prompt')).toBeVisible();
         await expect(card.locator('.post-preview-media')).toHaveCount(0);
+        const outerFooter = card.locator(':scope > .post-preview-footer-container');
+        for (const name of ['リプライ', '引用', 'リアクションする', 'リポストの操作']) {
+            await expect(outerFooter.getByRole('button', { name, exact: true })).toBeVisible();
+        }
         await card.getByRole('button', { name: '元投稿の操作', exact: true }).focus();
         await page.keyboard.press('Enter');
         const items = await page.getByRole('menuitem').allTextContents();
