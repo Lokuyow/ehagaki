@@ -182,7 +182,7 @@ export function createPostHistoryRelatedTargetResolver({
         fetch: createNotificationTargetWorkQueue(),
         deletion: createNotificationTargetWorkQueue(),
     } : null;
-    const previewDeletionChecks = new Map<string, Set<string> | null>();
+    const previewDeletionChecks = new Map<string, { completed: boolean }>();
     let nextLoadRequestId = 0;
 
     function bumpScopeRevision(scopeKey: string): void {
@@ -497,10 +497,11 @@ export function createPostHistoryRelatedTargetResolver({
     function schedulePreviewDeletionCheck(event: NostrEvent, relayHints: string[]) {
         const scopes = scopeKeysByTargetId.get(event.id);
         if (!notificationWork || !scopes?.size || !getRxNostr() || previewDeletionChecks.has(event.id)) return;
-        previewDeletionChecks.set(event.id, scopes);
+        const check = { completed: false };
+        previewDeletionChecks.set(event.id, check);
         void notificationWork.deletion.run(event.id, () => runDeletionCheck(event, relayHints)).then(
-            () => { if (previewDeletionChecks.get(event.id) === scopes) previewDeletionChecks.set(event.id, null); },
-            () => { if (previewDeletionChecks.get(event.id) === scopes) previewDeletionChecks.delete(event.id); },
+            () => { check.completed = true; },
+            () => { if (previewDeletionChecks.get(event.id) === check) previewDeletionChecks.delete(event.id); },
         );
     }
 
@@ -637,6 +638,9 @@ export function createPostHistoryRelatedTargetResolver({
         }
 
         if (options.force) {
+            if (previewWork && previewDeletionChecks.get(descriptor.targetEventId)?.completed) {
+                previewDeletionChecks.delete(descriptor.targetEventId);
+            }
             loadTasksByTargetId.get(descriptor.targetEventId)?.cancel();
             loadTasksByTargetId.delete(descriptor.targetEventId);
             pendingLoadsByTargetId.delete(descriptor.targetEventId);
@@ -1020,7 +1024,7 @@ export function createPostHistoryRelatedTargetResolver({
                 }
 
                 scopeKeysByTargetId.delete(targetEventId);
-                if (previewDeletionChecks.get(targetEventId) === scopeKeys) previewDeletionChecks.delete(targetEventId);
+                previewDeletionChecks.delete(targetEventId);
                 notificationWork?.local.cancel(targetEventId);
                 notificationWork?.fetch.cancel(targetEventId);
                 notificationWork?.deletion.cancel(targetEventId);

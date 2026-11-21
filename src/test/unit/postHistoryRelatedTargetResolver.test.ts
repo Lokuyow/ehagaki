@@ -352,6 +352,59 @@ describe("createPostHistoryRelatedTargetResolver", () => {
             await db.delete();
         }
     });
+
+    it("rechecks relay deletions when a notification target gets a new watching scope", async () => {
+        const target = finalizeEvent({ kind: 1, content: "quote target", tags: [], created_at: 1 }, generateSecretKey());
+        const f = createResolver({ notificationPreviews: true });
+        f.postHistoryRepositoryImpl.getByEventId.mockResolvedValue(createRecord(target));
+        f.deletionFetchService.fetchDeletionRequests.mockReturnValue({
+            promise: Promise.resolve({ status: "timeout", events: [], fetchedAt: 0, relayUrls: [] }),
+            cancel: vi.fn(),
+        });
+        const quote = createDescriptor({ targetEventId: target.id, authorHint: target.pubkey, scopeKey: "old-quotes" });
+        const notification = { ...quote, relationKind: "notification", scopeKey: "notifications" };
+        try {
+            await f.resolver.ensureTarget(quote);
+            await flushMicrotasks();
+            expect(f.deletionFetchService.fetchDeletionRequests).toHaveBeenCalledOnce();
+
+            await f.resolver.ensureTarget(notification);
+            f.resolver.invalidateScope(quote.scopeKey);
+            await f.resolver.ensureTarget(notification);
+            await flushMicrotasks();
+            expect(f.deletionFetchService.fetchDeletionRequests).toHaveBeenCalledOnce();
+
+            f.resolver.invalidateScope(notification.scopeKey);
+            await f.resolver.ensureTarget({ ...quote, scopeKey: "new-quotes" });
+            await flushMicrotasks();
+            expect(f.deletionFetchService.fetchDeletionRequests).toHaveBeenCalledTimes(2);
+        } finally {
+            f.resolver.reset();
+        }
+    });
+
+    it("rechecks completed relay deletions on retry and shares a pending check", async () => {
+        const target = finalizeEvent({ kind: 1, content: "original post", tags: [], created_at: 1 }, generateSecretKey());
+        const f = createResolver({ notificationPreviews: true });
+        f.postHistoryRepositoryImpl.getByEventId.mockResolvedValue(createRecord(target));
+        const response = Promise.withResolvers<{ status: "timeout"; events: []; fetchedAt: number; relayUrls: string[] }>();
+        f.deletionFetchService.fetchDeletionRequests.mockReturnValueOnce({ promise: response.promise, cancel: vi.fn() });
+        const descriptor = createDescriptor({ targetEventId: target.id, authorHint: target.pubkey, relationKind: "notification" });
+        try {
+            await f.resolver.ensureTarget(descriptor);
+            await f.resolver.retryTarget(descriptor);
+            await flushMicrotasks();
+            expect(f.deletionFetchService.fetchDeletionRequests).toHaveBeenCalledOnce();
+
+            response.resolve({ status: "timeout", events: [], fetchedAt: 0, relayUrls: [] });
+            await flushMicrotasks();
+            await f.resolver.retryTarget(descriptor);
+            await flushMicrotasks();
+            expect(f.deletionFetchService.fetchDeletionRequests).toHaveBeenCalledTimes(2);
+        } finally {
+            f.resolver.reset();
+        }
+    });
     beforeEach(() => {
         getProfileMock.mockReset();
         getProfileMock.mockResolvedValue(null);
