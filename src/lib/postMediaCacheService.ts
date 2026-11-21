@@ -594,7 +594,11 @@ export class PostMediaCacheService {
                 });
                 if (!this.runtime.locks) await this.prune(cache);
                 const descriptor = this.toCachedMediaDescriptor({ record, mimeType: record.mimeType });
-                if (size !== null) this.writeDescriptorSnapshot(cacheKey, descriptor);
+                if (size === null) {
+                    this.descriptorSnapshotByCacheKey.delete(cacheKey);
+                } else {
+                    this.writeDescriptorSnapshot(cacheKey, descriptor);
+                }
                 return descriptor;
             } catch (error) {
                 this.nextReconcileAt = 0;

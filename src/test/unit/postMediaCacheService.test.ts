@@ -525,8 +525,12 @@ describe('PostMediaCacheService', () => {
             fetch: fetchMock,
         }, 11);
 
+        const url = 'https://example.com/media/cors.webp';
+        await expect(service.getCachedMediaDescriptor(url)).resolves.toBeNull();
+        expect(service.getCachedMediaDescriptorSnapshot(url)).toBeNull();
+
         const descriptor = await service.fetchAndCacheMedia({
-            url: 'https://example.com/media/cors.webp',
+            url,
         });
 
         expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -540,6 +544,9 @@ describe('PostMediaCacheService', () => {
             size: 0,
         });
         expect(cacheStorage.cache.has('https://example.com/media/cors.webp')).toBe(true);
+        expect(service.getCachedMediaDescriptorSnapshot(url)).toBeUndefined();
+        await expect(service.getCachedMediaDescriptor(url)).resolves.toEqual(descriptor);
+        expect(service.getCachedMediaDescriptorSnapshot(url)).toBeUndefined();
 
         const objectUrl = await service.createCachedMediaObjectUrl(
             'https://example.com/media/cors.webp',
