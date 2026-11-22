@@ -2,6 +2,7 @@
     import type { Snippet } from "svelte";
     import type { HTMLAttributes } from "svelte/elements";
     import { _ } from "svelte-i18n";
+    import { resolveAppAssetUrl } from "../lib/appAssetUrl";
     import { canScrollMediaGalleryHorizontally } from "../lib/utils/mediaGalleryWheelUtils";
 
     interface Props {
@@ -10,6 +11,7 @@
         element?: HTMLDivElement;
         class?: string;
         preview?: boolean;
+        dragging?: boolean;
         ondragover?: HTMLAttributes<HTMLDivElement>["ondragover"];
         ondrop?: HTMLAttributes<HTMLDivElement>["ondrop"];
     }
@@ -20,13 +22,14 @@
         element = $bindable(),
         class: className,
         preview = false,
+        dragging = false,
         ondragover,
         ondrop,
     }: Props = $props();
 
     let canPageLeft = $state(false);
     let canPageRight = $state(false);
-    const arrowIcon = `${import.meta.env.BASE_URL}icons/arrow_back_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg`;
+    const arrowIcon = resolveAppAssetUrl("icons/arrow_back_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
 
     function updatePageButtons() {
         canPageLeft = !!element && canScrollMediaGalleryHorizontally(element, -1);
@@ -60,7 +63,7 @@
 </script>
 
 {#if items.length > 0}
-    <div class="gallery-shell">
+    <div class={["gallery-shell", { "gallery-dragging": dragging }]}>
         <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users can scroll the preview.) -->
         <div
             class={["media-gallery", className, { "media-gallery-preview": preview }]}
@@ -185,6 +188,10 @@
 
         .gallery-page-button[aria-disabled="true"] {
             cursor: default;
+        }
+
+        .gallery-dragging .gallery-page-button {
+            visibility: hidden;
         }
 
         .gallery-page-left {

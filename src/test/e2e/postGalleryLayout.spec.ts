@@ -143,6 +143,21 @@ test.describe('post gallery layout', () => {
         await page.getByRole('button', { name: '前のメディアを表示' }).click();
         await expect.poll(() => gallery.evaluate(node => node.scrollLeft)).toBe(0);
 
+        const next = page.getByRole('button', { name: '次のメディアを表示' });
+        await expect(next).toHaveCSS('opacity', '1');
+        const arrowBox = await next.boundingBox();
+        const firstCard = await cards.first().boundingBox();
+        if (!arrowBox || !firstCard) throw new Error('Gallery drag target is missing');
+        const x = arrowBox.x + arrowBox.width / 2;
+        const y = arrowBox.y + arrowBox.height / 2;
+        await page.mouse.move(firstCard.x + 24, firstCard.y + 24);
+        await page.mouse.down();
+        await page.mouse.move(x, y, { steps: 10 });
+        await expect(page.locator('.gallery-page-right')).toHaveCSS('visibility', 'hidden');
+        await page.mouse.move(x + 1, y);
+        await page.mouse.up();
+        await expect(cards.last().locator('img')).toHaveAttribute('alt', 'first image');
+
         await page.setViewportSize({ width: 360, height: 800 });
         await expect(gallery).toHaveCSS('height', '180px');
         await expect(cards.first().locator('img')).toHaveCSS('width', '160px');

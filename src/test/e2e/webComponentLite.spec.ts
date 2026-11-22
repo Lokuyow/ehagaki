@@ -2702,5 +2702,14 @@ for (const gallery of [false, true]) {
         await expect(images).toHaveCount(2);
         await expect(images.nth(0)).toHaveAttribute('src', 'https://media.example/duplicate-1.png');
         await expect(images.nth(1)).toHaveAttribute('src', 'https://media.example/duplicate-2.png');
+        if (gallery) {
+            const arrowIcons = page.locator('ehagaki-composer').locator('.gallery-page-icon');
+            await expect(arrowIcons).toHaveCount(2);
+            const arrowUrl = `${componentOrigin}/host-owned/icons/arrow_back_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg`;
+            for (const icon of await arrowIcons.all()) {
+                await expect(icon).toHaveCSS('mask-image', `url("${arrowUrl}")`);
+            }
+            expect((await page.request.get(arrowUrl)).ok()).toBe(true);
+        }
     });
 }
