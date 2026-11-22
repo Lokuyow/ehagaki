@@ -6,12 +6,14 @@
         onReconnect?: () => void;
         reconnecting?: boolean;
     } = $props();
+
+    const accountHelpNotices = ["no_key", "identity_mismatch", "signing_failed", "passkey_failed", "passkey_prf_unavailable"];
 </script>
 
 {#if nosskey.state.notice && !nosskey.state.visible}
     <div class="notice" role="status">
         <span>{$_(`nosskey.${nosskey.state.notice}`)}</span>
-        {#if nosskey.state.notice === "no_key" || nosskey.state.notice === "identity_mismatch"}
+        {#if accountHelpNotices.includes(nosskey.state.notice)}
             <a href="https://nosskey.app/" target="_blank" rel="noopener noreferrer">{$_("nosskey.open_site")}</a>
         {/if}
         {#if nosskey.state.notice === "identity_mismatch" && onReconnect}

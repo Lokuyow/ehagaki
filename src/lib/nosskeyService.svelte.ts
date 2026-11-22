@@ -11,12 +11,13 @@ type Client = Pick<NosskeyIframeClient, "iframe" | "ready" | "getPublicKey" | "s
 type Theme = "neutral-dark" | "neutral-light";
 type ClientFactory = (container: HTMLElement, theme: Theme) => Promise<Client>;
 type IsCurrent = () => boolean;
+type NosskeyMethod = "getPublicKey" | "signEvent";
 
 const FRAME_URL = "https://nosskey.app/#/iframe";
 const READY_TIMEOUT = 15_000;
 const REQUEST_TIMEOUT = "Nosskey iframe request timed out";
 
-function normalizeError(error: unknown): NosskeyError {
+function normalizeError(error: unknown, method?: NosskeyMethod): NosskeyError {
     if (error instanceof NosskeyError) return error;
     const codes = { NO_KEY: "no_key", USER_REJECTED: "declined", RATE_LIMITED: "rate_limited" } as const;
     if (error instanceof Error && "code" in error) {
@@ -28,8 +29,24 @@ function normalizeError(error: unknown): NosskeyError {
             case "NOT_AUTHORIZED":
             case "INVALID_REQUEST":
             case "UNKNOWN_METHOD":
-            case "INTERNAL":
                 console.warn("nosskey_iframe_request_failed", { code });
+                break;
+            case "INTERNAL": {
+                let reason: NosskeyError["code"] = "connection";
+                if (method === "signEvent") {
+                    // The host forwards the exception message without its name.
+                    // Match known WebAuthn failures without logging arbitrary host text.
+                    reason = "signing_failed";
+                    if (error.message === "PRF secret not available") {
+                        reason = "passkey_prf_unavailable";
+                    } else if (error.message === "Authentication failed"
+                        || error.message.startsWith("The operation either timed out or was not allowed.")) {
+                        reason = "passkey_failed";
+                    }
+                }
+                console.warn("nosskey_iframe_request_failed", { code, reason });
+                return new NosskeyError(reason);
+            }
         }
         return new NosskeyError("connection");
     }
@@ -146,13 +163,13 @@ export function createNosskeyService(
         return loading;
     }
 
-    function report(error: unknown): NosskeyError {
-        const normalized = normalizeError(error);
+    function report(error: unknown, method?: NosskeyMethod): NosskeyError {
+        const normalized = normalizeError(error, method);
         if (normalized.code !== "cancelled") state.notice = normalized.code;
         return normalized;
     }
 
-    function request<T>(isCurrent: IsCurrent, run: (instance: Client) => Promise<T>): Promise<T> {
+    function request<T>(method: NosskeyMethod, isCurrent: IsCurrent, run: (instance: Client) => Promise<T>): Promise<T> {
         state.pending++;
         const generation = frameGeneration;
         const current = () => generation === frameGeneration && isCurrent();
@@ -169,7 +186,7 @@ export function createNosskeyService(
             return value;
         }).catch((error: unknown) => {
             if (!current()) throw new NosskeyError("cancelled");
-            throw report(error);
+            throw report(error, method);
         }).finally(() => { state.pending--; });
         const waitForHidden = () => {
             if (client?.iframe.style.display === "none" || !client) return;
@@ -183,7 +200,7 @@ export function createNosskeyService(
     }
 
     function readPublicKey(isCurrent: IsCurrent, expected?: string): Promise<string> {
-        return request(isCurrent, async (instance) => {
+        return request("getPublicKey", isCurrent, async (instance) => {
             const pubkey = await instance.getPublicKey();
             if (!isLowerHex64(pubkey)) throw new NosskeyError("invalid_result");
             if (expected && pubkey !== expected) throw new NosskeyError("identity_mismatch");
@@ -194,7 +211,7 @@ export function createNosskeyService(
     function signer(pubkey: string, isCurrent: IsCurrent) {
         return {
             getPublicKey: async () => pubkey,
-            signEvent: (event: EventTemplate) => request(isCurrent, async (instance) => {
+            signEvent: (event: EventTemplate) => request("signEvent", isCurrent, async (instance) => {
                 if (event.kind === 22242) throw new NosskeyError("unavailable");
                 const template = {
                     kind: event.kind,

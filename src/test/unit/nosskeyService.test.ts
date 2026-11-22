@@ -55,6 +55,28 @@ describe("Nosskey requests", () => {
         dispose();
     });
 
+    it.each([
+        ["PRF secret not available", "passkey_prf_unavailable"],
+        ["Authentication failed", "passkey_failed"],
+        ["The operation either timed out or was not allowed. See: https://www.w3.org/TR/webauthn-2/#sctn-privacy-considerations-client.", "passkey_failed"],
+        ["Unrecognized host diagnostic", "signing_failed"],
+    ])("reports a safe signing error for a host INTERNAL response (%s)", async (message, reason) => {
+        const { service, client, dispose } = setup();
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        client.signEvent.mockRejectedValueOnce(Object.assign(new Error(message), { code: "INTERNAL" }));
+
+        try {
+            await expect(service.signer(owner, () => true).signEvent(template)).rejects.toMatchObject({
+                code: reason, message: `nosskey.${reason}`,
+            });
+            expect(service.state.notice).toBe(reason);
+            expect(warn).toHaveBeenCalledExactlyOnceWith("nosskey_iframe_request_failed", { code: "INTERNAL", reason });
+        } finally {
+            warn.mockRestore();
+            dispose();
+        }
+    });
+
     it("keeps an approval valid across metadata updates and invalidates same-account re-login", () => {
         try {
             setNosskeyAuth(owner, "npub", "nprofile");
