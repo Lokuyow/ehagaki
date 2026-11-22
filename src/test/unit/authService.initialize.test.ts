@@ -32,6 +32,25 @@ describe('startup active selection persistence', () => {
         vi.useRealTimers();
     });
 
+    it('keeps a selected Nosskey account when running the compatibility build', async () => {
+        const deps = createMockDependencies();
+        const manager = new AccountManager({ localStorage: deps.localStorage! });
+        manager.addAccount(FALLBACK_PUBKEY, 'nsec');
+        manager.addAccount(ACTIVE_PUBKEY, 'nosskey');
+        const service = new AuthService(deps);
+        service.setAccountManager(manager);
+
+        await expect(service.restoreAccount(ACTIVE_PUBKEY, 'nosskey')).resolves.toEqual({
+            hasAuth: false, reason: 'unsupported-account-type',
+        });
+        await expect(service.initializeAuth()).resolves.toEqual({
+            hasAuth: false, activeSelectionPreserved: true, restoreOutcome: 'completed',
+        });
+        expect(manager.getActiveAccountPubkey()).toBe(ACTIVE_PUBKEY);
+        expect(manager.getAccountType(ACTIVE_PUBKEY)).toBe('nosskey');
+        expect((deps.keyManager as MockKeyManager).readStoredKey).not.toHaveBeenCalledWith(FALLBACK_PUBKEY);
+    });
+
     it('preserves active NIP-46 when its session cannot be restored instead of restoring B', async () => {
         const { Nip46Service, nip46Service } = await import('../../lib/nip46Service');
         const loadSession = vi.spyOn(Nip46Service, 'loadSession')
