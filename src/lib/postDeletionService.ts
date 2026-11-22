@@ -1,3 +1,4 @@
+import { nosskeySignerForSession, nosskeyErrorMessage } from "./nosskeyService.svelte";
 import { resolvePostSigner } from "./postSignerResolver";
 import { seckeySigner } from "@rx-nostr/crypto";
 import type { RxNostr } from "rx-nostr";
@@ -265,6 +266,7 @@ export class PostDeletionService {
             pubkey: currentPubkey,
             window: this.deps.window,
             nip46Signer,
+            nosskeySigner: nosskeySignerForSession(this.deps.authStateStore, auth),
             getParentClientSigner: () => this.deps.getParentClientSignerFn(),
             getStoredSecretKey: (pubkey) => this.deps.keyManager.getFromStore()
                 || this.deps.keyManager.loadFromStorage(pubkey),
@@ -301,7 +303,9 @@ export class PostDeletionService {
                 currentPubkey,
             );
             assertSession();
-        } catch {
+        } catch (error) {
+            const nosskeyFailure = nosskeyErrorMessage(error);
+            if (nosskeyFailure) return { success: false, error: nosskeyFailure };
             this.deps.console.error("post_deletion_sign_failed", {
                 stage: 'sign-event',
                 reason: 'unexpected',

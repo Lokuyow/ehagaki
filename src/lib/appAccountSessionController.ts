@@ -44,6 +44,7 @@ function isAccountAuthType(
     type: string | undefined,
 ): type is AccountAuthType {
     return type === 'npub'
+        || type === 'nosskey'
         || type === 'nsec'
         || type === 'nip07'
         || type === 'nip46'

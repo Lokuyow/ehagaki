@@ -1,3 +1,4 @@
+import { nosskeySignerForSession, nosskeyErrorMessage } from "./nosskeyService.svelte";
 import { seckeySigner } from '@rx-nostr/crypto';
 import type { EventTemplate } from 'nostr-tools';
 import { authState } from '../stores/authStore.svelte';
@@ -71,9 +72,12 @@ export class PostReactionService {
             if (auth.type === 'nip07') signer = this.deps.getNip07Signer();
             else if (auth.type === 'nip46') signer = await this.deps.getNip46Signer(pubkey);
             else if (auth.type === 'parentClient') signer = this.deps.getParentClientSigner();
+            else if (auth.type === 'nosskey') signer = nosskeySignerForSession(this.deps.authStateStore, auth, isCurrent);
             else if (auth.type === 'nsec') {
                 const key = this.deps.keyManager.getFromStore() || this.deps.keyManager.loadFromStorage(pubkey);
                 if (key) signer = this.deps.seckeySignerFn(key);
+            } else if (auth.type !== 'none') {
+                auth.type satisfies never;
             }
             assertCurrent();
             if (!signer?.signEvent) throw new Error('nostr_sign_event_not_supported');
@@ -97,6 +101,8 @@ export class PostReactionService {
             catch { result.cacheSaved = false; result.retryInput = input; this.failedSaves.set(event.id, result); }
             return result;
         } catch (error) {
+            const nosskeyFailure = nosskeyErrorMessage(error);
+            if (nosskeyFailure) return { success: false, error: nosskeyFailure };
             return { success: false, error: error instanceof Error && ['reaction_stale', 'invalid_reaction_target', 'invalid_reaction_value', 'nostr_sign_event_not_supported'].includes(error.message) ? error.message : 'post_error' };
         } finally { if (this.pending === operation) this.pending = null; }
     }

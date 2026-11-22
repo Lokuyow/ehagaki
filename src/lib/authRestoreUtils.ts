@@ -88,6 +88,7 @@ export interface ManagedAuthRestoreDependencies extends NsecRestoreDependencies,
     >;
     parentClientSvc: Pick<ParentClientAuthService, 'reconnect' | 'getSessionData' | 'disconnect'>;
     setPublicKeyAuthFn: SetAuthFn;
+    setNosskeyAuthFn?: SetAuthFn;
     isExpectedAccount(pubkeyHex: string, type: AccountAuthType): boolean;
     console: Console;
     keyManager: NsecRestoreDependencies['keyManager'] & {
@@ -374,7 +375,18 @@ const managedRestoreStrategies: Record<
     ) => Promise<ManagedRestoreResult>
 > = {
     npub: restoreManagedPublicKeyAccount,
-    nosskey: async () => ({ hasAuth: false, reason: 'unsupported-account-type' }),
+    nosskey: async (pubkeyHex, deps) => {
+        if (!deps.setNosskeyAuthFn) return { hasAuth: false, reason: 'unsupported-account-type' };
+        if (!isLowerHex64(pubkeyHex)) return { hasAuth: false, reason: 'invalid-requested-pubkey' };
+        if (!deps.isExpectedAccount(pubkeyHex, 'nosskey')) return { hasAuth: false, reason: 'account-record-mismatch' };
+        try {
+            const { npub, nprofile } = createPublicKeyFormats(pubkeyHex);
+            deps.setNosskeyAuthFn(pubkeyHex, npub, nprofile);
+            return { hasAuth: true, pubkeyHex };
+        } catch {
+            return { hasAuth: false, reason: 'runtime-commit-failed' };
+        }
+    },
     nsec: restoreManagedNsecAccount,
     nip07: restoreManagedNip07Account,
     nip46: restoreManagedNip46Account,

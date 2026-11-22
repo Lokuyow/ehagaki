@@ -25,6 +25,7 @@ const playwrightProjects: Project[] = [
     {
         name: 'mobile-chromium',
         testMatch: [
+            '**/nosskeyLogin.spec.ts',
             '**/postHistoryDialog.spec.ts',
             '**/uploadRelaySync.spec.ts',
             '**/postEditorSending.spec.ts',
@@ -39,7 +40,7 @@ const playwrightProjects: Project[] = [
     },
     {
         name: 'android-chromium',
-        testMatch: ['**/webComponentLite.spec.ts', '**/loginLatency.spec.ts'],
+        testMatch: ['**/webComponentLite.spec.ts', '**/loginLatency.spec.ts', '**/nosskeyLogin.spec.ts'],
         grep: /@android-chrome/,
         use: {
             ...devices['Pixel 7'],
@@ -50,6 +51,7 @@ const playwrightProjects: Project[] = [
         name: 'mobile-webkit',
         testMatch: [
             '**/uploadRelaySync.spec.ts',
+            '**/nosskeyLogin.spec.ts',
             '**/composerTargetDialog.spec.ts',
             '**/webComponentEmbed.spec.ts',
             '**/webComponentLite.spec.ts',
@@ -75,7 +77,7 @@ const playwrightProjects: Project[] = [
     },
     {
         name: 'desktop-firefox',
-        testMatch: ['**/notifications.spec.ts', '**/postMediaCacheConcurrency.spec.ts', '**/webComponentEmbed.spec.ts', '**/uploadRelaySync.spec.ts', '**/iframeParentLogin.spec.ts', '**/loginLatency.spec.ts',
+        testMatch: ['**/nosskeyLogin.spec.ts', '**/notifications.spec.ts', '**/postMediaCacheConcurrency.spec.ts', '**/webComponentEmbed.spec.ts', '**/uploadRelaySync.spec.ts', '**/iframeParentLogin.spec.ts', '**/loginLatency.spec.ts',
             '**/gifUpload.spec.ts', '**/webpUpload.spec.ts', '**/avifUpload.spec.ts', '**/relayDeliveryProgress.spec.ts'],
         use: {
             ...devices['Desktop Firefox'],

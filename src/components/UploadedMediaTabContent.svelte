@@ -78,7 +78,7 @@
         current?.destination.nip96ServerUrl, current?.destination.nip96UrlMode].join("\n"));
     const showFeedback = $derived(show && !pending && !deleting && !showNostrBuildHelp
         && !!((current?.error && !current.registration) || (current?.loading && current.loaded) || (mediaNotice && !noticeExpired)));
-    const canAutoLoadMore = $derived(show && authState.value.isAuthenticated && current?.loaded && current.items.length > 0 && current.hasMore
+    const canAutoLoadMore = $derived(authState.value.type !== "nosskey" && show && authState.value.isAuthenticated && current?.loaded && current.items.length > 0 && current.hasMore
         && !current.loading && !current.error && !current.needsRefresh && !deleting && !registering
         && !pending && !showImageFullscreen
         && (lastRequestedPage?.owner !== feedbackOwner || lastRequestedPage.itemCount !== current.items.length));
@@ -145,7 +145,7 @@
     $effect(() => {
         if (!show || initialReadyReported || !onInitialReady || !configurationStarted || management.value.configuring) return;
         if (!authState.value.isAuthenticated || management.value.configurationError || management.value.destinations.length === 0
-            || current?.loaded || current?.items.length || current?.error) {
+            || authState.value.type === "nosskey" || current?.loaded || current?.items.length || current?.error) {
             initialReadyReported = true;
             onInitialReady();
         }
@@ -266,7 +266,8 @@
                 </select>
                 {#if current}
                     <Button shape="square" contentLayout="icon" className="media-refresh-button"
-                        ariaLabel={$_("uploadedMedia.refresh")} title={$_("uploadedMedia.refresh")}
+                        ariaLabel={$_(authState.value.type === "nosskey" && !current.loaded ? "nosskey.load_media" : "uploadedMedia.refresh")}
+                        title={$_(authState.value.type === "nosskey" && !current.loaded ? "nosskey.load_media" : "uploadedMedia.refresh")}
                         onClick={() => { lastRequestedPage = null; activeVideo = null; closeFullscreen(); void management.controller.load(); }} disabled={current.loading || !!current.deletingId || registering}>
                         <span class="svg-icon" aria-hidden="true" style:mask-image={`url("${refreshIconUrl}")`}></span>
                     </Button>

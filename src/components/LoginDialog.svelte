@@ -15,6 +15,7 @@
     } from "../lib/nip46ConnectUiUtils";
     import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
     import Button from "./Button.svelte";
+    import NosskeyNotice from "./NosskeyNotice.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import FloatingMessage from "./FloatingMessage.svelte";
     import InfoPopoverButton from "./InfoPopoverButton.svelte";
@@ -30,6 +31,8 @@
         onClose: () => void;
         onSave: () => Promise<string | undefined> | void;
         onParentClientLogin?: () => Promise<string | undefined>;
+        onNosskeyLogin?: () => Promise<void>;
+        nosskeyBusy?: boolean;
         onNip07Login: () => Promise<string | undefined>;
         onNip46Login: (bunkerUrl: string) => Promise<string | undefined>;
         onNostrConnectStart?: (relays: string[]) => Promise<string | undefined>;
@@ -55,6 +58,8 @@
         onClose,
         onSave,
         onParentClientLogin,
+        onNosskeyLogin,
+        nosskeyBusy = false,
         onNip07Login,
         onNip46Login,
         onNostrConnectStart,
@@ -76,6 +81,7 @@
 
     // ダイアログを閉じるハンドラ
     function handleClose() {
+        if (nosskeyBusy) return false;
         show = false;
         onClose?.();
     }
@@ -637,6 +643,8 @@
 <DialogWrapper
     bind:open={show}
     onOpenChange={(open) => !open && handleClose()}
+    onInteractOutside={(event) => { if (nosskeyBusy) event.preventDefault(); }}
+    onEscapeKeydown={(event) => { if (nosskeyBusy) event.preventDefault(); }}
     title={isAddAccountMode
         ? $_("loginDialog.add_account_title")
         : localNsecAuthEnabled
@@ -650,6 +658,7 @@
     contentClass="login-dialog"
     footerVariant="close-button"
 >
+    <fieldset class="existing-login-methods" disabled={nosskeyBusy}>
     {#if isParentClientEnabled}
         <div class="parent-client-section">
             <Button
@@ -1160,12 +1169,25 @@
         </div>
     {/if}
 
+    </fieldset>
+    {#if onNosskeyLogin}
+        <section class="nosskey-login-section" aria-label="Nosskey">
+            <Button onClick={() => void onNosskeyLogin?.()}
+                disabled={nosskeyBusy || isLoadingNip07 || isLoadingNip46 || isSavingSecretKey}>
+                {$_(nosskeyBusy ? "nosskey.preparing" : "nosskey.login")}
+            </Button>
+            <p>{$_("nosskey.login_hint")}</p>
+            <NosskeyNotice />
+        </section>
+    {/if}
+
     {#snippet footer()}
         <Dialog.Close>
             {#snippet child({ props })}
                 <Button
                     {...props}
                     className="modal-close"
+                    disabled={nosskeyBusy}
                     shape="square"
                     ariaLabel={$_("global.close")}
                 >
@@ -1181,6 +1203,10 @@
 </FloatingMessage>
 
 <style>
+    .existing-login-methods { display: contents; }
+    .nosskey-login-section { width: 100%; margin-top: 12px; }
+    .nosskey-login-section p { font-size: 0.9rem; }
+
     .xmark-icon {
         mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }

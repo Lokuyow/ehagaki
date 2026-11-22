@@ -62,6 +62,10 @@ export function setNsecAuth(pubkey: string, npub: string, nprofile: string): voi
     updateAuthState({ type: 'nsec', pubkey, npub, nprofile, isValid: true });
 }
 
+export function setNosskeyAuth(pubkey: string, npub: string, nprofile: string): void {
+    updateAuthState({ type: 'nosskey', pubkey, npub, nprofile, isValid: true });
+}
+
 export function setNip07Auth(pubkey: string, npub: string, nprofile: string): void {
     if (!pubkey || !npub || !nprofile) {
         console.warn('setNip07Auth: All parameters are required');

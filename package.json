@@ -76,6 +76,7 @@
     "ipaddr.js": "^2.5.0",
     "mediabunny": "1.62.1",
     "nip07-awaiter": "^1.1.0",
+    "nosskey-iframe": "0.2.1",
     "nostr-tools": "^2.25.2",
     "nostr-zap": "^1.3.2",
     "nostr-zap-view": "^1.4.6",

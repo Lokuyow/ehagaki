@@ -46,6 +46,31 @@ describe('AuthService.authenticateWithPublicKey', () => {
         expect(deps.setNip07Auth).not.toHaveBeenCalled();
     });
 
+    it.each(['npub', 'nip07'] as const)('keeps an existing %s account when Nosskey returns its key', type => {
+        const { accounts, service } = setup();
+        const active = 'ab'.repeat(32);
+        accounts.addAccount(pubkeyHex, type);
+        accounts.addAccount(active, 'npub');
+        expect(service.authenticateWithNosskey(pubkeyHex)).toEqual({ success: false, error: 'nosskey.account_conflict' });
+        expect(accounts.getAccountType(pubkeyHex)).toBe(type);
+        expect(accounts.getActiveAccountPubkey()).toBe(active);
+    });
+
+    it('rolls back the account list when Nosskey active selection cannot be saved', () => {
+        const { accounts, deps, service } = setup();
+        const active = 'ab'.repeat(32);
+        accounts.addAccount(active, 'npub');
+        const storage = deps.localStorage!;
+        const setItem = storage.setItem.bind(storage);
+        vi.spyOn(storage, 'setItem').mockImplementation((key, value) => {
+            if (key === STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT) throw new Error('write failed');
+            setItem(key, value);
+        });
+        expect(service.authenticateWithNosskey(pubkeyHex)).toEqual({ success: false, error: 'nosskey.storage' });
+        expect(accounts.getAccountType(pubkeyHex)).toBeNull();
+        expect(accounts.getActiveAccountPubkey()).toBe(active);
+    });
+
     it('rejects malformed pointers and preserves an existing signing account', () => {
         const { accounts, deps, service } = setup();
         const other = 'ab'.repeat(32);
