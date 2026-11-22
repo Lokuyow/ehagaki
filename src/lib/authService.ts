@@ -15,6 +15,8 @@ import {
     type RestoreResult,
 } from './authRestoreUtils';
 import { createAuthServiceRuntime, type AuthServiceRuntime } from './authServiceRuntime';
+import { createPublicKeyFormats, parsePublicKeyLogin } from './utils/nostrUtils';
+import { RelayConfigUtils } from './relayConfigUtils';
 import { ParentClientAuthService, type ParentClientConnectOptions } from './parentClientAuthService';
 import { resetManagedAccountData } from './accountDataReset';
 import { Nip46Service, type Nip46PendingNostrConnectSession } from './nip46Service';
@@ -53,6 +55,34 @@ export class AuthService {
 
     getNip07Service() {
         return this.runtime.nip07Service;
+    }
+
+    authenticateWithPublicKey(input: string): AuthResult & { profileRelayHints?: string[] } {
+        const accountManager = this.accountManager;
+        if (!this.runtime.localNsecAuthEnabled || !accountManager) {
+            return { success: false, error: 'local-nsec-auth-disabled' };
+        }
+        const identity = parsePublicKeyLogin(input);
+        if (!identity) return { success: false, error: 'invalid_public_key' };
+
+        const { pubkeyHex } = identity;
+        const existingType = accountManager.getAccountType(pubkeyHex);
+        if (existingType && existingType !== 'npub') {
+            return { success: false, error: 'public_key_account_already_registered' };
+        }
+        try {
+            const { npub, nprofile } = createPublicKeyFormats(pubkeyHex);
+            const profileRelayHints = RelayConfigUtils.sanitizeExternalRelayUrls(identity.relayHints, {
+                limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
+            });
+            accountManager.addAccount(pubkeyHex, 'npub');
+            this.runtime.publicKeyState.setNsec('');
+            this.runtime.setPublicKeyAuthFn(pubkeyHex, npub, nprofile);
+            return { success: true, pubkeyHex, profileRelayHints };
+        } catch {
+            this.runtime.console.error('公開鍵ログインの保存に失敗しました');
+            return { success: false, error: 'error_saving' };
+        }
     }
 
     // --- nsec認証 ---
@@ -375,6 +405,7 @@ export class AuthService {
                 });
                 const migrationInfrastructureFailure = ![
                     'legacy-credential-missing',
+                    'public-key-account-preserved',
                     'migrated',
                     'already-migrated',
                 ].includes(migrationResult.status);
@@ -461,14 +492,14 @@ export class AuthService {
      */
     async restoreAccount(
         pubkeyHex: string,
-        type: 'nsec' | 'nip07' | 'nip46' | 'parentClient',
+        type: StoredAccount['type'],
         options: {
             nip07Identity?: PublicKeyData;
             nip07IdentityReadTimeoutMs?: number;
             expectedAccounts?: Array<Pick<StoredAccount, 'pubkeyHex' | 'type'>>;
         } = {},
     ): Promise<ManagedRestoreResult> {
-        if (type === 'nsec' && !this.runtime.localNsecAuthEnabled) {
+        if ((type === 'nsec' || type === 'npub') && !this.runtime.localNsecAuthEnabled) {
             return { hasAuth: false, reason: 'local-nsec-auth-disabled' };
         }
 

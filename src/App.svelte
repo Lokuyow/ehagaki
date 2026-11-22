@@ -472,6 +472,8 @@
   let secretKey = $state("");
 
   let isAuthenticated = $derived(authState.value?.isAuthenticated === true);
+  const isPublicKeyLogin = $derived(authState.value.type === "npub");
+  const draftPubkeyHex = $derived(isPublicKeyLogin ? null : authState.value.pubkey || null);
   let isAuthInitialized = $derived(authState.value?.isInitialized ?? false);
 
   let rxNostr: NostrSessionBootstrap["rxNostr"] | undefined = $state();
@@ -511,7 +513,7 @@
     runtime: NostrSessionBootstrap["rxNostr"];
   } | null>(null);
   let pendingParentClientGeneration = $state<number | null>(null);
-  let hasPostingCapability = $derived(isAuthenticated
+  let hasPostingCapability = $derived(isAuthenticated && !isPublicKeyLogin
     && pendingParentClientGeneration !== authTransitionGeneration
     && readyAuthSession?.pubkeyHex === authState.value.pubkey
     && readyAuthSession.authType === authState.value.type
@@ -710,6 +712,8 @@
     disposeNostrSession,
     handlePostAuth,
     cancelPendingNip46Auth,
+    authenticateWithPublicKey: (input) => authService.authenticateWithPublicKey(input),
+    disconnectParentClient: () => parentClientAuthService.disconnect(false),
     authenticateWithNsec: (targetSecretKey) =>
       authService.authenticateWithNsec(targetSecretKey),
     handleSuccessfulAuthResult,
@@ -1000,7 +1004,7 @@
     getChannelContextState: () => channelContextState.value,
     getChannelContextProvenance: () => channelContextProvenanceState.value,
     getReplyQuoteState: () => replyQuoteState.value,
-    getPubkeyHex: () => authState.value?.pubkey ?? null,
+    getPubkeyHex: () => draftPubkeyHex,
     saveDraft,
     saveDraftWithReplaceOldest,
     openDraftLimitConfirm: () => {
@@ -1102,7 +1106,7 @@
     const auth = authState.value;
     const runtime = rxNostr;
     const generation = authTransitionGeneration;
-    const canUseLocalRelay = !isSwitchingAccount && !isLoggingOut;
+    const canUseLocalRelay = !isSwitchingAccount && !isLoggingOut && auth.type !== "npub";
     return postHistoryLocalRelayService.configureSession({
       ownerPubkeyHex: canUseLocalRelay && auth.isAuthenticated && runtime ? auth.pubkey : null,
       url: settingsStore.localRelayUrl,
@@ -1202,6 +1206,7 @@
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     await runInitializeNostrSession({
       pubkeyHex,
+      allowRelayAuth: !isPublicKeyLogin,
       relayListUpdatedStore: {
         value: relayListUpdatedStore.value,
         set: (value: number) => relayListUpdatedStore.set(value),
@@ -1223,7 +1228,7 @@
    */
   async function handlePostAuth(
     pubkeyHex: string,
-    options: { generation?: number } = {},
+    options: { generation?: number; profileRelayHints?: string[] } = {},
   ): Promise<void> {
     const generation = options.generation ?? authTransitionGeneration;
     const authType = authState.value.type;
@@ -1241,6 +1246,8 @@
     relayProfileService = undefined;
     const session = await completePostAuthBootstrap({
       pubkeyHex,
+      allowRelayAuth: authType !== "npub",
+      profileRelayHints: options.profileRelayHints,
       closeAuthDialogs: () => {
         nip46AuthFlowCoordinator.resetPendingState();
         loginDialog.close();
@@ -1291,7 +1298,7 @@
   }
 
   function syncParentClientAccount(pubkeyHex: string): void {
-    if (accountManager.hasAccount(pubkeyHex)) {
+    if (accountManager.hasAccount(pubkeyHex) && accountManager.getAccountType(pubkeyHex) !== "npub") {
       accountManager.setActiveAccount(pubkeyHex);
       return;
     }
@@ -1603,7 +1610,7 @@
   // --- 秘密鍵認証・保存処理 ---
   async function saveSecretKey(): Promise<string | undefined> {
     beginAuthTransition();
-    return appAuthLoginController.saveSecretKey(secretKey);
+    return appAuthLoginController.saveSecretKey(secretKey, authTransitionGeneration);
   }
 
   /**
@@ -2176,7 +2183,7 @@
                   <PostComponent
                     bind:this={postComponentRef}
                     {rxNostr}
-                    hasStoredKey={isAuthenticated}
+                    hasStoredKey={isAuthenticated && !isPublicKeyLogin}
                     hasPostingCapability={hasPostingCapability}
                     {isSwitchingAccount}
                     profilePending={profileFetchPending}
@@ -2254,7 +2261,7 @@
         {customEmojiPickerOpen}
         hasPostingCapability={hasPostingCapability}
         mediaEnabled={true}
-        customEmojiEnabled={isAuthenticated}
+        customEmojiEnabled={isAuthenticated && !isPublicKeyLogin}
         onCustomEmojiPickerOpenChange={(open) => (customEmojiPickerOpen = open)}
       />
       <FooterComponent
@@ -2417,11 +2424,11 @@
           onSaveDraft={handleSaveDraft}
           subscribeToDraftSaveCompleted={draftComposerController.subscribeToDraftSaveCompleted}
           canSaveDraft={!reactionComposerState.value && (editorState.canPost || hasDraftComposerContext)}
-          pubkeyHex={authState.value?.pubkey ?? null}
+          pubkeyHex={draftPubkeyHex}
         />
       {/if}
       {#if showNotificationDialogStore.value && NotificationDialogComponent}
-        <NotificationDialogComponent bind:this={notificationDialogRef} show={true}
+        <NotificationDialogComponent bind:this={notificationDialogRef} show={true} readOnly={isPublicKeyLogin}
           pubkeyHex={authState.value?.pubkey ?? null} {rxNostr} relayConfig={relayConfigStore.value}
           returnFocus={notificationReturnFocus} onClose={notificationDialog.close}
           onLoadFailure={handleAppComponentLoadFailure} isStaleAssetReloadRequired={() => staleAssetReloadRequired}
@@ -2432,16 +2439,16 @@
           reconcileDirectReplyCandidates={postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates} />
       {/if}
       {#if showPostHistoryDialogStore.value && PostHistoryDialogComponent}
-        <PostHistoryDialogComponent bind:this={postHistoryDialogRef}
+        <PostHistoryDialogComponent bind:this={postHistoryDialogRef} readOnly={isPublicKeyLogin}
           returnFocus={historyReturnFocus} onLoadFailure={handleAppComponentLoadFailure} isStaleAssetReloadRequired={() => staleAssetReloadRequired}
-          onRepostPost={repostOperation.execute} repostPending={repostOperation.pending}
+          onRepostPost={isPublicKeyLogin ? undefined : repostOperation.execute} repostPending={repostOperation.pending}
           repostSaveFailure={repostOperation.saveFailure}
           onRetryRepostSave={repostOperation.retrySave}
           show={showPostHistoryDialogStore.value}
           onClose={postHistoryDialog.close}
-          onReplyPost={handlePostHistoryReply}
-          onReactionPost={handlePostHistoryReaction}
-          onQuotePost={handlePostHistoryQuote}
+          onReplyPost={isPublicKeyLogin ? undefined : handlePostHistoryReply}
+          onReactionPost={isPublicKeyLogin ? undefined : handlePostHistoryReaction}
+          onQuotePost={isPublicKeyLogin ? undefined : handlePostHistoryQuote}
           pubkeyHex={authState.value?.pubkey ?? null}
           {rxNostr}
           relayConfig={relayConfigStore.value}
@@ -2454,6 +2461,7 @@
       {/if}
       {#if showComposerTargetDialogStore.value && ComposerTargetDialogComponent}
         <ComposerTargetDialogComponent
+          readOnly={isPublicKeyLogin}
           onRepostPost={repostOperation.execute} repostPending={repostOperation.pending}
           repostSaveFailure={repostOperation.saveFailure}
           onRetryRepostSave={repostOperation.retrySave}

@@ -60,11 +60,13 @@
             onToggle={() => preview.togglePostExpanded(previewId)} />
     {/snippet}
     {#snippet footerActions()}
-        <PostHistoryPostActions {post} onReplyPost={!post.deletedAt && event.kind !== 42 ? callbacks.onReplyPost : undefined}
-            onQuotePost={!post.deletedAt && event.kind !== 42 ? callbacks.onQuotePost : undefined} onReactionPost={callbacks.onReactionPost} />
+        {#if !callbacks.readOnly}
+            <PostHistoryPostActions {post} onReplyPost={!post.deletedAt && event.kind !== 42 ? callbacks.onReplyPost : undefined}
+                onQuotePost={!post.deletedAt && event.kind !== 42 ? callbacks.onQuotePost : undefined} onReactionPost={callbacks.onReactionPost} />
+        {/if}
     {/snippet}
     {#snippet footerMenu()}
-        <PostEventMenu {post} owner={callbacks.pubkeyHex} rxNostr={callbacks.rxNostr} relayConfig={callbacks.relayConfig}
+        <PostEventMenu {post} readOnly={callbacks.readOnly} owner={callbacks.pubkeyHex} rxNostr={callbacks.rxNostr} relayConfig={callbacks.relayConfig}
             operations={interactions.operations} active={interactions.active} onDeleted={interactions.deleted}
             onRepost={callbacks.onRepostPost} repostPending={callbacks.repostPending} />
     {/snippet}

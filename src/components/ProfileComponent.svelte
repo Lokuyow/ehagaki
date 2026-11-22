@@ -150,6 +150,10 @@
                 </div>
             </div>
 
+            {#if auth.type === "npub"}
+                <span class="account-type-badge public-key-status">{$_("profileDialog.public_key_login_active")}</span>
+            {/if}
+
             <div class="nostr-ids">
                 <div class="profile-info-label">
                     {$_("profileDialog.npub")}
@@ -299,6 +303,8 @@
                                                 {$_(
                                                     "profileDialog.login_method_nip46",
                                                 )}
+                                            {:else if account.type === "npub"}
+                                                {$_("profileDialog.login_method_public_key")}
                                             {:else if account.type === "parentClient"}
                                                 {$_(
                                                     "profileDialog.login_method_parent_client",
@@ -645,6 +651,10 @@
         mask-image: url("/icons/logout_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         width: 26px;
         height: 26px;
+    }
+
+    .public-key-status {
+        align-self: flex-start;
     }
 
     .recovery-section {

@@ -28,6 +28,7 @@ export function createMockDependencies(): AuthServiceDependencies {
             warn: vi.fn(),
         } as unknown as Console,
         setNsecAuth: vi.fn(),
+        setPublicKeyAuth: vi.fn(),
         setNip07Auth: vi.fn(),
         setNip46Auth: vi.fn(),
         setParentClientAuth: vi.fn(),

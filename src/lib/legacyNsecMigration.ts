@@ -11,6 +11,7 @@ type StoredKeyRemoveResult = { status: 'removed' } | { status: 'error' };
 export type LegacyNsecMigrationResult =
     | { status: 'legacy-credential-missing' }
     | { status: 'legacy-credential-read-failed' }
+    | { status: 'public-key-account-preserved' }
     | { status: 'credential-invalid' }
     | { status: 'identity-derivation-failed' }
     | { status: 'destination-credential-read-failed' }
@@ -64,6 +65,7 @@ const ACCOUNT_TYPES: readonly StoredAccount['type'][] = [
     'nip07',
     'nip46',
     'parentClient',
+    'npub',
 ];
 
 function isStoredAccount(value: unknown): value is StoredAccount {
@@ -217,6 +219,10 @@ export function migrateLegacyNsec({
     }
     if (!derived.hex) {
         return { status: 'identity-derivation-failed' };
+    }
+
+    if (snapshot.accounts.some(account => account.pubkeyHex === derived.hex && account.type === 'npub')) {
+        return { status: 'public-key-account-preserved' };
     }
 
     let changed = false;

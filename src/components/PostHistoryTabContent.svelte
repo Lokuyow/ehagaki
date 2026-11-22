@@ -130,6 +130,7 @@
         sessionOpen = undefined,
         onInitialReady = undefined,
         onClose,
+        readOnly = false,
         onReplyPost = undefined,
         onQuotePost = undefined,
         onReactionPost = undefined,
@@ -149,6 +150,7 @@
 
     let suspended = $state(false);
     let show = $derived(active && !suspended);
+    const showFooterTimestampMenu = $derived(readOnly || Boolean(onReplyPost || onQuotePost));
     let activationEpoch = 0;
     let destroyed = false;
     let closing = false;
@@ -280,7 +282,7 @@
             onRepost: canRepost(post) ? () => void handleRepost(post) : undefined,
             repostPending,
             copyFailed: copyNeventUi.copyState[post.eventId] === "failed",
-            showBroadcast: canBroadcastPost(post),
+            showBroadcast: !readOnly && canBroadcastPost(post),
             broadcastSending: isBroadcastSending(post),
             showDelete: canDeletePost(post),
             deletionSending: isDeletionSending(post),
@@ -1754,7 +1756,7 @@
     }
 
     function canDeletePost(post: PostHistoryRecord): boolean {
-        return canRequestPostDeletion(post, pubkeyHex);
+        return !readOnly && canRequestPostDeletion(post, pubkeyHex);
     }
 
     function openDeleteConfirm(post: PostHistoryRecord): void {
@@ -2575,12 +2577,12 @@
                                         emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                                         emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} />
                                 {:else}
-                                {#if post.kind === 42 || post.deletedAt || hasDeletionFailed(post) || !(onReplyPost || onQuotePost)}
+                                {#if post.kind === 42 || post.deletedAt || hasDeletionFailed(post) || !showFooterTimestampMenu}
                                     <PostHistoryRecordHeader
                                         {post}
                                         channelText={post.kind === 42 ? channelDisplay.getChannelText(post, $_) : null}
                                         deletionFailed={hasDeletionFailed(post)}
-                                        showTimestampMenu={!(onReplyPost || onQuotePost)}
+                                        showTimestampMenu={!showFooterTimestampMenu}
                                         menuOpen={postActionUi.isPostMenuOpen(post.eventId)}
                                         onMenuOpenChange={(open) => setExclusivePostMenuOpen(post.eventId, open)}
                                         showSurroundingPostsAction={history.isSearchMode}
@@ -2690,6 +2692,7 @@
                                     </div>
                                     <PostHistoryRecordFooter
                                         {post}
+                                        showTimestampMenu={showFooterTimestampMenu}
                                         {graphState}
                                         emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                                         emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
@@ -3053,7 +3056,7 @@
 
 
 {#snippet repostRecordMenu(record: PostHistoryRecord, menuKey: string)}
-    <PostEventMenu open={postActionUi.isPostMenuOpen(menuKey)} onOpenChange={(open) => setExclusivePostMenuOpen(menuKey, open)} post={record} owner={pubkeyHex} {rxNostr} {relayConfig} operations={eventOperations} active={() => show && !destroyed}
+    <PostEventMenu {readOnly} open={postActionUi.isPostMenuOpen(menuKey)} onOpenChange={(open) => setExclusivePostMenuOpen(menuKey, open)} post={record} owner={pubkeyHex} {rxNostr} {relayConfig} operations={eventOperations} active={() => show && !destroyed}
         triggerLabel={$_(isRepostOuterKind(record.kind) ? "repost.outerActions" : "repost.targetActions")} onDelete={() => openDeleteConfirm(record)} onRequestRepost={() => void handleRepost(record)} onRefresh={() => postHistoryThreadGraph.refreshRelatedEvents(record)}
         onBroadcastPointerDown={(event) => captureBroadcastPointerPosition(record, event)}
         onBroadcastPost={(event) => void handleBroadcastPost(record, event)}

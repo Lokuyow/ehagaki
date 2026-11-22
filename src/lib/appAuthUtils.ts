@@ -1,14 +1,12 @@
 import { cancelRelayOperations } from "./relay/publish";
 import type { RxNostr } from "rx-nostr";
 import type { RestoreResult } from './authRestoreUtils';
-import type { AuthResult } from './types';
+import type { AccountAuthType, AuthResult } from './types';
 import { AUTH_SUPERSEDED_ERROR } from './constants';
 
 type DisposableSession = {
     dispose: () => void;
 };
-
-type ManagedAccountType = 'nsec' | 'nip07' | 'nip46' | 'parentClient';
 
 interface Nip46RuntimeController {
     disconnect: () => Promise<void>;
@@ -22,7 +20,7 @@ export interface Nip07LoginDependencies {
     clearNip46RuntimeForAuthChange: (params: {
         currentAuthType?: string;
         currentPubkeyHex?: string | null;
-        nextAuthType: ManagedAccountType;
+        nextAuthType: AccountAuthType;
         nextPubkeyHex?: string | null;
         nip46Service: Nip46RuntimeController;
     }) => Promise<void>;
@@ -78,7 +76,7 @@ export async function handleSuccessfulAuthResult(
 export async function clearNip46RuntimeForAuthChange(params: {
     currentAuthType?: string;
     currentPubkeyHex?: string | null;
-    nextAuthType: ManagedAccountType;
+    nextAuthType: AccountAuthType;
     nextPubkeyHex?: string | null;
     nip46Service: Nip46RuntimeController;
 }): Promise<void> {
@@ -191,10 +189,10 @@ export type ManagedAccountSessionRestoreResult =
 
 export async function restoreManagedAccountSession(params: {
     requestedPubkeyHex: string;
-    accountType: ManagedAccountType;
+    accountType: AccountAuthType;
     restoreAccount: (
         pubkeyHex: string,
-        type: ManagedAccountType,
+        type: AccountAuthType,
     ) => Promise<RestoreResult>;
     handlePostAuth: (pubkeyHex: string) => Promise<void>;
 }): Promise<ManagedAccountSessionRestoreResult> {

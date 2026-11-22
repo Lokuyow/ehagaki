@@ -22,11 +22,11 @@
     import ConfirmDialog from './ConfirmDialog.svelte';
     import FloatingMessage from './FloatingMessage.svelte';
     import { DropdownMenu } from 'bits-ui';
-    interface Props { post: PostHistoryRecord; owner?: string | null; rxNostr?: RxNostr; relayConfig?: import('../lib/types').RelayConfig | null;
+    interface Props { readOnly?: boolean; post: PostHistoryRecord; owner?: string | null; rxNostr?: RxNostr; relayConfig?: import('../lib/types').RelayConfig | null;
         operations: ReturnType<typeof usePostEventOperations>; active?: () => boolean; onDeleted?: (id: string, deletedAt: number, deletionEventId: string) => void;
         open?: boolean; onOpenChange?: (open: boolean) => void; triggerLabel?: string; onDelete?: () => void; onRequestRepost?: () => void; onRefresh?: () => Promise<void>; onRepost?: RepostPostHandler; repostPending?: boolean;
         onBroadcastPointerDown?: (event: PointerEvent) => void; onBroadcastPost?: (event: Event) => void; }
-    let { post, owner, rxNostr, relayConfig, operations, active = () => true, onDeleted, open = false, onOpenChange, triggerLabel, onDelete, onRequestRepost, onRefresh, onRepost, repostPending = false,
+    let { readOnly = false, post, owner, rxNostr, relayConfig, operations, active = () => true, onDeleted, open = false, onOpenChange, triggerLabel, onDelete, onRequestRepost, onRefresh, onRepost, repostPending = false,
         onBroadcastPointerDown, onBroadcastPost }: Props = $props();
     let disposed = false;
     const isActive = () => !disposed && active();
@@ -52,12 +52,12 @@
     {#snippet items()}
         {#if onRefresh}<DropdownMenu.Item class="menu-action-button" disabled={refreshing} onSelect={() => void refresh()}>{$_('postHistory.checkRelatedEvents')}</DropdownMenu.Item>{/if}
         <PostHistoryRecordActionItems order="standard" copyFailed={copy.copyState[post.eventId] === 'failed'}
-            showBroadcast={!!resolveBroadcastEvent(post)} broadcastSending={operations.isPending(`broadcast:${post.eventId}`)}
-            showDelete={canRequestPostDeletion(post, owner)} showDeleteSeparator={true} deletionSending={deletePending}
+            showBroadcast={!readOnly && !!resolveBroadcastEvent(post)} broadcastSending={operations.isPending(`broadcast:${post.eventId}`)}
+            showDelete={!readOnly && canRequestPostDeletion(post, owner)} showDeleteSeparator={true} deletionSending={deletePending}
             onCopyPointerDown={(event) => { copyMessageMounted = true; copy.captureCopyPointerPosition(post, event); }} onCopyNevent={(event) => { copyMessageMounted = true; void copy.handleCopyNevent(post, event); }}
             externalClientLabel={externalLabel ? $_('postHistory.openInExternalClient', { values: { client: externalLabel } }) : $_('postHistory.openInExternalClientFallback')}
             onOpenExternalClient={() => { const url = buildPostHistoryExternalClientUrl(post, preference, writeRelaysStore.value); if (url) window.open(url, '_blank', 'noopener,noreferrer'); }}
-            onShowRawJson={() => raw = true} onRepost={onRepost && !post.deletedAt && isRepostTargetKind(post.kind) && isPostHistoryRawEventConsistent(post.rawEvent, post) ? () => void repost() : undefined} {repostPending}
+            onShowRawJson={() => raw = true} onRepost={!readOnly && onRepost && !post.deletedAt && isRepostTargetKind(post.kind) && isPostHistoryRawEventConsistent(post.rawEvent, post) ? () => void repost() : undefined} {repostPending}
             onBroadcastPointerDown={onBroadcastPointerDown ?? (() => {})}
             onBroadcastPost={onBroadcastPost ?? (() => void broadcast())}
             onOpenDeleteConfirm={() => { if (onDelete) onDelete(); else confirm = true; }} />

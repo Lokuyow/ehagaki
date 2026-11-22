@@ -5,6 +5,7 @@ import { resolveUploadDestinationForUse } from "../lib/upload/uploadDestinationR
 import { fetchUploadRelayLists, publishUploadRelayLists, type RelaySyncResults } from "../lib/upload/relayUploadDestinationSync";
 import { createUploadAbortError } from "../lib/upload/uploadOperation";
 import { NostrAuthService } from "../lib/nostrAuthService";
+import { getCurrentUploadIdentity } from "../lib/upload/resolveCurrentUploadDestination";
 import { authState } from "./authStore.svelte";
 import type { RxNostr } from "rx-nostr";
 import { assertActiveSession } from "../lib/sessionLiveness";
@@ -254,10 +255,7 @@ export const uploadDestinationStore = {
     async test(destination: UploadDestination): Promise<UploadConnectionTestResult> {
         const scope = beginConnectionTest(destination.pubkeyHex);
         const revision = configurationRevision;
-        const result = await testUploadDestinationConnection(resolveUploadDestinationForUse(destination, {
-            pubkeyHex: authState.value.pubkey || null,
-            npub: authState.value.npub || null,
-        }));
+        const result = await testUploadDestinationConnection(resolveUploadDestinationForUse(destination, getCurrentUploadIdentity()));
         if (!isCurrentConnectionTest(scope)) return result;
 
         uploadDestinationState.testResults = {

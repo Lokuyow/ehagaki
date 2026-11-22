@@ -50,6 +50,10 @@ export function clearAuthState(preserveInitialized: boolean = true): void {
     secretKey = null;
 }
 
+export function setPublicKeyAuth(pubkey: string, npub: string, nprofile: string): void {
+    updateAuthState({ type: 'npub', pubkey, npub, nprofile, isValid: true });
+}
+
 export function setNsecAuth(pubkey: string, npub: string, nprofile: string): void {
     if (!pubkey || !npub || !nprofile) {
         console.warn('setNsecAuth: All parameters are required');

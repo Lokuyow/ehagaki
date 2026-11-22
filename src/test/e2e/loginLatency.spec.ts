@@ -26,6 +26,8 @@ async function setup(page: Page, options: {
     mentions?: boolean;
     mentionDisplayName?: string;
     mentionPicture?: string;
+    publicKeyLogin?: boolean;
+    profileHint?: string;
 } = {}) {
     const key = generateSecretKey();
     const owner = getPublicKey(key);
@@ -43,13 +45,19 @@ async function setup(page: Page, options: {
     const pendingRelays: Array<() => void> = [];
     const pendingProfiles: Array<() => void> = [];
     const posts: Array<{ relay: string; event: NostrEvent }> = [];
-    await page.addInitScript(mentions => {
+    let signAttempts = 0;
+    let relayAuthAttempts = 0;
+    const hintedKinds: number[] = [];
+    await page.addInitScript(showNotifications => {
         localStorage.setItem('firstVisit', '1');
         localStorage.setItem('locale', 'ja');
-        if (mentions) localStorage.setItem('footerSettingShortcuts', JSON.stringify({ left: 'notifications', right: null }));
-    }, !!options.mentions);
+        if (showNotifications) localStorage.setItem('footerSettingShortcuts', JSON.stringify({ left: 'notifications', right: null }));
+    }, !!(options.mentions || options.publicKeyLogin));
     if (options.extension || options.rejectExtension) {
-        await page.exposeFunction('fixtureSignEvent', (template: EventTemplate) => finalizeEvent(template, key));
+        await page.exposeFunction('fixtureSignEvent', (template: EventTemplate) => {
+            signAttempts++;
+            return finalizeEvent(template, key);
+        });
         await page.addInitScript(({ pubkey, reject }) => {
             window.nostr = {
                 getPublicKey: async () => {
@@ -70,16 +78,23 @@ async function setup(page: Page, options: {
                 socket.send(JSON.stringify(['EOSE', subscription]));
             } catch { /* The previous runtime may already have closed this socket. */ }
         };
+        let challengeSent = false;
         socket.onMessage(raw => {
             const message = JSON.parse(raw.toString());
+            if (message[0] === 'AUTH') relayAuthAttempts++;
             if (message[0] === 'EVENT') {
                 if (message[1].kind === 1) posts.push({ relay: socket.url(), event: message[1] });
                 socket.send(JSON.stringify(['OK', message[1].id, true, '']));
                 return;
             }
             if (message[0] !== 'REQ') return;
+            if (options.publicKeyLogin && !challengeSent) {
+                challengeSent = true;
+                socket.send(JSON.stringify(['AUTH', 'fixture-challenge']));
+            }
             const subscription = message[1] as string;
             const kind = message[2]?.kinds?.[0];
+            if (options.profileHint && socket.url().startsWith(options.profileHint)) hintedKinds.push(kind);
             const eventKey = message[2]?.authors?.[0] === otherOwner ? otherKey : key;
             // A queued REQ can cross a second boundary before this fixture
             // receives it. Match its until bound just as a real relay would.
@@ -115,10 +130,17 @@ async function setup(page: Page, options: {
                     content: JSON.stringify({ name, display_name: mentionProfile ? (options.mentionDisplayName ?? 'アリス Example') : name,
                         ...(mentionProfile ? { nip05: 'alice@example.com' } : {}),
                         picture: (eventKey === otherKey ? options.mentionPicture : undefined) ?? options.profilePicture ?? '' }) }, eventKey);
-                const send = () => respond(subscription, options.profileMissing ? undefined : event);
+                const matchesHint = !options.profileHint || socket.url().startsWith(options.profileHint);
+                const send = () => respond(subscription, !options.profileMissing && matchesHint ? event : undefined);
                 if (options.timed) setTimeout(send, 1200);
                 else if (holdProfiles) pendingProfiles.push(send);
                 else send();
+            } else if (options.publicKeyLogin && message[2]?.authors?.includes(owner) && message[2]?.kinds?.includes(1)) {
+                respond(subscription, finalizeEvent({ kind: 1, created_at: createdAt, tags: [], content: 'Public history fixture' }, key));
+            } else if (options.publicKeyLogin && message[2]?.['#p']?.includes(owner) && message[2]?.kinds?.includes(1)) {
+                respond(subscription, finalizeEvent({
+                    kind: 1, created_at: createdAt, tags: [['p', owner]], content: 'Public notification fixture',
+                }, otherKey));
             } else respond(subscription);
         });
     });
@@ -141,7 +163,8 @@ async function setup(page: Page, options: {
         return started;
     };
     return {
-        owner, otherOwner, login, posts, recipientRelay,
+        owner, otherOwner, login, posts, recipientRelay, hintedKinds,
+        signingAttempts: () => ({ signAttempts, relayAuthAttempts }),
         addAccount: async () => {
             await account(page).click();
             await page.locator('.add-account-btn').click();
@@ -157,6 +180,104 @@ async function setup(page: Page, options: {
 
 const account = (page: Page) => page.locator('.footer-bar .profile-display:not(.loading)');
 const post = (page: Page) => page.locator('button.post-button');
+
+for (const format of ['npub', 'nprofile'] as const) {
+    test(`public-key login with ${format} is read-only at 360px`, async ({ page }) => {
+        const hint = 'wss://public-profile-hint.example';
+        const app = await setup(page, {
+            extension: true, publicKeyLogin: true, profileHint: format === 'nprofile' ? hint : undefined,
+        });
+        const input = format === 'npub' ? nip19.npubEncode(app.owner)
+            : nip19.nprofileEncode({ pubkey: app.owner, relays: [hint] });
+        app.releaseRelays();
+        app.releaseProfiles();
+        await page.locator('.login-btn').click();
+        await page.locator('#secretKey').fill(input);
+        await page.locator('.save-btn').click();
+        await expect(page.locator('.login-dialog')).toBeHidden();
+
+        const profile = account(page);
+        const badge = profile.locator('.public-key-badge');
+        await expect(profile).toHaveAccessibleName(/公開鍵ログイン中/);
+        await expect(badge).toBeVisible();
+        const [profileBox, badgeBox] = await Promise.all([profile.boundingBox(), badge.boundingBox()]);
+        expect(badgeBox!.x).toBeGreaterThanOrEqual(profileBox!.x);
+        expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(profileBox!.x + profileBox!.width + 1);
+        await page.locator('.tiptap-editor').fill('Local draft');
+        await expect(post(page)).toBeDisabled();
+
+        await profile.click();
+        await expect(page.getByText('公開鍵ログイン中', { exact: true })).toBeVisible();
+        await expect(page.getByText('Delayed profile', { exact: true }).first()).toBeVisible();
+        await page.getByRole('dialog').getByRole('button', { name: '閉じる', exact: true }).click();
+
+        await page.locator('.post-history-btn').click();
+        const historyPost = page.locator('.post-history-item').filter({ hasText: 'Public history fixture' }).first();
+        await expect(historyPost).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'メディア' })).toHaveCount(0);
+        await expect(historyPost.getByRole('button', { name: /^(リプライ|引用|リアクション)$/ })).toHaveCount(0);
+
+        const footer = historyPost.locator('.post-preview-footer').first();
+        const menu = footer.getByRole('button', { name: 'アクションを表示', exact: true });
+        await expect(footer.locator('.post-preview-date')).toHaveText(/\d/);
+        await expect(menu).toBeVisible();
+        await expect(historyPost.locator('.post-preview-header .post-history-menu-trigger')).toHaveCount(0);
+        await page.setViewportSize({ width: 1103, height: 1253 });
+        await expect(menu).toBeInViewport();
+        await menu.click();
+        await expect(page.getByRole('menuitem', { name: '関連イベントを確認' })).toBeVisible();
+        await expect(page.getByRole('menuitem', { name: /^(削除|ブロードキャスト)$/ })).toHaveCount(0);
+        await page.keyboard.press('Escape');
+        await page.setViewportSize({ width: 360, height: 844 });
+        await page.getByRole('dialog').getByRole('button', { name: '閉じる', exact: true }).click();
+
+        await page.locator('.notification-btn').click();
+        await expect(page.getByText('Public notification fixture', { exact: true }).first()).toBeVisible();
+        await expect(page.getByRole('dialog').getByRole('button', { name: /^(返信|引用|リアクション)$/ })).toHaveCount(0);
+
+        const hintRequests = app.hintedKinds.length;
+        await page.reload();
+        await expect(account(page)).toHaveAccessibleName(/公開鍵ログイン中/);
+        await expect.poll(() => app.hintedKinds.length).toBe(hintRequests);
+        if (format === 'nprofile') {
+            expect(app.hintedKinds.length).toBeGreaterThan(0);
+            expect(app.hintedKinds.every(kind => kind === 0)).toBe(true);
+        }
+        expect(app.signingAttempts()).toEqual({ signAttempts: 0, relayAuthAttempts: 0 });
+        expect(app.posts).toEqual([]);
+
+        await page.evaluate(() => localStorage.setItem('showMascot', 'false'));
+        await account(page).click();
+        await page.locator('.account-logout-button').click();
+        await expect(page.locator('.login-btn')).toBeVisible();
+        expect(await page.evaluate(() => localStorage.getItem('showMascot'))).toBe('false');
+    });
+}
+
+test('public-key login switches between saved accounts and preserves a signing account with the same key', async ({ page }) => {
+    const app = await setup(page, { extension: true });
+    app.releaseRelays();
+    app.releaseProfiles();
+    await app.login();
+    await expect(account(page)).not.toHaveAccessibleName(/公開鍵ログイン中/);
+
+    await account(page).click();
+    await page.locator('.add-account-btn').click();
+    await page.locator('#secretKey').fill(nip19.npubEncode(app.owner));
+    await page.locator('.save-btn').click();
+    await expect(page.getByText('この公開鍵のアカウントはすでに登録されています')).toBeVisible();
+
+    await page.locator('#secretKey').fill(nip19.nprofileEncode({ pubkey: app.otherOwner, relays: [] }));
+    await page.locator('.save-btn').click();
+    await expect(account(page)).toHaveAccessibleName(/公開鍵ログイン中/);
+    await account(page).click();
+    await page.locator('.account-item:not(.active) .account-info-button').click();
+    await expect(account(page)).not.toHaveAccessibleName(/公開鍵ログイン中/);
+
+    await account(page).click();
+    await page.locator('.account-item:not(.active) .account-info-button').click();
+    await expect(account(page)).toHaveAccessibleName(/公開鍵ログイン中/);
+});
 
 for (const extension of [false, true]) {
     test(`${extension ? 'NIP-07' : 'secret-key'} login permits input before relay discovery and posting before profile retrieval`, async ({ page }) => {

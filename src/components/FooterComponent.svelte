@@ -57,6 +57,11 @@
     let profileData = $derived(profileDataStore.value);
     let isLoadingProfile = $derived(isLoadingProfileStore.value);
     let profileLoaded = $derived(profileLoadedStore.value);
+    const isPublicKeyLogin = $derived(authState.value.type === "npub");
+    const profileLabel = $derived(isPublicKeyLogin
+        ? `${$_("profileDialog.title")} (${$_("profileDialog.public_key_login_active")})`
+        : $_("profileDialog.title"));
+    const publicKeyIcon = resolveAppAssetUrl("icons/key_vertical_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
 
     // プロフィール画像のaltテキスト取得
     const getProfileAlt = () =>
@@ -111,6 +116,14 @@
     {/if}
 {/snippet}
 
+{#snippet publicKeyBadge()}
+    {#if isPublicKeyLogin}
+        <span class="public-key-badge" aria-hidden="true">
+            <span class="svg-icon" style:mask-image={`url("${publicKeyIcon}")`}></span>
+        </span>
+    {/if}
+{/snippet}
+
 <div class="footer-bar" class:compact {@attach observeFooter}>
     {#if isSwitchingAccount}
         <Button
@@ -147,13 +160,14 @@
             shape="circle"
             className="profile-display loading"
             onClick={onOpenLogoutDialog}
-            ariaLabel={$_("profileDialog.title")}
+            ariaLabel={profileLabel}
         >
             <LoadingPlaceholder
                 showLoader={true}
                 variant="spinner"
                 loaderSize={24}
             />
+            {@render publicKeyBadge()}
         </Button>
     {:else if isAuthenticated && profileLoaded}
         <Button
@@ -161,7 +175,7 @@
             shape="circle"
             className="profile-display"
             onClick={onOpenLogoutDialog}
-            ariaLabel={$_("profileDialog.title")}
+            ariaLabel={profileLabel}
         >
             <ProfileAvatar
                 pubkeyHex={authState.value.pubkey}
@@ -176,6 +190,7 @@
                 fallbackAriaLabel={$_("profileDialog.profile_image_fallback")}
                 onLoadingStatusChange={handleAvatarLoadingStatusChange}
             />
+            {@render publicKeyBadge()}
         </Button>
     {:else if !isLoadingProfile && !isAuthenticated}
         <Button
@@ -398,6 +413,7 @@
 
     /* プロフィール表示のスタイル */
     :global(button.profile-display.default) {
+        position: relative;
         flex: 0 0 auto;
         z-index: 10;
 
@@ -407,6 +423,27 @@
                 background: var(--btn-bg);
             }
         }
+    }
+
+    .public-key-badge {
+        position: absolute;
+        display: grid;
+        place-items: center;
+        inset-inline-end: 0;
+        inset-block-end: 0;
+        width: 16px;
+        height: 16px;
+        border: 1px solid var(--dialog-bg);
+        border-radius: 50%;
+        background: var(--dialog-bg);
+        color: var(--text);
+        pointer-events: none;
+    }
+
+    .public-key-badge .svg-icon {
+        width: 12px;
+        height: 12px;
+        background-color: currentColor;
     }
 
     :global(.profile-picture),

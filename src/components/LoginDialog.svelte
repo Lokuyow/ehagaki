@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { isPublicKeyLoginInput } from "../lib/utils/nostrUtils";
     import { _ } from "svelte-i18n";
     import { Dialog, Tabs } from "bits-ui";
     import { PublicKeyState } from "../lib/keyManager.svelte";
@@ -303,6 +304,9 @@
     }
 
     function resolveSecretKeyErrorMessage(errorMessage: string): string {
+        if (errorMessage === "invalid_public_key" || errorMessage === "public_key_account_already_registered") {
+            return $_(`loginDialog.${errorMessage}`);
+        }
         return errorMessage === "invalid_secret"
             ? $_("loginDialog.invalid_secret")
             : $_("loginDialog.secret_login_failed");
@@ -314,7 +318,7 @@
         }
         cleanupNostrConnectDirectOpenState();
         secretKeyErrorMessage = "";
-        if (inputEl) {
+        if (inputEl && !isPublicKeyLoginInput(inputEl.value)) {
             const validity = inputEl.validity;
             const value = inputEl.value ?? "";
 
@@ -1101,7 +1105,6 @@
                             autocomplete="current-password"
                             required
                             minlength="63"
-                            maxlength="63"
                             bind:this={inputEl}
                             title={$_("loginDialog.hint_input_secret")}
                             oninput={() => {

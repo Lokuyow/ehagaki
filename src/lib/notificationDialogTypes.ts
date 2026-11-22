@@ -6,6 +6,7 @@ import type { PostHistoryRecord } from './storage/ehagakiDb';
 import type { PostHistoryInboundInteractionsSyncRequest } from './postHistoryInboundInteractionsSyncService';
     export interface NotificationDialogProps {
         show?: boolean;
+        readOnly?: boolean;
         pubkeyHex: string | null;
         rxNostr?: RxNostr;
         relayConfig?: RelayConfig | null;

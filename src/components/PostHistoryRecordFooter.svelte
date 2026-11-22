@@ -21,6 +21,7 @@
 
     interface Props {
         post: PostHistoryRecord;
+        showTimestampMenu: boolean;
         graphState: ComponentProps<typeof PostHistoryThreadGraphPanel>["state"];
         emojiLoadStateByUrl: ReactionDetailsProps["emojiLoadStateByUrl"];
         emojiImageMetaByUrl: ReactionDetailsProps["emojiImageMetaByUrl"];
@@ -48,6 +49,7 @@
 
     let {
         post,
+        showTimestampMenu,
         graphState,
         emojiLoadStateByUrl,
         emojiImageMetaByUrl,
@@ -71,9 +73,7 @@
 </script>
 
 <PostHistoryPreviewFooter
-        formattedDate={onReplyPost || onQuotePost ? formatPostedAt(
-            post.postedAt,
-        ) : ""}
+        formattedDate={showTimestampMenu ? formatPostedAt(post.postedAt) : ""}
         dimmed={!!post.deletedAt}
     >
         {#snippet actions()}
@@ -108,7 +108,7 @@
         {#snippet trailing()}
             {@const actionsLabel =
                 $_("common.showActions")}
-            {#if onReplyPost || onQuotePost}
+            {#if showTimestampMenu}
               <PostHistoryActionMenu
                 lazy={true}
                 open={menuOpen}

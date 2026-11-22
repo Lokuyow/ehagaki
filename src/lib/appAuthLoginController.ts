@@ -1,4 +1,5 @@
-type ManagedAccountType = 'nsec' | 'nip07' | 'nip46' | 'parentClient';
+import { isPublicKeyLoginInput } from './utils/nostrUtils';
+import type { AccountAuthType, AuthResult } from './types';
 
 type ParentClientAuthOptions = {
     silent?: boolean;
@@ -22,12 +23,6 @@ interface ParentClientAuthCoordinatorLike {
     ): Promise<ParentClientAuthSyncResult>;
 }
 
-interface AuthResult {
-    success: boolean;
-    pubkeyHex?: string;
-    error?: string;
-}
-
 export interface AppAuthLoginControllerDependencies {
     parentClientAuthCoordinator: ParentClientAuthCoordinatorLike;
     beginParentClientTransition(): number;
@@ -40,14 +35,16 @@ export interface AppAuthLoginControllerDependencies {
     clearNip46RuntimeForAuthChange(params: {
         currentAuthType?: string;
         currentPubkeyHex?: string | null;
-        nextAuthType: ManagedAccountType;
+        nextAuthType: AccountAuthType;
         nextPubkeyHex?: string | null;
         nip46Service: Nip46RuntimeController;
     }): Promise<void>;
     nip46Service: Nip46RuntimeController;
     disposeNostrSession(session: unknown): undefined;
-    handlePostAuth(pubkeyHex: string, options?: { generation: number }): Promise<void>;
+    handlePostAuth(pubkeyHex: string, options?: { generation?: number; profileRelayHints?: string[] }): Promise<void>;
     cancelPendingNip46Auth(): Promise<void>;
+    authenticateWithPublicKey(input: string): AuthResult & { profileRelayHints?: string[] };
+    disconnectParentClient(): void;
     authenticateWithNsec(secretKey: string): Promise<AuthResult>;
     handleSuccessfulAuthResult(
         result: AuthResult,
@@ -63,7 +60,7 @@ export interface AppAuthLoginController {
     activateParentClientAuth(options?: ParentClientAuthOptions): Promise<string | undefined>;
     hasPendingParentClientTransition(): boolean;
     /** Resolves with an error code, or undefined when the login succeeded or was ignored. */
-    saveSecretKey(secretKey: string): Promise<string | undefined>;
+    saveSecretKey(secretKey: string, generation?: number): Promise<string | undefined>;
     handleParentClientLogin(): Promise<string | undefined>;
 }
 
@@ -125,18 +122,25 @@ export function createAppAuthLoginController(
 
     let isSavingSecretKey = false;
 
-    async function saveSecretKey(secretKey: string): Promise<string | undefined> {
+    async function saveSecretKey(secretKey: string, generation?: number): Promise<string | undefined> {
         // A second submit while the first is still running would authenticate twice.
         if (isSavingSecretKey) return undefined;
         isSavingSecretKey = true;
+        const publicKeyLogin = isPublicKeyLoginInput(secretKey);
+        const isCurrent = () => !publicKeyLogin || generation === undefined || deps.isAuthTransitionCurrent(generation);
 
         try {
             await deps.cancelPendingNip46Auth();
 
+            if (!isCurrent()) return;
+
             // Authentication replaces the auth state, so read the outgoing session first.
             const previousAuthType = deps.getCurrentAuthType();
             const previousPubkeyHex = deps.getCurrentPubkeyHex();
-            const result = await deps.authenticateWithNsec(secretKey);
+            const result: AuthResult & { profileRelayHints?: string[] } = publicKeyLogin
+                ? deps.authenticateWithPublicKey(secretKey)
+                : await deps.authenticateWithNsec(secretKey);
+            if (!isCurrent()) return;
             if (!result.success) {
                 return result.error || 'authentication_error';
             }
@@ -147,11 +151,20 @@ export function createAppAuthLoginController(
                 await deps.clearNip46RuntimeForAuthChange({
                     currentAuthType: previousAuthType,
                     currentPubkeyHex: previousPubkeyHex,
-                    nextAuthType: 'nsec',
+                    nextAuthType: publicKeyLogin ? 'npub' : 'nsec',
                     nextPubkeyHex: result.pubkeyHex,
                     nip46Service: deps.nip46Service,
                 });
-                await deps.handleSuccessfulAuthResult(result, deps.handlePostAuth);
+                if (!isCurrent()) return;
+                if (publicKeyLogin) {
+                    if (previousAuthType === 'parentClient') deps.disconnectParentClient();
+                    await deps.handleSuccessfulAuthResult(result, pubkey => deps.handlePostAuth(pubkey, {
+                        generation,
+                        profileRelayHints: result.profileRelayHints,
+                    }));
+                } else {
+                    await deps.handleSuccessfulAuthResult(result, deps.handlePostAuth);
+                }
             } catch {
                 deps.setProfileLoading(false);
             }

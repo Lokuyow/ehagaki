@@ -1,5 +1,5 @@
-import { isHex64 } from './utils/nostrHexUtils';
-import { nip19 } from 'nostr-tools';
+import { createPublicKeyFormats } from './utils/nostrUtils';
+import { isHex64, isLowerHex64 } from './utils/nostrHexUtils';
 import { buildManagedRestoreCandidates } from './authManagedRestoreUtils';
 import { restoreManagedSessionAccount } from './authManagedSessionRestoreUtils';
 import { Nip46Service as Nip46Storage } from './nip46Service';
@@ -87,6 +87,7 @@ export interface ManagedAuthRestoreDependencies extends NsecRestoreDependencies,
         'restoreSessionInBackground' | 'bindSessionPersistence' | 'disconnect'
     >;
     parentClientSvc: Pick<ParentClientAuthService, 'reconnect' | 'getSessionData' | 'disconnect'>;
+    setPublicKeyAuthFn: SetAuthFn;
     isExpectedAccount(pubkeyHex: string, type: AccountAuthType): boolean;
     console: Console;
     keyManager: NsecRestoreDependencies['keyManager'] & {
@@ -133,19 +134,12 @@ export interface LegacyAuthCheckDependencies extends LegacyNsecDependencies, Leg
     localNsecAuthEnabled: boolean;
 }
 
-function createProfileRefs(pubkeyHex: string): { npub: string; nprofile: string } {
-    return {
-        npub: nip19.npubEncode(pubkeyHex),
-        nprofile: nip19.nprofileEncode({ pubkey: pubkeyHex, relays: [] }),
-    };
-}
-
 export function applyPublicKeyAuth(
     type: PublicKeyAuthType,
     pubkeyHex: string,
     dependencies: PublicKeyAuthDependencies,
 ): RestoreResult {
-    const { npub, nprofile } = createProfileRefs(pubkeyHex);
+    const { npub, nprofile } = createPublicKeyFormats(pubkeyHex);
 
     if (type === 'nip07') {
         dependencies.setNip07AuthFn(pubkeyHex, npub, nprofile);
@@ -353,6 +347,24 @@ export async function restoreManagedParentClientAccount(
     });
 }
 
+async function restoreManagedPublicKeyAccount(
+    pubkeyHex: string,
+    dependencies: ManagedAuthRestoreDependencies,
+): Promise<ManagedRestoreResult> {
+    if (!isLowerHex64(pubkeyHex)) return { hasAuth: false, reason: 'invalid-requested-pubkey' };
+    if (!dependencies.isExpectedAccount(pubkeyHex, 'npub')) {
+        return { hasAuth: false, reason: 'account-record-mismatch' };
+    }
+    try {
+        const { npub, nprofile } = createPublicKeyFormats(pubkeyHex);
+        dependencies.publicKeyState.setNsec('');
+        dependencies.setPublicKeyAuthFn(pubkeyHex, npub, nprofile);
+        return { hasAuth: true, pubkeyHex };
+    } catch {
+        return { hasAuth: false, reason: 'runtime-commit-failed' };
+    }
+}
+
 const managedRestoreStrategies: Record<
     AccountAuthType,
     (
@@ -361,6 +373,7 @@ const managedRestoreStrategies: Record<
         nip07Identity?: PublicKeyData,
     ) => Promise<ManagedRestoreResult>
 > = {
+    npub: restoreManagedPublicKeyAccount,
     nsec: restoreManagedNsecAccount,
     nip07: restoreManagedNip07Account,
     nip46: restoreManagedNip46Account,

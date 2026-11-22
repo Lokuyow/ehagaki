@@ -1,7 +1,7 @@
 import type { AuthState } from "./types";
 
 export type AuthStateSource = {
-    value: Pick<AuthState, "isAuthenticated" | "pubkey">;
+    value: Pick<AuthState, "isAuthenticated" | "pubkey"> & Partial<Pick<AuthState, "type">>;
 };
 
 /** Internal typed marker for upload callers that expose a stable auth error. */
@@ -17,7 +17,7 @@ export function assertActiveSession(
     sessionPubkey: string,
 ): void {
     const current = authStateStore.value;
-    if (!current.isAuthenticated || current.pubkey !== sessionPubkey) {
+    if (!current.isAuthenticated || current.type === "npub" || current.pubkey !== sessionPubkey) {
         throw new AuthenticationRequiredError();
     }
 }

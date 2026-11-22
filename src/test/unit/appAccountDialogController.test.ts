@@ -49,6 +49,16 @@ describe('createAppAccountDialogController', () => {
         vi.useRealTimers();
     });
 
+    it('removes the last public-key account without a data reset', () => {
+        const pubkeyHex = 'ab'.repeat(32);
+        const { deps, controller } = createController({
+            accountManager: { getAccounts: () => [{ pubkeyHex, type: 'npub' }] },
+        });
+        controller.requestLogoutAccount(pubkeyHex);
+        expect(deps.requestLogoutAccount).toHaveBeenCalledWith(pubkeyHex);
+        expect(deps.setShowLastAccountLogoutConfirm).not.toHaveBeenCalled();
+    });
+
     it('最後のアカウントでない logout は即時リクエストする', async () => {
         const { deps, controller } = createController({
             accountManager: {

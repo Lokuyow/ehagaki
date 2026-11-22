@@ -1,3 +1,4 @@
+import type { AccountAuthType } from './types';
 import { runNip07Login, runNip46Login } from './appAuthUtils';
 
 interface Nip46DisconnectController {
@@ -17,7 +18,7 @@ export interface AppAuthInteractionControllerDependencies {
     clearNip46RuntimeForAuthChange(params: {
         currentAuthType?: string;
         currentPubkeyHex?: string | null;
-        nextAuthType: 'nsec' | 'nip07' | 'nip46' | 'parentClient';
+        nextAuthType: AccountAuthType;
         nextPubkeyHex?: string | null;
         nip46Service: Nip46DisconnectController;
     }): Promise<void>;

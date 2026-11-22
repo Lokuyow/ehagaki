@@ -60,6 +60,14 @@ describe("resolvePostSigner", () => {
             .toEqual({ ok: false, error: "key_not_found" });
     });
 
+    it("does not request a stored or external signer for a public-key login", () => {
+        const getStoredSecretKey = vi.fn(() => "secret");
+        const getParentClientSigner = vi.fn();
+        expect(resolvePostSigner(params({ authType: "npub", getStoredSecretKey, getParentClientSigner })).ok).toBe(false);
+        expect(getStoredSecretKey).not.toHaveBeenCalled();
+        expect(getParentClientSigner).not.toHaveBeenCalled();
+    });
+
     it("rejects signers without signEvent", () => {
         expect(resolvePostSigner(params({ authType: "parentClient", getParentClientSigner: () => ({}) })))
             .toEqual({ ok: false, error: "nostr_sign_event_not_supported" });
