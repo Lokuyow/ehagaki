@@ -1,6 +1,7 @@
 <script lang="ts">
     import { SvelteSet } from "svelte/reactivity";
     import MediaGallery from "./MediaGallery.svelte";
+    import MediaGalleryImage from "./MediaGalleryImage.svelte";
     import BlurhashPlaceholder from "./BlurhashPlaceholder.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import Button from "./Button.svelte";
@@ -358,10 +359,10 @@
                                 title={getLinkLabel(item)}
                                 onclick={(event) => handleImageOpen(item, event.currentTarget)}
                             >
-                                <img src={source} alt={item.alt || getLinkLabel(item)} draggable="false" />
+                                <MediaGalleryImage src={source} alt={item.alt || getLinkLabel(item)} fillWidth />
                             </button>
                         {:else}
-                            <img src={source} alt={item.alt || getLinkLabel(item)} draggable="false" />
+                            <MediaGalleryImage src={source} alt={item.alt || getLinkLabel(item)} fillWidth />
                         {/if}
                     {:else if source && item.kind === "video"}
                         <video src={source} controls playsinline preload="metadata" aria-label={getLinkLabel(item)}>
@@ -486,7 +487,7 @@
         border-radius: 6px;
     }
 
-    .post-preview-gallery-card :is(img, video, .post-history-media-surface) {
+    .post-preview-gallery-card :is(video, .post-history-media-surface) {
         display: block;
         width: 100%;
         height: 100%;

@@ -2,6 +2,7 @@
     import type { MediaGalleryItem } from "../lib/types";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import MediaActionButtons from "./MediaActionButtons.svelte";
+    import MediaGalleryImage from "./MediaGalleryImage.svelte";
     import { postComponentUIStore } from "../stores/postUIStore.svelte";
     import { _ } from "svelte-i18n";
     import { useLongPress } from "../lib/hooks/useLongPress.svelte";
@@ -160,14 +161,12 @@
         {/if}
 
         {#if showActualImage}
-            <img
+            <MediaGalleryImage
                 src={item.src}
                 alt={item.alt || ""}
-                class="gallery-image"
-                class:image-loading={!mediaLoad.isLoaded}
+                class={["gallery-image", { "image-loading": !mediaLoad.isLoaded }]}
                 onload={mediaLoad.handleLoad}
                 onerror={mediaLoad.handleError}
-                draggable="false"
                 oncontextmenu={(e) => e.preventDefault()}
             />
         {/if}
@@ -225,13 +224,13 @@
 
     .gallery-item,
     .gallery-item-media,
-    .gallery-image,
+    .gallery-item-media :global(.gallery-image),
     .gallery-video {
         -webkit-touch-callout: none;
     }
 
     .gallery-item,
-    .gallery-image,
+    .gallery-item-media :global(.gallery-image),
     .gallery-video {
         -webkit-user-select: none;
         user-select: none;
@@ -286,14 +285,13 @@
         background-color: transparent;
     }
 
-    .gallery-image,
     .gallery-video {
         object-fit: cover;
         display: block;
         height: 100%;
     }
 
-    .gallery-image,
+    .gallery-item-media :global(.gallery-image),
     .is-placeholder .gallery-item-media {
         min-width: 100px;
         max-width: var(--media-gallery-max-width, 180px);
@@ -307,12 +305,12 @@
         width: var(--media-gallery-max-width, 180px);
     }
 
-    .gallery-image {
+    .gallery-item-media :global(.gallery-image) {
         -webkit-drag: none;
+    }
 
-        &.image-loading {
-            opacity: 0;
-        }
+    .gallery-item-media :global(.gallery-image.image-loading) {
+        opacity: 0;
     }
 
     .video-wrapper {
