@@ -547,6 +547,16 @@ test('gallery hover arrows page in both directions and hide at the edges', async
     await gallery.hover();
     await expect(previous).toHaveCSS('opacity', '0');
     await expect(next).toHaveCSS('opacity', '1');
+    for (const theme of ['light', 'dark']) {
+        await page.evaluate(value => {
+            document.documentElement.classList.remove('light', 'dark');
+            document.documentElement.classList.add(value);
+            document.documentElement.style.colorScheme = value;
+        }, theme);
+        await next.hover();
+        await expect(next).toHaveCSS('background-color', 'rgba(28, 32, 36, 0.98)');
+        await expect(next).toHaveCSS('color', 'rgb(255, 255, 255)');
+    }
     await next.click();
     const onePage = await gallery.evaluate(node => node.clientWidth);
     await expect.poll(() => gallery.evaluate(node => node.scrollLeft)).toBe(onePage);

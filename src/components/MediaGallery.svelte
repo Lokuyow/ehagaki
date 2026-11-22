@@ -173,6 +173,11 @@
             pointer-events: auto;
         }
 
+        .gallery-page-button:hover {
+            background-color: rgb(28 32 36 / 98%);
+            color: white;
+        }
+
         .gallery-page-button:focus-visible {
             outline: 2px solid var(--theme);
             outline-offset: 2px;
