@@ -91,7 +91,7 @@ describe('runAppInitializationBootstrap', () => {
         expect(params.waitForLocale).toHaveBeenCalledOnce();
         expect(params.markLocaleInitialized).toHaveBeenCalledOnce();
         expect(params.handleAuthenticated).toHaveBeenCalledWith('pubkey-1');
-        expect(params.refreshAccountList).toHaveBeenCalledOnce();
+        expect(params.refreshAccountList).not.toHaveBeenCalled();
         expect(params.markAuthInitialized).toHaveBeenCalledOnce();
         expect(runExternalInputBootstrap).toHaveBeenCalledWith(
             expect.objectContaining({

@@ -11,34 +11,26 @@ export interface ManagedRestoreCandidate {
 
 export function buildManagedRestoreCandidates({
     activePubkey,
-    activeType,
     accounts,
 }: {
     activePubkey: string | null;
-    activeType: AccountAuthType | null;
-    accounts: Array<Pick<StoredAccount, 'pubkeyHex' | 'type'>>;
+    accounts: ReadonlyArray<Pick<StoredAccount, 'pubkeyHex' | 'type'>>;
 }): ManagedRestoreCandidate[] {
-    const candidates: ManagedRestoreCandidate[] = [];
-
-    if (isHex64(activePubkey)
-        && activeType && activeType !== 'parentClient'
-        && accounts.some(account => account.pubkeyHex === activePubkey && account.type === activeType)) {
+    const selected = isHex64(activePubkey)
+        ? accounts.find(account => account.pubkeyHex === activePubkey)
+        : undefined;
+    if (selected && selected.type !== 'parentClient') {
         // A saved selection is not invalidated by an unavailable credential or signer.
         return [{
-            pubkeyHex: activePubkey,
-            type: activeType,
+            pubkeyHex: selected.pubkeyHex,
+            type: selected.type,
             activateOnSuccess: false,
         }];
     }
 
+    const candidates: ManagedRestoreCandidate[] = [];
     for (const account of accounts) {
-        if (account.pubkeyHex === activePubkey) {
-            continue;
-        }
-
-        if (account.type === 'parentClient') {
-            continue;
-        }
+        if (account.pubkeyHex === activePubkey || account.type === 'parentClient') continue;
 
         candidates.push({
             pubkeyHex: account.pubkeyHex,

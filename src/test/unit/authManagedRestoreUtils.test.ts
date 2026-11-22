@@ -7,7 +7,6 @@ describe('authManagedRestoreUtils', () => {
         expect(
             buildManagedRestoreCandidates({
                 activePubkey: 'aa'.repeat(32),
-                activeType: 'nsec',
                 accounts: [
                     { pubkeyHex: 'aa'.repeat(32), type: 'nsec' },
                     { pubkeyHex: 'parent-pub', type: 'parentClient' },
@@ -22,10 +21,9 @@ describe('authManagedRestoreUtils', () => {
     it('active が parentClient または不明なら fallback candidates だけを返す', () => {
         expect(
             buildManagedRestoreCandidates({
-                activePubkey: 'parent-pub',
-                activeType: 'parentClient',
+                activePubkey: 'ab'.repeat(32),
                 accounts: [
-                    { pubkeyHex: 'parent-pub', type: 'parentClient' },
+                    { pubkeyHex: 'ab'.repeat(32), type: 'parentClient' },
                     { pubkeyHex: 'fallback-pub', type: 'nsec' },
                 ],
             }),
@@ -36,7 +34,6 @@ describe('authManagedRestoreUtils', () => {
         expect(
             buildManagedRestoreCandidates({
                 activePubkey: 'missing-pub',
-                activeType: null,
                 accounts: [
                     { pubkeyHex: 'missing-pub', type: 'nip07' },
                     { pubkeyHex: 'fallback-pub', type: 'nip46' },

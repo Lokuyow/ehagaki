@@ -5,7 +5,11 @@ import { mockAuthStoreModule } from '../mocks/storeModules';
 import './authServiceModuleMocks';
 
 import { AuthService } from '../../lib/authService';
-import { ACTIVE_NIP07_STARTUP_IDENTITY_READ_TIMEOUT_MS } from '../../lib/authRestoreUtils';
+import {
+    ACTIVE_NIP07_STARTUP_IDENTITY_READ_TIMEOUT_MS,
+    MANAGED_NIP07_EXTENSION_DISCOVERY_TIMEOUT_MS,
+    MANAGED_NIP07_IDENTITY_READ_TIMEOUT_MS,
+} from '../../lib/authRestoreUtils';
 import { AccountManager } from '../../lib/accountManager';
 import { configureAppRuntimeEnvironment, getAppRuntimeEnvironment } from '../../lib/appRuntimeEnvironment';
 import { resolveNip07AutoLoginSession } from '../../lib/bootstrap/nip07AutoLoginBootstrap';
@@ -208,6 +212,40 @@ describe('startup active selection persistence', () => {
         await expect(initialize).resolves.toEqual({ hasAuth: true, pubkeyHex: NIP07_PUBKEY });
         expect(getPublicKey).toHaveBeenCalledOnce();
         expect(deps.setNip07Auth).toHaveBeenCalledExactlyOnceWith(NIP07_PUBKEY, expect.any(String), expect.any(String));
+    });
+
+    it.each([
+        ['extension unavailable', MANAGED_NIP07_EXTENSION_DISCOVERY_TIMEOUT_MS],
+        ['identity timeout', MANAGED_NIP07_IDENTITY_READ_TIMEOUT_MS],
+    ] as const)('tries the NIP-07 extension only once during fallback restoration (%s)', async (failure, waitMs) => {
+        vi.useFakeTimers();
+        const deps = createMockDependencies();
+        const manager = new AccountManager({ localStorage: deps.localStorage! });
+        manager.addAccount(ACTIVE_PUBKEY, 'nip07');
+        manager.addAccount(NIP07_PUBKEY, 'nip07');
+        manager.addAccount(FALLBACK_PUBKEY, 'npub');
+        manager.clearActiveAccount();
+
+        const getPublicKey = vi.fn(() => new Promise<string>(() => {}));
+        deps.window = { nostr: { getPublicKey, signEvent: vi.fn() } } as unknown as Window;
+        const discovery = vi.spyOn(Nip07AuthService.prototype, 'waitForExtension').mockImplementation(
+            () => failure === 'extension unavailable'
+                ? new Promise(resolve => setTimeout(() => resolve(false), waitMs))
+                : Promise.resolve(true),
+        );
+        const service = new AuthService(deps);
+        service.setAccountManager(manager);
+
+        const initialize = service.initializeAuth();
+        await vi.advanceTimersByTimeAsync(waitMs - 1);
+        expect(deps.setPublicKeyAuth).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+
+        expect(discovery).toHaveBeenCalledOnce();
+        expect(getPublicKey).toHaveBeenCalledTimes(failure === 'identity timeout' ? 1 : 0);
+        expect(deps.setPublicKeyAuth).toHaveBeenCalledOnce();
+        await expect(initialize).resolves.toEqual({ hasAuth: true, pubkeyHex: FALLBACK_PUBKEY });
+        expect(manager.getActiveAccountPubkey()).toBe(FALLBACK_PUBKEY);
     });
 
     it.each([null, '', 'dd'.repeat(32), 'invalid-pubkey'])(

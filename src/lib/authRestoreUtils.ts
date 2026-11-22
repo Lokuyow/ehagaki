@@ -494,19 +494,15 @@ export async function runLegacyAuthChecks(
 export async function runManagedAuthRestore(
     dependencies: ManagedAccountRestoreDependencies,
 ): Promise<AuthInitializationResult> {
-    const { activePubkey, accounts } = dependencies.restoreSnapshot;
-
-    const candidates = buildManagedRestoreCandidates({
-        activePubkey,
-        activeType: activePubkey
-            ? accounts.find((account) => account.pubkeyHex === activePubkey)?.type ?? null
-            : null,
-        accounts,
-    });
+    const candidates = buildManagedRestoreCandidates(dependencies.restoreSnapshot);
     let nip07Identity: PublicKeyData | undefined;
+    let nip07ReadFailed = false;
     let infrastructureFailureDetected = dependencies.infrastructureFailureDetected ?? false;
 
     for (const candidate of candidates) {
+        // The extension exposes one identity for all saved NIP-07 accounts.
+        // A failed read can be retried by a later auth operation.
+        if (candidate.type === 'nip07' && nip07ReadFailed) continue;
         const result = await dependencies.restoreAccount(
             candidate.pubkeyHex,
             candidate.type,
@@ -519,6 +515,10 @@ export async function runManagedAuthRestore(
             return result;
         }
         nip07Identity = result.nip07Identity ?? nip07Identity;
+        if (candidate.type === 'nip07'
+            && (result.reason === 'identity-source-unavailable' || result.reason === 'identity-read-failed')) {
+            nip07ReadFailed = true;
+        }
         if (MANAGED_RESTORE_INFRASTRUCTURE_FAILURES.has(result.reason)) {
             infrastructureFailureDetected = true;
         }

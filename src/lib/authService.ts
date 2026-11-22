@@ -91,12 +91,7 @@ export class AuthService {
     hasNosskeyStartupCandidate(): boolean {
         const stored = this.accountManager?.getAuthRestoreSnapshot();
         if (stored?.status !== 'ready') return false;
-        const { activePubkey, accounts } = stored.snapshot;
-        return buildManagedRestoreCandidates({
-            activePubkey,
-            activeType: accounts.find(account => account.pubkeyHex === activePubkey)?.type ?? null,
-            accounts,
-        }).some(candidate => candidate.type === 'nosskey');
+        return buildManagedRestoreCandidates(stored.snapshot).some(candidate => candidate.type === 'nosskey');
     }
 
     authenticateWithNosskey(pubkeyHex: string): AuthResult {

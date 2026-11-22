@@ -95,13 +95,13 @@ export async function runAppInitializationBootstrap({
         }
 
         if (authResult.hasAuth && authResult.pubkeyHex) {
+            // Post-auth bootstrap already synchronizes the account list and its profiles.
             await handleAuthenticated(authResult.pubkeyHex);
         } else {
             await initializeGuestSession();
             stopProfileLoading();
+            refreshAccountList();
         }
-
-        refreshAccountList();
     } catch {
         console.error("認証初期化中にエラー", {
             stage: 'initialize-auth',
