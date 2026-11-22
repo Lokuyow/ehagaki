@@ -528,6 +528,37 @@ test('notification gallery reaches every image and loads offscreen images when s
     }
 });
 
+test('gallery hover arrows page in both directions and hide at the edges', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 950 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('post-history-dialog-playwright.html?notifications=1');
+    test.skip(!await page.evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches), 'Hover controls require a fine pointer.');
+    const trigger = page.locator('.notification-btn');
+    await expect(trigger).toBeVisible();
+    await page.evaluate(() => Reflect.get(window, '__NOTIFICATIONS__').addImagePosts());
+    await trigger.click();
+    const article = page.getByRole('dialog').locator('.notification-entry').filter({ hasText: 'MANY-ARTICLE-IMAGES' });
+    const gallery = article.locator('.media-gallery-preview');
+    const previous = article.getByRole('button', { name: '前のメディアを表示' });
+    const next = article.getByRole('button', { name: '次のメディアを表示' });
+    await gallery.scrollIntoViewIfNeeded();
+    await expect(next).toBeEnabled();
+    await expect(next).toHaveCSS('opacity', '0');
+    await gallery.hover();
+    await expect(previous).toHaveCSS('opacity', '0');
+    await expect(next).toHaveCSS('opacity', '1');
+    await next.click();
+    const onePage = await gallery.evaluate(node => node.clientWidth);
+    await expect.poll(() => gallery.evaluate(node => node.scrollLeft)).toBe(onePage);
+    await expect(previous).toHaveCSS('opacity', '1');
+    await previous.click();
+    await expect.poll(() => gallery.evaluate(node => node.scrollLeft)).toBe(0);
+    await expect(previous).toHaveCSS('opacity', '0');
+    await gallery.evaluate(node => { node.scrollLeft = node.scrollWidth; });
+    await expect(next).toHaveCSS('opacity', '0');
+    await expect(previous).toHaveCSS('opacity', '1');
+});
+
 test('image controls fit inside a 280px embedded notification dialog', async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 850 });
     await page.goto('post-history-dialog-playwright.html?notifications-host=1');
