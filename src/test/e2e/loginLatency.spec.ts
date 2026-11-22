@@ -309,6 +309,75 @@ test('searches saved mentions and delivers a tagged post to the recipient notifi
     await expect(row.getByRole('link', { name: '@アリス Example' }).first()).toBeVisible();
 });
 
+test('keeps the editor against the keyboard bar while mention suggestions are open in the PWA @android-chrome', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'android-chromium', 'Uses the Android Chromium device configuration.');
+    await page.addInitScript(() => {
+        const matchMedia = window.matchMedia.bind(window);
+        window.matchMedia = (query) => {
+            const result = matchMedia(query);
+            if (query === '(display-mode: standalone)') Object.defineProperty(result, 'matches', { value: true });
+            return result;
+        };
+        let scrollRequests = 0;
+        const scrollIntoView = Element.prototype.scrollIntoView;
+        Element.prototype.scrollIntoView = function (...args) {
+            if (this.closest('.profile-mention-suggestion-popover')) {
+                document.documentElement.dataset.mentionScrollRequests = String(++scrollRequests);
+            }
+            return scrollIntoView.apply(this, args);
+        };
+    });
+    const app = await setup(page, { mentions: true });
+    await app.login();
+    app.releaseRelays();
+    app.releaseProfiles();
+    await expect.poll(() => app.counts().followedProfileRequests).toBeGreaterThan(0);
+
+    const editor = page.locator('.tiptap-editor');
+    const popup = page.locator('.profile-mention-suggestion-popover');
+    const choice = popup.getByRole('option', { name: /アリス Example/ });
+    const setViewport = (height: number | null, offsetTop: number) => page.evaluate(({ height, offsetTop }) => {
+        const viewport = window.visualViewport!;
+        Object.defineProperties(viewport, {
+            height: { configurable: true, value: height ?? window.innerHeight },
+            offsetTop: { configurable: true, value: offsetTop },
+        });
+        viewport.dispatchEvent(new Event(height === null || offsetTop === 0 ? 'resize' : 'scroll'));
+    }, { height, offsetTop });
+    const readGeometry = () => editor.evaluate(element => {
+        const bar = document.querySelector('.footer-button-bar')!.getBoundingClientRect();
+        return {
+            gap: bar.top - element.getBoundingClientRect().bottom,
+            barBottom: bar.bottom,
+            viewportBottom: window.visualViewport!.offsetTop + window.visualViewport!.height,
+        };
+    });
+
+    await editor.focus();
+    await setViewport(500, 0);
+    await editor.fill('@アリス');
+    await expect(choice).toBeVisible();
+    for (const offsetTop of [0, 40, 0]) {
+        await setViewport(500, offsetTop);
+        await expect.poll(async () => {
+            const { gap, barBottom, viewportBottom } = await readGeometry();
+            return Math.max(Math.abs(gap), Math.abs(barBottom - viewportBottom));
+        }).toBeLessThanOrEqual(1);
+        await expect(choice).toBeVisible();
+        await expect(editor).toBeFocused();
+    }
+    expect(await page.locator('html').getAttribute('data-mention-scroll-requests')).toBeNull();
+    await choice.tap();
+    await expect(editor.locator('[data-nostr-mention]')).toHaveText('@アリス Example');
+    await expect(popup).toHaveCount(0);
+
+    await setViewport(null, 0);
+    await expect.poll(async () => {
+        const { gap, barBottom, viewportBottom } = await readGeometry();
+        return Math.max(Math.abs(gap), Math.abs(barBottom - (viewportBottom - 66)));
+    }).toBeLessThanOrEqual(1);
+});
+
 test('refreshes the mention candidates from Settings after a follow is removed', async ({ page }) => {
     const app = await setup(page, { mentions: true });
     await app.login();

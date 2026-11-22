@@ -2522,7 +2522,9 @@
 
 <style>
   main {
-    position: relative;
+    position: var(--app-main-position, relative);
+    /* When fixed, use the same bottom edge as the keyboard button bar. */
+    inset: 0 0 var(--keyboard-button-bar-bottom);
     display: flex;
     flex-direction: column;
     height: var(--app-main-height);

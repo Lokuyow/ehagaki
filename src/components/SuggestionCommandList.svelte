@@ -91,6 +91,7 @@
     <Command.Root
         class={`suggestion-command ${rootClass}`.trim()}
         shouldFilter={false}
+        disableInitialScroll={true}
         loop={true}
     >
         <Command.List class="suggestion-command-list">

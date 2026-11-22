@@ -40,7 +40,7 @@ export function isIPhoneSafari(): boolean {
     return isIPhone && isWebKit && !isCriOS && !isFxiOS && !isEdgiOS;
 }
 
-export function isNonPwaAndroidChrome(): boolean {
+function isAndroidChrome(): boolean {
     if (typeof window === "undefined" || typeof navigator === "undefined") {
         return false;
     }
@@ -51,11 +51,22 @@ export function isNonPwaAndroidChrome(): boolean {
     const isOtherChromiumBrowser =
         /(?:EdgA|OPR|SamsungBrowser)\/[\d.]+/i.test(userAgent) ||
         /; wv\)/i.test(userAgent);
-    const isStandalone =
-        window.matchMedia?.("(display-mode: standalone)")?.matches === true ||
-        (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    return isAndroid && isChrome && !isOtherChromiumBrowser;
+}
 
-    return isAndroid && isChrome && !isOtherChromiumBrowser && !isStandalone;
+function isStandaloneDisplayMode(): boolean {
+    return (
+        window.matchMedia?.("(display-mode: standalone)")?.matches === true ||
+        (navigator as Navigator & { standalone?: boolean }).standalone === true
+    );
+}
+
+export function isNonPwaAndroidChrome(): boolean {
+    return isAndroidChrome() && !isStandaloneDisplayMode();
+}
+
+export function isPwaAndroidChrome(): boolean {
+    return isAndroidChrome() && isStandaloneDisplayMode();
 }
 
 export function getVirtualKeyboardLayoutInset(
