@@ -16,7 +16,7 @@ import type {
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
 import { CHANNEL_TEMPORARY_READ_RELAY_LIMIT } from "./channelContextConstants";
 import { scanHttpUrlCandidates } from "./utils/httpUrlCandidates";
-import { encodeProfilePointer, scanProfileMentions, type ProfileMention } from "./profileMention";
+import { scanProfileMentions, type ProfileMention } from "./profileMention";
 
 const CUSTOM_EMOJI_SHORTCODE_PATTERN = /:([^\s:]+):/g;
 
@@ -46,7 +46,6 @@ export type PostHistoryPreviewSegment =
     | {
         type: "mention";
         profile: ProfileMention;
-        href: string;
     };
 
 export type PostHistoryPreviewContent = {
@@ -485,7 +484,7 @@ export function buildPreviewContent(
     for (const { start, end, pubkey, relayHints } of scanProfileMentions(normalizedContent)) {
         pushContentWithEmoji(normalizedContent.slice(lastIndex, start), segments, emojiMap, mediaMap, emojiUrls);
         const profile = { pubkey, relayHints };
-        segments.push({ type: "mention", profile, href: `https://njump.me/${encodeProfilePointer(profile)}` });
+        segments.push({ type: "mention", profile });
         lastIndex = end;
     }
     pushContentWithEmoji(normalizedContent.slice(lastIndex), segments, emojiMap, mediaMap, emojiUrls);

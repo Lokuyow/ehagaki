@@ -1,5 +1,7 @@
+import { nip19 } from "nostr-tools";
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
 import { buildPostHistoryNevent } from "./postHistoryNevent";
+import { encodeProfilePointer, type ProfileMention } from "./profileMention";
 
 export const EXTERNAL_NOSTR_CLIENTS = [
     "nostter",
@@ -111,6 +113,22 @@ export function buildPostHistoryExternalClientUrl(
         preference,
         buildPostHistoryNevent(post, writeRelays),
     );
+}
+
+export function buildProfileExternalClientUrl(
+    profile: ProfileMention,
+    preference: ExternalNostrClientPreference,
+): string {
+    if (preference.client === "primal") {
+        return `https://primal.net/p/${nip19.npubEncode(profile.pubkey)}`;
+    }
+
+    const pointer = encodeProfilePointer(profile);
+    if (preference.client === "jumble") {
+        return `https://jumble.social/users/${pointer}`;
+    }
+    const identifier = preference.client === "lumilumi" ? nip19.npubEncode(profile.pubkey) : pointer;
+    return buildExternalNostrClientUrl(preference, identifier) ?? `https://njump.me/${pointer}`;
 }
 
 export function getExternalNostrClientDisplayName(

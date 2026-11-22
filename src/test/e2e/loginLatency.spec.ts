@@ -373,7 +373,9 @@ test('searches saved mentions and delivers a tagged post to the recipient notifi
     const prefix = '寿'.repeat(23) + '👩🏽‍💻';
     const longName = prefix + '長い名前'.repeat(100);
     const shortLabel = `@${prefix}…`;
+    await page.addInitScript(() => localStorage.setItem('externalNostrClient', 'primal'));
     const app = await setup(page, { mentions: true, mentionDisplayName: longName });
+    const profileUrl = `https://primal.net/p/${nip19.npubEncode(app.otherOwner)}`;
     await app.login();
     app.releaseRelays();
     await expect.poll(() => hasStoredFollowList(page, app.owner)).toBe(true);
@@ -432,6 +434,7 @@ test('searches saved mentions and delivers a tagged post to the recipient notifi
     const historyMention = history.getByRole('link', { name: shortLabel, exact: true }).first();
     await expect(historyMention).toBeVisible();
     await expect(historyMention).toHaveAttribute('title', `@${longName}`);
+    await expect(historyMention).toHaveAttribute('href', profileUrl);
     await page.keyboard.press('Escape');
     await expect(history).toBeHidden();
 
@@ -444,6 +447,7 @@ test('searches saved mentions and delivers a tagged post to the recipient notifi
     const notificationMention = row.getByRole('link', { name: shortLabel, exact: true }).first();
     await expect(notificationMention).toBeVisible();
     await expect(notificationMention).toHaveAttribute('title', `@${longName}`);
+    await expect(notificationMention).toHaveAttribute('href', profileUrl);
 });
 
 test('keeps the editor against the keyboard bar while mention suggestions are open in the PWA @android-chrome', async ({ page }, testInfo) => {

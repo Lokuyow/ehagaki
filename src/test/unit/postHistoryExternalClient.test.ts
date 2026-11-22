@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { nip19 } from "nostr-tools";
 import {
     buildExternalNostrClientUrl,
+    buildProfileExternalClientUrl,
     getExternalNostrClientDisplayName,
     normalizeExternalNostrClientUrlTemplate,
     EXTERNAL_NOSTR_CLIENT_PRESET_TEMPLATES,
@@ -70,5 +72,30 @@ describe("post history external client URL", () => {
                 "",
             ),
         ).toBeNull();
+    });
+});
+
+describe("profile external client URL", () => {
+    const profile = { pubkey: "ab".repeat(32), relayHints: ["wss://relay.example/"] };
+    const npub = nip19.npubEncode(profile.pubkey);
+    const nprofile = nip19.nprofileEncode({ pubkey: profile.pubkey, relays: profile.relayHints });
+
+    it.each([
+        ["nostter", `https://nostter.app/${nprofile}`],
+        ["jumble", `https://jumble.social/users/${nprofile}`],
+        ["primal", `https://primal.net/p/${npub}`],
+        ["njump", `https://njump.me/${nprofile}`],
+        ["lumilumi", `https://lumilumi.app/${npub}`],
+    ] as const)("opens %s's profile route", (client, expected) => {
+        expect(buildProfileExternalClientUrl(profile, { client, customUrlTemplate: "" })).toBe(expected);
+    });
+
+    it("uses the configured HTTPS template and falls back to njump when it is invalid", () => {
+        expect(buildProfileExternalClientUrl(profile, {
+            client: "custom", customUrlTemplate: "https://viewer.example/{nevent}",
+        })).toBe(`https://viewer.example/${nprofile}`);
+        expect(buildProfileExternalClientUrl(profile, {
+            client: "custom", customUrlTemplate: "http://viewer.example/{nevent}",
+        })).toBe(`https://njump.me/${nprofile}`);
     });
 });

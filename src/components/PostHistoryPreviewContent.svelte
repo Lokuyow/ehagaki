@@ -6,6 +6,8 @@
     import TextLinkSegments from "./TextLinkSegments.svelte";
     import { getProfileMentionPreview } from "../lib/profileMentionPreviewContext";
     import { profileMentionLabel, shortenProfileMentionLabel } from "../lib/profileMention";
+    import { buildProfileExternalClientUrl } from "../lib/postHistoryExternalClient";
+    import { settingsStore } from "../stores/settingsStore.svelte";
 
     type EmojiLoadState = "loading" | "ready" | "failed";
     type EmojiImageMeta = {
@@ -51,6 +53,10 @@
 
     const emojiSlotWidthByUrl = new Map<string, number>();
     const mentionProfiles = getProfileMentionPreview();
+    const externalClient = $derived({
+        client: settingsStore.externalNostrClient,
+        customUrlTemplate: settingsStore.externalNostrClientCustomUrl,
+    });
 
     function isTextOrEmojiSegment(
         segment: PostHistoryPreviewSegment,
@@ -140,7 +146,7 @@
                     {@const pubkey = segment.profile.pubkey}
                     {@const name = profileMentionLabel(pubkey, mentionProfiles?.read(pubkey))}
                     {@const label = shortenProfileMentionLabel(name)}
-                    <a class="profile-mention" href={segment.href} target="_blank" rel="noopener noreferrer"
+                    <a class="profile-mention" href={buildProfileExternalClientUrl(segment.profile, externalClient)} target="_blank" rel="noopener noreferrer"
                         title={name === label ? undefined : `@${name}`}>@{label}</a>
                 {:else if hasEmojiFailed(segment.url)}
                     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
