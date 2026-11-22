@@ -234,7 +234,9 @@
     "retrySensitivePayload": "再試行"
   },
   "mediaGallery": {
-    "aria_label": "メディアギャラリー"
+    "aria_label": "メディアギャラリー",
+    "previous_page": "前のメディアを表示",
+    "next_page": "次のメディアを表示"
   },
   "postHistory": {
     "postsTab": "ポスト",

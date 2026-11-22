@@ -115,7 +115,7 @@ test.describe('post gallery layout', () => {
             const src = 'data:image/svg+xml,' + encodeURIComponent(
                 '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="100"><rect width="100%" height="100%" fill="teal"/></svg>',
             );
-            for (const alt of ['first image', 'second image']) {
+            for (const alt of ['first image', 'second image', 'third image', 'fourth image']) {
                 gallery.mediaGalleryStore.addItem({ id: alt, type: 'image', src, alt, isPlaceholder: false });
             }
         });
@@ -126,16 +126,37 @@ test.describe('post gallery layout', () => {
         await expect(cards.first().locator('img')).toHaveCSS('width', '280px');
         await expect(cards.first().locator('img')).toHaveCSS('transform', 'matrix(1.5, 0, 0, 1.5, 0, 0)');
 
-        const lastCard = await cards.last().boundingBox();
-        if (!lastCard) throw new Error('Second media card is missing');
-        await cards.first().dragTo(cards.last(), {
+        const secondCard = await cards.nth(1).boundingBox();
+        if (!secondCard) throw new Error('Second media card is missing');
+        await cards.first().dragTo(cards.nth(1), {
             sourcePosition: { x: 24, y: 24 },
-            targetPosition: { x: lastCard.width - 24, y: 24 },
+            targetPosition: { x: secondCard.width - 24, y: 24 },
         });
         await expect(cards.first().locator('img')).toHaveAttribute('alt', 'second image');
         await cards.first().locator('.media-delete-btn').click();
-        await expect(cards).toHaveCount(1);
+        await expect(cards).toHaveCount(3);
         await expect(cards.first().locator('img')).toHaveAttribute('alt', 'first image');
+
+        await gallery.hover();
+        await page.getByRole('button', { name: '次のメディアを表示' }).click();
+        await expect.poll(() => gallery.evaluate(node => node.scrollLeft)).toBeGreaterThan(0);
+        await page.getByRole('button', { name: '前のメディアを表示' }).click();
+        await expect.poll(() => gallery.evaluate(node => node.scrollLeft)).toBe(0);
+
+        const next = page.getByRole('button', { name: '次のメディアを表示' });
+        await expect(next).toHaveCSS('opacity', '1');
+        const arrowBox = await next.boundingBox();
+        const firstCard = await cards.first().boundingBox();
+        if (!arrowBox || !firstCard) throw new Error('Gallery drag target is missing');
+        const x = arrowBox.x + arrowBox.width / 2;
+        const y = arrowBox.y + arrowBox.height / 2;
+        await page.mouse.move(firstCard.x + 24, firstCard.y + 24);
+        await page.mouse.down();
+        await page.mouse.move(x, y, { steps: 10 });
+        await expect(page.locator('.gallery-page-right')).toHaveCSS('visibility', 'hidden');
+        await page.mouse.move(x + 1, y);
+        await page.mouse.up();
+        await expect(cards.last().locator('img')).toHaveAttribute('alt', 'first image');
 
         await page.setViewportSize({ width: 360, height: 800 });
         await expect(gallery).toHaveCSS('height', '180px');

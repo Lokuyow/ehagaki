@@ -234,7 +234,9 @@
     "retrySensitivePayload": "Retry"
   },
   "mediaGallery": {
-    "aria_label": "Media gallery"
+    "aria_label": "Media gallery",
+    "previous_page": "Show previous media",
+    "next_page": "Show next media"
   },
   "postHistory": {
     "postsTab": "Posts",

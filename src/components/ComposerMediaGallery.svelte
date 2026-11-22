@@ -387,6 +387,7 @@
     {items}
     bind:element={galleryEl}
     class={isSending ? "sending" : undefined}
+    dragging={dragFromIndex !== -1}
     ondragover={handleGalleryDragOver}
     ondrop={handleGalleryDrop}
 >
