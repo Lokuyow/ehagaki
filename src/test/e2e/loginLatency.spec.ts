@@ -370,7 +370,12 @@ function hasStoredFollowList(page: Page, pubkey: string): Promise<boolean> {
 }
 
 test('searches saved mentions and delivers a tagged post to the recipient notifications', async ({ page }) => {
-    const app = await setup(page, { mentions: true });
+    const prefix = '寿'.repeat(23) + '👩🏽‍💻';
+    const longName = prefix + '長い名前'.repeat(100);
+    const shortLabel = `@${prefix}…`;
+    await page.addInitScript(() => localStorage.setItem('externalNostrClient', 'primal'));
+    const app = await setup(page, { mentions: true, mentionDisplayName: longName });
+    const profileUrl = `https://primal.net/p/${nip19.npubEncode(app.otherOwner)}`;
     await app.login();
     app.releaseRelays();
     await expect.poll(() => hasStoredFollowList(page, app.owner)).toBe(true);
@@ -382,16 +387,16 @@ test('searches saved mentions and delivers a tagged post to the recipient notifi
     await expect(editor.locator('[data-decoration-id]')).toHaveText('@alice@example.com');
     await expect(popup).toHaveCount(0);
     app.releaseProfiles();
-    await expect(popup.getByText('@アリス Example', { exact: true })).toBeVisible({ timeout: 12_000 });
+    await expect(popup.getByText(shortLabel, { exact: true })).toBeVisible({ timeout: 12_000 });
     const requests = app.counts().followedProfileRequests;
-    for (const query of ['@alice', '@アリス Example', '@alice@example.com']) {
+    for (const query of ['@alice', '@寿', '@alice@example.com']) {
         await editor.fill(query);
-        await expect(popup.getByText('@アリス Example', { exact: true })).toBeVisible();
+        await expect(popup.getByText(shortLabel, { exact: true })).toBeVisible();
     }
     expect(app.counts().followedProfileRequests).toBe(requests);
 
     await editor.press('Enter');
-    await expect(editor.locator('[data-nostr-mention]')).toHaveText('@アリス Example');
+    await expect(editor.locator('[data-nostr-mention]')).toHaveText(shortLabel);
 
     for (const pointer of [
         nip19.npubEncode(app.otherOwner),
@@ -400,7 +405,16 @@ test('searches saved mentions and delivers a tagged post to the recipient notifi
         await page.getByRole('button', { name: '宛先を指定' }).click();
         const dialog = page.getByRole('dialog', { name: '宛先を指定' });
         await dialog.locator('input').fill(pointer);
-        await dialog.getByRole('button', { name: 'メンション', exact: true }).click();
+        const profile = dialog.locator('.composer-target-profile');
+        await expect(profile.getByText(shortLabel, { exact: true })).toHaveAttribute('title', `@${longName}`);
+        const mentionButton = profile.getByRole('button', { name: 'メンション', exact: true });
+        await expect(mentionButton).toBeVisible();
+        await expect(mentionButton.locator('.composer-target-mention-icon')).toHaveCSS('mask-image', /alternate_email_24dp.*\.svg/);
+        expect(await mentionButton.evaluate(button => {
+            const style = getComputedStyle(button);
+            return button.scrollWidth <= button.clientWidth && style.getPropertyValue('--btn-bg') === style.getPropertyValue('--theme');
+        })).toBe(true);
+        await mentionButton.click();
         await expect(dialog).toBeHidden();
     }
     await expect(editor.locator('[data-nostr-mention]')).toHaveCount(3);
@@ -417,7 +431,10 @@ test('searches saved mentions and delivers a tagged post to the recipient notifi
 
     await page.locator('.post-history-btn').click();
     const history = page.getByRole('dialog', { name: '履歴' });
-    await expect(history.getByRole('link', { name: '@アリス Example' }).first()).toBeVisible();
+    const historyMention = history.getByRole('link', { name: shortLabel, exact: true }).first();
+    await expect(historyMention).toBeVisible();
+    await expect(historyMention).toHaveAttribute('title', `@${longName}`);
+    await expect(historyMention).toHaveAttribute('href', profileUrl);
     await page.keyboard.press('Escape');
     await expect(history).toBeHidden();
 
@@ -427,7 +444,10 @@ test('searches saved mentions and delivers a tagged post to the recipient notifi
     const notifications = page.getByRole('dialog', { name: '通知' });
     const row = notifications.locator('.notification-entry').filter({ hasText: '直接貼り付け' });
     await expect(row.getByText('メンション', { exact: true })).toBeVisible();
-    await expect(row.getByRole('link', { name: '@アリス Example' }).first()).toBeVisible();
+    const notificationMention = row.getByRole('link', { name: shortLabel, exact: true }).first();
+    await expect(notificationMention).toBeVisible();
+    await expect(notificationMention).toHaveAttribute('title', `@${longName}`);
+    await expect(notificationMention).toHaveAttribute('href', profileUrl);
 });
 
 test('keeps the editor against the keyboard bar while mention suggestions are open in the PWA @android-chrome', async ({ page }, testInfo) => {

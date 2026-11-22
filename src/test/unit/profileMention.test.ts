@@ -33,7 +33,7 @@ describe("profile mentions", () => {
         });
         expect(model.hasRenderableText).toBe(true);
         expect(model.previewContent.segments).toMatchObject([
-            { type: "mention", profile: { pubkey: alice }, href: `https://njump.me/${npub}` },
+            { type: "mention", profile: { pubkey: alice } },
             { type: "emoji", shortcode: "wave" },
         ]);
     });

@@ -85,7 +85,7 @@
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
     import { formatShortNpub } from "../lib/utils/nostrUtils";
     import { profileMetadataCache } from "../lib/profileMetadataCache.svelte";
-    import { profileMentionLabel, type ProfileMention, type ProfileMentionCandidate } from "../lib/profileMention";
+    import { profileMentionLabel, shortenProfileMentionLabel, type ProfileMention, type ProfileMentionCandidate } from "../lib/profileMention";
     import { createSensitivePayloadBodyLoader } from "../lib/sensitiveContentPayloadReader";
 
     type DialogPhase =
@@ -1085,9 +1085,17 @@
         </div>
 
         {#if profileTarget}
+            {@const label = shortenProfileMentionLabel(profileTargetLabel)}
             <div class="composer-target-profile">
-                <span>@{profileTargetLabel}</span>
-                <Button onClick={handleApplyMention} disabled={!canApplyMention}>
+                <span title={label === profileTargetLabel ? undefined : `@${profileTargetLabel}`}>@{label}</span>
+                <Button
+                    class="composer-target-mention-button"
+                    variant="primary"
+                    contentLayout="iconText"
+                    onClick={handleApplyMention}
+                    disabled={!canApplyMention}
+                >
+                    <span class="composer-target-mention-icon svg-icon" aria-hidden="true"></span>
                     {$_("composerTarget.mention")}
                 </Button>
             </div>
@@ -1470,9 +1478,27 @@
         margin-block: 0.75rem;
     }
 
-    .composer-target-profile span {
+    .composer-target-profile > span {
         min-width: 0;
-        overflow-wrap: anywhere;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .composer-target-profile :global(.composer-target-mention-button) {
+        --btn-bg: var(--theme);
+        color: white;
+        gap: 0.375rem;
+        padding: 0.5rem 0.75rem;
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
+
+    .composer-target-mention-icon {
+        --svg: currentColor;
+        width: 20px;
+        height: 20px;
+        mask-image: url("/icons/alternate_email_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
     .xmark-icon {
         mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
