@@ -6,6 +6,9 @@ test.use({ trace: "off", screenshot: "off", video: "off" });
 test("Nosskey approval supports keyboard and pointer and stays lazy on reload @android-chrome", async ({ page }) => {
     const key = generateSecretKey();
     const owner = getPublicKey(key);
+    const otherOwner = getPublicKey(generateSecretKey());
+    let selectedOwner = owner;
+    await page.exposeFunction("fixtureGetNosskeyPubkey", () => selectedOwner);
     await page.exposeFunction("fixtureSignNosskeyEvent", (template: EventTemplate) => finalizeEvent(template, key));
     let requests = 0;
     let authentications = 0;
@@ -57,7 +60,7 @@ test("Nosskey approval supports keyboard and pointer and stays lazy on reload @a
             document.querySelector("#approve").onclick = async () => respond({
                 result: request.method === "signEvent"
                     ? await window.fixtureSignNosskeyEvent(request.params.event)
-                    : ${JSON.stringify(owner)}
+                    : await window.fixtureGetNosskeyPubkey()
             });
             send({type:"nosskey:ready"});
             </script>` });
@@ -90,4 +93,23 @@ test("Nosskey approval supports keyboard and pointer and stays lazy on reload @a
     await iframe.getByRole("button", { name: "Approve" }).click();
     await expect.poll(() => published).toBe(true);
     expect(authentications).toBe(0);
+
+    await page.evaluate(pubkeyHex => {
+        const accounts = JSON.parse(localStorage.getItem("nostr-accounts") ?? "[]");
+        accounts.push({ pubkeyHex, type: "nosskey", addedAt: Date.now() });
+        localStorage.setItem("nostr-accounts", JSON.stringify(accounts));
+    }, otherOwner);
+    await page.reload();
+    await page.locator(".profile-display").click();
+    const switchToOther = page.locator(".account-info-button:enabled");
+    await switchToOther.click();
+    await iframe.getByRole("button", { name: "Approve" }).click();
+    await expect(page.getByText("Select the expected account at nosskey.app, then reconnect and retry.")).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem("nostr-active-account"))).toBe(owner);
+
+    selectedOwner = otherOwner;
+    await switchToOther.click();
+    await iframe.getByRole("button", { name: "Approve" }).click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("nostr-active-account"))).toBe(otherOwner);
+    await expect(page.locator(".profile-dialog")).toBeHidden();
 });
