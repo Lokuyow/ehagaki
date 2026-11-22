@@ -95,7 +95,7 @@ export class PostRepostService {
             if (auth.type === "nip07") signer = this.deps.getNip07Signer();
             else if (auth.type === "nip46") signer = await this.deps.getNip46Signer(pubkey);
             else if (auth.type === "parentClient") signer = this.deps.getParentClientSigner();
-            else {
+            else if (auth.type === "nsec") {
                 const key = this.deps.keyManager.getFromStore() || this.deps.keyManager.loadFromStorage(pubkey);
                 if (key) signer = this.deps.seckeySignerFn(key);
             }

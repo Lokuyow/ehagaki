@@ -66,6 +66,7 @@ const ACCOUNT_TYPES: readonly StoredAccount['type'][] = [
     'nip46',
     'parentClient',
     'npub',
+    'nosskey',
 ];
 
 function isStoredAccount(value: unknown): value is StoredAccount {

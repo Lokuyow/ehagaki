@@ -374,6 +374,7 @@ const managedRestoreStrategies: Record<
     ) => Promise<ManagedRestoreResult>
 > = {
     npub: restoreManagedPublicKeyAccount,
+    nosskey: async () => ({ hasAuth: false, reason: 'unsupported-account-type' }),
     nsec: restoreManagedNsecAccount,
     nip07: restoreManagedNip07Account,
     nip46: restoreManagedNip46Account,

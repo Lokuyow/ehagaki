@@ -9,7 +9,7 @@ import type { AppPostNotificationPort } from "../appNotificationPort";
 import type { PostHistoryRawEventAttestation } from "../postHistoryRawEventVerification";
 
 // App Store types
-export type AccountAuthType = 'nsec' | 'nip07' | 'nip46' | 'parentClient' | 'npub';
+export type AccountAuthType = 'nsec' | 'nip07' | 'nip46' | 'parentClient' | 'npub' | 'nosskey';
 
 export interface AuthState {
     type: 'none' | AccountAuthType;
