@@ -37,7 +37,9 @@ function normalizeError(error: unknown, method?: NosskeyMethod): NosskeyError {
                     // The host forwards the exception message without its name.
                     // Match known WebAuthn failures without logging arbitrary host text.
                     reason = "signing_failed";
-                    if (error.message === "PRF secret not available") {
+                    if (error.message === "WebAuthn is not supported on sites with TLS certificate errors.") {
+                        reason = "passkey_connection_security";
+                    } else if (error.message === "PRF secret not available") {
                         reason = "passkey_prf_unavailable";
                     } else if (error.message === "Authentication failed"
                         || error.message.startsWith("The operation either timed out or was not allowed.")) {

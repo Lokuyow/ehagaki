@@ -1,6 +1,7 @@
 type NosskeyErrorCode = "unavailable" | "ready_timeout" | "timeout" | "no_key" | "declined"
     | "rate_limited" | "identity_mismatch" | "invalid_result" | "connection" | "cancelled"
-    | "account_conflict" | "storage" | "signing_failed" | "passkey_failed" | "passkey_prf_unavailable";
+    | "account_conflict" | "storage" | "signing_failed" | "passkey_failed" | "passkey_prf_unavailable"
+    | "passkey_connection_security";
 
 export class NosskeyError extends Error {
     constructor(readonly code: NosskeyErrorCode) {

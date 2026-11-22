@@ -22,6 +22,7 @@
     "signing_failed": "Nosskey が署名を完了できませんでした。nosskey.app でアカウントとパスキーを確認してから再試行してください。",
     "passkey_failed": "パスキー認証を完了できませんでした。Nosskey に登録したパスキーを選び、本人確認を完了してください。",
     "passkey_prf_unavailable": "パスキーから署名に必要な情報（PRF）を取得できませんでした。登録時と同じパスキーの保存先を選んでください。",
+    "passkey_connection_security": "Chrome がこの接続で Nosskey のパスキー認証をブロックしました。有効な証明書のある HTTPS 版の eHagaki から再試行してください。",
     "unavailable": "Nosskey にはパスキー対応ブラウザと安全な接続が必要です。",
     "identity_mismatch": "nosskey.app で対象のアカウントを選択し、再接続してから操作をやり直してください。",
     "invalid_result": "Nosskey から無効な応答を受信しました。",

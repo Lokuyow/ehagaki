@@ -22,6 +22,7 @@
     "signing_failed": "Nosskey could not sign this request. Check your account and passkey at nosskey.app, then try again.",
     "passkey_failed": "Passkey verification did not complete. Select the passkey you registered with Nosskey and finish verification.",
     "passkey_prf_unavailable": "Your passkey did not return the information needed to sign (PRF). Select the provider you used when registering this passkey.",
+    "passkey_connection_security": "Chrome blocked Nosskey passkey verification for this connection. Try opening eHagaki over HTTPS with a valid certificate.",
     "unavailable": "Nosskey requires passkey support and a secure connection.",
     "identity_mismatch": "Select the expected account at nosskey.app, then reconnect and retry.",
     "invalid_result": "Nosskey returned an invalid response.",

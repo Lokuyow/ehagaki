@@ -57,6 +57,7 @@ describe("Nosskey requests", () => {
 
     it.each([
         ["PRF secret not available", "passkey_prf_unavailable"],
+        ["WebAuthn is not supported on sites with TLS certificate errors.", "passkey_connection_security"],
         ["Authentication failed", "passkey_failed"],
         ["The operation either timed out or was not allowed. See: https://www.w3.org/TR/webauthn-2/#sctn-privacy-considerations-client.", "passkey_failed"],
         ["Unrecognized host diagnostic", "signing_failed"],
