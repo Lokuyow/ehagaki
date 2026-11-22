@@ -407,7 +407,11 @@ test('searches saved mentions and delivers a tagged post to the recipient notifi
         await expect(profile.getByText(shortLabel, { exact: true })).toHaveAttribute('title', `@${longName}`);
         const mentionButton = profile.getByRole('button', { name: 'メンション', exact: true });
         await expect(mentionButton).toBeVisible();
-        expect(await mentionButton.evaluate(button => button.scrollWidth <= button.clientWidth)).toBe(true);
+        await expect(mentionButton.locator('.composer-target-mention-icon')).toHaveCSS('mask-image', /alternate_email_24dp.*\.svg/);
+        expect(await mentionButton.evaluate(button => {
+            const style = getComputedStyle(button);
+            return button.scrollWidth <= button.clientWidth && style.getPropertyValue('--btn-bg') === style.getPropertyValue('--theme');
+        })).toBe(true);
         await mentionButton.click();
         await expect(dialog).toBeHidden();
     }
