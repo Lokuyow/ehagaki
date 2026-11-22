@@ -1,11 +1,13 @@
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuthServiceDependencies } from '../../lib/types';
 import { MockStorage, type MockKeyManager } from '../helpers';
+import { mockAuthStoreModule } from '../mocks/storeModules';
 import './authServiceModuleMocks';
 
 import { AuthService } from '../../lib/authService';
 import { ACTIVE_NIP07_STARTUP_IDENTITY_READ_TIMEOUT_MS } from '../../lib/authRestoreUtils';
 import { AccountManager } from '../../lib/accountManager';
+import { configureAppRuntimeEnvironment, getAppRuntimeEnvironment } from '../../lib/appRuntimeEnvironment';
 import { resolveNip07AutoLoginSession } from '../../lib/bootstrap/nip07AutoLoginBootstrap';
 import { getNsecStorageKey } from '../../lib/authStorageKeys';
 import { STORAGE_KEYS } from '../../lib/constants';
@@ -30,6 +32,55 @@ describe('startup active selection persistence', () => {
     afterEach(() => {
         vi.restoreAllMocks();
         vi.useRealTimers();
+    });
+
+    it('restores the selected Nosskey account from storage on standalone startup', async () => {
+        const deps = createMockDependencies();
+        const manager = new AccountManager({ localStorage: deps.localStorage! });
+        manager.addAccount(FALLBACK_PUBKEY, 'nsec');
+        manager.addAccount(ACTIVE_PUBKEY, 'nosskey');
+        const service = new AuthService(deps);
+        service.setAccountManager(manager);
+
+        expect(service.hasNosskeyStartupCandidate()).toBe(true);
+        await expect(service.initializeAuth()).resolves.toEqual({
+            hasAuth: true, pubkeyHex: ACTIVE_PUBKEY,
+        });
+        expect(mockAuthStoreModule.setNosskeyAuth).toHaveBeenCalledWith(
+            ACTIVE_PUBKEY, expect.stringMatching(/^npub/), expect.stringMatching(/^nprofile/),
+        );
+        expect(manager.getActiveAccountPubkey()).toBe(ACTIVE_PUBKEY);
+        expect(manager.getAccountType(ACTIVE_PUBKEY)).toBe('nosskey');
+        const { readStoredKey } = deps.keyManager as MockKeyManager;
+        expect(readStoredKey).not.toHaveBeenCalledWith(ACTIVE_PUBKEY);
+        expect(readStoredKey).not.toHaveBeenCalledWith(FALLBACK_PUBKEY);
+
+        manager.setActiveAccount(FALLBACK_PUBKEY);
+        expect(service.hasNosskeyStartupCandidate()).toBe(false);
+    });
+
+    it('preserves the Nosskey selection when the iframe runtime cannot restore it', async () => {
+        const { runtimeKind } = getAppRuntimeEnvironment();
+        configureAppRuntimeEnvironment({ runtimeKind: 'iframe' });
+        try {
+            const deps = createMockDependencies();
+            const manager = new AccountManager({ localStorage: deps.localStorage! });
+            manager.addAccount(FALLBACK_PUBKEY, 'nsec');
+            manager.addAccount(ACTIVE_PUBKEY, 'nosskey');
+            const service = new AuthService(deps);
+            service.setAccountManager(manager);
+
+            await expect(service.restoreAccount(ACTIVE_PUBKEY, 'nosskey')).resolves.toEqual({
+                hasAuth: false, reason: 'unsupported-account-type',
+            });
+            await expect(service.initializeAuth()).resolves.toEqual({
+                hasAuth: false, activeSelectionPreserved: true, restoreOutcome: 'completed',
+            });
+            expect(manager.getActiveAccountPubkey()).toBe(ACTIVE_PUBKEY);
+            expect((deps.keyManager as MockKeyManager).readStoredKey).not.toHaveBeenCalledWith(FALLBACK_PUBKEY);
+        } finally {
+            configureAppRuntimeEnvironment({ runtimeKind });
+        }
     });
 
     it('preserves active NIP-46 when its session cannot be restored instead of restoring B', async () => {

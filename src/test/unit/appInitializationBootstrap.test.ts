@@ -148,6 +148,16 @@ describe('runAppInitializationBootstrap', () => {
         expect(params.handleAuthenticated).toHaveBeenCalledWith('restored-pubkey');
     });
 
+    it('marks authentication initialized even when recovery into the guest session also rejects', async () => {
+        const params = createBootstrapParams({
+            initializeAuth: vi.fn().mockRejectedValue(new Error('auth failed')),
+            initializeGuestSession: vi.fn().mockRejectedValue(new Error('guest failed')),
+        });
+
+        await expect(runAppInitializationBootstrap(params as never)).rejects.toThrow('guest failed');
+        expect(params.markAuthInitialized).toHaveBeenCalledOnce();
+    });
+
     it('認証初期化エラー時も guest 初期化と external input bootstrap を継続する', async () => {
         const error = new Error('auth failed');
         const params = createBootstrapParams({

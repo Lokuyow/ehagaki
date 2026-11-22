@@ -1,3 +1,4 @@
+import { isSameAuthSession } from "./sessionLiveness";
 import { nosskeySignerForSession, nosskeyErrorMessage } from "./nosskeyService.svelte";
 import { seckeySigner } from '@rx-nostr/crypto';
 import type { EventTemplate } from 'nostr-tools';
@@ -59,7 +60,7 @@ export class PostReactionService {
             const auth = this.deps.authStateStore.value;
             const pubkey = auth.pubkey;
             if (!auth.isAuthenticated || auth.type === 'npub' || !pubkey) return { success: false, error: 'nostr_not_ready' };
-            const isCurrent = () => this.deps.authStateStore.value === auth && auth.isAuthenticated
+            const isCurrent = () => isSameAuthSession(this.deps.authStateStore.value, auth) && auth.isAuthenticated
                 && auth.pubkey === pubkey && params.isCurrent();
             const assertCurrent = () => { if (!isCurrent()) throw new Error('reaction_stale'); };
             assertCurrent();

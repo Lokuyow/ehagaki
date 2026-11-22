@@ -33,7 +33,7 @@ import {
   attestFullyVerifiedPostHistoryRawEvent,
   type PostHistoryRawEventAttestation,
 } from "./postHistoryRawEventVerification";
-import { assertActiveSession, captureActiveSessionPubkey } from "./sessionLiveness";
+import { assertActiveSession, captureActiveSessionPubkey, isSameAuthSession } from "./sessionLiveness";
 import {
   prepareSignedEventTemplate,
   validateSignedEventResult,
@@ -511,7 +511,7 @@ export class PostManager {
       if (
         capturedGeneration !== this.operationGeneration
         || this.rxNostr !== rxNostr || this.eventSender !== sender
-        || currentAuth !== capturedAuthState
+        || !isSameAuthSession(currentAuth, capturedAuthState)
         || !currentAuth.isAuthenticated
         || currentAuth.pubkey !== params.sessionPubkey
         || (!foregroundAcknowledged && params.isCurrent?.() === false)
@@ -877,7 +877,7 @@ export class PostManager {
     if (params.signer && !signEvent) return this.notifyPostFailure("nostr_sign_event_not_supported");
     const isSessionActive = () => {
       const auth = this.deps.authStateStore!.value;
-      return auth === capturedAuth && auth.isAuthenticated && auth.pubkey === params.sessionPubkey
+      return isSameAuthSession(auth, capturedAuth) && auth.isAuthenticated && auth.pubkey === params.sessionPubkey
         && this.rxNostr === rxNostr && this.eventSender === sender
         && this.operationGeneration === generation;
     };
@@ -902,8 +902,8 @@ export class PostManager {
         ? buildSensitivePayloadEvent(params.event.kind as SensitiveContentStructureKind,
           params.event.content, params.sessionPubkey, params.event.created_at)
         : params.event);
-    } catch {
-      return this.notifyPostFailure("post_error");
+    } catch (error) {
+      return this.notifyPostFailure(nosskeyErrorMessage(error) ?? "post_error");
     }
     if (!usePayload) published = signed;
     const result = await this.publishNip65Event({

@@ -13,6 +13,7 @@ const initialAuthState: AuthState = {
 };
 
 let authStateValue = $state<AuthState>({ ...initialAuthState });
+let nosskeySessionGeneration = 0;
 
 // The secret key is kept in memory only while an nsec session is active.
 // Signing falls back to per-account storage when it is absent.
@@ -29,6 +30,7 @@ export function updateAuthState(newState: Partial<AuthState>): void {
     const updated = { ...current, ...newState };
     updated.isAuthenticated = updated.type !== 'none' && updated.isValid;
     updated.isExtensionLogin = updated.type === 'nip07';
+    if (updated.type !== 'nosskey') delete updated.nosskeySessionGeneration;
 
     authStateValue = updated;
     if (updated.type !== 'nsec') {
@@ -63,7 +65,8 @@ export function setNsecAuth(pubkey: string, npub: string, nprofile: string): voi
 }
 
 export function setNosskeyAuth(pubkey: string, npub: string, nprofile: string): void {
-    updateAuthState({ type: 'nosskey', pubkey, npub, nprofile, isValid: true });
+    updateAuthState({ type: 'nosskey', pubkey, npub, nprofile, isValid: true,
+        nosskeySessionGeneration: ++nosskeySessionGeneration });
 }
 
 export function setNip07Auth(pubkey: string, npub: string, nprofile: string): void {

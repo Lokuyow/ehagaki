@@ -222,7 +222,7 @@
   } from "./lib/appAuthUtils";
   import { createAppAccountSessionController } from "./lib/appAccountSessionController";
   import { clearRegisteredPersistedPostHistoryListingSnapshots } from "./lib/postHistoryListingSnapshotCleanup";
-  import { createAppAuthLoginController } from "./lib/appAuthLoginController";
+  import { createAppAuthLoginController, type NosskeyLoginStatus } from "./lib/appAuthLoginController";
   import { createAppParentClientSyncController } from "./lib/appParentClientSyncController";
   import { createAppAuthInteractionController } from "./lib/appAuthInteractionController";
   import { createAppAccountDialogController } from "./lib/appAccountDialogController";
@@ -262,7 +262,7 @@
 
   const appRuntimeEnvironment = getAppRuntimeEnvironment();
   const nosskeyEnabled = canUseNosskey();
-  let nosskeyLoginPending = $state(false);
+  let nosskeyLoginStatus = $state<NosskeyLoginStatus>("idle");
   let nosskeyConfirming = $state(false);
   interface Props {
     /** The iframe transport remains the default for the PWA and iframe entry. */
@@ -728,7 +728,7 @@
       readPublicKey: nosskey.readPublicKey,
       authenticate: (pubkey) => authService.authenticateWithNosskey(pubkey),
       reportError: nosskey.report,
-      setLoading: (loading) => { nosskeyLoginPending = loading; },
+      setStatus: (status) => { nosskeyLoginStatus = status; },
     } : undefined,
     clearSecretKeyInput: () => {
       secretKey = "";
@@ -1896,10 +1896,15 @@
     getComposer: () => postComponentRef,
     logger: console,
     requiresExplicitMediaUpload: () => authState.value.type === "nosskey",
+    isMediaAuthenticationPending: () => nosskeyEnabled && !isAuthInitialized
+      && authState.value.type === "none" && authService.hasNosskeyStartupCandidate(),
   });
 
   $effect(() => {
-    if (!nosskeyEnabled || isAuthInitialized) void appSharedContentController.consumeSharedContent();
+    // Revisit deferred files when startup finishes. Shared text can be
+    // applied immediately, including while authentication is in progress.
+    void isAuthInitialized;
+    void appSharedContentController.consumeSharedContent();
   });
 
   // URLクエリコンテンツをエディターに挿入
@@ -2357,7 +2362,8 @@
           onSave={saveSecretKey}
           onParentClientLogin={handleParentClientLogin}
           onNosskeyLogin={nosskeyEnabled ? appAuthLoginController.handleNosskeyLogin : undefined}
-          nosskeyBusy={nosskeyLoginPending}
+          nosskeyBusy={nosskeyLoginStatus !== "idle"}
+          onCancelNosskeyLogin={nosskeyLoginStatus === "confirming" ? appAuthLoginController.cancelNosskeyLogin : undefined}
           onNip07Login={handleNip07Login}
           onNip46Login={handleNip46Login}
           onNostrConnectStart={handleNostrConnectStart}
@@ -2391,7 +2397,8 @@
           onSave={saveSecretKey}
           onParentClientLogin={handleParentClientLogin}
           onNosskeyLogin={nosskeyEnabled ? appAuthLoginController.handleNosskeyLogin : undefined}
-          nosskeyBusy={nosskeyLoginPending}
+          nosskeyBusy={nosskeyLoginStatus !== "idle"}
+          onCancelNosskeyLogin={nosskeyLoginStatus === "confirming" ? appAuthLoginController.cancelNosskeyLogin : undefined}
           onNip07Login={handleNip07Login}
           onNip46Login={handleNip46Login}
           onNostrConnectStart={handleNostrConnectStart}

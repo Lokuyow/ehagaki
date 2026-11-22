@@ -32,6 +32,7 @@
         onSave: () => Promise<string | undefined> | void;
         onParentClientLogin?: () => Promise<string | undefined>;
         onNosskeyLogin?: () => Promise<void>;
+        onCancelNosskeyLogin?: () => void;
         nosskeyBusy?: boolean;
         onNip07Login: () => Promise<string | undefined>;
         onNip46Login: (bunkerUrl: string) => Promise<string | undefined>;
@@ -59,6 +60,7 @@
         onSave,
         onParentClientLogin,
         onNosskeyLogin,
+        onCancelNosskeyLogin,
         nosskeyBusy = false,
         onNip07Login,
         onNip46Login,
@@ -1176,6 +1178,9 @@
                 disabled={nosskeyBusy || isLoadingNip07 || isLoadingNip46 || isSavingSecretKey}>
                 {$_(nosskeyBusy ? "nosskey.preparing" : "nosskey.login")}
             </Button>
+            {#if onCancelNosskeyLogin}
+                <Button onClick={onCancelNosskeyLogin}>{$_("nosskey.cancel")}</Button>
+            {/if}
             <p>{$_("nosskey.login_hint")}</p>
             <NosskeyNotice />
         </section>

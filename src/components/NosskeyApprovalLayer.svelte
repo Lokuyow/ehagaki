@@ -1,7 +1,7 @@
 <script lang="ts">
     import { Dialog } from "bits-ui";
-    import { tick } from "svelte";
     import { _ } from "svelte-i18n";
+    import { readDialogOpener } from "../lib/dialogCloseFocus";
     import { nosskey } from "../lib/nosskeyService.svelte";
 
     let container: HTMLDivElement | undefined = $state();
@@ -16,7 +16,6 @@
         const root = layer;
         if (!nosskey.state.visible || !root) return;
         const doc = root.ownerDocument;
-        previousFocus = doc.activeElement instanceof HTMLElement ? doc.activeElement : null;
         const blocked = new Set<HTMLElement>();
 
         function blockBackground() {
@@ -33,27 +32,39 @@
         return () => {
             observer.disconnect();
             for (const child of blocked) child.inert = false;
-            const prior = previousFocus;
-            previousFocus = null;
-            void tick().then(() => {
-                if (nosskey.state.visible) return;
-                if (prior?.isConnected && prior !== doc.body
-                    && !prior.closest("[inert], [hidden]") && !prior.matches(":disabled")) {
-                    prior.focus({ preventScroll: true });
-                    if (doc.activeElement === prior) return;
-                }
-
-                const dialog = doc.querySelector<HTMLElement>(
-                    '[data-state="open"][role="dialog"]:not([hidden]), [data-state="open"][role="alertdialog"]',
-                );
-                const fallback = dialog?.querySelector<HTMLElement>("button:not(:disabled)")
-                    ?? dialog
-                    ?? doc.querySelector<HTMLElement>(".login-btn, .profile-display")
-                    ?? doc.querySelector<HTMLElement>("main[tabindex]");
-                fallback?.focus({ preventScroll: true });
-            });
         };
     });
+
+    function restoreFocus(event: Event): void {
+        event.preventDefault();
+        const root = layer;
+        const prior = previousFocus;
+        previousFocus = null;
+        if (!root) return;
+
+        // Bits UI calls this before unregistering the scope. Wait until it
+        // releases focus and the background is interactive again.
+        requestAnimationFrame(() => {
+            if (nosskey.state.visible || !root.isConnected) return;
+            const doc = root.ownerDocument;
+            const dialog = doc.querySelector<HTMLElement>(
+                '[data-state="open"]:is([role="dialog"], [role="alertdialog"]):not([hidden])',
+            );
+            const candidates = [
+                prior,
+                dialog,
+                dialog?.querySelector<HTMLElement>("button:not(:disabled)"),
+                doc.querySelector<HTMLElement>(".login-btn, .profile-display"),
+                doc.querySelector<HTMLElement>("main[tabindex]"),
+            ];
+            for (const target of candidates) {
+                if (!target?.isConnected || root.contains(target)
+                    || target.closest("[inert], [hidden]") || target.matches(":disabled")) continue;
+                target.focus({ preventScroll: true });
+                if (doc.activeElement === target) break;
+            }
+        });
+    }
 </script>
 
 <Dialog.Root open={nosskey.state.visible}>
@@ -63,12 +74,19 @@
             bind:ref={layer}
             class="nosskey-approval-layer"
             hidden={!nosskey.state.visible}
-            escapeKeydownBehavior="ignore"
+            onEscapeKeydown={(event) => {
+                event.preventDefault();
+                nosskey.dismissApproval();
+            }}
             interactOutsideBehavior="ignore"
-            onCloseAutoFocus={(event) => event.preventDefault()}
+            onOpenAutoFocus={() => { previousFocus = readDialogOpener(layer?.ownerDocument); }}
+            onCloseAutoFocus={restoreFocus}
             preventScroll={false}
         >
             <Dialog.Title class="visually-hidden">Nosskey</Dialog.Title>
+            <button type="button" class="nosskey-close" onclick={nosskey.dismissApproval}>
+                {$_("nosskey.close_approval")}
+            </button>
             <div bind:this={container} class="nosskey-approval-frame" class:dark={nosskey.state.theme === "neutral-dark"}></div>
             {#if nosskey.state.notice === "timeout"}
                 <p class="nosskey-approval-status" role="status">{$_("nosskey.close_previous")}</p>
@@ -99,6 +117,16 @@
         border: 0;
         border-radius: 12px;
         background: var(--frame-background);
+    }
+    .nosskey-close {
+        justify-self: end;
+        margin-bottom: 8px;
+        min-height: 44px;
+        padding: 6px 12px;
+        color: var(--text);
+        background: var(--dialog-bg);
+        border: 1px solid var(--btn-border);
+        border-radius: 6px;
     }
     .nosskey-approval-status {
         max-width: 420px;

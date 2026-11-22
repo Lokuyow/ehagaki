@@ -1,7 +1,11 @@
 import type { NostrEvent } from "nosskey-iframe";
 import { describe, expect, it, vi } from "vitest";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
+import { authState, clearAuthState, setAuthInitialized, setNosskeyAuth } from "../../stores/authStore.svelte";
+import { isSameAuthSession } from "../../lib/sessionLiveness";
 import { createNosskeyService } from "../../lib/nosskeyService.svelte";
+
+vi.unmock("../../stores/authStore.svelte");
 
 const ownerKey = generateSecretKey();
 const otherKey = generateSecretKey();
@@ -48,6 +52,44 @@ describe("Nosskey requests", () => {
         const signer = service.signer(owner, () => true);
         await expect(signer.signEvent(template)).rejects.toMatchObject({ code: "identity_mismatch" });
         await expect(signer.signEvent(template)).rejects.toMatchObject({ code: "invalid_result" });
+        dispose();
+    });
+
+    it("keeps an approval valid across metadata updates and invalidates same-account re-login", () => {
+        try {
+            setNosskeyAuth(owner, "npub", "nprofile");
+            const session = authState.value;
+            setAuthInitialized();
+            expect(isSameAuthSession(authState.value, session)).toBe(true);
+            clearAuthState();
+            setNosskeyAuth(owner, "npub", "nprofile");
+            expect(isSameAuthSession(authState.value, session)).toBe(false);
+        } finally {
+            clearAuthState(false);
+        }
+    });
+
+    it("releases a stuck approval and cancels requests queued on that iframe", async () => {
+        const { service, client, createClient, dispose } = setup();
+        client.getPublicKey.mockImplementationOnce(() => {
+            client.iframe.style.display = "block";
+            return new Promise((_, reject) => {
+                client.destroy.mockImplementationOnce(() => reject(new Error("destroyed")));
+            });
+        });
+        const first = expect(service.readPublicKey(() => true)).rejects.toMatchObject({ code: "cancelled" });
+        await vi.waitFor(() => expect(service.state.visible).toBe(true));
+        const queued = expect(service.readPublicKey(() => true)).rejects.toMatchObject({ code: "cancelled" });
+
+        service.dismissApproval();
+        expect(service.state.visible).toBe(false);
+        await Promise.all([first, queued]);
+        expect(client.getPublicKey).toHaveBeenCalledOnce();
+        expect(client.destroy).toHaveBeenCalledOnce();
+
+        client.iframe.style.display = "none";
+        await expect(service.readPublicKey(() => true)).resolves.toBe(owner);
+        expect(createClient).toHaveBeenCalledTimes(2);
         dispose();
     });
 

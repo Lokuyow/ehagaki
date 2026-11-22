@@ -30,7 +30,7 @@ import {
     type PostHistoryDeletionRequestsRepository,
 } from "./storage/postHistoryDeletionRequestsRepository";
 import type { PostResult, AuthState, KeyManagerInterface, NostrEvent } from "./types";
-import { assertActiveSession } from "./sessionLiveness";
+import { assertActiveSession, isSameAuthSession } from "./sessionLiveness";
 import {
     prepareSignedEventTemplate,
     validateSignedEventResult,
@@ -350,7 +350,7 @@ export class PostDeletionService {
 
         try {
             void Promise.resolve(this.deps.storeSignedEventsFn([verifiedDeletionEvent],
-                () => this.deps.authStateStore.value === auth && auth.isAuthenticated)).catch(() => undefined);
+                () => isSameAuthSession(this.deps.authStateStore.value, auth) && auth.isAuthenticated)).catch(() => undefined);
         } catch { /* Local archival never changes external delivery. */ }
 
         const deletionEventId = verifiedDeletionEvent.event.id ?? result.eventId;

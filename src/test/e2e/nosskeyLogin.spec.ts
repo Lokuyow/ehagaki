@@ -4,10 +4,14 @@ import { finalizeEvent, generateSecretKey, getPublicKey, type EventTemplate } fr
 test.use({ trace: "off", screenshot: "off", video: "off" });
 
 test("Nosskey approval supports keyboard and pointer and stays lazy on reload @android-chrome", async ({ page }) => {
+    test.setTimeout(60_000);
     const key = generateSecretKey();
     const owner = getPublicKey(key);
     const otherOwner = getPublicKey(generateSecretKey());
     let selectedOwner = owner;
+    let releaseFirstReady!: () => void;
+    const firstReady = new Promise<void>(resolve => { releaseFirstReady = resolve; });
+    await page.exposeFunction("fixtureWaitForNosskeyReady", () => firstReady);
     await page.exposeFunction("fixtureGetNosskeyPubkey", () => selectedOwner);
     await page.exposeFunction("fixtureSignNosskeyEvent", (template: EventTemplate) => finalizeEvent(template, key));
     let requests = 0;
@@ -62,7 +66,7 @@ test("Nosskey approval supports keyboard and pointer and stays lazy on reload @a
                     ? await window.fixtureSignNosskeyEvent(request.params.event)
                     : await window.fixtureGetNosskeyPubkey()
             });
-            send({type:"nosskey:ready"});
+            window.fixtureWaitForNosskeyReady().then(() => send({type:"nosskey:ready"}));
             </script>` });
     });
     await page.goto("/ehagaki/");
@@ -70,6 +74,10 @@ test("Nosskey approval supports keyboard and pointer and stays lazy on reload @a
     const login = page.getByRole("button", { name: "Log in with Nosskey (passkey)" });
     await expect(login).toBeVisible();
     expect(requests).toBe(0);
+    await login.click();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(login).toBeEnabled();
+    releaseFirstReady();
     await login.click();
     const iframe = page.frameLocator(".nosskey-approval-frame iframe");
     const decline = iframe.getByRole("button", { name: "Decline" });
@@ -80,15 +88,32 @@ test("Nosskey approval supports keyboard and pointer and stays lazy on reload @a
     await expect(page.getByText("The Nosskey request was declined.")).toBeVisible();
     await expect.poll(() => page.locator(".login-dialog").evaluate(dialog => dialog.contains(document.activeElement))).toBe(true);
     await login.click();
+    await expect(decline).toBeVisible();
+    await page.getByRole("button", { name: "Close Nosskey approval" }).click();
+    await expect(page.locator(".nosskey-approval-frame iframe")).toHaveCount(0);
+    await expect(login).toBeEnabled();
+    await login.click();
     await iframe.getByRole("button", { name: "Approve" }).click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("nostr-active-account"))).toBe(owner);
     await expect(page.locator(".login-dialog")).toBeHidden();
-    expect(requests).toBe(1);
+    expect(requests).toBe(2);
     await page.reload();
     await expect(page.locator(".profile-display")).toBeVisible();
     await expect(page.locator(".nosskey-approval-frame iframe")).toHaveCount(0);
-    expect(requests).toBe(1);
+    expect(requests).toBe(2);
     await page.locator(".tiptap-editor").fill("Nosskey test post");
+    await page.locator("button.post-button").click();
+    const approvalClose = page.getByRole("button", { name: "Close Nosskey approval" });
+    await expect(approvalClose).toBeVisible();
+    await approvalClose.focus();
+    await expect(approvalClose).toBeFocused();
+    await decline.dispatchEvent("click");
+    await expect(page.locator(".nosskey-notice")).toContainText("The Nosskey request was declined.");
+    await expect(page.locator(".balloon-message-wrapper.error")).toHaveCount(0);
+    await expect(page.locator(".tiptap-editor:focus, button.post-button:focus, .profile-display:focus, main[tabindex]:focus"))
+        .toHaveCount(1);
+    expect(published).toBe(false);
+
     await page.locator("button.post-button").click();
     await iframe.getByRole("button", { name: "Approve" }).click();
     await expect.poll(() => published).toBe(true);

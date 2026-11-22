@@ -7,6 +7,7 @@
     "preparing": "Nosskey に接続しています…",
     "cancel": "取り消す",
     "waiting": "前の Nosskey の承認を待っています。",
+    "close_approval": "Nosskeyの承認画面を閉じる",
     "close_previous": "要求がタイムアウトしました。Nosskey の承認画面を閉じてから再試行してください。",
     "open_site": "nosskey.app を開く",
     "reconnect": "再接続",

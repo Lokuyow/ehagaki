@@ -21,6 +21,7 @@ export interface AuthState {
     isInitialized: boolean;
     isExtensionLogin?: boolean;
     serviceWorkerReady?: boolean;
+    nosskeySessionGeneration?: number;
 }
 
 export interface HashtagData {

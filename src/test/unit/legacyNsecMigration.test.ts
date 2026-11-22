@@ -85,6 +85,19 @@ function migrate(storage: FaultStorage, keyManager = createKeyManager(storage)) 
 }
 
 describe('legacy nsec migration', () => {
+    it('preserves Nosskey records in the startup snapshot alongside existing accounts', () => {
+        const storage = new FaultStorage();
+        const nosskey = account('aa'.repeat(32), 'nosskey');
+        const existing = account('bb'.repeat(32), 'nip07');
+        storage.setItem(STORAGE_KEYS.NOSTR_ACCOUNTS, JSON.stringify([nosskey, existing]));
+        storage.setItem(STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT, nosskey.pubkeyHex);
+
+        expect(captureLegacyNsecMigrationSnapshot(storage)).toMatchObject({
+            status: 'ready',
+            snapshot: { accounts: [nosskey, existing], activePubkey: nosskey.pubkeyHex },
+        });
+    });
+
     it('credential自身からidentityを導出し、profileまたはrelay suffixを参照しない', () => {
         const storage = new FaultStorage();
         const keyManager = createKeyManager(storage);

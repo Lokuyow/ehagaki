@@ -1,7 +1,8 @@
 import { appModalBarrier } from "../stores/appModalBarrier.svelte";
 import type { EventTemplate } from "nostr-tools";
 import type { NosskeyIframeClient } from "nosskey-iframe";
-import type { AuthStateSource } from "./sessionLiveness";
+import { isSameAuthSession, type AuthStateSource } from "./sessionLiveness";
+import { NosskeyError } from "./nosskeyErrors";
 import { getAppRuntimeEnvironment } from "./appRuntimeEnvironment";
 import { validateSignedEventResult } from "./signedEventResultValidator";
 import { isLowerHex64 } from "./utils/nostrHexUtils";
@@ -15,16 +16,6 @@ const FRAME_URL = "https://nosskey.app/#/iframe";
 const READY_TIMEOUT = 15_000;
 const REQUEST_TIMEOUT = "Nosskey iframe request timed out";
 
-type NosskeyErrorCode = "unavailable" | "ready_timeout" | "timeout" | "no_key" | "declined"
-    | "rate_limited" | "identity_mismatch" | "invalid_result" | "connection" | "cancelled"
-    | "account_conflict" | "storage";
-
-export class NosskeyError extends Error {
-    constructor(readonly code: NosskeyErrorCode) {
-        super(`nosskey.${code}`);
-    }
-}
-
 function normalizeError(error: unknown): NosskeyError {
     if (error instanceof NosskeyError) return error;
     const codes = { NO_KEY: "no_key", USER_REJECTED: "declined", RATE_LIMITED: "rate_limited" } as const;
@@ -32,6 +23,13 @@ function normalizeError(error: unknown): NosskeyError {
         const code = error.code;
         if (typeof code === "string" && Object.hasOwn(codes, code)) {
             return new NosskeyError(codes[code as keyof typeof codes]);
+        }
+        switch (code) {
+            case "NOT_AUTHORIZED":
+            case "INVALID_REQUEST":
+            case "UNKNOWN_METHOD":
+            case "INTERNAL":
+                console.warn("nosskey_iframe_request_failed", { code });
         }
         return new NosskeyError("connection");
     }
@@ -57,17 +55,32 @@ export function createNosskeyService(
     createClient: ClientFactory = createHostedClient,
     onVisibilityChange?: (visible: boolean) => void,
 ) {
-    const state = $state({ visible: false, pending: 0, notice: null as NosskeyErrorCode | null, theme: "neutral-light" as Theme });
+    const state = $state({ visible: false, pending: 0, notice: null as NosskeyError["code"] | null, theme: "neutral-light" as Theme });
     let container: HTMLElement | undefined;
     let loading: Promise<Client> | undefined;
     let client: Client | undefined;
     let observer: MutationObserver | undefined;
     let queue = Promise.resolve();
     let notifyHidden: (() => void) | undefined;
+    let frameGeneration = 0;
 
     function setVisible(visible: boolean): void {
         state.visible = visible;
         onVisibilityChange?.(visible);
+    }
+
+    function dismissApproval(): void {
+        // The SDK cannot cancel a single RPC. An explicit exit discards the
+        // entire approval so a stuck host cannot keep the page inert.
+        frameGeneration++;
+        observer?.disconnect();
+        observer = undefined;
+        const dismissed = client;
+        client = undefined;
+        loading = undefined;
+        setVisible(false);
+        notifyHidden?.();
+        dismissed?.destroy();
     }
 
     function attach(target: HTMLElement): () => void {
@@ -75,27 +88,23 @@ export function createNosskeyService(
         return () => {
             if (container !== target) return;
             container = undefined;
-            observer?.disconnect();
-            client?.destroy();
-            client = undefined;
-            loading = undefined;
-            setVisible(false);
-            notifyHidden?.();
+            dismissApproval();
         };
     }
 
-    async function initialize(): Promise<Client> {
+    async function initialize(generation: number): Promise<Client> {
         const target = container;
         if (!target) throw new NosskeyError("unavailable");
         const theme = target.ownerDocument.documentElement.classList.contains("dark") ? "neutral-dark" : "neutral-light";
         state.theme = theme;
         const instance = await createClient(target, theme);
-        if (container !== target) {
+        if (container !== target || generation !== frameGeneration) {
             instance.destroy();
             throw new NosskeyError("cancelled");
         }
         client = instance;
         const syncVisibility = () => {
+            if (client !== instance) return;
             setVisible(instance.iframe.style.display !== "none");
             if (!state.visible) notifyHidden?.();
         };
@@ -114,10 +123,11 @@ export function createNosskeyService(
             return instance;
         } catch (error) {
             visibilityObserver.disconnect();
-            instance.destroy();
             if (client === instance) {
                 client = undefined;
+                observer = undefined;
                 setVisible(false);
+                instance.destroy();
             }
             throw error;
         } finally {
@@ -126,10 +136,13 @@ export function createNosskeyService(
     }
 
     function getClient(): Promise<Client> {
-        loading ??= initialize().catch((error: unknown) => {
-            loading = undefined;
-            throw error;
-        });
+        if (!loading) {
+            const attempt = initialize(frameGeneration).catch((error: unknown) => {
+                if (loading === attempt) loading = undefined;
+                throw error;
+            });
+            loading = attempt;
+        }
         return loading;
     }
 
@@ -141,8 +154,10 @@ export function createNosskeyService(
 
     function request<T>(isCurrent: IsCurrent, run: (instance: Client) => Promise<T>): Promise<T> {
         state.pending++;
+        const generation = frameGeneration;
+        const current = () => generation === frameGeneration && isCurrent();
         const assertCurrent = () => {
-            if (!isCurrent()) throw new NosskeyError("cancelled");
+            if (!current()) throw new NosskeyError("cancelled");
         };
         const result = queue.then(async () => {
             assertCurrent();
@@ -153,7 +168,7 @@ export function createNosskeyService(
             assertCurrent();
             return value;
         }).catch((error: unknown) => {
-            if (!isCurrent()) throw new NosskeyError("cancelled");
+            if (!current()) throw new NosskeyError("cancelled");
             throw report(error);
         }).finally(() => { state.pending--; });
         const waitForHidden = () => {
@@ -204,6 +219,7 @@ export function createNosskeyService(
     return {
         state,
         attach,
+        dismissApproval,
         readPublicKey,
         signer,
         report,
@@ -225,5 +241,5 @@ export function nosskeySignerForSession(
     isActive: IsCurrent = () => true,
 ) {
     if (!canUseNosskey() || snapshot.type !== "nosskey" || !snapshot.isAuthenticated) return null;
-    return nosskey.signer(snapshot.pubkey, () => source.value === snapshot && isActive());
+    return nosskey.signer(snapshot.pubkey, () => isSameAuthSession(source.value, snapshot) && isActive());
 }

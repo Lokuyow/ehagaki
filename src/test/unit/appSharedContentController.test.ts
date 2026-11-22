@@ -107,6 +107,31 @@ describe('createAppSharedContentController', () => {
         expect(deps.clearSharedMediaStore).toHaveBeenCalledOnce();
     });
 
+    it('applies shared text while a pending Nosskey restore defers only the files', async () => {
+        let authenticationPending = true;
+        let requiresExplicitUpload = false;
+        const file = createFile();
+        const { controller, composer, store } = createHarness({
+            store: { bodyStatus: 'pending', text: 'hello', files: [file] },
+            deps: {
+                isMediaAuthenticationPending: () => authenticationPending,
+                requiresExplicitMediaUpload: () => requiresExplicitUpload,
+            },
+        });
+        await controller.consumeSharedContent();
+        expect(composer?.appendSharedTextContent).toHaveBeenCalledOnce();
+        expect(composer?.uploadFiles).not.toHaveBeenCalled();
+        expect(store.bodyStatus).toBe('applied');
+
+        authenticationPending = false;
+        requiresExplicitUpload = true;
+        await controller.consumeSharedContent();
+        expect(composer?.uploadFiles).not.toHaveBeenCalled();
+        await controller.consumeSharedContent(true);
+        expect(composer?.uploadFiles).toHaveBeenCalledExactlyOnceWith([file]);
+        expect(composer?.appendSharedTextContent).toHaveBeenCalledOnce();
+    });
+
     it('本文の反映後に記録が古くなっていたら、アップロードせずストアだけ空にする', async () => {
         const { controller, deps, composer } = createHarness({
             store: { bodyStatus: 'pending', files: [createFile()] },

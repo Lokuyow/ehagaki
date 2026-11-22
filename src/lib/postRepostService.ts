@@ -14,7 +14,7 @@ import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
 import { buildClientTag } from "./tags/clientTag";
 import { buildRepostEvent, isRepostTargetKind, verifyRepostTarget } from "./postRepostUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
-import { assertActiveSession } from "./sessionLiveness";
+import { assertActiveSession, isSameAuthSession } from "./sessionLiveness";
 import { createPlainNostrEventSnapshot } from "./postHistoryEventUtils";
 import { prepareSignedEventTemplate, validateSignedEventResult } from "./signedEventResultValidator";
 import { attestFullyVerifiedPostHistoryRawEvent } from "./postHistoryRawEventVerification";
@@ -119,7 +119,7 @@ export class PostRepostService {
             if (!published.success) return published;
             try {
                 void Promise.resolve(this.deps.storeSignedEventsFn?.([verified],
-                    () => this.deps.authStateStore.value === auth && params.isCurrent?.() !== false)).catch(() => undefined);
+                    () => isSameAuthSession(this.deps.authStateStore.value, auth) && params.isCurrent?.() !== false)).catch(() => undefined);
             } catch { /* Local archival never changes external delivery. */ }
             const input: PostHistorySaveInput = { event: verified.event, attestation: verified.attestation,
                 acceptedRelays: published.acceptedRelays, relayHints: [...(published.acceptedRelays ?? []), ...writeRelays],

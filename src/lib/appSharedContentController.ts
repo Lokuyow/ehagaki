@@ -26,6 +26,7 @@ export interface AppSharedContentControllerDependencies {
     getComposer(): SharedContentComposer | null;
     logger: Pick<Console, "error">;
     requiresExplicitMediaUpload?: () => boolean;
+    isMediaAuthenticationPending?: () => boolean;
 }
 
 export interface AppSharedContentController {
@@ -108,9 +109,10 @@ export function createAppSharedContentController(
                 return;
             }
 
-            if (deps.requiresExplicitMediaUpload?.()) {
+            const authenticationPending = deps.isMediaAuthenticationPending?.();
+            if (authenticationPending || (!allowExplicitUpload && deps.requiresExplicitMediaUpload?.())) {
                 if (sharedMediaStore.shareId === shareId) sharedMediaStore.bodyStatus = bodyStatus;
-                if (!allowExplicitUpload) return;
+                return;
             }
 
             // The composer can be remounted while the text update was awaited.

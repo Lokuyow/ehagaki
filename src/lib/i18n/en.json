@@ -7,6 +7,7 @@
     "preparing": "Connecting to Nosskey…",
     "cancel": "Cancel",
     "waiting": "Waiting for the previous Nosskey request.",
+    "close_approval": "Close Nosskey approval",
     "close_previous": "The request timed out. Close the Nosskey prompt before trying again.",
     "open_site": "Open nosskey.app",
     "reconnect": "Reconnect",

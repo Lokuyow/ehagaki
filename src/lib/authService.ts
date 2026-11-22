@@ -1,3 +1,4 @@
+import { buildManagedRestoreCandidates } from './authManagedRestoreUtils';
 import { isHex64, isLowerHex64 } from './utils/nostrHexUtils';
 import { setAuthInitialized, setNosskeyAuth } from '../stores/authStore.svelte';
 import type { AuthResult, AuthServiceDependencies } from './types';
@@ -85,6 +86,17 @@ export class AuthService {
             this.runtime.console.error('公開鍵ログインの保存に失敗しました');
             return { success: false, error: 'error_saving' };
         }
+    }
+
+    hasNosskeyStartupCandidate(): boolean {
+        const stored = this.accountManager?.getAuthRestoreSnapshot();
+        if (stored?.status !== 'ready') return false;
+        const { activePubkey, accounts } = stored.snapshot;
+        return buildManagedRestoreCandidates({
+            activePubkey,
+            activeType: accounts.find(account => account.pubkeyHex === activePubkey)?.type ?? null,
+            accounts,
+        }).some(candidate => candidate.type === 'nosskey');
     }
 
     authenticateWithNosskey(pubkeyHex: string): AuthResult {
