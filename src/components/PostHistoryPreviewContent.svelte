@@ -5,7 +5,7 @@
     } from "../lib/postHistoryDialogUtils";
     import TextLinkSegments from "./TextLinkSegments.svelte";
     import { getProfileMentionPreview } from "../lib/profileMentionPreviewContext";
-    import { profileMentionLabel } from "../lib/profileMention";
+    import { profileMentionLabel, shortenProfileMentionLabel } from "../lib/profileMention";
 
     type EmojiLoadState = "loading" | "ready" | "failed";
     type EmojiImageMeta = {
@@ -138,8 +138,10 @@
                     <TextLinkSegments segments={[segment]} />
                 {:else if segment.type === "mention"}
                     {@const pubkey = segment.profile.pubkey}
+                    {@const name = profileMentionLabel(pubkey, mentionProfiles?.read(pubkey))}
+                    {@const label = shortenProfileMentionLabel(name)}
                     <a class="profile-mention" href={segment.href} target="_blank" rel="noopener noreferrer"
-                        >@{profileMentionLabel(pubkey, mentionProfiles?.read(pubkey))}</a>
+                        title={name === label ? undefined : `@${name}`}>@{label}</a>
                 {:else if hasEmojiFailed(segment.url)}
                     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                     <span

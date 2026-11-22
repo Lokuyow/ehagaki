@@ -85,7 +85,7 @@
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
     import { formatShortNpub } from "../lib/utils/nostrUtils";
     import { profileMetadataCache } from "../lib/profileMetadataCache.svelte";
-    import { profileMentionLabel, type ProfileMention, type ProfileMentionCandidate } from "../lib/profileMention";
+    import { profileMentionLabel, shortenProfileMentionLabel, type ProfileMention, type ProfileMentionCandidate } from "../lib/profileMention";
     import { createSensitivePayloadBodyLoader } from "../lib/sensitiveContentPayloadReader";
 
     type DialogPhase =
@@ -1085,9 +1085,10 @@
         </div>
 
         {#if profileTarget}
+            {@const label = shortenProfileMentionLabel(profileTargetLabel)}
             <div class="composer-target-profile">
-                <span>@{profileTargetLabel}</span>
-                <Button onClick={handleApplyMention} disabled={!canApplyMention}>
+                <span title={label === profileTargetLabel ? undefined : `@${profileTargetLabel}`}>@{label}</span>
+                <Button class="composer-target-mention-button" onClick={handleApplyMention} disabled={!canApplyMention}>
                     {$_("composerTarget.mention")}
                 </Button>
             </div>
@@ -1472,7 +1473,14 @@
 
     .composer-target-profile span {
         min-width: 0;
-        overflow-wrap: anywhere;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .composer-target-profile :global(.composer-target-mention-button) {
+        flex-shrink: 0;
+        white-space: nowrap;
     }
     .xmark-icon {
         mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
