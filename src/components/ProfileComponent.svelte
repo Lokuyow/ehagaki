@@ -253,13 +253,13 @@
                                 <button
                                     class="account-info-button"
                                     onclick={() => {
-                                        if (!isActive && !isSwitchingAccount) {
+                                        if (!isActive && !isSwitchingAccount && account.type !== "nosskey") {
                                             handleSwitchAccount(
                                                 account.pubkeyHex,
                                             );
                                         }
                                     }}
-                                    disabled={isActive || isSwitchingAccount}
+                                    disabled={isActive || isSwitchingAccount || account.type === "nosskey"}
                                 >
                                     <ProfileAvatar
                                         pubkeyHex={account.pubkeyHex}
@@ -303,6 +303,8 @@
                                                 {$_(
                                                     "profileDialog.login_method_nip46",
                                                 )}
+                                            {:else if account.type === "nosskey"}
+                                                Nosskey
                                             {:else if account.type === "npub"}
                                                 {$_("profileDialog.login_method_public_key")}
                                             {:else if account.type === "parentClient"}

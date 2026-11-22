@@ -68,6 +68,12 @@ describe("resolvePostSigner", () => {
         expect(getParentClientSigner).not.toHaveBeenCalled();
     });
 
+    it("does not read a saved key for an unavailable Nosskey account", () => {
+        const getStoredSecretKey = vi.fn(() => "secret");
+        expect(resolvePostSigner(params({ authType: "nosskey", getStoredSecretKey })).ok).toBe(false);
+        expect(getStoredSecretKey).not.toHaveBeenCalled();
+    });
+
     it("rejects signers without signEvent", () => {
         expect(resolvePostSigner(params({ authType: "parentClient", getParentClientSigner: () => ({}) })))
             .toEqual({ ok: false, error: "nostr_sign_event_not_supported" });

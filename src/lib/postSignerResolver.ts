@@ -77,7 +77,7 @@ export function resolvePostSigner(params: ResolvePostSignerParams): PostSignerRe
         );
     }
 
-    if (params.authType === "npub") return { ok: false, error: "key_not_found" };
+    if (params.authType !== "nsec") return { ok: false, error: "key_not_found" };
 
     const secretKey = params.getStoredSecretKey(params.pubkey);
     if (!secretKey) return { ok: false, error: "key_not_found" };
