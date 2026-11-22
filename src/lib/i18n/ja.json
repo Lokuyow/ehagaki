@@ -1,7 +1,10 @@
 {
   "nosskey": {
     "login": "Nosskey（パスキー）でログイン",
-    "login_hint": "パスキーは nosskey.app で管理します。認証必須のリレーは利用できません。複数ファイルや追加ページでは、その都度承認を求められることがあります。",
+    "login_hint": "パスキーは nosskey.app で作成・管理します",
+    "limits_title": "Nosskey ログインの制限",
+    "limit_relay_auth": "認証が必要なリレーは利用できません。",
+    "limit_approvals": "複数ファイルのアップロードや、メディア一覧の追加読み込みでは、その都度承認を求められることがあります。",
     "badge": "Nosskey（パスキー）",
     "standalone_only": "Nosskey（通常版で利用）",
     "preparing": "Nosskey に接続しています…",
@@ -11,8 +14,11 @@
     "close_previous": "要求がタイムアウトしました。Nosskey の承認画面を閉じてから再試行してください。",
     "open_site": "nosskey.app を開く",
     "reconnect": "再接続",
+    "shared_pending": "共有されたファイルが {count} 件あります。",
     "upload_shared": "共有ファイルをアップロード",
     "load_media": "アップロード済みメディアを読み込む",
+    "load_media_button": "読み込む",
+    "load_media_hint": "Nosskey では、メディア一覧の読み込みに署名の承認が必要です。",
     "no_key": "アカウントを取得できませんでした。nosskey.app でパスキーを作成するか、ストレージアクセスを許可してから再試行してください。",
     "declined": "Nosskey の要求が拒否されました。",
     "rate_limited": "Nosskey の要求が連続で失敗しました。1分ほど待ってから再試行してください。",

@@ -294,6 +294,14 @@
                     {/key}
                 {/if}
                 {#if current.loading && !current.loaded && (!onInitialReady || initialReadyReported)}<LoadingPlaceholder showLoader text={true} />{/if}
+                {#if authState.value.type === "nosskey" && !current.loaded && !current.loading && !current.error && !current.registration}
+                    <div class="nosskey-media-start">
+                        <p class="media-status">{$_("nosskey.load_media_hint")}</p>
+                        <Button variant="primary" shape="rounded" className="nosskey-media-load-button"
+                            onClick={() => { lastRequestedPage = null; activeVideo = null; closeFullscreen(); void management.controller.load(); }}
+                            disabled={!!current.deletingId || registering}>{$_("nosskey.load_media_button")}</Button>
+                    </div>
+                {/if}
                 {#if current.loaded && current.items.length === 0}
                     <p class="media-status">{$_("uploadedMedia.empty")}</p>
                     {#if current.hasMore}<p class="media-status">{$_("uploadedMedia.moreUnseen")}</p>{/if}
@@ -398,6 +406,16 @@
     p { margin: 0; }
     .media-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 4px; padding: 8px; }
     .media-status { margin: 8px 12px; }
+    .nosskey-media-start {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 16px 12px;
+        text-align: center;
+    }
+    .nosskey-media-start .media-status { margin: 0; }
+    :global(.uploaded-media-dialog button.nosskey-media-load-button) { min-width: 160px; min-height: 44px; }
     .nostr-build-help { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 12px;
         border: 1px solid var(--border); border-radius: 6px; overflow-wrap: anywhere; }
     .nostr-build-help a { display: flex; align-items: center; align-self: flex-start; min-height: 44px; max-width: 100%; }

@@ -1,7 +1,10 @@
 {
   "nosskey": {
     "login": "Log in with Nosskey (passkey)",
-    "login_hint": "Manage your passkey at nosskey.app. Relays that require authentication are unavailable. Multiple files or pages can require separate approvals.",
+    "login_hint": "Create and manage your passkey at nosskey.app",
+    "limits_title": "Nosskey login limitations",
+    "limit_relay_auth": "Relays that require authentication are unavailable.",
+    "limit_approvals": "Uploading several files or loading more media can ask for approval each time.",
     "badge": "Nosskey (passkey)",
     "standalone_only": "Nosskey (standalone app only)",
     "preparing": "Connecting to Nosskey…",
@@ -11,8 +14,11 @@
     "close_previous": "The request timed out. Close the Nosskey prompt before trying again.",
     "open_site": "Open nosskey.app",
     "reconnect": "Reconnect",
+    "shared_pending": "{count, plural, one {# shared file is} other {# shared files are}} waiting.",
     "upload_shared": "Upload shared files",
     "load_media": "Load uploaded media",
+    "load_media_button": "Load",
+    "load_media_hint": "With Nosskey, loading the media list needs a signing approval.",
     "no_key": "No Nosskey account is available. Create a passkey at nosskey.app or allow storage access, then try again.",
     "declined": "The Nosskey request was declined.",
     "rate_limited": "Too many failed requests. Try again in a minute.",

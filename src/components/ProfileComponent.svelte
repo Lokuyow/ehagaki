@@ -3,6 +3,7 @@
     import { _ } from "svelte-i18n";
     import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
     import { profileDataStore } from "../stores/profileStore.svelte";
@@ -245,8 +246,12 @@
 
         {#if onSwitchNosskeyAccount}<NosskeyNotice />{/if}
         {#if nosskeySwitching}
-            <p role="status">{$_("nosskey.preparing")}</p>
-            <Button onClick={cancelNosskeySwitch}>{$_("nosskey.cancel")}</Button>
+            <div class="nosskey-switch-status" role="status">
+                <LoadingPlaceholder showLoader={true} variant="spinner" loaderSize={20} />
+                <span class="nosskey-switch-text">{$_("nosskey.preparing")}</span>
+                <Button variant="secondary" shape="rounded" className="nosskey-switch-cancel"
+                    onClick={cancelNosskeySwitch}>{$_("nosskey.cancel")}</Button>
+            </div>
         {/if}
 
         <!-- アカウント一覧 -->
@@ -383,6 +388,28 @@
 </DialogWrapper>
 
 <style>
+    .nosskey-switch-status {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 8px 12px;
+        box-sizing: border-box;
+        border: 1px solid var(--btn-border);
+        border-radius: 8px;
+    }
+
+    .nosskey-switch-text {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    :global(.nosskey-switch-status .nosskey-switch-cancel) {
+        min-height: 40px;
+        padding: 4px 14px;
+    }
+
     .xmark-icon {
         mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }

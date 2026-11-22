@@ -85,7 +85,8 @@
         >
             <Dialog.Title class="visually-hidden">Nosskey</Dialog.Title>
             <button type="button" class="nosskey-close" onclick={nosskey.dismissApproval}>
-                {$_("nosskey.close_approval")}
+                <span class="nosskey-close-icon" aria-hidden="true"></span>
+                <span>{$_("nosskey.close_approval")}</span>
             </button>
             <div bind:this={container} class="nosskey-approval-frame" class:dark={nosskey.state.theme === "neutral-dark"}></div>
             {#if nosskey.state.notice === "timeout"}
@@ -120,13 +121,28 @@
     }
     .nosskey-close {
         justify-self: end;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
         margin-bottom: 8px;
         min-height: 44px;
-        padding: 6px 12px;
+        padding: 6px 14px 6px 10px;
+        font-size: 0.95rem;
         color: var(--text);
         background: var(--dialog-bg);
         border: 1px solid var(--btn-border);
-        border-radius: 6px;
+        border-radius: 999px;
+        cursor: pointer;
+    }
+    .nosskey-close:focus-visible {
+        outline: 2px solid var(--theme, #1fc26f);
+        outline-offset: 2px;
+    }
+    .nosskey-close-icon {
+        width: 20px;
+        height: 20px;
+        background-color: currentColor;
+        mask: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg") center / contain no-repeat;
     }
     .nosskey-approval-status {
         max-width: 420px;

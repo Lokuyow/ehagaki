@@ -264,6 +264,10 @@
   const nosskeyEnabled = canUseNosskey();
   let nosskeyLoginStatus = $state<NosskeyLoginStatus>("idle");
   let nosskeyConfirming = $state(false);
+  const showNosskeyNotice = $derived(nosskeyEnabled && !!nosskey.state.notice && !nosskey.state.visible
+    && !showLoginDialogStore.value && !showAddAccountDialogStore.value && !showLogoutDialogStore.value);
+  const showSharedUpload = $derived(authState.value.type === "nosskey"
+    && sharedMediaStore.received && sharedMediaStore.files.length > 0);
   interface Props {
     /** The iframe transport remains the default for the PWA and iframe entry. */
     notificationPort?: AppPostNotificationPort & AppEmbedNotificationPort;
@@ -2303,16 +2307,25 @@
         customEmojiEnabled={isAuthenticated && !isPublicKeyLogin}
         onCustomEmojiPickerOpenChange={(open) => (customEmojiPickerOpen = open)}
       />
-      {#if nosskeyEnabled && nosskey.state.notice && !nosskey.state.visible
-        && !showLoginDialogStore.value && !showAddAccountDialogStore.value && !showLogoutDialogStore.value}
-        <div class="nosskey-notice">
-          <NosskeyNotice reconnecting={nosskeyConfirming}
-            onReconnect={authState.value.type === "nosskey" ? () => void appAccountSessionController.confirmNosskeyAccount(authState.value.pubkey) : undefined} />
+      {#if showNosskeyNotice || showSharedUpload}
+        <div class="nosskey-floating">
+          {#if showNosskeyNotice}
+            <div class="nosskey-notice">
+              <NosskeyNotice reconnecting={nosskeyConfirming}
+                onReconnect={authState.value.type === "nosskey" ? () => void appAccountSessionController.confirmNosskeyAccount(authState.value.pubkey) : undefined} />
+            </div>
+          {/if}
+          {#if showSharedUpload}
+            <div class="nosskey-shared-upload" role="status">
+              <span>{$_("nosskey.shared_pending", { values: { count: sharedMediaStore.files.length } })}</span>
+              <Button variant="primary" shape="rounded" className="nosskey-shared-upload-button"
+                onClick={() => void appSharedContentController.consumeSharedContent(true)}>
+                <span class="svg-icon upload-icon" aria-hidden="true"></span>
+                <span>{$_("nosskey.upload_shared")}</span>
+              </Button>
+            </div>
+          {/if}
         </div>
-      {/if}
-      {#if authState.value.type === "nosskey" && sharedMediaStore.received && sharedMediaStore.files.length > 0}
-        <button type="button" class="nosskey-shared-upload"
-          onclick={() => void appSharedContentController.consumeSharedContent(true)}>{$_("nosskey.upload_shared")}</button>
       {/if}
       <FooterComponent
         profilePending={profileFetchPending}
@@ -2588,24 +2601,46 @@
 {/if}
 
 <style>
-  .nosskey-notice, .nosskey-shared-upload {
+  .nosskey-floating {
     position: fixed;
     z-index: 11000;
-    bottom: 5rem;
+    /* Stay above the editor toolbar and footer so their buttons remain usable. */
+    bottom: 9rem;
     left: 50%;
     translate: -50% 0;
-    max-width: calc(100vw - 24px);
-    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(480px, calc(100vw - 24px));
+  }
+  .nosskey-notice {
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 25%);
+  }
+  .nosskey-shared-upload {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px;
     color: var(--text);
     background: var(--dialog-bg);
     border: 1px solid var(--btn-border);
     border-radius: 8px;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 25%);
   }
-  .nosskey-notice {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    bottom: 9rem;
+  .nosskey-shared-upload .upload-icon {
+    --icon-size: 22px;
+    background-color: currentColor;
+    mask-image: url("/icons/upload_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+  }
+  :global(.nosskey-shared-upload .nosskey-shared-upload-button) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 4px 14px;
   }
   main {
     position: var(--app-main-position, relative);
