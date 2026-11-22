@@ -155,8 +155,8 @@
             z-index: 3;
             display: grid;
             place-items: center;
-            width: 36px;
-            height: 36px;
+            width: 44px;
+            height: 44px;
             padding: 0;
             border: 0;
             border-radius: 50%;

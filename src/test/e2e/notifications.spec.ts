@@ -543,6 +543,10 @@ test('gallery hover arrows page in both directions and hide at the edges', async
     const next = article.getByRole('button', { name: '次のメディアを表示' });
     await gallery.scrollIntoViewIfNeeded();
     await expect(next).toBeEnabled();
+    for (const arrow of [previous, next]) {
+        await expect(arrow).toHaveCSS('width', '44px');
+        await expect(arrow).toHaveCSS('height', '44px');
+    }
     await expect(next).toHaveCSS('opacity', '0');
     await gallery.hover();
     await expect(previous).toHaveCSS('opacity', '0');
