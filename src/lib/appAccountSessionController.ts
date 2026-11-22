@@ -64,6 +64,14 @@ export interface AppAccountSessionControllerDependencies {
     nip46Service: Nip46RuntimeController;
     parentClientService: ParentClientRuntimeController;
     accountManager: AccountManagerLike;
+    nosskey?: {
+        getGeneration(): number;
+        isGenerationCurrent(generation: number): boolean;
+        beginSwitchTransition(): void;
+        readPublicKey(isCurrent: () => boolean, expectedPubkey: string): Promise<string>;
+        reportError(error: unknown): void;
+        setConfirming(confirming: boolean): void;
+    };
     restoreManagedAccountSession(params: {
         requestedPubkeyHex: string;
         accountType: AccountAuthType;
@@ -100,6 +108,9 @@ export interface AppAccountSessionControllerDependencies {
 
 export interface AppAccountSessionController {
     switchAccount(pubkeyHex: string): Promise<boolean>;
+    switchNosskeyAccount(pubkeyHex: string): Promise<boolean>;
+    confirmNosskeyAccount(pubkeyHex: string): Promise<boolean>;
+    cancelNosskeyConfirmation(): void;
     logoutAccount(pubkeyHex: string, options?: LogoutAccountOptions): Promise<void>;
     handleRemoteParentClientLogout(pubkeyHex: string | null): Promise<void>;
     /**
@@ -207,6 +218,40 @@ export function createAppAccountSessionController(
             }
         });
         return switching;
+    }
+
+    let pendingNosskeyConfirmation: { generation: number } | null = null;
+
+    function cancelNosskeyConfirmation(): void {
+        if (!pendingNosskeyConfirmation) return;
+        pendingNosskeyConfirmation = null;
+        deps.nosskey?.setConfirming(false);
+    }
+
+    async function confirmNosskeyAccount(pubkeyHex: string, activate = false): Promise<boolean> {
+        const { nosskey } = deps;
+        if (!nosskey || pendingNosskeyConfirmation || deps.getIsSwitchingAccount()) return false;
+
+        const request = { generation: nosskey.getGeneration() };
+        const isCurrent = () => pendingNosskeyConfirmation === request
+            && nosskey.isGenerationCurrent(request.generation);
+        pendingNosskeyConfirmation = request;
+        nosskey.setConfirming(true);
+        try {
+            await nosskey.readPublicKey(isCurrent, pubkeyHex);
+            if (!isCurrent() || deps.getIsSwitchingAccount() || deps.accountManager.getAccountType(pubkeyHex) !== 'nosskey') {
+                return false;
+            }
+            if (!activate) return true;
+
+            nosskey.beginSwitchTransition();
+            return switchAccount(pubkeyHex);
+        } catch (error) {
+            if (isCurrent()) nosskey.reportError(error);
+            return false;
+        } finally {
+            if (pendingNosskeyConfirmation === request) cancelNosskeyConfirmation();
+        }
     }
 
     async function runSwitchAccount(pubkeyHex: string): Promise<boolean> {
@@ -451,6 +496,9 @@ export function createAppAccountSessionController(
 
     return {
         switchAccount,
+        switchNosskeyAccount: (pubkeyHex) => confirmNosskeyAccount(pubkeyHex, true),
+        confirmNosskeyAccount,
+        cancelNosskeyConfirmation,
         logoutAccount,
         handleRemoteParentClientLogout,
         handleNip46IdentityMismatch,

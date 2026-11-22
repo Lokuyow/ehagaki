@@ -3,7 +3,7 @@
   import { onMount, untrack } from "svelte";
   import NosskeyNotice from "./components/NosskeyNotice.svelte";
   import NosskeyApprovalLayer from "./components/NosskeyApprovalLayer.svelte";
-  import { canUseNosskey, NosskeyError, nosskey } from "./lib/nosskeyService.svelte";
+  import { canUseNosskey, nosskey } from "./lib/nosskeyService.svelte";
   import Button from './components/Button.svelte';
   import "./i18n";
   import { _, locale, waitLocale } from "svelte-i18n";
@@ -263,7 +263,7 @@
   const appRuntimeEnvironment = getAppRuntimeEnvironment();
   const nosskeyEnabled = canUseNosskey();
   let nosskeyLoginPending = $state(false);
-  let nosskeySwitchRequest: AbortController | null = $state.raw(null);
+  let nosskeyConfirming = $state(false);
   interface Props {
     /** The iframe transport remains the default for the PWA and iframe entry. */
     notificationPort?: AppPostNotificationPort & AppEmbedNotificationPort;
@@ -699,7 +699,7 @@
       pendingParentClientGeneration = authTransitionGeneration;
       return authTransitionGeneration;
     },
-    isAuthTransitionCurrent: (generation) => !appDisposed && authTransitionGeneration === generation,
+    isAuthTransitionCurrent,
     finishParentClientTransition: (generation) => {
       if (pendingParentClientGeneration === generation) pendingParentClientGeneration = null;
       if (!appDisposed) {
@@ -723,6 +723,13 @@
     authenticateWithNsec: (targetSecretKey) =>
       authService.authenticateWithNsec(targetSecretKey),
     handleSuccessfulAuthResult,
+    nosskey: nosskeyEnabled ? {
+      beginTransition: beginAuthTransition,
+      readPublicKey: nosskey.readPublicKey,
+      authenticate: (pubkey) => authService.authenticateWithNosskey(pubkey),
+      reportError: nosskey.report,
+      setLoading: (loading) => { nosskeyLoginPending = loading; },
+    } : undefined,
     clearSecretKeyInput: () => {
       secretKey = "";
     },
@@ -814,7 +821,11 @@
     console,
   });
 
-  function beginAuthTransition(options: { parentClient?: boolean; invalidateSession?: boolean } = {}): void {
+  function isAuthTransitionCurrent(generation: number): boolean {
+    return !appDisposed && generation === authTransitionGeneration;
+  }
+
+  function beginAuthTransition(options: { parentClient?: boolean; invalidateSession?: boolean } = {}): number {
     // Trying another login must preserve the current account's preparation.
     // Successful authentication replaces it in handlePostAuth.
     if (options.invalidateSession) {
@@ -833,6 +844,7 @@
     postHistoryLocalRelayService.cancelSession();
     authTransitionGeneration += 1;
     delayedNip07Recovery.markTransition();
+    return authTransitionGeneration;
   }
 
   const loginDialog = createDialogVisibilityHandlers(showLoginDialogStore);
@@ -896,6 +908,14 @@
     nip46Service,
     parentClientService: parentClientAuthService,
     accountManager,
+    nosskey: nosskeyEnabled ? {
+      getGeneration: () => authTransitionGeneration,
+      isGenerationCurrent: isAuthTransitionCurrent,
+      beginSwitchTransition: () => beginAuthTransition({ invalidateSession: true }),
+      readPublicKey: nosskey.readPublicKey,
+      reportError: nosskey.report,
+      setConfirming: (confirming) => { nosskeyConfirming = confirming; },
+    } : undefined,
     restoreManagedAccountSession,
     restoreAccount: (pubkeyHex, type) =>
       authService.restoreAccount(pubkeyHex, type),
@@ -1673,63 +1693,6 @@
     appAccountDialogController.handleAddAccount();
   }
 
-  async function handleNosskeyLogin(): Promise<void> {
-    if (!nosskeyEnabled || nosskeyLoginPending) return;
-    beginAuthTransition();
-    const generation = authTransitionGeneration;
-    const previous = authState.value;
-    const isCurrent = () => !appDisposed && generation === authTransitionGeneration;
-    nosskeyLoginPending = true;
-    try {
-      await cancelPendingNip46Auth();
-      const pubkey = await nosskey.readPublicKey(isCurrent);
-      if (!isCurrent()) return;
-      const result = authService.authenticateWithNosskey(pubkey);
-      if (!result.success) {
-        nosskey.report(new NosskeyError(result.error === "nosskey.account_conflict" ? "account_conflict" : "storage"));
-        return;
-      }
-      await clearNip46RuntimeForAuthChange({
-        currentAuthType: previous.type,
-        currentPubkeyHex: previous.pubkey,
-        nextAuthType: "nosskey",
-        nextPubkeyHex: pubkey,
-        nip46Service,
-      });
-      if (isCurrent()) await handlePostAuth(pubkey, { generation });
-    } catch (error) {
-      if (isCurrent()) nosskey.report(error);
-    } finally {
-      nosskeyLoginPending = false;
-    }
-  }
-
-  function cancelNosskeySwitch(): void {
-    nosskeySwitchRequest?.abort();
-    nosskeySwitchRequest = null;
-  }
-
-  async function confirmNosskeyAccount(pubkey: string): Promise<boolean> {
-    if (!nosskeyEnabled || nosskeySwitchRequest || isSwitchingAccount) return false;
-    const controller = new AbortController();
-    const generation = authTransitionGeneration;
-    const current = () => !appDisposed && generation === authTransitionGeneration && !controller.signal.aborted;
-    nosskeySwitchRequest = controller;
-    try {
-      await nosskey.readPublicKey(current, pubkey);
-      return current() && accountManager.getAccountType(pubkey) === "nosskey";
-    } catch (error) {
-      if (current()) nosskey.report(error);
-      return false;
-    } finally {
-      if (nosskeySwitchRequest === controller) nosskeySwitchRequest = null;
-    }
-  }
-
-  async function switchNosskeyAccount(pubkey: string): Promise<boolean> {
-    return (await confirmNosskeyAccount(pubkey)) && await switchAccount(pubkey);
-  }
-
   async function handleNip07Login(): Promise<string | undefined> {
     beginAuthTransition();
     const generation = authTransitionGeneration;
@@ -2338,8 +2301,8 @@
       {#if nosskeyEnabled && nosskey.state.notice && !nosskey.state.visible
         && !showLoginDialogStore.value && !showAddAccountDialogStore.value && !showLogoutDialogStore.value}
         <div class="nosskey-notice">
-          <NosskeyNotice reconnecting={nosskeySwitchRequest !== null}
-            onReconnect={authState.value.type === "nosskey" ? () => void confirmNosskeyAccount(authState.value.pubkey) : undefined} />
+          <NosskeyNotice reconnecting={nosskeyConfirming}
+            onReconnect={authState.value.type === "nosskey" ? () => void appAccountSessionController.confirmNosskeyAccount(authState.value.pubkey) : undefined} />
         </div>
       {/if}
       {#if authState.value.type === "nosskey" && sharedMediaStore.received && sharedMediaStore.files.length > 0}
@@ -2393,7 +2356,7 @@
           onClose={handleLoginDialogClose}
           onSave={saveSecretKey}
           onParentClientLogin={handleParentClientLogin}
-          onNosskeyLogin={nosskeyEnabled ? handleNosskeyLogin : undefined}
+          onNosskeyLogin={nosskeyEnabled ? appAuthLoginController.handleNosskeyLogin : undefined}
           nosskeyBusy={nosskeyLoginPending}
           onNip07Login={handleNip07Login}
           onNip46Login={handleNip46Login}
@@ -2427,7 +2390,7 @@
           onClose={handleAddAccountDialogClose}
           onSave={saveSecretKey}
           onParentClientLogin={handleParentClientLogin}
-          onNosskeyLogin={nosskeyEnabled ? handleNosskeyLogin : undefined}
+          onNosskeyLogin={nosskeyEnabled ? appAuthLoginController.handleNosskeyLogin : undefined}
           nosskeyBusy={nosskeyLoginPending}
           onNip07Login={handleNip07Login}
           onNip46Login={handleNip46Login}
@@ -2455,15 +2418,15 @@
         <ProfileComponent
           profilePending={profileFetchPending}
           show={showLogoutDialogStore.value}
-          onClose={() => { cancelNosskeySwitch(); logoutDialog.close(); }}
+          onClose={() => { appAccountSessionController.cancelNosskeyConfirmation(); logoutDialog.close(); }}
           onLogout={requestLogoutAccount}
           fallbackRecoveryPubkeyHex={accountManager.getActiveAccountPubkey() ||
             accountManager.getAccounts()[0]?.pubkeyHex ||
             ""}
           onSwitchAccount={switchAccount}
-          onSwitchNosskeyAccount={nosskeyEnabled ? switchNosskeyAccount : undefined}
-          cancelNosskeySwitch={cancelNosskeySwitch}
-          nosskeySwitching={nosskeySwitchRequest !== null}
+          onSwitchNosskeyAccount={nosskeyEnabled ? appAccountSessionController.switchNosskeyAccount : undefined}
+          cancelNosskeySwitch={appAccountSessionController.cancelNosskeyConfirmation}
+          nosskeySwitching={nosskeyConfirming}
           onAddAccount={handleAddAccount}
           accounts={accountListStore.value}
           accountProfiles={accountProfileCacheStore.value}

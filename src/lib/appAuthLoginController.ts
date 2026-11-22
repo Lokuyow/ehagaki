@@ -1,4 +1,5 @@
 import { isPublicKeyLoginInput } from './utils/nostrUtils';
+import { NosskeyError } from './nosskeyService.svelte';
 import type { AccountAuthType, AuthResult } from './types';
 
 type ParentClientAuthOptions = {
@@ -46,6 +47,13 @@ export interface AppAuthLoginControllerDependencies {
     authenticateWithPublicKey(input: string): AuthResult & { profileRelayHints?: string[] };
     disconnectParentClient(): void;
     authenticateWithNsec(secretKey: string): Promise<AuthResult>;
+    nosskey?: {
+        beginTransition(): number;
+        readPublicKey(isCurrent: () => boolean): Promise<string>;
+        authenticate(pubkeyHex: string): AuthResult;
+        reportError(error: unknown): void;
+        setLoading(loading: boolean): void;
+    };
     handleSuccessfulAuthResult(
         result: AuthResult,
         onAuthenticated: (pubkeyHex: string) => Promise<void>,
@@ -62,6 +70,7 @@ export interface AppAuthLoginController {
     /** Resolves with an error code, or undefined when the login succeeded or was ignored. */
     saveSecretKey(secretKey: string, generation?: number): Promise<string | undefined>;
     handleParentClientLogin(): Promise<string | undefined>;
+    handleNosskeyLogin(): Promise<void>;
 }
 
 export function createAppAuthLoginController(
@@ -118,6 +127,48 @@ export function createAppAuthLoginController(
         deps.setCurrentRxNostr(deps.disposeNostrSession(deps.getCurrentRxNostr()));
         await deps.handlePostAuth(result.pubkeyHex, { generation });
         return undefined;
+    }
+
+    let isNosskeyLoginPending = false;
+
+    async function handleNosskeyLogin(): Promise<void> {
+        const { nosskey } = deps;
+        if (!nosskey || isNosskeyLoginPending) return;
+
+        const generation = nosskey.beginTransition();
+        const isCurrent = () => deps.isAuthTransitionCurrent(generation);
+        const previousAuthType = deps.getCurrentAuthType();
+        const previousPubkeyHex = deps.getCurrentPubkeyHex();
+        isNosskeyLoginPending = true;
+        nosskey.setLoading(true);
+        try {
+            await deps.cancelPendingNip46Auth();
+            if (!isCurrent()) return;
+
+            const pubkeyHex = await nosskey.readPublicKey(isCurrent);
+            if (!isCurrent()) return;
+
+            const result = nosskey.authenticate(pubkeyHex);
+            if (!result.success) {
+                const code = result.error === 'nosskey.account_conflict' ? 'account_conflict' : 'storage';
+                nosskey.reportError(new NosskeyError(code));
+                return;
+            }
+
+            await deps.clearNip46RuntimeForAuthChange({
+                currentAuthType: previousAuthType,
+                currentPubkeyHex: previousPubkeyHex,
+                nextAuthType: 'nosskey',
+                nextPubkeyHex: pubkeyHex,
+                nip46Service: deps.nip46Service,
+            });
+            if (isCurrent()) await deps.handlePostAuth(pubkeyHex, { generation });
+        } catch (error) {
+            if (isCurrent()) nosskey.reportError(error);
+        } finally {
+            isNosskeyLoginPending = false;
+            nosskey.setLoading(false);
+        }
     }
 
     let isSavingSecretKey = false;
@@ -191,5 +242,6 @@ export function createAppAuthLoginController(
             && deps.isAuthTransitionCurrent(parentTransition.generation),
         saveSecretKey,
         handleParentClientLogin,
+        handleNosskeyLogin,
     };
 }
