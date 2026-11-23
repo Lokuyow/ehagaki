@@ -25,6 +25,7 @@
   import { RelayConfigUtils } from "./lib/relayConfigUtils";
   import { profileMetadataCache } from "./lib/profileMetadataCache.svelte";
   import { provideProfileMentionPreview } from "./lib/profileMentionPreviewContext";
+  import { createProfileMentionPreviewProfiles } from "./lib/profileMentionPreviewProfiles.svelte";
   import { nip46Service } from "./lib/nip46Service";
   import { parentClientAuthService } from "./lib/parentClientAuthService";
   import { embedComposerContextService } from "./lib/embedComposerContextService";
@@ -502,10 +503,11 @@
   let appDisposed = false;
   let postAuthAbort: AbortController | undefined;
   let followListSession = $state.raw<ReturnType<typeof createFollowListSession>>();
-  provideProfileMentionPreview({
-    read: pubkey => profileMetadataCache.getReactiveEntry(pubkey)?.profile,
-    load: pubkeys => { void profileMetadataCache.getCachedProfiles(pubkeys).catch(() => undefined); },
+  const mentionPreviewProfiles = createProfileMentionPreviewProfiles({
+    getRxNostr: () => (appDisposed || !isAuthenticated ? undefined : rxNostr),
   });
+  provideProfileMentionPreview(mentionPreviewProfiles);
+  $effect(() => { rxNostr; isAuthenticated; untrack(() => mentionPreviewProfiles.refresh()); });
   let profileFetchPending = $state(false);
   let readyAuthSession = $state<{
     pubkeyHex: string;
@@ -1840,6 +1842,7 @@
       beginAuthTransition({ invalidateSession: true });
       appDisposed = true;
       readyAuthSession = null;
+      mentionPreviewProfiles.dispose();
       overlayScopeTarget.classList.remove("ehagaki-app-root");
       cleanupVisibilityHandler();
       nip46Service.setIdentityMismatchHandler(null);

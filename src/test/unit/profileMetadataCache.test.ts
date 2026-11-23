@@ -1741,6 +1741,21 @@ describe("profileMetadataCache", () => {
         },
     );
 
+    it("keeps an old IndexedDB profile in memory after another request runs GC", async () => {
+        const oldFetchedAt = Date.now() - profileMetadataCacheInternals.PROFILE_CACHE_GC_MS * 10;
+        repositoryMock.bulkGetRecords.mockResolvedValue([
+            createProfileRecord(pubkey, { name: "Old stored", fetchedAt: oldFetchedAt }),
+        ]);
+        await profileMetadataCache.getCachedProfiles([pubkey]);
+
+        const rxNostr = { use: vi.fn(() => { throw new Error("REQ setup failed"); }) };
+        const pending = profileMetadataCache.getProfile(otherPubkey, { rxNostr: rxNostr as never, forceRefresh: true });
+        await flushProfileBatch();
+        await pending;
+
+        expect(profileMetadataCache.getReactiveEntry(pubkey)?.profile).toMatchObject({ name: "Old stored" });
+    });
+
     it("does not negative-cache a pubkey when no REQ could be started", async () => {
         const rxNostr = {
             use: vi.fn(() => {

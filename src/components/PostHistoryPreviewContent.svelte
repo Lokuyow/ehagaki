@@ -4,6 +4,7 @@
         PostHistoryPreviewSegment,
     } from "../lib/postHistoryDialogUtils";
     import TextLinkSegments from "./TextLinkSegments.svelte";
+    import ProfileAvatar from "./ProfileAvatar.svelte";
     import { getProfileMentionPreview } from "../lib/profileMentionPreviewContext";
     import { profileMentionLabel, shortenProfileMentionLabel } from "../lib/profileMention";
     import { buildProfileExternalClientUrl } from "../lib/postHistoryExternalClient";
@@ -69,8 +70,8 @@
     );
 
     $effect(() => {
-        const pubkeys = textSegments.flatMap(segment => segment.type === "mention" ? [segment.profile.pubkey] : []);
-        if (pubkeys.length) untrack(() => mentionProfiles?.load(pubkeys));
+        const mentions = textSegments.flatMap(segment => segment.type === "mention" ? [segment.profile] : []);
+        if (mentions.length) untrack(() => mentionProfiles?.load(mentions));
     });
 
     const hasRenderableText = $derived.by(() =>
@@ -144,10 +145,14 @@
                     <TextLinkSegments segments={[segment]} />
                 {:else if segment.type === "mention"}
                     {@const pubkey = segment.profile.pubkey}
-                    {@const name = profileMentionLabel(pubkey, mentionProfiles?.read(pubkey))}
+                    {@const profile = mentionProfiles?.read(pubkey)}
+                    {@const name = profileMentionLabel(pubkey, profile)}
                     {@const label = shortenProfileMentionLabel(name)}
                     <a class="profile-mention" href={buildProfileExternalClientUrl(segment.profile, externalClient)} target="_blank" rel="noopener noreferrer"
-                        title={name === label ? undefined : `@${name}`}>@{label}</a>
+                        title={name === label ? undefined : `@${name}`}><span class="profile-mention-prefix"><span class="profile-mention-avatar" aria-hidden="true"><ProfileAvatar
+                            pubkeyHex={pubkey} displayName={profile?.displayName} name={profile?.name} src={profile?.picture}
+                            fallbackAriaLabel="" fallbackDelayMs={0} rootClassName="profile-mention-avatar-root"
+                            imageClassName="profile-mention-avatar-image" /></span>@</span>{label}</a>
                 {:else if hasEmojiFailed(segment.url)}
                     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                     <span
@@ -192,6 +197,30 @@
 <style>
     .profile-mention {
         overflow-wrap: anywhere;
+    }
+    /* Keeps the icon beside "@" and stops the body's pre-wrap from adding a line inside the avatar. */
+    .profile-mention-prefix {
+        white-space: nowrap;
+    }
+    .profile-mention-avatar {
+        display: inline-block;
+        width: 1.25em;
+        height: 1.25em;
+        margin-inline-end: 0.2em;
+        vertical-align: -0.25em;
+    }
+    .profile-mention-avatar :global(.profile-mention-avatar-root) {
+        display: block;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        border-radius: 50%;
+    }
+    .profile-mention-avatar :global(.profile-mention-avatar-image) {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
     .post-history-preview-content {
         position: relative;
