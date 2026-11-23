@@ -134,6 +134,7 @@ export function buildProfileExternalClientUrl(
 export function buildHashtagExternalClientUrl(
     hashtag: string,
     preference: ExternalNostrClientPreference,
+    kind?: number,
 ): string | null {
     if (!hashtag) {
         return null;
@@ -145,7 +146,7 @@ export function buildHashtagExternalClientUrl(
         case "jumble":
             return `https://jumble.social/notes?t=${encodeURIComponent(hashtag.toLowerCase())}`;
         case "lumilumi":
-            return `https://lumilumi.app/search?q=${encodeURIComponent(`t:${hashtag} kind:1`)}`;
+            return `https://lumilumi.app/search?q=${encodeURIComponent(`t:${hashtag} kind:${kind || 1}`)}`;
         case "primal":
             return `https://primal.net/search/${encodeURIComponent(`#${hashtag}`)}`;
         default:

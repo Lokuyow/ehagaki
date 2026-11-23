@@ -115,6 +115,49 @@ describe("postHistoryDialogUtils", () => {
         ]);
     });
 
+    it("buildPreviewContent keeps hashtags followed by a URL or mention in the same unit as the editor and t tags", () => {
+        const npub = "nostr:npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6";
+        const withoutTags = buildPreviewContent({
+            content: `#taghttps://example.com/ #x${npub}`,
+            tags: [],
+        });
+        expect(withoutTags.segments).toEqual([
+            { type: "hashtag", hashtag: "taghttps://example.com/" },
+            { type: "text", text: " " },
+            { type: "hashtag", hashtag: `x${npub}` },
+        ]);
+
+        const withTags = buildPreviewContent({
+            content: `#taghttps://example.com/ #x${npub}`,
+            tags: [["t", "tag"], ["t", "x"]],
+        });
+        expect(withTags.segments).toEqual([
+            { type: "hashtag", hashtag: "tag" },
+            { type: "link", text: "https://example.com/", href: "https://example.com/" },
+            { type: "text", text: " " },
+            { type: "hashtag", hashtag: "x" },
+            // 英数字の直後の nostr: は従来どおりメンションにしない
+            { type: "text", text: npub },
+        ]);
+    });
+
+    it("buildPreviewContent stops an untagged hashtag before a known custom emoji", () => {
+        const result = buildPreviewContent({
+            content: "#tag:e:",
+            tags: [["emoji", "e", "https://example.com/e.webp"]],
+        });
+        expect(result.segments).toEqual([
+            { type: "hashtag", hashtag: "tag" },
+            {
+                type: "emoji",
+                shortcode: "e",
+                shortcodeLower: "e",
+                rawShortcodeText: ":e:",
+                url: "https://example.com/e.webp",
+            },
+        ]);
+    });
+
     it("buildPreviewContent prefers the longest t tag that prefixes the hashtag", () => {
         const result = buildPreviewContent({
             content: "#Nostrは楽しい #wow。",

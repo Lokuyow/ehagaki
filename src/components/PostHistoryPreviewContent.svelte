@@ -33,6 +33,7 @@
         lineHeight?: number;
         contentClass?: string;
         collapsedContentClass?: string;
+        kind?: number;
     }
 
     let {
@@ -49,6 +50,7 @@
         lineHeight = 1.5,
         contentClass = "",
         collapsedContentClass = "",
+        kind = undefined,
     }: Props = $props();
 
     const emojiSlotWidthByUrl = new Map<string, number>();
@@ -150,7 +152,7 @@
                     <a class="profile-mention" href={buildProfileExternalClientUrl(segment.profile, externalClient)} target="_blank" rel="noopener noreferrer"
                         title={name === label ? undefined : `@${name}`}>@{label}</a>
                 {:else if segment.type === "hashtag"}
-                    {@const href = buildHashtagExternalClientUrl(segment.hashtag, externalClient)}
+                    {@const href = buildHashtagExternalClientUrl(segment.hashtag, externalClient, kind)}
                     {#if href}
                         <a class="hashtag-link" {href} target="_blank" rel="noopener noreferrer">#{segment.hashtag}</a>
                     {:else}

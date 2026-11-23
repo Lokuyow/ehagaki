@@ -498,24 +498,50 @@ export function buildPreviewContent(
     const mediaMap = buildPostMediaMap(post.media ?? []);
     const segments: PostHistoryPreviewSegment[] = [];
     const emojiUrls = new Set<string>();
+    const hashtags = scanPreviewHashtags(normalizedContent, buildTTagSet(post.tags), emojiMap);
+    const mentions = scanProfileMentions(normalizedContent).filter(
+        (mention) => !hashtags.some((hashtag) => mention.start < hashtag.end && hashtag.start < mention.end),
+    );
+    const inlineRanges = [
+        ...hashtags.map((hashtag) => ({ ...hashtag, segment: { type: "hashtag", hashtag: hashtag.hashtag } as const })),
+        ...mentions.map(({ start, end, pubkey, relayHints }) => ({
+            start,
+            end,
+            segment: { type: "mention", profile: { pubkey, relayHints } } as const,
+        })),
+    ].sort((a, b) => a.start - b.start);
     let lastIndex = 0;
 
-    for (const { start, end, pubkey, relayHints } of scanProfileMentions(normalizedContent)) {
+    for (const { start, end, segment } of inlineRanges) {
         pushContentWithEmoji(normalizedContent.slice(lastIndex, start), segments, emojiMap, mediaMap, emojiUrls);
-        const profile = { pubkey, relayHints };
-        segments.push({ type: "mention", profile });
+        segments.push(segment);
         lastIndex = end;
     }
     pushContentWithEmoji(normalizedContent.slice(lastIndex), segments, emojiMap, mediaMap, emojiUrls);
 
     if (segments.length === 0) segments.push({ type: "text", text: normalizedContent });
-    return { segments: splitHashtagSegments(segments, post.tags), emojiUrls: [...emojiUrls] };
+    return { segments, emojiUrls: [...emojiUrls] };
 }
 
 const HASHTAG_TRAILING_PUNCTUATION_PATTERN = /[。、．，,.!?！？…:;：；"'”’」』）)\]】〕〉》]+$/u;
 
-// 候補の先頭からイベントの t タグに一致する最長部分を採用し、一致しなければ末尾の句読点を除く
-function resolveHashtagCandidate(candidate: string, tTags: ReadonlySet<string>): string {
+function buildTTagSet(tags: PostHistoryRecord["tags"]): Set<string> {
+    return new Set(
+        tags.flatMap((tag) =>
+            tag[0] === "t" && typeof tag[1] === "string" && tag[1]
+                ? [tag[1].toLowerCase()]
+                : [],
+        ),
+    );
+}
+
+// 候補の先頭からイベントの t タグに一致する最長部分を採用する。
+// 一致しなければ、登録済みカスタム絵文字の手前で切り、末尾の句読点を除く。
+function resolveHashtagCandidate(
+    candidate: string,
+    tTags: ReadonlySet<string>,
+    emojiMap: ReturnType<typeof buildCustomEmojiTagMap>,
+): string {
     if (tTags.size > 0) {
         const chars = Array.from(candidate);
         for (let length = chars.length; length > 0; length -= 1) {
@@ -525,51 +551,35 @@ function resolveHashtagCandidate(candidate: string, tTags: ReadonlySet<string>):
             }
         }
     }
-    return candidate.replace(HASHTAG_TRAILING_PUNCTUATION_PATTERN, "");
+
+    let resolved = candidate;
+    for (const match of candidate.matchAll(CUSTOM_EMOJI_SHORTCODE_PATTERN)) {
+        const shortcodeLower = normalizeEmojiShortcodeForLookup(match[1] ?? "");
+        if (shortcodeLower && emojiMap.has(shortcodeLower)) {
+            resolved = candidate.slice(0, match.index);
+            break;
+        }
+    }
+    return resolved.replace(HASHTAG_TRAILING_PUNCTUATION_PATTERN, "");
 }
 
-// エディターのハイライトと同じ規則（行頭・空白の直後の #）でテキストからハッシュタグを切り出す
-function splitHashtagSegments(
-    segments: PostHistoryPreviewSegment[],
-    tags: PostHistoryRecord["tags"],
-): PostHistoryPreviewSegment[] {
-    const tTags = new Set(
-        tags.flatMap((tag) =>
-            tag[0] === "t" && typeof tag[1] === "string" && tag[1]
-                ? [tag[1].toLowerCase()]
-                : [],
-        ),
-    );
-    const result: PostHistoryPreviewSegment[] = [];
-    segments.forEach((segment, index) => {
-        if (segment.type !== "text") {
-            result.push(segment);
-            return;
+// エディターのハイライトと同じ規則（行頭・空白の直後の #）で本文全体からハッシュタグを探す。
+// URL やメンションより先に範囲を決め、エディターや t タグと同じ単位でリンクにする。
+function scanPreviewHashtags(
+    content: string,
+    tTags: ReadonlySet<string>,
+    emojiMap: ReturnType<typeof buildCustomEmojiTagMap>,
+): Array<{ start: number; end: number; hashtag: string }> {
+    const ranges: Array<{ start: number; end: number; hashtag: string }> = [];
+    for (const match of content.matchAll(new RegExp(HASHTAG_REGEX.source, "g"))) {
+        const hashtag = resolveHashtagCandidate(match[1] ?? "", tTags, emojiMap);
+        if (!hashtag) {
+            continue;
         }
-
-        const pattern = new RegExp(HASHTAG_REGEX.source, "g");
-        let lastIndex = 0;
-        for (const match of segment.text.matchAll(pattern)) {
-            const hashtag = resolveHashtagCandidate(match[1] ?? "", tTags);
-            const matchIndex = match.index ?? 0;
-            // 先頭の空白を伴わない一致は、直前が別セグメントの場合は行頭ではないので除外する
-            if (!hashtag || (index > 0 && matchIndex === 0 && match[0].startsWith("#"))) {
-                continue;
-            }
-            const hashStart = matchIndex + match[0].indexOf("#");
-            if (hashStart > lastIndex) {
-                result.push({ type: "text", text: segment.text.slice(lastIndex, hashStart) });
-            }
-            result.push({ type: "hashtag", hashtag });
-            lastIndex = hashStart + 1 + hashtag.length;
-        }
-        if (lastIndex === 0) {
-            result.push(segment);
-        } else if (lastIndex < segment.text.length) {
-            result.push({ type: "text", text: segment.text.slice(lastIndex) });
-        }
-    });
-    return result;
+        const start = (match.index ?? 0) + match[0].indexOf("#");
+        ranges.push({ start, end: start + 1 + hashtag.length, hashtag });
+    }
+    return ranges;
 }
 
 function pushContentWithEmoji(

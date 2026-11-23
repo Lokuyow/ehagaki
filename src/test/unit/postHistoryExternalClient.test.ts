@@ -111,6 +111,11 @@ describe("hashtag external client URL", () => {
         expect(buildHashtagExternalClientUrl("Nostrは", { client, customUrlTemplate: "" })).toBe(expected);
     });
 
+    it("searches Lumilumi with the source event kind", () => {
+        expect(buildHashtagExternalClientUrl("nostr", { client: "lumilumi", customUrlTemplate: "" }, 42))
+            .toBe("https://lumilumi.app/search?q=t%3Anostr%20kind%3A42");
+    });
+
     it("returns null for clients without a hashtag route", () => {
         expect(buildHashtagExternalClientUrl("nostr", { client: "njump", customUrlTemplate: "" })).toBeNull();
         expect(buildHashtagExternalClientUrl("nostr", {
