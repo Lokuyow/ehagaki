@@ -729,7 +729,7 @@ for (const width of [791, 360, 280]) test(`long actor names stay on one line ins
     expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath(`actor-name-${width}.png`) });
     await dialog.locator('.single-actor-name').click();
-    await expect(content.getByLabel('イベントID', { exact: true })).toBeVisible();
+    await expect(content.getByLabel('イベントID・公開鍵', { exact: true })).toBeVisible();
 });
 
 for (const width of [360, 280]) test(`live receiving keeps the head and shares one subscription at ${width}px`, async ({ page }) => {
@@ -828,7 +828,7 @@ for (const kind of [6, 7]) for (const multiple of [false, true]) test(`actor sel
     await page.screenshot({ path: info.outputPath(`actor-${kind}-${multiple}.png`) });
     await button.focus(); await page.keyboard.press('Enter');
     await expect(page.locator('.notification-list')).toHaveCount(0);
-    const input = page.getByLabel('イベントID', { exact: true });
+    const input = page.getByLabel('イベントID・公開鍵', { exact: true });
     await expect(input).toBeVisible();
     const pointer = nip19.decode((await input.inputValue()).replace(/^nostr:/, ''));
     expect(pointer.type).toBe('nevent');

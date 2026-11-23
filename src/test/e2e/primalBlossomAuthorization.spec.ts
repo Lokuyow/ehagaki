@@ -48,7 +48,10 @@ for (const mode of ["normal", "snapshot", "unauthorized", "cors"] as const) {
             expect(event.tags).toContainEqual(["expiration", String(event.created_at + 60)]);
             const action = request.method() === "DELETE" ? "delete" : "list";
             expect(event.tags).toContainEqual(["t", action]);
-            actions.push(action);
+            const cursor = url.searchParams.get("cursor");
+            // The media tab may prefetch the next page when its list end is visible.
+            // Track continuation requests separately from first-page refreshes.
+            if (!cursor) actions.push(action);
             if (mode === "cors") { await route.abort("failed"); return; }
             if (mode === "unauthorized") { await route.fulfill({ status: 401 }); return; }
             if (action === "delete") {
@@ -58,8 +61,16 @@ for (const mode of ["normal", "snapshot", "unauthorized", "cors"] as const) {
             } else {
                 expect(url.pathname).toBe(`/list/${pubkey}`);
                 expect(url.searchParams.get("limit")).toBe("24");
-                expect(url.searchParams.has("cursor")).toBe(false);
-                await route.fulfill({ json: descriptors.filter(item => !removed.has(item.sha256)) });
+                const remaining = descriptors.filter(item => !removed.has(item.sha256));
+                if (cursor) {
+                    // Snapshot mode returns every descriptor at once and never continues remotely.
+                    expect(mode).toBe("normal");
+                    const index = descriptors.findIndex(item => item.sha256 === cursor);
+                    expect(index).toBeGreaterThanOrEqual(0);
+                    await route.fulfill({ json: remaining.filter(item => descriptors.indexOf(item) > index) });
+                    return;
+                }
+                await route.fulfill({ json: remaining });
             }
         });
         await page.goto("./");

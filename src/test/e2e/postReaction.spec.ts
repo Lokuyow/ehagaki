@@ -23,7 +23,7 @@ async function open(page: Page, query = '') {
 }
 async function chooseTarget(page: Page, input: string, card: 'main' | 'related' = 'main') {
     await page.getByTestId('open-target').click();
-    await page.getByPlaceholder('note または nevent を入力').fill(input);
+    await page.getByLabel('イベントID・公開鍵', { exact: true }).fill(input);
     const actions = page.getByRole('button', { name: 'リアクションする', exact: true });
     // Interaction targets render the related card and outer footer separately.
     // Wait for both before choosing a positional action.
@@ -390,7 +390,7 @@ test('320px keeps the heart, local count and post menu separate', async ({ page 
 });
 test('invalid target signature keeps the originating dialog and input intact', async ({ page }) => {
     const h = await open(page, '?invalid&bad-apply');
-    await page.getByTestId('open-target').click(); await page.getByPlaceholder('note または nevent を入力').fill(h.targetInput);
+    await page.getByTestId('open-target').click(); await page.getByLabel('イベントID・公開鍵', { exact: true }).fill(h.targetInput);
     await page.getByRole('button', { name: 'リアクションする', exact: true }).click();
     await expect(page.getByRole('dialog')).toBeVisible(); await expect(page.locator('.tiptap-editor')).toHaveText('AB');
     await expect(page.locator('[data-reaction-target-id]')).toHaveCount(0);
