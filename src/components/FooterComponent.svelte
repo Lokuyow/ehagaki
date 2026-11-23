@@ -284,7 +284,9 @@
         right: 0;
         bottom: var(--footer-bottom);
         z-index: 99;
-        transition: bottom 0.2s ease;
+        /* 子孫に position: fixed があるため transform ではなく bottom で動かす */
+        transition: bottom var(--keyboard-follow-duration)
+            var(--keyboard-follow-easing);
     }
 
     :global(.login-btn) {

@@ -3,14 +3,15 @@
  * キーボード追従などのレイアウト状態を管理
  */
 
+import { untrack } from "svelte";
 import {
     getComponentLocalKeyboardInset,
     getEffectiveViewportOffsetTop,
     getLayoutViewportHeight,
-    getVirtualKeyboardLayoutInset,
     isNonPwaAndroidChrome,
     isPwaAndroidChrome,
     isIPhoneSafari,
+    measureKeyboardViewport,
 } from "../lib/utils/viewportLayout";
 import { createKeyboardTouchScrollLock } from "../lib/utils/keyboardTouchScrollLock";
 import { isComposerInputFocusActive } from "../lib/utils/keyboardFocusUtils";
@@ -29,8 +30,36 @@ export const REASON_INPUT_HEIGHT = 50;
 /** メインコンテンツ上部の余白（px） */
 export const MAIN_CONTENT_TOP_SPACING = 6;
 
-/** キーボードが開いていると判定する最小の高さ（px） */
-const KEYBOARD_THRESHOLD = 100;
+/**
+ * キーボードの開閉が切り替わった時だけ、下部 UI をスライドさせる時間（ms）。
+ * 表示中のパン・スクロール・高さ変化は 0ms で即座に追従させる。
+ */
+export const KEYBOARD_FOLLOW_SLIDE_MS = 200;
+
+const KEYBOARD_FOLLOW_INSTANT = "0ms";
+const KEYBOARD_FOLLOW_SLIDE = `${KEYBOARD_FOLLOW_SLIDE_MS}ms`;
+
+interface ViewportMetrics {
+    height?: number;
+    offsetTop?: number;
+    usesKeyboardOverlay?: boolean;
+    physicalKeyboardVisible?: boolean;
+    physicalKeyboardHeight?: number;
+    /** 計測済みの container inset。省略時は layout target から求める */
+    containerKeyboardInset?: number;
+}
+
+interface KeyboardFollowState {
+    active: boolean;
+    positions: string;
+    duration: string;
+}
+
+const INITIAL_KEYBOARD_FOLLOW_STATE: KeyboardFollowState = {
+    active: false,
+    positions: "",
+    duration: KEYBOARD_FOLLOW_INSTANT,
+};
 
 let lastViewportHeight: number | undefined;
 let lastViewportOffsetTop = 0;
@@ -38,6 +67,7 @@ let lastVisibleViewportBottom = 0;
 let lastPhysicalKeyboardVisible = false;
 let lastPhysicalKeyboardHeight = 0;
 let lastUsesVirtualKeyboardGeometry = false;
+let lastKeyboardFollow = INITIAL_KEYBOARD_FOLLOW_STATE;
 const keyboardTouchScrollLock =
     typeof document === "undefined"
         ? null
@@ -60,11 +90,33 @@ function setRootStyleProperty(name: string, value: string): void {
     style.setProperty(name, value);
 }
 
+/**
+ * 実行中に値が変わらない変数。styleTarget が切り替わる Web Component でも
+ * 反映されるよう、import 時と setupViewportListener() の開始時に書く。
+ */
+function writeStaticLayoutVariables(): void {
+    setRootStyleProperty("--app-root-top", "0px");
+    setRootStyleProperty("--app-root-overflow-y", "visible");
+    setRootStyleProperty("--app-body-position", "static");
+    setRootStyleProperty("--app-body-inset", "auto");
+    setRootStyleProperty("--app-body-width", "auto");
+    setRootStyleProperty("--app-overscroll-behavior", "auto");
+    setRootStyleProperty("--footer-height", `${FOOTER_HEIGHT}px`);
+    setRootStyleProperty(
+        "--reason-input-base-height",
+        `${REASON_INPUT_HEIGHT}px`,
+    );
+}
+
 function getFooterReservedHeight(
     isKeyboardOpen: boolean,
     hasFooter: boolean,
 ): number {
     return isKeyboardOpen || !hasFooter ? 0 : FOOTER_HEIGHT;
+}
+
+function getClosedLayoutBottom(): number {
+    return layoutCapabilities.hasFooter ? FOOTER_HEIGHT : 0;
 }
 
 function getContainerKeyboardInset(
@@ -90,15 +142,34 @@ function getContainerKeyboardInset(
     );
 }
 
+/**
+ * 下部 UI（バー・理由欄・フッター）の transition 時間を決める。
+ * - 開閉が切り替わった: スライド
+ * - 同じ状態のまま位置だけ変わった: 即時追従
+ * - 位置が変わらない同期: 前の値を維持（重複した同期でスライドを打ち消さない）
+ */
+function resolveKeyboardFollowDuration(
+    isComposerKeyboardActive: boolean,
+    positions: string,
+): string {
+    let duration = lastKeyboardFollow.duration;
+    if (isComposerKeyboardActive !== lastKeyboardFollow.active) {
+        duration = KEYBOARD_FOLLOW_SLIDE;
+    } else if (positions !== lastKeyboardFollow.positions) {
+        duration = KEYBOARD_FOLLOW_INSTANT;
+    }
+
+    lastKeyboardFollow = {
+        active: isComposerKeyboardActive,
+        positions,
+        duration,
+    };
+    return duration;
+}
+
 function syncLayoutCssVariables(
     isComposerKeyboardActive: boolean,
-    viewportMetrics: {
-        height?: number;
-        offsetTop?: number;
-        usesKeyboardOverlay?: boolean;
-        physicalKeyboardVisible?: boolean;
-        physicalKeyboardHeight?: number;
-    } = {},
+    viewportMetrics: ViewportMetrics = {},
 ): void {
     if (viewportMetrics.height !== undefined) {
         lastViewportHeight = viewportMetrics.height;
@@ -136,9 +207,9 @@ function syncLayoutCssVariables(
         shouldUseKeyboardViewportHeight && isPwaAndroidChrome();
     const shouldUseKeyboardOverlay =
         isComposerKeyboardActive && usesKeyboardOverlay;
-    const containerKeyboardInset = getContainerKeyboardInset(
-        isComposerKeyboardActive,
-    );
+    const containerKeyboardInset =
+        viewportMetrics.containerKeyboardInset ??
+        getContainerKeyboardInset(isComposerKeyboardActive);
     const effectiveKeyboardInset = isContainerLayout
         ? containerKeyboardInset
         : bottomPosition;
@@ -149,15 +220,21 @@ function syncLayoutCssVariables(
             : shouldUseKeyboardViewportHeight || shouldUseKeyboardOverlay,
     );
 
-    const closedLayoutBottom = layoutCapabilities.hasFooter ? FOOTER_HEIGHT : 0;
-    const keyboardButtonBarBottom = `${isComposerKeyboardActive ? effectiveKeyboardInset : closedLayoutBottom}px`;
     const keyboardButtonBarHeight = layoutCapabilities.hasKeyboardButtonBar
         ? KEYBOARD_BUTTON_BAR_HEIGHT
         : 0;
-    const reasonInputBottom = `${(isComposerKeyboardActive ? effectiveKeyboardInset : closedLayoutBottom) + keyboardButtonBarHeight}px`;
+    const barBottom = isComposerKeyboardActive
+        ? effectiveKeyboardInset
+        : getClosedLayoutBottom();
+    const keyboardButtonBarBottom = `${barBottom}px`;
+    const reasonInputBottom = `${barBottom + keyboardButtonBarHeight}px`;
     const footerBottom = !layoutCapabilities.hasFooter || isComposerKeyboardActive
         ? `${-FOOTER_HEIGHT}px`
         : "0px";
+    const keyboardFollowDuration = resolveKeyboardFollowDuration(
+        isComposerKeyboardActive,
+        `${keyboardButtonBarBottom}|${reasonInputBottom}|${footerBottom}`,
+    );
 
     setRootStyleProperty(
         "--app-root-height",
@@ -166,14 +243,6 @@ function syncLayoutCssVariables(
             : shouldUseKeyboardViewportHeight
                 ? `${lastViewportHeight}px`
                 : "100%",
-    );
-    setRootStyleProperty(
-        "--app-root-top",
-        "0px",
-    );
-    setRootStyleProperty(
-        "--app-root-overflow-y",
-        "visible",
     );
     setRootStyleProperty(
         "--app-main-position",
@@ -190,33 +259,12 @@ function syncLayoutCssVariables(
                     : "100svh",
     );
     setRootStyleProperty(
-        "--app-body-position",
-        "static",
-    );
-    setRootStyleProperty(
-        "--app-body-inset",
-        "auto",
-    );
-    setRootStyleProperty(
-        "--app-body-width",
-        "auto",
-    );
-    setRootStyleProperty(
         "--app-overlay-position",
         isContainerLayout ? "absolute" : "fixed",
     );
     setRootStyleProperty(
-        "--app-overscroll-behavior",
-        "auto",
-    );
-    setRootStyleProperty("--footer-height", `${FOOTER_HEIGHT}px`);
-    setRootStyleProperty(
         "--keyboard-button-bar-height",
         `${keyboardButtonBarHeight}px`,
-    );
-    setRootStyleProperty(
-        "--reason-input-base-height",
-        `${REASON_INPUT_HEIGHT}px`,
     );
     setRootStyleProperty(
         "--main-content-top-spacing",
@@ -270,6 +318,11 @@ function syncLayoutCssVariables(
             ? "43dvh"
             : `${lastViewportOffsetTop + visibleViewportHeight * 0.43}px`,
     );
+    // 位置と同じ同期で書き、同じ style 更新で transition の時間を確定させる
+    setRootStyleProperty(
+        "--keyboard-follow-duration",
+        keyboardFollowDuration,
+    );
     setRootStyleProperty(
         "--keyboard-button-bar-bottom",
         keyboardButtonBarBottom,
@@ -290,9 +343,13 @@ export const reasonInputVisibleStore = {
     },
     set: (v: boolean) => {
         reasonInputVisible = v;
-        syncLayoutCssVariables(
-            lastPhysicalKeyboardVisible && isComposerInputFocusActive(),
-            { usesKeyboardOverlay: lastUsesVirtualKeyboardGeometry },
+        // 呼び出し元の effect が viewport 同期用の $state に依存し、
+        // viewport 同期のたびに再実行されないよう追跡を外す
+        untrack(() =>
+            syncLayoutCssVariables(
+                lastPhysicalKeyboardVisible && isComposerInputFocusActive(),
+                { usesKeyboardOverlay: lastUsesVirtualKeyboardGeometry },
+            ),
         );
     },
 };
@@ -310,6 +367,7 @@ let bottomPosition = $state(FOOTER_HEIGHT);
 /** キーボードの高さ（px）。キーボードが閉じている時は 0 */
 let keyboardHeight = $state(0);
 
+writeStaticLayoutVariables();
 syncLayoutCssVariables(false);
 
 /**
@@ -356,8 +414,10 @@ export function setupViewportListener(
     layoutCapabilities.hasHeader = capabilities.hasHeader ?? true;
     layoutCapabilities.hasFooter = capabilities.hasFooter ?? true;
     layoutCapabilities.hasKeyboardButtonBar = capabilities.hasKeyboardButtonBar ?? true;
-    bottomPosition = layoutCapabilities.hasFooter ? FOOTER_HEIGHT : 0;
+    bottomPosition = getClosedLayoutBottom();
     lastUsesVirtualKeyboardGeometry = false;
+    lastKeyboardFollow = INITIAL_KEYBOARD_FOLLOW_STATE;
+    writeStaticLayoutVariables();
     syncLayoutCssVariables(false);
 
     if (typeof window === "undefined" || !window.visualViewport) {
@@ -437,95 +497,63 @@ export function setupViewportListener(
         };
     }
 
+    function syncViewport(): void {
+        const viewport = window.visualViewport;
+        if (!viewport) return;
+
+        const viewportOffsetTop = isSafariViewportMode
+            ? getEffectiveViewportOffsetTop(viewport)
+            : (viewport.offsetTop ?? 0);
+        const measurement = measureKeyboardViewport({
+            viewportHeight: viewport.height,
+            viewportWidth: viewport.width,
+            viewportOffsetTop,
+            layoutViewportHeight: isSafariViewportMode
+                ? getLayoutViewportHeight()
+                : window.innerHeight,
+            safariViewportMode: isSafariViewportMode,
+            virtualKeyboardRect: canObserveVirtualKeyboardGeometry
+                ? virtualKeyboard?.boundingRect
+                : undefined,
+        });
+        const isComposerKeyboardActive =
+            measurement.isKeyboardOpen && isComposerInputFocusActive();
+
+        lastVisibleViewportBottom = measurement.visibleViewportBottom;
+        const containerKeyboardInset = getContainerKeyboardInset(
+            isComposerKeyboardActive,
+            measurement.visibleViewportBottom,
+        );
+
+        // キーボードが開いている時はキーボードの直上、閉じている時はフッターの直上
+        bottomPosition = isComposerKeyboardActive
+            ? isContainerLayout
+                ? containerKeyboardInset
+                : measurement.keyboardBottomInset
+            : getClosedLayoutBottom();
+
+        // キーボード高さストアを更新（閾値以下は 0 として扱う）
+        keyboardHeight = isComposerKeyboardActive
+            ? measurement.keyboardHeight
+            : 0;
+
+        syncLayoutCssVariables(isComposerKeyboardActive, {
+            height: viewport.height,
+            offsetTop: viewportOffsetTop,
+            usesKeyboardOverlay: measurement.usesVirtualKeyboardGeometry,
+            physicalKeyboardVisible: measurement.isKeyboardOpen,
+            physicalKeyboardHeight: measurement.isKeyboardOpen
+                ? measurement.keyboardHeight
+                : 0,
+            containerKeyboardInset,
+        });
+        syncContainerGeometryMonitoring(isComposerKeyboardActive);
+    }
+
     function scheduleViewportSync() {
         // throttle via requestAnimationFrame to avoid jank on iOS/Android
         if (_rafId) cancelAnimationFrame(_rafId);
-        _rafId = requestAnimationFrame(() => {
-            const viewport = window.visualViewport;
-            if (!viewport) return;
-
-            const layoutViewportHeight = isSafariViewportMode
-                ? getLayoutViewportHeight()
-                : window.innerHeight;
-            const viewportOffsetTop = isSafariViewportMode
-                ? getEffectiveViewportOffsetTop(viewport)
-                : (viewport.offsetTop ?? 0);
-
-            // visualViewport.offsetTop を考慮することで、キーボード表示時に
-            // ビューがパン/スクロールしても正しいキーボード高さが得られる
-            const visibleBottom = viewport.height + viewportOffsetTop;
-
-            // キーボード直上へ固定バーを置くための bottom gap
-            const calculatedKeyboardHeight = Math.max(
-                0,
-                layoutViewportHeight - visibleBottom,
-            );
-
-            // Safari の自動パンで visibleBottom が layout viewport の下端へ近づいても、
-            // viewport 自体が十分縮んでいればキーボード表示状態は継続している。
-            const keyboardViewportReduction = Math.max(
-                0,
-                layoutViewportHeight - viewport.height,
-            );
-
-            // キーボードが開いているかどうかを閾値で判定
-            const virtualKeyboardRect = virtualKeyboard?.boundingRect;
-            const virtualKeyboardLayoutInset =
-                canObserveVirtualKeyboardGeometry && virtualKeyboardRect
-                    ? getVirtualKeyboardLayoutInset(
-                        virtualKeyboardRect,
-                        viewport.width,
-                        layoutViewportHeight,
-                    )
-                    : 0;
-            const usesVirtualKeyboardGeometry =
-                virtualKeyboardLayoutInset > 0;
-            const visibleViewportBottom = usesVirtualKeyboardGeometry
-                ? layoutViewportHeight - virtualKeyboardLayoutInset
-                : visibleBottom;
-            const isKeyboardOpen = usesVirtualKeyboardGeometry
-                ? virtualKeyboardLayoutInset > KEYBOARD_THRESHOLD
-                : isSafariViewportMode
-                    ? keyboardViewportReduction > KEYBOARD_THRESHOLD
-                    : calculatedKeyboardHeight > KEYBOARD_THRESHOLD;
-            const keyboardStoreHeight = usesVirtualKeyboardGeometry
-                ? virtualKeyboardLayoutInset
-                : isSafariViewportMode
-                    ? keyboardViewportReduction
-                    : calculatedKeyboardHeight;
-            const isComposerKeyboardActive =
-                isKeyboardOpen && isComposerInputFocusActive();
-
-            lastVisibleViewportBottom = visibleViewportBottom;
-            // キーボードが開いている時はキーボードの直上、閉じている時はフッターの直上
-            // 閾値を設けて、PWAモードでの小さな差分を無視する
-            bottomPosition = isComposerKeyboardActive
-                ? isContainerLayout
-                    ? getContainerKeyboardInset(
-                        true,
-                        visibleViewportBottom,
-                    )
-                    : usesVirtualKeyboardGeometry
-                    ? virtualKeyboardLayoutInset
-                    : calculatedKeyboardHeight
-                : FOOTER_HEIGHT;
-
-            // キーボード高さストアを更新（閾値以下は 0 として扱う）
-            keyboardHeight = isComposerKeyboardActive
-                ? keyboardStoreHeight
-                : 0;
-
-            syncLayoutCssVariables(isComposerKeyboardActive, {
-                height: viewport.height,
-                offsetTop: viewportOffsetTop,
-                usesKeyboardOverlay: usesVirtualKeyboardGeometry,
-                physicalKeyboardVisible: isKeyboardOpen,
-                physicalKeyboardHeight: isKeyboardOpen
-                    ? keyboardStoreHeight
-                    : 0,
-            });
-            syncContainerGeometryMonitoring(isComposerKeyboardActive);
-        });
+        _rafId = requestAnimationFrame(syncViewport);
     }
 
     const handleViewportResize = () => scheduleViewportSync();

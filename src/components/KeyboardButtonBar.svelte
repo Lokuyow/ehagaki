@@ -1,4 +1,5 @@
 <script lang="ts">
+    import type { Snippet } from "svelte";
     import { _ } from "svelte-i18n";
     import { Tooltip } from "bits-ui";
     import Button from "./Button.svelte";
@@ -9,13 +10,9 @@
         hashtagPinStore,
     } from "../stores/tagsStore.svelte";
     import { editorState, submitPost } from "../stores/editorStore.svelte";
-    import {
-        triggerVibration,
-        triggerProgressiveVibration,
-        stopVibration,
-    } from "../lib/utils/appDomUtils";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
+    import { usePostButtonLongPress } from "../lib/hooks/usePostButtonLongPress.svelte";
     import { settingsStore } from "../stores/settingsStore.svelte";
 
     interface Props {
@@ -32,8 +29,20 @@
         contentWarningAvailable?: boolean;
         hashtagPinAvailable?: boolean;
     }
+
+    interface TooltipButtonConfig {
+        tooltip: string;
+        ariaLabel: string;
+        onClick: () => void;
+        className?: string;
+        selected?: boolean;
+        pressed?: boolean;
+        disabled?: boolean;
+    }
+
     const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
     const isHostOwnedLiteBuild = typeof __EHAGAKI_COMPOSER_LITE__ !== 'undefined' && __EHAGAKI_COMPOSER_LITE__;
+    const PROGRESS_RING_CIRCUMFERENCE = 100.53; // 2π × 16px
 
     let {
         onUploadImage,
@@ -53,7 +62,22 @@
     // エディタ状態を取得
     let postStatus = $derived(editorState.postStatus);
     let isUploading = $derived(editorState.isUploading);
-    let canPost = $derived(editorState.canPost);
+
+    let mediaDisabled = $derived(
+        !hasPostingCapability ||
+            postStatus.sending ||
+            editorState.isSubmitPending ||
+            isUploading,
+    );
+    let postDisabled = $derived(
+        !editorState.canPost ||
+            editorState.isSubmitPending ||
+            postStatus.sending ||
+            !!postLoading ||
+            isUploading ||
+            !hasPostingCapability ||
+            !!postStatus.completed,
+    );
 
     // TOP uses shared delivery readiness; other surfaces retain their short hold.
     let isShowingLoader = $state(false);
@@ -98,33 +122,14 @@
         hashtagPinStore.toggle();
     }
 
-    // 長押し投稿の設定
-    const LONG_PRESS_DURATION = 250; // 長押し必要時間 (ms)
-    const CANCEL_REVERSE_DELAY = 150; // 巻き戻り開始までの遅延 (ms)
-    const PROGRESS_RING_CIRCUMFERENCE = 100.53; // 2π × 16px
+    // 長押し投稿（タッチ操作）
+    const longPress = usePostButtonLongPress({
+        isDisabled: () => postDisabled,
+        onComplete: () => submitPost(),
+        onReleaseEarly: () => onPostButtonTap?.(),
+    });
 
-    let longPressProgress = $state(0); // 0〜1
-    let showProgressRing = $state(false);
     let postTooltipOpen = $state(false);
-    let postTooltipBlocked = false; // 長押し中はツールチップ開放をブロック
-    let longPressAnimFrameId: number | null = null;
-    let longPressCancelTimeoutId: ReturnType<typeof setTimeout> | null = null;
-    let longPressStartTime = 0;
-    let longPressCompleted = false;
-    let lastVibrationTime = 0; // プログレッシブバイブのスロットリング用
-    let ignoreNextPostClick = false;
-
-    function isPostDisabled(): boolean {
-        return (
-            !canPost ||
-            editorState.isSubmitPending ||
-            postStatus.sending ||
-            postLoading ||
-            isUploading ||
-            !hasPostingCapability ||
-            !!postStatus.completed
-        );
-    }
 
     function preservePostPressFocus(event: Event) {
         // Posting must not suppress the active IME when viewport detection is
@@ -137,110 +142,20 @@
     }
 
     function startLongPress(event: PointerEvent) {
-        ignoreNextPostClick = event.pointerType === "touch";
-        if (event.pointerType !== "touch") return;
-        if (isPostDisabled()) return;
-
-        // キャンセルタイムアウトが残っていればクリア
-        if (longPressCancelTimeoutId !== null) {
-            clearTimeout(longPressCancelTimeoutId);
-            longPressCancelTimeoutId = null;
+        longPress.start(event);
+        if (longPress.ringVisible) {
+            postTooltipOpen = false;
         }
-
-        longPressCompleted = false;
-        longPressStartTime = performance.now();
-        longPressProgress = 0;
-        lastVibrationTime = 0;
-        showProgressRing = true;
-        postTooltipOpen = false;
-        postTooltipBlocked = true;
-
-        function animate(now: number) {
-            const elapsed = now - longPressStartTime;
-            const progress = Math.min(elapsed / LONG_PRESS_DURATION, 1);
-            longPressProgress = progress;
-
-            // プログレッシブバイブレーション: 間隔が60ms→20msに縮まり体感強度が増す
-            const vibrationInterval = 60 - progress * 40;
-            if (now - lastVibrationTime >= vibrationInterval) {
-                triggerProgressiveVibration(progress);
-                lastVibrationTime = now;
-            }
-
-            if (progress >= 1) {
-                longPressCompleted = true;
-                triggerVibration(120);
-                submitPost();
-                setTimeout(() => {
-                    showProgressRing = false;
-                    longPressProgress = 0;
-                    postTooltipBlocked = false;
-                }, 200);
-                return;
-            }
-
-            longPressAnimFrameId = requestAnimationFrame(animate);
-        }
-
-        longPressAnimFrameId = requestAnimationFrame(animate);
     }
 
-    function cancelLongPress() {
-        if (longPressCompleted) return;
-        if (!showProgressRing) return;
-
-        // 長押し未完了で指を離した場合にTipsを表示
-        onPostButtonTap?.();
-
-        // 進行中のバイブレーションを即停止
-        stopVibration();
-
-        if (longPressAnimFrameId !== null) {
-            cancelAnimationFrame(longPressAnimFrameId);
-            longPressAnimFrameId = null;
+    function handlePostClick() {
+        if (longPress.consumeSuppressedClick()) {
+            return;
         }
 
-        const progressAtCancel = longPressProgress;
-
-        // 0.15秒後に巻き戻り開始
-        longPressCancelTimeoutId = setTimeout(() => {
-            longPressCancelTimeoutId = null;
-            const reverseStartTime = performance.now();
-            const reverseDuration = progressAtCancel * LONG_PRESS_DURATION;
-
-            function reverseAnimate(now: number) {
-                const elapsed = now - reverseStartTime;
-                const ratio =
-                    reverseDuration > 0
-                        ? Math.min(elapsed / reverseDuration, 1)
-                        : 1;
-                longPressProgress = progressAtCancel * (1 - ratio);
-
-                if (ratio < 1) {
-                    longPressAnimFrameId =
-                        requestAnimationFrame(reverseAnimate);
-                } else {
-                    longPressProgress = 0;
-                    longPressAnimFrameId = null;
-                    showProgressRing = false;
-                    postTooltipBlocked = false;
-                }
-            }
-
-            if (reverseDuration > 0) {
-                longPressAnimFrameId = requestAnimationFrame(reverseAnimate);
-            } else {
-                longPressProgress = 0;
-                showProgressRing = false;
-                postTooltipBlocked = false;
-            }
-        }, CANCEL_REVERSE_DELAY);
-    }
-
-    function preventCompletedTouchReleaseDefault(event: Event): void {
-        if (!longPressCompleted) return;
-        if (event instanceof PointerEvent && event.pointerType !== "touch") return;
-        event.preventDefault();
+        if (!postDisabled) {
+            submitPost();
+        }
     }
 
     function setCustomEmojiPickerOpen(open: boolean): void {
@@ -248,7 +163,62 @@
     }
 </script>
 
-<div class="footer-button-bar" data-long-pressing={showProgressRing}>
+{#snippet tooltipButton(config: TooltipButtonConfig, icon: Snippet)}
+    <Tooltip.Root delayDuration={500}>
+        <Tooltip.Trigger>
+            {#snippet child({ props })}
+                {@const { onclick: tooltipOnclick, ...restProps } = props}
+                <Button
+                    variant="footer"
+                    contentLayout="icon"
+                    className={config.className}
+                    selected={config.selected}
+                    disabled={config.disabled}
+                    aria-pressed={config.pressed}
+                    onClick={(e) => {
+                        config.onClick();
+                        if (typeof tooltipOnclick === "function") {
+                            tooltipOnclick(e);
+                        }
+                    }}
+                    ariaLabel={config.ariaLabel}
+                    {...restProps}
+                >
+                    {@render icon()}
+                </Button>
+            {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Portal to={overlayTarget}>
+            <Tooltip.Content sideOffset={8} class="tooltip-content">
+                {config.tooltip}
+            </Tooltip.Content>
+        </Tooltip.Portal>
+    </Tooltip.Root>
+{/snippet}
+
+{#snippet imageIcon()}
+    <div class="image-icon svg-icon"></div>
+{/snippet}
+
+{#snippet contentWarningIcon()}
+    <div
+        class="content-warning-icon svg-icon"
+        class:fail-closed-format={failClosedContentWarning}
+    ></div>
+{/snippet}
+
+{#snippet hashtagPinIcon()}
+    <div class="hashtag-pin-group">
+        <div class="hashtag-icon svg-icon"></div>
+        {#if hashtagPinActive}
+            <div class="thumbtack-icon svg-icon"></div>
+        {:else}
+            <div class="thumbtack-slash-icon svg-icon"></div>
+        {/if}
+    </div>
+{/snippet}
+
+<div class="footer-button-bar" data-long-pressing={longPress.ringVisible}>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
         class="button-container"
@@ -257,38 +227,16 @@
     >
         <div class="button-group-left">
             {#if mediaEnabled}
-                <Tooltip.Root delayDuration={500}>
-                    <Tooltip.Trigger>
-                        {#snippet child({ props })}
-                            {@const { onclick: tooltipOnclick, ...restProps } =
-                                props}
-                            <Button
-                                variant="footer"
-                                contentLayout="icon"
-                                className="image-button"
-                                disabled={!hasPostingCapability ||
-                                    postStatus.sending ||
-                                    editorState.isSubmitPending ||
-                                    isUploading}
-                                onClick={(e) => {
-                                    onUploadImage?.();
-                                    if (typeof tooltipOnclick === "function") {
-                                        tooltipOnclick(e);
-                                    }
-                                }}
-                                ariaLabel={$_("postComponent.upload_image")}
-                                {...restProps}
-                            >
-                                <div class="image-icon svg-icon"></div>
-                            </Button>
-                        {/snippet}
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal to={overlayTarget}>
-                        <Tooltip.Content sideOffset={8} class="tooltip-content">
-                            {$_("keyboardButtonBar.upload_image_tooltip")}
-                        </Tooltip.Content>
-                    </Tooltip.Portal>
-                </Tooltip.Root>
+                {@render tooltipButton(
+                    {
+                        tooltip: $_("keyboardButtonBar.upload_image_tooltip"),
+                        ariaLabel: $_("postComponent.upload_image"),
+                        onClick: () => onUploadImage?.(),
+                        className: "image-button",
+                        disabled: mediaDisabled,
+                    },
+                    imageIcon,
+                )}
             {/if}
             {#if customEmojiAvailable}
                 <Button
@@ -298,6 +246,7 @@
                     selected={customEmojiPickerOpen}
                     disabled={!customEmojiEnabled ||
                         postStatus.sending}
+                    aria-expanded={customEmojiPickerOpen}
                     onClick={() => {
                         setCustomEmojiPickerOpen(!customEmojiPickerOpen);
                     }}
@@ -312,7 +261,7 @@
         </div>
         <div class="button-group-center">
             {#if showPostButton}
-                {#if showProgressRing}
+                {#if longPress.ringVisible}
                     <div class="progress-ring-container">
                         <svg
                             class="progress-ring"
@@ -333,7 +282,7 @@
                                 cy="20"
                                 r="16"
                                 style="stroke-dashoffset: {PROGRESS_RING_CIRCUMFERENCE *
-                                    (1 - longPressProgress)}px"
+                                    (1 - longPress.progress)}px"
                             />
                         </svg>
                     </div>
@@ -343,7 +292,7 @@
                     bind:open={
                         () => postTooltipOpen,
                         (v) => {
-                            if (!postTooltipBlocked || !v) postTooltipOpen = v;
+                            if (!longPress.blocksTooltip || !v) postTooltipOpen = v;
                         }
                     }
                 >
@@ -362,26 +311,12 @@
                                 className="post-button {isShowingLoader
                                     ? 'loading'
                                     : ''}"
-                                disabled={!canPost ||
-                                    postStatus.sending ||
-                                    postLoading ||
-                                    editorState.isSubmitPending ||
-                                    isUploading ||
-                                    !hasPostingCapability ||
-                                    postStatus.completed}
+                                disabled={postDisabled}
                                 onClick={(e) => {
                                     if (typeof tooltipOnclick === "function") {
                                         tooltipOnclick(e);
                                     }
-
-                                    if (ignoreNextPostClick) {
-                                        ignoreNextPostClick = false;
-                                        return;
-                                    }
-
-                                    if (!isPostDisabled()) {
-                                        submitPost();
-                                    }
+                                    handlePostClick();
                                 }}
                                 ariaLabel={$_("postComponent.post")}
                                 {...restProps}
@@ -390,19 +325,19 @@
                                         tooltipPointerDown(e);
                                     startLongPress(e);
                                 }}
-                                onpointerupcapture={preventCompletedTouchReleaseDefault}
-                                ontouchendcapture={preventCompletedTouchReleaseDefault}
+                                onpointerupcapture={longPress.preventCompletedReleaseDefault}
+                                ontouchendcapture={longPress.preventCompletedReleaseDefault}
                                 onpointerup={(e) => {
                                     if (typeof tooltipPointerUp === "function")
                                         tooltipPointerUp(e);
-                                    cancelLongPress();
+                                    longPress.cancel();
                                 }}
                                 onpointerleave={(e) => {
                                     if (typeof tooltipPointerLeave === "function")
                                         tooltipPointerLeave(e);
-                                    cancelLongPress();
+                                    longPress.cancel();
                                 }}
-                                onpointercancel={cancelLongPress}
+                                onpointercancel={longPress.cancel}
                                 oncontextmenu={(e) => e.preventDefault()}
                             >
                                 {#if isShowingLoader}
@@ -427,80 +362,28 @@
         </div>
         <div class="button-group-right">
             {#if contentWarningAvailable}
-                <Tooltip.Root delayDuration={500}>
-                    <Tooltip.Trigger>
-                    {#snippet child({ props })}
-                        {@const { onclick: tooltipOnclick, ...restProps } =
-                            props}
-                        <Button
-                            variant="footer"
-                            selected={contentWarningActive}
-                            contentLayout="icon"
-                            onClick={(e) => {
-                                toggleContentWarning();
-                                if (typeof tooltipOnclick === "function") {
-                                    tooltipOnclick(e);
-                                }
-                            }}
-                            ariaLabel={$_(
-                                "keyboardButtonBar.content_warning_toggle",
-                            )}
-                            {...restProps}
-                        >
-                            <div
-                                class="content-warning-icon svg-icon"
-                                class:fail-closed-format={failClosedContentWarning}
-                            ></div>
-                        </Button>
-                    {/snippet}
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal to={overlayTarget}>
-                        <Tooltip.Content sideOffset={8} class="tooltip-content">
-                            {$_("keyboardButtonBar.content_warning_tooltip")}
-                        </Tooltip.Content>
-                    </Tooltip.Portal>
-                </Tooltip.Root>
+                {@render tooltipButton(
+                    {
+                        tooltip: $_("keyboardButtonBar.content_warning_tooltip"),
+                        ariaLabel: $_("keyboardButtonBar.content_warning_toggle"),
+                        onClick: toggleContentWarning,
+                        selected: contentWarningActive,
+                        pressed: contentWarningActive,
+                    },
+                    contentWarningIcon,
+                )}
             {/if}
             {#if hashtagPinAvailable}
-                <Tooltip.Root delayDuration={500}>
-                    <Tooltip.Trigger>
-                    {#snippet child({ props })}
-                        {@const { onclick: tooltipOnclick, ...restProps } =
-                            props}
-                        <Button
-                            variant="footer"
-                            contentLayout="icon"
-                            selected={hashtagPinActive}
-                            onClick={(e) => {
-                                toggleHashtagPin();
-                                if (typeof tooltipOnclick === "function") {
-                                    tooltipOnclick(e);
-                                }
-                            }}
-                            ariaLabel={$_(
-                                "keyboardButtonBar.hashtag_pin_toggle",
-                            )}
-                            {...restProps}
-                        >
-                            <div class="hashtag-pin-group">
-                                <div class="hashtag-icon svg-icon"></div>
-                                    {#if hashtagPinActive}
-                                    <div class="thumbtack-icon svg-icon"></div>
-                                {:else}
-                                    <div
-                                        class="thumbtack-slash-icon svg-icon"
-                                    ></div>
-                                {/if}
-                            </div>
-                        </Button>
-                    {/snippet}
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal to={overlayTarget}>
-                        <Tooltip.Content sideOffset={8} class="tooltip-content">
-                            {$_("keyboardButtonBar.hashtag_pin_tooltip")}
-                        </Tooltip.Content>
-                    </Tooltip.Portal>
-                </Tooltip.Root>
+                {@render tooltipButton(
+                    {
+                        tooltip: $_("keyboardButtonBar.hashtag_pin_tooltip"),
+                        ariaLabel: $_("keyboardButtonBar.hashtag_pin_toggle"),
+                        onClick: toggleHashtagPin,
+                        selected: hashtagPinActive,
+                        pressed: hashtagPinActive,
+                    },
+                    hashtagPinIcon,
+                )}
             {/if}
         </div>
     </div>
@@ -518,9 +401,12 @@
         position: var(--app-overlay-position);
         left: 0;
         right: 0;
-        bottom: var(--keyboard-button-bar-bottom);
+        bottom: 0;
+        /* translate は compositor で動くため、キーボード開閉中もカクつきにくい */
+        translate: 0 calc(-1 * var(--keyboard-button-bar-bottom));
         z-index: 98;
-        transition: bottom 0.2s ease;
+        transition: translate var(--keyboard-follow-duration)
+            var(--keyboard-follow-easing);
 
         .image-icon {
             mask-image: url("/icons/image_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
@@ -618,6 +504,12 @@
 
     .footer-button-bar[data-long-pressing="true"] {
         z-index: 100;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .footer-button-bar {
+            transition: none;
+        }
     }
 
     .button-container {

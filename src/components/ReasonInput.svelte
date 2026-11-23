@@ -59,9 +59,12 @@
         position: var(--app-overlay-position);
         left: 0;
         right: 0;
-        bottom: var(--reason-input-bottom);
+        bottom: 0;
+        /* translate は compositor で動くため、キーボード開閉中もカクつきにくい */
+        translate: 0 calc(-1 * var(--reason-input-bottom));
         z-index: 97;
-        transition: bottom 0.2s ease;
+        transition: translate var(--keyboard-follow-duration)
+            var(--keyboard-follow-easing);
     }
 
     .reason-input {

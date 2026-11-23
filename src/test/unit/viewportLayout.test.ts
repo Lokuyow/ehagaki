@@ -8,6 +8,8 @@ import {
     isNonPwaAndroidChrome,
     isPwaAndroidChrome,
     isIPhoneSafari,
+    KEYBOARD_OPEN_THRESHOLD,
+    measureKeyboardViewport,
 } from '../../lib/utils/viewportLayout';
 
 function setUserAgent(userAgent: string) {
@@ -132,6 +134,72 @@ describe('viewportLayout', () => {
             411,
             732,
         )).toBe(211);
+    });
+
+    describe('measureKeyboardViewport', () => {
+        const base = {
+            viewportWidth: 411,
+            viewportOffsetTop: 0,
+            layoutViewportHeight: 800,
+            safariViewportMode: false,
+        };
+
+        it('visual viewport の縮小からキーボード高さと bottom inset を求める', () => {
+            expect(measureKeyboardViewport({ ...base, viewportHeight: 500 })).toEqual({
+                isKeyboardOpen: true,
+                keyboardHeight: 300,
+                keyboardBottomInset: 300,
+                visibleViewportBottom: 500,
+                usesVirtualKeyboardGeometry: false,
+            });
+        });
+
+        it('閾値以下の差分ではキーボードを開いていると判定しない', () => {
+            expect(measureKeyboardViewport({ ...base, viewportHeight: 700 }).isKeyboardOpen).toBe(false);
+            expect(measureKeyboardViewport({ ...base, viewportHeight: 699 }).isKeyboardOpen).toBe(true);
+            expect(KEYBOARD_OPEN_THRESHOLD).toBe(100);
+        });
+
+        it('VirtualKeyboard 矩形があれば visual viewport より優先し、旧原点を補正する', () => {
+            expect(measureKeyboardViewport({
+                ...base,
+                viewportHeight: 800,
+                layoutViewportHeight: 732,
+                virtualKeyboardRect: { top: 40, bottom: 291, width: 411, height: 251 },
+            })).toEqual({
+                isKeyboardOpen: true,
+                keyboardHeight: 211,
+                keyboardBottomInset: 211,
+                visibleViewportBottom: 521,
+                usesVirtualKeyboardGeometry: true,
+            });
+        });
+
+        it('高さ 0 の VirtualKeyboard 矩形は visual viewport の計測へフォールバックする', () => {
+            const measurement = measureKeyboardViewport({
+                ...base,
+                viewportHeight: 500,
+                virtualKeyboardRect: { top: 800, bottom: 800, width: 411, height: 0 },
+            });
+            expect(measurement.usesVirtualKeyboardGeometry).toBe(false);
+            expect(measurement.keyboardHeight).toBe(300);
+        });
+
+        it('Safari の auto-pan 後もキーボード高さは保ち、bottom inset だけ縮める', () => {
+            expect(measureKeyboardViewport({
+                ...base,
+                safariViewportMode: true,
+                layoutViewportHeight: 549,
+                viewportHeight: 314,
+                viewportOffsetTop: 231,
+            })).toEqual({
+                isKeyboardOpen: true,
+                keyboardHeight: 235,
+                keyboardBottomInset: 4,
+                visibleViewportBottom: 545,
+                usesVirtualKeyboardGeometry: false,
+            });
+        });
     });
 
     it('component-local keyboard inset は重なりだけを返し、component 高さへ clamp する', () => {

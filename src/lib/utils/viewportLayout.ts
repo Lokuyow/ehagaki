@@ -90,6 +90,96 @@ export function getVirtualKeyboardLayoutInset(
     return height - legacyOriginCompensation;
 }
 
+/** キーボードが開いていると判定する最小の高さ（px） */
+export const KEYBOARD_OPEN_THRESHOLD = 100;
+
+export interface KeyboardViewportInput {
+    viewportHeight: number;
+    viewportWidth: number;
+    /** Safari では scroll 量も含めた実効 offsetTop を渡す */
+    viewportOffsetTop: number;
+    layoutViewportHeight: number;
+    safariViewportMode: boolean;
+    /** VirtualKeyboard の geometry を観測できるときだけ渡す */
+    virtualKeyboardRect?: Pick<
+        DOMRectReadOnly,
+        "top" | "bottom" | "width" | "height"
+    > | null;
+}
+
+export interface KeyboardViewportMeasurement {
+    /** 物理キーボードが開いているか（focus とは無関係） */
+    isKeyboardOpen: boolean;
+    /** キーボード高さとして公開する値 */
+    keyboardHeight: number;
+    /** viewport mode で固定バーをキーボード直上へ置くための bottom inset */
+    keyboardBottomInset: number;
+    /** 可視領域の下端（layout viewport 座標） */
+    visibleViewportBottom: number;
+    usesVirtualKeyboardGeometry: boolean;
+}
+
+/**
+ * Viewport / VirtualKeyboard の観測値からキーボードの状態を求める。
+ * DOM を読まない pure 関数で、観測値の読み取りは呼び出し側が担当する。
+ */
+export function measureKeyboardViewport(
+    input: KeyboardViewportInput,
+): KeyboardViewportMeasurement {
+    const {
+        viewportHeight,
+        viewportWidth,
+        viewportOffsetTop,
+        layoutViewportHeight,
+        safariViewportMode,
+        virtualKeyboardRect,
+    } = input;
+
+    // visualViewport.offsetTop を考慮することで、キーボード表示時に
+    // ビューがパン/スクロールしても正しいキーボード高さが得られる
+    const visibleBottom = viewportHeight + viewportOffsetTop;
+
+    // キーボード直上へ固定バーを置くための bottom gap
+    const calculatedKeyboardHeight = Math.max(
+        0,
+        layoutViewportHeight - visibleBottom,
+    );
+
+    // Safari の自動パンで visibleBottom が layout viewport の下端へ近づいても、
+    // viewport 自体が十分縮んでいればキーボード表示状態は継続している。
+    const keyboardViewportReduction = Math.max(
+        0,
+        layoutViewportHeight - viewportHeight,
+    );
+
+    const virtualKeyboardLayoutInset = virtualKeyboardRect
+        ? getVirtualKeyboardLayoutInset(
+            virtualKeyboardRect,
+            viewportWidth,
+            layoutViewportHeight,
+        )
+        : 0;
+    const usesVirtualKeyboardGeometry = virtualKeyboardLayoutInset > 0;
+
+    const keyboardHeight = usesVirtualKeyboardGeometry
+        ? virtualKeyboardLayoutInset
+        : safariViewportMode
+            ? keyboardViewportReduction
+            : calculatedKeyboardHeight;
+
+    return {
+        isKeyboardOpen: keyboardHeight > KEYBOARD_OPEN_THRESHOLD,
+        keyboardHeight,
+        keyboardBottomInset: usesVirtualKeyboardGeometry
+            ? virtualKeyboardLayoutInset
+            : calculatedKeyboardHeight,
+        visibleViewportBottom: usesVirtualKeyboardGeometry
+            ? layoutViewportHeight - virtualKeyboardLayoutInset
+            : visibleBottom,
+        usesVirtualKeyboardGeometry,
+    };
+}
+
 /**
  * Returns the part of a bounded layout target that is covered below the
  * visible viewport. The result is expressed in the target's local

@@ -433,6 +433,58 @@ test('content warning reason stays above the keyboard across composer focus chan
     await expectKeyboardLayout(734);
 });
 
+test('keyboard button bar slides only when the keyboard opens or closes', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.addInitScript(() => {
+        Object.defineProperties(window.visualViewport!, {
+            height: { configurable: true, value: 800 },
+            offsetTop: { configurable: true, value: 0 },
+        });
+    });
+    await page.goto('app-composer-picker-playwright.html');
+    const editor = page.locator('.tiptap-editor');
+    await editor.click();
+
+    const setViewport = (height: number, offsetTop: number, type: 'resize' | 'scroll') => page.evaluate(({ height, offsetTop, type }) => {
+        Object.defineProperties(window.visualViewport!, {
+            height: { configurable: true, value: height },
+            offsetTop: { configurable: true, value: offsetTop },
+        });
+        window.visualViewport!.dispatchEvent(new Event(type));
+    }, { height, offsetTop, type });
+    // Read two frames after the event without polling: an instant follow has
+    // already reached its target, a 200ms slide has not.
+    const readBar = () => page.evaluate(async () => {
+        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        const bar = document.querySelector<HTMLElement>('.footer-button-bar')!;
+        return {
+            duration: getComputedStyle(bar).transitionDuration,
+            bottom: Math.round(bar.getBoundingClientRect().bottom),
+            viewportBottom: Math.round(window.visualViewport!.offsetTop + window.visualViewport!.height),
+        };
+    });
+    const settledBarBottom = () => page.evaluate(() => Math.round(document.querySelector('.footer-button-bar')!.getBoundingClientRect().bottom));
+
+    await setViewport(500, 0, 'resize');
+    expect((await readBar()).duration).toBe('0.2s');
+    await expect.poll(settledBarBottom).toBe(500);
+
+    await setViewport(500, 40, 'scroll');
+    const panned = await readBar();
+    expect(panned.duration).toBe('0s');
+    expect(panned.bottom).toBe(panned.viewportBottom);
+
+    await setViewport(800, 0, 'resize');
+    expect((await readBar()).duration).toBe('0.2s');
+    await expect.poll(settledBarBottom).toBe(734);
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await setViewport(500, 0, 'resize');
+    const reduced = await readBar();
+    expect(reduced.duration).toBe('0s');
+    expect(reduced.bottom).toBe(500);
+});
+
 test('App and iframe use the normal submission path without refocusing', async ({ page, browserName, isMobile }) => {
     await page.goto('app-composer-picker-playwright.html');
     await page.evaluate(() => (window as any).__APP_COMPOSER_PICKER_HARNESS__.setAuthenticated());

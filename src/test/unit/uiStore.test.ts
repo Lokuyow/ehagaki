@@ -1538,6 +1538,83 @@ describe('uiStore', () => {
         cancelAnimationFrameSpy.mockRestore();
     });
 
+    it('キーボードの開閉時だけ下部 UI をスライドさせ、表示中の位置変化には即座に追従する', async () => {
+        vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+            callback(0);
+            return 1;
+        });
+        vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+
+        const viewport = createVisualViewportMock(800);
+        const {
+            KEYBOARD_FOLLOW_SLIDE_MS,
+            reasonInputVisibleStore,
+            setupViewportListener,
+        } = await import('../../stores/uiStore.svelte');
+        const readStyle = (name: string) =>
+            document.documentElement.style.getPropertyValue(name);
+        const slide = `${KEYBOARD_FOLLOW_SLIDE_MS}ms`;
+
+        const cleanup = setupViewportListener();
+        try {
+            expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
+
+            // 開く: 状態が切り替わるのでスライド
+            viewport.visualViewport.height = 500;
+            viewport.emit('resize');
+            expect(readStyle('--keyboard-button-bar-bottom')).toBe('300px');
+            expect(readStyle('--keyboard-follow-duration')).toBe(slide);
+
+            // 位置が変わらない同期はスライドを打ち消さない
+            reasonInputVisibleStore.set(true);
+            document.dispatchEvent(new Event('selectionchange'));
+            expect(readStyle('--keyboard-follow-duration')).toBe(slide);
+
+            // 表示中のパン: 即座に追従
+            viewport.visualViewport.offsetTop = 40;
+            viewport.emit('scroll');
+            expect(readStyle('--keyboard-button-bar-bottom')).toBe('260px');
+            expect(readStyle('--reason-input-bottom')).toBe('310px');
+            expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
+
+            // 閉じる: 再びスライド
+            viewport.visualViewport.height = 800;
+            viewport.visualViewport.offsetTop = 0;
+            viewport.emit('resize');
+            expect(readStyle('--keyboard-button-bar-bottom')).toBe('66px');
+            expect(readStyle('--footer-bottom')).toBe('0px');
+            expect(readStyle('--keyboard-follow-duration')).toBe(slide);
+        } finally {
+            cleanup?.();
+            reasonInputVisibleStore.set(false);
+        }
+    });
+
+    it('フォーカスがダイアログへ移ってキーボード追従が終わる時もスライドする', async () => {
+        vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+            callback(0);
+            return 1;
+        });
+        vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+
+        const viewport = createVisualViewportMock(800);
+        const { KEYBOARD_FOLLOW_SLIDE_MS, setupViewportListener } = await import('../../stores/uiStore.svelte');
+        const cleanup = setupViewportListener();
+        try {
+            viewport.visualViewport.height = 500;
+            viewport.emit('resize');
+            viewport.visualViewport.offsetTop = 10;
+            viewport.emit('scroll');
+            expect(document.documentElement.style.getPropertyValue('--keyboard-follow-duration')).toBe('0ms');
+
+            focusDialogInput('settings-dialog');
+            expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('66px');
+            expect(document.documentElement.style.getPropertyValue('--keyboard-follow-duration')).toBe(`${KEYBOARD_FOLLOW_SLIDE_MS}ms`);
+        } finally {
+            cleanup?.();
+        }
+    });
+
     it('reason input の表示状態を CSS 変数へ同期する', async () => {
         const {
             REASON_INPUT_HEIGHT,
