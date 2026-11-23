@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { tick } from 'svelte';
+import { flushSync, tick } from 'svelte';
 import { locale, waitLocale } from 'svelte-i18n';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import '../../i18n';
@@ -8,7 +8,11 @@ import {
     contentWarningReasonStore,
     contentWarningStore,
 } from '../../stores/tagsStore.svelte';
-import { reasonInputVisibleStore } from '../../stores/uiStore.svelte';
+import {
+    bottomPositionStore,
+    keyboardHeightStore,
+    reasonInputVisibleStore,
+} from '../../stores/uiStore.svelte';
 
 describe('ReasonInput', () => {
     beforeEach(async () => {
@@ -57,6 +61,23 @@ describe('ReasonInput', () => {
 
         expect(setSpy).toHaveBeenCalledTimes(1);
         expect(contentWarningReasonStore.value).toBe('adult content');
+    });
+
+    it('キーボード同期で uiStore の状態が変わっても表示状態を再同期しない', async () => {
+        contentWarningStore.set(true);
+
+        render(ReasonInput);
+        await tick();
+
+        const setSpy = vi.spyOn(reasonInputVisibleStore, 'set');
+        keyboardHeightStore.set(300);
+        bottomPositionStore.set(300);
+        flushSync();
+        keyboardHeightStore.set(0);
+        bottomPositionStore.set(66);
+        flushSync();
+
+        expect(setSpy).not.toHaveBeenCalled();
     });
 
     it('Content Warningが無効なときに入力欄を表示しない', async () => {

@@ -48,13 +48,17 @@ export function isComposerInputFocusActive(): boolean {
 
 export function readComposerKeyboardHeight(): number {
     const runtimeEnvironment = getAppRuntimeEnvironment();
-    const rawValue = runtimeEnvironment.window
-        ?.getComputedStyle(runtimeEnvironment.styleTarget)
+    // uiStore は styleTarget の inline style へ書く。tap のたびに style 再計算を
+    // 強制しないよう inline 値を優先し、未設定のときだけ computed を読む。
+    const inlineValue = runtimeEnvironment.styleTarget.style
         .getPropertyValue("--keyboard-height")
-        .trim()
-        ?? runtimeEnvironment.styleTarget.style
+        .trim();
+    const rawValue = inlineValue
+        || runtimeEnvironment.window
+            ?.getComputedStyle(runtimeEnvironment.styleTarget)
             .getPropertyValue("--keyboard-height")
-            .trim();
+            .trim()
+        || "";
     const value = Number.parseFloat(rawValue);
 
     return Number.isFinite(value) ? value : 0;

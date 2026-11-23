@@ -433,6 +433,54 @@ test('content warning reason stays above the keyboard across composer focus chan
     await expectKeyboardLayout(734);
 });
 
+test('keyboard button bar moves with the editor area in the same frame', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.addInitScript(() => {
+        Object.defineProperties(window.visualViewport!, {
+            height: { configurable: true, value: 800 },
+            offsetTop: { configurable: true, value: 0 },
+        });
+    });
+    await page.goto('app-composer-picker-playwright.html');
+    await page.locator('.tiptap-editor').click();
+
+    const setViewport = (height: number, offsetTop: number, type: 'resize' | 'scroll') => page.evaluate(({ height, offsetTop, type }) => {
+        Object.defineProperties(window.visualViewport!, {
+            height: { configurable: true, value: height },
+            offsetTop: { configurable: true, value: offsetTop },
+        });
+        window.visualViewport!.dispatchEvent(new Event(type));
+    }, { height, offsetTop, type });
+    // Read two frames after the event without polling. Any slide would leave
+    // the bar short of its target and open a gap below the editor area.
+    const readLayout = () => page.evaluate(async () => {
+        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        const bar = document.querySelector<HTMLElement>('.footer-button-bar')!;
+        const barRect = bar.getBoundingClientRect();
+        return {
+            duration: getComputedStyle(bar).transitionDuration,
+            gap: Math.round(barRect.top - document.querySelector('.main-content')!.getBoundingClientRect().bottom),
+            bottom: Math.round(barRect.bottom),
+            viewportBottom: Math.round(window.visualViewport!.offsetTop + window.visualViewport!.height),
+        };
+    });
+
+    // Opening and closing resize the editor area; the bar must meet it at once.
+    for (const [height, expectedBottom] of [[500, 500], [800, 734], [500, 500]] as const) {
+        await setViewport(height, 0, 'resize');
+        const layout = await readLayout();
+        expect(layout.duration).toBe('0s');
+        expect(layout.bottom).toBe(expectedBottom);
+        expect(layout.gap).toBe(0);
+    }
+
+    // A pan keeps the bar on the visible bottom without a slide.
+    await setViewport(500, 40, 'scroll');
+    const panned = await readLayout();
+    expect(panned.duration).toBe('0s');
+    expect(panned.bottom).toBe(panned.viewportBottom);
+});
+
 test('App and iframe use the normal submission path without refocusing', async ({ page, browserName, isMobile }) => {
     await page.goto('app-composer-picker-playwright.html');
     await page.evaluate(() => (window as any).__APP_COMPOSER_PICKER_HARNESS__.setAuthenticated());
