@@ -628,13 +628,10 @@
       return;
     }
 
-    const rafId = window.requestAnimationFrame(() => {
-      syncEditorTargetHeight();
-    });
-
-    return () => {
-      window.cancelAnimationFrame(rafId);
-    };
+    // effect は DOM 更新後に走るので、その場で測って同じフレームで反映する。
+    // 使える高さが縮んだ時に次のフレームへ回すと、古い高さのエディタが
+    // スクロール領域からはみ出して描画される。
+    untrack(() => syncEditorTargetHeight());
   });
 
   $effect(() => {

@@ -170,7 +170,10 @@
     POST_EDITOR_COMPACT_MIN_HEIGHT,
     POST_EDITOR_MIN_HEIGHT,
   } from "./lib/postLayoutUtils";
-  import { setupViewportListener } from "./stores/uiStore.svelte";
+  import {
+    onComposerSizeVariablesChange,
+    setupViewportListener,
+  } from "./stores/uiStore.svelte";
   import {
     runAppInitializationBootstrap,
     registerNip46VisibilityHandler,
@@ -641,6 +644,7 @@
         hasHeader: true,
         hasFooter: true,
       }),
+    onComposerSizeVariablesChange,
     getComposerScrollRegionEl: () => composerScrollRegionEl,
     getComposerScrollContentEl: () => composerScrollContentEl,
     getCustomEmojiPickerRegionEl: () => customEmojiPickerRegionEl,
@@ -2611,7 +2615,9 @@
 
   .composer-scroll-region {
     width: 100%;
-    flex: 1 1 auto;
+    /* 中身の高さを基準にすると、領域が縮んだ時にヘッダーまで押しつぶされ、
+       エディタの高さが追いつくまで上下にずれる。残りの高さだけを使う */
+    flex: 1 1 0;
     min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;

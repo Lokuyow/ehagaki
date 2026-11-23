@@ -1783,6 +1783,47 @@ describe('uiStore', () => {
         });
     });
 
+    it('エディタ領域の大きさを変える変数を書き換えた同じ同期の中で composer の測り直しを通知する', async () => {
+        const frames: FrameRequestCallback[] = [];
+        vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+            frames.push(callback);
+            return frames.length;
+        });
+        vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+        const runFrame = () => frames.splice(0).forEach((callback) => callback(0));
+
+        const viewport = createVisualViewportMock(800);
+        const { onComposerSizeVariablesChange, setupViewportListener } = await import('../../stores/uiStore.svelte');
+        const cleanup = setupViewportListener();
+        runFrame();
+        const seen: string[] = [];
+        const unsubscribe = onComposerSizeVariablesChange(() => {
+            // 通知の時点で新しいレイアウト変数が書かれている
+            seen.push(document.documentElement.style.getPropertyValue('--app-root-height'));
+        });
+        try {
+            viewport.visualViewport.height = 500;
+            viewport.emit('resize');
+            expect(seen).toEqual([]);
+            runFrame();
+            expect(seen).toEqual(['500px']);
+
+            // 大きさが変わらない同期では通知しない
+            document.dispatchEvent(new Event('selectionchange'));
+            runFrame();
+            expect(seen).toEqual(['500px']);
+
+            unsubscribe();
+            viewport.visualViewport.height = 800;
+            viewport.emit('resize');
+            runFrame();
+            expect(seen).toEqual(['500px']);
+        } finally {
+            unsubscribe();
+            cleanup?.();
+        }
+    });
+
     it('reason input の表示状態を CSS 変数へ同期する', async () => {
         const {
             REASON_INPUT_HEIGHT,

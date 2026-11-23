@@ -559,6 +559,63 @@ test('Android Chrome tab slides the bar up before shrinking the editor area with
     expect(closed.maxOverflowX).toBe(0);
 });
 
+test('focusing the empty editor resizes the composer in the same frame without overflow or a header shift', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.addInitScript(() => {
+        (window as any).__windowErrors = [];
+        window.addEventListener('error', event => (window as any).__windowErrors.push(event.message));
+        Object.defineProperties(window.visualViewport!, {
+            height: { configurable: true, value: 800 },
+            offsetTop: { configurable: true, value: 0 },
+        });
+    });
+    await page.goto('app-composer-picker-playwright.html');
+    const editor = page.locator('.tiptap-editor');
+    await expect(editor).toHaveText('');
+
+    // Record every frame: the scroll region must never overflow (no flashing
+    // scrollbar) and the header above the editor must not move or shrink.
+    const sample = () => page.evaluate(() => {
+        const region = document.querySelector<HTMLElement>('.composer-scroll-region')!;
+        const header = document.querySelector<HTMLElement>('.header-container')!;
+        const frames: { overflow: number; headerTop: number; headerHeight: number; regionHeight: number }[] = [];
+        (window as any).__composerFrames = frames;
+        const start = performance.now();
+        const tick = () => {
+            const headerRect = header.getBoundingClientRect();
+            frames.push({
+                overflow: region.scrollHeight - region.clientHeight,
+                headerTop: Math.round(headerRect.top),
+                headerHeight: Math.round(headerRect.height),
+                regionHeight: Math.round(region.getBoundingClientRect().height),
+            });
+            if (performance.now() - start < 600) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    });
+    const collect = () => page.evaluate(async () => {
+        await new Promise<void>(resolve => setTimeout(resolve, 650));
+        return (window as any).__composerFrames as { overflow: number; headerTop: number; headerHeight: number; regionHeight: number }[];
+    });
+    const setViewportHeight = (height: number) => page.evaluate((height) => {
+        Object.defineProperty(window.visualViewport!, 'height', { configurable: true, value: height });
+        window.visualViewport!.dispatchEvent(new Event('resize'));
+    }, height);
+
+    for (const height of [500, 800]) {
+        await sample();
+        if (height === 500) await editor.click();
+        await setViewportHeight(height);
+        const frames = await collect();
+        expect(Math.max(...frames.map(frame => frame.overflow))).toBe(0);
+        expect(new Set(frames.map(frame => `${frame.headerTop}:${frame.headerHeight}`)).size).toBe(1);
+        // The region settles in one step instead of converging over several frames.
+        expect(new Set(frames.slice(1).map(frame => frame.regionHeight)).size).toBeLessThanOrEqual(2);
+    }
+
+    expect(await page.evaluate(() => (window as any).__windowErrors)).toEqual([]);
+});
+
 test('App and iframe use the normal submission path without refocusing', async ({ page, browserName, isMobile }) => {
     await page.goto('app-composer-picker-playwright.html');
     await page.evaluate(() => (window as any).__APP_COMPOSER_PICKER_HARNESS__.setAuthenticated());

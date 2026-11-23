@@ -90,6 +90,42 @@ function syncKeyboardTouchScrollLock(shouldLock: boolean): void {
     keyboardTouchScrollLock?.sync(shouldLock);
 }
 
+/** エディタ領域の大きさを決める変数。書き換えたら composer の高さを測り直す */
+const COMPOSER_SIZE_VARIABLES = new Set([
+    "--app-root-height",
+    "--app-main-position",
+    "--app-main-height",
+    "--keyboard-button-bar-bottom",
+    "--composer-bottom-reserved-height",
+    "--main-content-keyboard-adjustment",
+    "--reason-input-height",
+]);
+
+let composerSizeVariablesChanged = false;
+const composerSizeChangeListeners = new Set<() => void>();
+
+/**
+ * キーボード追従でエディタ領域の大きさを変える変数を書き換えた直後に呼ばれる。
+ * 同じフレームのレイアウト前に呼ばれるため、ここで高さを測り直して state を更新すると、
+ * 古い高さのエディタが縮んだ領域からはみ出して描画されることがない。
+ */
+export function onComposerSizeVariablesChange(listener: () => void): () => void {
+    composerSizeChangeListeners.add(listener);
+    return () => {
+        composerSizeChangeListeners.delete(listener);
+    };
+}
+
+function notifyComposerSizeVariablesChange(): void {
+    if (!composerSizeVariablesChanged) {
+        return;
+    }
+    composerSizeVariablesChanged = false;
+    for (const listener of composerSizeChangeListeners) {
+        listener();
+    }
+}
+
 function setRootStyleProperty(name: string, value: string): void {
     if (typeof document === "undefined") {
         return;
@@ -101,6 +137,9 @@ function setRootStyleProperty(name: string, value: string): void {
         return;
     }
     style.setProperty(name, value);
+    if (COMPOSER_SIZE_VARIABLES.has(name)) {
+        composerSizeVariablesChanged = true;
+    }
 }
 
 /**
@@ -178,6 +217,7 @@ function startEditorShrinkHold(): void {
         editorShrinkHeld = false;
         // バーが上がりきったので、エディタ領域をバーの上端まで縮める
         resyncLayoutCssVariables();
+        notifyComposerSizeVariablesChange();
     }, KEYBOARD_SLIDE_MS);
 }
 
@@ -637,6 +677,7 @@ export function setupViewportListener(
             allowOpenSlide: hasMeasuredViewport,
         });
         hasMeasuredViewport = true;
+        notifyComposerSizeVariablesChange();
         syncContainerGeometryMonitoring(isComposerKeyboardActive);
     }
 
