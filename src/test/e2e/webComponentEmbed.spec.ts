@@ -463,7 +463,7 @@ test(`Full Reaction at 320px preserves outer identity (${uploaded ? gif ? 'uploa
     const composer = page.locator('ehagaki-composer');
     const editor = composer.locator('.tiptap-editor'); await expect(editor).toBeVisible();
     await composer.getByRole('button', { name: '宛先を指定', exact: true }).click();
-    await composer.getByPlaceholder('note または nevent を入力').fill(nip19.noteEncode(target.id));
+    await composer.getByLabel('イベントID・公開鍵', { exact: true }).fill(nip19.noteEncode(target.id));
     const hearts = composer.getByRole('button', { name: 'リアクションする', exact: true });
     await expect(hearts).toHaveCount(2); await hearts.last().click();
     await expect(composer.locator('[data-reaction-target-id]')).toHaveAttribute('data-reaction-target-id', target.id);
@@ -532,7 +532,7 @@ test(`Full Reaction at 320px preserves outer identity (${uploaded ? gif ? 'uploa
     expect(sent.tags).toEqual(expect.arrayContaining([['e', target.id, 'wss://reaction-fixture.example/', target.pubkey],
         ['p', target.pubkey, 'wss://reaction-fixture.example/'], ['k', '6']]));
     await composer.getByRole('button', { name: '宛先を指定', exact: true }).click();
-    await composer.getByPlaceholder('note または nevent を入力').fill(nip19.noteEncode(target.id));
+    await composer.getByLabel('イベントID・公開鍵', { exact: true }).fill(nip19.noteEncode(target.id));
     const count = composer.getByRole('button', { name: 'リアクション 1件を表示', exact: true });
     await expect(count).toBeVisible(); await expect(count).toHaveText('1');
 });
