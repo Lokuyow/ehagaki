@@ -60,9 +60,11 @@
         left: 0;
         right: 0;
         bottom: 0;
-        /* エディタ領域の高さと同じフレームで動かし、間に隙間を作らない */
+        /* 開く時はエディタ領域と同じフレームで動かし、閉じる時だけ下がるキーボードに付いていく */
         translate: 0 calc(-1 * var(--reason-input-bottom));
         z-index: 97;
+        transition: translate var(--keyboard-follow-duration)
+            var(--keyboard-follow-easing);
     }
 
     .reason-input {
@@ -85,5 +87,11 @@
     .reason-input:focus-visible {
         outline: 2px solid var(--theme);
         outline-offset: -1px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .reason-input-container {
+            transition: none;
+        }
     }
 </style>
