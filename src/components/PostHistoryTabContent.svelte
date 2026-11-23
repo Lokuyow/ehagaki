@@ -263,6 +263,17 @@
         getShow: () => !destroyed && show, getPubkey: () => destroyed ? null : pubkeyHex, getPosts: () => history.posts,
         resolver: relatedTargetResolver,
     });
+    // One preview pass per change, shared by every reader below and in the list.
+    // Each pass still verifies the target; this only drops repeated calls.
+    let repostPreviewByEventId = $derived(
+        new Map(history.posts.flatMap((post) => isRepostOuterKind(post.kind)
+            ? [[post.eventId, repostPreviews.getPreview(post)] as const]
+            : [])),
+    );
+    function getRepostPreview(post: PostHistoryRecord) {
+        return repostPreviewByEventId.get(post.eventId)
+            ?? repostPreviews.getPreview(post);
+    }
     let repostResult = $state<PostRepostResult | null>(null);
     let repostUiGeneration = 0;
     $effect(() => {
@@ -330,7 +341,7 @@
         getSessionOpen: () => sessionOpen ?? active,
         getPosts: () => [...history.posts, ...history.posts.flatMap((post) => {
             if (!isRepostOuterKind(post.kind)) return [];
-            const preview = repostPreviews.getPreview(post);
+            const preview = getRepostPreview(post);
             return preview.status === "resolved" && preview.event?.kind === 42
                 ? [repostTargetToPost(preview.event, preview.relayHints)] : [];
         })],
@@ -348,7 +359,7 @@
     });
 
     function getRepostChannelText(post: PostHistoryRecord): string | null {
-        const preview = repostPreviews.getPreview(post);
+        const preview = getRepostPreview(post);
         return preview.status === "resolved" && preview.event?.kind === 42
             ? channelDisplay.getChannelText(repostTargetToPost(preview.event, preview.relayHints), $_) : null;
     }
@@ -405,8 +416,8 @@
         for (const post of history.posts) {
             const outer = [6, 16].includes(post.kind) ? verifyRelatedEvent(post.rawEvent) : null;
             if (outer) addTarget(outer.event, [...(post.fetchedRelays ?? []), ...post.acceptedRelays, ...post.relayHints]);
-            const repost = repostPreviews.getPreview(post);
-            if (repost.status === 'resolved' && repost.event) addTarget(repost.event, repost.relayHints);
+            const repost = isRepostOuterKind(post.kind) ? getRepostPreview(post) : null;
+            if (repost?.status === 'resolved' && repost.event) addTarget(repost.event, repost.relayHints);
             const anchorState = getThreadAnchorState(post);
             visitNode(anchorState.parentNodeState);
             anchorState.replyNodeStates.forEach(visitNode);
@@ -609,7 +620,7 @@
         const posts = history.posts;
         const key = JSON.stringify(posts.map(post => {
             if (isRepostOuterKind(post.kind)) {
-                const preview = repostPreviews.getPreview(post);
+                const preview = getRepostPreview(post);
                 return [preview.status, preview.event?.id, preview.saveFailed,
                     preview.event?.kind === 42 ? getRepostChannelText(post) : null];
             }
@@ -2568,11 +2579,11 @@
                         <div class="post-history-main">
                             <div class="post-preview">
                                 {#if isRepostOuterKind(post.kind)}
-                                    <PostHistoryRepostPreview onReactionPost={onReactionPost ? handleReactionPost : undefined} reactionExtras={repostReactionCount} reactionDetails={repostReactionDetails} {post} preview={repostPreviews.getPreview(post)}
+                                    <PostHistoryRepostPreview onReactionPost={onReactionPost ? handleReactionPost : undefined} reactionExtras={repostReactionCount} reactionDetails={repostReactionDetails} {post} preview={getRepostPreview(post)}
                                         channelText={getRepostChannelText(post)} menu={repostRecordMenu} onRetry={() => repostPreviews.retry(post)}
                                         onReplyPost={onReplyPost ? handleReplyPost : undefined}
                                         onQuotePost={onQuotePost ? handleQuotePost : undefined}
-                                        loadSensitiveBody={getSensitiveBodyLoader(repostPreviews.getPreview(post).event)}
+                                        loadSensitiveBody={getSensitiveBodyLoader(getRepostPreview(post).event)}
                                         scrollRoot={historyContainer} onImageOpen={handleImageOpen}
                                         emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
                                         emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl} />

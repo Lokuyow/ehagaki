@@ -765,14 +765,11 @@
 
     editorSubscriptionUnsubscribe = editor.subscribe(
       (editorInstance: TipTapEditor | null) => {
-        // Editor subscriptions may re-notify for transactions on the same
-        // instance; keep listener ownership tied to instance identity.
+        // Editor subscriptions re-notify for every transaction on the same
+        // instance; keep listener ownership tied to instance identity. The
+        // transaction listener below already syncs these transactions.
         if (editorInstance !== null && editorInstance === subscribedEditor) {
           currentEditor = editorInstance;
-          if (editorInstance) {
-            syncEditorEmptyState(editorInstance);
-            syncLivePostEligibility(editorInstance);
-          }
           return;
         }
 
@@ -1402,12 +1399,14 @@
   }
 
   $effect(() => {
+    // Check the error first so the document is serialized only while an
+    // error is shown, not after every typing pause.
     if (
+      postStatus.error &&
       !isHostOwnedLiteBuild &&
       currentEditor &&
       postManager &&
-      postManager.preparePostContent(currentEditor) !== editorState.content &&
-      postStatus.error
+      postManager.preparePostContent(currentEditor) !== editorState.content
     ) {
       updatePostStatus({ ...postStatus, error: false, message: "" });
     }

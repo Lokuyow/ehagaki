@@ -21,6 +21,7 @@ interface CreateSuggestionRendererOptions<T> {
     className?: string;
     approxDropdownHeight?: number;
     zIndex?: string;
+    /** Must return the same set of keys on every call. */
     getProps?: (params: {
         items: T[];
         command: (item: T) => void;
@@ -46,6 +47,10 @@ export function createSuggestionRenderer<T>({
         let container: HTMLElement | null = null;
         let currentItems: T[] = [];
         let currentCommand: ((item: T) => void) | null = null;
+        // The list stays mounted while the suggestion is active and reads its
+        // props through getters, so each keystroke updates the existing rows
+        // instead of rebuilding the whole list.
+        let listProps = $state.raw<Record<string, unknown> | null>(null);
 
         function getExports(): SuggestionListExports {
             return (component ?? {}) as SuggestionListExports;
@@ -62,25 +67,40 @@ export function createSuggestionRenderer<T>({
             return el;
         }
 
-        function mountComponent(): void {
-            if (!container || !currentCommand) return;
-            if (component) {
-                unmount(component);
-                component = null;
-            }
-            if (!currentItems.length) return;
-
-            const props = getProps?.({
+        function resolveProps(command: (item: T) => void): SuggestionListProps<T> {
+            return getProps?.({
                 items: currentItems,
-                command: currentCommand,
+                command,
             }) ?? {
                 items: currentItems,
-                onSelect: currentCommand,
+                onSelect: command,
             };
+        }
+
+        function createReactiveProps(
+            initial: Record<string, unknown>,
+        ): SuggestionListProps<T> {
+            const props: Record<string, unknown> = {};
+            for (const key of Object.keys(initial)) {
+                Object.defineProperty(props, key, {
+                    enumerable: true,
+                    get: () => listProps?.[key],
+                });
+            }
+            return props as unknown as SuggestionListProps<T>;
+        }
+
+        function syncComponent(): void {
+            if (!container || !currentCommand) return;
+            const nextProps = resolveProps(currentCommand) as unknown as Record<string, unknown>;
+            listProps = nextProps;
+            // An empty list renders nothing, so keep the instance for the next
+            // query instead of unmounting it.
+            if (component || !currentItems.length) return;
 
             component = mount(Component, {
                 target: container,
-                props,
+                props: createReactiveProps(nextProps),
             });
         }
 
@@ -118,6 +138,7 @@ export function createSuggestionRenderer<T>({
             }
             currentItems = [];
             currentCommand = null;
+            listProps = null;
         }
 
         return {
@@ -127,7 +148,7 @@ export function createSuggestionRenderer<T>({
                 if (!currentItems.length) return;
 
                 container = createContainer();
-                mountComponent();
+                syncComponent();
                 requestAnimationFrame(() => updatePosition(props.clientRect));
             },
 
@@ -136,17 +157,14 @@ export function createSuggestionRenderer<T>({
                 currentCommand = props.command ?? null;
 
                 if (!currentItems.length) {
-                    if (component) {
-                        unmount(component);
-                        component = null;
-                    }
+                    syncComponent();
                     return;
                 }
 
                 if (!container) {
                     container = createContainer();
                 }
-                mountComponent();
+                syncComponent();
                 getExports().resetIndex?.();
                 requestAnimationFrame(() => updatePosition(props.clientRect));
             },
