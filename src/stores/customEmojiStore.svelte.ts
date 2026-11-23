@@ -9,7 +9,9 @@ import {
 
 type LoadKey = string;
 
-let items = $state<CustomEmojiItem[]>([]);
+// Replaced as a whole and never mutated in place. A raw array keeps the
+// per-keystroke suggestion scan from going through a deep proxy.
+let items = $state.raw<CustomEmojiItem[]>([]);
 let loading = $state(false);
 let error = $state<string | null>(null);
 let lastLoadKey = $state<LoadKey | null>(null);

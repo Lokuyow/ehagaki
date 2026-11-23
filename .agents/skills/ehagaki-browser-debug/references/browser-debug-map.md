@@ -9,7 +9,7 @@
 | 症状・境界 | 主な owner / 入口 | 代表 test |
 | --- | --- | --- |
 | Viewport / keyboard geometry | `src/lib/utils/viewportLayout.ts`, `src/stores/uiStore.svelte.ts`, `src/lib/hooks/useComposerLayoutMetrics.svelte.ts` | `src/test/unit/viewportLayout.test.ts`, `src/test/unit/uiStore.test.ts` |
-| Editor focus / toolbar tap | `src/lib/utils/keyboardFocusUtils.ts`, `src/lib/utils/appDomUtils.ts`, `src/components/KeyboardButtonBar.svelte` | `src/test/unit/keyboardFocusUtils.test.ts`, `src/test/unit/keyboardButtonBar.test.ts` |
+| Editor focus / toolbar tap | `src/lib/utils/keyboardFocusUtils.ts`, `src/lib/utils/appDomUtils.ts`, `src/components/KeyboardButtonBar.svelte`, `src/lib/hooks/usePostButtonLongPress.svelte.ts` | `src/test/unit/keyboardFocusUtils.test.ts`, `src/test/unit/keyboardButtonBar.test.ts`, `src/test/unit/usePostButtonLongPress.test.ts` |
 | Touch scroll lock / overscroll | `src/lib/utils/keyboardTouchScrollLock.ts`, `src/components/CustomEmojiPicker.svelte`, `src/components/SuggestionCommandList.svelte` | `src/test/unit/keyboardTouchScrollLock.test.ts` |
 | Footer / main / dialog の予約高 | `src/app.css`, `src/stores/uiStore.svelte.ts`, `src/components/FooterComponent.svelte`, `src/components/ComposerTargetDialog.svelte` | `src/test/unit/footerComponent.test.ts`, `src/test/e2e/composerTargetDialog.spec.ts` |
 | Dialog / portal / focus / Back | `src/components/DialogWrapper.svelte`, `src/components/ConfirmDialog.svelte`, `src/components/InfoPopoverButton.svelte`, `src/lib/hooks/useDialogHistory.svelte.ts` | `src/test/unit/useDialogHistory.test.ts`, `src/test/e2e/postHistoryDialog.spec.ts` |
@@ -25,6 +25,8 @@
 
 ## 症状固有の注意点
 
+- バー・理由欄は開閉時だけ `--keyboard-follow-duration` でスライドし、表示中のパン・高さ変化は即時に追う。開く時はスライドが終わるまでエディタ領域とフッターを閉じた時のレイアウトに保つ（先に縮めるとバーとの間に隙間ができる）。
+- キーボード追従でエディタ領域の大きさを変える変数を書いたら、uiStore の `onComposerSizeVariablesChange` で同じフレームのレイアウト前に composer の高さを測り直す。ResizeObserver の通知を待って次のフレームで直すと、古い高さのエディタがはみ出してスクロールバーやずれが出る。通知の中で高さを変えると ResizeObserver のループ通知になる。
 - Viewport の keyboard activation は editor focus と結び付く。VirtualKeyboard の矩形には visible-frame origin 補正があり、高さだけへ置き換えない。`setupViewportListener()` cleanup は event/rAF、touch scroll lock、`overlaysContent` を解放・復元する。ResizeObserver は作成した effect が disconnect する。
 - `activeElement` が body でも selection anchor が editor 内なら active の場合がある。focus utility の一時 `inputmode` 復元を保ち、iOS の programmatic focus を keyboard 抑止と同一視しない。
 - Scroll lock は document allowlist と item の `ontouchstart` / `preventDefault()` を併せて調べる。lock の `sync(false)` / `dispose()` と touch end cleanup を保つ。

@@ -101,6 +101,7 @@ export function buildPostContentRenderModel(
                 segment.type === "emoji" ||
                 segment.type === "link" ||
                 segment.type === "mention" ||
+                segment.type === "hashtag" ||
                 (segment.type === "text" && segment.text.trim().length > 0),
         ),
         hasRenderableMedia: mediaLayout.items.length > 0,

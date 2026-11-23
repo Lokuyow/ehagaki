@@ -9,7 +9,7 @@ import {
 } from '../customEmoji';
 import type { CustomEmojiSelection } from '../customEmojiUsage';
 import { customEmojiStore } from '../../stores/customEmojiStore.svelte';
-import { createSuggestionRenderer } from './suggestionRenderer';
+import { createSuggestionRenderer } from './suggestionRenderer.svelte';
 
 export interface CustomEmojiSuggestionOptions {
     getItems: () => CustomEmojiItem[];

@@ -72,6 +72,20 @@ export function createProfileFallbackAvatarCache(storage?: Pick<Storage, "getIte
         }
     } catch { /* A cache must never prevent avatar rendering. */ }
 
+    // A list render can miss many avatars in one pass. Serialize the whole
+    // cache once per pass instead of once per avatar.
+    let persistScheduled = false;
+    const persist = () => {
+        persistScheduled = false;
+        try { storage?.setItem(PROFILE_FALLBACK_AVATAR_CACHE_KEY, JSON.stringify([...entries])); }
+        catch { /* Memory reuse remains available when persistence is denied/full. */ }
+    };
+    const schedulePersist = () => {
+        if (!storage || persistScheduled) return;
+        persistScheduled = true;
+        queueMicrotask(persist);
+    };
+
     return {
         get(identity: ProfileAvatarIdentity): ProfileFallbackAvatar | null {
             const appearance = resolveProfileAvatarAppearance(identity);
@@ -87,8 +101,7 @@ export function createProfileFallbackAvatarCache(storage?: Pick<Storage, "getIte
             const avatar = { initial, background, foreground, dataUrl: generateDataUrl(appearance) };
             entries.set(key, avatar);
             if (entries.size > PROFILE_FALLBACK_AVATAR_CACHE_LIMIT) entries.delete(entries.keys().next().value!);
-            try { storage?.setItem(PROFILE_FALLBACK_AVATAR_CACHE_KEY, JSON.stringify([...entries])); }
-            catch { /* Memory reuse remains available when persistence is denied/full. */ }
+            schedulePersist();
             return avatar;
         },
     };

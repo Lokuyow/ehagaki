@@ -1,7 +1,8 @@
 import { getAppRuntimeEnvironment } from "../appRuntimeEnvironment";
-import en from "../i18n/en.json";
-import ja from "../i18n/ja.json";
-import { setEHagakiDbUpgradeBlocked } from "./ehagakiDb";
+// Only the gate copy is needed before svelte-i18n loads. Importing the full
+// locale files here would put both catalogs in the entry's static graph.
+import databaseGateCopy from "../i18n/databaseGate.json";
+import { setEHagakiDbUpgradeBlocked } from "./ehagakiDbUpgradeState";
 import { EHAGAKI_DB_NAME, EHAGAKI_DB_NATIVE_VERSION } from "./ehagakiDbConstants";
 import { upgradeEhagakiDatabaseSchema } from "./ehagakiDbMigration";
 import { installEhagakiDbOpenGate } from "./ehagakiDbOpenGate";
@@ -142,7 +143,7 @@ function isVersionError(error: unknown): boolean {
 
 function gateCopy(storage: Storage | undefined) {
     const locale = storage?.getItem("locale") ?? "";
-    return locale.toLowerCase().startsWith("en") ? en.databaseGate : ja.databaseGate;
+    return locale.toLowerCase().startsWith("en") ? databaseGateCopy.en : databaseGateCopy.ja;
 }
 
 function showEhagakiDatabaseGateNotice(

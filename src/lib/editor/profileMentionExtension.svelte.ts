@@ -15,7 +15,7 @@ import {
     type ProfileMentionCandidate,
     type ProfileMentionSource,
 } from "../profileMention";
-import { createSuggestionRenderer } from "./suggestionRenderer";
+import { createSuggestionRenderer } from "./suggestionRenderer.svelte";
 import { isImeCompositionKeydown } from "./imeCompositionKey";
 
 const pluginKey = new PluginKey("profileMentionSuggestion");

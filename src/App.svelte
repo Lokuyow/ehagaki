@@ -28,6 +28,7 @@
   import { RelayConfigUtils } from "./lib/relayConfigUtils";
   import { profileMetadataCache } from "./lib/profileMetadataCache.svelte";
   import { provideProfileMentionPreview } from "./lib/profileMentionPreviewContext";
+  import { createProfileMentionPreviewProfiles } from "./lib/profileMentionPreviewProfiles.svelte";
   import { nip46Service } from "./lib/nip46Service";
   import { parentClientAuthService } from "./lib/parentClientAuthService";
   import { embedComposerContextService } from "./lib/embedComposerContextService";
@@ -43,7 +44,6 @@
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
   import ReasonInput from "./components/ReasonInput.svelte";
-  import ChannelContextPreview from "./components/ChannelContextPreview.svelte";
   import ImageFullscreen from "./components/ImageFullscreen.svelte";
   import type PostComponentType from "./components/PostComponent.svelte";
   import ReplyQuotePreview from "./components/ReplyQuotePreview.svelte";
@@ -173,7 +173,10 @@
     POST_EDITOR_COMPACT_MIN_HEIGHT,
     POST_EDITOR_MIN_HEIGHT,
   } from "./lib/postLayoutUtils";
-  import { setupViewportListener } from "./stores/uiStore.svelte";
+  import {
+    onComposerSizeVariablesChange,
+    setupViewportListener,
+  } from "./stores/uiStore.svelte";
   import {
     runAppInitializationBootstrap,
     registerNip46VisibilityHandler,
@@ -251,14 +254,14 @@
     resolveEventContentBody,
     type PostContentRenderModel,
   } from "./lib/postContentPreview";
-  import { createSensitivePayloadBodyLoader } from "./lib/sensitiveContentPayloadReader";
+  import { createLazySensitivePayloadBodyLoader } from "./lib/lazySensitivePayloadBodyLoader";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
   import { uploadDestinationStore } from "./stores/uploadDestinationStore.svelte";
   import { postHistoryLocalRelayService } from "./lib/postHistoryLocalRelayService";
   import { uploadFiles as normalUploadFiles } from "./lib/normalUploadHelper";
-  import { uploadFileForHost as uploadHeadlessFile } from "./lib/upload/headlessUpload";
   import type { EHagakiUploadResult } from "./web-component/types";
+  import { createLazyHostUpload } from "./lib/upload/lazyHostUpload";
 
   const appRuntimeEnvironment = getAppRuntimeEnvironment();
   const nosskeyEnabled = canUseNosskey();
@@ -320,6 +323,8 @@
     typeof import("./components/ComposerTargetDialog.svelte").default;
   type CustomEmojiPickerComponent =
     typeof import("./components/CustomEmojiPicker.svelte").default;
+  type ChannelContextPreviewComponent =
+    typeof import("./components/ChannelContextPreview.svelte").default;
   let PostComponent: PostComponent | null = $state(null);
   let LoginDialogComponent: LoginDialogComponent | null = $state(null);
   let ProfileComponent: ProfileComponent | null = $state(null);
@@ -336,6 +341,8 @@
   let ComposerTargetDialogComponent: ComposerTargetDialogComponent | null =
     $state(null);
   let CustomEmojiPickerComponent: CustomEmojiPickerComponent | null =
+    $state(null);
+  let ChannelContextPreviewComponent: ChannelContextPreviewComponent | null =
     $state(null);
   let transientComponentLoadFailure: AppComponentKey | null = $state(null);
   let showStaleAssetReloadPrompt = $state(false);
@@ -373,6 +380,8 @@
         break;
       case "custom-emoji-picker":
         customEmojiPickerOpen = false;
+        break;
+      case "channel-context-preview":
         break;
       case "post":
         break;
@@ -445,6 +454,7 @@
     preloadPostHistoryDialog,
     loadComposerTargetDialog,
     loadCustomEmojiPicker,
+    loadChannelContextPreview,
   } = createAppComponentLoaders({
     isStaleAssetReloadRequired: () => staleAssetReloadState.required,
     onLoadFailure: handleAppComponentLoadFailure,
@@ -476,6 +486,21 @@
     setCustomEmojiPickerComponent: (component) => {
       CustomEmojiPickerComponent = component;
     },
+    setChannelContextPreviewComponent: (component) => {
+      ChannelContextPreviewComponent = component;
+    },
+  });
+
+  // The channel preview (and its sanitizer) is needed only for a channel post.
+  $effect(() => {
+    // A cancelled transient-failure prompt resets the key to null and retries.
+    if (
+      effectiveChannelContextState.value &&
+      !ChannelContextPreviewComponent &&
+      transientComponentLoadFailure !== "channel-context-preview"
+    ) {
+      void loadChannelContextPreview();
+    }
   });
 
   // --- 秘密鍵入力・保存・認証 ---
@@ -512,10 +537,11 @@
   let appDisposed = false;
   let postAuthAbort: AbortController | undefined;
   let followListSession = $state.raw<ReturnType<typeof createFollowListSession>>();
-  provideProfileMentionPreview({
-    read: pubkey => profileMetadataCache.getReactiveEntry(pubkey)?.profile,
-    load: pubkeys => { void profileMetadataCache.getCachedProfiles(pubkeys).catch(() => undefined); },
+  const mentionPreviewProfiles = createProfileMentionPreviewProfiles({
+    getRxNostr: () => (appDisposed || !isAuthenticated ? undefined : rxNostr),
   });
+  provideProfileMentionPreview(mentionPreviewProfiles);
+  $effect(() => { rxNostr; isAuthenticated; untrack(() => mentionPreviewProfiles.refresh()); });
   let profileFetchPending = $state(false);
   let readyAuthSession = $state<{
     pubkeyHex: string;
@@ -628,6 +654,7 @@
         hasHeader: true,
         hasFooter: true,
       }),
+    onComposerSizeVariablesChange,
     getComposerScrollRegionEl: () => composerScrollRegionEl,
     getComposerScrollContentEl: () => composerScrollContentEl,
     getCustomEmojiPickerRegionEl: () => customEmojiPickerRegionEl,
@@ -1603,17 +1630,17 @@
     return appEmbedController.applySettings(payload);
   }
 
+  const uploadHostFile = createLazyHostUpload({
+    isEditorBusy: () =>
+      editorState.isUploading || editorState.isSubmitPending || editorState.postStatus.sending,
+  });
+
   /** Full Web Component upload path. It deliberately avoids Composer upload UI state. */
   export async function uploadFileForHost(
     file: File,
     options: { signal: AbortSignal },
   ): Promise<EHagakiUploadResult> {
-    if (editorState.isUploading || editorState.isSubmitPending || editorState.postStatus.sending) {
-      const error = new Error("An editor upload or post operation is already in progress.");
-      error.name = "upload_in_progress";
-      throw error;
-    }
-    return await uploadHeadlessFile(file, options.signal);
+    return await uploadHostFile(file, options.signal);
   }
 
   /** Public in-process editor control used by the Direct Web Component root. */
@@ -1874,6 +1901,7 @@
       beginAuthTransition({ invalidateSession: true });
       appDisposed = true;
       readyAuthSession = null;
+      mentionPreviewProfiles.dispose();
       overlayScopeTarget.classList.remove("ehagaki-app-root");
       cleanupVisibilityHandler();
       nip46Service.setIdentityMismatchHandler(null);
@@ -2158,9 +2186,9 @@
             class="composer-scroll-content"
             bind:this={composerScrollContentEl}
           >
-            {#if effectiveChannelContextState.value}
+            {#if effectiveChannelContextState.value && ChannelContextPreviewComponent}
               <div class="composer-block composer-reference-block">
-                <ChannelContextPreview
+                <ChannelContextPreviewComponent
                   channel={effectiveChannelContextState.value}
                   runtime={channelContextRuntimeState.value}
                   pictureCacheEligible={isChannelPictureCacheEligible(
@@ -2194,7 +2222,7 @@
                   model={getComposerReferencePreviewModel(
                     replyQuoteState.value.reply,
                   )}
-                  loadSensitiveBody={createSensitivePayloadBodyLoader({
+                  loadSensitiveBody={createLazySensitivePayloadBodyLoader({
                     ownerPubkey: authState.value.pubkey,
                     structure: replyQuoteState.value.reply.referencedEvent,
                     relayHints: replyQuoteState.value.reply.relayHints,
@@ -2276,7 +2304,7 @@
                   reference={quote}
                   mode="quote"
                   model={getComposerReferencePreviewModel(quote)}
-                  loadSensitiveBody={createSensitivePayloadBodyLoader({
+                  loadSensitiveBody={createLazySensitivePayloadBodyLoader({
                     ownerPubkey: authState.value.pubkey,
                     structure: quote.referencedEvent,
                     relayHints: quote.relayHints,
@@ -2700,7 +2728,9 @@
 
   .composer-scroll-region {
     width: 100%;
-    flex: 1 1 auto;
+    /* 中身の高さを基準にすると、領域が縮んだ時にヘッダーまで押しつぶされ、
+       エディタの高さが追いつくまで上下にずれる。残りの高さだけを使う */
+    flex: 1 1 0;
     min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;

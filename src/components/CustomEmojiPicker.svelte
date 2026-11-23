@@ -242,13 +242,10 @@
         );
         updatePickerLayout();
 
+        // 幅だけを追うため scroll は購読しない（iOS のパン中に無駄な更新を避ける）
         window.addEventListener("resize", schedulePickerLayoutUpdate);
         window.visualViewport?.addEventListener(
             "resize",
-            schedulePickerLayoutUpdate,
-        );
-        window.visualViewport?.addEventListener(
-            "scroll",
             schedulePickerLayoutUpdate,
         );
 
@@ -260,10 +257,6 @@
             window.removeEventListener("resize", schedulePickerLayoutUpdate);
             window.visualViewport?.removeEventListener(
                 "resize",
-                schedulePickerLayoutUpdate,
-            );
-            window.visualViewport?.removeEventListener(
-                "scroll",
                 schedulePickerLayoutUpdate,
             );
         };

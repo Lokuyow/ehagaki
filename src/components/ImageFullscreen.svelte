@@ -197,6 +197,7 @@
             [dataSource, { default: PhotoSwipe }] = await Promise.all([
                 buildFullscreenViewerDataSource(items),
                 import("photoswipe"),
+                appRuntimeEnvironment.loadFullscreenViewerStyles?.(),
             ]);
         } catch {
             if (requestToken === openRequestToken && show && !activePhotoSwipe) {
@@ -353,7 +354,9 @@
         background: #000;
     }
 
-    :global(.ehagaki-pswp .pswp__button) {
+    /* PhotoSwipe's stylesheet loads lazily and may follow this rule. Outrank its
+       :hover/:focus/:disabled opacity rules regardless of stylesheet order. */
+    :global(.pswp.ehagaki-pswp .pswp__button) {
         opacity: 0.9;
     }
 

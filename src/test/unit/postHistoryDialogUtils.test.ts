@@ -75,6 +75,150 @@ describe("postHistoryDialogUtils", () => {
         ]);
     });
 
+    it("buildPreviewContent splits hashtags with the editor's boundary rule", () => {
+        const result = buildPreviewContent({
+            content: "#start mid#not 　#全角 https://example.com/#frag :e:#after",
+            tags: [["emoji", "e", "https://example.com/e.webp"]],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "hashtag", hashtag: "start" },
+            { type: "text", text: " mid#not 　" },
+            { type: "hashtag", hashtag: "全角" },
+            { type: "text", text: " " },
+            { type: "link", text: "https://example.com/#frag", href: "https://example.com/#frag" },
+            { type: "text", text: " " },
+            {
+                type: "emoji",
+                shortcode: "e",
+                shortcodeLower: "e",
+                rawShortcodeText: ":e:",
+                url: "https://example.com/e.webp",
+            },
+            { type: "text", text: "#after" },
+        ]);
+    });
+
+    it("buildPreviewContent trims trailing punctuation from hashtags without a matching t tag", () => {
+        const result = buildPreviewContent({
+            content: "#nostr。 #タグ」 #ok!?",
+            tags: [],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "hashtag", hashtag: "nostr" },
+            { type: "text", text: "。 " },
+            { type: "hashtag", hashtag: "タグ" },
+            { type: "text", text: "」 " },
+            { type: "hashtag", hashtag: "ok" },
+            { type: "text", text: "!?" },
+        ]);
+    });
+
+    it("buildPreviewContent keeps a URL after an untagged hashtag clickable and honors matching t tags", () => {
+        const npub = "nostr:npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6";
+        const withoutTags = buildPreviewContent({
+            content: `#taghttps://example.com/ #x${npub}`,
+            tags: [],
+        });
+        expect(withoutTags.segments).toEqual([
+            { type: "hashtag", hashtag: "tag" },
+            { type: "link", text: "https://example.com/", href: "https://example.com/" },
+            { type: "text", text: " " },
+            { type: "hashtag", hashtag: `x${npub}` },
+        ]);
+
+        const withTags = buildPreviewContent({
+            content: `#taghttps://example.com/ #x${npub}`,
+            tags: [["t", "taghttps://example.com/"], ["t", "x"]],
+        });
+        expect(withTags.segments).toEqual([
+            { type: "hashtag", hashtag: "taghttps://example.com/" },
+            { type: "text", text: " " },
+            { type: "hashtag", hashtag: "x" },
+            // 英数字の直後の nostr: は従来どおりメンションにしない
+            { type: "text", text: npub },
+        ]);
+    });
+
+    it("buildPreviewContent stops an untagged hashtag before a known custom emoji", () => {
+        const result = buildPreviewContent({
+            content: "#tag:e:",
+            tags: [["emoji", "e", "https://example.com/e.webp"]],
+        });
+        expect(result.segments).toEqual([
+            { type: "hashtag", hashtag: "tag" },
+            {
+                type: "emoji",
+                shortcode: "e",
+                shortcodeLower: "e",
+                rawShortcodeText: ":e:",
+                url: "https://example.com/e.webp",
+            },
+        ]);
+    });
+
+    it("buildPreviewContent does not cut an ASCII word at a shorter t tag", () => {
+        const result = buildPreviewContent({
+            content: "#nostr #nostrich",
+            tags: [["t", "nostr"]],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "hashtag", hashtag: "nostr" },
+            { type: "text", text: " " },
+            { type: "hashtag", hashtag: "nostrich" },
+        ]);
+    });
+
+    it("buildPreviewContent accepts a t tag that ends right before a URL", () => {
+        const result = buildPreviewContent({
+            content: "#taghttps://example.com/",
+            tags: [["t", "tag"]],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "hashtag", hashtag: "tag" },
+            { type: "link", text: "https://example.com/", href: "https://example.com/" },
+        ]);
+    });
+
+    it("buildPreviewContent leaves a trailing unregistered shortcode as text", () => {
+        const result = buildPreviewContent({
+            content: "#tag:unknown: #time:12:30",
+            tags: [],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "hashtag", hashtag: "tag" },
+            { type: "text", text: ":unknown: " },
+            { type: "hashtag", hashtag: "time:12:30" },
+        ]);
+    });
+
+    it("buildPreviewContent resolves a very long hashtag against t tags in linear time", () => {
+        const longTag = "a".repeat(200_000);
+        const result = buildPreviewContent({
+            content: `#${longTag}`,
+            tags: [["t", "a"], ["t", "b"]],
+        });
+
+        expect(result.segments).toEqual([{ type: "hashtag", hashtag: longTag }]);
+    });
+
+    it("buildPreviewContent prefers the longest t tag that prefixes the hashtag", () => {
+        const result = buildPreviewContent({
+            content: "#Nostrは楽しい #wow。",
+            tags: [["t", "nostr"], ["t", "wow。"]],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "hashtag", hashtag: "Nostr" },
+            { type: "text", text: "は楽しい " },
+            { type: "hashtag", hashtag: "wow。" },
+        ]);
+    });
+
     it("ignores invalid tags and keeps the first valid duplicate shortcode mapping", () => {
         const result = buildPreviewContent({
             content: ":blobcat: :BLOBCAT: :bad:",
@@ -604,6 +748,20 @@ describe("postHistoryDialogUtils", () => {
 
         expect(formatPostHistoryMonthLabel(today, "ja", now)).toBe("今日");
         expect(formatPostHistoryMonthLabel(yesterday, "ja", now)).toBe("昨日");
+    });
+
+    it("formatPostHistoryMonthLabel keeps reused formatters separate per locale", () => {
+        const now = new Date(2025, 5, 10, 12, 0, 0).getTime();
+        const today = new Date(2025, 5, 10, 9, 0, 0).getTime();
+        const sameYear = new Date(2025, 2, 15, 14, 0, 0).getTime();
+        const options: Intl.DateTimeFormatOptions = { month: "numeric", day: "numeric", weekday: "short" };
+
+        expect(formatPostHistoryMonthLabel(today, "ja", now)).toBe("今日");
+        expect(formatPostHistoryMonthLabel(today, "en", now)).toBe("today");
+        expect(formatPostHistoryMonthLabel(sameYear, "ja", now))
+            .toBe(new Intl.DateTimeFormat("ja", options).format(new Date(sameYear)));
+        expect(formatPostHistoryMonthLabel(sameYear, "en", now))
+            .toBe(new Intl.DateTimeFormat("en", options).format(new Date(sameYear)));
     });
 
     it("formatPostHistoryMonthLabel returns month/day/weekday for same-year dates", () => {

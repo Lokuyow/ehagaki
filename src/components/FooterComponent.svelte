@@ -284,7 +284,6 @@
         right: 0;
         bottom: var(--footer-bottom);
         z-index: 99;
-        transition: bottom 0.2s ease;
     }
 
     :global(.login-btn) {
@@ -379,10 +378,6 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-        .footer-bar {
-            transition: none;
-        }
-
         .update-indicator {
             animation: none;
             opacity: 1;

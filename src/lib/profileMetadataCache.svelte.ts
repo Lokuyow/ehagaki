@@ -309,7 +309,9 @@ function setProfileEntry(params: {
         staleAtMs: params.persistence === "temporary"
             ? now
             : fetchedAtMs + PROFILE_CACHE_STALE_MS,
-        expireAtMs: fetchedAtMs + PROFILE_CACHE_GC_MS,
+        // GC tracks in-memory residency; staleness still follows fetchedAt. Profiles restored from
+        // IndexedDB with an old fetchedAt would otherwise be collected right after being restored.
+        expireAtMs: Math.max(fetchedAtMs, now) + PROFILE_CACHE_GC_MS,
         negativeUntilMs: null,
         sourceRelay: params.sourceRelay,
         lastValidatedAtMs: fetchedAtMs,

@@ -4,6 +4,11 @@ import type { ReplyQuoteComposerState } from "../types";
 
 interface UseComposerLayoutMetricsParams {
     setupViewportListener(): (() => void) | undefined;
+    /**
+     * キーボード追従でエディタ領域の大きさを変える変数が書き換わった直後
+     * （同じフレームのレイアウト前）に呼ばれる購読。
+     */
+    onComposerSizeVariablesChange?(listener: () => void): () => void;
     getComposerScrollRegionEl(): HTMLDivElement | null;
     getComposerScrollContentEl(): HTMLDivElement | null;
     getCustomEmojiPickerRegionEl(): HTMLDivElement | null;
@@ -14,6 +19,7 @@ interface UseComposerLayoutMetricsParams {
 
 export function useComposerLayoutMetrics({
     setupViewportListener,
+    onComposerSizeVariablesChange,
     getComposerScrollRegionEl,
     getComposerScrollContentEl,
     getCustomEmojiPickerRegionEl,
@@ -60,6 +66,16 @@ export function useComposerLayoutMetrics({
             composerAvailableHeight = nextHeight;
         }
     }
+
+    // キーボードの開閉で領域が縮んだ時は、ResizeObserver（レイアウト後に通知され、
+    // 次のフレームで反映）を待たずにその場で測り直す。待つと古い高さのエディタが
+    // 縮んだ領域からはみ出して描画され、スクロールバーや画面のずれが出る。
+    $effect(() => {
+        if (!onComposerSizeVariablesChange) {
+            return;
+        }
+        return onComposerSizeVariablesChange(() => syncComposerAvailableHeight());
+    });
 
     $effect(() => {
         const replyQuoteState = getReplyQuoteState();

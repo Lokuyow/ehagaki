@@ -81,6 +81,15 @@ describe('ImageCompressionService', () => {
         mock.state.pendingDecode=true;const controller=new AbortController();const promise=service.compress(input(),{signal:controller.signal});controller.abort();
         expect((await promise).aborted).toBe(true);expect(mock.images[0].onload).toBeNull();expect(URL.revokeObjectURL).toHaveBeenCalled();
     });
+    it('decodes before drawing and keeps drawing when decode rejects', async () => {
+        expect((await service.compress(input())).wasCompressed).toBe(true);
+        const [image]=mock.images;const [canvas]=mock.canvases;
+        expect(image.decode).toHaveBeenCalledOnce();
+        expect(image.decode.mock.invocationCallOrder[0]).toBeLessThan(canvas.context.drawImage.mock.invocationCallOrder[0]);
+        mock.state.failImageDecode=true;
+        expect((await service.compress(input())).wasCompressed).toBe(true);
+        expect(mock.canvases[1].context.drawImage).toHaveBeenCalledOnce();
+    });
     it('keeps stage progress within 0..100', async () => {
         const progress:number[]=[];service.setProgressCallback(p=>progress.push(p));await service.compress(input());expect(progress).toEqual([5,40,100]);
     });

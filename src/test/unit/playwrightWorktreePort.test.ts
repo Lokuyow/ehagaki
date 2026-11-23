@@ -157,6 +157,7 @@ describe('Playwright config connection values', () => {
                 '**/webComponentLite.spec.ts',
                 '**/loginLatency.spec.ts',
                 '**/nosskeyLogin.spec.ts',
+                '**/postEditorSending.spec.ts',
             ]);
             expect(config.projects?.[2]?.grep).toEqual(/@android-chrome/);
             expect(config.projects?.[2]?.use).toMatchObject({

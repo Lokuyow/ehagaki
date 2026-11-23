@@ -1,4 +1,5 @@
-import { utils as nostrToolsUtils } from 'nostr-tools';
+// Subpath import keeps the startup graph off the nostr-tools barrel bundle.
+import { normalizeURL } from 'nostr-tools/utils';
 import { DECOMMISSIONED_RELAYS } from './relayLists';
 import type { RelayConfig } from "./types";
 
@@ -134,7 +135,7 @@ export class RelayConfigUtils {
                 }
             }
 
-            const normalized = nostrToolsUtils.normalizeURL(trimmed);
+            const normalized = normalizeURL(trimmed);
             const normalizedUrl = new URL(normalized);
             if (!ALLOWED_EXTERNAL_RELAY_PROTOCOLS.has(normalizedUrl.protocol)) {
                 return null;

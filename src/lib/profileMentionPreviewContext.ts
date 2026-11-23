@@ -1,9 +1,10 @@
 import { getContext, setContext } from "svelte";
+import type { ProfileMention } from "./profileMention";
 import type { ProfileData } from "./types";
 
 interface ProfileMentionPreviewContext {
     read(pubkey: string): ProfileData | null | undefined;
-    load(pubkeys: string[]): void;
+    load(mentions: ProfileMention[]): void;
 }
 
 const contextKey = Symbol("profileMentionPreview");

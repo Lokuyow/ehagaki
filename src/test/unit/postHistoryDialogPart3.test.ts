@@ -253,7 +253,10 @@ describe('PostHistoryDialog', () => {
             );
         });
 
-        expect(screen.getByRole('img', { name: ':blobcat:' })).toBeTruthy();
+        // Load results are applied together in a following task.
+        await waitFor(() => {
+            expect(screen.getByRole('img', { name: ':blobcat:' })).toBeTruthy();
+        });
         expect(screen.getByText(':blobcat:')).toBeTruthy();
     });
 

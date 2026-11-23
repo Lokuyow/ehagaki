@@ -17,6 +17,7 @@ import type { PostHistoryRecord } from "./storage/ehagakiDb";
 import { CHANNEL_TEMPORARY_READ_RELAY_LIMIT } from "./channelContextConstants";
 import { scanHttpUrlCandidates } from "./utils/httpUrlCandidates";
 import { scanProfileMentions, type ProfileMention } from "./profileMention";
+import { HASHTAG_REGEX } from "./constants";
 
 const CUSTOM_EMOJI_SHORTCODE_PATTERN = /:([^\s:]+):/g;
 
@@ -46,6 +47,10 @@ export type PostHistoryPreviewSegment =
     | {
         type: "mention";
         profile: ProfileMention;
+    }
+    | {
+        type: "hashtag";
+        hashtag: string;
     };
 
 export type PostHistoryPreviewContent = {
@@ -179,6 +184,16 @@ const EXACT_TIMESTAMP_FORMAT: Intl.DateTimeFormatOptions = {
     second: "2-digit",
 };
 
+const MONTH_LABEL_CURRENT_YEAR_FORMAT: Intl.DateTimeFormatOptions = {
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+};
+const MONTH_LABEL_OTHER_YEAR_FORMAT: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "numeric",
+};
+
 // Constructing Intl.DateTimeFormat dominates the cost of formatting, and a
 // history page formats two timestamps per post. Options are module constants,
 // so the options object identity plus the locale identifies a formatter.
@@ -255,17 +270,12 @@ export function formatPostHistoryMonthLabel(
     }
 
     if (postedDate.getFullYear() === nowDate.getFullYear()) {
-        return new Intl.DateTimeFormat(localeValue ?? undefined, {
-            month: "numeric",
-            day: "numeric",
-            weekday: "short",
-        }).format(postedDate);
+        return getDateTimeFormat(localeValue, MONTH_LABEL_CURRENT_YEAR_FORMAT)
+            .format(postedDate);
     }
 
-    return new Intl.DateTimeFormat(localeValue ?? undefined, {
-        year: "numeric",
-        month: "numeric",
-    }).format(postedDate);
+    return getDateTimeFormat(localeValue, MONTH_LABEL_OTHER_YEAR_FORMAT)
+        .format(postedDate);
 }
 
 function isSameLocalDate(date: Date, otherDate: Date): boolean {
@@ -281,13 +291,22 @@ function isYesterdayLocal(date: Date, nowDate: Date): boolean {
     return isSameLocalDate(date, yesterday);
 }
 
+// The month label is refreshed while the history scrolls; reuse formatters.
+const relativeDayFormatCache = new Map<string, Intl.RelativeTimeFormat>();
+
 function formatRelativeDayLabel(
     value: 0 | -1,
     localeValue: string | null | undefined,
 ): string {
-    return new Intl.RelativeTimeFormat(localeValue ?? undefined, {
-        numeric: "auto",
-    }).format(value, "day");
+    const localeKey = localeValue ?? "";
+    let format = relativeDayFormatCache.get(localeKey);
+    if (!format) {
+        format = new Intl.RelativeTimeFormat(localeValue ?? undefined, {
+            numeric: "auto",
+        });
+        relativeDayFormatCache.set(localeKey, format);
+    }
+    return format.format(value, "day");
 }
 
 export function buildPreview(content: string): string {
@@ -479,18 +498,147 @@ export function buildPreviewContent(
     const mediaMap = buildPostMediaMap(post.media ?? []);
     const segments: PostHistoryPreviewSegment[] = [];
     const emojiUrls = new Set<string>();
+    const hashtags = scanPreviewHashtags(normalizedContent, buildTTagSet(post.tags), emojiMap);
+    const mentions = excludeRangesOverlapping(scanProfileMentions(normalizedContent), hashtags);
+    const inlineRanges = [
+        ...hashtags.map((hashtag) => ({ ...hashtag, segment: { type: "hashtag", hashtag: hashtag.hashtag } as const })),
+        ...mentions.map(({ start, end, pubkey, relayHints }) => ({
+            start,
+            end,
+            segment: { type: "mention", profile: { pubkey, relayHints } } as const,
+        })),
+    ].sort((a, b) => a.start - b.start);
     let lastIndex = 0;
 
-    for (const { start, end, pubkey, relayHints } of scanProfileMentions(normalizedContent)) {
+    for (const { start, end, segment } of inlineRanges) {
         pushContentWithEmoji(normalizedContent.slice(lastIndex, start), segments, emojiMap, mediaMap, emojiUrls);
-        const profile = { pubkey, relayHints };
-        segments.push({ type: "mention", profile });
+        segments.push(segment);
         lastIndex = end;
     }
     pushContentWithEmoji(normalizedContent.slice(lastIndex), segments, emojiMap, mediaMap, emojiUrls);
 
     if (segments.length === 0) segments.push({ type: "text", text: normalizedContent });
     return { segments, emojiUrls: [...emojiUrls] };
+}
+
+const HASHTAG_TRAILING_PUNCTUATION = new Set(Array.from("。、．，,.!?！？…:;：；\"'”’」』）)]】〕〉》"));
+const HASHTAG_EMBEDDED_URL_PATTERN = /https?:\/\//i;
+const ASCII_WORD_CHAR_PATTERN = /^[A-Za-z0-9_]$/;
+// エディターではメンションや URL が別ノード・別単位になるので、その直前で切れる t タグは採用する
+const HASHTAG_FOLLOWING_REFERENCE_PATTERN = /^(?:nostr:|https?:\/\/)/i;
+
+// どちらも開始位置順で、base 同士は重ならない前提で、base と重なる range を除く
+function excludeRangesOverlapping<T extends { start: number; end: number }>(
+    ranges: T[],
+    base: ReadonlyArray<{ start: number; end: number }>,
+): T[] {
+    let baseIndex = 0;
+    return ranges.filter((range) => {
+        while (base[baseIndex] && base[baseIndex]!.end <= range.start) baseIndex++;
+        const current = base[baseIndex];
+        return !current || range.end <= current.start;
+    });
+}
+
+function buildTTagSet(tags: PostHistoryRecord["tags"]): Set<string> {
+    return new Set(
+        tags.flatMap((tag) =>
+            tag[0] === "t" && typeof tag[1] === "string" && tag[1]
+                ? [tag[1].toLowerCase()]
+                : [],
+        ),
+    );
+}
+
+// t タグに一致する最長の前方部分を返す。英数字の途中で切れる一致（#nostrich に対する nostr）は、
+// 続きがメンションや URL でない限り採用しない。
+// t タグの数 × タグ長で済むよう、候補ではなく t タグ側を走査する。
+function findMatchingTTagPrefix(candidate: string, tTags: ReadonlySet<string>): string | null {
+    let best: string | null = null;
+    for (const tag of tTags) {
+        if (tag.length > candidate.length || (best && tag.length <= best.length)) {
+            continue;
+        }
+        const prefix = candidate.slice(0, tag.length);
+        if (prefix.toLowerCase() !== tag) {
+            continue;
+        }
+        const last = prefix.at(-1) ?? "";
+        const next = candidate.charAt(tag.length);
+        if (
+            next &&
+            ASCII_WORD_CHAR_PATTERN.test(last) &&
+            ASCII_WORD_CHAR_PATTERN.test(next) &&
+            !HASHTAG_FOLLOWING_REFERENCE_PATTERN.test(candidate.slice(tag.length, tag.length + 8))
+        ) {
+            continue;
+        }
+        best = prefix;
+    }
+    return best;
+}
+
+function trimTrailingHashtagPunctuation(value: string): string {
+    let end = value.length;
+    while (end > 0 && HASHTAG_TRAILING_PUNCTUATION.has(value.charAt(end - 1))) end--;
+    return value.slice(0, end);
+}
+
+// 候補の先頭からイベントの t タグに一致する最長部分を採用する。
+// 一致しなければ、登録済みカスタム絵文字や URL の手前、末尾の未登録ショートコードの手前で切り、
+// 末尾の句読点を除く。
+function resolveHashtagCandidate(
+    candidate: string,
+    tTags: ReadonlySet<string>,
+    emojiMap: ReturnType<typeof buildCustomEmojiTagMap>,
+): string {
+    const tagged = findMatchingTTagPrefix(candidate, tTags);
+    if (tagged) {
+        return tagged;
+    }
+
+    let resolved = candidate;
+    for (const match of candidate.matchAll(CUSTOM_EMOJI_SHORTCODE_PATTERN)) {
+        const shortcodeLower = normalizeEmojiShortcodeForLookup(match[1] ?? "");
+        if (shortcodeLower && emojiMap.has(shortcodeLower)) {
+            resolved = candidate.slice(0, match.index);
+            break;
+        }
+    }
+
+    const urlIndex = resolved.search(HASHTAG_EMBEDDED_URL_PATTERN);
+    if (urlIndex >= 0) {
+        resolved = resolved.slice(0, urlIndex);
+    }
+
+    // 末尾の :shortcode: は、末尾の : だけを削らずにまとめて本文側に残す
+    if (resolved.endsWith(":")) {
+        const openIndex = resolved.lastIndexOf(":", resolved.length - 2);
+        if (openIndex >= 0 && openIndex < resolved.length - 2) {
+            resolved = resolved.slice(0, openIndex);
+        }
+    }
+
+    return trimTrailingHashtagPunctuation(resolved);
+}
+
+// エディターのハイライトと同じ規則（行頭・空白の直後の #）で本文全体からハッシュタグを探す。
+// URL やメンションより先に範囲を決め、t タグと同じ単位でリンクにする。
+function scanPreviewHashtags(
+    content: string,
+    tTags: ReadonlySet<string>,
+    emojiMap: ReturnType<typeof buildCustomEmojiTagMap>,
+): Array<{ start: number; end: number; hashtag: string }> {
+    const ranges: Array<{ start: number; end: number; hashtag: string }> = [];
+    for (const match of content.matchAll(new RegExp(HASHTAG_REGEX.source, "g"))) {
+        const hashtag = resolveHashtagCandidate(match[1] ?? "", tTags, emojiMap);
+        if (!hashtag) {
+            continue;
+        }
+        const start = (match.index ?? 0) + match[0].indexOf("#");
+        ranges.push({ start, end: start + 1 + hashtag.length, hashtag });
+    }
+    return ranges;
 }
 
 function pushContentWithEmoji(

@@ -19,6 +19,9 @@
   --mobile-dialog-center-y: 43dvh;
   --keyboard-button-bar-height: 50px;
   --keyboard-button-bar-bottom: 66px;
+  /* キーボードの開閉時だけ uiStore がスライド時間を書く（表示中のパン・高さ変化は 0ms） */
+  --keyboard-follow-duration: 0ms;
+  --keyboard-follow-easing: cubic-bezier(0.4, 0, 0.2, 1);
   --main-content-keyboard-adjustment: var(--keyboard-height);
   /* ReasonInput（Content Warning理由入力）の高さ（reasonInputVisibleStore で更新） */
   --reason-input-base-height: 50px;

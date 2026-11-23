@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 // @ts-expect-error: virtual module provided by Vite plugin
 import { useRegisterSW } from "virtual:pwa-register/svelte";
-import { subscribeEHagakiDbUpgradeState } from "../storage/ehagakiDb";
+import { subscribeEHagakiDbUpgradeState } from "../storage/ehagakiDbUpgradeState";
 import {
     watchServiceWorkerUpdateInstallation,
 } from "../swUpdateDetectionUtils";

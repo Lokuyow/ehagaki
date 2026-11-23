@@ -2,7 +2,7 @@ import { vi } from 'vitest';
 
 /** Canvas boundary mock; real decoding/encoding is covered in browser tests. */
 export function mockImageCompressionCanvas() {
-    const state = { width: 2000, height: 7038, failDecode: false, pendingDecode: false, outputSize: 1000, nativeMime: '', failNative: false };
+    const state = { width: 2000, height: 7038, failDecode: false, pendingDecode: false, failImageDecode: false, outputSize: 1000, nativeMime: '', failNative: false };
     const images: any[] = [];
     const canvases: any[] = [];
     class MockImage {
@@ -10,6 +10,7 @@ export function mockImageCompressionCanvas() {
         naturalHeight = state.height;
         onload: (() => void) | null = null;
         onerror: (() => void) | null = null;
+        decode = vi.fn(() => state.failImageDecode ? Promise.reject(new Error('EncodingError')) : Promise.resolve());
         constructor() { images.push(this); }
         set src(value: string) { if (value && !state.pendingDecode) queueMicrotask(() => state.failDecode ? this.onerror?.() : this.onload?.()); }
     }

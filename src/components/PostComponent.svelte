@@ -630,13 +630,10 @@
       return;
     }
 
-    const rafId = window.requestAnimationFrame(() => {
-      syncEditorTargetHeight();
-    });
-
-    return () => {
-      window.cancelAnimationFrame(rafId);
-    };
+    // effect は DOM 更新後に走るので、その場で測って同じフレームで反映する。
+    // 使える高さが縮んだ時に次のフレームへ回すと、古い高さのエディタが
+    // スクロール領域からはみ出して描画される。
+    untrack(() => syncEditorTargetHeight());
   });
 
   $effect(() => {
@@ -767,14 +764,11 @@
 
     editorSubscriptionUnsubscribe = editor.subscribe(
       (editorInstance: TipTapEditor | null) => {
-        // Editor subscriptions may re-notify for transactions on the same
-        // instance; keep listener ownership tied to instance identity.
+        // Editor subscriptions re-notify for every transaction on the same
+        // instance; keep listener ownership tied to instance identity. The
+        // transaction listener below already syncs these transactions.
         if (editorInstance !== null && editorInstance === subscribedEditor) {
           currentEditor = editorInstance;
-          if (editorInstance) {
-            syncEditorEmptyState(editorInstance);
-            syncLivePostEligibility(editorInstance);
-          }
           return;
         }
 
@@ -1404,12 +1398,14 @@
   }
 
   $effect(() => {
+    // Check the error first so the document is serialized only while an
+    // error is shown, not after every typing pause.
     if (
+      postStatus.error &&
       !isHostOwnedLiteBuild &&
       currentEditor &&
       postManager &&
-      postManager.preparePostContent(currentEditor) !== editorState.content &&
-      postStatus.error
+      postManager.preparePostContent(currentEditor) !== editorState.content
     ) {
       updatePostStatus({ ...postStatus, error: false, message: "" });
     }

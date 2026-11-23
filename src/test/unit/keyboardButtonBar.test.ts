@@ -204,6 +204,28 @@ describe('KeyboardButtonBar', () => {
         expect(button.hasAttribute('disabled')).toBe(true);
     });
 
+    it('切り替えボタンは状態を aria-pressed で伝える', async () => {
+        contentWarningStore.set(false);
+        render(KeyboardButtonBarWithProvider);
+
+        const contentWarning = screen.getByRole('button', { name: '閲覧注意を切り替え' });
+        const hashtagPin = screen.getByRole('button', { name: 'ハッシュタグ固定を切り替え' });
+        const customEmoji = screen.getByRole('button', { name: 'カスタム絵文字' });
+        expect(contentWarning.getAttribute('aria-pressed')).toBe('false');
+        expect(customEmoji.getAttribute('aria-expanded')).toBe('false');
+
+        contentWarning.click();
+        await tick();
+        expect(contentWarning.getAttribute('aria-pressed')).toBe('true');
+
+        const pinnedBefore = hashtagPin.getAttribute('aria-pressed');
+        hashtagPin.click();
+        await tick();
+        expect(hashtagPin.getAttribute('aria-pressed')).toBe(pinnedBefore === 'true' ? 'false' : 'true');
+        hashtagPin.click();
+        await tick();
+    });
+
     it('投稿ボタンは既定で表示され、内部propで投稿surfaceだけを隠せる', () => {
         const { unmount } = render(KeyboardButtonBarWithProvider);
         expect(screen.getByRole('button', { name: '投稿' })).toBeTruthy();

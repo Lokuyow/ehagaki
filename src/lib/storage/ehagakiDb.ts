@@ -11,6 +11,10 @@ import {
     POST_HISTORY_TIMELINE_INDEX,
 } from "./ehagakiDbConstants";
 import { waitForEhagakiDbOpenGate } from "./ehagakiDbOpenGate";
+import {
+    setEHagakiDbUpgradeBlocked,
+    subscribeEHagakiDbUpgradeState,
+} from "./ehagakiDbUpgradeState";
 
 export {
     EHAGAKI_DB_NAME,
@@ -18,26 +22,10 @@ export {
 };
 export const SHARED_MEDIA_RECORD_ID = "latest";
 
-type EHagakiDbUpgradeStateListener = (blocked: boolean) => void;
-const ehagakiDbUpgradeStateListeners = new Set<EHagakiDbUpgradeStateListener>();
-let ehagakiDbUpgradeBlocked = false;
-
-export function setEHagakiDbUpgradeBlocked(blocked: boolean) {
-    if (ehagakiDbUpgradeBlocked === blocked) {
-        return;
-    }
-
-    ehagakiDbUpgradeBlocked = blocked;
-    ehagakiDbUpgradeStateListeners.forEach((listener) => listener(blocked));
-}
-
-export function subscribeEHagakiDbUpgradeState(
-    listener: EHagakiDbUpgradeStateListener,
-): () => void {
-    listener(ehagakiDbUpgradeBlocked);
-    ehagakiDbUpgradeStateListeners.add(listener);
-    return () => ehagakiDbUpgradeStateListeners.delete(listener);
-}
+export {
+    setEHagakiDbUpgradeBlocked,
+    subscribeEHagakiDbUpgradeState,
+};
 
 export interface EhagakiScopedRecord {
     id: string;
