@@ -30,15 +30,6 @@ export const REASON_INPUT_HEIGHT = 50;
 /** メインコンテンツ上部の余白（px） */
 export const MAIN_CONTENT_TOP_SPACING = 6;
 
-/**
- * キーボードの開閉が切り替わった時だけ、下部 UI をスライドさせる時間（ms）。
- * 表示中のパン・スクロール・高さ変化は 0ms で即座に追従させる。
- */
-export const KEYBOARD_FOLLOW_SLIDE_MS = 200;
-
-const KEYBOARD_FOLLOW_INSTANT = "0ms";
-const KEYBOARD_FOLLOW_SLIDE = `${KEYBOARD_FOLLOW_SLIDE_MS}ms`;
-
 interface ViewportMetrics {
     height?: number;
     offsetTop?: number;
@@ -49,25 +40,12 @@ interface ViewportMetrics {
     containerKeyboardInset?: number;
 }
 
-interface KeyboardFollowState {
-    active: boolean;
-    positions: string;
-    duration: string;
-}
-
-const INITIAL_KEYBOARD_FOLLOW_STATE: KeyboardFollowState = {
-    active: false,
-    positions: "",
-    duration: KEYBOARD_FOLLOW_INSTANT,
-};
-
 let lastViewportHeight: number | undefined;
 let lastViewportOffsetTop = 0;
 let lastVisibleViewportBottom = 0;
 let lastPhysicalKeyboardVisible = false;
 let lastPhysicalKeyboardHeight = 0;
 let lastUsesVirtualKeyboardGeometry = false;
-let lastKeyboardFollow = INITIAL_KEYBOARD_FOLLOW_STATE;
 const keyboardTouchScrollLock =
     typeof document === "undefined"
         ? null
@@ -142,31 +120,6 @@ function getContainerKeyboardInset(
     );
 }
 
-/**
- * 下部 UI（バー・理由欄・フッター）の transition 時間を決める。
- * - 開閉が切り替わった: スライド
- * - 同じ状態のまま位置だけ変わった: 即時追従
- * - 位置が変わらない同期: 前の値を維持（重複した同期でスライドを打ち消さない）
- */
-function resolveKeyboardFollowDuration(
-    isComposerKeyboardActive: boolean,
-    positions: string,
-): string {
-    let duration = lastKeyboardFollow.duration;
-    if (isComposerKeyboardActive !== lastKeyboardFollow.active) {
-        duration = KEYBOARD_FOLLOW_SLIDE;
-    } else if (positions !== lastKeyboardFollow.positions) {
-        duration = KEYBOARD_FOLLOW_INSTANT;
-    }
-
-    lastKeyboardFollow = {
-        active: isComposerKeyboardActive,
-        positions,
-        duration,
-    };
-    return duration;
-}
-
 function syncLayoutCssVariables(
     isComposerKeyboardActive: boolean,
     viewportMetrics: ViewportMetrics = {},
@@ -231,10 +184,6 @@ function syncLayoutCssVariables(
     const footerBottom = !layoutCapabilities.hasFooter || isComposerKeyboardActive
         ? `${-FOOTER_HEIGHT}px`
         : "0px";
-    const keyboardFollowDuration = resolveKeyboardFollowDuration(
-        isComposerKeyboardActive,
-        `${keyboardButtonBarBottom}|${reasonInputBottom}|${footerBottom}`,
-    );
 
     setRootStyleProperty(
         "--app-root-height",
@@ -317,11 +266,6 @@ function syncLayoutCssVariables(
         visibleViewportHeight === undefined
             ? "43dvh"
             : `${lastViewportOffsetTop + visibleViewportHeight * 0.43}px`,
-    );
-    // 位置と同じ同期で書き、同じ style 更新で transition の時間を確定させる
-    setRootStyleProperty(
-        "--keyboard-follow-duration",
-        keyboardFollowDuration,
     );
     setRootStyleProperty(
         "--keyboard-button-bar-bottom",
@@ -416,7 +360,6 @@ export function setupViewportListener(
     layoutCapabilities.hasKeyboardButtonBar = capabilities.hasKeyboardButtonBar ?? true;
     bottomPosition = getClosedLayoutBottom();
     lastUsesVirtualKeyboardGeometry = false;
-    lastKeyboardFollow = INITIAL_KEYBOARD_FOLLOW_STATE;
     writeStaticLayoutVariables();
     syncLayoutCssVariables(false);
 

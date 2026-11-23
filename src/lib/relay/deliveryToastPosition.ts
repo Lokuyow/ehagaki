@@ -2,8 +2,6 @@ import type { AppRuntimeEnvironment } from "../appRuntimeEnvironment";
 
 export interface DeliveryToastPlacement { target: HTMLElement; style: string }
 
-const BOTTOM_BAR_SELECTOR = ".footer-bar,.footer-button-bar,.reason-input-container";
-
 export function getActiveDeliveryDialog(runtime: AppRuntimeEnvironment): HTMLElement | undefined {
     if (!runtime.domRoot || !runtime.window) return;
     return [...runtime.domRoot.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"],[role="alertdialog"][data-state="open"]')]
@@ -61,14 +59,8 @@ export function positionDeliveryToasts(element: HTMLElement, runtime: AppRuntime
         }
     };
     const schedule = () => { if (!frame && !disposed) frame = win.requestAnimationFrame(update); };
-    // ResizeObserver は位置の変化を通知しない。キーボード開閉で下部 UI がスライドし終えたら置き直す。
-    const settle = (event: Event) => {
-        if (event.target instanceof Element && event.target.matches(BOTTOM_BAR_SELECTOR)) schedule();
-    };
     const mutation = new MutationObserver(schedule);
     mutation.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-state", "aria-hidden"] });
-    root.addEventListener("transitionend", settle);
-    root.addEventListener("transitioncancel", settle);
     win.addEventListener("resize", schedule);
     win.addEventListener("scroll", schedule, true);
     win.visualViewport?.addEventListener("resize", schedule);
@@ -76,7 +68,6 @@ export function positionDeliveryToasts(element: HTMLElement, runtime: AppRuntime
     schedule();
     return () => {
         disposed = true; win.cancelAnimationFrame(frame); observer.disconnect(); mutation.disconnect();
-        root.removeEventListener("transitionend", settle); root.removeEventListener("transitioncancel", settle);
         win.removeEventListener("resize", schedule); win.removeEventListener("scroll", schedule, true);
         win.visualViewport?.removeEventListener("resize", schedule); win.visualViewport?.removeEventListener("scroll", schedule);
     };

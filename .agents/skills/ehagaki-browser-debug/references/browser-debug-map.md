@@ -25,7 +25,7 @@
 
 ## 症状固有の注意点
 
-- 下部 UI の追従は `--keyboard-follow-duration` で、開閉の切り替え時だけスライドし、表示中のパン・高さ変化は即時に追う。バーと理由欄は `translate`、フッターは fixed 子孫があるため `bottom` で動かす。
+- 下部 UI（バー・理由欄・フッター）はアニメーションさせず、エディタ領域の高さと同じフレームで位置を変える。transition を足すとエディタ下端との間に一瞬隙間ができる。
 - Viewport の keyboard activation は editor focus と結び付く。VirtualKeyboard の矩形には visible-frame origin 補正があり、高さだけへ置き換えない。`setupViewportListener()` cleanup は event/rAF、touch scroll lock、`overlaysContent` を解放・復元する。ResizeObserver は作成した effect が disconnect する。
 - `activeElement` が body でも selection anchor が editor 内なら active の場合がある。focus utility の一時 `inputmode` 復元を保ち、iOS の programmatic focus を keyboard 抑止と同一視しない。
 - Scroll lock は document allowlist と item の `ontouchstart` / `preventDefault()` を併せて調べる。lock の `sync(false)` / `dispose()` と touch end cleanup を保つ。

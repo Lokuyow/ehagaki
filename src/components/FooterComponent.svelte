@@ -284,9 +284,6 @@
         right: 0;
         bottom: var(--footer-bottom);
         z-index: 99;
-        /* 子孫に position: fixed があるため transform ではなく bottom で動かす */
-        transition: bottom var(--keyboard-follow-duration)
-            var(--keyboard-follow-easing);
     }
 
     :global(.login-btn) {
@@ -381,10 +378,6 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-        .footer-bar {
-            transition: none;
-        }
-
         .update-indicator {
             animation: none;
             opacity: 1;

@@ -402,11 +402,9 @@
         left: 0;
         right: 0;
         bottom: 0;
-        /* translate は compositor で動くため、キーボード開閉中もカクつきにくい */
+        /* エディタ領域の高さと同じフレームで動かし、間に隙間を作らない */
         translate: 0 calc(-1 * var(--keyboard-button-bar-bottom));
         z-index: 98;
-        transition: translate var(--keyboard-follow-duration)
-            var(--keyboard-follow-easing);
 
         .image-icon {
             mask-image: url("/icons/image_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
@@ -504,12 +502,6 @@
 
     .footer-button-bar[data-long-pressing="true"] {
         z-index: 100;
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-        .footer-button-bar {
-            transition: none;
-        }
     }
 
     .button-container {
