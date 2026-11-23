@@ -41,7 +41,6 @@
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
   import ReasonInput from "./components/ReasonInput.svelte";
-  import ChannelContextPreview from "./components/ChannelContextPreview.svelte";
   import ImageFullscreen from "./components/ImageFullscreen.svelte";
   import type PostComponentType from "./components/PostComponent.svelte";
   import ReplyQuotePreview from "./components/ReplyQuotePreview.svelte";
@@ -249,13 +248,12 @@
     resolveEventContentBody,
     type PostContentRenderModel,
   } from "./lib/postContentPreview";
-  import { createSensitivePayloadBodyLoader } from "./lib/sensitiveContentPayloadReader";
+  import { createLazySensitivePayloadBodyLoader } from "./lib/lazySensitivePayloadBodyLoader";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
   import { uploadDestinationStore } from "./stores/uploadDestinationStore.svelte";
   import { postHistoryLocalRelayService } from "./lib/postHistoryLocalRelayService";
   import { uploadFiles as normalUploadFiles } from "./lib/normalUploadHelper";
-  import { uploadFileForHost as uploadHeadlessFile } from "./lib/upload/headlessUpload";
   import type { EHagakiUploadResult } from "./web-component/types";
 
   const appRuntimeEnvironment = getAppRuntimeEnvironment();
@@ -311,6 +309,8 @@
     typeof import("./components/ComposerTargetDialog.svelte").default;
   type CustomEmojiPickerComponent =
     typeof import("./components/CustomEmojiPicker.svelte").default;
+  type ChannelContextPreviewComponent =
+    typeof import("./components/ChannelContextPreview.svelte").default;
   let PostComponent: PostComponent | null = $state(null);
   let LoginDialogComponent: LoginDialogComponent | null = $state(null);
   let ProfileComponent: ProfileComponent | null = $state(null);
@@ -327,6 +327,8 @@
   let ComposerTargetDialogComponent: ComposerTargetDialogComponent | null =
     $state(null);
   let CustomEmojiPickerComponent: CustomEmojiPickerComponent | null =
+    $state(null);
+  let ChannelContextPreviewComponent: ChannelContextPreviewComponent | null =
     $state(null);
   let transientComponentLoadFailure: AppComponentKey | null = $state(null);
   let showStaleAssetReloadPrompt = $state(false);
@@ -364,6 +366,8 @@
         break;
       case "custom-emoji-picker":
         customEmojiPickerOpen = false;
+        break;
+      case "channel-context-preview":
         break;
       case "post":
         break;
@@ -436,6 +440,7 @@
     preloadPostHistoryDialog,
     loadComposerTargetDialog,
     loadCustomEmojiPicker,
+    loadChannelContextPreview,
   } = createAppComponentLoaders({
     isStaleAssetReloadRequired: () => staleAssetReloadState.required,
     onLoadFailure: handleAppComponentLoadFailure,
@@ -467,6 +472,16 @@
     setCustomEmojiPickerComponent: (component) => {
       CustomEmojiPickerComponent = component;
     },
+    setChannelContextPreviewComponent: (component) => {
+      ChannelContextPreviewComponent = component;
+    },
+  });
+
+  // The channel preview (and its sanitizer) is needed only for a channel post.
+  $effect(() => {
+    if (effectiveChannelContextState.value && !ChannelContextPreviewComponent) {
+      void loadChannelContextPreview();
+    }
   });
 
   // --- 秘密鍵入力・保存・認証 ---
@@ -1581,6 +1596,9 @@
       error.name = "upload_in_progress";
       throw error;
     }
+    // Compression, blurhash, and upload transport are only needed by hosts
+    // that call the headless upload API.
+    const { uploadFileForHost: uploadHeadlessFile } = await import("./lib/upload/headlessUpload");
     return await uploadHeadlessFile(file, options.signal);
   }
 
@@ -2118,9 +2136,9 @@
             class="composer-scroll-content"
             bind:this={composerScrollContentEl}
           >
-            {#if effectiveChannelContextState.value}
+            {#if effectiveChannelContextState.value && ChannelContextPreviewComponent}
               <div class="composer-block composer-reference-block">
-                <ChannelContextPreview
+                <ChannelContextPreviewComponent
                   channel={effectiveChannelContextState.value}
                   runtime={channelContextRuntimeState.value}
                   pictureCacheEligible={isChannelPictureCacheEligible(
@@ -2154,7 +2172,7 @@
                   model={getComposerReferencePreviewModel(
                     replyQuoteState.value.reply,
                   )}
-                  loadSensitiveBody={createSensitivePayloadBodyLoader({
+                  loadSensitiveBody={createLazySensitivePayloadBodyLoader({
                     ownerPubkey: authState.value.pubkey,
                     structure: replyQuoteState.value.reply.referencedEvent,
                     relayHints: replyQuoteState.value.reply.relayHints,
@@ -2236,7 +2254,7 @@
                   reference={quote}
                   mode="quote"
                   model={getComposerReferencePreviewModel(quote)}
-                  loadSensitiveBody={createSensitivePayloadBodyLoader({
+                  loadSensitiveBody={createLazySensitivePayloadBodyLoader({
                     ownerPubkey: authState.value.pubkey,
                     structure: quote.referencedEvent,
                     relayHints: quote.relayHints,

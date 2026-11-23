@@ -2,7 +2,7 @@ import { getAppRuntimeEnvironment } from "../appRuntimeEnvironment";
 // Only the gate copy is needed before svelte-i18n loads. Importing the full
 // locale files here would put both catalogs in the entry's static graph.
 import databaseGateCopy from "../i18n/databaseGate.json";
-import { setEHagakiDbUpgradeBlocked } from "./ehagakiDb";
+import { setEHagakiDbUpgradeBlocked } from "./ehagakiDbUpgradeState";
 import { EHAGAKI_DB_NAME, EHAGAKI_DB_NATIVE_VERSION } from "./ehagakiDbConstants";
 import { upgradeEhagakiDatabaseSchema } from "./ehagakiDbMigration";
 import { installEhagakiDbOpenGate } from "./ehagakiDbOpenGate";

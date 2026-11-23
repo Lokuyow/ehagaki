@@ -524,6 +524,9 @@ for (const base of ["/", "/ehagaki/"] as const) {
             await openImage.click();
             const viewer = page.locator(".ehagaki-pswp");
             await expect(viewer).toBeVisible();
+            // PhotoSwipe's stylesheet is lazy in the app; the viewer must still be styled.
+            await expect.poll(() => viewer.evaluate((node) => getComputedStyle(node).position)).toBe("fixed");
+            await expect.poll(() => viewer.locator(".pswp__button--close").evaluate((node) => getComputedStyle(node).opacity)).toBe("0.9");
             await page.keyboard.press("Escape");
             await expect(viewer).toHaveCount(0);
             await expect(dialog).toBeVisible();

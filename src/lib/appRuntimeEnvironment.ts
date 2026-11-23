@@ -25,6 +25,11 @@ export interface AppRuntimeEnvironment {
     localNsecAuthEnabled: boolean;
     /** Host opt-in: sign in with NIP-07 at startup when no session is restored. */
     autoLoginNip07Enabled: boolean;
+    /**
+     * Loads document-level styles the fullscreen viewer needs before it opens.
+     * Runtimes that already inline the viewer styles (Web Component) omit it.
+     */
+    loadFullscreenViewerStyles?: () => Promise<unknown>;
 }
 
 function createFallbackElement(): HTMLElement {

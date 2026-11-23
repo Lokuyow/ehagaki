@@ -80,7 +80,14 @@ export default defineConfig({
         assetFileNames: 'assets/[name]-bridge-[hash][extname]',
         codeSplitting: {
           groups: [
+            // Svelte's runtime is shared by the entry graph and every vendor group
+            // that depends on it. Capture it first so recursive dependency capture
+            // by vendor-editor/vendor-ui does not make the entry preload them.
+            { name: 'vendor-svelte', test: /node_modules[\\/](?:svelte|esm-env|clsx)[\\/]/ },
             { name: 'vendor-editor', test: /node_modules[\\/](?:@tiptap[\\/]|prosemirror-|svelte-tiptap)/ },
+            // The entry needs only a few nostr-tools helpers before App loads.
+            // Keep those statically reachable modules out of the full vendor chunk.
+            { name: 'vendor-nostr-initial', test: /node_modules[\\/](?:nostr-tools|rx-nostr|@rx-nostr[\\/]|@noble[\\/]|@scure[\\/])/, tags: ['$initial'] },
             { name: 'vendor-nostr', test: /node_modules[\\/](?:nostr-tools|rx-nostr|@rx-nostr[\\/]|@noble[\\/])/ },
             // Keep the optional AAC encoder outside MediaBunny's shared chunk.
             { name: 'vendor-video', test: /node_modules[\\/]mediabunny[\\/]/ },

@@ -19,7 +19,7 @@ import {
     normalizeExternalNostrClientUrlTemplate,
     type ExternalNostrClient,
     type ExternalNostrClientPreference,
-} from "../postHistoryExternalClient";
+} from "../externalNostrClientPreference";
 
 export type SupportedLocale = "ja" | "en";
 export type PreferenceSource =

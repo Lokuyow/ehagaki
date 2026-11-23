@@ -2,33 +2,22 @@ import { nip19 } from "nostr-tools";
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
 import { buildPostHistoryNevent } from "./postHistoryNevent";
 import { encodeProfilePointer, type ProfileMention } from "./profileMention";
+import {
+    EXTERNAL_NOSTR_CLIENT_PRESET_TEMPLATES,
+    normalizeExternalNostrClientUrlTemplate,
+    type ExternalNostrClient,
+    type ExternalNostrClientPreference,
+} from "./externalNostrClientPreference";
 
-export const EXTERNAL_NOSTR_CLIENTS = [
-    "nostter",
-    "jumble",
-    "lumilumi",
-    "primal",
-    "njump",
-    "custom",
-] as const;
-
-export type ExternalNostrClient = (typeof EXTERNAL_NOSTR_CLIENTS)[number];
-
-export interface ExternalNostrClientPreference {
-    client: ExternalNostrClient;
-    customUrlTemplate: string;
-}
-
-export const EXTERNAL_NOSTR_CLIENT_PRESET_TEMPLATES: Record<
-    Exclude<ExternalNostrClient, "custom">,
-    string
-> = {
-    nostter: "https://nostter.app/{nevent}",
-    jumble: "https://jumble.social/{nevent}",
-    primal: "https://primal.net/e/{nevent}",
-    njump: "https://njump.me/{nevent}",
-    lumilumi: "https://lumilumi.app/{nevent}",
-};
+export {
+    EXTERNAL_NOSTR_CLIENTS,
+    EXTERNAL_NOSTR_CLIENT_PRESET_TEMPLATES,
+    isExternalNostrClient,
+    normalizeExternalNostrClient,
+    normalizeExternalNostrClientUrlTemplate,
+    type ExternalNostrClient,
+    type ExternalNostrClientPreference,
+} from "./externalNostrClientPreference";
 
 const EXTERNAL_NOSTR_CLIENT_LABELS: Record<ExternalNostrClient, string> = {
     nostter: "nostter",
@@ -38,38 +27,6 @@ const EXTERNAL_NOSTR_CLIENT_LABELS: Record<ExternalNostrClient, string> = {
     lumilumi: "Lumilumi",
     custom: "",
 };
-
-export function isExternalNostrClient(
-    value: string | null | undefined,
-): value is ExternalNostrClient {
-    return typeof value === "string" && EXTERNAL_NOSTR_CLIENTS.includes(
-        value as ExternalNostrClient,
-    );
-}
-
-export function normalizeExternalNostrClient(
-    value: string | null | undefined,
-): ExternalNostrClient | null {
-    return isExternalNostrClient(value) ? value : null;
-}
-
-export function normalizeExternalNostrClientUrlTemplate(
-    value: string | null | undefined,
-): string | null {
-    const normalized = value?.trim() ?? "";
-    if (!normalized || normalized.split("{nevent}").length !== 2) {
-        return null;
-    }
-
-    try {
-        const url = new URL(normalized);
-        return url.protocol === "https:" && url.hostname
-            ? normalized
-            : null;
-    } catch {
-        return null;
-    }
-}
 
 export function resolveExternalNostrClientTemplate(
     preference: ExternalNostrClientPreference,

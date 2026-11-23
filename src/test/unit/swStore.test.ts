@@ -27,7 +27,7 @@ vi.mock("virtual:pwa-register/svelte", () => ({
     }),
 }));
 
-vi.mock("../../lib/storage/ehagakiDb", () => ({
+vi.mock("../../lib/storage/ehagakiDbUpgradeState", () => ({
     subscribeEHagakiDbUpgradeState(listener: (blocked: boolean) => void) {
         testState.dbUpgradeStateListener = listener;
         listener(false);
