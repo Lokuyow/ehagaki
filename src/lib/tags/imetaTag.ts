@@ -1,6 +1,7 @@
 // imeta.ts
 // NIP-92 imetaタグ生成ユーティリティ
 import { isDefaultUploadAborted } from '../uploadAbortUtils';
+import { waitForImageDecode } from '../utils/imageDecode';
 import type { FileMetadataObject } from 'nostr-tools/nip94';
 import type { ImetaField } from '../types/media';
 
@@ -111,12 +112,10 @@ export async function generateBlurhash(
         }
 
         // load 時点ではデコード済みとは限らず、drawImage がメインスレッドで
-        // 同期デコードする。失敗時は従来どおり drawImage に任せる。
-        if (typeof img.decode === "function") {
-            await img.decode().catch(() => undefined);
-            if (isUploadAborted()) {
-                return null;
-            }
+        // 同期デコードする。失敗・未完了時は従来どおり drawImage に任せる。
+        await waitForImageDecode(img);
+        if (isUploadAborted()) {
+            return null;
         }
 
         const canvas = document.createElement("canvas");

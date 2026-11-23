@@ -162,7 +162,9 @@
         };
 
         // Capture-phase scroll fires for every scrolling descendant; coalesce
-        // layout reads to one measurement per frame.
+        // layout reads to one measurement per frame. ResizeObserver already
+        // delivers once per frame after layout, so it updates directly to keep
+        // the new geometry in the same frame.
         let frame = 0;
         const scheduleUpdate = () => {
             if (frame || disposed) return;
@@ -179,7 +181,7 @@
         const resizeObserver =
             typeof ResizeObserver === "undefined"
                 ? null
-                : new ResizeObserver(scheduleUpdate);
+                : new ResizeObserver(() => void updatePosition());
         resizeObserver?.observe(anchor);
         resizeObserver?.observe(container);
         void updatePosition();

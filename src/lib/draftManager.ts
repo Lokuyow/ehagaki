@@ -156,9 +156,6 @@ export async function hasDrafts(options: DraftsRepositoryOptions = {}): Promise<
     return (await loadDrafts(options)).length > 0;
 }
 
-/**
- * 日時をフォーマット（相対時間または日付） — 国際化対応
- */
 // The draft list formats every visible draft; reuse formatters per locale.
 const draftRelativeTimeFormats = new Map<string, Intl.RelativeTimeFormat>();
 const draftDateFormats = new Map<string, Intl.DateTimeFormat>();
@@ -184,6 +181,9 @@ function getDraftDateFormat(loc: string, withYear: boolean): Intl.DateTimeFormat
     return format;
 }
 
+/**
+ * 日時をフォーマット（相対時間または日付） — 国際化対応
+ */
 export function formatDraftTimestamp(timestamp: number): string {
     const now = Date.now();
     const diff = now - timestamp;

@@ -179,9 +179,6 @@ const EXACT_TIMESTAMP_FORMAT: Intl.DateTimeFormatOptions = {
     second: "2-digit",
 };
 
-// Constructing Intl.DateTimeFormat dominates the cost of formatting, and a
-// history page formats two timestamps per post. Options are module constants,
-// so the options object identity plus the locale identifies a formatter.
 const MONTH_LABEL_CURRENT_YEAR_FORMAT: Intl.DateTimeFormatOptions = {
     month: "numeric",
     day: "numeric",
@@ -192,6 +189,9 @@ const MONTH_LABEL_OTHER_YEAR_FORMAT: Intl.DateTimeFormatOptions = {
     month: "numeric",
 };
 
+// Constructing Intl.DateTimeFormat dominates the cost of formatting, and a
+// history page formats two timestamps per post. Options are module constants,
+// so the options object identity plus the locale identifies a formatter.
 const dateTimeFormatCache = new Map<
     Intl.DateTimeFormatOptions,
     Map<string, Intl.DateTimeFormat>
