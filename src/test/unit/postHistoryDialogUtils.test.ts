@@ -99,6 +99,35 @@ describe("postHistoryDialogUtils", () => {
         ]);
     });
 
+    it("buildPreviewContent trims trailing punctuation from hashtags without a matching t tag", () => {
+        const result = buildPreviewContent({
+            content: "#nostr。 #タグ」 #ok!?",
+            tags: [],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "hashtag", hashtag: "nostr" },
+            { type: "text", text: "。 " },
+            { type: "hashtag", hashtag: "タグ" },
+            { type: "text", text: "」 " },
+            { type: "hashtag", hashtag: "ok" },
+            { type: "text", text: "!?" },
+        ]);
+    });
+
+    it("buildPreviewContent prefers the longest t tag that prefixes the hashtag", () => {
+        const result = buildPreviewContent({
+            content: "#Nostrは楽しい #wow。",
+            tags: [["t", "nostr"], ["t", "wow。"]],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "hashtag", hashtag: "Nostr" },
+            { type: "text", text: "は楽しい " },
+            { type: "hashtag", hashtag: "wow。" },
+        ]);
+    });
+
     it("ignores invalid tags and keeps the first valid duplicate shortcode mapping", () => {
         const result = buildPreviewContent({
             content: ":blobcat: :BLOBCAT: :bad:",

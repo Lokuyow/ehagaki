@@ -21,7 +21,7 @@ const previewContent = {
 };
 
 describe("PostHistoryPreviewContent", () => {
-    it("links hashtags to the configured external client and keeps plain text when unsupported", async () => {
+    it("links hashtags to the configured external client and keeps plain text when unsupported", () => {
         const hashtagContent = {
             segments: [
                 { type: "text" as const, text: "see " },
@@ -47,7 +47,6 @@ describe("PostHistoryPreviewContent", () => {
             settingsStore.externalNostrClient = previous;
         }
     });
-
 
     it("renders a placeholder slot while loading and uses stored aspect ratio width", () => {
         const { container } = render(PostHistoryPreviewContent, {

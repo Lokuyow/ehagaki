@@ -509,13 +509,37 @@ export function buildPreviewContent(
     pushContentWithEmoji(normalizedContent.slice(lastIndex), segments, emojiMap, mediaMap, emojiUrls);
 
     if (segments.length === 0) segments.push({ type: "text", text: normalizedContent });
-    return { segments: splitHashtagSegments(segments), emojiUrls: [...emojiUrls] };
+    return { segments: splitHashtagSegments(segments, post.tags), emojiUrls: [...emojiUrls] };
+}
+
+const HASHTAG_TRAILING_PUNCTUATION_PATTERN = /[。、．，,.!?！？…:;：；"'”’」』）)\]】〕〉》]+$/u;
+
+// 候補の先頭からイベントの t タグに一致する最長部分を採用し、一致しなければ末尾の句読点を除く
+function resolveHashtagCandidate(candidate: string, tTags: ReadonlySet<string>): string {
+    if (tTags.size > 0) {
+        const chars = Array.from(candidate);
+        for (let length = chars.length; length > 0; length -= 1) {
+            const prefix = chars.slice(0, length).join("");
+            if (tTags.has(prefix.toLowerCase())) {
+                return prefix;
+            }
+        }
+    }
+    return candidate.replace(HASHTAG_TRAILING_PUNCTUATION_PATTERN, "");
 }
 
 // エディターのハイライトと同じ規則（行頭・空白の直後の #）でテキストからハッシュタグを切り出す
 function splitHashtagSegments(
     segments: PostHistoryPreviewSegment[],
+    tags: PostHistoryRecord["tags"],
 ): PostHistoryPreviewSegment[] {
+    const tTags = new Set(
+        tags.flatMap((tag) =>
+            tag[0] === "t" && typeof tag[1] === "string" && tag[1]
+                ? [tag[1].toLowerCase()]
+                : [],
+        ),
+    );
     const result: PostHistoryPreviewSegment[] = [];
     segments.forEach((segment, index) => {
         if (segment.type !== "text") {
@@ -526,7 +550,7 @@ function splitHashtagSegments(
         const pattern = new RegExp(HASHTAG_REGEX.source, "g");
         let lastIndex = 0;
         for (const match of segment.text.matchAll(pattern)) {
-            const hashtag = match[1];
+            const hashtag = resolveHashtagCandidate(match[1] ?? "", tTags);
             const matchIndex = match.index ?? 0;
             // 先頭の空白を伴わない一致は、直前が別セグメントの場合は行頭ではないので除外する
             if (!hashtag || (index > 0 && matchIndex === 0 && match[0].startsWith("#"))) {
