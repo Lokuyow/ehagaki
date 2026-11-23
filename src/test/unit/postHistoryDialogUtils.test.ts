@@ -606,6 +606,20 @@ describe("postHistoryDialogUtils", () => {
         expect(formatPostHistoryMonthLabel(yesterday, "ja", now)).toBe("昨日");
     });
 
+    it("formatPostHistoryMonthLabel keeps reused formatters separate per locale", () => {
+        const now = new Date(2025, 5, 10, 12, 0, 0).getTime();
+        const today = new Date(2025, 5, 10, 9, 0, 0).getTime();
+        const sameYear = new Date(2025, 2, 15, 14, 0, 0).getTime();
+        const options: Intl.DateTimeFormatOptions = { month: "numeric", day: "numeric", weekday: "short" };
+
+        expect(formatPostHistoryMonthLabel(today, "ja", now)).toBe("今日");
+        expect(formatPostHistoryMonthLabel(today, "en", now)).toBe("today");
+        expect(formatPostHistoryMonthLabel(sameYear, "ja", now))
+            .toBe(new Intl.DateTimeFormat("ja", options).format(new Date(sameYear)));
+        expect(formatPostHistoryMonthLabel(sameYear, "en", now))
+            .toBe(new Intl.DateTimeFormat("en", options).format(new Date(sameYear)));
+    });
+
     it("formatPostHistoryMonthLabel returns month/day/weekday for same-year dates", () => {
         const now = new Date(2025, 5, 10, 12, 0, 0).getTime();
         const postedAt = new Date(2025, 2, 15, 14, 0, 0).getTime();
