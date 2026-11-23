@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/svelte";
 import { describe, expect, it } from "vitest";
 import PostHistoryPreviewContent from "../../components/PostHistoryPreviewContent.svelte";
+import { settingsStore } from "../../stores/settingsStore.svelte";
 
 const emojiUrl = "https://example.com/blobcat.webp";
 
@@ -20,6 +21,34 @@ const previewContent = {
 };
 
 describe("PostHistoryPreviewContent", () => {
+    it("links hashtags to the configured external client and keeps plain text when unsupported", async () => {
+        const hashtagContent = {
+            segments: [
+                { type: "text" as const, text: "see " },
+                { type: "hashtag" as const, hashtag: "nostr" },
+            ],
+            emojiUrls: [],
+        };
+        const previous = settingsStore.externalNostrClient;
+        try {
+            settingsStore.externalNostrClient = "nostter";
+            const view = render(PostHistoryPreviewContent, { props: { previewContent: hashtagContent } });
+            const link = view.container.querySelector("a.hashtag-link");
+            expect(link?.getAttribute("href")).toBe("https://nostter.app/search?q=%23nostr");
+            expect(link?.getAttribute("target")).toBe("_blank");
+            expect(link?.textContent).toBe("#nostr");
+            view.unmount();
+
+            settingsStore.externalNostrClient = "njump";
+            const plain = render(PostHistoryPreviewContent, { props: { previewContent: hashtagContent } });
+            expect(plain.container.querySelector("a.hashtag-link")).toBeNull();
+            expect(plain.container.textContent).toContain("#nostr");
+        } finally {
+            settingsStore.externalNostrClient = previous;
+        }
+    });
+
+
     it("renders a placeholder slot while loading and uses stored aspect ratio width", () => {
         const { container } = render(PostHistoryPreviewContent, {
             props: {

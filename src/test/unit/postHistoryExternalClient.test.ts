@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { nip19 } from "nostr-tools";
 import {
     buildExternalNostrClientUrl,
+    buildHashtagExternalClientUrl,
     buildProfileExternalClientUrl,
     getExternalNostrClientDisplayName,
     normalizeExternalNostrClientUrlTemplate,
@@ -97,5 +98,23 @@ describe("profile external client URL", () => {
         expect(buildProfileExternalClientUrl(profile, {
             client: "custom", customUrlTemplate: "http://viewer.example/{nevent}",
         })).toBe(`https://njump.me/${nprofile}`);
+    });
+});
+
+describe("hashtag external client URL", () => {
+    it.each([
+        ["nostter", "https://nostter.app/search?q=%23Nostr%E3%81%AF"],
+        ["jumble", "https://jumble.social/notes?t=nostr%E3%81%AF"],
+        ["lumilumi", "https://lumilumi.app/search?q=t%3ANostr%E3%81%AF%20kind%3A1"],
+        ["primal", "https://primal.net/search/%23Nostr%E3%81%AF"],
+    ] as const)("opens %s's hashtag route", (client, expected) => {
+        expect(buildHashtagExternalClientUrl("Nostrは", { client, customUrlTemplate: "" })).toBe(expected);
+    });
+
+    it("returns null for clients without a hashtag route", () => {
+        expect(buildHashtagExternalClientUrl("nostr", { client: "njump", customUrlTemplate: "" })).toBeNull();
+        expect(buildHashtagExternalClientUrl("nostr", {
+            client: "custom", customUrlTemplate: "https://viewer.example/{nevent}",
+        })).toBeNull();
     });
 });

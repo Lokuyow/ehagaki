@@ -75,6 +75,30 @@ describe("postHistoryDialogUtils", () => {
         ]);
     });
 
+    it("buildPreviewContent splits hashtags with the editor's boundary rule", () => {
+        const result = buildPreviewContent({
+            content: "#start mid#not 　#全角 https://example.com/#frag :e:#after",
+            tags: [["emoji", "e", "https://example.com/e.webp"]],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "hashtag", hashtag: "start" },
+            { type: "text", text: " mid#not 　" },
+            { type: "hashtag", hashtag: "全角" },
+            { type: "text", text: " " },
+            { type: "link", text: "https://example.com/#frag", href: "https://example.com/#frag" },
+            { type: "text", text: " " },
+            {
+                type: "emoji",
+                shortcode: "e",
+                shortcodeLower: "e",
+                rawShortcodeText: ":e:",
+                url: "https://example.com/e.webp",
+            },
+            { type: "text", text: "#after" },
+        ]);
+    });
+
     it("ignores invalid tags and keeps the first valid duplicate shortcode mapping", () => {
         const result = buildPreviewContent({
             content: ":blobcat: :BLOBCAT: :bad:",

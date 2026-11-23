@@ -131,6 +131,29 @@ export function buildProfileExternalClientUrl(
     return buildExternalNostrClientUrl(preference, identifier) ?? `https://njump.me/${pointer}`;
 }
 
+export function buildHashtagExternalClientUrl(
+    hashtag: string,
+    preference: ExternalNostrClientPreference,
+): string | null {
+    if (!hashtag) {
+        return null;
+    }
+
+    switch (preference.client) {
+        case "nostter":
+            return `https://nostter.app/search?q=${encodeURIComponent(`#${hashtag}`)}`;
+        case "jumble":
+            return `https://jumble.social/notes?t=${encodeURIComponent(hashtag.toLowerCase())}`;
+        case "lumilumi":
+            return `https://lumilumi.app/search?q=${encodeURIComponent(`t:${hashtag} kind:1`)}`;
+        case "primal":
+            return `https://primal.net/search/${encodeURIComponent(`#${hashtag}`)}`;
+        default:
+            // njump とカスタムテンプレートにはハッシュタグを開く URL がない
+            return null;
+    }
+}
+
 export function getExternalNostrClientDisplayName(
     preference: ExternalNostrClientPreference,
 ): string | null {

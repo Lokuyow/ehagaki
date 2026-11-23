@@ -17,6 +17,7 @@ import type { PostHistoryRecord } from "./storage/ehagakiDb";
 import { CHANNEL_TEMPORARY_READ_RELAY_LIMIT } from "./channelContextConstants";
 import { scanHttpUrlCandidates } from "./utils/httpUrlCandidates";
 import { scanProfileMentions, type ProfileMention } from "./profileMention";
+import { HASHTAG_REGEX } from "./constants";
 
 const CUSTOM_EMOJI_SHORTCODE_PATTERN = /:([^\s:]+):/g;
 
@@ -46,6 +47,10 @@ export type PostHistoryPreviewSegment =
     | {
         type: "mention";
         profile: ProfileMention;
+    }
+    | {
+        type: "hashtag";
+        hashtag: string;
     };
 
 export type PostHistoryPreviewContent = {
@@ -504,7 +509,43 @@ export function buildPreviewContent(
     pushContentWithEmoji(normalizedContent.slice(lastIndex), segments, emojiMap, mediaMap, emojiUrls);
 
     if (segments.length === 0) segments.push({ type: "text", text: normalizedContent });
-    return { segments, emojiUrls: [...emojiUrls] };
+    return { segments: splitHashtagSegments(segments), emojiUrls: [...emojiUrls] };
+}
+
+// エディターのハイライトと同じ規則（行頭・空白の直後の #）でテキストからハッシュタグを切り出す
+function splitHashtagSegments(
+    segments: PostHistoryPreviewSegment[],
+): PostHistoryPreviewSegment[] {
+    const result: PostHistoryPreviewSegment[] = [];
+    segments.forEach((segment, index) => {
+        if (segment.type !== "text") {
+            result.push(segment);
+            return;
+        }
+
+        const pattern = new RegExp(HASHTAG_REGEX.source, "g");
+        let lastIndex = 0;
+        for (const match of segment.text.matchAll(pattern)) {
+            const hashtag = match[1];
+            const matchIndex = match.index ?? 0;
+            // 先頭の空白を伴わない一致は、直前が別セグメントの場合は行頭ではないので除外する
+            if (!hashtag || (index > 0 && matchIndex === 0 && match[0].startsWith("#"))) {
+                continue;
+            }
+            const hashStart = matchIndex + match[0].indexOf("#");
+            if (hashStart > lastIndex) {
+                result.push({ type: "text", text: segment.text.slice(lastIndex, hashStart) });
+            }
+            result.push({ type: "hashtag", hashtag });
+            lastIndex = hashStart + 1 + hashtag.length;
+        }
+        if (lastIndex === 0) {
+            result.push(segment);
+        } else if (lastIndex < segment.text.length) {
+            result.push({ type: "text", text: segment.text.slice(lastIndex) });
+        }
+    });
+    return result;
 }
 
 function pushContentWithEmoji(
