@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { finalizeEvent, generateSecretKey, getPublicKey, nip19, verifyEvent, type EventTemplate, type Event as NostrEvent } from 'nostr-tools';
 import { restoreMentionDraftFixture, saveMentionDraftFixture } from './mentionAvatarDraftFixture';
 
@@ -369,6 +369,20 @@ function hasStoredFollowList(page: Page, pubkey: string): Promise<boolean> {
     }), pubkey);
 }
 
+async function expectMentionAvatarInline(mention: Locator) {
+    const slot = mention.locator('.profile-mention-avatar');
+    const icon = slot.locator('[data-avatar-image], [data-avatar-fallback]').first();
+    await expect(icon).toBeVisible();
+    const [slotBox, iconBox, atBox] = await Promise.all([
+        slot.boundingBox(), icon.boundingBox(),
+        mention.locator('.profile-mention-prefix').boundingBox(),
+    ]);
+    expect(iconBox!.width).toBeGreaterThan(0);
+    expect(Math.abs(iconBox!.y - slotBox!.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(iconBox!.x - slotBox!.x)).toBeLessThanOrEqual(1);
+    expect(atBox!.height).toBeLessThan(slotBox!.height * 1.5);
+}
+
 test('searches saved mentions and delivers a tagged post to the recipient notifications', async ({ page }) => {
     const prefix = '寿'.repeat(23) + '👩🏽‍💻';
     const longName = prefix + '長い名前'.repeat(100);
@@ -435,6 +449,7 @@ test('searches saved mentions and delivers a tagged post to the recipient notifi
     await expect(historyMention).toBeVisible();
     await expect(historyMention).toHaveAttribute('title', `@${longName}`);
     await expect(historyMention).toHaveAttribute('href', profileUrl);
+    await expectMentionAvatarInline(historyMention);
     await page.keyboard.press('Escape');
     await expect(history).toBeHidden();
 
@@ -448,6 +463,7 @@ test('searches saved mentions and delivers a tagged post to the recipient notifi
     await expect(notificationMention).toBeVisible();
     await expect(notificationMention).toHaveAttribute('title', `@${longName}`);
     await expect(notificationMention).toHaveAttribute('href', profileUrl);
+    await expectMentionAvatarInline(notificationMention);
 });
 
 test('keeps the editor against the keyboard bar while mention suggestions are open in the PWA @android-chrome', async ({ page }, testInfo) => {
