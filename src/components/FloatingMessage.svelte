@@ -161,19 +161,32 @@
             anchorPositionReady = true;
         };
 
-        const scheduleUpdate = () => void updatePosition();
+        // Capture-phase scroll fires for every scrolling descendant; coalesce
+        // layout reads to one measurement per frame.
+        let frame = 0;
+        const scheduleUpdate = () => {
+            if (frame || disposed) return;
+            frame = requestAnimationFrame(() => {
+                frame = 0;
+                void updatePosition();
+            });
+        };
         window.addEventListener("resize", scheduleUpdate);
-        window.addEventListener("scroll", scheduleUpdate, true);
+        window.addEventListener("scroll", scheduleUpdate, {
+            capture: true,
+            passive: true,
+        });
         const resizeObserver =
             typeof ResizeObserver === "undefined"
                 ? null
                 : new ResizeObserver(scheduleUpdate);
         resizeObserver?.observe(anchor);
         resizeObserver?.observe(container);
-        scheduleUpdate();
+        void updatePosition();
 
         return () => {
             disposed = true;
+            if (frame) cancelAnimationFrame(frame);
             window.removeEventListener("resize", scheduleUpdate);
             window.removeEventListener("scroll", scheduleUpdate, true);
             resizeObserver?.disconnect();

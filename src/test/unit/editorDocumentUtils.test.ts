@@ -36,6 +36,24 @@ describe('editorDocumentUtils', () => {
             expect(resolveLivePostEligibility(editor as unknown as TipTapEditor, true)).toBe(true);
             expect(resolveLivePostEligibility(null, false)).toBe(false);
         });
+
+        it('reuses the result for the same immutable document and skips the walk with gallery media', () => {
+            const descendants = vi.fn();
+            const forEach = vi.fn();
+            const editor = {
+                isDestroyed: false,
+                state: { doc: { descendants, forEach } },
+            };
+
+            expect(resolveLivePostEligibility(editor as unknown as TipTapEditor, false)).toBe(false);
+            expect(resolveLivePostEligibility(editor as unknown as TipTapEditor, false)).toBe(false);
+            expect(descendants).toHaveBeenCalledTimes(1);
+            expect(forEach).toHaveBeenCalledTimes(1);
+
+            editor.state = { doc: { descendants: vi.fn(), forEach: vi.fn() } };
+            expect(resolveLivePostEligibility(editor as unknown as TipTapEditor, true)).toBe(true);
+            expect(editor.state.doc.descendants).not.toHaveBeenCalled();
+        });
     });
     describe('ドキュメント状態判定', () => {
         it('should detect empty documents', () => {
