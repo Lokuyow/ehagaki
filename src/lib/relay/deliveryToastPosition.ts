@@ -2,6 +2,8 @@ import type { AppRuntimeEnvironment } from "../appRuntimeEnvironment";
 
 export interface DeliveryToastPlacement { target: HTMLElement; style: string }
 
+const SLIDING_BAR_SELECTOR = ".footer-button-bar,.reason-input-container";
+
 export function getActiveDeliveryDialog(runtime: AppRuntimeEnvironment): HTMLElement | undefined {
     if (!runtime.domRoot || !runtime.window) return;
     return [...runtime.domRoot.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"],[role="alertdialog"][data-state="open"]')]
@@ -65,6 +67,12 @@ export function positionDeliveryToasts(element: HTMLElement, runtime: AppRuntime
     // without any resize or scroll), and ResizeObserver does not report moves.
     const layoutVariables = new MutationObserver(schedule);
     layoutVariables.observe(runtime.styleTarget, { attributes: true, attributeFilter: ["style"] });
+    // The bars slide while the keyboard closes; place again once they settle.
+    const settle = (event: Event) => {
+        if (event.target instanceof Element && event.target.matches(SLIDING_BAR_SELECTOR)) schedule();
+    };
+    root.addEventListener("transitionend", settle);
+    root.addEventListener("transitioncancel", settle);
     win.addEventListener("resize", schedule);
     win.addEventListener("scroll", schedule, true);
     win.visualViewport?.addEventListener("resize", schedule);
@@ -72,6 +80,7 @@ export function positionDeliveryToasts(element: HTMLElement, runtime: AppRuntime
     schedule();
     return () => {
         disposed = true; win.cancelAnimationFrame(frame); observer.disconnect(); mutation.disconnect(); layoutVariables.disconnect();
+        root.removeEventListener("transitionend", settle); root.removeEventListener("transitioncancel", settle);
         win.removeEventListener("resize", schedule); win.removeEventListener("scroll", schedule, true);
         win.visualViewport?.removeEventListener("resize", schedule); win.visualViewport?.removeEventListener("scroll", schedule);
     };

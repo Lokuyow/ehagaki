@@ -433,7 +433,46 @@ test('content warning reason stays above the keyboard across composer focus chan
     await expectKeyboardLayout(734);
 });
 
-test('keyboard button bar moves with the editor area in the same frame', async ({ page }) => {
+// Sample every frame for a while after a keyboard change: the editor area must
+// never separate from the bar, and nothing above the editor may shift or
+// overflow sideways (the page must not scroll).
+async function sampleBottomLayout(page: Page, change: () => Promise<void>) {
+    await page.evaluate(() => {
+        const bar = document.querySelector<HTMLElement>('.footer-button-bar')!;
+        const header = document.querySelector<HTMLElement>('.header-container')!;
+        const root = document.scrollingElement!;
+        const frames: { gap: number; bottom: number; headerTop: number; overflowX: number }[] = [];
+        const start = performance.now();
+        const sample = () => {
+            const barRect = bar.getBoundingClientRect();
+            frames.push({
+                gap: Math.round(barRect.top - document.querySelector('.main-content')!.getBoundingClientRect().bottom),
+                bottom: Math.round(barRect.bottom),
+                headerTop: Math.round(header.getBoundingClientRect().top),
+                overflowX: root.scrollWidth - root.clientWidth,
+            });
+            if (performance.now() - start < 700) requestAnimationFrame(sample);
+        };
+        (window as any).__bottomLayoutFrames = frames;
+        requestAnimationFrame(sample);
+    });
+    await change();
+    return page.evaluate(async () => {
+        await new Promise<void>(resolve => setTimeout(resolve, 750));
+        const frames = (window as any).__bottomLayoutFrames as { gap: number; bottom: number; headerTop: number; overflowX: number }[];
+        const bar = document.querySelector<HTMLElement>('.footer-button-bar')!;
+        return {
+            duration: getComputedStyle(bar).transitionDuration,
+            maxGap: Math.max(...frames.map(frame => frame.gap)),
+            headerTops: [...new Set(frames.map(frame => frame.headerTop))],
+            maxOverflowX: Math.max(...frames.map(frame => frame.overflowX)),
+            bottoms: frames.map(frame => frame.bottom),
+            last: frames.at(-1)!,
+        };
+    });
+}
+
+test('keyboard button bar opens with the editor area and slides down with the keyboard when closing', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     await page.addInitScript(() => {
         Object.defineProperties(window.visualViewport!, {
@@ -451,34 +490,130 @@ test('keyboard button bar moves with the editor area in the same frame', async (
         });
         window.visualViewport!.dispatchEvent(new Event(type));
     }, { height, offsetTop, type });
-    // Read two frames after the event without polling. Any slide would leave
-    // the bar short of its target and open a gap below the editor area.
-    const readLayout = () => page.evaluate(async () => {
-        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-        const bar = document.querySelector<HTMLElement>('.footer-button-bar')!;
-        const barRect = bar.getBoundingClientRect();
-        return {
-            duration: getComputedStyle(bar).transitionDuration,
-            gap: Math.round(barRect.top - document.querySelector('.main-content')!.getBoundingClientRect().bottom),
-            bottom: Math.round(barRect.bottom),
-            viewportBottom: Math.round(window.visualViewport!.offsetTop + window.visualViewport!.height),
-        };
-    });
 
-    // Opening and closing resize the editor area; the bar must meet it at once.
-    for (const [height, expectedBottom] of [[500, 500], [800, 734], [500, 500]] as const) {
-        await setViewport(height, 0, 'resize');
-        const layout = await readLayout();
-        expect(layout.duration).toBe('0s');
-        expect(layout.bottom).toBe(expectedBottom);
-        expect(layout.gap).toBe(0);
-    }
+    // The root follows the visual viewport here, so shrinking later would move
+    // the whole page: opening moves the bar with the editor area in one frame.
+    const opened = await sampleBottomLayout(page, () => setViewport(500, 0, 'resize'));
+    expect(opened.duration).toBe('0s');
+    expect(opened.maxGap).toBeLessThanOrEqual(0);
+    expect(opened.last).toMatchObject({ gap: 0, bottom: 500 });
+    expect(opened.maxOverflowX).toBe(0);
 
     // A pan keeps the bar on the visible bottom without a slide.
     await setViewport(500, 40, 'scroll');
-    const panned = await readLayout();
-    expect(panned.duration).toBe('0s');
-    expect(panned.bottom).toBe(panned.viewportBottom);
+    await expect.poll(() => page.evaluate(() => [
+        getComputedStyle(document.querySelector('.footer-button-bar')!).transitionDuration,
+        Math.round(document.querySelector('.footer-button-bar')!.getBoundingClientRect().bottom),
+    ])).toEqual(['0s', 540]);
+    await setViewport(500, 0, 'scroll');
+    await expect.poll(() => page.evaluate(() => Math.round(
+        document.querySelector('.footer-button-bar')!.getBoundingClientRect().top
+            - document.querySelector('.main-content')!.getBoundingClientRect().bottom,
+    ))).toBe(0);
+
+    // Closing: the bar follows the keyboard down over the editor area that has already grown.
+    const closed = await sampleBottomLayout(page, () => setViewport(800, 0, 'resize'));
+    expect(closed.duration).toBe('0.25s');
+    expect(closed.bottoms.some(bottom => bottom < 734)).toBe(true);
+    expect(closed.maxGap).toBeLessThanOrEqual(0);
+    expect(closed.last).toMatchObject({ gap: 0, bottom: 734 });
+    expect(closed.maxOverflowX).toBe(0);
+});
+
+test('Android Chrome tab slides the bar up before shrinking the editor area without shifting the page @android-chrome', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'android-chromium', 'Uses the Android Chrome VirtualKeyboard overlay path.');
+    await page.addInitScript(() => {
+        (window as any).__keyboardHeight = 0;
+        const keyboard = (navigator as any).virtualKeyboard as EventTarget;
+        Object.defineProperty(keyboard, 'boundingRect', {
+            configurable: true,
+            get() {
+                const height = (window as any).__keyboardHeight as number;
+                return new DOMRect(0, window.innerHeight - height, window.innerWidth, height);
+            },
+        });
+    });
+    await page.goto('app-composer-picker-playwright.html');
+    await page.locator('.tiptap-editor').click();
+    const viewportHeight = await page.evaluate(() => window.innerHeight);
+
+    const setKeyboard = (height: number) => page.evaluate((height) => {
+        (window as any).__keyboardHeight = height;
+        (navigator as any).virtualKeyboard.dispatchEvent(new Event('geometrychange'));
+    }, height);
+
+    const opened = await sampleBottomLayout(page, () => setKeyboard(300));
+    expect(opened.duration).toBe('0.25s');
+    expect(opened.bottoms.some(bottom => bottom > viewportHeight - 300)).toBe(true);
+    expect(opened.maxGap).toBeLessThanOrEqual(0);
+    expect(opened.last).toMatchObject({ gap: 0, bottom: viewportHeight - 300 });
+    // Shrinking the editor area after the slide must not move anything above it.
+    expect(opened.headerTops).toHaveLength(1);
+    expect(opened.maxOverflowX).toBe(0);
+
+    const closed = await sampleBottomLayout(page, () => setKeyboard(0));
+    expect(closed.duration).toBe('0.25s');
+    expect(closed.maxGap).toBeLessThanOrEqual(0);
+    expect(closed.last).toMatchObject({ gap: 0, bottom: viewportHeight - 66 });
+    expect(closed.headerTops).toHaveLength(1);
+    expect(closed.maxOverflowX).toBe(0);
+});
+
+test('focusing the empty editor resizes the composer in the same frame without overflow or a header shift', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.addInitScript(() => {
+        (window as any).__windowErrors = [];
+        window.addEventListener('error', event => (window as any).__windowErrors.push(event.message));
+        Object.defineProperties(window.visualViewport!, {
+            height: { configurable: true, value: 800 },
+            offsetTop: { configurable: true, value: 0 },
+        });
+    });
+    await page.goto('app-composer-picker-playwright.html');
+    const editor = page.locator('.tiptap-editor');
+    await expect(editor).toHaveText('');
+
+    // Record every frame: the scroll region must never overflow (no flashing
+    // scrollbar) and the header above the editor must not move or shrink.
+    const sample = () => page.evaluate(() => {
+        const region = document.querySelector<HTMLElement>('.composer-scroll-region')!;
+        const header = document.querySelector<HTMLElement>('.header-container')!;
+        const frames: { overflow: number; headerTop: number; headerHeight: number; regionHeight: number }[] = [];
+        (window as any).__composerFrames = frames;
+        const start = performance.now();
+        const tick = () => {
+            const headerRect = header.getBoundingClientRect();
+            frames.push({
+                overflow: region.scrollHeight - region.clientHeight,
+                headerTop: Math.round(headerRect.top),
+                headerHeight: Math.round(headerRect.height),
+                regionHeight: Math.round(region.getBoundingClientRect().height),
+            });
+            if (performance.now() - start < 600) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    });
+    const collect = () => page.evaluate(async () => {
+        await new Promise<void>(resolve => setTimeout(resolve, 650));
+        return (window as any).__composerFrames as { overflow: number; headerTop: number; headerHeight: number; regionHeight: number }[];
+    });
+    const setViewportHeight = (height: number) => page.evaluate((height) => {
+        Object.defineProperty(window.visualViewport!, 'height', { configurable: true, value: height });
+        window.visualViewport!.dispatchEvent(new Event('resize'));
+    }, height);
+
+    for (const height of [500, 800]) {
+        await sample();
+        if (height === 500) await editor.click();
+        await setViewportHeight(height);
+        const frames = await collect();
+        expect(Math.max(...frames.map(frame => frame.overflow))).toBe(0);
+        expect(new Set(frames.map(frame => `${frame.headerTop}:${frame.headerHeight}`)).size).toBe(1);
+        // The region settles in one step instead of converging over several frames.
+        expect(new Set(frames.slice(1).map(frame => frame.regionHeight)).size).toBeLessThanOrEqual(2);
+    }
+
+    expect(await page.evaluate(() => (window as any).__windowErrors)).toEqual([]);
 });
 
 test('App and iframe use the normal submission path without refocusing', async ({ page, browserName, isMobile }) => {

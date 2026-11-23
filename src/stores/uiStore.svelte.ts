@@ -30,6 +30,32 @@ export const REASON_INPUT_HEIGHT = 50;
 /** メインコンテンツ上部の余白（px） */
 export const MAIN_CONTENT_TOP_SPACING = 6;
 
+/**
+ * キーボードの開閉時に、バーと理由欄をキーボードに付いてスライドさせる時間（ms）。
+ * - 閉じる時: 即座に動かすと、まだ残っているキーボードの裏にバーが一瞬隠れてしまう。
+ * - 開く時: エディタ領域を先に縮めるとバーとの間に隙間ができるため、スライドが終わるまで
+ *   エディタ領域（とフッター）を閉じた時のレイアウトに保ち、バーがその上に重なって上がる。
+ *   ページ全体の高さを変えずに縮められる環境（VirtualKeyboard overlay、container）に限る。
+ *   それ以外では開く時はスライドせず、エディタ領域と同じフレームで動かす。
+ * 表示中のパン・高さ変化は即座に追従する。
+ */
+export const KEYBOARD_SLIDE_MS = 250;
+
+const KEYBOARD_FOLLOW_INSTANT = "0ms";
+const KEYBOARD_SLIDE = `${KEYBOARD_SLIDE_MS}ms`;
+
+interface KeyboardFollowState {
+    active: boolean;
+    positions: string;
+    duration: string;
+}
+
+const INITIAL_KEYBOARD_FOLLOW_STATE: KeyboardFollowState = {
+    active: false,
+    positions: "",
+    duration: KEYBOARD_FOLLOW_INSTANT,
+};
+
 interface ViewportMetrics {
     height?: number;
     offsetTop?: number;
@@ -38,6 +64,11 @@ interface ViewportMetrics {
     physicalKeyboardHeight?: number;
     /** 計測済みの container inset。省略時は layout target から求める */
     containerKeyboardInset?: number;
+    /**
+     * 開く時にバーをスライドさせてよいか。setup 直後の最初の計測（既に開いている状態の
+     * 復元）ではアニメーションさせない。
+     */
+    allowOpenSlide?: boolean;
 }
 
 let lastViewportHeight: number | undefined;
@@ -46,6 +77,10 @@ let lastVisibleViewportBottom = 0;
 let lastPhysicalKeyboardVisible = false;
 let lastPhysicalKeyboardHeight = 0;
 let lastUsesVirtualKeyboardGeometry = false;
+let lastKeyboardFollow = INITIAL_KEYBOARD_FOLLOW_STATE;
+/** 開く時のスライド中は、エディタ領域を縮めずに閉じた時のレイアウトを保つ */
+let editorShrinkHeld = false;
+let editorShrinkHoldTimer: ReturnType<typeof setTimeout> | null = null;
 const keyboardTouchScrollLock =
     typeof document === "undefined"
         ? null
@@ -53,6 +88,42 @@ const keyboardTouchScrollLock =
 
 function syncKeyboardTouchScrollLock(shouldLock: boolean): void {
     keyboardTouchScrollLock?.sync(shouldLock);
+}
+
+/** エディタ領域の大きさを決める変数。書き換えたら composer の高さを測り直す */
+const COMPOSER_SIZE_VARIABLES = new Set([
+    "--app-root-height",
+    "--app-main-position",
+    "--app-main-height",
+    "--keyboard-button-bar-bottom",
+    "--composer-bottom-reserved-height",
+    "--main-content-keyboard-adjustment",
+    "--reason-input-height",
+]);
+
+let composerSizeVariablesChanged = false;
+const composerSizeChangeListeners = new Set<() => void>();
+
+/**
+ * キーボード追従でエディタ領域の大きさを変える変数を書き換えた直後に呼ばれる。
+ * 同じフレームのレイアウト前に呼ばれるため、ここで高さを測り直して state を更新すると、
+ * 古い高さのエディタが縮んだ領域からはみ出して描画されることがない。
+ */
+export function onComposerSizeVariablesChange(listener: () => void): () => void {
+    composerSizeChangeListeners.add(listener);
+    return () => {
+        composerSizeChangeListeners.delete(listener);
+    };
+}
+
+function notifyComposerSizeVariablesChange(): void {
+    if (!composerSizeVariablesChanged) {
+        return;
+    }
+    composerSizeVariablesChanged = false;
+    for (const listener of composerSizeChangeListeners) {
+        listener();
+    }
 }
 
 function setRootStyleProperty(name: string, value: string): void {
@@ -66,6 +137,9 @@ function setRootStyleProperty(name: string, value: string): void {
         return;
     }
     style.setProperty(name, value);
+    if (COMPOSER_SIZE_VARIABLES.has(name)) {
+        composerSizeVariablesChanged = true;
+    }
 }
 
 /**
@@ -120,6 +194,84 @@ function getContainerKeyboardInset(
     );
 }
 
+function prefersReducedMotion(): boolean {
+    return (
+        typeof window !== "undefined" &&
+        window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true
+    );
+}
+
+function releaseEditorShrinkHold(): void {
+    if (editorShrinkHoldTimer !== null) {
+        clearTimeout(editorShrinkHoldTimer);
+        editorShrinkHoldTimer = null;
+    }
+    editorShrinkHeld = false;
+}
+
+function startEditorShrinkHold(): void {
+    releaseEditorShrinkHold();
+    editorShrinkHeld = true;
+    editorShrinkHoldTimer = setTimeout(() => {
+        editorShrinkHoldTimer = null;
+        editorShrinkHeld = false;
+        // バーが上がりきったので、エディタ領域をバーの上端まで縮める
+        resyncLayoutCssVariables();
+        notifyComposerSizeVariablesChange();
+    }, KEYBOARD_SLIDE_MS);
+}
+
+/**
+ * 開く時のエディタ領域の保持を開始・解除する。
+ * 開く時のスライドを始めたかどうかを返す。
+ */
+function updateEditorShrinkHold(
+    isComposerKeyboardActive: boolean,
+    allowOpenSlide: boolean,
+): boolean {
+    if (!isComposerKeyboardActive) {
+        releaseEditorShrinkHold();
+        return false;
+    }
+
+    const isOpening = !lastKeyboardFollow.active;
+    if (isOpening && allowOpenSlide && !prefersReducedMotion()) {
+        startEditorShrinkHold();
+        return true;
+    }
+    return false;
+}
+
+/**
+ * バー・理由欄の transition 時間を決める。
+ * - 閉じた、またはスライド付きで開いた: スライド
+ * - それ以外で位置が変わった（スライドなしで開く・パン・高さ変化）: 即時
+ * - 位置が変わらない同期: 前の値を維持（重複した同期でスライドを打ち消さない）
+ */
+function resolveKeyboardFollowDuration(
+    isComposerKeyboardActive: boolean,
+    positions: string,
+    slidesOpen: boolean,
+): string {
+    let duration = lastKeyboardFollow.duration;
+    const closing = lastKeyboardFollow.active && !isComposerKeyboardActive;
+    if ((closing && !prefersReducedMotion()) || slidesOpen) {
+        duration = KEYBOARD_SLIDE;
+    } else if (
+        isComposerKeyboardActive !== lastKeyboardFollow.active ||
+        positions !== lastKeyboardFollow.positions
+    ) {
+        duration = KEYBOARD_FOLLOW_INSTANT;
+    }
+
+    lastKeyboardFollow = {
+        active: isComposerKeyboardActive,
+        positions,
+        duration,
+    };
+    return duration;
+}
+
 function syncLayoutCssVariables(
     isComposerKeyboardActive: boolean,
     viewportMetrics: ViewportMetrics = {},
@@ -147,15 +299,28 @@ function syncLayoutCssVariables(
 
     const { layoutMode, runtimeKind } = getAppRuntimeEnvironment();
     const isContainerLayout = layoutMode === "container";
-    const footerReservedHeight = getFooterReservedHeight(
+    const usesKeyboardOverlay = viewportMetrics.usesKeyboardOverlay === true;
+    // 開く時のスライドは、エディタ領域を縮めてもページ全体の高さが変わらない場合だけ行う。
+    // visual viewport の高さへルートを合わせる環境（iOS、Android PWA など）で後から縮めると、
+    // ページの高さが変わってスクロール位置が戻り、画面全体がずれる。
+    const shrinksInsideLayout = usesKeyboardOverlay || isContainerLayout;
+    const slidesOpen = updateEditorShrinkHold(
         isComposerKeyboardActive,
+        viewportMetrics.allowOpenSlide === true && shrinksInsideLayout,
+    );
+    // バー・理由欄はキーボードの状態どおりに置き、エディタ領域とフッターは
+    // 開く時のスライドが終わるまで閉じた時のレイアウトを保つ
+    const isEditorLayoutActive = isComposerKeyboardActive && !editorShrinkHeld;
+    const footerReservedHeight = getFooterReservedHeight(
+        isEditorLayoutActive,
         layoutCapabilities.hasFooter,
     );
-    const usesKeyboardOverlay = viewportMetrics.usesKeyboardOverlay === true;
-    const shouldUseKeyboardViewportHeight =
+    const usesKeyboardViewportHeight =
         isComposerKeyboardActive &&
         !usesKeyboardOverlay &&
         lastViewportHeight !== undefined;
+    const shouldUseKeyboardViewportHeight =
+        isEditorLayoutActive && usesKeyboardViewportHeight;
     const anchorMainToKeyboard = !isContainerLayout && runtimeKind === "standalone" &&
         shouldUseKeyboardViewportHeight && isPwaAndroidChrome();
     const shouldUseKeyboardOverlay =
@@ -170,7 +335,7 @@ function syncLayoutCssVariables(
     syncKeyboardTouchScrollLock(
         isContainerLayout
             ? isComposerKeyboardActive
-            : shouldUseKeyboardViewportHeight || shouldUseKeyboardOverlay,
+            : usesKeyboardViewportHeight || shouldUseKeyboardOverlay,
     );
 
     const keyboardButtonBarHeight = layoutCapabilities.hasKeyboardButtonBar
@@ -181,9 +346,14 @@ function syncLayoutCssVariables(
         : getClosedLayoutBottom();
     const keyboardButtonBarBottom = `${barBottom}px`;
     const reasonInputBottom = `${barBottom + keyboardButtonBarHeight}px`;
-    const footerBottom = !layoutCapabilities.hasFooter || isComposerKeyboardActive
+    const footerBottom = !layoutCapabilities.hasFooter || isEditorLayoutActive
         ? `${-FOOTER_HEIGHT}px`
         : "0px";
+    const keyboardFollowDuration = resolveKeyboardFollowDuration(
+        isComposerKeyboardActive,
+        `${keyboardButtonBarBottom}|${reasonInputBottom}`,
+        slidesOpen,
+    );
 
     setRootStyleProperty(
         "--app-root-height",
@@ -225,11 +395,13 @@ function syncLayoutCssVariables(
     );
     setRootStyleProperty(
         "--main-content-keyboard-adjustment",
-        isContainerLayout
-            ? `${containerKeyboardInset}px`
-            : shouldUseKeyboardViewportHeight
-                ? "0px"
-                : `${keyboardHeight}px`,
+        !isEditorLayoutActive
+            ? "0px"
+            : isContainerLayout
+                ? `${containerKeyboardInset}px`
+                : shouldUseKeyboardViewportHeight
+                    ? "0px"
+                    : `${keyboardHeight}px`,
     );
     setRootStyleProperty("--footer-bottom", footerBottom);
     setRootStyleProperty(
@@ -267,6 +439,11 @@ function syncLayoutCssVariables(
             ? "43dvh"
             : `${lastViewportOffsetTop + visibleViewportHeight * 0.43}px`,
     );
+    // 位置と同じ同期で書き、同じ style 更新で transition の時間を確定させる
+    setRootStyleProperty(
+        "--keyboard-follow-duration",
+        keyboardFollowDuration,
+    );
     setRootStyleProperty(
         "--keyboard-button-bar-bottom",
         keyboardButtonBarBottom,
@@ -287,16 +464,21 @@ export const reasonInputVisibleStore = {
     },
     set: (v: boolean) => {
         reasonInputVisible = v;
-        // 呼び出し元の effect が viewport 同期用の $state に依存し、
-        // viewport 同期のたびに再実行されないよう追跡を外す
-        untrack(() =>
-            syncLayoutCssVariables(
-                lastPhysicalKeyboardVisible && isComposerInputFocusActive(),
-                { usesKeyboardOverlay: lastUsesVirtualKeyboardGeometry },
-            ),
-        );
+        resyncLayoutCssVariables();
     },
 };
+
+/** 最後に観測した viewport の状態でレイアウト変数を書き直す */
+function resyncLayoutCssVariables(): void {
+    // 呼び出し元の effect が viewport 同期用の $state に依存し、
+    // viewport 同期のたびに再実行されないよう追跡を外す
+    untrack(() =>
+        syncLayoutCssVariables(
+            lastPhysicalKeyboardVisible && isComposerInputFocusActive(),
+            { usesKeyboardOverlay: lastUsesVirtualKeyboardGeometry },
+        ),
+    );
+}
 
 // --- bottomPosition ストア ---
 const layoutCapabilities = $state({
@@ -360,6 +542,8 @@ export function setupViewportListener(
     layoutCapabilities.hasKeyboardButtonBar = capabilities.hasKeyboardButtonBar ?? true;
     bottomPosition = getClosedLayoutBottom();
     lastUsesVirtualKeyboardGeometry = false;
+    lastKeyboardFollow = INITIAL_KEYBOARD_FOLLOW_STATE;
+    releaseEditorShrinkHold();
     writeStaticLayoutVariables();
     syncLayoutCssVariables(false);
 
@@ -389,6 +573,7 @@ export function setupViewportListener(
     }
 
     let _rafId: number | null = null;
+    let hasMeasuredViewport = false;
     let removeContainerGeometryListeners: (() => void) | null = null;
 
     function stopContainerGeometryMonitoring(): void {
@@ -489,7 +674,10 @@ export function setupViewportListener(
                 ? measurement.keyboardHeight
                 : 0,
             containerKeyboardInset,
+            allowOpenSlide: hasMeasuredViewport,
         });
+        hasMeasuredViewport = true;
+        notifyComposerSizeVariablesChange();
         syncContainerGeometryMonitoring(isComposerKeyboardActive);
     }
 
@@ -561,6 +749,7 @@ export function setupViewportListener(
         }
 
         stopContainerGeometryMonitoring();
+        releaseEditorShrinkHold();
 
         if (_rafId) cancelAnimationFrame(_rafId);
         _rafId = null;

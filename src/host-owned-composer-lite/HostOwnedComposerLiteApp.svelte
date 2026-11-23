@@ -49,6 +49,7 @@
     KEYBOARD_BUTTON_BAR_HEIGHT,
     REASON_INPUT_HEIGHT,
     reasonInputVisibleStore,
+    onComposerSizeVariablesChange,
     setupViewportListener,
   } from "../stores/uiStore.svelte";
   import { clearUrlQueryContentStore, updateUrlQueryContentStore } from "../stores/sharedContentStore.svelte";
@@ -105,6 +106,7 @@
       hasFooter: false,
       hasKeyboardButtonBar: hostOwnedConfig.keyboardButtonBarEnabled !== false,
     }),
+    onComposerSizeVariablesChange,
     getComposerScrollRegionEl: () => composerScrollRegionEl,
     getComposerScrollContentEl: () => composerScrollContentEl,
     getCustomEmojiPickerRegionEl: () => customEmojiPickerRegionEl,
