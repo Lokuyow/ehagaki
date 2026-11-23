@@ -35,6 +35,8 @@ export const MAIN_CONTENT_TOP_SPACING = 6;
  * - 閉じる時: 即座に動かすと、まだ残っているキーボードの裏にバーが一瞬隠れてしまう。
  * - 開く時: エディタ領域を先に縮めるとバーとの間に隙間ができるため、スライドが終わるまで
  *   エディタ領域（とフッター）を閉じた時のレイアウトに保ち、バーがその上に重なって上がる。
+ *   ページ全体の高さを変えずに縮められる環境（VirtualKeyboard overlay、container）に限る。
+ *   それ以外では開く時はスライドせず、エディタ領域と同じフレームで動かす。
  * 表示中のパン・高さ変化は即座に追従する。
  */
 export const KEYBOARD_SLIDE_MS = 250;
@@ -212,10 +214,8 @@ function resolveKeyboardFollowDuration(
     slidesOpen: boolean,
 ): string {
     let duration = lastKeyboardFollow.duration;
-    if (
-        (lastKeyboardFollow.active && !isComposerKeyboardActive) ||
-        slidesOpen
-    ) {
+    const closing = lastKeyboardFollow.active && !isComposerKeyboardActive;
+    if ((closing && !prefersReducedMotion()) || slidesOpen) {
         duration = KEYBOARD_SLIDE;
     } else if (
         isComposerKeyboardActive !== lastKeyboardFollow.active ||
@@ -259,9 +259,14 @@ function syncLayoutCssVariables(
 
     const { layoutMode, runtimeKind } = getAppRuntimeEnvironment();
     const isContainerLayout = layoutMode === "container";
+    const usesKeyboardOverlay = viewportMetrics.usesKeyboardOverlay === true;
+    // 開く時のスライドは、エディタ領域を縮めてもページ全体の高さが変わらない場合だけ行う。
+    // visual viewport の高さへルートを合わせる環境（iOS、Android PWA など）で後から縮めると、
+    // ページの高さが変わってスクロール位置が戻り、画面全体がずれる。
+    const shrinksInsideLayout = usesKeyboardOverlay || isContainerLayout;
     const slidesOpen = updateEditorShrinkHold(
         isComposerKeyboardActive,
-        viewportMetrics.allowOpenSlide === true,
+        viewportMetrics.allowOpenSlide === true && shrinksInsideLayout,
     );
     // バー・理由欄はキーボードの状態どおりに置き、エディタ領域とフッターは
     // 開く時のスライドが終わるまで閉じた時のレイアウトを保つ
@@ -270,7 +275,6 @@ function syncLayoutCssVariables(
         isEditorLayoutActive,
         layoutCapabilities.hasFooter,
     );
-    const usesKeyboardOverlay = viewportMetrics.usesKeyboardOverlay === true;
     const usesKeyboardViewportHeight =
         isComposerKeyboardActive &&
         !usesKeyboardOverlay &&

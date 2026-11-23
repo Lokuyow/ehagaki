@@ -1545,6 +1545,8 @@ describe('uiStore', () => {
     });
 
     describe('開閉時のスライド', () => {
+        const ANDROID_CHROME_UA = 'Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36';
+
         beforeEach(() => {
             Object.defineProperty(window, 'matchMedia', {
                 configurable: true,
@@ -1565,54 +1567,56 @@ describe('uiStore', () => {
         const readStyle = (name: string) =>
             document.documentElement.style.getPropertyValue(name);
 
-        it('開く時はスライドが終わるまでエディタ領域とフッターを閉じた時のレイアウトに保つ', async () => {
-            const viewport = createVisualViewportMock(800);
+        it('VirtualKeyboard overlay では開く時もスライドし、終わるまでエディタ領域とフッターを保つ', async () => {
+            setUserAgent(ANDROID_CHROME_UA);
+            createVisualViewportMock(800);
+            const keyboard = createVirtualKeyboardMock();
             const { KEYBOARD_SLIDE_MS, setupViewportListener } = await import('../../stores/uiStore.svelte');
             const slide = `${KEYBOARD_SLIDE_MS}ms`;
             const cleanup = setupViewportListener();
             try {
                 expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
 
-                viewport.visualViewport.height = 500;
-                viewport.emit('resize');
+                keyboard.setHeight(300);
+                keyboard.emitGeometryChange();
 
                 // バーはキーボードの上へスライドし、エディタ領域はまだ縮めない
                 expect(readStyle('--keyboard-button-bar-bottom')).toBe('300px');
                 expect(readStyle('--keyboard-follow-duration')).toBe(slide);
-                expect(readStyle('--app-root-height')).toBe('100%');
-                expect(readStyle('--app-main-height')).toBe('100svh');
+                expect(readStyle('--main-content-keyboard-adjustment')).toBe('0px');
                 expect(readStyle('--composer-bottom-reserved-height')).toBe('116px');
                 expect(readStyle('--footer-bottom')).toBe('0px');
+                // ページ全体の高さは overlay なので最初から変わらない
+                expect(readStyle('--app-root-height')).toBe('100%');
                 // キーボード表示中としての扱い（IME 抑止判定など）は即座に切り替える
                 expect(readStyle('--keyboard-height')).toBe('300px');
 
                 // スライド中の位置が変わらない同期では保持もスライドも解除しない
                 document.dispatchEvent(new Event('selectionchange'));
-                expect(readStyle('--app-root-height')).toBe('100%');
+                expect(readStyle('--main-content-keyboard-adjustment')).toBe('0px');
                 expect(readStyle('--keyboard-follow-duration')).toBe(slide);
 
                 vi.advanceTimersByTime(KEYBOARD_SLIDE_MS);
 
-                // バーが上がりきったらエディタ領域をバーの上端まで縮める
-                expect(readStyle('--app-root-height')).toBe('500px');
-                expect(readStyle('--app-main-height')).toBe('500px');
+                // バーが上がりきったらエディタ領域だけをバーの上端まで縮める
+                expect(readStyle('--main-content-keyboard-adjustment')).toBe('300px');
                 expect(readStyle('--composer-bottom-reserved-height')).toBe('50px');
                 expect(readStyle('--footer-bottom')).toBe('-66px');
+                expect(readStyle('--app-root-height')).toBe('100%');
                 expect(readStyle('--keyboard-button-bar-bottom')).toBe('300px');
 
-                // 表示中のパンは即座に追従する
-                viewport.visualViewport.offsetTop = 40;
-                viewport.emit('scroll');
-                expect(readStyle('--keyboard-button-bar-bottom')).toBe('260px');
+                // 表示中の高さ変化は即座に追従する
+                keyboard.setHeight(320);
+                keyboard.emitGeometryChange();
+                expect(readStyle('--keyboard-button-bar-bottom')).toBe('320px');
                 expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
 
                 // 閉じる時はレイアウトを即座に戻し、バーだけスライドさせる
-                viewport.visualViewport.height = 800;
-                viewport.visualViewport.offsetTop = 0;
-                viewport.emit('resize');
+                keyboard.setHeight(0);
+                keyboard.emitGeometryChange();
                 expect(readStyle('--keyboard-button-bar-bottom')).toBe('66px');
                 expect(readStyle('--keyboard-follow-duration')).toBe(slide);
-                expect(readStyle('--app-root-height')).toBe('100%');
+                expect(readStyle('--main-content-keyboard-adjustment')).toBe('0px');
                 expect(readStyle('--footer-bottom')).toBe('0px');
             } finally {
                 cleanup?.();
@@ -1620,20 +1624,22 @@ describe('uiStore', () => {
         });
 
         it('スライド中に閉じたら保持を解除し、後からエディタ領域を縮めない', async () => {
-            const viewport = createVisualViewportMock(800);
+            setUserAgent(ANDROID_CHROME_UA);
+            createVisualViewportMock(800);
+            const keyboard = createVirtualKeyboardMock();
             const { KEYBOARD_SLIDE_MS, setupViewportListener } = await import('../../stores/uiStore.svelte');
             const cleanup = setupViewportListener();
             try {
-                viewport.visualViewport.height = 500;
-                viewport.emit('resize');
+                keyboard.setHeight(300);
+                keyboard.emitGeometryChange();
                 vi.advanceTimersByTime(KEYBOARD_SLIDE_MS / 2);
 
-                viewport.visualViewport.height = 800;
-                viewport.emit('resize');
+                keyboard.setHeight(0);
+                keyboard.emitGeometryChange();
                 vi.advanceTimersByTime(KEYBOARD_SLIDE_MS);
 
                 expect(readStyle('--keyboard-button-bar-bottom')).toBe('66px');
-                expect(readStyle('--app-root-height')).toBe('100%');
+                expect(readStyle('--main-content-keyboard-adjustment')).toBe('0px');
                 expect(readStyle('--composer-bottom-reserved-height')).toBe('116px');
                 expect(readStyle('--footer-bottom')).toBe('0px');
             } finally {
@@ -1641,13 +1647,76 @@ describe('uiStore', () => {
             }
         });
 
+        it('ルートを visual viewport の高さへ合わせる環境では、開く時はスライドせずエディタ領域と同じフレームで動かす', async () => {
+            // 後から縮めるとページの高さが変わり、画面全体がずれるため
+            setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1');
+            setDocumentClientHeight(549);
+            Object.defineProperty(window, 'innerHeight', { configurable: true, value: 549 });
+            const viewport = createVisualViewportMock(549);
+            const { KEYBOARD_SLIDE_MS, setupViewportListener } = await import('../../stores/uiStore.svelte');
+            const cleanup = setupViewportListener();
+            try {
+                viewport.visualViewport.height = 314;
+                viewport.emit('resize');
+                expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
+                expect(readStyle('--app-root-height')).toBe('314px');
+                expect(readStyle('--keyboard-button-bar-bottom')).toBe('235px');
+                expect(readStyle('--footer-bottom')).toBe('-66px');
+                expect(vi.getTimerCount()).toBe(0);
+
+                // 閉じる時はスライドする
+                viewport.visualViewport.height = 549;
+                viewport.emit('resize');
+                expect(readStyle('--keyboard-button-bar-bottom')).toBe('66px');
+                expect(readStyle('--keyboard-follow-duration')).toBe(`${KEYBOARD_SLIDE_MS}ms`);
+                expect(readStyle('--app-root-height')).toBe('100%');
+            } finally {
+                cleanup?.();
+            }
+        });
+
+        it('container mode では開く時もスライドし、component 内のエディタ領域だけを後から縮める', async () => {
+            const runtime = await import('../../lib/appRuntimeEnvironment');
+            const layoutTarget = document.createElement('div');
+            Object.defineProperty(layoutTarget, 'getBoundingClientRect', {
+                configurable: true,
+                value: vi.fn(() => ({ bottom: 700, height: 600 })),
+            });
+            runtime.configureAppRuntimeEnvironment({
+                layoutMode: 'container',
+                styleTarget: layoutTarget,
+                layoutTarget,
+                overlayTarget: layoutTarget,
+                themeTarget: layoutTarget,
+            });
+            const viewport = createVisualViewportMock(800);
+            const { KEYBOARD_SLIDE_MS, setupViewportListener } = await import('../../stores/uiStore.svelte');
+            const cleanup = setupViewportListener();
+            const read = (name: string) => layoutTarget.style.getPropertyValue(name);
+            try {
+                viewport.visualViewport.height = 500;
+                viewport.emit('resize');
+                expect(read('--keyboard-button-bar-bottom')).toBe('200px');
+                expect(read('--keyboard-follow-duration')).toBe(`${KEYBOARD_SLIDE_MS}ms`);
+                expect(read('--main-content-keyboard-adjustment')).toBe('0px');
+
+                vi.advanceTimersByTime(KEYBOARD_SLIDE_MS);
+                expect(read('--main-content-keyboard-adjustment')).toBe('200px');
+                expect(read('--app-root-height')).toBe('100%');
+            } finally {
+                cleanup?.();
+            }
+        });
+
         it('setup 直後に既に開いている状態はスライドせず、そのままのレイアウトにする', async () => {
-            createVisualViewportMock(500);
+            setUserAgent(ANDROID_CHROME_UA);
+            createVisualViewportMock(800);
+            createVirtualKeyboardMock(300);
             const { setupViewportListener } = await import('../../stores/uiStore.svelte');
             const cleanup = setupViewportListener();
             try {
                 expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
-                expect(readStyle('--app-root-height')).toBe('500px');
+                expect(readStyle('--main-content-keyboard-adjustment')).toBe('300px');
                 expect(readStyle('--keyboard-button-bar-bottom')).toBe('300px');
             } finally {
                 cleanup?.();
@@ -1659,15 +1728,21 @@ describe('uiStore', () => {
                 configurable: true,
                 value: createMatchMediaMock(false, true),
             });
-            const viewport = createVisualViewportMock(800);
+            setUserAgent(ANDROID_CHROME_UA);
+            createVisualViewportMock(800);
+            const keyboard = createVirtualKeyboardMock();
             const { setupViewportListener } = await import('../../stores/uiStore.svelte');
             const cleanup = setupViewportListener();
             try {
-                viewport.visualViewport.height = 500;
-                viewport.emit('resize');
+                keyboard.setHeight(300);
+                keyboard.emitGeometryChange();
                 expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
-                expect(readStyle('--app-root-height')).toBe('500px');
+                expect(readStyle('--main-content-keyboard-adjustment')).toBe('300px');
                 expect(readStyle('--footer-bottom')).toBe('-66px');
+
+                keyboard.setHeight(0);
+                keyboard.emitGeometryChange();
+                expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
             } finally {
                 cleanup?.();
             }
@@ -1680,7 +1755,6 @@ describe('uiStore', () => {
             try {
                 viewport.visualViewport.height = 500;
                 viewport.emit('resize');
-                vi.advanceTimersByTime(KEYBOARD_SLIDE_MS);
                 viewport.visualViewport.offsetTop = 10;
                 viewport.emit('scroll');
                 expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
@@ -1694,15 +1768,18 @@ describe('uiStore', () => {
         });
 
         it('cleanup でスライド後のエディタ領域の縮小予約を取り消す', async () => {
-            const viewport = createVisualViewportMock(800);
+            setUserAgent(ANDROID_CHROME_UA);
+            createVisualViewportMock(800);
+            const keyboard = createVirtualKeyboardMock();
             const { KEYBOARD_SLIDE_MS, setupViewportListener } = await import('../../stores/uiStore.svelte');
             const cleanup = setupViewportListener();
-            viewport.visualViewport.height = 500;
-            viewport.emit('resize');
+            keyboard.setHeight(300);
+            keyboard.emitGeometryChange();
+            expect(vi.getTimerCount()).toBe(1);
             cleanup?.();
             expect(vi.getTimerCount()).toBe(0);
             vi.advanceTimersByTime(KEYBOARD_SLIDE_MS);
-            expect(readStyle('--app-root-height')).toBe('100%');
+            expect(readStyle('--main-content-keyboard-adjustment')).toBe('0px');
         });
     });
 

@@ -39,7 +39,7 @@ const playwrightProjects: Project[] = [
     },
     {
         name: 'android-chromium',
-        testMatch: ['**/webComponentLite.spec.ts', '**/loginLatency.spec.ts'],
+        testMatch: ['**/webComponentLite.spec.ts', '**/loginLatency.spec.ts', '**/postEditorSending.spec.ts'],
         grep: /@android-chrome/,
         use: {
             ...devices['Pixel 7'],
