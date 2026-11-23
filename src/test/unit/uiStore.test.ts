@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { render } from '@testing-library/svelte';
 
@@ -6,9 +6,15 @@ import ComposerLayoutMetricsHook from './fixtures/ComposerLayoutMetricsHook.svel
 
 type ViewportListener = () => void;
 
-function createMatchMediaMock(displayModeStandalone = false) {
+// 既存の viewport テストは最終レイアウトを検証するため、既定ではスライドしない
+// （prefers-reduced-motion）状態にする。スライドは専用のテストで検証する。
+function createMatchMediaMock(displayModeStandalone = false, reducedMotion = true) {
     return vi.fn().mockImplementation((query: string) => ({
-        matches: query === '(display-mode: standalone)' ? displayModeStandalone : false,
+        matches: query === '(display-mode: standalone)'
+            ? displayModeStandalone
+            : query === '(prefers-reduced-motion: reduce)'
+                ? reducedMotion
+                : false,
         media: query,
         onchange: null,
         addEventListener: vi.fn(),
@@ -1538,82 +1544,166 @@ describe('uiStore', () => {
         cancelAnimationFrameSpy.mockRestore();
     });
 
-    it('キーボードを閉じる時だけバーをスライドさせ、開く時と表示中は即座に動かす', async () => {
-        vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
-            callback(0);
-            return 1;
+    describe('開閉時のスライド', () => {
+        beforeEach(() => {
+            Object.defineProperty(window, 'matchMedia', {
+                configurable: true,
+                value: createMatchMediaMock(false, false),
+            });
+            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+            vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+                callback(0);
+                return 1;
+            });
+            vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
         });
-        vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
 
-        const viewport = createVisualViewportMock(800);
-        const {
-            KEYBOARD_CLOSE_SLIDE_MS,
-            reasonInputVisibleStore,
-            setupViewportListener,
-        } = await import('../../stores/uiStore.svelte');
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
         const readStyle = (name: string) =>
             document.documentElement.style.getPropertyValue(name);
-        const slide = `${KEYBOARD_CLOSE_SLIDE_MS}ms`;
 
-        const cleanup = setupViewportListener();
-        try {
-            expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
+        it('開く時はスライドが終わるまでエディタ領域とフッターを閉じた時のレイアウトに保つ', async () => {
+            const viewport = createVisualViewportMock(800);
+            const { KEYBOARD_SLIDE_MS, setupViewportListener } = await import('../../stores/uiStore.svelte');
+            const slide = `${KEYBOARD_SLIDE_MS}ms`;
+            const cleanup = setupViewportListener();
+            try {
+                expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
 
-            // 開く: エディタ領域と同じフレームで動かす
-            viewport.visualViewport.height = 500;
-            viewport.emit('resize');
-            expect(readStyle('--keyboard-button-bar-bottom')).toBe('300px');
-            expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
+                viewport.visualViewport.height = 500;
+                viewport.emit('resize');
 
-            // 表示中のパンも即座に追従する
-            viewport.visualViewport.offsetTop = 40;
-            viewport.emit('scroll');
-            expect(readStyle('--keyboard-button-bar-bottom')).toBe('260px');
-            expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
+                // バーはキーボードの上へスライドし、エディタ領域はまだ縮めない
+                expect(readStyle('--keyboard-button-bar-bottom')).toBe('300px');
+                expect(readStyle('--keyboard-follow-duration')).toBe(slide);
+                expect(readStyle('--app-root-height')).toBe('100%');
+                expect(readStyle('--app-main-height')).toBe('100svh');
+                expect(readStyle('--composer-bottom-reserved-height')).toBe('116px');
+                expect(readStyle('--footer-bottom')).toBe('0px');
+                // キーボード表示中としての扱い（IME 抑止判定など）は即座に切り替える
+                expect(readStyle('--keyboard-height')).toBe('300px');
 
-            // 閉じる: スライドする
-            viewport.visualViewport.height = 800;
-            viewport.visualViewport.offsetTop = 0;
-            viewport.emit('resize');
-            expect(readStyle('--keyboard-button-bar-bottom')).toBe('66px');
-            expect(readStyle('--keyboard-follow-duration')).toBe(slide);
+                // スライド中の位置が変わらない同期では保持もスライドも解除しない
+                document.dispatchEvent(new Event('selectionchange'));
+                expect(readStyle('--app-root-height')).toBe('100%');
+                expect(readStyle('--keyboard-follow-duration')).toBe(slide);
 
-            // 位置が変わらない同期は閉じるスライドを打ち消さない
-            reasonInputVisibleStore.set(true);
-            document.dispatchEvent(new Event('selectionchange'));
-            expect(readStyle('--keyboard-follow-duration')).toBe(slide);
+                vi.advanceTimersByTime(KEYBOARD_SLIDE_MS);
 
-            // 再び開く時は即座に動かす
-            viewport.visualViewport.height = 500;
-            viewport.emit('resize');
-            expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
-        } finally {
-            cleanup?.();
-            reasonInputVisibleStore.set(false);
-        }
-    });
+                // バーが上がりきったらエディタ領域をバーの上端まで縮める
+                expect(readStyle('--app-root-height')).toBe('500px');
+                expect(readStyle('--app-main-height')).toBe('500px');
+                expect(readStyle('--composer-bottom-reserved-height')).toBe('50px');
+                expect(readStyle('--footer-bottom')).toBe('-66px');
+                expect(readStyle('--keyboard-button-bar-bottom')).toBe('300px');
 
-    it('キーボード表示中にフォーカスがダイアログへ移る時もバーをスライドさせる', async () => {
-        vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
-            callback(0);
-            return 1;
+                // 表示中のパンは即座に追従する
+                viewport.visualViewport.offsetTop = 40;
+                viewport.emit('scroll');
+                expect(readStyle('--keyboard-button-bar-bottom')).toBe('260px');
+                expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
+
+                // 閉じる時はレイアウトを即座に戻し、バーだけスライドさせる
+                viewport.visualViewport.height = 800;
+                viewport.visualViewport.offsetTop = 0;
+                viewport.emit('resize');
+                expect(readStyle('--keyboard-button-bar-bottom')).toBe('66px');
+                expect(readStyle('--keyboard-follow-duration')).toBe(slide);
+                expect(readStyle('--app-root-height')).toBe('100%');
+                expect(readStyle('--footer-bottom')).toBe('0px');
+            } finally {
+                cleanup?.();
+            }
         });
-        vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
 
-        const viewport = createVisualViewportMock(800);
-        const { KEYBOARD_CLOSE_SLIDE_MS, setupViewportListener } = await import('../../stores/uiStore.svelte');
-        const cleanup = setupViewportListener();
-        try {
+        it('スライド中に閉じたら保持を解除し、後からエディタ領域を縮めない', async () => {
+            const viewport = createVisualViewportMock(800);
+            const { KEYBOARD_SLIDE_MS, setupViewportListener } = await import('../../stores/uiStore.svelte');
+            const cleanup = setupViewportListener();
+            try {
+                viewport.visualViewport.height = 500;
+                viewport.emit('resize');
+                vi.advanceTimersByTime(KEYBOARD_SLIDE_MS / 2);
+
+                viewport.visualViewport.height = 800;
+                viewport.emit('resize');
+                vi.advanceTimersByTime(KEYBOARD_SLIDE_MS);
+
+                expect(readStyle('--keyboard-button-bar-bottom')).toBe('66px');
+                expect(readStyle('--app-root-height')).toBe('100%');
+                expect(readStyle('--composer-bottom-reserved-height')).toBe('116px');
+                expect(readStyle('--footer-bottom')).toBe('0px');
+            } finally {
+                cleanup?.();
+            }
+        });
+
+        it('setup 直後に既に開いている状態はスライドせず、そのままのレイアウトにする', async () => {
+            createVisualViewportMock(500);
+            const { setupViewportListener } = await import('../../stores/uiStore.svelte');
+            const cleanup = setupViewportListener();
+            try {
+                expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
+                expect(readStyle('--app-root-height')).toBe('500px');
+                expect(readStyle('--keyboard-button-bar-bottom')).toBe('300px');
+            } finally {
+                cleanup?.();
+            }
+        });
+
+        it('prefers-reduced-motion ではスライドせず、開く時もレイアウトを即座に切り替える', async () => {
+            Object.defineProperty(window, 'matchMedia', {
+                configurable: true,
+                value: createMatchMediaMock(false, true),
+            });
+            const viewport = createVisualViewportMock(800);
+            const { setupViewportListener } = await import('../../stores/uiStore.svelte');
+            const cleanup = setupViewportListener();
+            try {
+                viewport.visualViewport.height = 500;
+                viewport.emit('resize');
+                expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
+                expect(readStyle('--app-root-height')).toBe('500px');
+                expect(readStyle('--footer-bottom')).toBe('-66px');
+            } finally {
+                cleanup?.();
+            }
+        });
+
+        it('キーボード表示中にフォーカスがダイアログへ移る時もバーをスライドさせる', async () => {
+            const viewport = createVisualViewportMock(800);
+            const { KEYBOARD_SLIDE_MS, setupViewportListener } = await import('../../stores/uiStore.svelte');
+            const cleanup = setupViewportListener();
+            try {
+                viewport.visualViewport.height = 500;
+                viewport.emit('resize');
+                vi.advanceTimersByTime(KEYBOARD_SLIDE_MS);
+                viewport.visualViewport.offsetTop = 10;
+                viewport.emit('scroll');
+                expect(readStyle('--keyboard-follow-duration')).toBe('0ms');
+
+                focusDialogInput('settings-dialog');
+                expect(readStyle('--keyboard-button-bar-bottom')).toBe('66px');
+                expect(readStyle('--keyboard-follow-duration')).toBe(`${KEYBOARD_SLIDE_MS}ms`);
+            } finally {
+                cleanup?.();
+            }
+        });
+
+        it('cleanup でスライド後のエディタ領域の縮小予約を取り消す', async () => {
+            const viewport = createVisualViewportMock(800);
+            const { KEYBOARD_SLIDE_MS, setupViewportListener } = await import('../../stores/uiStore.svelte');
+            const cleanup = setupViewportListener();
             viewport.visualViewport.height = 500;
             viewport.emit('resize');
-            expect(document.documentElement.style.getPropertyValue('--keyboard-follow-duration')).toBe('0ms');
-
-            focusDialogInput('settings-dialog');
-            expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('66px');
-            expect(document.documentElement.style.getPropertyValue('--keyboard-follow-duration')).toBe(`${KEYBOARD_CLOSE_SLIDE_MS}ms`);
-        } finally {
             cleanup?.();
-        }
+            expect(vi.getTimerCount()).toBe(0);
+            vi.advanceTimersByTime(KEYBOARD_SLIDE_MS);
+            expect(readStyle('--app-root-height')).toBe('100%');
+        });
     });
 
     it('reason input の表示状態を CSS 変数へ同期する', async () => {

@@ -433,7 +433,7 @@ test('content warning reason stays above the keyboard across composer focus chan
     await expectKeyboardLayout(734);
 });
 
-test('keyboard button bar meets the editor area at once when opening and slides only when closing', async ({ page }) => {
+test('keyboard button bar slides with the keyboard without opening a gap above it', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     await page.addInitScript(() => {
         Object.defineProperties(window.visualViewport!, {
@@ -444,57 +444,63 @@ test('keyboard button bar meets the editor area at once when opening and slides 
     await page.goto('app-composer-picker-playwright.html');
     await page.locator('.tiptap-editor').click();
 
-    const setViewport = (height: number, offsetTop: number, type: 'resize' | 'scroll') => page.evaluate(({ height, offsetTop, type }) => {
+    // Change the viewport and sample every frame until the bar settles: the gap
+    // between the editor area and the bar must never open during the slide.
+    const moveViewport = (height: number, offsetTop: number, type: 'resize' | 'scroll') => page.evaluate(async ({ height, offsetTop, type }) => {
+        const bar = document.querySelector<HTMLElement>('.footer-button-bar')!;
+        const read = () => {
+            const barRect = bar.getBoundingClientRect();
+            return {
+                gap: Math.round(barRect.top - document.querySelector('.main-content')!.getBoundingClientRect().bottom),
+                bottom: Math.round(barRect.bottom),
+            };
+        };
         Object.defineProperties(window.visualViewport!, {
             height: { configurable: true, value: height },
             offsetTop: { configurable: true, value: offsetTop },
         });
         window.visualViewport!.dispatchEvent(new Event(type));
-    }, { height, offsetTop, type });
-    // Read two frames after the event without polling: an instant move has
-    // already reached its target, a slide has not.
-    const readLayout = () => page.evaluate(async () => {
-        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-        const bar = document.querySelector<HTMLElement>('.footer-button-bar')!;
-        const barRect = bar.getBoundingClientRect();
+        const frames: { gap: number; bottom: number }[] = [];
+        const start = performance.now();
+        while (performance.now() - start < 600) {
+            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+            frames.push(read());
+        }
         return {
             duration: getComputedStyle(bar).transitionDuration,
-            gap: Math.round(barRect.top - document.querySelector('.main-content')!.getBoundingClientRect().bottom),
-            bottom: Math.round(barRect.bottom),
+            maxGap: Math.max(...frames.map(frame => frame.gap)),
+            firstBottom: frames[1].bottom,
+            last: frames.at(-1)!,
             viewportBottom: Math.round(window.visualViewport!.offsetTop + window.visualViewport!.height),
         };
-    });
+    }, { height, offsetTop, type });
 
-    // Opening shrinks the editor area at once; the bar must meet it in the same frame.
-    await setViewport(500, 0, 'resize');
-    const opened = await readLayout();
-    expect(opened.duration).toBe('0s');
-    expect(opened.bottom).toBe(500);
-    expect(opened.gap).toBe(0);
+    // Opening: the bar rises over the editor area, which shrinks only after the slide.
+    const opened = await moveViewport(500, 0, 'resize');
+    expect(opened.duration).toBe('0.25s');
+    expect(opened.firstBottom).toBeGreaterThan(500);
+    expect(opened.maxGap).toBeLessThanOrEqual(0);
+    expect(opened.last).toEqual({ gap: 0, bottom: 500 });
 
     // A pan keeps the bar on the visible bottom without a slide.
-    await setViewport(500, 40, 'scroll');
-    const panned = await readLayout();
+    const panned = await moveViewport(500, 40, 'scroll');
     expect(panned.duration).toBe('0s');
-    expect(panned.bottom).toBe(panned.viewportBottom);
+    expect(panned.firstBottom).toBe(panned.viewportBottom);
 
-    // Closing slides the bar down with the keyboard instead of jumping behind it.
-    await setViewport(800, 0, 'resize');
-    const closing = await readLayout();
-    expect(closing.duration).toBe('0.25s');
-    expect(closing.bottom).toBeLessThan(734);
-    await expect.poll(async () => {
-        const { bottom, gap } = await readLayout();
-        return { bottom, gap };
-    }).toEqual({ bottom: 734, gap: 0 });
+    // Closing: the bar follows the keyboard down over the editor area that has already grown.
+    await moveViewport(500, 0, 'scroll');
+    const closed = await moveViewport(800, 0, 'resize');
+    expect(closed.duration).toBe('0.25s');
+    expect(closed.firstBottom).toBeLessThan(734);
+    expect(closed.maxGap).toBeLessThanOrEqual(0);
+    expect(closed.last).toEqual({ gap: 0, bottom: 734 });
 
-    // Reduced motion never slides.
+    // Reduced motion never slides, and the editor area meets the bar at once.
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await setViewport(500, 0, 'resize');
-    await setViewport(800, 0, 'resize');
-    const reduced = await readLayout();
+    const reduced = await moveViewport(500, 0, 'resize');
     expect(reduced.duration).toBe('0s');
-    expect(reduced.bottom).toBe(734);
+    expect(reduced.firstBottom).toBe(500);
+    expect(reduced.maxGap).toBeLessThanOrEqual(0);
 });
 
 test('App and iframe use the normal submission path without refocusing', async ({ page, browserName, isMobile }) => {

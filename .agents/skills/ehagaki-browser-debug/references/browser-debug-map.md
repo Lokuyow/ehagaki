@@ -25,7 +25,7 @@
 
 ## 症状固有の注意点
 
-- バー・理由欄は、開く時と表示中はエディタ領域と同じフレームで動かす（transition を足すとエディタ下端との間に隙間ができる）。閉じる時だけ `--keyboard-follow-duration` でスライドさせ、下がるキーボードの裏に一瞬隠れないようにする。
+- バー・理由欄は開閉時だけ `--keyboard-follow-duration` でスライドし、表示中のパン・高さ変化は即時に追う。開く時はスライドが終わるまでエディタ領域とフッターを閉じた時のレイアウトに保つ（先に縮めるとバーとの間に隙間ができる）。
 - Viewport の keyboard activation は editor focus と結び付く。VirtualKeyboard の矩形には visible-frame origin 補正があり、高さだけへ置き換えない。`setupViewportListener()` cleanup は event/rAF、touch scroll lock、`overlaysContent` を解放・復元する。ResizeObserver は作成した effect が disconnect する。
 - `activeElement` が body でも selection anchor が editor 内なら active の場合がある。focus utility の一時 `inputmode` 復元を保ち、iOS の programmatic focus を keyboard 抑止と同一視しない。
 - Scroll lock は document allowlist と item の `ontouchstart` / `preventDefault()` を併せて調べる。lock の `sync(false)` / `dispose()` と touch end cleanup を保つ。

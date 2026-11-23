@@ -60,7 +60,7 @@
         left: 0;
         right: 0;
         bottom: 0;
-        /* 開く時はエディタ領域と同じフレームで動かし、閉じる時だけ下がるキーボードに付いていく */
+        /* 開閉時はキーボードに付いてスライドし、表示中のパン・高さ変化には即座に追従する */
         translate: 0 calc(-1 * var(--reason-input-bottom));
         z-index: 97;
         transition: translate var(--keyboard-follow-duration)
