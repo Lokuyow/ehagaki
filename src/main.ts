@@ -1,6 +1,5 @@
 import { mount } from 'svelte'
 import './app.css'
-import 'photoswipe/style.css'
 import { applyEmbedSettingsBootstrap } from './lib/bootstrap/embedSettingsBootstrap'
 import { applyUploadDestinationBootstrap } from './lib/bootstrap/uploadDestinationBootstrap'
 import { handleStaleAssetPreloadError } from './lib/staleAssetPreloadError'
@@ -28,6 +27,8 @@ configureAppRuntimeEnvironment({
   externalInputEnabled: true,
   historyEnabled: true,
   localNsecAuthEnabled: true,
+  // PhotoSwipe's stylesheet follows its lazily loaded script.
+  loadFullscreenViewerStyles: () => import('photoswipe/style.css'),
 })
 
 function renderTerminalHostRelayBootstrapFailure(code: string): void {

@@ -130,6 +130,8 @@ vi.mock('nostr-tools/pool', () => ({
 vi.mock('nostr-tools/utils', () => ({
     bytesToHex: vi.fn((bytes: Uint8Array) => Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')),
     hexToBytes: vi.fn((hex: string) => new Uint8Array(hex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)))),
+    // relayConfigUtils imports normalizeURL from this subpath.
+    normalizeURL: vi.fn((url: string) => url),
 }));
 
 // nostr-tools/pure をモック

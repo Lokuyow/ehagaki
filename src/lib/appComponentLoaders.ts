@@ -18,6 +18,7 @@ type NotificationDialogComponent = typeof import("../components/NotificationDial
 type PostHistoryDialogComponent = typeof import("../components/PostHistoryDialog.svelte").default;
 type ComposerTargetDialogComponent = typeof import("../components/ComposerTargetDialog.svelte").default;
 type CustomEmojiPickerComponent = typeof import("../components/CustomEmojiPicker.svelte").default;
+type ChannelContextPreviewComponent = typeof import("../components/ChannelContextPreview.svelte").default;
 
 export type AppComponentKey =
     | "post"
@@ -32,7 +33,8 @@ export type AppComponentKey =
     | "post-history-posts"
     | "post-history-media"
     | "composer-target"
-    | "custom-emoji-picker";
+    | "custom-emoji-picker"
+    | "channel-context-preview";
 
 export interface AppComponentLoadFailure {
     componentKey: AppComponentKey;
@@ -53,6 +55,7 @@ export interface AppComponentLoaders {
     preloadPostHistoryDialog(): Promise<void>;
     loadComposerTargetDialog(): Promise<void>;
     loadCustomEmojiPicker(): Promise<void>;
+    loadChannelContextPreview(): Promise<void>;
 }
 
 export interface AppComponentLoaderTargets {
@@ -68,6 +71,7 @@ export interface AppComponentLoaderTargets {
     setPostHistoryDialogComponent(component: PostHistoryDialogComponent): void;
     setComposerTargetDialogComponent(component: ComposerTargetDialogComponent): void;
     setCustomEmojiPickerComponent(component: CustomEmojiPickerComponent): void;
+    setChannelContextPreviewComponent?(component: ChannelContextPreviewComponent): void;
 }
 
 function applyLoadResult<T, Key extends AppComponentKey>(
@@ -143,6 +147,11 @@ export function createAppComponentLoaders(
     const loadCustomEmojiPickerModule = createComponentLoader(
         "custom-emoji-picker",
         () => import("../components/CustomEmojiPicker.svelte"),
+        commonOptions,
+    );
+    const loadChannelContextPreviewModule = createComponentLoader(
+        "channel-context-preview",
+        () => import("../components/ChannelContextPreview.svelte"),
         commonOptions,
     );
 
@@ -225,6 +234,13 @@ export function createAppComponentLoaders(
             applyLoadResult(
                 await loadCustomEmojiPickerModule(),
                 targets.setCustomEmojiPickerComponent,
+                targets.onLoadFailure,
+            );
+        },
+        async loadChannelContextPreview() {
+            applyLoadResult(
+                await loadChannelContextPreviewModule(),
+                (component) => targets.setChannelContextPreviewComponent?.(component),
                 targets.onLoadFailure,
             );
         },
