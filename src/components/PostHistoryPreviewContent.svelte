@@ -6,7 +6,7 @@
     import TextLinkSegments from "./TextLinkSegments.svelte";
     import { getProfileMentionPreview } from "../lib/profileMentionPreviewContext";
     import { profileMentionLabel, shortenProfileMentionLabel } from "../lib/profileMention";
-    import { buildProfileExternalClientUrl } from "../lib/postHistoryExternalClient";
+    import { buildHashtagExternalClientUrl, buildProfileExternalClientUrl } from "../lib/postHistoryExternalClient";
     import { settingsStore } from "../stores/settingsStore.svelte";
 
     type EmojiLoadState = "loading" | "ready" | "failed";
@@ -33,6 +33,7 @@
         lineHeight?: number;
         contentClass?: string;
         collapsedContentClass?: string;
+        kind?: number;
     }
 
     let {
@@ -49,6 +50,7 @@
         lineHeight = 1.5,
         contentClass = "",
         collapsedContentClass = "",
+        kind = undefined,
     }: Props = $props();
 
     const emojiSlotWidthByUrl = new Map<string, number>();
@@ -79,6 +81,7 @@
                 segment.type === "emoji" ||
                 segment.type === "link" ||
                 segment.type === "mention" ||
+                segment.type === "hashtag" ||
                 (segment.type === "text" && segment.text.trim().length > 0),
         ),
     );
@@ -148,6 +151,13 @@
                     {@const label = shortenProfileMentionLabel(name)}
                     <a class="profile-mention" href={buildProfileExternalClientUrl(segment.profile, externalClient)} target="_blank" rel="noopener noreferrer"
                         title={name === label ? undefined : `@${name}`}>@{label}</a>
+                {:else if segment.type === "hashtag"}
+                    {@const href = buildHashtagExternalClientUrl(segment.hashtag, externalClient, kind)}
+                    {#if href}
+                        <a class="hashtag-link" {href} target="_blank" rel="noopener noreferrer">#{segment.hashtag}</a>
+                    {:else}
+                        <span>#{segment.hashtag}</span>
+                    {/if}
                 {:else if hasEmojiFailed(segment.url)}
                     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                     <span
@@ -190,7 +200,8 @@
 </div>
 
 <style>
-    .profile-mention {
+    .profile-mention,
+    .hashtag-link {
         overflow-wrap: anywhere;
     }
     .post-history-preview-content {
