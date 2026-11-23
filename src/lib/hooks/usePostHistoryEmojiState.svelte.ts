@@ -33,6 +33,17 @@ export function usePostHistoryEmojiState({
     let generation = 0;
     let abort = new AbortController();
     const loadingEmojiUrls = new Set<string>();
+    // Stored metadata is read (and touched) once per URL per session.
+    const hydrationRequestedUrls = new Set<string>();
+    // Load results land at different times; apply them together once per
+    // task so every row and the collapse measurement update once per batch.
+    const pendingLoadStates = new Map<string, "ready" | "failed">();
+    let pendingImageMeta: Record<string, EmojiImageMetaSnapshot> = {};
+    let loadResultTimer: ReturnType<typeof setTimeout> | null = null;
+    // Callers rebuild the URL array whenever related state changes. A string
+    // key keeps an unchanged URL set from rerunning the reads and load sync.
+    const emojiUrlKey = $derived(getEmojiUrls().join("\n"));
+    const emojiUrls = $derived(emojiUrlKey ? emojiUrlKey.split("\n") : []);
 
     function syncEmojiLoadState(urls: string[]): string[] {
         const nextState: Record<
@@ -129,9 +140,18 @@ export function usePostHistoryEmojiState({
         }
 
         const epoch = generation;
+        // Results that were not applied leave the URLs for a later sync.
+        const release = () => {
+            if (epoch !== generation) return;
+            for (const url of urls) hydrationRequestedUrls.delete(url);
+        };
         try {
             const records = await customEmojiImageMetaRepository.getMany(urls);
-            if (!getShow() || epoch !== generation) return;
+            if (epoch !== generation) return;
+            if (!getShow()) {
+                release();
+                return;
+            }
             const foundUrls = Object.keys(records);
             if (foundUrls.length === 0) {
                 return;
@@ -148,6 +168,7 @@ export function usePostHistoryEmojiState({
             void customEmojiImageMetaRepository.touchMany(foundUrls);
         } catch {
             // Metadata hydration is an optimization for layout stability.
+            release();
         }
     }
 
@@ -167,20 +188,18 @@ export function usePostHistoryEmojiState({
         const epoch = generation;
         const result = await preloadCustomEmojiImageWithMeta(url, { signal: abort.signal });
         if (!getShow() || epoch !== generation) return;
-        loadingEmojiUrls.delete(url);
 
-        if (!getEmojiUrls().includes(url)) {
+        if (!emojiUrls.includes(url)) {
+            loadingEmojiUrls.delete(url);
             return;
         }
 
         if (result.ready && hasResolvedEmojiImageMeta(result)) {
-            upsertEmojiImageMetaSnapshots({
-                [url]: toEmojiImageMetaSnapshot({
-                    url,
-                    width: result.width,
-                    height: result.height,
-                    aspectRatio: result.aspectRatio,
-                }),
+            pendingImageMeta[url] = toEmojiImageMetaSnapshot({
+                url,
+                width: result.width,
+                height: result.height,
+                aspectRatio: result.aspectRatio,
             });
             void persistPostHistoryEmojiImageMeta({
                 url,
@@ -189,15 +208,48 @@ export function usePostHistoryEmojiState({
             });
         }
 
-        const nextState = result.ready ? "ready" : "failed";
-        if (emojiLoadStateByUrl[url] === nextState) {
-            return;
+        // The URL stays in loadingEmojiUrls until the flush, so a URL sync in
+        // between does not start a second load.
+        pendingLoadStates.set(url, result.ready ? "ready" : "failed");
+        scheduleLoadResultFlush();
+    }
+
+    function flushLoadResults(): void {
+        loadResultTimer = null;
+        const imageMeta = pendingImageMeta;
+        pendingImageMeta = {};
+        if (Object.keys(imageMeta).length > 0) {
+            upsertEmojiImageMetaSnapshots(imageMeta);
         }
 
-        emojiLoadStateByUrl = {
-            ...emojiLoadStateByUrl,
-            [url]: nextState,
-        };
+        let nextState: Record<string, "loading" | "ready" | "failed" | undefined> | null = null;
+        for (const [url, state] of pendingLoadStates) {
+            loadingEmojiUrls.delete(url);
+            if (emojiLoadStateByUrl[url] !== state) {
+                nextState ??= { ...emojiLoadStateByUrl };
+                nextState[url] = state;
+            }
+        }
+        pendingLoadStates.clear();
+        if (nextState) {
+            emojiLoadStateByUrl = nextState;
+        }
+    }
+
+    function scheduleLoadResultFlush(): void {
+        if (loadResultTimer !== null) return;
+        // A task rather than an animation frame: frames stop in hidden tabs
+        // and offscreen embed iframes, which would leave emoji loading.
+        loadResultTimer = setTimeout(flushLoadResults, 0);
+    }
+
+    function discardPendingLoadResults(): void {
+        if (loadResultTimer !== null) {
+            clearTimeout(loadResultTimer);
+        }
+        loadResultTimer = null;
+        pendingLoadStates.clear();
+        pendingImageMeta = {};
     }
 
     function hasSameEmojiLoadState(
@@ -215,13 +267,17 @@ export function usePostHistoryEmojiState({
 
     function suspend(): void {
         generation++; abort.abort(); abort = new AbortController();
+        discardPendingLoadResults();
         loadingEmojiUrls.clear();
+        hydrationRequestedUrls.clear();
         emojiLoadStateByUrl = Object.fromEntries(Object.entries(emojiLoadStateByUrl).filter(([, state]) => state !== "loading"));
     }
     function resetState(): void {
         generation++; abort.abort(); abort = new AbortController();
+        discardPendingLoadResults();
         emojiLoadStateByUrl = {};
         loadingEmojiUrls.clear();
+        hydrationRequestedUrls.clear();
     }
 
     $effect(() => {
@@ -229,7 +285,9 @@ export function usePostHistoryEmojiState({
             return;
         }
 
-        void hydratePostHistoryEmojiImageMeta(getEmojiUrls());
+        const urls = emojiUrls.filter((url) => !hydrationRequestedUrls.has(url));
+        for (const url of urls) hydrationRequestedUrls.add(url);
+        void hydratePostHistoryEmojiImageMeta(urls);
     });
 
     $effect(() => {
@@ -237,7 +295,7 @@ export function usePostHistoryEmojiState({
             return;
         }
 
-        const pendingUrls = syncEmojiLoadState(getEmojiUrls());
+        const pendingUrls = syncEmojiLoadState(emojiUrls);
         for (const url of pendingUrls) {
             void loadPostHistoryEmoji(url);
         }
@@ -254,7 +312,12 @@ export function usePostHistoryEmojiState({
     });
 
     $effect(() => { if (!getSessionOpen()) untrack(resetState); });
-    onDestroy(() => abort.abort());
+    onDestroy(() => {
+        // Loads that settle after the abort must not schedule another flush.
+        generation++;
+        abort.abort();
+        discardPendingLoadResults();
+    });
     return {
         suspend,
         get emojiLoadStateByUrl() {

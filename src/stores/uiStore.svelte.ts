@@ -52,7 +52,12 @@ function setRootStyleProperty(name: string, value: string): void {
         return;
     }
 
-    getAppRuntimeEnvironment().styleTarget.style.setProperty(name, value);
+    const style = getAppRuntimeEnvironment().styleTarget.style;
+    // Viewport syncs run on every caret move; skip writes that change nothing.
+    if (style.getPropertyValue(name) === value) {
+        return;
+    }
+    style.setProperty(name, value);
 }
 
 function getFooterReservedHeight(

@@ -2,7 +2,7 @@ import { Extension } from '@tiptap/core';
 import Suggestion from '@tiptap/suggestion';
 import HashtagSuggestionList from '../../components/HashtagSuggestionList.svelte';
 import { getSuggestions } from '../utils/hashtagHistory';
-import { createSuggestionRenderer } from './suggestionRenderer';
+import { createSuggestionRenderer } from './suggestionRenderer.svelte';
 
 /**
  * ハッシュタグサジェスト拡張

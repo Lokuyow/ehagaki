@@ -480,6 +480,9 @@ describe("ComposerTargetDialog", () => {
         expect(card.querySelector('img[src="https://example.com/related.jpg"]')).toBeNull();
         onIntersection?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
         await vi.advanceTimersByTimeAsync(0);
+        // Emoji load results are applied together in a following task;
+        // a zero-delay timer set during a fake-timer tick runs 1ms later.
+        await vi.advanceTimersByTimeAsync(1);
         expect(card.querySelector('img[src="https://example.com/related.jpg"]')).toBeTruthy();
         expect(card.querySelector('img[src="https://example.com/related-party.png"]')).toBeTruthy();
     });
@@ -578,6 +581,9 @@ describe("ComposerTargetDialog", () => {
         renderRelatedTarget(outer, related);
         await enterNoteFor(outer.id);
         await vi.advanceTimersByTimeAsync(0);
+        // Emoji load results are applied together in a following task;
+        // a zero-delay timer set during a fake-timer tick runs 1ms later.
+        await vi.advanceTimersByTimeAsync(1);
         expect(document.querySelector(".composer-target-reaction-label .favorite-icon")).toBeTruthy();
         expect(document.querySelector('.composer-target-reaction-preview .post-history-related-card img[src="https://example.com/related-emoji.png"]')).toBeTruthy();
     });
@@ -1223,6 +1229,9 @@ describe("ComposerTargetDialog", () => {
             screen.getByRole("button", { name: "もっと見る" }),
         );
         await vi.runAllTicks();
+        // Emoji load results are applied together in a following task;
+        // a zero-delay timer set during a fake-timer tick runs 1ms later.
+        await vi.advanceTimersByTimeAsync(1);
 
         expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
             emojiUrl,
@@ -1416,6 +1425,9 @@ describe("ComposerTargetDialog", () => {
             document.querySelectorAll(".post-preview-reaction-chip"),
         ).toHaveLength(2));
         expect(document.querySelectorAll(".post-preview-reaction-actor")).toHaveLength(2);
+        // Emoji load results are applied together in a following task;
+        // a zero-delay timer set during a fake-timer tick runs 1ms later.
+        await vi.advanceTimersByTimeAsync(1);
         expect(screen.getByRole("img", { name: ":party:" })).toBeTruthy();
         expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(emojiUrl, { signal: expect.any(AbortSignal) });
         expect(screen.getByRole("button", { name: "リプライ" })).toBeTruthy();
@@ -1430,6 +1442,7 @@ describe("ComposerTargetDialog", () => {
             document.querySelectorAll(".post-preview-reaction-chip"),
         ).toHaveLength(2));
         expect(document.querySelectorAll(".post-preview-reaction-actor")).toHaveLength(2);
+        await vi.advanceTimersByTimeAsync(1);
         expect(screen.getByRole("img", { name: ":party:" })).toBeTruthy();
         expect(screen.getByRole("button", { name: "リプライ" })).toBeTruthy();
         expect(screen.getByRole("button", { name: "引用" })).toBeTruthy();
