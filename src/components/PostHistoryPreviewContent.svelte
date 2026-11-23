@@ -7,7 +7,7 @@
     import ProfileAvatar from "./ProfileAvatar.svelte";
     import { getProfileMentionPreview } from "../lib/profileMentionPreviewContext";
     import { profileMentionLabel, shortenProfileMentionLabel } from "../lib/profileMention";
-    import { buildProfileExternalClientUrl } from "../lib/postHistoryExternalClient";
+    import { buildHashtagExternalClientUrl, buildProfileExternalClientUrl } from "../lib/postHistoryExternalClient";
     import { settingsStore } from "../stores/settingsStore.svelte";
 
     type EmojiLoadState = "loading" | "ready" | "failed";
@@ -34,6 +34,7 @@
         lineHeight?: number;
         contentClass?: string;
         collapsedContentClass?: string;
+        kind?: number;
     }
 
     let {
@@ -50,6 +51,7 @@
         lineHeight = 1.5,
         contentClass = "",
         collapsedContentClass = "",
+        kind = undefined,
     }: Props = $props();
 
     const emojiSlotWidthByUrl = new Map<string, number>();
@@ -80,6 +82,7 @@
                 segment.type === "emoji" ||
                 segment.type === "link" ||
                 segment.type === "mention" ||
+                segment.type === "hashtag" ||
                 (segment.type === "text" && segment.text.trim().length > 0),
         ),
     );
@@ -153,6 +156,13 @@
                             pubkeyHex={pubkey} displayName={profile?.displayName} name={profile?.name} src={profile?.picture}
                             fallbackAriaLabel="" fallbackDelayMs={0} rootClassName="profile-mention-avatar-root"
                             imageClassName="profile-mention-avatar-image" /></span>@</span>{label}</a>
+                {:else if segment.type === "hashtag"}
+                    {@const href = buildHashtagExternalClientUrl(segment.hashtag, externalClient, kind)}
+                    {#if href}
+                        <a class="hashtag-link" {href} target="_blank" rel="noopener noreferrer">#{segment.hashtag}</a>
+                    {:else}
+                        <span>#{segment.hashtag}</span>
+                    {/if}
                 {:else if hasEmojiFailed(segment.url)}
                     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                     <span
@@ -195,7 +205,8 @@
 </div>
 
 <style>
-    .profile-mention {
+    .profile-mention,
+    .hashtag-link {
         overflow-wrap: anywhere;
     }
     /* Keeps the icon beside "@" and stops the body's pre-wrap from adding a line inside the avatar. */

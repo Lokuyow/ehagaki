@@ -90,6 +90,7 @@ export function hasRenderablePostHistoryPreviewContent(
             segment.type === "emoji" ||
             segment.type === "link" ||
             segment.type === "mention" ||
+            segment.type === "hashtag" ||
             (segment.type === "text" && segment.text.trim().length > 0),
     );
 }

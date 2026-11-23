@@ -271,6 +271,7 @@
                         emojiSize={presentation.emojiSize}
                         fontSize={presentation.fontSize}
                         lineHeight={presentation.lineHeight}
+                        kind={displayModel.kind}
                     />
                 </div>
             {/if}
