@@ -61,13 +61,17 @@ export function positionDeliveryToasts(element: HTMLElement, runtime: AppRuntime
     const schedule = () => { if (!frame && !disposed) frame = win.requestAnimationFrame(update); };
     const mutation = new MutationObserver(schedule);
     mutation.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-state", "aria-hidden"] });
+    // Focus alone can move the bottom bars (uiStore rewrites the layout variables
+    // without any resize or scroll), and ResizeObserver does not report moves.
+    const layoutVariables = new MutationObserver(schedule);
+    layoutVariables.observe(runtime.styleTarget, { attributes: true, attributeFilter: ["style"] });
     win.addEventListener("resize", schedule);
     win.addEventListener("scroll", schedule, true);
     win.visualViewport?.addEventListener("resize", schedule);
     win.visualViewport?.addEventListener("scroll", schedule);
     schedule();
     return () => {
-        disposed = true; win.cancelAnimationFrame(frame); observer.disconnect(); mutation.disconnect();
+        disposed = true; win.cancelAnimationFrame(frame); observer.disconnect(); mutation.disconnect(); layoutVariables.disconnect();
         win.removeEventListener("resize", schedule); win.removeEventListener("scroll", schedule, true);
         win.visualViewport?.removeEventListener("resize", schedule); win.visualViewport?.removeEventListener("scroll", schedule);
     };
