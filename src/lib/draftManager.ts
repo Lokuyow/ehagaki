@@ -156,6 +156,31 @@ export async function hasDrafts(options: DraftsRepositoryOptions = {}): Promise<
     return (await loadDrafts(options)).length > 0;
 }
 
+// The draft list formats every visible draft; reuse formatters per locale.
+const draftRelativeTimeFormats = new Map<string, Intl.RelativeTimeFormat>();
+const draftDateFormats = new Map<string, Intl.DateTimeFormat>();
+
+function getDraftRelativeTimeFormat(loc: string): Intl.RelativeTimeFormat {
+    let format = draftRelativeTimeFormats.get(loc);
+    if (!format) {
+        format = new Intl.RelativeTimeFormat(loc, { numeric: 'auto' });
+        draftRelativeTimeFormats.set(loc, format);
+    }
+    return format;
+}
+
+function getDraftDateFormat(loc: string, withYear: boolean): Intl.DateTimeFormat {
+    const key = `${withYear ? 'y' : 'md'}:${loc}`;
+    let format = draftDateFormats.get(key);
+    if (!format) {
+        format = new Intl.DateTimeFormat(loc, withYear
+            ? { year: 'numeric', month: 'numeric', day: 'numeric' }
+            : { month: 'numeric', day: 'numeric' });
+        draftDateFormats.set(key, format);
+    }
+    return format;
+}
+
 /**
  * 日時をフォーマット（相対時間または日付） — 国際化対応
  */
@@ -170,7 +195,6 @@ export function formatDraftTimestamp(timestamp: number): string {
     // ロケールと翻訳関数を取得
     const loc = getStore(locale) || 'en';
     const t = getStore(_);
-    const rtf = new Intl.RelativeTimeFormat(loc, { numeric: 'auto' });
 
     if (diff < minute) {
         // 'Now' は翻訳キーを使用
@@ -185,21 +209,21 @@ export function formatDraftTimestamp(timestamp: number): string {
         if (loc.startsWith('en')) {
             return `${minutes}m ago`;
         }
-        return rtf.format(-minutes, 'minute');
+        return getDraftRelativeTimeFormat(loc).format(-minutes, 'minute');
     } else if (diff < day) {
         const hours = Math.floor(diff / hour);
         // 英語の場合は短縮表記（'ago' を付与）: 1h ago, 2h ago
         if (loc.startsWith('en')) {
             return `${hours}h ago`;
         }
-        return rtf.format(-hours, 'hour');
+        return getDraftRelativeTimeFormat(loc).format(-hours, 'hour');
     } else {
         const date = new Date(timestamp);
         const oneYear = 365 * day;
         // 1年未満は月/日、1年以上は年/月/日をロケールに従って表示
         if (now - timestamp < oneYear) {
-            return new Intl.DateTimeFormat(loc, { month: 'numeric', day: 'numeric' }).format(date);
+            return getDraftDateFormat(loc, false).format(date);
         }
-        return new Intl.DateTimeFormat(loc, { year: 'numeric', month: 'numeric', day: 'numeric' }).format(date);
+        return getDraftDateFormat(loc, true).format(date);
     }
 }

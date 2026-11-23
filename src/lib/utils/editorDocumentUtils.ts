@@ -364,23 +364,40 @@ export function extractPostContentWithEmojiTags(editor: TipTapEditor | null): Ex
     return extractPostContentFromDoc(doc);
 }
 
+// ProseMirror documents are immutable, so a document's own eligibility never
+// changes. Selection-only and repeated notifications reuse the same document.
+const documentEligibilityCache = new WeakMap<PMNode, boolean>();
+
+function documentHasMedia(doc: PMNode): boolean {
+    let hasEditorMedia = false;
+    doc.descendants((node: PMNode) => {
+        if (hasEditorMedia) return false;
+        if (node.type.name === 'image' || node.type.name === 'video') {
+            hasEditorMedia = true;
+            return false;
+        }
+        return undefined;
+    });
+    return hasEditorMedia;
+}
+
+function resolveDocumentPostEligibility(doc: PMNode): boolean {
+    const cached = documentEligibilityCache.get(doc);
+    if (cached !== undefined) return cached;
+
+    const eligible = documentHasMedia(doc)
+        || Boolean(extractPostContentFromDoc(doc).content.trim());
+    documentEligibilityCache.set(doc, eligible);
+    return eligible;
+}
+
 /** Canonical live post eligibility shared by standalone and Host-owned Lite. */
 export function resolveLivePostEligibility(
     editor: TipTapEditor | null,
     hasGalleryMedia: boolean,
 ): boolean {
     if (!editor || editor.isDestroyed) return hasGalleryMedia;
+    if (hasGalleryMedia) return true;
 
-    let hasEditorMedia = false;
-    editor.state.doc.descendants((node: PMNode) => {
-        if (node.type.name === 'image' || node.type.name === 'video') {
-            hasEditorMedia = true;
-        }
-    });
-
-    return Boolean(
-        extractPostContentFromDoc(editor.state.doc).content.trim() ||
-        hasEditorMedia ||
-        hasGalleryMedia,
-    );
+    return resolveDocumentPostEligibility(editor.state.doc);
 }

@@ -7,6 +7,7 @@ function storage() {
     const values = new Map<string, string>();
     return { get length() { return values.size; }, clear() { values.clear(); }, key(index: number) { return [...values.keys()][index] ?? null; }, removeItem(key: string) { values.delete(key); }, getItem: vi.fn((key: string) => values.get(key) ?? null), setItem: vi.fn((key: string, value: string) => { values.set(key, value); }) };
 }
+const flushPersistence = () => new Promise<void>(resolve => queueMicrotask(resolve));
 const pubkeyHex = 'abcdef'.repeat(10) + 'abcd';
 afterEach(resetAppStorage);
 
@@ -43,32 +44,45 @@ describe('profile fallback avatars', () => {
         const avatar = createProfileFallbackAvatarCache().get({pubkeyHex, name});
         expect(decodeURIComponent(avatar!.dataUrl)).toContain('>�</text>');
     });
-    it('reuses memory entries and restores persisted SVG after recreation', () => {
+    it('reuses memory entries and restores persisted SVG after recreation', async () => {
         const backing = storage();
         const cache = createProfileFallbackAvatarCache(backing);
         const avatar = cache.get({ pubkeyHex, name: 'Alice' });
         expect(cache.get({ pubkeyHex, name: 'Another' })).toBe(avatar);
+        await flushPersistence();
         expect(backing.setItem).toHaveBeenCalledTimes(1);
         expect(createProfileFallbackAvatarCache(backing).get({ pubkeyHex, name: 'Alice' })).toEqual(avatar);
+        await flushPersistence();
         expect(backing.setItem).toHaveBeenCalledTimes(1);
         expect(cache.get({ pubkeyHex, name: 'Bob' })?.dataUrl).not.toBe(avatar?.dataUrl);
     });
-    it('evicts least recently used entries at 256', () => {
+    it('persists avatars missed in one render pass with a single write', async () => {
+        const backing = storage();
+        const cache = createProfileFallbackAvatarCache(backing);
+        for (let n = 0; n < 20; n++) cache.get({ pubkeyHex: n.toString(16).padStart(64, '0'), name: 'A' });
+        expect(backing.setItem).not.toHaveBeenCalled();
+        await flushPersistence();
+        expect(backing.setItem).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(backing.getItem(PROFILE_FALLBACK_AVATAR_CACHE_KEY)!)).toHaveLength(20);
+    });
+    it('evicts least recently used entries at 256', async () => {
         const backing = storage();
         const cache = createProfileFallbackAvatarCache(backing);
         const identities = Array.from({length: 257}, (_, n) => ({ pubkeyHex: n.toString(16).padStart(64, '0'), name: 'A' }));
         for (const identity of identities.slice(0, 256)) cache.get(identity);
         cache.get(identities[0]);
         cache.get(identities[256]);
+        await flushPersistence();
         const saved = JSON.parse(backing.getItem(PROFILE_FALLBACK_AVATAR_CACHE_KEY)!);
         expect(saved).toHaveLength(256);
         expect(saved.some(([key]: [string]) => key.includes(identities[0].pubkeyHex))).toBe(true);
         expect(saved.some(([key]: [string]) => key.includes(identities[1].pubkeyHex))).toBe(false);
     });
-    it('recovers from malformed or tampered persistence and unavailable storage', () => {
+    it('recovers from malformed or tampered persistence and unavailable storage', async () => {
         const backing = storage();
         backing.setItem(PROFILE_FALLBACK_AVATAR_CACHE_KEY, '{bad');
         const good = createProfileFallbackAvatarCache(backing).get({pubkeyHex, name: 'A'});
+        await flushPersistence();
         const saved = JSON.parse(backing.getItem(PROFILE_FALLBACK_AVATAR_CACHE_KEY)!);
         saved[0][1].dataUrl = 'data:image/svg+xml,broken';
         backing.setItem(PROFILE_FALLBACK_AVATAR_CACHE_KEY, JSON.stringify(saved));
@@ -76,8 +90,9 @@ describe('profile fallback avatars', () => {
         const denied = createProfileFallbackAvatarCache({ getItem() { throw Error('denied'); }, setItem() { throw Error('full'); } });
         const avatar = denied.get({pubkeyHex});
         expect(denied.get({pubkeyHex})).toBe(avatar);
+        await flushPersistence();
     });
-    it('separates runtime storage facades and preserves host keys', () => {
+    it('separates runtime storage facades and preserves host keys', async () => {
         const host = storage();
         host.setItem("host-only", "keep");
         const component = createWebComponentStorage(host);
@@ -87,6 +102,7 @@ describe('profile fallback avatars', () => {
         expect(getProfileFallbackAvatar({pubkeyHex, name: 'A'})).not.toBe(first);
         configureAppStorage(host);
         expect(getProfileFallbackAvatar({pubkeyHex, name: 'A'})).toBe(first);
+        await flushPersistence();
         expect(host.getItem("host-only")).toBe("keep");
         expect(host.getItem(PROFILE_FALLBACK_AVATAR_CACHE_KEY)).toBeTruthy();
         expect(component.getItem(PROFILE_FALLBACK_AVATAR_CACHE_KEY)).toBeTruthy();

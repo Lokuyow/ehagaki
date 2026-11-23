@@ -179,6 +179,16 @@ const EXACT_TIMESTAMP_FORMAT: Intl.DateTimeFormatOptions = {
     second: "2-digit",
 };
 
+const MONTH_LABEL_CURRENT_YEAR_FORMAT: Intl.DateTimeFormatOptions = {
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+};
+const MONTH_LABEL_OTHER_YEAR_FORMAT: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "numeric",
+};
+
 // Constructing Intl.DateTimeFormat dominates the cost of formatting, and a
 // history page formats two timestamps per post. Options are module constants,
 // so the options object identity plus the locale identifies a formatter.
@@ -255,17 +265,12 @@ export function formatPostHistoryMonthLabel(
     }
 
     if (postedDate.getFullYear() === nowDate.getFullYear()) {
-        return new Intl.DateTimeFormat(localeValue ?? undefined, {
-            month: "numeric",
-            day: "numeric",
-            weekday: "short",
-        }).format(postedDate);
+        return getDateTimeFormat(localeValue, MONTH_LABEL_CURRENT_YEAR_FORMAT)
+            .format(postedDate);
     }
 
-    return new Intl.DateTimeFormat(localeValue ?? undefined, {
-        year: "numeric",
-        month: "numeric",
-    }).format(postedDate);
+    return getDateTimeFormat(localeValue, MONTH_LABEL_OTHER_YEAR_FORMAT)
+        .format(postedDate);
 }
 
 function isSameLocalDate(date: Date, otherDate: Date): boolean {
@@ -281,13 +286,22 @@ function isYesterdayLocal(date: Date, nowDate: Date): boolean {
     return isSameLocalDate(date, yesterday);
 }
 
+// The month label is refreshed while the history scrolls; reuse formatters.
+const relativeDayFormatCache = new Map<string, Intl.RelativeTimeFormat>();
+
 function formatRelativeDayLabel(
     value: 0 | -1,
     localeValue: string | null | undefined,
 ): string {
-    return new Intl.RelativeTimeFormat(localeValue ?? undefined, {
-        numeric: "auto",
-    }).format(value, "day");
+    const localeKey = localeValue ?? "";
+    let format = relativeDayFormatCache.get(localeKey);
+    if (!format) {
+        format = new Intl.RelativeTimeFormat(localeValue ?? undefined, {
+            numeric: "auto",
+        });
+        relativeDayFormatCache.set(localeKey, format);
+    }
+    return format.format(value, "day");
 }
 
 export function buildPreview(content: string): string {
