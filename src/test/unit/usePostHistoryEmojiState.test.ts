@@ -127,7 +127,21 @@ describe("usePostHistoryEmojiState", () => {
         expect(mocks.preload).toHaveBeenCalledTimes(2);
     });
 
-    it("保留中の結果は表示終了で破棄する", async () => {
+    it("破棄後に完了した読み込みは反映を予約しない", async () => {
+        const loadA = deferred<PreloadedCustomEmojiImageResult>();
+        mocks.preload.mockReturnValue(loadA.promise);
+        const view = render(PostHistoryEmojiStateHarness, {
+            props: { urls: [URL_A], onReady: () => undefined },
+        });
+        await settle();
+
+        view.unmount();
+        loadA.resolve({ ready: false });
+        await settle();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("保留中の結果は suspend で破棄する", async () => {
         const loadA = deferred<PreloadedCustomEmojiImageResult>();
         mocks.preload.mockReturnValue(loadA.promise);
         let emojiState: EmojiState | undefined;

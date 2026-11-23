@@ -313,6 +313,8 @@ export function usePostHistoryEmojiState({
 
     $effect(() => { if (!getSessionOpen()) untrack(resetState); });
     onDestroy(() => {
+        // Loads that settle after the abort must not schedule another flush.
+        generation++;
         abort.abort();
         discardPendingLoadResults();
     });
