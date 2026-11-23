@@ -255,6 +255,7 @@
   import { postHistoryLocalRelayService } from "./lib/postHistoryLocalRelayService";
   import { uploadFiles as normalUploadFiles } from "./lib/normalUploadHelper";
   import type { EHagakiUploadResult } from "./web-component/types";
+  import { createLazyHostUpload } from "./lib/upload/lazyHostUpload";
 
   const appRuntimeEnvironment = getAppRuntimeEnvironment();
   interface Props {
@@ -479,7 +480,12 @@
 
   // The channel preview (and its sanitizer) is needed only for a channel post.
   $effect(() => {
-    if (effectiveChannelContextState.value && !ChannelContextPreviewComponent) {
+    // A cancelled transient-failure prompt resets the key to null and retries.
+    if (
+      effectiveChannelContextState.value &&
+      !ChannelContextPreviewComponent &&
+      transientComponentLoadFailure !== "channel-context-preview"
+    ) {
       void loadChannelContextPreview();
     }
   });
@@ -1586,20 +1592,17 @@
     return appEmbedController.applySettings(payload);
   }
 
+  const uploadHostFile = createLazyHostUpload({
+    isEditorBusy: () =>
+      editorState.isUploading || editorState.isSubmitPending || editorState.postStatus.sending,
+  });
+
   /** Full Web Component upload path. It deliberately avoids Composer upload UI state. */
   export async function uploadFileForHost(
     file: File,
     options: { signal: AbortSignal },
   ): Promise<EHagakiUploadResult> {
-    if (editorState.isUploading || editorState.isSubmitPending || editorState.postStatus.sending) {
-      const error = new Error("An editor upload or post operation is already in progress.");
-      error.name = "upload_in_progress";
-      throw error;
-    }
-    // Compression, blurhash, and upload transport are only needed by hosts
-    // that call the headless upload API.
-    const { uploadFileForHost: uploadHeadlessFile } = await import("./lib/upload/headlessUpload");
-    return await uploadHeadlessFile(file, options.signal);
+    return await uploadHostFile(file, options.signal);
   }
 
   /** Public in-process editor control used by the Direct Web Component root. */
