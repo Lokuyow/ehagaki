@@ -115,25 +115,25 @@ describe("postHistoryDialogUtils", () => {
         ]);
     });
 
-    it("buildPreviewContent keeps hashtags followed by a URL or mention in the same unit as the editor and t tags", () => {
+    it("buildPreviewContent keeps a URL after an untagged hashtag clickable and honors matching t tags", () => {
         const npub = "nostr:npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6";
         const withoutTags = buildPreviewContent({
             content: `#taghttps://example.com/ #x${npub}`,
             tags: [],
         });
         expect(withoutTags.segments).toEqual([
-            { type: "hashtag", hashtag: "taghttps://example.com/" },
+            { type: "hashtag", hashtag: "tag" },
+            { type: "link", text: "https://example.com/", href: "https://example.com/" },
             { type: "text", text: " " },
             { type: "hashtag", hashtag: `x${npub}` },
         ]);
 
         const withTags = buildPreviewContent({
             content: `#taghttps://example.com/ #x${npub}`,
-            tags: [["t", "tag"], ["t", "x"]],
+            tags: [["t", "taghttps://example.com/"], ["t", "x"]],
         });
         expect(withTags.segments).toEqual([
-            { type: "hashtag", hashtag: "tag" },
-            { type: "link", text: "https://example.com/", href: "https://example.com/" },
+            { type: "hashtag", hashtag: "taghttps://example.com/" },
             { type: "text", text: " " },
             { type: "hashtag", hashtag: "x" },
             // 英数字の直後の nostr: は従来どおりメンションにしない
@@ -156,6 +156,54 @@ describe("postHistoryDialogUtils", () => {
                 url: "https://example.com/e.webp",
             },
         ]);
+    });
+
+    it("buildPreviewContent does not cut an ASCII word at a shorter t tag", () => {
+        const result = buildPreviewContent({
+            content: "#nostr #nostrich",
+            tags: [["t", "nostr"]],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "hashtag", hashtag: "nostr" },
+            { type: "text", text: " " },
+            { type: "hashtag", hashtag: "nostrich" },
+        ]);
+    });
+
+    it("buildPreviewContent accepts a t tag that ends right before a URL", () => {
+        const result = buildPreviewContent({
+            content: "#taghttps://example.com/",
+            tags: [["t", "tag"]],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "hashtag", hashtag: "tag" },
+            { type: "link", text: "https://example.com/", href: "https://example.com/" },
+        ]);
+    });
+
+    it("buildPreviewContent leaves a trailing unregistered shortcode as text", () => {
+        const result = buildPreviewContent({
+            content: "#tag:unknown: #time:12:30",
+            tags: [],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "hashtag", hashtag: "tag" },
+            { type: "text", text: ":unknown: " },
+            { type: "hashtag", hashtag: "time:12:30" },
+        ]);
+    });
+
+    it("buildPreviewContent resolves a very long hashtag against t tags in linear time", () => {
+        const longTag = "a".repeat(200_000);
+        const result = buildPreviewContent({
+            content: `#${longTag}`,
+            tags: [["t", "a"], ["t", "b"]],
+        });
+
+        expect(result.segments).toEqual([{ type: "hashtag", hashtag: longTag }]);
     });
 
     it("buildPreviewContent prefers the longest t tag that prefixes the hashtag", () => {

@@ -499,9 +499,7 @@ export function buildPreviewContent(
     const segments: PostHistoryPreviewSegment[] = [];
     const emojiUrls = new Set<string>();
     const hashtags = scanPreviewHashtags(normalizedContent, buildTTagSet(post.tags), emojiMap);
-    const mentions = scanProfileMentions(normalizedContent).filter(
-        (mention) => !hashtags.some((hashtag) => mention.start < hashtag.end && hashtag.start < mention.end),
-    );
+    const mentions = excludeRangesOverlapping(scanProfileMentions(normalizedContent), hashtags);
     const inlineRanges = [
         ...hashtags.map((hashtag) => ({ ...hashtag, segment: { type: "hashtag", hashtag: hashtag.hashtag } as const })),
         ...mentions.map(({ start, end, pubkey, relayHints }) => ({
@@ -523,7 +521,24 @@ export function buildPreviewContent(
     return { segments, emojiUrls: [...emojiUrls] };
 }
 
-const HASHTAG_TRAILING_PUNCTUATION_PATTERN = /[。、．，,.!?！？…:;：；"'”’」』）)\]】〕〉》]+$/u;
+const HASHTAG_TRAILING_PUNCTUATION = new Set(Array.from("。、．，,.!?！？…:;：；\"'”’」』）)]】〕〉》"));
+const HASHTAG_EMBEDDED_URL_PATTERN = /https?:\/\//i;
+const ASCII_WORD_CHAR_PATTERN = /^[A-Za-z0-9_]$/;
+// エディターではメンションや URL が別ノード・別単位になるので、その直前で切れる t タグは採用する
+const HASHTAG_FOLLOWING_REFERENCE_PATTERN = /^(?:nostr:|https?:\/\/)/i;
+
+// どちらも開始位置順で、base 同士は重ならない前提で、base と重なる range を除く
+function excludeRangesOverlapping<T extends { start: number; end: number }>(
+    ranges: T[],
+    base: ReadonlyArray<{ start: number; end: number }>,
+): T[] {
+    let baseIndex = 0;
+    return ranges.filter((range) => {
+        while (base[baseIndex] && base[baseIndex]!.end <= range.start) baseIndex++;
+        const current = base[baseIndex];
+        return !current || range.end <= current.start;
+    });
+}
 
 function buildTTagSet(tags: PostHistoryRecord["tags"]): Set<string> {
     return new Set(
@@ -535,21 +550,51 @@ function buildTTagSet(tags: PostHistoryRecord["tags"]): Set<string> {
     );
 }
 
+// t タグに一致する最長の前方部分を返す。英数字の途中で切れる一致（#nostrich に対する nostr）は、
+// 続きがメンションや URL でない限り採用しない。
+// t タグの数 × タグ長で済むよう、候補ではなく t タグ側を走査する。
+function findMatchingTTagPrefix(candidate: string, tTags: ReadonlySet<string>): string | null {
+    let best: string | null = null;
+    for (const tag of tTags) {
+        if (tag.length > candidate.length || (best && tag.length <= best.length)) {
+            continue;
+        }
+        const prefix = candidate.slice(0, tag.length);
+        if (prefix.toLowerCase() !== tag) {
+            continue;
+        }
+        const last = prefix.at(-1) ?? "";
+        const next = candidate.charAt(tag.length);
+        if (
+            next &&
+            ASCII_WORD_CHAR_PATTERN.test(last) &&
+            ASCII_WORD_CHAR_PATTERN.test(next) &&
+            !HASHTAG_FOLLOWING_REFERENCE_PATTERN.test(candidate.slice(tag.length, tag.length + 8))
+        ) {
+            continue;
+        }
+        best = prefix;
+    }
+    return best;
+}
+
+function trimTrailingHashtagPunctuation(value: string): string {
+    let end = value.length;
+    while (end > 0 && HASHTAG_TRAILING_PUNCTUATION.has(value.charAt(end - 1))) end--;
+    return value.slice(0, end);
+}
+
 // 候補の先頭からイベントの t タグに一致する最長部分を採用する。
-// 一致しなければ、登録済みカスタム絵文字の手前で切り、末尾の句読点を除く。
+// 一致しなければ、登録済みカスタム絵文字や URL の手前、末尾の未登録ショートコードの手前で切り、
+// 末尾の句読点を除く。
 function resolveHashtagCandidate(
     candidate: string,
     tTags: ReadonlySet<string>,
     emojiMap: ReturnType<typeof buildCustomEmojiTagMap>,
 ): string {
-    if (tTags.size > 0) {
-        const chars = Array.from(candidate);
-        for (let length = chars.length; length > 0; length -= 1) {
-            const prefix = chars.slice(0, length).join("");
-            if (tTags.has(prefix.toLowerCase())) {
-                return prefix;
-            }
-        }
+    const tagged = findMatchingTTagPrefix(candidate, tTags);
+    if (tagged) {
+        return tagged;
     }
 
     let resolved = candidate;
@@ -560,11 +605,25 @@ function resolveHashtagCandidate(
             break;
         }
     }
-    return resolved.replace(HASHTAG_TRAILING_PUNCTUATION_PATTERN, "");
+
+    const urlIndex = resolved.search(HASHTAG_EMBEDDED_URL_PATTERN);
+    if (urlIndex >= 0) {
+        resolved = resolved.slice(0, urlIndex);
+    }
+
+    // 末尾の :shortcode: は、末尾の : だけを削らずにまとめて本文側に残す
+    if (resolved.endsWith(":")) {
+        const openIndex = resolved.lastIndexOf(":", resolved.length - 2);
+        if (openIndex >= 0 && openIndex < resolved.length - 2) {
+            resolved = resolved.slice(0, openIndex);
+        }
+    }
+
+    return trimTrailingHashtagPunctuation(resolved);
 }
 
 // エディターのハイライトと同じ規則（行頭・空白の直後の #）で本文全体からハッシュタグを探す。
-// URL やメンションより先に範囲を決め、エディターや t タグと同じ単位でリンクにする。
+// URL やメンションより先に範囲を決め、t タグと同じ単位でリンクにする。
 function scanPreviewHashtags(
     content: string,
     tTags: ReadonlySet<string>,
