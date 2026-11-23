@@ -110,6 +110,15 @@ export async function generateBlurhash(
             return null;
         }
 
+        // load 時点ではデコード済みとは限らず、drawImage がメインスレッドで
+        // 同期デコードする。失敗時は従来どおり drawImage に任せる。
+        if (typeof img.decode === "function") {
+            await img.decode().catch(() => undefined);
+            if (isUploadAborted()) {
+                return null;
+            }
+        }
+
         const canvas = document.createElement("canvas");
         canvas.width = Math.min(img.width, 64); // blurhash推奨:小さめ
         canvas.height = Math.min(img.height, 64);

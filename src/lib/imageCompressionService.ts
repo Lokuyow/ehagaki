@@ -73,6 +73,13 @@ export class ImageCompressionService implements CompressionService {
             image.src = url;
             await awaitUploadOperation(loaded, operation?.signal);
             check();
+            if (typeof image.decode === 'function') {
+                // `load` does not guarantee decoded pixels; without this, drawImage
+                // decodes large photos synchronously on the main thread. A decode
+                // rejection keeps the previous drawImage path.
+                await awaitUploadOperation(image.decode().catch(() => undefined), operation?.signal);
+                check();
+            }
             // Supported browsers decode EXIF orientation before exposing natural dimensions/drawing.
             const dimensions = calculateImageResizeDimensions(image.naturalWidth, image.naturalHeight, options.maxShortEdge);
             canvas = document.createElement('canvas');
