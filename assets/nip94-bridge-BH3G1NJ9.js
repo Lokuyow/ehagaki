@@ -1,0 +1,1 @@
+export{W as generateEventTemplate}from"./vendor-nostr-bridge-DXNFpN-2.js";

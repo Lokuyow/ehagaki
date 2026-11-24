@@ -1,0 +1,444 @@
+import { n as e, t } from "./postMediaCacheUtils-DIeR2W7v.js";
+import { t as n } from "./postMediaCacheRepository-DfRCsy9f.js";
+// D:/ドキュメント/GitHub/ehagaki/src/lib/cacheRetention.ts
+function r(e, t, n, r) {
+	let i = e.filter((e) => e.expiresAt <= n), a = e.filter((e) => e.expiresAt > n).sort((e, t) => e.lastAccessedAt - t.lastAccessedAt), o = a.length + Number(r !== void 0), s = a.filter((e) => e.size === null).length + Number(r?.size === null), c = a.reduce((e, t) => e + (t.size ?? 0), r?.size ?? 0);
+	for (let e of a) {
+		if (o <= t.maxEntries && s <= t.maxOpaqueEntries && c <= t.maxReadableBytes) break;
+		o <= t.maxEntries && (e.size === null ? s <= t.maxOpaqueEntries : c <= t.maxReadableBytes) || (i.push(e), o--, s -= Number(e.size === null), c -= e.size ?? 0);
+	}
+	return i;
+}
+var i = 864e5, a = "ehagaki-post-media-v1", o = 134217728, s = 256, c = 8, l = 36e5;
+function u() {
+	let e = typeof URL < "u" && typeof URL.createObjectURL == "function", t = typeof URL < "u" && typeof URL.revokeObjectURL == "function";
+	return {
+		cacheStorage: typeof caches > "u" ? void 0 : caches,
+		locks: typeof navigator > "u" ? void 0 : navigator.locks,
+		fetch: typeof globalThis.fetch == "function" ? globalThis.fetch.bind(globalThis) : void 0,
+		createObjectUrl: e ? URL.createObjectURL.bind(URL) : void 0,
+		revokeObjectUrl: t ? URL.revokeObjectURL.bind(URL) : void 0
+	};
+}
+function d(t) {
+	return e(t) || String(t ?? "").trim();
+}
+function f(e) {
+	return { ...e };
+}
+function p(e) {
+	return { ...e };
+}
+async function m(e, t, n) {
+	if (e.length === 0) return;
+	let r = Math.max(1, Math.min(t, e.length)), i = 0, a = Array.from({ length: r }, async () => {
+		for (; i < e.length;) {
+			let t = i;
+			i += 1, await n(e[t]);
+		}
+	});
+	await Promise.all(a);
+}
+var h = new class {
+	repository;
+	runtime;
+	maxTotalSize;
+	mutationQueue = Promise.resolve();
+	entryQueues = /* @__PURE__ */ new Map();
+	reconciliation;
+	nextReconcileAt = 0;
+	descriptorSnapshotTtlMs;
+	descriptorSnapshotMaxEntries;
+	objectUrlTtlMs;
+	objectUrlMaxEntries;
+	objectUrlMaxTotalSize;
+	descriptorSnapshotByCacheKey = /* @__PURE__ */ new Map();
+	descriptorLookupPromises = /* @__PURE__ */ new Map();
+	sharedObjectUrlByCacheKey = /* @__PURE__ */ new Map();
+	objectUrlOwners = /* @__PURE__ */ new Map();
+	constructor(e = n, t = u(), r = o, i = {}) {
+		this.repository = e, this.runtime = t, this.maxTotalSize = r, this.descriptorSnapshotTtlMs = Math.max(0, Math.trunc(i.descriptorSnapshotTtlMs ?? 6e4)), this.descriptorSnapshotMaxEntries = Math.max(0, Math.trunc(i.descriptorSnapshotMaxEntries ?? 256)), this.objectUrlTtlMs = Math.max(0, Math.trunc(i.objectUrlTtlMs ?? 45e3)), this.objectUrlMaxEntries = Math.max(0, Math.trunc(i.objectUrlMaxEntries ?? 16)), this.objectUrlMaxTotalSize = Math.max(0, Math.trunc(i.objectUrlMaxTotalSize ?? 25165824));
+	}
+	canUsePersistentCache() {
+		return !!globalThis.isSecureContext && this.runtime.cacheStorage !== void 0;
+	}
+	async prefetchCachedMediaDescriptors(e) {
+		if (!this.canUsePersistentCache()) return;
+		this.cleanupTransientState();
+		let t = /* @__PURE__ */ new Map();
+		for (let n of e) {
+			let e = d(n);
+			e && !t.has(e) && this.readDescriptorSnapshot(e) === void 0 && t.set(e, n);
+		}
+		await m([...t.entries()], 4, async ([e, t]) => {
+			try {
+				await this.resolveCachedMediaDescriptor(t, e);
+			} catch {}
+		});
+	}
+	getCachedMediaDescriptorSnapshot(e) {
+		this.cleanupTransientState();
+		let t = d(e);
+		if (t) return this.readDescriptorSnapshot(t);
+	}
+	getCachedMediaObjectUrlSnapshot(e) {
+		this.cleanupTransientState();
+		let t = d(e);
+		if (!t) return null;
+		let n = this.sharedObjectUrlByCacheKey.get(t), r = Date.now();
+		return n ? n.expiresAt <= r ? (n.activeLeases === 0 && this.revokeSharedObjectUrl(t), null) : (n.activeLeases += 1, n.lastAccessedAt = r, n.expiresAt = r + this.objectUrlTtlMs, p({
+			...n.descriptor,
+			objectUrl: n.objectUrl
+		})) : null;
+	}
+	async persistUploadedMedia(e) {
+		return this.persistMediaBlob({
+			url: e.url,
+			file: e.file,
+			mimeType: e.mimeType || e.file.type || void 0,
+			source: "uploaded"
+		});
+	}
+	async fetchAndCacheMedia(e) {
+		let t = this.runtime.fetch;
+		if (!t) return null;
+		try {
+			let n = await t(e.url);
+			if (n.type === "opaque") return this.persistOpaqueMediaResponse(e.url, n, e.mimeType);
+			if (!n.ok) return null;
+			let r = await n.blob();
+			return this.persistMediaBlob({
+				url: e.url,
+				file: r,
+				mimeType: e.mimeType || n.headers.get("Content-Type") || r.type || void 0,
+				source: "network"
+			});
+		} catch (t) {
+			let n = await this.fetchOpaqueMediaResponse({
+				url: e.url,
+				mimeType: e.mimeType
+			});
+			if (n) return n;
+			throw t;
+		}
+	}
+	async getCachedMediaDescriptor(e) {
+		this.cleanupTransientState();
+		let t = d(e);
+		if (!t) return null;
+		let n = this.readDescriptorSnapshot(t);
+		return n === void 0 ? this.resolveCachedMediaDescriptor(e, t) : n;
+	}
+	async createCachedMediaObjectUrl(e, t = {}) {
+		this.cleanupTransientState();
+		let n = t.reuseShortLived ?? !0;
+		if (n) {
+			let t = this.getCachedMediaObjectUrlSnapshot(e);
+			if (t) return await this.repository.touch(t.cacheKey), t;
+		}
+		let r = await this.getCachedRecordAndResponse(e), i = d(e);
+		if (!r) return i && (this.writeDescriptorSnapshot(i, null), this.retireSharedObjectUrl(i)), null;
+		let { record: a, response: o } = r, s = this.toCachedMediaDescriptor({
+			record: a,
+			mimeType: a.mimeType || o.headers.get("Content-Type") || void 0
+		});
+		if (o.type === "opaque") return await this.repository.touch(a.cacheKey), {
+			...s,
+			objectUrl: a.url
+		};
+		let c = this.runtime.createObjectUrl;
+		if (!c) return null;
+		let l = await o.blob(), u = s.mimeType || l.type || void 0, f = this.toCachedMediaDescriptor({
+			record: a,
+			mimeType: u
+		});
+		if (this.writeDescriptorSnapshot(a.cacheKey, f), n && this.shouldPoolObjectUrl({
+			descriptor: f,
+			size: l.size
+		}) && !this.sharedObjectUrlByCacheKey.has(a.cacheKey) && this.ensureSharedObjectUrlCapacity({
+			requiredCount: 1,
+			requiredSize: l.size,
+			protectedCacheKey: a.cacheKey
+		})) {
+			let e = c(l);
+			return this.sharedObjectUrlByCacheKey.set(a.cacheKey, {
+				descriptor: f,
+				objectUrl: e,
+				size: l.size,
+				expiresAt: Date.now() + this.objectUrlTtlMs,
+				lastAccessedAt: Date.now(),
+				activeLeases: 1
+			}), this.objectUrlOwners.set(e, {
+				kind: "shared",
+				cacheKey: a.cacheKey
+			}), await this.repository.touch(a.cacheKey), {
+				...f,
+				objectUrl: e
+			};
+		}
+		let p = c(l);
+		return this.objectUrlOwners.set(p, { kind: "ephemeral" }), await this.repository.touch(a.cacheKey), {
+			...f,
+			objectUrl: p
+		};
+	}
+	revokeObjectUrl(e) {
+		if (!e.startsWith("blob:")) return;
+		let t = this.objectUrlOwners.get(e);
+		if (!t) {
+			this.runtime.revokeObjectUrl?.(e);
+			return;
+		}
+		if (t.kind === "ephemeral") {
+			this.objectUrlOwners.delete(e), this.runtime.revokeObjectUrl?.(e);
+			return;
+		}
+		let n = this.sharedObjectUrlByCacheKey.get(t.cacheKey);
+		!n || n.objectUrl !== e ? (this.objectUrlOwners.delete(e), this.runtime.revokeObjectUrl?.(e)) : (n.activeLeases = Math.max(0, n.activeLeases - 1), n.lastAccessedAt = Date.now(), this.cleanupSharedObjectUrlEntries());
+	}
+	async deleteCachedMedia(t) {
+		this.cleanupTransientState();
+		let n = this.runtime.cacheStorage;
+		n && await this.serialize(async () => {
+			let r = await n.open(a);
+			await this.reconcile(r);
+			let i = e(t);
+			i && await this.remove(r, i);
+		});
+	}
+	async persistMediaBlob(e) {
+		if (e.file.size > this.maxTotalSize) return null;
+		let t = new Response(e.file, { headers: e.mimeType ? { "Content-Type": e.mimeType } : void 0 });
+		return this.persistResponse(e.url, t, e.file.size, e.mimeType, e.source);
+	}
+	async fetchOpaqueMediaResponse(e) {
+		let t = this.runtime.fetch;
+		if (!t) return null;
+		let n;
+		try {
+			n = await t(new Request(e.url, {
+				mode: "no-cors",
+				cache: "reload"
+			}));
+		} catch {
+			return null;
+		}
+		return n.type === "opaque" ? this.persistOpaqueMediaResponse(e.url, n, e.mimeType) : null;
+	}
+	persistOpaqueMediaResponse(e, t, n) {
+		return this.persistResponse(e, t, null, n, "network");
+	}
+	async persistResponse(t, n, r, i, o) {
+		let s = this.runtime.cacheStorage, c = e(t);
+		return !s || !c ? null : this.serialize(async () => {
+			let e = await s.open(a);
+			await this.reconcile(e);
+			let l = Date.now();
+			await this.prune(e, {
+				cacheKey: c,
+				size: r,
+				lastAccessedAt: l,
+				expiresAt: Infinity
+			});
+			let u = await this.withEntryLock(c, "exclusive", async () => {
+				let a = await this.repository.getByUrl(t);
+				a && (await this.repository.deleteByCacheKey(c), this.descriptorSnapshotByCacheKey.delete(c), this.retireSharedObjectUrl(c));
+				try {
+					await e.put(c, n);
+					let s = await this.repository.upsert({
+						cacheKey: c,
+						url: t,
+						normalizedUrl: c,
+						size: r ?? 0,
+						mimeType: i,
+						createdAt: l,
+						lastAccessedAt: l,
+						source: o,
+						...a && {
+							eventIds: a.eventIds,
+							mimeType: i ?? a.mimeType
+						}
+					}), u = this.toCachedMediaDescriptor({
+						record: s,
+						mimeType: s.mimeType
+					});
+					return r === null ? this.descriptorSnapshotByCacheKey.delete(c) : this.writeDescriptorSnapshot(c, u), u;
+				} catch (t) {
+					throw this.nextReconcileAt = 0, await this.removeEntry(e, c).catch(() => void 0), t;
+				}
+			});
+			if (!this.runtime.locks) try {
+				await this.prune(e);
+			} catch (t) {
+				throw this.nextReconcileAt = 0, await this.remove(e, c).catch(() => void 0), t;
+			}
+			return u;
+		});
+	}
+	async resolveCachedMediaDescriptor(e, t = d(e)) {
+		if (!t) return this.loadCachedMediaDescriptor(e, t);
+		let n = this.descriptorLookupPromises.get(t);
+		if (n) return n;
+		let r = this.loadCachedMediaDescriptor(e, t).finally(() => {
+			this.descriptorLookupPromises.delete(t);
+		});
+		return this.descriptorLookupPromises.set(t, r), r;
+	}
+	async loadCachedMediaDescriptor(e, t) {
+		let n = await this.getCachedRecordAndResponse(e);
+		if (!n) return this.writeDescriptorSnapshot(t, null), null;
+		let { record: r, response: i } = n, a = this.toCachedMediaDescriptor({
+			record: r,
+			mimeType: r.mimeType || i.headers.get("Content-Type") || void 0
+		});
+		return i.type !== "opaque" && this.writeDescriptorSnapshot(t, a), a;
+	}
+	toCachedMediaDescriptor(e) {
+		let { record: n, mimeType: r } = e;
+		return {
+			cacheKey: n.cacheKey,
+			url: n.url,
+			mimeType: r,
+			size: n.size,
+			source: n.source,
+			kind: t({
+				url: n.url,
+				mimeType: r
+			})
+		};
+	}
+	writeDescriptorSnapshot(e, t) {
+		if (!e || this.descriptorSnapshotTtlMs <= 0 || this.descriptorSnapshotMaxEntries <= 0) {
+			this.descriptorSnapshotByCacheKey.delete(e);
+			return;
+		}
+		let n = Date.now();
+		this.descriptorSnapshotByCacheKey.set(e, {
+			value: t ? f(t) : null,
+			expiresAt: n + this.descriptorSnapshotTtlMs,
+			lastAccessedAt: n,
+			resolvedAt: n
+		}), this.cleanupDescriptorSnapshots();
+	}
+	readDescriptorSnapshot(e) {
+		if (!e) return;
+		let t = this.descriptorSnapshotByCacheKey.get(e), n = Date.now();
+		if (t) {
+			if (t.expiresAt <= n) this.descriptorSnapshotByCacheKey.delete(e);
+			else return t.lastAccessedAt = n, t.expiresAt = n + this.descriptorSnapshotTtlMs, t.value ? f(t.value) : null;
+		}
+	}
+	shouldPoolObjectUrl(e) {
+		return e.descriptor.kind === "image" && e.size > 0 && e.size <= this.objectUrlMaxTotalSize && this.objectUrlMaxEntries > 0 && this.objectUrlTtlMs > 0;
+	}
+	ensureSharedObjectUrlCapacity(e) {
+		if (this.objectUrlMaxEntries <= 0 || this.objectUrlMaxTotalSize <= 0) return !1;
+		this.cleanupSharedObjectUrlEntries();
+		let t = this.sharedObjectUrlByCacheKey.size, n = [...this.sharedObjectUrlByCacheKey.values()].reduce((e, t) => e + t.size, 0);
+		if (t + e.requiredCount <= this.objectUrlMaxEntries && n + e.requiredSize <= this.objectUrlMaxTotalSize) return !0;
+		let r = [...this.sharedObjectUrlByCacheKey.entries()].filter(([t, n]) => t !== e.protectedCacheKey && n.activeLeases === 0).sort((e, t) => e[1].lastAccessedAt - t[1].lastAccessedAt);
+		for (let [i, a] of r) if (this.revokeSharedObjectUrl(i), --t, n -= a.size, t + e.requiredCount <= this.objectUrlMaxEntries && n + e.requiredSize <= this.objectUrlMaxTotalSize) return !0;
+		return !1;
+	}
+	cleanupTransientState() {
+		this.cleanupDescriptorSnapshots(), this.cleanupSharedObjectUrlEntries();
+	}
+	cleanupDescriptorSnapshots() {
+		let e = Date.now();
+		for (let [t, n] of this.descriptorSnapshotByCacheKey) n.expiresAt <= e && this.descriptorSnapshotByCacheKey.delete(t);
+		if (this.descriptorSnapshotByCacheKey.size <= this.descriptorSnapshotMaxEntries) return;
+		let t = [...this.descriptorSnapshotByCacheKey.entries()].sort((e, t) => e[1].lastAccessedAt - t[1].lastAccessedAt);
+		for (; this.descriptorSnapshotByCacheKey.size > this.descriptorSnapshotMaxEntries;) {
+			let e = t.shift();
+			if (!e) return;
+			this.descriptorSnapshotByCacheKey.delete(e[0]);
+		}
+	}
+	cleanupSharedObjectUrlEntries() {
+		let e = Date.now();
+		for (let [t, n] of this.sharedObjectUrlByCacheKey) n.activeLeases === 0 && n.expiresAt <= e && this.revokeSharedObjectUrl(t);
+		if (this.sharedObjectUrlByCacheKey.size <= this.objectUrlMaxEntries && [...this.sharedObjectUrlByCacheKey.values()].reduce((e, t) => e + t.size, 0) <= this.objectUrlMaxTotalSize) return;
+		let t = [...this.sharedObjectUrlByCacheKey.entries()].filter(([, e]) => e.activeLeases === 0).sort((e, t) => e[1].lastAccessedAt - t[1].lastAccessedAt), n = this.sharedObjectUrlByCacheKey.size, r = [...this.sharedObjectUrlByCacheKey.values()].reduce((e, t) => e + t.size, 0);
+		for (let [e, i] of t) {
+			if (n <= this.objectUrlMaxEntries && r <= this.objectUrlMaxTotalSize) return;
+			this.revokeSharedObjectUrl(e), --n, r -= i.size;
+		}
+	}
+	revokeSharedObjectUrl(e) {
+		let t = this.sharedObjectUrlByCacheKey.get(e);
+		t && (this.sharedObjectUrlByCacheKey.delete(e), this.objectUrlOwners.delete(t.objectUrl), this.runtime.revokeObjectUrl?.(t.objectUrl));
+	}
+	serialize(e) {
+		let t = this.mutationQueue.then(async () => this.runtime.locks ? this.runtime.locks.request(a, e) : e());
+		return this.mutationQueue = t.catch(() => void 0), t;
+	}
+	withEntryLock(e, t, n) {
+		if (this.runtime.locks) return this.runtime.locks.request(`${a}:entry:${e}`, { mode: t }, n);
+		let r = (this.entryQueues.get(e) ?? Promise.resolve()).then(n), i = r.catch(() => void 0);
+		return this.entryQueues.set(e, i), i.then(() => {
+			this.entryQueues.get(e) === i && this.entryQueues.delete(e);
+		}), r;
+	}
+	remove(e, t) {
+		return this.withEntryLock(t, "exclusive", () => this.removeEntry(e, t));
+	}
+	async removeEntry(e, t) {
+		await e.delete(t), await this.repository.deleteByCacheKey(t), this.descriptorSnapshotByCacheKey.delete(t), this.retireSharedObjectUrl(t);
+	}
+	retireSharedObjectUrl(e) {
+		let t = this.sharedObjectUrlByCacheKey.get(e);
+		t && (t.activeLeases === 0 && this.revokeSharedObjectUrl(e), t.expiresAt = 0);
+	}
+	async reconcile(e) {
+		if (Date.now() < this.nextReconcileAt) return;
+		let [t, n] = await Promise.all([e.keys(), this.repository.listByLastAccessed()]), r = new Set(t.map((e) => e.url)), i = new Set(n.map((e) => e.cacheKey));
+		for (let t of r) i.has(t) || await this.remove(e, t);
+		for (let t of i) r.has(t) || await this.remove(e, t);
+		await this.prune(e), this.nextReconcileAt = Date.now() + l;
+	}
+	scheduleReconciliation(e) {
+		Date.now() < this.nextReconcileAt || this.reconciliation || (this.reconciliation = this.serialize(() => this.reconcile(e)).catch(() => void 0).finally(() => {
+			this.reconciliation = void 0;
+		}));
+	}
+	async readEntry(e, t) {
+		let n = await this.repository.getByUrl(t);
+		if (!n) return null;
+		let r = await e.match(n.cacheKey);
+		return {
+			record: n,
+			response: r?.type === "opaque" && n.createdAt + 864e5 <= Date.now() ? void 0 : r
+		};
+	}
+	async prune(e, t) {
+		let n = (await this.repository.listByLastAccessed()).filter((e) => e.cacheKey !== t?.cacheKey).map((e) => ({
+			cacheKey: e.cacheKey,
+			size: e.size,
+			lastAccessedAt: e.lastAccessedAt,
+			expiresAt: Infinity,
+			createdAt: e.createdAt
+		}));
+		await m(n.filter((e) => e.size === 0), 4, async (t) => {
+			(await e.match(t.cacheKey))?.type === "opaque" && (t.size = null, t.expiresAt = t.createdAt + i);
+		});
+		let a = {
+			maxEntries: s,
+			maxReadableBytes: this.maxTotalSize,
+			maxOpaqueEntries: c
+		};
+		for (let i of r(n, a, Date.now(), t)) await this.remove(e, i.cacheKey);
+	}
+	async getCachedRecordAndResponse(t) {
+		let n = this.runtime.cacheStorage, r = e(t);
+		if (!n || !r) return null;
+		let i = await n.open(a), o = await this.withEntryLock(r, "shared", () => this.readEntry(i, t));
+		return this.scheduleReconciliation(i), o ? o.response ? {
+			record: o.record,
+			response: o.response
+		} : (this.serialize(() => this.withEntryLock(r, "exclusive", async () => {
+			let e = await this.readEntry(i, t);
+			e && !e.response && await this.removeEntry(i, e.record.cacheKey);
+		})).catch(() => void 0), null) : null;
+	}
+}();
+export { h as t };

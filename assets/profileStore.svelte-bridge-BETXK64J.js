@@ -1,0 +1,1 @@
+import{_t as e,at as t,gt as n,vt as r}from"./vendor-svelte-bridge-Ci0-jRz3.js";var i=r(n({name:``,displayName:``,picture:``,npub:``,nprofile:``})),a=r(!1),o=r(!1),s={get value(){return t(i)},set:t=>{e(i,t,!0)}},c={get value(){return t(a)},set:t=>{e(a,t,!0)}},l={get value(){return t(o)},set:t=>{e(o,t,!0)}};export{s as n,c as r,l as t};

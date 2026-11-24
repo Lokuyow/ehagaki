@@ -1,9 +1,0 @@
-// D:/ドキュメント/GitHub/ehagaki/src/lib/utils/nostrHexUtils.ts
-var e = /^[0-9a-f]{64}$/i, t = /^[0-9a-f]{64}$/;
-function n(t) {
-	return typeof t == "string" && e.test(t);
-}
-function r(e) {
-	return typeof e == "string" && t.test(e);
-}
-export { r as n, n as t };

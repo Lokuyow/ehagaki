@@ -1,0 +1,1 @@
+export{H as getToken}from"./vendor-nostr-bridge-DXNFpN-2.js";

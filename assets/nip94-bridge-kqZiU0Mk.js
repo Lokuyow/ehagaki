@@ -1,1 +1,0 @@
-export{_ as generateEventTemplate}from"./vendor-nostr-bridge-BIQgG3AW.js";
