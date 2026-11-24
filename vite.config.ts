@@ -211,5 +211,11 @@ export default defineConfig({
       '.ngrok-free.app'
     ],
     proxy: webComponentDevProxy,
+    watch: {
+      // Agent worktrees live under .claude/ in the main checkout. Watching their
+      // tens of thousands of files saturates the fs threadpool on Windows and
+      // keeps the dev server from listening.
+      ignored: ['**/.claude/**'],
+    },
   }
 });
