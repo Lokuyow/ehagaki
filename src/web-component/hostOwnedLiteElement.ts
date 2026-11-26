@@ -87,7 +87,14 @@ export class EHagakiHostOwnedLiteComposerElement extends EHagakiComposerElement 
                 "InvalidStateError",
             ));
         }
-        const validated = validateCustomEmojiCatalog(catalog);
+        let validated: ReturnType<typeof validateCustomEmojiCatalog>;
+        try {
+            validated = validateCustomEmojiCatalog(catalog);
+        } catch (error) {
+            // A Promise-returning public method reports invalid input as a
+            // rejection so `.catch()` and `await` handle it like other failures.
+            return Promise.reject(error);
+        }
         this.#hostCustomEmojiCatalog = validated;
         return this.enqueue(async () => {
             const app = this.requireApp();

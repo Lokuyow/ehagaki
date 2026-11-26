@@ -17,7 +17,8 @@ import {
     type EHagakiComposerSettings,
 } from "./types";
 import { createWebComponentNotificationPort } from "./notificationPort";
-import { applyWebComponentIconAssetUrls } from "./iconAssets";
+import { createWebComponentIconAssetApplier } from "./iconAssets";
+import { transformAppCssForShadowRoot } from "./appShadowCss";
 
 type AppInstance = {
     setEmbedContext(payload: unknown): Promise<void>;
@@ -109,17 +110,6 @@ function validateSettings(value: EHagakiComposerSettings): EmbedSettingsSetPaylo
         }
     }
     return value;
-}
-
-function transformAppCss(css: string): string {
-    // app.css is authored for the document root. In this build it is copied
-    // into the component's open shadow tree instead of touching host styles.
-    return css
-        .replaceAll(/:root:is\(\s*\.light\s*,\s*\.dark\s*\)/g, ":host(:is(.light, .dark))")
-        .replaceAll(":root", ":host")
-        .replace("html,\nbody,\n#app", ":host,\n.ehagaki-web-component-shell")
-        .replace("#app {", ".ehagaki-web-component-shell {")
-        .replace("body {", ".ehagaki-web-component-shell {");
 }
 
 function getWebComponentThemeCss(): string {
@@ -305,6 +295,10 @@ export abstract class EHagakiComposerElement extends HTMLElement {
             resolve = nextResolve;
             reject = nextReject;
         });
+        // Hosts that never call whenReady() must not see an unhandled
+        // rejection. whenReady() still returns this same promise, so callers
+        // observe the rejection unchanged.
+        promise.catch(() => undefined);
         return {
             promise,
             resolve,
@@ -320,7 +314,7 @@ export abstract class EHagakiComposerElement extends HTMLElement {
             const shadowRoot = this.shadowRoot ?? this.attachShadow({ mode: "open" });
             shadowRoot.replaceChildren();
             const styles = document.createElement("style");
-            styles.textContent = `${transformAppCss(appCss)}\n${photoSwipeCss}\n${getWebComponentThemeCss()}`;
+            styles.textContent = `${transformAppCssForShadowRoot(appCss)}\n${photoSwipeCss}\n${getWebComponentThemeCss()}`;
             const shell = document.createElement("div");
             shell.className = "ehagaki-web-component-shell";
             const mountTarget = document.createElement("div");
@@ -334,8 +328,11 @@ export abstract class EHagakiComposerElement extends HTMLElement {
                 this.assetBase ?? "./",
                 import.meta.url,
             );
-            this.#assetStyleObserver = new MutationObserver(() => {
-                applyWebComponentIconAssetUrls(shadowRoot, shell, assetBase);
+            const iconAssets = createWebComponentIconAssetApplier(shell, assetBase);
+            // Editor typing mutates the shadow tree constantly; only newly
+            // added nodes can carry new `<style>` text, so scan just those.
+            this.#assetStyleObserver = new MutationObserver((records) => {
+                for (const record of records) iconAssets.applyAddedNodes(record.addedNodes);
             });
             this.#assetStyleObserver.observe(shadowRoot, {
                 childList: true,
@@ -377,7 +374,7 @@ export abstract class EHagakiComposerElement extends HTMLElement {
                     },
                 },
             });
-            applyWebComponentIconAssetUrls(shadowRoot, shell, assetBase);
+            iconAssets.applyRoot(shadowRoot);
             this.#app = this.#mountedApp as AppInstance;
             if (!this.isConnected || generation !== this.#connectionGeneration) return;
         } catch (error) {

@@ -27,23 +27,52 @@ export function getWebComponentIconVariableName(iconPath: string): string {
     return `${ICON_VARIABLE_PREFIX}${encodeIconPath(iconPath)}`;
 }
 
-export function applyWebComponentIconAssetUrls(
-    root: ShadowRoot,
+export type WebComponentIconAssetApplier = {
+    /** Scans every `<style>` under the root, e.g. once after mounting. */
+    applyRoot(root: ParentNode): void;
+    /** Scans only nodes added since the last scan (MutationObserver records). */
+    applyAddedNodes(nodes: Iterable<Node>): void;
+};
+
+/**
+ * Resolves icon variables against the delivery `assetBase`. Each variable is
+ * set once per mount, so later scans only look at newly added `<style>` text
+ * instead of re-reading every style on every DOM change.
+ */
+export function createWebComponentIconAssetApplier(
     target: HTMLElement,
     assetBase: URL,
-): void {
-    const names = new Set<string>();
-    for (const style of root.querySelectorAll("style")) {
+): WebComponentIconAssetApplier {
+    const appliedNames = new Set<string>();
+
+    const applyStyle = (style: HTMLStyleElement): void => {
         for (const match of style.textContent?.matchAll(ICON_VARIABLE_PATTERN) ?? []) {
-            names.add(match[0]);
+            const name = match[0];
+            if (appliedNames.has(name)) continue;
+            appliedNames.add(name);
+            const iconPath = decodeIconPath(name.slice(ICON_VARIABLE_PREFIX.length));
+            if (!iconPath) continue;
+            target.style.setProperty(
+                name,
+                `url("${new URL(`icons/${iconPath}`, assetBase).href}")`,
+            );
         }
-    }
-    for (const name of names) {
-        const iconPath = decodeIconPath(name.slice(ICON_VARIABLE_PREFIX.length));
-        if (!iconPath) continue;
-        target.style.setProperty(
-            name,
-            `url("${new URL(`icons/${iconPath}`, assetBase).href}")`,
-        );
-    }
+    };
+
+    const applyRoot = (root: ParentNode): void => {
+        for (const style of root.querySelectorAll("style")) applyStyle(style);
+    };
+
+    return {
+        applyRoot,
+        applyAddedNodes(nodes) {
+            for (const node of nodes) {
+                if (node instanceof HTMLStyleElement) {
+                    applyStyle(node);
+                } else if (node instanceof Element || node instanceof DocumentFragment) {
+                    applyRoot(node);
+                }
+            }
+        },
+    };
 }
