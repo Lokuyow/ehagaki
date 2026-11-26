@@ -12,6 +12,12 @@ import {
 import type { ParentClientCapability, ParentClientSessionData } from "./types";
 
 const DEFAULT_TIMEOUT_MS = 10000;
+/**
+ * Signing and encryption wait for the user to approve in the parent's signer
+ * (for example a NIP-07 extension prompt), which routinely takes longer than
+ * the handshake and auth timeouts.
+ */
+export const USER_APPROVAL_RPC_TIMEOUT_MS = 120_000;
 const VALID_PARENT_CLIENT_CAPABILITIES = new Set<string>([
     'signEvent',
     'nip44.encrypt',
@@ -388,17 +394,25 @@ export class ParentClientAuthService {
         pubkey?: string;
     }): Promise<unknown> {
         this.assertCapability("signEvent");
-        return this.requestRpc<unknown>("signEvent", { event });
+        return this.requestRpc<unknown>("signEvent", { event }, USER_APPROVAL_RPC_TIMEOUT_MS);
     }
 
     async nip44Encrypt(pubkey: string, plaintext: string): Promise<string> {
         this.assertCapability("nip44.encrypt");
-        return this.requestRpc<string>("nip44.encrypt", { pubkey, plaintext });
+        return this.requestRpc<string>(
+            "nip44.encrypt",
+            { pubkey, plaintext },
+            USER_APPROVAL_RPC_TIMEOUT_MS,
+        );
     }
 
     async nip44Decrypt(pubkey: string, ciphertext: string): Promise<string> {
         this.assertCapability("nip44.decrypt");
-        return this.requestRpc<string>("nip44.decrypt", { pubkey, ciphertext });
+        return this.requestRpc<string>(
+            "nip44.decrypt",
+            { pubkey, ciphertext },
+            USER_APPROVAL_RPC_TIMEOUT_MS,
+        );
     }
 
     getSigner(): ParentClientSignerAdapter | null {

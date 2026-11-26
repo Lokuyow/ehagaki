@@ -21,6 +21,9 @@ type PendingIndexedDbRequest = {
     resolve: (payload: EmbedIndexedDbResultPayload) => void;
     reject: (error: EmbedIndexedDbErrorPayload) => void;
     timeoutId: ReturnType<typeof setTimeout>;
+    /** The response must echo these; a different store or scope is not a snapshot of this request. */
+    store: EmbedIndexedDbStoreName;
+    scopeKey: string;
 };
 
 type IndexedDbRequestPayload =
@@ -232,7 +235,13 @@ export class EmbedIndexedDbService {
                 });
             }, this.requestTimeoutMs);
 
-            this.pendingRequests.set(requestId, { resolve, reject, timeoutId });
+            this.pendingRequests.set(requestId, {
+                resolve,
+                reject,
+                timeoutId,
+                store: payload.store,
+                scopeKey: payload.scopeKey,
+            });
         });
 
         try {
@@ -299,6 +308,21 @@ export class EmbedIndexedDbService {
 
             clearTimeout(pending.timeoutId);
             this.pendingRequests.delete(message.requestId);
+            if (
+                message.payload.store !== pending.store
+                || message.payload.scopeKey !== pending.scopeKey
+            ) {
+                // Treating another scope's records as this scope's snapshot
+                // would replace (and could erase) local upload destinations.
+                pending.reject({
+                    timestamp: Date.now(),
+                    code: "idb_response_mismatch",
+                    message: "parent indexedDB response does not match the request",
+                    store: pending.store,
+                    scopeKey: pending.scopeKey,
+                });
+                return;
+            }
             pending.resolve(message.payload);
             return;
         }

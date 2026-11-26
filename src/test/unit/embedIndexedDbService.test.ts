@@ -124,6 +124,39 @@ describe("EmbedIndexedDbService", () => {
         await expect(pending).resolves.toBeNull();
     });
 
+    it("要求と異なる scopeKey の idb.result は snapshot として扱わず reject する", async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new EmbedIndexedDbService(windowObj, mockConsole);
+        service.initialize();
+
+        const pending = service.getUploadDestinationsSnapshot(UPLOAD_DESTINATION_GLOBAL_SCOPE);
+        const sentMessage = parent.postMessage.mock.calls[0][0];
+        const otherScope = "ab".repeat(32);
+
+        listeners.get("message")?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: EMBED_MESSAGE_VERSION,
+                type: "idb.result",
+                requestId: sentMessage.requestId,
+                payload: {
+                    timestamp: Date.now(),
+                    store: "uploadDestinations",
+                    scopeKey: otherScope,
+                    records: [],
+                },
+            },
+            origin: "https://parent.example.com",
+            source: parent,
+        } as unknown as MessageEvent);
+
+        await expect(pending).rejects.toMatchObject({
+            code: "idb_response_mismatch",
+            store: "uploadDestinations",
+            scopeKey: UPLOAD_DESTINATION_GLOBAL_SCOPE,
+        });
+    });
+
     it("不正な idb.result payload は無視して timeout する", async () => {
         const { windowObj, parent, listeners } = createMockWindow();
         const service = new EmbedIndexedDbService(windowObj, mockConsole, 10);

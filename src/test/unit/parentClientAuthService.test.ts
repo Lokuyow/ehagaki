@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     DEFAULT_PARENT_CLIENT_CAPABILITIES,
     ParentClientAuthService,
+    USER_APPROVAL_RPC_TIMEOUT_MS,
 } from '../../lib/parentClientAuthService';
 import { STORAGE_KEYS } from '../../lib/constants';
 import type { ParentClientSessionData } from '../../lib/types';
@@ -119,6 +120,37 @@ describe('ParentClientAuthService', () => {
             id: 'signed-event',
             sig: 'signature',
         });
+    });
+
+    it('signEvent は親の承認を待つため 10 秒では打ち切らず、承認待ちの上限で timeout する', async () => {
+        vi.useFakeTimers();
+        try {
+            const { windowObj, parent, listeners } = createMockWindow();
+            const service = new ParentClientAuthService(windowObj, mockConsole);
+
+            const connectPromise = service.connect({ capabilities: ['signEvent'] });
+            const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
+            dispatchParentMessage(listeners, parent, 'auth.result', authRequest.requestId, {
+                pubkeyHex: 'ef'.repeat(32),
+                capabilities: ['signEvent'],
+            });
+            await connectPromise;
+
+            let settled: 'pending' | 'rejected' = 'pending';
+            const signPromise = service.signEvent({ kind: 1, content: 'slow approval', tags: [] });
+            const observed = signPromise.catch((error: Error) => {
+                settled = 'rejected';
+                return error;
+            });
+
+            await vi.advanceTimersByTimeAsync(15_000);
+            expect(settled).toBe('pending');
+
+            await vi.advanceTimersByTimeAsync(USER_APPROVAL_RPC_TIMEOUT_MS);
+            await expect(observed).resolves.toMatchObject({ message: 'parent_client_timeout' });
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('auth pending への rpc.result は protocol error で reject し、後続の auth.result を無視する', async () => {

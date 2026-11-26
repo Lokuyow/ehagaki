@@ -1,5 +1,6 @@
 import type { AppEmbedNotificationPort } from "../lib/appEmbedController";
 import type { AppPostNotificationPort } from "../lib/appNotificationPort";
+import { normalizePostErrorCode } from "../lib/postErrorCode";
 import type { EHagakiComposerElement } from "./element";
 
 /**
@@ -21,10 +22,8 @@ export function createWebComponentNotificationPort(
             return true;
         },
         notifyPostError(error) {
-            const code = typeof error === "object" && error?.code
-                ? error.code
-                : "post_failed";
-            element.dispatchSafeEvent("ehagaki-post-error", { code });
+            // Same codes as iframe `post.error`; messages are never forwarded.
+            element.dispatchSafeEvent("ehagaki-post-error", { code: normalizePostErrorCode(error) });
             return true;
         },
         notifyComposerContextApplied() {

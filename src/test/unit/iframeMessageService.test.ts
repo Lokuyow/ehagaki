@@ -378,6 +378,33 @@ describe("IframeMessageService", () => {
   });
 
   describe("notifyPostError", () => {
+    it("i18n キーや自由文をコードとして送らない", () => {
+      const postMessageMock = vi.fn();
+      mockWindow = {
+        self: {},
+        top: {},
+        parent: {
+          postMessage: postMessageMock,
+        },
+      };
+
+      const service = new IframeMessageService({
+        window: mockWindow,
+        parentOrigin: 'https://example.com',
+        console: mockConsole,
+      });
+
+      service.notifyPostError('postComponent.error.reply_target_event_unavailable');
+      service.notifyPostError('Network request failed: https://relay.example');
+      service.notifyPostError('no_write_relays');
+
+      expect(postMessageMock.mock.calls.map(([message]) => message.payload.code)).toEqual([
+        'reply_target_event_unavailable',
+        'post_error',
+        'no_write_relays',
+      ]);
+    });
+
     it("post.error メッセージを送信する", () => {
       const postMessageMock = vi.fn();
       mockWindow = {
