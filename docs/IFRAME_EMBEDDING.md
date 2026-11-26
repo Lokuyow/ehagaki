@@ -656,7 +656,9 @@ child は従来からある storage key をまとめて要求し、新しい key
 }
 ```
 
-親ページは同じ `requestId` で `idb.result` または `idb.error` を返してください。親側に snapshot がまだない場合、`idb.result` の `records` を省略します。iframe 側は local IndexedDB の内容を作成・読み込み後、親へ `idb.setSnapshot` で mirror します。
+親ページは同じ `requestId` で `idb.result` または `idb.error` を返してください。`idb.result` の `store` と `scopeKey` には要求と同じ値を入れます。値が要求と異なる応答はエラーとして扱い、iframe 側の内容は置き換えません。
+
+親側に snapshot がまだない場合は、`idb.result` の `records` を省略します。iframe 側は local IndexedDB の内容を作成・読み込み後、親へ `idb.setSnapshot` で mirror します。`records: []` は「空の一覧を保存済み」という意味になり、iframe 側のその scope のアップロード先を空の一覧で置き換えます。snapshot がないときに `[]` を返さないでください。
 
 ```js
 iframe.contentWindow.postMessage({
@@ -667,11 +669,13 @@ iframe.contentWindow.postMessage({
   payload: {
     timestamp: Date.now(),
     store: 'uploadDestinations',
-    scopeKey: '__ehagaki_global__',
-    records: []
+    scopeKey: '__ehagaki_global__'
+    // snapshot がない場合は records を省略する
   }
 }, 'https://lokuyow.github.io');
 ```
+
+`idb.*` に対応しない親ページは何も返さなくてかまいません。iframe 側は最初の要求が timeout した時点で、その document では親への IndexedDB 委譲を使わず、local IndexedDB だけで動作します。親が一度でも `idb.result` または `idb.error` を返した場合は、この扱いになりません。
 
 [Playground の iframe ページ](https://lokuyow.github.io/ehagaki/playground/iframe.html) は、localStorage 委譲と `uploadDestinations` の IndexedDB 委譲に対応しています。
 
@@ -733,6 +737,8 @@ https://lokuyow.github.io/ehagaki/?parentOrigin=https%3A%2F%2Fexample.com
 3. iframe が `auth.request` を送る
 4. 親が `auth.result` または `auth.error` を返す
 5. ログイン後は `rpc.request` で既定では `signEvent` を要求される。`nip44.*` は将来必要になった場合だけ opt-in で要求される
+
+`rpc.request`（`signEvent`、`nip44.*`）には、親の signer での承認を待つ時間を見込んで、iframe 側は最大 120 秒まで応答を待ちます。`auth.request` の待ち時間は 10 秒です。
 
 検証済みの認証応答を受け取ると、対象公開鍵の仮プロフィールまたは保存済みプロフィールを表示し、リレー探索やプロフィールのネットワーク応答を待たずにアカウント情報と本文入力を利用できます。投稿はリレー設定と投稿用runtimeの準備完了後に有効になります。プロフィールの取得失敗時も仮表示・保存済み表示を維持します。
 
@@ -920,13 +926,23 @@ Host Relay Configがある場合はその設定を使用します。それ以外
 
 エラーコード:
 
-| コード            | 説明                       |
-| ----------------- | -------------------------- |
-| `empty_content`   | 投稿内容が空               |
-| `login_required`  | ログインが必要             |
-| `nostr_not_ready` | Nostr クライアント初期化前 |
-| `key_not_found`   | 秘密鍵が見つからない       |
-| `post_error`      | 一般的な投稿エラー         |
+| コード                            | 説明                                       |
+| --------------------------------- | ------------------------------------------ |
+| `empty_content`                   | 投稿内容が空                               |
+| `login_required`                  | ログインが必要                             |
+| `nostr_not_ready`                 | Nostr クライアント初期化前                 |
+| `key_not_found`                   | 秘密鍵が見つからない                       |
+| `pubkey_not_found`                | 公開鍵を取得できない                       |
+| `no_write_relays`                 | 書き込み先のリレーがない                   |
+| `nostr_sign_event_not_supported`  | signer が署名に対応していない              |
+| `reply_target_event_unavailable`  | リプライ先の event を取得できない          |
+| `sensitive_partial_publish`       | センシティブ投稿の一部だけが送信された     |
+| `post_rejected`                   | リレーに投稿を拒否された                   |
+| `post_timeout`                    | リレーからの応答が時間内に揃わなかった     |
+| `post_network_error`              | 通信エラー                                 |
+| `post_error`                      | 一般的な投稿エラー                         |
+
+`code` は英小文字・数字・`_` だけの識別子です。表にないコードが届くこともあるので、未知のコードは `post_error` と同じ扱いにしてください。Web Component の `ehagaki-post-error` も同じコードを使います。
 
 ## 5. 実装時の注意
 
