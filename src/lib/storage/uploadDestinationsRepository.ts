@@ -780,8 +780,13 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
 
         const forced = this.forcedUploadEndpoints.get(scopeKey);
         if (forced) {
-            // The scope is marked synced above, so this does not reload it.
-            await this.applyUploadEndpointPreference({ ...forced, mode: "forced" });
+            try {
+                // The scope is marked synced above, so this does not reload it.
+                await this.applyUploadEndpointPreference({ ...forced, mode: "forced" });
+            } catch {
+                // Parent sync is optional; a failed re-apply must not make
+                // reading the destinations fail. The next forced apply retries.
+            }
         }
     }
 

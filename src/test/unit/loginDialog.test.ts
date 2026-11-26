@@ -143,11 +143,14 @@ describe('LoginDialog', () => {
         expect(input.type).toBe('text');
 
         await fireEvent.input(input, { target: { value: `nsec1${'q'.repeat(58)}` } });
-        await fireEvent.submit(input.closest('form')!);
 
-        expect(onSave).not.toHaveBeenCalled();
-        expect(screen.getByRole('alert').textContent).toContain('公開鍵');
+        // Cleared as soon as it is entered, before any submit.
         expect(input.value).toBe('');
+        expect(screen.getByRole('alert').textContent).toContain('公開鍵');
+        expect(document.querySelector('.npub-toast')).toBeNull();
+
+        await fireEvent.submit(input.closest('form')!);
+        expect(onSave).not.toHaveBeenCalled();
     });
 
     it('公開鍵ログインも無効な場合は鍵の入力欄を出さない', () => {

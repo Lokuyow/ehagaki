@@ -171,6 +171,65 @@ describe("EmbedIndexedDbService", () => {
         expect(parent.postMessage).toHaveBeenCalledTimes(1);
     });
 
+    it("非対応と判断したあとも、書き込みの snapshot は親へ送り続ける", async () => {
+        const { windowObj, parent } = createMockWindow();
+        const service = new EmbedIndexedDbService(windowObj, mockConsole, 10);
+        service.initialize();
+
+        await expect(service.getUploadDestinationsSnapshot(UPLOAD_DESTINATION_GLOBAL_SCOPE))
+            .rejects.toMatchObject({ code: "idb_request_timeout" });
+
+        const write = service.setUploadDestinationsSnapshot(UPLOAD_DESTINATION_GLOBAL_SCOPE, [createDestinationRecord()]);
+        expect(parent.postMessage).toHaveBeenCalledTimes(2);
+        expect(parent.postMessage.mock.calls[1][0]).toMatchObject({ type: "idb.setSnapshot" });
+        await expect(write).rejects.toMatchObject({ code: "idb_request_timeout" });
+    });
+
+    it("timeout 後に遅れて届いた応答で、親を対応ありとして扱い直す", async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new EmbedIndexedDbService(windowObj, mockConsole, 10);
+        service.initialize();
+
+        await expect(service.getUploadDestinationsSnapshot(UPLOAD_DESTINATION_GLOBAL_SCOPE))
+            .rejects.toMatchObject({ code: "idb_request_timeout" });
+        const lateRequest = parent.postMessage.mock.calls[0][0];
+        listeners.get("message")?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: EMBED_MESSAGE_VERSION,
+                type: "idb.result",
+                requestId: lateRequest.requestId,
+                payload: {
+                    timestamp: Date.now(),
+                    store: "uploadDestinations",
+                    scopeKey: UPLOAD_DESTINATION_GLOBAL_SCOPE,
+                },
+            },
+            origin: "https://parent.example.com",
+            source: parent,
+        } as unknown as MessageEvent);
+
+        const next = service.getUploadDestinationsSnapshot(UPLOAD_DESTINATION_GLOBAL_SCOPE);
+        expect(parent.postMessage).toHaveBeenCalledTimes(2);
+        const nextRequest = parent.postMessage.mock.calls[1][0];
+        listeners.get("message")?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: EMBED_MESSAGE_VERSION,
+                type: "idb.result",
+                requestId: nextRequest.requestId,
+                payload: {
+                    timestamp: Date.now(),
+                    store: "uploadDestinations",
+                    scopeKey: UPLOAD_DESTINATION_GLOBAL_SCOPE,
+                },
+            },
+            origin: "https://parent.example.com",
+            source: parent,
+        } as unknown as MessageEvent);
+        await expect(next).resolves.toBeNull();
+    });
+
     it("一度応答した親では、後の timeout で以降の要求を止めない", async () => {
         const { windowObj, parent, listeners } = createMockWindow();
         const service = new EmbedIndexedDbService(windowObj, mockConsole, 10);

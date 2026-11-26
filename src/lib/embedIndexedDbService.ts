@@ -166,8 +166,11 @@ export class EmbedIndexedDbService {
     private pendingRequests = new Map<string, PendingIndexedDbRequest>();
     /**
      * Parents that do not implement `idb.*` never answer. After the first
-     * unanswered request, later requests fail at once instead of each waiting
-     * for the timeout. Any valid response marks the parent as supporting it.
+     * unanswered request, later snapshot reads fail at once instead of each
+     * waiting for the timeout. Writes are still posted: they no longer block
+     * callers, and a slow parent must keep receiving them so its snapshot does
+     * not go stale. Any valid response, even one that arrives after its request
+     * timed out, marks the parent as supporting `idb.*`.
      */
     private parentSupport: "unknown" | "supported" | "unsupported" = "unknown";
 
@@ -222,7 +225,7 @@ export class EmbedIndexedDbService {
             !this.windowObj
             || !this.isInIframe()
             || !this.trustedParentOrigin
-            || this.parentSupport === "unsupported"
+            || (type === "idb.getSnapshot" && this.parentSupport === "unsupported")
         ) {
             return Promise.reject({
                 timestamp: Date.now(),
@@ -311,6 +314,10 @@ export class EmbedIndexedDbService {
 
         if (!message.requestId) return;
 
+        // A trusted idb response proves the parent implements idb.*, even when
+        // it arrives after its request timed out and is no longer pending.
+        this.parentSupport = "supported";
+
         const pending = this.pendingRequests.get(message.requestId);
         if (!pending) return;
 
@@ -322,7 +329,6 @@ export class EmbedIndexedDbService {
 
             clearTimeout(pending.timeoutId);
             this.pendingRequests.delete(message.requestId);
-            this.parentSupport = "supported";
             if (
                 message.payload.store !== pending.store
                 || message.payload.scopeKey !== pending.scopeKey
@@ -349,7 +355,6 @@ export class EmbedIndexedDbService {
 
         clearTimeout(pending.timeoutId);
         this.pendingRequests.delete(message.requestId);
-        this.parentSupport = "supported";
         pending.reject(message.payload);
     };
 

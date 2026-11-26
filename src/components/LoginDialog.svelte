@@ -87,6 +87,7 @@
     // Where local nsec sign-in is disabled (Full Web Component), the key input
     // accepts only public keys and never forwards a secret key.
     const publicKeyOnly = $derived(!localNsecAuthEnabled && publicKeyAuthEnabled);
+    const SECRET_KEY_INPUT_PATTERN = /^\s*nsec1/i;
 
     // ダイアログを閉じるハンドラ
     function handleClose() {
@@ -279,7 +280,11 @@
     // --- 秘密鍵入力の監視と公開鍵状態の更新 ---
     $effect(() => {
         if (secretKey !== undefined) {
-            publicKeyState.setNsec(secretKey);
+            // A secret key typed into the public-key-only field is never
+            // derived or shown; the input handler clears it immediately.
+            publicKeyState.setNsec(
+                publicKeyOnly && SECRET_KEY_INPUT_PATTERN.test(secretKey) ? "" : secretKey,
+            );
         }
     });
 
@@ -336,7 +341,7 @@
         if (publicKeyOnly) {
             if (!inputEl || !isPublicKeyLoginInput(inputEl.value)) {
                 // Never keep or submit a pasted secret key in this runtime.
-                if (/^\s*nsec1/i.test(inputEl?.value ?? "")) secretKey = "";
+                if (SECRET_KEY_INPUT_PATTERN.test(inputEl?.value ?? "")) secretKey = "";
                 secretKeyErrorMessage = $_("loginDialog.public_key_only");
                 return;
             }
@@ -1189,6 +1194,12 @@
                             oninput={() => {
                                 secretKeyErrorMessage = "";
                                 inputEl?.setCustomValidity("");
+                                if (publicKeyOnly && SECRET_KEY_INPUT_PATTERN.test(inputEl?.value ?? "")) {
+                                    // Never keep a pasted secret key in this runtime.
+                                    secretKey = "";
+                                    if (inputEl) inputEl.value = "";
+                                    secretKeyErrorMessage = $_("loginDialog.public_key_only");
+                                }
                             }}
                         />
                         {#if secretKey.length > 0}
