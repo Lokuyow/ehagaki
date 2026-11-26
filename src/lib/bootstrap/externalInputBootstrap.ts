@@ -365,6 +365,7 @@ export async function runExternalInputBootstrap({
     rxNostr,
     relayConfig,
     locationHref,
+    allowSharedMediaRecovery,
 }: RunExternalInputBootstrapParams): Promise<void> {
     if (checkIfOpenedFromShare()) {
         const swStatus = await checkServiceWorkerStatus();
@@ -383,6 +384,7 @@ export async function runExternalInputBootstrap({
         sharedMediaStore,
         setSharedMediaError,
         locationHref,
+        allowSharedMediaRecovery,
     });
 
     if (consumeFirstVisitFlag()) {

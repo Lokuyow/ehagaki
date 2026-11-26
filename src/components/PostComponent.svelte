@@ -604,6 +604,7 @@
   onDestroy(() => {
     reactionMedia?.dispose();
     componentDestroyed = true;
+    pendingHostOwnedSecretKeySubmit = null;
     if (!isHostOwned) clearReactionTarget('ownership');
     postManager?.cancelActiveNip65Operations();
   });
@@ -1099,6 +1100,7 @@
       !postStatus.sending &&
       !editorState.isUploading &&
       !postStatus.completed &&
+      !pendingHostOwnedSecretKeySubmit &&
       (hasPostingCapability || !!postManager)
     );
   }
@@ -1134,13 +1136,25 @@
     return mediaMetadata;
   }
 
-  async function submitHostOwned(
-    editorInstance: TipTapEditor,
-    trigger?: EditorSubmitTrigger,
-  ): Promise<void> {
-    const config = hostOwnedConfig;
-    if (!config || !canStartHostOwnedSubmit(editorInstance)) return;
+  type HostOwnedSubmitSnapshot = Parameters<typeof buildHostOwnedComposerOutput>[0];
+  type HostOwnedConfig = NonNullable<typeof hostOwnedConfig>;
 
+  /**
+   * A Host-owned submission whose content contains a secret key waits for the
+   * user's confirmation. It keeps the snapshot captured at submit time, so the
+   * Host receives exactly what the user confirmed. Raw state: the editor and
+   * the snapshot must not be wrapped in deep reactive proxies.
+   */
+  let pendingHostOwnedSecretKeySubmit = $state.raw<{
+    snapshot: HostOwnedSubmitSnapshot;
+    trigger?: EditorSubmitTrigger;
+    editor: TipTapEditor;
+  } | null>(null);
+
+  function captureHostOwnedSnapshot(
+    editorInstance: TipTapEditor,
+    config: HostOwnedConfig,
+  ): HostOwnedSubmitSnapshot {
     // Live eligibility may allow submission before the debounced content
     // tracker runs; refresh hashtag tags from the final document snapshot.
     updateHashtagData(editorInstance.state.doc);
@@ -1159,12 +1173,12 @@
       content,
       hashtagTags: hashtagSnapshot.tags.map((tag) => [...tag]),
       hashtags: [...hashtagSnapshot.hashtags],
-      contentWarningAvailable: hostOwnedConfig.contentWarningEnabled === true,
+      contentWarningAvailable: config.contentWarningEnabled === true,
       contentWarningEnabled:
-        hostOwnedConfig.contentWarningEnabled === true &&
+        config.contentWarningEnabled === true &&
         contentWarningStore.value,
       contentWarningReason:
-        hostOwnedConfig.contentWarningEnabled === true
+        config.contentWarningEnabled === true
           ? contentWarningReasonStore.value
           : "",
       emojiTags: extraction.emojiTags.map((tag) => [...tag]),
@@ -1173,6 +1187,14 @@
       channel: $state.snapshot(effectiveChannelContextState.value),
     };
 
+    return snapshot;
+  }
+
+  async function deliverHostOwnedSnapshot(
+    config: HostOwnedConfig,
+    snapshot: HostOwnedSubmitSnapshot,
+    trigger?: EditorSubmitTrigger,
+  ): Promise<void> {
     postStatusHandlers.markSending();
     try {
       const output = await buildHostOwnedComposerOutput(snapshot);
@@ -1213,6 +1235,39 @@
       notificationPort?.notifyPostError("post_error");
       postStatusHandlers.markFailure("postComponent.post_error");
     }
+  }
+
+  async function submitHostOwned(
+    editorInstance: TipTapEditor,
+    trigger?: EditorSubmitTrigger,
+  ): Promise<void> {
+    const config = hostOwnedConfig;
+    if (!config || !canStartHostOwnedSubmit(editorInstance)) return;
+    const snapshot = captureHostOwnedSnapshot(editorInstance, config);
+    if (containsSecretKey(snapshot.content)) {
+      pendingHostOwnedSecretKeySubmit = { snapshot, trigger, editor: editorInstance };
+      return;
+    }
+    await deliverHostOwnedSnapshot(config, snapshot, trigger);
+  }
+
+  async function confirmHostOwnedSecretKeySubmit(): Promise<void> {
+    const pending = pendingHostOwnedSecretKeySubmit;
+    pendingHostOwnedSecretKeySubmit = null;
+    const config = hostOwnedConfig;
+    if (
+      !pending ||
+      !config ||
+      config.signal.aborted ||
+      componentDestroyed ||
+      currentEditor !== pending.editor ||
+      !canStartHostOwnedSubmit(pending.editor)
+    ) return;
+    await deliverHostOwnedSnapshot(config, pending.snapshot, pending.trigger);
+  }
+
+  function cancelHostOwnedSecretKeySubmit(): void {
+    pendingHostOwnedSecretKeySubmit = null;
   }
 
   export async function submitPost(trigger?: EditorSubmitTrigger) {
@@ -1590,19 +1645,19 @@
   {/if}
 </div>
 
-{#if !isHostOwnedLiteBuild}
-  <ConfirmDialog
-    open={showSecretKeyDialog}
-    title={$_("postComponent.warning")}
-    description={$_("postComponent.secret_key_detected")}
-    confirmLabel={$_("postComponent.post")}
-    cancelLabel={$_("postComponent.cancel")}
-    confirmVariant="danger"
-    onConfirm={confirmSendWithSecretKey}
-    onCancel={cancelSendWithSecretKey}
-    contentClass="secretkey-warning-dialog"
-  />
-{/if}
+<!-- The Lite build selects its own handlers at build time so the normal
+     posting path stays out of the Host-owned module graph. -->
+<ConfirmDialog
+  open={isHostOwnedLiteBuild ? pendingHostOwnedSecretKeySubmit !== null : showSecretKeyDialog}
+  title={$_("postComponent.warning")}
+  description={$_("postComponent.secret_key_detected")}
+  confirmLabel={$_("postComponent.post")}
+  cancelLabel={$_("postComponent.cancel")}
+  confirmVariant="danger"
+  onConfirm={isHostOwnedLiteBuild ? confirmHostOwnedSecretKeySubmit : confirmSendWithSecretKey}
+  onCancel={isHostOwnedLiteBuild ? cancelHostOwnedSecretKeySubmit : cancelSendWithSecretKey}
+  contentClass="secretkey-warning-dialog"
+/>
 
 <ImageFullscreen
   bind:show={showImageFullscreen}

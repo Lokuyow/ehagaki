@@ -1910,6 +1910,56 @@ test("Lite keyboard options hide the bar and submit plain Enter repeatedly", asy
     await expect(editor).toHaveText("");
 });
 
+test("Lite asks for confirmation before handing content with a secret key to the Host", async ({ page }) => {
+    const secretText = `nsec1${"q".repeat(58)}`;
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin, secretText }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = { contents: [] as string[] };
+        (window as any).__liteSecretKeyState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            assetBase: string;
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+            setContext(value: unknown): Promise<void>;
+        };
+        composer.assetBase = `${componentOrigin}/host-owned/`;
+        composer.configureHostOwned({
+            submit(output: { content: string }) {
+                state.contents.push(output.content);
+                return { eventId: "e".repeat(64) };
+            },
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setContext({ content: secretText });
+    }, { componentOrigin, secretText });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    const dialog = composer.locator(".secretkey-warning-dialog");
+    const submitted = () => page.evaluate(() => (window as any).__liteSecretKeyState.contents as string[]);
+
+    await editor.click();
+    await editor.press("Control+Enter");
+    await expect(dialog).toBeVisible();
+    // A repeated shortcut while the dialog is open does not submit.
+    await editor.press("Control+Enter").catch(() => undefined);
+    expect(await submitted()).toEqual([]);
+
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).or(dialog.getByRole("button", { name: "キャンセル", exact: true })).click();
+    await expect(dialog).not.toBeVisible();
+    expect(await submitted()).toEqual([]);
+    await expect(editor).toHaveText(secretText);
+
+    await editor.click();
+    await editor.press("Control+Enter");
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Post", exact: true }).or(dialog.getByRole("button", { name: "投稿", exact: true })).click();
+    await expect(dialog).not.toBeVisible();
+    await expect.poll(submitted).toEqual([secretText]);
+});
+
 test("Lite default newline mode keeps Enter as a newline and Ctrl+Enter as submit", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {
