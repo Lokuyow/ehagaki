@@ -16,11 +16,29 @@ const forbiddenPatterns = [
     /[\\/]src[\\/]lib[\\/]upload[\\/](uploadDestinationResolver|nostr)[\\/]/,
 ];
 
-const fullSelfPublishForbiddenPatterns = [
-    /[\\/]src[\\/]host-owned-composer-lite[\\/]/,
-    /[\\/]src[\\/]lib[\\/](hostOwnedComposer|hostOwnedUpload)\\.ts$/,
-    /[\\/]src[\\/]web-component[\\/]hostOwnedLiteElement\\.ts$/,
+/** PWA-only runtime that neither Web Component distribution may reach. */
+const pwaOnlyPatterns = [
+    /[\\/]src[\\/]lib[\\/]bootstrap[\\/]serviceWorkerBootstrap\.ts$/,
+    /virtual:pwa-register/,
 ];
+forbiddenPatterns.push(...pwaOnlyPatterns);
+
+const fullSelfPublishForbiddenPatterns = [
+    ...pwaOnlyPatterns,
+    /[\\/]src[\\/]host-owned-composer-lite[\\/]/,
+    /[\\/]src[\\/]lib[\\/](hostOwnedComposer|hostOwnedUpload)\.ts$/,
+    /[\\/]src[\\/]web-component[\\/]hostOwnedLiteElement\.ts$/,
+];
+
+/** Module ids the Lite graph must never reach (exported for unit tests). */
+export function isLiteForbiddenModule(id) {
+    return forbiddenPatterns.some((pattern) => pattern.test(normalize(id)));
+}
+
+/** Module ids the Full graph must never reach (exported for unit tests). */
+export function isFullSelfPublishForbiddenModule(id) {
+    return fullSelfPublishForbiddenPatterns.some((pattern) => pattern.test(normalize(id)));
+}
 
 /** Exported separately so its static/dynamic traversal can be unit tested. */
 export function collectReachableModuleIds(entryId, getInfo) {
@@ -70,7 +88,7 @@ export function createHostOwnedLiteGraphGate(repositoryRoot) {
             }
             const reachable = collectReachableModuleIds(entryId, (id) => this.getModuleInfo(id));
             const violations = [...reachable]
-                .filter((id) => forbiddenPatterns.some((pattern) => pattern.test(normalize(id))))
+                .filter((id) => isLiteForbiddenModule(id))
                 .map((id) => findModulePath(entryId, id, (moduleId) => this.getModuleInfo(moduleId))
                     .map((moduleId) => relative(normalizedRoot, moduleId)).join(" -> "));
             if (violations.length > 0) {
@@ -95,7 +113,7 @@ export function createFullSelfPublishGraphGate(repositoryRoot) {
             }
             const reachable = collectReachableModuleIds(entryId, (id) => this.getModuleInfo(id));
             const violations = [...reachable]
-                .filter((id) => fullSelfPublishForbiddenPatterns.some((pattern) => pattern.test(normalize(id))))
+                .filter((id) => isFullSelfPublishForbiddenModule(id))
                 .map((id) => findModulePath(entryId, id, (moduleId) => this.getModuleInfo(moduleId))
                     .map((moduleId) => relative(normalizedRoot, moduleId)).join(" -> "));
             if (violations.length > 0) {

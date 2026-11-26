@@ -69,6 +69,27 @@ function resolveHostOwnedLiteFullOnlyImports() {
 }
 
 /**
+ * PostComponent statically imports the Host-owned output/upload modules for
+ * the Lite build. Full compiles those branches out, so resolve the imports to
+ * a stub that keeps the Host-owned modules out of the Full module graph.
+ */
+function resolveFullHostOwnedImports() {
+    const fullHostOwnedStub = resolve(process.cwd(), "src/web-component/fullHostOwnedRuntimeStub.ts");
+    const hostOwnedImports = new Set([
+        "../lib/hostOwnedComposer",
+        "../lib/hostOwnedUpload",
+    ]);
+    return {
+        name: "ehagaki-full-host-owned-imports",
+        enforce: "pre" as const,
+        resolveId(source: string, importer?: string) {
+            if (!importer?.endsWith("src/components/PostComponent.svelte")) return null;
+            return hostOwnedImports.has(source) ? fullHostOwnedStub : null;
+        },
+    };
+}
+
+/**
  * Standalone Web Component distribution. It intentionally excludes the PWA
  * plugin, manifest, service worker registration, share target, and fixed
  * iframe bridge used by the regular application build.
@@ -97,7 +118,7 @@ export default defineConfig(({ mode }) => {
     assetsInclude: ["**/*.wasm"],
     plugins: [
         resolveWebComponentIconUrls(),
-        ...(isHostOwnedLite ? [resolveHostOwnedLiteFullOnlyImports()] : []),
+        isHostOwnedLite ? resolveHostOwnedLiteFullOnlyImports() : resolveFullHostOwnedImports(),
         // The public custom element is implemented by web-component/element.ts
         // and mounts ordinary Svelte components. Inject their styles into that
         // element's ShadowRoot without generating unused custom element wrappers.
@@ -138,6 +159,11 @@ export default defineConfig(({ mode }) => {
             fileName: "ehagaki-composer",
         },
         rolldownOptions: {
+            experimental: {
+                // The default `// <module id>` comments embed absolute build
+                // paths in the published files. Legal comments are kept.
+                attachDebugInfo: "none",
+            },
             output: {
                 entryFileNames: "ehagaki-composer.js",
                 chunkFileNames: "assets/[name]-[hash].js",

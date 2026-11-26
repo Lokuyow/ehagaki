@@ -32,6 +32,24 @@ for (const forbidden of ["virtual:pwa-register", "serviceWorkerBootstrap", "embe
         throw new Error(`Web Component build contains forbidden runtime: ${forbidden}`);
     }
 }
+// Published files must not carry absolute build paths (for example module id
+// debug comments such as `// C:/Users/...` or `// /home/...`). The build may
+// run from a short substituted drive root such as `Z:\`, which is too short to
+// search for, so only a deeper working directory is matched literally.
+const buildRoot = process.cwd();
+if (buildRoot.replace(/[\\/]+$/, "").length > 3) {
+    for (const root of new Set([buildRoot, buildRoot.replaceAll("\\", "/")])) {
+        if (source.includes(root)) {
+            throw new Error("Web Component build contains the absolute build directory path");
+        }
+    }
+}
+if (/^\s*\/\/ (?:[A-Za-z]:[\\/]|\/(?:home|Users|tmp|var|private)\/)/m.test(source)) {
+    throw new Error("Web Component build contains absolute module path comments");
+}
+if (/(?:[A-Za-z]:|\/(?:home|Users))[\\/][^"'`\s]*[\\/]node_modules[\\/]/.test(source)) {
+    throw new Error("Web Component build contains absolute node_modules paths");
+}
 const unresolvedAppAssetReferences = [
     /url\(\s*(["'])?\/icons\//,
     /src=["']\.\/ehagaki_icon\.svg["']/,
