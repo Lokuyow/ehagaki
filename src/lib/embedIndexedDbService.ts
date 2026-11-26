@@ -164,6 +164,12 @@ export class EmbedIndexedDbService {
     private trustedParentOrigin: string | null = null;
     private isListening = false;
     private pendingRequests = new Map<string, PendingIndexedDbRequest>();
+    /**
+     * Parents that do not implement `idb.*` never answer. After the first
+     * unanswered request, later requests fail at once instead of each waiting
+     * for the timeout. Any valid response marks the parent as supporting it.
+     */
+    private parentSupport: "unknown" | "supported" | "unsupported" = "unknown";
 
     constructor(
         private windowObj: Window = typeof window !== "undefined" ? window : ({} as Window),
@@ -212,7 +218,12 @@ export class EmbedIndexedDbService {
         type: "idb.getSnapshot" | "idb.setSnapshot",
         payload: IndexedDbRequestPayload,
     ): Promise<EmbedIndexedDbResultPayload> {
-        if (!this.windowObj || !this.isInIframe() || !this.trustedParentOrigin) {
+        if (
+            !this.windowObj
+            || !this.isInIframe()
+            || !this.trustedParentOrigin
+            || this.parentSupport === "unsupported"
+        ) {
             return Promise.reject({
                 timestamp: Date.now(),
                 code: "idb_parent_unavailable",
@@ -226,6 +237,9 @@ export class EmbedIndexedDbService {
         const request = new Promise<EmbedIndexedDbResultPayload>((resolve, reject) => {
             const timeoutId = setTimeout(() => {
                 this.pendingRequests.delete(requestId);
+                if (this.parentSupport === "unknown") {
+                    this.parentSupport = "unsupported";
+                }
                 reject({
                     timestamp: Date.now(),
                     code: "idb_request_timeout",
@@ -308,6 +322,7 @@ export class EmbedIndexedDbService {
 
             clearTimeout(pending.timeoutId);
             this.pendingRequests.delete(message.requestId);
+            this.parentSupport = "supported";
             if (
                 message.payload.store !== pending.store
                 || message.payload.scopeKey !== pending.scopeKey
@@ -334,6 +349,7 @@ export class EmbedIndexedDbService {
 
         clearTimeout(pending.timeoutId);
         this.pendingRequests.delete(message.requestId);
+        this.parentSupport = "supported";
         pending.reject(message.payload);
     };
 

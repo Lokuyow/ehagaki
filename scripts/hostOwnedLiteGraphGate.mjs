@@ -14,6 +14,10 @@ const forbiddenPatterns = [
     /[\\/]src[\\/]lib[\\/](normalUploadHelper|fileUploadManager|nostrAuthService)[\\/\.]/,
     /[\\/]src[\\/]lib[\\/]upload[\\/](headlessUpload|resolveCurrentUploadDestination)\.ts$/,
     /[\\/]src[\\/]lib[\\/]upload[\\/](uploadDestinationResolver|nostr)[\\/]/,
+    // Lite uploads only through the Host's uploadMedia; it must not touch the
+    // shared upload destinations or the iframe IndexedDB delegation.
+    /[\\/]src[\\/]lib[\\/]storage[\\/]uploadDestinationsRepository\.ts$/,
+    /[\\/]src[\\/]lib[\\/]embedIndexedDbService\.ts$/,
 ];
 
 /** PWA-only runtime that neither Web Component distribution may reach. */

@@ -140,6 +140,58 @@ async function pasteHtml(editor: import("@playwright/test").Locator, html: strin
     }, { html, text });
 }
 
+test("Lite accepts uploadEndpoint without applying it or writing shared upload destinations", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            assetBase: string;
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+            setSettings(value: unknown): Promise<ReadonlyArray<string>>;
+        };
+        composer.assetBase = `${componentOrigin}/host-owned/`;
+        composer.configureHostOwned({ submit: () => undefined });
+        document.body.append(composer);
+        await composer.whenReady();
+        const applied = [...await composer.setSettings({
+            locale: "en",
+            uploadEndpoint: "https://upload.example.invalid/api",
+        })];
+        const databases = typeof indexedDB.databases === "function"
+            ? (await indexedDB.databases()).map((database) => database.name)
+            : [];
+        const uploadDestinations = databases.includes("eHagakiDB")
+            ? await new Promise<number>((resolve) => {
+                const request = indexedDB.open("eHagakiDB");
+                request.onsuccess = () => {
+                    const db = request.result;
+                    if (!db.objectStoreNames.contains("uploadDestinations")) {
+                        db.close();
+                        resolve(0);
+                        return;
+                    }
+                    const count = db.transaction("uploadDestinations").objectStore("uploadDestinations").count();
+                    count.onsuccess = () => {
+                        db.close();
+                        resolve(count.result);
+                    };
+                    count.onerror = () => {
+                        db.close();
+                        resolve(-1);
+                    };
+                };
+                request.onerror = () => resolve(-1);
+            })
+            : 0;
+        return { applied, uploadDestinations };
+    }, { componentOrigin });
+
+    expect(result.applied).toContain("locale");
+    expect(result.applied).not.toContain("uploadEndpoint");
+    expect(result.uploadDestinations).toBe(0);
+});
+
 test("Lite minimal configuration exposes only text composition and preserves success/failure content", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {

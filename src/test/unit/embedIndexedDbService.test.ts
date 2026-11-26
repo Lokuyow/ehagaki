@@ -157,6 +157,47 @@ describe("EmbedIndexedDbService", () => {
         });
     });
 
+    it("idb.* に応答しない親には、最初の timeout 以降は待たずに失敗する", async () => {
+        const { windowObj, parent } = createMockWindow();
+        const service = new EmbedIndexedDbService(windowObj, mockConsole, 10);
+        service.initialize();
+
+        await expect(service.getUploadDestinationsSnapshot(UPLOAD_DESTINATION_GLOBAL_SCOPE))
+            .rejects.toMatchObject({ code: "idb_request_timeout" });
+        expect(parent.postMessage).toHaveBeenCalledTimes(1);
+
+        await expect(service.getUploadDestinationsSnapshot(UPLOAD_DESTINATION_GLOBAL_SCOPE))
+            .rejects.toMatchObject({ code: "idb_parent_unavailable" });
+        expect(parent.postMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("一度応答した親では、後の timeout で以降の要求を止めない", async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new EmbedIndexedDbService(windowObj, mockConsole, 10);
+        service.initialize();
+
+        const first = service.getUploadDestinationsSnapshot(UPLOAD_DESTINATION_GLOBAL_SCOPE);
+        const firstMessage = parent.postMessage.mock.calls[0][0];
+        listeners.get("message")?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: EMBED_MESSAGE_VERSION,
+                type: "idb.error",
+                requestId: firstMessage.requestId,
+                payload: { timestamp: Date.now(), code: "idb_store_unavailable" },
+            },
+            origin: "https://parent.example.com",
+            source: parent,
+        } as unknown as MessageEvent);
+        await expect(first).rejects.toMatchObject({ code: "idb_store_unavailable" });
+
+        await expect(service.getUploadDestinationsSnapshot(UPLOAD_DESTINATION_GLOBAL_SCOPE))
+            .rejects.toMatchObject({ code: "idb_request_timeout" });
+        await expect(service.getUploadDestinationsSnapshot(UPLOAD_DESTINATION_GLOBAL_SCOPE))
+            .rejects.toMatchObject({ code: "idb_request_timeout" });
+        expect(parent.postMessage).toHaveBeenCalledTimes(3);
+    });
+
     it("不正な idb.result payload は無視して timeout する", async () => {
         const { windowObj, parent, listeners } = createMockWindow();
         const service = new EmbedIndexedDbService(windowObj, mockConsole, 10);
