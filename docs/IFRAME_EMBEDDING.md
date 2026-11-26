@@ -675,7 +675,7 @@ iframe.contentWindow.postMessage({
 }, 'https://lokuyow.github.io');
 ```
 
-`idb.*` に対応しない親ページは何も返さなくてかまいません。iframe 側は最初の要求が timeout した時点で、その document では親への IndexedDB 委譲を使わず、local IndexedDB だけで動作します。親が一度でも `idb.result` または `idb.error` を返した場合は、この扱いになりません。
+`idb.*` に対応しない親ページは何も返さなくてかまいません。iframe 側は最初の要求が timeout すると、その document では親からの snapshot の読み込みを待たず、local IndexedDB の内容を使います。変更を親へ mirror する `idb.setSnapshot` は引き続き送ります。親が一度でも `idb.result` または `idb.error` を返した場合は、timeout のあとに届いた応答であっても、読み込みも通常どおり親へ要求します。
 
 [Playground の iframe ページ](https://lokuyow.github.io/ehagaki/playground/iframe.html) は、localStorage 委譲と `uploadDestinations` の IndexedDB 委譲に対応しています。
 
