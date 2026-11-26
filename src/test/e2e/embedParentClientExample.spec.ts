@@ -116,6 +116,16 @@ test.beforeAll(async () => {
     secondRelayOrigin = `ws://127.0.0.1:${secondRelayPort}`;
 });
 
+/** Opens the iframe playground and expands every control section. */
+async function openIframePlayground(page: Page, path: string): Promise<void> {
+    await page.goto(path);
+    await page.evaluate(() => {
+        for (const section of document.querySelectorAll<HTMLDetailsElement>("details.pg-section")) {
+            section.open = true;
+        }
+    });
+}
+
 test.beforeEach(async ({ page }) => {
     await routeNostrToolsCdnToVite(page);
     relayTargetEvent = null;
@@ -133,7 +143,7 @@ test.afterAll(async () => {
 });
 
 test("loads and switches the configurable timeline relay without mixing events", async ({ page }) => {
-    await page.goto("/ehagaki/public/embed-parent-client-example.html");
+    await openIframePlayground(page, "/ehagaki/public/playground/iframe.html");
     const relayInput = page.getByLabel("タイムライン relay URL");
 
     await relayInput.fill(relayOrigin);
@@ -314,7 +324,7 @@ window.addEventListener("message", (event) => {
 });
 
 test("preserves reply selection and iframe preview when refreshing the same relay", async ({ page }) => {
-    await page.goto("/ehagaki/public/embed-parent-client-example.html");
+    await openIframePlayground(page, "/ehagaki/public/playground/iframe.html");
     const frame = page.frameLocator("#ehagaki-iframe");
     await expect(frame.locator(".tiptap-editor")).toBeVisible({ timeout: 30_000 });
 
@@ -335,7 +345,7 @@ test("preserves reply selection and iframe preview when refreshing the same rela
 });
 
 test("uses the active timeline relay in nevent hints and stores unique relay suggestions", async ({ page }) => {
-    await page.goto("/ehagaki/public/embed-parent-client-example.html");
+    await openIframePlayground(page, "/ehagaki/public/playground/iframe.html");
     const relayInput = page.getByLabel("タイムライン relay URL");
     await relayInput.fill(secondRelayOrigin);
     await page.getByRole("button", { name: "タイムライン更新" }).click();
@@ -372,7 +382,7 @@ test("rejects invalid timeline relay URLs without falling back to nos.lol", asyn
     await page.addInitScript(() => {
         localStorage.setItem("ehagaki.parent-client-sample.timeline-relays", "not-json");
     });
-    await page.goto("/ehagaki/public/embed-parent-client-example.html");
+    await openIframePlayground(page, "/ehagaki/public/playground/iframe.html");
     const relayInput = page.getByLabel("タイムライン relay URL");
     await expect(relayInput).toHaveValue("wss://nos.lol");
     expect(await page.locator("#timeline-relay-suggestions option").evaluateAll((options) =>
@@ -393,7 +403,7 @@ test("uses an edited URL as the source of truth after an iframe context update",
         nip19.noteEncode("b".repeat(64)),
     ];
 
-    await page.goto("/ehagaki/public/embed-parent-client-example.html");
+    await openIframePlayground(page, "/ehagaki/public/playground/iframe.html");
     const initialFrame = page.frameLocator("#ehagaki-iframe");
     await expect(initialFrame.locator(".tiptap-editor")).toBeVisible({ timeout: 30_000 });
 
@@ -457,7 +467,7 @@ test("applies a signed preloaded event through the iframe composer context proto
     }, generateSecretKey());
     const reply = nip19.neventEncode({ id: event.id, author: event.pubkey });
 
-    await page.goto("/ehagaki/public/embed-parent-client-example.html");
+    await openIframePlayground(page, "/ehagaki/public/playground/iframe.html");
     // The status pill is transient: a composer.contextUpdated right after ready overwrites it.
     await expect(page.locator("#event-log")).toHaveValue(/ready を受信しました/, { timeout: 30_000 });
     const frame = page.frameLocator("#ehagaki-iframe");
@@ -663,7 +673,7 @@ window.addEventListener("message", (event) => {
 });
 
 test("only replaces initial settings queries after the settings UI changes", async ({ page }) => {
-    await page.goto("/ehagaki/embed-parent-client-example.html");
+    await openIframePlayground(page, "/ehagaki/playground/iframe.html");
 
     const appUrl = new URL("/ehagaki/", page.url());
     appUrl.search = new URLSearchParams([
@@ -686,7 +696,7 @@ test("only replaces initial settings queries after the settings UI changes", asy
 });
 
 test("applies iframe color defaults, persists user colors, and releases runtime forces", async ({ page }) => {
-    await page.goto("/ehagaki/embed-parent-client-example.html");
+    await openIframePlayground(page, "/ehagaki/playground/iframe.html");
 
     const appUrl = new URL("/ehagaki/", page.url());
     appUrl.searchParams.set("defaultAccentColor", "#ABCDEF");
@@ -922,7 +932,7 @@ document.querySelector("#reload").addEventListener("click", () => { iframe.src =
 });
 
 test("new host saves and restores fail-closed content warning through delegated storage", async ({ page }) => {
-    await page.goto("/ehagaki/embed-parent-client-example.html");
+    await openIframePlayground(page, "/ehagaki/playground/iframe.html");
     const appUrl = new URL("/ehagaki/", page.url());
     await page.getByLabel("eHagaki URL").fill(appUrl.toString());
     const frame = page.frameLocator("#ehagaki-iframe");

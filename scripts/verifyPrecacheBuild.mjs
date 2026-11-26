@@ -4,11 +4,18 @@ import { HASHED_PRECACHE_ASSET_PATTERN } from "../src/lib/swPrecacheInstall.ts";
 
 const swPath = resolve("dist", "sw.js");
 const excludedSamplePaths = [
+    "playground/index.html",
+    "playground/iframe.html",
+    "playground/iframe.js",
+    "playground/full.html",
+    "playground/full.js",
+    "playground/lite.html",
+    "playground/lite.js",
+    "playground/shell.js",
+    "playground/playground.css",
     "host-owned-composer-lite-example.html",
     "web-component-parent-client-example.html",
-    "web-component-parent-client-example.js",
     "embed-parent-client-example.html",
-    "embed-parent-client-example.js",
 ];
 const requiredPrecachePaths = ["index.html", "manifest.webmanifest"];
 

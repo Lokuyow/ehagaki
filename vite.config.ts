@@ -192,11 +192,11 @@ export default defineConfig({
           'sw.js',
           'workbox-*.js',
           'ehagaki_ogp_test.png',
+          // Embed Playground pages and the redirect stubs for their old URLs.
+          'playground/**',
           'host-owned-composer-lite-example.html',
           'web-component-parent-client-example.html',
-          'web-component-parent-client-example.js',
           'embed-parent-client-example.html',
-          'embed-parent-client-example.js',
           ...fixedLegacyBridgePaths
         ],
         additionalManifestEntries: fixedLegacyBridgePaths.map(url => ({

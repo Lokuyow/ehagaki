@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eHagaki Playground</title>
+    <meta name="description" content="eHagakiの投稿欄をiframe・Full Web Component・Host-owned Liteで組み込み、実際に動かして試せるプレイグラウンドです。">
+    <link rel="icon" href="../favicon.ico">
+    <link rel="stylesheet" href="./playground.css">
+</head>
+
+<body>
+    <header class="pg-header">
+        <div class="pg-header-inner">
+            <a class="pg-brand" href="./index.html"><img src="../ehagaki_icon.svg" alt="" width="28" height="28">eHagaki Playground</a>
+            <nav class="pg-tabs" aria-label="プレイグラウンドのページ">
+                <a href="./index.html" aria-current="page">はじめに</a>
+                <a href="./iframe.html">iframe</a>
+                <a href="./full.html">Full</a>
+                <a href="./lite.html">Lite</a>
+            </nav>
+            <div class="pg-header-links">
+                <a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/EMBEDDING.md" target="_blank" rel="noreferrer noopener">埋め込み・統合ガイド</a>
+                <a href="../">eHagakiを開く</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="pg-main">
+        <section class="pg-intro" aria-labelledby="page-heading">
+            <p class="pg-eyebrow">Embed Playground</p>
+            <h1 id="page-heading">eHagakiの投稿欄を組み込んで試す</h1>
+            <p class="pg-lead">eHagakiの投稿欄（Composer）は、iframe、Full Web Component、Host-owned Composer Liteの3つの方式でほかのページやNostrクライアントに組み込めます。方式ごとのページで、実際に組み込んだ状態の動作、公開API、イベントを確かめられます。</p>
+            <div class="pg-actions">
+                <a class="pg-link-button primary" href="https://github.com/Lokuyow/ehagaki/blob/main/docs/EMBEDDING.md" target="_blank" rel="noreferrer noopener">埋め込み・統合ガイドを読む</a>
+                <a class="pg-link-button secondary" href="#choose">方式の選び方</a>
+            </div>
+        </section>
+
+        <section class="pg-mode-grid" aria-label="組み込み方式">
+            <article class="pg-mode-card">
+                <span class="pg-badge">iframe</span>
+                <h2>iframe</h2>
+                <ul>
+                    <li>eHagakiを別のページとしてそのまま埋め込む</li>
+                    <li>別originで配信すれば、ホストのJavaScriptから隔離できる</li>
+                    <li>親クライアント連携ログイン、storage / IndexedDBの委譲を使える</li>
+                </ul>
+                <a class="pg-link-button primary" href="./iframe.html">iframeを試す</a>
+            </article>
+            <article class="pg-mode-card">
+                <span class="pg-badge">Full Web Component</span>
+                <h2>Full</h2>
+                <ul>
+                    <li>同じdocumentに <code>&lt;ehagaki-composer&gt;</code> を置く</li>
+                    <li>認証・Relay・アップロード・署名・publishまでeHagakiが受け持つ</li>
+                    <li>NIP-07はホストの <code>window.nostr</code> を使い、NIP-46も使える</li>
+                </ul>
+                <a class="pg-link-button primary" href="./full.html">Fullを試す</a>
+            </article>
+            <article class="pg-mode-card">
+                <span class="pg-badge">Host-owned Composer Lite</span>
+                <h2>Lite</h2>
+                <ul>
+                    <li>投稿欄の編集UIとメディア処理だけを組み込む</li>
+                    <li>eventの構築・署名・publishはホストが受け持つ</li>
+                    <li>アカウントやsignerを持つ既存のNostrクライアント向け</li>
+                </ul>
+                <a class="pg-link-button primary" href="./lite.html">Liteを試す</a>
+            </article>
+        </section>
+
+        <section class="pg-panel" id="choose" aria-labelledby="choose-heading">
+            <div class="pg-panel-header">
+                <div>
+                    <h2 id="choose-heading">方式の選び方</h2>
+                    <p class="small">上から順に確認し、最初に当てはまった方式を選んでください。</p>
+                </div>
+            </div>
+            <ol class="pg-steps">
+                <li><strong>アカウント、signer、event構築、publishをホストがすでに持っている</strong><span>→ <a href="./lite.html">Host-owned Composer Lite</a>。投稿欄だけを借りて、投稿処理はホストで行います。</span></li>
+                <li><strong>ホストのJavaScriptと実行環境を分けたい、または親クライアント連携やstorageの委譲を使いたい</strong><span>→ <a href="./iframe.html">iframe</a>。隔離が必要な場合は、ホストとは別のoriginから配信してください。</span></li>
+                <li><strong>認証から投稿までeHagakiに任せて、同じページに直接置きたい</strong><span>→ <a href="./full.html">Full Web Component</a>。eHagaki自身が署名してpublishします。</span></li>
+            </ol>
+        </section>
+
+        <section class="pg-panel" aria-labelledby="comparison-heading">
+            <h2 id="comparison-heading">3方式の比較</h2>
+            <div class="pg-table-wrap">
+                <table class="comparison">
+                    <thead>
+                        <tr><th scope="col">項目</th><th scope="col">iframe</th><th scope="col">Full</th><th scope="col">Lite</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><th scope="row">境界</th><td>別document・別Window realm。originを分けられる</td><td>同じdocument・同じWindow realm（Shadow DOM）</td><td>同じdocument・同じWindow realm（Shadow DOM）</td></tr>
+                        <tr><th scope="row">認証</th><td>eHagakiまたは親クライアント</td><td>eHagaki（NIP-07 / NIP-46）。ローカルnsecは使えない</td><td>ホスト。Liteは認証を持たない</td></tr>
+                        <tr><th scope="row">署名・publish</th><td>eHagaki。親クライアント連携時は署名を親へ委譲</td><td>eHagaki</td><td>ホスト</td></tr>
+                        <tr><th scope="row">データの受け渡し</th><td><code>postMessage</code> のembed protocol</td><td>メソッド、プロパティ、CustomEvent</td><td>メソッド、<code>submit</code> / <code>uploadMedia</code> コールバック</td></tr>
+                        <tr><th scope="row">見た目</th><td>URLクエリ、<code>settings.set</code></td><td>CSS Custom Properties、内部の設定画面</td><td>CSS Custom Properties</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="small">Web Componentはホストと同じWindow realmで動くため、ホストのJavaScriptから秘密情報を隔離する目的には使えません。詳しくは <a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/EMBEDDING.md" target="_blank" rel="noreferrer noopener">埋め込み・統合ガイド</a> を参照してください。</p>
+        </section>
+
+        <section class="pg-panel" aria-labelledby="quick-start-heading">
+            <div class="pg-panel-header">
+                <div>
+                    <h2 id="quick-start-heading">最小構成のコード</h2>
+                    <p class="small">そのままコピーして、組み込みの出発点にできます。</p>
+                </div>
+            </div>
+            <div class="pg-code-tabs" role="tablist" aria-label="方式" data-pg-tabs>
+                <button type="button" role="tab" id="tab-iframe" aria-controls="code-iframe" aria-selected="true" class="compact">iframe</button>
+                <button type="button" role="tab" id="tab-full" aria-controls="code-full" aria-selected="false" tabindex="-1" class="compact">Full</button>
+                <button type="button" role="tab" id="tab-lite" aria-controls="code-lite" aria-selected="false" tabindex="-1" class="compact">Lite</button>
+            </div>
+            <div class="pg-code" id="code-iframe" role="tabpanel" aria-labelledby="tab-iframe">
+                <pre id="code-iframe-text"><code>&lt;iframe
+  src="https://lokuyow.github.io/ehagaki/"
+  width="600"
+  height="400"
+  title="eHagaki Composer"
+&gt;&lt;/iframe&gt;</code></pre>
+                <button type="button" class="ghost compact" data-copy-target="code-iframe-text">コピー</button>
+            </div>
+            <div class="pg-code" id="code-full" role="tabpanel" aria-labelledby="tab-full" hidden>
+                <pre id="code-full-text"><code>&lt;script type="module" src="https://lokuyow.github.io/ehagaki/web-component/ehagaki-composer.js"&gt;&lt;/script&gt;
+&lt;div style="height: 580px"&gt;
+  &lt;ehagaki-composer
+    asset-base="https://lokuyow.github.io/ehagaki/web-component/"
+  &gt;&lt;/ehagaki-composer&gt;
+&lt;/div&gt;
+
+&lt;script type="module"&gt;
+  const composer = document.querySelector('ehagaki-composer');
+  await composer.whenReady();
+&lt;/script&gt;</code></pre>
+                <button type="button" class="ghost compact" data-copy-target="code-full-text">コピー</button>
+            </div>
+            <div class="pg-code" id="code-lite" role="tabpanel" aria-labelledby="tab-lite" hidden>
+                <pre id="code-lite-text"><code>&lt;div id="composer-mount" style="height: 580px"&gt;&lt;/div&gt;
+&lt;script type="module"&gt;
+  await import('https://lokuyow.github.io/ehagaki/web-component/host-owned/ehagaki-composer.js');
+
+  const composer = document.createElement('ehagaki-composer');
+  composer.assetBase = 'https://lokuyow.github.io/ehagaki/web-component/host-owned/';
+  composer.configureHostOwned({
+    async submit(output, { signal }) {
+      // outputからホストがeventを作り、署名してpublishする
+      void output;
+      void signal;
+      return undefined;
+    },
+  });
+  document.querySelector('#composer-mount').append(composer);
+  await composer.whenReady();
+&lt;/script&gt;</code></pre>
+                <button type="button" class="ghost compact" data-copy-target="code-lite-text">コピー</button>
+            </div>
+        </section>
+
+        <section class="pg-panel" aria-labelledby="docs-heading">
+            <h2 id="docs-heading">ドキュメント</h2>
+            <ul class="api-list">
+                <li><a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/EMBEDDING.md" target="_blank" rel="noreferrer noopener">埋め込み・統合ガイド</a>：方式の選び方、比較、最小構成</li>
+                <li><a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/IFRAME_EMBEDDING.md" target="_blank" rel="noreferrer noopener">iframe埋め込みガイド</a>：URLクエリ、<code>postMessage</code> API、親クライアント連携、storageの委譲</li>
+                <li><a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md" target="_blank" rel="noreferrer noopener">Web Componentガイド</a>：FullとLiteの公開API、イベント、CSS Custom Properties</li>
+            </ul>
+        </section>
+    </main>
+
+    <footer class="pg-footer">
+        <p>方式を切り替えると、ページを読み込み直します。FullとLiteは同じ <code>&lt;ehagaki-composer&gt;</code> 要素名を登録するため、1つのdocumentで両方を読み込めません。</p>
+    </footer>
+
+    <script type="module" src="./shell.js"></script>
+</body>
+
+</html>

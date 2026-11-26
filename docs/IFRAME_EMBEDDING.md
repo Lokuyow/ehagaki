@@ -4,10 +4,8 @@ iframe / Full Web Component / Host-owned Composer Lite の方式選択から始�
 
 このドキュメントは、eHagaki を自分の Web サイトや Web アプリに iframe で埋め込みたい開発者向けの公開ガイドです。
 
-> まずは動作確認用サンプルを直接開くには、以下の URL をブラウザで開いてください。
->
-> https://lokuyow.github.io/ehagaki/embed-parent-client-example.html
->
+> 動作を確かめるには、[eHagaki Playground の iframe ページ](https://lokuyow.github.io/ehagaki/playground/iframe.html) を開いてください。この文書で説明する親ページの動作を、実際に試せます。
+
 このガイドでは、次の連携方法を説明します。
 
 - iframe として埋め込む
@@ -16,6 +14,19 @@ iframe / Full Web Component / Host-owned Composer Lite の方式選択から始�
 - リプライ、引用、パブリックチャット、本文を起動時または実行中に指定する
 - 親ページの signer を使ってログインを委譲する
 - 投稿結果を親ページで受け取る
+
+## 目次
+
+- [1. 基本の埋め込み](#1-基本の埋め込み)
+  - [初回埋め込み時の設定注入](#初回埋め込み時の設定注入)
+  - [Host-provided temporary Relay Config](#host-provided-temporary-relay-config)
+- [2. リプライ / 複数引用 / パブリックチャット状態で起動する](#2-リプライ--複数引用--パブリックチャット状態で起動する)
+  - [常時表示 iframe の実行中更新](#常時表示-iframe-の実行中更新)
+  - [常時表示 iframe の設定同期](#常時表示-iframe-の設定同期)
+  - [iframe 内 storage が使えない場合の親保存委譲](#iframe-内-storage-が使えない場合の親保存委譲)
+- [3. 親クライアント連携ログイン](#3-親クライアント連携ログイン)
+- [4. 投稿結果のメッセージ形式](#4-投稿結果のメッセージ形式)
+- [5. 実装時の注意](#5-実装時の注意)
 
 ## 1. 基本の埋め込み
 
@@ -229,7 +240,7 @@ eHagaki のテーマ設定は初回起動時の既定値が `system` です。�
 - `embedTheme=system` は iframe 起動ごとに system へ戻したい場合に使えます
 - `defaultTheme=light|dark` は eHagaki 側にテーマ保存がない時だけ初期値を指定したい場合に使ってください
 - `embedAccentColor` / `embedBaseColor` は外部強制、`defaultAccentColor` / `defaultBaseColor` はユーザー色が無い場合だけの外部defaultです
-- 既存の [public/embed-parent-client-example.html](../public/embed-parent-client-example.html) は、`embed~` / `default~` と実行中の `settings.set` を切り替えて試せます
+- [Playground の iframe ページ](https://lokuyow.github.io/ehagaki/playground/iframe.html) では、`embed~` / `default~` と実行中の `settings.set` を切り替えて試せます
 
 ## 2. リプライ / 複数引用 / パブリックチャット状態で起動する
 
@@ -662,7 +673,7 @@ iframe.contentWindow.postMessage({
 }, 'https://lokuyow.github.io');
 ```
 
-既存の [public/embed-parent-client-example.html](../public/embed-parent-client-example.html) は、localStorage 委譲と `uploadDestinations` の IndexedDB 委譲に対応しています。
+[Playground の iframe ページ](https://lokuyow.github.io/ehagaki/playground/iframe.html) は、localStorage 委譲と `uploadDestinations` の IndexedDB 委譲に対応しています。
 
 ### 都度生成 iframe の設定注入
 
@@ -679,12 +690,12 @@ iframe.contentWindow.postMessage({
 
 ### 実動サンプル
 
-リポジトリ内には実際に親ページとして動かせるサンプルを追加しています。
+リポジトリには、実際に親ページとして動かせるサンプルがあります。
 
-- [public/embed-parent-client-example.html](../public/embed-parent-client-example.html)
-- [public/embed-parent-client-example.js](../public/embed-parent-client-example.js)
+- [public/playground/iframe.html](../public/playground/iframe.html)
+- [public/playground/iframe.js](../public/playground/iframe.js)
 
-オンラインで直接確認するには [https://lokuyow.github.io/ehagaki/embed-parent-client-example.html](https://lokuyow.github.io/ehagaki/embed-parent-client-example.html) を開いてください。
+オンラインで確かめるには [https://lokuyow.github.io/ehagaki/playground/iframe.html](https://lokuyow.github.io/ehagaki/playground/iframe.html) を開いてください。以前の `embed-parent-client-example.html` を開いた場合も、このページへ移動します。
 
 サンプルでは、親ページ側の signer を使ったログインと composer context の更新を試せます。
 

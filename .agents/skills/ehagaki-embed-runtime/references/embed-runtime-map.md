@@ -36,7 +36,7 @@
 | Full/Lite build / working directory / output validation | `scripts/runWebComponentBuild.mjs`, `scripts/webComponentBuildRunner.mjs`, `scripts/webComponentBuildWorkingDirectory.mjs`, `scripts/verifyWebComponentBuild.mjs` |
 | Lite forbidden graph | `scripts/hostOwnedLiteGraphGate.mjs` |
 | Dev proxy / site assembly | `scripts/devWebComponentSample.mjs`, `scripts/webComponentDevServerConfig.mjs`, `scripts/assembleWebComponentSite.mjs`, `src/test/e2e/webComponentDevServer.spec.ts` |
-| Host samples | `public/web-component-parent-client-example.html`, `public/host-owned-composer-lite-example.html` と対応 JS |
+| Host samples (Playground) | `public/playground/`（`iframe.html`、`full.html`、`lite.html` と対応 JS、共通の `shell.js` / `playground.css`）。旧 `public/*-example.html` は redirect stub |
 
 Document Vite base と component distribution の `asset-base` を同一視せず、active runtime の `resolveAppAssetUrl()` を使う。Full の未指定時 base 解決と、sample の connection 前の明示指定を区別する。FFmpeg worker/core/WASM、icons、dynamic chunks も同じ distribution の配信境界で確認する。
 

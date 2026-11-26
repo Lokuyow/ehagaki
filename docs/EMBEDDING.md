@@ -1,22 +1,35 @@
 # eHagaki 埋め込み・統合ガイド
 
-eHagaki の Composer は、次の3方式で外部ページへ統合できます。
+eHagaki の Composer は、次の3方式で外部ページへ統合できます。この文書は方式を選び、最小構成で組み込むまでの入口です。
 
 1. [iframe](./IFRAME_EMBEDDING.md)
 2. Full Web Component
 3. Host-owned Composer Lite Web Component
 
+実際に動かして確かめるには、[eHagaki Playground](https://lokuyow.github.io/ehagaki/playground/) を開いてください。3方式それぞれのページで、組み込んだ状態の動作、公開API、イベントを試せます。
+
 iframe の parent-client、storage delegation、`postMessage` API は [iframe詳細ガイド](./IFRAME_EMBEDDING.md) を、Web Component の公開 API は [Web Component APIリファレンス](./WEB_COMPONENT.md) を参照してください。
+
+## 目次
+
+- [どれを選ぶか](#どれを選ぶか)
+- [3方式比較](#3方式比較)
+- [Quick Start](#quick-start)
+- [Web Component共通の重要事項](#web-component共通の重要事項)
+- [Playground](#playground)
+- [詳細ガイド](#詳細ガイド)
 
 ## どれを選ぶか
 
-既存の Nostr クライアントが account、signer、event 構築、publish をすでに所有しているなら、まず **Host-owned Composer Lite** を選んでください。eHagaki の Composer UI と編集・メディア処理だけを同じ document に組み込み、最終 event の作成・署名・publish はホストへ戻せます。
+上から順に確かめ、最初に当てはまった方式を選んでください。
 
-eHagaki 自身に account/auth、relay、upload、sign、publish まで所有させ、同じ document に直接組み込みたい場合は **Full Web Component** を選びます。Full は eHagaki が self-publish します。
+1. 既存の Nostr クライアントが account、signer、event 構築、publish をすでに所有している → **Host-owned Composer Lite**
+2. ホスト JavaScript との origin / 実行環境の隔離が必要、または iframe の parent-client auth/RPC や storage / IndexedDB delegation を利用したい → **iframe**
+3. eHagaki 自身に account/auth、relay、upload、sign、publish まで所有させ、同じ document に直接組み込みたい → **Full Web Component**
 
-ホスト JavaScript との origin / 実行環境の隔離が必要な場合、または iframe の parent-client auth/RPC や storage / IndexedDB delegation を利用したい場合は **iframe** を選びます。
+Host-owned Composer Lite は、eHagaki の Composer UI と編集・メディア処理だけを同じ document に組み込み、最終 event の作成・署名・publish をホストへ戻せます。Lite 側は auth/account/session、Relay、target fetch、profile/history、draft、sign/send を所有せず、認証・署名・publish へ fallback しません。Hostは`setContext()`の一時的な`preloadedEvents` / `preloadedProfiles`でreply/quote previewを補完できますが、LiteはそのためのRelay readを開始しません。`submit` に渡る output は unsigned Nostr event ではなく、ホストが event を構築するための `{ content, tags, context }` です。
 
-Host-owned Lite は既存 Nostr クライアントへ eHagaki の Composer UI / 編集処理を組み込む方式です。Lite 側は auth/account/session、Relay、target fetch、profile/history、draft、sign/send を所有せず、認証・署名・publish へ fallback しません。Hostは`setContext()`の一時的な`preloadedEvents` / `preloadedProfiles`でreply/quote previewを補完できますが、LiteはそのためのRelay readを開始しません。`submit` に渡る output は unsigned Nostr event ではなく、ホストが event を構築するための `{ content, tags, context }` です。
+Full Web Component は eHagaki が self-publish します。
 
 ## 3方式比較
 
@@ -113,8 +126,22 @@ Host-owned Lite には SettingsDialog を追加せず、host が公開 CSS Custo
 
 iframe の優先順位は、外部 forced（`embedAccentColor` / `embedBaseColor`、runtime `settings.set`） > iframe 内部ユーザー設定 > external default（`defaultAccentColor` / `defaultBaseColor`） > eHagaki 標準です。`settings.set` の `accentColor` / `baseColor` は `null` で runtime 強制を解除できます。詳細は [iframe詳細ガイド](./IFRAME_EMBEDDING.md) と [Web Component APIリファレンス](./WEB_COMPONENT.md) を参照してください。
 
-## 公開サンプル
+## Playground
 
-- iframe: [embed-parent-client-example.html](https://lokuyow.github.io/ehagaki/embed-parent-client-example.html)
-- Full Web Component: [web-component-parent-client-example.html](https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html)
-- Host-owned Lite: [host-owned-composer-lite-example.html](https://lokuyow.github.io/ehagaki/host-owned-composer-lite-example.html)
+[eHagaki Playground](https://lokuyow.github.io/ehagaki/playground/) では、3方式をそれぞれのページで試せます。Full と Lite は同じ tag を登録するため、方式ごとに別のページとして読み込みます。
+
+| ページ | 試せること |
+| --- | --- |
+| [はじめに](https://lokuyow.github.io/ehagaki/playground/) | 方式の選び方、3方式の比較、最小構成のコード |
+| [iframe](https://lokuyow.github.io/ehagaki/playground/iframe.html) | parent-client ログイン、reply / quote / channel の指定、`settings.set`、storage / IndexedDB delegation |
+| [Full](https://lokuyow.github.io/ehagaki/playground/full.html) | 作成・破棄・再作成、`setSettings()`、`setContext()`、CSS Custom Properties、`uploadFile()`、一時 Relay Config |
+| [Lite](https://lokuyow.github.io/ehagaki/playground/lite.html) | `configureHostOwned()` の各 option、host の `submit` / `uploadMedia` の成功・失敗、custom emoji、preferred height |
+
+以前のサンプルURL（`embed-parent-client-example.html`、`web-component-parent-client-example.html`、`host-owned-composer-lite-example.html`）を開くと、query と hash を保ったまま対応する Playground のページへ移動します。
+
+Playground のソースは [public/playground/](../public/playground/) にあり、ビルドなしの HTML と ES module で書かれています。
+
+## 詳細ガイド
+
+- [iframe詳細ガイド](./IFRAME_EMBEDDING.md)：URL query、`postMessage` API、parent-client 連携ログイン、storage / IndexedDB delegation、投稿結果のメッセージ
+- [Web Component APIリファレンス](./WEB_COMPONENT.md)：Full と Lite の公開 API、CustomEvent、CSS Custom Properties、運用上の注意

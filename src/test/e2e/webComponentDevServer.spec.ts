@@ -97,7 +97,7 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
 
     try {
         await expect.poll(
-            () => requestStatus(`${origin}/ehagaki/web-component-parent-client-example.html`),
+            () => requestStatus(`${origin}/ehagaki/playground/full.html`),
             { timeout: 120_000 },
         ).toBe(200);
         await expect.poll(
@@ -108,14 +108,14 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
             `Vite dev server uses physical repository path ${process.cwd()}`,
         );
 
-        await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+        await page.goto(`${origin}/ehagaki/playground/full.html`);
         await expect(page.locator("#module-url")).toHaveValue(`${origin}/ehagaki/web-component/ehagaki-composer.js`);
         await expect(page.locator("#asset-base")).toHaveValue(`${origin}/ehagaki/web-component/`);
         await expect(page.locator("#ready-status")).toContainText("whenReady(): resolved", { timeout: 15_000 });
         await page.waitForFunction(() => document.querySelector("ehagaki-composer")?.shadowRoot?.querySelector(".footer-bar"));
 
         const iconStatus = await page.evaluate(async () => (
-            await fetch("./web-component/icons/add_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg")
+            await fetch("../web-component/icons/add_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg")
         ).status);
         expect(iconStatus).toBe(200);
         expect(webComponentResponses.some(({ path, status }) => path.endsWith("/ehagaki-composer.js") && status === 200)).toBe(true);
@@ -128,7 +128,13 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         webComponentResponses.length = 0;
         failedWebComponentRequests.length = 0;
         consoleErrors.length = 0;
-        await page.goto(`${origin}/ehagaki/host-owned-composer-lite-example.html`);
+        await page.goto(`${origin}/ehagaki/playground/lite.html`);
+        // The playground groups controls in collapsible sections; expand them all.
+        await page.evaluate(() => {
+            for (const section of document.querySelectorAll<HTMLDetailsElement>("details.pg-section")) {
+                section.open = true;
+            }
+        });
         const initialReadyStatus = "ready | upload: off | CW: off | hashtag pin: off | bar: on | editor submit: off | enter: newline | shortcuts: default | editor: legacy";
         await expect(page.locator("#status")).toHaveText(initialReadyStatus, { timeout: 15_000 });
         await expect(page.locator("#mount-config-status")).toHaveText(initialReadyStatus, { timeout: 15_000 });
@@ -265,7 +271,7 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         await page.locator("#apply-settings").click();
         await expect(page.locator("#log")).toContainText("setSettings applied:");
         await expect(page.locator("#log")).toContainText("locale");
-        await page.locator("details").filter({ hasText: "Advanced: legacy compression keys" }).locator("summary").click();
+        await page.locator("details.advanced-settings").filter({ hasText: "互換用の圧縮設定キー" }).locator("summary").click();
         await page.locator("#legacy-image-quality").selectOption("low");
         await page.locator("#legacy-video-quality").selectOption("high");
         await page.locator("#apply-legacy-settings").click();
@@ -436,7 +442,7 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         }
     } finally {
         await stopDevServer(devServer);
-        await expect.poll(() => requestStatus(`${origin}/ehagaki/web-component-parent-client-example.html`), {
+        await expect.poll(() => requestStatus(`${origin}/ehagaki/playground/full.html`), {
             timeout: 10_000,
         }).toBe(0);
         if (devServer.exitCode !== 0 && devServer.exitCode !== null) {
