@@ -25,6 +25,8 @@ export interface AppSharedContentControllerDependencies {
     composeSharedText(data: Pick<SharedMediaData, "title" | "text" | "url">): string;
     getComposer(): SharedContentComposer | null;
     logger: Pick<Console, "error">;
+    requiresExplicitMediaUpload?: () => boolean;
+    isMediaAuthenticationPending?: () => boolean;
 }
 
 export interface AppSharedContentController {
@@ -33,7 +35,7 @@ export interface AppSharedContentController {
      * then media upload. Does nothing while another share is being processed
      * or before the composer is mounted.
      */
-    consumeSharedContent(): Promise<void>;
+    consumeSharedContent(allowExplicitUpload?: boolean): Promise<void>;
 }
 
 export function createAppSharedContentController(
@@ -57,7 +59,7 @@ export function createAppSharedContentController(
         await sharedMediaRepository.deleteLatestForShare(shareId);
     }
 
-    async function consumeSharedContent(): Promise<void> {
+    async function consumeSharedContent(allowExplicitUpload = false): Promise<void> {
         // Read the composer last: the caller's effect should depend on it only
         // once there is a share to apply.
         if (
@@ -107,6 +109,12 @@ export function createAppSharedContentController(
                 return;
             }
 
+            const authenticationPending = deps.isMediaAuthenticationPending?.();
+            if (authenticationPending || (!allowExplicitUpload && deps.requiresExplicitMediaUpload?.())) {
+                if (sharedMediaStore.shareId === shareId) sharedMediaStore.bodyStatus = bodyStatus;
+                return;
+            }
+
             // The composer can be remounted while the text update was awaited.
             const uploadComposer = deps.getComposer();
             if (!uploadComposer) {
@@ -120,6 +128,8 @@ export function createAppSharedContentController(
 
             if (uploadedAllFiles) {
                 await deleteSharedMediaForShare(shareId);
+            } else if (allowExplicitUpload) {
+                return;
             } else if (sharedMediaStore.automaticRetryCount < 1) {
                 await sharedMediaRepository.updateLatestForShare(shareId, {
                     images: mediaFiles,

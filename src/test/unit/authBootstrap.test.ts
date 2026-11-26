@@ -251,6 +251,7 @@ describe('親連携のbackgroundプロフィールbootstrap', () => {
         finishRelays({ success: false, relayConfig: {}, source: 'fallback' });
         sessions.push(await task);
         expect(profile).toHaveBeenCalledTimes(1);
+        expect(deps.accountListStore.set).toHaveBeenCalledOnce();
         expect(deps.profileDataStore.set).toHaveBeenCalledTimes(1);
         const fetched = createProfile();
         finishProfile(fetched);

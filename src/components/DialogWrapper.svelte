@@ -8,6 +8,7 @@
         rememberDialogOpener,
     } from "../lib/dialogCloseFocus";
     import Button from "./Button.svelte";
+    import { appModalBarrier } from "../stores/appModalBarrier.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
 
     interface Props {
@@ -157,8 +158,14 @@
             tabindex={shouldFocusContent ? -1 : undefined}
             {trapFocus}
             preventScroll={false}
-            {onInteractOutside}
-            {onEscapeKeydown}
+            onInteractOutside={(event) => {
+                if (appModalBarrier.active) event.preventDefault();
+                else onInteractOutside?.(event);
+            }}
+            onEscapeKeydown={(event) => {
+                if (appModalBarrier.active) event.preventDefault();
+                else onEscapeKeydown?.(event);
+            }}
             onOpenAutoFocus={handleOpenAutoFocus}
             onCloseAutoFocus={handleCloseAutoFocus}
         >

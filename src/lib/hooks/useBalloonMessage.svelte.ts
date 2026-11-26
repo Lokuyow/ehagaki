@@ -1,3 +1,4 @@
+import { isNosskeyErrorMessage } from "../nosskeyErrors";
 /**
  * useBalloonMessage - バルーンメッセージ一元管理フック
  *
@@ -108,7 +109,7 @@ export function useBalloonMessage(
 
     // 投稿エラーメッセージ（postStatusから自動更新）
     const errorMessage = $derived(
-        editorState.postStatus.error && balloonManager
+        editorState.postStatus.error && balloonManager && !isNosskeyErrorMessage(editorState.postStatus.message)
             ? balloonManager.createErrorMessage(editorState.postStatus.message, {
                 authType: authState.value.type,
             })

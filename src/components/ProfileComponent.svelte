@@ -1,7 +1,9 @@
 <script lang="ts">
+    import NosskeyNotice from "./NosskeyNotice.svelte";
     import { _ } from "svelte-i18n";
     import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
     import { profileDataStore } from "../stores/profileStore.svelte";
@@ -35,6 +37,9 @@
         onLogout: (pubkeyHex: string) => void;
         fallbackRecoveryPubkeyHex?: string;
         onSwitchAccount?: (pubkeyHex: string) => void;
+        onSwitchNosskeyAccount?: (pubkeyHex: string) => Promise<boolean>;
+        cancelNosskeySwitch?: () => void;
+        nosskeySwitching?: boolean;
         onAddAccount?: () => void;
         accounts?: StoredAccount[];
         accountProfiles?: Map<
@@ -52,6 +57,9 @@
         onLogout,
         fallbackRecoveryPubkeyHex = "",
         onSwitchAccount,
+        onSwitchNosskeyAccount,
+        cancelNosskeySwitch,
+        nosskeySwitching = false,
         onAddAccount,
         accounts = [],
         accountProfiles = new Map(),
@@ -236,6 +244,16 @@
             </div>
         {/if}
 
+        {#if onSwitchNosskeyAccount}<NosskeyNotice />{/if}
+        {#if nosskeySwitching}
+            <div class="nosskey-switch-status" role="status">
+                <LoadingPlaceholder showLoader={true} variant="spinner" loaderSize={20} />
+                <span class="nosskey-switch-text">{$_("nosskey.preparing")}</span>
+                <Button variant="secondary" shape="rounded" className="nosskey-switch-cancel"
+                    onClick={cancelNosskeySwitch}>{$_("nosskey.cancel")}</Button>
+            </div>
+        {/if}
+
         <!-- アカウント一覧 -->
         {#if accounts.length > 0}
             <div class="accounts-section">
@@ -253,13 +271,15 @@
                                 <button
                                     class="account-info-button"
                                     onclick={() => {
-                                        if (!isActive && !isSwitchingAccount && account.type !== "nosskey") {
-                                            handleSwitchAccount(
-                                                account.pubkeyHex,
-                                            );
+                                        if (account.type === "nosskey") {
+                                            void onSwitchNosskeyAccount?.(account.pubkeyHex).then((success) => {
+                                                if (success) handleClose();
+                                            });
+                                        } else {
+                                            handleSwitchAccount(account.pubkeyHex);
                                         }
                                     }}
-                                    disabled={isActive || isSwitchingAccount || account.type === "nosskey"}
+                                    disabled={isActive || isSwitchingAccount || nosskeySwitching || (account.type === "nosskey" && !onSwitchNosskeyAccount)}
                                 >
                                     <ProfileAvatar
                                         pubkeyHex={account.pubkeyHex}
@@ -304,7 +324,7 @@
                                                     "profileDialog.login_method_nip46",
                                                 )}
                                             {:else if account.type === "nosskey"}
-                                                Nosskey
+                                                {$_(onSwitchNosskeyAccount ? "nosskey.badge" : "nosskey.standalone_only")}
                                             {:else if account.type === "npub"}
                                                 {$_("profileDialog.login_method_public_key")}
                                             {:else if account.type === "parentClient"}
@@ -325,7 +345,7 @@
                                     onclick={() =>
                                         handleLogout(account.pubkeyHex)}
                                     disabled={isLoggingOut ||
-                                        isSwitchingAccount}
+                                        isSwitchingAccount || nosskeySwitching}
                                     aria-label={$_(
                                         "profileDialog.logout_account",
                                     )}
@@ -368,6 +388,28 @@
 </DialogWrapper>
 
 <style>
+    .nosskey-switch-status {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 8px 12px;
+        box-sizing: border-box;
+        border: 1px solid var(--btn-border);
+        border-radius: 8px;
+    }
+
+    .nosskey-switch-text {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    :global(.nosskey-switch-status .nosskey-switch-cancel) {
+        min-height: 40px;
+        padding: 4px 14px;
+    }
+
     .xmark-icon {
         mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }

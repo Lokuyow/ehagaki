@@ -126,6 +126,10 @@ export class UploadMediaManagementController {
         this.pubkey = null;
         this.emit();
     }
+    private get autoLoadEnabled(): boolean {
+        return (this.deps.auth ?? authState).value.type !== "nosskey";
+    }
+
     async configureSaved(pubkey: string | null): Promise<void> {
         if (!this.active) return;
         const auth = (this.deps.auth ?? authState).value;
@@ -133,7 +137,7 @@ export class UploadMediaManagementController {
         if (pubkey !== this.pubkey) { this.invalidate(); this.pubkey = pubkey; }
         if (!pubkey) { this.emit(); return; }
         if (this.savedDestinationsRead) {
-            if (this.selectedId && !this.states.get(this.selectedId)?.loaded && !this.states.get(this.selectedId)?.registration) void this.load();
+            if (this.autoLoadEnabled && this.selectedId && !this.states.get(this.selectedId)?.loaded && !this.states.get(this.selectedId)?.registration) void this.load();
             return;
         }
         if (this.configuring) return;
@@ -189,7 +193,7 @@ export class UploadMediaManagementController {
             this.selectedId = this.destinations.find((item) => item.isDefault)?.id ?? this.destinations[0]?.id ?? null;
         }
         this.emit();
-        if (this.selectedId && !this.states.get(this.selectedId)?.loaded && !this.states.get(this.selectedId)?.loading
+        if (this.autoLoadEnabled && this.selectedId && !this.states.get(this.selectedId)?.loaded && !this.states.get(this.selectedId)?.loading
             && !this.states.get(this.selectedId)?.registration) void this.load();
     }
     select(id: string): void {
@@ -208,7 +212,7 @@ export class UploadMediaManagementController {
         }
         this.selectedId = id;
         this.emit();
-        if (!this.states.get(id)?.loaded) void this.load();
+        if (this.autoLoadEnabled && !this.states.get(id)?.loaded) void this.load();
     }
     private begin(state: DestinationState) {
         state.abort?.abort();
@@ -365,7 +369,7 @@ export class UploadMediaManagementController {
                 const target = state.registration.target;
                 state.registration = null;
                 requireRefresh(state);
-                await this.loadPage(state, false, operation);
+                if (this.autoLoadEnabled) await this.loadPage(state, false, operation);
                 if (operation.current() && state.registration) {
                     // A registered but inactive/banned account needs the service's help, not another POST.
                     state.registration = { target, phase: "external", policy: null, error: null };
@@ -412,7 +416,7 @@ export class UploadMediaManagementController {
                 if (!clean && operation.current()) clean = await evict();
                 if (!clean && operation.current()) state.notice = "cacheCleanupFailed";
             }
-            if (operation.current()) await this.loadPage(state, false, operation);
+            if (operation.current() && this.autoLoadEnabled) await this.loadPage(state, false, operation);
             return true;
         } catch (error) {
             if (operation.current()) {

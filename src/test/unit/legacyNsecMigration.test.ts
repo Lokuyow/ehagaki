@@ -168,7 +168,6 @@ describe('legacy nsec migration', () => {
             ]);
             expect(buildManagedRestoreCandidates({
                 activePubkey,
-                activeType: type,
                 accounts,
             })[0]).toMatchObject({ pubkeyHex: activePubkey, type });
         });
@@ -193,7 +192,6 @@ describe('legacy nsec migration', () => {
         const accounts = JSON.parse(storage.getItem(STORAGE_KEYS.NOSTR_ACCOUNTS) ?? '[]') as StoredAccount[];
         expect(buildManagedRestoreCandidates({
             activePubkey,
-            activeType: 'parentClient',
             accounts,
         }).some((candidate) => candidate.pubkeyHex === activePubkey)).toBe(false);
     });

@@ -1,3 +1,4 @@
+import { nosskeySignerForSession, nosskeyErrorMessage } from "./nosskeyService.svelte";
 import { resolvePostSigner, type PostSignerResolution } from "./postSignerResolver";
 import { isHex64 } from "./utils/nostrHexUtils";
 import { followPostHistoryDelivery } from "./storage/postHistoryDeliveryReceipt";
@@ -32,7 +33,7 @@ import {
   attestFullyVerifiedPostHistoryRawEvent,
   type PostHistoryRawEventAttestation,
 } from "./postHistoryRawEventVerification";
-import { assertActiveSession, captureActiveSessionPubkey } from "./sessionLiveness";
+import { assertActiveSession, captureActiveSessionPubkey, isSameAuthSession } from "./sessionLiveness";
 import {
   prepareSignedEventTemplate,
   validateSignedEventResult,
@@ -510,7 +511,7 @@ export class PostManager {
       if (
         capturedGeneration !== this.operationGeneration
         || this.rxNostr !== rxNostr || this.eventSender !== sender
-        || currentAuth !== capturedAuthState
+        || !isSameAuthSession(currentAuth, capturedAuthState)
         || !currentAuth.isAuthenticated
         || currentAuth.pubkey !== params.sessionPubkey
         || (!foregroundAcknowledged && params.isCurrent?.() === false)
@@ -876,7 +877,7 @@ export class PostManager {
     if (params.signer && !signEvent) return this.notifyPostFailure("nostr_sign_event_not_supported");
     const isSessionActive = () => {
       const auth = this.deps.authStateStore!.value;
-      return auth === capturedAuth && auth.isAuthenticated && auth.pubkey === params.sessionPubkey
+      return isSameAuthSession(auth, capturedAuth) && auth.isAuthenticated && auth.pubkey === params.sessionPubkey
         && this.rxNostr === rxNostr && this.eventSender === sender
         && this.operationGeneration === generation;
     };
@@ -901,8 +902,8 @@ export class PostManager {
         ? buildSensitivePayloadEvent(params.event.kind as SensitiveContentStructureKind,
           params.event.content, params.sessionPubkey, params.event.created_at)
         : params.event);
-    } catch {
-      return this.notifyPostFailure("post_error");
+    } catch (error) {
+      return this.notifyPostFailure(nosskeyErrorMessage(error) ?? "post_error");
     }
     if (!usePayload) published = signed;
     const result = await this.publishNip65Event({
@@ -978,6 +979,7 @@ export class PostManager {
       pubkey: auth.pubkey,
       window: windowObj,
       nip46Signer,
+      nosskeySigner: nosskeySignerForSession(this.deps.authStateStore!, auth),
       getParentClientSigner: () => this.deps.getParentClientSignerFn?.(),
       getStoredSecretKey: (pubkey) => keyMgr.getFromStore() || keyMgr.loadFromStorage(pubkey),
       createSecretKeySigner: (secretKey) => this.deps.seckeySignerFn
@@ -1107,6 +1109,7 @@ export class PostManager {
       // 依存性から認証状態とストアを取得
       const authStateStore = this.deps.authStateStore!;
       const sessionPubkey = captureActiveSessionPubkey(authStateStore);
+      const initialAuth = authStateStore.value;
       const hashtagStore = this.deps.hashtagStore!;
       const { hashtags, tags } = this.getHashtagArrays(hashtagStore);
       const keyMgr = this.deps.keyManager!;
@@ -1300,7 +1303,7 @@ export class PostManager {
       }
 
       const resolvedSigner = await this.resolveSubmissionSigner({
-        auth: authStateStore.value,
+        auth: initialAuth.type === "nosskey" ? initialAuth : authStateStore.value,
         sessionPubkey,
         keyManager: keyMgr,
         windowObj,
@@ -1339,7 +1342,8 @@ export class PostManager {
           replyQuoteIdentity: serializeReplyQuoteIdentity(rqState),
         });
       } catch (err) {
-        return this.handleSubmissionError(resolvedSigner.errorLabel);
+        const nosskeyFailure = nosskeyErrorMessage(err);
+        return nosskeyFailure ? this.notifyPostFailure(nosskeyFailure) : this.handleSubmissionError(resolvedSigner.errorLabel);
       }
     } catch (err) {
       return this.handleSubmissionError('投稿エラー:');

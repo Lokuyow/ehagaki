@@ -1,5 +1,6 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
+    import { isNosskeyErrorMessage } from "../lib/nosskeyErrors";
     import type { PostRepostResult } from "../lib/postRepostService";
     import FloatingMessage from "./FloatingMessage.svelte";
     import Button from "./Button.svelte";
@@ -12,7 +13,7 @@
     let completedRetry = $state.raw<PostRepostResult | null>(null);
     const retryResult = $derived(saveFailure ?? (result?.retryInput ? result : null));
     $effect(() => {
-        visible = pending || (!!result && result !== completedRetry && result.error !== "repost_stale");
+        visible = pending || (!!result && result !== completedRetry && result.error !== "repost_stale" && !isNosskeyErrorMessage(result.error));
         if (pending) return;
         if (!result || result.retryInput) return;
         const timeout = setTimeout(() => { visible = false; }, 4000);

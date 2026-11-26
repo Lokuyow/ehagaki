@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { isSameAuthSession } from "../lib/sessionLiveness";
+  import { isNosskeyErrorMessage } from "../lib/nosskeyErrors";
   import { _ } from "svelte-i18n";
   import { onDestroy, onMount } from "svelte";
   import { untrack } from "svelte";
@@ -1230,7 +1232,7 @@
       const runtime = rxNostr;
       const auth = authState.value;
       const isCurrent = () => !componentDestroyed && currentEditorStore.value === editorInstance
-        && rxNostr === runtime && authState.value === auth && reactionComposerState.value === reactionTarget;
+        && rxNostr === runtime && isSameAuthSession(authState.value, auth) && reactionComposerState.value === reactionTarget;
       const operation = { editor: editorInstance, isCurrent };
       reactionSubmit = operation;
       let appliedResult = false;
@@ -1244,7 +1246,7 @@
         if (result.success) {
           clearReactionTarget('success');
           postStatusHandlers.markSuccess(result);
-        } else markPostFailure('reaction.failed');
+        } else markPostFailure(isNosskeyErrorMessage(result.error) ? result.error : 'reaction.failed');
       } finally {
         if (reactionSubmit === operation && (appliedResult || isCurrent())) {
           reactionSubmit = null;

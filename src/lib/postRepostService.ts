@@ -1,3 +1,4 @@
+import { nosskeySignerForSession, nosskeyErrorMessage } from "./nosskeyService.svelte";
 import { followPostHistoryDelivery } from "./storage/postHistoryDeliveryReceipt";
 import { seckeySigner } from "@rx-nostr/crypto";
 import type { EventTemplate } from "nostr-tools";
@@ -13,7 +14,7 @@ import { postHistoryLocalRelayService } from "./postHistoryLocalRelayService";
 import { buildClientTag } from "./tags/clientTag";
 import { buildRepostEvent, isRepostTargetKind, verifyRepostTarget } from "./postRepostUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
-import { assertActiveSession } from "./sessionLiveness";
+import { assertActiveSession, isSameAuthSession } from "./sessionLiveness";
 import { createPlainNostrEventSnapshot } from "./postHistoryEventUtils";
 import { prepareSignedEventTemplate, validateSignedEventResult } from "./signedEventResultValidator";
 import { attestFullyVerifiedPostHistoryRawEvent } from "./postHistoryRawEventVerification";
@@ -95,9 +96,12 @@ export class PostRepostService {
             if (auth.type === "nip07") signer = this.deps.getNip07Signer();
             else if (auth.type === "nip46") signer = await this.deps.getNip46Signer(pubkey);
             else if (auth.type === "parentClient") signer = this.deps.getParentClientSigner();
+            else if (auth.type === "nosskey") signer = nosskeySignerForSession(this.deps.authStateStore, auth, () => params.isCurrent?.() !== false);
             else if (auth.type === "nsec") {
                 const key = this.deps.keyManager.getFromStore() || this.deps.keyManager.loadFromStorage(pubkey);
                 if (key) signer = this.deps.seckeySignerFn(key);
+            } else if (auth.type !== "none") {
+                auth.type satisfies never;
             }
             assertCurrent();
             if (!signer?.signEvent) return { success: false, error: "nostr_sign_event_not_supported" };
@@ -115,7 +119,7 @@ export class PostRepostService {
             if (!published.success) return published;
             try {
                 void Promise.resolve(this.deps.storeSignedEventsFn?.([verified],
-                    () => this.deps.authStateStore.value === auth && params.isCurrent?.() !== false)).catch(() => undefined);
+                    () => isSameAuthSession(this.deps.authStateStore.value, auth) && params.isCurrent?.() !== false)).catch(() => undefined);
             } catch { /* Local archival never changes external delivery. */ }
             const input: PostHistorySaveInput = { event: verified.event, attestation: verified.attestation,
                 acceptedRelays: published.acceptedRelays, relayHints: [...(published.acceptedRelays ?? []), ...writeRelays],
@@ -128,8 +132,8 @@ export class PostRepostService {
             } catch {
                 return { ...published, eventId: signed.id, event: signed, historySaved: false, retryInput: input };
             }
-        } catch {
-            return { success: false, error: "post_error" };
+        } catch (error) {
+            return { success: false, error: nosskeyErrorMessage(error) ?? "post_error" };
         } finally { this.pending = false; }
     }
 

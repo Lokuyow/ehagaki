@@ -43,6 +43,82 @@ function createController(overrides: Record<string, unknown> = {}) {
 }
 
 describe('createAppAuthLoginController', () => {
+    it('persists Nosskey login, then releases the previous NIP-46 session and bootstraps', async () => {
+        const pubkeyHex = 'ab'.repeat(32);
+        const nosskey = {
+            beginTransition: vi.fn(() => 3),
+            readPublicKey: vi.fn(async () => pubkeyHex),
+            authenticate: vi.fn(() => ({ success: true, pubkeyHex })),
+            reportError: vi.fn(),
+            setStatus: vi.fn(),
+        };
+        const { deps, controller } = createController({ nosskey });
+
+        await controller.handleNosskeyLogin();
+
+        expect(nosskey.authenticate).toHaveBeenCalledWith(pubkeyHex);
+        expect(deps.clearNip46RuntimeForAuthChange).toHaveBeenCalledExactlyOnceWith({
+            currentAuthType: 'nip46',
+            currentPubkeyHex: 'cd'.repeat(32),
+            nextAuthType: 'nosskey',
+            nextPubkeyHex: pubkeyHex,
+            nip46Service: deps.nip46Service,
+        });
+        expect(deps.handlePostAuth).toHaveBeenCalledExactlyOnceWith(pubkeyHex, { generation: 3 });
+        expect(nosskey.setStatus.mock.calls).toEqual([['confirming'], ['committing'], ['idle']]);
+    });
+
+    it('ignores a second submit and drops an approval from a superseded Nosskey login', async () => {
+        let current = true;
+        let approve!: (pubkeyHex: string) => void;
+        const nosskey = {
+            beginTransition: vi.fn(() => 3),
+            readPublicKey: vi.fn(() => new Promise<string>(resolve => { approve = resolve; })),
+            authenticate: vi.fn(),
+            reportError: vi.fn(),
+            setStatus: vi.fn(),
+        };
+        const { deps, controller } = createController({ nosskey, isAuthTransitionCurrent: () => current });
+
+        const login = controller.handleNosskeyLogin();
+        await vi.waitFor(() => expect(nosskey.readPublicKey).toHaveBeenCalledOnce());
+        await controller.handleNosskeyLogin();
+        expect(nosskey.beginTransition).toHaveBeenCalledOnce();
+
+        current = false;
+        approve('ab'.repeat(32));
+        await login;
+
+        expect(nosskey.authenticate).not.toHaveBeenCalled();
+        expect(deps.clearNip46RuntimeForAuthChange).not.toHaveBeenCalled();
+        expect(deps.handlePostAuth).not.toHaveBeenCalled();
+        expect(nosskey.setStatus.mock.calls).toEqual([['confirming'], ['idle']]);
+    });
+
+    it('cancels a pending login and ignores its late approval after a retry', async () => {
+        const approvals: Array<(pubkey: string) => void> = [];
+        const nosskey = {
+            beginTransition: vi.fn(() => 3),
+            readPublicKey: vi.fn(() => new Promise<string>(resolve => { approvals.push(resolve); })),
+            authenticate: vi.fn((pubkeyHex: string) => ({ success: true, pubkeyHex })),
+            reportError: vi.fn(),
+            setStatus: vi.fn(),
+        };
+        const { controller } = createController({ nosskey });
+        const first = controller.handleNosskeyLogin();
+        await vi.waitFor(() => expect(approvals).toHaveLength(1));
+        controller.cancelNosskeyLogin();
+        const second = controller.handleNosskeyLogin();
+        await vi.waitFor(() => expect(approvals).toHaveLength(2));
+        approvals[0]('aa'.repeat(32));
+        await first;
+        expect(nosskey.authenticate).not.toHaveBeenCalled();
+        expect(nosskey.setStatus.mock.calls).toEqual([['confirming'], ['idle'], ['confirming']]);
+        approvals[1]('bb'.repeat(32));
+        await second;
+        expect(nosskey.authenticate).toHaveBeenCalledExactlyOnceWith('bb'.repeat(32));
+    });
+
     it('activateParentClientAuth success で session を更新し post auth する', async () => {
         const { deps, controller } = createController();
 

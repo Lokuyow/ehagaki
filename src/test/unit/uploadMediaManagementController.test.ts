@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { UploadMediaManagementController, emptyUploadMediaManagementView } from "../../lib/upload/uploadMediaManagementController";
 import { UploadMediaError, type UploadMediaPage, type UploadMediaListParams, type UploadMediaDeleteParams } from "../../lib/upload/mediaManagementTypes";
+import type { AuthStateSource } from "../../lib/sessionLiveness";
 import type { UploadProtocolAdapter } from "../../lib/types/upload";
 import { mediaAuth, mediaDestination, mediaHash, mediaItem, mediaPage, mediaPubkey } from "../uploadMediaManagementTestUtils";
 import { createDeferred } from "../deferredTestUtils";
@@ -8,7 +9,7 @@ import { BlossomUploadAdapter } from "../../lib/upload/BlossomUploadAdapter";
 
 function setup(loadDestinations?: (pubkey: string) => Promise<ReturnType<typeof mediaDestination>[]>) {
     let view = emptyUploadMediaManagementView();
-    const auth = { value: { isAuthenticated: true, pubkey: mediaPubkey } };
+    const auth: AuthStateSource = { value: { isAuthenticated: true, pubkey: mediaPubkey } };
     const list = vi.fn(async (_params: UploadMediaListParams) => mediaPage());
     const remove = vi.fn(async (_params: UploadMediaDeleteParams): Promise<void> => undefined);
     const evict = vi.fn(async () => true);
@@ -24,6 +25,18 @@ async function loaded(s: ReturnType<typeof setup>) {
     await vi.waitFor(() => expect(s.view.current?.loaded).toBe(true));
 }
 describe("uploaded-media operation ownership", () => {
+    it("waits for an explicit media read when the signer is Nosskey", async () => {
+        const destinations = [mediaDestination(), mediaDestination("blossom", "other")];
+        const s = setup(async () => destinations);
+        s.auth.value.type = "nosskey";
+        await s.controller.configureSaved(mediaPubkey);
+        s.controller.select("other");
+        expect(s.list).not.toHaveBeenCalled();
+        await s.controller.load();
+        expect(s.list).toHaveBeenCalledTimes(1);
+        expect(s.list.mock.calls[0][0].destination.id).toBe("other");
+    });
+
     it("lists and deletes saved Sovbit NIP-96 media through Blossom with the same destination ID", async () => {
         const destination = { ...mediaDestination("nip96", "saved-sovbit"), presetId: "files-sovbit-host" as const,
             serverUrl: "https://files.sovbit.host/api/v2/media", resolvedUploadUrl: "https://files.sovbit.host/upload" };

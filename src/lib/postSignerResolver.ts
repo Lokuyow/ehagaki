@@ -17,12 +17,13 @@ export interface PostSignerLike {
     signEvent?: (event: EventTemplate) => Promise<unknown>;
 }
 
-export type PostSignerSource = "nip07" | "nip46" | "parentClient" | "secretKey";
+export type PostSignerSource = "nip07" | "nip46" | "parentClient" | "secretKey" | "nosskey";
 
 export type PostSignerError =
     | "nostr_sign_event_not_supported"
     | "nip46_signer_not_available"
     | "parent_client_signer_not_available"
+    | "nosskey_signer_not_available"
     | "key_not_found";
 
 export type PostSignerResolution =
@@ -39,6 +40,7 @@ export interface ResolvePostSignerParams {
     window?: { nostr?: Partial<Pick<WindowNostr, "signEvent">> } | null;
     /** Already fetched for NIP-46 sessions (null/undefined when unavailable). */
     nip46Signer?: PostSignerLike | null;
+    nosskeySigner?: PostSignerLike | null;
     getParentClientSigner: () => PostSignerLike | null | undefined;
     getStoredSecretKey: (pubkey: string) => string | null | undefined;
     createSecretKeySigner: (secretKey: string) => PostSignerLike;
@@ -77,7 +79,16 @@ export function resolvePostSigner(params: ResolvePostSignerParams): PostSignerRe
         );
     }
 
-    if (params.authType !== "nsec") return { ok: false, error: "key_not_found" };
+    if (params.authType === "nosskey") {
+        return bindSigner(params.nosskeySigner, "nosskey", "nosskey_signer_not_available");
+    }
+
+    if (params.authType === "none" || params.authType === "npub") return { ok: false, error: "key_not_found" };
+    if (params.authType !== "nsec") {
+        const unknownAuth: never = params.authType;
+        void unknownAuth;
+        return { ok: false, error: "key_not_found" };
+    }
 
     const secretKey = params.getStoredSecretKey(params.pubkey);
     if (!secretKey) return { ok: false, error: "key_not_found" };

@@ -23,7 +23,7 @@ function createController(overrides: Record<string, unknown> = {}) {
         type: 'parentClient',
         pubkey: CURRENT_PUBKEY,
     };
-    const accounts = new Map<string, 'nsec' | 'nip07' | 'nip46' | 'parentClient'>([
+    const accounts = new Map<string, 'nsec' | 'nip07' | 'nip46' | 'parentClient' | 'nosskey'>([
         [CURRENT_PUBKEY, 'parentClient'],
         [TARGET_PUBKEY, 'nip07'],
         [OTHER_PUBKEY, 'nsec'],
@@ -131,6 +131,59 @@ function createController(overrides: Record<string, unknown> = {}) {
 }
 
 describe('createAppAccountSessionController', () => {
+    it('keeps the current session until the Nosskey account is confirmed', async () => {
+        let approve!: (pubkeyHex: string) => void;
+        const nosskey = {
+            getGeneration: () => 3,
+            isGenerationCurrent: () => true,
+            beginSwitchTransition: vi.fn(),
+            readPublicKey: vi.fn(() => new Promise<string>(resolve => { approve = resolve; })),
+            reportError: vi.fn(),
+            setConfirming: vi.fn(),
+        };
+        const { accounts, deps, controller, getActivePubkey } = createController({ nosskey });
+        accounts.set(TARGET_PUBKEY, 'nosskey');
+
+        const switching = controller.switchNosskeyAccount(TARGET_PUBKEY);
+        expect(nosskey.readPublicKey).toHaveBeenCalledExactlyOnceWith(expect.any(Function), TARGET_PUBKEY);
+        expect(deps.disposeNostrSession).not.toHaveBeenCalled();
+        expect(getActivePubkey()).toBe(CURRENT_PUBKEY);
+
+        approve(TARGET_PUBKEY);
+        await expect(switching).resolves.toBe(true);
+        expect(nosskey.beginSwitchTransition).toHaveBeenCalledOnce();
+        expect(getActivePubkey()).toBe(TARGET_PUBKEY);
+        expect(nosskey.setConfirming.mock.calls).toEqual([[true], [false]]);
+    });
+
+    it('drops a cancelled Nosskey confirmation without clearing a newer confirmation', async () => {
+        const approvals: Array<(pubkeyHex: string) => void> = [];
+        const nosskey = {
+            getGeneration: () => 3,
+            isGenerationCurrent: () => true,
+            beginSwitchTransition: vi.fn(),
+            readPublicKey: vi.fn(() => new Promise<string>(resolve => { approvals.push(resolve); })),
+            reportError: vi.fn(),
+            setConfirming: vi.fn(),
+        };
+        const { accounts, deps, controller, getActivePubkey } = createController({ nosskey });
+        accounts.set(TARGET_PUBKEY, 'nosskey');
+
+        const switching = controller.switchNosskeyAccount(TARGET_PUBKEY);
+        controller.cancelNosskeyConfirmation();
+        const confirming = controller.confirmNosskeyAccount(TARGET_PUBKEY);
+        approvals[0](TARGET_PUBKEY);
+        await expect(switching).resolves.toBe(false);
+        expect(nosskey.setConfirming.mock.calls).toEqual([[true], [false], [true]]);
+
+        approvals[1](TARGET_PUBKEY);
+        await expect(confirming).resolves.toBe(true);
+        expect(nosskey.setConfirming.mock.calls).toEqual([[true], [false], [true], [false]]);
+        expect(nosskey.beginSwitchTransition).not.toHaveBeenCalled();
+        expect(deps.disposeNostrSession).not.toHaveBeenCalled();
+        expect(getActivePubkey()).toBe(CURRENT_PUBKEY);
+    });
+
     it('switching中の再入を拒否する', async () => {
         let resolveRestore: ((value: { success: true; pubkeyHex: string }) => void) | undefined;
         const restoreManagedAccountSession = vi.fn(() => new Promise<{ success: true; pubkeyHex: string }>((resolve) => {

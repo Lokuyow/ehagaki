@@ -13,6 +13,7 @@
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostHistoryRepostPreview from "./PostHistoryRepostPreview.svelte";
+    import { isNosskeyErrorMessage } from "../lib/nosskeyErrors";
     import PostRepostFeedback from "./PostRepostFeedback.svelte";
     import { usePostHistoryRepostPreviews, loadStoredRepostTarget } from "../lib/hooks/usePostHistoryRepostPreviews.svelte";
     import type { PostRepostResult } from "../lib/postRepostService";
@@ -2215,7 +2216,7 @@
         } else {
             deleteRequestState = {
                 ...deleteRequestState,
-                [targetPost.eventId]: "failed",
+                [targetPost.eventId]: isNosskeyErrorMessage(result.error) ? undefined : "failed",
             };
         }
 

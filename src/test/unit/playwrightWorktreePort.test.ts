@@ -137,6 +137,7 @@ describe('Playwright config connection values', () => {
                 ...productionSwSpecs,
             ]);
             expect(config.projects?.[1]?.testMatch).toEqual([
+                '**/nosskeyLogin.spec.ts',
                 '**/postHistoryDialog.spec.ts',
                 '**/uploadRelaySync.spec.ts',
                 '**/postEditorSending.spec.ts',
@@ -155,6 +156,7 @@ describe('Playwright config connection values', () => {
             expect(config.projects?.[2]?.testMatch).toEqual([
                 '**/webComponentLite.spec.ts',
                 '**/loginLatency.spec.ts',
+                '**/nosskeyLogin.spec.ts',
                 '**/postEditorSending.spec.ts',
             ]);
             expect(config.projects?.[2]?.grep).toEqual(/@android-chrome/);
@@ -165,6 +167,7 @@ describe('Playwright config connection values', () => {
                 userAgent: expect.stringMatching(/Android.+Chrome\//),
             });
             expect(config.projects?.[4]?.testMatch).toEqual([
+                '**/nosskeyLogin.spec.ts',
                 '**/notifications.spec.ts',
                 '**/postMediaCacheConcurrency.spec.ts',
                 '**/webComponentEmbed.spec.ts',
@@ -175,6 +178,7 @@ describe('Playwright config connection values', () => {
             ]);
             expect(config.projects?.[3]?.testMatch).toEqual([
                 '**/uploadRelaySync.spec.ts',
+                '**/nosskeyLogin.spec.ts',
                 '**/composerTargetDialog.spec.ts',
                 '**/webComponentEmbed.spec.ts',
                 '**/webComponentLite.spec.ts',

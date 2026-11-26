@@ -1,5 +1,8 @@
 import { isPublicKeyLoginInput } from './utils/nostrUtils';
+import { NosskeyError } from './nosskeyErrors';
 import type { AccountAuthType, AuthResult } from './types';
+
+export type NosskeyLoginStatus = 'idle' | 'confirming' | 'committing';
 
 type ParentClientAuthOptions = {
     silent?: boolean;
@@ -46,6 +49,13 @@ export interface AppAuthLoginControllerDependencies {
     authenticateWithPublicKey(input: string): AuthResult & { profileRelayHints?: string[] };
     disconnectParentClient(): void;
     authenticateWithNsec(secretKey: string): Promise<AuthResult>;
+    nosskey?: {
+        beginTransition(): number;
+        readPublicKey(isCurrent: () => boolean): Promise<string>;
+        authenticate(pubkeyHex: string): AuthResult;
+        reportError(error: unknown): void;
+        setStatus(status: NosskeyLoginStatus): void;
+    };
     handleSuccessfulAuthResult(
         result: AuthResult,
         onAuthenticated: (pubkeyHex: string) => Promise<void>,
@@ -62,6 +72,8 @@ export interface AppAuthLoginController {
     /** Resolves with an error code, or undefined when the login succeeded or was ignored. */
     saveSecretKey(secretKey: string, generation?: number): Promise<string | undefined>;
     handleParentClientLogin(): Promise<string | undefined>;
+    handleNosskeyLogin(): Promise<void>;
+    cancelNosskeyLogin(): void;
 }
 
 export function createAppAuthLoginController(
@@ -118,6 +130,59 @@ export function createAppAuthLoginController(
         deps.setCurrentRxNostr(deps.disposeNostrSession(deps.getCurrentRxNostr()));
         await deps.handlePostAuth(result.pubkeyHex, { generation });
         return undefined;
+    }
+
+    let pendingNosskeyLogin: { committing: boolean } | null = null;
+
+    function cancelNosskeyLogin(): void {
+        if (!pendingNosskeyLogin || pendingNosskeyLogin.committing) return;
+        pendingNosskeyLogin = null;
+        deps.nosskey?.setStatus('idle');
+    }
+
+    async function handleNosskeyLogin(): Promise<void> {
+        const { nosskey } = deps;
+        if (!nosskey || pendingNosskeyLogin) return;
+
+        const generation = nosskey.beginTransition();
+        const request = { committing: false };
+        const isCurrent = () => pendingNosskeyLogin === request && deps.isAuthTransitionCurrent(generation);
+        const previousAuthType = deps.getCurrentAuthType();
+        const previousPubkeyHex = deps.getCurrentPubkeyHex();
+        pendingNosskeyLogin = request;
+        nosskey.setStatus('confirming');
+        try {
+            await deps.cancelPendingNip46Auth();
+            if (!isCurrent()) return;
+
+            const pubkeyHex = await nosskey.readPublicKey(isCurrent);
+            if (!isCurrent()) return;
+
+            const result = nosskey.authenticate(pubkeyHex);
+            if (!result.success) {
+                const code = result.error === 'nosskey.account_conflict' ? 'account_conflict' : 'storage';
+                nosskey.reportError(new NosskeyError(code));
+                return;
+            }
+
+            request.committing = true;
+            nosskey.setStatus('committing');
+            await deps.clearNip46RuntimeForAuthChange({
+                currentAuthType: previousAuthType,
+                currentPubkeyHex: previousPubkeyHex,
+                nextAuthType: 'nosskey',
+                nextPubkeyHex: pubkeyHex,
+                nip46Service: deps.nip46Service,
+            });
+            if (isCurrent()) await deps.handlePostAuth(pubkeyHex, { generation });
+        } catch (error) {
+            if (isCurrent()) nosskey.reportError(error);
+        } finally {
+            if (pendingNosskeyLogin === request) {
+                pendingNosskeyLogin = null;
+                nosskey.setStatus('idle');
+            }
+        }
     }
 
     let isSavingSecretKey = false;
@@ -191,5 +256,7 @@ export function createAppAuthLoginController(
             && deps.isAuthTransitionCurrent(parentTransition.generation),
         saveSecretKey,
         handleParentClientLogin,
+        handleNosskeyLogin,
+        cancelNosskeyLogin,
     };
 }

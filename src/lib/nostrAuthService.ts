@@ -1,3 +1,4 @@
+import { nosskeySignerForSession } from "./nosskeyService.svelte";
 import { isRecord } from "./utils/typeGuards";
 import { seckeySigner } from "@rx-nostr/crypto";
 import type { Authenticator } from "rx-nostr";
@@ -56,6 +57,12 @@ export class NostrAuthService implements AuthService {
             throw new AuthenticationRequiredError();
         }
 
+        if (auth.type === 'nosskey') {
+            const signer = nosskeySignerForSession(authState, auth, () => !this.operation?.signal?.aborted);
+            if (!signer) throw new AuthenticationRequiredError();
+            return signer;
+        }
+
         if (auth.type === 'nsec') {
             // Each candidate key is verified against the session exactly once.
             const matchesSession = (key: string | null): key is string =>
@@ -104,6 +111,7 @@ export class NostrAuthService implements AuthService {
             };
         }
 
+        if (auth.type !== 'none' && auth.type !== 'npub') auth.type satisfies never;
         throw new AuthenticationRequiredError();
     }
 

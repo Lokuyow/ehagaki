@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { appModalBarrier } from "../stores/appModalBarrier.svelte";
     import type { Snippet } from "svelte";
     import { _ } from "svelte-i18n";
     import { AlertDialog } from "bits-ui";
@@ -172,8 +173,11 @@
             bind:ref={contentRef}
             class={`confirm-dialog-shell ${contentClass}`}
             preventScroll={false}
-            interactOutsideBehavior={closeLocked ? "ignore" : "close"}
-            onEscapeKeydown={handleEscapeKeydown}
+            interactOutsideBehavior={closeLocked || appModalBarrier.active ? "ignore" : "close"}
+            onEscapeKeydown={(event) => {
+                if (appModalBarrier.active) event.preventDefault();
+                else handleEscapeKeydown(event);
+            }}
             onOpenAutoFocus={handleOpenAutoFocus}
             onCloseAutoFocus={handleCloseAutoFocus}
         >

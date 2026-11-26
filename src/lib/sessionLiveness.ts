@@ -1,8 +1,18 @@
 import type { AuthState } from "./types";
 
 export type AuthStateSource = {
-    value: Pick<AuthState, "isAuthenticated" | "pubkey"> & Partial<Pick<AuthState, "type">>;
+    value: Pick<AuthState, "isAuthenticated" | "pubkey"> & Partial<Pick<AuthState, "type" | "nosskeySessionGeneration">>;
 };
+
+export function isSameAuthSession(current: AuthStateSource["value"], initial: AuthStateSource["value"]): boolean {
+    // Nosskey sessions have a stable identity across metadata updates, but
+    // receive a new generation when the user returns to the same account.
+    if (initial.type === "nosskey" && initial.nosskeySessionGeneration !== undefined) {
+        return current.isAuthenticated && current.pubkey === initial.pubkey && current.type === initial.type
+            && current.nosskeySessionGeneration === initial.nosskeySessionGeneration;
+    }
+    return current === initial;
+}
 
 /** Internal typed marker for upload callers that expose a stable auth error. */
 export class AuthenticationRequiredError extends Error {

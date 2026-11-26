@@ -1,5 +1,6 @@
-import { isHex64 } from './utils/nostrHexUtils';
-import { setAuthInitialized } from '../stores/authStore.svelte';
+import { buildManagedRestoreCandidates } from './authManagedRestoreUtils';
+import { isHex64, isLowerHex64 } from './utils/nostrHexUtils';
+import { setAuthInitialized, setNosskeyAuth } from '../stores/authStore.svelte';
 import type { AuthResult, AuthServiceDependencies } from './types';
 import type { AccountManager } from './accountManager';
 import {
@@ -27,6 +28,8 @@ import {
 import { getNsecStorageKey } from './authStorageKeys';
 import { AUTH_SUPERSEDED_ERROR } from './constants';
 import type { PublicKeyData, StoredAccount } from './types';
+
+import { canUseNosskey } from './nosskeyService.svelte';
 
 type ParentClientAuthOptions = Pick<ParentClientConnectOptions, 'silent' | 'timeoutMs'>;
 
@@ -82,6 +85,32 @@ export class AuthService {
         } catch {
             this.runtime.console.error('公開鍵ログインの保存に失敗しました');
             return { success: false, error: 'error_saving' };
+        }
+    }
+
+    hasNosskeyStartupCandidate(): boolean {
+        const stored = this.accountManager?.getAuthRestoreSnapshot();
+        if (stored?.status !== 'ready') return false;
+        return buildManagedRestoreCandidates(stored.snapshot).some(candidate => candidate.type === 'nosskey');
+    }
+
+    authenticateWithNosskey(pubkeyHex: string): AuthResult {
+        const accounts = this.accountManager;
+        if (!canUseNosskey() || !accounts) return { success: false, error: 'nosskey.unavailable' };
+        if (!isLowerHex64(pubkeyHex)) return { success: false, error: 'nosskey.invalid_result' };
+        try {
+            const { npub, nprofile } = createPublicKeyFormats(pubkeyHex);
+            const stored = accounts.getAuthRestoreSnapshot();
+            if (stored.status !== 'ready') return { success: false, error: 'nosskey.storage' };
+            const existing = stored.snapshot.accounts.find(account => account.pubkeyHex === pubkeyHex);
+            if (existing && existing.type !== 'nosskey') {
+                return { success: false, error: 'nosskey.account_conflict' };
+            }
+            accounts.addAccount(pubkeyHex, 'nosskey');
+            setNosskeyAuth(pubkeyHex, npub, nprofile);
+            return { success: true, pubkeyHex };
+        } catch {
+            return { success: false, error: 'nosskey.storage' };
         }
     }
 
@@ -523,6 +552,7 @@ export class AuthService {
             createManagedAuthRestoreDependencies({
                 ...this.createRestoreDependencies(),
                 isExpectedAccount,
+                setNosskeyAuthFn: type === "nosskey" && canUseNosskey() ? setNosskeyAuth : undefined,
                 nip07IdentityReadTimeoutMs: options.nip07IdentityReadTimeoutMs,
             }),
             options.nip07Identity,

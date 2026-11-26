@@ -1,6 +1,9 @@
 <script lang="ts">
   import { usePostRepostOperation } from "./lib/hooks/usePostRepostOperation.svelte";
   import { onMount, untrack } from "svelte";
+  import NosskeyNotice from "./components/NosskeyNotice.svelte";
+  import NosskeyApprovalLayer from "./components/NosskeyApprovalLayer.svelte";
+  import { canUseNosskey, nosskey } from "./lib/nosskeyService.svelte";
   import Button from './components/Button.svelte';
   import "./i18n";
   import { _, locale, waitLocale } from "svelte-i18n";
@@ -222,7 +225,7 @@
   } from "./lib/appAuthUtils";
   import { createAppAccountSessionController } from "./lib/appAccountSessionController";
   import { clearRegisteredPersistedPostHistoryListingSnapshots } from "./lib/postHistoryListingSnapshotCleanup";
-  import { createAppAuthLoginController } from "./lib/appAuthLoginController";
+  import { createAppAuthLoginController, type NosskeyLoginStatus } from "./lib/appAuthLoginController";
   import { createAppParentClientSyncController } from "./lib/appParentClientSyncController";
   import { createAppAuthInteractionController } from "./lib/appAuthInteractionController";
   import { createAppAccountDialogController } from "./lib/appAccountDialogController";
@@ -261,6 +264,13 @@
   import { createLazyHostUpload } from "./lib/upload/lazyHostUpload";
 
   const appRuntimeEnvironment = getAppRuntimeEnvironment();
+  const nosskeyEnabled = canUseNosskey();
+  let nosskeyLoginStatus = $state<NosskeyLoginStatus>("idle");
+  let nosskeyConfirming = $state(false);
+  const showNosskeyNotice = $derived(nosskeyEnabled && !!nosskey.state.notice && !nosskey.state.visible
+    && !showLoginDialogStore.value && !showAddAccountDialogStore.value && !showLogoutDialogStore.value);
+  const showSharedUpload = $derived(authState.value.type === "nosskey"
+    && sharedMediaStore.received && sharedMediaStore.files.length > 0);
   interface Props {
     /** The iframe transport remains the default for the PWA and iframe entry. */
     notificationPort?: AppPostNotificationPort & AppEmbedNotificationPort;
@@ -720,7 +730,7 @@
       pendingParentClientGeneration = authTransitionGeneration;
       return authTransitionGeneration;
     },
-    isAuthTransitionCurrent: (generation) => !appDisposed && authTransitionGeneration === generation,
+    isAuthTransitionCurrent,
     finishParentClientTransition: (generation) => {
       if (pendingParentClientGeneration === generation) pendingParentClientGeneration = null;
       if (!appDisposed) {
@@ -744,6 +754,13 @@
     authenticateWithNsec: (targetSecretKey) =>
       authService.authenticateWithNsec(targetSecretKey),
     handleSuccessfulAuthResult,
+    nosskey: nosskeyEnabled ? {
+      beginTransition: beginAuthTransition,
+      readPublicKey: nosskey.readPublicKey,
+      authenticate: (pubkey) => authService.authenticateWithNosskey(pubkey),
+      reportError: nosskey.report,
+      setStatus: (status) => { nosskeyLoginStatus = status; },
+    } : undefined,
     clearSecretKeyInput: () => {
       secretKey = "";
     },
@@ -835,7 +852,11 @@
     console,
   });
 
-  function beginAuthTransition(options: { parentClient?: boolean; invalidateSession?: boolean } = {}): void {
+  function isAuthTransitionCurrent(generation: number): boolean {
+    return !appDisposed && generation === authTransitionGeneration;
+  }
+
+  function beginAuthTransition(options: { parentClient?: boolean; invalidateSession?: boolean } = {}): number {
     // Trying another login must preserve the current account's preparation.
     // Successful authentication replaces it in handlePostAuth.
     if (options.invalidateSession) {
@@ -854,6 +875,7 @@
     postHistoryLocalRelayService.cancelSession();
     authTransitionGeneration += 1;
     delayedNip07Recovery.markTransition();
+    return authTransitionGeneration;
   }
 
   const loginDialog = createDialogVisibilityHandlers(showLoginDialogStore);
@@ -917,6 +939,14 @@
     nip46Service,
     parentClientService: parentClientAuthService,
     accountManager,
+    nosskey: nosskeyEnabled ? {
+      getGeneration: () => authTransitionGeneration,
+      isGenerationCurrent: isAuthTransitionCurrent,
+      beginSwitchTransition: () => beginAuthTransition({ invalidateSession: true }),
+      readPublicKey: nosskey.readPublicKey,
+      reportError: nosskey.report,
+      setConfirming: (confirming) => { nosskeyConfirming = confirming; },
+    } : undefined,
     restoreManagedAccountSession,
     restoreAccount: (pubkeyHex, type) =>
       authService.restoreAccount(pubkeyHex, type),
@@ -1230,10 +1260,14 @@
     });
   }
 
+  function supportsRelayAuth(type: typeof authState.value.type): boolean {
+    return type !== "npub" && type !== "nosskey";
+  }
+
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     await runInitializeNostrSession({
       pubkeyHex,
-      allowRelayAuth: !isPublicKeyLogin,
+      allowRelayAuth: supportsRelayAuth(authState.value.type),
       relayListUpdatedStore: {
         value: relayListUpdatedStore.value,
         set: (value: number) => relayListUpdatedStore.set(value),
@@ -1273,7 +1307,7 @@
     relayProfileService = undefined;
     const session = await completePostAuthBootstrap({
       pubkeyHex,
-      allowRelayAuth: authType !== "npub",
+      allowRelayAuth: supportsRelayAuth(authType),
       profileRelayHints: options.profileRelayHints,
       closeAuthDialogs: () => {
         nip46AuthFlowCoordinator.resetPendingState();
@@ -1893,9 +1927,15 @@
     composeSharedText,
     getComposer: () => postComponentRef,
     logger: console,
+    requiresExplicitMediaUpload: () => authState.value.type === "nosskey",
+    isMediaAuthenticationPending: () => nosskeyEnabled && !isAuthInitialized
+      && authState.value.type === "none" && authService.hasNosskeyStartupCandidate(),
   });
 
   $effect(() => {
+    // Revisit deferred files when startup finishes. Shared text can be
+    // applied immediately, including while authentication is in progress.
+    void isAuthInitialized;
     void appSharedContentController.consumeSharedContent();
   });
 
@@ -2116,8 +2156,11 @@
 </script>
 
 {#if $locale && localeInitialized}
+  {#if nosskeyEnabled}
+    <NosskeyApprovalLayer />
+  {/if}
   <Tooltip.Provider>
-    <main class="ehagaki-app-root">
+    <main class="ehagaki-app-root" tabindex="-1">
       <div class="main-content">
         <HeaderComponent
           deliveryProgress={deliveryFeedback.mascot}
@@ -2292,6 +2335,26 @@
         customEmojiEnabled={isAuthenticated && !isPublicKeyLogin}
         onCustomEmojiPickerOpenChange={(open) => (customEmojiPickerOpen = open)}
       />
+      {#if showNosskeyNotice || showSharedUpload}
+        <div class="nosskey-floating">
+          {#if showNosskeyNotice}
+            <div class="nosskey-notice">
+              <NosskeyNotice reconnecting={nosskeyConfirming}
+                onReconnect={authState.value.type === "nosskey" ? () => void appAccountSessionController.confirmNosskeyAccount(authState.value.pubkey) : undefined} />
+            </div>
+          {/if}
+          {#if showSharedUpload}
+            <div class="nosskey-shared-upload" role="status">
+              <span>{$_("nosskey.shared_pending", { values: { count: sharedMediaStore.files.length } })}</span>
+              <Button variant="primary" shape="rounded" className="nosskey-shared-upload-button"
+                onClick={() => void appSharedContentController.consumeSharedContent(true)}>
+                <span class="svg-icon upload-icon" aria-hidden="true"></span>
+                <span>{$_("nosskey.upload_shared")}</span>
+              </Button>
+            </div>
+          {/if}
+        </div>
+      {/if}
       <FooterComponent
         profilePending={profileFetchPending}
         {isAuthenticated}
@@ -2339,6 +2402,9 @@
           onClose={handleLoginDialogClose}
           onSave={saveSecretKey}
           onParentClientLogin={handleParentClientLogin}
+          onNosskeyLogin={nosskeyEnabled ? appAuthLoginController.handleNosskeyLogin : undefined}
+          nosskeyBusy={nosskeyLoginStatus !== "idle"}
+          onCancelNosskeyLogin={nosskeyLoginStatus === "confirming" ? appAuthLoginController.cancelNosskeyLogin : undefined}
           onNip07Login={handleNip07Login}
           onNip46Login={handleNip46Login}
           onNostrConnectStart={handleNostrConnectStart}
@@ -2371,6 +2437,9 @@
           onClose={handleAddAccountDialogClose}
           onSave={saveSecretKey}
           onParentClientLogin={handleParentClientLogin}
+          onNosskeyLogin={nosskeyEnabled ? appAuthLoginController.handleNosskeyLogin : undefined}
+          nosskeyBusy={nosskeyLoginStatus !== "idle"}
+          onCancelNosskeyLogin={nosskeyLoginStatus === "confirming" ? appAuthLoginController.cancelNosskeyLogin : undefined}
           onNip07Login={handleNip07Login}
           onNip46Login={handleNip46Login}
           onNostrConnectStart={handleNostrConnectStart}
@@ -2397,12 +2466,15 @@
         <ProfileComponent
           profilePending={profileFetchPending}
           show={showLogoutDialogStore.value}
-          onClose={logoutDialog.close}
+          onClose={() => { appAccountSessionController.cancelNosskeyConfirmation(); logoutDialog.close(); }}
           onLogout={requestLogoutAccount}
           fallbackRecoveryPubkeyHex={accountManager.getActiveAccountPubkey() ||
             accountManager.getAccounts()[0]?.pubkeyHex ||
             ""}
           onSwitchAccount={switchAccount}
+          onSwitchNosskeyAccount={nosskeyEnabled ? appAccountSessionController.switchNosskeyAccount : undefined}
+          cancelNosskeySwitch={appAccountSessionController.cancelNosskeyConfirmation}
+          nosskeySwitching={nosskeyConfirming}
           onAddAccount={handleAddAccount}
           accounts={accountListStore.value}
           accountProfiles={accountProfileCacheStore.value}
@@ -2557,6 +2629,47 @@
 {/if}
 
 <style>
+  .nosskey-floating {
+    position: fixed;
+    z-index: 11000;
+    /* Stay above the editor toolbar and footer so their buttons remain usable. */
+    bottom: 9rem;
+    left: 50%;
+    translate: -50% 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(480px, calc(100vw - 24px));
+  }
+  .nosskey-notice {
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 25%);
+  }
+  .nosskey-shared-upload {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    background: var(--dialog-bg);
+    border: 1px solid var(--btn-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 25%);
+  }
+  .nosskey-shared-upload .upload-icon {
+    --icon-size: 22px;
+    background-color: currentColor;
+    mask-image: url("/icons/upload_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+  }
+  :global(.nosskey-shared-upload .nosskey-shared-upload-button) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 4px 14px;
+  }
   main {
     position: var(--app-main-position, relative);
     /* When fixed, use the same bottom edge as the keyboard button bar. */

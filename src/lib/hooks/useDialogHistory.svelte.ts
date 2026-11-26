@@ -21,6 +21,7 @@
 import { onMount, onDestroy } from "svelte";
 import { generateSimpleUUID } from "../utils/appUtils";
 import { getAppRuntimeEnvironment } from "../appRuntimeEnvironment";
+import { appModalBarrier } from "../../stores/appModalBarrier.svelte";
 
 /**
  * ダイアログのブラウザ履歴統合を管理するフック
@@ -55,7 +56,7 @@ export function useDialogHistory(
 
         // ダイアログが開いていて、履歴IDが一致しない場合は閉じる
         if (currentOpen && event.state?.modalId !== historyStateId) {
-            const closeAccepted = onClose();
+            const closeAccepted = appModalBarrier.active ? false : onClose();
             if (closeAccepted === false && getOpen() && historyStateId) {
                 history.pushState(
                     { modalId: historyStateId },

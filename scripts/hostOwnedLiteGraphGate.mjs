@@ -6,6 +6,8 @@ const forbiddenPatterns = [
     /[\\/]src[\\/]lib[\\/]upload[\\/]reactionImageCompression\.ts$/,
     /[\\/]node_modules[\\/]rx-nostr[\\/]/,
     /[\\/]src[\\/]App\.svelte$/,
+    /[\\/]src[\\/]lib[\\/]nosskeyService\.svelte\.ts$/,
+    /[\\/]node_modules[\\/]nosskey-iframe[\\/]/,
     /[\\/]src[\\/]lib[\\/](authService|accountManager|nip46Service|parentClientAuthService|postManager|postReactionService|postHistoryMediaPersistence)[\\/\.]/,
     /[\\/]src[\\/]lib[\\/]storage[\\/](postHistoryRepository|draftsRepository)[\\/\.]/,
     /[\\/]src[\\/]lib[\\/](draftManager|draftComposerController|iframeMessageService|parentClient)[\\/\.]/,
