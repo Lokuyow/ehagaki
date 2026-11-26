@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { access, readFile } from "node:fs/promises";
@@ -33,6 +33,16 @@ function contentType(filePath: string): string {
         case ".png": return "image/png";
         default: return "application/octet-stream";
     }
+}
+
+/** Opens the Full playground and expands every control section. */
+async function openFullPlayground(page: Page, query = ""): Promise<void> {
+    await page.goto(`${origin}/ehagaki/playground/full.html${query}`);
+    await page.evaluate(() => {
+        for (const section of document.querySelectorAll<HTMLDetailsElement>("details.pg-section")) {
+            section.open = true;
+        }
+    });
 }
 
 function listen(value: Server): Promise<number> {
@@ -75,7 +85,7 @@ test.beforeAll(async () => {
             response.writeHead(404).end();
             return;
         }
-        const relativePath = pathname.slice("/ehagaki/".length) || "index.html";
+        const relativePath = `${pathname.slice("/ehagaki/".length)}${pathname.endsWith("/") ? "index.html" : ""}`;
         const siteRoot = normalize(join(process.cwd(), "dist"));
         const filePath = normalize(join(siteRoot, relativePath));
         if (!filePath.startsWith(siteRoot)) {
@@ -101,7 +111,7 @@ test.afterAll(async () => {
     }
 });
 
-test("keeps the playground hierarchy and card stacks balanced across desktop and mobile", async ({ page }) => {
+test("keeps the playground layout readable across desktop and mobile", async ({ page }) => {
     for (const viewport of [
         { width: 1280, height: 900 },
         { width: 1440, height: 900 },
@@ -109,118 +119,83 @@ test("keeps the playground hierarchy and card stacks balanced across desktop and
         { width: 360, height: 844 },
     ]) {
         await page.setViewportSize(viewport);
-        await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+        await openFullPlayground(page);
         await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
-        await expect(page.getByRole("heading", { name: "eHagaki Web Component Playground", level: 1 })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Full Web Component Playground", level: 1 })).toBeVisible();
         await expect(page.getByRole("link", { name: "Web Componentのガイド" })).toBeVisible();
-        await expect(page.getByRole("link", { name: "iframeのサンプル" })).toBeVisible();
+        await expect(page.getByRole("link", { name: "方式の選び方" })).toBeVisible();
+        const tabs = page.getByRole("navigation", { name: "プレイグラウンドのページ" });
+        await expect(tabs.getByRole("link", { name: "Full", exact: true })).toHaveAttribute("aria-current", "page");
+        await expect(tabs.getByRole("link")).toHaveCount(4);
         await page.evaluate(() => window.scrollTo(0, 0));
 
         const result = await page.evaluate(() => {
-            const main = document.querySelector<HTMLElement>("main")!;
-            const intro = document.querySelector<HTMLElement>(".page-intro")!;
-            const livePreview = document.querySelector<HTMLElement>(".live-preview")!;
-            const reference = document.querySelector<HTMLElement>(".reference-section")!;
-            const referenceColumns = document.querySelector<HTMLElement>(".reference-columns")!;
-            const referenceColumnElements = Array.from(document.querySelectorAll<HTMLElement>(".reference-columns > .column"));
-            const theme = document.querySelector<HTMLElement>(".theme-section")!;
-            const themePanel = document.querySelector<HTMLElement>(".theme-panel")!;
-            const controls = document.querySelector<HTMLElement>(".theme-controls")!;
-            const presetGrid = document.querySelector<HTMLElement>(".preset-grid")!;
-            const customFields = document.querySelector<HTMLElement>(".theme-custom-fields")!;
-            const details = document.querySelector<HTMLElement>("details.advanced-settings")!;
-            const introLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>(".intro-links a"));
-            const presetButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".preset-button"));
-            const preview = document.querySelector<HTMLElement>(".preview-panel")!;
-            const frame = document.querySelector<HTMLElement>(".component-frame")!;
+            const rect = (element: Element) => element.getBoundingClientRect().toJSON();
+            const isRendered = (element: HTMLElement) => element.getClientRects().length > 0;
+            const intro = document.querySelector<HTMLElement>(".pg-intro")!;
+            const workspace = document.querySelector<HTMLElement>(".pg-workspace")!;
+            const preview = document.querySelector<HTMLElement>(".pg-preview")!;
+            const controls = document.querySelector<HTMLElement>(".pg-controls")!;
             const eventMonitor = document.querySelector<HTMLElement>("[aria-labelledby=event-monitor-heading]")!;
             const clearLog = document.querySelector<HTMLButtonElement>("#clear-log")!;
-            const eventHeader = clearLog.parentElement!;
-            const rect = (element: Element) => element.getBoundingClientRect().toJSON();
+            const mount = document.querySelector<HTMLElement>("#component-mount")!;
+            const mountStyle = getComputedStyle(mount);
+            const composer = document.querySelector<HTMLElement>("ehagaki-composer")!;
             return {
                 viewportWidth: window.innerWidth,
-                main: rect(main),
                 intro: rect(intro),
-                livePreview: rect(livePreview),
-                reference: rect(reference),
-                referenceColumns: {
-                    template: getComputedStyle(referenceColumns).gridTemplateColumns,
-                    columns: referenceColumnElements.map((element) => ({
-                        rect: rect(element),
-                        scrollHeight: element.scrollHeight,
-                    })),
-                },
-                themeSection: rect(theme),
-                themePanel: rect(themePanel),
-                themeControls: rect(controls),
-                themeControlsTemplate: getComputedStyle(controls).gridTemplateColumns,
-                presetGrid: rect(presetGrid),
-                customFields: rect(customFields),
-                details: rect(details),
-                introLinks: introLinks.map((element) => ({
+                workspace: rect(workspace),
+                workspaceTemplate: getComputedStyle(workspace).gridTemplateColumns,
+                preview: rect(preview),
+                controls: rect(controls),
+                eventMonitor: rect(eventMonitor),
+                clearLog: rect(clearLog),
+                introLinks: Array.from(document.querySelectorAll<HTMLAnchorElement>(".intro-links a")).map((element) => ({
                     rect: rect(element),
                     href: element.href,
                     background: getComputedStyle(element).backgroundColor,
                     fontWeight: getComputedStyle(element).fontWeight,
                 })),
-                presetButtons: presetButtons.map((element) => ({
+                presetButtons: Array.from(document.querySelectorAll<HTMLButtonElement>(".preset-button")).map((element) => ({
                     rect: rect(element),
                     clientWidth: element.clientWidth,
                     scrollWidth: element.scrollWidth,
                 })),
-                preview: rect(preview),
-                frame: rect(frame),
-                mount: (() => {
-                    const element = document.querySelector<HTMLElement>("#component-mount")!;
-                    const style = getComputedStyle(element);
-                    return {
+                buttons: Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
+                    .filter(isRendered)
+                    .map((element) => ({
+                        label: element.textContent?.trim() ?? "",
                         rect: rect(element),
-                        paddingTop: Number.parseFloat(style.paddingTop),
-                        paddingBottom: Number.parseFloat(style.paddingBottom),
-                        borderTop: Number.parseFloat(style.borderTopWidth),
-                        borderBottom: Number.parseFloat(style.borderBottomWidth),
-                        boxSizing: style.boxSizing,
-                    };
-                })(),
-                composer: (() => {
-                    const element = document.querySelector<HTMLElement>("ehagaki-composer")!;
-                    const style = getComputedStyle(element);
-                    return { rect: rect(element), height: style.height };
-                })(),
-                eventMonitor: rect(eventMonitor),
+                        clientWidth: element.clientWidth,
+                        scrollWidth: element.scrollWidth,
+                    })),
+                formBounds: Array.from(document.querySelectorAll<HTMLElement>("input, select, textarea"))
+                    .filter(isRendered)
+                    .map((element) => rect(element)),
+                mount: {
+                    rect: rect(mount),
+                    paddingTop: Number.parseFloat(mountStyle.paddingTop),
+                    paddingBottom: Number.parseFloat(mountStyle.paddingBottom),
+                    borderTop: Number.parseFloat(mountStyle.borderTopWidth),
+                    borderBottom: Number.parseFloat(mountStyle.borderBottomWidth),
+                    boxSizing: mountStyle.boxSizing,
+                },
+                composer: { rect: rect(composer), height: getComputedStyle(composer).height },
                 documentScrollWidth: document.documentElement.scrollWidth,
                 bodyScrollWidth: document.body.scrollWidth,
-                themePanelCount: document.querySelectorAll(".theme-panel").length,
-                duplicateThemeHeadingCount: Array.from(document.querySelectorAll("h1, h2, h3")).filter((element) => element.textContent?.trim() === "Styling / Theme customization").length,
-                buttonWhiteSpace: Array.from(document.querySelectorAll("button:not(.preset-button):not(#create-component):not(#destroy-component):not(#recreate-component)")).map((button) => getComputedStyle(button).whiteSpace),
-                formBounds: Array.from(document.querySelectorAll<HTMLElement>("input, select, textarea")).map((element) => rect(element)),
-                clearLog: rect(clearLog),
-                eventHeader: rect(eventHeader),
             };
         });
 
-        expect(result.intro.top).toBeGreaterThanOrEqual(0);
-        expect(result.livePreview.top).toBeGreaterThan(result.intro.bottom);
-        expect(result.reference.top).toBeGreaterThan(result.livePreview.bottom);
-        expect(result.themeSection.top).toBeGreaterThan(result.reference.bottom);
-        expect(result.eventMonitor.top).toBeGreaterThan(result.themeSection.bottom);
-        expect(result.livePreview.width).toBeCloseTo(result.main.width, 0);
-        expect(result.themeSection.width).toBeCloseTo(result.main.width, 0);
-        expect(result.eventMonitor.width).toBeCloseTo(result.main.width, 0);
-        expect(result.themePanelCount).toBe(1);
-        expect(result.duplicateThemeHeadingCount).toBe(0);
-        expect(result.buttonWhiteSpace.every((value) => value === "nowrap")).toBe(true);
-        expect(result.clearLog.width).toBeLessThan(result.eventMonitor.width / 2);
-        expect(result.clearLog.height).toBeLessThanOrEqual(60);
-        expect(result.clearLog.top).toBeGreaterThanOrEqual(result.eventHeader.top - 1);
         expect(result.documentScrollWidth).toBeLessThanOrEqual(result.viewportWidth);
         expect(result.bodyScrollWidth).toBeLessThanOrEqual(result.viewportWidth);
-        expect(result.details.left).toBeGreaterThan(result.themePanel.left);
-        expect(result.details.right).toBeLessThan(result.themePanel.right);
-        expect(result.introLinks).toHaveLength(2);
+        expect(result.intro.top).toBeGreaterThanOrEqual(0);
+        expect(result.workspace.top).toBeGreaterThan(result.intro.bottom);
+        expect(result.eventMonitor.top).toBeGreaterThan(result.workspace.bottom);
+        expect(result.clearLog.width).toBeLessThan(result.eventMonitor.width / 2);
+        expect(result.clearLog.height).toBeLessThanOrEqual(60);
         expect(result.introLinks.map((link) => link.href)).toEqual([
             "https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md",
-            `${origin}/ehagaki/embed-parent-client-example.html`,
+            `${origin}/ehagaki/playground/index.html#choose`,
         ]);
         for (const link of result.introLinks) {
             expect(link.rect.height).toBeGreaterThanOrEqual(40);
@@ -233,50 +208,44 @@ test("keeps the playground hierarchy and card stacks balanced across desktop and
             expect(button.rect.right).toBeLessThanOrEqual(result.viewportWidth + 1);
             expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth + 1);
         }
+        for (const button of result.buttons) {
+            expect(button.rect.right, `${button.label}: button right edge`).toBeLessThanOrEqual(result.viewportWidth + 1);
+            expect(button.scrollWidth, `${button.label}: button internal overflow`).toBeLessThanOrEqual(button.clientWidth + 1);
+        }
         for (const formBounds of result.formBounds) {
             expect(formBounds.right).toBeLessThanOrEqual(result.viewportWidth + 1);
         }
+        const mountContentTop = result.mount.rect.top + result.mount.borderTop + result.mount.paddingTop;
+        const mountContentBottom = result.mount.rect.bottom - result.mount.borderBottom - result.mount.paddingBottom;
+        expect(result.mount.boxSizing).toBe("border-box");
+        expect(result.mount.paddingTop).toBeGreaterThan(0);
+        expect(result.composer.rect.top).toBeGreaterThanOrEqual(mountContentTop - 1);
+        expect(result.composer.rect.bottom).toBeLessThanOrEqual(mountContentBottom + 1);
+        expect(Number.parseFloat(result.composer.height)).toBeCloseTo(mountContentBottom - mountContentTop, 0);
         if (result.viewportWidth > 980) {
-            expect(result.referenceColumns.template.split(" ")).toHaveLength(2);
-            expect(result.referenceColumns.columns).toHaveLength(2);
-            expect(result.themeControlsTemplate.split(" ")).toHaveLength(2);
-            for (const column of result.referenceColumns.columns) {
-                expect(Math.abs(column.rect.height - column.scrollHeight)).toBeLessThanOrEqual(1);
-            }
-            expect(result.preview.top).toBeLessThanOrEqual(result.frame.top);
-            expect(result.frame.height).toBeGreaterThanOrEqual(560);
-            expect(result.mount.rect.height).toBeGreaterThanOrEqual(560);
-            expect(result.composer.rect.height).toBeGreaterThanOrEqual(520);
+            expect(result.workspaceTemplate.split(" ")).toHaveLength(2);
+            expect(result.preview.right).toBeLessThanOrEqual(result.controls.left);
+            expect(Math.abs(result.preview.top - result.controls.top)).toBeLessThanOrEqual(1);
+            expect(result.mount.rect.height).toBeCloseTo(580, 0);
+            expect(result.composer.rect.height).toBeGreaterThanOrEqual(540);
             await page.screenshot();
         } else {
-            expect(result.referenceColumns.template.split(" ")).toHaveLength(1);
-            expect(result.themeControlsTemplate.split(" ")).toHaveLength(1);
-            expect(result.frame.right).toBeLessThanOrEqual(result.viewportWidth);
-            expect(result.frame.height).toBeCloseTo(520, 0);
+            expect(result.workspaceTemplate.split(" ")).toHaveLength(1);
+            expect(result.controls.top).toBeGreaterThan(result.preview.bottom);
+            expect(result.mount.rect.right).toBeLessThanOrEqual(result.viewportWidth);
             expect(result.mount.rect.height).toBeCloseTo(520, 0);
-            expect(result.mount.boxSizing).toBe("border-box");
-            expect(result.mount.paddingTop).toBeGreaterThan(0);
-            expect(result.mount.paddingBottom).toBeGreaterThan(0);
-            const mountContentTop = result.mount.rect.top + result.mount.borderTop + result.mount.paddingTop;
-            const mountContentBottom = result.mount.rect.bottom - result.mount.borderBottom - result.mount.paddingBottom;
-            expect(result.composer.rect.top).toBeGreaterThanOrEqual(mountContentTop - 1);
-            expect(result.composer.rect.bottom).toBeLessThanOrEqual(mountContentBottom + 1);
-            expect(result.composer.rect.bottom).toBeLessThanOrEqual(result.mount.rect.bottom + 1);
-            expect(Number.parseFloat(result.composer.height)).toBeCloseTo(mountContentBottom - mountContentTop, 0);
-            expect(result.presetGrid.width).toBeGreaterThan(0);
-            expect(result.customFields.width).toBeGreaterThan(0);
         }
     }
 });
 
-test("keeps lifecycle buttons inside their card at desktop, intermediate, and mobile widths", async ({ page }) => {
-    for (const { label, viewport, expectedColumns } of [
-        { label: "desktop", viewport: { width: 1280, height: 900 }, expectedColumns: 2 },
-        { label: "intermediate", viewport: { width: 1024, height: 900 }, expectedColumns: 1 },
-        { label: "mobile", viewport: { width: 390, height: 844 }, expectedColumns: 1 },
+test("keeps lifecycle buttons inside the preview at desktop, intermediate, and mobile widths", async ({ page }) => {
+    for (const { label, viewport } of [
+        { label: "desktop", viewport: { width: 1280, height: 900 } },
+        { label: "intermediate", viewport: { width: 1024, height: 900 } },
+        { label: "mobile", viewport: { width: 360, height: 844 } },
     ]) {
         await page.setViewportSize(viewport);
-        await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+        await openFullPlayground(page);
         await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
         await expect(page.getByRole("button", { name: "2個目を生成" })).toHaveCount(0);
 
@@ -290,7 +259,6 @@ test("keeps lifecycle buttons inside their card at desktop, intermediate, and mo
             }));
             return {
                 card: cardRect.toJSON(),
-                buttonGrid: getComputedStyle(buttons).gridTemplateColumns,
                 buttonRects,
                 documentScrollWidth: document.documentElement.scrollWidth,
                 bodyScrollWidth: document.body.scrollWidth,
@@ -299,7 +267,6 @@ test("keeps lifecycle buttons inside their card at desktop, intermediate, and mo
         });
 
         expect(result.buttonRects, `${label}: three lifecycle buttons`).toHaveLength(3);
-        expect(result.buttonGrid.split(" "), `${label}: lifecycle button columns`).toHaveLength(expectedColumns);
         for (const button of result.buttonRects) {
             expect(button.rect.left, `${label}: button left edge`).toBeGreaterThanOrEqual(result.card.left - 1);
             expect(button.rect.right, `${label}: button right edge`).toBeLessThanOrEqual(result.card.right + 1);
@@ -313,7 +280,7 @@ test("keeps lifecycle buttons inside their card at desktop, intermediate, and mo
 test("keeps the comparison table within the page viewport at mobile widths", async ({ page }) => {
     for (const width of [360, 390]) {
         await page.setViewportSize({ width, height: 844 });
-        await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+        await openFullPlayground(page);
         const result = await page.evaluate(() => ({
             viewportWidth: window.innerWidth,
             documentScrollWidth: document.documentElement.scrollWidth,
@@ -327,7 +294,7 @@ test("keeps the comparison table within the page viewport at mobile widths", asy
 });
 
 test("uses the internal theme surface even when the host forces a white background", async ({ page }) => {
-    await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+    await openFullPlayground(page);
     await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
     const result = await page.locator("ehagaki-composer").evaluate(async (element) => {
         const composer = element as HTMLElement & { setSettings(value: { themeMode: "light" | "dark" }): Promise<string[]> };
@@ -378,10 +345,10 @@ test("keeps Web Component header controls responsive to component width", async 
         },
     ]) {
         await page.setViewportSize(viewport);
-        await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+        await openFullPlayground(page);
         if (expandSample) {
-            await page.locator("main").evaluate((main) => {
-                (main as HTMLElement).style.gridTemplateColumns = "1fr";
+            await page.locator(".pg-workspace").evaluate((workspace) => {
+                (workspace as HTMLElement).style.gridTemplateColumns = "1fr";
             });
         }
         await page.locator("#component-mount").evaluate((mount, width) => {
@@ -459,7 +426,7 @@ test("uses the normal app delivery base for the site icon home link", async ({ p
 });
 
 test("boots from production site output and exercises the public sample API", async ({ page }) => {
-    await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+    await openFullPlayground(page);
 
     await expect(page.locator("#module-url")).toHaveValue(`${origin}/ehagaki/web-component/ehagaki-composer.js`);
     await expect(page.locator("#asset-base")).toHaveValue(`${origin}/ehagaki/web-component/`);
@@ -501,7 +468,7 @@ test("boots from production site output and exercises the public sample API", as
     expect(edgeClippingStyles.hostOverflowX).toBe("visible");
     expect(edgeClippingStyles.hostOverflowY).toBe("visible");
     expect(edgeClippingStyles.hostBorderRadius).toBe("0px");
-    expect(edgeClippingStyles.frameBorderRadius).toBe("18px");
+    expect(edgeClippingStyles.frameBorderRadius).toBe("16px");
 
     const initialStyleResult = await page.locator("ehagaki-composer").evaluate((element) => {
         const properties = [
@@ -707,7 +674,7 @@ test("boots from production site output and exercises the public sample API", as
 });
 
 test("runs the Headless uploadFile playground flow with a synthetic public API result", async ({ page }) => {
-    await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+    await openFullPlayground(page);
     await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
     await expect(page.locator("#headless-upload-status")).toHaveText("ready");
     await expect(page.locator("#headless-upload-start")).toBeDisabled();
@@ -886,7 +853,7 @@ test("does not create a second primary while auto-mount waits for the module", a
     });
 
     try {
-        await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`, { waitUntil: "commit" });
+        await page.goto(`${origin}/ehagaki/playground/full.html`, { waitUntil: "commit" });
         await moduleRequestStarted;
         await page.getByRole("button", { name: "作成して表示" }).click();
         releaseModule();
@@ -910,7 +877,7 @@ test("does not create a second primary while auto-mount waits for the module", a
 test("keeps the public sample container layout stable across destroy and recreate", async ({ page }) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
-    await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+    await openFullPlayground(page);
     await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
     await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) =>
         !!element.shadowRoot?.querySelector(".tiptap-editor"),
@@ -993,7 +960,7 @@ test("keeps the public sample container layout stable across destroy and recreat
 });
 
 test("preserves inherited Accent/Base theme across destroy and recreate", async ({ page }) => {
-    await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+    await openFullPlayground(page);
     await page.locator("#component-mount").evaluate((mount) => {
         mount.style.setProperty("--ehagaki-accent-color", "#8a3ffc");
         mount.style.setProperty("--ehagaki-base-color", "#e8dcff");
@@ -1026,7 +993,7 @@ test("preserves inherited Accent/Base theme across destroy and recreate", async 
 });
 
 test("does not auto-import query-selected modules outside manual mode", async ({ page }) => {
-    await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html?moduleUrl=${encodeURIComponent(`${origin}${securityFixturePath}`)}`);
+    await page.goto(`${origin}/ehagaki/playground/full.html?moduleUrl=${encodeURIComponent(`${origin}${securityFixturePath}`)}`);
 
     await expect(page.locator("#module-url")).toHaveValue(`${origin}/ehagaki/web-component/ehagaki-composer.js`);
     await expect(page.locator("#module-status")).toContainText("モジュールを読み込みました");
@@ -1037,7 +1004,7 @@ test("does not auto-import query-selected modules outside manual mode", async ({
 });
 
 test("keeps arbitrary module loading explicit in manual mode", async ({ page }) => {
-    await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html?manual=1`);
+    await openFullPlayground(page, "?manual=1");
 
     await expect(page.locator("#module-status")).toHaveText("モジュール：未読み込み");
     await expect(page.locator("ehagaki-composer")).toHaveCount(0);
@@ -1060,7 +1027,7 @@ test("keeps arbitrary module loading explicit in manual mode", async ({ page }) 
 });
 
 test("passes non-empty Host Relay Config to the Full element before mounting", async ({ page }) => {
-    await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html?manual=1`);
+    await openFullPlayground(page, "?manual=1");
     const relays = [
         { url: "wss://relay.example", read: true, write: true },
         { url: "wss://read.example", read: true, write: false },

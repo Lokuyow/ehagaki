@@ -3,8 +3,8 @@ import { networkInterfaces } from "node:os";
 export const LOCALHOST = "127.0.0.1";
 export const LAN_HOST = "0.0.0.0";
 const SAMPLE_PATHS = [
-    "web-component-parent-client-example.html",
-    "host-owned-composer-lite-example.html",
+    "playground/full.html",
+    "playground/lite.html",
 ];
 
 /** @param {boolean} lanMode */

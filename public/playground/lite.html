@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+    <title>Host-owned Composer Lite | eHagaki Playground</title>
+    <link rel="icon" href="../favicon.ico">
+    <link rel="stylesheet" href="./playground.css">
+    <style>
+        #mount {
+            /* The host-applied height is the composer height; the border sits outside it. */
+            box-sizing: content-box;
+            height: 460px;
+            margin: 0;
+            border: 1px solid var(--pg-line-strong);
+            border-radius: var(--pg-radius-sm);
+            background: Canvas;
+            overflow: hidden;
+        }
+
+        ehagaki-composer {
+            display: block;
+            height: 100%;
+        }
+
+        .pg-dock-hint {
+            display: none;
+        }
+
+        body.pg-dock {
+            padding-bottom: calc(1rem + var(--composer-dock-height, 460px));
+        }
+
+        body.pg-dock #mount {
+            position: fixed;
+            z-index: 100;
+            left: 50%;
+            bottom: 0;
+            width: min(calc(100vw - 2rem - 2px), 900px);
+            border-radius: 0;
+            transform: translateX(-50%);
+            box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.18);
+        }
+
+        body.pg-dock .pg-dock-hint {
+            display: block;
+        }
+
+        #last-submit-output {
+            min-height: 80px;
+        }
+    </style>
+</head>
+
+<body class="pg-dock">
+    <header class="pg-header">
+        <div class="pg-header-inner">
+            <a class="pg-brand" href="./index.html"><img src="../ehagaki_icon.svg" alt="" width="28" height="28">eHagaki Playground</a>
+            <nav class="pg-tabs" aria-label="プレイグラウンドのページ">
+                <a href="./index.html">はじめに</a>
+                <a href="./iframe.html">iframe</a>
+                <a href="./full.html">Full</a>
+                <a href="./lite.html" aria-current="page">Lite</a>
+            </nav>
+            <div class="pg-header-links">
+                <a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/EMBEDDING.md" target="_blank" rel="noreferrer noopener">埋め込み・統合ガイド</a>
+                <a href="../">eHagakiを開く</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="pg-main">
+        <header class="pg-intro" aria-labelledby="page-heading">
+            <p class="pg-eyebrow">Host-owned Composer Lite</p>
+            <h1 id="page-heading">Host-owned Composer Lite Playground</h1>
+            <p class="pg-lead">投稿欄の編集UIとメディア処理だけを組み込み、投稿処理はホストが受け持つ方式です。このページがホストの役を務め、<code>submit</code> と <code>uploadMedia</code> のコールバックを模擬します。実際にはrelayへ送信しません。</p>
+            <ul class="pg-fit" aria-label="向いているケース">
+                <li>アカウントとsignerをホストが持っている</li>
+                <li>eventの構築・署名・publishをホストで行う</li>
+                <li>既存のNostrクライアントに投稿欄を足したい</li>
+            </ul>
+            <nav class="intro-links" aria-label="Liteの資料">
+                <a class="intro-link primary" href="https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md#full-self-publish-と-lite-host-owned" target="_blank" rel="noreferrer noopener">Liteのガイド</a>
+                <a class="intro-link secondary" href="./index.html#choose">方式の選び方</a>
+            </nav>
+        </header>
+
+        <div class="pg-workspace">
+            <section class="pg-preview" aria-labelledby="live-preview-heading">
+                <div class="pg-panel">
+                    <div class="pg-panel-header">
+                        <div>
+                            <h2 id="live-preview-heading">ライブプレビュー</h2>
+                            <p class="small">Composerの状態と、作成時の設定の要約です。</p>
+                        </div>
+                    </div>
+                    <div class="status-list">
+                        <output id="status" class="status" role="status">loading</output>
+                    </div>
+                    <label class="check"><input id="dock-composer" type="checkbox" checked> 画面の下に固定して表示する（ドック表示）</label>
+                    <p class="small pg-dock-hint">Composerは画面の下に固定して表示しています。チャット欄のように、ページの下端に置く使い方を確かめられます。チェックを外すと、この枠の中に表示します。</p>
+                    <div id="mount"></div>
+                    <div class="buttons">
+                        <button id="create-composer" type="button">作成 / 作り直す</button>
+                        <button id="remove-composer" type="button" class="secondary">取り外す</button>
+                        <button id="reconnect-composer" type="button" class="secondary">同じ要素を付け直す</button>
+                    </div>
+                    <output id="mount-config-status" class="small" role="status">not mounted</output>
+                </div>
+            </section>
+
+            <div class="pg-controls">
+                <details class="pg-section" id="mount-configuration" open>
+                    <summary><span class="pg-section-step" aria-hidden="true">1</span><h2>作成時の設定（configureHostOwned）</h2></summary>
+                    <div class="pg-section-body">
+                        <p class="small">ここで選んだ値は、「作成 / 作り直す」を押したときに <code>configureHostOwned()</code> へ渡します。</p>
+                        <div class="pg-checks">
+                            <label class="check"><input id="upload-media" type="checkbox"> メディアのアップロードを有効にする（uploadMedia）</label>
+                            <label class="check"><input id="content-warning" type="checkbox"> Content Warningを有効にする</label>
+                            <label class="check"><input id="hashtag-pin" type="checkbox"> ハッシュタグのピン留めを有効にする</label>
+                            <label class="check"><input id="keyboard-bar" type="checkbox" checked> KeyboardButtonBarを表示する</label>
+                            <label class="check"><input id="editor-submit-button" type="checkbox"> エディター内に投稿ボタンを表示する</label>
+                            <label class="check"><input id="follow-preferred-height" type="checkbox"> 推奨の高さ（preferredHeight）に合わせる</label>
+                        </div>
+                        <div class="grid-2">
+                            <div class="field"><label for="editor-min-lines">エディターの最小行数（editorMinLines）</label><input id="editor-min-lines" type="number" min="1" step="1" placeholder="未指定"></div>
+                            <div class="field"><label for="editor-max-lines">エディターの最大行数（editorMaxLines）</label><input id="editor-max-lines" type="number" min="1" step="1" placeholder="未指定"></div>
+                        </div>
+                        <p class="small">行数を両方とも空欄にすると、従来の高さのままになります。両方に正の整数を入れると、エディターが内容に合わせて伸び縮みします。</p>
+                        <div class="grid-2">
+                            <div class="field">
+                                <label for="enter-behavior">Enterキーの動作（enterKeyBehavior）</label>
+                                <select id="enter-behavior">
+                                    <option value="newline" selected>改行する（newline）</option>
+                                    <option value="submit">投稿する（submit）</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="submit-shortcut-preset">投稿ショートカット（submitShortcuts）</label>
+                                <select id="submit-shortcut-preset">
+                                    <option value="default" selected>既定（Ctrl/Cmd+Enter）</option>
+                                    <option value="host-defined">ホスト定義（Ctrl/Cmd+Shift、Alt、Shift）</option>
+                                    <option value="disabled">無効</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="pg-section" open>
+                    <summary><span class="pg-section-step" aria-hidden="true">2</span><h2>投稿内容・返信・引用（setContext）</h2></summary>
+                    <div class="pg-section-body">
+                        <div class="field">
+                            <label for="context-content">本文（content）</label>
+                            <textarea id="context-content" placeholder="setContext({ content }) で設定する本文"></textarea>
+                        </div>
+                        <div class="buttons">
+                            <button id="set-content" type="button">本文を設定</button>
+                            <button id="clear-content" type="button" class="ghost">本文をクリア</button>
+                        </div>
+                        <div class="field">
+                            <label for="reply-reference">返信先（reply）</label>
+                            <input id="reply-reference" type="text" value="note1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygsglnzgl">
+                        </div>
+                        <div class="buttons">
+                            <button id="set-reply" type="button">返信先を設定</button>
+                            <button id="clear-reply" type="button" class="ghost">返信先をクリア</button>
+                        </div>
+                        <div class="field">
+                            <label for="quotes-references">引用（quotes、1行に1件）</label>
+                            <textarea id="quotes-references">note1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygsglnzgl
+note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
+                        </div>
+                        <div class="buttons">
+                            <button id="set-single-quote" type="button">1件目だけ引用</button>
+                            <button id="set-multiple-quotes" type="button">すべて引用</button>
+                            <button id="clear-quotes" type="button" class="ghost">引用をクリア</button>
+                            <button id="apply-reply-quotes" type="button" class="secondary">返信先と引用をまとめて設定</button>
+                        </div>
+                        <div class="pg-subsection">
+                            <h3>パブリックチャット（channel）</h3>
+                            <p class="small">channelの参照先には、ホストが用意した有効なnote / neventを入れてください。このページには、有効に見せかけた例は入れていません。</p>
+                            <div class="field"><label for="channel-reference">チャンネルの参照先（channel.reference）</label><input id="channel-reference" type="text" placeholder="有効なチャンネルのeventの参照"></div>
+                            <div class="grid-2">
+                                <div class="field"><label for="channel-name">チャンネル名（channel.name）</label><input id="channel-name" type="text" placeholder="任意"></div>
+                                <div class="field"><label for="channel-about">チャンネルの説明（channel.about）</label><input id="channel-about" type="text" placeholder="任意"></div>
+                            </div>
+                            <div class="field"><label for="channel-relay">リレーURL（channel.relays）</label><input id="channel-relay" type="url" placeholder="wss://relay.example.com"></div>
+                            <div class="buttons">
+                                <button id="set-channel" type="button">チャンネルを設定</button>
+                                <button id="clear-channel" type="button" class="ghost">チャンネルをクリア</button>
+                                <button id="clear-all-context" type="button" class="secondary">すべてクリア</button>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="pg-section">
+                    <summary><span class="pg-section-step" aria-hidden="true">3</span><h2>設定（setSettings）</h2></summary>
+                    <div class="pg-section-body">
+                        <div class="grid-2">
+                            <div class="field"><label for="locale">表示言語（locale）</label><select id="locale"><option value="ja">ja</option><option value="en" selected>en</option></select></div>
+                            <div class="field"><label for="theme-mode">テーマ（themeMode）</label><select id="theme-mode"><option value="system" selected>system</option><option value="light">light</option><option value="dark">dark</option></select></div>
+                            <div class="field"><label for="image-quality">画像品質（imageQualityLevel）</label><select id="image-quality"><option value="none" selected>none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></div>
+                            <div class="field"><label for="video-quality">動画品質（videoQualityLevel）</label><select id="video-quality"><option value="none" selected>none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></div>
+                        </div>
+                        <label class="check"><input id="media-free-placement" type="checkbox"> メディアを自由に配置する（mediaFreePlacement）</label>
+                        <details class="advanced-settings">
+                            <summary>その他の公開設定キー</summary>
+                            <div class="advanced-content">
+                                <p class="small">APIとしては受け付けますが、Liteでは見た目に変化がない場合があります。</p>
+                                <div class="pg-checks">
+                                    <label class="check"><input id="client-tag" type="checkbox" checked> clientTagEnabled</label>
+                                    <label class="check"><input id="quote-notification" type="checkbox"> quoteNotificationEnabled</label>
+                                    <label class="check"><input id="reply-notification" type="checkbox"> replyNotificationEnabled</label>
+                                    <label class="check"><input id="show-mascot" type="checkbox" checked> showMascot</label>
+                                    <label class="check"><input id="show-flavor-text" type="checkbox" checked> showFlavorText</label>
+                                </div>
+                            </div>
+                        </details>
+                        <details class="advanced-settings">
+                            <summary>互換用の圧縮設定キー</summary>
+                            <div class="advanced-content">
+                                <p class="small">互換性のためだけに残している別名です。通常は上の画像品質・動画品質を使ってください。</p>
+                                <div class="grid-2">
+                                    <div class="field"><label for="legacy-image-quality">imageCompressionLevel</label><select id="legacy-image-quality"><option value="none" selected>none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></div>
+                                    <div class="field"><label for="legacy-video-quality">videoCompressionLevel</label><select id="legacy-video-quality"><option value="none" selected>none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></div>
+                                </div>
+                                <div class="buttons"><button id="apply-legacy-settings" type="button" class="secondary">互換用のキーを適用</button></div>
+                            </div>
+                        </details>
+                        <div class="buttons"><button id="apply-settings" type="button">設定を適用</button></div>
+                    </div>
+                </details>
+
+                <details class="pg-section">
+                    <summary><span class="pg-section-step" aria-hidden="true">4</span><h2>カスタム絵文字とテーマ</h2></summary>
+                    <div class="pg-section-body">
+                        <div class="buttons">
+                            <button id="set-custom-emojis" type="button">カスタム絵文字を設定</button>
+                            <button id="clear-custom-emojis" type="button" class="ghost">カスタム絵文字をクリア</button>
+                        </div>
+                        <p class="small"><code>setCustomEmojis()</code> で、ホストが持つ絵文字の一覧を渡します。</p>
+                        <div class="pg-subsection">
+                            <h3>テーマのプリセット</h3>
+                            <p class="small">LiteにはeHagaki内部の設定画面がないため、ホストがCSS Custom Propertiesでテーマを指定します。</p>
+                            <div class="preset-grid" id="theme-presets" aria-label="テーマのプリセット"></div>
+                            <div class="buttons"><button id="reset-theme" type="button" class="ghost">テーマを元に戻す</button></div>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="pg-section">
+                    <summary><span class="pg-section-step" aria-hidden="true">5</span><h2>ホストの動作を模擬する</h2></summary>
+                    <div class="pg-section-body">
+                        <div class="grid-2">
+                            <div class="field"><label for="submit-behavior">投稿の結果</label><select id="submit-behavior"><option value="success" selected>成功する</option><option value="fail-once">次の1回だけ失敗する</option></select></div>
+                            <div class="field"><label for="submit-delay">投稿の遅延</label><select id="submit-delay"><option value="0" selected>0ms</option><option value="1000">1000ms</option><option value="3000">3000ms</option></select></div>
+                            <div class="field"><label for="upload-delay">アップロードの遅延</label><select id="upload-delay"><option value="0" selected>0ms</option><option value="1000">1000ms</option><option value="3000">3000ms</option></select></div>
+                        </div>
+                        <div class="buttons">
+                            <button id="fail-submit" type="button" class="secondary">次の投稿を失敗させる</button>
+                            <button id="fail-upload" type="button" class="secondary">次のアップロードを失敗させる</button>
+                        </div>
+                        <p class="small">アップロードの模擬は、作成時の設定で「メディアのアップロード」を有効にしたときだけ動きます。ファイル名に「fail」を含むファイルも失敗として扱います。</p>
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <section class="pg-panel" aria-labelledby="event-log-heading">
+            <div class="pg-panel-header">
+                <div><h2 id="event-log-heading">イベントログ</h2><p class="small">公開APIの呼び出し、CustomEvent、ホストのコールバックを記録します。</p></div>
+                <div class="pg-actions">
+                    <button type="button" class="ghost compact" data-copy-target="log">コピー</button>
+                    <button id="clear-log" type="button" class="ghost compact">ログをクリア</button>
+                </div>
+            </div>
+            <pre id="log" class="log" aria-live="polite"></pre>
+        </section>
+
+        <section class="pg-panel" aria-labelledby="last-submit-heading">
+            <div class="pg-panel-header">
+                <div><h2 id="last-submit-heading">直近の <code>submit</code> に渡されたoutput</h2><p class="small">ホストはこの <code>{ content, tags, context }</code> からeventを作り、署名してpublishします。</p></div>
+                <div class="pg-actions"><button type="button" class="ghost compact" data-copy-target="last-submit-output">コピー</button></div>
+            </div>
+            <pre id="last-submit-output" class="log">まだ投稿されていません。</pre>
+        </section>
+    </main>
+
+    <script type="module" src="./shell.js"></script>
+    <script type="module" src="./lite.js"></script>
+</body>
+
+</html>

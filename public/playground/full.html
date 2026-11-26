@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Full Web Component | eHagaki Playground</title>
+    <link rel="icon" href="../favicon.ico">
+    <link rel="stylesheet" href="./playground.css">
+    <style>
+        #component-mount {
+            /* Keep the sticky preview within the viewport on desktop. */
+            height: clamp(440px, calc(100dvh - 320px), 600px);
+        }
+
+        ehagaki-composer {
+            display: block;
+            height: 100%;
+            min-height: 0;
+            background: white;
+        }
+
+        @media (max-width: 980px) {
+            #component-mount {
+                height: 520px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header class="pg-header">
+        <div class="pg-header-inner">
+            <a class="pg-brand" href="./index.html"><img src="../ehagaki_icon.svg" alt="" width="28" height="28">eHagaki Playground</a>
+            <nav class="pg-tabs" aria-label="プレイグラウンドのページ">
+                <a href="./index.html">はじめに</a>
+                <a href="./iframe.html">iframe</a>
+                <a href="./full.html" aria-current="page">Full</a>
+                <a href="./lite.html">Lite</a>
+            </nav>
+            <div class="pg-header-links">
+                <a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/EMBEDDING.md" target="_blank" rel="noreferrer noopener">埋め込み・統合ガイド</a>
+                <a href="../">eHagakiを開く</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="pg-main">
+        <header class="pg-intro page-intro" aria-labelledby="page-heading">
+            <p class="pg-eyebrow">Full Web Component</p>
+            <h1 id="page-heading">Full Web Component Playground</h1>
+            <p class="pg-lead">同じページに <code>&lt;ehagaki-composer&gt;</code> を置き、公開API・イベント・設定・投稿内容・テーマの変更を試せます。認証からpublishまでeHagakiが受け持つ方式です。</p>
+            <ul class="pg-fit" aria-label="向いているケース">
+                <li>投稿までeHagakiに任せたい</li>
+                <li>同じdocumentに直接置きたい</li>
+                <li>NIP-07 / NIP-46でログインする</li>
+            </ul>
+            <nav class="intro-links" aria-label="Full Web Componentの資料">
+                <a class="intro-link primary" href="https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md" target="_blank" rel="noreferrer noopener">Web Componentのガイド</a>
+                <a class="intro-link secondary" href="./index.html#choose">方式の選び方</a>
+            </nav>
+        </header>
+
+        <div class="pg-workspace">
+            <section class="pg-preview live-preview" aria-labelledby="live-preview-heading">
+                <div class="pg-panel preview-panel">
+                    <div class="pg-panel-header">
+                        <div>
+                            <h2 id="live-preview-heading">ライブプレビュー</h2>
+                            <p class="small">作成したComponentをここで操作できます。</p>
+                        </div>
+                    </div>
+                    <div class="status-list">
+                        <div id="module-status" class="status" role="status" aria-live="polite">モジュール：未読み込み</div>
+                        <div id="component-status" class="status" role="status" aria-live="polite">Component：未作成</div>
+                        <div id="ready-status" class="status" role="status" aria-live="polite">whenReady(): pending</div>
+                        <div id="nip07-status" class="status warn" role="status" aria-live="polite">NIP-07：利用状況を確認中</div>
+                    </div>
+                    <div class="component-lifecycle-card">
+                        <div class="buttons component-lifecycle-buttons">
+                            <button id="create-component" type="button">作成して表示</button>
+                            <button id="destroy-component" type="button" class="secondary">削除して非表示</button>
+                            <button id="recreate-component" type="button" class="secondary">作り直す</button>
+                        </div>
+                    </div>
+                    <div id="component-mount" class="component-frame" aria-label="eHagaki Web Component live preview mount point"></div>
+                </div>
+            </section>
+
+            <div class="pg-controls">
+                <details class="pg-section" open>
+                    <summary><span class="pg-section-step" aria-hidden="true">1</span><h2>投稿内容・返信・引用</h2></summary>
+                    <div class="pg-section-body">
+                        <p class="small">NIP-19の <code>note1...</code> / <code>nevent1...</code> を <code>element.setContext(...)</code> に直接渡します。channelには <code>reference</code> と、任意で <code>relays</code> / <code>name</code> を指定できます。</p>
+                        <div class="field"><label for="context-content">投稿内容（content）</label><textarea id="context-content">Web Componentからの初期コンテンツ</textarea></div>
+                        <div class="field"><label for="context-reply">返信先（reply）</label><input id="context-reply" type="text" placeholder="note1... / nevent1..."></div>
+                        <div class="grid-2">
+                            <div class="field"><label for="context-quote-one">引用（quote）</label><input id="context-quote-one" type="text" placeholder="note1... / nevent1..."></div>
+                            <div class="field"><label for="context-quote-two">2件目の引用（quote 2）</label><input id="context-quote-two" type="text" placeholder="複数の引用を指定する場合"></div>
+                        </div>
+                        <div class="buttons">
+                            <button id="apply-content" type="button">投稿内容を反映</button>
+                            <button id="apply-reply" type="button">返信先を反映</button>
+                            <button id="apply-quote" type="button">引用を反映</button>
+                            <button id="apply-multiple-quotes" type="button">複数の引用を反映</button>
+                        </div>
+                        <div class="pg-subsection">
+                            <h3>パブリックチャット（channel）</h3>
+                            <div class="field"><label for="context-channel-reference">チャンネルの参照先（channel.reference）</label><input id="context-channel-reference" type="text" placeholder="note1... / nevent1..."></div>
+                            <div class="grid-2">
+                                <div class="field"><label for="context-channel-relays">チャンネルのリレー（channel.relays / CSV）</label><input id="context-channel-relays" type="text" placeholder="wss://relay.example"></div>
+                                <div class="field"><label for="context-channel-name">チャンネル名（channel.name）</label><input id="context-channel-name" type="text"></div>
+                            </div>
+                            <div class="buttons">
+                                <button id="apply-channel" type="button">チャンネル情報を反映</button>
+                                <button id="clear-context" type="button" class="secondary">指定内容をクリア</button>
+                                <button id="apply-invalid-context" type="button" class="ghost">無効な投稿内容を試す</button>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="pg-section" open>
+                    <summary><span class="pg-section-step" aria-hidden="true">2</span><h2>設定（setSettings）</h2></summary>
+                    <div class="pg-section-body">
+                        <p class="small">作成時はここで指定した値を初期設定として使います。作成後に値を変えた場合は「設定を適用」を押すと、作り直さずに反映できます。</p>
+                        <div class="grid-2">
+                            <div class="field"><label for="locale">表示言語（locale）</label><select id="locale"><option value="ja">ja</option><option value="en">en</option></select></div>
+                            <div class="field"><label for="theme-mode">テーマ（themeMode）</label><select id="theme-mode"><option value="system">system</option><option value="light">light</option><option value="dark">dark</option></select></div>
+                            <div class="field"><label for="image-quality">画像品質（imageQualityLevel）</label><select id="image-quality"><option value="medium">medium</option><option value="none">none</option><option value="low">low</option><option value="high">high</option></select></div>
+                            <div class="field"><label for="video-quality">動画品質（videoQualityLevel）</label><select id="video-quality"><option value="medium">medium</option><option value="none">none</option><option value="low">low</option><option value="high">high</option></select></div>
+                        </div>
+                        <div class="pg-checks">
+                            <label class="check"><input id="client-tag" type="checkbox" checked> 投稿元情報を付ける（clientTagEnabled）</label>
+                            <label class="check"><input id="quote-notification" type="checkbox"> 引用通知を有効にする（quoteNotificationEnabled）</label>
+                            <label class="check"><input id="reply-notification" type="checkbox"> 返信通知を有効にする（replyNotificationEnabled）</label>
+                            <label class="check"><input id="media-free-placement" type="checkbox"> メディアを自由に配置する（mediaFreePlacement）</label>
+                            <label class="check"><input id="show-mascot" type="checkbox" checked> マスコットを表示（showMascot）</label>
+                            <label class="check"><input id="show-flavor-text" type="checkbox" checked> フレーバーテキストを表示（showFlavorText）</label>
+                        </div>
+                        <div class="buttons">
+                            <button id="apply-runtime-settings" type="button">設定を適用</button>
+                            <button id="apply-invalid-settings" type="button" class="ghost">無効な設定を試す</button>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="pg-section theme-section">
+                    <summary><span class="pg-section-step" aria-hidden="true">3</span><h2 id="theme-heading">テーマ（CSS Custom Properties）</h2></summary>
+                    <div class="pg-section-body theme-panel">
+                        <div class="theme-presets">
+                            <h3>プリセット</h3>
+                            <p class="small">Componentを表示中なら、選んだ直後に反映されます。</p>
+                            <div class="preset-grid" aria-label="テーマのプリセット">
+                                <button id="preset-azure" type="button" class="preset-button" aria-pressed="false">
+                                    <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #005FCC"></span><span class="preset-swatch" style="background: #0077FF"></span></span>
+                                    <span><span class="preset-name">Azure</span><br><span class="preset-values">#005FCC / #0077FF</span></span>
+                                </button>
+                                <button id="preset-rose" type="button" class="preset-button" aria-pressed="false">
+                                    <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #B4233C"></span><span class="preset-swatch" style="background: #FF3B5C"></span></span>
+                                    <span><span class="preset-name">Rose</span><br><span class="preset-values">#B4233C / #FF3B5C</span></span>
+                                </button>
+                                <button id="preset-forest" type="button" class="preset-button" aria-pressed="false">
+                                    <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #1F7A4D"></span><span class="preset-swatch" style="background: #00A86B"></span></span>
+                                    <span><span class="preset-name">Forest</span><br><span class="preset-values">#1F7A4D / #00A86B</span></span>
+                                </button>
+                                <button id="preset-amber" type="button" class="preset-button" aria-pressed="false">
+                                    <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #8A5700"></span><span class="preset-swatch" style="background: #F2B000"></span></span>
+                                    <span><span class="preset-name">Amber</span><br><span class="preset-values">#8A5700 / #F2B000</span></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="pg-subsection theme-custom-fields">
+                            <h3>色を指定する</h3>
+                            <div class="grid-2">
+                                <div class="field"><label for="style-accent">アクセント色（accent color）</label><input id="style-accent" placeholder="#005FCC"></div>
+                                <div class="field"><label for="style-base">基本色（base color）</label><input id="style-base" placeholder="#0077FF"></div>
+                                <div class="field"><label for="style-default-accent">弱いdefault Accent（default accent）</label><input id="style-default-accent" placeholder="#1dbf73"></div>
+                                <div class="field"><label for="style-default-base">弱いdefault Base（default base）</label><input id="style-default-base" placeholder="#dcefe4"></div>
+                            </div>
+                            <p class="small">Accent / Baseは強制で、内部のユーザー設定より優先されます。default Accent / Baseは内部のユーザー設定より弱い既定値です。空欄は未指定として扱います。手入力した値は「テーマカラーを適用」で反映します。</p>
+                            <div class="buttons">
+                                <button id="apply-styles" type="button">テーマカラーを適用</button>
+                                <button id="reset-styles" type="button" class="ghost">デフォルトに戻す</button>
+                            </div>
+                        </div>
+
+                        <details class="advanced-settings">
+                            <summary>個別のtokenを指定する</summary>
+                            <div class="advanced-content">
+                                <p class="small">指定した項目だけを上書きします。空欄はeHagakiの既定値です。</p>
+                                <div class="grid-2">
+                                    <div class="field"><label for="style-background">背景色（background）</label><input id="style-background"></div>
+                                    <div class="field"><label for="style-text">文字色（text）</label><input id="style-text"></div>
+                                    <div class="field"><label for="style-border">境界線の色（border）</label><input id="style-border"></div>
+                                    <div class="field"><label for="style-link">リンクの色（link）</label><input id="style-link"></div>
+                                    <div class="field"><label for="style-input">入力欄の背景色（input background）</label><input id="style-input"></div>
+                                    <div class="field"><label for="style-footer">フッターの背景色（footer background）</label><input id="style-footer"></div>
+                                    <div class="field"><label for="style-dialog">ダイアログの背景色（dialog background）</label><input id="style-dialog"></div>
+                                    <div class="field"><label for="style-font">フォント（font family）</label><input id="style-font"></div>
+                                </div>
+                                <p class="small">Accent / Baseはsurfaceの生成に使われます。使えるCSS Custom Propertiesは <a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md#css-custom-properties" target="_blank" rel="noreferrer noopener">Web Componentガイド</a> を参照してください。</p>
+                            </div>
+                        </details>
+                    </div>
+                </details>
+
+                <details class="pg-section" id="headless-upload-card">
+                    <summary><span class="pg-section-step" aria-hidden="true">4</span><h2>Headless <code>uploadFile()</code></h2></summary>
+                    <div class="pg-section-body">
+                        <p class="small">ホストで選んだファイルを公開APIへ直接渡します。エディター本文、gallery、投稿UIには追加しません。現在のアップロード先と、画像・動画の圧縮設定を使います。</p>
+                        <div id="headless-upload-status" class="status warn" role="status" aria-live="polite">Component未作成</div>
+                        <div class="field">
+                            <label for="headless-upload-file">ホストから渡す画像・動画</label>
+                            <input id="headless-upload-file" type="file" accept="image/*,video/*,.avif">
+                            <p id="headless-upload-selection" class="small">File未選択</p>
+                        </div>
+                        <div class="buttons">
+                            <button id="headless-upload-start" type="button" disabled>アップロード</button>
+                            <button id="headless-upload-cancel" type="button" class="secondary" disabled>中止</button>
+                        </div>
+                        <pre id="headless-upload-result" class="upload-result" aria-live="polite">結果はここに表示されます。</pre>
+                        <a id="headless-upload-link" href="#" target="_blank" rel="noopener noreferrer" hidden>成功したURLを新しいタブで開く</a>
+                    </div>
+                </details>
+
+                <details class="pg-section">
+                    <summary><span class="pg-section-step" aria-hidden="true">5</span><h2>モジュールと一時Relay Config</h2></summary>
+                    <div class="pg-section-body">
+                        <div class="field">
+                            <label for="module-url">Web ComponentのモジュールURL</label>
+                            <input id="module-url" type="url" spellcheck="false">
+                        </div>
+                        <div class="field">
+                            <label for="asset-base">関連ファイルのURL（asset-base）</label>
+                            <input id="asset-base" type="url" spellcheck="false">
+                        </div>
+                        <p class="small">通常は、ページを開いたときに標準のモジュールを自動で読み込みます。別のモジュールを試すときは、URLの末尾に <code>?manual=1</code> を付けて開き、URLを書き換えてから「作成して表示」を押してください。手動モードでは、作成するまでモジュールを読み込みません。<code>moduleUrl</code> などのクエリだけで別のモジュールが自動で実行されることはありません。</p>
+                        <div class="notice warn">
+                            <strong>信頼できるURLだけを指定してください</strong>
+                            <p class="small">外部モジュールはこのページと同じJavaScriptの権限で動きます。関連ファイルのURLには、実行されるモジュールやworkerも含まれます。asset-baseは作成時と作り直し時に要素へ設定します。一度読み込んだモジュールは切り替えられないので、別のモジュールを試すときはページを読み込み直してください。</p>
+                        </div>
+                        <div class="pg-subsection">
+                            <h3>一時Relay Config（<code>relays</code> プロパティ）</h3>
+                            <div class="field"><label for="host-relays">relays property（JSON）</label><textarea id="host-relays" spellcheck="false" placeholder='[{"url":"wss://relay.example","read":true,"write":true}]'></textarea></div>
+                            <p class="small">接続前にだけ代入するFull専用のプロパティです。空欄のときは通常どおりrelayを解決します。値を変えたら「作り直す」で新しい要素に反映してください。Liteにはこのプロパティはありません。</p>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="pg-section">
+                    <summary><span class="pg-section-step" aria-hidden="true">6</span><h2>認証と安全に使える範囲</h2></summary>
+                    <div class="pg-section-body">
+                        <div class="notice">
+                            <strong>ローカル秘密鍵（nsec）は使えません</strong>
+                            <p class="small">Web Componentは、このページと同じWindow realm / originで動きます。そのためnsecの入力・保存・復元には対応しません。ログインには、秘密鍵そのものを入力しないNIP-07（ページの <code>window.nostr</code>）またはNIP-46を使ってください。</p>
+                        </div>
+                        <div class="pg-subsection">
+                            <h3>iframeとの違い</h3>
+                            <p class="small">ホストのJavaScriptから秘密情報を隔離したい場合は、別originから配信したiframeを使ってください。</p>
+                            <div class="pg-table-wrap">
+                                <table class="comparison">
+                                    <thead><tr><th scope="col">項目</th><th scope="col">iframe</th><th scope="col">Web Component</th></tr></thead>
+                                    <tbody>
+                                        <tr><th scope="row">分離 / API</th><td>originを分け、postMessage protocolとhandshakeで通信</td><td>同じWindow realmで、メソッド・プロパティ・CustomEventを使う</td></tr>
+                                        <tr><th scope="row">認証</th><td>親クライアント連携やローカルnsecを使える</td><td>NIP-07はホストの <code>window.nostr</code>、NIP-46はeHagakiのUIを使う</td></tr>
+                                        <tr><th scope="row">保存先</th><td>storage / IndexedDBを親ページに委譲できる</td><td>localStorageは <code>ehagaki.web-component.v1:</code> namespace、IndexedDBはホストoriginの <code>eHagakiDB</code></td></tr>
+                                        <tr><th scope="row">更新 / 見た目</th><td>iframeの読み込み直し、またはpostMessage</td><td><code>setSettings()</code> / <code>setContext()</code>、CSS Custom Properties</td></tr>
+                                        <tr><th scope="row">安全な範囲</th><td>別originとして分離できる</td><td>信頼できるホストだけを正式にサポート。ホストは同じrealmのコードやstorageを読める</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="pg-subsection">
+                            <h3>HTTP / WebSocket / Service Worker</h3>
+                            <ul class="api-list small">
+                                <li>HTTPリクエストは、ホストのService Workerから観測できます。</li>
+                                <li>Nostr relayとの通信はWebSocketです。Service Workerのfetchを横取りできても、relayの通信を横取りできることにはなりません。</li>
+                                <li>ホストが <code>window.WebSocket</code> を差し替えた場合の、ブラウザでの検証はまだ済んでいません。</li>
+                            </ul>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <section class="pg-panel" aria-labelledby="event-monitor-heading">
+            <div class="pg-panel-header event-monitor-header">
+                <div><h2 id="event-monitor-heading">イベントログ</h2><p class="small">公開APIの呼び出しやComponentの状態変化を記録します。秘密情報・署名要求のpayload・Errorの中身は表示せず、安全な要約だけを残します。</p></div>
+                <div class="pg-actions">
+                    <button type="button" class="ghost compact" data-copy-target="event-log">コピー</button>
+                    <button id="clear-log" type="button" class="ghost compact">ログをクリア</button>
+                </div>
+            </div>
+            <textarea id="event-log" class="log" readonly aria-label="Web Component event log"></textarea>
+        </section>
+    </main>
+
+    <script type="module" src="./shell.js"></script>
+    <script type="module" src="./full.js"></script>
+</body>
+
+</html>

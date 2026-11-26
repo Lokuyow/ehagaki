@@ -10,8 +10,8 @@ const markerPath = join(cacheDirectory, "web-component-e2e-output.json");
 const lockPath = join(cacheDirectory, "web-component-e2e-output.lock");
 const requiredOutputPaths = [
     "dist/web-component/ehagaki-composer.js",
-    "dist/web-component-parent-client-example.html",
-    "dist/web-component-parent-client-example.js",
+    "dist/playground/full.html",
+    "dist/playground/full.js",
     "dist-web-component/ehagaki-composer.js",
     "dist-web-component/host-owned/ehagaki-composer.js",
 ];

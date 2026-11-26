@@ -1,6 +1,7 @@
 import { finalizeEvent, getPublicKey as getPublicKeyFromSecret } from "https://esm.sh/nostr-tools@2.23.3/pure";
 import { decode as decodeNip19, neventEncode } from "https://esm.sh/nostr-tools@2.23.3/nip19";
 import { SimplePool } from "https://esm.sh/nostr-tools@2.23.3/pool";
+import { THEME_PRESETS } from "./shell.js";
 
 const EMBED_NAMESPACE = "ehagaki.embed";
 const EMBED_VERSION = 1;
@@ -1350,9 +1351,11 @@ async function loadTimeline() {
 function getDefaultAppUrl() {
     const currentUrl = new URL(window.location.href);
     const pathSegments = currentUrl.pathname.split("/").filter(Boolean);
-    const servedFromPublicDirectory = pathSegments.at(-2) === "public";
+    // The playground page lives at <app>/playground/iframe.html. During Vite
+    // development it may also be opened as <app>/public/playground/iframe.html.
+    const servedFromPublicDirectory = pathSegments.at(-3) === "public";
 
-    return new URL(servedFromPublicDirectory ? "../" : "./", currentUrl).toString();
+    return new URL(servedFromPublicDirectory ? "../../" : "../", currentUrl).toString();
 }
 
 function normalizeInitialLocale(value) {
@@ -2629,6 +2632,39 @@ window.addEventListener("beforeunload", () => {
     timelinePool.close([activeTimelineRelay]);
     timelinePool.destroy();
 });
+
+const themePresetContainer = document.getElementById("theme-presets");
+for (const preset of Object.values(THEME_PRESETS)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "preset-button";
+    const swatches = document.createElement("span");
+    swatches.className = "preset-swatches";
+    swatches.setAttribute("aria-hidden", "true");
+    for (const color of [preset.accent, preset.base]) {
+        const swatch = document.createElement("span");
+        swatch.className = "preset-swatch";
+        swatch.style.background = color;
+        swatches.append(swatch);
+    }
+    const text = document.createElement("span");
+    const name = document.createElement("span");
+    name.className = "preset-name";
+    name.textContent = preset.label;
+    const values = document.createElement("span");
+    values.className = "preset-values";
+    values.textContent = `${preset.accent} / ${preset.base}`;
+    text.append(name, document.createElement("br"), values);
+    button.append(swatches, text);
+    button.addEventListener("click", () => {
+        initialAccentColorInput.value = preset.accent;
+        initialBaseColorInput.value = preset.base;
+        initialAccentColorInput.dispatchEvent(new Event("input"));
+        initialBaseColorInput.dispatchEvent(new Event("input"));
+        setInitialSettingsFeedback(`${preset.label} をAccent / Base Colorに入力しました。同期または再読み込みで反映します。`, "ok");
+    });
+    themePresetContainer?.append(button);
+}
 
 loadIframe();
 void loadTimeline();

@@ -11,12 +11,42 @@ Window realm で動作し、ホストの JavaScript からは通常の要素・�
 を使用してください。Web Component は、ホストとコンポーネントが同じ実行環境を信頼でき、
 DOM へ直接組み込みたい場合に適しています。
 
-実際に操作できる公開リファレンスは、[Web Component 親ページサンプル](https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html)
-です。通常モードではページを開くと、既定の同梱モジュールとコンポーネントが自動的に接続されます。
-任意のモジュールを試す場合は URL に `?manual=1` を付けて manual mode に入り、module URL を編集してから
-`Create / Mount` を押してください。manual mode では明示的な操作までモジュールを読み込みません。サンプルでは、モジュールの読み込み、
-作成・破棄・再作成、設定、投稿コンテキスト、各種イベント、2 個目のインスタンスの拒否、
-CSS Custom Properties を確認できます。
+実際に操作して確かめるには、[eHagaki Playground](https://lokuyow.github.io/ehagaki/playground/) の
+[Full](https://lokuyow.github.io/ehagaki/playground/full.html) と [Lite](https://lokuyow.github.io/ehagaki/playground/lite.html)
+のページを使ってください。詳しくは [Playground](#playground) を参照してください。
+
+## 目次
+
+- 導入
+  - [最小構成で埋め込む（Full self-publish）](#最小構成で埋め込むfull-self-publish)
+  - [配布物と読み込み方法](#配布物と読み込み方法)
+  - [asset-base / assetBase](#asset-base--assetbase)
+  - [Full self-publish と Lite Host-owned](#full-self-publish-と-lite-host-owned)
+  - [作成・破棄・再生成](#作成破棄再生成)
+  - [1 document 1 instance 制約](#1-document-1-instance-制約)
+  - [下部 UI と高さ契約](#下部-ui-と高さ契約)
+  - [ローカル開発](#ローカル開発)
+  - [Playground](#playground)
+- API リファレンス
+  - [準備完了を待つ whenReady()](#準備完了を待つ-whenready)
+  - [初期化前の設定とコンテキスト](#初期化前の設定とコンテキスト)
+  - [設定を変更する setSettings()](#設定を変更する-setsettings)
+  - [投稿コンテキストを設定する setContext()](#投稿コンテキストを設定する-setcontext)
+  - [エディターの focus / blur を制御する focusEditor() / blurEditor()](#エディターの-focus--blur-を制御する-focuseditor--blureditor)
+  - [Full からファイルをアップロードする uploadFile()](#full-からファイルをアップロードする-uploadfile)
+  - [エディターが空かどうかを取得する editorIsEmpty](#エディターが空かどうかを取得する-editorisempty)
+  - [auto-login / autoLogin](#auto-login--autologin)
+  - [Full の一時 Relay Config: relays](#full-の一時-relay-config-relays)
+  - [投稿成功・失敗イベント](#投稿成功失敗イベント)
+  - [その他の CustomEvent](#その他の-customevent)
+  - [CSS Custom Properties](#css-custom-properties)
+- 運用・セキュリティ
+  - [ログイン・認証](#ログイン認証)
+  - [iframe 版との使い分け](#iframe-版との使い分け)
+  - [ストレージ](#ストレージ)
+  - [Service Worker / WebSocket](#service-worker--websocket)
+  - [CORS / CSP / 動的chunk / Worker](#cors--csp--動的chunk--worker)
+  - [ShadowRoot と外部入力](#shadowroot-と外部入力)
 
 ## 最小構成で埋め込む（Full self-publish）
 
@@ -48,77 +78,6 @@ CSS Custom Properties を確認できます。
 </script>
 ```
 
-## 下部 UI と高さ契約
-
-Web Component の下部 UI は常に component-bound layout です。`FooterComponent`、
-`KeyboardButtonBar`、`ReasonInput` は component の境界内に配置され、host page を scroll すると
-component と一緒に移動します。ブラウザ viewport 下端へ固定する Web Component 公開機能はありません。
-
-host は `.composer-host { height: 580px; }` のように解決済みの definite CSS height を指定し、
-`ehagaki-composer` がその高さを継承するようにしてください。height 未指定または `auto` は
-サポート対象外で、viewport 高への暗黙 fallback は行いません。
-
-host page が外側 scroll を所有し、composer 本文は既存の `.composer-scroll-region` が internal
-scroll を所有します。keyboard 表示時は component-local inset を使って下部 UI と composer
-reservation を調整します。dialog、tooltip、popover、PhotoSwipe などの overlay root と
-positioning 責務は変更されません。
-
-通常版/PWA と iframe は、Web Component とは異なり、従来の viewport 基準レイアウトを維持します。
-以前の Web Component 実装では下部 UI が browser viewport 基準でしたが、通常の埋め込みで component
-外へ出ないよう、現在は component-bound layout に統一しています。
-
-`asset-base` は、コンポーネントが実行時に参照する配信元のディレクトリです。エントリ
-モジュールを読み込む URL と、配布物内の `assets/`、`icons/` などを置いた
-ディレクトリを指定します。要素を接続する前に設定してください。
-
-要素を JavaScript で生成する場合は、`assetBase` property でも指定できます。
-
-```js
-await import('https://cdn.example/ehagaki/web-component/ehagaki-composer.js');
-
-const composer = document.createElement('ehagaki-composer');
-composer.assetBase = 'https://cdn.example/ehagaki/web-component/';
-document.querySelector('#composer-mount').append(composer);
-
-await composer.whenReady();
-```
-
-`asset-base` と `assetBase` は同じ設定を表します。接続後に値を変更しても、現在接続中の
-アプリの配信先やモジュール読み込み先は切り替わりません。別の配信先を使う場合は、
-値を変更してから要素をいったん削除し、再作成してください。すでに読み込んだモジュールを
-別実装へ切り替える場合は、Custom Elements Registry の制約があるためページを再読み込みします。
-
-## Full の一時 Relay Config: `relays`
-
-Full self-publish distribution だけは、connection 前に `relays` property でこの mount 専用の
-default Relay Config を渡せます。HTML attribute や `setSettings()` の項目ではありません。
-
-```js
-const composer = document.createElement('ehagaki-composer');
-composer.assetBase = 'https://cdn.example/ehagaki/web-component/';
-composer.relays = [
-  { url: 'wss://relay.example', read: true, write: true },
-  { url: 'wss://read.example', read: true, write: false },
-];
-document.querySelector('#composer-mount').append(composer);
-await composer.whenReady();
-```
-
-型は `ReadonlyArray<{ url: string; read: boolean; write: boolean }>` です。各 URL は通常の
-external relay URL と同じく正規化され、`ws:` / `wss:` だけを受理します。credential 付き URL、
-廃止済み relay、重複 URL、空配列、未知の field、read/write が両方 `false` の entry は全体を
-reject します。部分的に採用したり、通常の relay 解決へ fallback したりしません。
-
-この設定は IndexedDB、relay cache、kind:10002、kind:3、次の standalone/PWA、または `relays`
-未指定の次回 embed へ保存されません。read relay は profile、reply/quote、channel、post history、
-realtime read の default です。write relay は投稿、再送、削除の default です。read-only config は
-閲覧できますが、write relay がなければ投稿は `no_write_relays` で失敗します。contextual relay hint は
-従来どおり補助 destination として扱われ、この Config は hint の件数上限では切り詰めません。
-
-現在接続中の session を途中で切り替えないため、`composer.relays` の変更は次回 mount 用に保持されます。
-変更を反映するには element を remove して新しい element を作成してください。Lite Host-owned
-distribution は `relays` property を公開せず、この API をサポートしません。
-
 ## 配布物と読み込み方法
 
 Web Component の配布物には、PWA の manifest、共有ターゲット、eHagaki Service Worker の登録、
@@ -141,31 +100,6 @@ iframe 連携は含まれません。
 との分離を保つため、Web Component 用ディレクトリへ PWA の Service Worker や manifest を
 追加しないでください。
 
-## ローカル開発
-
-通常のアプリ開発には `npm run dev` を使います。Web Component の公開サンプルをローカルで
-確認する場合は `npm run dev:web-component` を使い、
-`http://localhost:5173/ehagaki/web-component-parent-client-example.html` を開いてください。
-このコマンドは Web Component の初回buildとwatchを起動します。Web Component のソースを変更した後は、
-watchによる再buildの完了を待ってからページを再読み込みします。`vite.web-component.config.ts` などの
-build設定を変更した場合は、コマンドを再起動してください。
-
-Android ChromeやiPhone Safariなど、同じLAN上の実機から確認する場合は、明示的なLANモードを使います。
-
-```text
-npm run dev:web-component:lan
-```
-
-コンソールに表示された `http://<PCのLAN IP>:5173/ehagaki/web-component-parent-client-example.html`
-を実機で開いてください。PCと実機を同じWi-Fi/LANへ接続し、Windowsでは必要に応じてWindows Firewallで
-Node/ViteのPrivate networkアクセスを許可します。LANモードではViteのsample serverだけを公開し、
-Web Component assetの内部server（5174）は `127.0.0.1` のままです。実機から5174を直接開く必要はありません。
-このLAN URLはHTTP originです。LAN内実機での一般的なlayout、Destroy/Create、host scroll、fallback keyboard behavior
-などの確認には利用できますが、secure context限定APIは本番HTTPSと同じ経路にならない場合があります。
-特にAndroid ChromeのVirtualKeyboard API経路（`navigator.virtualKeyboard`、`overlaysContent`、`boundingRect`、
-`geometrychange`）の最終確認は、PR previewなど利用可能なHTTPS deployment、または端末から信頼されるHTTPS originで行ってください。
-iPhone Safariを含む一般的な実機確認には、LAN mode自体を引き続き利用できます。
-
 ## `asset-base` / `assetBase`
 
 `asset-base` は、コンポーネントが配布物内のアセットを解決するための配信元です。実装では、
@@ -185,203 +119,6 @@ MediaBunnyの動的チャンクも、特にクロスオリジン配信時に `as
 
 GitHub Pages のようにサイトがサブパス配下にある場合は、root-relative URL を固定せず、
 実際の配信ベースを使ってください。公開サンプルは `./web-component/` を基準に URL を解決しています。
-
-## `auto-login` / `autoLogin`
-
-`auto-login` は、起動時の復元で認証状態が得られなかった場合に、ホストの `window.nostr` で
-NIP-07 ログインを行う opt-in です。既定は無効で、指定しない限り現在の動作から変わりません。
-
-```html
-<ehagaki-composer asset-base="/ehagaki/web-component/" auto-login></ehagaki-composer>
-```
-
-`disabled` などと同じ HTML の boolean 属性で、存在すれば有効です（`auto-login="false"` も
-有効になります）。無効にするには属性を削除するか `element.autoLogin = false` を使ってください。
-
-- ホストが `window.nostr` を用意していて、誰として署名するかが決まっている埋め込みを想定した
-  opt-in です。NIP-07 拡張は公開鍵の取得時に確認ダイアログを出すことが多いため、既定では
-  行いません。
-- Full self-publish distribution 専用です。Lite Host-owned では属性/propertyを指定しても無視され、
-  eHagaki の認証は開始しません。`setSettings()` の設定項目ではありません。
-- `asset-base` と同じく mount 時に読み取られます。接続後に変更しても現在の mount では認証を開始せず、
-  次の mount から有効です。
-- 起動時は先に、NIP-07 / NIP-46 など保存済み managed account を既存順序ですべて復元します。どれかを
-  復元できれば NIP-07 fallback は行いません。候補を正常に評価し終えても未認証だった場合だけ、
-  初回に限らずホストの NIP-07 identity を fallback として使います。1候補の storage 読み取りなどで
-  認証基盤異常が起きても残りの保存済み候補を試し、どれも復元できなかった場合は NIP-07 を開始せず、
-  ゲスト起動へ進みます。legacy nsec migration の異常時も、安全な strict snapshot を取得できる限り
-  保存済み候補の復元を続けます。
-- 保存済み NIP-46 account は、remote signer の応答を待たずに復元済みとして扱います。signer への接続と
-  identity の検証は起動後に行い、検証が終わるまで署名は行いません。そのため signer がオフラインでも
-  復元成功となり、NIP-07 fallback や後続候補の復元へは進みません。検証で signer が別の identity を
-  返した場合は、その session を終了してゲスト状態へ移行します（account と保存データは残ります）。
-- 保存済み NIP-07 の identity mismatch で現在の identity を取得済みなら、残りの保存済み候補を
-  最後まで試し、すべて失敗した場合だけ同じ identity を再問い合わせせず fallback に使います。
-- 再利用できる identity がない場合、`window.nostr` の注入を最大 3 秒待ちます。拡張未検出、ユーザー拒否、
-  その他の通常の NIP-07 失敗では通知を表示せず、ゲスト状態で起動を続行します。自動試行は 1 mount
-  につき 1 回です。
-- 成功した identity は通常の NIP-07 アカウントとして保存され、active account になります。同じ pubkey が
-  別認証方式で保存済みなら type を NIP-07 へ更新し、旧方式固有の credential/session だけを best-effort
-  で削除します。プロフィール、リレー設定、別 pubkey の保存済みアカウントは維持します。
-
-## 準備完了を待つ `whenReady()`
-
-`whenReady(): Promise<void>` は、アプリのマウントと初期化が完了した後に解決します。
-`ehagaki-ready` も同じ準備完了時に発火します。
-
-Full で `auto-login` を有効にした場合は、保存済み認証または NIP-07 fallback の認証後 bootstrap
-（Nostr session、リレー・プロフィール、ストア同期を含む）、もしくは失敗後の guest session
-bootstrap が完了するまで、どちらも成立しません。`auto-login` 未指定の Full と Lite Host-owned の
-既存 ready timing は変更されません。
-
-初回準備完了後のUIからのログインでは、認証後に仮プロフィールまたは保存済みプロフィールを先に表示します。リレー設定と投稿用sessionの準備ができれば、プロフィールのネットワーク応答前でも投稿できます。通常のリレー探索はkind 10002とkind 3を並行して実行し、kind 10002の優先順位を維持します。Host Relay Configは引き続きそのまま使用します。
-
-```js
-const composer = document.querySelector('ehagaki-composer');
-
-try {
-  await composer.whenReady();
-  await composer.setSettings({
-    locale: 'ja',
-    themeMode: 'light',
-  });
-  await composer.setContext({
-    content: 'ホストから設定した本文',
-  });
-} catch (error) {
-  console.error('eHagaki Composer initialization or setup failed', error);
-}
-```
-
-初期化に失敗した場合、`whenReady()` は拒否されます。2 個目の接続されたインスタンスも
-初期化されず、`multiple_instances_unsupported` の `ehagaki-initialization-error` を発火して
-`whenReady()` を拒否します。準備完了前に DOM から切断された要素の `whenReady()` は
-`disconnected` のエラーで拒否されます。
-
-`setSettings()` と `setContext()` は接続前にも呼び出せます。実装は呼び出しをキューに入れ、
-準備完了後に順番に適用します。一般的には、要素を生成して初期値を設定し、DOM へ追加してから
-`whenReady()` を待つ次の書き方が分かりやすいです。
-
-この connection 前 queue は、まだ一度も connection attempt を開始していない element の最初の
-mount attempt にだけ属します。接続済み mount で発行した `setContext()`、`setSettings()`、
-`focusEditor()`、`blurEditor()` はその mount attempt に束縛されます。mount を切断した後の
-operation や、切断中に発行した operation は次の mount へ移送されず、`disconnected` Error で
-reject されます。再生成または reconnect 後に更新する場合は、新しい mount の `whenReady()` 後に
-改めて呼び出してください。
-
-```js
-const composer = document.createElement('ehagaki-composer');
-composer.setAttribute('asset-base', 'https://cdn.example/ehagaki/web-component/');
-
-const settingsPromise = composer.setSettings({ locale: 'ja' });
-const contextPromise = composer.setContext({ content: '初期本文' });
-document.querySelector('#composer-mount').append(composer);
-
-await composer.whenReady();
-await settingsPromise;
-await contextPromise;
-```
-
-## エディターの focus / blur を制御する `focusEditor()` / `blurEditor()`
-
-Full self-publish と Host-owned Composer Lite のどちらの `<ehagaki-composer>` でも、現在 mount
-されている投稿エディターを公開メソッドから制御できます。どちらも既存の operation queue に入り、
-`Promise<void>` を返します。接続前・準備完了前の呼び出しも既存の queue 方針に従って保留されるため、
-通常は `whenReady()` と組み合わせて呼び出してください。
-
-```js
-await composer.focusEditor();
-// 現在の本文と EditorState の selection は維持されます。
-await composer.blurEditor();
-```
-
-`focusEditor()` は現在の TipTap/ProseMirror Editor instance にフォーカスするだけで、focus のために
-caret や selection を本文の末尾・先頭へ移動しません。`blurEditor()` も本文や EditorState の selection
-をクリアせず、Editor を再生成しません。Shadow DOM 内部の selector を host が調べる必要はありません。
-この2つのメソッドは iframe の `postMessage` API には追加されていません。
-
-## Full からファイルをアップロードする `uploadFile()`
-
-Full self-publish distribution は `uploadFile(file, options?)` で `File` 1 件をアップロードし、
-最終 URL と確認できた metadata を返します。Host がファイルを取得して渡してください。この API は
-`whenReady()` の解決後に呼び出します。Editor へファイルを挿入せず、本文、draft、gallery、context、
-upload progress/error などの Composer UI state も変更しません。現在選択中の eHagaki upload destination、
-圧縮設定、destination が必要とする認証、通常の media validation と transport を使います。
-
-GIF（`image/gif`）は静止画・アニメーションとも圧縮設定にかかわらず原本のまま送信し、リサイズや形式変換を行いません。Composer UI と Host-owned Lite の `uploadMedia` への受け渡しも同じ扱いです。
-
-アニメーションWebP（`image/webp`）も通常投稿・リアクションで利用でき、圧縮設定にかかわらず原本を送信します。静止WebPは従来の画像処理を使用します。
-
-AVIF（`image/avif`）は通常投稿・画像リアクションで利用でき、静止画・アニメーションとも圧縮設定にかかわらず原本を送信します。
-
-```ts
-const composer = document.querySelector('ehagaki-composer');
-await composer.whenReady();
-
-const controller = new AbortController();
-const result = await composer.uploadFile(file, { signal: controller.signal });
-console.log(result.url, result.mimeType, result.dim, result.sha256, result.blurhash);
-```
-
-`options.signal` はこの upload だけを中止します。既に中止済みの signal を渡した場合や実行中に
-中止した場合、Promise は標準 `AbortError` で拒否されます。既存の Editor upload、submit preparation、
-post send、または別の `uploadFile()` が進行中なら `upload_in_progress` で拒否されます。
-
-戻り値は `EHagakiUploadResult` です。`url` は必須で、`mimeType`、`dim`、`sha256`、`blurhash` は
-選択された transport が最終 resource と一致すると確認できる場合だけ含まれます。たとえば NIP-96 の
-`sha256` は最終 resource の `x` を使い、変換前の `ox` は代用しません。確認できない値は省略されます。
-
-Host は `Error.name` で公開 error を判定できます: `not_ready`、`login_required`、
-`upload_in_progress`、`unsupported_media`、`upload_failed`。認証不要の destination では未ログインでも
-実行できます。初期化 failure / disconnect は既存の lifecycle error を維持します。`uploadFile` は
-Full distribution 専用で、Lite では method 自体が存在しません。古い Full bundle を含む場合は
-`typeof composer.uploadFile === 'function'` で capability を確認してください。
-
-この method は ready 前の operation queue には入りません。ready 前に呼ぶと upload を開始せず
-`not_ready` で拒否されます。iframe の `postMessage` APIには追加していません。
-
-## エディターが空かどうかを取得する `editorIsEmpty`
-
-Full self-publish と Host-owned Composer Lite のどちらの `<ehagaki-composer>` でも、現在の Composer
-エディターの空状態を `editorIsEmpty` property で取得できます。値は次のいずれかです。
-
-```ts
-readonly editorIsEmpty: boolean | null;
-```
-
-- `true`: eHagaki の TipTap editor が empty
-- `false`: eHagaki の TipTap editor が non-empty
-- `null`: 現在の mount で editor 状態が未確定、または element が切断済み
-
-空判定は eHagaki が所有し、TipTap `Editor.isEmpty` を基準にします。Host は Shadow DOM、`.ProseMirror`、
-`textContent` などを検査する必要はありません。event には本文、HTML、ProseMirror document は含まれません。
-`whenReady()` が解決した後は、`editorIsEmpty` から必ず現在の boolean 値を取得できます。
-
-空状態が変化すると、両 distribution から `ehagaki-editor-empty-change` が発火します。これは他の
-Web Component event と同じく `bubbles: true`、`composed: true` の CustomEvent で、detail は次の形です。
-
-```ts
-interface EHagakiComposerEditorEmptyChangeDetail {
-  isEmpty: boolean;
-}
-```
-
-`EHagakiComposerEditorEmptyChangeDetail` は Full / Host-owned Lite の両方の entry から export されます。
-
-```js
-const composer = document.querySelector('ehagaki-composer');
-
-await composer.whenReady();
-
-console.log(composer.editorIsEmpty);
-
-composer.addEventListener('ehagaki-editor-empty-change', (event) => {
-  console.log(event.detail.isEmpty);
-});
-```
-
-この API は Direct Web Component の Full self-publish / Host-owned Composer Lite 共通 API です。iframe 版の
-`postMessage` API には今回追加していません。
 
 ## Full self-publish と Lite Host-owned
 
@@ -404,8 +141,8 @@ chunks、MediaBunny、optional AAC encoder、image compression が同じ distrib
 省略時の既存 fallback 挙動は維持され、新しい readiness error にはなりません。
 `auto-login`/`autoLogin` は Full 専用で、Lite は指定されても無視します。
 
-唯一の Host-owned manual sample は
-[host-owned-composer-lite-example.html](../public/host-owned-composer-lite-example.html) です。
+Host-owned の manual sample は
+[public/playground/lite.html](../public/playground/lite.html) と [lite.js](../public/playground/lite.js) です。
 
 ```js
 const composer = document.createElement('ehagaki-composer');
@@ -562,6 +299,229 @@ applyPreferredHeight();
 ```
 
 host がより小さい definite height を選んだ場合も、`.composer-scroll-region` の既存 outer scroll は維持されます。
+
+## 作成・破棄・再生成
+
+Web Component は通常の DOM API で作成・接続・破棄できます。
+
+```js
+async function createComposer() {
+  const element = document.createElement('ehagaki-composer');
+  element.assetBase = 'https://cdn.example/ehagaki/web-component/';
+  document.querySelector('#composer-mount').append(element);
+  await element.whenReady();
+  return element;
+}
+
+const composer = await createComposer();
+
+composer.remove(); // Destroy / Unmount
+
+const replacement = await createComposer(); // Recreate
+```
+
+要素を切断すると実行時のマウントと observer が cleanup され、1 インスタンス用の枠が
+解放されます。保存済みの localStorage や IndexedDB のデータは削除されません。最初の要素を
+削除した後なら、新しい `ehagaki-composer` を接続できます。
+
+## 1 document 1 instance 制約
+
+1 つの document で接続できる `ehagaki-composer` は 1 個だけです。2 個目を接続すると、2 個目は
+非活性のままになり、`ehagaki-initialization-error` に
+`multiple_instances_unsupported` が設定され、`whenReady()` が拒否されます。
+
+```js
+const first = document.createElement('ehagaki-composer');
+document.body.append(first);
+await first.whenReady();
+
+const second = document.createElement('ehagaki-composer');
+second.addEventListener('ehagaki-initialization-error', (event) => {
+  console.log(event.detail.code); // multiple_instances_unsupported
+});
+document.body.append(second);
+
+await second.whenReady().catch((error) => {
+  console.log(error.name); // multiple_instances_unsupported
+});
+
+first.remove();
+const replacement = document.createElement('ehagaki-composer');
+document.body.append(replacement);
+await replacement.whenReady();
+```
+
+## 下部 UI と高さ契約
+
+Web Component の下部 UI は常に component-bound layout です。`FooterComponent`、
+`KeyboardButtonBar`、`ReasonInput` は component の境界内に配置され、host page を scroll すると
+component と一緒に移動します。ブラウザ viewport 下端へ固定する Web Component 公開機能はありません。
+
+host は `.composer-host { height: 580px; }` のように解決済みの definite CSS height を指定し、
+`ehagaki-composer` がその高さを継承するようにしてください。height 未指定または `auto` は
+サポート対象外で、viewport 高への暗黙 fallback は行いません。
+
+host page が外側 scroll を所有し、composer 本文は既存の `.composer-scroll-region` が internal
+scroll を所有します。keyboard 表示時は component-local inset を使って下部 UI と composer
+reservation を調整します。dialog、tooltip、popover、PhotoSwipe などの overlay root と
+positioning 責務は変更されません。
+
+通常版/PWA と iframe は、Web Component とは異なり、従来の viewport 基準レイアウトを維持します。
+以前の Web Component 実装では下部 UI が browser viewport 基準でしたが、通常の埋め込みで component
+外へ出ないよう、現在は component-bound layout に統一しています。
+
+`asset-base` は、コンポーネントが実行時に参照する配信元のディレクトリです。エントリ
+モジュールを読み込む URL と、配布物内の `assets/`、`icons/` などを置いた
+ディレクトリを指定します。要素を接続する前に設定してください。
+
+要素を JavaScript で生成する場合は、`assetBase` property でも指定できます。
+
+```js
+await import('https://cdn.example/ehagaki/web-component/ehagaki-composer.js');
+
+const composer = document.createElement('ehagaki-composer');
+composer.assetBase = 'https://cdn.example/ehagaki/web-component/';
+document.querySelector('#composer-mount').append(composer);
+
+await composer.whenReady();
+```
+
+`asset-base` と `assetBase` は同じ設定を表します。接続後に値を変更しても、現在接続中の
+アプリの配信先やモジュール読み込み先は切り替わりません。別の配信先を使う場合は、
+値を変更してから要素をいったん削除し、再作成してください。すでに読み込んだモジュールを
+別実装へ切り替える場合は、Custom Elements Registry の制約があるためページを再読み込みします。
+
+## ローカル開発
+
+通常のアプリ開発には `npm run dev` を使います。Web Component の公開サンプルをローカルで
+確認する場合は `npm run dev:web-component` を使い、
+`http://localhost:5173/ehagaki/playground/full.html`（Lite は `playground/lite.html`）を開いてください。
+このコマンドは Web Component の初回buildとwatchを起動します。Web Component のソースを変更した後は、
+watchによる再buildの完了を待ってからページを再読み込みします。`vite.web-component.config.ts` などの
+build設定を変更した場合は、コマンドを再起動してください。
+
+Android ChromeやiPhone Safariなど、同じLAN上の実機から確認する場合は、明示的なLANモードを使います。
+
+```text
+npm run dev:web-component:lan
+```
+
+コンソールに表示された `http://<PCのLAN IP>:5173/ehagaki/playground/full.html`
+または `playground/lite.html` を実機で開いてください。PCと実機を同じWi-Fi/LANへ接続し、Windowsでは必要に応じてWindows Firewallで
+Node/ViteのPrivate networkアクセスを許可します。LANモードではViteのsample serverだけを公開し、
+Web Component assetの内部server（5174）は `127.0.0.1` のままです。実機から5174を直接開く必要はありません。
+このLAN URLはHTTP originです。LAN内実機での一般的なlayout、Destroy/Create、host scroll、fallback keyboard behavior
+などの確認には利用できますが、secure context限定APIは本番HTTPSと同じ経路にならない場合があります。
+特にAndroid ChromeのVirtualKeyboard API経路（`navigator.virtualKeyboard`、`overlaysContent`、`boundingRect`、
+`geometrychange`）の最終確認は、PR previewなど利用可能なHTTPS deployment、または端末から信頼されるHTTPS originで行ってください。
+iPhone Safariを含む一般的な実機確認には、LAN mode自体を引き続き利用できます。
+
+## Playground
+
+[eHagaki Playground](https://lokuyow.github.io/ehagaki/playground/) では、Full と Lite を別々のページで試せます。
+Full と Lite は同じ `<ehagaki-composer>` tag を登録するため、1つの document では両方を読み込めません。
+以前のサンプルURL（`web-component-parent-client-example.html`、`host-owned-composer-lite-example.html`）を開くと、
+query と hash を保ったまま対応するページへ移動します。
+
+### Full
+
+[playground/full.html](https://lokuyow.github.io/ehagaki/playground/full.html) では、通常モードでページを開くと、
+既定の同梱モジュールとコンポーネントが自動的に接続されます。任意のモジュールを試す場合は URL に `?manual=1` を付けて
+manual mode に入り、module URL を編集してから「作成して表示」を押してください。manual mode では明示的な操作まで
+モジュールを読み込みません。
+
+次の操作を確認できます。
+
+- 作成（Create / Mount）、削除（Destroy / Unmount）、作り直し（Recreate）
+- `setSettings()` による初期設定と実行時設定
+- `setContext()` による本文、reply、quote、multiple quote、channel
+- `ehagaki-ready`、`ehagaki-post-success`、`ehagaki-post-error`、
+  `ehagaki-composer-context-updated`、`ehagaki-initialization-error`
+- 2 個目のインスタンスの `multiple_instances_unsupported` 拒否
+- CSS Custom Properties
+- Headless `uploadFile()` と、Full の一時 Relay Config（`relays`）
+
+イベントログは、秘密情報、署名要求 payload、生の Error を表示せず、安全な要約だけを記録します。
+外部モジュールはホストページと同じ JavaScript 権限で実行されるため、module URL と `asset-base` には
+信頼できる URL だけを指定してください。
+
+### Lite
+
+[playground/lite.html](https://lokuyow.github.io/ehagaki/playground/lite.html) では、text-only / media-enabled の切替、
+custom emoji の catalog、context、host submit/upload の成功・失敗を確認できます。valid auto-grow range では、
+host-owned preferred-height 追従 toggle も確認できます。Composer は既定で画面下部に固定して表示し（幅 600px 以下では
+ページ内に表示）、切り替えもできます。テーマのプリセットは、公開 CSS Custom Properties を element に設定します。
+
+## 準備完了を待つ `whenReady()`
+
+`whenReady(): Promise<void>` は、アプリのマウントと初期化が完了した後に解決します。
+`ehagaki-ready` も同じ準備完了時に発火します。
+
+Full で `auto-login` を有効にした場合は、保存済み認証または NIP-07 fallback の認証後 bootstrap
+（Nostr session、リレー・プロフィール、ストア同期を含む）、もしくは失敗後の guest session
+bootstrap が完了するまで、どちらも成立しません。`auto-login` 未指定の Full と Lite Host-owned の
+既存 ready timing は変更されません。
+
+初回準備完了後のUIからのログインでは、認証後に仮プロフィールまたは保存済みプロフィールを先に表示します。リレー設定と投稿用sessionの準備ができれば、プロフィールのネットワーク応答前でも投稿できます。通常のリレー探索はkind 10002とkind 3を並行して実行し、kind 10002の優先順位を維持します。Host Relay Configは引き続きそのまま使用します。
+
+```js
+const composer = document.querySelector('ehagaki-composer');
+
+try {
+  await composer.whenReady();
+  await composer.setSettings({
+    locale: 'ja',
+    themeMode: 'light',
+  });
+  await composer.setContext({
+    content: 'ホストから設定した本文',
+  });
+} catch (error) {
+  console.error('eHagaki Composer initialization or setup failed', error);
+}
+```
+
+初期化に失敗した場合、`whenReady()` は拒否されます。2 個目の接続されたインスタンスも
+初期化されず、`multiple_instances_unsupported` の `ehagaki-initialization-error` を発火して
+`whenReady()` を拒否します。準備完了前に DOM から切断された要素の `whenReady()` は
+`disconnected` のエラーで拒否されます。
+
+`setSettings()` と `setContext()` は接続前にも呼び出せます。実装は呼び出しをキューに入れ、
+準備完了後に順番に適用します。一般的には、要素を生成して初期値を設定し、DOM へ追加してから
+`whenReady()` を待つ次の書き方が分かりやすいです。
+
+この connection 前 queue は、まだ一度も connection attempt を開始していない element の最初の
+mount attempt にだけ属します。接続済み mount で発行した `setContext()`、`setSettings()`、
+`focusEditor()`、`blurEditor()` はその mount attempt に束縛されます。mount を切断した後の
+operation や、切断中に発行した operation は次の mount へ移送されず、`disconnected` Error で
+reject されます。再生成または reconnect 後に更新する場合は、新しい mount の `whenReady()` 後に
+改めて呼び出してください。
+
+```js
+const composer = document.createElement('ehagaki-composer');
+composer.setAttribute('asset-base', 'https://cdn.example/ehagaki/web-component/');
+
+const settingsPromise = composer.setSettings({ locale: 'ja' });
+const contextPromise = composer.setContext({ content: '初期本文' });
+document.querySelector('#composer-mount').append(composer);
+
+await composer.whenReady();
+await settingsPromise;
+await contextPromise;
+```
+
+## 初期化前の設定とコンテキスト
+
+次の 3 つのタイミングで呼び出せます。
+
+- **接続前**: `document.createElement()` で生成した要素に `setSettings()` / `setContext()` を
+  呼び出すとキューに入り、接続後の準備完了後に適用されます。
+- **準備完了前**: 接続後でも `whenReady()` 完了前の呼び出しはキューに入り、順番に処理されます。
+- **準備完了後**: 通常の実行時更新として直ちに処理されます。
+
+接続前に `assetBase` を設定し、初期設定・コンテキストをキューへ追加してから要素を接続する方法は、
+公開サンプルの `Create / Mount` が使用しています。初期化自体に失敗した場合は、キューに入った
+操作も成功せず拒否されます。
 
 ## 設定を変更する `setSettings()`
 
@@ -761,18 +721,175 @@ reply、quotes、channel をまとめて指定した場合も、検証が失敗�
 `{ content: '新しい本文' }` を指定し、reply と引用を同時に解除するには
 `{ reply: null, quotes: null }` を指定します。
 
-## 初期化前の設定とコンテキスト
+## エディターの focus / blur を制御する `focusEditor()` / `blurEditor()`
 
-次の 3 つのタイミングで呼び出せます。
+Full self-publish と Host-owned Composer Lite のどちらの `<ehagaki-composer>` でも、現在 mount
+されている投稿エディターを公開メソッドから制御できます。どちらも既存の operation queue に入り、
+`Promise<void>` を返します。接続前・準備完了前の呼び出しも既存の queue 方針に従って保留されるため、
+通常は `whenReady()` と組み合わせて呼び出してください。
 
-- **接続前**: `document.createElement()` で生成した要素に `setSettings()` / `setContext()` を
-  呼び出すとキューに入り、接続後の準備完了後に適用されます。
-- **準備完了前**: 接続後でも `whenReady()` 完了前の呼び出しはキューに入り、順番に処理されます。
-- **準備完了後**: 通常の実行時更新として直ちに処理されます。
+```js
+await composer.focusEditor();
+// 現在の本文と EditorState の selection は維持されます。
+await composer.blurEditor();
+```
 
-接続前に `assetBase` を設定し、初期設定・コンテキストをキューへ追加してから要素を接続する方法は、
-公開サンプルの `Create / Mount` が使用しています。初期化自体に失敗した場合は、キューに入った
-操作も成功せず拒否されます。
+`focusEditor()` は現在の TipTap/ProseMirror Editor instance にフォーカスするだけで、focus のために
+caret や selection を本文の末尾・先頭へ移動しません。`blurEditor()` も本文や EditorState の selection
+をクリアせず、Editor を再生成しません。Shadow DOM 内部の selector を host が調べる必要はありません。
+この2つのメソッドは iframe の `postMessage` API には追加されていません。
+
+## Full からファイルをアップロードする `uploadFile()`
+
+Full self-publish distribution は `uploadFile(file, options?)` で `File` 1 件をアップロードし、
+最終 URL と確認できた metadata を返します。Host がファイルを取得して渡してください。この API は
+`whenReady()` の解決後に呼び出します。Editor へファイルを挿入せず、本文、draft、gallery、context、
+upload progress/error などの Composer UI state も変更しません。現在選択中の eHagaki upload destination、
+圧縮設定、destination が必要とする認証、通常の media validation と transport を使います。
+
+GIF（`image/gif`）は静止画・アニメーションとも圧縮設定にかかわらず原本のまま送信し、リサイズや形式変換を行いません。Composer UI と Host-owned Lite の `uploadMedia` への受け渡しも同じ扱いです。
+
+アニメーションWebP（`image/webp`）も通常投稿・リアクションで利用でき、圧縮設定にかかわらず原本を送信します。静止WebPは従来の画像処理を使用します。
+
+AVIF（`image/avif`）は通常投稿・画像リアクションで利用でき、静止画・アニメーションとも圧縮設定にかかわらず原本を送信します。
+
+```ts
+const composer = document.querySelector('ehagaki-composer');
+await composer.whenReady();
+
+const controller = new AbortController();
+const result = await composer.uploadFile(file, { signal: controller.signal });
+console.log(result.url, result.mimeType, result.dim, result.sha256, result.blurhash);
+```
+
+`options.signal` はこの upload だけを中止します。既に中止済みの signal を渡した場合や実行中に
+中止した場合、Promise は標準 `AbortError` で拒否されます。既存の Editor upload、submit preparation、
+post send、または別の `uploadFile()` が進行中なら `upload_in_progress` で拒否されます。
+
+戻り値は `EHagakiUploadResult` です。`url` は必須で、`mimeType`、`dim`、`sha256`、`blurhash` は
+選択された transport が最終 resource と一致すると確認できる場合だけ含まれます。たとえば NIP-96 の
+`sha256` は最終 resource の `x` を使い、変換前の `ox` は代用しません。確認できない値は省略されます。
+
+Host は `Error.name` で公開 error を判定できます: `not_ready`、`login_required`、
+`upload_in_progress`、`unsupported_media`、`upload_failed`。認証不要の destination では未ログインでも
+実行できます。初期化 failure / disconnect は既存の lifecycle error を維持します。`uploadFile` は
+Full distribution 専用で、Lite では method 自体が存在しません。古い Full bundle を含む場合は
+`typeof composer.uploadFile === 'function'` で capability を確認してください。
+
+この method は ready 前の operation queue には入りません。ready 前に呼ぶと upload を開始せず
+`not_ready` で拒否されます。iframe の `postMessage` APIには追加していません。
+
+## エディターが空かどうかを取得する `editorIsEmpty`
+
+Full self-publish と Host-owned Composer Lite のどちらの `<ehagaki-composer>` でも、現在の Composer
+エディターの空状態を `editorIsEmpty` property で取得できます。値は次のいずれかです。
+
+```ts
+readonly editorIsEmpty: boolean | null;
+```
+
+- `true`: eHagaki の TipTap editor が empty
+- `false`: eHagaki の TipTap editor が non-empty
+- `null`: 現在の mount で editor 状態が未確定、または element が切断済み
+
+空判定は eHagaki が所有し、TipTap `Editor.isEmpty` を基準にします。Host は Shadow DOM、`.ProseMirror`、
+`textContent` などを検査する必要はありません。event には本文、HTML、ProseMirror document は含まれません。
+`whenReady()` が解決した後は、`editorIsEmpty` から必ず現在の boolean 値を取得できます。
+
+空状態が変化すると、両 distribution から `ehagaki-editor-empty-change` が発火します。これは他の
+Web Component event と同じく `bubbles: true`、`composed: true` の CustomEvent で、detail は次の形です。
+
+```ts
+interface EHagakiComposerEditorEmptyChangeDetail {
+  isEmpty: boolean;
+}
+```
+
+`EHagakiComposerEditorEmptyChangeDetail` は Full / Host-owned Lite の両方の entry から export されます。
+
+```js
+const composer = document.querySelector('ehagaki-composer');
+
+await composer.whenReady();
+
+console.log(composer.editorIsEmpty);
+
+composer.addEventListener('ehagaki-editor-empty-change', (event) => {
+  console.log(event.detail.isEmpty);
+});
+```
+
+この API は Direct Web Component の Full self-publish / Host-owned Composer Lite 共通 API です。iframe 版の
+`postMessage` API には今回追加していません。
+
+## `auto-login` / `autoLogin`
+
+`auto-login` は、起動時の復元で認証状態が得られなかった場合に、ホストの `window.nostr` で
+NIP-07 ログインを行う opt-in です。既定は無効で、指定しない限り現在の動作から変わりません。
+
+```html
+<ehagaki-composer asset-base="/ehagaki/web-component/" auto-login></ehagaki-composer>
+```
+
+`disabled` などと同じ HTML の boolean 属性で、存在すれば有効です（`auto-login="false"` も
+有効になります）。無効にするには属性を削除するか `element.autoLogin = false` を使ってください。
+
+- ホストが `window.nostr` を用意していて、誰として署名するかが決まっている埋め込みを想定した
+  opt-in です。NIP-07 拡張は公開鍵の取得時に確認ダイアログを出すことが多いため、既定では
+  行いません。
+- Full self-publish distribution 専用です。Lite Host-owned では属性/propertyを指定しても無視され、
+  eHagaki の認証は開始しません。`setSettings()` の設定項目ではありません。
+- `asset-base` と同じく mount 時に読み取られます。接続後に変更しても現在の mount では認証を開始せず、
+  次の mount から有効です。
+- 起動時は先に、NIP-07 / NIP-46 など保存済み managed account を既存順序ですべて復元します。どれかを
+  復元できれば NIP-07 fallback は行いません。候補を正常に評価し終えても未認証だった場合だけ、
+  初回に限らずホストの NIP-07 identity を fallback として使います。1候補の storage 読み取りなどで
+  認証基盤異常が起きても残りの保存済み候補を試し、どれも復元できなかった場合は NIP-07 を開始せず、
+  ゲスト起動へ進みます。legacy nsec migration の異常時も、安全な strict snapshot を取得できる限り
+  保存済み候補の復元を続けます。
+- 保存済み NIP-46 account は、remote signer の応答を待たずに復元済みとして扱います。signer への接続と
+  identity の検証は起動後に行い、検証が終わるまで署名は行いません。そのため signer がオフラインでも
+  復元成功となり、NIP-07 fallback や後続候補の復元へは進みません。検証で signer が別の identity を
+  返した場合は、その session を終了してゲスト状態へ移行します（account と保存データは残ります）。
+- 保存済み NIP-07 の identity mismatch で現在の identity を取得済みなら、残りの保存済み候補を
+  最後まで試し、すべて失敗した場合だけ同じ identity を再問い合わせせず fallback に使います。
+- 再利用できる identity がない場合、`window.nostr` の注入を最大 3 秒待ちます。拡張未検出、ユーザー拒否、
+  その他の通常の NIP-07 失敗では通知を表示せず、ゲスト状態で起動を続行します。自動試行は 1 mount
+  につき 1 回です。
+- 成功した identity は通常の NIP-07 アカウントとして保存され、active account になります。同じ pubkey が
+  別認証方式で保存済みなら type を NIP-07 へ更新し、旧方式固有の credential/session だけを best-effort
+  で削除します。プロフィール、リレー設定、別 pubkey の保存済みアカウントは維持します。
+
+## Full の一時 Relay Config: `relays`
+
+Full self-publish distribution だけは、connection 前に `relays` property でこの mount 専用の
+default Relay Config を渡せます。HTML attribute や `setSettings()` の項目ではありません。
+
+```js
+const composer = document.createElement('ehagaki-composer');
+composer.assetBase = 'https://cdn.example/ehagaki/web-component/';
+composer.relays = [
+  { url: 'wss://relay.example', read: true, write: true },
+  { url: 'wss://read.example', read: true, write: false },
+];
+document.querySelector('#composer-mount').append(composer);
+await composer.whenReady();
+```
+
+型は `ReadonlyArray<{ url: string; read: boolean; write: boolean }>` です。各 URL は通常の
+external relay URL と同じく正規化され、`ws:` / `wss:` だけを受理します。credential 付き URL、
+廃止済み relay、重複 URL、空配列、未知の field、read/write が両方 `false` の entry は全体を
+reject します。部分的に採用したり、通常の relay 解決へ fallback したりしません。
+
+この設定は IndexedDB、relay cache、kind:10002、kind:3、次の standalone/PWA、または `relays`
+未指定の次回 embed へ保存されません。read relay は profile、reply/quote、channel、post history、
+realtime read の default です。write relay は投稿、再送、削除の default です。read-only config は
+閲覧できますが、write relay がなければ投稿は `no_write_relays` で失敗します。contextual relay hint は
+従来どおり補助 destination として扱われ、この Config は hint の件数上限では切り詰めません。
+
+現在接続中の session を途中で切り替えないため、`composer.relays` の変更は次回 mount 用に保持されます。
+変更を反映するには element を remove して新しい element を作成してください。Lite Host-owned
+distribution は `relays` property を公開せず、この API をサポートしません。
 
 ## 投稿成功・失敗イベント
 
@@ -867,57 +984,6 @@ composer.addEventListener('ehagaki-initialization-error', (event) => {
 として通知します。これらの処理を監視するときは、必ず `await` または `.catch()` を使ってください。
 イベント detail には安全な code/message だけを使用し、秘密鍵、認証 payload、生のエラー
 は含めません。
-
-## 作成・破棄・再生成
-
-Web Component は通常の DOM API で作成・接続・破棄できます。
-
-```js
-async function createComposer() {
-  const element = document.createElement('ehagaki-composer');
-  element.assetBase = 'https://cdn.example/ehagaki/web-component/';
-  document.querySelector('#composer-mount').append(element);
-  await element.whenReady();
-  return element;
-}
-
-const composer = await createComposer();
-
-composer.remove(); // Destroy / Unmount
-
-const replacement = await createComposer(); // Recreate
-```
-
-要素を切断すると実行時のマウントと observer が cleanup され、1 インスタンス用の枠が
-解放されます。保存済みの localStorage や IndexedDB のデータは削除されません。最初の要素を
-削除した後なら、新しい `ehagaki-composer` を接続できます。
-
-## 1 document 1 instance 制約
-
-1 つの document で接続できる `ehagaki-composer` は 1 個だけです。2 個目を接続すると、2 個目は
-非活性のままになり、`ehagaki-initialization-error` に
-`multiple_instances_unsupported` が設定され、`whenReady()` が拒否されます。
-
-```js
-const first = document.createElement('ehagaki-composer');
-document.body.append(first);
-await first.whenReady();
-
-const second = document.createElement('ehagaki-composer');
-second.addEventListener('ehagaki-initialization-error', (event) => {
-  console.log(event.detail.code); // multiple_instances_unsupported
-});
-document.body.append(second);
-
-await second.whenReady().catch((error) => {
-  console.log(error.name); // multiple_instances_unsupported
-});
-
-first.remove();
-const replacement = document.createElement('ehagaki-composer');
-document.body.append(replacement);
-await replacement.whenReady();
-```
 
 ## CSS Custom Properties
 
@@ -1079,28 +1145,3 @@ CSP の `worker-src` では、動画圧縮が遅延ロードするworkerがあ�
 コンポーネントは open ShadowRoot を使います。Dialog、popover、tooltip、suggestion、PhotoSwipe
 はコンポーネントの overlay root を対象にします。一方、browser-history と URL/share-target の
 入力処理は無効化されています。
-
-## 実動サンプル
-
-Full の公開サンプルは [https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html](https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html)
-です。通常モードではページを開くと、既定の同梱モジュールとコンポーネントが自動的に接続されます。
-任意のモジュールを試す場合は URL に `?manual=1` を付けて manual mode に入り、module URL を編集してから
-`Create / Mount` を押してください。manual mode では明示的な操作までモジュールを読み込みません。
-
-サンプルでは次の操作を確認できます。
-
-- `Create / Mount`、`Destroy / Unmount`、`Recreate`
-- `setSettings()` による初期設定と実行時設定
-- `setContext()` による本文、reply、quote、multiple quote、channel
-- `ehagaki-ready`、`ehagaki-post-success`、`ehagaki-post-error`、
-  `ehagaki-composer-context-updated`、`ehagaki-initialization-error`
-- 2 個目のインスタンスの `multiple_instances_unsupported` 拒否
-- CSS Custom Properties
-
-サンプルのイベントログは、秘密情報、署名要求 payload、生の Error を表示せず、安全な要約
-だけを記録します。外部モジュールはホストページと同じ JavaScript 権限で実行されるため、
-module URL と `asset-base` には信頼できる URL だけを指定してください。
-
-Host-owned Lite の公開サンプルは [https://lokuyow.github.io/ehagaki/host-owned-composer-lite-example.html](https://lokuyow.github.io/ehagaki/host-owned-composer-lite-example.html) です。Lite の sample では text-only / media-enabled の切替、catalog、context、host submit/upload
-の成功・失敗を、既存の Parent Client sample とは独立して確認できます。valid auto-grow range では、host-owned
-preferred-height 追従 toggle も確認できます。

@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iframe | eHagaki Playground</title>
+    <link rel="icon" href="../favicon.ico">
+    <link rel="stylesheet" href="./playground.css">
+    <style>
+        .iframe-frame {
+            padding: 0;
+            overflow: hidden;
+            border: 1px solid var(--pg-line);
+        }
+
+        #ehagaki-iframe {
+            display: block;
+            width: 100%;
+            height: clamp(420px, calc(100dvh - 340px), 640px);
+            border: 0;
+            background: white;
+        }
+
+        @media (max-width: 980px) {
+            #ehagaki-iframe {
+                height: 560px;
+            }
+        }
+
+        .timeline-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .timeline-toolbar .buttons {
+            flex: 1 1 260px;
+        }
+
+        .timeline-selection {
+            padding: 10px 12px;
+            border-radius: var(--pg-radius-sm);
+            background: var(--pg-surface-3);
+            color: var(--pg-text);
+            font-size: 0.86rem;
+            line-height: 1.5;
+        }
+
+        .timeline-list {
+            display: grid;
+            gap: 10px;
+            max-height: 520px;
+            overflow: auto;
+            padding-right: 2px;
+        }
+
+        .timeline-item {
+            display: grid;
+            gap: 8px;
+            padding: 12px;
+            border: 1px solid var(--pg-line);
+            border-radius: var(--pg-radius-sm);
+            background: var(--pg-surface-2);
+        }
+
+        .timeline-item-header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px 12px;
+            color: var(--pg-muted);
+            font-size: 0.8rem;
+        }
+
+        .timeline-event-id {
+            font-family: var(--pg-mono);
+        }
+
+        .timeline-content {
+            font-size: 0.9rem;
+            line-height: 1.55;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .timeline-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .timeline-actions button {
+            min-height: 34px;
+            padding: 5px 11px;
+            font-size: 0.85rem;
+        }
+
+        .timeline-actions button.secondary.is-active {
+            border-color: var(--pg-accent);
+            background: var(--pg-accent);
+            color: var(--pg-on-accent);
+        }
+
+        .timeline-empty {
+            padding: 16px;
+            border: 1px dashed var(--pg-line-strong);
+            border-radius: var(--pg-radius-sm);
+            color: var(--pg-muted);
+            font-size: 0.88rem;
+        }
+
+        #event-log {
+            min-height: 220px;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="pg-header">
+        <div class="pg-header-inner">
+            <a class="pg-brand" href="./index.html"><img src="../ehagaki_icon.svg" alt="" width="28" height="28">eHagaki Playground</a>
+            <nav class="pg-tabs" aria-label="プレイグラウンドのページ">
+                <a href="./index.html">はじめに</a>
+                <a href="./iframe.html" aria-current="page">iframe</a>
+                <a href="./full.html">Full</a>
+                <a href="./lite.html">Lite</a>
+            </nav>
+            <div class="pg-header-links">
+                <a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/EMBEDDING.md" target="_blank" rel="noreferrer noopener">埋め込み・統合ガイド</a>
+                <a href="../">eHagakiを開く</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="pg-main">
+        <header class="pg-intro" aria-labelledby="page-heading">
+            <p class="pg-eyebrow">iframe</p>
+            <h1 id="page-heading">iframe Playground</h1>
+            <p class="pg-lead">このページが親クライアントになり、eHagakiをiframeで埋め込んで、embed protocol v1のメッセージを中継します。親ページでのNIP-07ログイン、返信・引用・チャンネルの指定、設定の同期、storageの委譲を試せます。</p>
+            <ul class="pg-fit" aria-label="向いているケース">
+                <li>ホストのJavaScriptから隔離したい</li>
+                <li>親クライアント連携でログインしたい</li>
+                <li>storage / IndexedDBを親へ委譲したい</li>
+            </ul>
+            <nav class="intro-links" aria-label="iframeの資料">
+                <a class="intro-link primary" href="https://github.com/Lokuyow/ehagaki/blob/main/docs/IFRAME_EMBEDDING.md" target="_blank" rel="noreferrer noopener">iframe埋め込みガイド</a>
+                <a class="intro-link secondary" href="./index.html#choose">方式の選び方</a>
+            </nav>
+        </header>
+
+        <div class="pg-workspace">
+            <section class="pg-preview" aria-labelledby="live-preview-heading">
+                <div class="pg-panel">
+                    <div class="pg-panel-header">
+                        <div>
+                            <h2 id="live-preview-heading">埋め込み iframe</h2>
+                            <p class="small">受信したメッセージは形式を検証し、許可した型だけを処理します。</p>
+                        </div>
+                    </div>
+                    <div class="status-row">
+                        <div id="signer-status" class="status-pill warn">NIP-07 signer 未検出</div>
+                        <div id="parent-auth-status" class="status-pill warn">親クライアント未ログイン</div>
+                        <div id="handshake-status" class="status-pill">iframe 未接続</div>
+                    </div>
+                    <div class="component-frame iframe-frame">
+                        <iframe id="ehagaki-iframe" title="eHagaki embed sample"
+                            allow="local-network-access; local-network; loopback-network"></iframe>
+                    </div>
+                    <div class="pg-preview-meta">
+                        <span class="pg-label">iframeのsrc</span>
+                        <code id="iframe-src"></code>
+                    </div>
+                    <div class="buttons">
+                        <button id="reload-iframe" type="button">iframe を再読み込み</button>
+                    </div>
+                </div>
+            </section>
+
+            <div class="pg-controls">
+                <details class="pg-section" open>
+                    <summary><span class="pg-section-step" aria-hidden="true">1</span><h2>親クライアントでログインする</h2></summary>
+                    <div class="pg-section-body">
+                        <p class="small">NIP-07でログインすると親ページの <code>window.nostr</code> を使い、秘密鍵でログインするとこのサンプルに保存した秘密鍵で署名します。iframeからの署名要求は親が処理します。</p>
+                        <div class="buttons">
+                            <button id="login-nip07" type="button">NIP-07でログイン</button>
+                            <button id="announce-logout" type="button" class="secondary">ログアウト</button>
+                        </div>
+                        <form id="secret-key-login-form" class="pg-subsection">
+                            <div class="field">
+                                <label for="secret-key">秘密鍵ログイン (nsec)</label>
+                                <input id="secret-key" type="password" spellcheck="false" placeholder="nsec1..." autocomplete="off">
+                            </div>
+                            <div class="buttons">
+                                <button id="login-secret-key" type="submit" class="secondary">秘密鍵でログイン</button>
+                            </div>
+                        </form>
+                        <p id="auth-feedback" class="small feedback" role="status"></p>
+                        <div class="notice warn">
+                            <strong>秘密鍵ログインは動作確認専用です</strong>
+                            <p class="small">秘密鍵でログインすると、このサンプルはnsecを親ページのlocalStorageに平文で保存します。ログアウトすると削除します。NIP-07ログインと秘密鍵ログインは同時に使えないため、切り替えるときはいったんログアウトしてください。</p>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="pg-section" open>
+                    <summary><span class="pg-section-step" aria-hidden="true">2</span><h2>返信・引用・チャンネルを指定する</h2></summary>
+                    <div class="pg-section-body">
+                        <p class="small">指定したrelayの最新のkind 1を表示します。返信・引用・本文は、iframeのready後なら <code>postMessage</code> で同期し、未接続のときだけURLクエリを付けて読み込み直します。</p>
+                        <div class="field">
+                            <label for="timeline-relay">タイムライン relay URL</label>
+                            <input id="timeline-relay" type="text" inputmode="url" list="timeline-relay-suggestions" spellcheck="false" autocomplete="off" value="wss://nos.lol">
+                            <datalist id="timeline-relay-suggestions"></datalist>
+                            <p class="small">ws:// または wss:// のrelayを入力し、「タイムライン更新」を押してください。使ったrelayは次の入力候補に保存します。</p>
+                        </div>
+                        <div class="timeline-toolbar">
+                            <div id="timeline-status" class="status-pill warn">タイムライン未接続</div>
+                            <div class="buttons">
+                                <button id="refresh-timeline" type="button">タイムライン更新</button>
+                                <button id="clear-reply-quote" type="button" class="ghost">reply / quote 解除</button>
+                            </div>
+                        </div>
+                        <div id="timeline-selection" class="timeline-selection">reply: なし / quote: 0 件 / channel: なし</div>
+                        <div id="timeline-list" class="timeline-list"></div>
+
+                        <div class="pg-subsection">
+                            <h3>本文を同期する</h3>
+                            <div class="field composer-field">
+                                <label for="composer-content">本文同期テスト</label>
+                                <textarea id="composer-content" spellcheck="true" placeholder="composer.setContext で同期する本文を入力"></textarea>
+                            </div>
+                            <div class="buttons">
+                                <button id="sync-composer-content" type="button" class="secondary">本文を同期</button>
+                                <button id="clear-composer-content" type="button" class="ghost">本文をクリア</button>
+                            </div>
+                            <p class="small">返信・引用・チャンネルを付けたまま、本文だけを差し替えられます。iframeからは requestId 付きで <code>composer.contextApplied</code> / <code>composer.contextError</code> が返り、iframe側での変更は <code>composer.contextUpdated</code> で親に届きます。</p>
+                        </div>
+
+                        <div class="pg-subsection">
+                            <h3>パブリックチャット（channel context）</h3>
+                            <div class="field">
+                                <label for="channel-reference">channel reference</label>
+                                <input id="channel-reference" type="text" spellcheck="false" placeholder="note1... または nevent1...">
+                            </div>
+                            <div class="grid-2">
+                                <div class="field">
+                                    <label for="channel-name">channel name</label>
+                                    <input id="channel-name" type="text" spellcheck="false" placeholder="General">
+                                </div>
+                                <div class="field">
+                                    <label for="channel-picture">channel picture</label>
+                                    <input id="channel-picture" type="url" spellcheck="false" placeholder="https://example.com/channel.png">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="channel-about">channel about</label>
+                                <input id="channel-about" type="text" spellcheck="false" placeholder="Public chat">
+                            </div>
+                            <div class="field">
+                                <label for="channel-relays">channel relays</label>
+                                <textarea id="channel-relays" spellcheck="false" placeholder="wss://channel-write.example.com&#10;wss://channel-backup.example.com"></textarea>
+                            </div>
+                            <div class="buttons">
+                                <button id="sync-channel-context" type="button" class="secondary">channel を同期</button>
+                                <button id="clear-channel-context" type="button" class="ghost">channel を解除</button>
+                            </div>
+                            <p class="small">channel referenceには nevent1... を使ってください。channel relaysは、読み込み直すときは <code>channelRelays</code> クエリとして、実行中に更新するときは <code>payload.channel.relays</code> として渡します。relaysを省略してevent idだけを渡すと、iframeがkind 40 / 41からmetadataとrelaysを解決します。relaysを省略してname / about / pictureだけを渡すと、iframe自身のwrite relayを使います。</p>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="pg-section">
+                    <summary><span class="pg-section-step" aria-hidden="true">3</span><h2>初回設定と実行中の同期</h2></summary>
+                    <div class="pg-section-body">
+                        <div class="grid-2">
+                            <div class="field">
+                                <label for="initial-query-mode">query mode</label>
+                                <select id="initial-query-mode">
+                                    <option value="embed" selected>embed (毎回強制)</option>
+                                    <option value="default">default (未保存時のみ)</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="initial-locale">locale</label>
+                                <select id="initial-locale">
+                                    <option value="">未指定</option>
+                                    <option value="ja">ja</option>
+                                    <option value="en">en</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="initial-theme">theme</label>
+                                <select id="initial-theme">
+                                    <option value="" selected>未指定</option>
+                                    <option value="system">system</option>
+                                    <option value="light">light</option>
+                                    <option value="dark">dark</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="initial-reply-notification">reply notification</label>
+                                <select id="initial-reply-notification">
+                                    <option value="" selected>未指定</option>
+                                    <option value="true">ON</option>
+                                    <option value="false">OFF</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="initial-accent-color">Accent Color（6桁HEX）</label>
+                                <input id="initial-accent-color" type="text" placeholder="#1dbf73">
+                            </div>
+                            <div class="field">
+                                <label for="initial-base-color">Base Color（6桁HEX）</label>
+                                <input id="initial-base-color" type="text" placeholder="#dcefe4">
+                            </div>
+                        </div>
+                        <div class="preset-grid" id="theme-presets" aria-label="テーマのプリセット"></div>
+                        <label class="checkbox-field" for="initial-hide-mascot">
+                            <input id="initial-hide-mascot" type="checkbox">
+                            <span>左上のマスコットを非表示にする</span>
+                        </label>
+                        <p class="small"><code>embed~</code> のクエリ（<code>embedLocale=en</code>、<code>embedTheme=dark</code>、<code>embedAccentColor</code> など）は、iframeを起動するたびに強制されます。初期値だけを渡したいときは <code>default~</code>（<code>defaultLocale=en</code> など）を使います。常に表示しておくiframeでは、ready後や親の設定が変わったときに <code>settings.set</code> を送れば、読み込み直さずに同期できます。ユーザー設定は親のstorageに保存されますが、実行中に強制したカラーは保存されません。</p>
+                        <div class="buttons">
+                            <button id="sync-runtime-settings" type="button" class="secondary">現在の設定を postMessage で同期</button>
+                            <button id="reset-initial-settings" type="button" class="ghost">初期設定をリセットして再読み込み</button>
+                        </div>
+                        <p id="initial-settings-feedback" class="small feedback" role="status"></p>
+                    </div>
+                </details>
+
+                <details class="pg-section">
+                    <summary><span class="pg-section-step" aria-hidden="true">4</span><h2>URL・origin・一時Relay Config</h2></summary>
+                    <div class="pg-section-body">
+                        <div class="field">
+                            <label for="app-url">eHagaki URL</label>
+                            <input id="app-url" type="url" spellcheck="false">
+                            <p class="small">iframeに読み込むeHagakiのURLです。書き換えたら「iframe を再読み込み」を押してください。</p>
+                        </div>
+                        <div class="field">
+                            <label for="parent-origin">親ページ origin</label>
+                            <input id="parent-origin" type="text" readonly>
+                        </div>
+                        <div class="pg-subsection">
+                            <h3>Host-provided temporary Relay Config</h3>
+                            <label class="checkbox-field" for="host-relay-config-enabled">
+                                <input id="host-relay-config-enabled" type="checkbox">
+                                <span><code>hostRelayConfig=1</code> を付けて起動し、この親からrelayを渡す</span>
+                            </label>
+                            <div class="field">
+                                <label for="host-relay-config">Relay Config JSON</label>
+                                <textarea id="host-relay-config" spellcheck="false">[{"url":"wss://nos.lol","read":true,"write":true}]</textarea>
+                            </div>
+                            <p class="small">有効にすると、iframeはready前に <code>relays.request</code> を送り、親は同じrequestIdで <code>relays.set</code> を返します。値を変えたらiframeを読み込み直してください。</p>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <section class="pg-panel" aria-labelledby="event-log-heading">
+            <div class="pg-panel-header">
+                <div><h2 id="event-log-heading">イベントログ</h2><p class="small">iframeとの間でやり取りしたメッセージを、新しい順に記録します。</p></div>
+                <div class="pg-actions">
+                    <button type="button" class="ghost compact" data-copy-target="event-log">コピー</button>
+                    <button id="clear-log" type="button" class="ghost compact">ログを消す</button>
+                </div>
+            </div>
+            <textarea id="event-log" class="log" readonly aria-label="イベントログ"></textarea>
+        </section>
+    </main>
+
+    <script type="module" src="./shell.js"></script>
+    <script type="module" src="./iframe.js"></script>
+</body>
+
+</html>

@@ -100,9 +100,7 @@ iframe、Full Web Component、Host-owned Composer Lite Web Componentの方式選
 
 - iframeの詳細仕様: [docs/IFRAME_EMBEDDING.md](docs/IFRAME_EMBEDDING.md)
 - Web Component API詳細: [docs/WEB_COMPONENT.md](docs/WEB_COMPONENT.md)
-- iframe live sample: [embed-parent-client-example.html](https://lokuyow.github.io/ehagaki/embed-parent-client-example.html)
-- Full Web Component live sample: [web-component-parent-client-example.html](https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html)
-- Host-owned Lite live sample: [host-owned-composer-lite-example.html](https://lokuyow.github.io/ehagaki/host-owned-composer-lite-example.html)
+- Playground（iframe / Full / Liteを実際に試せるページ）: [lokuyow.github.io/ehagaki/playground/](https://lokuyow.github.io/ehagaki/playground/)
 
 既存のNostrクライアントがaccount、signer、event構築、publishを所有している場合はHost-owned Lite、eHagakiにself-publishまで所有させる場合はFull、origin境界やparent-client連携が必要な場合はiframeが候補です。iframe/Web Componentともhost側からAccent/Base themeを指定できます。優先順位とAPIの詳細は各ガイドを参照してください。
 

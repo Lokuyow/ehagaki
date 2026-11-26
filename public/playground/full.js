@@ -1,3 +1,5 @@
+import { THEME_PRESETS } from "./shell.js";
+
 const EVENT_TYPES = [
     "ehagaki-ready",
     "ehagaki-post-success",
@@ -50,24 +52,7 @@ const CUSTOM_STYLE_FIELDS = [
     ...DETAIL_STYLE_FIELDS,
 ];
 
-const STYLE_PRESETS = {
-    azure: {
-        accent: "#005FCC",
-        base: "#0077FF",
-    },
-    rose: {
-        accent: "#B4233C",
-        base: "#FF3B5C",
-    },
-    forest: {
-        accent: "#1F7A4D",
-        base: "#00A86B",
-    },
-    amber: {
-        accent: "#8A5700",
-        base: "#F2B000",
-    },
-};
+const STYLE_PRESETS = THEME_PRESETS;
 
 const STYLE_PRESET_FIELDS = [
     ["style-accent", "accent"],
@@ -155,17 +140,17 @@ function installEventListeners(element, label) {
 }
 
 function normalizeDirectoryUrl(value) {
-    const resolved = new URL(value || "./web-component/", document.baseURI);
+    const resolved = new URL(value || "../web-component/", document.baseURI);
     if (!resolved.pathname.endsWith("/")) resolved.pathname += "/";
     return resolved.href;
 }
 
 function getDefaultModuleUrl() {
-    return new URL("./web-component/ehagaki-composer.js", document.baseURI).href;
+    return new URL("../web-component/ehagaki-composer.js", document.baseURI).href;
 }
 
 function getDefaultAssetBase() {
-    return new URL("./web-component/", document.baseURI).href;
+    return new URL("../web-component/", document.baseURI).href;
 }
 
 function getSettings() {
