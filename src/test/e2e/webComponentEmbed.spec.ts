@@ -2298,7 +2298,7 @@ test("applies Button styles inside a Portal dialog in the Shadow DOM", async ({ 
     expect(darkDialogBackground).not.toBe(lightResult.dialogBackground);
 });
 
-test("offers NIP-07 and NIP-46 without rendering local nsec login UI", async ({ page }) => {
+test("offers NIP-07, NIP-46 and read-only public key login without rendering local nsec login UI", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async (pubkeyHex) => {
         window.nostr = {
@@ -2336,6 +2336,7 @@ test("offers NIP-07 and NIP-46 without rendering local nsec login UI", async ({ 
         return {
             secretInputCount: dialog.querySelectorAll('#secretKey, input[placeholder="nsec1..."]').length,
             secretSectionCount: dialog.querySelectorAll(".secret-key-section").length,
+            publicKeyInputType: dialog.querySelector<HTMLInputElement>("#publicKeyLogin")?.type ?? null,
             nip07Visible: !!dialog.querySelector(".nip07-login-button"),
             nip07Enabled: !dialog.querySelector<HTMLButtonElement>(".nip07-login-button")?.disabled,
             nip46Visible: !!dialog.querySelector(".nostrconnect-open-btn"),
@@ -2351,12 +2352,60 @@ test("offers NIP-07 and NIP-46 without rendering local nsec login UI", async ({ 
     expect(result).toEqual({
         secretInputCount: 0,
         secretSectionCount: 0,
+        publicKeyInputType: "text",
         nip07Visible: true,
         nip07Enabled: true,
         nip46Visible: true,
         hasAddedWarning: false,
         fitsComponent: true,
     });
+});
+
+test("signs in with a read-only npub and restores it after reload without storing a secret", async ({ page }) => {
+    const npub = nip19.npubEncode(testPubkeyHex);
+    const mount = () => page.evaluate(async () => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+        };
+        composer.style.width = "360px";
+        composer.style.height = "600px";
+        document.body.append(composer);
+        await composer.whenReady();
+    });
+
+    await page.goto(hostOrigin);
+    await mount();
+    await page.waitForFunction(() =>
+        !!document.querySelector("ehagaki-composer")?.shadowRoot?.querySelector("button.login-btn"),
+    );
+    await page.evaluate(() => {
+        document.querySelector("ehagaki-composer")!.shadowRoot!
+            .querySelector<HTMLButtonElement>("button.login-btn")!.click();
+    });
+    const input = page.locator("ehagaki-composer").locator("#publicKeyLogin");
+    await expect(input).toBeVisible();
+    await input.fill(npub);
+    await input.press("Enter");
+
+    await expect.poll(() => page.evaluate((prefix) =>
+        JSON.parse(localStorage.getItem(`${prefix}nostr-accounts`) ?? "[]")
+            .map((account: { pubkeyHex: string; type: string }) => [account.pubkeyHex, account.type]),
+    componentStoragePrefix)).toEqual([[testPubkeyHex, "npub"]]);
+    await expect.poll(() => page.evaluate((prefix) =>
+        Object.keys(localStorage).filter((key) => key.startsWith(`${prefix}nostr-secret-key`)),
+    componentStoragePrefix)).toEqual([]);
+
+    await page.reload();
+    await mount();
+    await page.waitForFunction(() =>
+        !!document.querySelector("ehagaki-composer")?.shadowRoot?.querySelector(".profile-display"),
+    );
+    expect(await page.evaluate(() =>
+        !!document.querySelector("ehagaki-composer")?.shadowRoot?.querySelector("button.login-btn"),
+    )).toBe(false);
+    expect(await page.evaluate((prefix) => localStorage.getItem(`${prefix}nostr-active-account`), componentStoragePrefix))
+        .toBe(testPubkeyHex);
 });
 
 test("cleans only legacy Web Component nsec state and restores the remaining NIP-07 account", async ({ page }) => {

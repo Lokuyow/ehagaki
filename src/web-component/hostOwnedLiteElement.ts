@@ -135,6 +135,10 @@ export class EHagakiHostOwnedLiteComposerElement extends EHagakiComposerElement 
         return false;
     }
 
+    protected override isPublicKeyAuthEnabled(): boolean {
+        return false;
+    }
+
     protected override getAdditionalMountProps(): Record<string, unknown> {
         if (!this.#hostOwnedOptions) {
             throw new Error("Host-owned Composer Lite configuration is missing.");

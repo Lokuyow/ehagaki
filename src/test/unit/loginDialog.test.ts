@@ -125,6 +125,44 @@ describe('LoginDialog', () => {
         expect(screen.queryByText(/Web Component.*秘密鍵/)).toBeNull();
     });
 
+    it('ローカルnsec認証が無効でも公開鍵ログインの入力欄を出し、秘密鍵は送らない', async () => {
+        const onSave = vi.fn();
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                onSave,
+                localNsecAuthEnabled: false,
+                publicKeyAuthEnabled: true,
+            },
+        });
+
+        expect(screen.queryByPlaceholderText('nsec1...')).toBeNull();
+        expect(document.querySelector('#secretKey')).toBeNull();
+        const input = screen.getByPlaceholderText('npub1... / nprofile1...') as HTMLInputElement;
+        expect(input.id).toBe('publicKeyLogin');
+        expect(input.type).toBe('text');
+
+        await fireEvent.input(input, { target: { value: `nsec1${'q'.repeat(58)}` } });
+        await fireEvent.submit(input.closest('form')!);
+
+        expect(onSave).not.toHaveBeenCalled();
+        expect(screen.getByRole('alert').textContent).toContain('公開鍵');
+        expect(input.value).toBe('');
+    });
+
+    it('公開鍵ログインも無効な場合は鍵の入力欄を出さない', () => {
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                localNsecAuthEnabled: false,
+                publicKeyAuthEnabled: false,
+            },
+        });
+
+        expect(screen.queryByPlaceholderText('nsec1...')).toBeNull();
+        expect(screen.queryByPlaceholderText('npub1... / nprofile1...')).toBeNull();
+    });
+
     it('Enter で送信した場合は保存処理を1回だけ実行する', async () => {
         const onSave = vi.fn();
 

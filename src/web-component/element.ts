@@ -355,6 +355,7 @@ export abstract class EHagakiComposerElement extends HTMLElement {
                 externalInputEnabled: false,
                 historyEnabled: false,
                 localNsecAuthEnabled: false,
+                publicKeyAuthEnabled: this.isPublicKeyAuthEnabled(),
                 autoLoginNip07Enabled: this.isAutoLoginNip07Enabled(),
             });
             await installEhagakiDatabaseGateForRuntime(assetBase);
@@ -442,6 +443,11 @@ export abstract class EHagakiComposerElement extends HTMLElement {
     /** Full supports startup NIP-07; Lite overrides this runtime capability. */
     protected isAutoLoginNip07Enabled(): boolean {
         return this.autoLogin;
+    }
+
+    /** Full allows read-only public key sign-in; Lite owns no auth at all. */
+    protected isPublicKeyAuthEnabled(): boolean {
+        return true;
     }
 
     protected getAdditionalMountProps(_generation?: number): Record<string, unknown> {

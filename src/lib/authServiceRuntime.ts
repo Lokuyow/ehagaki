@@ -53,6 +53,7 @@ export interface AuthServiceRuntime {
     navigator: Navigator;
     serviceWorkerEnabled: boolean;
     localNsecAuthEnabled: boolean;
+    publicKeyAuthEnabled: boolean;
     console: Console;
     nip46Svc: Nip46Service;
     parentClientSvc: ParentClientAuthService;
@@ -81,6 +82,9 @@ export function createAuthServiceRuntime(dependencies: AuthServiceDependencies =
     const localNsecAuthEnabled =
         dependencies.localNsecAuthEnabled ??
         getAppRuntimeEnvironment().localNsecAuthEnabled;
+    const publicKeyAuthEnabled =
+        dependencies.publicKeyAuthEnabled ??
+        getAppRuntimeEnvironment().publicKeyAuthEnabled;
     const consoleObj = dependencies.console ?? (typeof window !== 'undefined' ? window.console : {} as Console);
     const indexedDB =
         dependencies.indexedDB ??
@@ -100,6 +104,7 @@ export function createAuthServiceRuntime(dependencies: AuthServiceDependencies =
         navigator,
         serviceWorkerEnabled,
         localNsecAuthEnabled,
+        publicKeyAuthEnabled,
         console: consoleObj,
         keyManager,
         nip46Svc: nip46Service,

@@ -62,8 +62,8 @@ export class AuthService {
 
     authenticateWithPublicKey(input: string): AuthResult & { profileRelayHints?: string[] } {
         const accountManager = this.accountManager;
-        if (!this.runtime.localNsecAuthEnabled || !accountManager) {
-            return { success: false, error: 'local-nsec-auth-disabled' };
+        if (!this.runtime.publicKeyAuthEnabled || !accountManager) {
+            return { success: false, error: 'public-key-auth-disabled' };
         }
         const identity = parsePublicKeyLogin(input);
         if (!identity) return { success: false, error: 'invalid_public_key' };
@@ -528,8 +528,11 @@ export class AuthService {
             expectedAccounts?: Array<Pick<StoredAccount, 'pubkeyHex' | 'type'>>;
         } = {},
     ): Promise<ManagedRestoreResult> {
-        if ((type === 'nsec' || type === 'npub') && !this.runtime.localNsecAuthEnabled) {
+        if (type === 'nsec' && !this.runtime.localNsecAuthEnabled) {
             return { hasAuth: false, reason: 'local-nsec-auth-disabled' };
+        }
+        if (type === 'npub' && !this.runtime.publicKeyAuthEnabled) {
+            return { hasAuth: false, reason: 'public-key-auth-disabled' };
         }
 
         if (!isHex64(pubkeyHex)) {

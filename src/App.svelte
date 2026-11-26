@@ -2426,6 +2426,7 @@
           {nip46NostrConnectErrorMessage}
           initialNostrConnectRelayCandidates={getInitialNip46ConnectRelayCandidates()}
           localNsecAuthEnabled={appRuntimeEnvironment.localNsecAuthEnabled}
+          publicKeyAuthEnabled={appRuntimeEnvironment.publicKeyAuthEnabled}
         />
       {/if}
       <RelayDeliveryToasts rows={deliveryFeedback.bars} onDismiss={deliveryFeedback.dismiss} />
@@ -2462,6 +2463,7 @@
           initialNostrConnectRelayCandidates={getInitialNip46ConnectRelayCandidates()}
           isAddAccountMode={true}
           localNsecAuthEnabled={appRuntimeEnvironment.localNsecAuthEnabled}
+          publicKeyAuthEnabled={appRuntimeEnvironment.publicKeyAuthEnabled}
         />
       {/if}
       {#if showLogoutDialogStore.value && ProfileComponent}
