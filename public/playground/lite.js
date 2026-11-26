@@ -3,6 +3,18 @@
 // imports only the Lite distribution.
 import { THEME_PRESETS } from './shell.js';
 
+// Layout: dock the composer to the bottom of the viewport, or show it inline.
+// Set this up before importing the distribution so a slow or failed import
+// does not leave an empty dock covering a phone screen.
+const dockToggle = document.querySelector('#dock-composer');
+const applyDockMode = () => {
+  document.body.classList.toggle('pg-dock', dockToggle.checked);
+};
+dockToggle.onchange = applyDockMode;
+// A 460px dock covers most of a phone screen, so start inline on narrow viewports.
+if (window.matchMedia('(max-width: 600px)').matches) dockToggle.checked = false;
+applyDockMode();
+
 await import('../web-component/host-owned/ehagaki-composer.js');
 
 const mount = document.querySelector('#mount');
@@ -345,16 +357,6 @@ function selectTheme(name) {
   write('theme preset:', name ? { name, ...THEME_PRESETS[name] } : 'default');
 }
 get('reset-theme').onclick = () => selectTheme(null);
-
-// Layout: dock the composer to the bottom of the viewport, or show it inline.
-const dockToggle = get('dock-composer');
-const applyDockMode = () => {
-  document.body.classList.toggle('pg-dock', dockToggle.checked);
-};
-dockToggle.onchange = applyDockMode;
-// A 460px dock covers most of a phone screen, so start inline on narrow viewports.
-if (window.matchMedia('(max-width: 600px)').matches) dockToggle.checked = false;
-applyDockMode();
 
 get('context-content').value = 'Host-owned Lite playground content';
 void createComposer().catch((error) => write('create error:', safeError(error)));
