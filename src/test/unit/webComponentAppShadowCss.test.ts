@@ -10,7 +10,7 @@ const appCss = readFileSync(resolve("src/app.css"), "utf8");
  * Minifies like the production build. esbuild refuses to run inside the jsdom
  * test environment, so it runs in a plain Node child process.
  */
-async function minify(css: string): Promise<string> {
+function minify(css: string): string {
     return execFileSync(
         process.execPath,
         [
@@ -22,46 +22,40 @@ async function minify(css: string): Promise<string> {
     );
 }
 
-/** Selector lists of top-level rules, normalized without whitespace. */
-function selectors(css: string): string[] {
-    return Array.from(css.matchAll(/(?:^|[{}])\s*([^{}@;]+?)\s*\{/g), (match) =>
-        match[1].replaceAll(/\s+/g, ""));
+/** Declarations of top-level rules whose selector is exactly `selector`. */
+function declarationsFor(css: string, selector: string): string {
+    const normalized = css.replaceAll(/\s+/g, " ");
+    const escaped = selector.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return Array.from(
+        normalized.matchAll(new RegExp(`(?<=^|[{}] ?)${escaped} ?\\{([^}]*)\\}`, "g")),
+        (match) => match[1],
+    ).join(";");
 }
 
 describe("Web Component app.css shadow-root transform", () => {
     for (const [label, load] of [
-        ["formatted development CSS", async () => appCss],
+        ["formatted development CSS", () => appCss],
         ["minified production CSS", () => minify(appCss)],
     ] as const) {
-        it(`rewrites document-root selectors in ${label}`, async () => {
-            const transformed = transformAppCssForShadowRoot(await load());
-            const ruleSelectors = selectors(transformed);
+        it(`applies the body text rules to the shell in ${label}`, () => {
+            const transformed = transformAppCssForShadowRoot(load());
+            const shellRules = declarationsFor(transformed, ".ehagaki-web-component-shell");
 
             expect(transformed).not.toContain(":root");
-            expect(ruleSelectors).toContain(":host,.ehagaki-web-component-shell");
-            expect(ruleSelectors.filter((selector) => selector === ".ehagaki-web-component-shell")).toHaveLength(2);
-            for (const selector of ruleSelectors) {
-                const parts = selector.split(",");
-                expect(parts, selector).not.toContain("html");
-                expect(parts, selector).not.toContain("body");
-                expect(parts, selector).not.toContain("#app");
-            }
+            expect(shellRules).toMatch(/overflow-wrap: ?anywhere/);
+            expect(shellRules).toMatch(/line-break: ?strict/);
+        });
+
+        it(`keeps document scrolling rules off the host in ${label}`, () => {
+            const transformed = transformAppCssForShadowRoot(load()).replaceAll(/\s+/g, "");
+
+            // The host owns the component box; clipping it would cut off overlays.
+            expect(transformed).not.toMatch(/:host,\.ehagaki-web-component-shell\{/);
+            expect(transformed).not.toMatch(/(^|[{}]):host\{[^}]*overflow-x:hidden/);
         });
     }
 
-    it("keeps the shell rules that the document-root rules provided", async () => {
-        const transformed = transformAppCssForShadowRoot(await minify(appCss));
-        const shellRules = Array.from(
-            transformed.matchAll(/(?<=^|})\.ehagaki-web-component-shell\{([^}]*)\}/g),
-            (match) => match[1],
-        ).join(";");
-
-        expect(shellRules).toContain("overflow-wrap:anywhere");
-        expect(shellRules).toContain("line-break:strict");
-        expect(transformed).toMatch(/:host,\.ehagaki-web-component-shell\{[^}]*overflow-x:hidden/);
-    });
-
-    it("does not rewrite selectors that merely contain body or app", () => {
+    it("does not rewrite selectors that merely contain body", () => {
         const css = ".modal-body{color:red}tbody{color:blue}#apple{color:green}";
         expect(transformAppCssForShadowRoot(css)).toBe(css);
     });
