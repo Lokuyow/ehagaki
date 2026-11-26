@@ -427,10 +427,6 @@ export class ParentClientAuthService {
         return this.activeSession?.pubkeyHex ?? null;
     }
 
-    getTrustedParentOrigin(): string | null {
-        return this.trustedParentOrigin;
-    }
-
     isConnected(): boolean {
         return this.activeSession !== null;
     }

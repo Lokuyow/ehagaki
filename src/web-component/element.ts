@@ -18,6 +18,7 @@ import {
 } from "./types";
 import { createWebComponentNotificationPort } from "./notificationPort";
 import { createWebComponentIconAssetApplier } from "./iconAssets";
+import { createNamedError } from "./errors";
 import { transformAppCssForShadowRoot } from "./appShadowCss";
 
 type AppInstance = {
@@ -44,15 +45,7 @@ type ReadyBoundary = {
 let activeInstance: EHagakiComposerElement | null = null;
 
 function createError(code: EHagakiComposerInitializationErrorDetail["code"], message: string): Error {
-    const error = new Error(message);
-    error.name = code;
-    return error;
-}
-
-function createNamedError(name: string, message: string): Error {
-    const error = new Error(message);
-    error.name = name;
-    return error;
+    return createNamedError(code, message);
 }
 
 /** Captures only the mutable preview-only profile input at the public boundary. */
@@ -144,10 +137,6 @@ function getWebComponentThemeCss(): string {
 }
 
 export abstract class EHagakiComposerElement extends HTMLElement {
-    static get observedAttributes(): string[] {
-        return ["asset-base", "auto-login"];
-    }
-
     #app: AppInstance | null = null;
     #mountedApp: ReturnType<typeof mount> | null = null;
     #mountPromise: Promise<void> | null = null;
@@ -185,12 +174,6 @@ export abstract class EHagakiComposerElement extends HTMLElement {
 
     set autoLogin(value: boolean) {
         this.toggleAttribute("auto-login", !!value);
-    }
-
-    attributeChangedCallback(): void {
-        // The delivery base and the startup sign-in choice must be configured
-        // before the stateful app graph is imported. Changing either after
-        // connection applies on the next mount.
     }
 
     connectedCallback(): void {

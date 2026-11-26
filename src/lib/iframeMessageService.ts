@@ -238,26 +238,6 @@ export class IframeMessageService {
             payload,
         });
     }
-
-    setParentOrigin(origin: string | null): void {
-        this.parentOrigin = origin;
-    }
-
-    /**
-     * 許可オリジンを設定
-     */
-    setAllowedOrigins(origins: string[]): void {
-        this.allowedOrigins = origins;
-    }
-
-    /**
-     * 許可オリジンを追加
-     */
-    addAllowedOrigin(origin: string): void {
-        if (!this.allowedOrigins.includes(origin)) {
-            this.allowedOrigins.push(origin);
-        }
-    }
 }
 
 // シングルトンインスタンス

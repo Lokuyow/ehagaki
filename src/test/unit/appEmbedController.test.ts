@@ -1019,7 +1019,7 @@ describe('createAppEmbedController', () => {
         );
     });
 
-    it('composer.contextUpdated は同一シグネチャで再通知せず、reset 後は再通知する', () => {
+    it('composer.contextUpdated は同一シグネチャで再通知せず、変化したときだけ再通知する', () => {
         let bootstrapping = false;
         let replyState: ReplyQuoteComposerState = {
             reply: {
@@ -1061,10 +1061,8 @@ describe('createAppEmbedController', () => {
         expect(parentFrame.notifyComposerContextUpdated).toHaveBeenCalledTimes(1);
 
         bootstrapping = false;
-        controller.resetNotifiedComposerContextSignature();
         controller.notifyComposerContextUpdatedIfChanged();
-
-        expect(parentFrame.notifyComposerContextUpdated).toHaveBeenCalledTimes(2);
+        expect(parentFrame.notifyComposerContextUpdated).toHaveBeenCalledTimes(1);
 
         replyState = {
             reply: replyState.reply,
@@ -1088,7 +1086,7 @@ describe('createAppEmbedController', () => {
         };
         controller.notifyComposerContextUpdatedIfChanged();
 
-        expect(parentFrame.notifyComposerContextUpdated).toHaveBeenCalledTimes(3);
+        expect(parentFrame.notifyComposerContextUpdated).toHaveBeenCalledTimes(2);
     });
 
     it('draft provenanceはmetadata overrideとstable relayを通知し、relay変更も再通知する', () => {

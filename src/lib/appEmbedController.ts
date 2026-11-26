@@ -203,7 +203,6 @@ export interface AppEmbedController {
     flushPendingReplyQuoteHydration(): Promise<void>;
     notifyComposerContextUpdatedIfChanged(): void;
     initializeEmbedStorageSync(): Promise<void>;
-    resetNotifiedComposerContextSignature(): void;
 }
 
 function shouldQueueAction(getters: AppEmbedRuntimeStateGetters): boolean {
@@ -558,8 +557,5 @@ export function createAppEmbedController(
             }
         },
 
-        resetNotifiedComposerContextSignature(): void {
-            state.lastNotifiedComposerContextSignature = null;
-        },
     };
 }
