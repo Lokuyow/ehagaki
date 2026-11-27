@@ -80,6 +80,7 @@ export interface AuthServiceDependencies {
     navigator?: Navigator;
     serviceWorkerEnabled?: boolean;
     localNsecAuthEnabled?: boolean;
+    publicKeyAuthEnabled?: boolean;
     console?: Console;
     setPublicKeyAuth?: (pubkey: string, npub: string, nprofile: string) => void;
     setNsecAuth?: (pubkey: string, npub: string, nprofile: string) => void;

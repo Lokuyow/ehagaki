@@ -17,7 +17,9 @@ import {
     type EHagakiComposerSettings,
 } from "./types";
 import { createWebComponentNotificationPort } from "./notificationPort";
-import { applyWebComponentIconAssetUrls } from "./iconAssets";
+import { createWebComponentIconAssetApplier } from "./iconAssets";
+import { createNamedError } from "./errors";
+import { transformAppCssForShadowRoot } from "./appShadowCss";
 
 type AppInstance = {
     setEmbedContext(payload: unknown): Promise<void>;
@@ -43,15 +45,7 @@ type ReadyBoundary = {
 let activeInstance: EHagakiComposerElement | null = null;
 
 function createError(code: EHagakiComposerInitializationErrorDetail["code"], message: string): Error {
-    const error = new Error(message);
-    error.name = code;
-    return error;
-}
-
-function createNamedError(name: string, message: string): Error {
-    const error = new Error(message);
-    error.name = name;
-    return error;
+    return createNamedError(code, message);
 }
 
 /** Captures only the mutable preview-only profile input at the public boundary. */
@@ -111,17 +105,6 @@ function validateSettings(value: EHagakiComposerSettings): EmbedSettingsSetPaylo
     return value;
 }
 
-function transformAppCss(css: string): string {
-    // app.css is authored for the document root. In this build it is copied
-    // into the component's open shadow tree instead of touching host styles.
-    return css
-        .replaceAll(/:root:is\(\s*\.light\s*,\s*\.dark\s*\)/g, ":host(:is(.light, .dark))")
-        .replaceAll(":root", ":host")
-        .replace("html,\nbody,\n#app", ":host,\n.ehagaki-web-component-shell")
-        .replace("#app {", ".ehagaki-web-component-shell {")
-        .replace("body {", ".ehagaki-web-component-shell {");
-}
-
 function getWebComponentThemeCss(): string {
     return `:host {
         display: block;
@@ -154,10 +137,6 @@ function getWebComponentThemeCss(): string {
 }
 
 export abstract class EHagakiComposerElement extends HTMLElement {
-    static get observedAttributes(): string[] {
-        return ["asset-base", "auto-login"];
-    }
-
     #app: AppInstance | null = null;
     #mountedApp: ReturnType<typeof mount> | null = null;
     #mountPromise: Promise<void> | null = null;
@@ -195,12 +174,6 @@ export abstract class EHagakiComposerElement extends HTMLElement {
 
     set autoLogin(value: boolean) {
         this.toggleAttribute("auto-login", !!value);
-    }
-
-    attributeChangedCallback(): void {
-        // The delivery base and the startup sign-in choice must be configured
-        // before the stateful app graph is imported. Changing either after
-        // connection applies on the next mount.
     }
 
     connectedCallback(): void {
@@ -305,6 +278,10 @@ export abstract class EHagakiComposerElement extends HTMLElement {
             resolve = nextResolve;
             reject = nextReject;
         });
+        // Hosts that never call whenReady() must not see an unhandled
+        // rejection. whenReady() still returns this same promise, so callers
+        // observe the rejection unchanged.
+        promise.catch(() => undefined);
         return {
             promise,
             resolve,
@@ -320,7 +297,7 @@ export abstract class EHagakiComposerElement extends HTMLElement {
             const shadowRoot = this.shadowRoot ?? this.attachShadow({ mode: "open" });
             shadowRoot.replaceChildren();
             const styles = document.createElement("style");
-            styles.textContent = `${transformAppCss(appCss)}\n${photoSwipeCss}\n${getWebComponentThemeCss()}`;
+            styles.textContent = `${transformAppCssForShadowRoot(appCss)}\n${photoSwipeCss}\n${getWebComponentThemeCss()}`;
             const shell = document.createElement("div");
             shell.className = "ehagaki-web-component-shell";
             const mountTarget = document.createElement("div");
@@ -334,8 +311,11 @@ export abstract class EHagakiComposerElement extends HTMLElement {
                 this.assetBase ?? "./",
                 import.meta.url,
             );
-            this.#assetStyleObserver = new MutationObserver(() => {
-                applyWebComponentIconAssetUrls(shadowRoot, shell, assetBase);
+            const iconAssets = createWebComponentIconAssetApplier(shell, assetBase);
+            // Editor typing mutates the shadow tree constantly; only newly
+            // added nodes can carry new `<style>` text, so scan just those.
+            this.#assetStyleObserver = new MutationObserver((records) => {
+                for (const record of records) iconAssets.applyAddedNodes(record.addedNodes);
             });
             this.#assetStyleObserver.observe(shadowRoot, {
                 childList: true,
@@ -358,6 +338,7 @@ export abstract class EHagakiComposerElement extends HTMLElement {
                 externalInputEnabled: false,
                 historyEnabled: false,
                 localNsecAuthEnabled: false,
+                publicKeyAuthEnabled: this.isPublicKeyAuthEnabled(),
                 autoLoginNip07Enabled: this.isAutoLoginNip07Enabled(),
             });
             await installEhagakiDatabaseGateForRuntime(assetBase);
@@ -377,7 +358,7 @@ export abstract class EHagakiComposerElement extends HTMLElement {
                     },
                 },
             });
-            applyWebComponentIconAssetUrls(shadowRoot, shell, assetBase);
+            iconAssets.applyRoot(shadowRoot);
             this.#app = this.#mountedApp as AppInstance;
             if (!this.isConnected || generation !== this.#connectionGeneration) return;
         } catch (error) {
@@ -445,6 +426,11 @@ export abstract class EHagakiComposerElement extends HTMLElement {
     /** Full supports startup NIP-07; Lite overrides this runtime capability. */
     protected isAutoLoginNip07Enabled(): boolean {
         return this.autoLogin;
+    }
+
+    /** Full allows read-only public key sign-in; Lite owns no auth at all. */
+    protected isPublicKeyAuthEnabled(): boolean {
+        return true;
     }
 
     protected getAdditionalMountProps(_generation?: number): Record<string, unknown> {

@@ -71,6 +71,32 @@ describe('AuthService.authenticateWithPublicKey', () => {
         expect(accounts.getActiveAccountPubkey()).toBe(active);
     });
 
+    it('allows read-only public key login where local nsec sign-in is disabled (Full Web Component)', async () => {
+        const deps = { ...createMockDependencies(), localNsecAuthEnabled: false, publicKeyAuthEnabled: true };
+        const accounts = new AccountManager({ localStorage: deps.localStorage!, console: deps.console });
+        const service = new AuthService(deps);
+        service.setAccountManager(accounts);
+
+        expect(service.authenticateWithPublicKey(npub)).toEqual({ success: true, pubkeyHex, profileRelayHints: [] });
+        await expect(service.authenticateWithNsec('nsec1disabled')).resolves.toEqual({
+            success: false,
+            error: 'local-nsec-auth-disabled',
+        });
+
+        await expect(service.initializeAuth()).resolves.toMatchObject({ hasAuth: true, pubkeyHex });
+        expect(accounts.getAccounts()).toEqual([{ pubkeyHex, type: 'npub', addedAt: expect.any(Number) }]);
+        expect(deps.setNsecAuth).not.toHaveBeenCalled();
+    });
+
+    it('rejects public key login where public key sign-in is disabled', () => {
+        const deps = { ...createMockDependencies(), publicKeyAuthEnabled: false };
+        const service = new AuthService(deps);
+        service.setAccountManager(new AccountManager({ localStorage: deps.localStorage!, console: deps.console }));
+
+        expect(service.authenticateWithPublicKey(npub)).toEqual({ success: false, error: 'public-key-auth-disabled' });
+        expect(deps.setPublicKeyAuth).not.toHaveBeenCalled();
+    });
+
     it('rejects malformed pointers and preserves an existing signing account', () => {
         const { accounts, deps, service } = setup();
         const other = 'ab'.repeat(32);

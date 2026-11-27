@@ -23,4 +23,21 @@ describe("Web Component notification port", () => {
             { reply: null, quotes: [], channel: null },
         );
     });
+
+    it("reports string post failures with the same codes as iframe post.error", () => {
+        const dispatchSafeEvent = vi.fn((_type: string, _detail: Record<string, unknown>) => true);
+        const port = createWebComponentNotificationPort({ dispatchSafeEvent } as never);
+
+        port.notifyPostError("no_write_relays");
+        port.notifyPostError("postComponent.error.reply_target_event_unavailable");
+        port.notifyPostError("Unexpected free-form message");
+        port.notifyPostError(undefined);
+
+        expect(dispatchSafeEvent.mock.calls.map(([, detail]) => detail)).toEqual([
+            { code: "no_write_relays" },
+            { code: "reply_target_event_unavailable" },
+            { code: "post_error" },
+            { code: "post_error" },
+        ]);
+    });
 });

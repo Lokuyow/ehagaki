@@ -31,6 +31,7 @@ const mockState = vi.hoisted(() => {
         }),
         testServiceWorkerCommunication: vi.fn().mockResolvedValue(true),
         getSharedMediaWithFallback: vi.fn().mockResolvedValue(null),
+        getLatestSharedMedia: vi.fn().mockResolvedValue(null),
     };
 
     return state;
@@ -57,6 +58,12 @@ vi.mock('../../lib/replyQuoteService', () => ({
 
 vi.mock('../../lib/shareHandler', () => ({
     checkIfOpenedFromShare: mockState.checkIfOpenedFromShare,
+}));
+
+vi.mock('../../lib/storage/sharedMediaRepository', () => ({
+    sharedMediaRepository: {
+        getLatest: mockState.getLatestSharedMedia,
+    },
 }));
 
 vi.mock('../../lib/utils/swCommunication', () => ({
@@ -126,6 +133,57 @@ describe('runExternalInputBootstrap', () => {
         mockState.hasContentQueryParam.mockReturnValue(false);
         mockState.getContentFromUrlQuery.mockReturnValue(null);
         mockState.checkIfOpenedFromShare.mockReturnValue(false);
+        mockState.getLatestSharedMedia.mockResolvedValue(null);
+    });
+
+    describe('shared media recovery', () => {
+        const recoverable = {
+            images: [],
+            metadata: undefined,
+            title: 'shared title',
+            text: 'shared text',
+            url: 'https://example.com/shared',
+            shareId: 'share-1',
+            bodyStatus: 'pending',
+            automaticRetryCount: 1,
+        };
+
+        it('allowSharedMediaRecovery が有効なら、再試行待ちの共有内容を復元する', async () => {
+            mockState.hasReplyQuoteQueryParam.mockReturnValue(false);
+            mockState.getLatestSharedMedia.mockResolvedValue(recoverable);
+            const params = { ...createParams(), allowSharedMediaRecovery: true };
+
+            await runExternalInputBootstrap(params as never);
+
+            expect(mockState.getLatestSharedMedia).toHaveBeenCalledOnce();
+            expect(params.sharedMediaStore).toMatchObject({
+                received: true,
+                title: 'shared title',
+                shareId: 'share-1',
+                automaticRetryCount: 1,
+            });
+        });
+
+        it('自動再試行の前の共有内容は復元しない', async () => {
+            mockState.hasReplyQuoteQueryParam.mockReturnValue(false);
+            mockState.getLatestSharedMedia.mockResolvedValue({ ...recoverable, automaticRetryCount: 0 });
+            const params = { ...createParams(), allowSharedMediaRecovery: true };
+
+            await runExternalInputBootstrap(params as never);
+
+            expect(params.sharedMediaStore.received).toBe(false);
+        });
+
+        it('allowSharedMediaRecovery がなければ保存済みの共有内容を読まない', async () => {
+            mockState.hasReplyQuoteQueryParam.mockReturnValue(false);
+            mockState.getLatestSharedMedia.mockResolvedValue(recoverable);
+            const params = createParams();
+
+            await runExternalInputBootstrap(params as never);
+
+            expect(mockState.getLatestSharedMedia).not.toHaveBeenCalled();
+            expect(params.sharedMediaStore.received).toBe(false);
+        });
     });
 
     it('reply/quote選択後は参照イベントhydrateを待たずにbootstrapを完了する', async () => {

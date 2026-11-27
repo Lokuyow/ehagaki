@@ -27,6 +27,7 @@ configureAppRuntimeEnvironment({
   externalInputEnabled: true,
   historyEnabled: true,
   localNsecAuthEnabled: true,
+  publicKeyAuthEnabled: true,
   // PhotoSwipe's stylesheet follows its lazily loaded script.
   loadFullscreenViewerStyles: () => import('photoswipe/style.css'),
 })

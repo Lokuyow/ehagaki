@@ -94,6 +94,35 @@ describe('AuthService.restoreAccount', () => {
         );
     });
 
+    it('ローカルnsec認証が無効でも公開鍵ログインが有効ならnpub accountを復元する', async () => {
+        const service = createManagedService(
+            { ...mockDependencies, localNsecAuthEnabled: false, publicKeyAuthEnabled: true },
+            NSEC_PUBKEY,
+            'npub',
+        );
+
+        await expect(service.restoreAccount(NSEC_PUBKEY, 'npub')).resolves.toMatchObject({
+            hasAuth: true,
+            pubkeyHex: NSEC_PUBKEY,
+        });
+        expect(mockDependencies.setPublicKeyAuth).toHaveBeenCalled();
+        expect(mockKeyManager.readStoredKey).not.toHaveBeenCalled();
+    });
+
+    it('公開鍵ログインが無効なruntimeではnpub restoreを開始しない', async () => {
+        const service = createManagedService(
+            { ...mockDependencies, publicKeyAuthEnabled: false },
+            NSEC_PUBKEY,
+            'npub',
+        );
+
+        await expect(service.restoreAccount(NSEC_PUBKEY, 'npub')).resolves.toEqual({
+            hasAuth: false,
+            reason: 'public-key-auth-disabled',
+        });
+        expect(mockDependencies.setPublicKeyAuth).not.toHaveBeenCalled();
+    });
+
     it('ローカルnsec認証が無効なruntimeではmanaged nsec restoreを開始しない', async () => {
         const service = createManagedService(
             { ...mockDependencies, localNsecAuthEnabled: false },

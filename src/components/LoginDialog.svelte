@@ -51,6 +51,8 @@
         initialNostrConnectRelayCandidates?: string[];
         isAddAccountMode?: boolean;
         localNsecAuthEnabled?: boolean;
+        /** Read-only npub / nprofile sign-in; available without local nsec. */
+        publicKeyAuthEnabled?: boolean;
     }
 
     let {
@@ -79,7 +81,13 @@
         initialNostrConnectRelayCandidates = [],
         isAddAccountMode = false,
         localNsecAuthEnabled = true,
+        publicKeyAuthEnabled = true,
     }: Props = $props();
+
+    // Where local nsec sign-in is disabled (Full Web Component), the key input
+    // accepts only public keys and never forwards a secret key.
+    const publicKeyOnly = $derived(!localNsecAuthEnabled && publicKeyAuthEnabled);
+    const SECRET_KEY_INPUT_PATTERN = /^\s*nsec1/i;
 
     // ダイアログを閉じるハンドラ
     function handleClose() {
@@ -272,7 +280,11 @@
     // --- 秘密鍵入力の監視と公開鍵状態の更新 ---
     $effect(() => {
         if (secretKey !== undefined) {
-            publicKeyState.setNsec(secretKey);
+            // A secret key typed into the public-key-only field is never
+            // derived or shown; the input handler clears it immediately.
+            publicKeyState.setNsec(
+                publicKeyOnly && SECRET_KEY_INPUT_PATTERN.test(secretKey) ? "" : secretKey,
+            );
         }
     });
 
@@ -326,7 +338,14 @@
         }
         cleanupNostrConnectDirectOpenState();
         secretKeyErrorMessage = "";
-        if (inputEl && !isPublicKeyLoginInput(inputEl.value)) {
+        if (publicKeyOnly) {
+            if (!inputEl || !isPublicKeyLoginInput(inputEl.value)) {
+                // Never keep or submit a pasted secret key in this runtime.
+                if (SECRET_KEY_INPUT_PATTERN.test(inputEl?.value ?? "")) secretKey = "";
+                secretKeyErrorMessage = $_("loginDialog.public_key_only");
+                return;
+            }
+        } else if (inputEl && !isPublicKeyLoginInput(inputEl.value)) {
             const validity = inputEl.validity;
             const value = inputEl.value ?? "";
 
@@ -1140,35 +1159,47 @@
         </details>
     </div>
 
-    {#if localNsecAuthEnabled}
+    {#if localNsecAuthEnabled || publicKeyAuthEnabled}
         <div class="divider">
             <span>{$_("common.or")}</span>
         </div>
 
-        <div class="secret-key-section">
+        <div class={publicKeyOnly ? "public-key-section" : "secret-key-section"}>
             <div class="secret-heading-row">
-                <div class="secret-icon svg-icon"></div>
-                <h3>{$_("loginDialog.input_secret")}</h3>
+                <div class={publicKeyOnly ? "public-key-icon svg-icon" : "secret-icon svg-icon"}></div>
+                <h3>{publicKeyOnly ? $_("loginDialog.input_public_key") : $_("loginDialog.input_secret")}</h3>
             </div>
+            {#if publicKeyOnly}
+                <p class="public-key-hint">{$_("loginDialog.hint_input_public_key")}</p>
+            {/if}
 
             <form novalidate onsubmit={handleFormSubmit}>
                 <div class="secret-input-row">
                     <div class="input-shell">
                         <input
                             bind:value={secretKey}
-                            type="password"
-                            placeholder="nsec1..."
+                            type={publicKeyOnly ? "text" : "password"}
+                            placeholder={publicKeyOnly ? "npub1... / nprofile1..." : "nsec1..."}
                             class="secret-input u-control"
-                            id="secretKey"
-                            name="secretKey"
-                            autocomplete="current-password"
+                            id={publicKeyOnly ? "publicKeyLogin" : "secretKey"}
+                            name={publicKeyOnly ? "publicKeyLogin" : "secretKey"}
+                            autocomplete={publicKeyOnly ? "off" : "current-password"}
+                            spellcheck={publicKeyOnly ? false : undefined}
                             required
                             minlength="63"
                             bind:this={inputEl}
-                            title={$_("loginDialog.hint_input_secret")}
+                            title={publicKeyOnly
+                                ? $_("loginDialog.hint_input_public_key")
+                                : $_("loginDialog.hint_input_secret")}
                             oninput={() => {
                                 secretKeyErrorMessage = "";
                                 inputEl?.setCustomValidity("");
+                                if (publicKeyOnly && SECRET_KEY_INPUT_PATTERN.test(inputEl?.value ?? "")) {
+                                    // Never keep a pasted secret key in this runtime.
+                                    secretKey = "";
+                                    if (inputEl) inputEl.value = "";
+                                    secretKeyErrorMessage = $_("loginDialog.public_key_only");
+                                }
                             }}
                         />
                         {#if secretKey.length > 0}
@@ -1395,7 +1426,8 @@
         gap: 6px;
     }
 
-    .secret-key-section {
+    .secret-key-section,
+    .public-key-section {
         display: flex;
         flex-direction: column;
         width: 100%;
@@ -1665,6 +1697,21 @@
         border-radius: 12px 0 0 12px;
         font-family: monospace;
         font-size: 0.95rem;
+    }
+
+    .public-key-icon {
+        mask-image: url("/icons/account_circle_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        width: 28px;
+        height: 28px;
+        flex: 0 0 28px;
+        display: inline-block;
+        vertical-align: middle;
+    }
+
+    .public-key-hint {
+        margin: 0;
+        font-size: 0.85rem;
+        opacity: 0.8;
     }
 
     .secret-icon {

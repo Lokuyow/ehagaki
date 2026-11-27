@@ -23,6 +23,11 @@ export interface AppRuntimeEnvironment {
     externalInputEnabled: boolean;
     historyEnabled: boolean;
     localNsecAuthEnabled: boolean;
+    /**
+     * Read-only sign-in with a public key (npub / nprofile). It handles no
+     * secret, so it stays available where local nsec sign-in is disabled.
+     */
+    publicKeyAuthEnabled: boolean;
     /** Host opt-in: sign in with NIP-07 at startup when no session is restored. */
     autoLoginNip07Enabled: boolean;
     /**
@@ -69,6 +74,7 @@ function createDefaultEnvironment(): AppRuntimeEnvironment {
         externalInputEnabled: true,
         historyEnabled: true,
         localNsecAuthEnabled: true,
+        publicKeyAuthEnabled: true,
         // Startup NIP-07 sign-in stays opt-in so an installed extension does
         // not prompt merely because a page was opened.
         autoLoginNip07Enabled: false,

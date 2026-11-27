@@ -217,6 +217,11 @@ function getPreferredBlossomDestination(
 export class DexieUploadDestinationsRepository implements UploadDestinationsRepository {
     private syncedParentScopes = new Set<string>();
     private parentMissingScopes = new Set<string>();
+    /**
+     * Endpoints forced by the embed URL for this document. A parent snapshot
+     * loaded later replaces the scope, so the forced choice is applied again.
+     */
+    private forcedUploadEndpoints = new Map<string, { endpoint: string; pubkeyHex: string | null }>();
 
     constructor(
         private db: Pick<EHagakiDB, "uploadDestinations" | "legacyImportState" | "transaction"> = ehagakiStartupDb,
@@ -544,6 +549,9 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
         pubkeyHex?: string | null;
     }): Promise<UploadDestination | null> {
         const scopeKey = getScopeKey(pubkeyHex);
+        if (mode === "forced") {
+            this.forcedUploadEndpoints.set(scopeKey, { endpoint, pubkeyHex });
+        }
         await this.loadParentSnapshot(pubkeyHex);
 
         const records = await this.db.uploadDestinations
@@ -767,6 +775,18 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
             });
         } catch {
             this.syncedParentScopes.delete(scopeKey);
+            return;
+        }
+
+        const forced = this.forcedUploadEndpoints.get(scopeKey);
+        if (forced) {
+            try {
+                // The scope is marked synced above, so this does not reload it.
+                await this.applyUploadEndpointPreference({ ...forced, mode: "forced" });
+            } catch {
+                // Parent sync is optional; a failed re-apply must not make
+                // reading the destinations fail. The next forced apply retries.
+            }
         }
     }
 
@@ -792,9 +812,11 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
                     .where("scopeKey")
                     .equals(scopeKey)
                     .toArray();
-            await this.parentSync.setSnapshot(scopeKey, snapshot.map((record) =>
+            // The request is posted synchronously, so mirrors keep call order.
+            // Local writes do not wait for the optional parent mirror.
+            void this.parentSync.setSnapshot(scopeKey, snapshot.map((record) =>
                 toRecord(toDestination(record)),
-            ));
+            )).catch(() => undefined);
         } catch {
             // 親 IndexedDB 委譲は任意。local IndexedDB の保存成功を優先する。
         }

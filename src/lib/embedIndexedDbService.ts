@@ -21,6 +21,9 @@ type PendingIndexedDbRequest = {
     resolve: (payload: EmbedIndexedDbResultPayload) => void;
     reject: (error: EmbedIndexedDbErrorPayload) => void;
     timeoutId: ReturnType<typeof setTimeout>;
+    /** The response must echo these; a different store or scope is not a snapshot of this request. */
+    store: EmbedIndexedDbStoreName;
+    scopeKey: string;
 };
 
 type IndexedDbRequestPayload =
@@ -161,6 +164,15 @@ export class EmbedIndexedDbService {
     private trustedParentOrigin: string | null = null;
     private isListening = false;
     private pendingRequests = new Map<string, PendingIndexedDbRequest>();
+    /**
+     * Parents that do not implement `idb.*` never answer. After the first
+     * unanswered request, later snapshot reads fail at once instead of each
+     * waiting for the timeout. Writes are still posted: they no longer block
+     * callers, and a slow parent must keep receiving them so its snapshot does
+     * not go stale. Any valid response, even one that arrives after its request
+     * timed out, marks the parent as supporting `idb.*`.
+     */
+    private parentSupport: "unknown" | "supported" | "unsupported" = "unknown";
 
     constructor(
         private windowObj: Window = typeof window !== "undefined" ? window : ({} as Window),
@@ -209,7 +221,12 @@ export class EmbedIndexedDbService {
         type: "idb.getSnapshot" | "idb.setSnapshot",
         payload: IndexedDbRequestPayload,
     ): Promise<EmbedIndexedDbResultPayload> {
-        if (!this.windowObj || !this.isInIframe() || !this.trustedParentOrigin) {
+        if (
+            !this.windowObj
+            || !this.isInIframe()
+            || !this.trustedParentOrigin
+            || (type === "idb.getSnapshot" && this.parentSupport === "unsupported")
+        ) {
             return Promise.reject({
                 timestamp: Date.now(),
                 code: "idb_parent_unavailable",
@@ -223,6 +240,9 @@ export class EmbedIndexedDbService {
         const request = new Promise<EmbedIndexedDbResultPayload>((resolve, reject) => {
             const timeoutId = setTimeout(() => {
                 this.pendingRequests.delete(requestId);
+                if (this.parentSupport === "unknown") {
+                    this.parentSupport = "unsupported";
+                }
                 reject({
                     timestamp: Date.now(),
                     code: "idb_request_timeout",
@@ -232,7 +252,13 @@ export class EmbedIndexedDbService {
                 });
             }, this.requestTimeoutMs);
 
-            this.pendingRequests.set(requestId, { resolve, reject, timeoutId });
+            this.pendingRequests.set(requestId, {
+                resolve,
+                reject,
+                timeoutId,
+                store: payload.store,
+                scopeKey: payload.scopeKey,
+            });
         });
 
         try {
@@ -288,6 +314,10 @@ export class EmbedIndexedDbService {
 
         if (!message.requestId) return;
 
+        // A trusted idb response proves the parent implements idb.*, even when
+        // it arrives after its request timed out and is no longer pending.
+        this.parentSupport = "supported";
+
         const pending = this.pendingRequests.get(message.requestId);
         if (!pending) return;
 
@@ -299,6 +329,21 @@ export class EmbedIndexedDbService {
 
             clearTimeout(pending.timeoutId);
             this.pendingRequests.delete(message.requestId);
+            if (
+                message.payload.store !== pending.store
+                || message.payload.scopeKey !== pending.scopeKey
+            ) {
+                // Treating another scope's records as this scope's snapshot
+                // would replace (and could erase) local upload destinations.
+                pending.reject({
+                    timestamp: Date.now(),
+                    code: "idb_response_mismatch",
+                    message: "parent indexedDB response does not match the request",
+                    store: pending.store,
+                    scopeKey: pending.scopeKey,
+                });
+                return;
+            }
             pending.resolve(message.payload);
             return;
         }

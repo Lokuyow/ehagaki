@@ -12,6 +12,7 @@ import {
     type EmbedSettingsAppliedPayload,
     type EmbedSettingsErrorPayload,
 } from './embedProtocol';
+import { normalizePostErrorCode } from './postErrorCode';
 
 export interface IframeMessagePayload extends EmbedMessageEnvelope {
     type:
@@ -139,7 +140,7 @@ export class IframeMessageService {
     notifyPostError(error?: string | { code: string; message?: string }): boolean {
         const payload: EmbedPostErrorPayload = {
             timestamp: Date.now(),
-            code: typeof error === 'string' ? error : error?.code ?? 'post_error',
+            code: normalizePostErrorCode(error),
             ...(typeof error === 'object' && error?.message ? { message: error.message } : {}),
         };
 
@@ -236,26 +237,6 @@ export class IframeMessageService {
             type: 'composer.contextUpdated',
             payload,
         });
-    }
-
-    setParentOrigin(origin: string | null): void {
-        this.parentOrigin = origin;
-    }
-
-    /**
-     * 許可オリジンを設定
-     */
-    setAllowedOrigins(origins: string[]): void {
-        this.allowedOrigins = origins;
-    }
-
-    /**
-     * 許可オリジンを追加
-     */
-    addAllowedOrigin(origin: string): void {
-        if (!this.allowedOrigins.includes(origin)) {
-            this.allowedOrigins.push(origin);
-        }
     }
 }
 

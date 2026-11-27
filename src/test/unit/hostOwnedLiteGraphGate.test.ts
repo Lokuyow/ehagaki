@@ -4,6 +4,8 @@ import {
     collectReachableModuleIds,
     createFullSelfPublishGraphGate,
     createHostOwnedLiteGraphGate,
+    isFullSelfPublishForbiddenModule,
+    isLiteForbiddenModule,
 } from "../../../scripts/hostOwnedLiteGraphGate.mjs";
 
 describe("Host-owned Lite graph gate", () => {
@@ -46,5 +48,44 @@ describe("Host-owned Lite graph gate", () => {
                 : { importedIds: [], dynamicallyImportedIds: [] },
             error: (message: string) => { throw new Error(message); },
         })).toThrow("headlessUpload.ts");
+    });
+});
+
+describe("Web Component forbidden module patterns", () => {
+    // Vite module ids use forward slashes even on Windows; Node paths use the
+    // platform separator. Both forms must match.
+    const idsFor = (path: string) => [
+        `C:\\repo\\${path.replaceAll("/", "\\")}`,
+        `C:/repo/${path}`,
+        `/repo/${path}`,
+    ];
+
+    it.each([
+        "src/lib/hostOwnedComposer.ts",
+        "src/lib/hostOwnedUpload.ts",
+        "src/web-component/hostOwnedLiteElement.ts",
+        "src/host-owned-composer-lite/HostOwnedComposerLiteApp.svelte",
+        "src/lib/bootstrap/serviceWorkerBootstrap.ts",
+    ])("rejects Host-owned or PWA-only module %s from the Full graph", (path) => {
+        for (const id of idsFor(path)) {
+            expect(isFullSelfPublishForbiddenModule(id), id).toBe(true);
+        }
+    });
+
+    it.each([
+        "src/web-component/fullHostOwnedRuntimeStub.ts",
+        "src/components/PostComponent.svelte",
+        "src/lib/hostOwnedComposerHelpers.ts",
+    ])("allows %s in the Full graph", (path) => {
+        for (const id of idsFor(path)) {
+            expect(isFullSelfPublishForbiddenModule(id), id).toBe(false);
+        }
+    });
+
+    it("rejects the PWA registration from the Lite graph", () => {
+        expect(isLiteForbiddenModule("virtual:pwa-register/svelte")).toBe(true);
+        for (const id of idsFor("src/lib/bootstrap/serviceWorkerBootstrap.ts")) {
+            expect(isLiteForbiddenModule(id), id).toBe(true);
+        }
     });
 });

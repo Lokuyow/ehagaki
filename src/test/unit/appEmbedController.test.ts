@@ -214,6 +214,58 @@ describe('createAppEmbedController', () => {
         expect(parentFrame.notifyComposerContextApplied).toHaveBeenCalledWith('req-1');
     });
 
+    it('bootstrapping 中に届いた複数の composer.setContext を順に適用し、それぞれに返信する', async () => {
+        const { controller, composerInput, parentFrame, setBootstrappingApp } = createController();
+        setBootstrappingApp(true);
+
+        await controller.handleRemoteComposerSetContext({ content: 'first' }, 'req-a');
+        await controller.handleRemoteComposerSetContext({ content: 'second' }, 'req-b');
+
+        expect(parentFrame.notifyComposerContextApplied).not.toHaveBeenCalled();
+
+        setBootstrappingApp(false);
+        await controller.flushPendingComposerAction();
+
+        expect(composerInput.insertText.mock.calls.map(([text]) => text)).toEqual(['first', 'second']);
+        expect(parentFrame.notifyComposerContextApplied.mock.calls.map(([requestId]) => requestId))
+            .toEqual(['req-a', 'req-b']);
+        expect(parentFrame.notifyComposerContextError).not.toHaveBeenCalled();
+    });
+
+    it('bootstrapping 中の要求が不正でも、ほかの保留中の要求を失わない', async () => {
+        const { controller, composerInput, parentFrame, setBootstrappingApp } = createController();
+        setBootstrappingApp(true);
+
+        await controller.handleRemoteComposerSetContext({ content: 'valid' }, 'req-valid');
+        await controller.handleRemoteComposerSetContext({ reply: 42 }, 'req-invalid');
+
+        setBootstrappingApp(false);
+        await controller.flushPendingComposerAction();
+
+        expect(composerInput.insertText).toHaveBeenCalledWith('valid');
+        expect(parentFrame.notifyComposerContextApplied).toHaveBeenCalledWith('req-valid');
+        expect(parentFrame.notifyComposerContextError).toHaveBeenCalledWith(
+            expect.anything(),
+            'req-invalid',
+        );
+    });
+
+    it('bootstrap 終了後 flush 前に届いた要求は、保留中の要求のあとに適用する', async () => {
+        const { controller, composerInput, parentFrame, setBootstrappingApp } = createController();
+        setBootstrappingApp(true);
+        await controller.handleRemoteComposerSetContext({ content: 'queued' }, 'req-queued');
+
+        setBootstrappingApp(false);
+        await controller.handleRemoteComposerSetContext({ content: 'live' }, 'req-live');
+
+        expect(composerInput.insertText.mock.calls.map(([text]) => text)).toEqual(['queued', 'live']);
+        expect(parentFrame.notifyComposerContextApplied.mock.calls.map(([requestId]) => requestId))
+            .toEqual(['req-queued', 'req-live']);
+
+        await controller.flushPendingComposerAction();
+        expect(parentFrame.notifyComposerContextApplied).toHaveBeenCalledTimes(2);
+    });
+
     it('content-only の composer.setContext では本文だけを反映する', async () => {
         const { controller, composerInput, sharedContent, parentFrame } = createController();
 
@@ -967,7 +1019,7 @@ describe('createAppEmbedController', () => {
         );
     });
 
-    it('composer.contextUpdated は同一シグネチャで再通知せず、reset 後は再通知する', () => {
+    it('composer.contextUpdated は同一シグネチャで再通知せず、変化したときだけ再通知する', () => {
         let bootstrapping = false;
         let replyState: ReplyQuoteComposerState = {
             reply: {
@@ -1009,10 +1061,8 @@ describe('createAppEmbedController', () => {
         expect(parentFrame.notifyComposerContextUpdated).toHaveBeenCalledTimes(1);
 
         bootstrapping = false;
-        controller.resetNotifiedComposerContextSignature();
         controller.notifyComposerContextUpdatedIfChanged();
-
-        expect(parentFrame.notifyComposerContextUpdated).toHaveBeenCalledTimes(2);
+        expect(parentFrame.notifyComposerContextUpdated).toHaveBeenCalledTimes(1);
 
         replyState = {
             reply: replyState.reply,
@@ -1036,7 +1086,7 @@ describe('createAppEmbedController', () => {
         };
         controller.notifyComposerContextUpdatedIfChanged();
 
-        expect(parentFrame.notifyComposerContextUpdated).toHaveBeenCalledTimes(3);
+        expect(parentFrame.notifyComposerContextUpdated).toHaveBeenCalledTimes(2);
     });
 
     it('draft provenanceはmetadata overrideとstable relayを通知し、relay変更も再通知する', () => {

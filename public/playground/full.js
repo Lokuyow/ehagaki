@@ -103,7 +103,7 @@ function safeEventDetail(type, detail) {
                 quotedEventCount: Array.isArray(detail.quotedEventIds) ? detail.quotedEventIds.length : 0,
             };
         case "ehagaki-post-error":
-            return { code: typeof detail.code === "string" ? detail.code : "post_failed" };
+            return { code: typeof detail.code === "string" ? detail.code : "post_error" };
         case "ehagaki-composer-context-updated":
             return {
                 hasReply: typeof detail.reply === "string",

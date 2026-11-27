@@ -24,6 +24,7 @@ export type AuthInitializationResult = RestoreResult & {
 export type ManagedRestoreFailureReason =
     | 'invalid-requested-pubkey'
     | 'local-nsec-auth-disabled'
+    | 'public-key-auth-disabled'
     | 'account-record-mismatch'
     | 'credential-missing'
     | 'credential-read-failed'

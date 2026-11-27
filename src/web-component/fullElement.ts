@@ -8,6 +8,7 @@ import {
 import type { RelayConfig } from "../lib/types";
 import type { EHagakiUploadOptions, EHagakiUploadResult } from "./types";
 import { createUploadAbortError, throwIfUploadAborted } from "../lib/upload/uploadOperation";
+import { createNamedError } from "./errors";
 
 type FullUploadApp = {
     uploadFileForHost(file: File, options: { signal: AbortSignal }): Promise<EHagakiUploadResult>;
@@ -18,12 +19,6 @@ type ActiveUpload = {
     generation: number;
     disconnected: boolean;
 };
-
-function createUploadApiError(name: string, message: string): Error {
-    const error = new Error(message);
-    error.name = name;
-    return error;
-}
 
 /** The existing full distribution keeps the regular application root. */
 export class EHagakiComposerElement extends ComposerElementBase {
@@ -41,7 +36,7 @@ export class EHagakiComposerElement extends ComposerElementBase {
         }
         if (options?.signal?.aborted) return Promise.reject(createUploadAbortError());
         if (this.#activeUpload) {
-            return Promise.reject(createUploadApiError("upload_in_progress", "A file upload is already in progress."));
+            return Promise.reject(createNamedError("upload_in_progress", "A file upload is already in progress."));
         }
 
         const controller = new AbortController();
@@ -61,12 +56,12 @@ export class EHagakiComposerElement extends ComposerElementBase {
                 const app = snapshot.app as typeof snapshot.app & FullUploadApp;
                 const result = await app.uploadFileForHost(file, { signal: controller.signal });
                 if (!this.isCurrentConnection(operation.generation)) {
-                    throw createUploadApiError("disconnected", "Component was disconnected during upload.");
+                    throw createNamedError("disconnected", "Component was disconnected during upload.");
                 }
                 return result;
             } catch (error) {
                 if (operation.disconnected || !this.isCurrentConnection(operation.generation)) {
-                    throw createUploadApiError("disconnected", "Component was disconnected during upload.");
+                    throw createNamedError("disconnected", "Component was disconnected during upload.");
                 }
                 throw error;
             } finally {

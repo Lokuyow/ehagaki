@@ -192,6 +192,10 @@ immutable snapshot として保持します。Host-owned mode では eHagaki は
 fetch、profile/history/custom-emoji relay load を開始しません。reply/quote は reference-only の
 non-loading state で表示され、host は snapshot を使って最終 event の構造 tag を決定します。
 
+本文に秘密鍵（`nsec1...`）が含まれている場合、Lite は通常版と同じ確認ダイアログを表示します。
+利用者が「投稿」を選んだときだけ、送信操作の時点で取得した内容で `submit` を1回呼びます。
+キャンセルした場合や、確認中に要素が取り外された場合は `submit` を呼びません。
+
 upload 中は submit を開始できず、submit 中は media input を開始できません。この判定はボタンだけで
 なく keyboard shortcut、long press、PostComponent の公開 submit/upload path にも適用されます。
 `setContext()` は既存どおり利用できますが、Host-owned submit 中は `submission_in_progress` で
@@ -548,7 +552,8 @@ await contextPromise;
 `imageCompressionLevel` と `videoCompressionLevel` は互換性のために残る旧 key です。同じ
 payload に新しい `imageQualityLevel` / `videoQualityLevel` と旧 key の両方を指定した場合は、
 新しい key が優先されます。`uploadEndpoint` は文字列として受け付けられますが、Web Component
-側で URL の形式を別途検証する API ではありません。
+側で URL の形式を別途検証する API ではありません。Lite は `uploadEndpoint` を受け付けますが、適用はせず、
+戻り値の適用済み key にも含めません。Lite のメディアは Host の `uploadMedia` だけでアップロードされます。
 
 ```js
 const applied = await composer.setSettings({
@@ -922,7 +927,10 @@ composer.addEventListener('ehagaki-post-error', (event) => {
 }
 ```
 
-`ehagaki-post-error` の detail は `{ code: string }` です。秘密鍵、認証 payload、生の Error は
+`ehagaki-post-error` の detail は `{ code: string }` です。`code` は iframe の `post.error` と同じ
+識別子です（一覧は [iframe ガイドの「投稿失敗」](./IFRAME_EMBEDDING.md#投稿失敗) を参照）。英小文字・
+数字・`_` だけで構成され、それ以外のエラーは `post_error` になります。表にないコードが届くこともあるので、
+未知のコードは `post_error` と同じ扱いにしてください。秘密鍵、認証 payload、生の Error は
 イベント detail に含めません。投稿エラーを処理する場合はイベントリスナーを登録してください。
 
 ## その他の CustomEvent
@@ -1050,6 +1058,9 @@ Web Component 専用の signer callback/provider API はありません。
 - 保存済み認証を優先し、復元できない場合に NIP-07 fallback を行うには、Full distribution で
   [`auto-login`](#auto-login--autologin) を指定します。既定では行いません。
 - NIP-46 は、コンポーネント内の既存 eHagaki UI からログインします。
+- Full では、公開鍵（`npub1...` / `nprofile1...`）による閲覧専用のログインを使えます。投稿や署名は
+  できません。ログイン画面の公開鍵の入力欄は公開鍵だけを受け付け、秘密鍵が入力された場合は消去して
+  送信しません。Lite は認証を持たないため、この入力欄もありません。
 - ローカル秘密鍵（nsec）の入力、保存、保存済みアカウントの復元には対応しません。
 - iframe の `auth.*` / `rpc.*` メッセージは Web Component では使いません。
 - ホスト側から nsec をコンポーネントへ渡す API はありません。

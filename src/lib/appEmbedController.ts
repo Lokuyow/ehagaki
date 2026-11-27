@@ -171,7 +171,11 @@ export type AppEmbedPendingComposerAction = Readonly<{
 }>;
 
 interface AppEmbedControllerState {
-    pendingComposerAction?: AppEmbedPendingComposerAction;
+    /**
+     * `composer.setContext` is a patch and every request expects its own reply,
+     * so requests received during bootstrap are kept and applied in order.
+     */
+    pendingComposerActions: AppEmbedPendingComposerAction[];
     pendingReplyQuoteHydration?: Readonly<{
         references: ReplyQuoteHydrationTarget[];
         preloadedProfiles: Readonly<Record<string, EmbedPreloadedProfilePresentation>>;
@@ -195,15 +199,10 @@ export interface AppEmbedController {
         payload: EmbedIframeSettingsSetPayload,
         requestId: string,
     ): Promise<void>;
-    queueRemoteComposerAction(
-        payload: unknown,
-        requestId: string,
-    ): void;
     flushPendingComposerAction(): Promise<void>;
     flushPendingReplyQuoteHydration(): Promise<void>;
     notifyComposerContextUpdatedIfChanged(): void;
     initializeEmbedStorageSync(): Promise<void>;
-    resetNotifiedComposerContextSignature(): void;
 }
 
 function shouldQueueAction(getters: AppEmbedRuntimeStateGetters): boolean {
@@ -220,7 +219,7 @@ export function createAppEmbedController(
             throw new Error("AppEmbedController requires a notification port");
         })();
     const state: AppEmbedControllerState = {
-        pendingComposerAction: undefined,
+        pendingComposerActions: [],
         pendingReplyQuoteHydration: undefined,
         lastNotifiedComposerContextSignature: null,
         applyingComposerContext: false,
@@ -420,6 +419,25 @@ export function createAppEmbedController(
         }
     }
 
+    /** Applies queued requests in arrival order, replying to each one. */
+    function drainPendingComposerActions(): void {
+        while (state.pendingComposerActions.length > 0) {
+            const pendingAction = state.pendingComposerActions.shift()!;
+            try {
+                applyAndAcknowledgeComposerContext(
+                    pendingAction.payload,
+                    pendingAction.requestId,
+                );
+            } catch (error) {
+                notifyComposerError(
+                    error,
+                    pendingAction.requestId,
+                    "保留中の composer.setContext の適用に失敗:",
+                );
+            }
+        }
+    }
+
     function notifyComposerError(
         error: unknown,
         requestId: string,
@@ -459,14 +477,17 @@ export function createAppEmbedController(
             requestId: string,
         ): Promise<void> {
             if (shouldQueueAction(deps.runtime)) {
-                state.pendingComposerAction = {
+                state.pendingComposerActions.push({
                     type: "set",
                     payload,
                     requestId,
-                };
+                });
                 return;
             }
 
+            // A request can arrive after bootstrap ends but before the queued
+            // requests are flushed; keep arrival order.
+            drainPendingComposerActions();
             try {
                 applyAndAcknowledgeComposerContext(payload, requestId);
             } catch (error) {
@@ -494,40 +515,11 @@ export function createAppEmbedController(
             }
         },
 
-        queueRemoteComposerAction(
-            payload: unknown,
-            requestId: string,
-        ): void {
-            state.pendingComposerAction = {
-                type: "set",
-                payload,
-                requestId,
-            };
-        },
-
         async flushPendingComposerAction(): Promise<void> {
             if (shouldQueueAction(deps.runtime)) {
                 return;
             }
-
-            const pendingAction = state.pendingComposerAction;
-            state.pendingComposerAction = undefined;
-            if (!pendingAction) {
-                return;
-            }
-
-            try {
-                applyAndAcknowledgeComposerContext(
-                    pendingAction.payload,
-                    pendingAction.requestId,
-                );
-            } catch (error) {
-                notifyComposerError(
-                    error,
-                    pendingAction.requestId,
-                    "保留中の composer.setContext の適用に失敗:",
-                );
-            }
+            drainPendingComposerActions();
         },
 
         flushPendingReplyQuoteHydration,
@@ -565,8 +557,5 @@ export function createAppEmbedController(
             }
         },
 
-        resetNotifiedComposerContextSignature(): void {
-            state.lastNotifiedComposerContextSignature = null;
-        },
     };
 }

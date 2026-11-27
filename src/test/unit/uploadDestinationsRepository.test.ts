@@ -66,6 +66,56 @@ describe("uploadDestinationsRepository", () => {
         db.close();
     });
 
+    it("keeps a URL-forced endpoint as the default after a later parent snapshot loads", async () => {
+        const db = createTestDb();
+        let parentReady = false;
+        const parentSnapshot = [{ ...legacySovbit(null), scopeKey: UPLOAD_DESTINATION_GLOBAL_SCOPE }];
+        const parentSync: UploadDestinationsParentSync = {
+            // Before the embed services initialize, the parent cannot be reached.
+            getSnapshot: async () => {
+                if (!parentReady) throw { code: "idb_parent_unavailable" };
+                return parentSnapshot;
+            },
+            setSnapshot: async () => {},
+        };
+        const repository = new DexieUploadDestinationsRepository(db, () => 3000, () => new MockStorage(), parentSync);
+
+        await repository.applyUploadEndpointPreference({
+            endpoint: "https://cdn.nostrcheck.me",
+            mode: "forced",
+        });
+        parentReady = true;
+
+        // The parent snapshot (Sovbit as default) replaces the scope; the
+        // forced endpoint is applied again on top of it.
+        const defaultDestination = await repository.getDefault(null);
+        expect(defaultDestination.serverUrl).toContain("nostrcheck.me");
+        expect((await repository.getAll(null)).filter((destination) => destination.isDefault)).toHaveLength(1);
+        db.close();
+    });
+
+    it("does not wait for the optional parent mirror when saving locally", async () => {
+        const db = createTestDb();
+        const setSnapshotCalls: string[] = [];
+        const parentSync: UploadDestinationsParentSync = {
+            getSnapshot: async () => null,
+            setSnapshot: (scopeKey) => {
+                setSnapshotCalls.push(scopeKey);
+                return new Promise<void>(() => {});
+            },
+        };
+        const repository = new DexieUploadDestinationsRepository(db, () => 3000, () => new MockStorage(), parentSync);
+        const destination = { ...legacySovbit(null), id: "local-only", isDefault: false };
+
+        await expect(Promise.race([
+            repository.put(destination).then(() => "saved"),
+            new Promise((resolve) => setTimeout(() => resolve("blocked"), 1000)),
+        ])).resolves.toBe("saved");
+        expect(setSnapshotCalls).toContain(UPLOAD_DESTINATION_GLOBAL_SCOPE);
+        expect(await db.uploadDestinations.get("local-only")).toBeDefined();
+        db.close();
+    });
+
     it("reuses Sovbit for repeated forced legacy endpoint preferences", async () => {
         const db = createTestDb();
         const storage = new MockStorage();

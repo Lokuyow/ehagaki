@@ -1832,7 +1832,9 @@
       rxNostr,
       relayConfig: relayConfigStore.value,
       locationHref: window.location.href,
-      allowSharedMediaRecovery: true,
+      // Recovery resumes media shared to the installed PWA. Embedded iframes
+      // must not pick up media left over from a same-site standalone session.
+      allowSharedMediaRecovery: appRuntimeEnvironment.runtimeKind === "standalone",
     });
 
     void runAppInitializationBootstrap({
@@ -2424,6 +2426,7 @@
           {nip46NostrConnectErrorMessage}
           initialNostrConnectRelayCandidates={getInitialNip46ConnectRelayCandidates()}
           localNsecAuthEnabled={appRuntimeEnvironment.localNsecAuthEnabled}
+          publicKeyAuthEnabled={appRuntimeEnvironment.publicKeyAuthEnabled}
         />
       {/if}
       <RelayDeliveryToasts rows={deliveryFeedback.bars} onDismiss={deliveryFeedback.dismiss} />
@@ -2460,6 +2463,7 @@
           initialNostrConnectRelayCandidates={getInitialNip46ConnectRelayCandidates()}
           isAddAccountMode={true}
           localNsecAuthEnabled={appRuntimeEnvironment.localNsecAuthEnabled}
+          publicKeyAuthEnabled={appRuntimeEnvironment.publicKeyAuthEnabled}
         />
       {/if}
       {#if showLogoutDialogStore.value && ProfileComponent}

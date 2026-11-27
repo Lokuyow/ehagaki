@@ -55,7 +55,6 @@
   import { clearUrlQueryContentStore, updateUrlQueryContentStore } from "../stores/sharedContentStore.svelte";
   import { settingsStore } from "../stores/settingsStore.svelte";
   import { editorState } from "../stores/editorStore.svelte";
-  import { uploadDestinationsRepository } from "../lib/storage/uploadDestinationsRepository";
   import type { CustomEmojiSelection } from "../lib/customEmojiUsage";
   import type { EHagakiCustomEmojiCatalogItem, EHagakiHostOwnedComposerOptions } from "../web-component/types";
   import type PostComponentType from "../components/PostComponent.svelte";
@@ -289,16 +288,11 @@
   export async function setEmbedSettings(
     payload: EmbedSettingsSetPayload,
   ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>> {
-    const applied = settingsStore.applyParentSettings(payload, "parentForced") as AppEmbedAppliedSettingKey[];
-    if (payload.uploadEndpoint !== undefined) {
-      await uploadDestinationsRepository.applyUploadEndpointPreference({
-        endpoint: payload.uploadEndpoint,
-        mode: "forced",
-        pubkeyHex: null,
-      });
-      applied.push("uploadEndpoint");
-    }
-    return applied;
+    // `uploadEndpoint` is accepted by the shared settings validation, but Lite
+    // never uploads by itself: media goes to the Host's `uploadMedia`. It is
+    // ignored and not reported as applied, and the shared eHagakiDB upload
+    // destinations used by Full are left untouched.
+    return settingsStore.applyParentSettings(payload, "parentForced") as AppEmbedAppliedSettingKey[];
   }
 
   /** Public in-process editor control used by the Host-owned Lite element. */
